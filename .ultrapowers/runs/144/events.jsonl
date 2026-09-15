@@ -1,0 +1,11 @@
+{"kind":"run:open","runId":"run-144","base":"","source":"fleet/run-main.mjs","id":"01M2JZGSDP0000X6XD2STAQRQ5","ts":1789490914742}
+{"kind":"driver:stage","stage":"kata","detail":"record /home/exedev/plans/run-144.kata.json → https://kata.int.exe.xyz","id":"01M2JZGSDQ000015G7SBHC3Q3S","ts":1789490914743}
+{"kind":"driver:stage","stage":"tiers","detail":"2 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M2JZGSDR0000KTX29KTWV1ZP","ts":1789490914744}
+{"kind":"driver:stage","stage":"provision","detail":"BASE e0526443db3ea88a6e91d39f89234e295d1b1fa5; 2 task clone(s) + integration","id":"01M2JZGSPR0000T3K5DXV283S8","ts":1789490915032}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M2JZGT280000KFXH2PCZJQEV","ts":1789490915400}
+{"kind":"driver:stage","stage":"engine","detail":"waves 2, width bound 2, patch input armed","id":"01M2JZGT280001H6AKA6AM2HFR","ts":1789490915400}
+{"kind":"engine:phase","phase":"Setup","id":"01M2JZGT2E0000DNGBJVSV3P58","ts":1789490915406}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-144 at e0526443db3ea88a6e91d39f89234e295d1b1fa5","id":"01M2JZGT930000EMCW3NMYPA6E","ts":1789490915619}
+{"kind":"worker:start","label":"impl:2","role":"implementer","sessionId":"a83b4a33-3c59-4d60-b39b-05e03cc649f3","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-144/clones/task-2","model":"opus","id":"01M2JZGTW30000SYCXK5ZE7HQ7","ts":1789490916227}
+{"kind":"worker:start","label":"exam:1","role":"examiner","sessionId":"090112df-e7a1-4f5b-b1d2-83fdc77d4be8","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-144/clones/exam-1","model":"opus","id":"01M2JZGTX40000WSZB9PXGVWHH","ts":1789490916260}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"952d02f8-0439-408c-a093-ddc40ce0a5ff","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-144/clones/task-1","model":"opus","id":"01M2JZGTX600004T2S78RQWHM2","ts":1789490916262}

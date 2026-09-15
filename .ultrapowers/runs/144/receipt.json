@@ -1,0 +1,264 @@
+{
+  "ok": true,
+  "stamp": "run-144",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-144"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The kata facts probe \u2014 one line per fact, stamped with the hub's version, and an exam of its shape",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/tests/PROBES.md",
+          "fleet/tests/probe_kata_facts.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`sshTransport({ sshHost, exec })`",
+            "`parseKataEnv(text)`",
+            "`defaultKataEnvPath()`",
+            "`defaultExec(cmd, argv, options)`"
+          ],
+          "produces": [
+            "`FACTS`",
+            "`probeKataFacts({ transport, actor, log, now })`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "One list of measured kata facts in the contract, and the runbook's traps point at it",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/RUNBOOK.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The kata facts probe \u2014 one line per fact, stamped with the hub's version, and an exam of its shape",
+          "files": [
+            "fleet/tests/PROBES.md",
+            "fleet/tests/probe_kata_facts.mjs",
+            "fleet/tests/test_probe_kata_facts.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`sshTransport({ sshHost, exec })`",
+              "`parseKataEnv(text)`",
+              "`defaultKataEnvPath()`",
+              "`defaultExec(cmd, argv, options)`"
+            ],
+            "produces": [
+              "`FACTS`",
+              "`probeKataFacts({ transport, actor, log, now })`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/tests/PROBES.md",
+            "fleet/tests/probe_kata_facts.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_probe_kata_facts.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_probe_kata_facts.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_probe_kata_facts.mjs | grep -q 'ALL TESTS PASSED'",
+            "node --check fleet/tests/probe_kata_facts.mjs",
+            "! grep -q 'KATA_TOKEN' fleet/tests/probe_kata_facts.mjs",
+            "tr '\\n' ' ' < fleet/tests/PROBES.md | grep -q 'probe_kata_facts.mjs.*kata upgrade.*kata-client.mjs'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_probe_kata_facts.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/tests/PROBES.md",
+              "fleet/tests/probe_kata_facts.mjs",
+              "fleet/tests/test_probe_kata_facts.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_probe_kata_facts.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_probe_kata_facts.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_probe_kata_facts.mjs": "fleet/tests/test_probe_kata_facts.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_probe_kata_facts.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/RUNBOOK.md"
+            ],
+            "produces": [
+              "`FACTS`",
+              "`probeKataFacts({ transport, actor, log, now })`"
+            ],
+            "consumes": [
+              "`sshTransport({ sshHost, exec })`",
+              "`parseKataEnv(text)`",
+              "`defaultKataEnvPath()`",
+              "`defaultExec(cmd, argv, options)`"
+            ]
+          }
+        },
+        {
+          "id": "2",
+          "title": "One list of measured kata facts in the contract, and the runbook's traps point at it",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^- \\*\\*Kata facts (measured)/,/^- \\*\\*Laptop config/p' fleet/CONTRACT.md | grep -c '^  - ' | grep -qx 24",
+            "for id in ping-version project-find-or-create project-by-id-only create-replay create-fingerprint-metadata create-duplicate-scorer link-blocks-idempotent link-parent-replace link-types metadata-merge-if-match metadata-dotted-flat claim-if-unowned unassign-key close-message-40 close-retry-protocol close-superseded-evidence ready-unowned next-no-endpoint labels-merge events-issue-uid issue-links-shape purge-ladder cli-next-unowned int-hosts-https; do sed -n '/^- \\*\\*Kata facts (measured)/,/^- \\*\\*Laptop config/p' fleet/CONTRACT.md | grep -q -- \"^  - $id \" || { echo \"missing row $id\"; exit 1; }; done",
+            "sed -n '/^- \\*\\*Kata facts (measured)/,/^- \\*\\*Laptop config/p' fleet/CONTRACT.md | grep '^  - ' | grep -v -E 'v0\\.17[^ ]*, 2026-09-[0-9][0-9]' | grep -c . | grep -qx 0",
+            "sed -n '/^- \\*\\*Kata facts (measured)/,/^- \\*\\*Laptop config/p' fleet/CONTRACT.md | grep -E '^  - (cli-next-unowned|int-hosts-https) ' | grep -c 'hand' | grep -qx 2",
+            "sed -n '/^- \\*\\*Kata facts (measured)/,/^- \\*\\*Laptop config/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'probe_kata_facts.mjs.*kata upgrade.*kata-client.mjs'",
+            "sed -n '/^  kata: the run filed on the hub/,/^  read back, its metadata patched/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'probe_kata_facts.mjs.*Kata facts (measured)'",
+            "sed -n '/^## Traps/,/^## Capacity/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'The hub\\..*Kata facts (measured).*fleet/CONTRACT.md.*node fleet/tests/probe_kata_facts.mjs.*cites the list'",
+            "grep -c '^- \\*\\*Kata hub (' fleet/CONTRACT.md | grep -qx 1",
+            "sed -n '/^- \\*\\*Kata hub (/,/^- \\*\\*Kata facts (measured)/p' fleet/CONTRACT.md | grep -c '^- ' | grep -qx 2",
+            "sed -n '/^- \\*\\*Kata facts (measured)/,/^- \\*\\*Laptop config/p' fleet/CONTRACT.md | grep '^  - ' | awk '{print $2}' | tr '\\n' ' ' | sed 's/ $//' | grep -qx 'ping-version project-find-or-create project-by-id-only create-replay create-fingerprint-metadata create-duplicate-scorer link-blocks-idempotent link-parent-replace link-types metadata-merge-if-match metadata-dotted-flat claim-if-unowned unassign-key close-message-40 close-retry-protocol close-superseded-evidence ready-unowned next-no-endpoint labels-merge events-issue-uid issue-links-shape purge-ladder cli-next-unowned int-hosts-https'",
+            "sed -n '/^- \\*\\*Kata facts (measured)/,/^- \\*\\*Laptop config/p' fleet/CONTRACT.md | grep '^  - ' | grep -v -E '#[0-9]+|CONTRACT|CLAUDE\\.md|kata-client\\.mjs|this plan' | grep -c . | grep -qx 0"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/RUNBOOK.md"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [
+              "fleet/tests/PROBES.md",
+              "fleet/tests/probe_kata_facts.mjs",
+              "fleet/tests/test_probe_kata_facts.mjs"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 Facts"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- No engine, boot, launcher, janitor, client or kernel changes: the probe is a new file beside the sims, the exam a new sim, and the rest is prose in three documents.\n- The probe is never a suite member: its name begins `probe_`, `tests/test_fleet_suite.py` globs only `test_*.mjs`, and the new exam is a `test_*.mjs` that reaches the probe by `import` against an in-memory fake transport \u2014 no process spawned, no network, no file read outside the checkout and the temp dir.\n- No bearer on the laptop, ever: every request the probe makes rides `fleet/kata-client.mjs`'s `sshTransport` (the remote string carries the literal `$KATA_AUTH_TOKEN`, expanded on the hub), and the probe never reads `KATA_TOKEN` from `~/.ultrapowers/kata-hub.env` \u2014 only `KATA_URL`'s host.\n- Every sim keeps printing `ALL TESTS PASSED` on its last line and names no sibling sim.\n- A sibling plan (bundle B, authored the same sitting) may edit other sections of `fleet/CONTRACT.md`; this plan's edits to that file are confined to the kata paragraph and the new list bullet, so a same-file fold with that run is line-disjoint.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/kata-client.mjs fleet/launch.mjs fleet/janitor.mjs fleet/lobby.mjs fleet/run-engine.mjs fleet/run-main.mjs fleet/run-waves.mjs fleet/run-worker.mjs fleet/sandbox-boot.sh fleet/doctor.mjs fleet/exe-verbs.json fleet/roles skills/ultrapowers/kernel",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-144/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-144/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-144/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-144/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
