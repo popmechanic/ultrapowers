@@ -80,3 +80,6 @@
 {"kind":"driver:check-run","task":"3","cmd":"git diff --quiet $ULTRA_BASE -- fleet/roles skills/ultrapowers/kernel fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/publish-fold.mjs","exit":0,"minor":false,"iter":0,"id":"01M2J4CKNA0000MF47CPJBCB00","ts":1789462466218}
 {"kind":"worker:start","label":"review:3:1","role":"reviewer","sessionId":"8b98ee8e-0d0b-4fce-9ff6-949b4062156e","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-135/clones/integration","model":"opus","id":"01M2J4CKNB0000Q9AD9STMXC2R","ts":1789462466219}
 {"kind":"driver:attention","task":"3","attention":"needs-human","msg":"session ended without hand-off","actor":"","id":"01M2J4D2BR0000W2FCA5AXV1Y5","ts":1789462481272}
+{"kind":"driver:wave-adopted","wave":3,"tasks":["2"],"headSha":"5e006ad30728840ed8e40b6cd5dd954755cf46c6","id":"01M2J4DKB20000GEEN1HBACCTN","ts":1789462498658}
+{"kind":"driver:integrated-clean","wave":3,"removed":6,"id":"01M2J4DKB50000TDT6SYMJ4V0J","ts":1789462498661}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/roles skills/ultrapowers/kernel fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/publish-fold.mjs","exit":0,"minor":false,"wave":3,"id":"01M2J4DKBB000019WH9AJDQTHH","ts":1789462498667}
