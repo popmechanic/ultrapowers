@@ -93,3 +93,5 @@
 {"kind":"driver:approved","stamp":"run-133","integrationBranch":"ultra/integration-run-133","id":"01M2HM0ZM10000PQG6YP91S2KM","ts":1789445308033}
 {"kind":"run:open","runId":"run-133","base":"2fd301cd6591aef62abdc43df744ca3426543557","source":"fleet/publish-fold.mjs","id":"01M2HM10C30000PFETD28DVT9B","ts":1789445308803}
 {"kind":"driver:publish-fold","run":"133","attempt":"1","base":"2fd301cd6591aef62abdc43df744ca3426543557","tip":"1ed22c42134c6c782d4b0556ac832c68dea43bf2","candidate":"01761809c02ff7338d2adaf88f22a9e372a14e8a","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"pass","disposition":"folded","checks":[],"checkRetries":0,"id":"01M2HM29KP00008V6G5MZTG62V","ts":1789445351030}
+{"kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/985","number":985,"draft":false,"id":"01M2HM2GCR0000GER4WB7S0YDV","ts":1789445357976}
+{"kind":"publish:merge","sha":"597c6db1493bdafaeb7f21972856a7e702847aa6","id":"01M2HM2K800000QF06HVTWPR07","ts":1789445360896}
