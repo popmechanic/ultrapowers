@@ -1,0 +1,9 @@
+ok (1999 ms) — (a) [M1] the disclosing run POSTs exactly one issue, titled and bodied as M1 spells it
+ok (1 ms) — (a) [M1] the ticket is opened after the PR POST and before the merge PUT
+ok (1750 ms) — (b) [M2] a run whose report carries no matching entry files no ticket
+ok (1682 ms) — (c) [M2] a non-2xx /issues answer is logged and the run continues to merge_pr unchanged
+ok (1 ms) — (d) [M3] a 2xx answer appends one publish:disclosures event after publish:pr
+ok (8 ms) — (e) [M4] the implementer role and the Publish bullet carry the words M4 names
+ok (0 ms) — (f) [M5] a run with disclosures and no reviewer notes still renders `Residuals: none`
+ok (10 ms) — (g) [M1] the edited boot script still parses as bash
+ALL TESTS PASSED

@@ -1,0 +1,1429 @@
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index 5512ee1a0ee643d3750b2c7f743bc46b1f740467..053f4eeb9a8e9b2c6c98e0606f264d6684d3475f 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -674,9 +674,19 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   ones and the notes of a task whose report row carries `actor` `plan`, and no other reviewer
+   sentence appears above the record at all. The same items are also rows of `residuals.jsonl` on the run's record,
+   written with the evidence and not at publish — the checklist closes with the PR that carries it,
+-  the rows do not — and the sandbox files no issue for them, against this target or any other.
+-  The publish record is three event kinds, appended to the run's `events.jsonl` beside the engine's
+-  own and carrying the same `id`/`ts` stamp: `publish:pr` (`url`, `number`, `draft`) once the POST
++  the rows do not — and the sandbox files no issue for them, against this target or any other,
++  except the one disclosures ticket, which is not read off that checklist at all. Every
++  `judgmentCalls` entry of `report.json` reading `task <id>: out-of-FILES (not taken): <text>` — an
++  edit a task needed and could not make, as against a plain `out-of-FILES:` entry, which is an edit
++  it did make and is in the diff — goes out, after the PR is opened and before the merge is
++  decided, as ONE issue: `title` `fleet <run> disclosures: <heading>` (the PR title's heading),
++  `body` the PR URL, a blank line and one `- [ ] task <id> — <text>` box per entry in report order,
++  and NO `labels` key. A run with no such entry, and a run that opened no PR, files nothing; a POST
++  that is refused is one log line and the merge goes on unchanged.
++  The publish record is three event kinds — four with the ticket's `publish:disclosures`
++  (`url`, `items`), appended once its POST answers 2xx — appended to the run's `events.jsonl`
++  beside the engine's own and carrying the same `id`/`ts` stamp, in the order the steps run:
++  `publish:pr` (`url`, `number`, `draft`) once the POST
+   answers 2xx; `publish:hold` (`why`, the phase's text after `left open: ` — `hold=1`, or
+   `publish fold — <disposition text>`) for a PR left open without asking; and `publish:merge` per
+   merge decision — `sha` alone when the PUT merged, else `sha` null with `left` one of
+diff --git a/fleet/roles/implementer.md b/fleet/roles/implementer.md
+index 3d27fb9d23da2a5725a48ba3a4d4fd3f1d88c60f..d135ccbe9fa87c61143dbe31f58bb67a1f3eacd1 100644
+--- a/fleet/roles/implementer.md
++++ b/fleet/roles/implementer.md
+@@ -42,7 +42,12 @@ it is not.
+ Judgment rules: treat FILES as your expected footprint, not a fence — a path
+ outside it that the task genuinely requires is fine, but disclose it as a
+ `concerns` entry prefixed `out-of-FILES:` and report DONE_WITH_CONCERNS; never
+-delete a file outside FILES. You may fix a genuinely defective piece of
++delete a file outside FILES. An edit outside FILES your task needed but did NOT
++make — the plan froze the path, a sibling owns it, the change was not yours to
++land — is disclosed the same way, as a `concerns` entry prefixed
++`out-of-FILES (not taken):` naming the path and what is owed there, so the run
++files it as a ticket beside its PR instead of leaving it in a note nobody
++opens. You may fix a genuinely defective piece of
+ plan-supplied code when the fix is task-local — disclose it as a `concerns`
+ entry prefixed `plan-defect:`; when in doubt, implement as written and report
+ the defect. A Proof leg no implementation can satisfy — one that reads state
+diff --git a/fleet/sandbox-boot.sh b/fleet/sandbox-boot.sh
+index 41bf819f8161c3c0169e3f1b5334dab1e5f21180..820f07575d887827c050ffa4e36e6b70ac07090f 100755
+--- a/fleet/sandbox-boot.sh
++++ b/fleet/sandbox-boot.sh
+@@ -2877,6 +2877,99 @@ patch_pr_body() { # $1 = outcome
+   return 0
+ }
+ 
++# --- disclosures -------------------------------------------------------------
++#
++# An edit a task NEEDED but could not make — the plan froze the file, and the
++# implementer said so rather than reaching outside its scope — is the one piece
++# of a run's record that names work nobody is holding. It rides today as a
++# `judgmentCalls` line of `report.json`, which is to say inside the record,
++# under a `<details>`, behind a click nobody makes. So it goes out as a TICKET
++# beside the PR: one issue per run, one box per disclosure, still open tomorrow.
++#
++# This is NOT the residual checklist and never duplicates it: `residual_read`
++# reads `gateCheck.acks`, `completenessFindings` and the merged tasks' `notes`
++# and never `judgmentCalls`, so the card's `Residuals:` count is what it was
++# before this step existed and a run whose only follow-up is a disclosure still
++# renders `Residuals: none`.
++#
++# The `(not taken)` is the whole distinction. `out-of-FILES:` alone is an edit
++# the task DID make, disclosed so a reader knows the footprint grew — that is
++# in the diff, and nobody owes it anything. `out-of-FILES (not taken):` is the
++# edit that was owed and is not in the diff.
++
++# The disclosure lines of the evidence copy of `report.json`, in report order,
++# one `- [ ] task <id> — <text>` each. No match — and a report that is absent,
++# unparseable or carries no `judgmentCalls` — prints nothing at all.
++disclosure_items() {
++  python3 -c '
++import json, re, sys
++
++DASH = " — "
++# `\S+` for the id: the engine writes `task ` + `task.id`, and an id is one
++# token. The text is the rest of the line, newlines and all.
++LINE = re.compile(r"^task (\S+): out-of-FILES \(not taken\): (.+)$", re.S)
++
++try:
++    with open(sys.argv[1], encoding="utf-8") as fh:
++        doc = json.load(fh)
++except Exception:
++    sys.exit(0)
++
++calls = doc.get("judgmentCalls") if isinstance(doc, dict) else None
++out = ""
++for call in calls if isinstance(calls, list) else []:
++    if not isinstance(call, str):
++        continue
++    hit = LINE.match(call)
++    if hit:
++        out += "- [ ] task " + hit.group(1) + DASH + hit.group(2) + "\n"
++sys.stdout.buffer.write(out.encode("utf-8"))
++' "$EVIDENCE_DIR/$EVIDENCE_PATH/report.json"
++}
++
++# The ticket, filed once, after the PR exists and before the merge decides what
++# becomes of it.
++#
++# The filing is never a gate. A `fleet_curl` that does not complete, a non-2xx,
++# an answer with no `html_url`: each is one log line and `return 0`. What
++# becomes of this run is the merge's business, not the filing's.
++file_disclosures() {
++  local items count heading title body payload answer code reply url
++  # A run that opened no PR files no ticket: the body's first line is the PR.
++  [ -n "$PR_URL" ] || return 0
++  items="$(disclosure_items || true)"
++  # Nothing disclosed is no issue — and no REST call to make one with.
++  [ -n "$items" ] || return 0
++  count="$(printf '%s\n' "$items" | wc -l | tr -d ' ')"
++  heading="$(plan_title)"
++  [ -n "$heading" ] || heading="$RUN_ID"
++  title="fleet $RUN_ID disclosures: $heading"
++  # The PR, a blank line, then the checklist byte for byte: a reader who opens
++  # this issue first can reach the run that filed it in one click.
++  body="$(printf '%s\n\n%s' "$PR_URL" "$items")"
++  # NO `labels` key. A label this script guessed would file the follow-up into
++  # a reader queue nobody chose for it, and the title already names the run.
++  payload="{\"title\":\"$(json_escape "$title")\",\"body\":\"$(json_escape "$body")\"}"
++  answer="$(fleet_curl -sS -X POST "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/issues" \
++    -H 'content-type: application/json' -d "$payload" -w '\n%{http_code}' 2>/dev/null || true)"
++  code="$(printf '%s' "$answer" | tail -n 1)"
++  reply="$(printf '%s' "$answer" | sed '$d')"
++  case "$code" in
++    2[0-9][0-9]) : ;;
++    *) log "disclosures: POST /repos/$TARGET_REPO/issues answered ${code:-<no answer>}"; return 0 ;;
++  esac
++  url="$(printf '%s' "$reply" | json_field html_url)"
++  [ -n "$url" ] || {
++    log "disclosures: POST /repos/$TARGET_REPO/issues answered $code with no html_url"
++    return 0
++  }
++  log "disclosures: $url ($count)"
++  # The filing's own record, beside the PR's: the ticket and how many boxes it
++  # carries. No cell on the status page — the log line and this event are it.
++  append_event publish:disclosures "url=s:$url" "items=i:$count"
++  return 0
++}
++
+ # --- merge -------------------------------------------------------------------
+ #
+ # A ready PR is the sandbox's own to finish, and the run's OWN GATE is what
+@@ -3382,6 +3475,11 @@ $(engine_tail)"
+     publish "$outcome"
+   fi
+ 
++  # The edits the run could not take, filed beside the PR that carries the rest
++  # — after the PR exists (its URL is the ticket's first line) and before the
++  # merge, so a run whose PUT lands still leaves the follow-up open behind it.
++  file_disclosures
++
+   # A ready PR is finished here: the run's own gate decided it, and a parked
+   # run's draft is left for the operator either way.
+   MERGE_NOTE=""
+diff --git a/fleet/tests/PROBES.md b/fleet/tests/PROBES.md
+index 8eb50bdaa2f05d40a9e27926295e938e80728848..f48c9069ecbbb0c906ab96a87875790b958c4fa2 100644
+--- a/fleet/tests/PROBES.md
++++ b/fleet/tests/PROBES.md
+@@ -1,10 +1,14 @@
+ # fleet/tests probes
+ 
+-A `probe_*.mjs` file is a live measurement, not a test. Each one spends real
+-tokens against a real `claude -p`, so it is deliberately NOT named `test_*.mjs`:
+-`tests/test_fleet_suite.py` globs `test_*.mjs`, and CI has no credentials. The
+-naming is the whole mechanism — CI and the suite never run these. Run them by
+-hand where a credential lives (the orchestrator, or a sandbox with
++A `probe_*.mjs` file is either a live measurement or a design gate — never a
++suite test. A live measurement spends real tokens against a real `claude -p`; a
++design gate is model-free and spends only minutes, but it is a reading a person
++takes before a change rather than a verdict CI owes on every commit. Either way
++the file is deliberately NOT named `test_*.mjs`: `tests/test_fleet_suite.py`
++globs `test_*.mjs`, CI has no credentials, and the hermetic sweep
++`test_sims_are_hermetic.mjs` never reads a `probe_*.mjs`. The naming is the
++whole mechanism — CI and the suite never run these. Run them by hand; a live
++one, where a credential lives (the orchestrator, or a sandbox with
+ `CLAUDE_CODE_OAUTH_TOKEN` exported):
+ 
+     CLAUDE_CODE_OAUTH_TOKEN=… node fleet/tests/probe_confine_live.mjs
+@@ -28,3 +32,15 @@ The current probes:
+   command's argument tail executes. **Answered 2026-08-31: it does not** (#457
+   gap 1) — the `*` tail is not an execution channel, matching the documented
+   operator parsing for `&&`, `;`, `|`.
++- `probe_readiness_fold_order.mjs` — the fold-order gate (#832, #810 Phase C):
++  that for every fixture patch set, every sequential adoption order folds to
++  the tree the simultaneous fold lands. The design gate of this list, not a
++  live measurement — the kernel is the real one, every reply is a committed
++  file, no model runs and no token is spent, so it costs about half a minute
++  and needs no credential. Run it by hand before any change to the fold kernel
++  or to the ready-set scheduler (`node fleet/tests/probe_readiness_fold_order.mjs`):
++  five `wave-` lines, one `negative-control` line carrying `caught`, and
++  `ALL TESTS PASSED` last is the pass. A fixture set under
++  `fleet/tests/fixtures/readiness/` whose manifest names a `project` tree at
++  neither resolution is skipped with one stderr line and no stdout line — at
++  BASE all three are, and they read again the day their project trees return.
+diff --git a/fleet/tests/probe_readiness_fold_order.mjs b/fleet/tests/probe_readiness_fold_order.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..1f85ca00b162d7a5bad22ea9fe8a90302fa3a179
+--- /dev/null
++++ b/fleet/tests/probe_readiness_fold_order.mjs
+@@ -0,0 +1,207 @@
++/**
++ * fleet/tests/probe_readiness_fold_order.mjs — the fold-order probe (#832,
++ * #810 Phase C gate), run by hand before any change to the fold kernel or the
++ * ready-set scheduler.
++ *
++ * The claim it measures: for every fixture patch set, every sequential
++ * adoption order yields the same tree as the simultaneous fold.
++ *
++ * Model-free by construction: no model process is started here, and no reply to
++ * a conflict is produced while the sim runs — every reply is a committed file
++ * under `fleet/tests/fixtures/readiness-corpus/replies/`, copied byte for byte
++ * into the directory `resolve` is handed. The kernel is the real one
++ * (`skills/ultrapowers/kernel/fold_wave.py`), driven over its CLI; the sim
++ * measures it and never patches it. It is named `probe_` and not `test_`
++ * because it is a design gate a person runs, not a suite member: the bridge
++ * `tests/test_fleet_suite.py` globs `test_*.mjs` and the hermetic sweep reads
++ * `test_*.mjs`, so neither ever collects this file.
++ *
++ * The sets, in the order they are run and printed:
++ *
++ *   wave-1 … wave-5      the corpus `corpuslib.make_fixture_corpus` builds —
++ *                        disjoint files, commuting appends at one anchor, the
++ *                        rewrite over an inner edit (one `lines` conflict on
++ *                        `d.txt`, answered from the committed reply in both
++ *                        modes), deletion adjacency plus a binary path, and an
++ *                        agreed whole-file deletion.
++ *   negative-control     wave 3's conflicting pair with its committed reply
++ *                        chosen by the step index at which one side of the
++ *                        conflict was adopted. Its orders diverge; the sim
++ *                        reports it `caught` and counts that a pass.
++ *   <fixture>            one per directory holding a `manifest.json` under
++ *                        `READINESS_FIXTURES_DIR`, or under
++ *                        `fleet/tests/fixtures/readiness/` when that is unset.
++ *                        Absent or empty, the corpus and the control run alone.
++ *                        A set whose manifest names a `project` tree that is at
++ *                        neither of the helper's two resolutions is SKIPPED —
++ *                        one stderr line naming it, no stdout line — instead of
++ *                        throwing, so the probe reads what it can today and the
++ *                        set runs again the day its project tree is put back.
++ *
++ * The soft-edges pair (wave 2's `2b` re-captured against the head that adopted
++ * `2a`, folded with that head as its recorded base) is measured too, but it is
++ * not a set: it prints no line, because the set lines are a census and it is a
++ * second reading of wave 2.
++ *
++ * Stdout is exactly one line per set plus the sentinel, so a reader can parse
++ * it without knowing anything else about this file. Everything else — what is
++ * being built, what was skipped, what failed — goes to stderr.
++ *
++ * Every set's assertions:
++ *   1  every order's candidate `^{tree}` equals the simultaneous fold's
++ *      (inverted for the control, which must diverge and must diverge between
++ *      orders, not merely from the simultaneous fold)
++ *   2  every order's set of narrated `(path, kind)` pairs equals the
++ *      simultaneous fold's
++ *   3  a wave that spends a reply spends the SAME committed file in both modes
++ *   4  the line, and the cost of one order, are printed as the set finishes
++ */
++
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import path from 'node:path'
++
++import {
++  FIXTURES_ROOT,
++  REPO_ROOT,
++  buildCorpus,
++  corpusWaveSpec,
++  discoverFixtureSets,
++  fixtureSetSpec,
++  mkTemp,
++  negativeControlSpec,
++  runSet,
++  setLine,
++  softEdgesSpec,
++} from './_readiness_helpers.mjs'
++
++const note = (message) => process.stderr.write(message + '\n')
++const emit = (result) => process.stdout.write(setLine(result) + '\n')
++
++/**
++ * The reading every set gets. `expect` is the verdict the set is supposed to
++ * carry; a set that diverges when it should not fails the sim here, and is
++ * never patched around.
++ */
++function measure (result, expect) {
++  assert.equal(result.verdict, expect,
++    result.name + ': expected the fold to read ' + expect + ', got ' + result.verdict
++    + ' (sim ' + result.simTree + ', orders '
++    + result.orders.map((o) => o.ids.join('>') + '=' + o.tree).join(' ') + ')')
++
++  if (expect === 'ok') {
++    for (const order of result.orders) {
++      assert.equal(order.tree, result.simTree,
++        result.name + ': order ' + order.ids.join('>') + ' folded to ' + order.tree
++        + ', the simultaneous fold to ' + result.simTree)
++    }
++  }
++
++  for (const order of result.orders) {
++    assert.deepEqual(order.conflictKeys, result.simConflictKeys,
++      result.name + ': order ' + order.ids.join('>') + ' narrated '
++      + JSON.stringify(order.conflictKeys) + ', the simultaneous fold '
++      + JSON.stringify(result.simConflictKeys))
++  }
++  return result
++}
++
++/** One committed reply, spent identically by both modes (assertion 3). */
++function sameReplyBothModes (result) {
++  assert.ok(result.repliesUsed.length > 0,
++    result.name + ': the simultaneous fold spent no reply')
++  for (const order of result.orders) {
++    assert.deepEqual(order.repliesUsed, result.repliesUsed,
++      result.name + ': order ' + order.ids.join('>') + ' spent '
++      + JSON.stringify(order.repliesUsed) + ', the simultaneous fold '
++      + JSON.stringify(result.repliesUsed))
++  }
++}
++
++/**
++ * The manifest's `project` tree, at the two resolutions `fixtureSetSpec` tries
++ * — relative to the fixture directory, then to `REPO_ROOT` — or `null` when it
++ * is at neither. A manifest this cannot read is not answered here: the set is
++ * handed to `fixtureSetSpec`, which fails the way it always did.
++ */
++function projectTreeOf (dir) {
++  let manifest
++  try {
++    manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'))
++  } catch {
++    return { unread: true }
++  }
++  let project = String(manifest.project || 'project')
++  project = path.isAbsolute(project) ? project : path.resolve(dir, project)
++  if (fs.existsSync(project)) return { project }
++  const atRoot = path.resolve(REPO_ROOT, String(manifest.project))
++  if (fs.existsSync(atRoot)) return { project: atRoot }
++  return { missing: String(manifest.project) }
++}
++
++function main () {
++  const work = mkTemp('readiness-fold-order-')
++  note('workspace ' + work)
++
++  // The corpus first: it is the cheapest work in the run, and every set that
++  // follows is built out of it.
++  const corpus = buildCorpus(path.join(work, 'corpus'))
++  note('corpus base ' + corpus.base + ' in ' + corpus.repo)
++
++  const trees = new Map()
++  for (const wave of corpus.waves) {
++    const result = runSet(corpusWaveSpec(corpus, wave, { workDir: path.join(work, 'wave-' + wave) }))
++    measure(result, 'ok')
++    // Wave 3 is the one corpus wave a resolver answers; its reply is one
++    // committed file whichever side the narration labelled `frontier`.
++    if (result.repliesUsed.length) sameReplyBothModes(result)
++    trees.set(wave, result.simTree)
++    emit(result)
++  }
++
++  // The control: not a wave that happens to fail, a divergence built on
++  // purpose, so `caught` is a reading the sim can produce and not a word it
++  // never says.
++  const control = measure(
++    runSet(negativeControlSpec(corpus, path.join(work, 'negative-control'))), 'caught')
++  const controlTrees = new Set(control.orders.map((o) => o.tree))
++  assert.ok(controlTrees.size >= 2,
++    'negative-control: every order folded to the same tree (' + [...controlTrees].join(', ')
++    + '); the control caught nothing')
++  emit(control)
++
++  // The soft-edges pair (M7): a task that waited for another, capturing
++  // against the head that adopted it, still lands the simultaneous tree.
++  const soft = runSet(softEdgesSpec(corpus, path.join(work, 'soft-edges')))
++  measure(soft, 'ok')
++  assert.equal(soft.simTree, trees.get(2),
++    'soft-edges: 2b re-captured against the head that adopted 2a folded to '
++    + soft.simTree + ', wave 2 folded to ' + trees.get(2))
++  note('soft-edges ' + soft.simTree + ' — wave 2\'s tree from its recorded base')
++
++  // The real-join sets, run exactly like a corpus wave — except one whose
++  // project tree is not in the checkout, which is skipped and not thrown on.
++  const root = process.env.READINESS_FIXTURES_DIR || FIXTURES_ROOT
++  const dirs = discoverFixtureSets(root)
++  note('fixture root ' + root + ': ' + dirs.length + ' set(s)')
++  for (const dir of dirs) {
++    const name = path.basename(dir)
++    const found = projectTreeOf(dir)
++    if (found.missing !== undefined) {
++      note('skipped ' + name + ': no project tree at ' + found.missing)
++      continue
++    }
++    const setWork = path.join(work, 'fixtures', name)
++    fs.mkdirSync(setWork, { recursive: true })
++    emit(measure(runSet(fixtureSetSpec(dir, setWork)), 'ok'))
++  }
++
++  process.stdout.write('ALL TESTS PASSED\n')
++}
++
++try {
++  main()
++} catch (error) {
++  note(String((error && error.stack) || error))
++  process.exitCode = 1
++}
+diff --git a/fleet/tests/test_sandbox_boot_disclosures.mjs b/fleet/tests/test_sandbox_boot_disclosures.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..0a9587c9fad108598a4ec4ad0233824869887d72
+--- /dev/null
++++ b/fleet/tests/test_sandbox_boot_disclosures.mjs
+@@ -0,0 +1,468 @@
++/**
++ * Exam for run-146 task 3 — "An edit a task could not take becomes a ticket the
++ * run opens beside its PR" (#992 desired state 3; #711, commit `2cf8bc3b`).
++ *
++ * CLAIM. An edit a task needed but could not make — the plan froze the file —
++ * becomes a ticket the run opens beside its PR, so the follow-up stops waiting
++ * for someone to notice it in a note.
++ *
++ * Five machine clauses, read here leg by leg and nowhere else:
++ *
++ *   M1  after `publish` has opened the PR and before `merge_pr` is called, the
++ *       boot reads the evidence copy of `report.json` for every `judgmentCalls`
++ *       entry matching `^task (\S+): out-of-FILES \(not taken\): (.+)$` and,
++ *       when there is at least one, makes EXACTLY ONE
++ *       `POST https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/issues` through
++ *       `fleet_curl` whose JSON payload has `title`
++ *       `fleet <RUN_ID> disclosures: <heading>` — `<heading>` the same
++ *       `plan_title` answer `publish` uses for the PR title — `body` the PR URL,
++ *       a blank line, then one `- [ ] task <id> — <text>` line per matching
++ *       entry IN REPORT ORDER, and no `labels` key; an entry prefixed
++ *       `out-of-FILES:` without `(not taken)` — an edit the task DID take — is
++ *       not listed                                            → legs (a), (g)
++ *   M2  with no matching entry the boot makes no `/issues` POST; a POST answered
++ *       non-2xx is logged as `disclosures: POST /repos/<target>/issues answered
++ *       <code>` and the run continues to `merge_pr` unchanged  → legs (b), (c)
++ *   M3  a POST answered 2xx appends one `publish:disclosures` event
++ *       `{url, items}` — `url` the answer's `html_url` — to the run's
++ *       `events.jsonl` through `append_event`, AFTER the `publish:pr` line
++ *                                                              → leg (d)
++ *   M4  `fleet/roles/implementer.md`'s judgment-rules paragraph says an edit
++ *       outside FILES the task needed but did not make is disclosed as a
++ *       `concerns` entry prefixed `out-of-FILES (not taken):` naming the path
++ *       and what is owed; `fleet/CONTRACT.md`'s Publish bullet says the residual
++ *       checklist files no issue except the disclosures ticket, and names
++ *       `publish:disclosures` beside the three publish event kinds → leg (e)
++ *   M5  the residual checklist and `residuals.jsonl` are what they were at BASE:
++ *       a run with disclosures and no reviewer notes or acks still renders
++ *       `Residuals: none` in its PR card                        → leg (f)
++ *
++ * THREE BOOTS, NO MORE. A boot is ~40 forks of stub shell, so the seven legs
++ * share exactly three of them and each is started once and awaited by everyone
++ * who reads it — the shape `test_sandbox_boot_kata_export.mjs` uses:
++ *
++ *   DISCLOSED  the green run whose `report.json` is the rig's own
++ *              `DEFAULT_REPORT` plus a `judgmentCalls` array of FOUR entries:
++ *              a `(not taken)` one, a TAKEN `out-of-FILES:` one, a second
++ *              `(not taken)` one, and an unrelated `plan-defect:` one. Legs
++ *              (a), (d) and (f) read this one.
++ *   PLAIN      the rig's shared default green boot (`greenAsync`), whose
++ *              report carries no `judgmentCalls` at all. Leg (b) reads it.
++ *   REFUSED    the DISCLOSED run with `STUB_ISSUE_CODE=500`. Leg (c) reads it.
++ *
++ * THE TAKEN ENTRY IS THE POINT, and it sits BETWEEN the two `(not taken)` ones
++ * on purpose. It is an `out-of-FILES:` concern the task did take, so the run
++ * owes nobody a ticket for it; a reader that matched on `out-of-FILES` rather
++ * than on `out-of-FILES (not taken)` would list three items in the wrong order
++ * and name a path leg (a) forbids, and a reader that filtered the right entries
++ * but re-sorted them would fail the same leg. The `plan-defect:` entry is a
++ * judgment call of another kind entirely and belongs to no ticket at all.
++ *
++ * THE CHECKLIST IS NOT HAND-WRITTEN. `EXPECTED_ITEMS` below is M1's own regex
++ * applied to the fixture, so the expectation is the clause and not a second
++ * copy of it.
++ *
++ * LEG (g) IS THE DRIVER'S. It names the second, third and fourth `Run:` lines —
++ * the three boot sims of BASE, still green on the edited script — and the bridge
++ * runs those three lines itself. This file may not: `test_sims_are_hermetic.mjs`
++ * M4 forbids a sim from running, or even naming for an existence check, a
++ * sibling sim, and a sim that broke that probe would cost the run more than the
++ * leg buys. What is left here is the reading of the edited script this exam can
++ * make on its own, and the one all three of them rest on: it still parses.
++ */
++
++import assert from 'node:assert/strict'
++import { spawnSync } from 'node:child_process'
++import path from 'node:path'
++
++import {
++  SCRIPT, ENV, DEFAULT_REPORT, PLAN_H1, PR_URL, FOLLOWUP_URL, TARGET,
++  makeHome, bootAsync, greenAsync,
++  readLog, lines, stream, indexOf, argvLines, events, prPosts, mergePuts,
++  runTests,
++} from './_sandbox_boot_helpers.mjs'
++
++const tests = []
++const test = (name, fn) => tests.push([name, fn])
++
++/** The checkout, from the script the rig points at — `fleet/sandbox-boot.sh`. */
++const ROOT = path.resolve(SCRIPT, '..', '..')
++
++// ── the run, and the judgment calls its report carries ───────────────────────
++
++/** The run the rig's `ASSIGNMENT` names (`run=7`), as `RUN_ID` spells it. */
++const RUN_ID = 'run-7'
++
++/**
++ * The four `judgmentCalls` entries, in the engine's own spelling
++ * (`'task ' + task.id + ': ' + c`, `fleet/run-engine.mjs`). Two are edits the
++ * task needed and did NOT take; one is an edit it DID take, and sits between
++ * them; one is a judgment call of another kind. Each `(not taken)` text carries
++ * an em dash of its own, so a reader that split the line on the dash it writes
++ * cannot come out with the text M1 asks for.
++ */
++const JUDGMENT_CALLS = [
++  'task 1: out-of-FILES (not taken): skills/ultrapowers/references/report-format.md'
++  + ' now carries stale prose — the shape it describes is the old one',
++  'task 1: out-of-FILES: fleet/run-engine.mjs — the call site this task needed grew one line',
++  'task 1: out-of-FILES (not taken): fleet/CONTRACT.md owes the Publish bullet a sentence'
++  + ' — nothing there names the ticket yet',
++  'task 2: plan-defect: leg (c) cannot pass — it reads state this task itself creates',
++]
++
++/** The path of the TAKEN entry: named by no line of the ticket. */
++const TAKEN_PATH = 'fleet/run-engine.mjs'
++
++/** M1's own matcher, applied below to build the expectation. */
++const NOT_TAKEN = /^task (\S+): out-of-FILES \(not taken\): (.+)$/
++
++/** The checklist M1 describes, derived from the fixture by M1's own rule. */
++const EXPECTED_ITEMS = JUDGMENT_CALLS
++  .map((entry) => NOT_TAKEN.exec(entry))
++  .filter(Boolean)
++  .map((found) => `- [ ] task ${found[1]} — ${found[2]}`)
++
++/** The title M1 spells: the run, the word, and `publish`'s own heading. */
++const EXPECTED_TITLE = `fleet ${RUN_ID} disclosures: ${PLAN_H1}`
++
++/** The whole body M1 spells: the PR URL, a blank line, then the checklist. */
++const EXPECTED_BODY_LINES = [PR_URL, '', ...EXPECTED_ITEMS]
++
++/** The endpoint M1 spells, with the rig's `GITHUB_INT_HOST` and target. */
++const ISSUES_URL = `https://github.int.exe.xyz/api/v3/repos/${TARGET}/issues`
++
++/** M2's refusal line, for the code the REFUSED boot's stub answers with. */
++const REFUSAL_LINE = `disclosures: POST /repos/${TARGET}/issues answered 500`
++
++/** The report both disclosing boots run on: the rig's default, plus the calls.
++ *  Built off `DEFAULT_REPORT` so the card still renders a whole task row and
++ *  the run is green for every reason it is green without this task. */
++const DISCLOSED_REPORT = JSON.stringify({
++  ...JSON.parse(DEFAULT_REPORT),
++  judgmentCalls: JUDGMENT_CALLS,
++})
++
++// ── the three boots ──────────────────────────────────────────────────────────
++
++let DISCLOSED = null
++/** The green run whose report carries the four judgment calls. Started once. */
++const disclosed = () => {
++  if (!DISCLOSED) {
++    const ctx = makeHome()
++    DISCLOSED = bootAsync(ctx, ['boot'], { STUB_REPORT: DISCLOSED_REPORT }).then((r) => {
++      assert.equal(r.status, 0, `the disclosing run did not finish\n${r.stdout}${r.stderr}`)
++      return ctx
++    })
++  }
++  return DISCLOSED
++}
++
++let REFUSED = null
++/** The same run whose `/issues` POST is answered 500. Started once. */
++const refused = () => {
++  if (!REFUSED) {
++    const ctx = makeHome()
++    REFUSED = bootAsync(ctx, ['boot'], {
++      STUB_REPORT: DISCLOSED_REPORT,
++      STUB_ISSUE_CODE: '500',
++    }).then((r) => {
++      assert.equal(r.status, 0, `the refused-ticket run did not finish\n${r.stdout}${r.stderr}`)
++      return ctx
++    })
++  }
++  return REFUSED
++}
++
++// ── reading the ticket ───────────────────────────────────────────────────────
++
++/** Every POST /issues the run made, as its parsed JSON payload, in order. */
++const issuePosts = (ctx) => lines(readLog(ctx, 'issues.log')).map((l) => JSON.parse(l))
++/** Every `publish:disclosures` record in the run dir's log, in file order. */
++const disclosureEvents = (ctx) => events(ctx).filter((e) => e.kind === 'publish:disclosures')
++
++// ── leg (a) — M1: one ticket, its title, its body, its order ─────────────────
++
++test('(a) [M1] the disclosing run POSTs exactly one issue, titled and bodied as M1 spells it', async () => {
++  const ctx = await disclosed()
++  const posts = issuePosts(ctx)
++
++  assert.equal(
++    posts.length, 1,
++    '(a) [M1] a run whose report carries two `out-of-FILES (not taken):` entries must make '
++    + `EXACTLY ONE POST /repos/${TARGET}/issues — this run made ${posts.length}`,
++  )
++  const [payload] = posts
++
++  // The title is the run, the word, and the SAME heading `publish` puts in the
++  // PR title — `plan_title`'s answer, which for this plan is its `# ` line.
++  assert.equal(
++    EXPECTED_TITLE, 'fleet run-7 disclosures: Smoke: the fleet proves itself',
++    '(a) [M1] the rig no longer describes the run this leg was written against',
++  )
++  assert.equal(
++    payload.title, EXPECTED_TITLE,
++    '(a) [M1] the ticket\'s `title` must be `fleet <RUN_ID> disclosures: <heading>`, the heading '
++    + 'being the `plan_title` answer the PR title carries',
++  )
++  // The SAME answer, tied to this run's own PR rather than to a constant: the
++  // ticket's heading is the PR title's heading, word for word.
++  const prTitle = prPosts(ctx)[0].title
++  assert.equal(
++    payload.title, prTitle.replace(`fleet ${RUN_ID}:`, `fleet ${RUN_ID} disclosures:`),
++    `(a) [M1] the ticket's heading must be the PR title's heading — the PR was titled \`${prTitle}\``,
++  )
++
++  // The body, whole: the PR URL, a blank line, then one `- [ ] task <id> —
++  // <text>` line per matching entry in the report's order — and nothing else.
++  assert.equal(typeof payload.body, 'string', '(a) [M1] the ticket carries no `body` at all')
++  assert.deepEqual(
++    payload.body.replace(/\n+$/, '').split('\n'), EXPECTED_BODY_LINES,
++    '(a) [M1] the ticket\'s `body` must be the PR URL, a blank line, then exactly the two '
++    + '`- [ ] task 1 — <text>` lines of the `(not taken)` entries, in the report\'s order',
++  )
++  assert.equal(
++    EXPECTED_ITEMS.length, 2,
++    '(a) [M1] the fixture no longer holds two `(not taken)` entries',
++  )
++  assert.ok(
++    payload.body.startsWith(`${PR_URL}\n\n`),
++    `(a) [M1] the body must OPEN with the PR URL (${PR_URL}) and a blank line`,
++  )
++
++  // The taken entry is an edit the task made; the run owes no ticket for it,
++  // and no line of this body may name it.
++  assert.ok(
++    !payload.body.includes(TAKEN_PATH),
++    `(a) [M1] the body must not name ${TAKEN_PATH} — that entry is an \`out-of-FILES:\` edit the `
++    + 'task DID take, and only the `(not taken)` ones are listed',
++  )
++  assert.ok(
++    !payload.body.includes('plan-defect'),
++    '(a) [M1] a `plan-defect:` judgment call matches no part of M1\'s pattern and is not listed',
++  )
++
++  // And no labels: this ticket inherits none.
++  assert.ok(
++    !Object.prototype.hasOwnProperty.call(payload, 'labels'),
++    `(a) [M1] the payload must have NO \`labels\` key — it carries ${JSON.stringify(payload.labels)}`,
++  )
++})
++
++test('(a) [M1] the ticket is opened after the PR POST and before the merge PUT', async () => {
++  const ctx = await disclosed()
++  const pr = indexOf(ctx, 'curl pr create')
++  const issue = indexOf(ctx, 'curl issue create')
++  const merge = indexOf(ctx, 'curl pr merge')
++
++  assert.ok(pr >= 0, '(a) [M1] the disclosing run opened no PR at all')
++  assert.ok(
++    issue >= 0,
++    `(a) [M1] the disclosing run made no POST /repos/${TARGET}/issues at all\n`
++    + stream(ctx).slice(-25).join('\n'),
++  )
++  assert.ok(merge >= 0, '(a) [M1] the disclosing run made no merge PUT at all')
++  assert.ok(
++    pr < issue,
++    `(a) [M1] the ticket must be opened AFTER \`publish\` opened the PR (pr ${pr}, issue ${issue})`,
++  )
++  assert.ok(
++    issue < merge,
++    `(a) [M1] the ticket must be opened BEFORE \`merge_pr\` is called (issue ${issue}, merge ${merge})`,
++  )
++  assert.equal(
++    stream(ctx).filter((l) => l === 'CALL curl issue create').length, 1,
++    '(a) [M1] exactly one `/issues` POST goes out, and it goes out once',
++  )
++
++  // The endpoint M1 spells, read off the argv the run actually handed `curl`:
++  // the edge host, the target's own collection, and a POST.
++  const argv = argvLines(ctx, 'curl').find((a) => a.some((s) => s === ISSUES_URL))
++  assert.ok(
++    argv,
++    `(a) [M1] no curl call carried the URL \`${ISSUES_URL}\` — M1 names that endpoint exactly`,
++  )
++  assert.ok(
++    argv.includes('-X') && argv[argv.indexOf('-X') + 1] === 'POST',
++    `(a) [M1] the call to ${ISSUES_URL} must be a POST: ${JSON.stringify(argv)}`,
++  )
++  assert.ok(
++    argv.includes('content-type: application/json'),
++    `(a) [M1] the POST must carry a JSON content type: ${JSON.stringify(argv)}`,
++  )
++})
++
++// ── leg (b) — M2: no matching entry, no POST ─────────────────────────────────
++
++test('(b) [M2] a run whose report carries no matching entry files no ticket', async () => {
++  const ctx = await greenAsync()
++
++  // The premise, stated rather than assumed: the rig's default report carries
++  // no `judgmentCalls` at all, so nothing in it matches M1's pattern.
++  assert.ok(
++    !Object.prototype.hasOwnProperty.call(JSON.parse(DEFAULT_REPORT), 'judgmentCalls'),
++    '(b) [M2] the rig\'s DEFAULT_REPORT is expected to carry no `judgmentCalls`',
++  )
++
++  assert.equal(
++    readLog(ctx, 'issues.log'), '',
++    `(b) [M2] the default green run must make NO POST /repos/${TARGET}/issues — it wrote `
++    + `issues.log:\n${readLog(ctx, 'issues.log')}`,
++  )
++  assert.equal(
++    stream(ctx).filter((l) => l === 'CALL curl issue create').length, 0,
++    '(b) [M2] the default green run must reach the `/issues` endpoint not once',
++  )
++  assert.deepEqual(
++    disclosureEvents(ctx), [],
++    '(b) [M2] a run that filed no ticket appends no `publish:disclosures` event either',
++  )
++})
++
++// ── leg (c) — M2: a refused POST is logged, and merges anyway ────────────────
++
++test('(c) [M2] a non-2xx /issues answer is logged and the run continues to merge_pr unchanged', async () => {
++  const ctx = await refused()
++
++  // It asked — otherwise everything below would hold for a run that never tried.
++  assert.equal(
++    issuePosts(ctx).length, 1,
++    '(c) [M2] the refused run must still make its one `/issues` POST',
++  )
++
++  assert.ok(
++    stream(ctx).includes(REFUSAL_LINE),
++    `(c) [M2] the boot must log exactly \`${REFUSAL_LINE}\`\n`
++    + stream(ctx).filter((l) => l.includes('disclosures')).join('\n'),
++  )
++  assert.deepEqual(
++    disclosureEvents(ctx), [],
++    '(c) [M2] a POST answered 500 appends no `publish:disclosures` event — M3 records the 2xx only',
++  )
++  assert.equal(
++    mergePuts(ctx).length, 1,
++    '(c) [M2] the run continues to `merge_pr` unchanged: one merge PUT, exactly as without the ticket',
++  )
++  const issue = indexOf(ctx, 'curl issue create')
++  const merge = indexOf(ctx, 'curl pr merge')
++  assert.ok(
++    issue >= 0 && merge > issue,
++    `(c) [M2] the merge PUT must still follow the refused POST (issue ${issue}, merge ${merge})`,
++  )
++})
++
++// ── leg (d) — M3: the record of the ticket ───────────────────────────────────
++
++test('(d) [M3] a 2xx answer appends one publish:disclosures event after publish:pr', async () => {
++  const ctx = await disclosed()
++  const all = events(ctx)
++  const kinds = all.map((e) => e.kind)
++
++  const recorded = disclosureEvents(ctx)
++  assert.equal(
++    recorded.length, 1,
++    `(d) [M3] the run's events.jsonl must carry EXACTLY ONE \`publish:disclosures\` line — `
++    + `it carries ${recorded.length}\n${kinds.join('\n')}`,
++  )
++  const [event] = recorded
++  assert.equal(
++    event.url, FOLLOWUP_URL,
++    '(d) [M3] the event\'s `url` is the `html_url` GitHub answered the POST with',
++  )
++  assert.equal(
++    event.items, EXPECTED_ITEMS.length,
++    `(d) [M3] the event's \`items\` is the number of entries the ticket listed (${EXPECTED_ITEMS.length})`,
++  )
++  assert.equal(
++    typeof event.items, 'number',
++    '(d) [M3] `items` rides as an int (`items=i:<n>`), not as a string',
++  )
++
++  const pr = kinds.indexOf('publish:pr')
++  const here = kinds.indexOf('publish:disclosures')
++  assert.ok(pr >= 0, '(d) [M3] the run appended no `publish:pr` line at all')
++  assert.ok(
++    pr < here,
++    `(d) [M3] the \`publish:disclosures\` line must sit AFTER the \`publish:pr\` line `
++    + `(publish:pr ${pr}, publish:disclosures ${here})\n${kinds.join('\n')}`,
++  )
++})
++
++// ── leg (e) — M4: the two role and contract readers, verbatim ────────────────
++
++/** The Proof's fifth and sixth `Run:` lines, as the driver runs them. */
++const READERS = [
++  [
++    'fleet/roles/implementer.md\'s judgment-rules paragraph must name the '
++    + '`out-of-FILES (not taken):` prefix',
++    "sed -n '/^Judgment rules:/,/^$/p' fleet/roles/implementer.md"
++    + " | tr '\\n' ' ' | grep -q 'out-of-FILES (not taken):'",
++  ],
++  [
++    'fleet/CONTRACT.md\'s Publish bullet must say the checklist files no issue EXCEPT the '
++    + 'disclosures ticket, and name `publish:disclosures`',
++    "sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming:\\*\\*/p' fleet/CONTRACT.md"
++    + " | tr '\\n' ' ' | grep -q 'files no issue for them.*except.*disclosures.*publish:disclosures'",
++  ],
++]
++
++test('(e) [M4] the implementer role and the Publish bullet carry the words M4 names', () => {
++  for (const [what, cmd] of READERS) {
++    const r = spawnSync('bash', ['-c', cmd], { cwd: ROOT, encoding: 'utf8', timeout: 60000, env: ENV })
++    assert.equal(
++      r.status, 0,
++      `(e) [M4] ${what}\n  $ ${cmd}\n${r.stdout || ''}${r.stderr || ''}`,
++    )
++  }
++})
++
++// ── leg (f) — M5: the checklist is what it was ───────────────────────────────
++
++test('(f) [M5] a run with disclosures and no reviewer notes still renders `Residuals: none`', async () => {
++  const ctx = await disclosed()
++  const posts = prPosts(ctx)
++  assert.equal(posts.length, 1, '(f) [M5] the disclosing run must open exactly one PR')
++  const body = posts[0].body
++
++  assert.ok(
++    body.split('\n').includes('Residuals: none'),
++    '(f) [M5] the card of a run with disclosures and no `deferred:external` ack and no reviewer '
++    + 'note must still carry the line `Residuals: none` — the ticket is not a residual',
++  )
++  assert.ok(
++    !/^Residuals: \d/m.test(body),
++    '(f) [M5] the disclosures must not be counted into `Residuals: <n> from review`',
++  )
++  // And the checklist names none of them: the ticket and the checklist do not
++  // duplicate each other.
++  for (const item of EXPECTED_ITEMS) {
++    assert.ok(
++      !body.includes(item),
++      `(f) [M5] the PR card must not carry the ticket's line \`${item}\``,
++    )
++  }
++})
++
++// ── leg (g) — M1: the edited script, still a script ──────────────────────────
++
++test('(g) [M1] the edited boot script still parses as bash', () => {
++  // THE LEG ITSELF IS THE DRIVER'S. It names the Proof's second, third and
++  // fourth `Run:` lines — the three boot sims of BASE, still green on the edited
++  // script — and the bridge runs those three lines itself. This file may not:
++  // `fleet/tests/test_sims_are_hermetic.mjs` M4 forbids a `test_*.mjs` from
++  // running, or even naming for an existence check, a sibling sim, and a sim
++  // that broke that probe would cost the run more than the leg buys.
++  //
++  // What is left here is the one reading of the edited script this exam can
++  // make on its own, and the one every other boot sim depends on: the script
++  // the three of them source still parses. A `publish`-to-`merge_pr` step
++  // spliced in with an unbalanced `fi` fails here before it fails there.
++  const script = path.relative(ROOT, SCRIPT)
++  const r = spawnSync('bash', ['-n', script], { cwd: ROOT, encoding: 'utf8', timeout: 60000, env: ENV })
++  assert.equal(
++    r.status, 0,
++    `(g) [M1] \`bash -n ${script}\` must be clean — the three boot sims the Proof re-runs all `
++    + `source this file\n${r.stdout || ''}${r.stderr || ''}`,
++  )
++})
++
++runTests(tests)
+diff --git a/skills/ultrapowers/references/report-format.md b/skills/ultrapowers/references/report-format.md
+index 5a8bccd05b9f2ca79b8bda1967d21c1c25b17601..fb079d572733ecb7486cc3166df9f9f20281c7b6 100644
+--- a/skills/ultrapowers/references/report-format.md
++++ b/skills/ultrapowers/references/report-format.md
+@@ -105,7 +105,7 @@ The engine (`fleet/run-engine.mjs`) returns a single structured report object; `
+ | `reviewEconomy` | no | What a reviewer-minute bought. `reviewerMs` — the summed wall clock of every `review:` agent call. `blockingFindings` — how many blocking issues the REVIEWERS returned, de-duplicated by `severity|detail` across the run; the driver's own `Run:`/`Check:` reds are excluded, because charging the driver's findings to the reviewers flatters the ratio. `blockingPerReviewerMinute` — `blockingFindings / (reviewerMs / 60000)`, and `0` when no reviewer ran. Three keys and no others: `pairRounds` and `r2MarginalBlocking` — how many rounds dispatched a pair, and what the second reviewer returned that the first did not — were the measurement that retired the pair itself (#964 Task 2: eight marginal findings across 71 runs, none of them one of the five real defects), and went with it |
+ | `baseline` | no | Result of the suite run on BASE's tree in a clone of its own, `<runDir>/clones/baseline` — started during **Setup**, concurrently with wave 1 but with a deliberate head start on its dispatch: the engine's `BASELINE_HEAD_START_MS` (500 ms in `fleet/run-engine.mjs`) is a bounded race, not a wait — a suite that answers red inside that window parks the run before any worker is dispatched, and one that does not is left running while wave 1 goes out and is read at the barrier. Run **exactly once per run** whatever the waves do. `{ passed, output }` on every run that completed Setup — never `null` there; `null` only on a run that never got that far. `passed: false` means BASE itself was red, and the run PARKS on it: the epoch is pushed as one `TEST_FAILED` row with a `detail` beginning `baseline: the suite is RED on BASE`, every task the red held up is named in `unfinished` as `never dispatched`, no `reconcile:` agent is ever dispatched (there is no red for one to repair that the run did not inherit), and the integration branch is left where the run found it. A red baseline also draws a `baseline:` judgment call. A green one is what makes every later candidate red attributable to the epoch that adopted it |
+ | `waveMerges` | no | The engine writes one row per epoch — an epoch being the set of results one fold adopts, numbered 1, 2, … in fold order — and a row's `wave` is that number, the epoch, never an index into `waves`. A fold's row carries `wave`, `status`, `headSha`, `detail`, `branches` (the task IDs submitted to that fold, listed even when it failed), `joined` (the paths this epoch's tasks met on, `[]` when they met on none) and, when the suite reported unattributed reds, `suite`. Surfaces *how* integration went, not just whether it failed; status semantics are enumerated once under **`waveMerges[].status` values** below. A red baseline on BASE is itself one row: the `TEST_FAILED` row the `baseline` field describes, carrying `wave`, `status`, `detail` and `branches` and no `headSha` (nor `joined`, nor `suite` — those three come from the fold push alone), so a run that parked on a red BASE has a row here, not nothing. The array is empty only when no fold ever ran — a run interrupted before any fold, a run whose every task failed so nothing mergeable was ever captured, or a plan whose dependency cycle let no task be dispatched — and it is never absent. Consumers — the Step-5 gate and display code — MUST degrade gracefully: check that `waveMerges` is present and non-empty and that `waveMerges[last].headSha` exists before indexing it; an empty `waveMerges`, or a last row carrying no `headSha`, is `BLOCKED` at the Step-5 gate as "merge-sha guard unavailable", never a crash. |
+-| `frontier` | no | One entry per wave that took the **contended** merge path (frontier mode) — recorded whether the wave adopted its folded candidate or fell back: whenever the fold CLI ran, the on-disk `frontier/wave-<n>/` directory is the durable record the production canary harvests. Absent or empty on every run without a contended wave, including every `--overlap serialize` compile, where no wave can contain intersecting `files`. Fields, all sourced from the contended dispatches' reply scalars — no payload is relayed through an agent (#36): `wave` (1-based wave number); `foldLogPath` (the wave's `fold_log.jsonl`, the self-sufficient event record documented in `kernel/FOLD_LOG.md`); `conflictsIndex` (the `conflicts.json` beside it — the single record of every conflict and every park, with its `dispatchable()` verdict and reason); `selfChecks` (the fold CLI's two live self-checks, **sourced from the completing CLI reply** — the CLI runs them inside whichever call completes the wave, so a stop reply carries none; `ok`, or a named failure that routed the wave to fallback, or the empty string when no reply ever attested; the engine never claims a fold succeeded without them); `foldCliCalls` (how many fold-CLI invocations this wave drove — 1 fold + N resolves + 1 materialize on a clean run, fewer when it fell back. The incremental protocol makes N unbounded by the conflict total, because a drained stop folds on inside the same `resolve` call, so this is the wave's real CLI cost rather than a number derivable from the conflict count); `foldCliWallTimeSec` (the **sum** of the wall clocks the STEP replies reported across every leg — fold, each resolve, and materialize — reported on its own line so the first real-repo reading is not buried inside a passing test result; `null` when no reply timed its invocation); `autoResolved` (how many conflicts the kernel resolved **in process** against the wave's `Commutes:` contract — every writer declared the path and every hunk segment was an addition, so the fold never stopped on it and no resolver was dispatched. **Summed** across the fold and resolve legs, since the kernel folds on past a contract-resolved conflict inside any call; `0` when the wave declared no `Commutes:`, when no declared path conflicted, or when no reply carried the count. Read it beside `resolverTranscripts`: it is the resolver dispatches the contract *bought*); `resolverTranscripts` (one entry per resolver dispatch — `conflict` (the conflicts-index `i`), `attempt`, `path`, `epoch`, `hunksFile`, `replyDir`, `status`, `notes` — recorded verbatim as the A/B grading surface). `foldLogPath` and `conflictsIndex` are empty strings when the fold dispatch threw, returned no reply at all, or returned a reply that carried no paths — in the first two cases the directory the paths would name may never have been written, since the CLI itself may never have run. Fallback **reasons** are **not** recorded here: each one is a `judgmentCalls` entry naming its reason plus the wave's `waveMerges` result — one fact, one record |
++| `frontier` | no | One entry per epoch fold that took the **contended** merge path (frontier mode) — recorded whether the epoch adopted its folded candidate or fell back: whenever the fold CLI ran, the on-disk `frontier/wave-<n>/` directory is the durable record the production canary harvests. Absent or empty on every run whose every fold ran uncontended: `overlap=fold` has been `compile_plan.py`'s shipped default since the 2026-08-14 A/B (CLAUDE.md, "One merge, one writer"), so an empty `frontier` reads as epochs that held no intersecting `files`, not as a compile that opted out of folding. Fields, all sourced from the contended dispatches' reply scalars — no payload is relayed through an agent (#36): `wave` (the epoch number, in fold order — the same number `waveMerges[].wave` carries, never an index into `waves`); `foldLogPath` (the wave's `fold_log.jsonl`, the self-sufficient event record documented in `kernel/FOLD_LOG.md`); `conflictsIndex` (the `conflicts.json` beside it — the single record of every conflict and every park, with its `dispatchable()` verdict and reason); `selfChecks` (the fold CLI's two live self-checks, **sourced from the completing CLI reply** — the CLI runs them inside whichever call completes the wave, so a stop reply carries none; `ok`, or a named failure that routed the wave to fallback, or the empty string when no reply ever attested; the engine never claims a fold succeeded without them); `foldCliCalls` (how many fold-CLI invocations this wave drove — 1 fold + N resolves + 1 materialize on a clean run, fewer when it fell back. The incremental protocol makes N unbounded by the conflict total, because a drained stop folds on inside the same `resolve` call, so this is the wave's real CLI cost rather than a number derivable from the conflict count); `foldCliWallTimeSec` (the **sum** of the wall clocks the STEP replies reported across every leg — fold, each resolve, and materialize — reported on its own line so the first real-repo reading is not buried inside a passing test result; `null` when no reply timed its invocation); `autoResolved` (how many conflicts the kernel resolved **in process** against the wave's `Commutes:` contract — every writer declared the path and every hunk segment was an addition, so the fold never stopped on it and no resolver was dispatched. **Summed** across the fold and resolve legs, since the kernel folds on past a contract-resolved conflict inside any call; `0` when the wave declared no `Commutes:`, when no declared path conflicted, or when no reply carried the count. Read it beside `resolverTranscripts`: it is the resolver dispatches the contract *bought*); `resolverTranscripts` (one entry per resolver dispatch — `conflict` (the conflicts-index `i`), `attempt`, `path`, `epoch`, `hunksFile`, `replyDir`, `status`, `notes` — recorded verbatim as the A/B grading surface). `foldLogPath` and `conflictsIndex` are empty strings when the fold dispatch threw, returned no reply at all, or returned a reply that carried no paths — in the first two cases the directory the paths would name may never have been written, since the CLI itself may never have run. Fallback **reasons** are **not** recorded here: each one is a `judgmentCalls` entry naming its reason plus the wave's `waveMerges` result — one fact, one record |
+ | `blockedWaves` | no | One `{ wave, detail }` per red epoch — a fold that could not be made green, and the red-baseline park. Nothing propagates to "later waves": a red epoch marks exactly its own tasks blocked, which makes the consumers of those tasks unready (they land in `unfinished`), and every other ready task is dispatched as before |
+ | `coverage` | no | Structural completeness signal: `{ tasks_merged, tasks_planned, complete }`. `tasks_planned` = total tasks across all waves; `tasks_merged` = count of distinct task branches that landed via a `MERGED` wave; `complete` = `tasks_merged >= tasks_planned`. A `complete: false` with a green `tests.passed` is the false-green the gate must catch — only existing tests can fail, so a dropped/never-merged task leaves the suite green. The engine reports the *count* it can observe, and since #964 Task 2 that count is the whole signal: no agent reads the finished run, so a per-file presence check on the integrated tree is the human reader's, or a Global Constraint `Check:` the driver runs itself |
+ | `missingDeliverables` | no | One entry per `failed` task, and per task that never became ready, whose plan-declared `files` did not reach the integration branch: `{ task, files }`. Tasks with no declared file scope are omitted. The gate renders it under unfinished |
+diff --git a/skills/ultrapowers/scripts/catch_report.py b/skills/ultrapowers/scripts/catch_report.py
+index 811be1585b88b726d3f809635bdabc4effc0a2ef..cd59112acb80f10aacb75beca702c542d22cdda5 100644
+--- a/skills/ultrapowers/scripts/catch_report.py
++++ b/skills/ultrapowers/scripts/catch_report.py
+@@ -46,6 +46,13 @@ TEST_GLOBS = ("tests/test_*.py", "fleet/tests/test_*.mjs")
+ # bridge) and never earns a catch of its own. Its status is `runner`: never a
+ # deletion candidate, never a point on the curve.
+ RUNNER_MARKER = "# catch-counter: runner"
++# A test file carrying this line is a GATE — a design gate a person runs before
++# a change (a fold-order probe, a hermetic sweep), not a verdict a run earns
++# catches with. Its status is `gate`, and the treatment is the runner's exactly:
++# listed in the table with its catches and touching runs whatever they are,
++# never a deletion candidate, never a point on the curve. Two names because the
++# two species are kept for different reasons, and a reading should say which.
++GATE_MARKER = "# catch-counter: gate"
+ # Where a test with no adding commit "landed": the epoch, so every stamped row
+ # is after it and an untracked test's window is the whole record.
+ EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+@@ -129,9 +136,11 @@ def _count(value):
+     return value
+ 
+ 
+-def _status(catches, exercised, runner=False):
++def _status(catches, exercised, runner=False, gate=False):
+     if runner:
+         return "runner"
++    if gate:
++        return "gate"
+     if catches > 0:
+         return "caught"
+     if not exercised:
+@@ -139,7 +148,7 @@ def _status(catches, exercised, runner=False):
+     return "zero"
+ 
+ 
+-def catch_table(rows, tree_tests, landings=None, runners=()):
++def catch_table(rows, tree_tests, landings=None, runners=(), gates=()):
+     """`{test path: {catches, exercised, touchingRuns, status}}`. [M1]
+ 
+     Keyed over the union of `tree_tests` and every path the record names as a
+@@ -152,11 +161,13 @@ def catch_table(rows, tree_tests, landings=None, runners=()):
+     STARTED AFTER THE TEST LANDED counts: `landings` maps a test path to the
+     instant its adding commit landed (`tree_landings`; absent means the epoch),
+     and a row with no `startedAt` counts toward no test's window at all. A path
+-    in `runners` has status `runner` whatever its counts. [M2] [M4]
++    in `runners` has status `runner`, and one in `gates` status `gate`,
++    whatever its counts. [M2] [M4]
+     """
+     rows = _catch_rows(rows)
+     landings = landings or {}
+     runners = set(runners or ())
++    gates = set(gates or ())
+     paths = set(tree_tests or [])
+     for row in rows:
+         paths.update(_mapping(row, "catches"))
+@@ -178,7 +189,8 @@ def catch_table(rows, tree_tests, landings=None, runners=()):
+         table[path] = {"catches": catches,
+                        "exercised": sorted(exercised),
+                        "touchingRuns": touching,
+-                       "status": _status(catches, exercised, path in runners)}
++                       "status": _status(catches, exercised, path in runners,
++                                         path in gates)}
+     return table
+ 
+ 
+@@ -190,6 +202,17 @@ def _is_runner(entry):
+     return entry.get("status") == "runner"
+ 
+ 
++def _is_gate(entry):
++    return entry.get("status") == "gate"
++
++
++def _is_kept(entry):
++    """A runner or a gate: a file the counter KEEPS whatever its counts. Both
++    are listed in the table; neither is ever a deletion candidate or a point on
++    the zero-catch curve. [M4]"""
++    return _is_runner(entry) or _is_gate(entry)
++
++
+ def _is_zero(entry):
+     return entry.get("catches", 0) == 0
+ 
+@@ -209,7 +232,7 @@ def zero_curve(table):
+     curve = []
+     for n in range(1, max_touching_runs(table) + 1):
+         files = sum(1 for entry in table.values()
+-                    if _is_zero(entry) and not _is_runner(entry)
++                    if _is_zero(entry) and not _is_kept(entry)
+                     and _touching(entry) >= n)
+         curve.append({"n": n, "files": files})
+     return curve
+@@ -218,7 +241,7 @@ def zero_curve(table):
+ def zero_over(table, n):
+     """The deletion candidates at N: zero catches over ≥ N touching runs."""
+     return sorted(path for path, entry in table.items()
+-                  if _is_zero(entry) and not _is_runner(entry)
++                  if _is_zero(entry) and not _is_kept(entry)
+                   and _touching(entry) >= n)
+ 
+ 
+@@ -239,8 +262,9 @@ def tree_test_files(tree):
+     return sorted(found)
+ 
+ 
+-def tree_runners(tree, tests):
+-    """The tests whose text carries the RUNNER_MARKER line. [M4]"""
++def _tree_marked(tree, tests, marker):
++    """The tests whose text carries `marker` as a line of its own, stripped.
++    One reader for both species, so a gate is read exactly as a runner is."""
+     tree = Path(tree)
+     out = []
+     for rel in tests:
+@@ -248,13 +272,23 @@ def tree_runners(tree, tests):
+             lines = (tree / rel).read_text(encoding="utf-8",
+                                            errors="replace").splitlines()
+         except OSError as exc:
+-            swallow("test file unreadable; it cannot be a runner", exc)
++            swallow("test file unreadable; it carries no marker", exc)
+             continue
+-        if any(line.strip() == RUNNER_MARKER for line in lines):
++        if any(line.strip() == marker for line in lines):
+             out.append(rel)
+     return out
+ 
+ 
++def tree_runners(tree, tests):
++    """The tests whose text carries the RUNNER_MARKER line. [M4]"""
++    return _tree_marked(tree, tests, RUNNER_MARKER)
++
++
++def tree_gates(tree, tests):
++    """The tests whose text carries the GATE_MARKER line. [M4]"""
++    return _tree_marked(tree, tests, GATE_MARKER)
++
++
+ def tree_landings(tree, tests):
+     """When each test LANDED: the committer date of the commit that first
+     added the file, read from the tree's own history. A file with no such
+@@ -339,7 +373,8 @@ def main(argv=None):
+     rows = _read_jsonl(args.ledger)
+     tests = tree_test_files(args.tree)
+     table = catch_table(rows, tests, landings=tree_landings(args.tree, tests),
+-                        runners=tree_runners(args.tree, tests))
++                        runners=tree_runners(args.tree, tests),
++                        gates=tree_gates(args.tree, tests))
+     for line in report_lines(table, args.n, unstamped_rows(rows)):
+         print(line)
+     return 0
+diff --git a/tests/test_catch_report.py b/tests/test_catch_report.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b08b738b73256cd5913cc97556c80cd2c281760a
+--- /dev/null
++++ b/tests/test_catch_report.py
+@@ -0,0 +1,373 @@
++"""tests/test_catch_report.py — the exam for task 2: the fold-order gate is a
++probe run by hand, and the catch counter keeps a design gate.
++
++Written against the task's Machine clauses, leg by leg. Every assertion names
++the leg it belongs to and the clause it comes from, so a reader can map this
++file back to the contract:
++
++  M1  `fleet/tests/probe_readiness_fold_order.mjs` is #832's sim as `2f327c6f`
++      added it — five corpus waves, the negative control, the soft-edges pair
++      and the fixture sets, one stdout line per set and `ALL TESTS PASSED`
++      last, importing `./_readiness_helpers.mjs` unchanged — with one change:
++      a fixture set whose manifest's `project` tree exists at neither of the
++      helper's two resolutions is SKIPPED with one stderr line naming the set
++      and no stdout line, instead of throwing. Its `import` lines name only
++      `node:assert/strict`, `node:fs`, `node:path` and
++      `./_readiness_helpers.mjs`.
++  M2  `node fleet/tests/probe_readiness_fold_order.mjs` at BASE exits 0 and
++      prints exactly five lines beginning `wave-` and ending
++      `ok steps=<n> kernelCalls=<n>`, one line beginning `negative-control`
++      carrying ` caught `, and `ALL TESTS PASSED` last; it is never collected
++      by `tests/test_fleet_suite.py` and never swept by
++      `test_sims_are_hermetic.mjs`, because its name begins `probe_`.
++  M3  `fleet/tests/PROBES.md` lists the probe with the sentence that it is run
++      by hand before any change to the fold kernel or the ready-set scheduler,
++      and its opening paragraph says a probe is either a live measurement or a
++      design gate.
++  M4  in `catch_report.py`, a test file whose text carries the line
++      `# catch-counter: gate` has status `gate`: never a deletion candidate,
++      never a point on the zero-catch curve, and listed in the table with its
++      catches and touching runs whatever their values — exactly the treatment
++      `# catch-counter: runner` gets, under a second name; a file carrying
++      neither marker keeps its BASE status.
++
++Legs: (a) M4 the three statuses, the deletion input and the curve; (b) M4 the
++gate's row in the report but not under the deletion heading; (c) M4 a gate
++with catches, and `tree_gates`; (d) M1 the probe read as text (and M2's
++"never collected"); (e) M2 the probe run; (f) M3 `PROBES.md`; (g) M1 the
++unresolvable fixture set skipped rather than thrown.
++
++The script is imported the way `tests/test_ultra_run.py:16` does it, and the
++names this task PRODUCES (`tree_gates`, `catch_table`'s `gates=`) are reached
++as attributes of the module rather than imported at the top, so at BASE each
++M4 leg reds on its own missing name while the M1/M2/M3 legs red on the absent
++probe.
++"""
++import inspect
++import json
++import os
++import pathlib
++import re
++import subprocess
++import sys
++
++import pytest
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++SCRIPTS = ROOT / "skills/ultrapowers/scripts"
++sys.path.insert(0, str(SCRIPTS))
++import catch_report  # noqa: E402
++
++# The bridge's own collector, so M2's "never collected" is read off the real
++# glob rather than a copy of it.
++sys.path.insert(0, str(ROOT / "tests"))
++from test_fleet_suite import collect_sims  # noqa: E402
++
++PROBE_REL = "fleet/tests/probe_readiness_fold_order.mjs"
++PROBE = ROOT / PROBE_REL
++PROBES_MD = ROOT / "fleet/tests/PROBES.md"
++
++GATE_LINE = "# catch-counter: gate"
++RUNNER_LINE = "# catch-counter: runner"
++
++GATE_FILE = "fleet/tests/test_gate.mjs"
++RUNNER_FILE = "tests/test_runner.py"
++PLAIN_FILE = "tests/test_plain.py"
++
++# A hang detector, not a budget: the sim measures ~10-26 s of real kernel work.
++PROBE_TIMEOUT = 600
++
++
++# --- the tree and the ledger the M4 legs are read over ---------------------
++
++def _write(path, text):
++    path.parent.mkdir(parents=True, exist_ok=True)
++    path.write_text(text, encoding="utf-8")
++
++
++@pytest.fixture
++def tree(tmp_path):
++    """A tree of three tests: a gate `.mjs` carrying the bare marker as a line
++    of its own inside a block comment, a runner `.py`, and a plain `.py`."""
++    root = tmp_path / "tree"
++    _write(root / GATE_FILE,
++           "/**\n"
++           " * the fold-order design gate\n"
++           "\n"
++           f"{GATE_LINE}\n"
++           " */\n"
++           "console.log('ALL TESTS PASSED')\n")
++    _write(root / RUNNER_FILE, f"{RUNNER_LINE}\nimport pytest\n")
++    _write(root / PLAIN_FILE, "def test_plain():\n    assert True\n")
++    return root
++
++
++def _ledger(tmp_path, catches, name="ledger.jsonl"):
++    """One `catch-count` row that touched what all three tests exercise, with
++    the catches the caller names and none otherwise."""
++    row = {
++        "kind": "catch-count",
++        "runId": "run-1",
++        "startedAt": "2026-09-14T00:00:00Z",
++        "touched": ["lib/a.py"],
++        "catches": catches,
++        "exercises": {GATE_FILE: ["lib/a.py"],
++                      RUNNER_FILE: ["lib/a.py"],
++                      PLAIN_FILE: ["lib/a.py"]},
++    }
++    path = tmp_path / name
++    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
++    return catch_report._read_jsonl(path)
++
++
++def _table(tree, rows):
++    """The table the CLI builds, with the gate species wired the way `main`
++    wires the runner species. [M4]"""
++    tests = catch_report.tree_test_files(tree)
++    return tests, catch_report.catch_table(
++        rows, tests,
++        runners=catch_report.tree_runners(tree, tests),
++        gates=catch_report.tree_gates(tree, tests))
++
++
++# --- (a) [M4] the three statuses, the deletion input, the curve ------------
++
++def test_leg_a_gate_runner_and_zero(tree, tmp_path):
++    rows = _ledger(tmp_path, {})
++    tests, table = _table(tree, rows)
++
++    assert tests == sorted([GATE_FILE, PLAIN_FILE, RUNNER_FILE]), (
++        "(a) [M4] the tree's two suite globs list exactly the three tests")
++    assert sorted(table) == sorted([GATE_FILE, PLAIN_FILE, RUNNER_FILE]), (
++        "(a) [M4] the table is keyed over those three tests")
++
++    assert table[GATE_FILE]["status"] == "gate", (
++        "(a) [M4] a test carrying the bare `# catch-counter: gate` line has "
++        "status `gate`")
++    assert table[RUNNER_FILE]["status"] == "runner", (
++        "(a) [M4] the runner marker still answers `runner` — the gate is a "
++        "second name for the same treatment, not a replacement")
++    assert table[PLAIN_FILE]["status"] == "zero", (
++        "(a) [M4] a file carrying neither marker keeps its BASE status")
++
++    assert table[GATE_FILE]["catches"] == 0, (
++        "(a) [M4] the gate is listed with its catches")
++    assert table[GATE_FILE]["touchingRuns"] == 1, (
++        "(a) [M4] the gate is listed with its touching runs")
++
++    assert catch_report.zero_over(table, 1) == [PLAIN_FILE], (
++        "(a) [M4] the gate is never a deletion candidate — `zero_over` at N=1 "
++        "is exactly the plain file")
++    assert catch_report.zero_curve(table) == [{"n": 1, "files": 1}], (
++        "(a) [M4] the gate is never a point on the zero-catch curve — one "
++        "file at N=1")
++
++
++# --- (b) [M4] the gate's row in the report, not under the deletion heading --
++
++def test_leg_b_gate_row_in_report_not_under_deletion_heading(tree, tmp_path):
++    rows = _ledger(tmp_path, {})
++    _, table = _table(tree, rows)
++    lines = catch_report.report_lines(table, 1)
++
++    gate_row = f"| {GATE_FILE} | 0 | 1 | gate |"
++    assert gate_row in lines, (
++        "(b) [M4] the gate is listed in the table with its catches and "
++        f"touching runs: {gate_row!r} in {lines!r}")
++
++    heading = "## Zero catches over 1 runs"
++    assert heading in lines, (
++        "(b) [M4] the deletion input is still reported at the operator's N")
++    tail = lines[lines.index(heading) + 1:]
++    assert GATE_FILE not in tail, (
++        "(b) [M4] the gate is not carried under "
++        f"{heading!r}: {tail!r}")
++    assert PLAIN_FILE in tail, (
++        f"(b) [M4] the plain zero still is: {tail!r}")
++
++
++# --- (c) [M4] a gate with catches, and `tree_gates` ------------------------
++
++def test_leg_c_gate_with_catches_and_tree_gates(tree, tmp_path):
++    rows = _ledger(tmp_path, {GATE_FILE: 2})
++    tests, table = _table(tree, rows)
++
++    assert table[GATE_FILE]["catches"] == 2, (
++        "(c) [M4] a gate's catches are counted and listed")
++    assert table[GATE_FILE]["status"] == "gate", (
++        "(c) [M4] a gate with two catches still reads `gate`, whatever the "
++        "values")
++    assert f"| {GATE_FILE} | 2 | 1 | gate |" in catch_report.table_lines(table), (
++        "(c) [M4] and is listed in the table with those values")
++    assert catch_report.zero_over(table, 1) == [PLAIN_FILE], (
++        "(c) [M4] and is still no deletion candidate")
++
++    assert catch_report.tree_gates(tree, tests) == [GATE_FILE], (
++        "(c) [M4] `tree_gates` over that tree names only the gate file")
++    assert catch_report.tree_runners(tree, tests) == [RUNNER_FILE], (
++        "(c) [M4] and `tree_runners` still names only the runner")
++
++
++def test_leg_c_produced_signatures():
++    table_sig = inspect.signature(catch_report.catch_table)
++    assert list(table_sig.parameters) == [
++        "rows", "tree_tests", "landings", "runners", "gates"], (
++        "(c) [Produces] `catch_table(rows, tree_tests, landings=None, "
++        f"runners=(), gates=())`, got {table_sig}")
++    assert table_sig.parameters["gates"].default == (), (
++        f"(c) [Produces] `gates=()` is the default, got {table_sig}")
++    gates_sig = inspect.signature(catch_report.tree_gates)
++    assert list(gates_sig.parameters) == ["tree", "tests"], (
++        f"(c) [Produces] `tree_gates(tree, tests)`, got {gates_sig}")
++
++
++# --- (d) [M1] the probe read as text ---------------------------------------
++
++def _probe_text():
++    assert PROBE.is_file(), (
++        f"(d) [M1] the probe is created at {PROBE_REL}")
++    return PROBE.read_text(encoding="utf-8")
++
++
++def test_leg_d_probe_imports_and_text():
++    text = _probe_text()
++    specifiers = set(re.findall(r"""\bfrom\s+['"]([^'"]+)['"]""", text))
++    specifiers |= set(re.findall(r"""\bimport\s+['"]([^'"]+)['"]""", text))
++    specifiers |= set(re.findall(r"""\bimport\s*\(\s*['"]([^'"]+)['"]""", text))
++    assert specifiers == {"node:assert/strict", "node:fs", "node:path",
++                          "./_readiness_helpers.mjs"}, (
++        "(d) [M1] the probe's `import` lines name exactly the four "
++        f"specifiers M1 lists, got {sorted(specifiers)}")
++
++    for name in ("negativeControlSpec", "softEdgesSpec", "discoverFixtureSets",
++                 "ALL TESTS PASSED"):
++        assert name in text, (
++            f"(d) [M1] the probe's text carries {name!r} — it is #832's sim, "
++            "control, soft-edges pair and sentinel included")
++
++
++def test_leg_d_probe_is_no_suite_test():
++    assert PROBE.is_file(), f"(d) [M1] the probe is created at {PROBE_REL}"
++    assert PROBE_REL not in catch_report.tree_test_files(ROOT), (
++        "(d) [M1] `tree_test_files` over this repository does not list the "
++        "probe — a `probe_*.mjs` is not a test file")
++    collected = [os.path.relpath(p, ROOT)
++                 for p in collect_sims(str(ROOT / "fleet"))]
++    assert PROBE_REL not in collected, (
++        "(d) [M2] and `tests/test_fleet_suite.py` never collects it, because "
++        "its name begins `probe_`")
++
++
++# --- (e) [M2] and (g) [M1] the probe run -----------------------------------
++
++def _run_probe(env_extra=None):
++    # No existence check here: an absent probe is `node`'s own
++    # `Cannot find module` on stderr, which is what the caller reports.
++    env = dict(os.environ)
++    env.pop("READINESS_FIXTURES_DIR", None)
++    env.update(env_extra or {})
++    return subprocess.run(["node", PROBE_REL], cwd=str(ROOT), env=env,
++                          capture_output=True, text=True,
++                          timeout=PROBE_TIMEOUT)
++
++
++def _stdout_lines(proc):
++    return [line for line in proc.stdout.splitlines() if line.strip()]
++
++
++def _assert_census(lines, where):
++    """M2's stdout shape: five `wave-` lines, the control, the sentinel last —
++    and, because M1 makes stdout one line per set, nothing else."""
++    waves = [line for line in lines
++             if re.fullmatch(r"wave-\S+ .* ok steps=\d+ kernelCalls=\d+", line)]
++    assert len(waves) == 5, (
++        f"[M2] {where}: exactly five lines beginning `wave-` and ending "
++        f"`ok steps=<n> kernelCalls=<n>`, got {waves!r}")
++    control = [line for line in lines if line.startswith("negative-control")]
++    assert len(control) == 1 and " caught " in control[0], (
++        f"[M2] {where}: one line beginning `negative-control` carrying "
++        f"` caught `, got {control!r}")
++    assert lines[-1] == "ALL TESTS PASSED", (
++        f"[M2] {where}: `ALL TESTS PASSED` is the last line, got {lines!r}")
++    assert len(lines) == 7, (
++        f"[M2] {where}: one stdout line per set and the sentinel, nothing "
++        f"else, got {lines!r}")
++
++
++@pytest.fixture(scope="module")
++def plain_run():
++    return _run_probe()
++
++
++def test_leg_e_probe_run(plain_run):
++    assert plain_run.returncode == 0, (
++        "(e) [M2] `node fleet/tests/probe_readiness_fold_order.mjs` at BASE "
++        f"exits 0, got {plain_run.returncode}\n{plain_run.stderr}")
++    _assert_census(_stdout_lines(plain_run), "the plain run")
++
++
++def test_leg_g_unresolvable_fixture_set_is_skipped(tmp_path):
++    # The set directory is named `ghost`; this test function deliberately is
++    # not, because the helper writes one `fixture root <root>` stderr line and
++    # pytest derives `tmp_path` from the test's name.
++    root = tmp_path / "fixtures"
++    (root / "ghost").mkdir(parents=True)
++    (root / "ghost" / "manifest.json").write_text(
++        json.dumps({"fixture": "ghost", "project": "no/such/tree",
++                    "tasks": []}) + "\n", encoding="utf-8")
++
++    proc = _run_probe({"READINESS_FIXTURES_DIR": str(root)})
++    assert proc.returncode == 0, (
++        "(g) [M1] a fixture set whose `project` tree exists at neither "
++        "resolution is skipped, not thrown: the run exits 0, got "
++        f"{proc.returncode}\n{proc.stderr}")
++
++    lines = _stdout_lines(proc)
++    assert not [line for line in lines if line.startswith("ghost")], (
++        f"(g) [M1] the skipped set prints no stdout line, got {lines!r}")
++    _assert_census(lines, "the run over the unresolvable set")
++
++    named = [line for line in proc.stderr.splitlines() if "ghost" in line]
++    assert len(named) == 1, (
++        "(g) [M1] its stderr carries exactly one line naming the skipped set, "
++        f"got {named!r}")
++
++
++# --- (f) [M3] `PROBES.md` --------------------------------------------------
++
++def _sed_range(text, start, end=None):
++    """`sed -n '/start/,/end/p'` — from the first line matching `start` to the
++    first line after it matching `end`, or to the end of the file."""
++    lines = text.splitlines()
++    begun = []
++    for index, line in enumerate(lines):
++        if not begun:
++            if re.search(start, line):
++                begun = [line]
++            continue
++        begun.append(line)
++        if end is not None and re.search(end, line):
++            break
++    return " ".join(begun)
++
++
++def test_leg_f_probes_md_opening_paragraph():
++    text = PROBES_MD.read_text(encoding="utf-8")
++    opening = _sed_range(text, r"^# fleet.tests probes", r"^The current probes:")
++    assert re.search(r"live measurement.*design gate", opening), (
++        "(f) [M3] the opening paragraph says a probe is either a live "
++        "measurement or a design gate, so a model-free probe is what the file "
++        f"describes: {opening!r}")
++
++
++def test_leg_f_probes_md_lists_the_probe():
++    text = PROBES_MD.read_text(encoding="utf-8")
++    entry = _sed_range(text, r"probe_readiness_fold_order\.mjs", r"^$")
++    assert entry, (
++        "(f) [M3] `fleet/tests/PROBES.md` lists "
++        "`probe_readiness_fold_order.mjs`")
++    assert re.search(
++        r"every.*order.*by hand.*before any change.*scheduler", entry), (
++        "(f) [M3] with the sentence that it is run by hand before any change "
++        "to the fold kernel or the ready-set scheduler: "
++        f"{entry!r}")

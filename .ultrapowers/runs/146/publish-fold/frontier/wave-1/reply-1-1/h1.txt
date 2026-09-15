@@ -1,0 +1,11 @@
+
+A `probe_*.mjs` file is either a live measurement or a design gate — never a
+suite test. A live measurement spends real tokens against a real `claude -p`; a
+design gate is model-free and spends only minutes, but it is a reading a person
+takes before a change rather than a verdict CI owes on every commit. Either way
+the file is deliberately NOT named `test_*.mjs`: `tests/test_fleet_suite.py`
+globs `test_*.mjs`, CI has no credentials, and the hermetic sweep
+`test_sims_are_hermetic.mjs` never reads a `probe_*.mjs`. The naming is the
+whole mechanism — CI and the suite never run these. Run them by hand; a live
+one, where a credential lives (the orchestrator, or a sandbox with
+`CLAUDE_CODE_OAUTH_TOKEN` exported):

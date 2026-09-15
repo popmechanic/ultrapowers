@@ -1,0 +1,228 @@
+{
+  "integrationBranch": "ultra/integration-run-146",
+  "baseSha": "8c4f493d4ad52f43ee3bf6ccd9f6c8ff125f932a",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3",
+      "4"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "4",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "622532592258c9db367a003931a71127aa31302a",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-146/patches/task-4.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "landedAt": 1789492384285,
+      "stateExams": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "50177f2b59233f804d1f09d74cf793c420c76ef7",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-146/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "`fleet/tests/PROBES.md` keeps the BASE sentence \"The naming is the whole mechanism \u2014 CI and the suite never run these\" in the very paragraph this diff rewrote, but the task's own exam `tests/test_catch_report.py` (collected by the repository's pytest suite) spawns `node fleet/tests/probe_readiness_fold_order.mjs` twice \u2014 once in `test_leg_e_probe_run` and once in `test_leg_g_unresolvable_fixture_set_is_skipped` \u2014 so CI now runs this probe on every pytest run (~7 s each in the driver's evidence). The naming mechanism still holds for the bridge (`collect_sims` globs `test_*.mjs`, `tree_test_files` globs the same, the hermetic sweep's `isSwept` reads only `test_*.mjs`/`_*.mjs` \u2014 all verified), so nothing is broken; the prose is what has gone stale. Grounded only in my reading of the prose constraint \"a `probe_*.mjs` never joins the bridge\", hence minor. Suggested fix, inside this task's own FILES: qualify the sentence in the opening paragraph, e.g. \"\u2014 CI and the suite never collect these; the one place a probe is spawned from a graded test is the design gate's own exam.\" Adding a clause there does not disturb the `Run:` grep, which only needs `live measurement.*design gate` in the range from `^# fleet.tests probes` to `^The current probes:`.; `tests/test_catch_report.py:700` \u2014 `_assert_census`'s `assert len(lines) == 7` is stricter than anything M1 or M2 requires, and it pins the *environment* rather than the probe. M2 asks for five `wave-` lines, one `negative-control` line and `ALL TESTS PASSED` last; M1 asks for one stdout line per set. Today the plain run prints exactly 7 lines only because all three fixture sets under `fleet/tests/fixtures/readiness/` skip for want of a project tree \u2014 the very condition the diff's own PROBES.md entry says is temporary (\"at BASE all three are, and they read again the day their project trees return\"). The day one returns, `test_leg_e_probe_run` goes red on a correct probe. Suggested fix: keep the wave/control/sentinel assertions and replace the fixed count with a shape assertion \u2014 every stdout line is either one of the five `wave-` lines, the `negative-control` line, the sentinel, or a fixture-set census line \u2014 so a restored fixture set reads as one more set rather than as a failure. (Leg (g)'s run, where the ghost set is skipped by construction, can keep an exact count.); The gate species ships with no carrier: after this diff the only `# catch-counter:` marker anywhere in the tree is `tests/test_fleet_suite.py:1`'s runner line, so `tree_gates` returns `[]` over this repository and `catch_table`'s `gates=` is always empty in `main`. The Claim's second clause \u2014 \"the catch counter no longer lists a design gate as something to delete\" \u2014 therefore changes no actual reading yet. This is not the implementer's to fix: the probe it restores is `probe_readiness_fold_order.mjs`, which `TEST_GLOBS` (`tests/test_*.py`, `fleet/tests/test_*.mjs`) never collects, so no path in this task's FILES can carry the marker, and the plausible carrier (`fleet/tests/test_sims_are_hermetic.mjs`, a model-free design gate that is a collected sim) is outside FILES. M4 only specifies `catch_report.py`'s behaviour, which the diff implements exactly and the exam's legs (a)\u2013(c) pin, so nothing here blocks; the operator should know the species is dormant until a follow-up marks a file.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "landedAt": 1789492894364,
+      "stateExams": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "4085380a3655bb160f2040abe679fdafabea24be",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-146/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "plan-defect-adjacent copy-paste gap: `disclosure_items` in `fleet/sandbox-boot.sh` renders `hit.group(2)` verbatim under a `re.S` regex whose `(.+)$` swallows newlines (the added comment says so: \"newlines and all\"). A `judgmentCalls` entry whose concern text carries a newline therefore renders as MORE THAN ONE line, which breaks M1's \"one `- [ ] task <id> \u2014 <text>` line per matching entry\" and inflates `count`, so the `publish:disclosures` event's `items` (M3) no longer counts entries but lines. The immediately adjacent reader this function is modelled on, `residual_read` (fleet/sandbox-boot.sh:2137-2139), has a `flat()` helper for exactly this reason, documented at fleet/sandbox-boot.sh:2092 (\"Every item is ONE line: a newline inside a detail becomes a space, or the checklist would grow lines no reader could tick\"). The new reader took the `DASH`, the `sys.stdout.buffer.write` and the shape, and left `flat` behind. The exam's fixture entries are all single-line, so leg (a) and leg (d) cannot see it.; `file_disclosures` is called OUTSIDE RE-ENTRY GUARD 2 (fleet/sandbox-boot.sh:3375-3383 at BASE; the diff adds the call after the `fi`), and its only precondition is `[ -n \"$PR_URL\" ]`. On a re-entry `PR_URL` is set from the status page (`PR_URL=\"$(read_status_field pr)\"`, boot ~3220) rather than by `publish`, so a second boot of the same run \u2014 the exact case GUARD 2 exists for \u2014 files a SECOND issue with the same title and the same boxes. M1 reads \"After `publish` has opened the PR\" and \"exactly one POST\"; the filing has no idempotency record of its own the way the PR has the status page. This is a genuine trade-off rather than a plain defect (an unguarded call is also what lets a run that died between the POST /pulls and the filing still file on re-entry), which is why it is minor: the narrowest reading of M1 is to move the `file_disclosures` call inside the `else` arm beside `publish \"$outcome\"`; the more forgiving one is to keep it where it is and skip when the run's own `events.jsonl` already carries a `publish:disclosures` line. Neither is exercised by the exam \u2014 no leg boots a run whose status page already names a PR.; unverified: the new exam `fleet/tests/test_sandbox_boot_disclosures.mjs` will be swept by `fleet/tests/test_sims_are_hermetic.mjs` and collected by `tests/test_fleet_suite.py` once it lands, and neither was run in this task's RUN/EXAM/CHECK evidence (the bridge is Task 1's `Run:` line, not this task's). I read the sweep's three rules against the new file by hand and it is clean \u2014 both `spawnSync` calls take `env: ENV`, which resolves across the `./_sandbox_boot_helpers.mjs` import to `export const ENV = simEnv()` (_sandbox_boot_helpers.mjs:878); no `existsSync`/`statSync`/`accessSync` call names a sibling sim; no literal absolute read; and the sibling-sim names in the header comment are blanked before any rule reads the file. What would settle it rather than argue it is `node fleet/tests/test_sims_are_hermetic.mjs` and `python3 -m pytest -q tests/test_fleet_suite.py` on the integration head after the fold.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "landedAt": 1789493097854,
+      "stateExams": []
+    },
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "625782dcc4ddbdcab4974388b98a671aafd22de2",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-146/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "fleet/engine-coverage.mjs `runSim` creates a fresh `NODE_V8_COVERAGE` directory with `fs.mkdtempSync` and never removes it. The V8 JSON is read exactly once (by `scriptGroupsIn`) and nothing else consumes it, so every reading leaks one temp directory per sim \u2014 on a real run that is 13 directories holding a full V8 coverage dump of a ~4,400-line engine (300 functions / 760 ranges per the task's own Context), left under the sandbox's temp dir on every run that changes the engine. M1 does not forbid it and the exam cannot see it, so this is advisory, not blocking. Remove the directory immediately after the groups are read; leg (i) only compares the recorded `cov` path strings, so deleting the directory cannot make the exam red.; fleet/engine-coverage.mjs's local `git` helper resolves instead of rejecting when git exits non-zero (`err && stdout === undefined ? reject : resolve`); with `execFile`, a non-zero exit still yields a string `stdout`, so a `git diff` that failed outright \u2014 a bad sha, a `tree` that is not a repository \u2014 resolves to `''`, `changedLinesOf` returns `[]`, and `engineCoverage` reports `null`, which is the same answer it gives for a genuinely unchanged file. The choice is documented on the helper and `null` is the safe answer for a reading that gates nothing, so this blocks nothing; but the two cases are indistinguishable to a reader of `report.json`, and an engine-side `git` failure is already caught and nulled at the call site in run-engine.mjs. Consider rejecting on a non-zero exit and letting the call site's existing `catch` turn it into `null` \u2014 the outcome is unchanged, and the failure stops being silently spelled as 'no change'.; unverified: M1 mandates that each sim run with cwd equal to `tree`, and the engine's call site passes the integration clone (`integ`) as that tree, so the reading spawns every `fleet/tests/test_run_engine_*.mjs` with cwd set to the integration worktree after the last fold. The exam's own fixture sims demonstrate the hazard \u2014 they write `.exam-stamps/<name>.start.json` relative to `process.cwd()`, and leg (e) reads those stamps back out of `integ`. The task's Context says the real engine sims build their scratch trees under the OS temp dir, so in practice nothing should land in the worktree, and nothing here can move a sha or a report field computed before the reading; but this diff cannot settle whether all 13 real sims are clean. What would settle it: run the reading against the real repository once and check that `git status --porcelain` in the integration clone is byte-identical before and after. If it is not, the fix is M1's cwd clause, which lives in the task text rather than in this tree.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "landedAt": 1789493800712,
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-146/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [220 items]\n\n........................................................................ [ 32%]\n........................................................................ [ 65%]\n........................................................................ [ 98%]\n....                                                                     [100%]\n============================= 220 passed in 42.71s =============================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel fleet/launch.mjs fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/publish-fold.mjs fleet/kata-client.mjs fleet/roles/fix.md fleet/roles/reviewer.md fleet/roles/examiner.md fleet/roles/reconcile.md fleet/roles/resolver.md",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel fleet/launch.mjs fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/publish-fold.mjs fleet/kata-client.mjs fleet/roles/fix.md fleet/roles/reviewer.md fleet/roles/examiner.md fleet/roles/reconcile.md fleet/roles/resolver.md",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel fleet/launch.mjs fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/publish-fold.mjs fleet/kata-client.mjs fleet/roles/fix.md fleet/roles/reviewer.md fleet/roles/examiner.md fleet/roles/reconcile.md fleet/roles/resolver.md",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 664934,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-146/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [209 items]\n\n........................................................................ [ 34%]\n........................................................................ [ 68%]\n.................................................................        [100%]\n============================= 209 passed in 44.49s =============================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "9b6c46bf8681bbbb71686d53e19338dd96a95925",
+      "branches": [
+        "4"
+      ],
+      "joined": []
+    },
+    {
+      "wave": 2,
+      "status": "MERGED",
+      "headSha": "5f6668b75bba40d4e29e9911065e1d03b98b00b0",
+      "branches": [
+        "2"
+      ],
+      "joined": []
+    },
+    {
+      "wave": 3,
+      "status": "MERGED",
+      "headSha": "98f7fff9988a2ec513427e0c83c73d0caea57c97",
+      "branches": [
+        "3"
+      ],
+      "joined": []
+    },
+    {
+      "wave": 4,
+      "status": "CONFLICT",
+      "detail": "fold printed no verdict (exit 2): refusing wave 4: patch for task 1 (/home/exedev/target/.claude/ultrapowers/run-run-146/patches/task-1.patch) does not apply against base 98f7fff: error: patch failed: skills/ultrapowers/references/report-format.md:108\nerror: skills/ultrapowers/references/report-format.md: patch does not apply\n",
+      "branches": [
+        "1"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-146/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-146/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.379,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    },
+    {
+      "wave": 2,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-146/frontier/wave-2/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-146/frontier/wave-2/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.472,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    },
+    {
+      "wave": 3,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-146/frontier/wave-3/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-146/frontier/wave-3/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.9369999999999999,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    },
+    {
+      "wave": 4,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-146/frontier/wave-4/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-146/frontier/wave-4/conflicts.json",
+      "selfChecks": "",
+      "foldCliCalls": 1,
+      "foldCliWallTimeSec": 0.085,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 3,
+    "tasks_planned": 4,
+    "complete": false
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 3: examiner: (g) [M1] the second, third and fourth `Run:` lines \u2014 the three boot sims of BASE still green on the edited script \u2014 The exam file may not run or even name those sims: fleet/tests/test_sims_are_hermetic.mjs M4/leg (e) refuses any surviving sim that names a sibling test_*.mjs \"run or merely checked for existence\" \u2014 an fs.existsSync form was tried first and turned that probe red, quoting this file and the three names back. Spawning them breaks the same clause harder and adds ~19 s to a ~5 s exam. Those three Run: lines are in the Proof and the driver runs them, so the leg is covered by the run; inside the file it is covered only by `bash -n fleet/sandbox-boot.sh`, the one reading of the edited script this exam can make alone and the one all three sims rest on.",
+    "task 1: examiner: (g) the bridge runs every sim, this exam included \u2014 This leg is a Run: line, not an assertion: the bridge (tests/test_fleet_suite.py) collecting and running the exam IS the leg. It cannot be encoded inside the exam \u2014 the hermetic probe forbids a sim whose spawn text or identifiers name a sibling test_*.mjs or pytest, so the exam spawns nothing. Graded by running its own Run: line.",
+    "wave 4: fold path blocked \u2014 fold printed no verdict (exit 2): refusing wave 4: patch for task 1 (/home/exedev/target/.claude/ultrapowers/run-run-146/patches/task-1.patch) does not apply against base 98f7fff: error: patch failed: skills/ultrapowers/references/report-format.md:108\nerror: skills/ultrapowers/references/report-format.md: patch does not apply\n"
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": [
+    {
+      "wave": 4,
+      "detail": "fold printed no verdict (exit 2): refusing wave 4: patch for task 1 (/home/exedev/target/.claude/ultrapowers/run-run-146/patches/task-1.patch) does not apply against base 98f7fff: error: patch failed: skills/ultrapowers/references/report-format.md:108\nerror: skills/ultrapowers/references/report-format.md: patch does not apply\n"
+    }
+  ]
+}

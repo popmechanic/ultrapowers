@@ -1,0 +1,22 @@
+- `probe_kata_facts.mjs` — whether the hub still behaves the way the fleet's
+  contract says it does: the 22 kata facts (#978, #979, #993 and CLAUDE.md's
+  seams paragraph), re-read one line per fact against a throwaway project, each
+  line stamped with the version it was read on. Run it on every kata upgrade,
+  and before any plan that touches `fleet/kata-client.mjs` — those facts are
+  what that file's shape is argued from, and nothing in the suite talks to a
+  hub, so an upgrade can falsify any of them with the tree still green. It
+  removes its `probe-kata-facts-*` project with the very purge ladder its last
+  fact measures. Exit 0 every fact holds, 1 at least one drift, 2 the hub was
+  unreachable or the project was left behind.
+- `probe_readiness_fold_order.mjs` — the fold-order gate (#832, #810 Phase C):
+  that for every fixture patch set, every sequential adoption order folds to
+  the tree the simultaneous fold lands. The design gate of this list, not a
+  live measurement — the kernel is the real one, every reply is a committed
+  file, no model runs and no token is spent, so it costs about half a minute
+  and needs no credential. Run it by hand before any change to the fold kernel
+  or to the ready-set scheduler (`node fleet/tests/probe_readiness_fold_order.mjs`):
+  five `wave-` lines, one `negative-control` line carrying `caught`, and
+  `ALL TESTS PASSED` last is the pass. A fixture set under
+  `fleet/tests/fixtures/readiness/` whose manifest names a `project` tree at
+  neither resolution is skipped with one stderr line and no stdout line — at
+  BASE all three are, and they read again the day their project trees return.

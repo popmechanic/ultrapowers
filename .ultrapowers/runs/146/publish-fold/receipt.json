@@ -1,0 +1,40 @@
+{
+  "engineHead": "98f7fff9988a2ec513427e0c83c73d0caea57c97",
+  "attempts": {
+    "1": {
+      "tip": "5a8f1ebd7736218823a1156c10615f35043075f4",
+      "candidate": "969cbb78a93ab7b0efa32b27a7c951180d06e684",
+      "disposition": "folded",
+      "pathsJoined": 2,
+      "resolversDispatched": 1,
+      "suite": "pass",
+      "checks": [
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_engine_coverage.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "skipped"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_sandbox_boot_disclosures.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_probe_kata_facts.mjs",
+          "path": "fleet/tests/PROBES.md",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "tests/test_catch_report.py",
+          "path": "fleet/tests/PROBES.md",
+          "result": "pass"
+        }
+      ],
+      "checkRetries": 0
+    }
+  }
+}
