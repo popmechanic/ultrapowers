@@ -72,3 +72,7 @@
 {"kind":"driver:integrated-clean","wave":3,"removed":7,"id":"01M2K1PJRT00002NHPGMYRXTEC","ts":1789493201690}
 {"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel fleet/launch.mjs fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/publish-fold.mjs fleet/kata-client.mjs fleet/roles/fix.md fleet/roles/reviewer.md fleet/roles/examiner.md fleet/roles/reconcile.md fleet/roles/resolver.md","exit":0,"minor":false,"wave":3,"id":"01M2K1PJS300004EWXJFF24AV8","ts":1789493201699}
 {"kind":"driver:attention","task":"1","attention":"ok","msg":"session ended without hand-off","actor":"","id":"01M2K1RQ850000M7R97RQ34FC3","ts":1789493271813}
+{"kind":"worker:end","label":"exam:1","role":"examiner","sessionId":"e3bde0a7-95f3-4d61-ba21-c0ebbbaa1304","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":2732,"output":97086,"cacheRead":4092548,"cacheCreation":194437,"costUsd":6.425266499999999,"models":["claude-opus-5"]},"id":"01M2K227YP0000R92P6CJ3S4CK","ts":1789493583830}
+{"kind":"transcript:slice","label":"exam:1","sessionId":"e3bde0a7-95f3-4d61-ba21-c0ebbbaa1304","bytes":11420,"id":"01M2K227Z000000VF9ZKYBE5ZE","ts":1789493583840}
+{"kind":"driver:exam-handoff","task":"1","paths":["fleet/tests/test_engine_coverage.mjs"],"id":"01M2K229JR0000M0YW9HXS5NBJ","ts":1789493585496}
+{"kind":"driver:proof-run","task":"1","cmd":"node fleet/tests/test_engine_coverage.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M2K22HRE0000CG2ZT2EQPX18","ts":1789493593870}
