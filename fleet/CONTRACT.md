@@ -70,10 +70,16 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     the run's argument when it is a non-negative number and otherwise the larger of 60000 and the
     wall the baseline suite took (the age clause is off until the baseline settles);
     `foldAgeMs: 0` folds at every landing, siblings in flight or not.
-    So `driver:wave-adopted` `{wave, tasks, headSha, why, released?}` — the 1-based epoch in fold
-    order, the ids it merged in plan order, the head it left on the integration branch, each a
-    descendant of the epoch before it — and `driver:wave-blocked` `{wave, tasks, detail, why,
-    released?}`, the same epoch and ids with the `waveMerges` row's own `detail`.
+    So `driver:wave-adopted` `{wave, tasks, headSha, why, released?, applied}` — the 1-based epoch
+    in fold order, the ids it merged in plan order, and `applied`, one key per id saying how that
+    task LANDED: `base` when its patch was captured against this very head, `rebased` when it was
+    captured against an older one and the kernel three-way merged it with nothing narrated, and
+    `resolved` when a narrated conflict of the fold named one of the task's own files — then the
+    head it left on the integration branch, each a descendant of the epoch before it. And
+    `driver:wave-blocked` `{wave, tasks, detail, why, released?, applied}`, the same epoch, ids
+    and `applied` with the `waveMerges` row's own `detail` — appended for an epoch whose fold the
+    kernel could not complete (`CONFLICT`, the conflict it stopped on being what `applied` reads
+    `resolved` off) exactly as for one whose candidate suite stayed red.
     What an epoch adopts is what was captured and unadopted at the INSTANT the slot freed — a
     result that lands while a fold is running is adopted by the fold after it, never by the one
     already in flight, and only one fold runs at a time.

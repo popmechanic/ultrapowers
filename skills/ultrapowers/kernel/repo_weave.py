@@ -191,6 +191,12 @@ class TaskState:
     weaves: dict
     deleted: frozenset
     raw: dict
+    # The RepoState the task's weaves were published over, when that is NOT
+    # the wave's base: a task whose patch was captured against an older head
+    # (`--patch <id>=<file>@<anchorSha>`). `None` — the default, and every
+    # branch/head task — means "the wave's base", and `fold` then behaves
+    # exactly as it did before anchors existed.
+    anchor_base: RepoState = None
 
 
 @dataclass(frozen=True, eq=False)
@@ -254,8 +260,75 @@ def snapshot_scoped(repo, ref, paths):
     return _read_tree(repo, ref, paths)
 
 
-def task_state_from_contents(base, task_id, contents):
-    """Pure/no-git TaskState builder: path -> str (text), None (delete), bytes."""
+def _is_ancestor(repo, a, b):
+    return subprocess.run(["git", "-C", str(repo), "merge-base", "--is-ancestor",
+                           a, b], capture_output=True).returncode == 0
+
+
+def _ancestry_order(repo, refs):
+    """`refs` de-duplicated, oldest first — insertion sort on `--is-ancestor`.
+
+    Every anchor a wave carries is a commit its base descends from, so ancestry
+    orders them totally. Two refs neither of which is the other's ancestor keep
+    their sorted-string order, which at least keeps the result a function of the
+    input set.
+    """
+    ordered = []
+    for ref in sorted(set(refs)):
+        i = 0
+        while i < len(ordered) and _is_ancestor(repo, ordered[i], ref):
+            i += 1
+        ordered.insert(i, ref)
+    return ordered
+
+
+def chained_snapshots(repo, base_ref, anchors, paths):
+    """(base RepoState, {anchor: RepoState}) over `paths`, all ONE weave family.
+
+    The wave's base and the anchors of its anchored tasks are different trees of
+    the same line of history, and a fold has to merge weaves published over any
+    of them. Snapshotting each one on its own gives each path as many unrelated
+    roots as there are trees, and `merge_states` reads two such weaves as edits
+    to different files: disjoint edits come back as a conflict.
+
+    So the snapshots are read as a chain instead. Per path, the oldest tree that
+    has it is the root (`initial_state`); every later tree — the remaining
+    anchors in ancestry order, then the base — is `update_state` of the one
+    before it, i.e. is stated as an edit to its predecessor. A task anchored at
+    H then publishes over H's state, the frontier starts at the base's state,
+    and the two share H's file as their common ancestor: the merge is the
+    three-way over H that an anchored fold is defined to be, and a task anchored
+    at the base is still a plain descendant of the base's state.
+
+    With no anchors this is exactly `snapshot_scoped(repo, base_ref, paths)`.
+    """
+    paths = sorted(paths)
+    order = [a for a in _ancestry_order(repo, anchors) if a != base_ref]
+    refs = order + [base_ref]
+    snaps = {ref: snapshot_scoped(repo, ref, paths) for ref in refs}
+    files = {ref: {} for ref in refs}
+    for p in paths:
+        prior = None
+        for ref in refs:
+            state = snaps[ref].files.get(p)
+            if state is None:
+                continue  # absent in this tree, or binary there (it is in `raw`)
+            if prior is not None:
+                state = manyana.update_state(prior, manyana.current_lines(state))
+            files[ref][p] = state
+            prior = state
+    out = {ref: RepoState(files=files[ref], deleted_marks=frozenset(),
+                          raw=snaps[ref].raw) for ref in refs}
+    return out[base_ref], {a: out[a] for a in order}
+
+
+def task_state_from_contents(base, task_id, contents, anchor_base=None):
+    """Pure/no-git TaskState builder: path -> str (text), None (delete), bytes.
+
+    `anchor_base` is recorded on the result when `base` is the task's ANCHOR
+    rather than the wave's base, so `fold` reads presence and add/add against
+    the tree the task actually saw.
+    """
     weaves, raw, deleted = {}, {}, set()
     for p, c in contents.items():
         if c is None:
@@ -269,7 +342,8 @@ def task_state_from_contents(base, task_id, contents):
         else:
             # Weave over the empty base so concurrent adds share an ancestor.
             weaves[p] = manyana.update_state(manyana.initial_state([]), split_lines(c))
-    return TaskState(task_id=task_id, weaves=weaves, deleted=frozenset(deleted), raw=raw)
+    return TaskState(task_id=task_id, weaves=weaves, deleted=frozenset(deleted),
+                     raw=raw, anchor_base=anchor_base)
 
 
 def _diff_entries(repo, base_ref, ref):
@@ -286,8 +360,14 @@ def diff_paths(repo, base_ref, ref):
     return [p for _, p in _diff_entries(repo, base_ref, ref)]
 
 
-def publish(base, repo, base_ref, ref, task_id):
-    """Derive a TaskState from the git diff base_ref..ref."""
+def publish(base, repo, base_ref, ref, task_id, anchor_base=None):
+    """Derive a TaskState from the git diff base_ref..ref.
+
+    An ANCHORED task passes its anchor as `base_ref` and the anchor's chained
+    snapshot as both `base` and `anchor_base`: its weaves then descend from the
+    anchor's files, which is what makes the fold a three-way merge over the
+    anchor instead of over a base the task never saw.
+    """
     contents = {}
     for status, p in _diff_entries(repo, base_ref, ref):
         if status.startswith("D"):
@@ -295,7 +375,8 @@ def publish(base, repo, base_ref, ref, task_id):
         else:
             blob = _git(repo, "show", f"{ref}:{p}")
             contents[p] = blob if is_binary(blob) else blob.decode()
-    return task_state_from_contents(base, task_id, contents)
+    return task_state_from_contents(base, task_id, contents,
+                                    anchor_base=anchor_base)
 
 
 def _relabel(annotated, task_id):
@@ -323,7 +404,16 @@ def _text_kind(base, path):
 
 
 def _fold_text(base, task, files, conflicts):
-    """Fold the task's text weaves into `files`, appending any conflicts."""
+    """Fold the task's text weaves into `files`, appending any conflicts.
+
+    An ANCHORED task's weave descends from its anchor's file rather than from
+    the base's, and this step does not care: `chained_snapshots` published the
+    base over that same anchor, so the frontier and the task still meet at the
+    anchor's file and `merge_states` is the three-way over it. The merge stays
+    the one the kernel always ran, which is what keeps it commutative — a fold
+    that re-rooted the frontier here would answer differently depending on
+    which task arrived first.
+    """
     for p in sorted(task.weaves):
         w = task.weaves[p]
         if p in files:
@@ -468,15 +558,25 @@ def _fold_presence(base, frontier, task, files, candidates, deleted_marks, confl
 
 
 def fold(base, frontier, task):
-    """Merge `task` into `frontier`; returns (new RepoState, [Conflict])."""
+    """Merge `task` into `frontier`; returns (new RepoState, [Conflict]).
+
+    Every base-reading step reads the TASK's base — its anchor when it has
+    one, the wave's base otherwise. The conflict kind, the lone-type-change
+    drop and the presence pairings are all statements about what the task
+    branched from, and for an anchored task that is the anchor: a path the
+    anchor did not carry is the task's own add, whatever the wave's base
+    holds.
+    """
+    task_base = task.anchor_base if task.anchor_base is not None else base
     files = dict(frontier.files)
     candidates = {p: set(c) for p, c in frontier.raw_candidates.items()}
     deleted_marks = frontier.deleted_marks | task.deleted
     conflicts = []
-    _fold_text(base, task, files, conflicts)
+    _fold_text(task_base, task, files, conflicts)
     _fold_binary(task, candidates, conflicts)
-    _drop_superseded_text(base, task, files, candidates, deleted_marks)
-    _fold_presence(base, frontier, task, files, candidates, deleted_marks, conflicts)
+    _drop_superseded_text(task_base, task, files, candidates, deleted_marks)
+    _fold_presence(task_base, frontier, task, files, candidates, deleted_marks,
+                   conflicts)
     return (RepoState(files=files,
                       deleted_marks=deleted_marks,
                       raw=dict(frontier.raw),

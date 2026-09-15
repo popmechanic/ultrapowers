@@ -3254,7 +3254,19 @@ export async function runEngine({
       return { status: 'CONFLICT', detail: reason }
     }
 
-    const taskArgs = merged.flatMap((r) => ['--patch', r.task + '=' + r.patch])
+    // #1019 (M1) — every `--patch` carries the anchor its patch was CAPTURED
+    // against. Under the ready set a dispatch's tree can be older than the head
+    // this epoch folds onto (`captureAnchors` above says why), and the kernel
+    // applies such a patch over its OWN anchor and three-way merges the result
+    // over the base rather than refusing it. An anchor that IS `prevHead` is
+    // the base, and rides as no `@` at all: a fold whose every patch is
+    // same-anchored is the byte-for-byte call the engine made before anchors
+    // existed, down to the fold log and the candidate tree.
+    const anchorArg = (taskId) => {
+      const anchor = anchorOf.get(taskId)
+      return (typeof anchor === 'string' && anchor && anchor !== prevHead) ? ('@' + anchor) : ''
+    }
+    const taskArgs = merged.flatMap((r) => ['--patch', r.task + '=' + r.patch + anchorArg(r.task)])
     const commutesArgs = waveTasks
       .filter((t) => Array.isArray(t.commutes) && t.commutes.length)
       .flatMap((t) => ['--commutes', t.id + '=' + t.commutes.join(',')])
@@ -3964,6 +3976,36 @@ export async function runEngine({
     // at all, and the last moment before the kernel is asked anything.
     phase('Wave ' + epoch)
     const merge = await foldWave(merged, epoch - 1, epochTasks, prevHead)
+    // #1019 (M2) — how each task of this epoch LANDED, one key per task in plan
+    // order, carried onto whichever of the two events the epoch ends in. The
+    // reading is the anchor the dispatch went out on against this epoch's own
+    // `prevHead`, plus the paths the fold NARRATED: the wave's `conflicts.json`
+    // is the narration record (the fold's `open` entries and every continued
+    // fold's are written into it), so a task whose declared files a narrated
+    // conflict named is the one a resolver was asked about — the conflict that
+    // was answered on an adoption, the conflict the fold stopped on a blocked
+    // one. A task with no declared files reads `rebased`: nothing names it.
+    const narratedPaths = () => {
+      try {
+        const index = JSON.parse(fs.readFileSync(
+          path.join(waveDirOf(epoch), 'conflicts.json'), 'utf8'))
+        return new Set((Array.isArray(index) ? index : [])
+          .map((e) => e && e.path).filter((p) => typeof p === 'string' && p))
+      } catch {
+        // No index: the fold narrated nothing, or never got far enough to write
+        // one. Either way no path of this epoch was narrated.
+        return new Set()
+      }
+    }
+    const narrated = narratedPaths()
+    const applied = {}
+    for (const t of epochTasks) {
+      const anchor = anchorOf.get(t.id)
+      const stale = typeof anchor === 'string' && anchor && anchor !== prevHead
+      const files = Array.isArray(t.files) ? t.files : []
+      applied[t.id] = !stale ? 'base'
+        : (files.some((p) => narrated.has(p)) ? 'resolved' : 'rebased')
+    }
     waveMerges.push({
       wave: epoch,
       status: merge.status,
@@ -3995,7 +4037,7 @@ export async function runEngine({
     // worker of this epoch and before the next `engine:phase`.
     if (merge.status === 'MERGED') {
       appendEvent({ kind: 'driver:wave-adopted', wave: epoch,
-        tasks: epochTasks.map((t) => t.id), headSha: merge.headSha, ...trigger })
+        tasks: epochTasks.map((t) => t.id), headSha: merge.headSha, ...trigger, applied })
       adoptedHead = merge.headSha
       for (const t of epochTasks) adoptedIds.add(t.id)
       // The capture base a dispatch does NOT carry its own anchor for (the
@@ -4117,17 +4159,22 @@ export async function runEngine({
     // every task that depends on none of them is dispatched as before, and the
     // next epoch folds onto the head this one was restored to.
     const detail = merge.detail || merge.status
-    if (merge.status === 'TEST_FAILED') {
+    // #1019 (M3) — a fold the kernel could not complete is a blocked epoch like
+    // any other. `CONFLICT` used to fall straight through to `blockedWaves`
+    // with no event and no hub mark, so the one epoch outcome a reader most
+    // wants to see — the fold that stopped on a conflict nobody could resolve —
+    // was the one the record was silent about.
+    if (merge.status === 'TEST_FAILED' || merge.status === 'CONFLICT') {
       appendEvent({ kind: 'driver:wave-blocked', wave: epoch,
-        tasks: epochTasks.map((t) => t.id), detail: merge.detail, ...trigger })
+        tasks: epochTasks.map((t) => t.id), detail, ...trigger, applied })
       // The fold could not be made green, so nothing in it landed — every task
       // of the epoch is left OPEN and marked for a person, carrying the row's
       // own detail. Work the driver could not fold is a question for someone,
       // not a settled one.
       for (const t of epochTasks) {
         await kataMark(t.id, { status: 'blocked',
-          verdict: 'wave ' + epoch + ' blocked: ' + String(merge.detail),
-          notes: String(merge.detail) })
+          verdict: 'wave ' + epoch + ' blocked: ' + String(detail),
+          notes: String(detail) })
       }
     }
     blockedWaves.push({ wave: epoch, detail })
