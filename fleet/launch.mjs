@@ -1538,7 +1538,13 @@ async function fileRunOnHub ({ hub, call, planText, target, base, n, compiled })
     title: `${stamp}: ${planTitleOf(planText)}`,
     body: planClaimOf(planText),
     metadata: { run: n, target, base, closes: planClosesOf(planText) },
-    idempotencyKey: keyFor(`run-${n}`)
+    idempotencyKey: keyFor(`run-${n}`),
+    // A relaunch of a plan the fleet already drove differs from that run's
+    // open issue only by N in the title, and the hub's duplicate scorer refuses
+    // it (#1008). Run numbers make the title distinct by construction, so the
+    // create says so; the task creates below stay byte-identical, since theirs
+    // is the body the idempotency key is fingerprinted with.
+    forceNew: true
   }))
   const tasks = []
   for (const [index, wave] of waves.entries()) {
