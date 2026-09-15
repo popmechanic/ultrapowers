@@ -136,11 +136,12 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   is refused with a 405 and the sandbox folds its branch onto the new main again, so a second run's
   edits to the same file meet the first's in the kernel, not in a GitHub squash. Reason: decision 11
   (#715), read on the 8-wide drain of 2026-09-08 — four kernel-seen pairs all folded green with zero
-  conflicts, which met the pre-registered condition and retired the earlier rule ("run in parallel
-  wherever file sets are disjoint"). Caveat on the record: every one of those joins was line-disjoint;
-  the resolver's only real folds are run-36 (2 resolvers, merged) and run-44 (4 resolvers, 2 misses,
-  suite red, caught), both 2026-09-07 — 6 dispatches, 2 misses, both caught; the next drain that
-  produces a conflict is the resolver's measurement, not a reason to serialize. Allocated vCPU stays
+  conflicts (n=4 pairs, 8 runs, 2026-09-08), which met the pre-registered condition and retired the
+  earlier rule ("run in parallel wherever file sets are disjoint"). Caveat on the record: every one
+  of those joins was line-disjoint; the resolver's only real folds are run-36 (2 resolvers, merged)
+  and run-44 (4 resolvers, 2 misses, suite red, caught), both 2026-09-07 —
+  6 dispatches, 2 misses, both caught (n=6 dispatches, runs 36 and 44); the next drain that produces
+  a conflict is the resolver's measurement, not a reason to serialize. Allocated vCPU stays
   over-committable (48 on a 16-vCPU plan during that drain), so contention, not allocation, bounds
   concurrent runs.
 - **One merge, one writer.** Manyana merges file *content* at the fold, and that is the only
@@ -149,8 +150,10 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   no worker needs shared refs. Run STATE has exactly one writer per run — the sandbox — and its
   record is git: `.ultrapowers/runs/<N>/status.json` plus the receipts, committed at every
   transition and tagged at publish. `compile_plan.py` has defaulted to `overlap=fold` since the
-  2026-08-14 A/B (0.640× wall), so same-file concurrent writes are the shipped default: a
-  substrate that isolates harder than the kernel needs is buying nothing and costing width.
+  2026-08-14 A/B (0.640× wall, n=1 fixture; re-read 2026-08-30 at 0.594× over n=12 cells, 6
+  fixtures, `evals/results/2026-08-30-one-driver-fold-ab.md`), so same-file concurrent writes are
+  the shipped default: a substrate that isolates harder than the kernel needs is buying nothing and
+  costing width.
 - **Handoffs are opt-in** — a session starts from the operator's intention, never from the last
   session's agenda; read `.claude/ultrapowers/handoffs/` only when asked to resume (operator,
   2026-08-31). When you do read them, **sort by mtime, never by filename** — they are named for
@@ -170,7 +173,15 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   target's suite is a *reported sensor* with attribution, measured and never asserted on a
   narrative. Deletion is owed per file, on the reading: a test file that has never caught anything
   goes, and `skills/ultrapowers/scripts/catch_counter.py` is what turns that reading into the
-  deletion. Ballast goes behind a measurement gate, never on an incident narrative.
+  deletion. Ballast goes behind a measurement gate, never on an incident narrative. And every
+  reading states how much it was read over: a reading row carries its `n=…` with the `window` it was
+  read in, and no default flips under `n = 5 runs` — `20 tasks` for a per-task reading. A flip taken
+  under the floor is an `experiment` on its map and carries its `rollback`; a fact read once (a kata
+  seam, a trap) carries its `date`, not an n (operator, 2026-09-15, #994). The decision applied that
+  floor to three readings: `#872`'s escapes reading is over the floor at `n=9` merged runs
+  (131–140); the fold rule (`#1006`, one replay) stays an `experiment` until five, its rollback
+  `foldAgeMs=0` — a fold at every landing; and one reviewer (`#974`) was flipped on `n=71` runs and
+  stands.
 
 ## Working with the operator
 
