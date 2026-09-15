@@ -25,3 +25,9 @@
 {"kind":"worker:end","label":"review:2:1","role":"reviewer","sessionId":"9dec7094-24ee-4bd8-a3fd-7fdef7d337ae","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5085,"output":17291,"cacheRead":935837,"cacheCreation":64417,"costUsd":1.5697885,"models":["claude-opus-5"]},"id":"01M2J6VYPK0000YQE8J5TFJVWW","ts":1789465066195}
 {"kind":"transcript:slice","label":"review:2:1","sessionId":"9dec7094-24ee-4bd8-a3fd-7fdef7d337ae","bytes":11563,"id":"01M2J6VYPT00000X0S4DAT6RP9","ts":1789465066202}
 {"kind":"engine:phase","phase":"Wave 1","id":"01M2J6VYPX000063837CJ1QCKS","ts":1789465066205}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["2"],"headSha":"26791383e3a4a97008716ba94fc0465333c208a4","id":"01M2J6X2JA00008ZJTY19JYR8Y","ts":1789465102922}
+{"kind":"driver:integrated-clean","wave":1,"removed":6,"id":"01M2J6X2JB0000CZKJASVQ95J7","ts":1789465102923}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/roles skills/ultrapowers/kernel fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/launch.mjs fleet/sandbox-boot.sh fleet/publish-fold.mjs","exit":0,"minor":false,"wave":1,"id":"01M2J6X2JK0000D70HH7SGDNH4","ts":1789465102931}
+{"kind":"worker:end","label":"exam:1","role":"examiner","sessionId":"8c8d1ba6-5583-4bf3-ba77-28e943338814","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":2608,"output":73881,"cacheRead":2152394,"cacheCreation":151467,"costUsd":4.449675750000001,"models":["claude-opus-5"]},"id":"01M2J6YVV600008NCHA63KT4GK","ts":1789465161574}
+{"kind":"transcript:slice","label":"exam:1","sessionId":"8c8d1ba6-5583-4bf3-ba77-28e943338814","bytes":11313,"id":"01M2J6YVVB0000HDTSCFZNMH76","ts":1789465161579}
+{"kind":"driver:attention","task":"1","attention":"needs-human","msg":"session ended without hand-off","actor":"","id":"01M2J6Z4RA0000HT8HXH5E4K92","ts":1789465170698}
