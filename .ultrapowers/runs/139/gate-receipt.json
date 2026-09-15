@@ -1,0 +1,61 @@
+{
+  "mode": "gate",
+  "stamp": "run-139",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-139/report.json",
+  "branch": "ultra/integration-run-139",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:plan-defect",
+        "detail": "1 \u2014 plan-defect: the rewritten `waveMerges` row (skills/ultrapowers/references/report-format.md, the line beginning \"| `waveMerges` |\") ends \"The array is empty only for a run interrupted before any fold ran.\" That \"only\" is false of the engine at BASE in two non-interrupted paths: `foldEpoch` returns before pushing any row when it is handed nothing (`fleet/run-engine.mjs:3697`, `if (merged.length === 0) return`) and only mergeable results ever reach `pendingResults` (`:3678`), so a run whose every task failed completes normally with an empty `waveMerges`; and a dependency cycle pushes the binding judgment call at `:1704` and dispatches no task at all, so nothing is captured and again no row is pushed. The wrong sentence is dictated by the task's own Context (\"the array is empty only for a run interrupted before any fold\"), so this is a defect faithfully transcribed from the plan \u2014 but its fix lies inside this task's own FILES and the exam does not stand in the way: M6 only forbids \"may be absent\" and \"a red baseline leaves it empty\", and the eighteenth Run:'s ordered pattern still matches a sentence that keeps \"empty only\" ahead of \"interrupted before any fold\". This is the same species of error M6 exists to remove (run-138's over-broad claim about when the array is empty), just in the other direction: a reader who finds an empty array would conclude the run was interrupted. Everything else the row now says checks out against the engine \u2014 the fold push's field list (`:3731`-`:3748`, `joined` and the conditional `suite`, no `command`), the red-baseline park's four keys (`:3513`), and the Step-5 guard that blocks on a last row with no `headSha` (`skills/ultrapowers/scripts/gate_check.py:132`)."
+      }
+    ],
+    "notes": [],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 2,
+  "suite": {
+    "passed": true,
+    "unattributed": [],
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-139/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [173 items]\n\n........................................................................ [ 41%]\n........................................................................ [ 83%]\n.............................                                            [100%]\n============================= 173 passed in 38.89s =============================\n"
+  },
+  "verdict": "NEEDS_ACK"
+}

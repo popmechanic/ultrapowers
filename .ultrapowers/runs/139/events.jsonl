@@ -35,3 +35,14 @@
 {"kind":"worker:end","label":"review:1:1","role":"reviewer","sessionId":"6124d935-5c30-4f7e-87e1-8f5df628d482","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5391,"output":18782,"cacheRead":969597,"cacheCreation":57259,"costUsd":1.5538934999999998,"models":["claude-opus-5"]},"id":"01M2J7E20C00008Y02RGD499DC","ts":1789465659404}
 {"kind":"transcript:slice","label":"review:1:1","sessionId":"6124d935-5c30-4f7e-87e1-8f5df628d482","bytes":11405,"id":"01M2J7E20J0000M39TKMZRAX4X","ts":1789465659410}
 {"kind":"engine:phase","phase":"Wave 1","id":"01M2J7E20P0000ZSV07F2SWFJF","ts":1789465659414}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["1"],"headSha":"b2e908afa7100d234401ecbd606075171721cd28","id":"01M2J7F8MJ00000XZKY4WSW2QB","ts":1789465698962}
+{"kind":"driver:integrated-clean","wave":1,"removed":6,"id":"01M2J7F8MP0000KTNX3CQ1MT6X","ts":1789465698966}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/roles skills/ultrapowers/kernel fleet/run-engine.mjs","exit":0,"minor":false,"wave":1,"id":"01M2J7F8MX0000H95CFAE6TF4N","ts":1789465698973}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2J7F8VA0000MC2T27R42FFF","ts":1789465699178}
+{"kind":"driver:stage","stage":"finalize","id":"01M2J7F8W800007X066J53BSNB","ts":1789465699208}
+{"kind":"driver:stage","stage":"gate","id":"01M2J7F8XS0000QNY64C42PR6B","ts":1789465699257}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M2J7F90T0000JA9V8XNZ4C2E","ts":1789465699354}
+{"kind":"driver:ack-decision","approve":false,"reason":"non-pre-authorized ack(s): deferred:plan-defect","id":"01M2J7F90T0001J8ZZHDVCHHYW","ts":1789465699354}
+{"kind":"driver:fail","verdict":"needs-ack","detail":"non-pre-authorized ack(s): deferred:plan-defect — gate receipt is the terminal artifact","id":"01M2J7F90T0002FDZ56F1YM2SC","ts":1789465699354}
+{"kind":"run:open","runId":"run-139","base":"680a6b0e8b42ab4370874bebe536e1493e3b029f","source":"fleet/publish-fold.mjs","id":"01M2J7F9TE0000F91BDDKERX3M","ts":1789465700174}
+{"kind":"driver:publish-fold","run":"139","attempt":"1","base":"680a6b0e8b42ab4370874bebe536e1493e3b029f","tip":"680a6b0e8b42ab4370874bebe536e1493e3b029f","candidate":"b2e908afa7100d234401ecbd606075171721cd28","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M2J7FA740000GMWEHDME1NBY","ts":1789465700580}
