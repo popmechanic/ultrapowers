@@ -1,0 +1,590 @@
+{
+  "ok": true,
+  "stamp": "run-150",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-150"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "5 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "A worker declares an amendment and the driver writes it on the record",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/roles/fix.md",
+          "fleet/roles/implementer.md",
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`driver:amendment` event `{task, amends, what, why}` in `events.jsonl`",
+            "`report.json`'s `amendments` key \u2014 `[{task, amends, what, why}]`, `[]` when none",
+            "`IMPLEMENTER_SCHEMA.properties.amendments` in `fleet/run-engine.mjs`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The reviewer reads amendments as a lens and judges them instead of undoing them",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/roles/reviewer.md",
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`amendmentBlock(amendments)` exported from `fleet/run-engine.mjs`",
+            "the `AMENDMENTS:` block of the review prompt and the `undeclared amendment:` finding prefix in `fleet/roles/reviewer.md`"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The record names the row and the pull request lists it",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/sandbox-boot.sh",
+          "skills/ultrapowers/references/report-format.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "the `Amendments: <n> from workers` and `Amendments: none` lines of the PR card in `fleet/sandbox-boot.sh`",
+            "the `driver:amendment` paragraph of `fleet/CONTRACT.md` and the `amendments` row of `skills/ultrapowers/references/report-format.md`"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "The release census counts amendments per run",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrawrite/scripts/authoring_census.py",
+          "tests/test_authoring_census.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "the `amendments` column and the ` amendments=<n>` totals suffix of `skills/ultrawrite/scripts/authoring_census.py`"
+          ]
+        }
+      },
+      {
+        "id": "5",
+        "title": "The doctrine says the plan is a submission",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "CLAUDE.md",
+          "skills/ultrawrite/SKILL.md",
+          "skills/ultrawrite/references/authoring-gotchas.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "A worker declares an amendment and the driver writes it on the record",
+          "files": [
+            "fleet/roles/fix.md",
+            "fleet/roles/implementer.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_amendments.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`driver:amendment` event `{task, amends, what, why}` in `events.jsonl`",
+              "`report.json`'s `amendments` key \u2014 `[{task, amends, what, why}]`, `[]` when none",
+              "`IMPLEMENTER_SCHEMA.properties.amendments` in `fleet/run-engine.mjs`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/roles/fix.md",
+            "fleet/roles/implementer.md",
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_amendments.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_amendments.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_amendments.mjs | grep -q 'ALL TESTS PASSED'",
+            "python3 -m pytest -q -n auto -p no:cacheprovider tests/test_fleet_suite.py",
+            "sed -n '/^Judgment rules:/,/^$/p' fleet/roles/implementer.md | tr '\\n' ' ' | grep -q 'amendments.*files.*clause.*sim.*what.*why.*out-of-FILES (not taken):.*plan-defect: leg (x) cannot pass'",
+            "sed -n '/^The same judgment rules/,/^$/p' fleet/roles/fix.md | tr '\\n' ' ' | grep -q 'amendments.*files.*clause.*sim.*plan-defect:.*sibling'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_amendments.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/roles/fix.md",
+              "fleet/roles/implementer.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_amendments.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_amendments.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_amendments.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_amendments.mjs": "fleet/tests/test_run_engine_amendments.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_amendments.mjs"
+            ],
+            "siblingOwned": [
+              "CLAUDE.md",
+              "fleet/CONTRACT.md",
+              "fleet/roles/reviewer.md",
+              "fleet/run-engine.mjs",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_run_engine_amendment_lens.mjs",
+              "fleet/tests/test_sandbox_boot_amendments.mjs",
+              "skills/ultrapowers/references/report-format.md",
+              "skills/ultrawrite/SKILL.md",
+              "skills/ultrawrite/references/authoring-gotchas.md",
+              "skills/ultrawrite/scripts/authoring_census.py",
+              "tests/test_authoring_census.py",
+              "tests/test_authoring_census_amendments.py"
+            ],
+            "produces": [
+              "`driver:amendment` event `{task, amends, what, why}` in `events.jsonl`",
+              "`report.json`'s `amendments` key \u2014 `[{task, amends, what, why}]`, `[]` when none",
+              "`IMPLEMENTER_SCHEMA.properties.amendments` in `fleet/run-engine.mjs`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "The reviewer reads amendments as a lens and judges them instead of undoing them",
+          "files": [
+            "fleet/roles/reviewer.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_amendment_lens.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`amendmentBlock(amendments)` exported from `fleet/run-engine.mjs`",
+              "the `AMENDMENTS:` block of the review prompt and the `undeclared amendment:` finding prefix in `fleet/roles/reviewer.md`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/roles/reviewer.md",
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_amendment_lens.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_amendment_lens.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_amendment_lens.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'",
+            "sed -n '/^1\\. /,/^Every issue names its/p' fleet/roles/reviewer.md | tr '\\n' ' ' | grep -q 'AMENDMENTS.*second exception.*EXAM CONCERN'",
+            "sed -n '/^An .EXAM CONCERN:. line/,/^CHECK EVIDENCE/p' fleet/roles/reviewer.md | tr '\\n' ' ' | grep -q 'AMENDMENTS.*exception'",
+            "sed -n '/^1\\. /,/^Every issue names its/p' fleet/roles/reviewer.md | tr '\\n' ' ' | grep -q 'AMENDMENTS.*diff does what .what. says.*why.*task text'",
+            "sed -n '/^1\\. /,/^Every issue names its/p' fleet/roles/reviewer.md | tr '\\n' ' ' | grep -q 'declared amendment.*lawful.*named in the review.*never a finding.*never.*revert'",
+            "sed -n '/^1\\. /,/^Every issue names its/p' fleet/roles/reviewer.md | tr '\\n' ' ' | grep -q 'no entry declares.*undeclared amendment:.*minor.*naming the path or the clause'",
+            "sed -n '/^1\\. /,/^Every issue names its/p' fleet/roles/reviewer.md | tr '\\n' ' ' | grep -q 'declared amendment the diff contradicts.*blocking.*actor .implementer.'",
+            "sed -n '/^1\\. /,/^Every issue names its/p' fleet/roles/reviewer.md | tr '\\n' ' ' | grep -q 'deleting a file present at BASE.*Delete:.*blocking'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_amendment_lens.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/roles/reviewer.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_amendment_lens.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_amendment_lens.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_amendment_lens.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_amendment_lens.mjs": "fleet/tests/test_run_engine_amendment_lens.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_amendment_lens.mjs"
+            ],
+            "siblingOwned": [
+              "CLAUDE.md",
+              "fleet/CONTRACT.md",
+              "fleet/roles/fix.md",
+              "fleet/roles/implementer.md",
+              "fleet/run-engine.mjs",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_run_engine_amendments.mjs",
+              "fleet/tests/test_sandbox_boot_amendments.mjs",
+              "skills/ultrapowers/references/report-format.md",
+              "skills/ultrawrite/SKILL.md",
+              "skills/ultrawrite/references/authoring-gotchas.md",
+              "skills/ultrawrite/scripts/authoring_census.py",
+              "tests/test_authoring_census.py",
+              "tests/test_authoring_census_amendments.py"
+            ],
+            "produces": [
+              "`amendmentBlock(amendments)` exported from `fleet/run-engine.mjs`",
+              "the `AMENDMENTS:` block of the review prompt and the `undeclared amendment:` finding prefix in `fleet/roles/reviewer.md`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "3",
+          "title": "The record names the row and the pull request lists it",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/test_sandbox_boot_amendments.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "the `Amendments: <n> from workers` and `Amendments: none` lines of the PR card in `fleet/sandbox-boot.sh`",
+              "the `driver:amendment` paragraph of `fleet/CONTRACT.md` and the `amendments` row of `skills/ultrapowers/references/report-format.md`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_amendments.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_amendments.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_sandbox_boot_amendments.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_viz.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_kata_export.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_engine_env.mjs | grep -q 'ALL TESTS PASSED'",
+            "sed -n '/^    The driver.s own executions are three more kinds/,/^    .transcripts.<sessionId>.jsonl/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'driver:amendment.*task, amends, what, why.*clause.*files.*sim.*hub issue.*amendments'",
+            "sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming:\\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'Residuals: <n> from review.*Amendments: <n> from workers.*Amendments: none'",
+            "grep -q '\"amendments\": { \"type\": \"array\"' skills/ultrapowers/references/report-format.md",
+            "sed -n '/^| .judgmentCalls. | no |/,/^| .unfinished. | yes |/p' skills/ultrapowers/references/report-format.md | grep -q '^| .amendments. | no |.*task.*amends.*what.*why.*never gated'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_sandbox_boot_amendments.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_sandbox_boot_amendments.mjs",
+              "skills/ultrapowers/references/report-format.md"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_sandbox_boot_amendments.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_sandbox_boot_amendments.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_sandbox_boot_amendments.mjs": "fleet/tests/test_sandbox_boot_amendments.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_sandbox_boot_amendments.mjs"
+            ],
+            "siblingOwned": [
+              "CLAUDE.md",
+              "fleet/roles/fix.md",
+              "fleet/roles/implementer.md",
+              "fleet/roles/reviewer.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_amendment_lens.mjs",
+              "fleet/tests/test_run_engine_amendments.mjs",
+              "skills/ultrawrite/SKILL.md",
+              "skills/ultrawrite/references/authoring-gotchas.md",
+              "skills/ultrawrite/scripts/authoring_census.py",
+              "tests/test_authoring_census.py",
+              "tests/test_authoring_census_amendments.py"
+            ],
+            "produces": [
+              "the `Amendments: <n> from workers` and `Amendments: none` lines of the PR card in `fleet/sandbox-boot.sh`",
+              "the `driver:amendment` paragraph of `fleet/CONTRACT.md` and the `amendments` row of `skills/ultrapowers/references/report-format.md`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "4",
+          "title": "The release census counts amendments per run",
+          "files": [
+            "skills/ultrawrite/scripts/authoring_census.py",
+            "tests/test_authoring_census.py",
+            "tests/test_authoring_census_amendments.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "the `amendments` column and the ` amendments=<n>` totals suffix of `skills/ultrawrite/scripts/authoring_census.py`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrawrite/scripts/authoring_census.py",
+            "tests/test_authoring_census.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_authoring_census_amendments.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_authoring_census_amendments.py",
+          "proofRuns": [
+            "python3 -m pytest -q -p no:cacheprovider tests/test_authoring_census_amendments.py",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_authoring_census.py",
+            "python3 skills/ultrawrite/scripts/authoring_census.py --help | grep -q -- --fetch",
+            "test \"$(grep -c '^def test_' tests/test_authoring_census.py)\" = 19"
+          ],
+          "proofGuards": [
+            "tests/test_authoring_census_amendments.py"
+          ],
+          "factsheet": {
+            "files": [
+              "skills/ultrawrite/scripts/authoring_census.py",
+              "tests/test_authoring_census.py",
+              "tests/test_authoring_census_amendments.py"
+            ],
+            "deletes": [],
+            "guards": [
+              "tests/test_authoring_census_amendments.py"
+            ],
+            "proofTests": [
+              "tests/test_authoring_census_amendments.py"
+            ],
+            "landing": {
+              "tests/test_authoring_census_amendments.py": "tests/test_authoring_census_amendments.py"
+            },
+            "driverOwned": [
+              "tests/test_authoring_census_amendments.py"
+            ],
+            "siblingOwned": [
+              "CLAUDE.md",
+              "fleet/CONTRACT.md",
+              "fleet/roles/fix.md",
+              "fleet/roles/implementer.md",
+              "fleet/roles/reviewer.md",
+              "fleet/run-engine.mjs",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_run_engine_amendment_lens.mjs",
+              "fleet/tests/test_run_engine_amendments.mjs",
+              "fleet/tests/test_sandbox_boot_amendments.mjs",
+              "skills/ultrapowers/references/report-format.md",
+              "skills/ultrawrite/SKILL.md",
+              "skills/ultrawrite/references/authoring-gotchas.md"
+            ],
+            "produces": [
+              "the `amendments` column and the ` amendments=<n>` totals suffix of `skills/ultrawrite/scripts/authoring_census.py`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "5",
+          "title": "The doctrine says the plan is a submission",
+          "files": [
+            "CLAUDE.md",
+            "skills/ultrawrite/SKILL.md",
+            "skills/ultrawrite/references/authoring-gotchas.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "CLAUDE.md",
+            "skills/ultrawrite/SKILL.md",
+            "skills/ultrawrite/references/authoring-gotchas.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^## Doctrine/,/^## Working with the operator/p' CLAUDE.md | tr '\\n' ' ' | grep -q 'Ballast goes behind a measurement gate.*The plan is a submission, not a contract (operator, 2026-09-15, #990).*driver:amendment.*lens.*never reverts.*plan-defect.*per run and per task.*run-133.*run-2'",
+            "sed -n '/^## Task shape/,/^## Elicit the claim/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'The Files block carries canonical.*expected footprint.*submission.*amendment.*lens.*foresee'",
+            "sed -n '/^## Task shape/,/^## Elicit the claim/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'Run:.*sibling'",
+            "! grep -q 'Every file a task must touch is in its own Files' skills/ultrawrite/references/authoring-gotchas.md",
+            "sed -n '/^## The twelve rows/,/^## Three older lessons/p' skills/ultrawrite/references/authoring-gotchas.md | tr '\\n' ' ' | grep -q 'Every file a task can foresee touching is in its own Files.*fix-loop-exhausted.*amendment.*never reverts.*#990.*(run-2, 2026-09-04)'",
+            "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "CLAUDE.md",
+              "skills/ultrawrite/SKILL.md",
+              "skills/ultrawrite/references/authoring-gotchas.md"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/roles/fix.md",
+              "fleet/roles/implementer.md",
+              "fleet/roles/reviewer.md",
+              "fleet/run-engine.mjs",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_run_engine_amendment_lens.mjs",
+              "fleet/tests/test_run_engine_amendments.mjs",
+              "fleet/tests/test_sandbox_boot_amendments.mjs",
+              "skills/ultrapowers/references/report-format.md",
+              "skills/ultrawrite/scripts/authoring_census.py",
+              "tests/test_authoring_census.py",
+              "tests/test_authoring_census_amendments.py"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "5 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- No kernel, launcher, worker, waves-module, publish-fold or kata-client changes, and no role file other than `fleet/roles/implementer.md`, `fleet/roles/fix.md` and `fleet/roles/reviewer.md` changes.\n- Nothing here gates: an amendment changes no run's verdict \u2014 for the same tree, `tests.passed`, the gate receipt, the PR's draft/ready state and the merge decision are what they were at BASE \u2014 and the plan-defect park (a leg-labelled cannot-pass `plan-defect:` concern beside an exam red twice) is untouched.\n- The record's shapes keep their names and gain keys only: every existing `driver:*` event, every existing `report.json` key and every existing line of the PR card are what they were at BASE.\n- No direct Anthropic API call, no `anthropic` SDK and no API key in any shipped or dev file.\n- Every sim keeps printing `ALL TESTS PASSED` on its last line and names no sibling sim.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel fleet/launch.mjs fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/publish-fold.mjs fleet/kata-client.mjs fleet/roles/examiner.md fleet/roles/reconcile.md fleet/roles/resolver.md",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-150/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-150/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-150/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-150/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}

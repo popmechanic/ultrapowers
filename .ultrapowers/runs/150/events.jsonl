@@ -1,0 +1,17 @@
+{"kind":"run:open","runId":"run-150","base":"","source":"fleet/run-main.mjs","id":"01M2K4F8Y10000YJMM4H78WEHS","ts":1789496107969}
+{"kind":"driver:stage","stage":"kata","detail":"record /home/exedev/plans/run-150.kata.json → https://kata.int.exe.xyz","id":"01M2K4F8Y30000JDVNHBJFY1PX","ts":1789496107971}
+{"kind":"driver:stage","stage":"tiers","detail":"5 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M2K4F8Y40000R84JS7XKY703","ts":1789496107972}
+{"kind":"driver:stage","stage":"provision","detail":"BASE 41cb53b606146ee16f7904eaf0440531257426f1; 5 task clone(s) + integration","id":"01M2K4F9C10000GQ6P8JQCCY0H","ts":1789496108417}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M2K4F9ZT00004S6XHZDSSWZH","ts":1789496109050}
+{"kind":"driver:stage","stage":"engine","detail":"waves 5, width bound 5, patch input armed","id":"01M2K4F9ZV0000ZV6SH4TNWE7K","ts":1789496109051}
+{"kind":"engine:phase","phase":"Setup","id":"01M2K4FA0000002K4MK237W84J","ts":1789496109056}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-150 at 41cb53b606146ee16f7904eaf0440531257426f1","id":"01M2K4FA8R0000SVBFCW2PWQFG","ts":1789496109336}
+{"kind":"worker:start","label":"exam:3","role":"examiner","sessionId":"db6e5bb0-afd8-41b7-aabe-0da9913390df","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-150/clones/exam-3","model":"opus","id":"01M2K4FB1M0000526TRR7AHX2B","ts":1789496110132}
+{"kind":"worker:start","label":"impl:3","role":"implementer","sessionId":"b137df0b-4cd8-4bcb-ac17-fee5792bfdcb","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-150/clones/task-3","model":"opus","id":"01M2K4FB1P0000BQAK7PZTZPHW","ts":1789496110134}
+{"kind":"worker:start","label":"impl:5","role":"implementer","sessionId":"dd2bcd6a-af43-4568-8c76-3959d1696ca6","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-150/clones/task-5","model":"opus","id":"01M2K4FB1T0000VFQFCSQ5SJ9E","ts":1789496110138}
+{"kind":"worker:start","label":"exam:1","role":"examiner","sessionId":"44234a1c-26cd-45de-ab4e-5eedb4987074","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-150/clones/exam-1","model":"opus","id":"01M2K4FB33000036AKDJ6YZ3FE","ts":1789496110179}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"16d745e7-c9bf-443b-9de3-b66ec3081665","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-150/clones/task-1","model":"opus","id":"01M2K4FB350000S42Y7VVPQ7XW","ts":1789496110181}
+{"kind":"worker:start","label":"exam:2","role":"examiner","sessionId":"81547b2d-8375-4d33-9fc0-6b86a1945ecc","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-150/clones/exam-2","model":"opus","id":"01M2K4FB3S0000BP4Z1J0HQKKN","ts":1789496110201}
+{"kind":"worker:start","label":"impl:2","role":"implementer","sessionId":"4339bbc4-d333-4cc2-9c45-a73630c67e84","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-150/clones/task-2","model":"opus","id":"01M2K4FB470000ENVX1H0YYXTN","ts":1789496110215}
+{"kind":"worker:start","label":"exam:4","role":"examiner","sessionId":"d3cc6c2c-a99f-4876-b024-9f5636cfcd64","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-150/clones/exam-4","model":"opus","id":"01M2K4FB490000GF79XVRK9CWX","ts":1789496110217}
+{"kind":"worker:start","label":"impl:4","role":"implementer","sessionId":"761f61a9-e4a6-4048-b60d-a8768eed54ee","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-150/clones/task-4","model":"opus","id":"01M2K4FB4N0000NXGZMVY5XTG8","ts":1789496110229}
