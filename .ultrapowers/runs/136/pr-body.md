@@ -1,0 +1,75 @@
+This is the fix the Phase C reading asked for: run-134 replayed a ten-task plan in five folds of a five-minute suite where the wave engine paid one, because the engine folds whatever has landed the instant a lane frees, whether or not that fold lets anything start. It exists so a fold is bought only when it buys something — a queued task becomes ready, the run is ending, or a result has sat unadopted for a whole suite's length — and so the hub tells the truth about a task between its worker ending and its fold, instead of stamping every clean task as needing a human. After this run a plan with no edges folds once at the end, a chain folds exactly when its consumer can start, and a run's issues read open, landed, adopted, done.
+
+**Parked:** parked: gate verdict BLOCKED
+
+> When I read a run's record, every fold either made a queued task ready, closed the run, or adopted work that had waited a full suite's length — a plan with no edges folds once, and a task lands on the hub as landed, then adopted, never as needing a human when it doesn't.
+
+| task | claim | exam | probes | mutant | suite |
+|---|---|---|---|---|---|
+| 1 | When I read a run's record, every fold either made a queued task ready, closed the run, or adopted work that had waited a full suite's length — and a plan with no edges folds once. | red at BASE → green | — | — | — |
+| 2 | A task lands on the hub as landed, then adopted, never as needing a human when it doesn't. | red at BASE → green | — | — | — |
+
+Residuals: 15 from review
+
+<details><summary>Record</summary>
+
+## fleet run-136 — parked
+
+| | |
+|---|---|
+| verdict | `BLOCKED` |
+| target | `popmechanic/ultrapowers` at `a94143bb79f780a63e41e751418b9a3d3a9d2db2` |
+| engine | `a94143bb79f780a63e41e751418b9a3d3a9d2db2` |
+| plan | `.ultrapowers/plan.md` at `56f0237dee1502876dceb8bcb1037538e5a61e53` |
+| branch | `ultra/integration-run-136` |
+| vm | `fleet-r136-2609150923-5c74` |
+
+### Checks
+
+```json
+{"mode": "gate", "stamp": "run-136", "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-136/report.json", "branch": "ultra/integration-run-136", "gateCheck": {"verdict": "BLOCKED", "checks": [{"name": "report-parse", "ok": true, "detail": ""}, {"name": "clean-tree", "ok": true, "detail": ""}, {"name": "wave-merges", "ok": false, "detail": "merge-sha guard unavailable \u2014 result lacks waveMerges[last].headSha (budget-exhausted or SKIPPED-only run); inspect and redirect/re-run"}, {"name": "head-match", "ok": false, "detail": "skipped \u2014 no recorded merge headSha to compare"}, {"name": "git-verified", "ok": true, "detail": ""}, {"name": "ancestry", "ok": true, "detail": ""}, {"name": "deliverables", "ok": true, "detail": ""}], "notes": [], "repo": "/home/exedev/target"}, "gateCheckExit": 1, "suite": {"passed": true, "unattributed": [], "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-136/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [155 items]\n\n........................................................................ [ 46%]\n........................................................................ [ 92%]\n...........                                                              [100%]\n============================= 155 passed in 35.43s =============================\n"}, "verdict": "BLOCKED"}
+
+```
+
+### Evidence
+
+https://github.com/popmechanic/ultrapowers/tree/ultra/evidence/run-136/.ultrapowers/runs/136/
+
+- claude-version.txt
+- engine.log
+- events.jsonl
+- gate-receipt.json
+- kata.jsonl
+- pr-body.md
+- publish-fold
+- receipt.json
+- report.json
+- residuals.jsonl
+- status.json
+- transcripts
+
+### Plan
+
+https://github.com/popmechanic/ultrapowers/blob/ultra/plan/run-136/.ultrapowers/plan.md
+
+### Residuals
+
+- [ ] task 2 reviewer — Footprint: the diff modifies `fleet/tests/test_run_engine_re_edge.mjs`, a path outside this task's FILES (and not a SIBLING FILES path, so it is not a sibling collision). The edit is substantively justified — leg (d) there asserted `!hasOwnProperty(metaOf(UID.B), 'work.attention')`, and under M1 task B does land, so its landing patch necessarily writes `work.attention: 'ok'` and the original assertion became unsatisfiable for any correct implementation. The replacement reads the same intent off the patch log (`no 'work.attention' value other than 'ok' was ever patched for B`) rather than off end-of-run metadata, and the accompanying comment discloses why. Recorded as a scope note, not a defect: naming the path is what rule 3 asks for.
+- [ ] task 2 reviewer — unverified: GLOBAL CONSTRAINT "Every sim keeps printing ALL TESTS PASSED" carries no `Check:` the driver ran, and the evidence present covers only `test_run_engine_kata_close.mjs` (Run, exit 0) and the new `test_run_engine_kata_landing.mjs` (Exam, exit 0). The sim this diff also edits, `fleet/tests/test_run_engine_re_edge.mjs`, has no execution behind it, and neither does `fleet/tests/test_sims_are_hermetic.mjs`, whose sweep auto-discovers the newly added `fleet/tests/test_*.mjs`. Static reading says both should be green — the re-edge sim's only `work.attention` assertion on B is the one rewritten (line 610 at BASE
+- [ ] task 2 reviewer — the `d2` assertion at 691 is a non-mergeable task and is untouched by the landing patch), and the new sim spawns no process, reads no string-literal absolute path and names no sibling sim in a spawn, so the hermetic probe's three rules are not tripped. What would settle it: `node fleet/tests/test_run_engine_re_edge.mjs` and `node fleet/tests/test_sims_are_hermetic.mjs`, each ending `ALL TESTS PASSED`.
+- [ ] task 2 reviewer — M1's "before any fold adopts it" is guaranteed by construction only for the fold this landing itself claims. In `settleResult`, `kataLanded` is awaited after `claimEpoch()`
+- [ ] task 2 reviewer — when the claim is REFUSED (`epochClaimed` already true, so `claimEpoch()` returns null and the row stays in `pendingResults`), the fold that is running can release, a second lane can claim that epoch — which now contains this result — and reach `kataAdopted` for it while the `landed` patch is still in flight through `drainKataPosts` + `kataCall`. If the adoption patch won that race the issue would end the run reading `work.state: 'landed'`, the state it is not in. The window is narrow in practice — the competing path is a whole fold (lock, baseline await, kernel fold/resolve/materialize/suite, real child processes) against one metadata write — and closing it properly would mean the fold awaiting outstanding landing patches, which is beyond this task's minimal shape. Recorded so the ordering guarantee is not read as stronger than it is
+- [ ] task 2 reviewer — the exam's leg (a) pins the single-landing case only.
+- [ ] task 2 reviewer — concern: out-of-FILES: fleet/tests/test_run_engine_re_edge.mjs — its leg (d) asserted `!hasOwnProperty(metaOf(UID.B), 'work.attention')` against the END-OF-RUN metadata. Task B is re-dispatched after its re-edge and does land, so the new landing patch clears its attention to `ok` and that assertion went red
+- [ ] task 2 reviewer — the global constraint requires every sim stay green. Rewrote the assertion to read the patches the driver sent on B and require that none carried a value other than `ok` — i.e. never a `needs-human`, which is what the leg's own message says it is about ("a task waiting for a sibling is not a question for a person"). No behaviour of the re-edge changed and no other leg of that sim was touched.
+- [ ] task 2 reviewer — concern: Proof leg (a) says the landed patch's index is "after the last `comment` the driver posted for task 1's worker end". In the rig there are no such comments: `worker:start`/`worker:end` envelopes come from run-worker.mjs, which the rig stubs below, and a task with no `proofRuns` produces no `driver:*` event carrying its id. The measured call sequence on an adopted task's uid is exactly [getIssue, claim, patchMetadata(landed), patchMetadata(adopted), close]. The ordering property itself holds — `kataLanded` awaits `drainKataPosts()` before its patch, so any queued comment is posted first — but an exam that requires at least one comment to exist before the landed patch would need to give the task a proof run to produce one. Disclosure only
+- [ ] task 2 reviewer — the leg is satisfiable.
+- [ ] task 1 reviewer — unverified: the fold policy changes when EVERY engine sim's epochs happen, but only four sims were executed on this tree (the Proof's `Run:` lines: ready_set, joined_proofs, proof_runs, re_edge) plus the exam. The remaining engine sims under `fleet/tests/` — `test_run_engine_infra_retry.mjs`, `test_run_engine_one_of_each.mjs`, `test_run_engine_own_proofs.mjs`, `test_run_engine_reuse.mjs`, `test_run_engine_review_economy.mjs`, `test_run_engine_kata_close.mjs` and the sibling task's `test_run_engine_kata_landing.mjs` — drive real runs whose epoch count and epoch timing this diff alters (a run that folded per landing at BASE now folds once at `end` unless it passes `foldAgeMs: 0`). Reading them, none appears to pace a worker on a mid-run fold and `test_run_engine_reuse.mjs`'s adoption assertions look tolerant, so this is a risk rather than a known break. What would settle it: `python3 -m pytest tests/test_fleet_suite.py` (the bridge that runs every `fleet/tests/test_*.mjs`), or `node` on each of those sims, on the patched tree.
+- [ ] task 1 reviewer — Coverage loss: at BASE, `test_run_engine_ready_set.mjs` scenario `c1` held the kernel's FIRST `fold` until Y's and Z's results were captured, and was the tree's only pin on "a result that lands while a fold is running is adopted by the fold after it, never by the one already in flight" — a behaviour GLOBAL CONSTRAINT 2 says must be preserved. The task mandates re-aiming `c1` to the one-epoch/`why: 'end'` shape, and the diff correctly does that (including deleting the `hold` plumbing from `kernelSeam`/`drive`), but nothing in the tree pins the mid-fold landing partition any more: the foot-of-file sweep still checks one-fold-at-a-time, one-epoch-per-task, consecutive numbering and descendant heads, not the partition. The new sim is where the fix belongs — a scenario with `foldAgeMs: 0` and an exec-seam hold on the first `fold` (its `kernelSeam` already sees every kernel call) asserting the second epoch carries exactly the results that landed during the first.
+- [ ] task 1 reviewer — Latent fragility in the new exam, `fleet/tests/test_run_engine_fold_policy.mjs`: leg (a)'s sweep applies the `released`-ids check — each named id is dispatched after the event with `head === e.headSha` — to every epoch event, including `driver:wave-blocked`. A red epoch claimed under `why: 'released'` (possible in the engine: `foldTrigger` reads the trigger before the candidate is tested, and `foldEpoch` carries `whyKeys` onto the blocked event too) has no `headSha` and its released ids are then in `blockedByDep` and never dispatched, so the sweep would go red for something that is not the engine's fault. No scenario here reaches it — the red run `r1` uses `foldAgeMs: 0` and folds under `aged` — so the exam is green as it stands.
+- [ ] task 1 reviewer — Small unrequested churn in `fleet/tests/test_run_engine_ready_set.mjs`: `plainImpl` is relocated from below `drive` to up among the canned workers (with a new comment justifying the move). Removing the `hold` plumbing and re-aiming `c1` needed no such move
+- [ ] task 1 reviewer — it is harmless but adds diff noise to a file three other reviewers read against BASE.
+
+</details>
+
+Closes #979
