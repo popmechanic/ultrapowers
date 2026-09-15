@@ -1,0 +1,110 @@
+{
+  "integrationBranch": "ultra/integration-run-147",
+  "baseSha": "5a8f1ebd7736218823a1156c10615f35043075f4",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "status": "failed",
+      "reviewVerdict": "agent-error",
+      "notes": "AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proofFixes": 0,
+      "landedAt": 1789493972906,
+      "stateExams": []
+    },
+    {
+      "task": "3",
+      "status": "failed",
+      "reviewVerdict": "agent-error",
+      "notes": "AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proofFixes": 0,
+      "landedAt": 1789493974265,
+      "stateExams": []
+    },
+    {
+      "task": "2",
+      "status": "failed",
+      "reviewVerdict": "agent-error",
+      "notes": "AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proofFixes": 0,
+      "landedAt": 1789493975616,
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": false,
+    "output": "not run \u2014 no wave merged",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [],
+  "reviewEconomy": {
+    "reviewerMs": 0,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-147/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [210 items]\n\n........................................................................ [ 34%]\n........................................................................ [ 68%]\n..................................................................       [100%]\n============================= 210 passed in 57.91s =============================\n"
+  },
+  "waveMerges": [],
+  "frontier": [],
+  "coverage": {
+    "tasks_merged": 0,
+    "tasks_planned": 3,
+    "complete": false
+  },
+  "missingDeliverables": [
+    {
+      "task": "1",
+      "files": [
+        "CLAUDE.md"
+      ]
+    },
+    {
+      "task": "3",
+      "files": [
+        "skills/ultrawrite/scripts/authoring_census.py",
+        "tests/test_authoring_census.py"
+      ]
+    },
+    {
+      "task": "2",
+      "files": [
+        "skills/ultrapowers/references/report-format.md",
+        "skills/ultrawrite/SKILL.md"
+      ]
+    }
+  ],
+  "gitVerified": false,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: infra-death (AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)) \u2014 parked for one retry when a slot frees (no immediate retry into the live storm)",
+    "task 3: infra-death (AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)) \u2014 parked for one retry when a slot frees (no immediate retry into the live storm)",
+    "task 2: infra-death (AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)) \u2014 parked for one retry when a slot frees (no immediate retry into the live storm)",
+    "task 1: slot-free retry after infra-death failed \u2014 AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)",
+    "task 3: slot-free retry after infra-death failed \u2014 AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)",
+    "task 2: slot-free retry after infra-death failed \u2014 AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)"
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
