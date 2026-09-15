@@ -1,0 +1,4 @@
+{"tasks": {
+ "1": {"hash": "ee3d343ba5632c50e6ef4166d066d76b1acfc5121e7178c2a790191a758965d8", "verdict": "pass", "reason": "Every pinned literal computes under the clauses' own rules: three no-edge landings under a large age can only fold on end, A→C/B→C fires released ['C'], a 300 ms timer with B held proves the wake, the sed anchors exist, the existing sims' expectations are preserved by foldAgeMs 0, and re_edge still folds under the default."},
+ "2": {"hash": "08be7b9859983ea95da1dd2aed573e25f80d4c0c6fea073e5aeac6a4991ddc05", "verdict": "pass", "reason": "isMergeable separates M1 from M3, kataAdopted is the single per-task patch M2 extends with the close untouched, the kata_close deep-equals are in Files, and both sed ranges anchor at BASE with the two-keys sentence occurring once."}
+}, "tally": {"dispatched": 5, "rejected": 3, "rounds": {"1": [1,1], "2": [1,1], "3": [1]}}}
