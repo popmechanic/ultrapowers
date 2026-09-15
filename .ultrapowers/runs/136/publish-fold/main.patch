@@ -1,0 +1,1411 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 84a2275ed571c2ab41197aadcdc57e3b0adf4c21..6a32a6a1daf147b4f2d17ad6b6de6410bc02836a 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -70,7 +70,8 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
+   collapse, #597/#598 the move onto the target). `fleet/CONTRACT.md` is the authority for
+   every literal and `fleet/RUNBOOK.md` the operator procedure — the contract wins.
+   `launch.mjs` validates (hash pins, then `compile_plan.py --check --base` through the exec
+-  seam — its `BASE fact:` lines print on the launch line), reads the pool from
++  seam — its `BASE fact:` lines and its `STALE fact:` lines print on the launch line),
++  reads the pool from
+   `billing plan --json`, computes N from the target's own `ultra/*-run-*` branches, refreshes
+   the Claude bearer, pushes the plan as one commit on base to `ultra/plan-run-<N>`
+   (tree = base + `.ultrapowers/plan.md`), then issues ONE lobby verb: a per-run `new` carrying
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index e8878f3c9ca42493ec88433d264ce3aa98816ebb..6f5340c3b4db86faf97a9d88eebaede9eeb918fb 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -580,7 +580,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   `work.state` (`parked` or `failed`), `work.attention` (`needs-human`) and `work.attention_msg`
+   (the page's error head) — the three flat keys the boot-script bullet above spells — and the
+   operator resolves it and closes it by hand. Only a run that ended `done` is closed, by the boot.
+-- **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"wave":"<n or null>","state":"queued|examining|implementing|proving|reviewing|fixing|folded|failed","role":"<worker label or null>","lastProof":"{cmd, exit, ts} or null","park":"<detail or null>","attention":"{value, msg, ts} or null"}}}`
++- **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"wave":"<n or null>","state":"queued|waiting|examining|implementing|proving|reviewing|fixing|folded|failed","role":"<worker label or null>","lastProof":"{cmd, exit, ts} or null","park":"<detail or null>","attention":"{value, msg, ts} or null","blockedBy":"[<task ids>] or null"}}}`
+   — the SAME bytes are served at `/status.json` and committed to
+   `.ultrapowers/runs/<N>/status.json` on `ultra/evidence-run-<N>` at every transition **and, while
+   the engine runs, on the first refresher poll that has seen either `FLEET_COMMIT_EVENTS` new lines
+@@ -590,10 +590,14 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   `"tasks":` is the LAST cell on the page — a reader answers the FIRST `"state"` in the file, so a
+   task's own `folded` must never sit above the run's — and it is a projection of `events.jsonl` and
+   nothing else: one key per task id the plan's waves or the log names, each carrying the wave it
+-  belongs to, one of the eight states above, the label of the worker open for it, its last proof run
+-  (`driver:proof-run`, `driver:check-run` or `driver:exam-run`), the detail it was parked with and
++  belongs to, one of the nine states above, the label of the worker open for it, its last proof run
++  (`driver:proof-run`, `driver:check-run` or `driver:exam-run`), the detail it was parked with,
+   its `attention` cell — `{value, msg, ts}` read off that task's latest `driver:attention` event,
+-  `null` for a task that never raised a hand.
++  `null` for a task that never raised a hand — and its `blockedBy` cell, the LAST key of the cell.
++  A task the driver re-edged reads `waiting` with `blockedBy` the siblings that `driver:re-edged`
++  named, whatever the `worker:end` before it said, and the state moves on at the task's next
++  `worker:start` while `blockedBy` keeps the record of what it waited on; a task no `driver:re-edged`
++  names reads `null` there.
+   The same projection is printed for any log by
+   `bash fleet/sandbox-boot.sh project <events.jsonl> [<args.json>]`, which reads and writes nothing.
+   `phase` names the SUB-STEP while the engine runs: the run's last phase event alone when no worker
+diff --git a/fleet/RUNBOOK.md b/fleet/RUNBOOK.md
+index c343f620121ffa239d471d9d99506ce9a30a3152..357a6d4d0b97fe41840e1d36cfb6c44d087e2a9a 100644
+--- a/fleet/RUNBOOK.md
++++ b/fleet/RUNBOOK.md
+@@ -216,7 +216,7 @@ never by `integrations attach`.
+ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>
+ ```
+ 
+-The launcher compiles the plan against `--base` itself (`compile_plan.py --check --base`, after the hash pins and before any lobby verb) and refuses on anything but `PLAN OK`; the `BASE fact:` lines of a clean compile are printed after the engine line.
++The launcher compiles the plan against `--base` itself (`compile_plan.py --check --base`, after the hash pins and before any lobby verb) and refuses on anything but `PLAN OK`; the `BASE fact:` lines and the `STALE fact:` lines of a clean compile are printed on the launch line after the engine line, in the order the compiler printed them. A `STALE fact:` line on a clean compile is an advisory — a Stale-if predicate the compiler could not read at `--base` (`STALE fact: task <id>: <entry> unreadable at BASE — <reason>`); a predicate that holds is a refusal instead, and the compiler's own `STALE fact: task <id>: <entry> holds at BASE` line comes back verbatim in it.
+ 
+ The launcher, in this order: validates the plan, the target and the base;
+ reads the pool; computes N from the target's `ultra/*-run-*` branches and its
+@@ -241,9 +241,10 @@ and does not merge it (a measurement run).
+   exe.dev's proxy; a browser logged in to exe.dev reads it. Its `phase` names
+   the sub-step the run is on — `Wave 2 · impl:3`, the phase and the worker the
+   wave is waiting on — and its `tasks` cell says what each task is doing right
+-  now: the wave it is in, one of `queued`, `examining`, `implementing`,
+-  `proving`, `reviewing`, `fixing`, `folded`, `failed`, the worker open for it,
+-  its last proof run and why it was parked.
++  now: the wave it is in, one of `queued`, `waiting`, `examining`,
++  `implementing`, `proving`, `reviewing`, `fixing`, `folded`, `failed`, the
++  worker open for it, its last proof run, why it was parked and, when the driver
++  re-edged it, the siblings it is waiting on.
+ - `https://<vm>.exe.xyz/events.jsonl` — the live event log, the same file the
+   engine is appending to, recopied on every poll. It is what the page above is
+   a projection of; `bash fleet/sandbox-boot.sh project <events.jsonl>` prints
+diff --git a/fleet/launch.mjs b/fleet/launch.mjs
+index 7290867c29dc2a53488f02425cec803a87623447..0ea53322eebb844ea48414023bea44644d0f4d09 100644
+--- a/fleet/launch.mjs
++++ b/fleet/launch.mjs
+@@ -601,8 +601,12 @@ const BASE_FACTS_STAMP = /\*\*BASE facts:\*\*\s*\(generated at ([0-9a-f]{7,40})\
+  *     record and, since #896, the tree's own facts about the plan (what a
+  *     deleted file holds; which files outside a task's Files carry a literal
+  *     its clauses pin). A non-zero exit is a refusal carrying the compiler's
+- *     text verbatim; the `BASE fact:` lines of a clean compile ride the result
+- *     so the launch line prints them.
++ *     text verbatim — including a `STALE fact:` line for a Stale-if predicate
++ *     that holds at BASE, which is what the operator reads on the laptop; the
++ *     `BASE fact:` and `STALE fact:` lines of a clean compile ride the result
++ *     so the launch line prints them, in the order the compiler printed them
++ *     (a `STALE fact:` there is the advisory kind: a predicate the compiler
++ *     could not read at BASE, never a refusal).
+  *
+  * The compiler runs through the exec seam like every other subprocess, so a sim
+  * that answers `python3` decides what the compiler said.
+@@ -622,7 +626,9 @@ export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planT
+       `launch: compile_plan.py --check --base ${base} refused ${planPath} (exit ${res.code}):\n${output(res)}`
+     )
+   }
+-  return String(res.stdout ?? '').split('\n').filter((line) => line.startsWith('BASE fact:'))
++  return String(res.stdout ?? '').split('\n').filter(
++    (line) => line.startsWith('BASE fact:') || line.startsWith('STALE fact:')
++  )
+ }
+ 
+ /**
+diff --git a/fleet/sandbox-boot.sh b/fleet/sandbox-boot.sh
+index a2c9c328735284112c184bdbd2e74fce4488fbbf..41bf819f8161c3c0169e3f1b5334dab1e5f21180 100755
+--- a/fleet/sandbox-boot.sh
++++ b/fleet/sandbox-boot.sh
+@@ -420,6 +420,11 @@ proof, park = {}, {}
+ # wrote for it and nothing else. A task that never raised one has no entry, and
+ # its cell reads `null`.
+ attention = {}
++# The siblings a task was re-edged onto, per task: the ids of the LATEST
++# `driver:re-edged` the engine wrote for it. It is never cleared — once the
++# re-dispatch has moved the state on, what the task waited on is still worth
++# reading. A task no re-edge names has no entry, and its cell reads `null`.
++blocked_by = {}
+ # Every `worker:start`, and the positions each label was closed at: a role is
+ # the last start of the task that no later end of the SAME label answered.
+ opens, closes = [], {}
+@@ -443,6 +448,17 @@ for at, doc in enumerate(events):
+                 state[tid] = "proving"
+                 proof[tid] = {"cmd": doc.get("cmd"), "exit": doc.get("exit"),
+                               "ts": doc.get("ts")}
++    elif kind == "driver:re-edged":
++        # A task the driver put back on a sibling WAITS — it is not failed, even
++        # when the `worker:end` that made it `failed` came first. The events are
++        # id-sorted, so the later id of this line is what makes it win; a
++        # `BLOCKED` end with no re-edge after it stays `failed`, and a later
++        # `worker:start` moves the state on through the start rule above.
++        for tid in named(doc):
++            if tid in state:
++                state[tid] = "waiting"
++                blocked_by[tid] = [str(s) for s in listed(doc, "blockedBy")
++                                   if not isinstance(s, (dict, list))]
+     elif kind == "driver:attention":
+         for tid in named(doc):
+             if tid in state:
+@@ -501,7 +517,8 @@ cells = {}
+ for tid in sorted(ids, key=key):
+     cells[tid] = {"wave": wave.get(tid), "state": state[tid], "role": role_of(tid),
+                   "lastProof": proof.get(tid), "park": park.get(tid),
+-                  "attention": attention.get(tid)}
++                  "attention": attention.get(tid),
++                  "blockedBy": blocked_by.get(tid)}
+ 
+ if MODE == "sub":
+     out = (sub or "") + "\n"
+diff --git a/fleet/tests/test_launch_compile_facts.mjs b/fleet/tests/test_launch_compile_facts.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..44e5aed9407d329b00d438b0d8cc93f13818c395
+--- /dev/null
++++ b/fleet/tests/test_launch_compile_facts.mjs
+@@ -0,0 +1,284 @@
++/**
++ * fleet/tests/test_launch_compile_facts.mjs — the exam for "The launcher
++ * carries the compiler's STALE fact lines onto the launch line" (task 2).
++ *
++ * The surface is what the launch line carries from the compile: the compiler
++ * now says something about the Stale-if predicates it read at `--base`, and
++ * the operator on the laptop must see it — as an advisory beside the base
++ * facts when the compile is clean, and as the compiler's own refusal line when
++ * a predicate holds. Nothing here drives a launch: the exam reads
++ * `verifyPlanCompiles` through a hand-written `exec` seam and `renderLaunch`
++ * over a plain result object, so what is pinned is the two functions and the
++ * two sentences that document them.
++ *
++ * Legs, each naming the Machine clause it comes from:
++ *
++ *   (a) [M1] a fake `exec` answering exit 0 with `PLAN OK`, one `BASE fact:`
++ *       line, one `STALE fact: … unreadable at BASE — …` line and one `note:`
++ *       line makes `verifyPlanCompiles` resolve to exactly the two fact lines,
++ *       in that order and with no other line; the same two lines answered in
++ *       the other order resolve in THAT order, because M1 says stdout order
++ *       and not a sort; and a stdout of `PLAN OK` alone resolves to `[]`.
++ *   (b) [M2] a fake `exec` answering exit 2 with the refusal-shaped
++ *       `STALE fact: task 1: path-exists: `present.py` holds at BASE` on
++ *       stdout makes it reject with a `Refusal` whose message carries
++ *       `compile_plan.py --check --base`, `refused` and that line verbatim —
++ *       and the fake was called once, with `python3` and an argv carrying
++ *       `--check` and `--base <base>`.
++ *   (c) [M3] `renderLaunch` of a result whose `baseFacts` is
++ *       `['BASE fact: x', 'STALE fact: y']` yields text whose LAST two lines
++ *       are those two in that order; the same result with no `baseFacts`
++ *       yields text carrying neither.
++ *   (d) [M4] the two `Run:` lines of the Proof, read in process: the
++ *       `## Per run` section of `fleet/RUNBOOK.md` names `BASE fact:`, then
++ *       `STALE fact:`, then the launch line, in that order; and `CLAUDE.md`
++ *       names `STALE fact:` at all, with its Layout section naming it after
++ *       the `compile_plan.py --check --base` flag.
++ *
++ * Hermetic by construction: the only imports are `../launch.mjs` and
++ * `../lobby.mjs`, `exec` is a local async function that returns
++ * `{ code, stdout, stderr }` and records its calls, no process is spawned, no
++ * socket is opened, and the only files read are the two documents of M4,
++ * resolved from this file's own location inside the checkout.
++ */
++
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import path from 'node:path'
++import { fileURLToPath } from 'node:url'
++
++import { renderLaunch, verifyPlanCompiles } from '../launch.mjs'
++import { Refusal } from '../lobby.mjs'
++
++const HERE = path.dirname(fileURLToPath(import.meta.url))
++const FLEET_DIR = path.resolve(HERE, '..')
++const REPO_ROOT = path.resolve(FLEET_DIR, '..')
++const RUNBOOK = path.join(FLEET_DIR, 'RUNBOOK.md')
++const CLAUDE_MD = path.join(REPO_ROOT, 'CLAUDE.md')
++
++const BASE = 'a'.repeat(40)
++const PLAN_PATH = '/plans/a-plan.md'
++/** A plan with no generated stamp block, so the hash-pin read passes through. */
++const PLAN_TEXT = '# a plan\n\nOne plan, and a trailing newline.\n'
++
++/** The compiler's two line shapes, as literals shared with the compiler task. */
++const BASE_FACT = 'BASE fact: task 1: `present.py` is carried at BASE by tests/test_present.py — not in its Files'
++const STALE_ADVISORY = 'STALE fact: task 1: issue-open: #538 unreadable at BASE — gh not on PATH'
++const STALE_REFUSAL = 'STALE fact: task 1: path-exists: `present.py` holds at BASE'
++
++/** A recording `exec` seam: every call is appended, one canned answer for all. */
++const fakeExec = (res) => {
++  const calls = []
++  const exec = async (cmd, argv, options) => {
++    calls.push({ cmd, argv: [...argv], options })
++    return { code: 0, stdout: '', stderr: '', ...res }
++  }
++  exec.calls = calls
++  return exec
++}
++
++const compile = (exec) => verifyPlanCompiles({
++  exec, repoDir: FLEET_DIR, base: BASE, planPath: PLAN_PATH, planText: PLAN_TEXT
++})
++
++/** What `fn` threw, or `undefined` when it did not throw. */
++const thrown = async (fn) => {
++  try {
++    await fn()
++    return undefined
++  } catch (err) {
++    return err
++  }
++}
++
++/**
++ * The `sed -n '/^<from>/,/^<to>/p'` of a `Run:` line, in process: from the
++ * first line starting `from` through the next line starting `to`, joined on
++ * spaces the way `tr '\n' ' '` joins them.
++ */
++const sectionOf = (text, from, to) => {
++  const lines = text.split('\n')
++  const start = lines.findIndex((line) => line.startsWith(from))
++  if (start < 0) return null
++  const after = lines.slice(start + 1).findIndex((line) => line.startsWith(to))
++  const end = after < 0 ? lines.length : start + after + 2
++  return lines.slice(start, end).join(' ')
++}
++
++/** A section is a paragraph or six; a failure quotes the part that matters. */
++const near = (text, mark, span = 320) => {
++  const at = text.indexOf(mark)
++  const from = at < 0 ? 0 : at
++  return `${from > 0 ? '…' : ''}${text.slice(from, from + span)}${from + span < text.length ? '…' : ''}`
++}
++
++// ── The runner: every leg is attempted, and every failure is named ──────────
++
++const failures = []
++const test = async (name, fn) => {
++  try {
++    await fn()
++  } catch (err) {
++    failures.push({ name, err })
++  }
++}
++
++// ── a. [M1] a clean compile's fact lines are both kinds, in stdout order ────
++
++await test('(a) [M1] a clean compile resolves to its BASE and STALE fact lines, and nothing else', async () => {
++  const exec = fakeExec({
++    code: 0,
++    stdout: `PLAN OK\n${BASE_FACT}\n${STALE_ADVISORY}\nnote: 3 tasks in 2 waves\n`
++  })
++  const facts = await compile(exec)
++  assert.deepEqual(
++    facts, [BASE_FACT, STALE_ADVISORY],
++    '(a) [M1] exit 0 with PLAN OK, one BASE fact: line, one STALE fact: advisory and one note: line ' +
++    'resolves to exactly those two fact lines, in stdout order and with no other line'
++  )
++})
++
++await test('(a) [M1] the order is stdout\'s, not a sort by kind', async () => {
++  const exec = fakeExec({
++    code: 0,
++    stdout: `PLAN OK\n${STALE_ADVISORY}\n${BASE_FACT}\n`
++  })
++  assert.deepEqual(
++    await compile(exec), [STALE_ADVISORY, BASE_FACT],
++    '(a) [M1] the same two lines answered STALE-first resolve STALE-first: M1 says stdout order'
++  )
++})
++
++await test('(a) [M1] a compile that states no fact resolves to the empty list', async () => {
++  const exec = fakeExec({ code: 0, stdout: 'PLAN OK\n' })
++  assert.deepEqual(
++    await compile(exec), [],
++    '(a) [M1] a stdout of PLAN OK alone resolves to []'
++  )
++})
++
++// ── b. [M2] a predicate that holds refuses the launch, in the compiler's words ─
++
++await test('(b) [M2] exit 2 carrying a STALE fact: line is a Refusal that quotes it verbatim', async () => {
++  const exec = fakeExec({
++    code: 2,
++    stdout: `a-plan.md: 1 violation\n${STALE_REFUSAL}\n`,
++    stderr: ''
++  })
++  const err = await thrown(() => compile(exec))
++  assert.ok(
++    err instanceof Refusal,
++    `(b) [M2] a compiler answering exit 2 rejects with a Refusal, got ${err?.name}: ${err?.message}`
++  )
++  assert.ok(
++    err.message.includes('compile_plan.py --check --base'),
++    `(b) [M2] the refusal names compile_plan.py --check --base, got: ${err.message}`
++  )
++  assert.ok(
++    err.message.includes('refused'),
++    `(b) [M2] the refusal says refused, got: ${err.message}`
++  )
++  assert.ok(
++    err.message.includes(STALE_REFUSAL),
++    `(b) [M2] the refusal carries ${JSON.stringify(STALE_REFUSAL)} verbatim — that line is what the ` +
++    `operator reads on the laptop — got: ${err.message}`
++  )
++})
++
++await test('(b) [M2] the refused compile was the one subprocess, asked for --check at --base', async () => {
++  const exec = fakeExec({ code: 2, stdout: `${STALE_REFUSAL}\n` })
++  await thrown(() => compile(exec))
++  assert.equal(
++    exec.calls.length, 1,
++    `(b) [M2] the fake exec was called once, got ${exec.calls.length}: ` +
++    `${exec.calls.map((c) => `${c.cmd} ${c.argv.join(' ')}`).join(' | ')}`
++  )
++  const call = exec.calls[0]
++  assert.equal(call.cmd, 'python3', '(b) [M2] the compiler runs through the exec seam as python3')
++  assert.ok(call.argv.includes('--check'), `(b) [M2] the argv carries --check, got: ${call.argv.join(' ')}`)
++  assert.equal(
++    call.argv[call.argv.indexOf('--base') + 1], BASE,
++    `(b) [M2] the argv carries --base <base>, got: ${call.argv.join(' ')}`
++  )
++})
++
++// ── c. [M3] the facts are the last lines of the launch line ─────────────────
++
++const RESULT = {
++  runId: 'run-137',
++  vm: 'fleet-r137-0915-ab12',
++  statusUrl: 'https://exe.dev/vms/fleet-r137-0915-ab12',
++  comment: 'ultrapowers run-137',
++  engine: 'b'.repeat(40),
++  engineSha: 'b'.repeat(40),
++  engineSource: 'main-tip'
++}
++
++await test('(c) [M3] a result\'s baseFacts entries end the rendered launch line, in order', () => {
++  const facts = ['BASE fact: x', 'STALE fact: y']
++  const lines = renderLaunch({ ...RESULT, baseFacts: facts }).split('\n')
++  assert.deepEqual(
++    lines.slice(-2), facts,
++    `(c) [M3] the last two lines of the rendered text are the baseFacts entries in order, got: ` +
++    `${JSON.stringify(lines)}`
++  )
++  assert.equal(
++    lines.filter((line) => line === 'BASE fact: x').length, 1,
++    '(c) [M3] each entry is printed once'
++  )
++  assert.equal(
++    lines.filter((line) => line === 'STALE fact: y').length, 1,
++    '(c) [M3] each entry is printed once'
++  )
++})
++
++await test('(c) [M3] a result with no baseFacts prints no fact line at all', () => {
++  const text = renderLaunch({ ...RESULT })
++  assert.ok(
++    !text.includes('BASE fact:'),
++    `(c) [M3] no baseFacts, no BASE fact: line, got: ${JSON.stringify(text)}`
++  )
++  assert.ok(
++    !text.includes('STALE fact:'),
++    `(c) [M3] no baseFacts, no STALE fact: line, got: ${JSON.stringify(text)}`
++  )
++})
++
++// ── d. [M4] the two documents say what the launch line carries ──────────────
++
++await test('(d) [M4] fleet/RUNBOOK.md §Per run names BASE fact:, then STALE fact:, then the launch line', () => {
++  const section = sectionOf(fs.readFileSync(RUNBOOK, 'utf8'), '## Per run', '## ')
++  assert.ok(section !== null, '(d) [M4] fleet/RUNBOOK.md has a `## Per run` section')
++  assert.match(
++    section, /BASE fact:.*STALE fact:.*launch line/,
++    '(d) [M4] the `## Per run` section says the STALE fact: lines of a clean compile print on the ' +
++    `launch line beside the BASE fact: lines, got: ${near(section, 'BASE fact:')}`
++  )
++})
++
++await test('(d) [M4] CLAUDE.md\'s fleet/ Layout bullet names STALE fact: after the compile flag', () => {
++  const claude = fs.readFileSync(CLAUDE_MD, 'utf8')
++  assert.ok(
++    claude.includes('STALE fact:'),
++    '(d) [M4] CLAUDE.md names STALE fact: at all'
++  )
++  const layout = sectionOf(claude, '## Layout', '## Doctrine')
++  assert.ok(layout !== null, '(d) [M4] CLAUDE.md has a `## Layout` section')
++  assert.match(
++    layout, /compile_plan\.py --check --base.*STALE fact:/,
++    '(d) [M4] the Layout section says the launcher\'s compile prints STALE fact: lines as well, ' +
++    `after the compile_plan.py --check --base flag, got: ${near(layout, 'compile_plan.py --check --base')}`
++  )
++})
++
++// ── The verdict ─────────────────────────────────────────────────────────────
++
++if (failures.length > 0) {
++  for (const { name, err } of failures) {
++    console.error(`FAILED ${name}\n  ${err?.message ?? err}`)
++  }
++  console.error(`${failures.length} failing leg${failures.length === 1 ? '' : 's'}`)
++  process.exit(1)
++}
++
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_sandbox_boot_viz.mjs b/fleet/tests/test_sandbox_boot_viz.mjs
+index 4deb3fdb387ddd5041aea69ba75b3a53b7556fc5..66006e251fd91f9ef330c99212897e39d5c258ff 100644
+--- a/fleet/tests/test_sandbox_boot_viz.mjs
++++ b/fleet/tests/test_sandbox_boot_viz.mjs
+@@ -102,14 +102,33 @@ const B = [
+ const BLOCKED_13 = ev(13, { kind: 'driver:wave-blocked', wave: 1, tasks: ['1'], detail: 'x' })
+ /** The fifteenth line of one case: `impl:2` ended BLOCKED. */
+ const BLOCKED_END_15 = end(15, 'impl:2', 'implementer', 'BLOCKED')
++/**
++ * The sixteenth line of #987's cases, in exactly the shape `run-engine.mjs`
++ * writes it (line 3659): `appendEvent({ kind: 'driver:re-edged', task: r.task,
++ * blockedBy: r.blockedBy.slice() })` — `task` a string id, `blockedBy` a list
++ * of string ids. Its id sorts AFTER `BLOCKED_END_15`'s, which is what makes the
++ * re-edge win over the `BLOCKED` end.
++ */
++const RE_EDGED_16 = ev(16, { kind: 'driver:re-edged', task: '2', blockedBy: ['1'] })
++/** The seventeenth line of #987 leg (d): task 2 dispatched again. */
++const RESTART_17 = start(17, 'impl:2', 'implementer')
+ 
+ /** `args.json` as `ultra_run.py` writes it: `waves`, a list of lists of `{id}`. */
+ const ARGS_JSON = `${JSON.stringify({
+   waves: [[{ id: '1' }, { id: '2' }], [{ id: '3' }]],
+ })}\n`
+ 
+-/** M2's cell, with M2's own defaults, so a case names only what it changes. */
+-const cell = (over = {}) => ({ wave: null, state: 'queued', role: null, lastProof: null, park: null, attention: null, ...over })
++/**
++ * M2's cell, with M2's own defaults, so a case names only what it changes.
++ *
++ * #987 M3 adds `blockedBy` as the cell's LAST key, `null` for a task no
++ * `driver:re-edged` event names — so every whole-object pin below reads the
++ * seven-key shape the Produces line spells.
++ */
++const cell = (over = {}) => ({ wave: null, state: 'queued', role: null, lastProof: null, park: null, attention: null, blockedBy: null, ...over })
++
++/** The keys of a cell, in the order the Produces line spells them (#987 M3). */
++const CELL_KEYS = ['wave', 'state', 'role', 'lastProof', 'park', 'attention', 'blockedBy']
+ 
+ /** Leg (b)'s `tasks` for the full log WITH `args.json`. */
+ const TASKS_WITH_ARGS = {
+@@ -297,15 +316,17 @@ test('(b) the full log with args.json projects three cells and no fourth  [M2]',
+ 
+   assert.deepEqual(doc.tasks['1'],
+     { wave: 1, state: 'folded', role: null, lastProof: { cmd: EXAM_CMD, exit: 1, ts: 12 }, park: null,
+-      attention: null },
++      attention: null, blockedBy: null },
+     'task 1: folded by the `driver:wave-adopted` that lists it, no open `worker:start` so `role` ' +
+     'is null, `lastProof` the last of the three proof kinds — the exam-run — and `wave` the ' +
+     '1-based index of the args.json wave holding it  [leg (b), M2]')
+   assert.deepEqual(doc.tasks['2'],
+-    { wave: 1, state: 'implementing', role: 'impl:2', lastProof: null, park: null, attention: null },
++    { wave: 1, state: 'implementing', role: 'impl:2', lastProof: null, park: null, attention: null,
++      blockedBy: null },
+     'task 2: `worker:start impl:2` with no later `worker:end` of that label  [leg (b), M2]')
+   assert.deepEqual(doc.tasks['3'],
+-    { wave: 2, state: 'queued', role: null, lastProof: null, park: null, attention: null },
++    { wave: 2, state: 'queued', role: null, lastProof: null, park: null, attention: null,
++      blockedBy: null },
+     'task 3: named only by args.json\'s second wave, so queued in wave 2  [leg (b), M2]')
+   assert.deepEqual(Object.keys(doc.tasks).sort(), ['1', '2', '3'],
+     'one key per task id the log and args.json name, and no fourth  [leg (b), M2]: ' +
+@@ -581,6 +602,118 @@ test('(#952 e) the contract\'s status.json bullet states the skip rule  [M5]', (
+     'and must say the kind taken is the last `driver:*`/`worker:*` one  [#952 leg (e), M5]')
+ })
+ 
++// ── #987 task 2 — "The status page reads a re-edged task as waiting, with the
++//    sibling it waits on beside it"  [M1–M6] ────────────────────────────────
++//
++// Six more cases at the same surface. Every assertion below names them
++// `#987 leg (x)`, so run-97's alphabet, #952's and this one never read as one.
++//
++//   M1  a `BLOCKED` `worker:end impl:2` followed by `driver:re-edged
++//       {task: "2", blockedBy: ["1"]}` projects task 2 `waiting`, `blockedBy`
++//       `["1"]`, `role` null                                  → #987 leg (a)
++//   M2  the same log with that line removed still reads `failed`, `blockedBy`
++//       null                                                  → #987 leg (b)
++//   M3  EVERY cell carries a `blockedBy` key, null for a task no
++//       `driver:re-edged` names, and the other six read as at BASE
++//                                                             → #987 leg (c)
++//   M4  a later `worker:start impl:2` moves the state to `implementing` and
++//       keeps `blockedBy`                                     → #987 leg (d)
++//   M5  `fleet/CONTRACT.md`'s `**status.json:**` bullet says `waiting`, names a
++//       `"blockedBy":` cell, says `nine states above` and no longer `eight
++//       states`                                               → #987 leg (e)
++//   M6  `fleet/RUNBOOK.md`'s **Watch.** entry for `status.json` names `waiting`
++//                                                             → #987 leg (f)
++//
++// (a)–(d) are the sim and nothing else; (e)–(f) are scoped greps of the two
++// documents and are never cited as evidence of what the projection does.
++
++/** Leg (a)'s log: the fourteen-line `B`, the BLOCKED end, the re-edge. */
++const RE_EDGED_LOG = [...B, BLOCKED_END_15, RE_EDGED_16]
++
++test('(#987 a) a driver:re-edged after a BLOCKED end reads waiting, with blockedBy  [M1]', () => {
++  const doc = project(plant(RE_EDGED_LOG.join('')))
++  assert.deepEqual(doc.tasks['2'], cell({ state: 'waiting', blockedBy: ['1'] }),
++    'a `worker:end impl:2` with `status` BLOCKED followed by `{kind:"driver:re-edged",task:"2",' +
++    'blockedBy:["1"]}` projects task 2 as `state` `waiting` with `blockedBy` `["1"]` — and `role` ' +
++    'null, because the `impl:2` label the BLOCKED end closed is no longer open; a re-edged task ' +
++    `never reads \`failed\`  [#987 leg (a), M1]: ${JSON.stringify(doc.tasks['2'])}`)
++  assert.deepEqual(doc.tasks['2'].blockedBy, ['1'],
++    'the `blockedBy` cell is the event\'s own list of sibling task ids, as strings  ' +
++    `[#987 leg (a), M1]: ${JSON.stringify(doc.tasks['2'].blockedBy)}`)
++  assert.equal(doc.tasks['1'].blockedBy, null,
++    'and the sibling the event NAMES as a blocker is not itself blocked — task 1\'s own ' +
++    `\`blockedBy\` stays null  [#987 leg (a), M1, M3]: ${JSON.stringify(doc.tasks['1'])}`)
++})
++
++test('(#987 b) the same log with no driver:re-edged still reads failed  [M2]', () => {
++  const doc = project(plant([...B, BLOCKED_END_15].join('')))
++  assert.deepEqual(doc.tasks['2'], cell({ state: 'failed' }),
++    'with the `driver:re-edged` line removed, the `BLOCKED` `worker:end impl:2` is the last word ' +
++    'on task 2: `state` `failed`, `role` null, and `blockedBy` null — the standing case (b) ' +
++    'restated against the WHOLE cell, so a projection that reads every `BLOCKED` end as `waiting` ' +
++    `fails here  [#987 leg (b), M2]: ${JSON.stringify(doc.tasks['2'])}`)
++  assert.equal(doc.tasks['2'].blockedBy, null,
++    'a task no `driver:re-edged` event names has `blockedBy` null, not `[]` and not absent  ' +
++    `[#987 leg (b), M2, M3]: ${JSON.stringify(doc.tasks['2'].blockedBy)}`)
++})
++
++test('(#987 c) every cell the verb prints carries blockedBy, last and null  [M3]', () => {
++  const doc = project(plant(B.join('')), plant(ARGS_JSON, 'json'))
++  assert.deepEqual(doc.tasks, TASKS_WITH_ARGS,
++    'the fourteen-line `B` with `args.json` projects its three cells exactly as at BASE but for ' +
++    'one added key: each carries `blockedBy: null`, because no `driver:re-edged` event names any ' +
++    `of them  [#987 leg (c), M3]: ${JSON.stringify(doc.tasks)}`)
++  for (const tid of ['1', '2', '3']) {
++    assert.deepEqual(Object.keys(doc.tasks[tid]), CELL_KEYS,
++      `task ${tid}'s cell carries exactly the seven keys the Produces line spells, in that ` +
++      'order — the six of BASE unchanged and `blockedBy` LAST; a cell missing the key, or ' +
++      'spelling it anywhere but last, fails  [#987 leg (c), M3]: ' +
++      JSON.stringify(Object.keys(doc.tasks[tid])))
++    assert.equal(doc.tasks[tid].blockedBy, null,
++      `and task ${tid} is named by no \`driver:re-edged\`, so its \`blockedBy\` is null — a ` +
++      'non-null value on an un-edged task fails  [#987 leg (c), M3]')
++  }
++  const noArgs = project(plant(B.join('')))
++  assert.deepEqual(noArgs.tasks, TASKS_NO_ARGS,
++    'and the same log with no `args.json` reads the new shape too  [#987 leg (c), M3]: ' +
++    JSON.stringify(noArgs.tasks))
++})
++
++test('(#987 d) a worker:start after the re-edge implements, and keeps blockedBy  [M4]', () => {
++  const doc = project(plant([...RE_EDGED_LOG, RESTART_17].join('')))
++  assert.deepEqual(doc.tasks['2'], cell({ state: 'implementing', role: 'impl:2', blockedBy: ['1'] }),
++    'a `worker:start impl:2` appended after the `driver:re-edged` line moves task 2 to ' +
++    '`implementing` with `role` `impl:2` through the standing start rule, while `blockedBy` is ' +
++    'still `["1"]` — the record of what it waited on is kept after the re-dispatch, never ' +
++    `cleared  [#987 leg (d), M4]: ${JSON.stringify(doc.tasks['2'])}`)
++  assert.deepEqual(Object.keys(doc.tasks['2']), CELL_KEYS,
++    'and that cell still carries the seven keys in order  [#987 leg (d), M3, M4]: ' +
++    JSON.stringify(Object.keys(doc.tasks['2'])))
++})
++
++test('(#987 e) the contract\'s status.json bullet says waiting, blockedBy and nine  [M5]', () => {
++  // The same `**status.json:**` bullet cases (f) and (#952 e) read, scoped from
++  // its own line to the `**Publish:**` bullet — the Proof's first two `Run:`
++  // lines, spelled here as the leg they are.
++  shOk(`${STATUS_BULLET} | grep -q 'queued|waiting|examining'`,
++    'the `**status.json:**` bullet\'s `"state":` enumeration must read ' +
++    '`queued|waiting|examining|…` — `waiting` immediately after `queued`  [#987 leg (e), M5]')
++  shOk(`${STATUS_BULLET} | grep -q '"blockedBy":'`,
++    'and its task-cell literal must name a `"blockedBy":` cell  [#987 leg (e), M5]')
++  shOk(`${STATUS_BULLET} | grep -q 'nine states above'`,
++    'and the sentence that counted the states must say `nine states above`  [#987 leg (e), M5]')
++  shOk(`test "$(${STATUS_BULLET_LINES} | grep -c 'eight states')" = 0`,
++    'and no line of that bullet may still say `eight states` — the count moved  ' +
++    '[#987 leg (e), M5]')
++})
++
++test('(#987 f) the runbook\'s Watch entry names waiting among the states  [M6]', () => {
++  shOk(`${WATCH_STATUS_ENTRY} | grep -q 'queued.*waiting.*failed'`,
++    'the **Watch.** entry for `status.json`, scoped from its own line to the `events.jsonl` ' +
++    'entry, must name `waiting` between `queued` and `failed` in the list of states a task cell ' +
++    'can read  [#987 leg (f), M6]')
++})
++
+ // ── (d) the commit window in events  [M4] ───────────────────────────────────
+ 
+ test('(d) the refresher commits by FLEET_COMMIT_EVENTS, once per window  [M4]', () =>
+@@ -619,7 +752,8 @@ test('(d) the refresher commits by FLEET_COMMIT_EVENTS, once per window  [M4]',
+       'the second committed page\'s `tasks` carries the appended tasks  [leg (d), M3, M4]: ' +
+       JSON.stringify(second.tasks))
+     assert.deepEqual(second.tasks['6'],
+-      { wave: null, state: 'implementing', role: 'impl:6', lastProof: null, park: null, attention: null },
++      { wave: null, state: 'implementing', role: 'impl:6', lastProof: null, park: null,
++        attention: null, blockedBy: null },
+       'including the line that closed the window  [leg (d), M3, M4]')
+ 
+     // FIVE lines in ONE write: one window, one commit — not five.
+@@ -734,6 +868,12 @@ const EVIDENCE_BULLET =
+ /** The `**status.json:**` bullet under §Literals, to the `**Publish:**` one. */
+ const STATUS_BULLET =
+   "sed -n '/^- \\*\\*status\\.json:\\*\\*/,/^- \\*\\*Publish:\\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' '"
++/** The same bullet, LINE by line: a count of matching lines needs its newlines. */
++const STATUS_BULLET_LINES =
++  "sed -n '/^- \\*\\*status\\.json:\\*\\*/,/^- \\*\\*Publish:\\*\\*/p' fleet/CONTRACT.md"
++/** The **Watch.** entry for `status.json`, to the `events.jsonl` entry. */
++const WATCH_STATUS_ENTRY =
++  "sed -n '/status\\.json. — the VM/,/events\\.jsonl. — the live/p' fleet/RUNBOOK.md | tr '\\n' ' '"
+ 
+ test('(f) the contract states the commit window and the page\'s new cells  [M5]', () => {
+   shOk(`${EVIDENCE_BULLET} | grep -q 'FLEET_COMMIT_EVENTS.*FLEET_COMMIT_SECONDS'`,
+diff --git a/skills/ultrapowers/references/report-format.md b/skills/ultrapowers/references/report-format.md
+index 9a113ed45f70b56a580b6ba638bf034c06af1afa..5a8bccd05b9f2ca79b8bda1967d21c1c25b17601 100644
+--- a/skills/ultrapowers/references/report-format.md
++++ b/skills/ultrapowers/references/report-format.md
+@@ -43,7 +43,9 @@ The engine (`fleet/run-engine.mjs`) returns a single structured report object; `
+       { "passed": {"type":"boolean"}, "output": {"type":"string"} }}] },
+     "waveMerges": { "type": "array", "items": { "type": "object",
+       "properties": { "wave": {"type":"integer"}, "status": {"type":"string"}, "headSha": {"type":"string"},
+-        "command": {"type":"string"}, "detail": {"type":"string"}, "branches": {"type":"array","items":{"type":"string"}} } } },
++        "detail": {"type":"string"}, "branches": {"type":"array","items":{"type":"string"}},
++        "joined": {"type":"array","items":{"type":"string"}},
++        "suite": {"type":"object"} } } },
+     "frontier": { "type": "array", "items": { "type": "object",
+       "properties": { "wave": {"type":"integer"}, "foldLogPath": {"type":"string"},
+         "conflictsIndex": {"type":"string"}, "selfChecks": {"type":"string"},
+@@ -78,9 +80,9 @@ The engine (`fleet/run-engine.mjs`) returns a single structured report object; `
+ |---|---|---|
+ | `integrationBranch` | yes | Branch where all task branches were merged |
+ | `baseSha` | no | The run base — the setup reply's head sha (agent-reported context, not authority). `finalize_report.py` reads it to refuse a merged claim whose branch carries no commits beyond the run base (#275); the git-derived ancestry checks remain the authority. Absent or unresolvable → that guard is skipped with a named warning |
+-| `waves` | yes | Ordered list of waves; each wave is a list of task IDs that ran in parallel |
++| `waves` | yes | The plan's compiled layering, verbatim: an ordered list, each entry a list of task IDs. It is what the plan asked for, not the order the run took — this engine dispatches from the ready set, and what one fold adopts is an epoch numbered in fold order, so a `waveMerges[].wave` is an epoch and never an index into this array |
+ | `dependencyEdges` | no | Human-readable edges that shaped wave order, e.g. `"task-2 → task-4"` |
+-| `tasks` | yes | One entry per task; `status` is `done` or `failed`; dependency-blocked and budget-deferred tasks are reported as strings in `unfinished`, not as `tasks[]` entries |
++| `tasks` | yes | One entry per task; `status` is `done` or `failed`; a task that never became ready is reported as a string in `unfinished`, not as a `tasks[]` entry |
+ | `tasks[].branch` | no | Worktree branch used for the task |
+ | `tasks[].headSha` | no | The implementer's final worktree HEAD (what the merge agent merges); distinct from `commit` below |
+ | `tasks[].commit` | no | The implementer's final commit on the task's worktree branch (self-reported); the integration merge SHA lives in `waveMerges[].headSha` |
+@@ -101,42 +103,39 @@ The engine (`fleet/run-engine.mjs`) returns a single structured report object; `
+ | `integratedRuns` | no | The driver's own execution of the Proof `Run:` commands of every merged task the fold JOINED (#887), re-run on the adopted integration tree. A task is joined when its touch set (declared `files` ∪ the paths its captured patch changed) meets another merged task's, which is the only case where the fold can break a proof its own clone already passed; a single-task wave and a wave of pairwise-disjoint tasks re-run nothing. One item per executed command, `{ task, cmd, exit, stdout, joined, with }`: the task id, the command verbatim, its exit code, its combined stdout/stderr tail, the joined paths this task shares (`waveMerges[w].joined` ∩ its touch set) and the ids of the tasks it shares them with, in plan order. `[]` when no joined task declared a `Run:` proof, when the wave joined nothing and when no tree was adopted — the cases are indistinguishable here, so read it beside `waveMerges` and its `joined`. A non-zero `exit` is **reported, not gated** (#871 decision 1): the run carries one `judgmentCalls` line naming the command, the joined path and the pair it went red on, and nothing blocks — a red on the fold of two tasks is a finding about the join, not a finding against either task, so it is not a blocking one. Because the driver ran these itself, they are settled — a cannot-verify item asking for their re-execution is answered by this field, not deferred |
+ | `integratedChecks` | no | The driver's own execution of every Global Constraints `Check:` command on the adopted integration tree. One item per command, `{ cmd, exit, stdout, minor }`: the command verbatim, its exit code, its combined stdout/stderr tail, and whether the run declared it minor. `[]` when the run declared no checks and when no tree was adopted — the two cases are indistinguishable here, so read it beside `waveMerges`. A non-zero `exit` on a non-minor check is a blocking completeness finding (`integrated Check: <cmd> exited <n> on the adopted tree`): the constraint held in every task's own clone, where each reviewer was right about the tree it read, and the fold broke it — which is precisely what no per-task review can see. A non-zero minor check is a judgment call and nothing more |
+ | `reviewEconomy` | no | What a reviewer-minute bought. `reviewerMs` — the summed wall clock of every `review:` agent call. `blockingFindings` — how many blocking issues the REVIEWERS returned, de-duplicated by `severity|detail` across the run; the driver's own `Run:`/`Check:` reds are excluded, because charging the driver's findings to the reviewers flatters the ratio. `blockingPerReviewerMinute` — `blockingFindings / (reviewerMs / 60000)`, and `0` when no reviewer ran. Three keys and no others: `pairRounds` and `r2MarginalBlocking` — how many rounds dispatched a pair, and what the second reviewer returned that the first did not — were the measurement that retired the pair itself (#964 Task 2: eight marginal findings across 71 runs, none of them one of the five real defects), and went with it |
+-| `baseline` | no | Result of the suite run on BASE's tree in a clone of its own, `<runDir>/clones/baseline` — started during **Setup**, concurrently with wave 1 but with a deliberate head start on its dispatch: the engine's `BASELINE_HEAD_START_MS` (500 ms in `fleet/run-engine.mjs`) is a bounded race, not a wait — a suite that answers red inside that window parks the run before any worker is dispatched, and one that does not is left running while wave 1 goes out and is read at the barrier. Run **exactly once per run** whatever the waves do. `{ passed, output }` on every run that completed Setup — never `null` there; `null` only on a run that never got that far. `passed: false` means BASE itself was red, and the run PARKS on it: that wave is `TEST_FAILED` with a `detail` beginning `baseline: the suite is RED on BASE`, every later wave is `SKIPPED`, no `reconcile:` agent is ever dispatched (there is no red for one to repair that the run did not inherit), and the integration branch is left where the wave found it. A red baseline also draws a `baseline:` judgment call. A green one is what makes every later candidate red attributable to the wave |
+-| `waveMerges` | no | One entry per wave's integration merge: `wave`, `status`, `headSha`, `command`, `detail`, and `branches` — the task IDs submitted to the merge, listed even when it failed. Surfaces *how* integration went, not just whether it failed; status semantics are enumerated once under **`waveMerges[].status` values** below. **`waveMerges` may be empty or absent** when the budget was exhausted before wave 1's merge, when all waves were SKIPPED, or when the workflow was interrupted before any merge completed. Consumers — the Step-5 gate and display code — MUST degrade gracefully: check that `waveMerges` is present and non-empty and that `waveMerges[last].headSha` exists before indexing it; a missing or empty `waveMerges` is `BLOCKED` at the Step-5 gate as "merge-sha guard unavailable", never a crash. |
++| `baseline` | no | Result of the suite run on BASE's tree in a clone of its own, `<runDir>/clones/baseline` — started during **Setup**, concurrently with wave 1 but with a deliberate head start on its dispatch: the engine's `BASELINE_HEAD_START_MS` (500 ms in `fleet/run-engine.mjs`) is a bounded race, not a wait — a suite that answers red inside that window parks the run before any worker is dispatched, and one that does not is left running while wave 1 goes out and is read at the barrier. Run **exactly once per run** whatever the waves do. `{ passed, output }` on every run that completed Setup — never `null` there; `null` only on a run that never got that far. `passed: false` means BASE itself was red, and the run PARKS on it: the epoch is pushed as one `TEST_FAILED` row with a `detail` beginning `baseline: the suite is RED on BASE`, every task the red held up is named in `unfinished` as `never dispatched`, no `reconcile:` agent is ever dispatched (there is no red for one to repair that the run did not inherit), and the integration branch is left where the run found it. A red baseline also draws a `baseline:` judgment call. A green one is what makes every later candidate red attributable to the epoch that adopted it |
++| `waveMerges` | no | The engine writes one row per epoch — an epoch being the set of results one fold adopts, numbered 1, 2, … in fold order — and a row's `wave` is that number, the epoch, never an index into `waves`. A fold's row carries `wave`, `status`, `headSha`, `detail`, `branches` (the task IDs submitted to that fold, listed even when it failed), `joined` (the paths this epoch's tasks met on, `[]` when they met on none) and, when the suite reported unattributed reds, `suite`. Surfaces *how* integration went, not just whether it failed; status semantics are enumerated once under **`waveMerges[].status` values** below. A red baseline on BASE is itself one row: the `TEST_FAILED` row the `baseline` field describes, carrying `wave`, `status`, `detail` and `branches` and no `headSha` (nor `joined`, nor `suite` — those three come from the fold push alone), so a run that parked on a red BASE has a row here, not nothing. The array is empty only when no fold ever ran — a run interrupted before any fold, a run whose every task failed so nothing mergeable was ever captured, or a plan whose dependency cycle let no task be dispatched — and it is never absent. Consumers — the Step-5 gate and display code — MUST degrade gracefully: check that `waveMerges` is present and non-empty and that `waveMerges[last].headSha` exists before indexing it; an empty `waveMerges`, or a last row carrying no `headSha`, is `BLOCKED` at the Step-5 gate as "merge-sha guard unavailable", never a crash. |
+ | `frontier` | no | One entry per wave that took the **contended** merge path (frontier mode) — recorded whether the wave adopted its folded candidate or fell back: whenever the fold CLI ran, the on-disk `frontier/wave-<n>/` directory is the durable record the production canary harvests. Absent or empty on every run without a contended wave, including every `--overlap serialize` compile, where no wave can contain intersecting `files`. Fields, all sourced from the contended dispatches' reply scalars — no payload is relayed through an agent (#36): `wave` (1-based wave number); `foldLogPath` (the wave's `fold_log.jsonl`, the self-sufficient event record documented in `kernel/FOLD_LOG.md`); `conflictsIndex` (the `conflicts.json` beside it — the single record of every conflict and every park, with its `dispatchable()` verdict and reason); `selfChecks` (the fold CLI's two live self-checks, **sourced from the completing CLI reply** — the CLI runs them inside whichever call completes the wave, so a stop reply carries none; `ok`, or a named failure that routed the wave to fallback, or the empty string when no reply ever attested; the engine never claims a fold succeeded without them); `foldCliCalls` (how many fold-CLI invocations this wave drove — 1 fold + N resolves + 1 materialize on a clean run, fewer when it fell back. The incremental protocol makes N unbounded by the conflict total, because a drained stop folds on inside the same `resolve` call, so this is the wave's real CLI cost rather than a number derivable from the conflict count); `foldCliWallTimeSec` (the **sum** of the wall clocks the STEP replies reported across every leg — fold, each resolve, and materialize — reported on its own line so the first real-repo reading is not buried inside a passing test result; `null` when no reply timed its invocation); `autoResolved` (how many conflicts the kernel resolved **in process** against the wave's `Commutes:` contract — every writer declared the path and every hunk segment was an addition, so the fold never stopped on it and no resolver was dispatched. **Summed** across the fold and resolve legs, since the kernel folds on past a contract-resolved conflict inside any call; `0` when the wave declared no `Commutes:`, when no declared path conflicted, or when no reply carried the count. Read it beside `resolverTranscripts`: it is the resolver dispatches the contract *bought*); `resolverTranscripts` (one entry per resolver dispatch — `conflict` (the conflicts-index `i`), `attempt`, `path`, `epoch`, `hunksFile`, `replyDir`, `status`, `notes` — recorded verbatim as the A/B grading surface). `foldLogPath` and `conflictsIndex` are empty strings when the fold dispatch threw, returned no reply at all, or returned a reply that carried no paths — in the first two cases the directory the paths would name may never have been written, since the CLI itself may never have run. Fallback **reasons** are **not** recorded here: each one is a `judgmentCalls` entry naming its reason plus the wave's `waveMerges` result — one fact, one record |
+-| `blockedWaves` | no | Waves whose merge did not land (`wave`, `detail`); later waves were cascade-blocked into `unfinished`. Note: `DEFERRED` waves are NOT recorded here — a budget outcome is not a merge failure |
++| `blockedWaves` | no | One `{ wave, detail }` per red epoch — a fold that could not be made green, and the red-baseline park. Nothing propagates to "later waves": a red epoch marks exactly its own tasks blocked, which makes the consumers of those tasks unready (they land in `unfinished`), and every other ready task is dispatched as before |
+ | `coverage` | no | Structural completeness signal: `{ tasks_merged, tasks_planned, complete }`. `tasks_planned` = total tasks across all waves; `tasks_merged` = count of distinct task branches that landed via a `MERGED` wave; `complete` = `tasks_merged >= tasks_planned`. A `complete: false` with a green `tests.passed` is the false-green the gate must catch — only existing tests can fail, so a dropped/never-merged task leaves the suite green. The engine reports the *count* it can observe, and since #964 Task 2 that count is the whole signal: no agent reads the finished run, so a per-file presence check on the integrated tree is the human reader's, or a Global Constraint `Check:` the driver runs itself |
+-| `missingDeliverables` | no | One entry per `failed` (or cascade-blocked) task whose plan-declared `files` did not reach the integration branch: `{ task, files }`. Tasks with no declared file scope are omitted. The gate renders it under unfinished |
++| `missingDeliverables` | no | One entry per `failed` task, and per task that never became ready, whose plan-declared `files` did not reach the integration branch: `{ task, files }`. Tasks with no declared file scope are omitted. The gate renders it under unfinished |
+ | `gitVerified` | no | Boolean: are the integration receipts intact — the integration branch tip equals the last adopt receipt's sha, and every task reported merged has a fold event in its wave's fold log (the receipt-based #70 check, surfaced as `ancestryMisses`) — on a run where at least one wave merged? Derived by the DRIVER from the repo and the fold logs (#259; `docs/superpowers/specs/2026-08-26-fold-over-git-heads.md` §2), which is the whole of it since #964 Task 2: the old meaning (a completeness critic's own `onIntegrationHead` attestation after a `git checkout --detach` and re-confirm) cannot exist when no agent reads the finished run. The model-recorded merge sha (`waveMerges[last].headSha`) is one half of the tip comparison, not authority on its own — a mismatch against the derived tip withholds the flag and pushes a checkout-drift judgment call. **Step-5 gating:** `gitVerified` MUST be true to Approve — a false value means the receipts do not line up and is treated as `BLOCKED` pending a manual integration-tree check. This is the report-driven hardening of the gate's `git rev-parse <integrationBranch>` == `waveMerges[last].headSha` check |
+ | `deferredVerification` | no | Deliverables present and structurally complete but whose behavior the sandbox could not execute, each tagged with a `reason` — `browser` (live UI), `runtime` (target runtime the sandbox can't run: boot, device, deploy target), `external` (unreachable service/credential/network), `manual` (human judgment: aesthetic, product-fit — a command the driver executed is never `manual` on its own, because the integrated run evidence already carries its result, and a recorded exit code is not a judgment call. When that evidence settles the deliverable's presence and only the judgment remains, the `why` quotes the settling command verbatim from the `$ <cmd>` line of the integrated run evidence, and `ackDecision` pre-authorizes the resulting `deferred:manual` ack when the quoted command is an integrated `Run:` the driver executed that exited 0; a `deferred:manual` ack whose detail quotes no green run verbatim — or quotes a red one as well — is not pre-authorized and parks for an operator, which is the safe failure for a paraphrase (#753)), `plan-defect` (a per-task reviewer returned a blocking issue whose actor is the **plan**, not the implementer: a machine clause that cannot hold, an interface the task was never given. No fix round can close it and no reviewer can wave it through, so the task merges as reviewed and the defect travels here — one item per distinct detail, on tasks whose final `status` is `done`, plus one item for each task the driver parked for the plan before any fix round (#722): the row that carries `actor: plan`, whose `why` is the implementer's own leg-naming `plan-defect:` concern verbatim rather than a reviewer's detail. A parked task is the one `failed` row that still asks the plan a question, and its files are also listed under `missingDeliverables`; `deliverable` is the task id. `ackDecision` does not pre-authorize the resulting `deferred:plan-defect` ack: an operator reads it or the run does not merge). Gating rule: a non-empty `runtime` or `external` group is a structural false-green and routes into the **same** acknowledgement disposition as `coverage.complete: false`; `browser`/`manual` remain a verify-then-approve checklist. One exception, read by `gate_check.py` before it types the ack (#863): a `browser` or `external` item whose subject is the render (its `deliverable`/`why` says so) is checked against `tasks[].stateExams` — the named task's rows, or every task's rows when it names no task id — and when there is at least one row and every row reads `render: "ran"`, the run's own record contradicts the deferral (the driver ran those exams against the live renderer during the suite), so the item is not an ack at all: it lands in the gate output's `notes` as `{ type: "satisfied-by-record", downgraded: "deferred:<reason>", detail, rows }`, naming each row, and gates nothing. A `render: "skipped"` row, a task with no record, or a deferral whose subject is not the render parks exactly as before. Since #964 Task 2 the plan defects are the whole list — the `browser`/`runtime`/`external`/`manual` reasons above are the taxonomy a reader and `gate_check.py` still apply to items carried in from another producer, but this engine emits none of its own: the critic that used to find them is gone. Empty when no task disclosed a plan defect |
+-| `judgmentCalls` | no | Non-obvious autonomous decisions, each one of four kinds (the kind is carried in the entry's string prefix): **autonomy** — a defensible call, FYI, asks nothing (tier-escalation recovery, fell-back-to-default review depth/tier, convergent output, worktree provisioned off BASE and reset before work (#314)); **degradation** — verify the affected slice (budget-deferred, integration-review-deferred, agent-error, startHead not reported so BASE anchoring unverified (#314)); **disagreement** — look before approving (reviewer verdict/severity mismatch, reviewer returned no verdict, lost-coordinates, merge reported MERGED without headSha, suite-acceptance failed, disclosed plan-defect divergence (a plan-defect:-prefixed concern)); **binding** — likely a plan typo (endpoint not in run, dependent before prerequisite, endpoints share a wave). New cases slot into an existing kind rather than lengthening this reference. |
+-| `unfinished` | yes | Tasks or follow-ups that were deferred or blocked (empty array if none). Budget-deferred tasks appear here as `"<id>: deferred (budget exhausted ...)"` strings; dep-blocked tasks appear as `"<id>: blocked — ..."` strings; cascade-blocked tasks (behind a failed merge) appear as `"<id>: cascade-blocked by wave N"` strings |
++| `judgmentCalls` | no | Non-obvious autonomous decisions, each one of four kinds (the kind is carried in the entry's string prefix): **autonomy** — a defensible call, FYI, asks nothing (tier-escalation recovery, fell-back-to-default review depth/tier, convergent output, worktree provisioned off BASE and reset before work (#314), a task re-edged behind a sibling still in flight and re-dispatched once that sibling was adopted (#979)); **degradation** — verify the affected slice (integration-review-deferred, agent-error, startHead not reported so BASE anchoring unverified (#314)); **disagreement** — look before approving (reviewer verdict/severity mismatch, reviewer returned no verdict, lost-coordinates, merge reported MERGED without headSha, suite-acceptance failed, disclosed plan-defect divergence (a plan-defect:-prefixed concern)); **binding** — likely a plan typo, and exactly two of them, both written before any dispatch: an edge one of whose endpoints is not a task of this run (`endpoint not in this run — unbound for dependency blocking (check for a typo)`), and a set of edges forming a dependency `cycle`, where no task can ever become ready because every one waits on a task that waits on it, so none is dispatched. New cases slot into an existing kind rather than lengthening this reference. |
++| `unfinished` | yes | One string per task that never became ready, each naming its reason (empty array if none). Three shapes and no others: `"<id>: never dispatched — the suite was already RED on BASE"`, for every task a red baseline held up; `"<id>: blocked — depends on a failed task"`, for a task whose predecessor's epoch went red; and `"<id>: never became ready — a task an edge names as its predecessor never landed"` for the rest — the task an edge names as its predecessor never landed at all |
+ | `completenessFindings` | no | Gaps the DRIVER found on the adopted tree, `{severity, detail}` each (#474). Since #964 Task 2 no agent reads the finished run, so this list is the driver's own and is `[]` on every run whose integrated `Check:`s were green — which is every run that declares no Global Constraints. The one producer left is a Global Constraint `Check:` that came back red on the adopted tree: one **`blocking`** finding per red check, quoting it. **`minor`** stays in the vocabulary for entries carried in from elsewhere but the engine emits none. The consumer is `fleet/run-main.mjs`'s `criticDecision`, **not** `gate_check.py`, which still never reads this field: a run carrying any `blocking` finding is refused by the driver before `ultra_gate.py --approve` is ever invoked. So a refused run leaves a `PASS` or `NEEDS_ACK` gate receipt beside a `critic-block.json` — the gate is honest about what *it* checked, and the blocking finding is what it does not read; the two are not in contradiction. Elements from runs before #474 are bare strings: they carry no severity, and every consumer (`criticDecision`, the driver's PR body) reads them as `minor`. |
+ 
+ ### `waveMerges[].status` values
+ 
+-- `MERGED` — wave integrated successfully; `headSha` carries the new integration-branch HEAD.
+-- `CONFLICT` — the fold could not be made whole; the wave is recorded in `blockedWaves` and later waves are cascade-blocked.
+-- `TEST_FAILED` — two meanings, told apart by `detail`: **(a)** the red baseline (#862) — BASE itself was red, so the wave parked with **no merge attempt** (`detail` begins `baseline: the suite is RED on BASE`, no candidate was tested and no `reconcile:` agent was dispatched; this is the row the `baseline` field describes); **(b)** the merge attempt failed after reconciliation — the candidate's suite stayed red through the `reconcile:` rounds (`detail` begins `candidate suite failed after reconcile attempts`). Either way the integration branch is restored to the head the wave started on, the wave is recorded in `blockedWaves` and later waves are cascade-blocked (`SKIPPED`).
+-- `SKIPPED` — no mergeable branches in this wave; integration branch untouched. Cascades conservatively only when `args.edges` was omitted — an explicitly supplied empty array counts as supplied — and tasks actually ran; otherwise the next wave proceeds normally.
+-- `DEFERRED` — budget exhausted before or during this wave's merge; the wave's task
+-  branches exist unmerged, and later waves were deferred to `unfinished` (not
+-  cascade-blocked). Rerun or redirect after raising the budget — this is a budget
+-  outcome, never a merge failure.
++Three values, and the engine writes no others.
++
++- `MERGED` — the epoch's candidate was adopted; `headSha` carries the new integration-branch HEAD, and every task of the epoch counts as landed, which is what frees the tasks waiting on them.
++- `CONFLICT` — the fold could not be made whole. The integration branch is restored to the head the epoch started on, the epoch is recorded in `blockedWaves`, and exactly its own tasks are marked blocked — their consumers then never become ready and are named in `unfinished`, while every other ready task is dispatched as before.
++- `TEST_FAILED` — two meanings, told apart by `detail`: **(a)** the red baseline (#862) — BASE itself was red, so the run parked with **no merge attempt** (`detail` begins `baseline: the suite is RED on BASE`, no candidate was tested and no `reconcile:` agent was dispatched; this is the row the `baseline` field describes, and it carries `wave`, `status`, `detail` and `branches` and nothing more); **(b)** the fold's candidate stayed red through the `reconcile:` rounds (`detail` begins `candidate suite failed after reconcile attempts`). Either way the integration branch is restored to the head the epoch started on and the epoch is recorded in `blockedWaves`, with the same consequence for its own tasks as `CONFLICT`.
+ 
+ ## Presentation
+ 
+ When the workflow completes, the main agent renders the report as a concise human-readable summary in this order:
+ 
+ 1. **Integration branch** — name of the branch ready for review.
+-2. **Wave plan** — one line per wave listing which tasks ran in parallel and the wave sequence.
++2. **Plan layering and epochs** — the compiled `waves` layering the plan asked for, and beside it one line per epoch in fold order naming the task results that fold adopted. They are two different readings: the run dispatches from the ready set, so an epoch is what one fold took, not a row of the plan.
+ 3. **Baseline** — whether the suite is green on BASE itself, read once per run in `clones/baseline` during Setup and so present on every run that completed Setup (`null` only when the run never did — nothing to render, omit the line); a red baseline reframes every later test result and is why the run parked with nothing merged.
+ 4. **Per-task status** — a compact table or bullet list: task name, status, review verdict, and any notes; include tier, review depth, and fix iterations so the human can judge cost vs. benefit per task.
+-5. **Wave merges** — one line per wave: merge `status`, the task IDs merged, and the integration `headSha` (or the conflict/failure detail). Lets the human see the integration sequence, not just the final state.
+-6. **Blocked waves** — any wave whose merge failed after reconciliation, or that cascaded conservatively (zero mergeable branches with `args.edges` omitted), with the failure detail; everything cascade-blocked behind it appears under unfinished. Omit the section only when the array is empty.
++5. **Epoch folds** — one line per `waveMerges` row: the epoch, its `status`, the task IDs it folded, and the integration `headSha` (or the conflict/failure detail). Lets the human see the integration sequence, not just the final state.
++6. **Blocked epochs** — any epoch whose fold did not land, with its failure detail; its own tasks, and the consumers those tasks left unready, appear under unfinished. Omit the section only when the array is empty.
+ 7. **Test result** — pass or fail, the command run, and any relevant output excerpt. When `coverage.complete` is false, show a ⚠ "green suite but `tasks_merged`/`tasks_planned` tasks merged" beside the result: a passing suite over an incomplete merge is a false-green (only existing tests can fail), and the unmerged tasks' deliverables are itemized in `missingDeliverables` under unfinished.
+ 8. **Judgment calls** — render entries grouped by kind, leading with `disagreement` and `binding`, then `degradation`, folding `autonomy` last, so the human can prioritize high-signal items (likely issues) before low-signal FYIs; within disagreement, cluster plan-defect: entries together so all plan divergences read as one group.
+-9. **Unfinished / completeness findings** — anything deferred, plus the driver's own completeness findings (a red integrated `Check:` on the adopted tree; empty on every run that declares no Global Constraints); empty means nothing was left behind. Surface `gitVerified` here: a false value means the integration receipts do not line up — the branch tip does not equal the last adopt receipt, or a task reported merged has no fold event (#29, #70) — and the gate must treat it as `BLOCKED`.
++9. **Unfinished / completeness findings** — every task that never became ready, each with the reason `unfinished` gives it, plus the driver's own completeness findings (a red integrated `Check:` on the adopted tree; empty on every run that declares no Global Constraints); empty means nothing was left behind. Surface `gitVerified` here: a false value means the integration receipts do not line up — the branch tip does not equal the last adopt receipt, or a task reported merged has no fold event (#29, #70) — and the gate must treat it as `BLOCKED`.
+ 9a. **Deferred verification — confirm before trusting green** — render `deferredVerification` grouped by `reason`, applying the taxonomy and gating rule from the field reference above: `runtime`/`external` groups require the explicit operator acknowledgement; `browser`/`manual` remain a verify-then-approve checklist; a gate-output `notes` entry of type `satisfied-by-record` is rendered beside the item it downgraded, with its rows, and asks for nothing. Omit the section when the array is empty.
+ 10. **Post-merge runbook** — the `release`/`manual` tasks excluded at compile time,
+    rendered verbatim in document order. Sourced from the compiler's
+diff --git a/skills/ultrapowers/scripts/compile_plan.py b/skills/ultrapowers/scripts/compile_plan.py
+index 4892be9420fdda79eb9a59b7efb8370cb654981a..a7619bc1dfac6299b1c3259a8aff4b5177b7c088 100644
+--- a/skills/ultrapowers/scripts/compile_plan.py
++++ b/skills/ultrapowers/scripts/compile_plan.py
+@@ -31,6 +31,7 @@ import argparse
+ import hashlib
+ import json
+ import re
++import shutil
+ import string
+ import subprocess
+ import sys
+@@ -1728,9 +1729,183 @@ def collect_violations(plan_path, base_tree=None):
+                         "grammar: task %s: `- Delete: `%s`` names a path absent "
+                         "at BASE — a deleted file must exist at the base the "
+                         "plan launches on" % (t["id"], rel))
++        # ... and the Stale-if slot, read against the same tree (#538): a
++        # predicate that already HOLDS at BASE is a task the plan is stale
++        # about. The advisory half of the same read is printed after the
++        # verdict by main(), not collected here.
++        violations.extend(evaluate_stale_if(tasks, base_tree)[0])
+     return violations
+ 
+ 
++# --------------------------------------------------------------------------- #
++# Stale-if predicates evaluated at BASE under `--check --base` (#538)          #
++# --------------------------------------------------------------------------- #
++# A Stale-if entry is a predicate about the tree the plan launches on: it names
++# the condition under which the task is already done, already impossible, or
++# aimed at a file that is not there. Nothing at runtime re-evaluates one — the
++# question is asked once, on the laptop, with a base to read.
++#
++# A predicate that HOLDS at BASE is a refusal, not a fact: the plan is stale
++# before it is dispatched, so it joins the violations and the compile exits 2.
++# A predicate the machine cannot DECIDE — an issue `gh` will not answer, an
++# argument that is not a predicate's argument at all — is an advisory printed
++# after the verdict beside the `BASE fact:` lines: an unreachable network is
++# evidence about the laptop, never about the plan.
++_STALE_ENTRY_RE = re.compile(
++    r"^(path-exists|path-absent|sha-matches|issue-open|issue-closed)\s*:\s*(.*)$")
++# `#538`, or the bare number — anything else has no digits to read.
++_ISSUE_ARG_RE = re.compile(r"^#?\s*(\d+)$")
++# One answer per issue number per process, so a number named by many tasks —
++# and asked after by both halves of the read, the refusals inside
++# collect_violations and the advisories inside main() — costs one `gh`.
++_ISSUE_STATE_CACHE = {}
++
++
++def _stale_entries(t):
++    """A task's Stale-if entries, bullet stripped and text otherwise verbatim.
++    `parse_claims_body` puts them under the task's `claims` overlay; the flat
++    key is read too, so a caller holding a bare parse result is answered the
++    same."""
++    entries = (t.get("claims") or {}).get("stale_if_entries")
++    if entries is None:
++        entries = t.get("stale_if_entries") or []
++    return entries
++
++
++def _stale_argument(text):
++    """An entry's argument: the text after the head, whitespace and the
++    author's backticks stripped (`- path-exists: \\`fleet/reader.mjs\\`` asks
++    about `fleet/reader.mjs`)."""
++    return text.strip().strip("`").strip()
++
++
++def _read_issue_state(repo, number):
++    """(state, reason) from one `gh issue view` in `repo` — the shape
++    `check_provenance.py` already uses, run with the base repository as its
++    working directory so `gh` resolves the repository from that checkout's
++    origin."""
++    gh = shutil.which("gh")
++    if gh is None:
++        return None, "gh not on PATH"
++    try:
++        p = subprocess.run(
++            [gh, "issue", "view", number, "--json", "state", "-q", ".state"],
++            capture_output=True, text=True, cwd=str(repo))
++    except OSError:
++        return None, "gh not on PATH"
++    if p.returncode != 0:
++        first = (p.stderr or "").strip().splitlines()
++        return None, ("gh exited %d%s"
++                      % (p.returncode, (": " + first[0]) if first else ""))
++    state = (p.stdout or "").strip()
++    if state not in ("OPEN", "CLOSED"):
++        return None, "gh printed %r" % state
++    return state, None
++
++
++def _issue_state(repo, number):
++    """`_read_issue_state`, memoized process-wide by issue number."""
++    if number not in _ISSUE_STATE_CACHE:
++        _ISSUE_STATE_CACHE[number] = _read_issue_state(repo, number)
++    return _ISSUE_STATE_CACHE[number]
++
++
++def _base_entry_exists(base_tree, path):
++    """True when `path` is an entry of the tree at BASE. A directory base reads
++    the disk, the way `BaseTree.read_text` does; a sha base asks `git ls-tree`,
++    whose one read answers existence for a blob and a tree alike."""
++    if not path:
++        return False
++    if not base_tree.is_sha:
++        return (base_tree.repo / path).exists()
++    return bool(_git(base_tree.repo, "ls-tree", base_tree.rev,
++                     "--", path).strip())
++
++
++def _base_blob_id(base_tree, path):
++    """`path`'s object id at BASE when it is a blob there, else None — the
++    `git ls-tree` id for a sha base, `git hash-object` of the file on disk for
++    a directory one."""
++    if not path:
++        return None
++    if not base_tree.is_sha:
++        f = base_tree.repo / path
++        if not f.is_file():
++            return None
++        return _git(base_tree.repo, "hash-object", "--", str(f)).strip() or None
++    for line in _git(base_tree.repo, "ls-tree", base_tree.rev,
++                     "--", path).splitlines():
++        head = line.split("\t", 1)[0].split()
++        if len(head) >= 3 and head[1] == "blob":
++            return head[2]
++    return None
++
++
++def _stale_entry_holds(head, argument, base_tree):
++    """(holds, reason) for one entry. A non-None `reason` means the machine
++    could not decide it, and `holds` says nothing."""
++    if head in ("path-exists", "path-absent"):
++        there = _base_entry_exists(base_tree, _stale_argument(argument))
++        return (there if head == "path-exists" else not there), None
++
++    if head == "sha-matches":
++        path, sep, want = argument.strip().rpartition("@")
++        path, want = _stale_argument(path), _stale_argument(want)
++        if not sep or not path or not want:
++            return False, "malformed argument"
++        blob = _base_blob_id(base_tree, path)
++        # A path that is not a blob at BASE cannot match an id — that is the
++        # predicate answered, not a read that failed.
++        if blob is None:
++            return False, None
++        return blob.startswith(want.lower()), None
++
++    m = _ISSUE_ARG_RE.match(_stale_argument(argument))
++    if m is None:
++        return False, "malformed argument"
++    state, reason = _issue_state(base_tree.repo, m.group(1))
++    if reason is not None:
++        return False, reason
++    return state == ("OPEN" if head == "issue-open" else "CLOSED"), None
++
++
++def evaluate_stale_if(tasks, base_tree):
++    """The Stale-if slot of every task, answered against the tree at BASE.
++
++    Returns `(refusals, advisories)`: one
++    `STALE fact: task <id>: <entry> holds at BASE` line per entry that holds —
++    a violation like any other, so the compile exits 2 and prints no
++    `PLAN OK` — and one
++    `STALE fact: task <id>: <entry> unreadable at BASE — <reason>` line per
++    entry the machine cannot decide, printed after the verdict. An entry that
++    is decidable and does not hold produces neither line.
++
++    `<entry>` is the Stale-if line exactly as the author wrote it after its
++    bullet, backticks and all, so the line the author reads is the line the
++    author typed.
++
++    Every task is evaluated, including the ones whose Files grammar is exempt:
++    a gate/manual/release task carries the slot and goes stale the same way.
++    Called only with a base to read — a bare `--check` and a plain compile
++    evaluate no predicate at all."""
++    refusals, advisories = [], []
++    for t in tasks:
++        for entry in _stale_entries(t):
++            m = _STALE_ENTRY_RE.match(entry)
++            if m is None:
++                continue  # not a predicate at all — already a grammar refusal
++            holds, reason = _stale_entry_holds(
++                m.group(1), m.group(2), base_tree)
++            if reason is not None:
++                advisories.append(
++                    "STALE fact: task %s: %s unreadable at BASE — %s"
++                    % (t["id"], entry, reason))
++            elif holds:
++                refusals.append(
++                    "STALE fact: task %s: %s holds at BASE" % (t["id"], entry))
++    return refusals, advisories
++
++
+ # --------------------------------------------------------------------------- #
+ # BASE facts printed under `--check --base` (#896)                             #
+ # --------------------------------------------------------------------------- #
+@@ -2606,6 +2781,12 @@ def main(argv=None):
+                      for t in split_tasks(plan_text)]
+             for line in base_fact_lines(tasks, base_tree):
+                 print(line)
++            # ... and beside them, the Stale-if entries the machine could not
++            # decide (#538). The refusals of the same read already rode in the
++            # violations above; these are advisories, so they follow the
++            # verdict whichever way it went and change no exit code.
++            for line in evaluate_stale_if(tasks, base_tree)[1]:
++                print(line)
+         return rc
+     if emit_args is not None and emit_launch is None:
+         sys.exit("error: --emit-args requires --emit-launch (task bodies must "
+diff --git a/skills/ultrawrite/SKILL.md b/skills/ultrawrite/SKILL.md
+index 8f90c0911012eef5d4c62e70a51551b01fb33ad7..740568b3be11d435626de65839089dc587a5c707 100644
+--- a/skills/ultrawrite/SKILL.md
++++ b/skills/ultrawrite/SKILL.md
+@@ -299,7 +299,19 @@ test-case count and section banners — read them before signing a sentence abou
+ the file is; run-90 deleted five exams on the sentence "entirely the check-runs poll"),
+ and every file outside a task's Files that carries a literal its Machine clauses pin —
+ the shape that parked runs 84, 88 and 90. A carrier that pins the value the task
+-changes goes into that task's Files; the line is a fact, never a refusal. The launcher
++changes goes into that task's Files; the line is a fact, never a refusal.
++
++A `**Stale-if:**` predicate is read against the same base, and it is the one thing there
++that does refuse: a predicate that already holds at that base is a `STALE fact: task <id>:
++<entry> holds at BASE` refusal — the task is stale before it is dispatched, so the compile
++exits 2 and prints no `PLAN OK`. An issue predicate the laptop cannot read is unreadable,
++not false: no `gh` on PATH, a non-zero exit, or an answer that is neither `OPEN` nor
++`CLOSED` prints `STALE fact: task <id>: <entry> unreadable at BASE — <reason>` as an
++advisory line after the verdict, beside the `BASE fact:` lines, so an offline laptop still
++prints `PLAN OK` and exits 0. Only `--check --base` asks: a bare `--check` and a plain
++compile evaluate no predicate at all.
++
++The launcher
+ runs this same compile at `--base` before it pushes anything and prints the same
+ lines, so a plan that does not compile at the launch base is refused on the laptop
+ (#865), and a `**BASE facts:**` block generated at another sha is refused with the
+diff --git a/tests/test_compile_plan_edges.py b/tests/test_compile_plan_edges.py
+index 4814114ee3868d407908f759d9f4375cae99febb..3d7a79ec1903ce7de1c1d11366c5f09ed0739eca 100644
+--- a/tests/test_compile_plan_edges.py
++++ b/tests/test_compile_plan_edges.py
+@@ -22,8 +22,10 @@ internals: the assertions read `dag_edges` and `waves` off stdout, and the
+ `--check` verdict off the exit code and the two output channels.
+ """
+ import json
++import os
+ import pathlib
+ import re
++import shutil
+ import subprocess
+ import sys
+ 
+@@ -353,3 +355,437 @@ def test_skill_global_constraints_section_documents_the_check_refusal():
+     assert p.returncode == 0, (
+         "the Global Constraints discipline section of %s does not say a "
+         "`Check:` naming a file a task owns is refused" % SKILL_MD)
++
++
++# =========================================================================== #
++# Task 1 (#538 item 2): `compile_plan.py --check --base` evaluates the five    #
++# Stale-if predicates at BASE and refuses a task whose predicate holds.        #
++#                                                                              #
++# A task's Stale-if slot says what would make the task wrong before it runs.   #
++# At BASE nothing reads it. Under `--check --base <base>` each entry is now a  #
++# question the compiler puts to the tree at that base:                         #
++#                                                                              #
++#   * `path-exists:` / `path-absent:` hold on what the tree has (M1, M2),      #
++#     `sha-matches: <path>@<sha>` on the blob id at BASE prefixed by `<sha>`   #
++#     (M3), `issue-open:` / `issue-closed:` on what one `gh issue view` per    #
++#     distinct issue number prints (M4).                                       #
++#   * An entry that holds is one violation, line                               #
++#     `STALE fact: task <id>: <entry> holds at BASE` — exit 2, no `PLAN OK`    #
++#     (M5). `<entry>` is the Stale-if line as written after its bullet, so it  #
++#     carries its backticks.                                                   #
++#   * An issue entry `gh` cannot decide, and a malformed `sha-matches`/issue   #
++#     argument, refuse nothing: the verdict prints as before and one           #
++#     `STALE fact: task <id>: <entry> unreadable at BASE — <reason>` line      #
++#     follows it on stdout (M6).                                               #
++#   * Without a base — bare `--check`, or a plain compile with or without      #
++#     `--base` — no predicate is evaluated at all (M7).                        #
++#   * `skills/ultrawrite/SKILL.md` §The proof gate says both halves (M8).      #
++#                                                                              #
++# Every row below compiles a real plan inside a real one-commit git repository #
++# under `tmp_path`, so the tree these predicates are asked about is a tree,    #
++# not a stub; the plan sits inside that repository because a 40-hex `--base`   #
++# is resolved in the plan's own toplevel. `gh` is never the real one: the      #
++# issue rows put a shell script on a PATH the test built, which prints what a  #
++# file beside it says and appends its argv to a log.                           #
++# =========================================================================== #
++
++PRESENT = "present.py"
++MISSING = "missing.py"
++PRESENT_TEXT = "print(1)\n"
++
++# The two Stale-if bullets the shared TASK_1/TASK_2 templates carry. Neither
++# path exists in the temp repository, so every plan below holds exactly the
++# entries its own row substitutes in — and the eleven cases above, which never
++# pass a `--base`, are untouched by any of this.
++STALE_BULLET_1 = "- path-exists: `fleet/tests/sim_a.mjs`"
++STALE_BULLET_2 = "- path-exists: `fleet/reader.mjs`"
++
++
++def stale_plan(entry1, entry2=None, **kw):
++    """`make_plan`'s body with task 1's (and optionally task 2's) Stale-if
++    entry replaced. `entry` is the text after the bullet — what the compiler
++    parses into `stale_if_entries` and what M5's line must carry verbatim."""
++    text = make_plan(**kw)
++    text = text.replace(STALE_BULLET_1, "- " + entry1)
++    if entry2 is not None:
++        text = text.replace(STALE_BULLET_2, "- " + entry2)
++    return text
++
++
++def _git(repo, *args):
++    p = subprocess.run(["git", "-C", str(repo), *args],
++                       capture_output=True, text=True)
++    assert p.returncode == 0, " ".join(args) + "\n" + p.stdout + p.stderr
++    return p.stdout
++
++
++def base_repo(tmp_path):
++    """A one-commit git repository holding `present.py` and nothing else.
++    Returned as (repo path, HEAD sha, `git hash-object` id of present.py)."""
++    repo = tmp_path / "repo"
++    repo.mkdir()
++    _git(repo, "init", "-q", ".")
++    _git(repo, "config", "user.email", "exam@example.invalid")
++    _git(repo, "config", "user.name", "exam")
++    (repo / PRESENT).write_text(PRESENT_TEXT)
++    _git(repo, "add", PRESENT)
++    _git(repo, "commit", "-qm", "present")
++    head = _git(repo, "rev-parse", "HEAD").strip()
++    blob = _git(repo, "hash-object", PRESENT).strip()
++    assert re.fullmatch(r"[0-9a-f]{40}", head), head
++    assert re.fullmatch(r"[0-9a-f]{40}", blob), blob
++    return repo, head, blob
++
++
++def compile_at(repo, name, text, *flags, env=None):
++    """Write the plan (and its gate verdicts) inside `repo` and compile it."""
++    plan = _write_plan(repo, name, text)
++    return subprocess.run([sys.executable, str(COMPILER), str(plan), *flags],
++                          capture_output=True, text=True,
++                          env=None if env is None else dict(os.environ, **env))
++
++
++def check_at(repo, name, text, base, env=None):
++    return compile_at(repo, name, text, "--check", "--base", str(base),
++                      env=env)
++
++
++def holds_line(task_id, entry):
++    """M5's line, exactly."""
++    return "STALE fact: task %s: %s holds at BASE" % (task_id, entry)
++
++
++def unreadable_prefix(task_id, entry):
++    """M6's line, up to the reason — nothing pins the reason's wording."""
++    return "STALE fact: task %s: %s unreadable at BASE — " % (task_id,
++                                                                  entry)
++
++
++def assert_refused(p, *lines):
++    """[M5]: exit 2, each expected `STALE fact:` line present on stdout as a
++    whole line, and no `PLAN OK` on either channel."""
++    out = p.stdout + p.stderr
++    assert p.returncode == 2, out
++    assert "PLAN OK" not in out, out
++    for line in lines:
++        assert line in p.stdout.splitlines(), (line, out)
++
++
++def assert_plan_ok(p):
++    """The entry does not hold: the verdict is the unchanged `PLAN OK` and
++    nothing is refused."""
++    out = p.stdout + p.stderr
++    assert p.returncode == 0, out
++    assert p.stdout.splitlines()[:1] == ["PLAN OK"], out
++    assert "holds at BASE" not in out, out
++
++
++def both_bases(repo, head):
++    """The two ways `--base` names this tree (M1): the checkout directory and
++    its 40-hex HEAD sha. Every path/sha row is asked of each."""
++    return [("directory base", str(repo)), ("sha base", head)]
++
++
++# ── (a) M1: `path-exists:` holds on an entry of the tree at BASE ────────────
++# "a task's `path-exists: <path>` entry holds when `<path>` is an entry of the
++# tree at BASE ... and does not hold otherwise."
++
++def test_a_path_exists_on_a_committed_file_is_refused_under_both_bases(tmp_path):
++    """(a)/[M1]: `present.py` is committed, so task 1's entry holds — exit 2,
++    the line names the task and the entry verbatim, and no `PLAN OK`."""
++    repo, head, _ = base_repo(tmp_path)
++    entry = "path-exists: `%s`" % PRESENT
++    for label, base in both_bases(repo, head):
++        p = check_at(repo, "a-%s.md" % label.split()[0],
++                     stale_plan(entry), base)
++        assert_refused(p, holds_line("1", entry))
++        assert "1 violation(s)" in p.stdout, (label, p.stdout)
++
++
++def test_a_path_exists_on_an_absent_file_passes_under_both_bases(tmp_path):
++    """(a)/[M1]: the same task asking after `missing.py` — the entry does not
++    hold, so the plan is the clean plan it was: `PLAN OK`, exit 0."""
++    repo, head, _ = base_repo(tmp_path)
++    entry = "path-exists: `%s`" % MISSING
++    for label, base in both_bases(repo, head):
++        assert_plan_ok(check_at(repo, "a2-%s.md" % label.split()[0],
++                                stale_plan(entry), base))
++
++
++# ── (b) M2: `path-absent:` holds exactly when the same read finds nothing ───
++# "A `path-absent: <path>` entry holds exactly when the same read finds no
++# entry."
++
++def test_b_path_absent_on_an_absent_file_is_refused(tmp_path):
++    """(b)/[M2]: nothing at `missing.py` at BASE, so `path-absent:` holds and
++    carries its own line."""
++    repo, head, _ = base_repo(tmp_path)
++    entry = "path-absent: `%s`" % MISSING
++    for label, base in both_bases(repo, head):
++        assert_refused(check_at(repo, "b-%s.md" % label.split()[0],
++                                stale_plan(entry), base),
++                       holds_line("1", entry))
++
++
++def test_b_path_absent_on_a_committed_file_passes(tmp_path):
++    """(b)/[M2]: `present.py` is there, so `path-absent:` does not hold."""
++    repo, head, _ = base_repo(tmp_path)
++    entry = "path-absent: `%s`" % PRESENT
++    for label, base in both_bases(repo, head):
++        assert_plan_ok(check_at(repo, "b2-%s.md" % label.split()[0],
++                                stale_plan(entry), base))
++
++
++# ── (c) M3: `sha-matches:` holds on a blob id BASE's id begins with ─────────
++# "A `sha-matches: <path>@<sha>` entry holds when `<path>` is a blob at BASE
++# whose object id ... begins with `<sha>`; a `<path>` absent at BASE, or an id
++# that does not begin with `<sha>`, does not hold."
++
++def test_c_sha_matches_full_id_and_prefix_are_refused(tmp_path):
++    """(c)/[M3]: the committed file's own id, whole and as its 7-character
++    prefix — both hold, under a directory base and a sha base each."""
++    repo, head, blob = base_repo(tmp_path)
++    for n, sha in enumerate((blob, blob[:7])):
++        entry = "sha-matches: `%s`@%s" % (PRESENT, sha)
++        for label, base in both_bases(repo, head):
++            assert_refused(check_at(repo, "c%d-%s.md" % (n, label.split()[0]),
++                                    stale_plan(entry), base),
++                           holds_line("1", entry))
++
++
++def test_c_sha_matches_a_foreign_id_or_an_absent_path_passes(tmp_path):
++    """(c)/[M3]: forty zeros is not a prefix of the blob's id, and a path with
++    no blob at BASE cannot match any id — neither holds."""
++    repo, head, blob = base_repo(tmp_path)
++    rows = ["sha-matches: `%s`@%s" % (PRESENT, "0" * 40),
++            "sha-matches: `%s`@%s" % (MISSING, blob)]
++    for n, entry in enumerate(rows):
++        for label, base in both_bases(repo, head):
++            assert_plan_ok(check_at(repo, "c%d-%s.md" % (n + 2,
++                                                         label.split()[0]),
++                                    stale_plan(entry), base))
++
++
++# ── (d) M4: the issue entries hold on what one `gh` read prints ─────────────
++# "An `issue-open: #N` entry holds when `gh issue view N --json state -q
++# .state`, run with the base repository as its working directory, prints
++# `OPEN`, and an `issue-closed: #N` entry holds when it prints `CLOSED`; `gh`
++# is run once per distinct issue number per compile, however many tasks name
++# it."
++
++ISSUE = "538"
++
++_GH_SCRIPT = """#!/bin/sh
++printf '%s\\n' "$*" >> '{log}'
++cat '{answer}'
++{stderr}exit {code}
++"""
++
++
++def fake_gh(tmp_path, name, answer, code=0, stderr_line=""):
++    """A `gh` on a PATH this test built: it logs its argv and prints what the
++    file beside it says. Returns (the directory to prepend to PATH, its log)."""
++    bindir = tmp_path / name
++    bindir.mkdir()
++    log = bindir / "gh.log"
++    answer_file = bindir / "answer"
++    answer_file.write_text(answer)
++    gh = bindir / "gh"
++    gh.write_text(_GH_SCRIPT.format(
++        log=log, answer=answer_file, code=code,
++        stderr=("printf '%%s\\n' '%s' >&2\n" % stderr_line
++                if stderr_line else "")))
++    gh.chmod(0o755)
++    return bindir, log
++
++
++def with_gh(bindir):
++    return {"PATH": str(bindir) + os.pathsep + os.environ["PATH"]}
++
++
++def test_d_an_open_issue_holds_for_issue_open_and_not_for_issue_closed(tmp_path):
++    """(d)/[M4]: the fake answers `OPEN` — `issue-open: #538` is refused with
++    its line; `issue-closed: #538` does not hold, so the plan passes."""
++    repo, _, _ = base_repo(tmp_path)
++    bindir, _log = fake_gh(tmp_path, "bin-open", "OPEN\n")
++    env = with_gh(bindir)
++    open_entry = "issue-open: #%s" % ISSUE
++    assert_refused(check_at(repo, "d1.md", stale_plan(open_entry), repo,
++                            env=env),
++                   holds_line("1", open_entry))
++    assert_plan_ok(check_at(repo, "d2.md",
++                            stale_plan("issue-closed: #%s" % ISSUE), repo,
++                            env=env))
++
++
++def test_d_a_closed_issue_swaps_the_two(tmp_path):
++    """(d)/[M4]: the same two entries against a fake answering `CLOSED`."""
++    repo, _, _ = base_repo(tmp_path)
++    bindir, _log = fake_gh(tmp_path, "bin-closed", "CLOSED\n")
++    env = with_gh(bindir)
++    closed_entry = "issue-closed: #%s" % ISSUE
++    assert_refused(check_at(repo, "d3.md", stale_plan(closed_entry), repo,
++                            env=env),
++                   holds_line("1", closed_entry))
++    assert_plan_ok(check_at(repo, "d4.md",
++                            stale_plan("issue-open: #%s" % ISSUE), repo,
++                            env=env))
++
++
++def test_d_gh_is_run_once_per_issue_number_however_many_tasks_name_it(tmp_path):
++    """(d)/[M4]: both tasks name `#538` — one from each side. The compile
++    answers both from one `gh` invocation, whose argv is the documented read."""
++    repo, _, _ = base_repo(tmp_path)
++    bindir, log = fake_gh(tmp_path, "bin-cache", "OPEN\n")
++    open_entry = "issue-open: #%s" % ISSUE
++    closed_entry = "issue-closed: #%s" % ISSUE
++    p = check_at(repo, "d5.md", stale_plan(open_entry, closed_entry), repo,
++                 env=with_gh(bindir))
++    # `OPEN`: task 1's entry holds, task 2's does not.
++    assert_refused(p, holds_line("1", open_entry))
++    assert holds_line("2", closed_entry) not in p.stdout, p.stdout
++    invocations = [line for line in log.read_text().splitlines() if line.strip()]
++    assert len(invocations) == 1, invocations
++    argv = invocations[0].split()
++    for token in ("issue", "view", ISSUE):
++        assert token in argv, (token, argv)
++    assert "state" in invocations[0], invocations[0]
++
++
++# ── (e) M5: every entry that holds is one violation ─────────────────────────
++# "Every entry that holds is one violation whose line is `STALE fact: task
++# <id>: <entry> holds at BASE` ... so the compile exits 2, prints those lines
++# and prints no `PLAN OK`."
++
++def test_e_two_holding_entries_are_two_violations(tmp_path):
++    """(e)/[M5]: task 1's `path-exists:` and task 2's `path-absent:` both hold
++    — both lines print, the tally is `2 violation(s)`, the exit is 2."""
++    repo, _, _ = base_repo(tmp_path)
++    entry1 = "path-exists: `%s`" % PRESENT
++    entry2 = "path-absent: `%s`" % MISSING
++    p = check_at(repo, "e.md", stale_plan(entry1, entry2), repo)
++    assert_refused(p, holds_line("1", entry1), holds_line("2", entry2))
++    assert "2 violation(s)" in p.stdout, p.stdout
++
++
++# ── (f) M6: what the machine cannot read is an advisory, not a refusal ──────
++# "An issue entry `gh` cannot decide ... and a `sha-matches` or issue entry
++# whose argument is malformed ... is not a violation: the compile prints its
++# verdict as before and, after it, one line `STALE fact: task <id>: <entry>
++# unreadable at BASE — <reason>` on stdout per such entry, so a plan with
++# nothing else wrong prints `PLAN OK` and exits 0."
++
++def assert_advisory(p, entry):
++    out = p.stdout + p.stderr
++    assert p.returncode == 0, out
++    assert p.stdout.splitlines()[:1] == ["PLAN OK"], out
++    prefix = unreadable_prefix("1", entry)
++    advisories = [line for line in p.stdout.splitlines()
++                  if line.startswith(prefix)]
++    assert len(advisories) == 1, (prefix, out)
++    # An advisory is not a refusal: nothing here is counted or refused.
++    assert "holds at BASE" not in out, out
++    assert "violation(s)" not in out, out
++
++
++def test_f_no_gh_on_path_is_an_advisory(tmp_path):
++    """(f)/[M6]: a PATH holding only `git` — the issue is undecidable, so the
++    verdict is `PLAN OK` and the entry prints as unreadable."""
++    repo, _, _ = base_repo(tmp_path)
++    git = shutil.which("git")
++    assert git, "the exam needs a real `git` to build the gh-less PATH with"
++    bindir = tmp_path / "bin-nogh"
++    bindir.mkdir()
++    (bindir / "git").symlink_to(git)
++    entry = "issue-open: #%s" % ISSUE
++    assert_advisory(check_at(repo, "f1.md", stale_plan(entry), repo,
++                             env={"PATH": str(bindir)}),
++                    entry)
++
++
++def test_f_gh_exiting_non_zero_is_an_advisory(tmp_path):
++    """(f)/[M6]: a `gh` that fails decides nothing."""
++    repo, _, _ = base_repo(tmp_path)
++    bindir, _log = fake_gh(tmp_path, "bin-fail", "", code=1,
++                           stderr_line="could not resolve to an Issue")
++    entry = "issue-open: #%s" % ISSUE
++    assert_advisory(check_at(repo, "f2.md", stale_plan(entry), repo,
++                             env=with_gh(bindir)),
++                    entry)
++
++
++def test_f_gh_printing_neither_state_is_an_advisory(tmp_path):
++    """(f)/[M6]: output that is neither `OPEN` nor `CLOSED`."""
++    repo, _, _ = base_repo(tmp_path)
++    bindir, _log = fake_gh(tmp_path, "bin-maybe", "MAYBE\n")
++    entry = "issue-closed: #%s" % ISSUE
++    assert_advisory(check_at(repo, "f3.md", stale_plan(entry), repo,
++                             env=with_gh(bindir)),
++                    entry)
++
++
++def test_f_an_issue_entry_with_no_digits_is_an_advisory(tmp_path):
++    """(f)/[M6]: `issue-open: #` names no issue — malformed, not false."""
++    repo, _, _ = base_repo(tmp_path)
++    bindir, _log = fake_gh(tmp_path, "bin-open2", "OPEN\n")
++    entry = "issue-open: #"
++    assert_advisory(check_at(repo, "f4.md", stale_plan(entry), repo,
++                             env=with_gh(bindir)),
++                    entry)
++
++
++def test_f_a_sha_matches_with_no_at_is_an_advisory(tmp_path):
++    """(f)/[M6]: `sha-matches:` with no `@` pins no id — malformed, and the
++    path being present at BASE does not make it hold."""
++    repo, _, _ = base_repo(tmp_path)
++    entry = "sha-matches: `%s`" % PRESENT
++    assert_advisory(check_at(repo, "f5.md", stale_plan(entry), repo), entry)
++
++
++# ── (g) M7: no base, no predicate ───────────────────────────────────────────
++# "A bare `--check` without `--base`, and a plain compile with or without
++# `--base`, evaluate no predicate."
++
++def test_g_a_bare_check_evaluates_nothing(tmp_path):
++    """(g)/[M7]: the very plan leg (a) refuses, compiled with no `--base` —
++    `PLAN OK`, exit 0, nothing said about the predicate."""
++    repo, _, _ = base_repo(tmp_path)
++    entry = "path-exists: `%s`" % PRESENT
++    p = compile_at(repo, "g1.md", stale_plan(entry), "--check")
++    assert p.returncode == 0, p.stdout + p.stderr
++    assert p.stdout.strip() == "PLAN OK", p.stdout
++    assert "STALE fact:" not in p.stdout + p.stderr, p.stdout + p.stderr
++
++
++def test_g_a_plain_compile_with_a_base_evaluates_nothing(tmp_path):
++    """(g)/[M7]: the same plan compiled plainly with `--base <dir>` — exit 0,
++    stdout is the launch JSON, and no `STALE fact:` on either channel."""
++    repo, _, _ = base_repo(tmp_path)
++    entry = "path-exists: `%s`" % PRESENT
++    p = compile_at(repo, "g2.md", stale_plan(entry), "--base", str(repo))
++    assert p.returncode == 0, p.stdout + p.stderr
++    json.loads(p.stdout)
++    assert "STALE fact:" not in p.stdout, p.stdout
++    assert "STALE fact:" not in p.stderr, p.stderr
++
++
++# ── (h) M8: the authoring skill says both halves ────────────────────────────
++# "The `## The proof gate` section of `skills/ultrawrite/SKILL.md` says that a
++# Stale-if predicate that holds at the base is a `STALE fact:` refusal and that
++# an issue predicate the laptop cannot read is an advisory line." This is the
++# Proof's `Run:` line, verbatim.
++
++RUN_PROOF_GATE = (
++    "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' "
++    "skills/ultrawrite/SKILL.md | tr '\\n' ' ' "
++    "| grep -q 'STALE fact.*refus.*unreadable.*advisory'")
++
++
++def test_h_proof_gate_section_documents_the_refusal_and_the_advisory():
++    """(h)/[M8]: the proof-gate section's flattened text names `STALE fact`, a
++    refusal, `unreadable` and `advisory`, in that order."""
++    p = _shell(RUN_PROOF_GATE)
++    assert p.returncode == 0, (
++        "the `## The proof gate` section of %s does not say that a Stale-if "
++        "predicate holding at the base is a `STALE fact:` refusal and that an "
++        "unreadable issue predicate is an advisory line" % SKILL_MD)

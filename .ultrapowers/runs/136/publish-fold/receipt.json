@@ -1,0 +1,28 @@
+{
+  "engineHead": "26791383e3a4a97008716ba94fc0465333c208a4",
+  "attempts": {
+    "1": {
+      "tip": "ec4f63f860aa5896508642fc1b1a8587fb5a8913",
+      "candidate": "fc1ff7138dfe39a2fe0d343d662026dc66bd03d2",
+      "disposition": "folded",
+      "pathsJoined": 1,
+      "resolversDispatched": 0,
+      "suite": "pass",
+      "checks": [
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_fold_policy.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "skipped"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_kata_landing.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "pass"
+        }
+      ],
+      "checkRetries": 0
+    }
+  }
+}
