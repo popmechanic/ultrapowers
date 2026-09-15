@@ -151,10 +151,16 @@ export const sshTransport = ({ sshHost, exec }) => ({
 
 /** The issue fields a caller may read back, in the order the API documents
  *  them. Only the keys the answer actually carried are copied: a partial issue
- *  answers a partial projection rather than a shape padded with `undefined`. */
-const ISSUE_KEYS = ['uid', 'revision', 'metadata', 'status', 'owner', 'project_id']
+ *  answers a partial projection rather than a shape padded with `undefined`.
+ *  `links` is the issue's own edges — `{type, from, to}` rows as the hub
+ *  answers them, each side carrying its `uid` and `short_id` — copied through
+ *  untouched (#979): the driver reads them to learn that a worker filed
+ *  `--blocked-by` against a sibling, and a projection that reshaped them would
+ *  be a second opinion about what the hub said. An answer carrying none leaves
+ *  the key absent, exactly as every other key here. */
+const ISSUE_KEYS = ['uid', 'revision', 'metadata', 'status', 'owner', 'project_id', 'links']
 /** A mutation's answer adds the issue's short id — `getIssue` is the projection
- *  the contract names and stays exactly the six above. */
+ *  the contract names and stays exactly the seven above. */
 const MUTATION_KEYS = ['uid', 'revision', 'short_id', 'metadata', 'status', 'owner', 'project_id']
 
 const project = (source, keys) => {

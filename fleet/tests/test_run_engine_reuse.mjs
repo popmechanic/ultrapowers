@@ -660,7 +660,7 @@ const labelled = (labels, prefix) => labels.filter((l) => l.startsWith(prefix))
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// (c) [M3] the second layout: wave 1 is the reused task alone
+// (c) [M3] the second layout: one reused task and one the run must do
 // ══════════════════════════════════════════════════════════════════════════
 {
   const s = await sim({
@@ -687,28 +687,27 @@ const labelled = (labels, prefix) => labels.filter((l) => l.startsWith(prefix))
     '(c) [M1] including wave 2\'s, before the `Wave 1` mark: ' +
     JSON.stringify(s.trace.slice(0, 12)))
 
-  // A wave whose tasks are all reused adopts nothing…
-  assert.equal(s.report.waveMerges.length, 2,
-    '(c) [M3] two wave rows — ' + JSON.stringify(s.report.waveMerges))
-  assert.deepEqual(s.report.waveMerges[0].branches, [],
-    '(c) [M3] a wave whose tasks are all reused adopts nothing — wave 1 folds no branch: ' +
-    JSON.stringify(s.report.waveMerges[0]))
-  if ('headSha' in s.report.waveMerges[0] && s.report.waveMerges[0].headSha) {
-    assert.equal(s.report.waveMerges[0].headSha, reuseHead,
-      '(c) [M3] and leaves the head where the reuse put it: ' +
-      JSON.stringify(s.report.waveMerges[0]))
-  }
-  assert.deepEqual(eventsOf(s.runDir).filter((e) => e.kind === 'driver:wave-adopted' && e.wave === 1),
-    [], '(c) [M3] and appends no `driver:wave-adopted` for wave 1')
+  // A reused task is folded at setup, not by the run: under the ready set
+  // (#974 Task 1) an epoch is a FOLD, so the only epoch here is task 2's — the
+  // reused task never occupies one of its own, and the reuse head is simply the
+  // floor the run opens on.
+  assert.equal(s.report.waveMerges.length, 1,
+    '(c) [M3] one epoch row, task 2\'s — the reused task was folded at setup and buys no ' +
+    'epoch of its own: ' + JSON.stringify(s.report.waveMerges))
+  const adoptions = eventsOf(s.runDir).filter((e) => e.kind === 'driver:wave-adopted')
+  assert.deepEqual(adoptions.map((e) => e.tasks), [['2']],
+    '(c) [M3] and the one `driver:wave-adopted` names task 2 alone — never the reused task, ' +
+    'which no epoch adopts: ' + JSON.stringify(adoptions))
   assert.deepEqual(labelled(s.labels, 'impl:'), ['impl:2'],
     '(c) [M3] no worker is dispatched for the reused task; got ' + JSON.stringify(s.labels))
 
-  // …and the next wave starts from the reuse head.
+  // …and the task the run does still starts from the reuse head: the floor the
+  // setup fold left is the head every first dispatch is anchored at.
   assert.equal(s.startHeads.get('2'), reuseHead,
-    '(c) [M3] the next wave starts from the reuse head — task 2\'s clone was cut at ' +
-    s.startHeads.get('2') + ', the reuse head is ' + reuseHead)
-  assert.equal(s.report.waveMerges[1].status, 'MERGED',
-    '(c) [M3] and wave 2 folds on top of it: ' + JSON.stringify(s.report.waveMerges[1]))
+    '(c) [M3] task 2\'s clone was cut at ' + s.startHeads.get('2') +
+    ', the reuse head is ' + reuseHead)
+  assert.equal(s.report.waveMerges[0].status, 'MERGED',
+    '(c) [M3] and it folds on top of it: ' + JSON.stringify(s.report.waveMerges[0]))
   const row = rowOf(s.report, '1')
   assert.equal(row && row.status, 'done',
     '(c) [M3] the reused row is still `done` here: ' + JSON.stringify(row))
@@ -773,12 +772,23 @@ const labelled = (labels, prefix) => labels.filter((l) => l.startsWith(prefix))
         '(d) [M4] each off BASE (' + s.base + ') — task ' + id + ' started at ' +
         s.startHeads.get(id) + where)
     }
-    assert.equal(s.report.waveMerges[0].status, 'MERGED',
-      '(d) [M4] and the wave folds both tasks as it does at BASE: ' +
-      JSON.stringify(s.report.waveMerges[0]) + where)
-    assert.deepEqual(s.report.waveMerges[0].branches.slice().sort(), ['1', '2'],
-      '(d) [M4] with both branches in the fold: ' +
-      JSON.stringify(s.report.waveMerges[0]) + where)
+    // Under the ready set (#974 Task 1) an epoch is one FOLD, not one plan
+    // layer: two independent tasks free their slots at two instants, so each is
+    // folded in the epoch its own landing opened, and a run that folds them in
+    // one epoch is the same run with the two landings closer together. What
+    // this leg is about is the REFUSAL — the reuse folded nothing, so the run
+    // did both tasks itself and adopted both — so it reads the epochs together
+    // rather than expecting the barrier's single one.
+    assert.ok(s.report.waveMerges.length >= 1,
+      '(d) [M4] and the run folds the work the reuse refused: ' +
+      JSON.stringify(s.report.waveMerges) + where)
+    for (const m of s.report.waveMerges) {
+      assert.equal(m.status, 'MERGED',
+        '(d) [M4] every epoch of it adopted: ' + JSON.stringify(m) + where)
+    }
+    assert.deepEqual(s.report.waveMerges.flatMap((m) => m.branches).slice().sort(), ['1', '2'],
+      '(d) [M4] with both branches in the fold, each in exactly one epoch: ' +
+      JSON.stringify(s.report.waveMerges) + where)
   }
 }
 

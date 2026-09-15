@@ -52,10 +52,16 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `receipt.json`, `gate-receipt.json`, `report.json`, `events.jsonl`, `engine.log`,
     `claude-version.txt` (the boot's `claude --version` line, written before the engine starts), plus
     `approve-receipt.json` and `standing-approval.json`, present when the engine wrote them.
-    The engine's own wave record is two kinds in that `events.jsonl`, one per wave that folded:
-    `driver:wave-adopted` `{wave, tasks, headSha}` — the 1-based wave, the ids it merged in plan
-    order, the head it left on the integration branch — and `driver:wave-blocked`
-    `{wave, tasks, detail}`, the same wave and ids with the `waveMerges` row's own `detail`.
+    The engine's own wave record is two kinds in that `events.jsonl`, one per epoch that folded.
+    An epoch is a fold, not a layer: the driver keeps its lanes full from the ready set — a task
+    is ready when every predecessor an edge names has been adopted — and folds whatever has
+    landed, all of it as one epoch, each time a slot frees. So `driver:wave-adopted`
+    `{wave, tasks, headSha}` — the 1-based epoch in fold order, the ids it merged in plan order,
+    the head it left on the integration branch, each a descendant of the epoch before it — and
+    `driver:wave-blocked` `{wave, tasks, detail}`, the same epoch and ids with the `waveMerges`
+    row's own `detail`. What an epoch adopts is what was captured and unadopted at the INSTANT
+    the slot freed — a result that lands while a fold is running is adopted by the fold after
+    it, never by the one already in flight, and only one fold runs at a time.
     The driver's own executions are three more kinds, one per command run: `driver:proof-run`
     `{task, cmd, exit, iter}`, `driver:check-run` `{task, cmd, exit, minor, iter}` and
     `driver:exam-run` `{task, cmd, exit, iter, stdout}` — `stdout` is the exam's combined
@@ -537,6 +543,21 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   that round's blocking findings, one per line, the same lines the fix prompt carries; a refused
   post is one `kata:write-failed` and the fix round still runs. A reviewer's own blocking findings
   reach no comment: they end the task, and the row's `notes` carry them.
+  The re-edge (#979): every dispatch's `SIBLING FILES` line names each sibling's issue beside its
+  id — `<id> (<project name>#<short_id>): <files>`, the same reference that sibling's own `KATA_REF`
+  carries — for a run with a record, and the bare `<id>: <files>` for a run without one. A worker
+  whose proof needs a sibling still in flight files `kata edit $KATA_REF --blocked-by <that
+  sibling>`, sets `work.attention` `stuck` naming it and returns `BLOCKED`; the engine then reads
+  that task's issue once more (one `getIssue`, through the non-fatal path — a refused read answers
+  nothing and the task fails as it would have) and looks at its `links` for a `blocks` link whose
+  `from` is another task of this run not yet adopted. Each such link is recorded as the edge
+  sibling → task and appended as one `driver:re-edged` event `{task, blockedBy}`; the task itself is
+  put back to unstarted — no row, no fold, no fix round, no `needs-review`, no close — its slot
+  frees, and it is dispatched again, a fresh worker on a re-anchored clone, once every one of those
+  siblings is adopted. A `BLOCKED` naming no such link is the failure it always was, an edge already
+  recorded for that pair is never recorded twice (a second `BLOCKED` naming it is that failure), and
+  a sibling that fails leaves the task `blocked — depends on a failed task` through the same
+  dependency cascade every plan edge uses.
   Closes: an adopted task's issue is patched first, with exactly the two flat keys
   `work.adopted_run` (the run stamp's number as an integer, `null` when the stamp is not `run-<N>`)
   and `work.adopted_sha` (the wave's adopted head), under the revision the engine last held for that

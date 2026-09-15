@@ -567,28 +567,46 @@ const segmentOf = (block, cmd) => {
     'and that value is forty lowercase hex characters: ' + JSON.stringify(seg))
 }
 
-// ── leg (b): wave 2 gets wave 1's adopted head; the integrated pass gets the
-// run base [M1] [M3]
-// The two shas differ only from wave 2 onward, which is why this leg is
-// two-wave: in wave 1 `waveBaseSha` and `baseSha` coincide and any confusion
-// between them is invisible.
+// ── leg (b): a task dispatched after an adoption gets that adopted head; the
+// integrated pass gets the run base [M1] [M3]
+// The two shas differ only once something has been adopted, which is why this
+// leg needs a task that lands before T2 is dispatched: until the first fold
+// `waveBaseSha` and `baseSha` coincide and any confusion between them is
+// invisible.
 //
-// T3 rides in wave 2 for the join (#887): the integrated pass re-runs T2's
-// command only because another task of that wave touches one of T2's paths.
-// T3 declares `two.txt` in its Files and writes `three.txt`, so the two touch
-// sets meet in `two.txt` while the patches stay disjoint.
+// Under the ready set (#974 Task 1) a task is dispatched the moment its
+// predecessors are adopted, on the head of THAT moment, and the tasks that land
+// while a fold is running are folded together as the next epoch. So the shape
+// is drawn with edges rather than wave rows: T1 alone is ready at the start and
+// is adopted as epoch 1; its three consumers are dispatched together on epoch
+// 1's head; the pacer P lands first and folds as epoch 2, and T2 and T3 — whose
+// reviews wait for that fold to open — land while it runs and are folded
+// together as epoch 3. That co-landing is what the join needs: T3 rides with T2
+// for it (#887), declaring `two.txt` in its Files and writing `three.txt`, so
+// the two touch sets meet in `two.txt` while the patches stay disjoint, and the
+// integrated pass re-runs T2's command at all.
 {
   const ECHO = "sh -c 'echo base=$ULTRA_BASE'"
   const repo = makeRepo(path.join(tmp, 'repo-ub2'))
   const runDir = path.join(tmp, 'run-ub2')
+  const PACER = 'P'
   const waves = [
     [entry({ id: 'T1', files: ['one.txt'], writes: ['one.txt'] })],
-    [entry({ id: 'T2', files: ['two.txt'], writes: ['two.txt'], proofRuns: [ECHO] }),
+    [entry({ id: PACER, files: ['pacer.txt'], writes: ['pacer.txt'] }),
+     entry({ id: 'T2', files: ['two.txt'], writes: ['two.txt'], proofRuns: [ECHO] }),
      entry({ id: 'T3', files: ['two.txt', 'three.txt'], writes: ['three.txt'] })],
   ]
-  const fileOf = (id) => (id === 'T1' ? 'one.txt' : id === 'T2' ? 'two.txt' : 'three.txt')
+  const fileOf = (id) => (
+    id === 'T1' ? 'one.txt' : id === 'T2' ? 'two.txt' : id === 'T3' ? 'three.txt' : 'pacer.txt')
+  // The pacer's own fold, seen at the kernel call the exec seam carries.
+  const pacerFolding = path.join(tmp, 'ub2-pacer-folding')
+  const waitFor = async (file) => {
+    for (let i = 0; i < 2000 && !fs.existsSync(file); i += 1) {
+      await new Promise((r) => setTimeout(r, 10))
+    }
+  }
   const prompts = {}
-  const stub = (prompt, opts, cwd) => {
+  const stub = async (prompt, opts, cwd) => {
     prompts[opts.label] = prompt
     const kind = opts.label.split(':')[0]
     const id = opts.label.split(':')[1]
@@ -596,35 +614,52 @@ const segmentOf = (block, cmd) => {
       fs.writeFileSync(path.join(cwd, fileOf(id)), 'from ' + id + '\n')
       return doneImpl(cwd)
     }
-    if (kind === 'review') return passReview()
+    // T2 and T3 hold their reviews until the pacer's fold is under way, so both
+    // land inside it and the epoch that follows holds the two of them.
+    if (kind === 'review') {
+      if (id === 'T2' || id === 'T3') await waitFor(pacerFolding)
+      return passReview()
+    }
     throw new Error('unexpected dispatch: ' + opts.label)
   }
-  const { run, base } = rig({ repo, runDir, waves, edges: [['T1', 'T2']], stub, stamp: 'ub2' })
+  const { run, base } = rig({
+    repo, runDir, waves, stub, stamp: 'ub2',
+    edges: [['T1', PACER], ['T1', 'T2'], ['T1', 'T3']],
+    exec: async (cmd, argv, opts) => {
+      if (cmd === 'python3' && argv[1] === 'fold' &&
+          argv[argv.indexOf('--wave') + 1] === '2') fs.writeFileSync(pacerFolding, '')
+      return execSeam(cmd, argv, opts)
+    },
+  })
   const report = await run()
 
-  assert.equal(report.coverage.complete, true, 'sim precondition: both waves adopted')
-  assert.equal(report.waveMerges.length, 2, 'sim precondition: two folded waves')
-  assert.deepEqual(report.waveMerges[1].joined, ['two.txt'],
-    'sim precondition: wave 2\'s two tasks meet in two.txt, which is what gives T2 an ' +
-    'integrated execution at all (#887): ' + JSON.stringify(report.waveMerges[1]))
+  assert.equal(report.coverage.complete, true, 'sim precondition: every task adopted')
+  assert.equal(report.waveMerges.length, 3,
+    'sim precondition: three epochs — T1, the pacer, then T2 with T3: ' +
+    JSON.stringify(report.waveMerges))
+  assert.deepEqual(report.waveMerges[2].joined, ['two.txt'],
+    'sim precondition: the last epoch\'s two tasks meet in two.txt, which is what gives T2 ' +
+    'an integrated execution at all (#887): ' + JSON.stringify(report.waveMerges[2]))
   const w1 = report.waveMerges[0].headSha
-  const w2 = report.waveMerges[1].headSha
-  assert.match(String(w1), /^[0-9a-f]{40}$/, 'sim precondition: wave 1 adopted a head')
+  const w2 = report.waveMerges[2].headSha
+  assert.deepEqual(report.waveMerges[0].branches, ['T1'],
+    'sim precondition: epoch 1 is T1 alone: ' + JSON.stringify(report.waveMerges[0]))
+  assert.match(String(w1), /^[0-9a-f]{40}$/, 'sim precondition: epoch 1 adopted a head')
   assert.notEqual(w1, base,
-    'sim precondition: wave 1\'s adopted head is not the run base — the two shas the leg ' +
+    'sim precondition: epoch 1\'s adopted head is not the run base — the two shas the leg ' +
     'distinguishes actually differ here')
 
-  // [M1] the per-task pass in wave 2 sees the task's OWN base: wave 1's head.
+  // [M1] the task dispatched after that adoption sees its OWN base: epoch 1's head.
   const ev2 = evidenceOf(prompts['review:T2:1'])
   assert.ok(ev2.includes('base=' + w1),
-    'wave 2\'s `Run:` ran with ULTRA_BASE = waveMerges[0].headSha (' + w1 + '): ' +
-    JSON.stringify(ev2.slice(0, 600)))
+    'T2\'s `Run:` ran with ULTRA_BASE = the head adopted before it was dispatched (' + w1 +
+    '): ' + JSON.stringify(ev2.slice(0, 600)))
   assert.ok(!ev2.includes('base=' + base),
-    'and NOT the run base — a wave-2 task re-anchored onto the adopted head must be handed ' +
+    'and NOT the run base — a task re-anchored onto the adopted head must be handed ' +
     'that head: ' + JSON.stringify(ev2.slice(0, 600)))
 
-  // [M3] the integrated pass sees the RUN base, in wave 2 as in wave 1 — never
-  // the adopted head, against which any diff is a tautology.
+  // [M3] the integrated pass sees the RUN base, in every epoch — never the
+  // adopted head, against which any diff is a tautology.
   const integrated = report.integratedRuns.filter((r) => r.task === 'T2')
   assert.equal(integrated.length, 1,
     'one integrated run for T2: ' + JSON.stringify(report.integratedRuns))
@@ -632,9 +667,9 @@ const segmentOf = (block, cmd) => {
     'the integrated pass runs with ULTRA_BASE = the run base ' + base + ': ' +
     JSON.stringify(integrated[0]))
   assert.ok(!String(integrated[0].stdout).includes(String(w2)),
-    'never wave 2\'s own adopted head ' + w2 + ': ' + JSON.stringify(integrated[0]))
+    'never the epoch\'s own adopted head ' + w2 + ': ' + JSON.stringify(integrated[0]))
   assert.ok(!String(integrated[0].stdout).includes(String(w1)),
-    'and never wave 1\'s: ' + JSON.stringify(integrated[0]))
+    'and never epoch 1\'s: ' + JSON.stringify(integrated[0]))
 }
 
 // ── leg (e): the header comment names the variable [M4] ──────────────────────

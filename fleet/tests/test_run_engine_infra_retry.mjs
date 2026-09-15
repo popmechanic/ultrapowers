@@ -53,7 +53,7 @@
 //        second time, the implementer exactly once; a second `null` proceeds
 //        unexamined as at BASE.
 //   M7 — a `null` review is re-dispatched, the implementer exactly once and no
-//        barrier park; a second `null` parks and the barrier retry recovers it
+//        infra park; a second `null` parks and the slot-free retry recovers it
 //        as at BASE. (Its pair half — only the null half of a pair is re-asked
 //        — went with the pair, #964 Task 2.)
 //   M8 — the backoff elapses BEFORE the re-dispatch. Leg (j) pins what a sim
@@ -260,7 +260,7 @@ assert.equal(engine.INFRA_BACKOFF_MS, 60000,
 // Neither has a subject any more: no worker reads the finished run, and
 // `gitVerified` is derived from the fold receipts rather than attested. The
 // reviewer's own two-null lane — no third dispatch, then the park and the
-// barrier retry — is leg (i) below, which is unchanged.
+// retry taken when a slot frees — is leg (i) below, which is unchanged.
 
 // ══ (e) a null with no `worker:end` line reads `status unknown` [M4] ════════
 {
@@ -276,7 +276,7 @@ assert.equal(engine.INFRA_BACKOFF_MS, 60000,
   // A throw is not a null: the retry lane never opens. On the critic's vehicle
   // that read as one dispatch and a withheld attestation; on the reviewer the
   // throw parks the task, so the label is dispatched once per task attempt and
-  // the barrier retry re-runs the task WHOLE — implementer first. Either way
+  // the slot-free retry re-runs the task WHOLE — implementer first. Either way
   // the thing under test is the same: no back-to-back re-dispatch, no entry.
   const { report, labels } = await leanRun(({ n }) => {
     if (n === 1) throw new Error('sim: the reviewer died')
@@ -420,12 +420,12 @@ for (const [name, implReply] of [
     '(i)/M7: and the implementer exactly once: ' + labels.join(','))
   assert.equal(report.tasks[0].status, 'done',
     '(i)/M7: the task ends done: ' + JSON.stringify(report.tasks[0]))
-  assert.deepEqual(report.judgmentCalls.filter((j) => String(j).includes('parked for one barrier retry')),
-    [], '(i)/M7: and no barrier park was taken: ' + shown(report))
+  assert.deepEqual(report.judgmentCalls.filter((j) => String(j).includes('parked for one retry when a slot frees')),
+    [], '(i)/M7: and no infra park was taken: ' + shown(report))
 }
 {
   // Two nulls: the attempt and its one re-dispatch. The task parks and the
-  // BARRIER retry re-runs it whole — implementer included — as at BASE.
+  // retry taken WHEN A SLOT FREES re-runs it whole — implementer included.
   const { report, labels } = await reviewerRun({
     profile: 'lean',
     review: ({ label, n, runDir }) => (n <= 2 ? dieNull(runDir, label, 429) : passReview()),
@@ -433,15 +433,15 @@ for (const [name, implReply] of [
   assert.equal(report.judgmentCalls.filter((j) => j === 'task T1: ' + attempt2('review:T1:1', 429)).length, 1,
     '(i)/M4: exactly one call equal to `task T1: ' + attempt2('review:T1:1', 429) + '`: ' +
     shown(report))
-  assert.ok(report.judgmentCalls.some((j) => String(j).includes('parked for one barrier retry')),
+  assert.ok(report.judgmentCalls.some((j) => String(j).includes('parked for one retry when a slot frees')),
     '(i)/M7: the second null parks the task, as at BASE: ' + shown(report))
-  assert.ok(report.judgmentCalls.some((j) => String(j).includes('recovered at the barrier retry')),
-    '(i)/M7: and the barrier retry recovers it: ' + shown(report))
+  assert.ok(report.judgmentCalls.some((j) => String(j).includes('recovered at the slot-free retry')),
+    '(i)/M7: and the slot-free retry recovers it: ' + shown(report))
   assert.equal(countOf(labels, 'impl:T1'), 2,
-    '(i)/M7: the barrier retry re-runs the whole task, implementer included: ' + labels.join(','))
+    '(i)/M7: the slot-free retry re-runs the whole task, implementer included: ' + labels.join(','))
   assert.equal(countOf(labels, 'review:T1:1'), 3,
     '(i)/M7: three reviewer dispatches — the attempt, its one re-dispatch, and the ' +
-    'barrier retry\'s: ' + labels.join(','))
+    'slot-free retry\'s: ' + labels.join(','))
   assert.equal(report.tasks[0].status, 'done',
     '(i)/M7: and the task ends done: ' + JSON.stringify(report.tasks[0]))
 }
@@ -623,7 +623,7 @@ const withWatchStub = async (body) => {
 // pinned what that cost: `setTimeout` asked for the backoff exactly once for
 // the two concurrent retries, one `driver:infra-retry` event and one
 // `infra-retry:` entry per half, each carrying its own half's status, and the
-// task still done with no barrier park. One worker reviews a task now, so there
+// task still done with no infra park. One worker reviews a task now, so there
 // is no second half to wait for and nothing here to measure; (857-c) above
 // keeps the timer's own behaviour on the one retry that remains.
 
@@ -634,7 +634,7 @@ const withWatchStub = async (body) => {
 // (trace: <32 hex>)`, with a `curl` stub first on PATH standing in for
 // reflection. The reviews stay canned. What is proved is the whole
 // path: envelope -> classify -> reflection probe -> `null` -> AGENT_NULL ->
-// parked-infra -> the barrier retry -> a second dispatch that finishes the
+// parked-infra -> the slot-free retry -> a second dispatch that finishes the
 // task -> the run completes, the trace id on the event log.
 {
   const TRACE = '53af9083708deefaa364aa37e112695d'
@@ -719,10 +719,10 @@ out(JSON.stringify({type:'result',subtype:'success',is_error:false,terminal_reas
       ids: ['T1'], plan: { T1: ['edge403', 'success'] }, reflection: 'attached',
     })
     assert.equal(countOf(labels, 'impl:T1'), 2,
-      '#903 (a): the implementer is dispatched twice — once refused, once at the barrier: ' + labels.join(','))
+      '#903 (a): the implementer is dispatched twice — once refused, once at the slot-free retry: ' + labels.join(','))
     assert.equal(report.tasks[0].status, 'done',
       '#903 (a): the run completes: ' + JSON.stringify(report.tasks[0]) + ' | ' + shown(report))
-    assert.ok(report.judgmentCalls.some((j) => String(j).includes('parked on infra-death, recovered at the barrier retry')),
+    assert.ok(report.judgmentCalls.some((j) => String(j).includes('parked on infra-death, recovered at the slot-free retry')),
       '#903 (a): recovered through the infra lane: ' + shown(report))
     const sightings = kinds(events, 'worker:edge-403')
     assert.equal(sightings.length, 1, '#903 (a): one worker:edge-403 event: ' + JSON.stringify(sightings))
@@ -766,7 +766,7 @@ out(JSON.stringify({type:'result',subtype:'success',is_error:false,terminal_reas
   }
 
   // (d) two independent workers refused inside the window, reflection
-  // attached -> the run fails; 121 s apart -> both recover at the barrier.
+  // attached -> the run fails; 121 s apart -> both recover when a slot frees.
   {
     const { report, events } = await edgeRun({
       ids: ['T1', 'T2'], plan: { T1: ['edge403', 'success'], T2: ['edge403', 'success'] },

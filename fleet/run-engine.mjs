@@ -9,7 +9,7 @@
 //
 // waves.js was deleted at 0.3.0 (PR #434) once runs 26/27 passed the bar;
 // the judgment-flow semantics here (single retry with tier escalation on a
-// schema trip, the infra-death barrier retry, the fix-loop cap of 2, the
+// schema trip, the infra-death re-dispatch, the fix-loop cap of 2, the
 // fail-closed lost-coordinates sweep, dependency cascade-blocking) are ported
 // from it verbatim in behavior. The choreography it dispatched agents for —
 // setup, fold/resolve-apply/materialize, adoption, the critic's detach — is
@@ -42,6 +42,11 @@ import { fileURLToPath } from 'node:url'
 // clone is cut at dispatch time (only the engine knows which tasks have an
 // exam), and the implementer's capture is retaken after the handoff.
 import { ulid, cloneAtBase, patchAgainstBase } from './run-waves.mjs'
+// Which head a dispatch's capture is diffed against travels with the dispatch
+// and not in a variable the whole run shares — see `captureAnchors` below: the
+// ready set keeps two dispatches in flight against different heads, and async
+// context is what lets one seam answer both of them correctly.
+import { AsyncLocalStorage } from 'node:async_hooks'
 // A red suite's output is quoted, not tailed (#763 part 2): every reader below
 // who is handed a failing suite's text — a judgment call, the reconcile
 // agent's brief, a blocked wave's detail — gets the failing
@@ -60,8 +65,8 @@ import { examSlug, reservedExamPath } from './exam-paths.mjs'
 
 // ── which tests went red (#871 decisions 1 and 4) ────────────────────────────
 // `failingBlock` above answers "what does the failure read like"; this answers
-// "which files failed", because the wave barrier has one more question to ask
-// of a red candidate: did any task of this wave name the path that went red?
+// "which files failed", because a fold has one more question to ask of a red
+// candidate: did any task of this epoch name the path that went red?
 // The source is pytest's short summary — one `FAILED <path>::<id>` line per
 // failure — and the one shape that lies about its path is the fleet bridge:
 // every node sim runs as `tests/test_fleet_suite.py::test_fleet_mjs[<id>]`,
@@ -117,7 +122,7 @@ const resolvedModel = (name) => {
 // (it used to extract it from waves.js source — the pin now holds the engine
 // that actually runs, not the fallback). A capability-fixable schema trip gets
 // the one tier escalation; everything else retries in place; AGENT_NULL is the
-// engine-minted infra marker and parks for the barrier retry — never free-text
+// engine-minted infra marker and parks for its one re-dispatch — never free-text
 // match Overloaded (agent() returns null rather than throwing overload text).
 export const isSchemaTrip = (msg) =>
   /schema|structuredoutput|did not conform|required propert|invalid (?:enum|json)/i.test(msg)
@@ -193,11 +198,11 @@ export const bootstrapManifestChanged = (paths) =>
     return BOOTSTRAP_MANIFESTS.has(base) || REQUIREMENTS_TXT.test(base)
   })
 
-// Same chunking constant as waves.js: intra-wave dependency re-checks and the
-// lost-coordinates sweep run at chunk boundaries, so the value is part of the
-// ported semantics (the actual process-level width bound is the caller's
-// `parallel`, run-main's boundedParallel(WIDTH)).
-export const CONCURRENCY = 16
+// waves.js chunked each wave and re-checked dependencies at the chunk
+// boundaries; the scheduler below has no chunks and no barrier, so the width
+// bound is the lane count it asks `parallel` for (`args.width`) and the
+// dependency re-check is the readiness test every lane makes before every
+// dispatch.
 
 // ── judgment schemas ─────────────────────────────────────────────────────────
 // IMPLEMENTER: branch/headSha are gone from the model's contract — the driver
@@ -663,10 +668,20 @@ export const compositionUnpinnedRows = (waveNumber, tasks) => {
 // The driver-run post-fold suite was rendered for the same reader and is gone
 // with it (#964 Task 2). `report.tests` carries the run, the command and the
 // output the gate reads.
-const siblingLine = (task, wave) => {
+// `refOf` answers a sibling's kata reference — `<project>#<short_id>`, the same
+// spelling the worker's own `KATA_REF` carries — or null for a run with no hub
+// record, or a task the record does not name. A worker that finds its proof
+// needs a sibling still in flight has to be able to NAME that sibling's issue
+// to file `--blocked-by` against it (#979), and this line is where it reads it;
+// a run with no record renders the bare `<id>: <files>` it always did.
+const siblingLine = (task, wave, refOf) => {
+  const refFor = (id) => (typeof refOf === 'function' ? refOf(id) : null)
   const sibs = wave
     .filter((t) => t.id !== task.id && Array.isArray(t.files) && t.files.length)
-    .map((t) => t.id + ': ' + t.files.join(', '))
+    .map((t) => {
+      const ref = refFor(t.id)
+      return t.id + (ref ? ' (' + ref + ')' : '') + ': ' + t.files.join(', ')
+    })
   return sibs.length ? ('\nSIBLING FILES: ' + sibs.join(' | ')) : ''
 }
 const taskBodyBlock = (task, wavesPath) => {
@@ -998,6 +1013,26 @@ export async function runEngine({
       ? kataTaskRows[id] : null
     return (row && typeof row === 'object') ? row : null
   }
+  // A task's issue as a worker spells it: `<project name>#<short_id>`, the same
+  // reference `envFor` puts in that task's own `KATA_REF`. It is read off the
+  // RECORD and spelled exactly as `kataRefFor` (run-main.mjs) spells it —
+  // `row.shortId || row.short_id` — so the two never disagree: the setup read
+  // fills `shortId` on the row, and a record that arrives carrying `short_id`
+  // answers the same reference before any read. The record alone is the
+  // condition, not `kataOn`: a run handed a record and no client still names its
+  // siblings, and names them without making a hub call. No record, no row, or no
+  // short id: null, and the line keeps the bare `<id>: <files>` shape.
+  const kataRefRows = (kataRecord && kataRecord.tasks &&
+                       typeof kataRecord.tasks === 'object') ? kataRecord.tasks : {}
+  const kataRefOf = (id) => {
+    const row = (id != null && Object.prototype.hasOwnProperty.call(kataRefRows, id))
+      ? kataRefRows[id] : null
+    if (!row || typeof row !== 'object') return null
+    const shortId = row.shortId || row.short_id
+    const name = kataRecord ? (kataRecord.project || {}).name : null
+    return (typeof shortId === 'string' && shortId &&
+            typeof name === 'string' && name) ? (name + '#' + shortId) : null
+  }
   // The revision each issue is known to be at, by uid: seeded by the record and
   // advanced by EVERY answer a mutation of that issue returns. An `If-Match`
   // built from the record after a claim (or a comment, or an earlier patch) has
@@ -1005,8 +1040,8 @@ export async function runEngine({
   const kataRevisions = new Map()
   // Task ids whose sheet has been read and whose issue has been claimed. Both
   // are once-per-task: `runTaskInner` is re-entered by the tier retry and the
-  // barrier retry, and a second read would see the revision our own claim
-  // bumped. `kataClosed` is the same guard on the other end — the wave rows and
+  // slot-free retry, and a second read would see the revision our own claim
+  // bumped. `kataClosed` is the same guard on the other end — the epoch rows and
   // the sweep must not close the same issue twice.
   const kataOpened = new Set()
   const kataClaimed = new Set()
@@ -1201,7 +1236,7 @@ export async function runEngine({
   // reuse pass, which asks whether this issue is already closed done.
   //
   // `kataOpened` is the once-guard it always was — `runTaskInner` is re-entered
-  // by the tier retry and the barrier retry, and a second read would see the
+  // by the tier retry and the slot-free retry, and a second read would see the
   // revision our own claim bumped and call that a mismatch.
   const kataIssues = new Map()
   const openKataTask = async (task) => {
@@ -1315,14 +1350,48 @@ export async function runEngine({
     if (timer !== undefined) clearInterval(timer)
     attentionTimer.delete(taskId)
   }
+  // ── the capture anchor of a dispatch ──────────────────────────────────────
+  // `withPatchCapture` (run-waves.mjs) captures a worktree dispatch's patch by
+  // diffing the WHOLE tree against one base it reads at capture time, through
+  // the `patchBase.current` seam run-main hands in. Under the wave barrier one
+  // scalar was enough: every dispatch in flight shared its wave's base. Under
+  // the ready set two dispatches can be in flight against different heads — a
+  // task dispatched at BASE is still working when the epoch before it adopts —
+  // and a capture that read the newer head would diff the older tree against it
+  // and silently REVERT that epoch inside its own patch.
+  //
+  // So the base a capture reads is the head the dispatch asking for it went out
+  // on, carried in async context rather than in a variable: `patchBase.current`
+  // answers with that anchor, and with the run's shared head for a capture made
+  // outside any dispatch (the reconcile round's). The anchor is written by the
+  // lane, in `dispatchOnce`, in the tick before it dispatches.
+  const captureAnchors = new AsyncLocalStorage()
+  const anchorOf = new Map()
+  if (patchBase) {
+    let sharedBase = patchBase.current
+    Object.defineProperty(patchBase, 'current', {
+      configurable: true,
+      get: () => {
+        const store = captureAnchors.getStore()
+        return (store && store.base) ? store.base : sharedBase
+      },
+      set: (value) => { sharedBase = value },
+    })
+  }
   // Every dispatch goes through here. A label whose second colon-segment names
   // a task the record knows (`impl:1`, `exam:1`, `fix:1:0`, `review:1:1:2`) is
-  // polled while it runs; `integration`, `reconcile:wave1:1` and every dispatch
-  // of a run with no hub are the call the engine made at BASE, byte for byte.
+  // polled while it runs and carries that task's capture anchor; `integration`,
+  // `reconcile:wave1:1` and every dispatch of a run with no hub are the call the
+  // engine made at BASE, byte for byte.
   const agent = (prompt, opts) => {
-    const row = kataOn ? kataRowOf(String((opts && opts.label) || '').split(':')[1]) : null
+    const labelId = String((opts && opts.label) || '').split(':')[1]
+    const anchor = anchorOf.get(labelId)
+    if (anchor !== undefined && captureAnchors.getStore() === undefined) {
+      return captureAnchors.run({ base: anchor }, () => agent(prompt, opts))
+    }
+    const row = kataOn ? kataRowOf(labelId) : null
     if (!row) return dispatchAgent(prompt, opts)
-    const taskId = String(opts.label).split(':')[1]
+    const taskId = labelId
     attentionStart(taskId, row)
     // The dispatch itself is made in THIS tick — the pair at the top of the
     // pipeline is two `agent()` calls with nothing awaited between them, and a
@@ -1492,13 +1561,14 @@ export async function runEngine({
   // `gitVerified` for what may have been one API blip), the examiner (a `null`
   // falls to `exam = 'blocked'` and the task proceeds unexamined) and each
   // reviewer of a review round (a `null` throws AGENT_NULL, which parks the task
-  // and spends a barrier retry re-running the IMPLEMENTER as well). Each gets
+  // and spends the task's one re-dispatch re-running the IMPLEMENTER as well).
+  // Each gets
   // exactly one re-dispatch after the backoff, and a second `null` is the answer
   // it already was at BASE — fail-closed, unexamined, parked.
   //
   // Only a `null` REPLY routes here (the AGENT_NULL doctrine above). A throw is
-  // still the lanes that already exist — runTask's same-tier retry, the barrier
-  // retry of a parked task, the examiner-alone re-dispatch on a rejected
+  // still the lanes that already exist — runTask's same-tier retry, the
+  // slot-free retry of a parked task, the examiner-alone re-dispatch on a rejected
   // examiner — none of which this widens or replaces.
   const infraBackoffMs = (Number.isFinite(args.infraBackoffMs) && args.infraBackoffMs >= 0)
     ? args.infraBackoffMs : INFRA_BACKOFF_MS
@@ -1591,22 +1661,39 @@ export async function runEngine({
     return redispatchInfra(label, scope, status, redispatch)
   }
 
-  // Edge sanity (ported): an unbound / inverted / same-wave edge weakens
-  // dependency blocking — surfaced, never thrown.
+  // Edge sanity: an edge the ready set cannot honour — surfaced, never thrown.
+  // Two of the three complaints the barrier made here are gone with it: an edge
+  // whose endpoints shared a wave, or pointed at an earlier one, could not bind
+  // when wave position decided execution order, and binds exactly like every
+  // other edge now that ADOPTION does. What is left is the edge naming a task
+  // this run does not have — nothing to wait for, so nothing is held back — and
+  // the hazard readiness introduces: a cycle is not a weak edge but a deadlock
+  // the scheduler resolves by never dispatching the tasks in it, so the run says
+  // so up front rather than leaving them in `unfinished` unexplained.
   {
-    const waveIndexOf = Object.create(null)
-    WAVES.forEach((w, i) => w.forEach((t) => { waveIndexOf[t.id] = i }))
+    const known = new Set(WAVES.flat().map((t) => t.id))
+    const bound = []
     for (const [a, b] of EDGES) {
-      if (!(a in waveIndexOf) || !(b in waveIndexOf)) {
+      if (!known.has(a) || !known.has(b)) {
         judgmentCalls.push('edge ' + a + ' -> ' + b + ': endpoint not in this run — ' +
           'unbound for dependency blocking (check for a typo)')
-      } else if (waveIndexOf[a] > waveIndexOf[b]) {
-        judgmentCalls.push('edge ' + a + ' -> ' + b + ': \'' + b + '\' does not run after \'' + a +
-          '\' (earlier wave) — dependency blocking cannot bind; move the dependent to a later wave')
-      } else if (waveIndexOf[a] === waveIndexOf[b]) {
-        judgmentCalls.push('edge ' + a + ' -> ' + b + ': endpoints share a wave — blocking is ' +
-          'chunk-position-dependent (fires only across ' + CONCURRENCY + '-task chunk boundaries)')
+      } else bound.push([a, b])
+    }
+    // Peel the tasks nothing bound is waiting on, over and over: what is left is
+    // in a cycle or behind one.
+    const settled = new Set()
+    for (let pass = 0; pass < known.size; pass++) {
+      let moved = false
+      for (const id of known) {
+        if (settled.has(id)) continue
+        if (bound.every(([a, b]) => b !== id || settled.has(a))) { settled.add(id); moved = true }
       }
+      if (!moved) break
+    }
+    const stuck = [...known].filter((id) => !settled.has(id))
+    if (stuck.length > 0) {
+      judgmentCalls.push('edges ' + stuck.join(', ') + ': a dependency cycle — no task in it can ' +
+        'ever become ready (every one waits on a task that waits on it), so none is dispatched')
     }
   }
 
@@ -1817,10 +1904,10 @@ export async function runEngine({
 
   // The suite on BASE is EAGER (#862, widening #712's lazy pass): it is started
   // HERE, in Setup, and nothing waits for it — wave 1 is dispatched while it
-  // runs, so the answer is off the critical path and settled by the wave barrier
-  // at the latest. #712's economy is kept in spirit: this is the one and only
-  // site that runs the suite on BASE, so a run pays for it exactly once however
-  // many waves go red.
+  // runs, so the answer is off the critical path and settled before the first
+  // fold at the latest. #712's economy is kept in spirit: this is the one and
+  // only site that runs the suite on BASE, so a run pays for it exactly once
+  // however many epochs go red.
   //
   // BASE and not a wave's head: a head that was adopted was judged green when it
   // was, so a later wave's red is the diff's unless BASE itself was already red
@@ -1860,8 +1947,8 @@ export async function runEngine({
     if (!passed) {
       baselineFailing = failingPaths(raw)
       judgmentCalls.push(redBaselineHead(output) +
-        ' — the red this run inherited, not the diff\'s: the run parks at the ' +
-        'wave barrier at the latest, and no reconcile is dispatched at it')
+        ' — the red this run inherited, not the diff\'s: the run parks before ' +
+        'the first fold at the latest, and no reconcile is dispatched at it')
     }
   }
   const baselineSettled = sh(testCmd, baselineDir).then(
@@ -2133,7 +2220,7 @@ export async function runEngine({
     // implementer that already finished (#762) — the second examiner must open
     // its eyes on a tree at BASE, not on whatever the first one left behind.
     const cutExamClone = async () => {
-      // A barrier retry re-enters runTaskInner; the clone is re-cut from
+      // A slot-free retry re-enters runTaskInner; the clone is re-cut from
       // scratch rather than reused, the same posture resetTaskClone takes.
       fs.rmSync(examDir, { recursive: true, force: true })
       cloneAtBase({ repo: await cloneSourceFor(baseShaForTask), dest: examDir,
@@ -2435,6 +2522,14 @@ export async function runEngine({
     }
 
     if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
+      // BLOCKED on a sibling still in flight is a missing edge, not a failure
+      // (#979): the worker filed it on its own issue before returning, and the
+      // task waits for that sibling rather than ending here. A link naming no
+      // sibling of this run — and a NEEDS_CONTEXT, which says nothing about a
+      // dependency — is the failure it is at BASE.
+      const waitingOn = impl.status === 'BLOCKED'
+        ? await blockingSiblingsOf(task, kataRow) : []
+      if (waitingOn.length) return reEdgedRow(task, waitingOn, impl.summary)
       return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                reviewVerdict: 'not-reviewed', notes: impl.summary,
                tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
@@ -2630,6 +2725,13 @@ export async function runEngine({
                  ...examEditedField() }
       }
       if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
+        // Same reading as the implementer's own BLOCKED above: `fix.md` teaches
+        // the fix round the same three moves, so a round that files
+        // `--blocked-by` against a sibling still in flight re-edges the task
+        // rather than ending it.
+        const waitingOn = impl.status === 'BLOCKED'
+          ? await blockingSiblingsOf(task, kataRow) : []
+        if (waitingOn.length) return reEdgedRow(task, waitingOn, impl.summary)
         return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                  reviewVerdict: 'blocked-after-fix', notes: impl.summary,
                  tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
@@ -2878,8 +2980,8 @@ export async function runEngine({
       const msg = String((e && e.message) || e)
       if (isInfraFault(msg)) {
         judgmentCalls.push('task ' + task.id + ': infra-death (' + msg +
-          ') — parked for one barrier retry (no immediate retry into the live storm)')
-        log('task ' + task.id + ' infra-death — parked for barrier retry')
+          ') — parked for one retry when a slot frees (no immediate retry into the live storm)')
+        log('task ' + task.id + ' infra-death — parked for a slot-free retry')
         return { task: task.id, status: 'parked-infra', reviewVerdict: 'agent-error',
                  notes: msg, tier: resolvedModel(task.tier || 'standard'),
                  review: taskReviewProfile(task), fixIterations: 0, proofFixes: 0 }
@@ -3139,8 +3241,8 @@ export async function runEngine({
     }
     // Red candidate: BASE's own verdict is settled before anyone is dispatched
     // at it. It settled in Setup, or settles here at the latest — and a RED one
-    // never reaches this line, because the wave barrier above parks the run
-    // before a candidate is ever folded.
+    // never reaches this line, because the fold path parks the run before a
+    // candidate is ever folded.
     await baselineSettled
     // ── the unattributed red (#871 decisions 1 and 4) ────────────────────────
     // A green baseline makes every candidate red the fold's own; it does not
@@ -3151,14 +3253,15 @@ export async function runEngine({
     // red is RECORDED, one judgment-call line per path, so the run keeps going
     // with the fact on the record rather than parking on someone else's test.
     // Attribution is string equality on the path the record spelled — no
-    // globbing, no resolving — and it takes the WHOLE wave (WAVES[waveIdx]),
-    // not just the tasks that merged: a task whose review failed still names
-    // the files it was given. One attributed path in the list is enough to
-    // send the candidate down the reconcile route below, as is an output that
-    // named no path at all (a bare non-zero exit, a dead install).
+    // globbing, no resolving — and it takes the WHOLE PLAN, not just the tasks
+    // this epoch folded: a task whose review failed still names the files it was
+    // given, and under the ready set the tasks beside this fold are not a wave a
+    // fold could name. One attributed path in the list is enough to send the
+    // candidate down the reconcile route below, as is an output that named no
+    // path at all (a bare non-zero exit, a dead install).
     const failing = failingTestPaths(suite.stdout + suite.stderr)
     const claimed = new Set()
-    for (const t of (Array.isArray(WAVES[waveIdx]) ? WAVES[waveIdx] : waveTasks)) {
+    for (const t of (PLAN.length > 0 ? PLAN : waveTasks)) {
       for (const key of ['files', 'proofTests']) {
         for (const p of (Array.isArray(t && t[key]) ? t[key] : [])) {
           if (typeof p === 'string' && p) claimed.add(p)
@@ -3244,44 +3347,133 @@ export async function runEngine({
                failingBlock(suite.stdout + suite.stderr) }
   }
 
-  // ── wave loop (ported: chunking, lost sweep, barrier retry, cascade) ───────
+  // ── the ready set: lanes, epochs, one fold at a time (#979) ────────────────
   // (waves.js pre-registered every phase up front for the Workflow tool's
   // roadmap API; here phase() appends timestamped events, so an up-front burst
   // would record the run entering every phase at t=0 — review finding 6. Each
   // phase is announced once, when it actually starts.)
-  const waveLabel = (w) => 'Wave ' + (w + 1)
-  // The wave's task ids in plan order — the order the plan wrote them, which is
-  // the order every record of the wave names them in.
-  const waveIds = (w) => (Array.isArray(WAVES[w]) ? WAVES[w] : []).map((t) => t.id)
+  //
+  // There is no barrier here. The plan's waves are read for two things only:
+  // plan ORDER (the order the record names tasks in, which is the order a lane
+  // reads the ready set in) and the report's forecast. What decides when a task
+  // runs is the RECORD. A task is READY when it has not been dispatched, has
+  // not failed, is not downstream of a failed or blocked task, and every task an
+  // edge names as its predecessor has been ADOPTED — folded into the integration
+  // head, not merely finished. A lane that frees takes the next ready task
+  // instead of waiting for its wave's slowest, and a task's clone is anchored at
+  // the adopted head of the moment it is dispatched.
+  //
+  // What a wave was, an EPOCH is: the set of results one fold adopts. The lane
+  // that frees folds every captured result nobody has adopted yet, all of them
+  // as one epoch, onto the current head — epochs numbered 1, 2, … in fold order,
+  // each one's head a descendant of the one before, and only one fold at a time.
+  // `wave` in the record means that number; the fold pipeline under it is the
+  // same one the barrier ran.
+  const WIDTH_FALLBACK = 12
+  const W = (Number.isInteger(args.width) && args.width > 0) ? args.width : WIDTH_FALLBACK
+  // Plan order, flat: the order a lane reads the ready set in.
+  const PLAN = WAVES.flat()
+  const predecessorsOf = (id) => EDGES.filter(([, b]) => b === id).map(([a]) => a)
+  const resultFor = (id) => taskResults.find((r) => r && r.task === id)
 
-  // Wave 1 starts from the reuse head when Setup folded one (#383) and from
-  // BASE otherwise — and every clone the wave dispatches into is re-anchored
-  // there by the loop's own re-anchor below.
-  let waveBaseSha = reuseHead || baseSha
+  // The head every dispatch is anchored at and every fold builds on: the reuse
+  // head when Setup folded one (#383) and BASE otherwise.
+  let adoptedHead = reuseHead || baseSha
+  // Adopted = the work is IN that head. A reused task's work is in the reuse
+  // head before the first epoch, so it is adopted from the start and anything an
+  // edge points from it is ready.
+  const adoptedIds = new Set(reusedIds)
+  const dispatchedIds = new Set()
+  // Captured, unadopted mergeable results in landing order — what the next fold
+  // adopts — and the tasks whose one re-dispatch is owed (#903, M4).
+  const pendingResults = []
+  const parkedInfraQueue = []
+  let inFlight = 0
+  let foldingLanes = 0
+  // Whether an epoch is claimed — taken by a lane and not yet adopted. One at a
+  // time: the lane that frees while a fold is running does not open a second
+  // epoch, it leaves its result pending for the fold that comes after.
+  let epochClaimed = false
+  let epochCount = 0
+  let firstFold = true
+  let parkedOnBaseline = false
+  let lastSuite = null
+  // Every path an epoch adopted red because no task of that epoch named it, in
+  // fold order and once each — `lastSuite` carries only the LAST epoch's, and
+  // the report owes the reader the run's whole list.
+  const unattributedReds = []
   const compositionRows = (waveNumber, tasks) => {
     for (const line of compositionUnpinnedRows(waveNumber, tasks)) judgmentCalls.push(line)
+  }
+
+  // The next landing. A lane with nothing ready but work still moving waits on
+  // this rather than spinning, and the two events that can change what "ready"
+  // means — a result landing and a fold finishing — resolve it.
+  let landingWaiters = []
+  const nextLanding = () => new Promise((resolve) => { landingWaiters.push(resolve) })
+  const announceLanding = () => {
+    const waiting = landingWaiters
+    landingWaiters = []
+    for (const resolve of waiting) resolve()
+  }
+
+  // ── claiming an epoch ──────────────────────────────────────────────────────
+  // What one fold adopts is decided HERE, and the moment this returns a set it
+  // is decided: every captured, unadopted result of the instant the lane freed,
+  // taken out of `pendingResults` in the same tick as the landing that freed it.
+  //
+  // The instant matters, and it is the landing's and not the fold's. A snapshot
+  // taken where the fold itself begins is a snapshot taken some microtasks
+  // later — the await that reaches the front of the fold queue, and before it
+  // the awaits between a result being recorded and its lane asking to fold —
+  // and a second result whose own landing falls inside that window would join
+  // an epoch it did not land in. Two results co-land in one epoch when the
+  // second arrives while a fold is RUNNING (it is refused a claim and the next
+  // fold takes it), never because a lane took a few microtasks to ask.
+  //
+  // `null` means "not this lane": either nothing is pending, or an epoch is
+  // already claimed, or the run has parked. Every caller is synchronous with
+  // its landing, so the guard needs no lock — a claim is taken and released
+  // without an await in between.
+  const claimEpoch = () => {
+    if (parkedOnBaseline || epochClaimed || pendingResults.length === 0) return null
+    epochClaimed = true
+    return pendingResults.splice(0, pendingResults.length)
+  }
+
+  // One fold at a time (M2), whichever lane it is. The kernel's fold / resolve /
+  // materialize / suite / reconcile sequence moves the integration clone's
+  // working tree and its branch; two of them at once would interleave on the one
+  // worktree, and the second would build on a head the first had not adopted
+  // yet. A promise chain is the whole mechanism — every fold queues behind the
+  // one before, and a fold that throws does not strand the queue.
+  let foldChain = Promise.resolve()
+  const underFoldLock = (fn) => {
+    const done = foldChain.then(fn, fn)
+    foldChain = done.then(() => {}, () => {})
+    return done
   }
 
   // ── the red-baseline park (#862) ───────────────────────────────────────────
   // A run whose repository was already failing before it opened has nothing to
   // reconcile: every candidate it could build would be red for a reason no
   // implementer wrote and no reconcile agent can be held to. So the run parks —
-  // before wave 1's first dispatch when the baseline settled during Setup, and
-  // at the wave barrier when it settled later. Either way the wave is
-  // TEST_FAILED on the baseline's own block, every later wave is SKIPPED, and
-  // the integration branch is left exactly where the wave found it.
+  // before the first dispatch when the baseline settled during Setup, and before
+  // the first fold when it settled later. Either way no fold is attempted, the
+  // epoch is TEST_FAILED on the baseline's own block, the tasks still ready are
+  // not dispatched, and the integration branch is left exactly where it was.
   const baselineIsRed = () => baseline !== null && baseline.passed === false
   // The one concession the "park before any worker" half needs. `.then` on a
-  // pending promise never fires synchronously, so a wave loop that only READ the
-  // flag would reach its first chunk with the flag still unset however fast the
+  // pending promise never fires synchronously, so a lane that only READ the flag
+  // would reach its first dispatch with the flag still unset however fast the
   // suite answered — a repository that is red in twenty milliseconds would still
-  // dispatch its whole first wave and park at the barrier. So the first dispatch
-  // yields the baseline a bounded head start and NOT a wait: a suite that
-  // answers inside the window parks the run with nothing dispatched, and one
-  // that does not is left running while wave 1 goes out. Half a second, because
-  // that is long enough for any suite that was going to answer instantly and
-  // short enough to be nothing beside the seconds a real one takes — which is
-  // what keeps the baseline off the critical path rather than on it.
+  // dispatch its whole first round and park at the first fold. So the first
+  // dispatch yields the baseline a bounded head start and NOT a wait: a suite
+  // that answers inside the window parks the run with nothing dispatched, and
+  // one that does not is left running while the lanes go out. Half a second,
+  // because that is long enough for any suite that was going to answer instantly
+  // and short enough to be nothing beside the seconds a real one takes — which
+  // is what keeps the baseline off the critical path rather than on it.
   const BASELINE_HEAD_START_MS = 500
   const baselineHeadStart = () => Promise.race([baselineSettled,
     new Promise((resolve) => {
@@ -3291,231 +3483,249 @@ export async function runEngine({
       // run is still alive.
       if (t && typeof t.unref === 'function') t.unref()
     })])
-  const parkOnRedBaseline = async (w, prevHead, results, branches) => {
+  const parkOnRedBaseline = async () => {
+    if (parkedOnBaseline) return
+    parkedOnBaseline = true
+    const epoch = epochCount + 1
     const detail = redBaselineHead(baseline.output) +
       ' — this run inherited that red: no candidate was tested and no reconcile ' +
       'was dispatched against it'
-    // The branch never moved this wave — the fold has not run — so this is a
-    // restoration, not a rollback: the same one the TEST_FAILED path below the
-    // reconcile loop makes, kept here so the guarantee ("the integration branch
-    // still resolves to the head the wave started on") is stated at both exits.
-    await git(['reset', '--hard', prevHead], integ)
+    // The branch never moved — no fold has run since the last adoption — so this
+    // is a restoration, not a rollback: the same one the TEST_FAILED path inside
+    // `foldWave` makes, kept here so the guarantee ("the integration branch
+    // still resolves to the head the run was on") is stated at both exits.
+    await git(['reset', '--hard', adoptedHead], integ)
     await exec('git', ['clean', '-fd'], { cwd: integ })
-    waveMerges.push({ wave: w + 1, status: 'TEST_FAILED', detail, branches })
-    // #877 — the block is a RECORD (see the barrier's own pair below). The ids
-    // are the WAVE's, in plan order, not the mergeable ones: a run that parks
-    // before its first dispatch has no results at all, and an event naming no
-    // task says nothing about which work this red held up.
-    appendEvent({ kind: 'driver:wave-blocked', wave: w + 1, tasks: waveIds(w), detail })
-    blockedWaves.push({ wave: w + 1, detail })
-    log('wave ' + (w + 1) + ' parked: the suite was already RED on BASE when the run opened')
-    for (const t of WAVES[w]) {
-      if (reusedIds.has(t.id)) continue // already done, folded in at Setup
-      if (!results.some((r) => r && r.task === t.id)) {
-        unfinished.push(t.id + ': never dispatched — the suite was already RED on BASE')
-      }
-    }
-    const cascade = 'cascade-blocked by wave ' + (w + 1) + ': the suite is RED on BASE'
-    for (let d = w + 1; d < WAVES.length; d++) {
-      WAVES[d].filter((t) => !reusedIds.has(t.id))
-        .forEach((t) => unfinished.push(t.id + ': cascade-blocked by wave ' + (w + 1)))
-      waveMerges.push({ wave: d + 1, status: 'SKIPPED', detail: cascade, branches: [] })
+    // #877 — the block is a RECORD (see the adoption's own pair below). The ids
+    // are every task this red held up, in plan order, and not the captured ones:
+    // a run that parks before its first dispatch has no results at all, and an
+    // event naming no task says nothing about which work this red held up.
+    const held = PLAN.filter((t) => !adoptedIds.has(t.id)).map((t) => t.id)
+    waveMerges.push({ wave: epoch, status: 'TEST_FAILED', detail,
+                      branches: pendingResults.map((r) => r.task) })
+    appendEvent({ kind: 'driver:wave-blocked', wave: epoch, tasks: held, detail })
+    blockedWaves.push({ wave: epoch, detail })
+    log('epoch ' + epoch + ' parked: the suite was already RED on BASE when the run opened')
+    for (const id of held) {
+      if (resultFor(id)) continue
+      unfinished.push(id + ': never dispatched — the suite was already RED on BASE')
     }
   }
 
-  let lastSuite = null
-  // Every path a wave adopted red because no task of that wave named it, in
-  // wave order and once each — `lastSuite` carries only the LAST wave's, and
-  // the report owes the reader the run's whole list.
-  const unattributedReds = []
-  for (let w = 0; w < WAVES.length; w++) {
-    phase(waveLabel(w))
+  // ── the re-edge (#979) ─────────────────────────────────────────────────────
+  // A worker whose proof turns out to need a sibling still in flight files
+  // `kata edit <me> --blocked-by <sibling>` and returns BLOCKED; kata keeps that
+  // edge as a `blocks` link from the BLOCKER's side, so it comes back on this
+  // task's issue as a link whose `from` is the sibling. Read once, after the
+  // reply, through the non-fatal path: a hub that refuses the read answers no
+  // links, and a BLOCKED with no link is the failure it is at BASE.
+  //
+  // What counts is a link naming another task OF THIS RUN that has not been
+  // adopted — an adopted sibling's work is already in the tree this task was
+  // handed, so nothing is waiting to arrive. A sibling that has FAILED still
+  // counts: the edge is recorded and the dependency cascade then says what the
+  // task is, which is `blocked — depends on a failed task`.
+  //
+  // One re-edge per task per sibling, which is what makes a cycle of them
+  // impossible: the pairs already recorded are remembered here, and a second
+  // BLOCKED naming one of them is the failure it is at BASE.
+  const reEdges = new Map()
+  const reEdgedOn = (id) => reEdges.get(id) || new Set()
+  const blockingSiblingsOf = async (task, kataRow) => {
+    if (!kataOn || !kataRow) return []
+    const issue = await kataCall('getissue', null, () => kata.getIssue(kataRow.uid))
+    const links = (issue && Array.isArray(issue.links)) ? issue.links : []
+    const blockers = new Set()
+    for (const link of links) {
+      if (!link || typeof link !== 'object' || link.type !== 'blocks') continue
+      const from = (link.from && link.from.uid) || null
+      if (from && from !== kataRow.uid) blockers.add(from)
+    }
+    if (blockers.size === 0) return []
+    const already = reEdgedOn(task.id)
+    return PLAN
+      .filter((t) => t.id !== task.id && !adoptedIds.has(t.id) && !already.has(t.id) &&
+                     blockers.has((kataRowOf(t.id) || {}).uid))
+      .map((t) => t.id)
+  }
+  // The row a re-edged task lands with: not a result, and never recorded as
+  // one. `settleResult` reads this status and puts the task back to unstarted.
+  const reEdgedRow = (task, blockedBy, notes) => ({
+    task: task.id, status: 're-edged', blockedBy, notes: String(notes || ''),
+  })
+
+  // ── readiness ──────────────────────────────────────────────────────────────
+  const isReady = (t) => {
+    // #383 — folded in at Setup from the parked run's evidence. No worker of any
+    // kind is dispatched for it: no exam, no implementer, no review, no fix, and
+    // nothing on its issue.
+    if (reusedIds.has(t.id)) return false
+    if (dispatchedIds.has(t.id)) return false
+    if (resultFor(t.id)) return false
+    if (blockedByDep.has(t.id)) return false
+    return predecessorsOf(t.id).every((p) => adoptedIds.has(p))
+  }
+  // The next task to dispatch: the ready one the plan names first. Taking it
+  // marks it dispatched in the same tick, so two lanes can never take one task.
+  const takeReady = () => {
     noteFailures()
-    // Anchor this wave: the capture base advances with the integration head,
-    // and every task clone of a LATER wave is re-anchored onto that head (the
-    // adopt sha exists only in the integration clone's odb, so fetch it from
-    // there first). Wave 1 clones are already at BASE from provisioning.
-    //
-    // A re-anchor failure is FAIL-CLOSED (review finding 1): a task dispatched
-    // into a tree still at the old base yields a patch — diffed against the
-    // NEW wave base — whose hunks silently REVERT the prior wave's adopted
-    // work, and nothing downstream can tell. The task is failed before any
-    // dispatch, exactly like lost-coordinates.
-    //
-    // The condition is the base itself and no longer the wave number (#383):
-    // wave 1's clones are at BASE from provisioning, which is the wave base
-    // only when Setup folded no reuse. With a reuse head they need exactly the
-    // same refresh every later wave needs.
-    if (patchBase) patchBase.current = waveBaseSha
-    const preFailed = new Set()
-    if (waveBaseSha !== baseSha) {
-      for (const t of WAVES[w]) {
-        if (reusedIds.has(t.id)) continue // never dispatched; its clone is unused
-        const cdir = path.join(clonesDir, 'task-' + t.id)
-        try {
-          await git(['fetch', '--quiet', '--no-tags', integ, integrationBranch], cdir)
-          await git(['checkout', '--quiet', '--detach', waveBaseSha], cdir)
-          // The adopted head may have added dependencies wave 1 installed only
-          // in its own trees — a stale install here fails the wave-2 suite
-          // with a module error looksStructural() would mis-diagnose (review
-          // finding 9).
-          if (bootstrapCmd) {
-            const b = await sh(bootstrapCmd, cdir)
-            if (b.code !== 0) {
-              judgmentCalls.push('task ' + t.id + ': re-anchor bootstrap failed (exit ' + b.code +
-                ') — the suite may be unrunnable in its clone')
-            }
-          }
-        } catch (e) {
-          preFailed.add(t.id)
-          const detail = 'could not re-anchor its clone at wave base ' + waveBaseSha +
-            ' — ' + String((e && e.message) || e)
-          judgmentCalls.push('task ' + t.id + ': ' + detail +
-            ' — failed closed before dispatch (a patch from a mis-anchored tree would silently revert the prior wave)')
-          log('task ' + t.id + ' re-anchor failed — task failed closed')
-        }
+    for (const t of PLAN) {
+      if (!isReady(t)) continue
+      dispatchedIds.add(t.id)
+      return t
+    }
+    return null
+  }
+
+  // Anchor a clone at the head this dispatch goes out on. The adopt sha exists
+  // only in the integration clone's odb, so fetch it from there first; clones
+  // are already at BASE from provisioning, so a dispatch on BASE needs nothing.
+  //
+  // A re-anchor failure is FAIL-CLOSED (review finding 1): a task dispatched
+  // into a tree still at the old base yields a patch — diffed against the NEW
+  // anchor — whose hunks silently REVERT the work already adopted, and nothing
+  // downstream can tell. The task is failed before any dispatch, exactly like
+  // lost-coordinates.
+  const anchorClone = async (task, head) => {
+    if (head === baseSha) return
+    const cdir = path.join(clonesDir, 'task-' + task.id)
+    await git(['fetch', '--quiet', '--no-tags', integ, integrationBranch], cdir)
+    await git(['checkout', '--quiet', '--detach', head], cdir)
+    await resetTaskClone(task.id, head)
+    // The adopted head may have added dependencies an earlier task installed
+    // only in its own tree — a stale install here fails the suite in this clone
+    // with a module error looksStructural() would mis-diagnose (finding 9).
+    if (bootstrapCmd) {
+      const b = await sh(bootstrapCmd, cdir)
+      if (b.code !== 0) {
+        judgmentCalls.push('task ' + task.id + ': re-anchor bootstrap failed (exit ' + b.code +
+          ') — the suite may be unrunnable in its clone')
       }
     }
-    const results = []
-    for (const id of preFailed) {
-      const r = { task: id, status: 'failed', reviewVerdict: 'reanchor-failed',
-                  notes: 'clone could not be re-anchored at the wave base — never dispatched',
-                  tier: resolvedModel((WAVES[w].find((t) => t.id === id) || {}).tier || 'standard'),
-                  review: 'lean', fixIterations: 0, proofFixes: 0 }
-      results.push(r); taskResults.push(r)
-    }
-    // Wave 1 reaches this line microseconds after Setup started the baseline;
-    // the head start is what gives an already-broken repository the chance to
-    // say so before anyone is dispatched at it. Once the baseline has settled
-    // (every wave after the first) it costs nothing at all.
-    if (baseline === null) await baselineHeadStart()
-    for (let off = 0; off < WAVES[w].length; off += CONCURRENCY) {
-      // The baseline has answered, and the answer is RED: not one implementer is
-      // dispatched into a repository that was failing before the run opened.
-      // Read as a flag, never awaited — this is the question "has it settled red
-      // yet?", asked once per chunk, so a slow baseline stops nothing here.
-      if (baselineIsRed()) break
+  }
+  const reanchorFailed = (task, head, e) => {
+    const detail = 'could not re-anchor its clone at ' + head +
+      ' — ' + String((e && e.message) || e)
+    judgmentCalls.push('task ' + task.id + ': ' + detail +
+      ' — failed closed before dispatch (a patch from a mis-anchored tree would silently revert the adopted head)')
+    log('task ' + task.id + ' re-anchor failed — task failed closed')
+    return { task: task.id, status: 'failed', reviewVerdict: 'reanchor-failed',
+             notes: 'clone could not be re-anchored at the adopted head — never dispatched',
+             tier: resolvedModel(task.tier || 'standard'),
+             review: 'lean', fixIterations: 0, proofFixes: 0 }
+  }
+
+  // What a landing does to the record, wherever it landed from: the
+  // lost-coordinates downgrade first (a `done` row with no driver-captured
+  // coordinates is nothing a fold can adopt, so it counts as failed for
+  // dependency blocking), then the row, then the queues the lanes read — and
+  // last, in this same tick, the epoch this landing claims (`null` when another
+  // fold holds the claim). The claim is taken here rather than in the lane that
+  // is about to call the fold because `here` is the instant the slot freed, and
+  // that instant is what decides which epoch a result belongs to.
+  const settleResult = (r, replacing) => {
+    if (!r) return null
+    // A re-edge is not a landing at all (#979): the task found a predecessor the
+    // plan had not named, so the edge goes into EDGES itself — where readiness
+    // and the dependency cascade both already read — and the task goes back to
+    // unstarted. No row is recorded, nothing is folded, no fix round runs and
+    // nothing is closed, labelled or marked on its issue; the slot frees, and
+    // the task is dispatched again by whichever lane finds it ready once every
+    // new predecessor has been adopted.
+    if (r.status === 're-edged') {
+      const already = reEdges.get(r.task) || new Set()
+      reEdges.set(r.task, already)
+      for (const sib of r.blockedBy) {
+        already.add(sib)
+        EDGES.push([sib, r.task])
+      }
+      // A re-edge that replaced a parked row (the infra retry's lane) takes that
+      // row off the record too: the task is unstarted, and an unstarted task has
+      // no result.
+      if (replacing) {
+        const at = taskResults.indexOf(replacing)
+        if (at !== -1) taskResults.splice(at, 1)
+      }
+      dispatchedIds.delete(r.task)
+      appendEvent({ kind: 'driver:re-edged', task: r.task, blockedBy: r.blockedBy.slice() })
+      judgmentCalls.push('task ' + r.task + ': its proof needs ' + r.blockedBy.join(', ') +
+        ', still in flight — recorded as a dependency and re-dispatched once adopted (' +
+        (r.notes || 'no summary') + ')')
+      log('task ' + r.task + ' re-edged behind ' + r.blockedBy.join(', ') + ' — waiting for adoption')
       noteFailures()
-      const chunk = WAVES[w].slice(off, off + CONCURRENCY)
-      const runnable = chunk.filter((t) => {
-        // #383 — folded in at Setup from the parked run's evidence. No worker
-        // of any kind is dispatched for it: no exam, no implementer, no review,
-        // no fix, and nothing on its issue.
-        if (reusedIds.has(t.id)) return false
-        if (preFailed.has(t.id)) return false // already failed closed at re-anchor
-        if (blockedByDep.has(t.id)) {
-          unfinished.push(t.id + ': blocked — depends on a failed task')
-          log('task ' + t.id + ' skipped: upstream dependency failed')
-          return false
-        }
-        return true
-      })
-      if (runnable.length === 0) continue
-      const chunkResults = await parallel(runnable.map((task) => () =>
-        runTask(task, waveBaseSha, siblingLine(task, WAVES[w]))))
-      for (const r of chunkResults) { results.push(r); taskResults.push(r) }
-      const chunkLost = chunkResults.filter((r) => r && r.status === 'done' && !isMergeable(r))
-      for (const r of chunkLost) {
-        judgmentCalls.push('task ' + r.task + ': reported done without driver-captured coordinates — treating as failed for dependency blocking')
-        r.status = 'failed'
-        r.reviewVerdict = 'lost-coordinates'
-        r.notes = (r.notes ? r.notes + '; ' : '') + 'done without coordinates — downgraded to failed'
+      announceLanding()
+      return claimEpoch()
+    }
+    if (r.status === 'done' && !isMergeable(r)) {
+      judgmentCalls.push('task ' + r.task + ': reported done without driver-captured coordinates — treating as failed for dependency blocking')
+      r.status = 'failed'
+      r.reviewVerdict = 'lost-coordinates'
+      r.notes = (r.notes ? r.notes + '; ' : '') + 'done without coordinates — downgraded to failed'
+    }
+    const at = replacing ? taskResults.indexOf(replacing) : -1
+    if (at !== -1) taskResults[at] = r
+    else taskResults.push(r)
+    if (r.status === 'parked-infra') parkedInfraQueue.push(r)
+    else if (isMergeable(r)) pendingResults.push(r)
+    noteFailures()
+    announceLanding()
+    return claimEpoch()
+  }
+
+  // The siblings a dispatch is told about: every task whose work is not in the
+  // head it was handed. An adopted task's files are IN that tree — the clone
+  // reads them — so naming it as a sibling would warn the implementer off a file
+  // it can see.
+  const siblingsNow = (task) => siblingLine(task, PLAN.filter((t) => !adoptedIds.has(t.id)), kataRefOf)
+
+  // ── the fold ───────────────────────────────────────────────────────────────
+  // `merged` is what `claimEpoch` handed this lane: every captured result
+  // nobody had adopted at the instant the lane freed (M2). A result that landed
+  // while the fold before this one ran is in it; one that lands while THIS fold
+  // runs is not, and the next claim takes it.
+  const foldEpoch = async (merged) => {
+    if (parkedOnBaseline) return
+    if (merged.length === 0) return
+    // The baseline's answer, before any fold and after every dispatch this lane
+    // made: a run that inherited a red repository never reaches a candidate.
+    if (firstFold) {
+      await baselineSettled
+      firstFold = false
+      if (baselineIsRed()) {
+        pendingResults.unshift(...merged)
+        await parkOnRedBaseline()
+        return
       }
-      noteFailures()
     }
-
-    // Infra-death barrier retry (ported): exactly one retry per parked task,
-    // at the wave barrier, same tier — barrier position is the backoff.
-    const parkedInfra = results.filter((r) => r && r.status === 'parked-infra')
-    for (let off = 0; off < parkedInfra.length; off += CONCURRENCY) {
-      const pchunk = parkedInfra.slice(off, off + CONCURRENCY)
-      log('wave ' + (w + 1) + ' barrier: retrying ' + pchunk.length + ' infra-parked task(s)')
-      const retried = await parallel(pchunk.map((p) => () => (async () => {
-        const task = WAVES[w].find((t) => t.id === p.task)
-        try {
-          await resetTaskClone(task.id, waveBaseSha)
-          const res = await runTaskInner(task, waveBaseSha, siblingLine(task, WAVES[w]))
-          judgmentCalls.push('task ' + task.id + ': parked on infra-death, recovered at the barrier retry')
-          return res
-        } catch (e2) {
-          if (isKataFatal(e2)) throw e2
-          const msg2 = String((e2 && e2.message) || e2)
-          judgmentCalls.push('task ' + task.id + ': barrier retry after infra-death failed — ' + msg2)
-          return { task: task.id, status: 'failed', reviewVerdict: 'agent-error',
-                   notes: msg2, tier: p.tier, review: p.review, fixIterations: 0, proofFixes: 0 }
-        }
-      })()))
-      for (let k = 0; k < pchunk.length; k++) {
-        const p = pchunk[k], res = retried[k]
-        const ri = results.indexOf(p); if (ri !== -1) results[ri] = res
-        const ti = taskResults.indexOf(p); if (ti !== -1) taskResults[ti] = res
-        if (res.status === 'failed') {
-          for (const [a, b] of EDGES) {
-            if (a === p.task && results.some((r2) => r2 && r2.task === b)) {
-              judgmentCalls.push('task ' + b + ': ran while same-wave dependency ' + a +
-                ' was parked and the barrier retry then failed — WaW ordering weakened; the suite gate is the backstop')
-            }
-          }
-        }
-      }
-      noteFailures()
-    }
-
-    // The wave barrier. A baseline that had not settled when the chunks were
-    // dispatched settles HERE — this is the one place the run waits for it, and
-    // it is already past every dispatch this wave will make.
-    await baselineSettled
-    if (baselineIsRed()) {
-      await parkOnRedBaseline(w, waveBaseSha, results, results.filter(isMergeable).map((r) => r.task))
-      break
-    }
-
-    const mergeable = results.filter(isMergeable)
-    if (mergeable.length === 0) {
-      if (!edgesSupplied && results.length > 0) {
-        const cascadeDetail = 'no mergeable results and no dependency edges supplied — cascading conservatively'
-        blockedWaves.push({ wave: w + 1, detail: cascadeDetail })
-        for (let d = w + 1; d < WAVES.length; d++) {
-          WAVES[d].filter((t) => !reusedIds.has(t.id))
-            .forEach((t) => unfinished.push(t.id + ': cascade-blocked by wave ' + (w + 1)))
-        }
-        waveMerges.push({ wave: w + 1, status: 'SKIPPED', detail: cascadeDetail, branches: [] })
-        break
-      }
-      waveMerges.push({
-        wave: w + 1, status: 'SKIPPED',
-        detail: 'no mergeable results — every task in this wave failed, was blocked, or lost its coordinates; integration branch untouched',
-        branches: [],
-      })
-      log('wave ' + (w + 1) + ' merge skipped: no mergeable results')
-      continue
-    }
-
-    const waveTasks = (Array.isArray(WAVES[w]) ? WAVES[w] : [])
-      .filter((t) => t && mergeable.some((r) => r.task === t.id))
-    compositionRows(w + 1, waveTasks)
-    // #887 — the wave's join, computed right here from the rows the barrier
-    // folded: every patch is already captured and every declared Files list is
+    const epoch = ++epochCount
+    const prevHead = adoptedHead
+    const epochTasks = PLAN.filter((t) => merged.some((r) => r.task === t.id))
+    compositionRows(epoch, epochTasks)
+    // #887 — the epoch's join, computed right here from the rows this fold
+    // adopts: every patch is already captured and every declared Files list is
     // the plan's own, so this needs no kernel read and no tree read. Only the
-    // MERGEABLE rows contribute — a task that never landed put nothing on the
-    // tree for another task to meet.
-    const touchSets = new Map(waveTasks.map((t) =>
-      [t.id, touchSetOf(t, (mergeable.find((r) => r.task === t.id) || {}).patch)]))
+    // rows being folded contribute — a task still in flight beside this fold put
+    // nothing on the tree for another task to meet.
+    const touchSets = new Map(epochTasks.map((t) =>
+      [t.id, touchSetOf(t, (merged.find((r) => r.task === t.id) || {}).patch)]))
     const joined = joinedPathsOf([...touchSets.values()])
     // What this task shares, and who with: the task's own joined paths (in the
-    // wave's sorted order) and the other tasks that carry them, in plan order.
+    // epoch's sorted order) and the other tasks that carry them, in plan order.
     const joinedFor = (id) => joined.filter((p) => (touchSets.get(id) || []).includes(p))
-    const sharersOf = (id, paths) => waveTasks
+    const sharersOf = (id, paths) => epochTasks
       .filter((t) => t.id !== id && paths.some((p) => (touchSets.get(t.id) || []).includes(p)))
       .map((t) => t.id)
-    const merge = await foldWave(mergeable, w, waveTasks, waveBaseSha)
+    // The epoch is announced when its fold starts — the moment the epoch exists
+    // at all, and the last moment before the kernel is asked anything.
+    phase('Wave ' + epoch)
+    const merge = await foldWave(merged, epoch - 1, epochTasks, prevHead)
     waveMerges.push({
-      wave: w + 1,
+      wave: epoch,
       status: merge.status,
       headSha: merge.headSha,
       detail: merge.detail,
-      branches: mergeable.map((r) => r.task),
-      // #887 — the paths this wave's tasks met on, `[]` when they met on none.
+      branches: merged.map((r) => r.task),
+      // #887 — the paths this epoch's tasks met on, `[]` when they met on none.
       // The row the adoption pushes is where a reader looks for what the fold
       // actually put at risk, so the set that selected the integrated pass
       // travels with it.
@@ -3524,57 +3734,47 @@ export async function runEngine({
       // `MERGED` row whose suite is `passed: false` is a reading no other row
       // has, so the paths that bought the adoption travel with it. Green rows
       // are unchanged: the run's suite is `tests`, and a green tail repeated
-      // per wave records nothing a reader did not already have.
+      // per epoch records nothing a reader did not already have.
       ...(merge.suite && Array.isArray(merge.suite.unattributed)
         ? { suite: merge.suite } : {}),
     })
-    // #877 — what the wave did to the integration branch is a RECORD, not
-    // narration: one event per wave that folded something, appended HERE, beside
-    // the `waveMerges` row it mirrors, so the row and the log can never say
-    // different things. `driver:wave-adopted` names the head the wave put on the
-    // branch (the green candidate's or the reconciled one's — the barrier has
-    // already chosen by the time it returns) and the tasks that went into it, in
-    // plan order; `driver:wave-blocked` names the wave the barrier could not make
-    // green and repeats the row's own `detail` verbatim. A `SKIPPED` wave folded
-    // nothing and gets neither. The place is after the adoption and before the
-    // integrated `Run:` proofs — so the event sorts after every worker of this
-    // wave and before the next `engine:phase`.
-    if (merge.status === 'TEST_FAILED') {
-      appendEvent({ kind: 'driver:wave-blocked', wave: w + 1,
-        tasks: waveIds(w), detail: merge.detail })
-      // The barrier could not make this wave green, so nothing in it landed —
-      // every task of the wave is left OPEN and marked for a person, carrying
-      // the row's own detail. A wave the driver could not fold is a question for
-      // someone, not a settled one.
-      for (const id of waveIds(w)) {
-        await kataMark(id, { status: 'blocked',
-          verdict: 'wave ' + (w + 1) + ' blocked: ' + String(merge.detail),
-          notes: String(merge.detail) })
-      }
-    }
+    // #877 — what the epoch did to the integration branch is a RECORD, not
+    // narration: one event per fold, appended HERE, beside the `waveMerges` row
+    // it mirrors, so the row and the log can never say different things.
+    // `driver:wave-adopted` names the head the epoch put on the branch (the
+    // green candidate's or the reconciled one's — `foldWave` has already chosen
+    // by the time it returns) and the tasks that went into it, in plan order;
+    // `driver:wave-blocked` names the tasks the fold could not make green and
+    // repeats the row's own `detail` verbatim. The place is after the adoption
+    // and before the integrated `Run:` proofs — so the event sorts after every
+    // worker of this epoch and before the next `engine:phase`.
     if (merge.status === 'MERGED') {
-      appendEvent({ kind: 'driver:wave-adopted', wave: w + 1,
-        tasks: waveTasks.map((t) => t.id), headSha: merge.headSha })
-      waveBaseSha = merge.headSha
+      appendEvent({ kind: 'driver:wave-adopted', wave: epoch,
+        tasks: epochTasks.map((t) => t.id), headSha: merge.headSha })
+      adoptedHead = merge.headSha
+      for (const t of epochTasks) adoptedIds.add(t.id)
+      // The capture base a dispatch does NOT carry its own anchor for (the
+      // reconcile round's reply, which is captured outside any lane) moves with
+      // the head; a lane's own capture reads the anchor it went out on.
+      if (patchBase) patchBase.current = merge.headSha
       lastSuite = merge.suite
       for (const p of ((merge.suite && merge.suite.unattributed) || [])) {
         if (!unattributedReds.includes(p)) unattributedReds.push(p)
       }
       // The suite just ran in this clone; sweep its cache litter before any
-      // integrated `Run:` reads the tree. Once per wave that reaches here, and
+      // integrated `Run:` reads the tree. Once per epoch that reaches here, and
       // ahead of the loop — so every proof below sees the same swept tree.
       const swept = sweepCacheDirs(integ)
-      appendEvent({ kind: 'driver:integrated-clean', wave: w + 1, removed: swept })
+      appendEvent({ kind: 'driver:integrated-clean', wave: epoch, removed: swept })
       // ── the integrated `Run:` proofs (#604 (b)+(c)) ────────────────────────
       // Here and nowhere else: the candidate's suite is green, the branch has
       // moved, and the working tree IS the adopted tree. Same `sh` seam as the
       // per-task pass and the suite (`bash -lc`, SHELL_TIMEOUT_MS), same
-      // tail-truncation, cwd = the integration clone. Only merged tasks
-      // contribute — `waveTasks` is already WAVES[w] narrowed to the mergeable
-      // rows, in Proof order within each task.
-      for (const t of waveTasks) {
+      // tail-truncation, cwd = the integration clone. Only the epoch's own
+      // tasks contribute, in Proof order within each task.
+      for (const t of epochTasks) {
         // #887 — and only the JOINED ones. A task whose touch set meets no
-        // other task's in this wave would be re-asked its proof about the tree
+        // other task's in this epoch would be re-asked its proof about the tree
         // it already answered for; the pass exists for the pairs, so a task
         // with no partner here runs nothing at all.
         const shared = joinedFor(t.id)
@@ -3585,8 +3785,8 @@ export async function runEngine({
           : []
         for (const cmd of cmds) {
           // ULTRA_BASE here is `baseSha`, the sha the integration clone was
-          // provisioned at — NOT `waveBaseSha`, which the adopt above has
-          // already advanced to this wave's head. A diff against the adopted
+          // provisioned at — NOT `adoptedHead`, which the adopt above has
+          // already advanced to this epoch's head. A diff against the adopted
           // head is a tautology; the question the integrated pass asks is what
           // the run as a whole changed.
           // …and the pass is `integrated` with no `ULTRA_RUN_DIR` at all: a
@@ -3600,7 +3800,7 @@ export async function runEngine({
           // the PAIR, not only the command.
           integratedRuns.push({ task: t.id, cmd, exit: r.code, stdout: tail(r.stdout + r.stderr),
                                 joined: shared.slice(), with: withIds.slice() })
-          appendEvent({ kind: 'driver:integrated-run', task: t.id, cmd, exit: r.code, wave: w + 1,
+          appendEvent({ kind: 'driver:integrated-run', task: t.id, cmd, exit: r.code, wave: epoch,
                         joined: shared.slice(), with: withIds.slice() })
           if (r.code === 0) continue
           // #871 decision 1, applied to the join (#887): a red here is REPORTED
@@ -3614,7 +3814,7 @@ export async function runEngine({
           const call = 'task ' + t.id + '\'s proof ' + cmd + ' went red on the fold of ' +
             shared.join(', ') + ' with task ' + withIds.join(', ')
           judgmentCalls.push(call)
-          log('wave ' + (w + 1) + ': ' + call)
+          log('wave ' + epoch + ': ' + call)
         }
       }
       // The run's standing `Check:` commands on the same adopted tree. A
@@ -3629,25 +3829,25 @@ export async function runEngine({
         integratedChecks.push({ cmd: c.cmd, exit: r.code, stdout: tail(r.stdout + r.stderr),
                                 minor: c.minor })
         appendEvent({ kind: 'driver:integrated-check', cmd: c.cmd, exit: r.code,
-                      minor: c.minor, wave: w + 1 })
+                      minor: c.minor, wave: epoch })
         if (r.code === 0) continue
         if (c.minor) {
-          judgmentCalls.push('wave ' + (w + 1) + ': the minor Check: `' + c.cmd + '` exited ' +
+          judgmentCalls.push('wave ' + epoch + ': the minor Check: `' + c.cmd + '` exited ' +
             r.code + ' on the adopted tree — recorded, blocking nothing')
           continue
         }
         const detail = 'integrated Check: ' + c.cmd + ' exited ' + r.code + ' on the adopted tree'
         integratedFindings.push({ severity: 'blocking', detail })
         judgmentCalls.push(detail + ' — a Global Constraint the fold broke; the run is BLOCKED')
-        log('wave ' + (w + 1) + ': ' + detail)
+        log('wave ' + epoch + ': ' + detail)
       }
-      // The wave is over on the hub too. Last, after the integrated proofs, so
-      // every `driver:` comment this wave produced is on the issue before its
-      // close is: the evidence is the head the wave adopted and the command
+      // The epoch is over on the hub too. Last, after the integrated proofs, so
+      // every `driver:` comment this epoch produced is on the issue before its
+      // close is: the evidence is the head the epoch adopted and the command
       // this task is measured by, and the idempotency key makes a re-driven
       // close the same close rather than a second one.
-      for (const r of mergeable) {
-        const t = (Array.isArray(WAVES[w]) ? WAVES[w] : []).find((x) => x && x.id === r.task)
+      for (const r of merged) {
+        const t = epochTasks.find((x) => x && x.id === r.task)
         const cmd = (t && typeof t.testCmd === 'string' && t.testCmd.trim()) ? t.testCmd : testCmd
         // Which run adopted this task, and at which head — on the issue's own
         // metadata, under the revision the engine last held for it, before the
@@ -3657,22 +3857,187 @@ export async function runEngine({
         // and the merge sha make the message read on its own.
         await kataClose(r.task, {
           reason: 'done',
-          message: 'adopted in wave ' + (w + 1) + ' (' + r.reviewVerdict + '): ' +
+          message: 'adopted in wave ' + epoch + ' (' + r.reviewVerdict + '): ' +
             String((t && t.title) || ('task ' + r.task)) + ' — merged ' + String(merge.headSha),
           evidence: [{ type: 'commit', sha: merge.headSha },
                      { type: 'test', command: cmd }],
           idempotencyKey: stamp + ':' + r.task + ':close',
         })
       }
-      continue
+      return
     }
-    blockedWaves.push({ wave: w + 1, detail: merge.detail || merge.status })
-    log('wave ' + (w + 1) + ' BLOCKED: ' + (merge.detail || merge.status))
-    for (let d = w + 1; d < WAVES.length; d++) {
-      WAVES[d].filter((t) => !reusedIds.has(t.id))
-        .forEach((t) => unfinished.push(t.id + ': cascade-blocked by wave ' + (w + 1)))
+    // A red epoch marks exactly its OWN tasks blocked (M3) — the run does not
+    // stop. The tasks that went into this fold landed in no head, so every task
+    // an edge points at them from is never ready and says so in `unfinished`;
+    // every task that depends on none of them is dispatched as before, and the
+    // next epoch folds onto the head this one was restored to.
+    const detail = merge.detail || merge.status
+    if (merge.status === 'TEST_FAILED') {
+      appendEvent({ kind: 'driver:wave-blocked', wave: epoch,
+        tasks: epochTasks.map((t) => t.id), detail: merge.detail })
+      // The fold could not be made green, so nothing in it landed — every task
+      // of the epoch is left OPEN and marked for a person, carrying the row's
+      // own detail. Work the driver could not fold is a question for someone,
+      // not a settled one.
+      for (const t of epochTasks) {
+        await kataMark(t.id, { status: 'blocked',
+          verdict: 'wave ' + epoch + ' blocked: ' + String(merge.detail),
+          notes: String(merge.detail) })
+      }
     }
-    break
+    blockedWaves.push({ wave: epoch, detail })
+    log('epoch ' + epoch + ' BLOCKED: ' + detail)
+    for (const t of epochTasks) blockedByDep.add(t.id)
+    noteFailures()
+  }
+  // A fold runs on the lane that freed, under the lock, and announces itself
+  // when it is done: a task the epoch adopted may be the predecessor a waiting
+  // lane was blocked on.
+  const foldPending = async (claimed) => {
+    // No claim: this landing belongs to a fold that is already running, and the
+    // lane has nothing to do but go back for more work.
+    if (!claimed) return
+    foldingLanes += 1
+    try {
+      await underFoldLock(() => foldEpoch(claimed))
+    } finally {
+      // Released before the announcement, and both without an await between
+      // them: a lane woken by this landing finds the claim free and takes
+      // whatever arrived while this fold ran as the next epoch.
+      epochClaimed = false
+      foldingLanes -= 1
+      announceLanding()
+    }
+  }
+
+  // ── dispatch ───────────────────────────────────────────────────────────────
+  const dispatchOnce = async (task) => {
+    const head = adoptedHead
+    inFlight += 1
+    let result = null
+    try {
+      try {
+        await anchorClone(task, head)
+        // A re-edged task's clone still holds the attempt that blocked (#979).
+        // The fresh implementer is told its tree is at the head it was handed,
+        // so the tree has to BE that head — `anchorClone` already resets a clone
+        // it moved, and this is the dispatch it did not have to move.
+        if (reEdges.has(task.id) && head === baseSha) await resetTaskClone(task.id, head)
+      } catch (e) {
+        result = reanchorFailed(task, head, e)
+      }
+      if (result === null) {
+        // The anchor this dispatch is answerable for: the driver captures its
+        // patch against THIS head however far the adopted head has moved while
+        // it worked (see `captureAnchors`).
+        anchorOf.set(task.id, head)
+        result = await runTask(task, head, siblingsNow(task))
+      }
+    } finally {
+      inFlight -= 1
+    }
+    // The epoch this landing claimed, for the lane to fold — or `null`, which
+    // is the lane being told that a fold already running will take this result.
+    return settleResult(result)
+  }
+
+  // #903 (a), re-aimed at the ready set (M4): exactly one retry per parked task,
+  // same tier, taken when a slot frees rather than at a barrier — and taken when
+  // the lanes have quiesced, so the storm the first dispatch died in has had the
+  // time every landing since it took, and the retry goes out on the head of that
+  // moment instead of the one it died at.
+  const retryParkedInfra = async (parked) => {
+    const task = PLAN.find((t) => t.id === parked.task)
+    const head = adoptedHead
+    inFlight += 1
+    let res
+    try {
+      log('task ' + task.id + ' infra-retry: a slot freed — re-dispatching on ' + head)
+      try {
+        await anchorClone(task, head)
+        await resetTaskClone(task.id, head)
+        anchorOf.set(task.id, head)
+        res = await runTaskInner(task, head, siblingsNow(task))
+        judgmentCalls.push('task ' + task.id + ': parked on infra-death, recovered at the slot-free retry')
+      } catch (e2) {
+        if (isKataFatal(e2)) throw e2
+        const msg2 = String((e2 && e2.message) || e2)
+        judgmentCalls.push('task ' + task.id + ': slot-free retry after infra-death failed — ' + msg2)
+        res = { task: task.id, status: 'failed', reviewVerdict: 'agent-error',
+                notes: msg2, tier: parked.tier, review: parked.review,
+                fixIterations: 0, proofFixes: 0 }
+      }
+    } finally {
+      inFlight -= 1
+    }
+    return settleResult(res, parked)
+  }
+
+  // ── the lanes ──────────────────────────────────────────────────────────────
+  // `W` of them, handed to `parallel` as `W` thunks: the width bound is the lane
+  // count, so in flight never exceeds it without any chunk arithmetic. A lane
+  // loops until there is nothing ready, nothing moving and nothing owed.
+  const lane = async () => {
+    // The first lane reaches this line microseconds after Setup started the
+    // baseline; the head start is what gives an already-broken repository the
+    // chance to say so before anyone is dispatched at it. Once the baseline has
+    // settled it costs nothing at all.
+    if (baseline === null) await baselineHeadStart()
+    while (true) {
+      if (parkedOnBaseline) return
+      // The baseline has answered, and the answer is RED: not one implementer is
+      // dispatched into a repository that was failing before the run opened.
+      // Read as a flag, never awaited — this is the question "has it settled red
+      // yet?", asked before every dispatch, so a slow baseline stops nothing.
+      if (baselineIsRed()) return
+      // Before anything else: an epoch nobody is folding. This is how the
+      // results that landed during a fold reach one — they were refused a claim
+      // when they landed, and the first lane back at the top of its loop after
+      // that fold released takes all of them as the next epoch.
+      const waiting = claimEpoch()
+      if (waiting !== null) {
+        await foldPending(waiting)
+        continue
+      }
+      const task = takeReady()
+      if (task !== null) {
+        await foldPending(await dispatchOnce(task))
+        continue
+      }
+      // Nothing ready. Quiet means nothing in flight, nothing folding, nothing
+      // claimed for a fold about to start and nothing captured but unadopted —
+      // the only state in which this lane can tell that no landing is coming to
+      // make something ready. (`epochClaimed` is its own term: a claim is taken
+      // in the tick a result lands and the fold that carries it starts an await
+      // later, so for that moment an epoch exists that neither counter sees.)
+      const quiet = inFlight === 0 && foldingLanes === 0 && !epochClaimed &&
+        pendingResults.length === 0
+      if (quiet && parkedInfraQueue.length > 0) {
+        await foldPending(await retryParkedInfra(parkedInfraQueue.shift()))
+        continue
+      }
+      if (quiet) return
+      await nextLanding()
+    }
+  }
+  await parallel(Array.from({ length: W }, () => () => lane()))
+
+  // The baseline's last word. A run that dispatched nothing, or captured nothing
+  // to fold, never reached the gate inside the fold path — and the park is still
+  // owed, because a red BASE is the reading of everything this run did.
+  await baselineSettled
+  if (baselineIsRed()) await parkOnRedBaseline()
+  else {
+    // Every task that never became ready, with the reason (M3).
+    for (const t of PLAN) {
+      if (reusedIds.has(t.id) || resultFor(t.id)) continue
+      if (blockedByDep.has(t.id)) {
+        unfinished.push(t.id + ': blocked — depends on a failed task')
+        log('task ' + t.id + ' skipped: upstream dependency failed')
+      } else {
+        unfinished.push(t.id + ': never became ready — a task an edge names as its predecessor never landed')
+      }
+    }
   }
 
   // ── no one reads the finished run (#964 Task 2) ────────────────────────────

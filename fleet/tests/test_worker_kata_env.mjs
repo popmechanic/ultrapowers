@@ -634,12 +634,19 @@ function kataRig ({ repo, runDir, waves, stub, stamp = 'sim', kata, extraArgs = 
     repo, runDir, waves, stub, kata: fake.kata, extraArgs: { kataRecord: record },
   })
   const report = await run()
-  // A run that never dispatched would pass the counting legs vacuously.
-  assert.equal(report.waveMerges.length, 1,
-    '(c) [M3] the sim folded its one wave — ' + JSON.stringify(report.waveMerges))
-  assert.equal(report.waveMerges[0].status, 'MERGED',
-    '(c) [M3] and adopted it, so both tasks went through dispatch — ' +
-    JSON.stringify(report.waveMerges[0]))
+  // A run that never dispatched would pass the counting legs vacuously. A row
+  // per EPOCH and not per plan wave (#974 Task 1: an epoch is one fold, and two
+  // independent tasks free their slots at two instants), so what says both
+  // tasks went through dispatch is that every epoch adopted and the two of them
+  // are named across the epochs — not that there was exactly one.
+  assert.ok(report.waveMerges.length >= 1,
+    '(c) [M3] the sim folded what it did — ' + JSON.stringify(report.waveMerges))
+  for (const m of report.waveMerges) {
+    assert.equal(m.status, 'MERGED',
+      '(c) [M3] and adopted every epoch of it — ' + JSON.stringify(m))
+  }
+  assert.deepEqual(report.waveMerges.flatMap((m) => m.branches).slice().sort(), ['T1', 'T2'],
+    '(c) [M3] so both tasks went through dispatch — ' + JSON.stringify(report.waveMerges))
 
   const reads = fake.of('getIssue')
   assert.equal(reads.length, 2,
