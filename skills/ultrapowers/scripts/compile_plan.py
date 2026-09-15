@@ -1208,15 +1208,25 @@ def authoring_record_violations(plan_path):
 
 
 def authoring_fact_line(plan_path):
-    """The one `AUTHORING fact:` line a `--check --base` compile prints.
+    """The `AUTHORING fact:` line(s) a `--check --base` compile prints.
 
-    `AUTHORING fact: none recorded` when the record carries no `authoring`
-    key — and equally when it carries one the reader above refuses, because a
-    malformed record has already earned a named violation and the fact line is
-    not where that diagnostic belongs."""
+    `AUTHORING fact: none recorded` only when the record carries no
+    `authoring` key. A record the reader above refuses prints one
+    `AUTHORING fact: refused — <key>: <rule>` line per violation instead —
+    the `<key>: <rule>` text of that violation's own `grammar:` line — so a
+    malformed record is never read as an absent one (#1029: a `minutes: null`
+    printed `none recorded` beside its violation and cost a re-read of this
+    script). The compile is a refusal either way; this is the fact line's
+    reading of why."""
     auth = _authoring_object(plan_path)
-    if not isinstance(auth, dict) or authoring_record_violations(plan_path):
+    if auth is None:
         return "AUTHORING fact: none recorded"
+    violations = authoring_record_violations(plan_path)
+    if violations:
+        name = verdicts_path(plan_path).name
+        head = "%s`%s`: " % (_AUTHORING_BAD, name)
+        return "\n".join("AUTHORING fact: refused — " + v[len(head):]
+                         for v in violations)
     tally = _authoring_tally(plan_path)
     # `-` reads as "the record does not say", which is what an absent tally
     # key means — distinct from a recorded 0.

@@ -282,6 +282,10 @@ and "this doc section does not exist" are the reader's to say, not the sandbox's
 `hash` a verdict is keyed on is `unchanged` by the excerpt — it is still over the Claim and
 Proof only — so a moved base never stales a verdict; record the base a verdict was read
 against in the tally (`tally.base`), as the 2026-09-15 plans do.
+`--base` takes a checkout directory or the 40-hex sha; a value that is neither a checkout
+directory nor a 40-hex sha — an abbreviation of a real commit, a typo — is refused with exit 2
+on one line, never read as a tree in which every file is absent (an 8-character abbreviation
+handed six readers exactly that on 2026-09-15, #1025).
 
 Feed the subagent **only** that output — no plan body, no ledger, no sibling tasks. Write
 each verdict, keyed on the hash the extractor prints, into the sibling

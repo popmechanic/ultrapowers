@@ -361,3 +361,86 @@ def test_e_the_same_record_made_well_formed_is_not_refused(tmp_path):
     assert p.returncode == 0, out
     assert p.stdout.strip() == "PLAN OK", out
     assert UNREADABLE not in out, out
+
+
+# ── extractor-and-authoring-refusals task 2 (#1029): a refused record prints
+# its violation on the fact line, never `none recorded` ──────────────────────
+
+REFUSED_PREFIX = "AUTHORING fact: refused — "
+
+
+def _no_routing():
+    a = copy.deepcopy(AUTHORING)
+    del a["routing"]
+    return a
+
+
+def _no_picked():
+    a = copy.deepcopy(AUTHORING)
+    del a["questions"][0]["picked"]
+    return a
+
+
+def _rule_of(grammar_line, name):
+    """The `<key>: <rule>` text after the backticked file name on a
+    `grammar: authoring record unreadable —` line."""
+    head = UNREADABLE + "`" + name + "`: "
+    assert grammar_line.startswith(head), grammar_line
+    return grammar_line[len(head):]
+
+
+ONE_DEFECT = [
+    ("minutes null", _with(minutes=None), "minutes:"),
+    ("routing absent", _no_routing(), "routing:"),
+    ("picked absent", _no_picked(), "questions[0].picked:"),
+]
+
+
+@pytest.mark.parametrize("row,authoring,key", ONE_DEFECT,
+                         ids=[r[0] for r in ONE_DEFECT])
+def test_f_m1_a_refused_record_prints_its_violation_on_the_fact_line(
+        tmp_path, row, authoring, key):
+    """(a) [M1] and (d) [M3]: under `--check --base <head>`, exactly one
+    `AUTHORING fact: refused — ` line, equal to the `<key>: <rule>` of the one
+    `grammar:` line, beginning with the row's key; no `none recorded`; still
+    exit 2, no `PLAN OK`; and a bare `--check` prints no fact line at all."""
+    repo, head = base_repo(tmp_path)
+    p = check(repo, "f.md", record(authoring=authoring), "--base", head)
+    out = p.stdout + p.stderr
+    assert p.returncode == 2, (row, out)
+    assert "PLAN OK" not in out, (row, out)
+    grammar = [l for l in out.splitlines() if l.startswith(UNREADABLE)]
+    assert len(grammar) == 1, (row, out)
+    refused = [l for l in p.stdout.splitlines() if l.startswith(REFUSED_PREFIX)]
+    assert len(refused) == 1, (row, out)
+    rule = refused[0][len(REFUSED_PREFIX):]
+    assert rule == _rule_of(grammar[0], "f.gate-verdicts.json"), (row, out)
+    assert rule.startswith(key), (row, rule)
+    assert NONE_LINE not in p.stdout.splitlines(), (row, out)
+    bare = check(repo, "f-bare.md", record(authoring=authoring))
+    assert carrying_lines(bare.stdout + bare.stderr) == [], bare.stdout + bare.stderr
+
+
+def test_f_m1_two_defects_print_two_refused_lines(tmp_path):
+    """(b) [M1]: `minutes` null and `routing` absent — exactly two
+    `refused` lines, one per key, and no `none recorded`."""
+    repo, head = base_repo(tmp_path)
+    a = _with(minutes=None)
+    del a["routing"]
+    p = check(repo, "f2.md", record(authoring=a), "--base", head)
+    refused = [l[len(REFUSED_PREFIX):] for l in p.stdout.splitlines()
+               if l.startswith(REFUSED_PREFIX)]
+    assert len(refused) == 2, p.stdout + p.stderr
+    assert sorted(r.split(":")[0] for r in refused) == ["minutes", "routing"], refused
+    assert NONE_LINE not in p.stdout.splitlines(), p.stdout
+
+
+def test_f_m4_the_runbook_names_the_refused_shape():
+    """(e) [M4]: the RUNBOOK's Per run section names the refused line beside
+    the cost and none-recorded lines, in the launcher's order."""
+    text = (pathlib.Path(__file__).resolve().parents[1] / "fleet" / "RUNBOOK.md").read_text()
+    start = text.index("## Per run")
+    end = text.index("## States")
+    flat = " ".join(text[start:end].splitlines())
+    assert re.search(r"AUTHORING fact: refused.*key.*rule", flat)
+    assert re.search(r"BASE fact:.*STALE fact:.*AUTHORING fact:.*launch line", flat)
