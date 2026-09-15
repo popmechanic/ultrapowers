@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "88641431033418ccecce6ac90ea7e241ff3c7c6dde8014434c26d95136a0b07c",
+      "verdict": "pass",
+      "reason": "Each clause has a leg that falsifies it at its own trigger — M1's ids/order/count, M2's first line and suffix on every FACT line, M3's three outcomes, M4's ordered tail on both the holds and drift runs plus the purge-500 left-behind path, M5's zero-call import and the PROBES.md regex — and every pinned literal is satisfiable under the clauses' own rules."
+    },
+    "2": {
+      "hash": "92cae6e3cedc3648702a3aa43e52f6acaf535140d515b23306f7ef8c92ba8ebb",
+      "verdict": "pass",
+      "reason": "The 24-row list, its exact id order, per-row v0.17/2026-09-DD stamps, origin citations, hand markers, bullet adjacency, and the contract/runbook cross-references each have a Run: that names what fails, and the ordinals and the 22+2 id count check out."
+    }
+  },
+  "tally": {
+    "dispatched": 4,
+    "rejected": 2,
+    "rounds": {
+      "1": { "dispatched": 2, "pass": 0, "fail": 2 },
+      "2": { "dispatched": 2, "pass": 2, "fail": 0 }
+    }
+  },
+  "history": [
+    { "round": 1, "task": "1", "hash": "6a0fc5102db907b53142b8eef2622f8c93aedc0675bb46df8ce0e501feb861a8", "verdict": "fail", "reason": "M4 said 'every run that reached the hub' but leg (e) inspected the mutation tail only on the all-holds run, and 'last three mutations' could not hold once the probe created more than one issue." },
+    { "round": 1, "task": "2", "hash": "f58f7b74f66a97bf45ddb882edbee34034e1961d8e19e9faf96a28d9a4803397", "verdict": "fail", "reason": "M1's 'directly after the Kata hub bullet', 'in that order' and 'where it was first recorded' had no Run: that falsified them." }
+  ]
+}
