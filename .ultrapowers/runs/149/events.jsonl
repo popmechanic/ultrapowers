@@ -67,3 +67,15 @@
 {"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet skills/ultrapowers/kernel","exit":0,"minor":false,"wave":1,"id":"01M2K3560E000046T03E1NNDQC","ts":1789494728718}
 {"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/catch_report.py skills/ultrapowers/scripts/catch_counter.py","exit":0,"minor":false,"wave":1,"id":"01M2K3560Q0000X8E5D7EJ1W48","ts":1789494728727}
 {"kind":"engine:phase","phase":"Wave 2","id":"01M2K356AC0000B22DQ8RA42N4","ts":1789494729036}
+{"kind":"driver:wave-adopted","wave":2,"tasks":["1"],"headSha":"1c5ddf4a4b7acf491288c3d203d91501325fa047","why":"end","id":"01M2K372WV0000Y6SEKH11DENW","ts":1789494791067}
+{"kind":"driver:integrated-clean","wave":2,"removed":7,"id":"01M2K372WZ0000VCSAFRSTHT0N","ts":1789494791071}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet skills/ultrapowers/kernel","exit":0,"minor":false,"wave":2,"id":"01M2K372X500005D9JNHH8DN71","ts":1789494791077}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/catch_report.py skills/ultrapowers/scripts/catch_counter.py","exit":0,"minor":false,"wave":2,"id":"01M2K372XA0000G71Z1V0RTFF3","ts":1789494791082}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2K373510000TQBJ734QBB9F","ts":1789494791329}
+{"kind":"driver:stage","stage":"finalize","id":"01M2K3736A0000PDRPFTMSZ412","ts":1789494791370}
+{"kind":"driver:stage","stage":"gate","id":"01M2K3737V0000AXJEA6YBJE0R","ts":1789494791419}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M2K373AD0000GXGNN7QP3EZM","ts":1789494791501}
+{"kind":"driver:stage","stage":"approve","id":"01M2K373AD00018S53XEV4YWHG","ts":1789494791501}
+{"kind":"driver:approved","stamp":"run-149","integrationBranch":"ultra/integration-run-149","id":"01M2K373CM0000RFKEZ273Z6VM","ts":1789494791572}
+{"kind":"run:open","runId":"run-149","base":"7f140639212d91432100970e8ec156a1856b25a6","source":"fleet/publish-fold.mjs","id":"01M2K3745X0000196PMNDAN2S5","ts":1789494792381}
+{"kind":"driver:publish-fold","run":"149","attempt":"1","base":"7f140639212d91432100970e8ec156a1856b25a6","tip":"7f140639212d91432100970e8ec156a1856b25a6","candidate":"1c5ddf4a4b7acf491288c3d203d91501325fa047","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M2K374QC0000VREEWZBXY08X","ts":1789494792940}

@@ -4,3 +4,14 @@ run-main: kata — record /home/exedev/plans/run-149.kata.json → https://kata.
 run-main: tiers — 3 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)
 run-main: provision — BASE 7f140639212d91432100970e8ec156a1856b25a6; 3 task clone(s) + integration
 run-main: engine — waves 3, width bound 3, patch input armed
+run-main: engine-done — report saved
+run-main: finalize
+run-main: gate
+run-main: approve
+run-main: approved — ultra/integration-run-149
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 5min 45.196s
+CPU time consumed: 5min 27.767s
+Memory peak: 1.5M
+Memory swap peak: 0B
