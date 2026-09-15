@@ -14,3 +14,6 @@
 {"kind":"transcript:slice","label":"exam:1","sessionId":"c4889d45-f489-4cf5-8e1d-911899c9aed7","bytes":11559,"id":"01M2HEVAET0000JGFY567XAFYB","ts":1789439879642}
 {"kind":"driver:attention","task":"1","attention":"needs-human","msg":"session ended without hand-off","actor":"","id":"01M2HEVNR00000YF3HBVFHE9YF","ts":1789439891200}
 {"kind":"driver:attention","task":"1","attention":"ok","msg":"session ended without hand-off","actor":"","id":"01M2HFNAJH0000Q57Z2EKMH600","ts":1789440731729}
+{"kind":"worker:end","label":"impl:1","role":"implementer","sessionId":"dec7f593-62fd-438e-b5c4-b25e036753bd","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":20091,"output":227875,"cacheRead":11545623,"cacheCreation":447140,"costUsd":16.021640250000004,"models":["claude-opus-5"]},"id":"01M2HGRM5H0000Q6P4NNF089SD","ts":1789441888433}
+{"kind":"transcript:slice","label":"impl:1","sessionId":"dec7f593-62fd-438e-b5c4-b25e036753bd","bytes":11194,"id":"01M2HGRM6R0000S2P9SK5XV2CH","ts":1789441888472}
+{"kind":"driver:exam-handoff","task":"1","paths":["fleet/tests/test_run_engine_ready_set.mjs"],"id":"01M2HGRWTD00002D7837YKJAMC","ts":1789441897293}
