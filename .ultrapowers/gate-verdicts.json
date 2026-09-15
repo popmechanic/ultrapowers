@@ -1,0 +1,66 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "b69a1c94d0af9783ab8b57ca2032ff96e710e72e270f62dfe8aef3bcae777d51",
+   "verdict": "pass",
+   "reason": "Leg (i) [M8] falsifies M1's in-flight gate: A past threshold at B's landing with C open, and no epoch event between B's and C's worker:end, which is where a timer-only removal still claims aged."
+  }
+ },
+ "tally": {
+  "dispatched": 2,
+  "rejected": 1,
+  "rounds": [
+   {
+    "round": 1,
+    "verdicts": {
+     "1": "fail"
+    },
+    "reason": "no leg had a landing arrive while an older result was past threshold with a sibling in flight"
+   },
+   {
+    "round": 2,
+    "verdicts": {
+     "1": "pass"
+    }
+   }
+  ],
+  "base": "41cb53b606146ee16f7904eaf0440531257426f1"
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "1",
+   "hash": "8665af9b52241825ebed9a65abd0abf436ca1f2043ba54f43df289bcc9941c2d",
+   "verdict": "fail"
+  }
+ ],
+ "authoring": {
+  "minutes": 9,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Plan G Claim and summary",
+    "options": [
+     "Confirm as drafted",
+     "Edit it"
+    ],
+    "recommended": "Confirm as drafted",
+    "picked": "Confirm as drafted"
+   },
+   {
+    "question": "When should plan G launch, beside run-150 on the same engine file",
+    "options": [
+     "Launch now, in parallel",
+     "Launch after run-150 merges"
+    ],
+    "recommended": "Launch now, in parallel",
+    "picked": "Launch now, in parallel"
+   }
+  ],
+  "note": "minutes are the afternoon gate sitting (11:04-11:13 PT); the plan was drafted in the morning sitting, unmeasured"
+ }
+}
