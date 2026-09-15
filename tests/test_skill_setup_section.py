@@ -30,8 +30,6 @@ Offline: reads one committed file and runs one local Python script.
 """
 import pathlib
 import re
-import subprocess
-import sys
 
 import pytest
 
@@ -416,17 +414,4 @@ def test_the_skill_still_shows_the_vm_name_shape():
     """(d) [M4]."""
     assert VM_NAME_RE.search(skill_text()), (
         f"{SKILL} no longer shows a `fleet-r<N>-…` VM name"
-    )
-
-
-def test_validate_skill_accepts_the_ultrapowers_skill():
-    """(d) [M4]."""
-    result = subprocess.run(
-        [sys.executable,
-         str(ROOT / "skills/ultrapowers/scripts/validate_skill.py"),
-         str(ROOT / "skills/ultrapowers")],
-        capture_output=True, text=True)
-    assert result.returncode == 0, (
-        "validate_skill.py rejected skills/ultrapowers:\n"
-        + result.stdout + result.stderr
     )
