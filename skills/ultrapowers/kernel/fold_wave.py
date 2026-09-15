@@ -81,6 +81,16 @@ records `headSha` (the tree) AND `patch` (the file), so `rehydrate` can
 re-derive the task from the run directory alone and refuse if the patch has
 changed since it folded. A patch that does not apply is the exit-2 refusal —
 the patch-side analogue of an undescended head, which a patch cannot be.
+A patch carries the head it was CAPTURED against when that is not the wave's
+base: `--patch <taskId>=<file>@<anchorSha>` on `fold`, `resolve` and
+`materialize` alike. The patch is applied over its anchor — never over
+`--base` — so a task dispatched on an older head still folds, as a three-way
+merge over that anchor: the base and every anchor the wave carries are
+snapshotted as one chain, so the task's weave and the frontier's meet at the
+anchor's own file, and disjoint edits fold clean where edits that meet narrate
+one ordinary conflict. The `fold` event records the
+anchor whenever it differs from the base, and a patch that does not apply over
+its OWN anchor is still the exit-2 refusal.
 `materialize --patch` builds the candidate with the previous integration head
 as its ONLY parent: there is no task commit to parent. `--branch` and
 `--task-head` remain as the pre-cutover path (spec §10 stage 2) and are
@@ -280,11 +290,15 @@ class TaskRef(NamedTuple):
 
     `ref` is the tree-ish the pipeline reads (a commit sha for `--branch` /
     `--task-head`, the derived tree sha for `--patch`); `patch` is the patch
-    path or None.
+    path or None; `anchor` is the commit the patch was CAPTURED against when
+    that is not the wave's base, and None otherwise — so the three-field
+    constructor still names a branch or head task, and a patch anchored at
+    the base is the same TaskRef it was before anchors existed.
     """
     task_id: str
     ref: str
     patch: Optional[str]
+    anchor: Optional[str] = None
 
 
 def _parse_task_head(spec):
@@ -306,22 +320,48 @@ def _parse_branch(spec):
     return task_id, branch_name, head_sha
 
 
+def _split_anchor(patch):
+    """`<patchFile>[@<anchorSha>]` -> (patchFile, anchor or None).
+
+    The suffix is read off the LAST `@`, and the file on disk decides: a patch
+    whose own path carries an `@` (a worker directory named for a branch, say)
+    is the whole path when that whole path is the file, so no caller has to
+    quote anything it did not have to quote before. When NEITHER reading names
+    an existing file the split still wins — the caller then hears about the
+    patch path it actually meant rather than one with a sha glued to it.
+    """
+    head, at, anchor = patch.rpartition("@")
+    if not (at and head and anchor):
+        return patch, None
+    if Path(head).is_file() or not Path(patch).is_file():
+        return head, anchor
+    return patch, None
+
+
 def _parse_patch(spec):
-    """`<taskId>=<patchFile>` -> (taskId, absolute patchFile).
+    """`<taskId>=<patchFile>[@<anchorSha>]` -> (taskId, absolute patchFile,
+    anchor or None).
 
     Absolute because the path is RECORDED — in the fold log, which rehydrate
     re-reads verbatim from any cwd. `absolute()` rather than `resolve()`:
     anchoring to cwd is the point, symlink normalization would make the
     recorded path differ from the one the caller can grep for.
+
+    `@<anchorSha>` is the commit the patch was captured against when that is
+    NOT the wave's base — the head the task was dispatched on, which the
+    engine has moved past by the time the wave folds. Absent, the anchor is
+    the wave's `--base` (for `materialize`, the log's base).
     """
-    task_id, eq, patch = spec.partition("=")
+    task_id, eq, rest = spec.partition("=")
+    patch, anchor = _split_anchor(rest)
     if not eq or not task_id or not patch:
         raise argparse.ArgumentTypeError(
-            "--patch must be <taskId>=<patchFile>, got %r" % spec)
+            "--patch must be <taskId>=<patchFile> or "
+            "<taskId>=<patchFile>@<anchorSha>, got %r" % spec)
     if not Path(patch).is_file():
         raise argparse.ArgumentTypeError(
             "--patch %s: no such file %r" % (task_id, patch))
-    return task_id, str(Path(patch).absolute())
+    return task_id, str(Path(patch).absolute()), anchor
 
 
 # `--branch` / `--patch` / `--task-head` append `(kind, parsed)` into ONE
@@ -340,15 +380,36 @@ def _head_arg(spec):
     return ("head", _parse_task_head(spec))
 
 
+def _full_sha(repo, rev):
+    """`rev` as the full object name, or `rev` itself when git cannot read it.
+
+    Unreadable is not this function's refusal to make: the very next step
+    applies the patch over it, and `apply_patch_tree` already names an
+    unreadable base in the exit-2 `does not apply` shape.
+    """
+    r = subprocess.run(["git", "-C", str(repo), "rev-parse", "--verify", "-q",
+                        "%s^{}" % rev], capture_output=True)
+    out = r.stdout.decode().strip()
+    return out if r.returncode == 0 and out else rev
+
+
 def _resolve_tasks(repo, base_sha, specs):
     """`[(kind, parsed)]` -> `[TaskRef]`, in argv order.
 
     The one place patch content becomes a tree-ish: each `--patch` is applied
-    over `base_sha` in a temporary index (`rw.apply_patch_tree`). Raises
-    `rw.PatchError` naming the task when a patch does not apply — the
-    caller's exit-2 refusal, before anything is written.
+    over its ANCHOR — `@<anchorSha>` when the spec named one, `base_sha`
+    otherwise — in a temporary index (`rw.apply_patch_tree`). A patch is never
+    applied over a head it was not captured against, so "does not apply" means
+    the patch disagrees with its own anchor and nothing else; the refusal
+    names that anchor. Raises `rw.PatchError` naming the task — the caller's
+    exit-2 refusal, before anything is written.
+
+    An anchor that resolves to the base is dropped to None: the wave's base is
+    the default anchor, so `@<base>` and no `@` at all are the same task, and
+    neither writes an `anchor` into the log.
     """
     tasks = []
+    base_full = _full_sha(repo, base_sha)
     for kind, parsed in specs:
         if kind == "branch":
             task_id, _branch_name, sha = parsed
@@ -357,14 +418,19 @@ def _resolve_tasks(repo, base_sha, specs):
             task_id, sha = parsed
             tasks.append(TaskRef(task_id, sha, None))
         else:
-            task_id, patch = parsed
+            task_id, patch, anchor = parsed
+            if anchor is not None:
+                anchor = _full_sha(repo, anchor)
+                if anchor == base_full:
+                    anchor = None
             try:
-                tree = rw.apply_patch_tree(repo, base_sha, patch)
+                tree = rw.apply_patch_tree(repo, anchor or base_sha, patch)
             except rw.PatchError as e:
                 raise rw.PatchError("patch for task %s (%s) does not apply "
                                     "against base %s: %s"
-                                    % (task_id, patch, base_sha[:7], e))
-            tasks.append(TaskRef(task_id, tree, patch))
+                                    % (task_id, patch,
+                                       (anchor or base_sha)[:7], e))
+            tasks.append(TaskRef(task_id, tree, patch, anchor))
     return tasks
 
 
@@ -401,7 +467,8 @@ class Contracts:
     def _touched_map(self):
         if self._touched is None:
             self._touched = {
-                t.task_id: set(rw.diff_paths(self.repo, self.base_sha, t.ref))
+                t.task_id: set(rw.diff_paths(self.repo,
+                                             t.anchor or self.base_sha, t.ref))
                 for t in self.branches}
         return self._touched
 
@@ -612,6 +679,12 @@ def _fold_until_stop(eng, states, remaining, log_path, wave_dir, index,
             # `headSha` is the derived TREE; `patch` is what rehydrate
             # re-derives it from, so the log + run dir are the whole record.
             event["patch"] = task.patch
+        if task.anchor is not None:
+            # Only when the anchor is NOT the log's base: an event without the
+            # key reads as anchored at the base, so every log written before
+            # anchors existed rehydrates unchanged — and a wave whose patches
+            # are all base-anchored writes exactly the events it wrote before.
+            event["anchor"] = task.anchor
         _append_event(log_path, event)
         if conflicts:
             epoch = eng.epoch()
@@ -736,11 +809,14 @@ def _prepare(repo, base_sha, branches):
     base is scoped to the union of ALL supplied heads: the ordering contract,
     since a narrower scope would misclassify a path a later task also touches
     as an `add/add` instead of a `modify`.
+
+    Each task contributes its OWN touched set — `anchor..tree` for an anchored
+    patch — but the frontier's base is still the `--base` tree, so a path the
+    base carries and the anchor did not is a modify to the frontier and an add
+    to the task, which is exactly what it is.
     """
-    touched = ff._union_touched(repo, base_sha, [t.ref for t in branches])
-    base = rw.snapshot_scoped(repo, base_sha, touched)
-    states = {t.task_id: rw.publish(base, repo, base_sha, t.ref, task_id=t.task_id)
-              for t in branches}
+    base, states = ff.anchored_inputs(
+        repo, base_sha, [(t.task_id, t.ref, t.anchor) for t in branches])
     return base, states, _state_max_lines(base, states)
 
 
@@ -969,6 +1045,14 @@ def _shadow_seed(repo, run_dir, wave, base_sha, branches, eng):
     try:
         manifest = load_weave_manifest(Path(run_dir))
         if manifest is None:
+            return
+        if any(t.anchor for t in branches):
+            # The seeded pass publishes every task over the wave's base by
+            # construction, which is not the fold an anchored task got. Rather
+            # than measure a different fold and read the difference as a
+            # divergence, decline: the skip costs the next wave its seed and
+            # nothing else.
+            _shadow_skipped(run_dir, wave, "wave carries an anchored patch task")
             return
         events = _shadow_events(repo, run_dir, wave, base_sha, branches, eng,
                                 manifest)
@@ -1402,7 +1486,10 @@ def cmd_materialize(args):
     except rw.PatchError as e:
         return _fallback(str(e))
     task_heads = [(t.task_id, t.ref) for t in tasks]
-    heads = [e["headSha"] for e in recorded if e.get("type") == "fold"]
+    # `(tree, anchor)` per fold event — the anchor is the log's base for an
+    # event that carries none, which is every log written before anchors.
+    heads = [(e["headSha"], e.get("anchor") or base_sha)
+             for e in recorded if e.get("type") == "fold"]
 
     # The completeness refusal, before anything is built: a materialize
     # issued short of `complete` would otherwise construct a candidate that
@@ -1426,9 +1513,13 @@ def cmd_materialize(args):
 
     # The touched set — not the manifest — is what the candidate applies: the
     # manifest omits deletions. It is derived from the fold events' own heads
-    # against the log's base, exactly as the fold derived it (the routing rule
-    # only folds a wave whose base IS the previous integration head).
-    touched = sorted(ff._union_touched(repo, base_sha, heads))
+    # against each event's ANCHOR, exactly as the fold derived it (the routing
+    # rule only folds a wave whose base IS the previous integration head). An
+    # anchored tree diffed against the log's base instead would list every
+    # path the head changed since the anchor, and the candidate would then
+    # overwrite the head's own work with the anchor's — or, for a path absent
+    # from the manifest, delete it.
+    touched = sorted(ff.union_touched_anchored(repo, base_sha, heads))
     modes, park, fallback = _observe_modes(
         repo, args.prev_head, task_heads, [p for p in touched if p in manifest])
     if fallback is not None:
@@ -1570,7 +1661,11 @@ def main(argv=None):
                         type=_patch_arg, default=[],
                         help="<taskId>=<patchFile>, a `git diff --binary "
                              "--full-index --no-renames <BASE>`; repeatable, "
-                             "in task-index order, mixable with --branch")
+                             "in task-index order, mixable with --branch. "
+                             "<taskId>=<patchFile>@<anchorSha> names the head "
+                             "the patch was captured against when that is not "
+                             "--base; the patch is applied over its anchor and "
+                             "merged three-way onto the base")
     p_fold.add_argument("--commutes", dest="commutes", action="append",
                         type=_parse_commutes, default=[],
                         help="a task's declared-commutative paths, "
@@ -1593,7 +1688,9 @@ def main(argv=None):
     p_resolve.add_argument("--patch", dest="tasks", action="append",
                            type=_patch_arg, default=[],
                            help="the patch-input form of --branch; same list, "
-                                "same order, every call")
+                                "same order, every call. The "
+                                "<taskId>=<patchFile>@<anchorSha> form carries "
+                                "the same anchor the fold was given")
     p_resolve.add_argument("--commutes", dest="commutes", action="append",
                            type=_parse_commutes, default=[],
                            help="a task's declared-commutative paths, "
@@ -1611,7 +1708,9 @@ def main(argv=None):
     p_mat.add_argument("--patch", dest="tasks", action="append",
                        type=_patch_arg, default=[],
                        help="the patch-input form of --task-head: the same "
-                            "patch files the fold was given")
+                            "patch files the fold was given, in the same "
+                            "<taskId>=<patchFile>@<anchorSha> form (the "
+                            "anchor defaults to the log's base)")
     p_mat.add_argument("--subject", default=None,
                        help="title the candidate with this text and body it "
                             "with `frontier fold wave <N>` (#633 — the plan's "

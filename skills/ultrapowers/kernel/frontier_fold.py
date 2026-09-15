@@ -175,6 +175,51 @@ def _union_touched(repo, base_sha, heads):
     return touched
 
 
+def union_touched_anchored(repo, base_sha, refs):
+    """`_union_touched` over `[(ref, anchor or None)]` — each task's touched
+    set read against its OWN anchor.
+
+    An anchored task's tree descends from an older head, so diffing it against
+    the wave's base would list every path the base gained since — paths the
+    task never touched, which the scoped base would then carry and
+    `materialize` would then apply. The task's touched set is `anchor..tree`;
+    the base snapshot is still scoped at `base_sha`, so a path present at the
+    base but absent at the anchor is still a modify to the frontier.
+    """
+    touched = set()
+    for ref, anchor in refs:
+        touched.update(rw.diff_paths(repo, anchor or base_sha, ref))
+    return touched
+
+
+def anchored_inputs(repo, base_sha, tasks):
+    """(base RepoState, {task_id: TaskState}) for `[(task_id, ref, anchor)]`.
+
+    The one place the anchored publish shape lives: `fold_wave._prepare` and
+    `rehydrate` both call it, so a task's state cannot differ between the call
+    that folded it and the call that rebuilds it from the log.
+
+    The base and every anchor are read as one chain (`rw.chained_snapshots`), so
+    a wave that mixes anchored and base-anchored tasks still has one root per
+    path and their disjoint edits still fold clean. A task anchored at the base
+    (or at a sha the base already is) is published over the base exactly as it
+    was before anchors existed.
+    """
+    touched = union_touched_anchored(repo, base_sha,
+                                     [(ref, anchor) for _, ref, anchor in tasks])
+    base, anchor_bases = rw.chained_snapshots(
+        repo, base_sha, [a for _, _, a in tasks if a], touched)
+    states = {}
+    for task_id, ref, anchor in tasks:
+        anchor_base = anchor_bases.get(anchor) if anchor else None
+        if anchor_base is None:
+            states[task_id] = rw.publish(base, repo, base_sha, ref, task_id=task_id)
+        else:
+            states[task_id] = rw.publish(anchor_base, repo, anchor, ref,
+                                         task_id=task_id, anchor_base=anchor_base)
+    return base, states
+
+
 def rehydrate(repo, log_path):
     """Rebuild a live FrontierEngine from git + the fold log.
 
@@ -185,11 +230,13 @@ def rehydrate(repo, log_path):
     CLI invocations carry nothing in memory between them.
 
     A fold event that carries `patch` (patch input, Amendment 9) is
-    re-derived from that file over the base — the tree it yields is
-    unreferenced in the object store and could be pruned, so the file is the
-    durable record — and REFUSED (`ValueError`) if it no longer yields the
-    recorded `headSha`: a patch edited after it folded would otherwise
-    rehydrate into a frontier the log never described.
+    re-derived from that file over its anchor — `anchor` when the event
+    carries one, the base otherwise, so every log written before anchors
+    existed rehydrates unchanged — and REFUSED (`ValueError`) if it no longer
+    yields the recorded `headSha`: a patch edited after it folded would
+    otherwise rehydrate into a frontier the log never described. An anchored
+    task is re-published over that same anchor, which is what makes the
+    rebuilt engine's fold the fold the log describes.
     """
     log_path = Path(log_path)
     events = [json.loads(line)
@@ -201,19 +248,16 @@ def rehydrate(repo, log_path):
     for e in events:
         if e["type"] != "fold":
             continue
+        anchor = e.get("anchor") or base_sha
         if e.get("patch"):
-            tree = rw.apply_patch_tree(repo, base_sha, e["patch"])
+            tree = rw.apply_patch_tree(repo, anchor, e["patch"])
             if tree != e["headSha"]:
                 raise ValueError(
                     "fold log records task %s at tree %s but its patch %s now "
                     "yields %s — the patch changed after it folded"
                     % (e["task"], e["headSha"][:7], e["patch"], tree[:7]))
-        task_heads.append((e["task"], e["headSha"]))
-    base = rw.snapshot_scoped(repo, base_sha,
-                              _union_touched(repo, base_sha,
-                                             [h for _, h in task_heads]))
-    states = {tid: rw.publish(base, repo, base_sha, head, task_id=tid)
-              for tid, head in task_heads}
+        task_heads.append((e["task"], e["headSha"], anchor))
+    base, states = anchored_inputs(repo, base_sha, task_heads)
     return _apply_events(FrontierEngine(base), states, events)
 
 

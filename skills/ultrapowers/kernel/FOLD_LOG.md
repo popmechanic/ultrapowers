@@ -12,7 +12,8 @@ the wave records lives beside it in the same directory.
 
 The log is also **the authority for what has folded**. The wave's task list
 is re-supplied to every CLI call — as `--branch <taskId>=<branch>:<headSha>`
-triples, or as `--patch <taskId>=<file>` patches against the base (One Driver
+triples, or as `--patch <taskId>=<file>[@<anchorSha>]` patches against the
+base, or against the older head the patch was captured on (One Driver
 Amendment 9), in task-index order and mixable; the recorded `fold` events must
 be an `(id, headSha)` prefix of that list over the same `base`, or the call
 refuses (`log/list disagreement`). For a patch task `headSha` is the **tree**
@@ -37,8 +38,10 @@ re-publish their task from the recorded `headSha`, which is a pure function of
 git objects, so nothing about a task's contents is duplicated into the log.
 
 Snapshot scoping is an ordering contract: derive **every** fold event's touched
-set first (`git diff` base..head), union them, build the scoped base from that
-union, **then** walk the events. A per-task streaming scope would misclassify a
+set first (`git diff` anchor..head, the anchor being the base for an event that
+names none), union them, build the scoped base — still at the **base**, so a
+path the base carries and an anchor did not is a modify to the frontier and an
+add to the task — from that union, **then** walk the events. A per-task streaming scope would misclassify a
 path that a later task also touches as an `add/add` instead of a `modify`.
 
 ## Events
@@ -62,8 +65,8 @@ from a stale ref would read as a revert of everything the base gained since —
 folded, that silently reverted 3,472 lines of an integration line on a green
 suite (#246). The engine's fallback, an ordinary three-way merge, handles a
 stale parent correctly; the fold cannot. A patch task has no ancestry to
-check: it is against the base by construction, and its refusal is the
-patch-side one — a patch that does not apply over the base (exit 2, nothing
+check: it is against its own anchor by construction, and its refusal is the
+patch-side one — a patch that does not apply over that anchor (exit 2, nothing
 written, the task named on stderr).
 
 ### `fold` — one per task folded, in task-index order
@@ -71,6 +74,7 @@ written, the task named on stderr).
 ```json
 {"type": "fold", "task": "<task id>", "headSha": "<the task branch head>"}
 {"type": "fold", "task": "<task id>", "headSha": "<the derived tree>", "patch": "<file>"}
+{"type": "fold", "task": "<task id>", "headSha": "<the derived tree>", "patch": "<file>", "anchor": "<sha>"}
 ```
 
 `headSha` is what makes the log self-sufficient: the task's `TaskState` is
@@ -80,6 +84,37 @@ The second form is a **patch task**: `headSha` is the tree sha
 re-derives it from the file on every call (the tree object itself is
 unreferenced and may be pruned — the file is the durable record), refusing
 with `ValueError` if the file no longer yields the recorded sha.
+
+The third form is an **anchored** patch task. `anchor` is the commit the patch
+was CAPTURED against — the head the task was dispatched on, which the
+integration line has moved past by the time the wave folds. It is written
+**only when it differs from the base**, so an event without the key reads as
+anchored at the base and every log written before anchors existed rehydrates
+unchanged. Everything the anchor touches reads `e.get("anchor", baseSha)`:
+`apply_patch_tree` derives `headSha` over the anchor, `publish` derives the
+task's state and its touched set over the anchor (`anchor..headSha`), and the
+fold merges the task three-way over it: the head's changes since the anchor and
+the task's own edit meet in one ordinary weave merge, clean where they are
+disjoint and one narrated conflict where they are not.
+
+The three-way is bought in the snapshot, not in the fold. A wave's base and the
+anchors of its anchored tasks are read as ONE chain: per path, the oldest tree
+that carries it is the weave's root, every later anchor is stated as an edit to
+the one before it, and the base is stated as an edit to the last anchor. A task
+published over its anchor's state and a task published over the base's state
+then descend from the same root, so `merge_states` is the three-way over the
+anchor for the first and an ordinary descendant merge for the second, and a
+wave mixing the two still folds their disjoint edits clean. The fold step
+itself is untouched, which is what keeps it commutative — re-rooting the
+frontier mid-fold would make the wave's answer depend on which task arrived
+first.
+
+The CLI form is `--patch <taskId>=<patchFile>@<anchorSha>`, accepted by
+`fold`, `resolve` and `materialize` alike; without the `@` suffix the anchor
+is the wave's `--base` (for `materialize`, the log's base). The patch is
+applied over its anchor and never over the base, so the exit-2 `does not apply
+against base <sha>` refusal names the anchor and means the patch disagrees
+with the head it was captured against.
 Task-index order (not completion order) is what the CLI writes — completion
 order is not observable to the engine, and K1 order-independence is exactly
 what the self-checks assert, so determinism costs nothing.
