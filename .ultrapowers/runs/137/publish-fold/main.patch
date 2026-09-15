@@ -1,0 +1,296 @@
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index e8878f3c9ca42493ec88433d264ce3aa98816ebb..6f5340c3b4db86faf97a9d88eebaede9eeb918fb 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -580,7 +580,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   `work.state` (`parked` or `failed`), `work.attention` (`needs-human`) and `work.attention_msg`
+   (the page's error head) — the three flat keys the boot-script bullet above spells — and the
+   operator resolves it and closes it by hand. Only a run that ended `done` is closed, by the boot.
+-- **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"wave":"<n or null>","state":"queued|examining|implementing|proving|reviewing|fixing|folded|failed","role":"<worker label or null>","lastProof":"{cmd, exit, ts} or null","park":"<detail or null>","attention":"{value, msg, ts} or null"}}}`
++- **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"wave":"<n or null>","state":"queued|waiting|examining|implementing|proving|reviewing|fixing|folded|failed","role":"<worker label or null>","lastProof":"{cmd, exit, ts} or null","park":"<detail or null>","attention":"{value, msg, ts} or null","blockedBy":"[<task ids>] or null"}}}`
+   — the SAME bytes are served at `/status.json` and committed to
+   `.ultrapowers/runs/<N>/status.json` on `ultra/evidence-run-<N>` at every transition **and, while
+   the engine runs, on the first refresher poll that has seen either `FLEET_COMMIT_EVENTS` new lines
+@@ -590,10 +590,14 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   `"tasks":` is the LAST cell on the page — a reader answers the FIRST `"state"` in the file, so a
+   task's own `folded` must never sit above the run's — and it is a projection of `events.jsonl` and
+   nothing else: one key per task id the plan's waves or the log names, each carrying the wave it
+-  belongs to, one of the eight states above, the label of the worker open for it, its last proof run
+-  (`driver:proof-run`, `driver:check-run` or `driver:exam-run`), the detail it was parked with and
++  belongs to, one of the nine states above, the label of the worker open for it, its last proof run
++  (`driver:proof-run`, `driver:check-run` or `driver:exam-run`), the detail it was parked with,
+   its `attention` cell — `{value, msg, ts}` read off that task's latest `driver:attention` event,
+-  `null` for a task that never raised a hand.
++  `null` for a task that never raised a hand — and its `blockedBy` cell, the LAST key of the cell.
++  A task the driver re-edged reads `waiting` with `blockedBy` the siblings that `driver:re-edged`
++  named, whatever the `worker:end` before it said, and the state moves on at the task's next
++  `worker:start` while `blockedBy` keeps the record of what it waited on; a task no `driver:re-edged`
++  names reads `null` there.
+   The same projection is printed for any log by
+   `bash fleet/sandbox-boot.sh project <events.jsonl> [<args.json>]`, which reads and writes nothing.
+   `phase` names the SUB-STEP while the engine runs: the run's last phase event alone when no worker
+diff --git a/fleet/RUNBOOK.md b/fleet/RUNBOOK.md
+index c343f620121ffa239d471d9d99506ce9a30a3152..00f97aa19c01f278847ef0108720ee1a30b0b40e 100644
+--- a/fleet/RUNBOOK.md
++++ b/fleet/RUNBOOK.md
+@@ -241,9 +241,10 @@ and does not merge it (a measurement run).
+   exe.dev's proxy; a browser logged in to exe.dev reads it. Its `phase` names
+   the sub-step the run is on — `Wave 2 · impl:3`, the phase and the worker the
+   wave is waiting on — and its `tasks` cell says what each task is doing right
+-  now: the wave it is in, one of `queued`, `examining`, `implementing`,
+-  `proving`, `reviewing`, `fixing`, `folded`, `failed`, the worker open for it,
+-  its last proof run and why it was parked.
++  now: the wave it is in, one of `queued`, `waiting`, `examining`,
++  `implementing`, `proving`, `reviewing`, `fixing`, `folded`, `failed`, the
++  worker open for it, its last proof run, why it was parked and, when the driver
++  re-edged it, the siblings it is waiting on.
+ - `https://<vm>.exe.xyz/events.jsonl` — the live event log, the same file the
+   engine is appending to, recopied on every poll. It is what the page above is
+   a projection of; `bash fleet/sandbox-boot.sh project <events.jsonl>` prints
+diff --git a/fleet/sandbox-boot.sh b/fleet/sandbox-boot.sh
+index a2c9c328735284112c184bdbd2e74fce4488fbbf..41bf819f8161c3c0169e3f1b5334dab1e5f21180 100755
+--- a/fleet/sandbox-boot.sh
++++ b/fleet/sandbox-boot.sh
+@@ -420,6 +420,11 @@ proof, park = {}, {}
+ # wrote for it and nothing else. A task that never raised one has no entry, and
+ # its cell reads `null`.
+ attention = {}
++# The siblings a task was re-edged onto, per task: the ids of the LATEST
++# `driver:re-edged` the engine wrote for it. It is never cleared — once the
++# re-dispatch has moved the state on, what the task waited on is still worth
++# reading. A task no re-edge names has no entry, and its cell reads `null`.
++blocked_by = {}
+ # Every `worker:start`, and the positions each label was closed at: a role is
+ # the last start of the task that no later end of the SAME label answered.
+ opens, closes = [], {}
+@@ -443,6 +448,17 @@ for at, doc in enumerate(events):
+                 state[tid] = "proving"
+                 proof[tid] = {"cmd": doc.get("cmd"), "exit": doc.get("exit"),
+                               "ts": doc.get("ts")}
++    elif kind == "driver:re-edged":
++        # A task the driver put back on a sibling WAITS — it is not failed, even
++        # when the `worker:end` that made it `failed` came first. The events are
++        # id-sorted, so the later id of this line is what makes it win; a
++        # `BLOCKED` end with no re-edge after it stays `failed`, and a later
++        # `worker:start` moves the state on through the start rule above.
++        for tid in named(doc):
++            if tid in state:
++                state[tid] = "waiting"
++                blocked_by[tid] = [str(s) for s in listed(doc, "blockedBy")
++                                   if not isinstance(s, (dict, list))]
+     elif kind == "driver:attention":
+         for tid in named(doc):
+             if tid in state:
+@@ -501,7 +517,8 @@ cells = {}
+ for tid in sorted(ids, key=key):
+     cells[tid] = {"wave": wave.get(tid), "state": state[tid], "role": role_of(tid),
+                   "lastProof": proof.get(tid), "park": park.get(tid),
+-                  "attention": attention.get(tid)}
++                  "attention": attention.get(tid),
++                  "blockedBy": blocked_by.get(tid)}
+ 
+ if MODE == "sub":
+     out = (sub or "") + "\n"
+diff --git a/fleet/tests/test_sandbox_boot_viz.mjs b/fleet/tests/test_sandbox_boot_viz.mjs
+index 4deb3fdb387ddd5041aea69ba75b3a53b7556fc5..66006e251fd91f9ef330c99212897e39d5c258ff 100644
+--- a/fleet/tests/test_sandbox_boot_viz.mjs
++++ b/fleet/tests/test_sandbox_boot_viz.mjs
+@@ -102,14 +102,33 @@ const B = [
+ const BLOCKED_13 = ev(13, { kind: 'driver:wave-blocked', wave: 1, tasks: ['1'], detail: 'x' })
+ /** The fifteenth line of one case: `impl:2` ended BLOCKED. */
+ const BLOCKED_END_15 = end(15, 'impl:2', 'implementer', 'BLOCKED')
++/**
++ * The sixteenth line of #987's cases, in exactly the shape `run-engine.mjs`
++ * writes it (line 3659): `appendEvent({ kind: 'driver:re-edged', task: r.task,
++ * blockedBy: r.blockedBy.slice() })` — `task` a string id, `blockedBy` a list
++ * of string ids. Its id sorts AFTER `BLOCKED_END_15`'s, which is what makes the
++ * re-edge win over the `BLOCKED` end.
++ */
++const RE_EDGED_16 = ev(16, { kind: 'driver:re-edged', task: '2', blockedBy: ['1'] })
++/** The seventeenth line of #987 leg (d): task 2 dispatched again. */
++const RESTART_17 = start(17, 'impl:2', 'implementer')
+ 
+ /** `args.json` as `ultra_run.py` writes it: `waves`, a list of lists of `{id}`. */
+ const ARGS_JSON = `${JSON.stringify({
+   waves: [[{ id: '1' }, { id: '2' }], [{ id: '3' }]],
+ })}\n`
+ 
+-/** M2's cell, with M2's own defaults, so a case names only what it changes. */
+-const cell = (over = {}) => ({ wave: null, state: 'queued', role: null, lastProof: null, park: null, attention: null, ...over })
++/**
++ * M2's cell, with M2's own defaults, so a case names only what it changes.
++ *
++ * #987 M3 adds `blockedBy` as the cell's LAST key, `null` for a task no
++ * `driver:re-edged` event names — so every whole-object pin below reads the
++ * seven-key shape the Produces line spells.
++ */
++const cell = (over = {}) => ({ wave: null, state: 'queued', role: null, lastProof: null, park: null, attention: null, blockedBy: null, ...over })
++
++/** The keys of a cell, in the order the Produces line spells them (#987 M3). */
++const CELL_KEYS = ['wave', 'state', 'role', 'lastProof', 'park', 'attention', 'blockedBy']
+ 
+ /** Leg (b)'s `tasks` for the full log WITH `args.json`. */
+ const TASKS_WITH_ARGS = {
+@@ -297,15 +316,17 @@ test('(b) the full log with args.json projects three cells and no fourth  [M2]',
+ 
+   assert.deepEqual(doc.tasks['1'],
+     { wave: 1, state: 'folded', role: null, lastProof: { cmd: EXAM_CMD, exit: 1, ts: 12 }, park: null,
+-      attention: null },
++      attention: null, blockedBy: null },
+     'task 1: folded by the `driver:wave-adopted` that lists it, no open `worker:start` so `role` ' +
+     'is null, `lastProof` the last of the three proof kinds — the exam-run — and `wave` the ' +
+     '1-based index of the args.json wave holding it  [leg (b), M2]')
+   assert.deepEqual(doc.tasks['2'],
+-    { wave: 1, state: 'implementing', role: 'impl:2', lastProof: null, park: null, attention: null },
++    { wave: 1, state: 'implementing', role: 'impl:2', lastProof: null, park: null, attention: null,
++      blockedBy: null },
+     'task 2: `worker:start impl:2` with no later `worker:end` of that label  [leg (b), M2]')
+   assert.deepEqual(doc.tasks['3'],
+-    { wave: 2, state: 'queued', role: null, lastProof: null, park: null, attention: null },
++    { wave: 2, state: 'queued', role: null, lastProof: null, park: null, attention: null,
++      blockedBy: null },
+     'task 3: named only by args.json\'s second wave, so queued in wave 2  [leg (b), M2]')
+   assert.deepEqual(Object.keys(doc.tasks).sort(), ['1', '2', '3'],
+     'one key per task id the log and args.json name, and no fourth  [leg (b), M2]: ' +
+@@ -581,6 +602,118 @@ test('(#952 e) the contract\'s status.json bullet states the skip rule  [M5]', (
+     'and must say the kind taken is the last `driver:*`/`worker:*` one  [#952 leg (e), M5]')
+ })
+ 
++// ── #987 task 2 — "The status page reads a re-edged task as waiting, with the
++//    sibling it waits on beside it"  [M1–M6] ────────────────────────────────
++//
++// Six more cases at the same surface. Every assertion below names them
++// `#987 leg (x)`, so run-97's alphabet, #952's and this one never read as one.
++//
++//   M1  a `BLOCKED` `worker:end impl:2` followed by `driver:re-edged
++//       {task: "2", blockedBy: ["1"]}` projects task 2 `waiting`, `blockedBy`
++//       `["1"]`, `role` null                                  → #987 leg (a)
++//   M2  the same log with that line removed still reads `failed`, `blockedBy`
++//       null                                                  → #987 leg (b)
++//   M3  EVERY cell carries a `blockedBy` key, null for a task no
++//       `driver:re-edged` names, and the other six read as at BASE
++//                                                             → #987 leg (c)
++//   M4  a later `worker:start impl:2` moves the state to `implementing` and
++//       keeps `blockedBy`                                     → #987 leg (d)
++//   M5  `fleet/CONTRACT.md`'s `**status.json:**` bullet says `waiting`, names a
++//       `"blockedBy":` cell, says `nine states above` and no longer `eight
++//       states`                                               → #987 leg (e)
++//   M6  `fleet/RUNBOOK.md`'s **Watch.** entry for `status.json` names `waiting`
++//                                                             → #987 leg (f)
++//
++// (a)–(d) are the sim and nothing else; (e)–(f) are scoped greps of the two
++// documents and are never cited as evidence of what the projection does.
++
++/** Leg (a)'s log: the fourteen-line `B`, the BLOCKED end, the re-edge. */
++const RE_EDGED_LOG = [...B, BLOCKED_END_15, RE_EDGED_16]
++
++test('(#987 a) a driver:re-edged after a BLOCKED end reads waiting, with blockedBy  [M1]', () => {
++  const doc = project(plant(RE_EDGED_LOG.join('')))
++  assert.deepEqual(doc.tasks['2'], cell({ state: 'waiting', blockedBy: ['1'] }),
++    'a `worker:end impl:2` with `status` BLOCKED followed by `{kind:"driver:re-edged",task:"2",' +
++    'blockedBy:["1"]}` projects task 2 as `state` `waiting` with `blockedBy` `["1"]` — and `role` ' +
++    'null, because the `impl:2` label the BLOCKED end closed is no longer open; a re-edged task ' +
++    `never reads \`failed\`  [#987 leg (a), M1]: ${JSON.stringify(doc.tasks['2'])}`)
++  assert.deepEqual(doc.tasks['2'].blockedBy, ['1'],
++    'the `blockedBy` cell is the event\'s own list of sibling task ids, as strings  ' +
++    `[#987 leg (a), M1]: ${JSON.stringify(doc.tasks['2'].blockedBy)}`)
++  assert.equal(doc.tasks['1'].blockedBy, null,
++    'and the sibling the event NAMES as a blocker is not itself blocked — task 1\'s own ' +
++    `\`blockedBy\` stays null  [#987 leg (a), M1, M3]: ${JSON.stringify(doc.tasks['1'])}`)
++})
++
++test('(#987 b) the same log with no driver:re-edged still reads failed  [M2]', () => {
++  const doc = project(plant([...B, BLOCKED_END_15].join('')))
++  assert.deepEqual(doc.tasks['2'], cell({ state: 'failed' }),
++    'with the `driver:re-edged` line removed, the `BLOCKED` `worker:end impl:2` is the last word ' +
++    'on task 2: `state` `failed`, `role` null, and `blockedBy` null — the standing case (b) ' +
++    'restated against the WHOLE cell, so a projection that reads every `BLOCKED` end as `waiting` ' +
++    `fails here  [#987 leg (b), M2]: ${JSON.stringify(doc.tasks['2'])}`)
++  assert.equal(doc.tasks['2'].blockedBy, null,
++    'a task no `driver:re-edged` event names has `blockedBy` null, not `[]` and not absent  ' +
++    `[#987 leg (b), M2, M3]: ${JSON.stringify(doc.tasks['2'].blockedBy)}`)
++})
++
++test('(#987 c) every cell the verb prints carries blockedBy, last and null  [M3]', () => {
++  const doc = project(plant(B.join('')), plant(ARGS_JSON, 'json'))
++  assert.deepEqual(doc.tasks, TASKS_WITH_ARGS,
++    'the fourteen-line `B` with `args.json` projects its three cells exactly as at BASE but for ' +
++    'one added key: each carries `blockedBy: null`, because no `driver:re-edged` event names any ' +
++    `of them  [#987 leg (c), M3]: ${JSON.stringify(doc.tasks)}`)
++  for (const tid of ['1', '2', '3']) {
++    assert.deepEqual(Object.keys(doc.tasks[tid]), CELL_KEYS,
++      `task ${tid}'s cell carries exactly the seven keys the Produces line spells, in that ` +
++      'order — the six of BASE unchanged and `blockedBy` LAST; a cell missing the key, or ' +
++      'spelling it anywhere but last, fails  [#987 leg (c), M3]: ' +
++      JSON.stringify(Object.keys(doc.tasks[tid])))
++    assert.equal(doc.tasks[tid].blockedBy, null,
++      `and task ${tid} is named by no \`driver:re-edged\`, so its \`blockedBy\` is null — a ` +
++      'non-null value on an un-edged task fails  [#987 leg (c), M3]')
++  }
++  const noArgs = project(plant(B.join('')))
++  assert.deepEqual(noArgs.tasks, TASKS_NO_ARGS,
++    'and the same log with no `args.json` reads the new shape too  [#987 leg (c), M3]: ' +
++    JSON.stringify(noArgs.tasks))
++})
++
++test('(#987 d) a worker:start after the re-edge implements, and keeps blockedBy  [M4]', () => {
++  const doc = project(plant([...RE_EDGED_LOG, RESTART_17].join('')))
++  assert.deepEqual(doc.tasks['2'], cell({ state: 'implementing', role: 'impl:2', blockedBy: ['1'] }),
++    'a `worker:start impl:2` appended after the `driver:re-edged` line moves task 2 to ' +
++    '`implementing` with `role` `impl:2` through the standing start rule, while `blockedBy` is ' +
++    'still `["1"]` — the record of what it waited on is kept after the re-dispatch, never ' +
++    `cleared  [#987 leg (d), M4]: ${JSON.stringify(doc.tasks['2'])}`)
++  assert.deepEqual(Object.keys(doc.tasks['2']), CELL_KEYS,
++    'and that cell still carries the seven keys in order  [#987 leg (d), M3, M4]: ' +
++    JSON.stringify(Object.keys(doc.tasks['2'])))
++})
++
++test('(#987 e) the contract\'s status.json bullet says waiting, blockedBy and nine  [M5]', () => {
++  // The same `**status.json:**` bullet cases (f) and (#952 e) read, scoped from
++  // its own line to the `**Publish:**` bullet — the Proof's first two `Run:`
++  // lines, spelled here as the leg they are.
++  shOk(`${STATUS_BULLET} | grep -q 'queued|waiting|examining'`,
++    'the `**status.json:**` bullet\'s `"state":` enumeration must read ' +
++    '`queued|waiting|examining|…` — `waiting` immediately after `queued`  [#987 leg (e), M5]')
++  shOk(`${STATUS_BULLET} | grep -q '"blockedBy":'`,
++    'and its task-cell literal must name a `"blockedBy":` cell  [#987 leg (e), M5]')
++  shOk(`${STATUS_BULLET} | grep -q 'nine states above'`,
++    'and the sentence that counted the states must say `nine states above`  [#987 leg (e), M5]')
++  shOk(`test "$(${STATUS_BULLET_LINES} | grep -c 'eight states')" = 0`,
++    'and no line of that bullet may still say `eight states` — the count moved  ' +
++    '[#987 leg (e), M5]')
++})
++
++test('(#987 f) the runbook\'s Watch entry names waiting among the states  [M6]', () => {
++  shOk(`${WATCH_STATUS_ENTRY} | grep -q 'queued.*waiting.*failed'`,
++    'the **Watch.** entry for `status.json`, scoped from its own line to the `events.jsonl` ' +
++    'entry, must name `waiting` between `queued` and `failed` in the list of states a task cell ' +
++    'can read  [#987 leg (f), M6]')
++})
++
+ // ── (d) the commit window in events  [M4] ───────────────────────────────────
+ 
+ test('(d) the refresher commits by FLEET_COMMIT_EVENTS, once per window  [M4]', () =>
+@@ -619,7 +752,8 @@ test('(d) the refresher commits by FLEET_COMMIT_EVENTS, once per window  [M4]',
+       'the second committed page\'s `tasks` carries the appended tasks  [leg (d), M3, M4]: ' +
+       JSON.stringify(second.tasks))
+     assert.deepEqual(second.tasks['6'],
+-      { wave: null, state: 'implementing', role: 'impl:6', lastProof: null, park: null, attention: null },
++      { wave: null, state: 'implementing', role: 'impl:6', lastProof: null, park: null,
++        attention: null, blockedBy: null },
+       'including the line that closed the window  [leg (d), M3, M4]')
+ 
+     // FIVE lines in ONE write: one window, one commit — not five.
+@@ -734,6 +868,12 @@ const EVIDENCE_BULLET =
+ /** The `**status.json:**` bullet under §Literals, to the `**Publish:**` one. */
+ const STATUS_BULLET =
+   "sed -n '/^- \\*\\*status\\.json:\\*\\*/,/^- \\*\\*Publish:\\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' '"
++/** The same bullet, LINE by line: a count of matching lines needs its newlines. */
++const STATUS_BULLET_LINES =
++  "sed -n '/^- \\*\\*status\\.json:\\*\\*/,/^- \\*\\*Publish:\\*\\*/p' fleet/CONTRACT.md"
++/** The **Watch.** entry for `status.json`, to the `events.jsonl` entry. */
++const WATCH_STATUS_ENTRY =
++  "sed -n '/status\\.json. — the VM/,/events\\.jsonl. — the live/p' fleet/RUNBOOK.md | tr '\\n' ' '"
+ 
+ test('(f) the contract states the commit window and the page\'s new cells  [M5]', () => {
+   shOk(`${EVIDENCE_BULLET} | grep -q 'FLEET_COMMIT_EVENTS.*FLEET_COMMIT_SECONDS'`,

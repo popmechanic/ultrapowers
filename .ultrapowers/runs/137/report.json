@@ -1,0 +1,134 @@
+{
+  "integrationBranch": "ultra/integration-run-137",
+  "baseSha": "a94143bb79f780a63e41e751418b9a3d3a9d2db2",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "4ff5e7922c44a259a5e7d5c4282e7c02dcd843f0",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-137/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "Cosmetic prose wrap in CLAUDE.md: the edit to the `fleet/` Layout bullet leaves an orphan line `  reads the pool from` (21 chars) in a paragraph otherwise hard-wrapped to ~95 columns. The content is correct and both Proof `Run:` greps and exam leg (d) still pass after a reflow; this is purely the fill. Nothing else in the diff is affected.; unverified: the Claim's first half \u2014 \"when the compiler notes a Stale-if predicate it could not read, that note is printed on my launch line\" \u2014 is settled by this diff only through a hand-written `exec` seam (fleet/tests/test_launch_compile_facts.mjs `fakeExec`). That `compile_plan.py --check --base` actually emits `STALE fact: task <id>: <entry> unreadable at BASE \u2014 <reason>` on a clean compile (and the `\u2026 holds at BASE` line on exit 2) is sibling task 1's surface (skills/ultrapowers/scripts/compile_plan.py), absent at BASE. This is the correct seam for this task \u2014 Interfaces declares Consumes: none and depends_on is empty, so this is not a missing dependency edge \u2014 but the end-to-end sentence the new fleet/RUNBOOK.md \u00a7Per run paragraph now asserts to the operator (including the two literal line shapes) is only true once task 1 lands. What would settle it: a run of the real compiler against a plan carrying a Stale-if entry unreadable at `--base`, checking the launcher's printed launch line carries the compiler's line verbatim.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    },
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "889fc7e3e874e133cad51ce542be5afa81a4c49b",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-137/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Double evaluation: `evaluate_stale_if` is invoked twice per compile \u2014 once inside `collect_violations` (`...[0]`, skills/ultrapowers/scripts/compile_plan.py, inside the existing `if base_tree is not None:` block) and again in `main()`'s `--check` branch (`...[1]`, after `base_fact_lines`). The task's Context asks for \"one call to `evaluate_stale_if` per compile, whichever function owns it\". The divergence is disclosed in both code comments and it is not wrong \u2014 the two calls select disjoint halves of the return, so no line is printed twice, and M4's once-per-issue-number property survives because `_ISSUE_STATE_CACHE` is process-global (test_d_gh_is_run_once_per_issue_number_however_many_tasks_name_it pins it, so a regression would be caught). The cost is that every `path-exists`/`path-absent`/`sha-matches` predicate re-runs its `git ls-tree`/`hash-object` read a second time, and M4's guarantee now rests on a module-level cache rather than on structure. If you want it structural, have `main()` compute `evaluate_stale_if` once against the tasks it already parses and pass the refusals down, or memoize the pair on the `BaseTree`.; `_STALE_ENTRY_RE` (skills/ultrapowers/scripts/compile_plan.py, new Stale-if block) is looser than the parser's `STALE_PREDICATE_RE` at line 241: it accepts `\\s*:\\s*` where the grammar accepts only `:`. So an entry written `path-absent : \\`missing.py\\`` is refused once by the grammar (\"Stale-if entry is not a predicate\") and, if the predicate holds, refused a second time as a `STALE fact:` line \u2014 two violations for one malformed line. Nothing in the Machine clauses pins this either way and no leg exercises it, but matching the parser's own regex (or reusing `STALE_PREDICATE_RE` to gate the entry before splitting the head) would keep the evaluator from speaking about lines the grammar has already rejected.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-137/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [173 items]\n\n........................................................................ [ 41%]\n........................................................................ [ 83%]\n.............................                                            [100%]\n============================= 173 passed in 39.53s =============================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-main.mjs fleet/run-worker.mjs fleet/run-waves.mjs fleet/publish-fold.mjs fleet/sandbox-boot.sh fleet/roles skills/ultrapowers/kernel",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-main.mjs fleet/run-worker.mjs fleet/run-waves.mjs fleet/publish-fold.mjs fleet/sandbox-boot.sh fleet/roles skills/ultrapowers/kernel",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 342174,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-137/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [154 items]\n\n........................................................................ [ 46%]\n........................................................................ [ 93%]\n..........                                                               [100%]\n============================= 154 passed in 33.27s =============================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "a0777dad94cd9ba37f70a1c4cd3469c7105ac73f",
+      "branches": [
+        "2"
+      ],
+      "joined": []
+    },
+    {
+      "wave": 2,
+      "status": "MERGED",
+      "headSha": "47cf25e700af510f71f32f094d3d339f409801ad",
+      "branches": [
+        "1"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-137/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-137/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.5680000000000001,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    },
+    {
+      "wave": 2,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-137/frontier/wave-2/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-137/frontier/wave-2/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.8089999999999999,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
