@@ -1,0 +1,283 @@
+{
+  "ok": true,
+  "stamp": "run-152",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-152"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 2 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The kernel folds a patch over the head it was captured against",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/kernel/FOLD_LOG.md",
+          "skills/ultrapowers/kernel/fold_wave.py",
+          "skills/ultrapowers/kernel/frontier_fold.py",
+          "skills/ultrapowers/kernel/repo_weave.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`--patch <taskId>=<patchFile>@<anchorSha>` on the `fold`, `resolve` and `materialize` subcommands of `skills/ultrapowers/kernel/fold_wave.py`",
+            "`{\"type\": \"fold\", \"task\": \u2026, \"headSha\": \u2026, \"patch\": \u2026, \"anchor\": \"<sha>\"}` \u2014 the fold-log event of a patch anchored off the base",
+            "`TaskRef(task_id, ref, patch, anchor)` in `skills/ultrapowers/kernel/fold_wave.py`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The engine hands the kernel each result's anchor and the record says how each task landed",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`--patch <taskId>=<patchFile>@<anchorSha>` on the `fold`, `resolve` and `materialize` subcommands of `skills/ultrapowers/kernel/fold_wave.py`"
+          ],
+          "produces": [
+            "`driver:wave-adopted` `{wave, tasks, headSha, why, released?, applied: {<id>: 'base'|'rebased'|'resolved'}}`",
+            "`driver:wave-blocked` `{wave, tasks, detail, why, released?, applied}` \u2014 emitted for a `CONFLICT` epoch as well as a `TEST_FAILED` one"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [
+      {
+        "from": "1",
+        "to": "2",
+        "why": "interface"
+      }
+    ],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1"
+      ],
+      [
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The kernel folds a patch over the head it was captured against",
+          "files": [
+            "skills/ultrapowers/kernel/FOLD_LOG.md",
+            "skills/ultrapowers/kernel/fold_wave.py",
+            "skills/ultrapowers/kernel/frontier_fold.py",
+            "skills/ultrapowers/kernel/repo_weave.py",
+            "tests/test_fold_wave_anchor.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`--patch <taskId>=<patchFile>@<anchorSha>` on the `fold`, `resolve` and `materialize` subcommands of `skills/ultrapowers/kernel/fold_wave.py`",
+              "`{\"type\": \"fold\", \"task\": \u2026, \"headSha\": \u2026, \"patch\": \u2026, \"anchor\": \"<sha>\"}` \u2014 the fold-log event of a patch anchored off the base",
+              "`TaskRef(task_id, ref, patch, anchor)` in `skills/ultrapowers/kernel/fold_wave.py`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrapowers/kernel/FOLD_LOG.md",
+            "skills/ultrapowers/kernel/fold_wave.py",
+            "skills/ultrapowers/kernel/frontier_fold.py",
+            "skills/ultrapowers/kernel/repo_weave.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_fold_wave_anchor.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_fold_wave_anchor.py",
+          "proofRuns": [
+            "python3 -m pytest -q -p no:cacheprovider tests/test_fold_wave_anchor.py",
+            "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel/vendor",
+            "grep -q 'anchor' skills/ultrapowers/kernel/FOLD_LOG.md",
+            "python3 skills/ultrapowers/kernel/fold_wave.py fold --help | grep -q '@<anchorSha>'"
+          ],
+          "proofGuards": [
+            "tests/test_fold_wave_anchor.py"
+          ],
+          "factsheet": {
+            "files": [
+              "skills/ultrapowers/kernel/FOLD_LOG.md",
+              "skills/ultrapowers/kernel/fold_wave.py",
+              "skills/ultrapowers/kernel/frontier_fold.py",
+              "skills/ultrapowers/kernel/repo_weave.py",
+              "tests/test_fold_wave_anchor.py"
+            ],
+            "deletes": [],
+            "guards": [
+              "tests/test_fold_wave_anchor.py"
+            ],
+            "proofTests": [
+              "tests/test_fold_wave_anchor.py"
+            ],
+            "landing": {
+              "tests/test_fold_wave_anchor.py": "tests/test_fold_wave_anchor.py"
+            },
+            "driverOwned": [
+              "tests/test_fold_wave_anchor.py"
+            ],
+            "siblingOwned": [],
+            "produces": [
+              "`--patch <taskId>=<patchFile>@<anchorSha>` on the `fold`, `resolve` and `materialize` subcommands of `skills/ultrapowers/kernel/fold_wave.py`",
+              "`{\"type\": \"fold\", \"task\": \u2026, \"headSha\": \u2026, \"patch\": \u2026, \"anchor\": \"<sha>\"}` \u2014 the fold-log event of a patch anchored off the base",
+              "`TaskRef(task_id, ref, patch, anchor)` in `skills/ultrapowers/kernel/fold_wave.py`"
+            ],
+            "consumes": []
+          }
+        }
+      ],
+      [
+        {
+          "id": "2",
+          "title": "The engine hands the kernel each result's anchor and the record says how each task landed",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_stale_patch.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`--patch <taskId>=<patchFile>@<anchorSha>` on the `fold`, `resolve` and `materialize` subcommands of `skills/ultrapowers/kernel/fold_wave.py`"
+            ],
+            "produces": [
+              "`driver:wave-adopted` `{wave, tasks, headSha, why, released?, applied: {<id>: 'base'|'rebased'|'resolved'}}`",
+              "`driver:wave-blocked` `{wave, tasks, detail, why, released?, applied}` \u2014 emitted for a `CONFLICT` epoch as well as a `TEST_FAILED` one"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_stale_patch.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_stale_patch.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_stale_patch.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_ready_set.mjs | grep -q 'ALL TESTS PASSED'",
+            "python3 -m pytest -q -n auto -p no:cacheprovider tests/test_fleet_suite.py",
+            "sed -n '/^    The engine.s own wave record/,/^    The driver.s own executions/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'epoch.*ready.*slot frees.*release.*end.*aged.*foldAgeMs.*60.*driver:wave-adopted.*applied.*base.*rebased.*resolved.*descendant.*driver:wave-blocked.*CONFLICT'",
+            "test \"$(grep -c 'anchorOf.get(' fleet/run-engine.mjs)\" -ge 2"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_stale_patch.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_stale_patch.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_stale_patch.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_stale_patch.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_stale_patch.mjs": "fleet/tests/test_run_engine_stale_patch.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_stale_patch.mjs"
+            ],
+            "siblingOwned": [],
+            "produces": [
+              "`driver:wave-adopted` `{wave, tasks, headSha, why, released?, applied: {<id>: 'base'|'rebased'|'resolved'}}`",
+              "`driver:wave-blocked` `{wave, tasks, detail, why, released?, applied}` \u2014 emitted for a `CONFLICT` epoch as well as a `TEST_FAILED` one"
+            ],
+            "consumes": [
+              "`--patch <taskId>=<patchFile>@<anchorSha>` on the `fold`, `resolve` and `materialize` subcommands of `skills/ultrapowers/kernel/fold_wave.py`"
+            ]
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The kernel folds a patch over the head it was captured \u2026",
+      "The engine hands the kernel each result's anchor and th\u2026"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- The vendored kernel is untouched, and so are the launcher, the boot, the worker and the roles: the resolver answers the same brief it answers today.\n- A fold whose every patch is anchored at the wave's own `--base` behaves as it does at BASE: the same fold log lines, the same narrations, the same candidate tree \u2014 the anchor is an addition, never a rewrite of the same-anchor path.\n- The record's shapes keep their names: `driver:wave-adopted` and `driver:wave-blocked` carry what they carry at BASE and gain only `applied`; `waveMerges` rows are unchanged; `conflicts.json`, `conflict-<i>.txt` and `conflict-<i>.hunks.txt` keep their shapes so the resolver's brief is byte-for-byte the shape it reads today.\n- Every sim keeps printing `ALL TESTS PASSED` on its last line and names no sibling sim.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel/vendor fleet/launch.mjs fleet/sandbox-boot.sh fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/roles fleet/publish-fold.mjs",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-152/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-152/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-152/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-152/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
