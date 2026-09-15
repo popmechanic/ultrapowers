@@ -1,0 +1,466 @@
+{
+  "ok": true,
+  "stamp": "run-146",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-146"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "4 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "A merged engine change carries a reading of which changed lines a sim reached",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/engine-coverage.mjs",
+          "fleet/run-engine.mjs",
+          "skills/ultrapowers/references/report-format.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`engineCoverage({ tree, base, head, file, sims, width })` in `fleet/engine-coverage.mjs`",
+            "`report.json`'s `engineCoverage` key \u2014 the M1 object or `null`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The fold-order gate is a probe run by hand, and the catch counter keeps a design gate",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/tests/PROBES.md",
+          "fleet/tests/probe_readiness_fold_order.mjs",
+          "skills/ultrapowers/scripts/catch_report.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`catch_table(rows, tree_tests, landings=None, runners=(), gates=())` in `skills/ultrapowers/scripts/catch_report.py`",
+            "`tree_gates(tree, tests)` in `skills/ultrapowers/scripts/catch_report.py`"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "An edit a task could not take becomes a ticket the run opens beside its PR",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/roles/implementer.md",
+          "fleet/sandbox-boot.sh"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`publish:disclosures` event `{url: string, items: int}` in `events.jsonl`",
+            "the `out-of-FILES (not taken):` concern prefix in `fleet/roles/implementer.md`"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "The report reference's last wave-loop row speaks epoch",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/references/report-format.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "A merged engine change carries a reading of which changed lines a sim reached",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/engine-coverage.mjs",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_engine_coverage.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`engineCoverage({ tree, base, head, file, sims, width })` in `fleet/engine-coverage.mjs`",
+              "`report.json`'s `engineCoverage` key \u2014 the M1 object or `null`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/engine-coverage.mjs",
+            "fleet/run-engine.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_engine_coverage.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_engine_coverage.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_engine_coverage.mjs | grep -q 'ALL TESTS PASSED'",
+            "python3 -m pytest -q -n auto -p no:cacheprovider tests/test_fleet_suite.py",
+            "sed -n '/^  - .ultra.evidence-run-<N>. \u2014 the run.s record under/,/^    The engine.s own wave record/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'engineCoverage.*reading.*gates nothing'",
+            "sed -n '/^| .coverage. | no |/,/^| .missingDeliverables. | no |/p' skills/ultrapowers/references/report-format.md | grep -q '^| .engineCoverage. | no |.*changed.*reached.*unreached.*sims.*never gated'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_engine_coverage.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/engine-coverage.mjs",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_engine_coverage.mjs",
+              "skills/ultrapowers/references/report-format.md"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_engine_coverage.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_engine_coverage.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_engine_coverage.mjs": "fleet/tests/test_engine_coverage.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_engine_coverage.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/roles/implementer.md",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/PROBES.md",
+              "fleet/tests/probe_readiness_fold_order.mjs",
+              "fleet/tests/test_sandbox_boot_disclosures.mjs",
+              "skills/ultrapowers/references/report-format.md",
+              "skills/ultrapowers/scripts/catch_report.py",
+              "tests/test_catch_report.py"
+            ],
+            "produces": [
+              "`engineCoverage({ tree, base, head, file, sims, width })` in `fleet/engine-coverage.mjs`",
+              "`report.json`'s `engineCoverage` key \u2014 the M1 object or `null`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "The fold-order gate is a probe run by hand, and the catch counter keeps a design gate",
+          "files": [
+            "fleet/tests/PROBES.md",
+            "fleet/tests/probe_readiness_fold_order.mjs",
+            "skills/ultrapowers/scripts/catch_report.py",
+            "tests/test_catch_report.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`catch_table(rows, tree_tests, landings=None, runners=(), gates=())` in `skills/ultrapowers/scripts/catch_report.py`",
+              "`tree_gates(tree, tests)` in `skills/ultrapowers/scripts/catch_report.py`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/tests/PROBES.md",
+            "fleet/tests/probe_readiness_fold_order.mjs",
+            "skills/ultrapowers/scripts/catch_report.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_catch_report.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_catch_report.py",
+          "proofRuns": [
+            "python3 -m pytest -q -p no:cacheprovider tests/test_catch_report.py",
+            "out=\"$(node fleet/tests/probe_readiness_fold_order.mjs 2>/dev/null)\" && test \"$(printf '%s\\n' \"$out\" | grep -c '^wave-.* ok steps=')\" = 5 && printf '%s\\n' \"$out\" | grep -q '^negative-control .* caught ' && test \"$(printf '%s\\n' \"$out\" | tail -n 1)\" = 'ALL TESTS PASSED'",
+            "sed -n '/^# fleet.tests probes/,/^The current probes:/p' fleet/tests/PROBES.md | tr '\\n' ' ' | grep -q 'live measurement.*design gate'",
+            "sed -n '/probe_readiness_fold_order.mjs/,/^$/p' fleet/tests/PROBES.md | tr '\\n' ' ' | grep -q 'every.*order.*by hand.*before any change.*scheduler'"
+          ],
+          "proofGuards": [
+            "tests/test_catch_report.py"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/tests/PROBES.md",
+              "fleet/tests/probe_readiness_fold_order.mjs",
+              "skills/ultrapowers/scripts/catch_report.py",
+              "tests/test_catch_report.py"
+            ],
+            "deletes": [],
+            "guards": [
+              "tests/test_catch_report.py"
+            ],
+            "proofTests": [
+              "tests/test_catch_report.py"
+            ],
+            "landing": {
+              "tests/test_catch_report.py": "tests/test_catch_report.py"
+            },
+            "driverOwned": [
+              "tests/test_catch_report.py"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/engine-coverage.mjs",
+              "fleet/roles/implementer.md",
+              "fleet/run-engine.mjs",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_engine_coverage.mjs",
+              "fleet/tests/test_sandbox_boot_disclosures.mjs",
+              "skills/ultrapowers/references/report-format.md"
+            ],
+            "produces": [
+              "`catch_table(rows, tree_tests, landings=None, runners=(), gates=())` in `skills/ultrapowers/scripts/catch_report.py`",
+              "`tree_gates(tree, tests)` in `skills/ultrapowers/scripts/catch_report.py`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "3",
+          "title": "An edit a task could not take becomes a ticket the run opens beside its PR",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/roles/implementer.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/test_sandbox_boot_disclosures.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`publish:disclosures` event `{url: string, items: int}` in `events.jsonl`",
+              "the `out-of-FILES (not taken):` concern prefix in `fleet/roles/implementer.md`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/roles/implementer.md",
+            "fleet/sandbox-boot.sh"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_disclosures.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_disclosures.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_sandbox_boot_disclosures.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_viz.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_kata_export.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_engine_env.mjs | grep -q 'ALL TESTS PASSED'",
+            "sed -n '/^Judgment rules:/,/^$/p' fleet/roles/implementer.md | tr '\\n' ' ' | grep -q 'out-of-FILES (not taken):'",
+            "sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming:\\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'files no issue for them.*except.*disclosures.*publish:disclosures'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_sandbox_boot_disclosures.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/roles/implementer.md",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_sandbox_boot_disclosures.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_sandbox_boot_disclosures.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_sandbox_boot_disclosures.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_sandbox_boot_disclosures.mjs": "fleet/tests/test_sandbox_boot_disclosures.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_sandbox_boot_disclosures.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/engine-coverage.mjs",
+              "fleet/run-engine.mjs",
+              "fleet/tests/PROBES.md",
+              "fleet/tests/probe_readiness_fold_order.mjs",
+              "fleet/tests/test_engine_coverage.mjs",
+              "skills/ultrapowers/references/report-format.md",
+              "skills/ultrapowers/scripts/catch_report.py",
+              "tests/test_catch_report.py"
+            ],
+            "produces": [
+              "`publish:disclosures` event `{url: string, items: int}` in `events.jsonl`",
+              "the `out-of-FILES (not taken):` concern prefix in `fleet/roles/implementer.md`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "4",
+          "title": "The report reference's last wave-loop row speaks epoch",
+          "files": [
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^| .frontier. | no |/p' skills/ultrapowers/references/report-format.md | grep -q 'per epoch fold.*contended.*overlap=fold.*2026-08-14'",
+            "sed -n '/^| .frontier. | no |/p' skills/ultrapowers/references/report-format.md | grep -q 'epoch number'",
+            "! sed -n '/^| .frontier. | no |/p' skills/ultrapowers/references/report-format.md | grep -q -e 'per wave' -e 'overlap serialize' -e 'wave number'"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "skills/ultrapowers/references/report-format.md"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/engine-coverage.mjs",
+              "fleet/roles/implementer.md",
+              "fleet/run-engine.mjs",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/PROBES.md",
+              "fleet/tests/probe_readiness_fold_order.mjs",
+              "fleet/tests/test_engine_coverage.mjs",
+              "fleet/tests/test_sandbox_boot_disclosures.mjs",
+              "skills/ultrapowers/references/report-format.md",
+              "skills/ultrapowers/scripts/catch_report.py",
+              "tests/test_catch_report.py"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "4 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- No kernel, launcher, worker, waves-module, publish-fold or kata-client changes, and no role file other than `fleet/roles/implementer.md` changes; the engine's own edit is one call site and one report key.\n- Nothing here gates: the coverage reading, the disclosure ticket and the probe change no run's verdict \u2014 for the same tree, `tests.passed`, the gate receipt and the merge decision are what they were at BASE.\n- No direct Anthropic API call, no `anthropic` SDK and no API key in any shipped or dev file: the probe is model-free, the coverage reading spawns `node` on sims and nothing else, and the ticket goes over the same edge-proxied GitHub REST the PR uses.\n- Every sim keeps printing `ALL TESTS PASSED` on its last line and names no sibling sim; a `probe_*.mjs` never joins the bridge.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel fleet/launch.mjs fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/publish-fold.mjs fleet/kata-client.mjs fleet/roles/fix.md fleet/roles/reviewer.md fleet/roles/examiner.md fleet/roles/reconcile.md fleet/roles/resolver.md",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-146/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-146/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-146/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-146/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
