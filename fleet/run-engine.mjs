@@ -1963,6 +1963,12 @@ export async function runEngine({
   // baseline holding one of its slots would delay the very dispatch it is meant
   // to run beside.
   let baseline = null
+  // How long the baseline suite took, in milliseconds — `null` until it settles.
+  // The run's one measurement of what a suite COSTS, which is what the fold
+  // policy's age clause is denominated in (#1006): a result nobody is waiting
+  // on may sit captured and unadopted for a suite's length before a fold is
+  // spent on it.
+  let baselineWallMs = null
   // Which tests are red, comma-joined, read off the RAW suite output and not off
   // `baseline.output`: pytest prints its `FAILED <path>::<test>` lines in the
   // short summary, which is BELOW the block `failingBlock` cuts, so the block a
@@ -1987,6 +1993,7 @@ export async function runEngine({
     baselineFailing + ' (' + output + ')'
   const settleBaseline = (passed, output, raw) => {
     baseline = { passed, output }
+    baselineWallMs = Date.now() - baselineStartedAt
     log('baseline: ' + (passed ? 'green' : 'RED') + ' on ' + (reuseHead || baseSha))
     if (!passed) {
       baselineFailing = failingPaths(raw)
@@ -1995,6 +2002,8 @@ export async function runEngine({
         'the first fold at the latest, and no reconcile is dispatched at it')
     }
   }
+  // The clock the wall above is read off, started on the line the suite does.
+  const baselineStartedAt = Date.now()
   const baselineSettled = sh(testCmd, baselineDir).then(
     // A green baseline keeps BASE's record — a tail of the summary. A red one
     // records the failing test's own block, which is what every reader of
@@ -3413,8 +3422,29 @@ export async function runEngine({
   // each one's head a descendant of the one before, and only one fold at a time.
   // `wave` in the record means that number; the fold pipeline under it is the
   // same one the barrier ran.
+  //
+  // A lane does not fold at EVERY landing (#1006). A fold is a kernel fold, a
+  // candidate suite and, when it goes green, the integrated passes — so a run of
+  // independent tasks that folded per landing paid a suite each time for an
+  // adoption nobody was waiting on. A lane that frees claims an epoch only when
+  // the fold would do one of three things, and the event says which in `why`:
+  // it RELEASES a queued task, it ENDS the run, or it adopts a result that has
+  // AGED past `foldAgeMs`. See `foldTrigger` under readiness below.
   const WIDTH_FALLBACK = 12
   const W = (Number.isInteger(args.width) && args.width > 0) ? args.width : WIDTH_FALLBACK
+  // How long a result nobody is waiting for may sit captured and unadopted
+  // before a fold is spent on it alone (#1006). The run's argument when it is a
+  // non-negative number — `0` folds at every landing, which is the rule before
+  // this one — and otherwise a suite's length: the larger of a minute and the
+  // wall the baseline suite actually took, the only measurement of what a fold
+  // costs this run owns. `null` until the baseline settles, and a `null`
+  // threshold is the age clause switched OFF rather than guessed: `released`
+  // and `end` carry the run until the suite has answered.
+  const FOLD_AGE_FLOOR_MS = 60000
+  const foldAgeFixed = (Number.isFinite(args.foldAgeMs) && args.foldAgeMs >= 0)
+    ? args.foldAgeMs : null
+  const foldAgeMs = () => (foldAgeFixed !== null ? foldAgeFixed
+    : (baselineWallMs === null ? null : Math.max(FOLD_AGE_FLOOR_MS, baselineWallMs)))
   // Plan order, flat: the order a lane reads the ready set in.
   const PLAN = WAVES.flat()
   const predecessorsOf = (id) => EDGES.filter(([, b]) => b === id).map(([a]) => a)
@@ -3460,6 +3490,33 @@ export async function runEngine({
     landingWaiters = []
     for (const resolve of waiting) resolve()
   }
+  // The next landing, OR the moment the oldest pending result ages out (#1006).
+  // `aged` is the one trigger that becomes true on its own, so a lane that went
+  // to sleep with results pending would otherwise sleep until a landing that
+  // may never come — every other task of the run can be in flight for minutes.
+  // The timer is unref'd, so a wake-up is never the reason a finished run is
+  // still alive, and whichever side wins clears the other.
+  const nextLandingOrAge = () => {
+    const threshold = foldAgeMs()
+    // No timer when a fold already holds the claim: these results belong to the
+    // epoch after it, the fold's own release announces, and a timer that fired
+    // against a claimed epoch would only spin the lane for the fold's duration.
+    if (threshold === null || epochClaimed || pendingResults.length === 0) return nextLanding()
+    const wait = Math.max(0, threshold - oldestPendingAgeMs())
+    return new Promise((resolve) => {
+      let settled = false
+      let timer = null
+      const wake = () => {
+        if (settled) return
+        settled = true
+        if (timer !== null) globalThis.clearTimeout(timer)
+        resolve()
+      }
+      timer = globalThis.setTimeout(wake, wait)
+      if (timer && typeof timer.unref === 'function') timer.unref()
+      landingWaiters.push(wake)
+    })
+  }
 
   // ── claiming an epoch ──────────────────────────────────────────────────────
   // What one fold adopts is decided HERE, and the moment this returns a set it
@@ -3476,13 +3533,20 @@ export async function runEngine({
   // fold takes it), never because a lane took a few microtasks to ask.
   //
   // `null` means "not this lane": either nothing is pending, or an epoch is
-  // already claimed, or the run has parked. Every caller is synchronous with
-  // its landing, so the guard needs no lock — a claim is taken and released
-  // without an await in between.
+  // already claimed, or the run has parked, or no fold trigger holds at this
+  // instant (#1006). Every caller is synchronous with its landing, so the guard
+  // needs no lock — a claim is taken and released without an await in between.
+  //
+  // A claim is `{ results, why, released? }`: what the fold adopts, and the
+  // reading the record owes for having spent a fold on it. `foldTrigger` lives
+  // under readiness below because that is the state it reads; nothing calls
+  // either until the lanes run, so the order they are written in is free.
   const claimEpoch = () => {
     if (parkedOnBaseline || epochClaimed || pendingResults.length === 0) return null
+    const trigger = foldTrigger()
+    if (trigger === null) return null
     epochClaimed = true
-    return pendingResults.splice(0, pendingResults.length)
+    return { results: pendingResults.splice(0, pendingResults.length), ...trigger }
   }
 
   // One fold at a time (M2), whichever lane it is. The kernel's fold / resolve /
@@ -3527,7 +3591,11 @@ export async function runEngine({
       // run is still alive.
       if (t && typeof t.unref === 'function') t.unref()
     })])
-  const parkOnRedBaseline = async () => {
+  // `why` is the trigger of the claim that reached this park, so the blocked
+  // epoch it appends reads like every other wave event (#1006). The park the
+  // run's tail makes has no claim behind it and carries `end`: the run is over,
+  // which is exactly what that call site knows.
+  const parkOnRedBaseline = async (why = 'end') => {
     if (parkedOnBaseline) return
     parkedOnBaseline = true
     const epoch = epochCount + 1
@@ -3547,7 +3615,7 @@ export async function runEngine({
     const held = PLAN.filter((t) => !adoptedIds.has(t.id)).map((t) => t.id)
     waveMerges.push({ wave: epoch, status: 'TEST_FAILED', detail,
                       branches: pendingResults.map((r) => r.task) })
-    appendEvent({ kind: 'driver:wave-blocked', wave: epoch, tasks: held, detail })
+    appendEvent({ kind: 'driver:wave-blocked', wave: epoch, tasks: held, detail, why })
     blockedWaves.push({ wave: epoch, detail })
     log('epoch ' + epoch + ' parked: the suite was already RED on BASE when the run opened')
     for (const id of held) {
@@ -3618,6 +3686,52 @@ export async function runEngine({
       dispatchedIds.add(t.id)
       return t
     }
+    return null
+  }
+  // `takeReady`'s question without its answer's cost: is anything ready at all?
+  // Read and never taken, so asking it changes nothing.
+  const anyReady = () => PLAN.some((t) => isReady(t))
+
+  // ── when a fold is worth running (#1006) ───────────────────────────────────
+  // The three triggers, and the `why` each puts on the epoch's event:
+  //
+  //   `released`  adopting these results makes a queued task ready — one not
+  //               dispatched, not failed, not downstream of a failed or blocked
+  //               task, not ready NOW, and with every predecessor an edge names
+  //               either already adopted or among these very results. Those ids
+  //               travel with the event as `released`, in plan order. This is
+  //               the fold somebody is waiting for.
+  //   `end`       nothing is in flight, nothing is folding and nothing is ready:
+  //               these results are all that is left of the run, so the fold
+  //               that adopts them is the last one. Without this clause a run of
+  //               independent tasks would finish with its work never adopted.
+  //   `aged`      the oldest pending result has waited `foldAgeMs` since it
+  //               landed. The clause that bounds how long a result nobody is
+  //               waiting for can sit captured and unadopted — and, at
+  //               `foldAgeMs: 0`, the clause that makes every landing fold at
+  //               its own instant, which is the rule before #1006.
+  //
+  // In that order, and the first that holds is the reading: a fold that releases
+  // is named for the release even when the run happens to be ending with it.
+  const releasedBy = (results) => {
+    const landing = new Set(results.map((r) => r.task))
+    return PLAN
+      .filter((t) => !isReady(t) && !reusedIds.has(t.id) && !dispatchedIds.has(t.id) &&
+                     !resultFor(t.id) && !blockedByDep.has(t.id) &&
+                     predecessorsOf(t.id).every((p) => adoptedIds.has(p) || landing.has(p)))
+      .map((t) => t.id)
+  }
+  // `pendingResults` is in landing order, so the oldest is the first.
+  const oldestPendingAgeMs = () => (pendingResults.length === 0 ? 0
+    : Date.now() - (pendingResults[0].landedAt || 0))
+  const foldTrigger = () => {
+    if (pendingResults.length === 0) return null
+    noteFailures()
+    const released = releasedBy(pendingResults)
+    if (released.length > 0) return { why: 'released', released }
+    if (inFlight === 0 && foldingLanes === 0 && !anyReady()) return { why: 'end' }
+    const threshold = foldAgeMs()
+    if (threshold !== null && oldestPendingAgeMs() >= threshold) return { why: 'aged' }
     return null
   }
 
@@ -3717,6 +3831,10 @@ export async function runEngine({
     if (at !== -1) taskResults[at] = r
     else taskResults.push(r)
     const mergeable = isMergeable(r)
+    // When it landed, stamped before the claim: the age clause (#1006) measures
+    // from the instant the slot freed, not from the fold that eventually reads
+    // it. A result the claim below takes is folded at an age of zero.
+    r.landedAt = Date.now()
     if (r.status === 'parked-infra') parkedInfraQueue.push(r)
     else if (mergeable) pendingResults.push(r)
     noteFailures()
@@ -3733,12 +3851,17 @@ export async function runEngine({
   const siblingsNow = (task) => siblingLine(task, PLAN.filter((t) => !adoptedIds.has(t.id)), kataRefOf)
 
   // ── the fold ───────────────────────────────────────────────────────────────
-  // `merged` is what `claimEpoch` handed this lane: every captured result
-  // nobody had adopted at the instant the lane freed (M2). A result that landed
-  // while the fold before this one ran is in it; one that lands while THIS fold
-  // runs is not, and the next claim takes it.
-  const foldEpoch = async (merged) => {
+  // `claim` is what `claimEpoch` handed this lane: every captured result nobody
+  // had adopted at the instant the lane freed (M2), plus the trigger that made
+  // the fold worth running (#1006). A result that landed while the fold before
+  // this one ran is in it; one that lands while THIS fold runs is not, and the
+  // next claim takes it.
+  const foldEpoch = async (claim) => {
     if (parkedOnBaseline) return
+    const merged = claim.results
+    // The reading the record owes for this fold, carried onto whichever of the
+    // two events the epoch ends in.
+    const trigger = { why: claim.why, ...(claim.released ? { released: claim.released } : {}) }
     if (merged.length === 0) return
     // The baseline's answer, before any fold and after every dispatch this lane
     // made: a run that inherited a red repository never reaches a candidate.
@@ -3747,7 +3870,7 @@ export async function runEngine({
       firstFold = false
       if (baselineIsRed()) {
         pendingResults.unshift(...merged)
-        await parkOnRedBaseline()
+        await parkOnRedBaseline(claim.why)
         return
       }
     }
@@ -3804,7 +3927,7 @@ export async function runEngine({
     // worker of this epoch and before the next `engine:phase`.
     if (merge.status === 'MERGED') {
       appendEvent({ kind: 'driver:wave-adopted', wave: epoch,
-        tasks: epochTasks.map((t) => t.id), headSha: merge.headSha })
+        tasks: epochTasks.map((t) => t.id), headSha: merge.headSha, ...trigger })
       adoptedHead = merge.headSha
       for (const t of epochTasks) adoptedIds.add(t.id)
       // The capture base a dispatch does NOT carry its own anchor for (the
@@ -3928,7 +4051,7 @@ export async function runEngine({
     const detail = merge.detail || merge.status
     if (merge.status === 'TEST_FAILED') {
       appendEvent({ kind: 'driver:wave-blocked', wave: epoch,
-        tasks: epochTasks.map((t) => t.id), detail: merge.detail })
+        tasks: epochTasks.map((t) => t.id), detail: merge.detail, ...trigger })
       // The fold could not be made green, so nothing in it landed — every task
       // of the epoch is left OPEN and marked for a person, carrying the row's
       // own detail. Work the driver could not fold is a question for someone,
@@ -4044,10 +4167,14 @@ export async function runEngine({
       // Read as a flag, never awaited — this is the question "has it settled red
       // yet?", asked before every dispatch, so a slow baseline stops nothing.
       if (baselineIsRed()) return
-      // Before anything else: an epoch nobody is folding. This is how the
-      // results that landed during a fold reach one — they were refused a claim
-      // when they landed, and the first lane back at the top of its loop after
-      // that fold released takes all of them as the next epoch.
+      // Before anything else: an epoch nobody is folding, and worth folding.
+      // This is how the results that landed during a fold reach one — they were
+      // refused a claim when they landed, and the first lane back at the top of
+      // its loop after that fold released takes all of them as the next epoch.
+      // It is also where the LAST pending set is folded: the claim is asked
+      // before the quiet test below and in the same turn, so a lane that is
+      // about to judge the run quiet folds what is left first (`end`), instead
+      // of returning with results nobody ever adopted (#1006).
       const waiting = claimEpoch()
       if (waiting !== null) {
         await foldPending(waiting)
@@ -4071,7 +4198,9 @@ export async function runEngine({
         continue
       }
       if (quiet) return
-      await nextLanding()
+      // Not quiet: either work is still moving, or results are pending and no
+      // trigger holds for them yet. The second is what the age race is for.
+      await nextLandingOrAge()
     }
   }
   await parallel(Array.from({ length: W }, () => () => lane()))

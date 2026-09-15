@@ -117,7 +117,13 @@ function fixture({ name, tasks, writes, constraintChecks = null }) {
   const allWrites = { ...writes, [PACER]: { 'pacer.txt': 'pace\n' } }
   const { run: inner, ...rest } = rig({
     repo, runDir, waves: [[...tasks, mkTask(PACER, ['pacer.txt'])]], stamp: name,
-    ...(constraintChecks ? { extraArgs: { constraintChecks } } : {}),
+    // `foldAgeMs: 0` — the fold-at-every-landing reading (#1006). This fixture
+    // PACES on a fold: the pacer lands alone and every other task's review
+    // waits for the kernel to open that fold, so an engine that folded only
+    // when the fold released a task, ended the run or aged a result out would
+    // never run the fold the pacer is waiting on. The join is this file's
+    // subject, not the fold trigger.
+    extraArgs: { foldAgeMs: 0, ...(constraintChecks ? { constraintChecks } : {}) },
     // The pacer's fold, announced to the stub: the kernel's `fold` for epoch 1.
     exec: async (cmd, argv, opts) => {
       if (cmd === 'python3' && argv[1] === 'fold' &&
