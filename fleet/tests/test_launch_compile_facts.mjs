@@ -271,6 +271,106 @@ await test('(d) [M4] CLAUDE.md\'s fleet/ Layout bullet names STALE fact: after t
   )
 })
 
+/**
+ * ── "The launcher carries the AUTHORING fact line onto the launch line"
+ * (task 4) ──────────────────────────────────────────────────────────────────
+ *
+ * The same surface, one kind wider: the compiler now prints an `AUTHORING
+ * fact:` line after its BASE and STALE facts under `--check --base`, and the
+ * operator must read what the authoring cost among the fact lines that end the
+ * launch text, without opening the record. Nothing new is imported and nothing
+ * new is spawned: these legs use this file's own `fakeExec`, `compile` and
+ * `sectionOf` helpers, and the legs above stay green because a stdout carrying
+ * no `AUTHORING fact:` line still resolves to exactly its BASE and STALE lines.
+ *
+ *   (a) [M1] a fake `exec` answering exit 0 with `PLAN OK`, one `BASE fact:`
+ *       line, one `STALE fact: … unreadable at BASE — …` line, the Context's
+ *       example `AUTHORING fact:` line and one `note:` line makes
+ *       `verifyPlanCompiles` resolve to exactly those three fact lines, in that
+ *       order and with no other line.
+ *   (b) [M1] the same lines answered `AUTHORING fact:` first resolve with it
+ *       first — M1 says stdout order, not a sort by kind — and
+ *       `AUTHORING fact: none recorded`, the shape the compiler prints for a
+ *       record with no `authoring` key, is carried like any other.
+ *   (c) [M1] `renderLaunch` of a result whose `baseFacts` is
+ *       `['BASE fact: x', 'AUTHORING fact: none recorded']` yields text whose
+ *       LAST line is the `AUTHORING fact:` entry.
+ *   (d) [M2] the `## Per run` section of `fleet/RUNBOOK.md`, read as the text
+ *       between that heading and the next `## `, matches
+ *       `BASE fact:.*STALE fact:.*AUTHORING fact:.*launch line`.
+ */
+
+/**
+ * The compiler's third line shape, as the literal every task in this plan
+ * shares: a record of 118 minutes, 12 probes, 4 dispatches, 1 rejected, routing
+ * `risk`/`ultrapowers` and one question picked as recommended is exactly this.
+ */
+const AUTHORING_FACT =
+  'AUTHORING fact: 118 min to PLAN OK, 12 hub probes, 4 gate dispatches, 1 rejected, ' +
+  'routing risk->ultrapowers, 1 questions, 1/1 recommended picked'
+
+/** What the compiler prints when the gate record carries no `authoring` key. */
+const AUTHORING_NONE = 'AUTHORING fact: none recorded'
+
+await test('(a) [M1] task 4: a clean compile resolves to its BASE, STALE and AUTHORING fact lines, and nothing else', async () => {
+  const exec = fakeExec({
+    code: 0,
+    stdout: `PLAN OK\n${BASE_FACT}\n${STALE_ADVISORY}\n${AUTHORING_FACT}\nnote: 3 tasks in 2 waves\n`
+  })
+  const facts = await compile(exec)
+  assert.deepEqual(
+    facts, [BASE_FACT, STALE_ADVISORY, AUTHORING_FACT],
+    '(a) [M1] exit 0 with PLAN OK, one BASE fact: line, one STALE fact: advisory, the AUTHORING fact: ' +
+    'line and one note: line resolves to exactly those three fact lines, in stdout order and with no ' +
+    `other line, got: ${JSON.stringify(facts)}`
+  )
+})
+
+await test('(b) [M1] task 4: the order is stdout\'s, and `none recorded` is carried like any other', async () => {
+  const first = fakeExec({
+    code: 0,
+    stdout: `PLAN OK\n${AUTHORING_FACT}\n${BASE_FACT}\n${STALE_ADVISORY}\nnote: 3 tasks in 2 waves\n`
+  })
+  assert.deepEqual(
+    await compile(first), [AUTHORING_FACT, BASE_FACT, STALE_ADVISORY],
+    '(b) [M1] the same three lines answered AUTHORING-first resolve AUTHORING-first: M1 says stdout order'
+  )
+  const none = fakeExec({
+    code: 0,
+    stdout: `PLAN OK\n${BASE_FACT}\n${AUTHORING_NONE}\nnote: 3 tasks in 2 waves\n`
+  })
+  assert.deepEqual(
+    await compile(none), [BASE_FACT, AUTHORING_NONE],
+    `(b) [M1] ${JSON.stringify(AUTHORING_NONE)} — the line for a record with no authoring key — is ` +
+    'carried like any other AUTHORING fact: line'
+  )
+})
+
+await test('(c) [M1] task 4: a result\'s AUTHORING fact: entry is the last line of the rendered launch line', () => {
+  const facts = ['BASE fact: x', AUTHORING_NONE]
+  const lines = renderLaunch({ ...RESULT, baseFacts: facts }).split('\n')
+  assert.equal(
+    lines.at(-1), AUTHORING_NONE,
+    `(c) [M1] the last line of the rendered text is the AUTHORING fact: entry, so the launch line ends ` +
+    `with what the authoring cost, got: ${JSON.stringify(lines)}`
+  )
+  assert.deepEqual(
+    lines.slice(-2), facts,
+    `(c) [M1] both baseFacts entries end the launch text, in order, got: ${JSON.stringify(lines)}`
+  )
+})
+
+await test('(d) [M2] task 4: fleet/RUNBOOK.md §Per run names BASE fact:, then STALE fact:, then AUTHORING fact:, then the launch line', () => {
+  const section = sectionOf(fs.readFileSync(RUNBOOK, 'utf8'), '## Per run', '## ')
+  assert.ok(section !== null, '(d) [M2] fleet/RUNBOOK.md has a `## Per run` section')
+  assert.match(
+    section, /BASE fact:.*STALE fact:.*AUTHORING fact:.*launch line/,
+    '(d) [M2] the `## Per run` section says the AUTHORING fact: line of a clean compile prints on the ' +
+    'launch line beside the BASE fact: and STALE fact: lines, in that order, got: ' +
+    `${near(section, 'BASE fact:')}`
+  )
+})
+
 // ── The verdict ─────────────────────────────────────────────────────────────
 
 if (failures.length > 0) {
