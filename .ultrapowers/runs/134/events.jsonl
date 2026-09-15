@@ -175,3 +175,16 @@
 {"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet ':(exclude)fleet/tests'","exit":0,"minor":false,"wave":4,"id":"01M2J48R050000525QMM6VANDV","ts":1789462339589}
 {"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- tests/test_docs_agree_with_code.py tests/test_recommendation_rubric.py tests/test_compile_plan.py tests/test_ultralearn_docs.py tests/test_validate_skill.py tests/test_ultrawrite_skill.py tests/test_fleet_suite.py fleet/tests/test_roles_peer.mjs","exit":0,"minor":false,"wave":4,"id":"01M2J48R0E000036VQWBS3VF33","ts":1789462339598}
 {"kind":"engine:phase","phase":"Wave 5","id":"01M2J48R720000S3HAJN3NHKYQ","ts":1789462339810}
+{"kind":"driver:wave-adopted","wave":5,"tasks":["5"],"headSha":"d629ace8f4a04d72068ae9b1cd0c320a630a0d62","id":"01M2J4HJ8C0000W3EX937B62ZG","ts":1789462628620}
+{"kind":"driver:integrated-clean","wave":5,"removed":9,"id":"01M2J4HJ8Q0000ZP2VQMQD90Z5","ts":1789462628631}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- skills fleet/roles fleet/CONTRACT.md fleet/RUNBOOK.md README.md hooks .github pytest.ini","exit":0,"minor":false,"wave":5,"id":"01M2J4HJ9000007DD56S738SSX","ts":1789462628640}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet ':(exclude)fleet/tests'","exit":0,"minor":false,"wave":5,"id":"01M2J4HJ990000ZFRH2NW0590R","ts":1789462628649}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- tests/test_docs_agree_with_code.py tests/test_recommendation_rubric.py tests/test_compile_plan.py tests/test_ultralearn_docs.py tests/test_validate_skill.py tests/test_ultrawrite_skill.py tests/test_fleet_suite.py fleet/tests/test_roles_peer.mjs","exit":0,"minor":false,"wave":5,"id":"01M2J4HJ9K0000XKR6CNYM1EHG","ts":1789462628659}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2J4HJG90000T39GM8VZ568Q","ts":1789462628873}
+{"kind":"driver:stage","stage":"finalize","id":"01M2J4HJJ400000RVJE86QQB6E","ts":1789462628932}
+{"kind":"driver:stage","stage":"gate","id":"01M2J4HJM60000TNDRKPN72DAV","ts":1789462628998}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M2J4HJR10000DP12CGQFN0VC","ts":1789462629121}
+{"kind":"driver:stage","stage":"approve","id":"01M2J4HJR100012JSDW3XMD0SQ","ts":1789462629121}
+{"kind":"driver:approved","stamp":"run-134","integrationBranch":"ultra/integration-run-134","id":"01M2J4HJTA00004K9GVKDGT109","ts":1789462629194}
+{"kind":"run:open","runId":"run-134","base":"1c97ba442c65d882354953d16590b1f8eb0c7a7a","source":"fleet/publish-fold.mjs","id":"01M2J4HKH20000Z3A8FVSW4FN4","ts":1789462629922}
+{"kind":"driver:publish-fold","run":"134","attempt":"1","base":"1c97ba442c65d882354953d16590b1f8eb0c7a7a","tip":"597c6db1493bdafaeb7f21972856a7e702847aa6","candidate":"d629ace8f4a04d72068ae9b1cd0c320a630a0d62","reason":"fold parked 4 conflict(s) — no annotated narration for fleet/tests/test_run_engine.mjs (delete/modify)","pathsJoined":21,"pathsConflicted":4,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"conflict parked","checks":[],"checkRetries":0,"id":"01M2J4HRVN0000X0VZAG5F7ZNM","ts":1789462635381}
