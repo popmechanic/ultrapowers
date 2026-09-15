@@ -1121,6 +1121,29 @@ export async function runEngine({
         detail: String((e && e.message) || e).slice(0, 600) })
     }
   }
+  // What adopted this task, written on the issue itself and not only into the
+  // run's record: a closed issue keeps `evidence: null` on itself (kata v0.17.2
+  // — the evidence lives in the close event), so the run and the sha a later
+  // run needs have to sit on the issue's metadata to be readable there. Two
+  // flat keys and nothing else: kata stores a dotted key literally and its
+  // metadata endpoint is a per-key merge, so these land beside `factsheet`,
+  // `touched_files` and `work.attention` without disturbing them. Called once
+  // per adopted task, immediately before that task's close, so the patch and
+  // the close read as one act on the issue — and only for a task the close
+  // will actually make, which is why the row and the once-guard are read the
+  // same way `kataClose` reads them. A stamp that is not `run-<N>` (`sim`)
+  // writes `null` rather than a `NaN` the hub would have to store.
+  const kataAdopted = async (id, sha) => {
+    const row = kataRowOf(id)
+    if (!row || kataClosed.has(id)) return
+    const n = Number(String(stamp).replace(/^run-/, ''))
+    await drainKataPosts()
+    await kataCall('metadata', row.uid,
+      () => kata.patchMetadata(kataProjectId, row.uid,
+        { 'work.adopted_run': Number.isFinite(n) ? n : null,
+          'work.adopted_sha': String(sha) },
+        kataRevisions.get(row.uid)))
+  }
   // The last word on a task's issue. Once per task — the wave's own close wins
   // over the sweep's — and never before the comments that precede it have
   // landed, so the issue reads in the order the run happened.
@@ -1166,6 +1189,49 @@ export async function runEngine({
     // the run, on the task's issue when the event names a task the record
     // knows, and on the run's issue otherwise (`kataUidFor`).
     mirrorToHub(e, line)
+  }
+
+  // ── the task's issue, read once (#913, moved to Setup by #383) ─────────────
+  // One `getIssue` per task of the whole plan, taken in Setup before wave 1 is
+  // dispatched: the answer's `revision` must equal the record's (the record and
+  // the hub disagreeing about what this run is ends the run — no retry can
+  // clear it), its `short_id` rides the record's row for `envFor`, and its
+  // `metadata.factsheet` IS the task from then on. The answer is KEPT, because
+  // two later readers want it: `runTaskInner`, which takes the sheet, and the
+  // reuse pass, which asks whether this issue is already closed done.
+  //
+  // `kataOpened` is the once-guard it always was — `runTaskInner` is re-entered
+  // by the tier retry and the barrier retry, and a second read would see the
+  // revision our own claim bumped and call that a mismatch.
+  const kataIssues = new Map()
+  const openKataTask = async (task) => {
+    const row = kataOn ? kataRowOf(task.id) : null
+    if (!row || kataOpened.has(task.id)) return
+    kataOpened.add(task.id)
+    await drainKataPosts()
+    const issue = await kataCall('getissue', null, () => kata.getIssue(row.uid))
+    if (!issue || issue.revision !== row.revision) {
+      throw kataFatal('run-engine: kata-revision-mismatch task ' + task.id +
+        ': recorded ' + row.revision + ' found ' + ((issue && issue.revision)))
+    }
+    kataRevisions.set(row.uid, issue.revision)
+    kataIssues.set(task.id, issue)
+    // #810: the issue's short id, from the SAME answer the revision check
+    // read — the workers of this task carry `KATA_REF=<project>#<short_id>`,
+    // and a second read for it would be a second fact about one issue. Kept
+    // on the record's own row, which run-main's `envFor` reads at dispatch;
+    // an answer that carries no short id leaves the row as it was, and those
+    // workers simply hold no reference.
+    if (typeof issue.short_id === 'string' && issue.short_id) {
+      row.shortId = issue.short_id
+    }
+    const fromHub = (issue.metadata || {}).factsheet
+    if (fromHub && typeof fromHub === 'object') {
+      task.factsheet = fromHub
+      if (Array.isArray(fromHub.files)) task.files = fromHub.files
+      if (Array.isArray(fromHub.proofTests)) task.proofTests = fromHub.proofTests
+      if (Array.isArray(fromHub.guards)) task.proofGuards = fromHub.guards
+    }
   }
 
   // ── the worker's raised hand (#810 Phase A) ────────────────────────────────
@@ -1291,6 +1357,14 @@ export async function runEngine({
 
   const repoDir = path.resolve(paths.repoDir)
   const integ = path.join(clonesDir, 'integration')
+
+  // The fold kernel, and where a fold's receipts land. Resolved relative to the
+  // ENGINE, not the target repo: the kernel ships with the checkout that is
+  // running this code, and a foreign target repo (any non-self-hosted plan) has
+  // no skills/ tree of its own. Declared HERE rather than beside `foldWave`
+  // because Setup's reuse fold (#383) runs before that line is ever evaluated.
+  const KERNEL = fileURLToPath(new URL('../skills/ultrapowers/kernel/fold_wave.py', import.meta.url))
+  const waveDirOf = (n) => path.join(runDir, 'frontier', 'wave-' + n)
 
   // ── args (waves.js parity, minus the deleted subsystems) ───────────────────
   const WAVES = args.waves
@@ -1549,6 +1623,159 @@ export async function runEngine({
   }
   await git(['checkout', '-q', '-b', integrationBranch], integ)
   const baseSha = await git(['rev-parse', 'HEAD'], integ)
+
+  // ── every task's issue, once, here (#913's read moved by #383) ─────────────
+  // Before the baseline starts and long before wave 1: the reuse pass below
+  // decides what this run still has to work from these very answers, so they
+  // have to be in hand at Setup. Serial, because the hub's comment chain is
+  // (`drainKataPosts` is the barrier each read waits behind), and because the
+  // count that matters is one read per task, not the wall clock of a handful of
+  // GETs. Without a record this loop makes no request at all.
+  for (const t of WAVES.flat()) await openKataTask(t)
+
+  // ── re-drive reuse (#383) ──────────────────────────────────────────────────
+  // A relaunched plan whose earlier run parked left some of its tasks finished:
+  // their issues are CLOSED and carry the two flat keys only a `done` close
+  // writes (`work.adopted_run`, `work.adopted_sha`). Those tasks are not worked
+  // again — their run's evidence tag is folded into the integration clone here,
+  // before wave 1, and the head that fold produces is the base every wave and
+  // the baseline suite start from. Nothing about the gate changes: the suite
+  // still runs on the whole tree.
+  //
+  // Everything here is refusable. A hub the run could not read, a tag it could
+  // not fetch, a record that does not say what the hub says — any of them means
+  // no reuse and the full plan runs exactly as it does at BASE, with one
+  // `driver:reuse` naming the reason. Reuse is an economy, never a correctness
+  // dependency.
+  let reuseHead = null
+  let reusedIds = new Set()
+  {
+    const hasKey = (md, k) => Object.prototype.hasOwnProperty.call(md, k) &&
+      md[k] !== null && md[k] !== ''
+    // The two keys only Task 1's `done` close writes. `closed_reason` is NOT in
+    // `ISSUE_KEYS`' projection, so "closed done" is spelled as the status plus
+    // the pair: an issue a person closed any other way carries neither.
+    const reusable = WAVES.flat().filter((t) => {
+      const issue = kataIssues.get(t.id)
+      if (!issue || issue.status !== 'closed') return false
+      const md = (issue && issue.metadata) || {}
+      return hasKey(md, 'work.adopted_run') && hasKey(md, 'work.adopted_sha')
+    }).map((t) => t.id)
+    const refuse = (reason) => {
+      appendEvent({ kind: 'driver:reuse', reason, tasks: [] })
+      judgmentCalls.push('reuse refused: ' + reason + ' — the full plan runs')
+      log('reuse refused: ' + reason)
+      return null
+    }
+    // The set is empty on every ordinary run: nothing is fetched, no event is
+    // appended, and the lines below are the ones they were before #383.
+    const head = reusable.length === 0 ? null : await (async () => {
+      const runOf = (id) => (kataIssues.get(id).metadata || {})['work.adopted_run']
+      const named = [...new Set(reusable.map((id) => String(runOf(id))))]
+      if (named.length !== 1) {
+        return refuse('the reused tasks name ' + named.length + ' different runs (' +
+          named.join(', ') + ') — a reuse folds one parked run\'s evidence, not several')
+      }
+      const parkedRun = runOf(reusable[0])
+      const tag = 'ultra/evidence/run-' + String(parkedRun)
+      const fetched = await exec('git',
+        ['fetch', '--quiet', 'origin', 'refs/tags/' + tag + ':refs/tags/' + tag], { cwd: integ })
+      if (fetched.code !== 0) {
+        return refuse('the tag ' + tag + ' could not be fetched from origin (exit ' +
+          fetched.code + '): ' + tail(fetched.stderr || fetched.stdout, 300))
+      }
+      // The tag's two files, written where the fold can read them. `git show`
+      // and not a checkout: nothing of the parked run's tree may reach the
+      // integration worktree except through the fold below. A `--binary` diff
+      // is ASCII by construction (its binary hunks are base85), so the exec
+      // seam's utf8 stdout carries `run.patch` byte for byte.
+      const reuseDir = path.join(runDir, 'reuse')
+      try { fs.mkdirSync(reuseDir, { recursive: true }) } catch { /* exists */ }
+      const showInto = async (rel, name) => {
+        const r = await exec('git', ['show', tag + ':' + rel], { cwd: integ })
+        if (r.code !== 0) return null
+        const file = path.join(reuseDir, name)
+        fs.writeFileSync(file, r.stdout)
+        return file
+      }
+      const reportFile = await showInto('.ultrapowers/runs/' + parkedRun + '/report.json', 'report.json')
+      if (!reportFile) return refuse(tag + ' carries no .ultrapowers/runs/' + parkedRun + '/report.json')
+      let parked = null
+      try { parked = JSON.parse(fs.readFileSync(reportFile, 'utf8')) } catch { parked = null }
+      if (!parked || typeof parked !== 'object') {
+        return refuse(tag + '\'s report.json did not parse as JSON')
+      }
+      // The hub says these tasks are done; the tag has to say so too. `task`,
+      // not `id` — that is the key a run's report writes its rows under.
+      const rows = Array.isArray(parked.tasks) ? parked.tasks : []
+      const notDone = reusable.filter((id) => !rows.some((r) =>
+        r && String(r.task) === String(id) && r.status === 'done'))
+      if (notDone.length) {
+        return refuse(tag + '\'s report.json does not list task(s) ' + notDone.join(', ') +
+          ' as done — the hub and the record disagree about what that run finished')
+      }
+      const parkedBase = (typeof parked.baseSha === 'string') ? parked.baseSha.trim() : ''
+      if (!/^[0-9a-f]{40}$/.test(parkedBase)) {
+        return refuse(tag + '\'s report.json carries no baseSha to fold against')
+      }
+      // The parked run has to have been cut from this history, or its patch is
+      // a diff against a tree that never existed on the line this run is on.
+      const anc = await exec('git', ['merge-base', '--is-ancestor', parkedBase, baseSha], { cwd: integ })
+      if (anc.code !== 0) {
+        return refuse(tag + '\'s baseSha ' + parkedBase + ' is not an ancestor of BASE ' +
+          baseSha + ' — that run was cut from another history')
+      }
+      const runPatch = await showInto(
+        '.ultrapowers/runs/' + parkedRun + '/publish-fold/run.patch', 'run.patch')
+      if (!runPatch) {
+        return refuse(tag + ' carries no .ultrapowers/runs/' + parkedRun + '/publish-fold/run.patch')
+      }
+      // The publish fold's own shape (`fleet/publish-fold.mjs`), turned around:
+      // there `main=` is the default branch's move since the run's base and
+      // `run-<N>=` is the run's whole result; here `main=` is THIS run's BASE
+      // since the parked base and `reuse=` is the parked run's result. Two
+      // peers against one base, never a rebase. An empty `main.patch` (BASE is
+      // the parked base, nothing moved) needs no special case: the kernel reads
+      // it as a task that changed nothing and folds the other side alone.
+      const mainDiff = await exec('git',
+        ['diff', '--binary', '--full-index', '--no-renames', parkedBase + '..' + baseSha],
+        { cwd: integ })
+      if (mainDiff.code !== 0) {
+        return refuse('could not diff ' + parkedBase + '..' + baseSha + ' in the integration clone')
+      }
+      const mainPatch = path.join(reuseDir, 'main.patch')
+      fs.writeFileSync(mainPatch, mainDiff.stdout)
+      const folded = await foldReuse({ parkedBase, mainPatch, runPatch, tag })
+      if (!folded) return refuse('the reuse fold of ' + tag + ' did not produce a head')
+      appendEvent({ kind: 'driver:reuse', run: parkedRun, tasks: reusable, headSha: folded })
+      log('reuse: ' + reusable.length + ' task(s) folded in from ' + tag + ' → ' + folded)
+      return folded
+    })()
+    if (head) {
+      reuseHead = head
+      reusedIds = new Set(reusable)
+      // The rows the report owes these tasks, pushed before wave 1: `done` with
+      // no coordinates, so `isMergeable` is false for them and no wave folds
+      // them again. They go into `taskResults` and NOT into any wave's own
+      // `results` — a wave whose every task is reused must read as "no
+      // mergeable results" and go on to the next wave, not as a wave that
+      // failed and cascades.
+      for (const id of reusable) {
+        taskResults.push({ task: id, status: 'done', reviewVerdict: 'reused',
+                           headSha: reuseHead, patch: '', branch: '',
+                           notes: 'reused from run-' + String(
+                             (kataIssues.get(id).metadata || {})['work.adopted_run']),
+                           tier: resolvedModel((WAVES.flat().find((t) => t.id === id) || {}).tier ||
+                             'standard'),
+                           review: 'lean', fixIterations: 0, proofFixes: 0 })
+        // Neither end of the hub is this run's to touch for a task it did not
+        // work: no claim before, no close and no `needs-review` sweep after.
+        kataClaimed.add(id)
+        kataClosed.add(id)
+      }
+    }
+  }
+
   // The baseline's own clone (#862). The suite on BASE runs HERE and nowhere
   // else: read-treeing BASE into the integration clone — #712's shape — put the
   // baseline in the same worktree the wave's candidate lives in, so it could
@@ -1558,6 +1785,16 @@ export async function runEngine({
   // for any of this to be misread).
   const baselineDir = path.join(clonesDir, 'baseline')
   cloneAtBase({ repo: repoDir, dest: baselineDir, base: baseSha })
+  // With a reuse head, THAT is the tree every wave builds on, so that is the
+  // tree the one pass on "BASE" has to measure (#383 M5): a baseline taken on
+  // BASE alone would answer a question no wave of this run is asking. The
+  // commit exists only in the integration clone's object database until the run
+  // pushes, so it is fetched from there — the same move the wave loop's
+  // re-anchor makes for a task clone.
+  if (reuseHead) {
+    await git(['fetch', '--quiet', '--no-tags', integ, integrationBranch], baselineDir)
+    await git(['checkout', '--quiet', '--detach', reuseHead], baselineDir)
+  }
   if (bootstrapCmd) {
     // Every fresh clone needs its dependencies before a suite can run there —
     // the integration clone (candidate, reconcile suite runs), the baseline
@@ -1619,7 +1856,7 @@ export async function runEngine({
     baselineFailing + ' (' + output + ')'
   const settleBaseline = (passed, output, raw) => {
     baseline = { passed, output }
-    log('baseline: ' + (passed ? 'green' : 'RED') + ' on ' + baseSha)
+    log('baseline: ' + (passed ? 'green' : 'RED') + ' on ' + (reuseHead || baseSha))
     if (!passed) {
       baselineFailing = failingPaths(raw)
       judgmentCalls.push(redBaselineHead(output) +
@@ -1715,41 +1952,14 @@ export async function runEngine({
     }
 
     // ── the task's fact sheet, from the hub (#913) ──────────────────────────
-    // With a record, the sheet the launcher wrote IS this task's files, Proof
-    // paths and exam landing: read once, at the start of the pipeline and
-    // before any worker is dispatched, and never computed again. A revision
-    // that moved under the driver means the record and the hub disagree about
-    // this run — not something a driver may paper over, so it ends the run.
-    // `runTaskInner` is re-entered on a tier retry and on a barrier retry; the
-    // read is once per TASK, because the second read would see the revision our
-    // own claim bumped and call that a mismatch.
+    // The read itself moved to Setup (#383): the reuse pass has to know which
+    // issues are already closed done BEFORE wave 1 is dispatched, and that is
+    // the same answer this pipeline wants. `openKataTask` is guarded by
+    // `kataOpened`, so the call here is the no-op it became — the count stays
+    // one `getIssue` per task, and a task the Setup pass somehow missed is
+    // still read before its first worker.
     const kataRow = kataOn ? kataRowOf(task.id) : null
-    if (kataRow && !kataOpened.has(task.id)) {
-      kataOpened.add(task.id)
-      await drainKataPosts()
-      const issue = await kataCall('getissue', null, () => kata.getIssue(kataRow.uid))
-      if (!issue || issue.revision !== kataRow.revision) {
-        throw kataFatal('run-engine: kata-revision-mismatch task ' + task.id +
-          ': recorded ' + kataRow.revision + ' found ' + ((issue && issue.revision)))
-      }
-      kataRevisions.set(kataRow.uid, issue.revision)
-      // #810: the issue's short id, from the SAME answer the revision check
-      // read — the workers of this task carry `KATA_REF=<project>#<short_id>`,
-      // and a second read for it would be a second fact about one issue. Kept
-      // on the record's own row, which run-main's `envFor` reads at dispatch;
-      // an answer that carries no short id leaves the row as it was, and those
-      // workers simply hold no reference.
-      if (typeof issue.short_id === 'string' && issue.short_id) {
-        kataRow.shortId = issue.short_id
-      }
-      const fromHub = (issue.metadata || {}).factsheet
-      if (fromHub && typeof fromHub === 'object') {
-        task.factsheet = fromHub
-        if (Array.isArray(fromHub.files)) task.files = fromHub.files
-        if (Array.isArray(fromHub.proofTests)) task.proofTests = fromHub.proofTests
-        if (Array.isArray(fromHub.guards)) task.proofGuards = fromHub.guards
-      }
-    }
+    await openKataTask(task)
     // The sheet, once, for everything below. Absent — no record, or a task the
     // record does not name — every branch below is the one it was at BASE.
     const factsheet = (task.factsheet && typeof task.factsheet === 'object')
@@ -2707,11 +2917,75 @@ export async function runEngine({
   // engine composed). Kernel stdout keys are translated here exactly as the
   // STEP prompts ordered the agent to translate them; the receipts (fold log,
   // conflicts index, this frontier entry) are the record. ────────────────────
-  // Resolved relative to the ENGINE, not the target repo: the kernel ships
-  // with the checkout that is running this code, and a foreign target repo
-  // (any non-self-hosted plan) has no skills/ tree of its own.
-  const KERNEL = fileURLToPath(new URL('../skills/ultrapowers/kernel/fold_wave.py', import.meta.url))
-  const waveDirOf = (n) => path.join(runDir, 'frontier', 'wave-' + n)
+  // (`KERNEL` and `waveDirOf` are declared up beside `integ`: Setup's reuse
+  // fold needs them before this line is reached.)
+
+  // ── the reuse fold (#383) — wave 0, before wave 1 ──────────────────────────
+  // The publish fold's shape, run at Setup: two patches against the parked
+  // run's base (`main=` this run's BASE since that base, `reuse=` the parked
+  // run's own `run.patch`), materialized onto BASE so the candidate's single
+  // parent IS this run's BASE and its tree is BASE plus the parked work.
+  //
+  // Deliberately NOT `foldWave`: no worker exists yet, so no resolver can be
+  // dispatched and no reconcile round can repair a red candidate. Anything the
+  // kernel cannot fold cleanly is a refusal, and the full plan runs. The
+  // frontier entry rides `frontier` exactly as a wave's does.
+  async function foldReuse({ parkedBase, mainPatch, runPatch, tag }) {
+    let calls = 0
+    let wallSec = 0
+    let selfChecks = ''
+    let autoResolved = 0
+    const runCli = async (argv) => {
+      calls += 1
+      const t0 = Date.now()
+      const r = await exec('python3', [KERNEL, ...argv], { cwd: integ })
+      wallSec += (Date.now() - t0) / 1000
+      const parsed = parseCliJson(r.stdout)
+      if (parsed && typeof parsed.autoResolved === 'number') autoResolved += parsed.autoResolved
+      return { ...r, parsed }
+    }
+    const pushEntry = () => frontier.push({
+      wave: 0,
+      foldLogPath: path.join(waveDirOf(0), 'fold_log.jsonl'),
+      conflictsIndex: path.join(waveDirOf(0), 'conflicts.json'),
+      selfChecks,
+      foldCliCalls: calls,
+      foldCliWallTimeSec: calls ? wallSec : null,
+      autoResolved,
+      resolverTranscripts: [],
+    })
+    const give = (reason) => {
+      pushEntry()
+      judgmentCalls.push('reuse fold of ' + tag + ': ' + reason)
+      return null
+    }
+    const common = ['--repo', '.', '--run-dir', runDir, '--wave', '0']
+    // main FIRST, as the publish fold orders it: the frontier side of every
+    // hunk is what main gained since the parked base, and the incoming side is
+    // the parked run's work.
+    const taskArgs = ['--patch', 'main=' + mainPatch, '--patch', 'reuse=' + runPatch]
+
+    const fold = await runCli(['fold', ...common, '--base', parkedBase, ...taskArgs])
+    const f = fold.parsed
+    if (!f) return give('fold printed no verdict (exit ' + fold.code + '): ' + tail(fold.stderr, 300))
+    if (typeof f.selfChecks === 'string') selfChecks = f.selfChecks
+    if (f.complete !== true || (Array.isArray(f.open) && f.open.length) ||
+        (typeof f.conflicts === 'number' && f.conflicts > 0) || fold.code !== 0) {
+      return give('the parked run\'s work and main\'s move since ' + parkedBase.slice(0, 7) +
+        ' do not fold cleanly (' + (f.conflicts || 0) + ' conflict(s)); no resolver exists at Setup')
+    }
+    const subjectArgs = planTitle ? ['--subject', planTitle] : []
+    const mat = await runCli(['materialize', ...common, '--prev-head', baseSha,
+      ...taskArgs, ...subjectArgs])
+    const m = mat.parsed
+    if (!m || !m.candidateSha) {
+      return give('materialize refused: ' + ((m && (m.park || m.fallback)) || tail(mat.stderr, 300)))
+    }
+    pushEntry()
+    await git(['read-tree', '-u', '--reset', m.candidateSha + '^{tree}'], integ)
+    await git(['reset', '--hard', m.candidateSha], integ)
+    return m.candidateSha
+  }
 
   async function foldWave(merged, waveIdx, waveTasks, prevHead) {
     const waveNumber = waveIdx + 1
@@ -2980,7 +3254,10 @@ export async function runEngine({
   // the order every record of the wave names them in.
   const waveIds = (w) => (Array.isArray(WAVES[w]) ? WAVES[w] : []).map((t) => t.id)
 
-  let waveBaseSha = baseSha
+  // Wave 1 starts from the reuse head when Setup folded one (#383) and from
+  // BASE otherwise — and every clone the wave dispatches into is re-anchored
+  // there by the loop's own re-anchor below.
+  let waveBaseSha = reuseHead || baseSha
   const compositionRows = (waveNumber, tasks) => {
     for (const line of compositionUnpinnedRows(waveNumber, tasks)) judgmentCalls.push(line)
   }
@@ -3033,13 +3310,15 @@ export async function runEngine({
     blockedWaves.push({ wave: w + 1, detail })
     log('wave ' + (w + 1) + ' parked: the suite was already RED on BASE when the run opened')
     for (const t of WAVES[w]) {
+      if (reusedIds.has(t.id)) continue // already done, folded in at Setup
       if (!results.some((r) => r && r.task === t.id)) {
         unfinished.push(t.id + ': never dispatched — the suite was already RED on BASE')
       }
     }
     const cascade = 'cascade-blocked by wave ' + (w + 1) + ': the suite is RED on BASE'
     for (let d = w + 1; d < WAVES.length; d++) {
-      WAVES[d].forEach((t) => unfinished.push(t.id + ': cascade-blocked by wave ' + (w + 1)))
+      WAVES[d].filter((t) => !reusedIds.has(t.id))
+        .forEach((t) => unfinished.push(t.id + ': cascade-blocked by wave ' + (w + 1)))
       waveMerges.push({ wave: d + 1, status: 'SKIPPED', detail: cascade, branches: [] })
     }
   }
@@ -3062,10 +3341,16 @@ export async function runEngine({
     // NEW wave base — whose hunks silently REVERT the prior wave's adopted
     // work, and nothing downstream can tell. The task is failed before any
     // dispatch, exactly like lost-coordinates.
+    //
+    // The condition is the base itself and no longer the wave number (#383):
+    // wave 1's clones are at BASE from provisioning, which is the wave base
+    // only when Setup folded no reuse. With a reuse head they need exactly the
+    // same refresh every later wave needs.
     if (patchBase) patchBase.current = waveBaseSha
     const preFailed = new Set()
-    if (w > 0 && waveBaseSha !== baseSha) {
+    if (waveBaseSha !== baseSha) {
       for (const t of WAVES[w]) {
+        if (reusedIds.has(t.id)) continue // never dispatched; its clone is unused
         const cdir = path.join(clonesDir, 'task-' + t.id)
         try {
           await git(['fetch', '--quiet', '--no-tags', integ, integrationBranch], cdir)
@@ -3113,6 +3398,10 @@ export async function runEngine({
       noteFailures()
       const chunk = WAVES[w].slice(off, off + CONCURRENCY)
       const runnable = chunk.filter((t) => {
+        // #383 — folded in at Setup from the parked run's evidence. No worker
+        // of any kind is dispatched for it: no exam, no implementer, no review,
+        // no fix, and nothing on its issue.
+        if (reusedIds.has(t.id)) return false
         if (preFailed.has(t.id)) return false // already failed closed at re-anchor
         if (blockedByDep.has(t.id)) {
           unfinished.push(t.id + ': blocked — depends on a failed task')
@@ -3187,7 +3476,8 @@ export async function runEngine({
         const cascadeDetail = 'no mergeable results and no dependency edges supplied — cascading conservatively'
         blockedWaves.push({ wave: w + 1, detail: cascadeDetail })
         for (let d = w + 1; d < WAVES.length; d++) {
-          WAVES[d].forEach((t) => unfinished.push(t.id + ': cascade-blocked by wave ' + (w + 1)))
+          WAVES[d].filter((t) => !reusedIds.has(t.id))
+            .forEach((t) => unfinished.push(t.id + ': cascade-blocked by wave ' + (w + 1)))
         }
         waveMerges.push({ wave: w + 1, status: 'SKIPPED', detail: cascadeDetail, branches: [] })
         break
@@ -3359,6 +3649,10 @@ export async function runEngine({
       for (const r of mergeable) {
         const t = (Array.isArray(WAVES[w]) ? WAVES[w] : []).find((x) => x && x.id === r.task)
         const cmd = (t && typeof t.testCmd === 'string' && t.testCmd.trim()) ? t.testCmd : testCmd
+        // Which run adopted this task, and at which head — on the issue's own
+        // metadata, under the revision the engine last held for it, before the
+        // close that carries the same sha as its `commit` evidence.
+        await kataAdopted(r.task, merge.headSha)
         // kata refuses a `done` close under 40 characters (run-111): the title
         // and the merge sha make the message read on its own.
         await kataClose(r.task, {
@@ -3375,7 +3669,8 @@ export async function runEngine({
     blockedWaves.push({ wave: w + 1, detail: merge.detail || merge.status })
     log('wave ' + (w + 1) + ' BLOCKED: ' + (merge.detail || merge.status))
     for (let d = w + 1; d < WAVES.length; d++) {
-      WAVES[d].forEach((t) => unfinished.push(t.id + ': cascade-blocked by wave ' + (w + 1)))
+      WAVES[d].filter((t) => !reusedIds.has(t.id))
+        .forEach((t) => unfinished.push(t.id + ': cascade-blocked by wave ' + (w + 1)))
     }
     break
   }
@@ -3473,6 +3768,11 @@ export async function runEngine({
 
   const mergedBranches = new Set()
   for (const wm of waveMerges) if (wm && wm.status === 'MERGED') for (const b of (wm.branches || [])) mergedBranches.add(b)
+  // #383 — a reused task's work is in the tree before wave 1 folds anything, so
+  // it counts as delivered. Left out, coverage would read as an incomplete
+  // merge and the gate would ask an operator to acknowledge a false-green that
+  // is not one.
+  for (const id of reusedIds) mergedBranches.add(id)
   const tasksPlanned = WAVES.flat().length
   const coverage = { tasks_merged: mergedBranches.size, tasks_planned: tasksPlanned,
                      complete: mergedBranches.size >= tasksPlanned }
