@@ -1259,6 +1259,13 @@ evidence_unlock() { rmdir "$EVIDENCE_LOCK" 2>/dev/null || true; }
 # every transition so the branch carries the hub's account of the run even
 # after the project itself is archived.
 #
+# THE RUN'S OWN SLICE OF IT (#978). The project on the hub is the repository's
+# and holds every run of it; the record on this run's tag holds only this run's
+# issues — the run issue and the tasks named by the plan commit's
+# `.ultrapowers/kata.json` — and the events on them. The endpoints are still
+# asked for the whole project, because they answer no narrower; the filter is
+# `kata_assemble`'s, against the uid set read out of `$KATA_FILE`.
+#
 # PAGED FROM ZERO EVERY TIME, because this runs at every transition and each
 # export is a whole file: the walk starts at `after_id=0` and follows each
 # answer's `next_after_id` until an answer's `events` is empty. Nothing here
@@ -1330,7 +1337,7 @@ kata_export() {
   done
   tmp="$tmpdir/$KATA_EXPORT_FILE"
   code=0
-  kata_assemble "$tmpdir/$open.json" ${pages[@]+"${pages[@]}"} >"$tmp" || code=$?
+  kata_assemble "$KATA_FILE" "$tmpdir/$open.json" ${pages[@]+"${pages[@]}"} >"$tmp" || code=$?
   if [ "$code" != 0 ]; then
     rm -rf "$tmpdir"
     log "kata: export failed (the hub's answer did not read) — previous $KATA_EXPORT_FILE kept"
@@ -1358,9 +1365,23 @@ print("%d %d" % (len(rows), after if isinstance(after, int) else 0))
 ' "$1" 2>/dev/null || printf '0 0\n'
 }
 
-# The record itself: every issue, then every event, `kind` first and the
-# object's own fields spread after it, one compact line each.
-kata_assemble() { # $1 = the issues answer; $2.. = the event pages, in order
+# The record itself: this run's issues, then the events on them, `kind` first
+# and the object's own fields spread after it, one compact line each, each kind
+# in the order the hub answered in.
+#
+# THE UID SET IS THE FILTER, and it is the plan commit's record read again here
+# rather than passed down: `run.uid` plus every `tasks.<id>.uid`. An issue is
+# kept when its `uid` is in the set and an event when its `issue_uid` is — so a
+# sibling run's issue on the same project is dropped, and so is an event that
+# names no issue at all (`project.created` carries none: kata v0.17.2's
+# envelope is `{"event_id","event_uid","type","project_id","issue_id",
+# "issue_uid","issue_short_id","actor","payload", …}`, and the project-scoped
+# types simply omit the issue fields).
+#
+# A `$KATA_FILE` that does not read is an error here, not an empty set: the
+# caller's failure branch keeps the previous whole export, which is the right
+# answer for a record that cannot be read at all.
+kata_assemble() { # $1 = the plan commit's kata.json; $2 = the issues answer; $3.. = the event pages
   python3 -c '
 import json, sys
 
@@ -1370,12 +1391,30 @@ def rows(path, key):
     got = doc.get(key) if isinstance(doc, dict) else doc
     return got if isinstance(got, list) else []
 
+with open(sys.argv[1], encoding="utf-8") as fh:
+    record = json.load(fh)
+
+def uid_of(obj):
+    return obj.get("uid") if isinstance(obj, dict) else None
+
+mine = set()
+run_uid = uid_of(record.get("run") if isinstance(record, dict) else None)
+if run_uid:
+    mine.add(run_uid)
+tasks = record.get("tasks") if isinstance(record, dict) else None
+for task in (tasks.values() if isinstance(tasks, dict) else []):
+    task_uid = uid_of(task)
+    if task_uid:
+        mine.add(task_uid)
+
 out = []
-for row in rows(sys.argv[1], "issues"):
-    out.append({"kind": "issue", **row})
-for page in sys.argv[2:]:
+for row in rows(sys.argv[2], "issues"):
+    if isinstance(row, dict) and row.get("uid") in mine:
+        out.append({"kind": "issue", **row})
+for page in sys.argv[3:]:
     for row in rows(page, "events"):
-        out.append({"kind": "event", **row})
+        if isinstance(row, dict) and row.get("issue_uid") in mine:
+            out.append({"kind": "event", **row})
 for row in out:
     print(json.dumps(row, separators=(",", ":"), ensure_ascii=False))
 ' "$@"

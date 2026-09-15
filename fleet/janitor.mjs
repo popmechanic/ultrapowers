@@ -17,10 +17,11 @@
  * laptop's argv carries the literal `$KATA_AUTH_TOKEN` and never a token. Two
  * reads answer a row: the projects listing, once per pass and only when a row
  * needs it — `GET /api/v1/projects?limit=1000`, matched on `name` against the
- * run's project `<owner>-<repo>-run-<N>` (`kataProjectFor`), because kata
+ * target's one project `<owner>-<repo>` (`kataProjectFor`), because kata
  * addresses a project by integer `id` and a name in the path is a 400 — and
- * that project's issues, `GET /api/v1/projects/<id>/issues?limit=1000`, in
- * which the run issue is the one whose `metadata.run` is N. Its `status` is
+ * that project's issues, `GET /api/v1/projects/<id>/issues?limit=1000`, which
+ * holds every run of that target and in which the run issue is the one whose
+ * `metadata.run` is N. Its `status` is
  * the first half of the verdict: `closed` is a finished run, `closed_reason`
  * (`done`|`wontfix`) its state and `closed_at` its age. The other half is the
  * issue's own `work.state` (#964): an OPEN issue whose metadata carries
@@ -329,7 +330,7 @@ function hubReader (hub) {
           if (typeof p?.name === 'string' && Number.isInteger(p?.id)) byName.set(p.name, p)
         }
       }
-      const project = byName.get(kataProjectFor(target, run))
+      const project = byName.get(kataProjectFor(target))
       if (project === undefined) return null
       const json = await hub.client.listIssues(project.id)
       const issues = Array.isArray(json?.issues) ? json.issues : []

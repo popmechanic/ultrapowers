@@ -180,41 +180,99 @@ const readRules = ({ repo, compiled = ONE_TASK, billing = BILLING_OK } = {}) => 
 ]
 
 // ── The hub, faked: a recorder with the client's method names ───────────────
+//
+// One project per TARGET keyed by name, an issue store keyed by
+// `Idempotency-Key` and a per-key metadata merge — the three hub behaviours the
+// launcher's filing leans on (#978 task 2). `purgeProject` is gone from both
+// the client and this fake: a bump closes the run issue instead.
 
 const ULID = (n) => `01ARZ3NDEKTSV4RRFFQ69G5F${String(n).padStart(2, '0')}`
 function makeFakeKata ({ url = 'http://hub.fake' } = {}) {
   const calls = []
-  let projects = 0
-  let issues = 0
+  const projects = new Map()
+  const issues = new Map()
+  const byKey = new Map()
+  const links = []
   const rec = (method, args) => calls.push({ method, args })
+  const answer = (issue) => ({
+    uid: issue.uid,
+    revision: issue.revision,
+    short_id: issue.short_id,
+    metadata: { ...issue.metadata },
+    status: issue.status,
+    owner: null,
+    project_id: issue.project_id
+  })
   return {
     url,
     calls,
+    projects,
+    issues,
+    links,
     async ping () {
       rec('ping', [])
       return { ok: true, service: 'kata', version: '0.17.2' }
     },
     async createProject (name) {
       rec('createProject', [name])
-      projects += 1
-      return { id: projects, uid: ULID(projects), name, revision: 1 }
-    },
-    async purgeProject (id, reason) {
-      rec('purgeProject', [id, reason])
-      return {}
+      if (!projects.has(name)) {
+        projects.set(name, { id: projects.size + 1, uid: ULID(projects.size + 1), name, revision: 1 })
+      }
+      return { ...projects.get(name) }
     },
     async createIssue (projectId, spec) {
       rec('createIssue', [projectId, spec])
-      issues += 1
-      return { uid: ULID(10 + issues), revision: 1, short_id: `K-${issues}` }
+      const key = spec?.idempotencyKey
+      const print = JSON.stringify([spec?.title ?? null, spec?.body ?? null, spec?.metadata ?? null])
+      if (key !== undefined && byKey.has(key)) {
+        const seen = byKey.get(key)
+        if (seen.fingerprint !== print) throw new Error(`idempotency_mismatch for ${key}`)
+        return { ...answer(issues.get(seen.uid)), revision: seen.revision }
+      }
+      const n = issues.size + 1
+      const issue = {
+        uid: ULID(10 + n),
+        short_id: `K-${n}`,
+        revision: 1,
+        metadata: { ...(spec?.metadata ?? {}) },
+        status: 'open',
+        project_id: projectId
+      }
+      issues.set(issue.uid, issue)
+      if (key !== undefined) byKey.set(key, { uid: issue.uid, fingerprint: print, revision: 1 })
+      return answer(issue)
+    },
+    async patchMetadata (projectId, uid, patch, revision) {
+      rec('patchMetadata', [projectId, uid, patch, revision])
+      const issue = issues.get(uid)
+      if (!issue) throw new Error(`no such issue ${uid}`)
+      issue.metadata = { ...issue.metadata, ...patch }
+      issue.revision += 1
+      return answer(issue)
     },
     async link (projectId, fromUid, spec) {
       rec('link', [projectId, fromUid, spec])
-      return { revision: 2 }
+      const issue = issues.get(fromUid)
+      const held = links.find((l) => l.from === fromUid && l.type === spec?.type && spec?.type === 'parent')
+      if (held && !spec?.replace) throw new Error('parent_already_set')
+      if (held) held.to_ref = spec.to_ref
+      else links.push({ from: fromUid, type: spec?.type, to_ref: spec?.to_ref })
+      if (issue) issue.revision += 1
+      return issue ? answer(issue) : { revision: 2 }
+    },
+    async close (projectId, uid, spec) {
+      rec('close', [projectId, uid, spec])
+      const issue = issues.get(uid)
+      if (!issue) throw new Error(`no such issue ${uid}`)
+      issue.status = 'closed'
+      issue.revision += 1
+      return answer(issue)
     },
     async getIssue (uid) {
       rec('getIssue', [uid])
-      return { uid, revision: 1, metadata: {}, status: 'open', owner: null, project_id: projects }
+      const issue = issues.get(uid)
+      if (!issue) throw new Error(`no such issue ${uid}`)
+      return answer(issue)
     }
   }
 }

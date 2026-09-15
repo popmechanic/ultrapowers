@@ -205,12 +205,13 @@ export const kataHostOf = (url) => {
 }
 
 /**
- * The hub project one run is: `<owner>-<repo>-run-<N>`, every slash of the
- * target spelled `-`. The launcher files it under this name and the janitor
- * looks it up by it, so both spell it here.
+ * The hub project one TARGET is: `<owner>-<repo>`, every slash of the target
+ * spelled `-`. The project belongs to the repository, not to a run — every run
+ * against one target files into that one project, and a name the hub already
+ * holds answers the existing project. The launcher files under this name and
+ * the janitor looks it up by it, so both spell it here.
  */
-export const kataProjectFor = (target, run) => `${String(target).replace(/\//g, '-')}-run-${run}`
-
+export const kataProjectFor = (target) => String(target).replace(/\//g, '-')
 /** `~/x` → `<home>/x`. The config file is hand-edited, so it may hold either. */
 export const expandHome = (value) => {
   const text = String(value ?? '')

@@ -83,6 +83,7 @@
  * a full account is shown verbatim rather than paraphrased.
  */
 
+import crypto from 'node:crypto'
 import fsp from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -1112,12 +1113,16 @@ export async function launch ({
   //    never touched. The push is also what reserves the run number, so the N
   //    the launch ends up with is the one that got through — see `pushPlan`.
   const commands = []
-  // The hub's half of each push attempt: the project and issues filed under
-  // THIS N, the record read back — and, on a bump, the project purged before
-  // the next N is filed. The sheets are the ones the compile stamped for THIS
-  // N produced, so the exam directory a filed sheet names is the one the
-  // sandbox's own compile will reserve. A bump used to re-file the first N's
-  // sheets, which named `exams/run_<N>/` for a run that lands under N+1.
+  // The hub's half of each push attempt: the target's project, the issues
+  // filed under THIS N, the record read back — and, on a bump, the run-N issue
+  // CLOSED before N+1 is filed. Nothing is destroyed: the task issues are the
+  // repository's and the same idempotency keys answer them again, so a bump
+  // refiles them under the new run issue rather than purging a project that
+  // holds the target's whole history. The sheets are the ones the compile
+  // stamped for THIS N produced, so the exam directory a filed sheet names is
+  // the one the sandbox's own compile will reserve. A bump used to re-file the
+  // first N's sheets, which named `exams/run_<N>/` for a run that lands under
+  // N+1.
   const kataCall = async (method, fn) => {
     try {
       return await fn()
@@ -1133,9 +1138,17 @@ export async function launch ({
         })
         return { text: `${JSON.stringify(record, null, 2)}\n`, record }
       }
-  const kataPurge = hub === null
+  // A number that was taken, said on the run issue it was filed under. `wontfix`
+  // is the reason a run that never existed deserves, and the message names the
+  // number so a reader of the target's one project can tell an abandoned
+  // attempt from a run that failed.
+  const kataBump = hub === null
     ? null
-    : (record) => kataCall('purgeProject', () => hub.purgeProject(record.project.id, 'run number taken'))
+    : (record, taken, next) => kataCall('close', () => hub.close(record.project.id, record.run.uid, {
+        reason: 'wontfix',
+        message: `run-${taken} was taken on the target before this plan commit could be pushed; ` +
+          `this launch refiles the same tasks under run-${next}.`
+      }))
   const plan = await pushPlan({
     exec,
     repoDir,
@@ -1148,7 +1161,7 @@ export async function launch ({
     // move: a refused push under it is refused, never retried elsewhere.
     reread: opts.run ? null : () => highestRunOnTarget(exec, repoDir),
     kataStep,
-    kataPurge,
+    kataBump,
     compiled: firstCompiled,
     recompile: compileFor
   })
@@ -1467,16 +1480,17 @@ export const PUSH_ATTEMPTS = 3
  */
 async function pushPlan ({
   exec, repoDir, base, run, planText, verdictsText, commands, reread,
-  kataStep = null, kataPurge = null, compiled = null, recompile = null
+  kataStep = null, kataBump = null, compiled = null, recompile = null
 }) {
   let n = run
   let payload = compiled
   for (let attempt = 1; attempt <= PUSH_ATTEMPTS; attempt += 1) {
     const branch = planBranchFor(n)
-    // The hub is filed for THIS N before the commit is built, because the
-    // project's name, every sheet's landing slug and every reserved exam path
-    // carry the number: a bump purges what was filed, recompiles under N+1 and
-    // files that payload's sheets instead.
+    // The hub is filed for THIS N before the commit is built, because every
+    // sheet's landing slug and every reserved exam path carry the number: a
+    // bump closes the run issue it filed, recompiles under N+1 and files that
+    // payload's sheets instead. The project is the target's and outlives every
+    // number, so a bump destroys nothing.
     const filed = kataStep === null ? null : await kataStep(n, payload)
     const sha = await commitPlan({
       exec, repoDir, base, run: n, planText, verdictsText, kataText: filed === null ? null : filed.text
@@ -1496,24 +1510,63 @@ async function pushPlan ({
     if (attempt === PUSH_ATTEMPTS || reread === null) throw refusal()
     const highest = await reread()
     if (highest < n) throw refusal()
+    const taken = n
     n = highest + 1
-    if (filed !== null) await kataPurge(filed.record)
+    if (filed !== null) await kataBump(filed.record, taken, n)
     if (recompile !== null) payload = await recompile(n)
   }
 }
 
 /**
+ * The 40 hex `git hash-object` prints for a text — computed in-process, so
+ * nothing here has to exec git to learn the identity of a plan. A blob's sha1
+ * is taken over the header `blob <byte length>\0` and then the bytes; the
+ * length is the BYTE length, which is why `Buffer.byteLength` and not `.length`.
+ *
+ * It is the plan's identity in an `Idempotency-Key`: the same plan text is the
+ * same sha is the same key is the same issue, and a plan whose text changed is
+ * a new sha and a new set of issues.
+ */
+const planBlobSha = (text) => {
+  const s = String(text ?? '')
+  return crypto.createHash('sha1')
+    .update('blob ' + Buffer.byteLength(s) + '\0')
+    .update(s)
+    .digest('hex')
+}
+
+/**
  * The run, filed on the hub for one run number: the sheets of the compile
  * stamped `run-<n>` (`compilePlanForRun`, one of the launch's stamped calls —
- * its first call of the compiler was `--check`), one project
- * `<owner>-<repo>-run-<n>`, one run issue carrying the
- * plan's title, Claim line and Closes numbers, one issue per task in wave
- * order carrying its fact sheet and a `parent` link to the run, one `blocks`
- * link per dependency edge created ON the task that blocks, and then one
- * `getIssue` per task and one for the run — the revisions THOSE answer are the
- * record's, because nothing here assumes which side of a link kata
- * re-revisions. The answer is the `.ultrapowers/kata.json` object, keys in
- * the order the contract spells: `url`, `project`, `run`, `tasks`.
+ * its first call of the compiler was `--check`), one project `<owner>-<repo>` —
+ * the TARGET's, not this number's, so every run against one repository files
+ * into one project and a name the hub already holds answers the project that is
+ * there — one run issue carrying the plan's title, Claim line and Closes
+ * numbers, one issue per task in wave order whose fact sheet is PATCHED on
+ * after the create and whose `parent` is the run issue, one `blocks` link per
+ * dependency edge created ON the task that blocks, and then one `getIssue` per
+ * task and one for the run — the revisions THOSE answer are the record's,
+ * because nothing here assumes which side of a link kata re-revisions. The
+ * answer is the `.ultrapowers/kata.json` object, keys in the order the contract
+ * spells: `url`, `project`, `run`, `tasks`.
+ *
+ * FILING THE SAME PLAN TWICE FILES IT ONCE. Every create carries an
+ * `Idempotency-Key` — `<target>:<plan sha>:task-<id>` for a task, `…:run-<n>`
+ * for the run — and kata fingerprints that key together with the create's
+ * fields, so the create body must be the same on every launch of one plan
+ * text or the replay is a 409 `idempotency_mismatch`. That is why a task's
+ * create carries only `{task, plan}` and no links: `run`, `wave` and
+ * `factsheet` all move with the run number, and initial links are in the
+ * fingerprint too. They arrive instead as the metadata patch and the `parent`
+ * link that follow, which a second launch simply re-applies to the issue the
+ * key answered. The patch reads the issue first because an idempotent replay
+ * answers the ORIGINAL revision (the issue is already past it, linked), and a
+ * stale `If-Match` is a 412; the metadata endpoint merges per key, so a patch
+ * of `{run, wave, factsheet}` leaves `{task, plan}` where they are. The
+ * `parent` link carries `replace: true` because a second parent is otherwise a
+ * 409 `parent_already_set` — a refiled task moves under the new run issue
+ * rather than refusing. Hub behaviour measured against kata v0.17.2 on
+ * 2026-09-14.
  *
  * A task row is `{uid, short_id, revision}`, in that order (#963). The
  * `short_id` is the create answer's — `MUTATION_KEYS` in `fleet/kata-client.mjs`
@@ -1538,12 +1591,16 @@ async function fileRunOnHub ({ hub, call, planText, target, base, n, compiled })
   const waves = compiled?.waves ?? []
   const edges = compiled?.edges ?? []
 
-  const name = kataProjectFor(target, n)
+  const planSha = planBlobSha(planText)
+  const keyFor = (suffix) => `${target}:${planSha}:${suffix}`
+
+  const name = kataProjectFor(target)
   const project = await call('createProject', () => hub.createProject(name))
   const runIssue = await call('createIssue', () => hub.createIssue(project.id, {
     title: `${stamp}: ${planTitleOf(planText)}`,
     body: planClaimOf(planText),
-    metadata: { run: n, target, base, closes: planClosesOf(planText) }
+    metadata: { run: n, target, base, closes: planClosesOf(planText) },
+    idempotencyKey: keyFor(`run-${n}`)
   }))
   const tasks = []
   for (const [index, wave] of waves.entries()) {
@@ -1552,8 +1609,8 @@ async function fileRunOnHub ({ hub, call, planText, target, base, n, compiled })
       const issue = await call('createIssue', () => hub.createIssue(project.id, {
         title: `task ${id}: ${entry.title ?? ''}`,
         body: '',
-        metadata: { task: id, wave: index + 1, factsheet: entry.factsheet },
-        links: [{ type: 'parent', to_ref: runIssue.uid }]
+        metadata: { task: id, plan: planSha },
+        idempotencyKey: keyFor(`task-${id}`)
       }))
       const shortId = issue?.short_id
       if (typeof shortId !== 'string' || shortId === '') {
@@ -1563,6 +1620,16 @@ async function fileRunOnHub ({ hub, call, planText, target, base, n, compiled })
           'record was filed'
         )
       }
+      // This number's half of the issue, applied rather than created: read for
+      // the revision the patch needs (a replay answers the create's, not the
+      // issue's), merge the run's own metadata on, and move the parent.
+      const read = await call('getIssue', () => hub.getIssue(issue.uid))
+      await call('patchMetadata', () => hub.patchMetadata(project.id, issue.uid, {
+        run: n, wave: index + 1, factsheet: entry.factsheet
+      }, read.revision))
+      await call('link', () => hub.link(project.id, issue.uid, {
+        type: 'parent', to_ref: runIssue.uid, replace: true
+      }))
       tasks.push({ id, uid: issue.uid, shortId })
     }
   }

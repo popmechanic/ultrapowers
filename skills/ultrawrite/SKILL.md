@@ -70,6 +70,9 @@ conflict. Keep both markers in the contiguous run directly under the heading.
   Driver spec §7), a spend authority — never written on a task here.
 - `Depends-on` and `Commutes` lines are refused outright. Ordering is derived from
   Interfaces token-matching and Files overlap; same-path overlap is derived from Files.
+  A Proof `Run:` whose command names a path in a sibling's Files — and not in the running
+  task's own — is derived the same way: the sibling that owns the file goes first, because
+  a command cannot run a file nobody has written yet.
   An operator who does not read diffs cannot verify an edge, so no edge is signed.
 
 The Files block carries canonical `Create:` / `Modify:` / `Delete:` / `Test:` bullets, backticked
@@ -396,7 +399,9 @@ run's base sha — so `- Check: git diff --quiet $ULTRA_BASE -- fleet/` is writa
 knowing the sha, where a frozen `git hash-object` literal is the shape for a single file.
 And a `Check:` that runs a sim is paid by every task on every pass, where the same command
 in the owning task's `Run:` is paid once: put it there, and keep this section for what no
-single task owns.
+single task owns. That is not only advice: a `Check:` whose command names a file one task's
+Files own is refused at `--check`, naming the task and the path, because a check a single
+task would turn green was never run-wide.
 ## Execution handoff — analyze, then recommend
 
 Offer three options, parallel first, and do **not** default to the parallel lane. Read

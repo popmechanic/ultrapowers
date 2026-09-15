@@ -493,6 +493,29 @@ def _claims_run_command(value):
     return m.group(1).strip() if m else command
 
 
+def command_names_path(command, path):
+    """True when `command` names `path` as a WHOLE token.
+
+    The boundary class is the path alphabet itself — word characters, `.`, `/`
+    and `-` — so a command naming `fleet/tests/a.mjs.bak` does not name
+    `fleet/tests/a.mjs`, while one naming it inside quotes, a pipeline or a
+    `$(...)` does. Deliberately not a shell split: `test "$(grep -c x path)"`
+    glues `)"` to the path, and splitting on whitespace would hide it."""
+    if not path:
+        return False
+    return re.search(r"(?<![\w./-])" + re.escape(path) + r"(?![\w./-])",
+                     command) is not None
+
+
+def task_files(t):
+    """Every path a task's Files block claims: `Create:`, `Modify:`,
+    `Delete:` and `Test:` alike. The `Test:` half counts because a task owns
+    the exam it names as surely as the code — a command that runs it is a
+    command that waits on that task."""
+    return (set(t.get("creates") or []) | set(t.get("modifies") or [])
+            | set(t.get("deletes") or []) | set(t.get("reads") or []))
+
+
 # A backtick SURVIVING that unwrap is not decoration: the driver runs these
 # strings through a shell, which reads `...` as a command substitution and
 # executes it (#616's comment of 2026-09-04, run-74). The plan cannot mean
@@ -1408,6 +1431,36 @@ def constraint_check_violations(text):
             for check in parse_constraint_checks(text) if "`" in check["cmd"]]
 
 
+def constraint_check_ownership_violations(text, tasks):
+    """The refusals a run-wide `- Check:` draws by naming a path ONE task owns.
+
+    A `Check:` is paid by every task on every pass and is meant to hold for the
+    whole plan; a command that runs a file a single implementation task's Files
+    own is that task's own proof wearing a run-wide coat — red for every other
+    task until that one lands, and green afterwards for reasons no other task
+    caused. It belongs in that task's Proof as a `Run:`, so the plan is refused
+    rather than filed. `(minor)` changes nothing: the misplacement is the
+    fault, not the blocking.
+
+    One violation per (task, path), worded like any other task violation — the
+    task id and the path both named, so the author can move the line without
+    re-deriving which task owns what."""
+    violations = []
+    for check in parse_constraint_checks(text):
+        for t in tasks:
+            if disposition(t) != "implementation":
+                continue
+            for path in sorted(task_files(t)):
+                if not command_names_path(check["cmd"], path):
+                    continue
+                violations.append(
+                    "grammar: task %s: run-wide `- Check: %s` names `%s`, a "
+                    "path task %s's Files own — a check one task would turn "
+                    "green is not run-wide; move it to that task's Proof as a "
+                    "`Run:`." % (t["id"], check["cmd"], path, t["id"]))
+    return violations
+
+
 # Placeholder interface values — 'Consumes: nothing (…)' is authoring prose
 # for "no contract", never a producible symbol. Tokenizing them to "" deletes
 # the placeholder-pairing edge class at the representation (2026-07-03
@@ -1638,6 +1691,10 @@ def collect_violations(plan_path, base_tree=None):
     # ... and the Global-Constraints `- Check:` commands, which belong to no
     # task and so are checked once for the whole plan.
     violations.extend(constraint_check_violations(plan_text))
+    # ... and the misplaced-`Check:` refusal (#978), which needs the tasks as
+    # well as the section: a command naming a path one implementation task's
+    # Files own is that task's `Run:`, not a run-wide check.
+    violations.extend(constraint_check_ownership_violations(plan_text, tasks))
     # ... and the declared exam command (#644), plan-level for the same reason:
     # the shell that would run it is the plan's, not any one task's.
     violations.extend(exam_command_violations(plan_text))
@@ -2116,6 +2173,31 @@ def build_edges(impl, tree_root=None):
                 existing["why"] = "interface"
             else:
                 add(a["id"], b["id"], "interface")
+
+    # Proof-run tier (#978, the run-127 seam): B's Proof `Run:` command names a
+    # path A's Files own and B's do not. B cannot run that file until A has
+    # written it, so A comes first — the same existence argument
+    # write-after-create makes, read off the command instead of the Files pair.
+    # It sits AFTER the interface tier and before non-text-overlap so an
+    # interface edge already recorded wins: a pair the interface tier ordered
+    # is in `seen` and keeps its own `why`, and an opposing interface PATH
+    # trips the cycle guard, so the derived-ordering edge simply does not
+    # appear rather than contradicting the signed one.
+    for b in impl:
+        b_own = task_files(b)
+        for cmd in (b.get("claims") or {}).get("proof_runs", []):
+            for a in impl:
+                if a["id"] == b["id"]:
+                    continue
+                if (a["id"], b["id"]) in seen:
+                    continue
+                named = sorted(p for p in task_files(a) - b_own
+                               if command_names_path(cmd, p))
+                if not named:
+                    continue
+                if would_cycle(a["id"], b["id"]):
+                    continue
+                add(a["id"], b["id"], "proof-run")
 
     # Tier 2b (claims-v1 ONLY): non-text same-file overlap. `fold` leaves a
     # same-file pair unordered because the kernel merges the two edits line-wise
