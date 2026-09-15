@@ -1,0 +1,296 @@
+{
+  "ok": true,
+  "stamp": "run-133",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-133"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 2 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The driver keeps its slots full from a ready set and folds whatever has landed when a slot frees",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/run-engine.mjs",
+          "fleet/tests/test_run_engine_infra_retry.mjs",
+          "fleet/tests/test_run_engine_joined_proofs.mjs",
+          "fleet/tests/test_run_engine_proof_runs.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`driver:wave-adopted` \u2014 `{kind, wave: <epoch>, tasks: [<ids adopted in this epoch>], headSha}`, one per epoch, `wave` counting epochs from 1"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "A worker that finds its proof needs a sibling still in flight re-edges itself, and the driver waits for that sibling instead of failing the task",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/kata-client.mjs",
+          "fleet/roles/fix.md",
+          "fleet/roles/implementer.md",
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`driver:wave-adopted` \u2014 `{kind, wave: <epoch>, tasks: [<ids adopted in this epoch>], headSha}`, one per epoch, `wave` counting epochs from 1"
+          ],
+          "produces": [
+            "`driver:re-edged` \u2014 `{kind, task, blockedBy: [<sibling ids>]}` on the run's log"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [
+      {
+        "from": "1",
+        "to": "2",
+        "why": "interface"
+      }
+    ],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1"
+      ],
+      [
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The driver keeps its slots full from a ready set and folds whatever has landed when a slot frees",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_infra_retry.mjs",
+            "fleet/tests/test_run_engine_joined_proofs.mjs",
+            "fleet/tests/test_run_engine_proof_runs.mjs",
+            "fleet/tests/test_run_engine_ready_set.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`driver:wave-adopted` \u2014 `{kind, wave: <epoch>, tasks: [<ids adopted in this epoch>], headSha}`, one per epoch, `wave` counting epochs from 1"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_infra_retry.mjs",
+            "fleet/tests/test_run_engine_joined_proofs.mjs",
+            "fleet/tests/test_run_engine_proof_runs.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_ready_set.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_ready_set.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_joined_proofs.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_infra_retry.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_one_of_each.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_own_proofs.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_review_economy.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_kata_close.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_reuse.mjs | grep -q 'ALL TESTS PASSED'",
+            "test \"$(grep -c -e 'CONCURRENCY' -e 'waveLabel' -e 'waveIds' -e 'barrier: retrying' fleet/run-engine.mjs)\" = 0",
+            "sed -n '/The engine.s own wave record/,/driver:exam-run/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'epoch.*ready.*slot frees.*driver:wave-adopted.*descendant'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_ready_set.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_infra_retry.mjs",
+              "fleet/tests/test_run_engine_joined_proofs.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_run_engine_ready_set.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_ready_set.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_ready_set.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_ready_set.mjs": "fleet/tests/test_run_engine_ready_set.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_ready_set.mjs"
+            ],
+            "siblingOwned": [],
+            "produces": [
+              "`driver:wave-adopted` \u2014 `{kind, wave: <epoch>, tasks: [<ids adopted in this epoch>], headSha}`, one per epoch, `wave` counting epochs from 1"
+            ],
+            "consumes": []
+          }
+        }
+      ],
+      [
+        {
+          "id": "2",
+          "title": "A worker that finds its proof needs a sibling still in flight re-edges itself, and the driver waits for that sibling instead of failing the task",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/kata-client.mjs",
+            "fleet/roles/fix.md",
+            "fleet/roles/implementer.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_re_edge.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`driver:wave-adopted` \u2014 `{kind, wave: <epoch>, tasks: [<ids adopted in this epoch>], headSha}`, one per epoch, `wave` counting epochs from 1"
+            ],
+            "produces": [
+              "`driver:re-edged` \u2014 `{kind, task, blockedBy: [<sibling ids>]}` on the run's log"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/kata-client.mjs",
+            "fleet/roles/fix.md",
+            "fleet/roles/implementer.md",
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_re_edge.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_re_edge.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_ready_set.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_worker_kata_env.mjs | grep -q 'ALL TESTS PASSED'",
+            "sed -n '/^## The issue/,$p' fleet/roles/implementer.md | tr '\\n' ' ' | grep -q 'blocked-by.*stuck.*BLOCKED'",
+            "sed -n '/KATA_REF/,$p' fleet/roles/fix.md | tr '\\n' ' ' | grep -q 'blocked-by.*stuck.*BLOCKED'",
+            "sed -n '/Kata record (engine)/,/status.json:/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'SIBLING FILES.*--blocked-by.*links.*driver:re-edged.*dispatched again'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_re_edge.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/kata-client.mjs",
+              "fleet/roles/fix.md",
+              "fleet/roles/implementer.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_re_edge.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_re_edge.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_re_edge.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_re_edge.mjs": "fleet/tests/test_run_engine_re_edge.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_re_edge.mjs"
+            ],
+            "siblingOwned": [],
+            "produces": [
+              "`driver:re-edged` \u2014 `{kind, task, blockedBy: [<sibling ids>]}` on the run's log"
+            ],
+            "consumes": [
+              "`driver:wave-adopted` \u2014 `{kind, wave: <epoch>, tasks: [<ids adopted in this epoch>], headSha}`, one per epoch, `wave` counting epochs from 1"
+            ]
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The driver keeps its slots full from a ready set and fo\u2026",
+      "A worker that finds its proof needs a sibling still in \u2026"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- The launcher, the boot, the lobby, the client's transports, the janitor, the publish fold, the entry, the worker, the confine hook, the compiler, the kernel and the reading script are untouched: `fleet/launch.mjs`, `fleet/sandbox-boot.sh`, `fleet/fleet-bootstrap.sh`, `fleet/lobby.mjs`, `fleet/janitor.mjs`, `fleet/publish-fold.mjs`, `fleet/run-main.mjs`, `fleet/run-waves.mjs`, `fleet/run-worker.mjs`, `fleet/confine-hook.mjs`, `skills/ultrapowers/scripts/`, `skills/ultrapowers/kernel/` and `evals/barrier_slack.py` are byte-identical to BASE.\n- Every event kind the engine writes at BASE keeps its name and its fields; `driver:wave-adopted` and `driver:wave-blocked` carry `wave` as the 1-based epoch; `engine:phase` marks stay `Setup`, `Wave <n>` (the epoch) and `Integration Review`; no new kind is read by nothing.\n- The fold, the resolver, the reconcile round, the integrated proofs and checks, the gate and the publish are per epoch exactly what they are per wave at BASE: one kernel `fold` \u2192 `resolve` \u2192 `materialize` on the epoch's captured patches against the head it starts from, the suite on the candidate, and the same handling of a red suite.\n- The hub is never a dispatch dependency: no task waits on a hub answer to be dispatched, and a hub read or write that fails is one `kata:write-failed` event as at BASE.\n- Models never run git; no role file shouts.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/launch.mjs fleet/sandbox-boot.sh fleet/fleet-bootstrap.sh fleet/lobby.mjs fleet/janitor.mjs fleet/publish-fold.mjs fleet/run-main.mjs fleet/run-waves.mjs fleet/run-worker.mjs fleet/confine-hook.mjs skills/ultrapowers/scripts skills/ultrapowers/kernel evals/barrier_slack.py",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-133/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-133/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-133/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-133/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
