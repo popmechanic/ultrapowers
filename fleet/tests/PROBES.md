@@ -39,7 +39,7 @@ The current probes:
   gap 1) — the `*` tail is not an execution channel, matching the documented
   operator parsing for `&&`, `;`, `|`.
 - `probe_kata_facts.mjs` — whether the hub still behaves the way the fleet's
-  contract says it does: the 22 kata facts (#978, #979, #993 and CLAUDE.md's
+  contract says it does: the 24 kata facts (#978, #979, #993, #1023 and CLAUDE.md's
   seams paragraph), re-read one line per fact against a throwaway project, each
   line stamped with the version it was read on. Run it on every kata upgrade,
   and before any plan that touches `fleet/kata-client.mjs` — those facts are

@@ -1432,7 +1432,11 @@ for row in out:
 # THE REASON IS THE DISPOSITION, and since #964 the only disposition the boot
 # closes on is `done`: the run ended `done`, with the pull request as
 # `{"type":"pr","url"}` evidence and the squash commit as
-# `{"type":"commit","sha"}` when the sandbox merged it. A `done` message has to
+# `{"type":"commit","sha"}` when the sandbox merged it — and, when neither is
+# in hand (a publish whose PR answer carried no URL), the integration branch's
+# pushed tip as `{"type":"commit","sha"}`, because kata v0.17.2 refuses a
+# `done` close whose evidence is empty (#1026, `evidence required for
+# reason=done`); a close is never sent empty-handed. A `done` message has to
 # read on its own (kata wants 40 characters or more, run-111): it is the plan's
 # H1 and the merge sha. A parked or failed run makes no close at all — its
 # issue stays open under `kata_mark_run`'s keys, for the operator to close.
@@ -1467,8 +1471,13 @@ print("%s %s" % (doc["project"]["id"], doc["run"]["uid"]))
   fi
   # The body, built where a string is a string: the message carries the plan's
   # H1 verbatim, and `wontfix` carries no evidence because kata refuses any.
+  # The fallback evidence: the integration branch's pushed tip, BRANCH_HEAD as
+  # publish read it, re-read from the clone when this close runs on a re-entry
+  # that never set it.
+  local branch_head="$BRANCH_HEAD"
+  [ -n "$branch_head" ] || branch_head="$(fleet_git -C "$TARGET_DIR" rev-parse "$BRANCH" 2>/dev/null || true)"
   body="$(KATA_ACTOR="sandbox:$RUN_ID" KATA_REASON="$reason" KATA_MESSAGE="$message" \
-    KATA_PR_URL="$PR_URL" KATA_MERGED_SHA="$MERGED_SHA" python3 -c '
+    KATA_PR_URL="$PR_URL" KATA_MERGED_SHA="$MERGED_SHA" KATA_BRANCH_HEAD="$branch_head" python3 -c '
 import json, os
 reason = os.environ["KATA_REASON"]
 evidence = []
@@ -1477,6 +1486,8 @@ if reason == "done":
         evidence.append({"type": "pr", "url": os.environ["KATA_PR_URL"]})
     if os.environ.get("KATA_MERGED_SHA"):
         evidence.append({"type": "commit", "sha": os.environ["KATA_MERGED_SHA"]})
+    if not evidence and os.environ.get("KATA_BRANCH_HEAD"):
+        evidence.append({"type": "commit", "sha": os.environ["KATA_BRANCH_HEAD"]})
 body = {"actor": os.environ["KATA_ACTOR"], "reason": reason,
         "message": os.environ["KATA_MESSAGE"], "evidence": evidence,
         "retry_protocol": "close-v1"}
