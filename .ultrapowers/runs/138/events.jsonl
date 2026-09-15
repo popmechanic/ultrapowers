@@ -1,0 +1,11 @@
+{"kind":"run:open","runId":"run-138","base":"","source":"fleet/run-main.mjs","id":"01M2J6520V000080PNPKF8M6HF","ts":1789464315931}
+{"kind":"driver:stage","stage":"kata","detail":"record /home/exedev/plans/run-138.kata.json → https://kata.int.exe.xyz","id":"01M2J6520W00003PS7YWNEWX8W","ts":1789464315932}
+{"kind":"driver:stage","stage":"tiers","detail":"2 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M2J6520X00005ZK4GXCWJ4DA","ts":1789464315933}
+{"kind":"driver:stage","stage":"provision","detail":"BASE a94143bb79f780a63e41e751418b9a3d3a9d2db2; 2 task clone(s) + integration","id":"01M2J6529J0000VJM5A0E5J17F","ts":1789464316210}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M2J652PC0000CDZZQ0T38WWS","ts":1789464316620}
+{"kind":"driver:stage","stage":"engine","detail":"waves 2, width bound 2, patch input armed","id":"01M2J652PD000034A8QE5AFQ80","ts":1789464316621}
+{"kind":"engine:phase","phase":"Setup","id":"01M2J652PJ0000SJ7VKBEXKM4Z","ts":1789464316626}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-138 at a94143bb79f780a63e41e751418b9a3d3a9d2db2","id":"01M2J652X6000098EFSAMGSH1W","ts":1789464316838}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"a5d1ed28-4726-497e-9835-c1bb0533739f","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-138/clones/task-1","model":"opus","id":"01M2J653GD0000GRR9Y6JFF1S9","ts":1789464317453}
+{"kind":"worker:start","label":"exam:2","role":"examiner","sessionId":"b3b0e033-5a6c-400c-b4cc-638287947e9e","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-138/clones/exam-2","model":"opus","id":"01M2J653HC0000YNYWWNWK414Y","ts":1789464317484}
+{"kind":"worker:start","label":"impl:2","role":"implementer","sessionId":"6a0c85a5-be4c-4514-9ea2-82f228824296","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-138/clones/task-2","model":"opus","id":"01M2J653HE0000EFDJJWN76DS6","ts":1789464317486}
