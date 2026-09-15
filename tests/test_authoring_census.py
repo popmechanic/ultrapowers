@@ -133,8 +133,8 @@ ROW_133 = tsv("133", "47", "5", "2", "-", "width", "ultrapowers", "2",
 # (a): m = the rows with a routing record (131, 133), k = those whose branch
 # is `risk` (131); p/q summed over every row; 118 + 47 = 165; 16 is the one
 # row carrying a `run_min`.
-TOTALS = ("totals: plans=3 risk_override=1/2 recommended_picked=2/2 "
-          "authoring_min=165 run_min=16")
+TOTALS = ("totals: plans=3 runs=9..133 risk_override=1/2 "
+          "recommended_picked=2/2 authoring_min=165 run_min=16")
 
 TABLE = [HEADER, ROW_9, ROW_131, ROW_133, TOTALS]
 
@@ -433,8 +433,8 @@ def test_d_fetch_then_prints_the_table_over_the_directory(tmp_path):
     p, _into, _calls, _bare = run_fetch(tmp_path)
     assert lines(p.stdout) == [
         HEADER, ROW_131, ROW_133,
-        ("totals: plans=2 risk_override=1/2 recommended_picked=2/2 "
-         "authoring_min=165 run_min=16"),
+        ("totals: plans=2 runs=131..133 risk_override=1/2 "
+         "recommended_picked=2/2 authoring_min=165 run_min=16"),
     ], p.stdout + p.stderr
 
 
