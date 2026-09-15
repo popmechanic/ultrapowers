@@ -1,0 +1,15 @@
+{
+  "tasks": {
+    "1": {"hash": "10593e623786a5bf54dd3cc76e10d7a5072608a1bbc77d2cefaf1e0ca6e279b2", "verdict": "pass", "reason": "Leg (a) would fail on the old barrier (B adopted before A ends); (c) pins epoch numbering, descendant heads, single-fold and the held-fold two-epoch shape; (d) names the blocked ids and the unfinished reason; (e) pins park-before-any-fold; the zero-count grep and the section-scoped ordered grep are the right legs for M5 and M7."},
+    "2": {"hash": "b1ebaf798399207438560a3fb2a3e381dd6f99124d7cc0ea20252b88fa02ea66", "verdict": "pass", "reason": "M1's two-shape prompt check, M2/M5's section-scoped ordered greps, M3's transport-fed getIssue with and without links, and M4's four sim scenarios each falsify their clause; every pinned literal is computed by a leg."}
+  },
+  "tally": {"dispatched": 6, "rejected": 3, "rounds": {"1": {"dispatched": 2, "rejected": 1}, "2": {"dispatched": 2, "rejected": 2}, "3": {"dispatched": 2, "rejected": 0}}},
+  "history": [
+    {"round": 1, "task": "1", "verdict": "pass", "reason": "soft spot noted: no leg forced two landings into one epoch"},
+    {"round": 1, "task": "2", "verdict": "fail", "reason": "fix.md leg was a whole-file single-word grep"},
+    {"round": 2, "task": "1", "verdict": "fail", "reason": "M5's barrier-retry loop had no leg; M1's default width had no leg"},
+    {"round": 2, "task": "2", "verdict": "fail", "reason": "the all-caps sub-leg was unsatisfiable beside KATA_REF and BLOCKED"},
+    {"round": 3, "task": "1", "verdict": "pass"},
+    {"round": 3, "task": "2", "verdict": "pass"}
+  ]
+}
