@@ -1,0 +1,269 @@
+{
+  "ok": true,
+  "stamp": "run-132",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-132"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The engine stamps an issue with the run and sha that adopted it, before it closes it",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/run-engine.mjs",
+          "fleet/tests/_engine_helpers.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`work.adopted_run` \u2014 a flat metadata key on a task issue, integer run number",
+            "`work.adopted_sha` \u2014 a flat metadata key on a task issue, the 40-hex adopted head"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "A run whose issues are already closed done folds that run's work in at setup and works only the rest",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/run-engine.mjs",
+          "fleet/tests/_engine_helpers.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`driver:reuse` \u2014 an event `{kind: 'driver:reuse', run, tasks, headSha}` or `{kind: 'driver:reuse', reason, tasks: []}` on the run's log"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The engine stamps an issue with the run and sha that adopted it, before it closes it",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/_engine_helpers.mjs",
+            "fleet/tests/test_run_engine_kata_close.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`work.adopted_run` \u2014 a flat metadata key on a task issue, integer run number",
+              "`work.adopted_sha` \u2014 a flat metadata key on a task issue, the 40-hex adopted head"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/_engine_helpers.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_kata_close.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_kata_close.mjs",
+          "proofRuns": [
+            "sed -n '/Kata record (engine)/,/status.json:/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'Closes:.*work.adopted_run.*work.adopted_sha.*done'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_kata_close.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/_engine_helpers.mjs",
+              "fleet/tests/test_run_engine_kata_close.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_kata_close.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_kata_close.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_kata_close.mjs": "fleet/tests/test_run_engine_kata_close.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_kata_close.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/_engine_helpers.mjs",
+              "fleet/tests/test_run_engine_reuse.mjs"
+            ],
+            "produces": [
+              "`work.adopted_run` \u2014 a flat metadata key on a task issue, integer run number",
+              "`work.adopted_sha` \u2014 a flat metadata key on a task issue, the 40-hex adopted head"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "A run whose issues are already closed done folds that run's work in at setup and works only the rest",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/_engine_helpers.mjs",
+            "fleet/tests/test_run_engine_reuse.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`driver:reuse` \u2014 an event `{kind: 'driver:reuse', run, tasks, headSha}` or `{kind: 'driver:reuse', reason, tasks: []}` on the run's log"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/_engine_helpers.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_reuse.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_reuse.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_worker_kata_env.mjs | grep -q 'ALL TESTS PASSED'",
+            "sed -n '/Kata record (engine)/,/status.json:/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'once, at setup.*closed.*work.adopted_run.*ultra/evidence/run-<M>.*run.patch.*driver:reuse.*refus'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_reuse.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/_engine_helpers.mjs",
+              "fleet/tests/test_run_engine_reuse.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_reuse.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_reuse.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_reuse.mjs": "fleet/tests/test_run_engine_reuse.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_reuse.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/_engine_helpers.mjs",
+              "fleet/tests/test_run_engine_kata_close.mjs"
+            ],
+            "produces": [
+              "`driver:reuse` \u2014 an event `{kind: 'driver:reuse', run, tasks, headSha}` or `{kind: 'driver:reuse', reason, tasks: []}` on the run's log"
+            ],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 Thats"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- The launcher, the boot, the lobby, the client, the janitor, the publish fold, the roles, the worker, the compiler and the kernel are untouched: `fleet/launch.mjs`, `fleet/sandbox-boot.sh`, `fleet/fleet-bootstrap.sh`, `fleet/lobby.mjs`, `fleet/kata-client.mjs`, `fleet/janitor.mjs`, `fleet/publish-fold.mjs`, `fleet/run-main.mjs`, `fleet/run-waves.mjs`, `fleet/run-worker.mjs`, `fleet/confine-hook.mjs`, everything under `fleet/roles/`, `skills/ultrapowers/scripts/` and `skills/ultrapowers/kernel/` are byte-identical to BASE.\n- Models never run git: every git verb this plan adds runs in the engine through its `exec` seam, in the integration clone, and no worker prompt changes.\n- A hub write that fails is one `kata:write-failed` event and never the run's failure; a hub read the reuse needs that fails, or a tag that cannot be fetched, means no reuse and the full plan runs.\n- No sim reaches a network: the hub a sim drives is an injected object and the tag it fetches is on the sim's own local origin.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/launch.mjs fleet/sandbox-boot.sh fleet/fleet-bootstrap.sh fleet/lobby.mjs fleet/kata-client.mjs fleet/janitor.mjs fleet/publish-fold.mjs fleet/run-main.mjs fleet/run-waves.mjs fleet/run-worker.mjs fleet/confine-hook.mjs fleet/roles skills/ultrapowers/scripts skills/ultrapowers/kernel",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-132/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-132/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-132/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-132/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
