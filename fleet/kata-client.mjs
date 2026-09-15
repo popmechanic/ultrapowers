@@ -1,7 +1,7 @@
 // fleet/kata-client.mjs — the one kata client, and the two ways a driver reaches
 // the hub (#913 §The prototype).
 //
-// Kata holds a run's STATE: one project per run, one issue per task, each task's
+// Kata holds a run's STATE: one project per target, one issue per task, each task's
 // fact sheet in that issue's metadata, and every step the driver takes recorded
 // as a comment, a claim, a metadata patch or a close. It never holds the plan —
 // the plan is compiled from `.ultrapowers/plan.md` and nothing that reads the
@@ -201,17 +201,26 @@ export const makeKataClient = ({ transport, actor }) => {
       return project((json || {}).project, ['id', 'uid', 'name', 'revision'])
     },
 
-    purgeProject: (id, reason) =>
-      send({ method: 'POST', path: API + '/projects/' + id + '/actions/purge',
-             body: { actor, reason } }),
-
-    createIssue: (projectId, { title, body, metadata, links } = {}) =>
+    // `Idempotency-Key` is what makes a relaunch of one plan file the SAME
+    // issues rather than a second set: kata fingerprints the key with the
+    // body, so the same key and byte-identical fields answer the issue that is
+    // already there, and the same key with different fields is a 409
+    // `idempotency_mismatch`. Metadata and initial links are in that
+    // fingerprint — the create body a caller wants replayable carries only
+    // what it can promise is stable.
+    createIssue: (projectId, { title, body, metadata, links, idempotencyKey } = {}) =>
       mutation({ method: 'POST', path: issuesPath(projectId),
-                 body: { title, body, actor, metadata, links } }),
+                 body: { title, body, actor, metadata, links },
+                 headers: idempotencyKey === undefined
+                   ? {} : { 'Idempotency-Key': String(idempotencyKey) } }),
 
-    link: (projectId, fromUid, { type, to_ref: toRef } = {}) =>
+    // `replace` is the only way to move a `parent`: a second parent link is a
+    // 409 `parent_already_set` whose hint is this flag, and `replace: true`
+    // swaps it. It rides the body only when a caller asked for it, so a
+    // `blocks` link — which is idempotent on its own — sends what it always did.
+    link: (projectId, fromUid, { type, to_ref: toRef, replace } = {}) =>
       mutation({ method: 'POST', path: issuePath(projectId, fromUid) + '/links',
-                 body: { type, to_ref: toRef, actor } }),
+                 body: { type, to_ref: toRef, actor, ...(replace === undefined ? {} : { replace }) } }),
 
     getIssue: async (uid) => {
       const json = await send({ method: 'GET', path: API + '/issues/' + uid })

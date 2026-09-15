@@ -100,7 +100,9 @@ const SIZE_SIM = path.join(TESTS_DIR, 'test_launch_size.mjs')
 const FIRST = 1
 const BUMPED = 2
 const planBranch = (n) => `ultra/plan-run-${n}`
-const projectName = (n) => `popmechanic-smoke-run-${n}`
+/** The TARGET's one project (#978 task 2, M1): the name carries no number, so
+ *  every attempted N of every launch against this target files into it. */
+const PROJECT_NAME = 'popmechanic-smoke'
 
 // ── The compiled plan, as the stub answers it, per stamp ────────────────────
 
@@ -247,41 +249,124 @@ const readRules = ({ repo, bump = null }) => [
 // Every call records `at`, the number of exec calls made when it was issued, so
 // a leg can say a compile came before a filing without the two records having
 // to share a clock.
+//
+// It models the three hub behaviours this file's legs read (#978 task 2, kata
+// v0.17.2): a project store keyed by NAME, so `createProject` of a name it
+// already holds answers the project that is there; an issue store keyed by
+// `Idempotency-Key`, so the same key with a byte-identical create body answers
+// the same issue — at the revision the CREATE answered, not the issue's current
+// one — and the same key with a different body throws as kata's 409
+// `idempotency_mismatch` does; and a per-key metadata merge.
 
 const ULID = (n) => `01ARZ3NDEKTSV4RRFFQ69G5F${String(n).padStart(2, '0')}`
+/** What kata fingerprints beside the key: the create's own fields. */
+const fingerprint = (spec) => JSON.stringify([
+  spec?.title ?? null, spec?.body ?? null, spec?.metadata ?? null, spec?.links ?? null
+])
 function makeFakeKata ({ at = () => 0, url = 'http://hub.fake' } = {}) {
   const calls = []
-  let projects = 0
-  let issues = 0
+  const projects = new Map()
+  const issues = new Map()
+  const byKey = new Map()
+  const links = []
   const rec = (method, args) => calls.push({ method, args, at: at() })
+  const answer = (issue) => ({
+    uid: issue.uid,
+    revision: issue.revision,
+    short_id: issue.short_id,
+    metadata: { ...issue.metadata },
+    status: issue.status,
+    owner: null,
+    project_id: issue.project_id
+  })
   return {
     url,
     calls,
+    projects,
+    issues,
+    links,
     async ping () {
       rec('ping', [])
       return { ok: true, service: 'kata', version: '0.17.2' }
     },
     async createProject (name) {
       rec('createProject', [name])
-      projects += 1
-      return { id: projects, uid: ULID(projects), name, revision: 1 }
-    },
-    async purgeProject (id, reason) {
-      rec('purgeProject', [id, reason])
-      return {}
+      if (!projects.has(name)) {
+        projects.set(name, { id: projects.size + 1, uid: ULID(projects.size + 1), name, revision: 1 })
+      }
+      return { ...projects.get(name) }
     },
     async createIssue (projectId, spec) {
       rec('createIssue', [projectId, spec])
-      issues += 1
-      return { uid: ULID(10 + issues), revision: 1, short_id: `K-${issues}` }
+      const key = spec?.idempotencyKey
+      const print = fingerprint(spec)
+      if (key !== undefined && byKey.has(key)) {
+        const seen = byKey.get(key)
+        if (seen.fingerprint !== print) {
+          throw new Error(`idempotency_mismatch for ${key}`)
+        }
+        // The replay answers the create's own revision, while the issue itself
+        // has moved on — which is why the launcher reads before it patches.
+        return { ...answer(issues.get(seen.uid)), revision: seen.revision }
+      }
+      const n = issues.size + 1
+      const issue = {
+        uid: ULID(10 + n),
+        short_id: `K-${n}`,
+        revision: 1,
+        metadata: { ...(spec?.metadata ?? {}) },
+        status: 'open',
+        project_id: projectId
+      }
+      issues.set(issue.uid, issue)
+      if (key !== undefined) byKey.set(key, { uid: issue.uid, fingerprint: print, revision: 1 })
+      for (const link of spec?.links ?? []) links.push({ from: issue.uid, ...link })
+      return answer(issue)
+    },
+    async patchMetadata (projectId, uid, patch, revision) {
+      rec('patchMetadata', [projectId, uid, patch, revision])
+      const issue = issues.get(uid)
+      if (!issue) throw new Error(`no such issue ${uid}`)
+      issue.metadata = { ...issue.metadata, ...patch }
+      issue.revision += 1
+      return answer(issue)
     },
     async link (projectId, fromUid, spec) {
       rec('link', [projectId, fromUid, spec])
-      return { revision: 2 }
+      const issue = issues.get(fromUid)
+      if (spec?.type === 'parent') {
+        const held = links.find((l) => l.from === fromUid && l.type === 'parent')
+        if (held && !spec.replace) throw new Error('parent_already_set')
+        if (held) held.to_ref = spec.to_ref
+        else links.push({ from: fromUid, type: spec.type, to_ref: spec.to_ref })
+      } else if (!links.some((l) => l.from === fromUid && l.type === spec?.type && l.to_ref === spec?.to_ref)) {
+        links.push({ from: fromUid, type: spec?.type, to_ref: spec?.to_ref })
+      }
+      if (issue) issue.revision += 1
+      return issue ? answer(issue) : { revision: 2 }
+    },
+    async close (projectId, uid, spec) {
+      rec('close', [projectId, uid, spec])
+      const issue = issues.get(uid)
+      if (!issue) throw new Error(`no such issue ${uid}`)
+      issue.status = 'closed'
+      issue.closed = { reason: spec?.reason, message: spec?.message }
+      issue.revision += 1
+      return answer(issue)
     },
     async getIssue (uid) {
       rec('getIssue', [uid])
-      return { uid, revision: 1, metadata: {}, status: 'open', owner: null, project_id: projects }
+      const issue = issues.get(uid)
+      if (!issue) throw new Error(`no such issue ${uid}`)
+      return answer(issue)
+    },
+    /** The open issues of a project no OPEN `blocks` link points at. */
+    ready (projectId) {
+      const open = [...issues.values()].filter((i) => i.project_id === projectId && i.status === 'open')
+      const blocked = new Set(links
+        .filter((l) => l.type === 'blocks' && issues.get(l.from)?.status === 'open')
+        .map((l) => l.to_ref))
+      return open.filter((i) => !blocked.has(i.uid)).map((i) => i.uid)
     }
   }
 }
@@ -359,6 +444,13 @@ const methodCalls = (hub, method) => hub.calls.filter((c) => c.method === method
 const issuesOf = (hub, projectId) => methodCalls(hub, 'createIssue').filter((c) => c.args[0] === projectId)
 const sheetsOf = (hub, projectId) => issuesOf(hub, projectId)
   .filter((c) => c.args[1]?.metadata?.task !== undefined)
+/** The fact sheets filed for one run number. A create no longer carries one —
+ *  it carries only `{task, plan}`, so the same key answers the same issue on
+ *  every launch of the plan (#978 task 2, M2) — so the sheet arrives as the
+ *  metadata patch that follows, and THAT is where a number's sheets are read. */
+const patchesFor = (hub, n) => methodCalls(hub, 'patchMetadata').filter((c) => c.args[2]?.run === n)
+/** The task id of the issue a call names, off the fake's own issue store. */
+const taskOf = (hub, uid) => String(hub.issues.get(uid)?.metadata?.task)
 
 // ── a. [M1] the bump recompiles, and files the new number's sheets ──────────
 {
@@ -403,36 +495,44 @@ const sheetsOf = (hub, projectId) => issuesOf(hub, projectId)
 
   const projects = methodCalls(run.hub, 'createProject')
   assert.deepEqual(
-    projects.map((c) => c.args[0]), [projectName(FIRST), projectName(BUMPED)],
-    `(a) [M1] one project filed per attempted number: ${JSON.stringify(projects.map((c) => c.args[0]))}`
+    projects.map((c) => c.args[0]), [PROJECT_NAME, PROJECT_NAME],
+    `(a) [M1] both attempts name the TARGET's one project, which carries no run number: ` +
+    `${JSON.stringify(projects.map((c) => c.args[0]))}`
+  )
+  assert.equal(
+    run.hub.projects.size, 1,
+    '(a) [M1] and the hub holds one project after both — the second `createProject` of a name it ' +
+    'already has answers the project that is there'
   )
   assert.ok(
     projects[1].at > secondCompileAt,
-    `(a) [M1] and the ${BUMPED} compile is ordered BEFORE the hub's project for ${BUMPED} is filed ` +
+    `(a) [M1] and the ${BUMPED} compile is ordered BEFORE the hub is filed for ${BUMPED} ` +
     `(compile at exec call ${secondCompileAt}, createProject after ${projects[1].at})`
   )
+  assert.equal(
+    typeof run.hub.purgeProject, 'undefined',
+    '(a) [M5] there is no `purgeProject` on the hub at all — a bump destroys nothing'
+  )
   assert.deepEqual(
-    methodCalls(run.hub, 'purgeProject').map((c) => c.args[0]), [1],
-    '(a) [M1] and what was filed under the first number was purged'
+    methodCalls(run.hub, 'purgeProject'), [],
+    '(a) [M5] and the bump made no purge call'
   )
 
-  const filed = sheetsOf(run.hub, 2)
+  const filed = patchesFor(run.hub, BUMPED)
   assert.deepEqual(
-    filed.map((c) => String(c.args[1].metadata.task)), idsOf(PAYLOADS[`run-${BUMPED}`]),
+    filed.map((c) => taskOf(run.hub, c.args[1])), idsOf(PAYLOADS[`run-${BUMPED}`]),
     `(a) [M1] the sheets filed for run ${BUMPED} are the run-${BUMPED} compile's tasks, in wave order: ` +
-    `got ${JSON.stringify(filed.map((c) => String(c.args[1].metadata.task)))}`
+    `got ${JSON.stringify(filed.map((c) => taskOf(run.hub, c.args[1])))}`
   )
   for (const call of filed) {
-    const id = String(call.args[1].metadata.task)
+    const id = taskOf(run.hub, call.args[1])
     assert.deepEqual(
-      call.args[1].metadata.factsheet, factsheetFor(`run-${BUMPED}`, id),
+      call.args[2].factsheet, factsheetFor(`run-${BUMPED}`, id),
       `(a) [M1] task ${id}'s fact sheet is the run-${BUMPED} stamp's, whole — its Proof path lands at ` +
-      `${examPathFor(`run-${BUMPED}`, id)}: got ${JSON.stringify(call.args[1].metadata.factsheet)}`
+      `${examPathFor(`run-${BUMPED}`, id)}: got ${JSON.stringify(call.args[2].factsheet)}`
     )
   }
-  const filedForBumped = JSON.stringify(
-    run.hub.calls.filter((c) => c.args[0] === 2 || c.args[0] === projectName(BUMPED))
-  )
+  const filedForBumped = JSON.stringify(filed)
   assert.equal(
     filedForBumped.includes(`exams/${examSlug(`run-${BUMPED}`)}/`), true,
     `(a) [M1] every exam path filed for run ${BUMPED} names exams/${examSlug(`run-${BUMPED}`)}/`
@@ -441,6 +541,38 @@ const sheetsOf = (hub, projectId) => issuesOf(hub, projectId)
     filedForBumped.includes(examSlug(`run-${FIRST}`)), false,
     `(a) [M1] and nothing filed for run ${BUMPED} names ${examSlug(`run-${FIRST}`)} — the first ` +
     `number's reserved exam directory is not what the box will use`
+  )
+
+  // What the bump does INSTEAD of purging: the run issue for the number that
+  // was taken is closed `wontfix`, and the task issues are refiled under the
+  // new run issue rather than replaced.
+  const closes = methodCalls(run.hub, 'close')
+  assert.equal(closes.length, 1, `(a) [M5] exactly one close: got ${closes.length}`)
+  assert.equal(closes[0].args[2]?.reason, 'wontfix', '(a) [M5] its reason is `wontfix`')
+  assert.ok(
+    String(closes[0].args[2]?.message ?? '').includes(`run-${FIRST}`),
+    `(a) [M5] and its message names the number that was taken: ` +
+    `got ${JSON.stringify(closes[0].args[2]?.message)}`
+  )
+  assert.ok(
+    String(closes[0].args[2]?.message ?? '').length >= 40,
+    '(a) [M5] a message of at least 40 characters, not a word'
+  )
+  const closedIssue = run.hub.issues.get(closes[0].args[1])
+  assert.equal(
+    closedIssue?.metadata?.run, FIRST,
+    `(a) [M5] and what it closed is the run-${FIRST} issue: got ${JSON.stringify(closedIssue?.metadata)}`
+  )
+  const taskKeys = sheetsOf(run.hub, 1).map((c) => c.args[1].idempotencyKey)
+  assert.ok(
+    taskKeys.length > 0 && taskKeys.every((key) => typeof key === 'string' && key !== ''),
+    '(a) [M2] every task create carried an Idempotency-Key'
+  )
+  assert.equal(
+    run.hub.issues.size,
+    idsOf(PAYLOADS[`run-${FIRST}`]).length + 2,
+    '(a) [M5] and the refiling created no second issue for a task the first number already filed: ' +
+    'the 13 tasks of the wider compile plus one run issue per attempted number'
   )
 
   run.ws.cleanup()
@@ -477,8 +609,8 @@ const sheetsOf = (hub, projectId) => issuesOf(hub, projectId)
     '(b) [M2] still ordered before the `new` verb'
   )
   assert.deepEqual(
-    methodCalls(filed.hub, 'createProject').map((c) => c.args[0]), [projectName(FIRST)],
-    '(b) [M2] one project, filed under the number the launch kept'
+    methodCalls(filed.hub, 'createProject').map((c) => c.args[0]), [PROJECT_NAME],
+    '(b) [M2] one project, the target\'s, named once by the launch that was not bumped'
   )
   assert.deepEqual(
     sheetsOf(filed.hub, 1).map((c) => String(c.args[1].metadata.task)), idsOf(PAYLOADS[`run-${FIRST}`]),

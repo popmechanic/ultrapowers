@@ -47,6 +47,11 @@
  * #724 Task 2 adds legs T2(a)–T2(f) at the foot of this file, and re-scopes one
  * pin of leg (a): the result's key set gains one optional member, `branches`.
  * Their clauses are that task's own M1–M5, and every message below them says so.
+ *
+ * #978 Task 3 adds legs T3(a)–T3(c) after those, the first legs in this file
+ * driven with a hub instead of `kata: null`: the janitor finds a run inside the
+ * TARGET's one project. Their clauses are that task's own M1–M3, and every
+ * message below them says so.
  */
 
 import assert from 'node:assert/strict'
@@ -951,6 +956,212 @@ const T2_RESULT = await janitor({ kata: null, argv: [], exec: T2_EXEC, config: C
     'T2(f)/M5 naming the sweep — `node fleet/retire.mjs --target <t>` — as what does delete it')
   assert.equal(/ultra\/integration-run-/.test(text), true,
     'T2(f)/M5 and the branch it reports, ultra/integration-run-<N>')
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #978 Task 3 — the janitor finds a run inside the target's ONE project.
+//
+// Every run of a target now shares one hub project, named for the target alone
+// — `<owner>-<repo>`, `kataProjectFor(target)` — and a run is an issue in it,
+// picked by `metadata.run`. The reader itself (`hubReader`) is private, so
+// these legs drive it through `janitor({kata, …})`: `kata` is an injected
+// object shaped like `fleet/kata-client.mjs`'s client — `listProjects()` →
+// `{projects: [{id, uid, name}]}`, `listIssues(projectId)` → `{issues: […]}` —
+// which records every call it is asked to answer. Nothing here reaches a
+// network or a real hub.
+//
+//   T3(a) [M1] one project `acme-widgets` holding runs 5, 4 and 3: run 3's
+//              reading is run 3's issue and run 4's is run 4's, and every
+//              `listIssues` call names that project's id
+//   T3(b) [M2] a hub listing only `acme-widgets-run-4`: the reading is null,
+//              `listIssues` is never called, and the rows fall through to the
+//              target's evidence
+//   T3(c) [M3] `fleet/CONTRACT.md`'s janitor row, by the Proof's two `Run:`
+//              lines
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * The hub as these legs hand it to the janitor: the two read methods of
+ * `fleet/kata-client.mjs`'s client, each recording what it was asked, and the
+ * `host` `openHub` copies onto the result's `hub` report. `issuesById` is keyed
+ * by the integer `id` kata addresses a project by, so a reader that asked for a
+ * project it was never given the id of records the ask and is answered nothing.
+ */
+const fakeHub = ({ projects = [], issuesById = {}, host = 'hub.example' } = {}) => {
+  const calls = { listProjects: 0, listIssues: [] }
+  return {
+    host,
+    calls,
+    listProjects: async () => {
+      calls.listProjects += 1
+      return { projects: projects.map((p) => ({ ...p })) }
+    },
+    listIssues: async (projectId) => {
+      calls.listIssues.push(projectId)
+      return { issues: (issuesById[projectId] ?? []).map((i) => ({ ...i })) }
+    }
+  }
+}
+
+/** The target's one project: `acme/widgets` with every slash spelled `-`. */
+const T3_PROJECT = { id: 71, uid: 'proj-uid-acme-widgets', name: 'acme-widgets' }
+/** The project BASE looked run 4 up in. After this task nothing asks for it. */
+const T3_DECOY = { id: 82, uid: 'proj-uid-acme-widgets-run-4', name: 'acme-widgets-run-4' }
+
+/** Run 3: closed `done` two hours ago — older than the default 1 h, so reaped. */
+const T3_ISSUE_3 = {
+  uid: 'issue-uid-run-3',
+  status: 'closed',
+  closed_reason: 'done',
+  closed_at: hoursAgo(2),
+  updated_at: hoursAgo(2),
+  metadata: { run: 3 }
+}
+/** Run 4: open and unmarked — a run in flight, silent seven hours, so stale. */
+const T3_ISSUE_4 = {
+  uid: 'issue-uid-run-4',
+  status: 'open',
+  closed_reason: null,
+  closed_at: null,
+  updated_at: hoursAgo(7),
+  metadata: { run: 4 }
+}
+/**
+ * Run 5: a third run of the same target, with no VM row of its own. It is
+ * listed FIRST so that a reader taking a project's first issue, rather than the
+ * one whose `metadata.run` is the run number, reaps run 3's VM as `wontfix`.
+ */
+const T3_ISSUE_5 = {
+  uid: 'issue-uid-run-5',
+  status: 'closed',
+  closed_reason: 'wontfix',
+  closed_at: hoursAgo(9),
+  updated_at: hoursAgo(9),
+  metadata: { run: 5 }
+}
+
+/** The fleet both hub legs read: runs 3 and 4 of `acme/widgets`, nothing else. */
+const T3_FLEET = [row(3), row(4)]
+/** The unit of a row whose record says it is in flight, and it is. */
+const T3_ALIVE = { ActiveState: 'active', SubState: 'running', Result: 'success', ExecMainStatus: '0' }
+/**
+ * Run 4's `ssh_dest` joins the destinations the closing (g)/M5 sweep allows: an
+ * OPEN, unmarked run issue is a record saying the run is in flight, exactly as
+ * an evidence page saying `running` is, and #607 cross-checks such a row at its
+ * own destination. Each leg still pins `exec.vm()` by equality of its own.
+ */
+LIVE_DESTS.add(dest(4))
+
+// ── T3(a) one project, two runs, each read as its own issue [M1] ────────────
+{
+  const hub = fakeHub({
+    projects: [T3_PROJECT],
+    issuesById: { [T3_PROJECT.id]: [T3_ISSUE_5, T3_ISSUE_4, T3_ISSUE_3] }
+  })
+  // `ghRule({})`: every path of the target's evidence answers HTTP 404, so a
+  // row the hub answered cannot borrow a verdict from the fallback.
+  const exec = newExec([
+    ...lsRules(T3_FLEET),
+    ghRule({}),
+    vmAnswers({ [dest(4)]: () => answer(unitText(T3_ALIVE)) })
+  ])
+  const result = await janitor({ kata: hub, argv: [], exec, config: CONFIG, now: () => NOW })
+
+  assert.deepEqual(result.hub, { host: 'hub.example', dark: null },
+    'T3(a)/M1 the pass was answered by the injected hub and nothing darkened it')
+  assert.equal(hub.calls.listProjects >= 1, true,
+    'T3(a)/M1 the reader lists the hub\'s projects')
+  assert.equal(hub.calls.listIssues.length >= 1, true,
+    `T3(a)/M1 and finds the target's one project by name — kataProjectFor('${TARGET}') is ${JSON.stringify(T3_PROJECT.name)} — so it asks that project for its issues; it asked for none, so it looked the project up under some other name`)
+  assert.deepEqual([...new Set(hub.calls.listIssues)], [T3_PROJECT.id],
+    `T3(a)/M1 and every listIssues call names that project's id, ${T3_PROJECT.id}, got ${JSON.stringify(hub.calls.listIssues)}`)
+
+  assert.deepEqual(result.actions.map((a) => [a.vm, a.run, a.state, a.updatedAt]),
+    [[vm(3), 3, 'done', hoursAgo(2)]],
+    'T3(a)/M1 the reading for run 3 is run 3\'s issue — closed `done`, closed two hours ago — so its VM is the one reap, with that state and that clock; not run 4\'s issue and not run 5\'s')
+  assert.deepEqual(exec.mutating(), [`rm ${vm(3)} --json`],
+    'T3(a)/M1 and that reap is the pass\'s only mutating lobby verb')
+  assert.deepEqual(result.stale, [{
+    vm: vm(4),
+    run: 4,
+    state: 'open',
+    lastUpdate: hoursAgo(7),
+    from: `kata:${T3_PROJECT.name}`
+  }], 'T3(a)/M1 the reading for run 4 is run 4\'s issue — open, unmarked, silent seven hours — so run 4 is the one stale row, aged from its own `updated_at` and sourced to the target\'s project')
+
+  assert.deepEqual(contentsReads(exec), [],
+    'T3(a)/M1 and no status page is read off the target at all: the hub answered both rows')
+  assert.deepEqual(exec.vm(), [{ dest: dest(4), command: unitCommand(4) }],
+    'T3(a)/M1 only the row whose issue is open and unmarked is cross-checked, with #607\'s one unit read at its own ssh_dest')
+  assert.deepEqual(result.deaths, [],
+    'T3(a)/M1 that unit is alive, so nothing dies')
+  assert.deepEqual(unknownVms(result), [],
+    'T3(a)/M1 both rows carry a readable assignment')
+}
+
+// ── T3(b) no project of the target's name: null, and no issues asked [M2] ───
+{
+  const hub = fakeHub({
+    projects: [T3_DECOY],
+    // A decoy: the run-4 issue BASE would have found, closed `wontfix` five
+    // hours ago. A reader that still looks under `<owner>-<repo>-run-<N>`
+    // reaps run 4's VM here; a reader that looks under the target's one
+    // project never sees this issue at all.
+    issuesById: {
+      [T3_DECOY.id]: [{
+        uid: 'issue-uid-decoy-run-4',
+        status: 'closed',
+        closed_reason: 'wontfix',
+        closed_at: hoursAgo(5),
+        updated_at: hoursAgo(5),
+        metadata: { run: 4 }
+      }]
+    }
+  })
+  const exec = newExec([...lsRules(T3_FLEET), ghRule({})])
+  const result = await janitor({ kata: hub, argv: [], exec, config: CONFIG, now: () => NOW })
+
+  assert.deepEqual(hub.calls.listIssues, [],
+    `T3(b)/M2 no project named ${JSON.stringify(T3_PROJECT.name)} is listed, so the reader asks no project for its issues — and ${JSON.stringify(T3_DECOY.name)} is not a project it asks about`)
+  assert.equal(hub.calls.listProjects >= 1, true,
+    'T3(b)/M2 it did list the projects: the absence is a miss on that listing, not a read never issued')
+  assert.deepEqual(result.hub, { host: 'hub.example', dark: null },
+    'T3(b)/M2 and a project the listing does not hold is not an error: the hub is not darkened')
+
+  assert.deepEqual(readsFor(exec, 3), [tagPagePath(TARGET, 3), branchPagePath(TARGET, 3)],
+    'T3(b)/M2 the reading for run 3 is null, so the row falls through to the target\'s evidence: the tag, then — the tag having 404ed — the branch')
+  assert.deepEqual(readsFor(exec, 4), [tagPagePath(TARGET, 4), branchPagePath(TARGET, 4)],
+    'T3(b)/M2 and so does run 4')
+  assert.deepEqual(result.actions, [],
+    'T3(b)/M2 with no page on either ref and no hub reading, no run is reaped — least of all run 4 out of the run-4 project\'s closed issue')
+  assert.deepEqual(exec.mutating(), [],
+    'T3(b)/M2 and the pass issues no mutating lobby verb')
+  assert.deepEqual(result.stale, [],
+    'T3(b)/M2 nor is either row stale: a run with no record anywhere has no age')
+  assert.deepEqual(exec.vm(), [],
+    'T3(b)/M2 and no VM is ssh\'d into: no record said any run was in flight')
+}
+
+// ── T3(c) what fleet/CONTRACT.md's janitor row says [M3] ────────────────────
+{
+  const HERE = path.dirname(fileURLToPath(import.meta.url))
+  const CONTRACT = path.resolve(HERE, '..', 'CONTRACT.md')
+  const lines = fs.readFileSync(CONTRACT, 'utf8').split('\n')
+  // The Proof's two `Run:` lines read exactly this slice:
+  //   sed -n "/ask the hub for the run.s state/,/is a finished run/p"
+  const from = lines.findIndex((l) => /ask the hub for the run.s state/.test(l))
+  assert.equal(from !== -1, true,
+    'T3(c)/M3 fleet/CONTRACT.md\'s janitor row still opens with `ask the hub for the run\'s state`')
+  const to = lines.findIndex((l, i) => i >= from && /is a finished run/.test(l))
+  assert.equal(to !== -1, true,
+    'T3(c)/M3 and still closes with `is a finished run`')
+  /** The slice joined, so a sentence broken over three lines reads as one. */
+  const janitorRow = lines.slice(from, to + 1).join(' ')
+
+  assert.match(janitorRow, /matched on .name. against the target.s one project.*<owner>-<repo>/,
+    'T3(c)/M3 the janitor row carries, in this order, `matched on`, `name`, `against the target\'s one project` and `<owner>-<repo>`')
+  assert.equal((janitorRow.match(/<owner>-<repo>-run-<N>/g) ?? []).length, 0,
+    'T3(c)/M3 and no longer carries `<owner>-<repo>-run-<N>` anywhere in that row')
 }
 
 // ── (g) across every exec of every leg [M5] ─────────────────────────────────

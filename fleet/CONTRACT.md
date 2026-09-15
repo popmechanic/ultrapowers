@@ -82,8 +82,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     merge closes; append-only, and a run that left nothing writes no file.
     `kata.jsonl` — THE HUB'S OWN RECORD of the run, beside the engine's, present when the plan
     commit carried a `.ultrapowers/kata.json`. Two line kinds, one JSON object per line with `kind`
-    first and the object's own fields spread after it: `{"kind":"issue", …}` per issue of the run's
-    kata project, then `{"kind":"event", …}` per envelope of its event log. Exported at every
+    first and the object's own fields spread after it: `{"kind":"issue", …}` per one of
+    the run's issues — the run issue and the tasks named by that same `.ultrapowers/kata.json` —
+    then `{"kind":"event", …}` per envelope of the events on them, in the log's order. The kata
+    project is the repository's and holds every run of it; no other run's issue and no event that
+    names no issue is exported. Exported at every
     transition to a temporary name and moved into place, so a fetch that fails leaves the last whole
     export exactly as it was — the hub is archived and the run's state outlives it here. The last
     export carries the run issue's own terminal write (the boot's, `sandbox:run-<N>`: the
@@ -161,14 +164,20 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   but could not push or open its PR, so it is not launched) → `node fleet/claude-token.mjs refresh` →
   kata: the run filed on the hub, for each push attempt's N and before that attempt's plan commit is
   built — `compile_plan.py <plan> --stamp run-N --base <base>` (the launch's second compiler call; its
-  `launch_waves` entries carry each task's `factsheet`), one project `<owner>-<repo>-run-N` (slashes
-  in the target become `-`), one run issue (`run-N: <plan H1>`, body the plan's `**Claim:**` line,
-  metadata `{run, target, base, closes}` — `closes` the numbers of the `**Closes:**` line, `[]` when
-  absent), one issue per task in wave order (`task <id>: <title>`, metadata `{task, wave, factsheet}`,
-  a `parent` link to the run), one `blocks` link per `dag_edges` entry created ON the task that
-  blocks, then one `getIssue` per task and one for the run, whose revisions are what
-  `.ultrapowers/kata.json` records; a refused push that bumps N purges that project (`run number
-  taken`) and files again for N+1. The hub is reached from the laptop as `ssh <hub> curl …
+  `launch_waves` entries carry each task's `factsheet`), one project `<owner>-<repo>` (slashes in the
+  target become `-`) — one project per target and not one per run, so a name the hub already holds
+  answers the existing project and this run files into it — one run issue (`run-N: <plan H1>`, body
+  the plan's `**Claim:**` line, metadata `{run, target, base, closes}` — `closes` the numbers of the
+  `**Closes:**` line, `[]` when absent), one issue per task in wave order created under an
+  `Idempotency-Key` `<target>:<plan sha>:task-<id>` (`<plan sha>` the plan text's git blob sha) whose
+  create body is the same on every launch of that plan text — `task <id>: <title>`, empty body,
+  metadata `{task, plan}`, no links, since kata fingerprints the key with those fields — and then
+  read back, its metadata patched `{run, wave, factsheet}` under that read's revision and the run
+  issue set as its `parent` with `replace: true`; one `blocks` link per `dag_edges` entry created ON
+  the task that blocks, then one `getIssue` per task and one for the run, whose revisions are what
+  `.ultrapowers/kata.json` records; a refused push that bumps N closes the run-N issue with reason
+  `wontfix` and files again for N+1, where the same keys answer the same task issues — nothing on the
+  hub is destroyed. The hub is reached from the laptop as `ssh <hub> curl …
   localhost:8000/api/v1/…` — the host is the `KATA_URL` of `~/.ultrapowers/kata-hub.env`, the bearer
   is sourced from `/etc/kata/kata.env` ON the hub and never rides a laptop argv; an absent env file
   is refused before any command (`node fleet/kata-hub.mjs` builds the hub), a `ping` that fails —
@@ -640,9 +649,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `## ` heading in `skills/ultrapowers/references/first-run.md`.
 - **Janitor (`fleet/janitor.mjs`):** `ls 'fleet-r*' --json` → for each row, parse the VM's `comment` for
   `run=` and `target=` → ask the hub for the run's state (#938): once per pass, on the first row that
-  needs it, `GET /api/v1/projects?limit=1000`, matched on `name` against the run's project
-  `<owner>-<repo>-run-<N>` (kata addresses a project by integer `id`; a name in the path is a 400),
-  then `GET /api/v1/projects/<id>/issues?limit=1000`, in which the run issue is the one whose
+  needs it, `GET /api/v1/projects?limit=1000`, matched on `name` against the target's one project
+  `<owner>-<repo>` (kata addresses a project by integer `id`; a name in the path is a 400),
+  then `GET /api/v1/projects/<id>/issues?limit=1000` — one page holding every run of that target —
+  in which the run issue is the one whose
   `metadata.run` is N — that run issue `closed`, or one still `open` whose metadata carries a
   `work.state` of `done|parked|failed`, is a finished run:
   a closed run issue's `closed_reason` (`done`|`wontfix`) is the state and its `closed_at` the age,
