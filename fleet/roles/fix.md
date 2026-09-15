@@ -29,8 +29,13 @@ rather than editing around it — an edit there is recorded, and the referee
 reads it as one.
 
 The same judgment rules as the original implementation apply: stay inside your
-tree, disclose any `out-of-FILES:` or `plan-defect:` divergence as a `concerns`
-entry with DONE_WITH_CONCERNS, and never touch sibling-owned paths.
+tree, declare in the reply's `amendments` every change you made to what the plan
+asked for — an edit you took outside FILES (`amends: files`), a clause you read
+otherwise than as written to make the exam pass (`amends: clause`), a sim
+outside FILES you re-aimed (`amends: sim`), each with its `what` and `why` —
+disclose any `plan-defect:` divergence, and any edit outside FILES this task
+needed but could not make (`out-of-FILES (not taken):`), as a `concerns` entry
+with DONE_WITH_CONCERNS, and never touch sibling-owned paths.
 
 Return a single JSON object conforming to the schema, with `startHead` as the
 sha `git rev-parse HEAD` printed when you began. No prose outside the JSON.

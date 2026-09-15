@@ -220,6 +220,25 @@ export const IMPLEMENTER_SCHEMA = {
     status: { enum: ['DONE', 'DONE_WITH_CONCERNS', 'NEEDS_CONTEXT', 'BLOCKED'] },
     summary: { type: 'string' },
     concerns: { type: 'array', items: { type: 'string' } },
+    // #990 — what the worker changed about what the plan asked for, as a typed
+    // row rather than a sentence buried in `concerns`. `amends` (not `kind`:
+    // `kind` is every event's own type field) is one of three: `files` for an
+    // edit taken outside FILES, `clause` for a Machine clause or Context
+    // sentence read otherwise than as written, `sim` for a sim outside FILES
+    // re-aimed. Optional — `required` is unchanged, so a reply that amended
+    // nothing is the reply it always was.
+    amendments: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['amends', 'what', 'why'],
+        properties: {
+          amends: { enum: ['clause', 'files', 'sim'] },
+          what: { type: 'string' },
+          why: { type: 'string' },
+        },
+      },
+    },
     startHead: { type: 'string' },
   },
 }
@@ -1573,6 +1592,11 @@ export async function runEngine({
   const blockedWaves = []
   const waveMerges = []
   const judgmentCalls = []
+  // #990 — the amendments the run's workers declared: `{task, amends, what,
+  // why}`, one per reply entry, in the order the `driver:amendment` events
+  // were appended. `[]` on a run whose replies declared none; the key is on
+  // every report, so a reader never has to ask whether the run could say.
+  const amendments = []
   const unfinished = []
   const frontier = []
   // #604 — one record per JOINED merged task's `Run:` command (#887), executed
@@ -2086,6 +2110,24 @@ export async function runEngine({
         }
       }
     }
+    // #990 — the same seam for the reply's typed amendment rows, and read the
+    // same way at both call sites: whatever `res.status` is, an amendment is a
+    // statement about what the worker changed, not about how it finished. One
+    // record per entry, in the reply's order, so the event stream carries the
+    // implementer's before that task's first `driver:proof-run` and the fix
+    // round's after it — and `appendEvent` mirrors each onto the task's issue
+    // with no further code.
+    const noteAmendments = (res) => {
+      if (!res || !Array.isArray(res.amendments)) return
+      for (const a of res.amendments) {
+        if (!a || typeof a !== 'object') continue
+        const row = { task: task.id, amends: a.amends, what: a.what, why: a.why }
+        amendments.push(row)
+        appendEvent({ kind: 'driver:amendment', ...row })
+        judgmentCalls.push('task ' + task.id + ': amendment (' + a.amends + '): ' +
+          a.what + ' — ' + a.why)
+      }
+    }
     if (task.review && !isPairReview(task.review) && task.review !== 'lean') {
       judgmentCalls.push('task ' + task.id + ': unknown review="' + task.review +
         '" — fell back to the run default (' + reviewProfile + ')')
@@ -2461,6 +2503,7 @@ export async function runEngine({
       }
     }
     noteConcerns(impl)
+    noteAmendments(impl)
     // #314 guard, kept one more run (spec §3.1): clones are cut at BASE by
     // construction, so a mismatch here is a check on a thing that cannot
     // happen — which is what a guard on an inexpressible defect looks like.
@@ -2770,6 +2813,7 @@ export async function runEngine({
       if (impl === null) throw new Error('AGENT_NULL: pre-review fix agent returned null (terminal Overloaded or skipped)')
       stripUntrustedPatch(impl, patchPrefix)
       noteConcerns(impl)
+      noteAmendments(impl)
       await noteDrift('the fix round')
       if (hasCoordinates(impl)) await kataTouched(kataRow, impl.patch)
       if ((impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') && !hasCoordinates(impl)) {
@@ -4454,6 +4498,9 @@ export async function runEngine({
     ancestryMisses,
     deferredVerification,
     judgmentCalls,
+    // What the run's workers said they changed about what the plan asked for
+    // (#990) — `{task, amends, what, why}` per declared row, `[]` when none.
+    amendments,
     unfinished,
     // The driver's own findings about the fold, and nothing else: `[]` on a run
     // whose integrated `Check:`s were all green, which is every run that has no

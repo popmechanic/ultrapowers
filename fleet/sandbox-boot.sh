@@ -2453,6 +2453,12 @@ def listing(doc, key):
     return got if isinstance(got, list) else []
 
 
+def flat(value):
+    """One line out of one field — the flattening `residual_read` does."""
+    text = value if isinstance(value, str) else ""
+    return text.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+
+
 LINES = plan_lines()
 # The header is everything above the first task heading, the same bound
 # `plan_closes` reads its one `**Closes:**` line within.
@@ -2621,6 +2627,19 @@ for item in items:
         errands.append("- " + item)
 if errands:
     out += [""] + errands
+
+# THE AMENDMENTS, below the errands and above the record. A row is what a
+# worker asked the PLAN for, not an item anyone is being asked to do — so it is
+# counted on a line of its own and never joins the residual count above, and
+# `residual_read`, which never reads this key, is left alone.
+amendments = [row for row in listing(report, "amendments") if isinstance(row, dict)]
+if amendments:
+    out += ["", "Amendments: %d from workers" % len(amendments), ""]
+    out += ["- task %s%s%s: %s%s%s" % (flat(row.get("task")), DASH, flat(row.get("amends")),
+                                       flat(row.get("what")), DASH, flat(row.get("why")))
+            for row in amendments]
+else:
+    out += ["", "Amendments: none"]
 out.append("")
 sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
 ' "$PLAN_FILE" "$dest/report.json" "$1" "$merged" "$(read_status_field error)" "$MERGE_NOTE"
