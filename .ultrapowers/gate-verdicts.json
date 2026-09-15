@@ -1,0 +1,12 @@
+{
+  "tasks": {
+    "1": {"hash": "48396d5ae46934597839abf6014aa7955c03caa74ce8cb1dbc4ad29b40fc5eab", "verdict": "pass", "reason": "Leg (a) pins the exact two-key patch, its revision, the wave-1 headSha and the immediately following close with the same sha; (b) names the absent keys on the needs-review task; (c) makes a no-kata run's completion the falsifier; (d) is a section-scoped ordered grep; work.adopted_run 12 from stamp run-12 computes."},
+    "2": {"hash": "24f7fb3120ce801dd01f88d747cbcef91b1984aa597efd47d6b991786383c8de", "verdict": "pass", "reason": "M1's three negative variants pin reused to both keys and no fetch; M2/M3/M5 verify the reuse head by tree content and clone base rather than log shape; M4 gets one run per refusal row; M6's section-scoped ordered grep is satisfiable as written."}
+  },
+  "tally": {"dispatched": 3, "rejected": 1, "rounds": {"1": {"dispatched": 2, "rejected": 1}, "2": {"dispatched": 1, "rejected": 0}}},
+  "history": [
+    {"round": 1, "task": "1", "verdict": "pass"},
+    {"round": 1, "task": "2", "verdict": "fail", "reason": "M1's conjunction had no closed-without-keys negative; M6's grep omitted two of the clause's parts"},
+    {"round": 2, "task": "2", "verdict": "pass"}
+  ]
+}
