@@ -5,13 +5,14 @@
       "tip": "fdb2dd2755ada15c8a00159ea9919c3bf6b2ae2a",
       "candidate": "8e715281916d9d04ed69992422d7a9181e48c5d2",
       "disposition": "conflict parked",
-      "reason": "fold parked 4 conflict(s) — no annotated narration for fleet/tests/test_run_engine.mjs (delete/modify)",
+      "reason": "fold parked 4 conflict(s) \u2014 no annotated narration for fleet/tests/test_run_engine.mjs (delete/modify)",
       "path": "fleet/tests/test_run_engine.mjs",
       "pathsJoined": 21,
       "resolversDispatched": 0,
       "suite": "none",
       "checks": [],
-      "checkRetries": 0
+      "checkRetries": 0,
+      "pushedHead": "8e715281916d9d04ed69992422d7a9181e48c5d2"
     }
   }
 }
