@@ -105,3 +105,6 @@
 {"kind":"worker:end","label":"review:1:1","role":"reviewer","sessionId":"79dec01b-8a5a-4124-af94-8587c5628c4b","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5469,"output":10388,"cacheRead":832613,"cacheCreation":64653,"costUsd":1.3498815,"models":["claude-opus-5"]},"id":"01M2K52PW60000X530MB37EEEE","ts":1789496744838}
 {"kind":"transcript:slice","label":"review:1:1","sessionId":"79dec01b-8a5a-4124-af94-8587c5628c4b","bytes":11420,"id":"01M2K52PWD0000EFBZRGKFKZAV","ts":1789496744845}
 {"kind":"engine:phase","phase":"Wave 3","id":"01M2K546H80000R6124FK5CNS2","ts":1789496793640}
+{"kind":"driver:wave-adopted","wave":3,"tasks":["1","3"],"headSha":"ecbc708c4b4e2e870d525b702d7be6f5227a8e28","why":"aged","id":"01M2K55PQ50000D48X2GEQXKZA","ts":1789496842981}
+{"kind":"driver:integrated-clean","wave":3,"removed":7,"id":"01M2K55PQ900001QAC0M5VVF62","ts":1789496842985}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel fleet/launch.mjs fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/publish-fold.mjs fleet/kata-client.mjs fleet/roles/examiner.md fleet/roles/reconcile.md fleet/roles/resolver.md","exit":0,"minor":false,"wave":3,"id":"01M2K55PQJ00003JNC5YJS145Y","ts":1789496842994}
