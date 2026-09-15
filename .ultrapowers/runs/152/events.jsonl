@@ -28,3 +28,8 @@
 {"kind":"worker:end","label":"review:1:1","role":"reviewer","sessionId":"0ba5f178-69e2-4d75-844d-cd4b424d3fa7","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":6355,"output":21809,"cacheRead":1650054,"cacheCreation":86357,"costUsd":2.265597,"models":["claude-opus-5"]},"id":"01M2K9FQA40000FH2BMEAXY30Q","ts":1789501365572}
 {"kind":"transcript:slice","label":"review:1:1","sessionId":"0ba5f178-69e2-4d75-844d-cd4b424d3fa7","bytes":11622,"id":"01M2K9FQAE00002PWV1RWK57Q2","ts":1789501365582}
 {"kind":"engine:phase","phase":"Wave 1","id":"01M2K9FQD100008A3VY42QA4XS","ts":1789501365665}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["1"],"headSha":"391a7fe48bb338d1b06a71e400e3c498a884eab7","why":"released","released":["2"],"id":"01M2K9J54C0000RCRS9JY2RZT8","ts":1789501445260}
+{"kind":"driver:integrated-clean","wave":1,"removed":7,"id":"01M2K9J54F0000WJR1REZ4KDPZ","ts":1789501445263}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel/vendor fleet/launch.mjs fleet/sandbox-boot.sh fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/roles fleet/publish-fold.mjs","exit":0,"minor":false,"wave":1,"id":"01M2K9J54N0000EDPVPQJTQDX1","ts":1789501445269}
+{"kind":"worker:start","label":"exam:2","role":"examiner","sessionId":"267fb801-5e9c-415a-be5c-704ac36d6939","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-152/clones/exam-2","model":"opus","id":"01M2K9J5HY00005VQVGMGWF421","ts":1789501445694}
+{"kind":"worker:start","label":"impl:2","role":"implementer","sessionId":"daf4a2c2-6af4-45c4-9b86-bbef79aa55c5","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-152/clones/task-2","model":"opus","id":"01M2K9J5J00000H3TT70XG492E","ts":1789501445696}
