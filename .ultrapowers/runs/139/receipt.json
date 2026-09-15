@@ -1,0 +1,164 @@
+{
+  "ok": true,
+  "stamp": "run-139",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-139"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The report reference describes the report the ready-set engine writes",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/references/report-format.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The report reference describes the report the ready-set engine writes",
+          "files": [
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "grep '^| .waveMerges. |' skills/ultrapowers/references/report-format.md | grep 'one row per epoch.*the epoch' | grep -q .",
+            "grep '^| .waves. |' skills/ultrapowers/references/report-format.md | grep -q 'epoch'",
+            "grep '^| .unfinished. |' skills/ultrapowers/references/report-format.md | grep 'never became ready' | grep -q 'reason'",
+            "grep '^| .unfinished. |' skills/ultrapowers/references/report-format.md | grep -q 'never dispatched'",
+            "grep '^| .unfinished. |' skills/ultrapowers/references/report-format.md | grep -q 'depends on a failed task'",
+            "grep '^| .unfinished. |' skills/ultrapowers/references/report-format.md | grep -q 'predecessor never landed'",
+            "test \"$(grep -c SKIPPED skills/ultrapowers/references/report-format.md)\" = 0",
+            "test \"$(grep -c cascade-blocked skills/ultrapowers/references/report-format.md)\" = 0",
+            "test \"$(grep -c DEFERRED skills/ultrapowers/references/report-format.md)\" = 0",
+            "test \"$(grep -c 'args\\.edges' skills/ultrapowers/references/report-format.md)\" = 0",
+            "test \"$(grep -c 'share a wave' skills/ultrapowers/references/report-format.md)\" = 0",
+            "test \"$(grep -c 'dependent before prerequisite' skills/ultrapowers/references/report-format.md)\" = 0",
+            "grep '^| .judgmentCalls. |' skills/ultrapowers/references/report-format.md | grep 'endpoint not in' | grep -q 'cycle'",
+            "test \"$(sed -n '/^### .waveMerges\\[\\].status. values/,/^## Presentation/p' skills/ultrapowers/references/report-format.md | grep -c '^- ')\" = 3",
+            "sed -n '/^### .waveMerges\\[\\].status. values/,/^## Presentation/p' skills/ultrapowers/references/report-format.md | grep -q '^- .MERGED'",
+            "sed -n '/^### .waveMerges\\[\\].status. values/,/^## Presentation/p' skills/ultrapowers/references/report-format.md | grep -q '^- .CONFLICT'",
+            "sed -n '/^### .waveMerges\\[\\].status. values/,/^## Presentation/p' skills/ultrapowers/references/report-format.md | grep -q '^- .TEST_FAILED'",
+            "grep '^| .waveMerges. |' skills/ultrapowers/references/report-format.md | grep -q 'red baseline.*TEST_FAILED.*wave.*status.*detail.*branches.*no .headSha.*empty only.*interrupted before any fold'",
+            "test \"$(grep '^| .waveMerges. |' skills/ultrapowers/references/report-format.md | grep -c -e 'or absent' -e 'red baseline parked it')\" = 0"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "skills/ultrapowers/references/report-format.md"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The report reference describes the report the ready-set\u2026"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "globalConstraints": "- The engine, the kernel and the role files are untouched: `fleet/run-engine.mjs`, `skills/ultrapowers/kernel/` and `fleet/roles/` are byte-identical to BASE.\n- No document sentence is cited as evidence of code behaviour: what the document says is pinned by scoped greps.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles skills/ultrapowers/kernel fleet/run-engine.mjs",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-139/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-139/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-139/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-139/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
