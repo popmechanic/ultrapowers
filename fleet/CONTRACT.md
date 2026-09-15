@@ -52,6 +52,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `receipt.json`, `gate-receipt.json`, `report.json`, `events.jsonl`, `engine.log`,
     `claude-version.txt` (the boot's `claude --version` line, written before the engine starts), plus
     `approve-receipt.json` and `standing-approval.json`, present when the engine wrote them.
+    That `report.json`'s `engineCoverage` — on a run that changed `fleet/run-engine.mjs`, which of
+    the lines it changed an engine sim ran and which none did, `null` on every other run — is a
+    reading beside the receipt and gates nothing: for the same tree, `tests.passed`, the gate
+    receipt and the merge decision are what they would have been without it.
     The engine's own wave record is two kinds in that `events.jsonl`, one per epoch that folded.
     An epoch is a fold, not a layer: the driver keeps its lanes full from the ready set — a task
     is ready when every predecessor an edge names has been adopted — and folds whatever has
