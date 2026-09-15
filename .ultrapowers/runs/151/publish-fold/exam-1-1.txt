@@ -1,0 +1,11 @@
+ok (1493 ms) — (a) [M3] the amended card carries one `Amendments: 2 from workers` line, then its two rows
+ok (0 ms) — (a) [M3] the Amendments line sits below the Residuals line and its errand, above the record
+ok (1604 ms) — (b) [M3] the default green card carries one `Amendments: none` line and no row
+ok (1 ms) — (c) [M4] the amended run renders `Residuals: 1 from review` and the ack's one errand line
+ok (0 ms) — (c) [M4] the amended run's residuals.jsonl holds the one deferred row and no amendment
+ok (1 ms) — (c) [M4] the default run still renders `Residuals: none`, and both records are unchanged
+ok (6 ms) — (d) [M1] the CONTRACT.md evidence sub-bullet names the driver:amendment event
+ok (4 ms) — (e) [M3] the CONTRACT.md Publish bullet names both Amendments lines
+ok (7 ms) — (f) [M2] the report reference carries the amendments schema and its field-table row
+ok (11 ms) — (g) [M3] the edited boot script still parses as bash
+ALL TESTS PASSED

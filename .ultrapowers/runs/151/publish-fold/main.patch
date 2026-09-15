@@ -1,0 +1,2949 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+index d5657ce4c4574353823797bd4131f42f3dcfc553..cb2a8a9ea37c1d4ea7342a1581be3b203c68882b 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -182,6 +182,16 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
+   (131–140); the fold rule (`#1006`, one replay) stays an `experiment` until five, its rollback
+   `foldAgeMs=0` — a fold at every landing; and one reviewer (`#974`) was flipped on `n=71` runs and
+   stands.
++- **The plan is a submission, not a contract (operator, 2026-09-15, #990).** A worker that changes a
++  clause, a Files set or a sim outside its own Files has not broken the plan — it declares an
++  amendment, in the open: a `driver:amendment` row on the evidence branch, an entry in the
++  reviewer's lens, a line on the pull request card's list, and a count in the release census. A
++  reviewer judges a declared amendment on its merits and never reverts it for being outside the
++  plan. The plan-defect park stays exactly where it was — for a leg no implementation can pass, not
++  for a Files set a worker outgrew. The reading kept is amendments per run and per task. Reason:
++  run-133's task 1 made four such changes and merged clean, while run-2 died on the ambiguity — a
++  compelled edit outside Files was ruled lawful in round 1, reverted by the fix round, blocked in
++  round 2, and the task lost to `fix-loop-exhausted`.
+ 
+ ## Working with the operator
+ 
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index d2fb3f2ce41b29a4716dec461dee9db1d29d2de7..cee0e689a1a5897db4072d27b255d5866432c446 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -88,6 +88,15 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+     re-run also carries `flaky: true` and is read as green: the exam's red leaves the pass and
+     the task proceeds (to review, or to the ordinary repair round if a `Run:`/`Check:` is still
+     red). An ordinary red exam with no such concern is never re-run; it buys the one repair round.
++    One more kind records what a worker asked the PLAN for rather than what it did:
++    `driver:amendment` `{task, amends, what, why}` — the task the worker was dispatched at, which
++    part of that task it would have the plan change (`amends` is one of `clause`, `files` and
++    `sim`, and no other value), the change itself and the reason for it — one event per entry of a
++    worker's reply's `amendments`, appended in the reply's own order and mirrored on the task's
++    hub issue like every `driver:` line naming a task. `report.json`'s top-level `amendments` is
++    the same rows in the same order, `[]` when the run collected none. Nothing here gates: an
++    amendment is a note to whoever writes the next plan, so for the same tree `tests.passed`, the
++    gate receipt and the merge decision are what they would have been without it.
+     `transcripts/<sessionId>.jsonl` — one per worker session, the reduced record — is there
+     on the same terms, present when the engine wrote them.
+     `state-exams/` — a tree of `task-<id>/<stem>-<pass>/` directories, one per exam run, whose
+@@ -653,7 +662,12 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   `| task | claim | exam | probes | mutant | suite |`, one row per task in the plan's order, whose
+   cells are read off the plan, `report.json`, `gate-receipt.json` and the status page and are never
+   narrated at publish time; then `Residuals: <n> from review` — `Residuals: none` at zero — and, as
+-  `- ` lines, only the items nobody else will do. Everything the run knows beyond that is folded
++  `- ` lines, only the items nobody else will do; then, below those errands,
++  `Amendments: <n> from workers` and, after a blank line, one
++  `- task <id> — <amends>: <what> — <why>` line per row of `report.json`'s `amendments` in the
++  report's own order, and `Amendments: none` when that list is empty, absent or the report
++  unreadable — the residual count above is never one of these rows.
++  Everything the run knows beyond that is folded
+   into a `<details><summary>Record</summary>` block: the `## fleet <run> — <outcome>` heading, the
+   metadata table, `### Checks`, `## Publish fold`, `## Held`, `### Evidence`, `### Plan` and
+   `### Residuals`, in that order.
+diff --git a/fleet/roles/fix.md b/fleet/roles/fix.md
+index 57f23d38f1df23269443ad58424f6f296ff2f91c..5e69716baf2abf6f79d3dfc37786dddd558077f2 100644
+--- a/fleet/roles/fix.md
++++ b/fleet/roles/fix.md
+@@ -29,8 +29,13 @@ rather than editing around it — an edit there is recorded, and the referee
+ reads it as one.
+ 
+ The same judgment rules as the original implementation apply: stay inside your
+-tree, disclose any `out-of-FILES:` or `plan-defect:` divergence as a `concerns`
+-entry with DONE_WITH_CONCERNS, and never touch sibling-owned paths.
++tree, declare in the reply's `amendments` every change you made to what the plan
++asked for — an edit you took outside FILES (`amends: files`), a clause you read
++otherwise than as written to make the exam pass (`amends: clause`), a sim
++outside FILES you re-aimed (`amends: sim`), each with its `what` and `why` —
++disclose any `plan-defect:` divergence, and any edit outside FILES this task
++needed but could not make (`out-of-FILES (not taken):`), as a `concerns` entry
++with DONE_WITH_CONCERNS, and never touch sibling-owned paths.
+ 
+ Return a single JSON object conforming to the schema, with `startHead` as the
+ sha `git rev-parse HEAD` printed when you began. No prose outside the JSON.
+diff --git a/fleet/roles/implementer.md b/fleet/roles/implementer.md
+index d135ccbe9fa87c61143dbe31f58bb67a1f3eacd1..1e093e27bb5c04367185b62034ec5e568dc0a5d3 100644
+--- a/fleet/roles/implementer.md
++++ b/fleet/roles/implementer.md
+@@ -40,8 +40,15 @@ one you never saw. The missing implementation is your job; the measurement of
+ it is not.
+ 
+ Judgment rules: treat FILES as your expected footprint, not a fence — a path
+-outside it that the task genuinely requires is fine, but disclose it as a
+-`concerns` entry prefixed `out-of-FILES:` and report DONE_WITH_CONCERNS; never
++outside it that the task genuinely requires is fine, but say so in the reply's
++`amendments`, which is where every change you made to what the plan asked for
++is declared, one typed row each: an edit you took outside FILES
++(`amends: files`), a Machine clause or Context sentence you read otherwise than
++as written in order to make the exam pass (`amends: clause`), and a sim outside
++FILES you re-aimed (`amends: sim`). Each row says in `what` the path or the
++clause and the change you made to it, and in `why` what made that necessary; an
++amendment is a declaration about the work, not a worry about it, so it does not
++set your `status` and does not belong in `concerns`. Never
+ delete a file outside FILES. An edit outside FILES your task needed but did NOT
+ make — the plan froze the path, a sibling owns it, the change was not yours to
+ land — is disclosed the same way, as a `concerns` entry prefixed
+diff --git a/fleet/roles/reviewer.md b/fleet/roles/reviewer.md
+index 5997466269a8964ff0c26eef45356e401ff1aeee..700a527702b86bc95dd269284f639218f43d2dbb 100644
+--- a/fleet/roles/reviewer.md
++++ b/fleet/roles/reviewer.md
+@@ -12,9 +12,11 @@ implementer report, or modify anything; output only your verdict.
+ 2. Flag work the task does not require: scope creep, unrelated refactors,
+    leftover debug code.
+ 3. FILES is the expected footprint, not a fence: modifying a path outside it is
+-   minor, naming that path; deleting a file present at BASE that the task's
+-   Files block does not declare with a `Delete:` bullet is blocking. So is
+-   touching a SIBLING FILES path, or a criterion unsatisfiable only because a
++   minor, naming that path, unless an `AMENDMENTS` entry declares it and the
++   diff bears that entry out, which rule 9 settles. But
++   deleting a file present at BASE that the task's Files block does not declare
++   with a `Delete:` bullet is blocking, declared or not. So is touching a
++   SIBLING FILES path, or a criterion unsatisfiable only because a
+    sibling-owned file is absent at BASE — name it and "missing dependency edge".
+ 4. Gate the diff against each GLOBAL CONSTRAINT given, and against INTERFACES:
+    the diff produces the named Produces contract with its stated types and uses
+@@ -26,8 +28,10 @@ implementer report, or modify anything; output only your verdict.
+ 6. Plan-supplied code is not privileged. A genuine defect faithfully
+    transcribed from the plan is a finding prefixed `plan-defect:` — blocking
+    when its fix lies inside this task's own FILES, minor otherwise, naming the
+-   path that has to change and the actor defined below. A disclosed, correct
+-   divergence is lawful; block only if it is wrong or undisclosed.
++   path that has to change and the actor defined below. A divergence from what
++   the plan supplied is read as rule 9 reads any divergence: declared and borne
++   out by the diff, it is lawful; undeclared, or declared and contradicted by
++   the lines, it is a finding there.
+ 7. A diff is a result, not a history: it cannot show the order its lines arose
+    in. A requirement about how the work was produced — red-then-green ordering,
+    commit cadence — is not a finding, even when the task or a global constraint
+@@ -45,6 +49,19 @@ implementer report, or modify anything; output only your verdict.
+    assertion, unless the exam itself was wrong — a pin that
+    no correct implementation could satisfy, a bad import, or a
+    fixture it never created — and the hunk changes only that. Say which.
++9. AMENDMENTS, when present, is the worker's own declaration of where it
++   diverged and why — one entry per divergence, `amends` (`clause`, `files` or
++   `sim`), `what` it did, `why` it did it — and the second exception, beside
++   `EXAM CONCERN:`, to the opening rule against reading an implementer's
++   report. Judge each entry; do not undo it. For each entry in AMENDMENTS,
++   check that the diff does what `what` says, and that `why` holds
++   against the task text. A declared amendment the diff bears out is lawful,
++   named in the review, and never a finding and never something to revert. An
++   edit outside FILES, a clause read otherwise or a sim re-aimed that the diff
++   shows and no entry declares is a finding prefixed `undeclared amendment:`,
++   graded `minor`, naming the path or the clause.
++   A declared amendment the diff contradicts — the entry claims one change and
++   the lines carry another — is `blocking` with actor `implementer`.
+ 
+ Every issue names its `actor`: who can act on it. `implementer` when the fix
+ lies inside this task's own `FILES` and the diff can carry it — the ordinary
+@@ -69,8 +86,9 @@ is not a finding, and a non-zero one is already the fix loop's, not the
+ referee's — say what the diff gets wrong and leave the re-run to the loop that
+ owns it.
+ 
+-An `EXAM CONCERN:` line, when present, is the one exception to the rule above
+-against reading an implementer's report: it is the fix round's claim that a
++An `EXAM CONCERN:` line, when present, is one of the two exceptions to the rule
++above against reading an implementer's report — `AMENDMENTS` below is the
++other: it is the fix round's claim that a
+ named case of this task's exam cannot pass for any output — that the red in
+ EXAM EVIDENCE is the exam's fault, not the submission's. Check the claim
+ against the exam file in PATCH. Rule 8's standard settles it: a pin no correct
+@@ -83,6 +101,15 @@ repairs the tree rather than the exam. Either way the claim is answered by a
+ finding, never by silence: the exam is red, and a red exam blocks whatever you
+ return.
+ 
++AMENDMENTS, when present, is the other exception: the worker's own declaration
++of each divergence it made, the implementer's entries first and the fix round's
++after them. It is a declaration, not a request — the work is already in the
++diff — so read it as the lens rule 9 describes: an entry the diff bears out is
++lawful and named in the review, an entry the diff contradicts is blocking, and
++a divergence the diff shows that no entry declares is an `undeclared
++amendment:` finding. A task whose workers declared nothing carries no such
++block, which is not itself a finding.
++
+ CHECK EVIDENCE, when present, is the same for the GLOBAL CONSTRAINTS that carry
+ a `Check:` command: the driver ran each one itself, in this task's clone, on
+ the tree the patch describes. A blocking check that exited non-zero is already
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index 9179c59529533cd4f107c3d98b382e79c565ee42..bfa9712de5ddca2939db227047b38dbe817bb759 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -220,6 +220,25 @@ export const IMPLEMENTER_SCHEMA = {
+     status: { enum: ['DONE', 'DONE_WITH_CONCERNS', 'NEEDS_CONTEXT', 'BLOCKED'] },
+     summary: { type: 'string' },
+     concerns: { type: 'array', items: { type: 'string' } },
++    // #990 — what the worker changed about what the plan asked for, as a typed
++    // row rather than a sentence buried in `concerns`. `amends` (not `kind`:
++    // `kind` is every event's own type field) is one of three: `files` for an
++    // edit taken outside FILES, `clause` for a Machine clause or Context
++    // sentence read otherwise than as written, `sim` for a sim outside FILES
++    // re-aimed. Optional — `required` is unchanged, so a reply that amended
++    // nothing is the reply it always was.
++    amendments: {
++      type: 'array',
++      items: {
++        type: 'object',
++        required: ['amends', 'what', 'why'],
++        properties: {
++          amends: { enum: ['clause', 'files', 'sim'] },
++          what: { type: 'string' },
++          why: { type: 'string' },
++        },
++      },
++    },
+     startHead: { type: 'string' },
+   },
+ }
+@@ -422,6 +441,26 @@ export const examConcernBlock = (concerns) => {
+   if (!Array.isArray(concerns) || concerns.length === 0) return ''
+   return '\n\n' + concerns.map((c) => 'EXAM CONCERN: ' + String(c)).join('\n')
+ }
++// #990 — what the worker SAID it diverged on. An amendment entry is
++// `{amends: 'clause'|'files'|'sim', what, why}` on the worker's reply: the one
++// place a compelled divergence — an edit outside FILES, a clause read
++// otherwise, a sim re-aimed — is declared rather than discovered. Rendered for
++// the referee so the divergence arrives as a declaration to JUDGE rather than
++// as an anomaly in the diff to undo (run-2's compelled out-of-Files edit,
++// reverted by a fix round that never saw why it was made). No entries renders
++// nothing at all, which keeps the prompt of every task that declared none
++// byte-identical to the one it had before this existed.
++export const amendmentBlock = (amendments) => {
++  if (!Array.isArray(amendments) || amendments.length === 0) return ''
++  return '\n\nAMENDMENTS:' + amendments
++    .map((a) => '\n- ' + String(a && a.amends) + ': ' + String(a && a.what) +
++      ' — ' + String(a && a.why))
++    .join('')
++}
++// The entries of one reply, defensively: a worker that declared none, or typed
++// the key as something other than an array, contributes nothing.
++const amendmentsOf = (reply) =>
++  (reply && Array.isArray(reply.amendments)) ? reply.amendments : []
+ // ── the state-exam record (spec 2026-09-09 §3.5, §3.6) ──────────────────────
+ // A state exam is an exam that measures a running app's STATE — the store diff
+ // it produced, whether the render happened, whether a mutant of the expected
+@@ -1573,6 +1612,11 @@ export async function runEngine({
+   const blockedWaves = []
+   const waveMerges = []
+   const judgmentCalls = []
++  // #990 — the amendments the run's workers declared: `{task, amends, what,
++  // why}`, one per reply entry, in the order the `driver:amendment` events
++  // were appended. `[]` on a run whose replies declared none; the key is on
++  // every report, so a reader never has to ask whether the run could say.
++  const amendments = []
+   const unfinished = []
+   const frontier = []
+   // #604 — one record per JOINED merged task's `Run:` command (#887), executed
+@@ -2086,6 +2130,24 @@ export async function runEngine({
+         }
+       }
+     }
++    // #990 — the same seam for the reply's typed amendment rows, and read the
++    // same way at both call sites: whatever `res.status` is, an amendment is a
++    // statement about what the worker changed, not about how it finished. One
++    // record per entry, in the reply's order, so the event stream carries the
++    // implementer's before that task's first `driver:proof-run` and the fix
++    // round's after it — and `appendEvent` mirrors each onto the task's issue
++    // with no further code.
++    const noteAmendments = (res) => {
++      if (!res || !Array.isArray(res.amendments)) return
++      for (const a of res.amendments) {
++        if (!a || typeof a !== 'object') continue
++        const row = { task: task.id, amends: a.amends, what: a.what, why: a.why }
++        amendments.push(row)
++        appendEvent({ kind: 'driver:amendment', ...row })
++        judgmentCalls.push('task ' + task.id + ': amendment (' + a.amends + '): ' +
++          a.what + ' — ' + a.why)
++      }
++    }
+     if (task.review && !isPairReview(task.review) && task.review !== 'lean') {
+       judgmentCalls.push('task ' + task.id + ': unknown review="' + task.review +
+         '" — fell back to the run default (' + reviewProfile + ')')
+@@ -2461,6 +2523,7 @@ export async function runEngine({
+       }
+     }
+     noteConcerns(impl)
++    noteAmendments(impl)
+     // #314 guard, kept one more run (spec §3.1): clones are cut at BASE by
+     // construction, so a mismatch here is a check on a thing that cannot
+     // happen — which is what a guard on an inexpressible defect looks like.
+@@ -2752,6 +2815,11 @@ export async function runEngine({
+                  ...examEditedField() }
+       }
+     }
++    // #990 — the amendments the review round will read. `impl` is reassigned to
++    // the fix reply below when the pass bought a round, so the implementer's own
++    // declarations are held here, before that happens; the fix round's are
++    // appended after them at the prompt, in the order they were made.
++    const implAmendments = amendmentsOf(impl)
+     // A flaky exam beside an otherwise-green pass leaves `reds` empty here, and
+     // an empty pass buys no round — the task goes straight to review.
+     if (reds.length) {
+@@ -2770,6 +2838,7 @@ export async function runEngine({
+       if (impl === null) throw new Error('AGENT_NULL: pre-review fix agent returned null (terminal Overloaded or skipped)')
+       stripUntrustedPatch(impl, patchPrefix)
+       noteConcerns(impl)
++      noteAmendments(impl)
+       await noteDrift('the fix round')
+       if (hasCoordinates(impl)) await kataTouched(kataRow, impl.patch)
+       if ((impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') && !hasCoordinates(impl)) {
+@@ -2877,6 +2946,12 @@ export async function runEngine({
+         // are the driver's fact and the concern is the graded party's claim
+         // about them.
+         examConcernBlock(examConcerns) +
++        // After the concerns about the exam, before the constraint checks
++        // (#990): the worker's own declaration of where it diverged, the
++        // implementer's entries first and the fix round's after them when a
++        // round ran. A task whose replies declared none renders nothing here,
++        // so its prompt is the one it had before this existed.
++        amendmentBlock(implAmendments.concat(proofFixes ? amendmentsOf(impl) : [])) +
+         checkEvidenceBlock(checkEvidence) +
+         // Read HERE, not at the pre-review pass: the round grades the tree the
+         // pre-review repair round left, so it must read the record that round's
+@@ -4454,6 +4529,9 @@ export async function runEngine({
+     ancestryMisses,
+     deferredVerification,
+     judgmentCalls,
++    // What the run's workers said they changed about what the plan asked for
++    // (#990) — `{task, amends, what, why}` per declared row, `[]` when none.
++    amendments,
+     unfinished,
+     // The driver's own findings about the fold, and nothing else: `[]` on a run
+     // whose integrated `Check:`s were all green, which is every run that has no
+diff --git a/fleet/sandbox-boot.sh b/fleet/sandbox-boot.sh
+index 820f07575d887827c050ffa4e36e6b70ac07090f..645946cde5f0e4c80844b3a1b0cd9abb16f9f008 100755
+--- a/fleet/sandbox-boot.sh
++++ b/fleet/sandbox-boot.sh
+@@ -2453,6 +2453,12 @@ def listing(doc, key):
+     return got if isinstance(got, list) else []
+ 
+ 
++def flat(value):
++    """One line out of one field — the flattening `residual_read` does."""
++    text = value if isinstance(value, str) else ""
++    return text.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
++
++
+ LINES = plan_lines()
+ # The header is everything above the first task heading, the same bound
+ # `plan_closes` reads its one `**Closes:**` line within.
+@@ -2621,6 +2627,19 @@ for item in items:
+         errands.append("- " + item)
+ if errands:
+     out += [""] + errands
++
++# THE AMENDMENTS, below the errands and above the record. A row is what a
++# worker asked the PLAN for, not an item anyone is being asked to do — so it is
++# counted on a line of its own and never joins the residual count above, and
++# `residual_read`, which never reads this key, is left alone.
++amendments = [row for row in listing(report, "amendments") if isinstance(row, dict)]
++if amendments:
++    out += ["", "Amendments: %d from workers" % len(amendments), ""]
++    out += ["- task %s%s%s: %s%s%s" % (flat(row.get("task")), DASH, flat(row.get("amends")),
++                                       flat(row.get("what")), DASH, flat(row.get("why")))
++            for row in amendments]
++else:
++    out += ["", "Amendments: none"]
+ out.append("")
+ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
+ ' "$PLAN_FILE" "$dest/report.json" "$1" "$merged" "$(read_status_field error)" "$MERGE_NOTE"
+diff --git a/fleet/tests/test_run_engine_amendment_lens.mjs b/fleet/tests/test_run_engine_amendment_lens.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..0b2abead8218414f36efd4e2749b051592d2c607
+--- /dev/null
++++ b/fleet/tests/test_run_engine_amendment_lens.mjs
+@@ -0,0 +1,547 @@
++// fleet/tests/test_run_engine_amendment_lens.mjs — the amendments a worker
++// DECLARED, rendered into the prompt of the referee who judges them.
++//
++// A worker that had to step outside its FILES, read a clause otherwise or
++// re-aim a sim used to reach the referee as an undisclosed divergence, and the
++// referee's only honest move was to call for the revert (run-2, 2026-09-04).
++// #990 settles it the other way: the declaration is handed to the referee as a
++// LENS — it says what changed and why, and the referee grades the change
++// instead of undoing it. This file is that seam, end to end: the renderer, its
++// place in the review prompt, and the six rows `fleet/roles/reviewer.md` must
++// carry so a referee reads the block the way #990 decided.
++//
++// Machine clauses under test, restated:
++//
++//   M1 — `fleet/run-engine.mjs` exports `amendmentBlock(amendments)`: `''`
++//        when the argument is not an array or is empty; otherwise
++//        `'\n\nAMENDMENTS:'` followed by one line per entry,
++//        `'\n- <amends>: <what> — <why>'`, in order.
++//   M2 — the review prompt of a task carries `amendmentBlock` over the
++//        implementer reply's `amendments` followed by the fix reply's (when a
++//        fix round ran), rendered AFTER the exam evidence and after every
++//        `EXAM CONCERN:` line; a task whose replies declared none has a review
++//        prompt that contains no `AMENDMENTS:` — byte-for-byte the prompt it
++//        had at BASE.
++//   M3 — `fleet/roles/reviewer.md` says, in its numbered rules, six things:
++//        (i) AMENDMENTS is the worker's own declaration and the SECOND
++//        exception — beside `EXAM CONCERN:` — to the rule against reading an
++//        implementer's report, and the `EXAM CONCERN:` paragraph names it as
++//        the other exception; (ii) for each entry the referee checks the diff
++//        does what `what` says and that `why` holds against the task text;
++//        (iii) a declared amendment the diff bears out is lawful, named in the
++//        review, never a finding and never something to revert; (iv) an
++//        undeclared divergence the diff shows is a finding prefixed
++//        `undeclared amendment:`, graded `minor`, naming the path or the
++//        clause; (v) a declared amendment the diff contradicts is `blocking`
++//        with actor `implementer`; (vi) deleting a file present at BASE the
++//        Files block does not declare with `Delete:` stays blocking as at BASE.
++//
++// Legs, and the clause each comes from:
++//   (a) [M1] the four renderings — two empties, a non-array, and the exact
++//       two-entry string.
++//   (b) [M2] one green run, one implementer `files` amendment: exactly one
++//       `AMENDMENTS:`, after RUN EVIDENCE, carrying that one line.
++//   (c) [M2] a red `Run:` bought a fix round: the implementer's entry first,
++//       the fix round's second.
++//   (d) [M2] the exam-concern shape: the block sits after the LAST
++//       `EXAM CONCERN:` line.
++//   (e) [M2] no amendments: no `AMENDMENTS` in anything the engine assembled,
++//       the prompt byte-for-byte BASE's engine's, and the row and
++//       `judgmentCalls` a `passReview` stub's.
++//   (f) [M3] row (i), both halves — the third and fourth `Run:` lines.
++//   (g) [M2] the evidence blocks a sibling sim pins are untouched on the
++//       patched prompt, and the new block sits between EXAM and CHECK
++//       EVIDENCE — the second `Run:` line's subject, read here without
++//       spawning anything (`test_sims_are_hermetic.mjs` M4: no sim runs
++//       another sim; the driver runs that command itself).
++//   (h) [M3] row (ii) — the fifth `Run:` line.
++//   (i) [M3] row (iii) — the sixth `Run:` line.
++//   (j) [M3] row (iv) — the seventh `Run:` line.
++//   (k) [M3] row (v) — the eighth `Run:` line.
++//   (l) [M3] row (vi) — the ninth `Run:` line.
++//
++// Two readings this file makes, spelled out so a later session need not
++// reconstruct them:
++//
++//   * M3 puts the word AMENDMENTS into `fleet/roles/reviewer.md`, and the role
++//     file is the first thing in every review prompt. So M2's "contains no
++//     `AMENDMENTS:`" and leg (e)'s "no `AMENDMENTS` substring" can only be
++//     read against what the ENGINE assembled — the prompt with the role text
++//     sliced off its front. Every index and every count below is taken on that
++//     tail, and `assembled()` is where the slice happens.
++//   * M2's "byte-for-byte the prompt it had at BASE" is the same reading: both
++//     engines are driven against the SAME roles directory, so the only thing
++//     the comparison can see is what the engine itself put in the prompt.
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { execFileSync } from 'node:child_process'
++import { fileURLToPath, pathToFileURL } from 'node:url'
++import { execSeam } from '../run-main.mjs'
++import { makeCwdFor, withPatchCapture, defaultTaskIdOf } from '../run-waves.mjs'
++import { runEngine, amendmentBlock } from '../run-engine.mjs'
++import { ENV, rig, makeRepo, provision, passReview, doneImpl } from './_engine_helpers.mjs'
++
++const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-amendment-lens-'))
++// rmSync unlinks the base tree's `skills` symlink rather than following it.
++process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
++const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
++const FLEET_DIR = fileURLToPath(new URL('..', import.meta.url))
++const ROLES_DIR = fileURLToPath(new URL('../roles/', import.meta.url))
++const REVIEWER_MD = fileURLToPath(new URL('../roles/reviewer.md', import.meta.url))
++const BASE_SHA = '41cb53b606146ee16f7904eaf0440531257426f1'
++
++// ── reading a prompt ────────────────────────────────────────────────────────
++// The role text is the literal first bytes of every review prompt (`loadRoles`
++// reads the file raw and the assembly starts `roles.reviewer + …`). Slicing it
++// off leaves exactly what the engine assembled — the only place an
++// `AMENDMENTS:` block the ENGINE rendered can be, and the only place where
++// counting the word means anything once M3 has put it in the role text too.
++const ROLE_TEXT = fs.readFileSync(REVIEWER_MD, 'utf8')
++const assembled = (prompt) => {
++  const p = String(prompt || '')
++  assert.ok(p.startsWith(ROLE_TEXT),
++    'sim precondition: a review prompt opens with fleet/roles/reviewer.md verbatim — ' +
++    'the slice below is what the engine itself assembled:\n' + JSON.stringify(p.slice(0, 200)))
++  return p.slice(ROLE_TEXT.length)
++}
++const countOf = (hay, needle) => hay.split(needle).length - 1
++
++// ── the rig ─────────────────────────────────────────────────────────────────
++const EXAM_FILE = 'a_test.sh'
++const BODY = '**Claim:** the tree carries the implementer\'s line in a.txt\n' +
++  'Machine: M1. `a.txt` holds `from-A`.\n\n' +
++  '**Proof:**\n- Legs: (a) `a.txt` holds it [M1]'
++const entry = (over = {}) => ({
++  id: 'T1', title: 'the amendment lens', files: ['a.txt', 'fixed.txt'],
++  tier: 'standard', review: 'peer', writes: ['a.txt'], commutes: [],
++  interfaces: { consumes: [], produces: [] },
++  testCmd: 'bash check.sh', proofTests: [], proofRuns: [], body: BODY, ...over,
++})
++
++// The amendment entries the stubs declare — the shared literal of #990:
++// `{amends: 'clause'|'files'|'sim', what, why}` under the reply's `amendments`
++// key. The rig's stub returns the field whatever any schema says, which is why
++// this file needs nothing of the sibling task that adds it to the schema.
++const IMPL_AM = { amends: 'files', what: 'edited one path outside FILES', why: 'no other seam existed' }
++const FIX_AM = { amends: 'clause', what: 'read M2 the narrow way', why: 'the wide reading has no subject' }
++const IMPL_LINE = '\n- files: edited one path outside FILES — no other seam existed'
++const FIX_LINE = '\n- clause: read M2 the narrow way — the wide reading has no subject'
++
++let seq = 0
++// One canned run. `implAmendments`/`fixAmendments` are put on the reply object
++// directly; `fixConcerns`, when given, makes the fix round's reply the
++// `DONE_WITH_CONCERNS` + `exam:` shape that buys a referee beside a still-red
++// exam. `examScript` is what the canned examiner writes at the task's one Proof
++// `Test:` path — the only way to give a sim a RUNNABLE exam.
++async function scenario({ task, implAmendments = null, fixAmendments = null,
++                          fixConcerns = null, examScript = null,
++                          constraintChecks = [], onImpl = () => {}, onFix = () => {} }) {
++  seq += 1
++  const stamp = 'al' + seq
++  const repo = makeRepo(path.join(tmp, 'repo-' + stamp))
++  const runDir = path.join(tmp, 'run-' + stamp)
++  const calls = []
++  const prompts = {}
++  const stub = (prompt, opts, cwd) => {
++    calls.push(opts.label)
++    prompts[opts.label] = prompt
++    const kind = opts.label.split(':')[0]
++    if (kind === 'exam') {
++      fs.writeFileSync(path.join(cwd, EXAM_FILE), String(examScript))
++      return { status: 'DONE', summary: 'exam written' }
++    }
++    if (kind === 'impl') {
++      onImpl(cwd)
++      const reply = doneImpl(cwd)
++      if (implAmendments) reply.amendments = implAmendments
++      return reply
++    }
++    if (kind === 'fix') {
++      onFix(cwd)
++      const reply = doneImpl(cwd)
++      if (fixAmendments) reply.amendments = fixAmendments
++      if (fixConcerns) { reply.status = 'DONE_WITH_CONCERNS'; reply.concerns = fixConcerns }
++      return reply
++    }
++    if (kind === 'review') return passReview()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run } = rig({
++    repo, runDir, waves: [[task]], stub, stamp,
++    // `foldAgeMs: 0` — every run here folds at its landings, as the sims that
++    // pace reviewers on the kernel's folds do; the fold trigger is another
++    // exam's subject.
++    extraArgs: { constraintChecks, foldAgeMs: 0 },
++  })
++  const report = await run()
++  return { report, row: report.tasks[0], calls, prompts }
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// leg (a) [M1] — the renderer itself
++// ════════════════════════════════════════════════════════════════════════════
++{
++  assert.equal(amendmentBlock(undefined), '',
++    'leg (a) [M1]: `amendmentBlock(undefined)` renders nothing — a reply that declared ' +
++    'no amendments must leave the prompt of every other task unchanged')
++  assert.equal(amendmentBlock(null), '',
++    'leg (a) [M1]: `amendmentBlock(null)` renders nothing')
++  assert.equal(amendmentBlock([]), '',
++    'leg (a) [M1]: `amendmentBlock([])` renders nothing — empty is not an empty heading')
++  assert.equal(amendmentBlock('files: W — Y'), '',
++    'leg (a) [M1]: an argument that is not an array renders nothing')
++  assert.equal(
++    amendmentBlock([{ amends: 'files', what: 'W', why: 'Y' },
++                    { amends: 'clause', what: 'X', why: 'Z' }]),
++    '\n\nAMENDMENTS:\n- files: W — Y\n- clause: X — Z',
++    'leg (a) [M1]: two entries render as the heading and one `- <amends>: <what> — <why>` ' +
++    'line each, in the order given')
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// leg (b) [M2] — one green run, one declared amendment
++// ════════════════════════════════════════════════════════════════════════════
++// The implementer declares one `files` amendment beside a green `Run:`. The
++// referee's prompt carries exactly one block, after the driver's own run
++// evidence, and that block is the ONE line the reply declared and nothing else:
++// with no Check: and no state exam, the block is the prompt's last bytes, so
++// equality here reads the whole rendering rather than a substring of it.
++{
++  const CMD = "sh -c 'echo green-from-the-pass'"
++  const { row, calls, prompts } = await scenario({
++    task: entry({ proofRuns: [CMD] }),
++    implAmendments: [IMPL_AM],
++    onImpl: (cwd) => fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n'),
++  })
++  assert.deepEqual(calls, ['impl:T1', 'review:T1:1'],
++    'sim precondition: a green pass dispatches the implementer and one referee: ' + calls.join(','))
++  const tail = assembled(prompts['review:T1:1'])
++  assert.equal(countOf(tail, 'AMENDMENTS:'), 1,
++    'leg (b) [M2]: the review prompt carries exactly one `AMENDMENTS:` block:\n' + tail)
++  assert.ok(tail.indexOf('AMENDMENTS:') > tail.indexOf('RUN EVIDENCE:'),
++    'leg (b) [M2]: and it is rendered AFTER the driver\'s own RUN EVIDENCE, never before it:\n' +
++    tail)
++  assert.equal(tail.slice(tail.indexOf('\n\nAMENDMENTS:')),
++    '\n\nAMENDMENTS:' + IMPL_LINE,
++    'leg (b) [M2]: the block is the heading and the one line the implementer declared, ' +
++    'rendered `- <amends>: <what> — <why>`:\n' + JSON.stringify(tail.slice(-400)))
++  assert.equal(row.reviewVerdict, 'clean',
++    'leg (b) [M2]: a declared amendment changes no verdict — the `passReview` stub\'s is ' +
++    'what the row carries: ' + JSON.stringify(row))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// leg (c) [M2] — the implementer's entries, then the fix round's
++// ════════════════════════════════════════════════════════════════════════════
++// A `Run:` red on the implementer's tree and green on the fix round's buys one
++// `fix:T1:0` and then a referee. The engine reassigns `impl` to the fix reply,
++// so the implementer's own declaration survives only if it was held before the
++// round: both reach the prompt, the implementer's first.
++{
++  const CMD = "sh -c 'test -f fixed.txt'"
++  const { row, calls, prompts } = await scenario({
++    task: entry({ proofRuns: [CMD] }),
++    implAmendments: [IMPL_AM],
++    fixAmendments: [FIX_AM],
++    onImpl: (cwd) => fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n'),
++    onFix: (cwd) => fs.writeFileSync(path.join(cwd, 'fixed.txt'), 'repaired\n'),
++  })
++  assert.deepEqual(calls, ['impl:T1', 'fix:T1:0', 'review:T1:1'],
++    'sim precondition: the red pass bought one repair round and the repair bought the ' +
++    'referee: ' + calls.join(','))
++  const tail = assembled(prompts['review:T1:1'])
++  assert.equal(countOf(tail, 'AMENDMENTS:'), 1,
++    'leg (c) [M2]: one block, not one per reply:\n' + tail)
++  assert.equal(tail.slice(tail.indexOf('\n\nAMENDMENTS:')),
++    '\n\nAMENDMENTS:' + IMPL_LINE + FIX_LINE,
++    'leg (c) [M2]: the implementer\'s entry is listed first and the fix round\'s second:\n' +
++    JSON.stringify(tail.slice(-500)))
++  assert.ok(tail.indexOf(IMPL_LINE.slice(1)) < tail.indexOf(FIX_LINE.slice(1)),
++    'leg (c) [M2]: in that order and no other')
++  assert.equal(row.reviewVerdict, 'clean', JSON.stringify(row))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// leg (d) [M2] — after the exam evidence, and after every EXAM CONCERN: line
++// ════════════════════════════════════════════════════════════════════════════
++// The #908 shape: a red exam no output can satisfy, a fix round that says so as
++// an `exam:`-prefixed concern, and the referee dispatched to judge the exam
++// instead of the run parking `proof-red`. The concern is the graded party's
++// claim about the driver's red bytes; the amendments are the graded party's
++// declaration about its own diff, and they are rendered after BOTH. `EXAM
++// CONCERN:` occurs in the role text as well, so the LAST occurrence is the one
++// the engine rendered.
++{
++  const EXAM_CMD = 'bash ' + EXAM_FILE
++  const EXAM = '#!/bin/bash\necho exam-is-red-for-any-output\nexit 1\n'
++  const CONCERN = 'exam: the case is red for any output'
++  const { calls, prompts } = await scenario({
++    task: entry({ proofTests: [EXAM_FILE], testCmd: EXAM_CMD }),
++    examScript: EXAM,
++    fixAmendments: [FIX_AM],
++    fixConcerns: [CONCERN],
++    onImpl: (cwd) => fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n'),
++  })
++  assert.deepEqual(calls, ['exam:T1', 'impl:T1', 'fix:T1:0', 'review:T1:1'],
++    'sim precondition: the red exam bought the repair round and its `exam:` concern bought ' +
++    'the one review round: ' + calls.join(','))
++  const tail = assembled(prompts['review:T1:1'])
++  const iAmend = tail.indexOf('AMENDMENTS:')
++  const iConcern = tail.lastIndexOf('EXAM CONCERN:')
++  const iExamEv = tail.indexOf('EXAM EVIDENCE:')
++  assert.ok(iConcern !== -1,
++    'sim precondition: the fix round\'s `exam:` concern reached the prompt:\n' + tail)
++  assert.ok(tail.includes('EXAM CONCERN: ' + CONCERN),
++    'sim precondition: verbatim, one line:\n' + tail.slice(iConcern - 50))
++  assert.equal(countOf(tail, 'AMENDMENTS:'), 1,
++    'leg (d) [M2]: exactly one block:\n' + tail)
++  assert.ok(iAmend > iConcern,
++    'leg (d) [M2]: the AMENDMENTS block is rendered after the LAST `EXAM CONCERN:` line ' +
++    '(' + iAmend + ' vs ' + iConcern + '):\n' + tail.slice(iExamEv))
++  assert.ok(iAmend > iExamEv,
++    'leg (d) [M2]: and after the exam evidence itself (' + iAmend + ' vs ' + iExamEv + ')')
++  assert.equal(tail.slice(tail.indexOf('\n\nAMENDMENTS:')),
++    '\n\nAMENDMENTS:' + FIX_LINE,
++    'leg (d) [M2]: carrying the fix round\'s one entry — an implementer that declared none ' +
++    'contributes no line:\n' + JSON.stringify(tail.slice(-400)))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// leg (g) [M2] — the evidence blocks are where they were, the new block between
++// ════════════════════════════════════════════════════════════════════════════
++// The second `Run:` line of the Proof re-runs the sibling sim that pins the RUN,
++// EXAM and CHECK EVIDENCE blocks' contents; the driver runs that command itself
++// (no sim spawns another — `test_sims_are_hermetic.mjs` M4). What it pins is
++// asserted here on the PATCHED prompt: all three blocks still carry the
++// pre-review pass's commands, exits and outputs, and the block this task adds
++// sits between the exam's evidence and the Check:'s — which is exactly the
++// insertion point M2 names, read from the outside.
++{
++  const RUN_CMD = "sh -c 'echo run-evidence-line'"
++  const CHECK_CMD = "sh -c 'echo check-evidence-line'"
++  const EXAM_CMD = 'bash ' + EXAM_FILE
++  // Red in the examiner's own clone (a.txt is BASE's there), green on the patch.
++  const EXAM = '#!/bin/bash\necho exam-evidence-line\ngrep -q from-A a.txt\n'
++  const { row, prompts } = await scenario({
++    task: entry({ proofRuns: [RUN_CMD], proofTests: [EXAM_FILE], testCmd: EXAM_CMD }),
++    examScript: EXAM,
++    constraintChecks: [{ cmd: CHECK_CMD, minor: false }],
++    implAmendments: [IMPL_AM],
++    onImpl: (cwd) => fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n'),
++  })
++  assert.equal(row.status, 'done', 'sim precondition: the green pass merged: ' + JSON.stringify(row))
++  const tail = assembled(prompts['review:T1:1'])
++  for (const [label, cmd, out] of [['RUN', RUN_CMD, 'run-evidence-line'],
++                                   ['EXAM', EXAM_CMD, 'exam-evidence-line'],
++                                   ['CHECK', CHECK_CMD, 'check-evidence-line']]) {
++    assert.ok(tail.includes('\n\n$ ' + cmd + '\nexit 0\n'),
++      'leg (g) [M2]: the ' + label + ' EVIDENCE block still quotes its command with its exit:\n' +
++      tail)
++    assert.ok(tail.includes(out),
++      'leg (g) [M2]: and what it printed — the ' + label + ' block\'s contents are unchanged ' +
++      'by the block this task inserts')
++  }
++  const iRun = tail.indexOf('RUN EVIDENCE:')
++  const iExam = tail.indexOf('EXAM EVIDENCE:')
++  const iAmend = tail.indexOf('AMENDMENTS:')
++  const iCheck = tail.indexOf('CHECK EVIDENCE:')
++  assert.ok(iRun !== -1 && iExam !== -1 && iCheck !== -1 && iAmend !== -1,
++    'sim precondition: all four blocks are in the prompt:\n' + tail)
++  assert.ok(iRun < iExam && iExam < iAmend && iAmend < iCheck,
++    'leg (g) [M2]: RUN, then EXAM, then AMENDMENTS, then CHECK — the new block is inserted ' +
++    'after the exam evidence and before the Check:\'s, and the three evidence blocks keep ' +
++    'the order they had: ' + JSON.stringify([iRun, iExam, iAmend, iCheck]) + '\n' + tail)
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// leg (e) [M2] — a run that declared none is BASE's run
++// ════════════════════════════════════════════════════════════════════════════
++// Two halves. First: nothing the engine assembled carries the word at all — not
++// an empty heading, not a blank line. Second: the prompt is byte-for-byte the
++// one BASE's engine built. Both engines are driven through the SAME run
++// directory (prompts name the patch FILE) and against the SAME roles directory,
++// so the only difference the comparison can see is what the engine put there.
++{
++  const { report, row, calls, prompts } = await scenario({
++    task: entry(),
++    onImpl: (cwd) => fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n'),
++  })
++  assert.deepEqual(calls, ['impl:T1', 'review:T1:1'],
++    'sim precondition: one implementer, one referee: ' + calls.join(','))
++  const tail = assembled(prompts['review:T1:1'])
++  assert.ok(!tail.includes('AMENDMENTS'),
++    'leg (e) [M2]: a task whose replies declared none has a review prompt in which the ' +
++    'engine assembled no AMENDMENTS at all:\n' + tail)
++  assert.equal(row.reviewVerdict, 'clean',
++    'leg (e) [M2]: and the row is the `passReview` stub\'s: ' + JSON.stringify(row))
++  assert.equal(row.status, 'done', JSON.stringify(row))
++  assert.deepEqual(report.judgmentCalls, [],
++    'leg (e) [M2]: a clean run buys no judgment call — this seam mints none: ' +
++    JSON.stringify(report.judgmentCalls))
++}
++
++// The byte-pin needs BASE in the object store. A depth-1 clone — the engine's
++// own shallow leg and `actions/checkout`'s default — has no 41cb53b; there this
++// half has nothing to say and says so, rather than failing for a reason
++// unrelated to the tree.
++const haveBase = (() => {
++  try {
++    execFileSync('git', ['cat-file', '-e', BASE_SHA + '^{commit}'],
++      { cwd: REPO_ROOT, env: ENV, stdio: 'ignore' })
++    return true
++  } catch { return false }
++})()
++let baseRunEngine = null
++if (haveBase) {
++  const baseTree = path.join(tmp, 'base-tree')
++  fs.cpSync(FLEET_DIR, path.join(baseTree, 'fleet'), {
++    recursive: true, filter: (src) => path.basename(src) !== 'tests',
++  })
++  fs.writeFileSync(path.join(baseTree, 'fleet', 'run-engine.mjs'),
++    execFileSync('git', ['show', BASE_SHA + ':fleet/run-engine.mjs'],
++      { cwd: REPO_ROOT, env: ENV, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }))
++  fs.symlinkSync(path.join(REPO_ROOT, 'skills'), path.join(baseTree, 'skills'))
++  ;({ runEngine: baseRunEngine } =
++    await import(pathToFileURL(path.join(baseTree, 'fleet', 'run-engine.mjs')).href))
++} else {
++  console.log('[leg (e)] BASE ' + BASE_SHA + ' is not in this clone (shallow) — the ' +
++    'byte-for-byte comparison against the BASE engine is skipped')
++}
++
++const PIN_REPO = makeRepo(path.join(tmp, 'pin-repo'))
++const pinRunDir = path.join(tmp, 'pin-run')
++async function pinRun(engine) {
++  fs.rmSync(pinRunDir, { recursive: true, force: true })
++  const task = entry()
++  const { base, clonesDir, patchesDir } =
++    provision({ repo: PIN_REPO, runDir: pinRunDir, taskIds: [task.id] })
++  const patchBase = { current: base }
++  const cwdFor = makeCwdFor({ clonesDir })
++  const prompts = {}
++  const inner = async (p, opts) => {
++    const cwd = cwdFor(opts)
++    prompts[opts.label] = p
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const agent = withPatchCapture({
++    agent: inner, clonesDir, base: () => patchBase.current, patchesDir, taskIdOf: defaultTaskIdOf,
++  })
++  const report = await engine({
++    args: {
++      waves: [[task]], edges: [], testCmd: 'bash check.sh',
++      acceptance: { mode: 'suite', reason: 'sim' }, stamp: 'pin',
++      integrationBranch: 'ultra/integration-pin', dependencyEdges: [],
++      patchInput: patchesDir,
++    },
++    agent,
++    parallel: (thunks) => Promise.all(thunks.map((t) => t())),
++    exec: execSeam,
++    paths: { repoDir: PIN_REPO, runDir: pinRunDir, clonesDir },
++    log: () => {},
++    rolesDir: ROLES_DIR,
++    patchBase,
++  })
++  return { prompts, report }
++}
++{
++  const basePin = haveBase ? await pinRun(baseRunEngine) : null
++  const live = await pinRun(runEngine)
++  assert.ok(live.prompts['review:T1:1'],
++    'sim precondition: the live engine dispatched a referee: ' +
++    JSON.stringify(Object.keys(live.prompts)))
++  if (basePin) {
++    assert.deepEqual(Object.keys(live.prompts).sort(), Object.keys(basePin.prompts).sort(),
++      'leg (e) [M2]: the same roles are dispatched as on BASE\'s engine')
++    for (const label of Object.keys(basePin.prompts)) {
++      assert.equal(live.prompts[label], basePin.prompts[label],
++        'leg (e) [M2]: a run whose replies declared no amendments leaves the ' + label +
++        ' prompt byte-for-byte the one BASE\'s engine built from the same roles directory')
++    }
++  }
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// legs (f), (h), (i), (j), (k), (l) [M3] — what reviewer.md tells the referee
++// ════════════════════════════════════════════════════════════════════════════
++// The Proof's third through ninth `Run:` lines are `sed -n '/a/,/b/p' … | tr
++// '\n' ' ' | grep -q '<pattern>'`. They are read here the same way, in process:
++// the same two ranges, the same newline-to-space fold, and each pattern kept
++// VERBATIM as the Proof wrote it, so this file says what those commands say
++// rather than a paraphrase of it. Every construct in them (`.` and `.*`) means
++// the same in a basic regular expression and in a JS one.
++const REVIEWER_TEXT = fs.readFileSync(REVIEWER_MD, 'utf8')
++// `sed -n '/start/,/end/p'`: from the first line matching `start` through the
++// first LATER line matching `end`, inclusive; `end` is never tested against the
++// start line itself, and the range may open again further down.
++const sedRange = (text, start, end) => {
++  const out = []
++  let open = false
++  for (const line of text.split('\n')) {
++    if (!open) { if (start.test(line)) { open = true; out.push(line) } }
++    else { out.push(line); if (end.test(line)) open = false }
++  }
++  return out
++}
++// `| tr '\n' ' '` — every newline sed printed, including the last, is a space.
++const trNewlines = (lines) => lines.map((l) => l + ' ').join('')
++const RANGES = {
++  // sed -n '/^1\. /,/^Every issue names its/p'
++  rules: trNewlines(sedRange(REVIEWER_TEXT, /^1\. /, /^Every issue names its/)),
++  // sed -n '/^An .EXAM CONCERN:. line/,/^CHECK EVIDENCE/p'
++  concern: trNewlines(sedRange(REVIEWER_TEXT, /^An .EXAM CONCERN:. line/, /^CHECK EVIDENCE/)),
++}
++assert.ok(RANGES.rules.length > 0,
++  '[M3] sim precondition: fleet/roles/reviewer.md still has a numbered-rules block running ' +
++  'from a line starting `1. ` to the line starting `Every issue names its`')
++assert.ok(RANGES.concern.length > 0,
++  '[M3] sim precondition: and an `EXAM CONCERN:` paragraph running to the `CHECK EVIDENCE` one')
++
++// Each row: the leg, the clause row it encodes, which `Run:` line of the Proof
++// it is, the sed range it reads, and that line's grep pattern verbatim.
++const ROWS = [
++  { leg: '(f)', row: '(i)', run: 'third', range: 'rules',
++    pattern: 'AMENDMENTS.*second exception.*EXAM CONCERN',
++    says: 'the numbered rules say AMENDMENTS is the SECOND exception, beside EXAM CONCERN:, ' +
++      'to the rule against reading an implementer\'s report' },
++  { leg: '(f)', row: '(i)', run: 'fourth', range: 'concern',
++    pattern: 'AMENDMENTS.*exception',
++    says: 'and the EXAM CONCERN: paragraph itself names AMENDMENTS as the other exception, ' +
++      'rather than still calling itself the only one' },
++  { leg: '(h)', row: '(ii)', run: 'fifth', range: 'rules',
++    pattern: 'AMENDMENTS.*diff does what .what. says.*why.*task text',
++    says: 'for each entry the referee checks the diff does what `what` says and that `why` ' +
++      'holds against the task text' },
++  { leg: '(i)', row: '(iii)', run: 'sixth', range: 'rules',
++    pattern: 'declared amendment.*lawful.*named in the review.*never a finding.*never.*revert',
++    says: 'a declared amendment the diff bears out is lawful, named in the review, never a ' +
++      'finding and never something to revert — the whole point of #990' },
++  { leg: '(j)', row: '(iv)', run: 'seventh', range: 'rules',
++    pattern: 'no entry declares.*undeclared amendment:.*minor.*naming the path or the clause',
++    says: 'a divergence the diff shows and no entry declares is a finding prefixed ' +
++      '`undeclared amendment:`, graded minor, naming the path or the clause' },
++  { leg: '(k)', row: '(v)', run: 'eighth', range: 'rules',
++    pattern: 'declared amendment the diff contradicts.*blocking.*actor .implementer.',
++    says: 'a declared amendment the diff contradicts is blocking with actor `implementer`' },
++  { leg: '(l)', row: '(vi)', run: 'ninth', range: 'rules',
++    pattern: 'deleting a file present at BASE.*Delete:.*blocking',
++    says: 'and deleting a file present at BASE that the Files block does not declare with ' +
++      '`Delete:` stays blocking, as it was at BASE' },
++]
++for (const r of ROWS) {
++  const text = RANGES[r.range]
++  assert.ok(new RegExp(r.pattern).test(text),
++    'leg ' + r.leg + ' [M3] row ' + r.row + ' — the ' + r.run + ' `Run:` line of the Proof: ' +
++    r.says + '. The pattern `' + r.pattern + '` matches nothing in the ' +
++    (r.range === 'rules' ? 'numbered rules' : '`EXAM CONCERN:` paragraph') +
++    ' of fleet/roles/reviewer.md:\n' + text)
++}
++
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine_amendments.mjs b/fleet/tests/test_run_engine_amendments.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..1a669d9381fbb35b6bc69202fb5423d6d48c9448
+--- /dev/null
++++ b/fleet/tests/test_run_engine_amendments.mjs
+@@ -0,0 +1,483 @@
++/**
++ * fleet/tests/test_run_engine_amendments.mjs — a worker declares an amendment
++ * and the driver writes it on the record.
++ *
++ * When a worker changes what the plan asked for — a file outside its list, a
++ * clause read another way, a sim outside its list re-aimed — it says so in a
++ * typed row, and that row is readable on the run's record (`events.jsonl`) and
++ * on the run's report (`report.json`), per task.
++ *
++ * Everything below the agent seam is the real thing: real git repos, real
++ * clones at BASE, real patch capture, the real fold kernel through the real
++ * exec seam. Only `agent` is canned — which is exactly the seam the driver owns
++ * — so every row this file counts is one the engine actually appended.
++ *
++ * ── the shared literal ──────────────────────────────────────────────────────
++ *
++ * An amendment row is `{task, amends, what, why}` with `amends` one of
++ * `clause` | `files` | `sim`. The field is named `amends`, NOT `kind`, because
++ * `kind` is every event's own type field (`kind: 'driver:amendment'`) and the
++ * boot's page projection reads events by `kind`. Every leg below asserts the
++ * row's field NAME as well as its value, so an implementation that spelled the
++ * row field `kind` fails on the name rather than on the count.
++ *
++ * ── the Machine clauses under test ──────────────────────────────────────────
++ *
++ *   M1 — `IMPLEMENTER_SCHEMA` gains an optional `amendments` property: an array
++ *        of objects each requiring `amends` (enum exactly `clause`, `files`,
++ *        `sim`), `what` (string) and `why` (string); the schema's own
++ *        `required` list is unchanged (`status`, `summary`, `startHead`).
++ *   M2 — for every implementer reply (`impl:<id>`) and every fix reply
++ *        (`fix:<id>:0`) whose `amendments` is a non-empty array, the driver
++ *        appends to `<runDir>/events.jsonl` one
++ *        `{kind: 'driver:amendment', task: <id>, amends, what, why}` per entry,
++ *        in the reply's order, each carrying the log's own `id` and `ts` — the
++ *        implementer's before that task's first `driver:proof-run` line, the
++ *        fix round's after it — and pushes one `judgmentCalls` line per entry,
++ *        `task <id>: amendment (<amends>): <what> — <why>`.
++ *   M3 — the report carries `amendments`: one `{task, amends, what, why}` per
++ *        event in the order the events were appended, and `[]` on a run whose
++ *        replies declared none — the key is present on every report.
++ *   M4 — a reply with no `amendments` key or an empty array appends no event
++ *        and pushes no such line; a `DONE_WITH_CONCERNS` reply's `concerns`
++ *        entries still reach `judgmentCalls` verbatim as `task <id>: <concern>`
++ *        exactly as at BASE, and no other report field changes.
++ *   M5 — `fleet/roles/implementer.md`'s judgment-rules paragraph tells the
++ *        worker to declare each out-of-FILES edit taken (`amends: files`), each
++ *        clause read otherwise (`amends: clause`) and each sim re-aimed
++ *        (`amends: sim`), each with `what` and `why`, while still carrying the
++ *        `out-of-FILES (not taken):` sentence and the
++ *        `plan-defect: leg (x) cannot pass …` sentence; and
++ *        `fleet/roles/fix.md`'s same-judgment-rules sentence names
++ *        `amendments` for the same three kinds.
++ *
++ * ── the Proof legs, and where each is asked ─────────────────────────────────
++ *
++ *   (a) [M1] the imported `IMPLEMENTER_SCHEMA`'s `properties.amendments`
++ *   (b) [M2] two implementer amendments, in order, before the first
++ *            `driver:proof-run`
++ *   (c) [M2] one FIX-round amendment, after the first `driver:proof-run`, and
++ *            its one `judgmentCalls` line
++ *   (d) [M2] leg (b)'s two `judgmentCalls` lines, one each
++ *   (e) [M3] leg (b)'s `report.amendments`, and `[]` with the key present on a
++ *            two-task run that declared none
++ *   (f) [M4] a `DONE_WITH_CONCERNS` reply with no `amendments` key, and the
++ *            same reply with `amendments: []`
++ *   (g) [M5] the Proof's third and fourth `Run:` lines, asked here in-process
++ *            with the same range-then-match semantics those two lines have, so
++ *            this sim says what those commands say
++ *   (h) [M2] the Proof's second `Run:` line: the bridge over every sim on the
++ *            patched tree. A sim may not spawn `pytest` or another sim, so that
++ *            leg is the driver's own `Run:` line and is not encodable inside
++ *            this file; what this file owes it is to BE one of the sims that
++ *            bridge runs, which it is.
++ *
++ * ── the readings this exam is written on ────────────────────────────────────
++ *
++ *   • A STUB REPLY IS NEVER VALIDATED against `IMPLEMENTER_SCHEMA` — the schema
++ *     is the CLI's `--json-schema` contract, not an in-process check. So leg (a)
++ *     reads the exported constant directly, and legs (b)–(f) drive the
++ *     concerns/amendments seam with canned replies that the schema never sees.
++ *     A schema that gained `amendments` without a seam that reads it passes
++ *     leg (a) and fails (b)–(f); a seam without the schema is the reverse.
++ *
++ *   • POSITIONS ARE READ AGAINST `driver:proof-run`, not against worker
++ *     envelopes: the rig does not run the worker process, so no
++ *     `worker:start` / `worker:end` line reaches `events.jsonl` on its own. The
++ *     engine writes `driver:proof-run` itself for a task that has `proofRuns`,
++ *     and M2 pins the implementer's rows before the first such line and the fix
++ *     round's after it — which is exactly the divider legs (b) and (c) use.
++ *
++ *   • LEG (c)'s RED-THEN-GREEN is a command that READS a file only the fix
++ *     round writes (`cat fixed.txt`): red on the driver's own pre-review pass
++ *     (the file is absent), which buys one `fix:<id>:0` round, and green on the
++ *     re-execution once that round has written it. That is the one shape in
++ *     which a `fix:<id>:0` reply exists to carry an amendment AND the task
++ *     still finishes, so the same run can be read for the event, its position
++ *     and its `judgmentCalls` line.
++ *
++ *   • `events.jsonl` IS READ BY COPY, never by import: split, parse, drop
++ *     blanks. An absent file reads as no records, so an engine that appends
++ *     none fails the count assertion rather than throwing ENOENT.
++ */
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { fileURLToPath } from 'node:url'
++import { IMPLEMENTER_SCHEMA } from '../run-engine.mjs'
++import { rig, makeRepo, passReview, doneImpl } from './_engine_helpers.mjs'
++
++const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-amendments-'))
++// Removed on exit, red or green (rmSync unlinks a tree's `skills` symlink
++// rather than following it into the repo).
++process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
++const ROLES_DIR = fileURLToPath(new URL('../roles/', import.meta.url))
++
++// ── the record every leg reads ──────────────────────────────────────────────
++const readEvents = (runDir) => {
++  const file = path.join(runDir, 'events.jsonl')
++  if (!fs.existsSync(file)) return []
++  return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
++    .map((l) => { try { return JSON.parse(l) } catch { return null } })
++    .filter(Boolean)
++}
++const amendmentsOf = (log, id) =>
++  log.filter((e) => e.kind === 'driver:amendment' && e.task === id)
++const firstProofRunIndex = (log, id) =>
++  log.findIndex((e) => e.kind === 'driver:proof-run' && e.task === id)
++// The row as the shared literal spells it, projected off an event so the
++// assertion reads the FIELD NAMES the contract names and nothing else.
++const rowOf = (e) => ({ task: e.task, amends: e.amends, what: e.what, why: e.why })
++// Every `judgmentCalls` line this task minted for an amendment, whatever else
++// the run had to say (a red pre-review pass mints a line of its own).
++const amendmentCallsOf = (report) =>
++  report.judgmentCalls.filter((l) => l.includes(': amendment ('))
++const CALL = (id, a) => 'task ' + id + ': amendment (' + a.amends + '): ' + a.what + ' — ' + a.why
++
++// ── the task shape, and the rows the canned replies declare ─────────────────
++const mkTask = (id, files, over = {}) => ({
++  id, title: id.toLowerCase(), files, tier: 'standard', review: 'lean',
++  writes: files, commutes: [], proofTests: [], proofRuns: [],
++  body: 'task ' + id + ' body', ...over,
++})
++
++const AMEND_FILES = {
++  amends: 'files',
++  what: 'fleet/roles/fix.md — added the amendments sentence',
++  why: 'the clause names the file and FILES did not',
++}
++const AMEND_SIM = {
++  amends: 'sim',
++  what: 'check.sh — re-aimed at the new marker',
++  why: 'the old aim measured a path the task moved',
++}
++const AMEND_CLAUSE = {
++  amends: 'clause',
++  what: 'M2 read as one event per entry rather than one per reply',
++  why: 'one row per reply cannot carry two amendments',
++}
++
++// One wave, one run, one report — with the stub's dispatch labels recorded, so
++// every block can state its own sim preconditions off what was dispatched.
++let seq = 0
++const runWave = async ({ tasks, stub }) => {
++  seq += 1
++  const slug = 'am' + seq
++  const repo = makeRepo(path.join(tmp, 'repo-' + slug))
++  const runDir = path.join(tmp, 'run-' + slug)
++  const labels = []
++  const wrapped = (prompt, opts, cwd) => { labels.push(opts.label); return stub(prompt, opts, cwd) }
++  const { run } = rig({
++    repo, runDir, stub: wrapped, stamp: slug, waves: [tasks],
++    // `foldAgeMs: 0` — every landing folds, the way an adopted epoch runs. The
++    // fold trigger is another exam's subject; nothing here reads it.
++    extraArgs: { foldAgeMs: 0 },
++  })
++  const report = await run()
++  return { report, labels, runDir, log: readEvents(runDir) }
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (a) [M1] the schema gains an optional `amendments` array, and `required` is
++//          unchanged
++// ══════════════════════════════════════════════════════════════════════════
++{
++  const props = IMPLEMENTER_SCHEMA.properties
++  assert.ok(props && typeof props === 'object',
++    '(a) [M1] sim precondition: `IMPLEMENTER_SCHEMA` is an object with `properties`')
++  const am = props.amendments
++  assert.ok(am && typeof am === 'object',
++    '(a) [M1] `IMPLEMENTER_SCHEMA` gains an `amendments` property — the worker has no way to ' +
++    'declare an amendment until the CLI\'s own contract has a place for one. Properties: ' +
++    JSON.stringify(Object.keys(props)))
++  assert.equal(am.type, 'array',
++    '(a) [M1] `amendments` is of type `array` — one row per amendment, not one string: ' +
++    JSON.stringify(am))
++  const items = am.items
++  assert.ok(items && typeof items === 'object',
++    '(a) [M1] `amendments.items` describes the row: ' + JSON.stringify(am))
++  assert.deepEqual([...(items.required || [])].sort(), ['amends', 'what', 'why'],
++    '(a) [M1] each row requires exactly `amends`, `what` and `why` — `amends`, never `kind`, ' +
++    'because `kind` is the event\'s own type field: ' + JSON.stringify(items.required))
++  const itemProps = items.properties || {}
++  assert.ok(itemProps.amends && typeof itemProps.amends === 'object',
++    '(a) [M1] the row\'s `amends` is described: ' + JSON.stringify(Object.keys(itemProps)))
++  assert.deepEqual(itemProps.amends.enum, ['clause', 'files', 'sim'],
++    '(a) [M1] `amends` is an enum deep-equal to [\'clause\', \'files\', \'sim\'] — the three ' +
++    'kinds the plan\'s shared literal names, in that order and no others: ' +
++    JSON.stringify(itemProps.amends))
++  assert.equal(itemProps.what && itemProps.what.type, 'string',
++    '(a) [M1] `what` is a string: ' + JSON.stringify(itemProps.what))
++  assert.equal(itemProps.why && itemProps.why.type, 'string',
++    '(a) [M1] `why` is a string: ' + JSON.stringify(itemProps.why))
++  assert.deepEqual(IMPLEMENTER_SCHEMA.required, ['status', 'summary', 'startHead'],
++    '(a) [M1] and the schema\'s own `required` list is UNCHANGED — `amendments` is optional, ' +
++    'so a reply that has nothing to amend is still a valid reply: ' +
++    JSON.stringify(IMPLEMENTER_SCHEMA.required))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (b) [M2] two implementer amendments: two events, in reply order, both before
++//          the task's first `driver:proof-run`
++// (d) [M2] and one `judgmentCalls` line each, in the same run
++// (e) [M3] and `report.amendments` deep-equal to the two rows, in that order
++// ══════════════════════════════════════════════════════════════════════════
++const twoAmendments = await (async () => {
++  const GREEN = "sh -c 'echo green'"
++  const out = await runWave({
++    tasks: [mkTask('T1', ['one.txt'], { proofRuns: [GREEN] })],
++    stub: (prompt, opts, cwd) => {
++      const kind = opts.label.split(':')[0]
++      if (kind === 'impl') {
++        fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n')
++        // DONE, not DONE_WITH_CONCERNS: M2 reads `amendments` whatever the
++        // reply's status is, and a row is not a concern.
++        return { ...doneImpl(cwd), amendments: [AMEND_FILES, AMEND_SIM] }
++      }
++      if (kind === 'review') return passReview()
++      throw new Error('unexpected dispatch: ' + opts.label)
++    },
++  })
++  assert.ok(out.labels.includes('impl:T1'),
++    '(b) [M2] sim precondition: the implementer was dispatched — ' + JSON.stringify(out.labels))
++  assert.ok(!out.labels.some((l) => l.startsWith('fix:')),
++    '(b) [M2] sim precondition: the green `Run:` bought no repair round, so every amendment on ' +
++    'this run is the IMPLEMENTER\'s — ' + JSON.stringify(out.labels))
++  return out
++})()
++
++{
++  const { report, log } = twoAmendments
++  const ams = amendmentsOf(log, 'T1')
++  assert.equal(ams.length, 2,
++    '(b) [M2] a reply declaring two amendments leaves exactly two `driver:amendment` lines in ' +
++    'events.jsonl — one per entry, no more and no fewer. Found: ' + JSON.stringify(ams))
++  assert.deepEqual(ams.map(rowOf), [{ task: 'T1', ...AMEND_FILES }, { task: 'T1', ...AMEND_SIM }],
++    '(b) [M2] each line carries `task` the task\'s id and the three fields VERBATIM, in the ' +
++    'reply\'s order (`files` then `sim`) — not sorted, not deduplicated, not reworded: ' +
++    JSON.stringify(ams.map(rowOf)))
++  for (const e of ams) {
++    assert.equal(typeof e.id, 'string',
++      '(b) [M2] the line carries the log\'s own `id` as a string — it is an event of the record, ' +
++      'stamped like every other: ' + JSON.stringify(e))
++    assert.ok(e.id.length > 0, '(b) [M2] and that `id` is not empty: ' + JSON.stringify(e))
++    assert.equal(typeof e.ts, 'number',
++      '(b) [M2] and the log\'s own `ts` as a number: ' + JSON.stringify(e))
++  }
++
++  // The divider: the implementer's rows are appended before the driver's own
++  // pre-review pass runs the task's `Run:` command.
++  const pr = firstProofRunIndex(log, 'T1')
++  assert.notEqual(pr, -1,
++    '(b) [M2] sim precondition: the task\'s one green `Run:` command left a `driver:proof-run` ' +
++    'line to read positions against — ' + JSON.stringify(log.map((e) => e.kind)))
++  for (const e of ams) {
++    assert.ok(log.indexOf(e) < pr,
++      '(b) [M2] an IMPLEMENTER\'s amendment is appended BEFORE that task\'s first ' +
++      '`driver:proof-run` line — the declaration belongs to the reply that made it, not to the ' +
++      'pass that followed. Kinds in order: ' + JSON.stringify(log.map((x) => x.kind)))
++  }
++
++  // (d) [M2] one judgment line per entry, with the exact text the clause spells.
++  assert.deepEqual(amendmentCallsOf(report), [CALL('T1', AMEND_FILES), CALL('T1', AMEND_SIM)],
++    '(d) [M2] `judgmentCalls` carries exactly one `task <id>: amendment (<amends>): <what> — ' +
++    '<why>` line per entry, one each and in the reply\'s order: ' +
++    JSON.stringify(report.judgmentCalls))
++
++  // (e) [M3] the report's own key: the same rows, in the order the events went.
++  assert.ok(Object.prototype.hasOwnProperty.call(report, 'amendments'),
++    '(e) [M3] the report carries an `amendments` key: ' + JSON.stringify(Object.keys(report)))
++  assert.deepEqual(report.amendments,
++    [{ task: 'T1', ...AMEND_FILES }, { task: 'T1', ...AMEND_SIM }],
++    '(e) [M3] `report.amendments` is one `{task, amends, what, why}` per event, in the order the ' +
++    'events were appended — the report and the record say the same thing: ' +
++    JSON.stringify(report.amendments))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (c) [M2] a FIX round's amendment: one event, AFTER the task's first
++//          `driver:proof-run`, and exactly one `judgmentCalls` line
++// ══════════════════════════════════════════════════════════════════════════
++{
++  // The command reads a file only the fix round writes: red on the driver's own
++  // pre-review pass, green on the re-execution after `fix:T1:0`.
++  const CMD = "sh -c 'cat fixed.txt'"
++  const { report, labels, log } = await runWave({
++    tasks: [mkTask('T2', ['one.txt'], { proofRuns: [CMD] })],
++    stub: (prompt, opts, cwd) => {
++      const kind = opts.label.split(':')[0]
++      if (kind === 'impl') {
++        fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T2\n')
++        // No `amendments` key at all: the only row on this run is the fix
++        // round's, so its position cannot be the implementer's by accident.
++        return doneImpl(cwd)
++      }
++      if (kind === 'fix') {
++        fs.writeFileSync(path.join(cwd, 'fixed.txt'), 'repaired-by-the-fix-round\n')
++        return { ...doneImpl(cwd), amendments: [AMEND_CLAUSE] }
++      }
++      if (kind === 'review') return passReview()
++      throw new Error('unexpected dispatch: ' + opts.label)
++    },
++  })
++  assert.ok(labels.includes('fix:T2:0'),
++    '(c) [M2] sim precondition: the red pre-review pass bought the one repair round whose reply ' +
++    'carries the amendment — ' + JSON.stringify(labels))
++
++  const ams = amendmentsOf(log, 'T2')
++  assert.equal(ams.length, 1,
++    '(c) [M2] a fix reply declaring one amendment leaves exactly one `driver:amendment` line — ' +
++    'the fix round is read on the same terms as the implementer, and the implementer here ' +
++    'declared none. Found: ' + JSON.stringify(ams))
++  assert.deepEqual(rowOf(ams[0]), { task: 'T2', ...AMEND_CLAUSE },
++    '(c) [M2] naming the task and carrying the three fields verbatim: ' + JSON.stringify(ams[0]))
++  assert.equal(typeof ams[0].id, 'string',
++    '(c) [M2] with the log\'s own `id`: ' + JSON.stringify(ams[0]))
++  assert.equal(typeof ams[0].ts, 'number',
++    '(c) [M2] and its own `ts`: ' + JSON.stringify(ams[0]))
++
++  const pr = firstProofRunIndex(log, 'T2')
++  assert.notEqual(pr, -1,
++    '(c) [M2] sim precondition: the task\'s `Run:` command left a `driver:proof-run` line — ' +
++    JSON.stringify(log.map((e) => e.kind)))
++  assert.ok(log.indexOf(ams[0]) > pr,
++    '(c) [M2] a FIX round\'s amendment is appended AFTER that task\'s first `driver:proof-run` ' +
++    'line — the round it belongs to is the one the red pass bought, which ran after that pass. ' +
++    'Kinds in order: ' + JSON.stringify(log.map((x) => x.kind)))
++
++  assert.deepEqual(amendmentCallsOf(report), [CALL('T2', AMEND_CLAUSE)],
++    '(c) [M2] and `judgmentCalls` carries exactly one `task <id>: amendment (clause): <what> — ' +
++    '<why>` line for it: ' + JSON.stringify(report.judgmentCalls))
++  assert.deepEqual(report.amendments, [{ task: 'T2', ...AMEND_CLAUSE }],
++    '(c) [M3] with the report saying the same: ' + JSON.stringify(report.amendments))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (e) [M3] a run whose replies declared none: `amendments` deep-equal to [],
++//          and the key PRESENT
++// ══════════════════════════════════════════════════════════════════════════
++{
++  const { report, log } = await runWave({
++    tasks: [mkTask('A', ['a1.txt']), mkTask('B', ['b1.txt'])],
++    stub: (prompt, opts, cwd) => {
++      const kind = opts.label.split(':')[0]
++      if (kind === 'impl') {
++        fs.writeFileSync(path.join(cwd, opts.label === 'impl:A' ? 'a1.txt' : 'b1.txt'),
++          'from ' + opts.label + '\n')
++        return doneImpl(cwd)
++      }
++      if (kind === 'review') return passReview()
++      throw new Error('unexpected dispatch: ' + opts.label)
++    },
++  })
++  assert.equal(report.tasks.length, 2,
++    '(e) [M3] sim precondition: both tasks ran — ' + JSON.stringify(report.tasks))
++  assert.ok(Object.prototype.hasOwnProperty.call(report, 'amendments'),
++    '(e) [M3] the `amendments` key is present on EVERY report, including one whose replies ' +
++    'declared nothing — a reader of report.json never has to test for the key: ' +
++    JSON.stringify(Object.keys(report)))
++  assert.deepEqual(report.amendments, [],
++    '(e) [M3] and it is deep-equal to [] there — an empty list, not null and not absent: ' +
++    JSON.stringify(report.amendments))
++  assert.deepEqual(log.filter((e) => e.kind === 'driver:amendment'), [],
++    '(e) [M2] with no `driver:amendment` line on the record either: ' +
++    JSON.stringify(log.map((e) => e.kind)))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (f) [M4] a reply with no `amendments` key, and one with `amendments: []`:
++//          no event, no line — and its `concerns` still reach `judgmentCalls`
++//          verbatim, exactly as at BASE
++// ══════════════════════════════════════════════════════════════════════════
++{
++  const CONCERN = 'out-of-FILES (not taken): a.txt — owed'
++  // Two runs, the same reply but for the key: absent, then empty. M4 says both
++  // are silent, so both are driven rather than argued.
++  for (const [name, extra] of [['no `amendments` key', {}],
++                               ['`amendments: []`', { amendments: [] }]]) {
++    const { report, log } = await runWave({
++      tasks: [mkTask('T3', ['one.txt'])],
++      stub: (prompt, opts, cwd) => {
++        const kind = opts.label.split(':')[0]
++        if (kind === 'impl') {
++          fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T3\n')
++          return { ...doneImpl(cwd), status: 'DONE_WITH_CONCERNS', concerns: [CONCERN], ...extra }
++        }
++        if (kind === 'review') return passReview()
++        throw new Error('unexpected dispatch: ' + opts.label)
++      },
++    })
++    assert.deepEqual(log.filter((e) => e.kind === 'driver:amendment'), [],
++      '(f) [M4] ' + name + ': no `driver:amendment` line is appended — silence is not an ' +
++      'amendment: ' + JSON.stringify(log.map((e) => e.kind)))
++    assert.deepEqual(amendmentCallsOf(report), [],
++      '(f) [M4] ' + name + ': and no `amendment (` line is pushed to `judgmentCalls`: ' +
++      JSON.stringify(report.judgmentCalls))
++    assert.deepEqual(report.amendments, [],
++      '(f) [M3] ' + name + ': the report\'s key is still there, still []: ' +
++      JSON.stringify(report.amendments))
++    // The BASE behaviour the new seam sits beside, unchanged: the concern
++    // itself, verbatim, prefixed only with `task <id>: `.
++    assert.deepEqual(report.judgmentCalls.filter((l) => l.includes('out-of-FILES')),
++      ['task T3: ' + CONCERN],
++      '(f) [M4] ' + name + ': the `DONE_WITH_CONCERNS` reply\'s concern still reaches ' +
++      '`judgmentCalls` verbatim as `task <id>: <concern>`, exactly as at BASE — the amendments ' +
++      'seam is beside `noteConcerns`, not instead of it: ' + JSON.stringify(report.judgmentCalls))
++  }
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (g) [M5] the two role paragraphs say what the worker must declare
++// ══════════════════════════════════════════════════════════════════════════
++// The Proof's third `Run:` is
++//   sed -n '/^Judgment rules:/,/^$/p' fleet/roles/implementer.md | tr '\n' ' ' \
++//     | grep -q 'amendments.*files.*clause.*sim.*what.*why.*out-of-FILES (not taken):.*plan-defect: leg (x) cannot pass'
++// and the fourth is
++//   sed -n '/^The same judgment rules/,/^$/p' fleet/roles/fix.md | tr '\n' ' ' \
++//     | grep -q 'amendments.*files.*clause.*sim.*plan-defect:.*sibling'
++// — an anchored line through the next blank line, flattened to one line, then
++// matched. These are those ranges, read the same way, in this process. The
++// grep patterns are BREs, in which `(` and `)` are literal characters; they are
++// escaped below and mean exactly the same thing.
++{
++  // The sed range: the first line matching the anchor, through the first blank
++  // line at or after it (inclusive, as sed prints it). A paragraph broken in
++  // two ends the range early, which is the point — the Proof's command reads
++  // the paragraph as ONE paragraph and so does this.
++  const paragraph = (file, anchor) => {
++    const lines = fs.readFileSync(path.join(ROLES_DIR, file), 'utf8').split('\n')
++    const start = lines.findIndex((l) => anchor.test(l))
++    assert.notEqual(start, -1,
++      '(g) [M5] sim precondition: fleet/roles/' + file + ' still has the line the Proof\'s sed ' +
++      'range is anchored on (' + String(anchor) + ')')
++    let end = lines.findIndex((l, i) => i >= start && l.trim() === '')
++    if (end === -1) end = lines.length - 1
++    return lines.slice(start, end + 1).join(' ')
++  }
++
++  const impl = paragraph('implementer.md', /^Judgment rules:/)
++  assert.match(impl,
++    /amendments[\s\S]*files[\s\S]*clause[\s\S]*sim[\s\S]*what[\s\S]*why[\s\S]*out-of-FILES \(not taken\):[\s\S]*plan-defect: leg \(x\) cannot pass/,
++    '(g) [M5] fleet/roles/implementer.md\'s judgment-rules paragraph tells the worker to declare ' +
++    'in `amendments` each out-of-FILES edit TAKEN (`files`), each clause read otherwise ' +
++    '(`clause`) and each sim re-aimed (`sim`), each with `what` and `why` — and still carries ' +
++    'the `out-of-FILES (not taken):` sentence and the `plan-defect: leg (x) cannot pass` ' +
++    'sentence, in the order the Proof\'s Run: line greps for them, all inside ONE paragraph. ' +
++    'The paragraph read: ' + JSON.stringify(impl))
++
++  const fix = paragraph('fix.md', /^The same judgment rules/)
++  assert.match(fix,
++    /amendments[\s\S]*files[\s\S]*clause[\s\S]*sim[\s\S]*plan-defect:[\s\S]*sibling/,
++    '(g) [M5] and fleet/roles/fix.md\'s same-judgment-rules sentence names `amendments` for the ' +
++    'same three kinds, keeping `plan-defect:` and the sibling-owned-paths sentence, in the order ' +
++    'the Proof\'s fourth Run: line greps for them. The paragraph read: ' + JSON.stringify(fix))
++}
++
++// (h) [M2] the Proof's second `Run:` line — the bridge over every sim on the
++// patched tree — is the driver's own, for the reason the header gives: a sim
++// may not spawn `pytest` or another sim. This file's part in that leg is to be
++// one of the sims the bridge collects, and the sentinel below is what the
++// bridge and the Proof's first `Run:` line read. It is printed only if every
++// assertion above held.
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_sandbox_boot_amendments.mjs b/fleet/tests/test_sandbox_boot_amendments.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..3de3b6fd8383b46078cd814b443c3c3af2858803
+--- /dev/null
++++ b/fleet/tests/test_sandbox_boot_amendments.mjs
+@@ -0,0 +1,553 @@
++/**
++ * Exam for run-150 task 3 — "The record names the row and the pull request
++ * lists it" (#990, decision of 2026-09-15: "the PR body lists them"; #728).
++ *
++ * CLAIM. When I open the run's pull request I see every amendment listed by
++ * task, above the folded record, and the contract and the report reference say
++ * exactly what the row is.
++ *
++ * Four machine clauses, read here leg by leg and nowhere else:
++ *
++ *   M1  `fleet/CONTRACT.md`'s evidence sub-bullet carries, directly after the
++ *       paragraph beginning "The driver's own executions are three more kinds",
++ *       a paragraph naming `driver:amendment` `{task, amends, what, why}` —
++ *       `amends` one of `clause`, `files`, `sim` — as one event per entry of a
++ *       worker's reply's `amendments`, mirrored on the task's hub issue like
++ *       every `driver:` line naming a task, and `report.json`'s `amendments`
++ *       list as the same rows in order, `[]` when none          → leg (d)
++ *   M2  `skills/ultrapowers/references/report-format.md`'s schema gains an
++ *       `"amendments"` array of objects requiring `task`, `amends`, `what`,
++ *       `why` beside `judgmentCalls`, and its field table gains an
++ *       `amendments` row between the `judgmentCalls` and `unfinished` rows
++ *       stating that shape, that the key is present on every report (`[]` when
++ *       none), that each row also draws one `judgmentCalls` line, and that it
++ *       is never gated                                          → leg (f)
++ *   M3  `fleet/sandbox-boot.sh`'s PR card carries, after the `Residuals:` line
++ *       and its `- ` errand lines and before the
++ *       `<details><summary>Record</summary>` line, one line
++ *       `Amendments: <n> from workers` when the report's `amendments` holds
++ *       n ≥ 1 rows, followed by a blank line and one
++ *       `- task <id> — <amends>: <what> — <why>` line per row in the report's
++ *       order, newlines inside a field flattened to spaces; `Amendments: none`
++ *       when the list is empty, absent or the report unreadable; and
++ *       `fleet/CONTRACT.md`'s Publish bullet says so, naming both lines beside
++ *       the `Residuals:` sentence          → legs (a), (b), (e), (g)
++ *   M4  the residual checklist, `residuals.jsonl`, the `Residuals:` count and
++ *       the record block are what they were at BASE: the count and its `- `
++ *       errand lines are read from the reviewers' notes alone, so a green boot
++ *       carrying one `deferred:external` ack and two `amendments` rows renders
++ *       `Residuals: 1 from review` and that ack's one errand line, with the
++ *       `Amendments:` line AFTER the errand line and never between the two
++ *                                                                → leg (c)
++ *
++ * TWO BOOTS, NO MORE. A boot is ~40 forks of stub shell, so the legs that need
++ * one share exactly two of them and each is started once and awaited by
++ * everyone who reads it — the shape `test_sandbox_boot_kata_export.mjs` and
++ * `test_sandbox_boot_disclosures.mjs` both use:
++ *
++ *   AMENDED  the green run whose `report.json` is the rig's own
++ *            `DEFAULT_REPORT` plus a two-row `amendments` array — `task 1` /
++ *            `files` with a NEWLINE inside its `what`, then `task 2` /
++ *            `clause` — and whose `STUB_GATE_RECEIPT` carries one
++ *            `deferred:external` ack. Legs (a) and (c)'s amended half read it.
++ *   DEFAULT  the rig's shared default green boot (`greenAsync`), whose report
++ *            carries no `amendments` key at all and whose receipt carries no
++ *            ack. Leg (b) and leg (c)'s default half read it.
++ *
++ * THE RECEIPT SAYS `PASS`, NOT `green`. The rig's default gate receipt is
++ * `{"verdict":"PASS"}` (`bootEnv`'s `STUB_VERDICT`), and `do_boot` greens a run
++ * only on `verdict = PASS` or an approve receipt beside it — a receipt spelling
++ * `green` parks the run and its card opens `**Parked:**`. Legs (a) and (c) are
++ * about "the green boot", so the ack rides on a `PASS` receipt, which is the
++ * same receipt the rig writes by default plus the one `gateCheck.acks` entry
++ * the leg is about. Nothing else about the boot changes.
++ *
++ * THE NEWLINE RIDES AS AN ESCAPE. The engine stub writes the report with
++ * `printf '%s\n' "$STUB_REPORT"`, so a RAW newline in the environment value
++ * would make the document unparsable and every card cell a dash. The report is
++ * built as `DEFAULT_REPORT` with `JSON.stringify(AMENDMENTS)` spliced in, so
++ * the newline is a JSON `\n` escape in the file and a real newline in the value
++ * `json.load` hands the card — which is the flattening M3 asks for.
++ *
++ * THE CARD'S LINES ARE NOT HAND-WRITTEN. `EXPECTED_ROWS` below is M3's own
++ * rendering rule applied to the fixture, so the expectation is the clause and
++ * not a second copy of it. `task 2` is a row of the report that is NOT a task
++ * of the stub plan, on purpose: M3 says one line per ROW in the report's order,
++ * so a reader that joined the rows against the plan's task table would drop it.
++ *
++ * LEG (g) IS THE DRIVER'S. It names the second, third and fourth `Run:` lines —
++ * the three boot sims of BASE, still green on the edited script — and the
++ * bridge runs those three lines itself. This file may not:
++ * `fleet/tests/test_sims_are_hermetic.mjs` M4 forbids a sim from running, or
++ * even naming for an existence check, a sibling sim, and a sim that broke that
++ * probe would cost the run more than the leg buys. What is left here is the
++ * reading of the edited script this exam can make on its own, and the one all
++ * three of them rest on: it still parses.
++ */
++
++import assert from 'node:assert/strict'
++import { spawnSync } from 'node:child_process'
++import fs from 'node:fs'
++import path from 'node:path'
++
++import {
++  SCRIPT, ENV, DEFAULT_REPORT, RUN_PATH,
++  makeHome, bootAsync, greenAsync,
++  prPosts, runTests,
++} from './_sandbox_boot_helpers.mjs'
++
++const tests = []
++const test = (name, fn) => tests.push([name, fn])
++
++/** The checkout, from the script the rig points at — `fleet/sandbox-boot.sh`. */
++const ROOT = path.resolve(SCRIPT, '..', '..')
++
++// ── the report's amendment rows, and the receipt's one ack ───────────────────
++
++/**
++ * The two rows, in the shape the wave's shared literal pins:
++ * `{task, amends: 'clause'|'files'|'sim', what, why}` under `report.json`'s
++ * top-level `amendments`. Row one's `what` carries a newline — the field M3
++ * says the card flattens — and row one's `amends` is `files` while row two's is
++ * `clause`, so a card that printed one `amends` for both, or sorted the rows,
++ * fails leg (a) rather than passing it by coincidence. Neither field carries an
++ * em dash of its own, so the ` — ` in the expected line is unambiguously the
++ * card's.
++ */
++const AMENDMENTS = [
++  {
++    task: '1',
++    amends: 'files',
++    what: 'the Proof named fleet/roles/nobody.md\nand the task wrote no such path',
++    why: 'the FILES list carried a path this repository keeps nowhere',
++  },
++  {
++    task: '2',
++    amends: 'clause',
++    what: 'M2 read the field table by its old row order',
++    why: 'the row the clause named had moved one line down',
++  },
++]
++
++/** The detail of the one ack the amended run's receipt carries. */
++const ACK_DETAIL = 'the deploy waits on a credential'
++
++/**
++ * The report the AMENDED boot runs on: the rig's default, plus the rows. Built
++ * off `DEFAULT_REPORT` so the card still renders a whole task row and the run
++ * is green for every reason it is green without this task.
++ */
++const AMENDED_REPORT =
++  `${DEFAULT_REPORT.slice(0, -1)},"amendments":${JSON.stringify(AMENDMENTS)}}`
++
++/**
++ * Its gate receipt: the verdict the rig writes by default, plus the one
++ * `deferred:external` ack `residual_read` turns into the single residual leg
++ * (c) counts.
++ */
++const AMENDED_RECEIPT = JSON.stringify({
++  verdict: 'PASS',
++  gateCheck: { acks: [{ type: 'deferred:external', detail: ACK_DETAIL }] },
++})
++
++// ── what M3 says the card renders ────────────────────────────────────────────
++
++/** M3's flattening: every newline inside a field becomes one space. */
++const flat = (text) => text.replace(/\r\n/g, ' ').replace(/\n/g, ' ').replace(/\r/g, ' ')
++
++/** The count line M3 spells for n ≥ 1 rows. */
++const COUNT_LINE = `Amendments: ${AMENDMENTS.length} from workers`
++/** The line M3 spells for an empty, absent or unreadable list. */
++const NONE_LINE = 'Amendments: none'
++
++/** One `- task <id> — <amends>: <what> — <why>` line per row, in report order. */
++const EXPECTED_ROWS = AMENDMENTS.map(
++  (row) => `- task ${row.task} — ${row.amends}: ${flat(row.what)} — ${flat(row.why)}`,
++)
++
++/** The card's own neighbours, as the lines they are. */
++const RESIDUAL_COUNT_LINE = 'Residuals: 1 from review'
++const RESIDUAL_NONE_LINE = 'Residuals: none'
++/** The one errand line the ack draws at BASE, and the prefix leg (c) counts. */
++const ERRAND_PREFIX = '- deferred:external'
++const ERRAND_LINE = `${ERRAND_PREFIX} — ${ACK_DETAIL}`
++/** The checklist item the record's `### Residuals` section carries at BASE. */
++const CHECKLIST_LINE = `- [ ] deferred:external — ${ACK_DETAIL}`
++/** The record's first line — everything M3 places is above it. */
++const RECORD_LINE = '<details><summary>Record</summary>'
++/** The record's sections, in the order they stand at BASE. */
++const RECORD_SECTIONS = ['### Checks', '### Evidence', '### Plan']
++
++// ── the two boots ────────────────────────────────────────────────────────────
++
++let AMENDED = null
++/** The green run whose report carries the two rows and whose receipt carries
++ *  the one ack. Started once. */
++const amended = () => {
++  if (!AMENDED) {
++    const ctx = makeHome()
++    AMENDED = bootAsync(ctx, ['boot'], {
++      STUB_REPORT: AMENDED_REPORT,
++      STUB_GATE_RECEIPT: AMENDED_RECEIPT,
++    }).then((r) => {
++      assert.equal(r.status, 0, `the amended run did not finish\n${r.stdout}${r.stderr}`)
++      return ctx
++    })
++  }
++  return AMENDED
++}
++
++// ── reading the card ─────────────────────────────────────────────────────────
++
++/** The one PR body this run POSTed, as its lines. */
++const bodyLines = (ctx) => {
++  const posts = prPosts(ctx)
++  assert.equal(posts.length, 1, `the run opened ${posts.length} PRs, not one`)
++  return String(posts[0].body).split('\n')
++}
++
++/** How many lines of the body are exactly `line`. */
++const countExact = (lines, line) => lines.filter((l) => l === line).length
++/** The index of the one line that is exactly `line`, or -1. */
++const at = (lines, line) => lines.indexOf(line)
++
++/** The evidence branch's residual ledger for this run, or '' when it wrote none. */
++const residualsRaw = (ctx) => {
++  const file = path.join(ctx.home, 'evidence', RUN_PATH, 'residuals.jsonl')
++  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : ''
++}
++const residualRows = (ctx) =>
++  residualsRaw(ctx).split('\n').filter(Boolean).map((l) => JSON.parse(l))
++
++// ── leg (a) — M3: the count line, and the rows under it ──────────────────────
++
++test('(a) [M3] the amended card carries one `Amendments: 2 from workers` line, then its two rows', async () => {
++  const ctx = await amended()
++  const lines = bodyLines(ctx)
++
++  // The fixture, stated rather than assumed.
++  assert.equal(
++    COUNT_LINE, 'Amendments: 2 from workers',
++    '(a) [M3] the fixture no longer holds the two rows this leg was written against',
++  )
++
++  assert.equal(
++    countExact(lines, COUNT_LINE), 1,
++    `(a) [M3] a card whose report holds ${AMENDMENTS.length} \`amendments\` rows must carry `
++    + `EXACTLY ONE line \`${COUNT_LINE}\`\n${lines.join('\n')}`,
++  )
++  assert.equal(
++    countExact(lines, NONE_LINE), 0,
++    `(a) [M3] a card with rows must not also carry \`${NONE_LINE}\``,
++  )
++
++  // A blank line, then one line per row in the REPORT's order — and that block,
++  // whole, is what M3 spells.
++  const i = at(lines, COUNT_LINE)
++  assert.deepEqual(
++    lines.slice(i, i + 2 + EXPECTED_ROWS.length), [COUNT_LINE, '', ...EXPECTED_ROWS],
++    '(a) [M3] the count line must be followed by a blank line and then exactly one '
++    + '`- task <id> — <amends>: <what> — <why>` line per row, in the report\'s order',
++  )
++
++  // Exactly those rows and no other: no third `- task ` line anywhere in the body.
++  assert.deepEqual(
++    lines.filter((l) => l.startsWith('- task ')), EXPECTED_ROWS,
++    '(a) [M3] the body\'s `- task ` lines must be exactly the report\'s two rows',
++  )
++
++  // The newline inside row one's `what` is rendered as a space, on one line —
++  // the assertion that fails for a card that passed the field through whole.
++  assert.ok(
++    AMENDMENTS[0].what.includes('\n'),
++    '(a) [M3] the fixture\'s first `what` no longer carries a newline',
++  )
++  assert.ok(
++    lines.includes(EXPECTED_ROWS[0]),
++    `(a) [M3] row one's \`what\` must be rendered on ONE line with its newline replaced by a `
++    + `space:\n  want: ${EXPECTED_ROWS[0]}\n  got:  `
++    + `${JSON.stringify(lines.filter((l) => l.startsWith('- task 1 ')))}`,
++  )
++  for (const piece of flat(AMENDMENTS[0].what).split(' ')) {
++    assert.ok(
++      EXPECTED_ROWS[0].includes(piece),
++      `(a) [M3] the rig lost a word of row one's \`what\`: ${piece}`,
++    )
++  }
++})
++
++test('(a) [M3] the Amendments line sits below the Residuals line and its errand, above the record', async () => {
++  const ctx = await amended()
++  const lines = bodyLines(ctx)
++
++  const residuals = at(lines, RESIDUAL_COUNT_LINE)
++  const errand = lines.findIndex((l) => l.startsWith(ERRAND_PREFIX))
++  const amendments = at(lines, COUNT_LINE)
++  const record = at(lines, RECORD_LINE)
++
++  assert.ok(residuals >= 0, `(a) [M3] the amended card carries no \`${RESIDUAL_COUNT_LINE}\` line`)
++  assert.ok(errand >= 0, `(a) [M3] the amended card carries no \`${ERRAND_PREFIX}\` errand line`)
++  assert.ok(amendments >= 0, `(a) [M3] the amended card carries no \`${COUNT_LINE}\` line`)
++  assert.ok(record >= 0, `(a) [M3] the amended card carries no \`${RECORD_LINE}\` line`)
++
++  assert.ok(
++    amendments > residuals,
++    `(a) [M3] the \`Amendments:\` line must come AFTER the \`Residuals:\` line `
++    + `(Residuals ${residuals}, Amendments ${amendments})`,
++  )
++  assert.ok(
++    amendments > errand,
++    `(a) [M3] the \`Amendments:\` line must come AFTER the \`- \` errand lines the residual count `
++    + `draws (errand ${errand}, Amendments ${amendments})`,
++  )
++  assert.ok(
++    amendments < record,
++    `(a) [M3] the \`Amendments:\` line must come BEFORE the \`${RECORD_LINE}\` line `
++    + `(Amendments ${amendments}, record ${record})`,
++  )
++  // And so must its rows: the whole block is above the fold.
++  for (const row of EXPECTED_ROWS) {
++    assert.ok(
++      at(lines, row) < record,
++      `(a) [M3] every row line must stand above the folded record: ${row}`,
++    )
++  }
++})
++
++// ── leg (b) — M3: no rows, one word ──────────────────────────────────────────
++
++test('(b) [M3] the default green card carries one `Amendments: none` line and no row', async () => {
++  const ctx = await greenAsync()
++  const lines = bodyLines(ctx)
++
++  // The premise, stated rather than assumed: the rig's default report carries
++  // no `amendments` key at all — the absent-list half of M3's second clause.
++  assert.ok(
++    !Object.prototype.hasOwnProperty.call(JSON.parse(DEFAULT_REPORT), 'amendments'),
++    '(b) [M3] the rig\'s DEFAULT_REPORT is expected to carry no `amendments` key',
++  )
++
++  assert.equal(
++    countExact(lines, NONE_LINE), 1,
++    `(b) [M3] a card whose report names no \`amendments\` must carry EXACTLY ONE line `
++    + `\`${NONE_LINE}\`\n${lines.join('\n')}`,
++  )
++  assert.ok(
++    !/^Amendments: \d/m.test(lines.join('\n')),
++    `(b) [M3] a card with no rows must carry no \`Amendments: <n> from workers\` line`,
++  )
++  assert.deepEqual(
++    lines.filter((l) => l.startsWith('- task ')), [],
++    '(b) [M3] a card with no rows must carry no `- task ` line at all',
++  )
++
++  const none = at(lines, NONE_LINE)
++  const record = at(lines, RECORD_LINE)
++  assert.ok(record >= 0, `(b) [M3] the default card carries no \`${RECORD_LINE}\` line`)
++  assert.ok(
++    none < record,
++    `(b) [M3] the \`${NONE_LINE}\` line must stand above the folded record `
++    + `(Amendments ${none}, record ${record})`,
++  )
++})
++
++// ── leg (c) — M4: the residuals, the ledger and the record are what they were ─
++
++test('(c) [M4] the amended run renders `Residuals: 1 from review` and the ack\'s one errand line', async () => {
++  const ctx = await amended()
++  const lines = bodyLines(ctx)
++
++  // The count is read from the reviewers' notes and the acks ALONE: one ack,
++  // one residual, whatever the report's `amendments` holds.
++  assert.equal(
++    countExact(lines, RESIDUAL_COUNT_LINE), 1,
++    `(c) [M4] a green run with one \`deferred:external\` ack must render EXACTLY ONE line `
++    + `\`${RESIDUAL_COUNT_LINE}\` — the two \`amendments\` rows are counted into no residual`
++    + `\n${lines.join('\n')}`,
++  )
++  const errands = lines.filter((l) => l.startsWith(ERRAND_PREFIX))
++  assert.deepEqual(
++    errands, [ERRAND_LINE],
++    `(c) [M4] the ack must draw exactly one errand line, \`${ERRAND_LINE}\``,
++  )
++  // The checklist a merge closes with the PR, unchanged: the ack's item, alone.
++  assert.deepEqual(
++    lines.filter((l) => l.startsWith('- [ ] ')), [CHECKLIST_LINE],
++    '(c) [M4] the residual checklist must be the ack\'s one item and nothing else — no amendment '
++    + 'is a checklist item',
++  )
++
++  // Both of them BEFORE the `Amendments:` line: never between the `Residuals:`
++  // line and its errand.
++  const amendments = at(lines, COUNT_LINE)
++  assert.ok(amendments >= 0, `(c) [M4] the amended card carries no \`${COUNT_LINE}\` line`)
++  assert.ok(
++    at(lines, RESIDUAL_COUNT_LINE) < amendments && at(lines, ERRAND_LINE) < amendments,
++    `(c) [M4] the \`Residuals:\` line and its errand line must BOTH stand before the `
++    + `\`Amendments:\` line (Residuals ${at(lines, RESIDUAL_COUNT_LINE)}, errand `
++    + `${at(lines, ERRAND_LINE)}, Amendments ${amendments})`,
++  )
++})
++
++test('(c) [M4] the amended run\'s residuals.jsonl holds the one deferred row and no amendment', async () => {
++  const ctx = await amended()
++  const rows = residualRows(ctx)
++
++  assert.equal(
++    rows.length, 1,
++    `(c) [M4] the ledger must hold EXACTLY ONE row — the ack's\n${residualsRaw(ctx)}`,
++  )
++  assert.equal(
++    rows[0].kind, 'deferred',
++    `(c) [M4] that row's \`kind\` must be \`deferred\`: ${JSON.stringify(rows[0])}`,
++  )
++  assert.equal(
++    rows[0].text, ACK_DETAIL,
++    `(c) [M4] that row's \`text\` must be the ack's detail: ${JSON.stringify(rows[0])}`,
++  )
++
++  // And no row mentioning an amendment: `residual_read` reads `gateCheck.acks`,
++  // `completenessFindings` and the merged tasks' `notes`, and never `amendments`.
++  const raw = residualsRaw(ctx)
++  assert.ok(
++    !raw.includes('amend'),
++    `(c) [M4] no row of the ledger may mention an amendment at all\n${raw}`,
++  )
++  for (const row of AMENDMENTS) {
++    for (const field of [flat(row.what), flat(row.why)]) {
++      assert.ok(
++        !raw.includes(field),
++        `(c) [M4] no row of the ledger may carry an amendment's text: ${field}\n${raw}`,
++      )
++    }
++  }
++})
++
++test('(c) [M4] the default run still renders `Residuals: none`, and both records are unchanged', async () => {
++  const [plain, rows] = await Promise.all([greenAsync(), amended()])
++
++  const plainLines = bodyLines(plain)
++  assert.equal(
++    countExact(plainLines, RESIDUAL_NONE_LINE), 1,
++    `(c) [M4] the default green card must still carry EXACTLY ONE line \`${RESIDUAL_NONE_LINE}\``
++    + `\n${plainLines.join('\n')}`,
++  )
++  assert.ok(
++    !/^Residuals: \d/m.test(plainLines.join('\n')),
++    '(c) [M4] the default green card must carry no `Residuals: <n> from review` line',
++  )
++  assert.deepEqual(
++    plainLines.filter((l) => l.startsWith('- [ ] ')), [],
++    '(c) [M4] the default green card must carry no checklist item',
++  )
++
++  // The record block is the same as without the key: its sections, in order,
++  // in both bodies.
++  for (const [what, lines] of [['default', plainLines], ['amended', bodyLines(rows)]]) {
++    const record = at(lines, RECORD_LINE)
++    assert.ok(record >= 0, `(c) [M4] the ${what} card carries no record block`)
++    const seen = RECORD_SECTIONS.map((section) => at(lines, section))
++    for (const [i, section] of RECORD_SECTIONS.entries()) {
++      assert.ok(
++        seen[i] > record,
++        `(c) [M4] the ${what} card's \`${section}\` section must stand inside the record block`,
++      )
++      if (i > 0) {
++        assert.ok(
++          seen[i] > seen[i - 1],
++          `(c) [M4] the ${what} card's record sections must read `
++          + `${RECORD_SECTIONS.join(', ')} in that order — got ${JSON.stringify(seen)}`,
++        )
++      }
++    }
++  }
++})
++
++// ── legs (d), (e), (f) — the readers the driver runs, verbatim ───────────────
++
++/**
++ * The Proof's fifth through eighth `Run:` lines, copied character for
++ * character, each beside the leg and clause it belongs to. These are the
++ * driver's own readers of the two documents; running them here is what makes
++ * the exam red at BASE for the documents too, and not only for the card.
++ */
++const READERS = [
++  [
++    '(d)', 'M1',
++    'fleet/CONTRACT.md\'s evidence sub-bullet must carry, between the "three more kinds" '
++    + 'paragraph and the `transcripts/<sessionId>.jsonl` line, a paragraph naming '
++    + '`driver:amendment` `{task, amends, what, why}`, the three `amends` values, the hub issue '
++    + 'and the report\'s `amendments` list',
++    "sed -n '/^    The driver.s own executions are three more kinds/,/^    .transcripts.<sessionId>.jsonl/p'"
++    + " fleet/CONTRACT.md | tr '\\n' ' '"
++    + " | grep -q 'driver:amendment.*task, amends, what, why.*clause.*files.*sim.*hub issue.*amendments'",
++  ],
++  [
++    '(e)', 'M3',
++    'fleet/CONTRACT.md\'s Publish bullet must name `Amendments: <n> from workers` and '
++    + '`Amendments: none`, after its `Residuals: <n> from review` sentence',
++    "sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming:\\*\\*/p' fleet/CONTRACT.md"
++    + " | tr '\\n' ' '"
++    + " | grep -q 'Residuals: <n> from review.*Amendments: <n> from workers.*Amendments: none'",
++  ],
++  [
++    '(f)', 'M2',
++    'skills/ultrapowers/references/report-format.md\'s schema must carry the `amendments` array',
++    'grep -q \'"amendments": { "type": "array"\' skills/ultrapowers/references/report-format.md',
++  ],
++  [
++    '(f)', 'M2',
++    'skills/ultrapowers/references/report-format.md\'s field table must carry an `amendments` row '
++    + 'between the `judgmentCalls` and `unfinished` rows, naming the four fields and `never gated`',
++    "sed -n '/^| .judgmentCalls. | no |/,/^| .unfinished. | yes |/p'"
++    + ' skills/ultrapowers/references/report-format.md'
++    + " | grep -q '^| .amendments. | no |.*task.*amends.*what.*why.*never gated'",
++  ],
++]
++
++test('(d) [M1] the CONTRACT.md evidence sub-bullet names the driver:amendment event', () => {
++  runReader(0)
++})
++
++test('(e) [M3] the CONTRACT.md Publish bullet names both Amendments lines', () => {
++  runReader(1)
++})
++
++test('(f) [M2] the report reference carries the amendments schema and its field-table row', () => {
++  runReader(2)
++  runReader(3)
++})
++
++/** One reader of the table above, run the way the driver runs it. */
++function runReader(index) {
++  const [leg, clause, what, cmd] = READERS[index]
++  const r = spawnSync('bash', ['-c', cmd], { cwd: ROOT, encoding: 'utf8', timeout: 60000, env: ENV })
++  assert.equal(
++    r.status, 0,
++    `${leg} [${clause}] ${what}\n  $ ${cmd}\n${r.stdout || ''}${r.stderr || ''}`,
++  )
++}
++
++// ── leg (g) — M3: the edited script, still a script ──────────────────────────
++
++test('(g) [M3] the edited boot script still parses as bash', () => {
++  // THE LEG ITSELF IS THE DRIVER'S. It names the Proof's second, third and
++  // fourth `Run:` lines — the three boot sims of BASE, still green on the edited
++  // script — and the bridge runs those three lines itself. This file may not:
++  // `fleet/tests/test_sims_are_hermetic.mjs` M4 forbids a sim from running, or
++  // even naming for an existence check, a sibling sim.
++  //
++  // What is left here is the one reading of the edited script this exam can
++  // make on its own, and the one every other boot sim depends on: the script
++  // the three of them source still parses. Lines spliced into `card_head`'s
++  // `python3` program with an unbalanced quote fail here before they fail there.
++  const script = path.relative(ROOT, SCRIPT)
++  const r = spawnSync('bash', ['-n', script], { cwd: ROOT, encoding: 'utf8', timeout: 60000, env: ENV })
++  assert.equal(
++    r.status, 0,
++    `(g) [M3] \`bash -n ${script}\` must be clean — the three boot sims the Proof re-runs all `
++    + `source this file\n${r.stdout || ''}${r.stderr || ''}`,
++  )
++})
++
++runTests(tests)
+diff --git a/skills/ultrapowers/references/report-format.md b/skills/ultrapowers/references/report-format.md
+index c34ce0ab4321d7c737a35f9396c41351adeae15e..9653ec529805eebc44d2b277f7a1efe7d6e4e362 100644
+--- a/skills/ultrapowers/references/report-format.md
++++ b/skills/ultrapowers/references/report-format.md
+@@ -66,6 +66,13 @@ The engine (`fleet/run-engine.mjs`) returns a single structured report object; `
+         "reason": { "type": "string", "enum": ["browser", "runtime", "external", "manual", "plan-defect"] },
+         "why":  { "type": "string" } } } },
+     "judgmentCalls": { "type": "array", "items": { "type": "string" } },
++    "amendments": { "type": "array", "items": { "type": "object",
++      "required": ["task", "amends", "what", "why"],
++      "properties": {
++        "task": { "type": "string" },
++        "amends": { "type": "string", "enum": ["clause", "files", "sim"] },
++        "what": { "type": "string" },
++        "why": { "type": "string" } } } },
+     "unfinished": { "type": "array", "items": { "type": "string" } },
+     "completenessFindings": { "type": "array", "items": { "type": "object",
+       "required": ["severity", "detail"],
+@@ -113,6 +120,7 @@ The engine (`fleet/run-engine.mjs`) returns a single structured report object; `
+ | `gitVerified` | no | Boolean: are the integration receipts intact — the integration branch tip equals the last adopt receipt's sha, and every task reported merged has a fold event in its wave's fold log (the receipt-based #70 check, surfaced as `ancestryMisses`) — on a run where at least one wave merged? Derived by the DRIVER from the repo and the fold logs (#259; `docs/superpowers/specs/2026-08-26-fold-over-git-heads.md` §2), which is the whole of it since #964 Task 2: the old meaning (a completeness critic's own `onIntegrationHead` attestation after a `git checkout --detach` and re-confirm) cannot exist when no agent reads the finished run. The model-recorded merge sha (`waveMerges[last].headSha`) is one half of the tip comparison, not authority on its own — a mismatch against the derived tip withholds the flag and pushes a checkout-drift judgment call. **Step-5 gating:** `gitVerified` MUST be true to Approve — a false value means the receipts do not line up and is treated as `BLOCKED` pending a manual integration-tree check. This is the report-driven hardening of the gate's `git rev-parse <integrationBranch>` == `waveMerges[last].headSha` check |
+ | `deferredVerification` | no | Deliverables present and structurally complete but whose behavior the sandbox could not execute, each tagged with a `reason` — `browser` (live UI), `runtime` (target runtime the sandbox can't run: boot, device, deploy target), `external` (unreachable service/credential/network), `manual` (human judgment: aesthetic, product-fit — a command the driver executed is never `manual` on its own, because the integrated run evidence already carries its result, and a recorded exit code is not a judgment call. When that evidence settles the deliverable's presence and only the judgment remains, the `why` quotes the settling command verbatim from the `$ <cmd>` line of the integrated run evidence, and `ackDecision` pre-authorizes the resulting `deferred:manual` ack when the quoted command is an integrated `Run:` the driver executed that exited 0; a `deferred:manual` ack whose detail quotes no green run verbatim — or quotes a red one as well — is not pre-authorized and parks for an operator, which is the safe failure for a paraphrase (#753)), `plan-defect` (a per-task reviewer returned a blocking issue whose actor is the **plan**, not the implementer: a machine clause that cannot hold, an interface the task was never given. No fix round can close it and no reviewer can wave it through, so the task merges as reviewed and the defect travels here — one item per distinct detail, on tasks whose final `status` is `done`, plus one item for each task the driver parked for the plan before any fix round (#722): the row that carries `actor: plan`, whose `why` is the implementer's own leg-naming `plan-defect:` concern verbatim rather than a reviewer's detail. A parked task is the one `failed` row that still asks the plan a question, and its files are also listed under `missingDeliverables`; `deliverable` is the task id. `ackDecision` does not pre-authorize the resulting `deferred:plan-defect` ack: an operator reads it or the run does not merge). Gating rule: a non-empty `runtime` or `external` group is a structural false-green and routes into the **same** acknowledgement disposition as `coverage.complete: false`; `browser`/`manual` remain a verify-then-approve checklist. One exception, read by `gate_check.py` before it types the ack (#863): a `browser` or `external` item whose subject is the render (its `deliverable`/`why` says so) is checked against `tasks[].stateExams` — the named task's rows, or every task's rows when it names no task id — and when there is at least one row and every row reads `render: "ran"`, the run's own record contradicts the deferral (the driver ran those exams against the live renderer during the suite), so the item is not an ack at all: it lands in the gate output's `notes` as `{ type: "satisfied-by-record", downgraded: "deferred:<reason>", detail, rows }`, naming each row, and gates nothing. A `render: "skipped"` row, a task with no record, or a deferral whose subject is not the render parks exactly as before. Since #964 Task 2 the plan defects are the whole list — the `browser`/`runtime`/`external`/`manual` reasons above are the taxonomy a reader and `gate_check.py` still apply to items carried in from another producer, but this engine emits none of its own: the critic that used to find them is gone. Empty when no task disclosed a plan defect |
+ | `judgmentCalls` | no | Non-obvious autonomous decisions, each one of four kinds (the kind is carried in the entry's string prefix): **autonomy** — a defensible call, FYI, asks nothing (tier-escalation recovery, fell-back-to-default review depth/tier, convergent output, worktree provisioned off BASE and reset before work (#314), a task re-edged behind a sibling still in flight and re-dispatched once that sibling was adopted (#979)); **degradation** — verify the affected slice (integration-review-deferred, agent-error, startHead not reported so BASE anchoring unverified (#314)); **disagreement** — look before approving (reviewer verdict/severity mismatch, reviewer returned no verdict, lost-coordinates, merge reported MERGED without headSha, suite-acceptance failed, disclosed plan-defect divergence (a plan-defect:-prefixed concern)); **binding** — likely a plan typo, and exactly two of them, both written before any dispatch: an edge one of whose endpoints is not a task of this run (`endpoint not in this run — unbound for dependency blocking (check for a typo)`), and a set of edges forming a dependency `cycle`, where no task can ever become ready because every one waits on a task that waits on it, so none is dispatched. New cases slot into an existing kind rather than lengthening this reference. |
++| `amendments` | no | What the workers asked the PLAN for, as against what they did (#990). One object per amendment, in the order the driver collected them: `{ task, amends, what, why }` — the id of the task the worker was dispatched at, which part of that task it would have the plan change (`amends` is one of `clause`, `files` and `sim`, and no other value), the change it asks for, and the reason for asking. Present on every report, `[]` when the run collected none. Each row is also one `driver:amendment` event on the run's `events.jsonl` and on that task's hub issue, and draws one `judgmentCalls` line `task <id>: amendment (<amends>): <what> — <why>`, so a reader of the calls alone still sees it; the PR card lists the rows under `Amendments: <n> from workers`, below the residual errands and above the folded record. A note to whoever writes the next plan, and **never gated**: an amendment changes no run's verdict — for the same tree, `tests.passed`, the gate receipt, the PR's draft/ready state and the merge decision are what they would have been without it |
+ | `unfinished` | yes | One string per task that never became ready, each naming its reason (empty array if none). Three shapes and no others: `"<id>: never dispatched — the suite was already RED on BASE"`, for every task a red baseline held up; `"<id>: blocked — depends on a failed task"`, for a task whose predecessor's epoch went red; and `"<id>: never became ready — a task an edge names as its predecessor never landed"` for the rest — the task an edge names as its predecessor never landed at all |
+ | `completenessFindings` | no | Gaps the DRIVER found on the adopted tree, `{severity, detail}` each (#474). Since #964 Task 2 no agent reads the finished run, so this list is the driver's own and is `[]` on every run whose integrated `Check:`s were green — which is every run that declares no Global Constraints. The one producer left is a Global Constraint `Check:` that came back red on the adopted tree: one **`blocking`** finding per red check, quoting it. **`minor`** stays in the vocabulary for entries carried in from elsewhere but the engine emits none. The consumer is `fleet/run-main.mjs`'s `criticDecision`, **not** `gate_check.py`, which still never reads this field: a run carrying any `blocking` finding is refused by the driver before `ultra_gate.py --approve` is ever invoked. So a refused run leaves a `PASS` or `NEEDS_ACK` gate receipt beside a `critic-block.json` — the gate is honest about what *it* checked, and the blocking finding is what it does not read; the two are not in contradiction. Elements from runs before #474 are bare strings: they carry no severity, and every consumer (`criticDecision`, the driver's PR body) reads them as `minor`. |
+ 
+diff --git a/skills/ultrawrite/SKILL.md b/skills/ultrawrite/SKILL.md
+index 285cc5f94c3e3a5e38651f5df954d5180aaf9aaa..c17171c83d1bbbd4fc7b6e95a6404fa2c24cef3f 100644
+--- a/skills/ultrawrite/SKILL.md
++++ b/skills/ultrawrite/SKILL.md
+@@ -80,6 +80,14 @@ The Files block carries canonical `Create:` / `Modify:` / `Delete:` / `Test:` bu
+ paths, no globs and no open write sets. It is doubly load-bearing: wave shape *and* edge
+ derivation.
+ 
++That block is the expected footprint of a submission, not a fence. A worker that must go outside
++it, that must read a clause otherwise, or that must re-aim a sim declares an amendment: the record
++carries it as a `driver:amendment` row and on the pull request card, and the reviewer reads it as a
++lens on the diff rather than as a breach to revert. So the author still lists every file they can
++foresee the task touching — an unforeseen one now costs a declared amendment, not a dead task — and
++reads a run's amendments as the next plan's input, since what the workers had to declare is exactly
++where this plan's Files sets were wrong.
++
+ ### The six body slots, in this order
+ 
+ - **Claim:** the bilingual pair. The operator's own sentence, verbatim, closed by
+diff --git a/skills/ultrawrite/references/authoring-gotchas.md b/skills/ultrawrite/references/authoring-gotchas.md
+index 79312b84dac625834e8c978282d14dcc94141240..bb7e4e57ee66f11df9d147fe568a691a9f0713b2 100644
+--- a/skills/ultrawrite/references/authoring-gotchas.md
++++ b/skills/ultrawrite/references/authoring-gotchas.md
+@@ -77,11 +77,14 @@ included. Nothing prints them.
+   total. Likewise `test ! -e tests/<dir>` fails on a `__pycache__` survivor in
+   the integration clone — pin the source files. The compiler names both:
+   `suite-total-pin` and `directory-absence-pin` (run-4, 2026-09-04).
+-- **Every file a task must touch is in its own Files, even a sibling's
+-  one-liner.** A compelled edit outside Files was ruled lawful in review round
+-  1, reverted by the fix round told to "resolve every blocking issue", blocked
+-  in round 2, and the task died `fix-loop-exhausted`; same-file text folds, so
+-  listing the file costs nothing (run-2, 2026-09-04).
++- **Every file a task can foresee touching is in its own Files,
++  even a sibling's one-liner.** A compelled edit outside Files was ruled lawful
++  in review round 1, reverted by the fix round told to "resolve every blocking
++  issue", blocked in round 2, and the task died `fix-loop-exhausted`; same-file
++  text folds, so listing the file costs nothing. A file the author could not
++  foresee is no longer that death: it is a declared amendment the reviewer
++  judges on its merits and never reverts, the rule since #990 — so the listing
++  is foresight, not a fence (run-2, 2026-09-04).
+ - **Never a process or authorship sentence in the plan-level Claim.** "Every
+   task's exam was written by a peer before the implementer started" parked an
+   otherwise clean run as `deferred:external`: the critic reads the tree, and no
+diff --git a/skills/ultrawrite/scripts/authoring_census.py b/skills/ultrawrite/scripts/authoring_census.py
+index 9879ae1f33dec063b03f5e28621a4620d00d790d..96a50e7caa0cb8bb060999781d2fa12f13d757a2 100755
+--- a/skills/ultrawrite/scripts/authoring_census.py
++++ b/skills/ultrawrite/scripts/authoring_census.py
+@@ -14,7 +14,8 @@ is a question about the pile. This census is that pile read into one table.
+     authoring_census.py --fetch <owner>/<repo> --runs <A>..<B> --into <dir>
+ 
+ `<dir>` holds `run-<N>/gate-verdicts.json` files, optionally with a
+-`run-<N>/status.json` beside each; a `run-<N>` with no record is not a row.
++`run-<N>/status.json` and a `run-<N>/report.json` beside each; a `run-<N>`
++with no record is not a row.
+ `--register` prints one line per option of every question instead of the table
+ (#735). `--fetch` fills `<dir>` from the plan and evidence tags over `gh api`
+ and then prints the table over it. `--gh` swaps that binary — the test seam,
+@@ -39,6 +40,7 @@ RUN_DIR_RE = re.compile(r"^run-(\d+)$")
+ 
+ RECORD_NAME = "gate-verdicts.json"
+ STATUS_NAME = "status.json"
++REPORT_NAME = "report.json"
+ 
+ #: The table's columns, in order. The first line of `--from` output is exactly
+ #: these names, tab-separated.
+@@ -53,6 +55,7 @@ COLUMNS = (
+     "questions",
+     "recommended_picked",
+     "run_min",
++    "amendments",
+ )
+ 
+ #: What a column prints when the run's files do not carry it.
+@@ -97,6 +100,23 @@ def _run_minutes(status):
+     return int((b - a).total_seconds() // 60)
+ 
+ 
++def _amendments(report):
++    """How many amendments the run's workers made, from its `report.json`.
++
++    The report's top-level `amendments` is a list of `{task, amends, what,
++    why}` rows, `[]` when none — so the count is that list's length. None when
++    the file is absent, unreadable, not an object, or carries no list under
++    that key: every run before the plan that introduced the key reads `-`,
++    never `0`, because a run that never wrote the key is not a run that made
++    no amendment."""
++    if not isinstance(report, dict):
++        return None
++    amendments = report.get("amendments")
++    if not isinstance(amendments, list):
++        return None
++    return len(amendments)
++
++
+ def _questions(authoring):
+     """The record's questions as a list of objects."""
+     questions = authoring.get("questions")
+@@ -148,6 +168,7 @@ def census_rows(root):
+ 
+         status = _load_json(directory / STATUS_NAME)
+         run_min = _run_minutes(status) if isinstance(status, dict) else None
++        amendments = _amendments(_load_json(directory / REPORT_NAME))
+ 
+         rows.append({
+             "run": number,
+@@ -161,6 +182,7 @@ def census_rows(root):
+             "recommended_picked": (
+                 _recommended_picked(questions) if has_authoring else None),
+             "run_min": run_min,
++            "amendments": amendments,
+             "questions_detail": questions,
+         })
+     return rows
+@@ -196,7 +218,8 @@ def _totals_line(rows):
+ 
+     `risk_override` is over the rows that carry a routing record at all — a
+     pre-plan record has no branch and is no part of the denominator — and the
+-    two `recommended_picked` sums are over every row."""
++    two `recommended_picked` sums are over every row. `amendments` sums the
++    rows that carry a count; a release where no run wrote one reads 0."""
+     routed = [row for row in rows if row["routing"] is not None]
+     risk = [row for row in routed if row["routing"] == "risk"]
+     picked = offered = 0
+@@ -206,10 +229,12 @@ def _totals_line(rows):
+             picked += p
+             offered += q
+     return ("totals: plans=%d runs=%s risk_override=%d/%d "
+-            "recommended_picked=%d/%d authoring_min=%d run_min=%d"
++            "recommended_picked=%d/%d authoring_min=%d run_min=%d "
++            "amendments=%d"
+             % (len(rows), _window(rows), len(risk), len(routed),
+                picked, offered,
+-               _sum(rows, "authoring_min"), _sum(rows, "run_min")))
++               _sum(rows, "authoring_min"), _sum(rows, "run_min"),
++               _sum(rows, "amendments")))
+ 
+ 
+ def render_table(rows):
+@@ -284,15 +309,18 @@ def _fetch_file(gh, target, path, ref):
+ 
+ 
+ def fetch_runs(target, first, last, into, gh="gh"):
+-    """Fill `into` with `run-<N>/gate-verdicts.json` and `run-<N>/status.json`
+-    for each N from `first` to `last` inclusive; return the runs written.
++    """Fill `into` with `run-<N>/gate-verdicts.json`, `run-<N>/status.json` and
++    `run-<N>/report.json` for each N from `first` to `last` inclusive; return
++    the runs written.
+ 
+     The plan tag `ultra/plan/run-<N>` carries the record and the evidence tag
+-    `ultra/evidence/run-<N>` carries the status. A run whose plan tag has no
+-    record is skipped whole — one line on stderr, nothing written for it, no
+-    directory left behind — because a run with no record is no row. A status
+-    that does not answer leaves that file unwritten and the row's `run_min` a
+-    `-`: the authoring numbers are still worth reading without it."""
++    `ultra/evidence/run-<N>` carries both the status and the report. A run
++    whose plan tag has no record is skipped whole — one line on stderr, nothing
++    written for it, no directory left behind — because a run with no record is
++    no row. A status that does not answer leaves that file unwritten and the
++    row's `run_min` a `-`, and a report that does not answer leaves that file
++    unwritten and the row's `amendments` a `-`: the authoring numbers are still
++    worth reading without either."""
+     into = Path(into)
+     # The destination exists whether or not any run answers: a release where
+     # every tag is missing is an empty census, not a usage error.
+@@ -315,6 +343,11 @@ def fetch_runs(target, first, last, into, gh="gh"):
+             "ultra/evidence/run-%d" % number)
+         if status is not None:
+             (directory / STATUS_NAME).write_bytes(status)
++        report = _fetch_file(
++            command, target, ".ultrapowers/runs/%d/report.json" % number,
++            "ultra/evidence/run-%d" % number)
++        if report is not None:
++            (directory / REPORT_NAME).write_bytes(report)
+         written.append(number)
+     return written
+ 
+diff --git a/tests/test_authoring_census.py b/tests/test_authoring_census.py
+index f6764365a08395012bb380075b940c171d09c725..b7f1f89ff4791ea035fc47951c6b116e07ba9e90 100644
+--- a/tests/test_authoring_census.py
++++ b/tests/test_authoring_census.py
+@@ -14,9 +14,10 @@ The exam for `skills/ultrawrite/scripts/authoring_census.py`, leg by leg:
+   * (c)/[M2] `--register` prints one line per option of every question of every
+     row, in row order then question order then option order, and no header.
+   * (d)/[M3] `--fetch o/r --runs 131..133 --into <dir> --gh <fake>` writes the
+-    two files per run from the two tags, skips the run whose plan tag has no
+-    record with one stderr line naming it, invokes the binary `--gh` names and
+-    no other, and then prints the M1 table over `<dir>`.
++    record from the plan tag and the status and report from the evidence tag,
++    skips the run whose plan tag has no record with one stderr line naming it,
++    invokes the binary `--gh` names and no other, and then prints the M1 table
++    over `<dir>`.
+ 
+ The script is driven as a subprocess over directories built under `tmp_path`,
+ with a fake `gh` written there that answers from a table keyed on the `ref=`
+@@ -118,23 +119,28 @@ def blob(obj):
+ # ------------------------------------------------------------ the M1 expected
+ 
+ HEADER = tsv("run", "authoring_min", "probes", "dispatched", "rejected",
+-             "routing", "lane", "questions", "recommended_picked", "run_min")
++             "routing", "lane", "questions", "recommended_picked", "run_min",
++             "amendments")
+ 
+ # (a): the no-`authoring` record — `-` in every authoring column, its tally
+-# read, and `-` for `run_min` (it carries no `status.json`).
+-ROW_9 = tsv("9", "-", "-", "3", "0", "-", "-", "-", "-", "-")
++# read, and `-` for `run_min` (it carries no `status.json`). `amendments` is
++# `-` on every row here: `build_root` writes no `report.json`, and a run that
++# left no report reads `-`, never `0`.
++ROW_9 = tsv("9", "-", "-", "3", "0", "-", "-", "-", "-", "-", "-")
+ # (a): the leg's row, verbatim.
+ ROW_131 = tsv("131", "118", "12", "4", "1", "risk", "ultrapowers", "1",
+-              "1/1", "16")
++              "1/1", "16", "-")
+ # (a): `rejected` and `run_min` both `-`, `recommended_picked` 1/1 — the
+ # null-recommended question counts in neither p nor q.
+ ROW_133 = tsv("133", "47", "5", "2", "-", "width", "ultrapowers", "2",
+-              "1/1", "-")
++              "1/1", "-", "-")
+ # (a): m = the rows with a routing record (131, 133), k = those whose branch
+ # is `risk` (131); p/q summed over every row; 118 + 47 = 165; 16 is the one
+-# row carrying a `run_min`.
++# row carrying a `run_min`; no row carries an amendment count, so the sum over
++# the rows that do is 0.
+ TOTALS = ("totals: plans=3 runs=9..133 risk_override=1/2 "
+-          "recommended_picked=2/2 authoring_min=165 run_min=16")
++          "recommended_picked=2/2 authoring_min=165 run_min=16 "
++          "amendments=0")
+ 
+ TABLE = [HEADER, ROW_9, ROW_131, ROW_133, TOTALS]
+ 
+@@ -252,6 +258,11 @@ def status_path(number):
+             "?ref=ultra/evidence/run-%d" % (number, number))
+ 
+ 
++def report_path(number):
++    return ("repos/o/r/contents/.ultrapowers/runs/%d/report.json"
++            "?ref=ultra/evidence/run-%d" % (number, number))
++
++
+ def lines(text):
+     return text.splitlines()
+ 
+@@ -268,8 +279,9 @@ def test_a_the_table_over_three_runs(tmp_path):
+ 
+ 
+ def test_a_the_header_line_is_exact(tmp_path):
+-    """(a)/[M1]: the first line is the ten tab-separated column names, in the
+-    clause's order — read on its own so a drift there reads as a drift there."""
++    """(a)/[M1]: the first line is the eleven tab-separated column names, in
++    the clause's order, `amendments` last — read on its own so a drift there
++    reads as a drift there."""
+     root = build_root(tmp_path)
+     p = census("--from", str(root))
+     assert lines(p.stdout)[0] == HEADER, p.stdout
+@@ -303,7 +315,8 @@ def test_a_run_min_is_whole_minutes_rounded_down(tmp_path):
+     root = build_root(tmp_path)
+     p = census("--from", str(root))
+     assert ROW_131 in lines(p.stdout), p.stdout
+-    assert lines(p.stdout)[2].split("\t")[-1] == "16", p.stdout
++    # `run_min` is the second-to-last cell now that `amendments` closes the row.
++    assert lines(p.stdout)[2].split("\t")[-2] == "16", p.stdout
+ 
+ 
+ def test_a_the_totals_line_is_exact(tmp_path):
+@@ -379,7 +392,8 @@ def test_c_register_leaves_the_rec_column_dashed_for_a_null_recommended(
+ def fetch_answers():
+     """The fake's table: the plan record for 131 and 133, a `status.json` for
+     131 only. Run 132's plan tag and run 133's evidence tag are absent, so the
+-    fake exits 1 for them."""
++    fake exits 1 for them — and no `report.json` is answered at all, so every
++    row's `amendments` is `-`."""
+     return {
+         plan_path(131): blob(RECORD_131).decode("utf-8"),
+         plan_path(133): blob(RECORD_133).decode("utf-8"),
+@@ -434,22 +448,24 @@ def test_d_fetch_then_prints_the_table_over_the_directory(tmp_path):
+     assert lines(p.stdout) == [
+         HEADER, ROW_131, ROW_133,
+         ("totals: plans=2 runs=131..133 risk_override=1/2 "
+-         "recommended_picked=2/2 authoring_min=165 run_min=16"),
++         "recommended_picked=2/2 authoring_min=165 run_min=16 "
++         "amendments=0"),
+     ], p.stdout + p.stderr
+ 
+ 
+ def test_d_every_gh_call_is_an_api_read_of_the_expected_ref(tmp_path):
+     """(d)/[M3]: each call's first two arguments are `api` and a
+     `repos/o/r/contents/` path carrying the expected `ref=` tag — the plan tag
+-    for the record, the evidence tag for the status — and no argv names any
+-    other repository. The three plan reads and the two status reads the leg
+-    asks for are all made."""
++    for the record, the evidence tag for the status and the report — and no
++    argv names any other repository. The three plan reads, the two status reads
++    and the two report reads the leg asks for are all made."""
+     p, _into, calls, _bare = run_fetch(tmp_path)
+     argvs = [json.loads(line) for line in lines(calls.read_text())
+              if line.strip()]
+     assert argvs, "the fake `gh` was never invoked: " + p.stdout + p.stderr
+     expected = {plan_path(n) for n in (131, 132, 133)}
+     expected |= {status_path(n) for n in (131, 132, 133)}
++    expected |= {report_path(n) for n in (131, 132, 133)}
+     for argv in argvs:
+         assert argv[0] == "api", argv
+         assert argv[1].startswith("repos/o/r/contents/"), argv
+@@ -459,8 +475,12 @@ def test_d_every_gh_call_is_an_api_read_of_the_expected_ref(tmp_path):
+                 assert owner_repo == "o/r", argv
+     made = {argv[1] for argv in argvs}
+     for required in (plan_path(131), plan_path(132), plan_path(133),
+-                     status_path(131), status_path(133)):
++                     status_path(131), status_path(133),
++                     report_path(131), report_path(133)):
+         assert required in made, sorted(made)
++    # 132's plan tag carries no record, so the run is skipped whole: neither
++    # its status nor its report is ever read.
++    assert report_path(132) not in made, sorted(made)
+ 
+ 
+ def test_d_the_bare_gh_on_path_is_never_resolved(tmp_path):
+diff --git a/tests/test_authoring_census_amendments.py b/tests/test_authoring_census_amendments.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e8fbd09b24f3223d95a27abca78e6f431e471508
+--- /dev/null
++++ b/tests/test_authoring_census_amendments.py
+@@ -0,0 +1,640 @@
++"""The census counts amendments: the new column, the new totals suffix, the
++new fetch.
++
++The exam for task 4 — `skills/ultrawrite/scripts/authoring_census.py` gaining
++an `amendments` column, a ` amendments=<n>` totals suffix and a third `--fetch`
++read. Leg by leg, in the Proof's own order:
++
++  * (a)/[M2] over one root of three runs — `run-9` carrying a `report.json`
++    whose `amendments` has three rows, `run-131` carrying a report with no
++    `amendments` key, `run-133` carrying no report at all — the header ends
++    with an `amendments` column after `run_min`, and the three rows' last
++    cells are `3`, `-` and `-` in that order (rows sort by ascending N, so
++    `run-9` is the first of them).
++  * (b)/[M3] that table's last line ends ` amendments=3`, and a root whose
++    reports carry no lists ends ` amendments=0`.
++  * (c)/[M1] `--fetch o/r --runs 131..132` against a fake `gh` that answers the
++    plan and status reads for both and a report for 131 only: `run-131/
++    report.json` is the decoded bytes of the answer, no `run-132/report.json`
++    is written, both report contents paths are requested as `api` calls, and
++    the printed table gives 131 the report's list length and 132 a `-`.
++  * (d)/[M1] a run whose plan tag has no record still yields no row and no
++    directory, report or not — its report answering changes nothing.
++  * (e)/[M4] the Proof's second and fourth `Run:` lines: the sibling exam
++    `tests/test_authoring_census.py`, edited by this task, is green on the
++    patched tree, and it still defines exactly 19 `def test_` functions.
++  * (f)/[M1] the Proof's third `Run:` line: `--help` names `--fetch`.
++
++The script is driven as a subprocess over directories built under `tmp_path`,
++with the fake `gh` the task's Context describes written there beside it. The
++helpers are copied from `tests/test_authoring_census.py`, never imported — the
++task says so, and the two files are graded apart.
++
++Three readings this file pins, each from the task's own words:
++
++  * A report that parses but carries no `amendments` key reads `-`, never `0`
++    (M2: the length "when that file parses as an object carrying a list under
++    that key, `None` otherwise"; the Context: "every run before this plan —
++    reads `-`, never `0`"). A report carrying `[]` reads `0`, not `-`: zero
++    amendments is a value the file carries.
++  * The totals sum is "over the rows that carry a value", so a root where no
++    row carries one still ends ` amendments=0` — the empty sum, not a `-`.
++  * M3 quotes the totals format string without the ` runs=<lo>..<hi>` field
++    the line carries at BASE, and the Context's line numbers match the tree at
++    `5a8f1ebd` rather than at this BASE (`5aa9af93`, "a release's census line
++    says which runs it read", landed in between and added that field). The
++    quoted string is therefore a stale snapshot, not an instruction to drop
++    the window. This exam encodes M3's operative words — "the totals line ends
++    ` amendments=<n>`" — as an exact suffix, and checks the rest of the line by
++    equality after stripping a single optional ` runs=<window>` field, which
++    reproduces M3's quoted format string exactly. It pins neither the window's
++    presence nor its absence, because the task's own text says both.
++"""
++import json
++import os
++import pathlib
++import re
++import subprocess
++import sys
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++CENSUS = ROOT / "skills/ultrawrite/scripts/authoring_census.py"
++SIBLING = ROOT / "tests/test_authoring_census.py"
++
++
++def tsv(*cells):
++    return "\t".join(cells)
++
++
++def lines(text):
++    return text.splitlines()
++
++
++# ---------------------------------------------------------------- the records
++
++# The records are the sibling exam's, unchanged: this task adds a column, it
++# does not move the ten that were already there, so their cells stay readable.
++RECORD_131 = {
++    "tasks": [{"id": "1", "verdict": "pass"}],
++    "tally": {"dispatched": 4, "rejected": 1},
++    "authoring": {
++        "minutes": 118,
++        "probes": 12,
++        "routing": {"branch": "risk", "lane": "ultrapowers"},
++        "questions": [
++            {"question": "Claim and summary", "options": ["A", "B"],
++             "recommended": "A", "picked": "A"},
++        ],
++    },
++}
++
++RECORD_133 = {
++    "tasks": [{"id": "1", "verdict": "pass"}],
++    "tally": {"dispatched": 2},
++    "authoring": {
++        "minutes": 47,
++        "probes": 5,
++        "routing": {"branch": "width", "lane": "ultrapowers"},
++        "questions": [
++            {"question": "Lane and shape",
++             "options": ["ultrapowers", "subagent", "inline"],
++             "recommended": None, "picked": "subagent"},
++            {"question": "Probe budget", "options": ["8", "12"],
++             "recommended": "12", "picked": "12"},
++        ],
++    },
++}
++
++# A record older than this plan: no `authoring` key.
++RECORD_9 = {
++    "tasks": [{"id": "1", "verdict": "pass"}],
++    "tally": {"dispatched": 3, "rejected": 0},
++}
++
++STATUS_131 = {
++    "run": "131",
++    "state": "done",
++    "phase": "merged",
++    "pr": "https://github.com/o/r/pull/1",
++    "prAuthor": "o",
++    "merged": "a" * 40,
++    "branch": "ultra/integration-run-131",
++    "vm": "fleet-r131-x",
++    "startedAt": "2026-08-30T22:40:00Z",
++    "updatedAt": "2026-08-30T22:56:30Z",
++    "error": None,
++}
++
++# ---------------------------------------------------------------- the reports
++
++# The shared literal the Context spells: `report.json`'s top-level `amendments`
++# is a list of `{task, amends, what, why}` rows.
++def amendment(task, amends):
++    return {
++        "task": task,
++        "amends": amends,
++        "what": "the clause moved",
++        "why": "the tree said otherwise",
++    }
++
++
++#: Leg (a)'s first run: three amendment rows, so its cell is `3`.
++REPORT_THREE = {
++    "run": "9",
++    "amendments": [amendment("1", "M1"), amendment("2", "M2"),
++                   amendment("2", "M3")],
++}
++
++#: Leg (a)'s second run: a report that parses and carries no `amendments`
++#: key — every run before this plan. Its cell is `-`, never `0`.
++REPORT_NO_KEY = {
++    "run": "131",
++    "tasks": [{"id": "1", "verdict": "pass"}],
++}
++
++#: Leg (b)'s other root: a report carrying the empty list. Zero is a value the
++#: file carries, so the cell is `0` and the totals sum is still 0.
++REPORT_EMPTY = {"run": "0", "amendments": []}
++
++#: Leg (c)'s fetched report: two rows, so the fetched row's cell is `2` and no
++#: leg's expected number is the same as another's by accident.
++REPORT_FETCHED = {
++    "run": "131",
++    "amendments": [amendment("1", "M2"), amendment("3", "M1")],
++}
++
++
++# ------------------------------------------------------------- the M2 expected
++
++#: [M2] `COLUMNS` gains `amendments` as its last name, after `run_min`.
++COLUMN_NAMES = ("run", "authoring_min", "probes", "dispatched", "rejected",
++                "routing", "lane", "questions", "recommended_picked",
++                "run_min", "amendments")
++
++HEADER = tsv(*COLUMN_NAMES)
++
++# (a): `run-9`'s record predates the plan — `-` in every authoring column, its
++# tally read — and its report carries three amendment rows.
++ROW_9 = tsv("9", "-", "-", "3", "0", "-", "-", "-", "-", "-", "3")
++# (a): the full row, its report carrying no `amendments` key.
++ROW_131 = tsv("131", "118", "12", "4", "1", "risk", "ultrapowers", "1",
++              "1/1", "16", "-")
++# (a): no report at all beside the record.
++ROW_133 = tsv("133", "47", "5", "2", "-", "width", "ultrapowers", "2",
++              "1/1", "-", "-")
++
++# ------------------------------------------------------------- the M3 expected
++
++#: [M3] the totals line with its ` runs=<window>` field stripped: exactly the
++#: format string M3 quotes, filled in for leg (a)'s root. 118 + 47 = 165; 16 is
++#: the one row carrying a `run_min`; 3 is the one row carrying an `amendments`.
++TOTALS_WITHOUT_WINDOW = ("totals: plans=3 risk_override=1/2 "
++                         "recommended_picked=2/2 authoring_min=165 "
++                         "run_min=16 amendments=3")
++
++WINDOW_RE = re.compile(r" runs=\S+")
++
++
++def without_window(line):
++    """`line` with one ` runs=<window>` field removed — see this module's
++    docstring: M3's quoted format string predates that field, so the exam reads
++    the line either way rather than pinning a question the task answers twice."""
++    return WINDOW_RE.sub("", line, count=1)
++
++
++# ------------------------------------------------------------------- the seam
++
++def blob(obj):
++    """One record, as the bytes that land on disk — the fetch leg compares the
++    file it wrote against exactly this."""
++    return (json.dumps(obj, indent=2) + "\n").encode("utf-8")
++
++
++def census(*args, env=None):
++    """The script, as a subprocess. Nothing here reaches into its internals."""
++    assert CENSUS.is_file(), (
++        "the census script does not exist yet: %s" % CENSUS)
++    return subprocess.run([sys.executable, str(CENSUS), *args],
++                          capture_output=True, text=True, env=env)
++
++
++def write_run(root, number, record, status=None, report=None):
++    """One `run-<N>` directory. `report` is this task's addition: the
++    `report.json` the fetch now writes beside the record and the status."""
++    d = root / ("run-%s" % number)
++    d.mkdir(parents=True)
++    if record is not None:
++        (d / "gate-verdicts.json").write_bytes(blob(record))
++    if status is not None:
++        (d / "status.json").write_bytes(blob(status))
++    if report is not None:
++        (d / "report.json").write_bytes(blob(report))
++    return d
++
++
++def build_root(tmp_path, name="census", reports=("three", "no_key", None)):
++    """Leg (a)'s three run directories under one root.
++
++    `reports` says what each of `run-9`, `run-131`, `run-133` carries beside
++    its record, in that order: the leg's root is a three-row report, a report
++    with no `amendments` key, and no report at all."""
++    which = {
++        "three": REPORT_THREE,
++        "no_key": REPORT_NO_KEY,
++        "empty": REPORT_EMPTY,
++        None: None,
++    }
++    root = tmp_path / name
++    root.mkdir()
++    write_run(root, 131, RECORD_131, STATUS_131, which[reports[1]])
++    write_run(root, 133, RECORD_133, None, which[reports[2]])
++    write_run(root, 9, RECORD_9, None, which[reports[0]])
++    return root
++
++
++DECOY = """#!/bin/sh
++printf '%s\\n' "$*" >> '{log}'
++exit 1
++"""
++
++
++def decoy_env(tmp_path, name="decoy"):
++    """A `gh` first on PATH that logs and fails. `--gh` names a binary, so the
++    real one is never resolved by bare name. Returns (env, the log that must
++    never appear)."""
++    bindir = tmp_path / name
++    bindir.mkdir()
++    log = bindir / "bare-gh.log"
++    gh = bindir / "gh"
++    gh.write_text(DECOY.format(log=log))
++    gh.chmod(0o755)
++    env = dict(os.environ)
++    env["PATH"] = str(bindir) + os.pathsep + env["PATH"]
++    return env, log
++
++
++FAKE_GH = '''#!/usr/bin/env python3
++"""A `gh` that answers a contents read from a table keyed on argv[1]."""
++import base64
++import json
++import sys
++from pathlib import Path
++
++HERE = Path(__file__).resolve().parent
++argv = sys.argv[1:]
++with (HERE / "calls.jsonl").open("a") as fh:
++    fh.write(json.dumps(argv) + "\\n")
++table = json.loads((HERE / "answers.json").read_text())
++body = table.get(argv[1]) if len(argv) > 1 else None
++if body is None:
++    # No digits of its own: the one stderr line naming the skipped run can
++    # then only be the script's.
++    sys.stderr.write("gh: that ref carries no such file\\n")
++    sys.exit(1)
++payload = base64.b64encode(body.encode("utf-8")).decode("ascii")
++wrapped = "\\n".join(payload[i:i + 60] for i in range(0, len(payload), 60))
++sys.stdout.write(json.dumps({
++    "name": Path(argv[1].split("?")[0]).name,
++    "encoding": "base64",
++    "content": wrapped + "\\n",
++}) + "\\n")
++'''
++
++
++def fake_gh(tmp_path, answers, name="fakebin"):
++    """The fake, plus the table it answers from. Returns (its path, its call
++    log)."""
++    bindir = tmp_path / name
++    bindir.mkdir()
++    (bindir / "answers.json").write_text(json.dumps(answers))
++    gh = bindir / "gh-fake"
++    gh.write_text(FAKE_GH)
++    gh.chmod(0o755)
++    return gh, bindir / "calls.jsonl"
++
++
++def plan_path(number):
++    return ("repos/o/r/contents/.ultrapowers/gate-verdicts.json"
++            "?ref=ultra/plan/run-%d" % number)
++
++
++def status_path(number):
++    return ("repos/o/r/contents/.ultrapowers/runs/%d/status.json"
++            "?ref=ultra/evidence/run-%d" % (number, number))
++
++
++def report_path(number):
++    """[M1] the third read: `.ultrapowers/runs/<N>/report.json` at the evidence
++    tag, over the same `repos/<owner>/<repo>/contents/…?ref=…` shape."""
++    return ("repos/o/r/contents/.ultrapowers/runs/%d/report.json"
++            "?ref=ultra/evidence/run-%d" % (number, number))
++
++
++def call_log(calls):
++    return [json.loads(line) for line in lines(calls.read_text())
++            if line.strip()]
++
++
++def row_for(stdout, number):
++    """The one printed row whose first cell is `<number>`, or None."""
++    found = [line for line in lines(stdout)
++             if line.split("\t")[0] == str(number)]
++    assert len(found) <= 1, found
++    return found[0] if found else None
++
++
++def last_cells(stdout):
++    """The last cell of every row between the header and the totals line."""
++    body = lines(stdout)[1:-1]
++    return [line.split("\t")[-1] for line in body]
++
++
++# ------------------------------------------------------------------- leg (a)
++
++def test_a_the_header_ends_with_an_amendments_column_after_run_min(tmp_path):
++    """(a)/[M2]: `COLUMNS` gains `amendments` as its last name, after
++    `run_min` — the header line is the eleven names, tab-separated, in that
++    order and no other."""
++    root = build_root(tmp_path)
++    p = census("--from", str(root))
++    assert p.returncode == 0, p.stdout + p.stderr
++    header = lines(p.stdout)[0]
++    assert header == HEADER, p.stdout
++    assert header.split("\t")[-2:] == ["run_min", "amendments"], header
++
++
++def test_a_the_three_rows_last_cells_are_three_dash_dash(tmp_path):
++    """(a)/[M2]: the three runs' last cells are `3` (a report whose
++    `amendments` has three rows), `-` (a report carrying no `amendments` key)
++    and `-` (no report), in that order — rows sort by ascending N, so `run-9`
++    is first."""
++    root = build_root(tmp_path)
++    p = census("--from", str(root))
++    assert p.returncode == 0, p.stdout + p.stderr
++    assert last_cells(p.stdout) == ["3", "-", "-"], p.stdout
++
++
++def test_a_each_whole_row_gains_its_eleventh_cell_and_keeps_the_ten(tmp_path):
++    """(a)/[M2]: the rows verbatim — the ten cells this task does not touch,
++    each followed by the new one. `run-9`'s `rejected` is still `0` and not
++    `-`, and `run-133` still carries neither `rejected` nor a `run_min`."""
++    root = build_root(tmp_path)
++    p = census("--from", str(root))
++    assert lines(p.stdout)[1:4] == [ROW_9, ROW_131, ROW_133], p.stdout
++
++
++def test_a_a_report_without_the_key_reads_a_dash_and_an_empty_list_a_zero(
++        tmp_path):
++    """(a)/[M2]: the length of the list "when that file parses as an object
++    carrying a list under that key, `None` otherwise". A report with no such
++    key carries no value and prints `-`; a report carrying `[]` carries the
++    value zero and prints `0`."""
++    no_key = build_root(tmp_path, name="nokey",
++                        reports=("no_key", "no_key", "no_key"))
++    empty = build_root(tmp_path, name="empty",
++                       reports=("empty", "empty", "empty"))
++    assert last_cells(census("--from", str(no_key)).stdout) == \
++        ["-", "-", "-"], "a report with no `amendments` key must read `-`"
++    assert last_cells(census("--from", str(empty)).stdout) == \
++        ["0", "0", "0"], "a report carrying `[]` must read `0`, not `-`"
++
++
++def test_a_census_rows_carries_an_amendments_value_per_row(tmp_path):
++    """(a)/[M2]: read at the seam the clause names — `census_rows` gives each
++    row an `amendments` value: the list's length, or None."""
++    module = load_module()
++    rows = module.census_rows(build_root(tmp_path))
++    got = [row.get("amendments", "<no such key>") for row in rows]
++    assert got == [3, None, None], got
++
++
++def test_a_columns_gains_amendments_last_and_keeps_the_ten_before_it(tmp_path):
++    """(a)/[M2]: `COLUMNS` itself — the ten BASE names in their order, then
++    `amendments`."""
++    module = load_module()
++    assert tuple(module.COLUMNS) == COLUMN_NAMES, module.COLUMNS
++
++
++# ------------------------------------------------------------------- leg (b)
++
++def test_b_the_totals_line_ends_with_the_amendments_sum(tmp_path):
++    """(b)/[M3]: the table's last line ends ` amendments=3` — the sum over the
++    rows that carry a value, which here is `run-9`'s three alone."""
++    root = build_root(tmp_path)
++    p = census("--from", str(root))
++    assert p.returncode == 0, p.stdout + p.stderr
++    totals = lines(p.stdout)[-1]
++    assert totals.startswith("totals: "), p.stdout
++    assert totals.endswith(" amendments=3"), totals
++
++
++def test_b_the_totals_line_keeps_every_field_it_had_before_the_suffix(
++        tmp_path):
++    """(b)/[M3]: the whole line — M3's quoted format string, filled in for this
++    root, once the ` runs=<window>` field that string predates is set aside
++    (see this module's docstring). `plans`, `risk_override`,
++    `recommended_picked`, `authoring_min` and `run_min` are what they were at
++    BASE; the suffix is the only new field."""
++    root = build_root(tmp_path)
++    p = census("--from", str(root))
++    totals = lines(p.stdout)[-1]
++    assert without_window(totals) == TOTALS_WITHOUT_WINDOW, totals
++    assert totals.count("amendments=") == 1, totals
++
++
++def test_b_a_root_whose_reports_carry_no_lists_ends_with_zero(tmp_path):
++    """(b)/[M3]: no row carries a value, so the sum over the rows that carry
++    one is the empty sum — the line ends ` amendments=0`, not ` amendments=-`
++    and not a missing field."""
++    root = build_root(tmp_path, name="nokey",
++                      reports=("no_key", "no_key", "no_key"))
++    p = census("--from", str(root))
++    assert p.returncode == 0, p.stdout + p.stderr
++    totals = lines(p.stdout)[-1]
++    assert totals.endswith(" amendments=0"), totals
++    assert without_window(totals) == (
++        "totals: plans=3 risk_override=1/2 recommended_picked=2/2 "
++        "authoring_min=165 run_min=16 amendments=0"), totals
++
++
++def test_b_a_root_whose_reports_carry_empty_lists_also_ends_with_zero(
++        tmp_path):
++    """(b)/[M3]: three rows each carrying the value zero sum to zero too — the
++    same suffix by the other route."""
++    root = build_root(tmp_path, name="empty",
++                      reports=("empty", "empty", "empty"))
++    p = census("--from", str(root))
++    assert lines(p.stdout)[-1].endswith(" amendments=0"), p.stdout
++
++
++# ------------------------------------------------------------------- leg (c)
++
++def fetch_answers():
++    """[M1]'s leg (c) table: the plan and status reads answer for 131 and 132,
++    the report read answers for 131 only."""
++    return {
++        plan_path(131): blob(RECORD_131).decode("utf-8"),
++        plan_path(132): blob(RECORD_133).decode("utf-8"),
++        status_path(131): blob(STATUS_131).decode("utf-8"),
++        status_path(132): blob(STATUS_131).decode("utf-8"),
++        report_path(131): blob(REPORT_FETCHED).decode("utf-8"),
++    }
++
++
++def run_fetch(tmp_path, answers=None, runs="131..132"):
++    into = tmp_path / "fetched"
++    into.mkdir()
++    gh, calls = fake_gh(tmp_path, fetch_answers() if answers is None
++                        else answers)
++    env, bare_log = decoy_env(tmp_path)
++    p = census("--fetch", "o/r", "--runs", runs, "--into", str(into),
++               "--gh", str(gh), env=env)
++    return p, into, calls, bare_log
++
++
++def test_c_fetch_writes_the_report_as_the_decoded_bytes_of_the_answer(
++        tmp_path):
++    """(c)/[M1]: `run-131/report.json` is written into `run-<N>/report.json`,
++    and it is exactly the decoded bytes of the answer's base64 `content` — not
++    a re-serialisation of it."""
++    p, into, _calls, _bare = run_fetch(tmp_path)
++    assert p.returncode == 0, p.stdout + p.stderr
++    written = into / "run-131/report.json"
++    assert written.is_file(), "no report was written: " + repr(sorted(
++        str(q.relative_to(into)) for q in into.rglob("*")))
++    assert written.read_bytes() == blob(REPORT_FETCHED), p.stdout + p.stderr
++
++
++def test_c_a_report_that_does_not_answer_leaves_the_file_unwritten(tmp_path):
++    """(c)/[M1]: run 132's report read exits non-zero, so that file is
++    unwritten — and the run is still a row, its record and status having
++    answered."""
++    p, into, _calls, _bare = run_fetch(tmp_path)
++    assert not (into / "run-132/report.json").exists(), sorted(
++        q.name for q in (into / "run-132").iterdir())
++    assert (into / "run-132/gate-verdicts.json").is_file(), p.stderr
++
++
++def test_c_both_report_paths_are_requested_as_api_reads_of_the_evidence_tag(
++        tmp_path):
++    """(c)/[M1]: exactly `repos/o/r/contents/.ultrapowers/runs/131/report.json
++    ?ref=ultra/evidence/run-131` and its 132 twin, each once, each an `api`
++    call naming exactly two arguments — the shape the two existing fetches
++    already use."""
++    p, _into, calls, _bare = run_fetch(tmp_path)
++    argvs = call_log(calls)
++    assert argvs, "the fake `gh` was never invoked: " + p.stdout + p.stderr
++    reports = [argv for argv in argvs
++               if "report.json" in (argv[1] if len(argv) > 1 else "")]
++    assert [argv[1] for argv in reports] == [
++        report_path(131), report_path(132)], reports
++    for argv in reports:
++        assert argv == ["api", argv[1]], argv
++    expected = {plan_path(n) for n in (131, 132)}
++    expected |= {status_path(n) for n in (131, 132)}
++    expected |= {report_path(n) for n in (131, 132)}
++    for argv in argvs:
++        assert len(argv) == 2, argv
++        assert argv[0] == "api", argv
++        assert argv[1].startswith("repos/o/r/contents/"), argv
++        assert "?ref=" in argv[1], argv
++        assert argv[1] in expected, argv
++
++
++def test_c_the_printed_rows_carry_the_list_length_and_the_dash(tmp_path):
++    """(c)/[M1]: the table printed over `<dir>` gives 131 the fetched report's
++    list length as its last cell, and 132 — whose report did not answer — a
++    `-`."""
++    p, _into, _calls, _bare = run_fetch(tmp_path)
++    row_131, row_132 = row_for(p.stdout, 131), row_for(p.stdout, 132)
++    assert row_131 is not None and row_132 is not None, p.stdout + p.stderr
++    assert row_131.split("\t")[-1] == str(len(REPORT_FETCHED["amendments"])), \
++        row_131
++    assert row_131.split("\t")[-1] == "2", row_131
++    assert row_132.split("\t")[-1] == "-", row_132
++    assert lines(p.stdout)[-1].endswith(" amendments=2"), p.stdout
++
++
++def test_c_the_bare_gh_on_path_is_never_resolved(tmp_path):
++    """(c)/[M1]: the new read goes through the same seam as the two existing
++    ones — the binary `--gh` names, never the bare `gh` first on PATH."""
++    p, _into, _calls, bare_log = run_fetch(tmp_path)
++    assert not bare_log.exists(), bare_log.read_text() + p.stdout + p.stderr
++
++
++# ------------------------------------------------------------------- leg (d)
++
++def skipped_run_answers():
++    """Run 200's plan tag carries a record; run 201's does not, though its
++    status and its report both answer."""
++    return {
++        plan_path(200): blob(RECORD_131).decode("utf-8"),
++        status_path(200): blob(STATUS_131).decode("utf-8"),
++        report_path(200): blob(REPORT_FETCHED).decode("utf-8"),
++        status_path(201): blob(STATUS_131).decode("utf-8"),
++        report_path(201): blob(REPORT_THREE).decode("utf-8"),
++    }
++
++
++def test_d_a_plan_tag_without_a_record_yields_no_row_and_no_directory(
++        tmp_path):
++    """(d)/[M1]: run 201's plan tag has no record, so it is skipped whole —
++    nothing written for it, no directory left behind, no row — and its report
++    answering does not change that. Run 200, whose record was written, does
++    get its report."""
++    p, into, _calls, _bare = run_fetch(
++        tmp_path, answers=skipped_run_answers(), runs="200..201")
++    assert p.returncode == 0, p.stdout + p.stderr
++    assert not (into / "run-201").exists(), sorted(
++        q.name for q in into.iterdir())
++    assert row_for(p.stdout, 201) is None, p.stdout
++    assert (into / "run-200/report.json").is_file(), sorted(
++        str(q.relative_to(into)) for q in into.rglob("*"))
++    assert (into / "run-200/report.json").read_bytes() == \
++        blob(REPORT_FETCHED), p.stdout + p.stderr
++    assert row_for(p.stdout, 200).split("\t")[-1] == "2", p.stdout
++
++
++# ------------------------------------------------------------------- leg (e)
++
++def test_e_the_sibling_exam_is_green_on_this_tree():
++    """(e)/[M4]: the Proof's second `Run:` line — `tests/test_authoring_
++    census.py`, edited by this task, passes, its `HEADER`, row, `TOTALS` and
++    `--fetch` literals updated to the new column, the new fetch and the new
++    totals suffix."""
++    assert SIBLING.is_file(), "the sibling exam is missing: %s" % SIBLING
++    p = subprocess.run(
++        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
++         "tests/test_authoring_census.py"],
++        cwd=str(ROOT), capture_output=True, text=True)
++    assert p.returncode == 0, p.stdout + p.stderr
++
++
++def test_e_the_sibling_exam_still_defines_nineteen_tests():
++    """(e)/[M4]: the Proof's fourth `Run:` line — the sibling file "still
++    defines exactly 19 `def test_` functions, the count it has at BASE — none
++    dropped, none added"."""
++    text = SIBLING.read_text(encoding="utf-8")
++    defs = [line for line in lines(text) if line.startswith("def test_")]
++    assert len(defs) == 19, "\n".join(defs)
++
++
++# ------------------------------------------------------------------- leg (f)
++
++def test_f_help_names_the_fetch_flag():
++    """(f)/[M1]: the Proof's third `Run:` line — `--help` names `--fetch`."""
++    p = census("--help")
++    assert p.returncode == 0, p.stdout + p.stderr
++    assert "--fetch" in p.stdout, p.stdout
++
++
++# ------------------------------------------------------------------ the seam
++
++def load_module():
++    import importlib.util
++    assert CENSUS.is_file(), (
++        "the census script does not exist yet: %s" % CENSUS)
++    spec = importlib.util.spec_from_file_location("authoring_census", CENSUS)
++    module = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(module)
++    return module

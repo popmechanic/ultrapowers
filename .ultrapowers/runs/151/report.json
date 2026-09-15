@@ -1,0 +1,461 @@
+{
+  "integrationBranch": "ultra/integration-run-151",
+  "baseSha": "41cb53b606146ee16f7904eaf0440531257426f1",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "ed324dcd4755a8e06f151776b5e62426d2b8da9f",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-151/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "landedAt": 1789497870101,
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-151/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [228 items]\n\n........................................................................ [ 31%]\n........................................................................ [ 63%]\n........................................................................ [ 94%]\n............                                                             [100%]\n======================== 228 passed in 75.10s (0:01:15) ========================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles skills/ultrapowers/kernel fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/launch.mjs fleet/sandbox-boot.sh fleet/publish-fold.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/tests/test_run_engine_ready_set.mjs fleet/tests/test_run_engine_joined_proofs.mjs fleet/tests/test_run_engine_proof_runs.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 199310,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-151/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [228 items]\n\n........................................................................ [ 31%]\n........................................................................ [ 63%]\n........................................................................ [ 94%]\n............                                                             [100%]\n======================== 228 passed in 67.21s (0:01:07) ========================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "cd763fbb2b9fe79ad8590ec922d43e7032551f20",
+      "branches": [
+        "1"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-151/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-151/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.024,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "engineCoverage": {
+    "file": "fleet/run-engine.mjs",
+    "base": "41cb53b606146ee16f7904eaf0440531257426f1",
+    "head": "cd763fbb2b9fe79ad8590ec922d43e7032551f20",
+    "changed": [
+      3497,
+      3498,
+      3499,
+      3500,
+      3501,
+      3502,
+      3503,
+      3718,
+      3719,
+      3720,
+      3721,
+      3722,
+      3723,
+      3724,
+      3725,
+      3726,
+      3727,
+      4195,
+      4196,
+      4197
+    ],
+    "reached": [
+      3497,
+      3498,
+      3499,
+      3500,
+      3501,
+      3502,
+      3503,
+      3718,
+      3719,
+      3720,
+      3721,
+      3722,
+      3723,
+      3724,
+      3725,
+      3726,
+      3727,
+      4195,
+      4196,
+      4197
+    ],
+    "unreached": [],
+    "sims": [
+      {
+        "sim": "fleet/tests/test_run_engine_fold_policy.mjs",
+        "exit": 0,
+        "ms": 25114,
+        "reached": [
+          3497,
+          3498,
+          3499,
+          3500,
+          3501,
+          3502,
+          3503,
+          3718,
+          3719,
+          3720,
+          3721,
+          3722,
+          3723,
+          3724,
+          3725,
+          3726,
+          3727,
+          4195,
+          4196,
+          4197
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_infra_retry.mjs",
+        "exit": 0,
+        "ms": 8667,
+        "reached": [
+          3497,
+          3498,
+          3499,
+          3500,
+          3501,
+          3502,
+          3503,
+          3727,
+          4195,
+          4196,
+          4197
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_joined_proofs.mjs",
+        "exit": 0,
+        "ms": 6616,
+        "reached": [
+          3497,
+          3498,
+          3499,
+          3500,
+          3501,
+          3502,
+          3503,
+          3718,
+          3719,
+          3720,
+          3721,
+          3722,
+          3723,
+          3724,
+          3725,
+          3726,
+          3727,
+          4195,
+          4196,
+          4197
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_kata_close.mjs",
+        "exit": 0,
+        "ms": 1103,
+        "reached": [
+          3497,
+          3498,
+          3499,
+          3500,
+          3501,
+          3502,
+          3503,
+          3718,
+          3719,
+          3720,
+          3721,
+          3722,
+          3723,
+          3724,
+          3725,
+          3726,
+          3727,
+          4195,
+          4196,
+          4197
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_kata_landing.mjs",
+        "exit": 0,
+        "ms": 654,
+        "reached": [
+          3497,
+          3498,
+          3499,
+          3500,
+          3501,
+          3502,
+          3503,
+          3718,
+          3719,
+          3720,
+          3721,
+          3722,
+          3723,
+          3724,
+          3725,
+          3726,
+          3727,
+          4195,
+          4196,
+          4197
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_one_of_each.mjs",
+        "exit": 0,
+        "ms": 1066,
+        "reached": [
+          3497,
+          3498,
+          3499,
+          3500,
+          3501,
+          3502,
+          3503,
+          3718,
+          3719,
+          3720,
+          3721,
+          3722,
+          3723,
+          3724,
+          3725,
+          3726,
+          3727,
+          4195,
+          4196,
+          4197
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_own_proofs.mjs",
+        "exit": 0,
+        "ms": 1518,
+        "reached": [
+          3497,
+          3498,
+          3499,
+          3500,
+          3501,
+          3502,
+          3503,
+          3727,
+          4195,
+          4196,
+          4197
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_proof_runs.mjs",
+        "exit": 0,
+        "ms": 9866,
+        "reached": [
+          3497,
+          3498,
+          3499,
+          3500,
+          3501,
+          3502,
+          3503,
+          3718,
+          3719,
+          3720,
+          3721,
+          3722,
+          3723,
+          3724,
+          3725,
+          3726,
+          3727,
+          4195,
+          4196,
+          4197
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_re_edge.mjs",
+        "exit": 0,
+        "ms": 3166,
+        "reached": [
+          3497,
+          3498,
+          3499,
+          3500,
+          3501,
+          3502,
+          3503,
+          3718,
+          3719,
+          3720,
+          3721,
+          3722,
+          3723,
+          3724,
+          3725,
+          3726,
+          3727,
+          4195,
+          4196,
+          4197
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_ready_set.mjs",
+        "exit": 0,
+        "ms": 8938,
+        "reached": [
+          3497,
+          3498,
+          3499,
+          3500,
+          3501,
+          3502,
+          3503,
+          3718,
+          3719,
+          3720,
+          3721,
+          3722,
+          3723,
+          3724,
+          3725,
+          3726,
+          3727,
+          4195,
+          4196,
+          4197
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_reuse.mjs",
+        "exit": 0,
+        "ms": 5495,
+        "reached": [
+          3497,
+          3498,
+          3499,
+          3500,
+          3501,
+          3502,
+          3503,
+          3718,
+          3719,
+          3720,
+          3721,
+          3722,
+          3723,
+          3724,
+          3725,
+          3726,
+          3727,
+          4195,
+          4196,
+          4197
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_review_economy.mjs",
+        "exit": 0,
+        "ms": 2057,
+        "reached": [
+          3497,
+          3498,
+          3499,
+          3500,
+          3501,
+          3502,
+          3503,
+          3718,
+          3719,
+          3720,
+          3721,
+          3722,
+          3723,
+          3724,
+          3725,
+          3726,
+          3727,
+          4195,
+          4196,
+          4197
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_state_exams.mjs",
+        "exit": 0,
+        "ms": 80,
+        "reached": []
+      }
+    ]
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

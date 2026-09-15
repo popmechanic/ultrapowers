@@ -1,0 +1,45 @@
+{
+  "engineHead": "cd763fbb2b9fe79ad8590ec922d43e7032551f20",
+  "attempts": {
+    "1": {
+      "tip": "0bfb2aac65943ae1946409a40d2c2730b6de34aa",
+      "candidate": "6cfd9af0312d94f3938c20be0095a4b186fdeb3a",
+      "disposition": "folded",
+      "pathsJoined": 2,
+      "resolversDispatched": 0,
+      "suite": "pass",
+      "checks": [
+        {
+          "check": "parse",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_sandbox_boot_amendments.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_fold_policy.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_amendments.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_amendment_lens.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        }
+      ],
+      "checkRetries": 0
+    }
+  }
+}

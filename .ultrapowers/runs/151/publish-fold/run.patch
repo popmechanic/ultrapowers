@@ -1,0 +1,725 @@
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index d2fb3f2ce41b29a4716dec461dee9db1d29d2de7..9feac1a951865614868f83e0f83b9d2bfd7bd674 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -65,9 +65,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+     it was is the event's `why`: `released`, with `released: [<ids>]` — the tasks, in plan order,
+     that adopting this epoch makes ready; `end` — nothing in flight, nothing folding, nothing
+     ready and nothing pending but these results; or `aged` — the oldest pending result has waited
+-    `foldAgeMs` milliseconds since it landed. `foldAgeMs` is the run's argument when it is a
+-    non-negative number and otherwise the larger of 60000 and the wall the baseline suite took
+-    (the age clause is off until the baseline settles); `foldAgeMs: 0` folds at every landing.
++    `foldAgeMs` milliseconds since it landed and nothing is in flight: no sibling task is
++    implementing or in review, so nothing left could release a task or end the run. `foldAgeMs` is
++    the run's argument when it is a non-negative number and otherwise the larger of 60000 and the
++    wall the baseline suite took (the age clause is off until the baseline settles);
++    `foldAgeMs: 0` folds at every landing, siblings in flight or not.
+     So `driver:wave-adopted` `{wave, tasks, headSha, why, released?}` — the 1-based epoch in fold
+     order, the ids it merged in plan order, the head it left on the integration branch, each a
+     descendant of the epoch before it — and `driver:wave-blocked` `{wave, tasks, detail, why,
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index 9179c59529533cd4f107c3d98b382e79c565ee42..5cd641b0c289b3bb7b6a2d62b630a37eb9f3ae15 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -3494,33 +3494,13 @@ export async function runEngine({
+     landingWaiters = []
+     for (const resolve of waiting) resolve()
+   }
+-  // The next landing, OR the moment the oldest pending result ages out (#1006).
+-  // `aged` is the one trigger that becomes true on its own, so a lane that went
+-  // to sleep with results pending would otherwise sleep until a landing that
+-  // may never come — every other task of the run can be in flight for minutes.
+-  // The timer is unref'd, so a wake-up is never the reason a finished run is
+-  // still alive, and whichever side wins clears the other.
+-  const nextLandingOrAge = () => {
+-    const threshold = foldAgeMs()
+-    // No timer when a fold already holds the claim: these results belong to the
+-    // epoch after it, the fold's own release announces, and a timer that fired
+-    // against a claimed epoch would only spin the lane for the fold's duration.
+-    if (threshold === null || epochClaimed || pendingResults.length === 0) return nextLanding()
+-    const wait = Math.max(0, threshold - oldestPendingAgeMs())
+-    return new Promise((resolve) => {
+-      let settled = false
+-      let timer = null
+-      const wake = () => {
+-        if (settled) return
+-        settled = true
+-        if (timer !== null) globalThis.clearTimeout(timer)
+-        resolve()
+-      }
+-      timer = globalThis.setTimeout(wake, wait)
+-      if (timer && typeof timer.unref === 'function') timer.unref()
+-      landingWaiters.push(wake)
+-    })
+-  }
++  // No timer arms the age clause (#1006). Once the clause asks that nothing is
++  // in flight and no fold is running, it cannot come true while a lane sleeps: a
++  // lane sleeps here only with results pending and no trigger for them, which
++  // means a sibling is in flight or a fold is running — otherwise the claim just
++  // asked would have been `end`, or the lane would have taken a ready task. Both
++  // of those end in a landing or a fold release, and `announceLanding` resolves
++  // at either, so the landing is the only wake a lane needs.
+ 
+   // ── claiming an epoch ──────────────────────────────────────────────────────
+   // What one fold adopts is decided HERE, and the moment this returns a set it
+@@ -3735,7 +3715,16 @@ export async function runEngine({
+     if (released.length > 0) return { why: 'released', released }
+     if (inFlight === 0 && foldingLanes === 0 && !anyReady()) return { why: 'end' }
+     const threshold = foldAgeMs()
+-    if (threshold !== null && oldestPendingAgeMs() >= threshold) return { why: 'aged' }
++    // The age clause waits for the run to go idle (#1006). A finished result
++    // that ages out while a sibling is still being implemented or reviewed buys
++    // a fold of its own that the sibling's own landing would have carried for
++    // free, so the clause asks the idle half of `end`'s test — nothing in
++    // flight, nothing folding — without `end`'s "nothing ready": an epoch
++    // claimed `aged` is one at whose instant every implementer, reviewer and fix
++    // worker had returned. `foldAgeMs: 0` is exempt and keeps the rule before
++    // this one, a fold at every landing, siblings in flight or not.
++    const idle = threshold === 0 || (inFlight === 0 && foldingLanes === 0)
++    if (threshold !== null && idle && oldestPendingAgeMs() >= threshold) return { why: 'aged' }
+     return null
+   }
+ 
+@@ -4203,8 +4192,9 @@ export async function runEngine({
+       }
+       if (quiet) return
+       // Not quiet: either work is still moving, or results are pending and no
+-      // trigger holds for them yet. The second is what the age race is for.
+-      await nextLandingOrAge()
++      // trigger holds for them yet. Both are waiting on the same thing — the
++      // next landing, or the release of the fold that is running.
++      await nextLanding()
+     }
+   }
+   await parallel(Array.from({ length: W }, () => () => lane()))
+diff --git a/fleet/tests/test_run_engine_fold_policy.mjs b/fleet/tests/test_run_engine_fold_policy.mjs
+index 6cc1a6da802f754569bf9948397194e09273d36b..dcd90b3960032324f617405c39ec5926e9e202da 100644
+--- a/fleet/tests/test_run_engine_fold_policy.mjs
++++ b/fleet/tests/test_run_engine_fold_policy.mjs
+@@ -35,10 +35,14 @@
+ //        has landed; C dispatched after that adoption on its head; C's own
+ //        landing adopted in a second epoch with `why: 'end'`. And a run where A
+ //        lands and nothing else lands for longer than a small `foldAgeMs` while
+-//        B is still running adopts A alone with `why: 'aged'`.
++//        B is still running adopts A alone with `why: 'aged'`. (That second run
++//        is RE-AIMED by run-151 task 1, in the banner below: under the idle gate
++//        the same run adopts A and B together with `why: 'end'`.)
+ //   M5 — a lane waiting with nothing ready and results pending wakes ON ITS OWN
+ //        when the oldest pending result reaches `foldAgeMs`, without another
+-//        landing.
++//        landing. (RETIRED by run-151 task 1, in the banner below: under the
++//        idle gate the clause cannot come true while a lane sleeps, so no lane
++//        arms a timer for it.)
+ //   M6 — `fleet/CONTRACT.md`'s evidence bullet states the three triggers and
+ //        `foldAgeMs` with its default and its `0` reading, and still carries, in
+ //        this order, the words `epoch`, `ready`, `slot frees`,
+@@ -55,9 +59,10 @@
+ //            at the foot of this file, over every run driven above
+ //   (b) [M2] the default threshold, `0`, and a non-number           — three runs
+ //   (c) [M3] one epoch under a large threshold, many under `0`      — two runs
+-//   (d) [M4] the released epoch and the aged one                    — two runs
+-//   (e) [M5] the lane woke on its own timer                         — read off
+-//            the aged run of leg (d)
++//   (d) [M4] the released epoch and the aged one                    — two runs,
++//            the second re-aimed by the banner below
++//   (e) [M5] the lane woke on its own timer                         — retired by
++//            the banner below, which pins the negative in its place
+ //   (f) [M6] the contract's evidence bullet                         — its `Run:`
+ //            line, and repeated here with that line's own semantics
+ //   (g) [M7] the three sibling sims                                 — their two
+@@ -88,6 +93,94 @@
+ // event carries `why`, so BASE folds at every landing: leg (b)'s first run folds
+ // three epochs where one is owed, and the sweep at the foot finds `why` missing
+ // on every event of every run.
++//
++// ════════════════════════════════════════════════════════════════════════════
++// EXTENDED — run-151 task 1: "the age clause waits for the run to go idle — a
++// result ages out only when no sibling is in flight, and `0` still folds at
++// every landing".
++//
++// Everything above is run-140's exam and stays as it was written; its legs are
++// lettered (a)-(h) and its assertions carry those letters bare. This task letters
++// its own legs (a)-(i), so every assertion it adds or re-aims marks itself
++// `[idle-gate]`: a message carrying that mark answers a clause of THIS task, and
++// one without it answers run-140's.
++//
++// The claim: a finished result waits for its siblings instead of buying its own
++// fold. The age clause fires only at an instant when nothing else in the run is
++// still being built or reviewed.
++//
++// This task's Machine clauses, restated:
++//   M1 — with `foldAgeMs` POSITIVE, `aged` holds at an instant only when the
++//        oldest pending result has waited `foldAgeMs` ms or more AND no task is
++//        in flight and no fold is running — the idle half of the test `end`
++//        already reads, without `end`'s "nothing ready". `released` and `end`
++//        are what they were and are asked first, in that order, so an epoch
++//        claimed `aged` under a positive threshold is one at whose instant every
++//        implementer, reviewer and fix worker had returned.
++//   M2 — A and B, no edges, width 2, A landing at once and B held two seconds,
++//        `foldAgeMs: 300`: no epoch event before B's `worker:end`, and exactly
++//        one `driver:wave-adopted` after it, `tasks` `['A', 'B']`, `why: 'end'`.
++//   M3 — the same run at `foldAgeMs: 0` adopts A ALONE with `why: 'aged'` before
++//        B's `worker:end` — `0` keeps the fold-at-every-landing reading,
++//        siblings in flight or not — and the three sims that pass `foldAgeMs: 0`
++//        pass on the patched tree without an edit.
++//   M4 — `aged` is still a reading a positive threshold can produce: X, Y and Z
++//        with the one edge X->Z, width 3, `foldAgeMs: 300`, Y landing while the
++//        kernel's first fold is held and that fold released only 600 ms after
++//        Y's landing — three adoptions in order, `['X']` `why: 'released'`
++//        `released: ['Z']`, then `['Y']` `why: 'aged'` (claimed at the instant
++//        fold 1 released, nothing in flight and Z not yet dispatched), then
++//        `['Z']` `why: 'end'`; Z's `worker:start` follows the first adoption on
++//        that adoption's `headSha`.
++//   M5 — no lane arms a timer for the age clause: under M1's gate the clause
++//        cannot come true while a lane sleeps, so `nextLandingOrAge` and its
++//        timer are gone from `fleet/run-engine.mjs` and the lane loop waits on
++//        `nextLanding()` alone. The DEFINITION and the CALL are pinned by this
++//        task's fourth and fifth `Run:` lines and not by a bare-word read here;
++//        what is asked in this file is the behavioural half — in M2's run the
++//        adoption's `ts` is not before B's `worker:end`'s `ts`.
++//   M6 — `fleet/CONTRACT.md`'s evidence bullet says, in its `aged` sentence,
++//        that the oldest pending result has waited `foldAgeMs` since it landed
++//        AND nothing is in flight, keeps the `foldAgeMs: 0` reading as a fold at
++//        every landing, and still carries its ordered words.
++//   M7 — every sim under `fleet/tests/` passes through the bridge, this
++//        extended exam included.
++//   M8 — a landing while an older result is past threshold and a sibling is
++//        still in flight claims nothing: A, B and C, no edges, width 3,
++//        `foldAgeMs: 300`, A landing at once, B held 500 ms and C held 2000 ms —
++//        no epoch event before C's landing, and exactly one adoption after it,
++//        `['A', 'B', 'C']`, `why: 'end'`. The same run at `foldAgeMs: 0` adopts
++//        `['A']` with `why: 'aged'` before B's `worker:end`.
++//
++// This task's Proof legs, and where each is answered:
++//   (a) [M1] every epoch event's `why`, and the identity of the `aged` ones —
++//            the sweep at the foot, which now reads each run's own threshold:
++//            an `aged` adoption under a positive threshold is leg (e)'s and no
++//            other run's
++//   (b) [M1, M2] A and B at 300, B held 2000 ms                    — run `d2`,
++//            re-aimed from the behaviour this task retires
++//   (c) [M3] the same A and B run at `foldAgeMs: 0`                — run `c3`
++//   (d) [M3] the first `Run:` line, and the three named sims read as text where
++//            run-140's exam already reads them                     — that block,
++//            unchanged, at the foot of this file
++//   (e) [M1, M4] X, Y and Z with X->Z and the first fold held      — run `e1`
++//   (f) [M5] the fourth and fifth `Run:` lines, and leg (b)'s run's adoption
++//            `ts` against B's `worker:end`                         — run `d2`
++//   (g) [M6] the third `Run:` line, and the same contract region read here —
++//            run-140's contract block, with this task's ordered words added
++//   (h) [M7] the second `Run:` line — the bridge over every sim
++//   (i) [M1, M8] A, B and C at 300 and at 0                        — runs `i1`
++//            and `i2`
++//
++// WHY THE EXTENSION IS RED AT BASE. At BASE the age clause reads the threshold
++// alone and a lane arms a timer to wake for it, so: run `d2` adopts A alone
++// `why: 'aged'` while B is open (leg (b), and leg (f)'s `ts` with it), run `i1`
++// adopts A and then B while C is open (leg (i)), the sweep finds an `aged`
++// adoption in runs that are not leg (e)'s (leg (a)), and the contract's `aged`
++// sentence says nothing about flight (leg (g)). The `foldAgeMs: 0` runs and leg
++// (e)'s run read the same before and after — that is what M3 and M4 are FOR, and
++// they are green at BASE by design.
++// ════════════════════════════════════════════════════════════════════════════
+ import assert from 'node:assert/strict'
+ import fs from 'node:fs'
+ import os from 'node:os'
+@@ -110,15 +203,23 @@ const POLL_MS = 20
+ // than the baseline suite leg (b) slows to ~200 ms, and nothing beside the 60 s
+ // default — which is the whole point of the pair.
+ const STAGGER_MS = 500
+-// Leg (d)'s aged run: B is held this long, and the threshold is a small
+-// fraction of it, so the epoch that adopts A alone can only have come from the
+-// age clause firing while B was still open.
++// The small positive threshold every scenario that is ABOUT the age clause runs
++// under, and the long hold a sibling sits in while a landed result is past it.
++// The threshold is a small fraction of the hold, so an epoch claimed while the
++// sibling is open can only have come from the age clause — which is what
++// run-140's `d2` asked for and what `[idle-gate]`'s legs (b), (c), (e) and (i)
++// ask against.
+ const AGED_THRESHOLD_MS = 300
+ const AGED_HOLD_MS = 2000
+-// Leg (e)'s window: the adoption is owed within one second of A's `worker:end`
+-// plus the threshold. A lane that folded only on B's landing would be a second
+-// and a half late; one that woke on its own timer lands well inside it.
+-const WAKE_SLACK_MS = 1000
++// [idle-gate] leg (i)'s middle hold: B lands this long after dispatch, so at B's
++// landing A's result is already past the 300 ms threshold while C — held
++// `AGED_HOLD_MS` — is still in flight. That instant is M8's negative.
++const MID_HOLD_MS = 500
++// [idle-gate] leg (e)'s extra hold: the kernel's first fold is released this
++// long after Y's whole pipeline returned, so Y's result is at least this old
++// against the 300 ms threshold at the instant that fold ends — the instant M4
++// says `aged` is claimed at, because it is the first with nothing in flight.
++const FOLD_HOLD_AFTER_LANDING_MS = 600
+ 
+ const sleep = (ms) => new Promise((resolve) => { globalThis.setTimeout(resolve, ms) })
+ 
+@@ -253,8 +354,11 @@ async function drive({ tag, tasks, edges = [], width, makeStub, repoFiles = {},
+     extraArgs: { width, infraBackoffMs: 0, ...ageArgs },
+   })
+   const report = await built.run()
++  // `ageArgs` travels with the run: the [idle-gate] half of the leg (a) sweep
++  // asks a different question of a run driven under a positive threshold than of
++  // one driven at `0`, and the answer is the argument this run was given.
+   const rec = { tag, stamp, repo, runDir, integ: built.integ, base: built.base,
+-                report, seam, log: readEvents(runDir) }
++                ageArgs, report, seam, log: readEvents(runDir) }
+   RUNS.push(rec)
+   return rec
+ }
+@@ -497,20 +601,29 @@ const SLOW_SUITE = '#!/bin/bash\nsleep 0.2\n[ ! -f BROKEN ]\n'
+ }
+ 
+ // ════════════════════════════════════════════════════════════════════════════
+-// leg (d), second half, and leg (e) — the fold a result ages into [M4, M5]
+-//
+-// A and B, no edges, width 2. A returns at once; B is held two seconds. A's
+-// landing releases nothing (B is the only other task and it is already
+-// dispatched) and ends nothing (B is in flight), and at that instant A has aged
+-// 0 ms against a threshold of 300 — so the landing itself claims no epoch. The
+-// lane then has nothing ready, nothing to dispatch and a pending result, and the
+-// ONLY thing that can fold it is the lane waking on its own when A reaches 300
+-// ms. That is leg (e): the adoption's `ts` lands inside a second of A's
+-// `worker:end` plus the threshold, while B has not landed at all.
++// [idle-gate] legs (b) and (f) — the result that waits for its sibling [M1, M2,
++// M5]
++//
++// This is run-140's `d2`, re-aimed. A and B, no edges, width 2. A returns at
++// once; B is held two seconds; the threshold is 300 ms. A's landing releases
++// nothing (B is the only other task and it is already dispatched) and ends
++// nothing (B is in flight), and at that instant A has aged 0 ms — so the landing
++// claims no epoch, which was already true at BASE. What this task adds is what
++// happens NEXT: A goes past 300 ms while B is still open, and under the idle
++// gate that buys nothing, because the age clause asks `inFlight === 0 &&
++// foldingLanes === 0` too. So the whole run folds ONCE, when B lands and the run
++// ends, and the record of A's wait is that there is no record: not one epoch
++// event sits before B's `worker:end`.
++//
++// Leg (f) reads the same one adoption's clock. Under the retired rule a lane
++// armed a timer and the adoption landed ~300 ms after A's `worker:end` and a
++// second and a half before B's; under the gate the adoption cannot precede B's
++// landing at all, and its `ts` says so. The timer's own removal — the definition
++// and the call — is this task's fourth and fifth `Run:` lines, not a word read
++// out of the engine here.
+ // ════════════════════════════════════════════════════════════════════════════
+-let agedRun = null
+ {
+-  agedRun = await drive({
++  const run = await drive({
+     tag: 'd2', tasks: [taskOf('A'), taskOf('B')], edges: [], width: 2,
+     ageArgs: { foldAgeMs: AGED_THRESHOLD_MS },
+     makeStub: (runDir) => async (prompt, opts, cwd) => {
+@@ -522,46 +635,307 @@ let agedRun = null
+       return plainImpl(runDir, opts, cwd, id)
+     },
+   })
+-  const log = agedRun.log
++  const log = run.log
+   const adoptions = adoptionsOf(log)
+   const endA = firstIndex(log, (e) => isEnd(e, 'impl:A'))
+   const endB = firstIndex(log, (e) => isEnd(e, 'impl:B'))
+   assert.ok(endA !== -1 && endB !== -1,
+-    '(d)/M4: sim precondition — both implementers return: ' + shownLog(log))
++    '(b)/M2 [idle-gate]: sim precondition — both implementers return: ' + shownLog(log))
++  assert.deepEqual(run.report.tasks.map((r) => [r.task, r.status]).sort(),
++    [['A', 'done'], ['B', 'done']],
++    '(b)/M2 [idle-gate]: sim precondition — both tasks finish: ' +
++    JSON.stringify(run.report.tasks.map((r) => ({ task: r.task, status: r.status }))))
++  assert.ok(endA < endB && log[endB].ts - log[endA].ts >= AGED_THRESHOLD_MS,
++    '(b)/M1 [idle-gate]: sim precondition — A returns first and B is still open ' +
++    (log[endB].ts - log[endA].ts) + ' ms later, which is past the ' + AGED_THRESHOLD_MS +
++    ' ms threshold: unless A really is aged out while B is in flight, this leg asks nothing: ' +
++    shownLog(log))
++
++  const early = epochEventsOf(log).filter((e) => indexOfEvent(log, e) < endB)
++  assert.deepEqual(early.map((e) => ({ kind: e.kind, tasks: e.tasks, why: e.why })), [],
++    '(b)/M1,M2 [idle-gate]: A sat captured and unadopted for well past ' + AGED_THRESHOLD_MS +
++    ' ms with B in flight, and that bought NO fold — no `driver:wave-adopted` and no ' +
++    '`driver:wave-blocked` sits before `worker:end impl:B`. The age clause holds only when ' +
++    'nothing is in flight and no fold is running, and B was being built the whole time: ' +
++    shownEpochs(log) + ' | ' + shownLog(log))
++  assert.equal(adoptions.length, 1,
++    '(b)/M2 [idle-gate]: so the run folds exactly ONCE — B\'s landing is the first instant the ' +
++    'run is idle, and the fold it claims is the one that ends the run: ' + shownEpochs(log) +
++    ' | ' + shownLog(log))
++  const only = adoptions[0] || { tasks: [] }
++  assert.deepEqual(only.tasks, ['A', 'B'],
++    '(b)/M2 [idle-gate]: and it carries A and B together, in plan order — A waited for its ' +
++    'sibling instead of buying its own fold: ' + JSON.stringify(adoptions[0] || null))
++  assert.equal(only.why, 'end',
++    '(b)/M2 [idle-gate]: with `why: \'end\'`, not `aged`: `released` and `end` are asked first ' +
++    'and unchanged, and at B\'s landing nothing is in flight, nothing is folding and nothing is ' +
++    'ready: ' + JSON.stringify(adoptions[0] || null))
++  assert.ok(indexOfEvent(log, only) > endB,
++    '(b)/M2 [idle-gate]: and the event sits after `worker:end impl:B`: ' + shownLog(log))
++
++  // [M5] the negative the retired timer leaves behind. A lane that armed a wake
++  // at `foldAgeMs - age` would have folded A at ~300 ms, a second and a half
++  // before B returned; with no timer and the gate, the only thing that can wake
++  // this lane is B's own landing, so the adoption cannot be earlier than it.
++  const adoptTs = only.ts
++  const endBTs = log[endB].ts
++  assert.equal(typeof adoptTs, 'number',
++    '(f)/M5 [idle-gate]: sim precondition — the adoption event carries the `ts` this leg reads: ' +
++    JSON.stringify(adoptions[0] || null))
++  assert.ok(adoptTs >= endBTs,
++    '(f)/M5 [idle-gate]: no lane armed a timer for the age clause — the adoption\'s `ts` is not ' +
++    'before B\'s `worker:end`\'s. It came ' + (adoptTs - endBTs) + ' ms after it; a lane woken by ' +
++    'its own age timer would have folded roughly ' + AGED_THRESHOLD_MS + ' ms after A\'s ' +
++    '`worker:end`, i.e. about ' + (AGED_HOLD_MS - AGED_THRESHOLD_MS) + ' ms before this: ' +
++    shownLog(log))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// [idle-gate] leg (c) — `0` still folds at every landing [M3]
++//
++// The same A and B run, the same two-second hold, `foldAgeMs: 0`. Nothing about
++// the gate reaches this run: `0` is the rule before the age clause had a
++// threshold at all, and it means a fold at every landing, siblings in flight or
++// not. So A is adopted ALONE, `why: 'aged'`, while B is still being built —
++// which is exactly what leg (b)'s run is forbidden. The two runs differ in one
++// argument, and that argument is the whole reading.
++//
++// This is the leg that keeps `test_run_engine_ready_set.mjs`,
++// `test_run_engine_joined_proofs.mjs` and `test_run_engine_proof_runs.mjs`
++// passing unedited: every one of them paces a scenario on a fold that lands
++// while a sibling is open, and every one of them passes `foldAgeMs: 0`.
++// ════════════════════════════════════════════════════════════════════════════
++{
++  const run = await drive({
++    tag: 'c3', tasks: [taskOf('A'), taskOf('B')], edges: [], width: 2,
++    ageArgs: { foldAgeMs: 0 },
++    makeStub: (runDir) => async (prompt, opts, cwd) => {
++      const [kind, id] = opts.label.split(':')
++      if (kind === 'review') return cannedReview(runDir, opts.label)
++      if (kind !== 'impl') throw new Error('unexpected dispatch: ' + opts.label)
++      workerStart(runDir, opts.label, cwd)
++      if (id === 'B') await sleep(AGED_HOLD_MS)
++      return plainImpl(runDir, opts, cwd, id)
++    },
++  })
++  const log = run.log
++  const adoptions = adoptionsOf(log)
++  const endB = firstIndex(log, (e) => isEnd(e, 'impl:B'))
++  assert.ok(endB !== -1,
++    '(c)/M3 [idle-gate]: sim precondition — B\'s implementer returns: ' + shownLog(log))
+   const first = adoptions[0] || { tasks: [] }
+   assert.deepEqual(first.tasks, ['A'],
+-    '(d)/M4: A is adopted ALONE — B was still running, so nothing else had landed to join it: ' +
+-    shownEpochs(log) + ' | ' + shownLog(log))
++    '(c)/M3 [idle-gate]: at `foldAgeMs: 0` the age clause is true at the landing\'s own instant, ' +
++    'so A is adopted ALONE — the gate does not reach a zero threshold: ' + shownEpochs(log) +
++    ' | ' + shownLog(log))
+   assert.equal(first.why, 'aged',
+-    '(d)/M4: and the only clause that can have fired is the age one: A released nothing (B was ' +
+-    'already dispatched) and ended nothing (B was in flight), so the ' + AGED_THRESHOLD_MS +
+-    ' ms threshold is what bought the fold: ' + JSON.stringify(adoptions[0] || null))
++    '(c)/M3 [idle-gate]: and the clause that claimed it is the age one — A released nothing and ' +
++    'ended nothing, B being in flight: ' + JSON.stringify(adoptions[0] || null))
+   assert.ok(indexOfEvent(log, first) < endB,
+-    '(d)/M4: that adoption precedes `worker:end impl:B` — it happened while B was still open: ' +
++    '(c)/M3 [idle-gate]: and it sits before `worker:end impl:B` — `0` folds at every landing, ' +
++    'siblings in flight or not, which is the reading the three unedited sims pace on: ' +
+     shownLog(log))
++}
+ 
+-  // [M5] the lane woke on its own. A's `worker:end` is the last thing the sim
+-  // wrote before A's result was recorded; the adoption is owed within a second
+-  // of that plus the threshold. A lane that could only be woken by a landing
+-  // would have waited out B's two-second hold.
+-  const endATs = log[endA].ts
+-  const adoptTs = first.ts
+-  assert.equal(typeof adoptTs, 'number',
+-    '(e)/M5: sim precondition — the adoption event carries the `ts` this leg reads: ' +
++// ════════════════════════════════════════════════════════════════════════════
++// [idle-gate] leg (e) — `aged` is still a reading a positive threshold produces
++// [M1, M4]
++//
++// The gate narrows the age clause; it does not delete it. X, Y and Z with the
++// one edge X->Z, width 3, `foldAgeMs: 300`:
++//
++//   X lands first and releases Z — that is epoch 1, `why: 'released'`,
++//     `released: ['Z']`. The exec seam HOLDS the kernel's first fold.
++//   Y lands during that hold. It releases nothing (Z's predecessor is X, whose
++//     result the running fold has already claimed), it ends nothing (a fold is
++//     running), and at its own landing it is 0 ms old. So it waits.
++//   The hold is released `FOLD_HOLD_AFTER_LANDING_MS` after Y's whole pipeline
++//     returned, so when fold 1 finishes Y is well past 300 ms — and THAT instant
++//     is the first with nothing in flight and no fold running. Z is ready but
++//     not yet dispatched, so `released` is empty and `end` is false; the clause
++//     left is the age one. Epoch 2 is `['Y']`, `why: 'aged'`.
++//   Z goes out on epoch 1's head, lands, and ends the run: epoch 3, `why: 'end'`.
++//
++// Only the ADOPTIONS are ordered against each other, and `worker:start impl:Z`
++// only against epoch 1's event: a claim's instant is earlier than its event's,
++// and a lane woken by fold 1 dispatches Z somewhere between the `aged` claim and
++// the event that records it. The claim's own idleness is M1's reading, pinned by
++// legs (b) and (i)'s negatives rather than by an ordering this file cannot see.
++// ════════════════════════════════════════════════════════════════════════════
++{
++  const run = await drive({
++    tag: 'e1', tasks: THREE(), edges: [['X', 'Z']], width: 3,
++    ageArgs: { foldAgeMs: AGED_THRESHOLD_MS },
++    hold: async (runDir) => {
++      await waitUntil(() => {
++        const log = readEvents(runDir)
++        return log.some((e) => isEnd(e, 'impl:Y')) && judgedEnded(log, 'Y')
++      })
++      await sleep(FOLD_HOLD_AFTER_LANDING_MS)
++    },
++    makeStub: (runDir) => async (prompt, opts, cwd) => {
++      const [kind, id] = opts.label.split(':')
++      if (kind === 'review') return cannedReview(runDir, opts.label)
++      if (kind !== 'impl') throw new Error('unexpected dispatch: ' + opts.label)
++      workerStart(runDir, opts.label, cwd)
++      if (id === 'Y') {
++        // Y opens its work only once X's implementer has returned, and then
++        // waits a stagger more: X's landing is the one that claims epoch 1, and
++        // a Y that raced it into the same instant would be adopted with X and
++        // this leg would be asking about a different run.
++        await waitUntil(() => readEvents(runDir).some((e) => isEnd(e, 'impl:X')))
++        await sleep(STAGGER_MS)
++      }
++      return plainImpl(runDir, opts, cwd, id)
++    },
++  })
++  const log = run.log
++  const adoptions = adoptionsOf(log)
++  assert.deepEqual(run.report.tasks.map((r) => [r.task, r.status]).sort(),
++    [['X', 'done'], ['Y', 'done'], ['Z', 'done']],
++    '(e)/M4 [idle-gate]: sim precondition — all three tasks finish: ' +
++    JSON.stringify(run.report.tasks.map((r) => ({ task: r.task, status: r.status }))))
++  assert.ok(run.seam.calls.filter((c) => c.verb === 'fold' && c.at === 'begin').length >= 1,
++    '(e)/M4 [idle-gate]: sim precondition — the exec seam saw the kernel `fold` it held: ' +
++    JSON.stringify(run.seam.calls))
++  const endY = firstIndex(log, (e) => isEnd(e, 'impl:Y'))
++  assert.ok(endY !== -1,
++    '(e)/M4 [idle-gate]: sim precondition — Y\'s implementer returns: ' + shownLog(log))
++  assert.equal(adoptions.length, 3,
++    '(e)/M4 [idle-gate]: three adoptions — X\'s release, Y\'s age-out at the instant that fold ' +
++    'released, and Z\'s end: ' + shownEpochs(log) + ' | ' + shownLog(log))
++  const epoch = (i) => adoptions[i] || { tasks: [] }
++  assert.deepEqual(epoch(0).tasks, ['X'],
++    '(e)/M4 [idle-gate]: the first adopts X alone: ' + JSON.stringify(adoptions[0] || null))
++  assert.equal(epoch(0).why, 'released',
++    '(e)/M4 [idle-gate]: because it frees Z: ' + JSON.stringify(adoptions[0] || null))
++  assert.deepEqual(epoch(0).released, ['Z'],
++    '(e)/M4 [idle-gate]: and it names Z: ' + JSON.stringify(adoptions[0] || null))
++  assert.ok(endY < indexOfEvent(log, epoch(0)),
++    '(e)/M4 [idle-gate]: sim precondition — Y\'s implementer returned before that fold finished, ' +
++    'so Y\'s result really did land while fold 1 was running: ' + shownLog(log))
++  assert.deepEqual(epoch(1).tasks, ['Y'],
++    '(e)/M4 [idle-gate]: the second adopts Y alone: ' + JSON.stringify(adoptions[1] || null))
++  assert.equal(epoch(1).why, 'aged',
++    '(e)/M4,M1 [idle-gate]: with `why: \'aged\'` — the gate narrows the age clause, it does not ' +
++    'delete it. At the instant fold 1 released, nothing was in flight and no fold was running, Y ' +
++    'was past ' + AGED_THRESHOLD_MS + ' ms, Z was ready (so `end` is false) and not yet ' +
++    'dispatched (so `released` is empty): the age clause is the one left: ' +
++    JSON.stringify(adoptions[1] || null))
++  assert.deepEqual(epoch(2).tasks, ['Z'],
++    '(e)/M4 [idle-gate]: the third adopts Z: ' + JSON.stringify(adoptions[2] || null))
++  assert.equal(epoch(2).why, 'end',
++    '(e)/M4 [idle-gate]: and ends the run: ' + JSON.stringify(adoptions[2] || null))
++  assert.ok(indexOfEvent(log, epoch(0)) < indexOfEvent(log, epoch(1)) &&
++            indexOfEvent(log, epoch(1)) < indexOfEvent(log, epoch(2)),
++    '(e)/M4 [idle-gate]: and the three sit in the log in that order — epochs are numbered and ' +
++    'appended in fold order: ' + shownLog(log))
++  const startZ = firstIndex(log, (e) => isStart(e, 'impl:Z'))
++  assert.ok(startZ !== -1 && startZ > indexOfEvent(log, epoch(0)),
++    '(e)/M4 [idle-gate]: Z is dispatched after the first adoption — the release is what made it ' +
++    'ready: ' + shownLog(log))
++  assert.equal(headAt(log, startZ), epoch(0).headSha,
++    '(e)/M4 [idle-gate]: on that adoption\'s own head (' + String(epoch(0).headSha) + '), not on ' +
++    'the run base ' + run.base + ': ' + JSON.stringify(log[startZ]))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// [idle-gate] leg (i) — a landing while an older result is past threshold and a
++// sibling is still in flight [M1, M8]
++//
++// The instant a tree that only removed the timer would still get wrong. A, B and
++// C, no edges, width 3, `foldAgeMs: 300`: A returns at once, B after 500 ms, C
++// after two seconds. B's landing is a real wake-up — a lane frees and asks — and
++// at that instant A's result is already 500 ms old against a 300 ms threshold.
++// A tree that dropped the timer but left the clause reading the threshold alone
++// claims `aged` there and folds A and B while C is still being built. Under the
++// gate it claims nothing, because C is in flight: the log between
++// `worker:end impl:B` and `worker:end impl:C` holds no epoch event at all, and
++// the run folds once, at the end, with all three.
++//
++// And the same run at `foldAgeMs: 0`, so the pair differs in one argument: there
++// A's own landing folds A alone before B ever returns.
++// ════════════════════════════════════════════════════════════════════════════
++const ABC = () => [taskOf('A'), taskOf('B'), taskOf('C')]
++const abcHeldStub = (runDir) => async (prompt, opts, cwd) => {
++  const [kind, id] = opts.label.split(':')
++  if (kind === 'review') return cannedReview(runDir, opts.label)
++  if (kind !== 'impl') throw new Error('unexpected dispatch: ' + opts.label)
++  workerStart(runDir, opts.label, cwd)
++  if (id === 'B') await sleep(MID_HOLD_MS)
++  if (id === 'C') await sleep(AGED_HOLD_MS)
++  return plainImpl(runDir, opts, cwd, id)
++}
++
++{
++  const run = await drive({
++    tag: 'i1', tasks: ABC(), edges: [], width: 3,
++    ageArgs: { foldAgeMs: AGED_THRESHOLD_MS },
++    makeStub: abcHeldStub,
++  })
++  const log = run.log
++  const adoptions = adoptionsOf(log)
++  assert.deepEqual(run.report.tasks.map((r) => [r.task, r.status]).sort(),
++    [['A', 'done'], ['B', 'done'], ['C', 'done']],
++    '(i)/M8 [idle-gate]: sim precondition — all three tasks finish: ' +
++    JSON.stringify(run.report.tasks.map((r) => ({ task: r.task, status: r.status }))))
++  const endA = firstIndex(log, (e) => isEnd(e, 'impl:A'))
++  const endB = firstIndex(log, (e) => isEnd(e, 'impl:B'))
++  const endC = firstIndex(log, (e) => isEnd(e, 'impl:C'))
++  assert.ok(endA !== -1 && endB !== -1 && endC !== -1,
++    '(i)/M8 [idle-gate]: sim precondition — all three implementers return: ' + shownLog(log))
++  assert.ok(endB < endC,
++    '(i)/M8 [idle-gate]: `worker:end impl:B` sits in the log before `worker:end impl:C` — B was ' +
++    'held ' + MID_HOLD_MS + ' ms and C ' + AGED_HOLD_MS + ' ms, so B lands with C still open: ' +
++    shownLog(log))
++  assert.ok(log[endB].ts - log[endA].ts >= AGED_THRESHOLD_MS,
++    '(i)/M1 [idle-gate]: sim precondition — at B\'s landing A\'s result is ' +
++    (log[endB].ts - log[endA].ts) + ' ms old, past the ' + AGED_THRESHOLD_MS + ' ms threshold: ' +
++    'unless it is, this leg asks nothing: ' + shownLog(log))
++
++  const upToC = epochEventsOf(log).filter((e) => indexOfEvent(log, e) < endC)
++  assert.deepEqual(upToC.map((e) => ({ kind: e.kind, tasks: e.tasks, why: e.why })), [],
++    '(i)/M1,M8 [idle-gate]: no epoch event sits before `worker:end impl:B` or between it and ' +
++    '`worker:end impl:C`. B\'s landing is a lane freeing and asking, with A\'s result already ' +
++    'past ' + AGED_THRESHOLD_MS + ' ms — and it claims NOTHING, because C is in flight. An engine ' +
++    'that only dropped the age timer, leaving the clause reading the threshold alone, folds ' +
++    '`[\'A\', \'B\']` here: ' + shownEpochs(log) + ' | ' + shownLog(log))
++  assert.equal(adoptions.length, 1,
++    '(i)/M8 [idle-gate]: so the run folds exactly ONCE: ' + shownEpochs(log) + ' | ' +
++    shownLog(log))
++  const only = adoptions[0] || { tasks: [] }
++  assert.ok(indexOfEvent(log, only) > endC,
++    '(i)/M8 [idle-gate]: and that adoption follows C\'s `worker:end` — C\'s landing is the first ' +
++    'idle instant of the run: ' + shownLog(log))
++  assert.deepEqual(only.tasks, ['A', 'B', 'C'],
++    '(i)/M8 [idle-gate]: carrying all three, in plan order: ' + JSON.stringify(adoptions[0] || null))
++  assert.equal(only.why, 'end',
++    '(i)/M8 [idle-gate]: with `why: \'end\'` — asked before `aged` and unchanged by this task: ' +
+     JSON.stringify(adoptions[0] || null))
+-  assert.ok(adoptTs >= endATs,
+-    '(e)/M5: sim precondition — the adoption follows A\'s `worker:end` in wall time: ' +
+-    (adoptTs - endATs) + ' ms')
+-  assert.ok(adoptTs - endATs <= AGED_THRESHOLD_MS + WAKE_SLACK_MS,
+-    '(e)/M5: the lane waiting with nothing ready and a pending result woke ON ITS OWN when A ' +
+-    'reached ' + AGED_THRESHOLD_MS + ' ms, without another landing — the adoption is owed within ' +
+-    WAKE_SLACK_MS + ' ms of A\'s `worker:end` plus the threshold, and it came ' +
+-    (adoptTs - endATs) + ' ms after it. B was held ' + AGED_HOLD_MS + ' ms, so a lane that only ' +
+-    'ever wakes on a landing lands outside this window: ' + shownLog(log))
+-  const endBTs = log[endB].ts
+-  assert.ok(adoptTs < endBTs,
+-    '(e)/M5: and B had not landed when it happened — B\'s `worker:end` is ' +
+-    (endBTs - adoptTs) + ' ms later: ' + shownLog(log))
++}
++
++{
++  const run = await drive({
++    tag: 'i2', tasks: ABC(), edges: [], width: 3,
++    ageArgs: { foldAgeMs: 0 },
++    makeStub: abcHeldStub,
++  })
++  const log = run.log
++  const adoptions = adoptionsOf(log)
++  const endB = firstIndex(log, (e) => isEnd(e, 'impl:B'))
++  assert.ok(endB !== -1,
++    '(i)/M8 [idle-gate]: sim precondition — B\'s implementer returns: ' + shownLog(log))
++  const first = adoptions[0] || { tasks: [] }
++  assert.deepEqual(first.tasks, ['A'],
++    '(i)/M8,M3 [idle-gate]: the same three tasks at `foldAgeMs: 0` fold A alone at A\'s own ' +
++    'landing — one argument apart from the run above, and the whole reading: ' +
++    shownEpochs(log) + ' | ' + shownLog(log))
++  assert.equal(first.why, 'aged',
++    '(i)/M8,M3 [idle-gate]: with `why: \'aged\'` — at `0` the oldest pending result has waited ' +
++    '`foldAgeMs` or more the moment it lands: ' + JSON.stringify(adoptions[0] || null))
++  assert.ok(indexOfEvent(log, first) < endB,
++    '(i)/M8,M3 [idle-gate]: and before `worker:end impl:B`, with B and C both in flight: ' +
++    shownLog(log))
+ }
+ 
+ // ════════════════════════════════════════════════════════════════════════════
+@@ -658,9 +1032,22 @@ let agedRun = null
+ // carries no `headSha` to dispatch anything on, and the tasks it would have
+ // released never go out at all.
+ // ════════════════════════════════════════════════════════════════════════════
++// The [idle-gate] half of the sweep — this task's leg (a). Under a POSITIVE
++// threshold the age clause is the narrow one: it holds only at an instant with
++// nothing in flight and no fold running, and the only run above that reaches
++// such an instant with a result still pending is leg (e)'s. So every `aged`
++// adoption in a positively-thresholded run is that run's, and every other one is
++// the negative M1 names — leg (b)'s run, whose one adoption is `end` with A's
++// 300 ms long past and B open for two seconds.
++//
++// "Positive" is read off the argument the run was driven with: `0` is the
++// fold-at-every-landing rule and is exempt, and a run that named no threshold
++// (or a non-number) got the 60 s default, which is positive too.
++const ZERO_THRESHOLD = (ageArgs) => ageArgs.foldAgeMs === 0
++const AGED_RUN_TAG = 'e1'
+ const WHYS = ['aged', 'end', 'released']
+ {
+-  assert.ok(RUNS.length >= 9,
++  assert.ok(RUNS.length >= 13,
+     '(a)/M1: sim precondition — every scenario above registered its run: ' + RUNS.length +
+     ' registered')
+   for (const run of RUNS) {
+@@ -678,6 +1065,16 @@ const WHYS = ['aged', 'end', 'released']
+         'folded for no reason the record can state' + where + ': ' + JSON.stringify(e))
+     }
+ 
++    if (!ZERO_THRESHOLD(run.ageArgs) && run.tag !== AGED_RUN_TAG) {
++      assert.deepEqual(adoptionsOf(log).filter((e) => e.why === 'aged')
++        .map((e) => ({ wave: e.wave, tasks: e.tasks })), [],
++        '(a)/M1 [idle-gate]: under a positive `foldAgeMs` an epoch is claimed `aged` only at an ' +
++        'instant with no task in flight and no fold running, and the one run of this exam that ' +
++        'reaches such an instant with a result pending is `' + AGED_RUN_TAG + '` — every other ' +
++        'positively-thresholded run folds for `released` or `end`' + where + ' (driven with ' +
++        JSON.stringify(run.ageArgs) + '): ' + shownEpochs(log) + ' | ' + shownLog(log))
++    }
++
+     for (const e of adoptionsOf(log)) {
+       if (e.why !== 'released') {
+         // Absent or empty — either says the same thing. What an epoch claimed
+@@ -748,6 +1145,23 @@ const WHYS = ['aged', 'end', 'released']
+   assert.match(bullet, /(^|[^\w`])`?0`?([^\w]|$)/,
+     '(f)/M6: and `foldAgeMs`\'s `0` reading — fold at every landing — is stated too:\n' +
+     JSON.stringify(bullet))
++
++  // [idle-gate] leg (g) — the same region, and this task's own words in it. The
++  // `aged` sentence now says what the clause reads BESIDES the threshold, and
++  // the `0` reading is still the fold-at-every-landing one. This is the third
++  // `Run:` line's regex, the sed range joined the same way it joins it.
++  assert.match(bullet,
++    /epoch[\s\S]*ready[\s\S]*slot frees[\s\S]*release[\s\S]*end[\s\S]*aged[\s\S]*since it landed[\s\S]*in flight[\s\S]*foldAgeMs[\s\S]*60[\s\S]*foldAgeMs: 0[\s\S]*every landing[\s\S]*driver:wave-adopted[\s\S]*descendant/,
++    '(g)/M6 [idle-gate]: the evidence bullet\'s `aged` sentence says the oldest pending result ' +
++    'has waited `foldAgeMs` SINCE IT LANDED and that nothing is IN FLIGHT, and the `foldAgeMs: 0` ' +
++    'reading is still a fold at EVERY LANDING — all of it in the order the record already had: ' +
++    '`epoch`, `ready`, `slot frees`, release, end, `aged`, `since it landed`, `in flight`, ' +
++    '`foldAgeMs`, `60`, `foldAgeMs: 0`, `every landing`, `driver:wave-adopted`, `descendant`:\n' +
++    JSON.stringify(bullet))
++  assert.match(bullet, /aged[\s\S]*since it landed[\s\S]*in flight/,
++    '(g)/M6 [idle-gate]: and those three read as one sentence — the age clause states the wait ' +
++    'AND the idleness, so a reader of the contract learns that a finished result waits for its ' +
++    'siblings rather than buying its own fold:\n' + JSON.stringify(bullet))
+ }
+ 
+ // ════════════════════════════════════════════════════════════════════════════
+@@ -766,6 +1180,12 @@ const WHYS = ['aged', 'end', 'released']
+ // `drive({ … })`, or in that sim's `drive` helper, which singles `c1` out. Both
+ // shapes say the same thing and both are accepted below; a sim that passes it
+ // nowhere, or passes it to `c1` too, is not.
++//
++// [idle-gate] this block is also this task's leg (d), unchanged: M3 says the
++// three sims that pass `foldAgeMs: 0` pass on the patched tree WITHOUT AN EDIT,
++// and the reading that keeps them passing is `0` still folding at every landing
++// (leg (c)'s run). So what leg (d) asks is that the zero is still where run-140's
++// exam already reads it — which is what is asked below, and nothing more.
+ // ════════════════════════════════════════════════════════════════════════════
+ {
+   /** A sibling sim's source, read and never run — no `existsSync`, no spawn. */
