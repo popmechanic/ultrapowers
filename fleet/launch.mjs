@@ -603,10 +603,12 @@ const BASE_FACTS_STAMP = /\*\*BASE facts:\*\*\s*\(generated at ([0-9a-f]{7,40})\
  *     its clauses pin). A non-zero exit is a refusal carrying the compiler's
  *     text verbatim — including a `STALE fact:` line for a Stale-if predicate
  *     that holds at BASE, which is what the operator reads on the laptop; the
- *     `BASE fact:` and `STALE fact:` lines of a clean compile ride the result
- *     so the launch line prints them, in the order the compiler printed them
- *     (a `STALE fact:` there is the advisory kind: a predicate the compiler
- *     could not read at BASE, never a refusal).
+ *     `BASE fact:`, `STALE fact:` and `AUTHORING fact:` lines of a clean
+ *     compile ride the result so the launch line prints them, in the order the
+ *     compiler printed them (a `STALE fact:` there is the advisory kind: a
+ *     predicate the compiler could not read at BASE, never a refusal; the
+ *     `AUTHORING fact:` line is what the plan's authoring cost, or
+ *     `AUTHORING fact: none recorded` when the gate record carries none).
  *
  * The compiler runs through the exec seam like every other subprocess, so a sim
  * that answers `python3` decides what the compiler said.
@@ -627,7 +629,10 @@ export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planT
     )
   }
   return String(res.stdout ?? '').split('\n').filter(
-    (line) => line.startsWith('BASE fact:') || line.startsWith('STALE fact:')
+    (line) =>
+      line.startsWith('BASE fact:') ||
+      line.startsWith('STALE fact:') ||
+      line.startsWith('AUTHORING fact:')
   )
 }
 
