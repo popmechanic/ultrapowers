@@ -1,0 +1,72 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "3bcbe8e810607a3a032048911229925e063570c0928ebd1cc4a1af5f72a7e3fc",
+      "verdict": "pass",
+      "reason": "Every Machine clause has a falsifying leg \u2014 M1 null/shape/order/width/cwd/env by (a),(b),(i); M2 string-offset, exact-url, non-zero-exit, innermost-range by (a),(c),(d),(j); M3 sorted sims, width, both null cases and field invariance by (e),(f),(g); M4 by range-scoped seds."
+    },
+    "2": {
+      "hash": "e80796ce9ae28b6bb3e44d440f533cd1a2d08b3f61f10b05ec8c95cb88cf18cd",
+      "verdict": "pass",
+      "reason": "M4's three statuses, zero_over, zero_curve and report_lines pinned by legs (a)-(c) with runner/plain controls; M1's import list, spec names and the ghost-set skip by (d) and (g); M2 by the second Run: with exact counts and last-line pin; M3 by scoped sed ranges."
+    },
+    "3": {
+      "hash": "173dd28c820abb31078d708299c4c83840498e1f140aedce8de665686df1ce27",
+      "verdict": "pass",
+      "reason": "M1 payload shape, ordering and taken-entry exclusion in (a); M2 absence and non-2xx continuation in (b)/(c); M3 single ordered event with pinned url in (d); M4 two scoped seds in (e); M5 Residuals: none plus the BASE boot sims in (f)/(g); the pinned title computes from the template."
+    },
+    "4": {
+      "hash": "9d6fed8f454f9d96e0ee87c83b72b305c51b38f5c8980a932129c6fd093db0bb",
+      "verdict": "pass",
+      "reason": "Every leg is scoped to the single frontier row by the sed pin; (a) and (b) pin M1's operative phrases so the row cannot pass trivially; (c) is a negated grep naming each of M2's three retired phrases."
+    }
+  },
+  "tally": {
+    "dispatched": 9,
+    "rejected": 5,
+    "rounds": 5,
+    "perTask": {
+      "1": 5,
+      "2": 2,
+      "3": 2,
+      "4": 1
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "verdicts": {
+        "1": "fail",
+        "2": "fail",
+        "3": "fail",
+        "4": "pass"
+      }
+    },
+    {
+      "round": 2,
+      "verdicts": {
+        "1": "fail",
+        "2": "pass",
+        "3": "pass"
+      }
+    },
+    {
+      "round": 3,
+      "verdicts": {
+        "1": "fail"
+      }
+    },
+    {
+      "round": 4,
+      "verdicts": {
+        "1": "fail"
+      }
+    },
+    {
+      "round": 5,
+      "verdicts": {
+        "1": "pass"
+      }
+    }
+  ]
+}
