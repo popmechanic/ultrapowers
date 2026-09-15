@@ -108,3 +108,17 @@
 {"kind":"driver:wave-adopted","wave":3,"tasks":["1","3"],"headSha":"ecbc708c4b4e2e870d525b702d7be6f5227a8e28","why":"aged","id":"01M2K55PQ50000D48X2GEQXKZA","ts":1789496842981}
 {"kind":"driver:integrated-clean","wave":3,"removed":7,"id":"01M2K55PQ900001QAC0M5VVF62","ts":1789496842985}
 {"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel fleet/launch.mjs fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/publish-fold.mjs fleet/kata-client.mjs fleet/roles/examiner.md fleet/roles/reconcile.md fleet/roles/resolver.md","exit":0,"minor":false,"wave":3,"id":"01M2K55PQJ00003JNC5YJS145Y","ts":1789496842994}
+{"kind":"worker:end","label":"review:2:1","role":"reviewer","sessionId":"978d463e-7d98-437c-bc02-6b0e821dff84","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5857,"output":19912,"cacheRead":1260078,"cacheCreation":62009,"costUsd":1.7772139999999998,"models":["claude-opus-5"]},"id":"01M2K5993W000075EZ3P8A2QR1","ts":1789496960124}
+{"kind":"transcript:slice","label":"review:2:1","sessionId":"978d463e-7d98-437c-bc02-6b0e821dff84","bytes":11349,"id":"01M2K599440000D84AD7XGJ5C3","ts":1789496960132}
+{"kind":"engine:phase","phase":"Wave 4","id":"01M2K599690000MKMH2A3Y7TM7","ts":1789496960201}
+{"kind":"driver:wave-adopted","wave":4,"tasks":["2"],"headSha":"eeac1a182489dab375a490d48bbb52e47b407e8e","why":"end","id":"01M2K5ASMH0000MRTBKPS7BF83","ts":1789497009809}
+{"kind":"driver:integrated-clean","wave":4,"removed":7,"id":"01M2K5ASMN000000MT6FJCSMJB","ts":1789497009813}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel fleet/launch.mjs fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/publish-fold.mjs fleet/kata-client.mjs fleet/roles/examiner.md fleet/roles/reconcile.md fleet/roles/resolver.md","exit":0,"minor":false,"wave":4,"id":"01M2K5ASMX0000JD6SK2Z49YTA","ts":1789497009821}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2K5B7GC000017E3RRGPZ467","ts":1789497024012}
+{"kind":"driver:stage","stage":"finalize","id":"01M2K5B7KK00007TMJP37BDM51","ts":1789497024115}
+{"kind":"driver:stage","stage":"gate","id":"01M2K5B7N20000BFCB622CNG3V","ts":1789497024162}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M2K5B7R50000SVCCE11RDSPX","ts":1789497024261}
+{"kind":"driver:stage","stage":"approve","id":"01M2K5B7R500019K02XG9JAPYQ","ts":1789497024261}
+{"kind":"driver:approved","stamp":"run-150","integrationBranch":"ultra/integration-run-150","id":"01M2K5B7TF0000H7Y26H489674","ts":1789497024335}
+{"kind":"run:open","runId":"run-150","base":"41cb53b606146ee16f7904eaf0440531257426f1","source":"fleet/publish-fold.mjs","id":"01M2K5B8VQ0000V8PFCF0XMHG9","ts":1789497025399}
+{"kind":"driver:publish-fold","run":"150","attempt":"1","base":"41cb53b606146ee16f7904eaf0440531257426f1","tip":"41cb53b606146ee16f7904eaf0440531257426f1","candidate":"eeac1a182489dab375a490d48bbb52e47b407e8e","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M2K5B9W50000GZAFZPFJ8JTC","ts":1789497026437}
