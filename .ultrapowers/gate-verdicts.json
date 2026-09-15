@@ -1,0 +1,81 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "8a62120b0a1e501520cebb24aa6c1e3b531f741e1bdb1a5b77cba5773f14d730",
+   "verdict": "pass",
+   "reason": "Leg (a)'s side-by-side @BASE versus bare spec falsifies M1 and leg (c)'s pinned candidate text plus one-entry conflicts.json falsifies M3; M2/M4/M5/M6 each carry a literal a wrong implementation breaks."
+  },
+  "2": {
+   "hash": "7c4ffe7017c4def62dfef88b76f23ea5f003b987d5ff34f05d5d675c9a9c1b52",
+   "verdict": "pass",
+   "reason": "M1 is read off the recorded fold_wave.py argv in leg (a); M2/M4's three applied values and the a.txt outcomes compute from the seed in legs (b)/(c); M3/M5's blocked row is asserted against its BASE negative in leg (d)."
+  }
+ },
+ "tally": {
+  "dispatched": 3,
+  "rejected": 1,
+  "rounds": [
+   {
+    "round": 1,
+    "verdicts": {
+     "1": "pass",
+     "2": "fail"
+    },
+    "note": "M5 pinned rebased on a blocked epoch where M2's own rule yields no value; the count leg passed on 0"
+   },
+   {
+    "round": 2,
+    "verdicts": {
+     "2": "pass"
+    }
+   }
+  ],
+  "base": "cef3aef8422e7697436b78f40694f27be081502a"
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "2",
+   "hash": "f458d422df1789dbc8ee3cc3895606c9b2e5427f53d4d33b0132464ea39453bd",
+   "verdict": "fail"
+  }
+ ],
+ "authoring": {
+  "minutes": 20,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "#1019 shape: root the fold at the task's anchor versus a three-way git apply with the refusal kept for overlaps",
+    "options": [
+     "Root the fold at the run's BASE",
+     "Three-way git apply, refusal stays for overlaps"
+    ],
+    "recommended": "Root the fold at the run's BASE",
+    "picked": "Root the fold at the run's BASE"
+   },
+   {
+    "question": "#1019 Claim and summary",
+    "options": [
+     "Confirm as drafted",
+     "Edit it"
+    ],
+    "recommended": "Confirm as drafted",
+    "picked": "Confirm as drafted"
+   },
+   {
+    "question": "Execute lane for the #1019 plan",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers"
+   }
+  ]
+ }
+}
