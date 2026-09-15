@@ -439,7 +439,7 @@ const readJsonOrNull = (p) => {
 // unparsable yields `null` in the fields it could not supply rather than
 // taking the report down: this is evidence, not control flow.
 // `mutant_path` rides along for the reviewer's block; `stateExamsOf` drops it,
-// because the report row's shape is the spec's six keys exactly.
+// because the report row's shape is the spec's eight keys exactly.
 const stateExamRowsOf = (runDir, taskId) => {
   const dir = path.join(String(runDir || ''), 'state-exams', 'task-' + String(taskId))
   let entries
@@ -471,6 +471,15 @@ const stateExamRowsOf = (runDir, taskId) => {
       render_ms: (render === 'ran' && walls && walls.render_ms !== undefined)
         ? walls.render_ms : null,
       render,
+      // The action wall and whether the browser ran — both written by the
+      // fixture since run-7 (#834) and both dropped on the floor until now. A
+      // callback exam has no interaction to time, so `action_ms` is legitimately
+      // `null` in the file; anything that is not a number (a string reading, a
+      // key the pre-#834 shape never wrote) is `null` here too, because the
+      // report row carries readings, not whatever the file happened to hold.
+      action_ms: (walls && typeof walls.action_ms === 'number') ? walls.action_ms : null,
+      browser: (walls && (walls.browser === 'ran' || walls.browser === 'skipped'))
+        ? walls.browser : null,
       mutant_killed: (mutant && typeof mutant.killed === 'boolean') ? mutant.killed : null,
       contract: contract && contract.breach !== undefined
         ? (contract.breach === null ? 'ok' : String(contract.breach))
@@ -479,11 +488,11 @@ const stateExamRowsOf = (runDir, taskId) => {
     }
   })
 }
-// The `Produces:` contract: the report row, six keys, one element per stem.
+// The `Produces:` contract: the report row, eight keys, one element per stem.
 export function stateExamsOf(runDir, taskId) {
   return stateExamRowsOf(runDir, taskId).map(
-    ({ exam, store_ms, render_ms, render, mutant_killed, contract }) =>
-      ({ exam, store_ms, render_ms, render, mutant_killed, contract }))
+    ({ exam, store_ms, render_ms, render, action_ms, browser, mutant_killed, contract }) =>
+      ({ exam, store_ms, render_ms, render, action_ms, browser, mutant_killed, contract }))
 }
 // The reviewer's own reading of that record — a driver block appended to the
 // reviewer prompt, per task, never a role-file edit. A killed mutant is the
