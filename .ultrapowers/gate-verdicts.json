@@ -1,0 +1,16 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "3bcbe8e810607a3a032048911229925e063570c0928ebd1cc4a1af5f72a7e3fc",
+      "verdict": "pass",
+      "reason": "Every Machine clause has a falsifying leg \u2014 M1 null/shape/order/width/cwd/env by (a),(b),(i); M2 string-offset, exact-url, non-zero-exit, innermost-range by (a),(c),(d),(j); M3 sorted sims, width, both null cases and field invariance by (e),(f),(g); M4 by range-scoped seds."
+    }
+  },
+  "tally": {
+    "dispatched": 0,
+    "rejected": 0,
+    "rounds": 0,
+    "carried_from": "2026-09-15-engine-coverage-gate-sims-and-disclosure-tickets task 1 (run-146, verdict clean)",
+    "base": null
+  }
+}
