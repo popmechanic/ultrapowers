@@ -1,0 +1,42 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "2cf4ece9b73e9a136cdcebd87db28336e369ff0dbb1fd1b3ce549fb5e4d36c53",
+      "verdict": "pass",
+      "reason": "Round 1 pass: the example fact line computes from the rule, leg (b) yields 2/1/1, every M3 row has a parametrized refusing leg, and legs (c)/(d) pin the no-record and bare --check negations."
+    },
+    "2": {
+      "hash": "a661307537bb04d1b9d6f7c7eeb8a29caa0143c43fb867c16631994b4d68daeb",
+      "verdict": "pass",
+      "reason": "Round 1 pass: the pinned run-131 row and totals recompute from the example record, the register lines follow M2, and the M3 skip, ref, decode and no-other-repository negations each have a falsifying leg."
+    },
+    "3": {
+      "hash": "664eafca5b6e6ce90b160c7a66950bf32e165b927a76354e8ae60c7487bbfe57",
+      "verdict": "pass",
+      "reason": "Round 2 pass after a round-1 rejection (leg (f) pinned only the pick rate, not that every question is recorded with its pick, and the heading literal had no anchored grep): the Every-choice pattern now carries question/recorded/pick before the rate half, and a whole-line anchored grep pins the heading."
+    },
+    "4": {
+      "hash": "e8cfef2453ff3dae983f59b5e08e967472268d78dae258e80d3b365594ba2490",
+      "verdict": "pass",
+      "reason": "Round 2 pass after a round-1 rejection (the sentence pinned the line after the base facts while M1 pins only stdout order): the sentence now says among the fact lines that end the launch text, which M1 and leg (c) establish."
+    }
+  },
+  "tally": {
+    "dispatched": 6,
+    "rejected": 2,
+    "rounds": 2,
+    "base": "e0526443db3ea88a6e91d39f89234e295d1b1fa5"
+  },
+  "history": {
+    "round1": {
+      "1": "pass",
+      "2": "pass",
+      "3": "fail",
+      "4": "fail"
+    },
+    "round2": {
+      "3": "pass",
+      "4": "pass"
+    }
+  }
+}
