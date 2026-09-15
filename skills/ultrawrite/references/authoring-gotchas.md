@@ -77,11 +77,14 @@ included. Nothing prints them.
   total. Likewise `test ! -e tests/<dir>` fails on a `__pycache__` survivor in
   the integration clone — pin the source files. The compiler names both:
   `suite-total-pin` and `directory-absence-pin` (run-4, 2026-09-04).
-- **Every file a task must touch is in its own Files, even a sibling's
-  one-liner.** A compelled edit outside Files was ruled lawful in review round
-  1, reverted by the fix round told to "resolve every blocking issue", blocked
-  in round 2, and the task died `fix-loop-exhausted`; same-file text folds, so
-  listing the file costs nothing (run-2, 2026-09-04).
+- **Every file a task can foresee touching is in its own Files,
+  even a sibling's one-liner.** A compelled edit outside Files was ruled lawful
+  in review round 1, reverted by the fix round told to "resolve every blocking
+  issue", blocked in round 2, and the task died `fix-loop-exhausted`; same-file
+  text folds, so listing the file costs nothing. A file the author could not
+  foresee is no longer that death: it is a declared amendment the reviewer
+  judges on its merits and never reverts, the rule since #990 — so the listing
+  is foresight, not a fence (run-2, 2026-09-04).
 - **Never a process or authorship sentence in the plan-level Claim.** "Every
   task's exam was written by a peer before the implementer started" parked an
   otherwise clean run as `deferred:external`: the critic reads the tree, and no

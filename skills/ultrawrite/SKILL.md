@@ -80,6 +80,14 @@ The Files block carries canonical `Create:` / `Modify:` / `Delete:` / `Test:` bu
 paths, no globs and no open write sets. It is doubly load-bearing: wave shape *and* edge
 derivation.
 
+That block is the expected footprint of a submission, not a fence. A worker that must go outside
+it, that must read a clause otherwise, or that must re-aim a sim declares an amendment: the record
+carries it as a `driver:amendment` row and on the pull request card, and the reviewer reads it as a
+lens on the diff rather than as a breach to revert. So the author still lists every file they can
+foresee the task touching — an unforeseen one now costs a declared amendment, not a dead task — and
+reads a run's amendments as the next plan's input, since what the workers had to declare is exactly
+where this plan's Files sets were wrong.
+
 ### The six body slots, in this order
 
 - **Claim:** the bilingual pair. The operator's own sentence, verbatim, closed by

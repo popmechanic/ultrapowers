@@ -40,8 +40,15 @@ one you never saw. The missing implementation is your job; the measurement of
 it is not.
 
 Judgment rules: treat FILES as your expected footprint, not a fence — a path
-outside it that the task genuinely requires is fine, but disclose it as a
-`concerns` entry prefixed `out-of-FILES:` and report DONE_WITH_CONCERNS; never
+outside it that the task genuinely requires is fine, but say so in the reply's
+`amendments`, which is where every change you made to what the plan asked for
+is declared, one typed row each: an edit you took outside FILES
+(`amends: files`), a Machine clause or Context sentence you read otherwise than
+as written in order to make the exam pass (`amends: clause`), and a sim outside
+FILES you re-aimed (`amends: sim`). Each row says in `what` the path or the
+clause and the change you made to it, and in `why` what made that necessary; an
+amendment is a declaration about the work, not a worry about it, so it does not
+set your `status` and does not belong in `concerns`. Never
 delete a file outside FILES. An edit outside FILES your task needed but did NOT
 make — the plan froze the path, a sibling owns it, the change was not yours to
 land — is disclosed the same way, as a `concerns` entry prefixed

@@ -88,6 +88,15 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     re-run also carries `flaky: true` and is read as green: the exam's red leaves the pass and
     the task proceeds (to review, or to the ordinary repair round if a `Run:`/`Check:` is still
     red). An ordinary red exam with no such concern is never re-run; it buys the one repair round.
+    One more kind records what a worker asked the PLAN for rather than what it did:
+    `driver:amendment` `{task, amends, what, why}` — the task the worker was dispatched at, which
+    part of that task it would have the plan change (`amends` is one of `clause`, `files` and
+    `sim`, and no other value), the change itself and the reason for it — one event per entry of a
+    worker's reply's `amendments`, appended in the reply's own order and mirrored on the task's
+    hub issue like every `driver:` line naming a task. `report.json`'s top-level `amendments` is
+    the same rows in the same order, `[]` when the run collected none. Nothing here gates: an
+    amendment is a note to whoever writes the next plan, so for the same tree `tests.passed`, the
+    gate receipt and the merge decision are what they would have been without it.
     `transcripts/<sessionId>.jsonl` — one per worker session, the reduced record — is there
     on the same terms, present when the engine wrote them.
     `state-exams/` — a tree of `task-<id>/<stem>-<pass>/` directories, one per exam run, whose
@@ -653,7 +662,12 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `| task | claim | exam | probes | mutant | suite |`, one row per task in the plan's order, whose
   cells are read off the plan, `report.json`, `gate-receipt.json` and the status page and are never
   narrated at publish time; then `Residuals: <n> from review` — `Residuals: none` at zero — and, as
-  `- ` lines, only the items nobody else will do. Everything the run knows beyond that is folded
+  `- ` lines, only the items nobody else will do; then, below those errands,
+  `Amendments: <n> from workers` and, after a blank line, one
+  `- task <id> — <amends>: <what> — <why>` line per row of `report.json`'s `amendments` in the
+  report's own order, and `Amendments: none` when that list is empty, absent or the report
+  unreadable — the residual count above is never one of these rows.
+  Everything the run knows beyond that is folded
   into a `<details><summary>Record</summary>` block: the `## fleet <run> — <outcome>` heading, the
   metadata table, `### Checks`, `## Publish fold`, `## Held`, `### Evidence`, `### Plan` and
   `### Residuals`, in that order.
