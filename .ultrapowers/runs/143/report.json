@@ -1,0 +1,435 @@
+{
+  "integrationBranch": "ultra/integration-run-143",
+  "baseSha": "1c97ba442c65d882354953d16590b1f8eb0c7a7a",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3",
+      "6",
+      "7",
+      "8",
+      "9",
+      "10"
+    ],
+    [
+      "4",
+      "5"
+    ]
+  ],
+  "dependencyEdges": [
+    "1 -> 4 (proof-run)",
+    "6 -> 4 (proof-run)",
+    "6 -> 5 (proof-run)"
+  ],
+  "tasks": [
+    {
+      "task": "8",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "5754225cf6d83b39a6b8ef871a811acebb366f4f",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-143/patches/task-8.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "landedAt": 1789490663439,
+      "stateExams": []
+    },
+    {
+      "task": "7",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "ed967c36cf55d1907896c3254bff0ee276b4d056",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-143/patches/task-7.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "landedAt": 1789490666942,
+      "stateExams": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "d8b97a82b50eb1bc305a6840b0f4d4659a656329",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-143/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "landedAt": 1789490682119,
+      "stateExams": []
+    },
+    {
+      "task": "9",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "3b72f048e21b4966593a727ac241e56fa9b45e25",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-143/patches/task-9.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "landedAt": 1789490682752,
+      "stateExams": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "3e435b5def5e1237a80feb75ccffbdf3837d69c7",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-143/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the deleted `test_the_remote_harvest_test_and_the_swallow_quarantine_entry_are_gone` carried a second assertion \u2014 that `tests/test_ultralearn_swallows.py` no longer names `fleet_fetch` (its NOT_YET_SWEPT quarantine entry). The Context table names `test_the_ssh_fetcher_and_its_test_no_longer_exist` as the surviving guard, but that test only checks `skills/ultralearn/scripts/fleet_fetch.py` and `tests/test_fleet_fetch.py` are absent and that `harvest_fleet_runs.py` never mentions `fleet_fetch` (tests/test_harvest_evidence.py:518-524); a stale `fleet_fetch.py` string left in the swallows quarantine list is inert data and would not fail at import, so after this pass nothing in this task's FILES pins it. Nothing in this diff can settle it \u2014 `tests/test_ultralearn_swallows.py` is sibling-owned (task 5, popmechanic-ultrapowers#gx1c), and that sibling's pass appears to be what removes the entry. What would settle it: confirming at integration that `fleet_fetch` no longer appears in `tests/test_ultralearn_swallows.py`, or that some kept guard outside this task pins its absence. Recorded, not blocking: the deletion is the one the task explicitly authorizes with that surviving guard named.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "landedAt": 1789490814904,
+      "stateExams": []
+    },
+    {
+      "task": "6",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "63e4c05e7ce6c81824b55d8af5e4493f8adf00e0",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-143/patches/task-6.patch",
+      "reviewVerdict": "clean",
+      "notes": "concern: Proof leg (e) reads red in this sandbox for an environment reason rather than a tree reason, and it needs no fix: `grep -q 'validate_skill.py \"${s%/}\"' .github/workflows/ci.yml` returns 1 under the sandbox's ugrep-backed `grep` shim, which treats the mid-pattern `$` as an end-of-line anchor, while GNU /usr/bin/grep matches the line at .github/workflows/ci.yml:48. That file is untouched against BASE (the scope Check over `.github` is clean), and the leg's other three greps \u2014 test_ultrawrite_skill_validates, test_validate_skill_accepts_it, test_validate_skill_accepts_the_ultrapowers_skill \u2014 all match. The same shim would have failed this leg at BASE; it asserts only files this task may not modify.; concern: tests/test_proof_modes_documented.py's module docstring claimed the file proves `skills/ultrawrite/SKILL.md` still validates, which stopped being true once its only validator test was deleted, so the docstring now names tests/test_validate_skill.py and tests/test_docs_agree_with_code.py as the owners of that run. This is the 4-line insertion in the diff; it adds no shouted whole word, so that file's own surviving M5 leg stays green.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "landedAt": 1789490824477,
+      "stateExams": []
+    },
+    {
+      "task": "10",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "560708375e1921a29ece935382620c2596a66b92",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-143/patches/task-10.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "landedAt": 1789490856019,
+      "stateExams": []
+    },
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "1f03b142129df03acdba81534b4ab4bab38de507",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-143/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Stale section header in `tests/test_review_peer.py`: the banner `# \u2500\u2500 M4: the authoring docs say peer, and never say adversarial \u2500\u2500` now sits over a section whose only remaining test (`test_skill_md_documents_the_peer_marker`) makes the positive assertion only \u2014 the \"never say adversarial\" half moved to `test_only_the_two_code_sites_under_skills_say_adversarial` when `test_authoring_docs_carry_no_adversarial` was deleted. Nothing in the Machine clauses or the Proof greps touches this line, so it blocks nothing, but the comment now describes a guard the section no longer carries.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "landedAt": 1789491265199,
+      "stateExams": []
+    },
+    {
+      "task": "5",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "fc2aa47cb66b07511d99fe3cf385898e0e0c5af5",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-143/patches/task-5.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "landedAt": 1789491587176,
+      "stateExams": []
+    },
+    {
+      "task": "4",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "6a4332f35dd4768cc1a6760f0fe34b6327b2ba11",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-143/patches/task-4.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "landedAt": 1789492382773,
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-143/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 5/5 workers\n5 workers [1791 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 12%]\n........................................................................ [ 16%]\n........................................................................ [ 20%]\n........................................................................ [ 24%]\n........................................................................ [ 28%]\n........................................................................ [ 32%]\n........................................................................ [ 36%]\n........................................................................ [ 40%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 68%]\n........................................................................ [ 72%]\n........................................................................ [ 76%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 92%]\n........................................................................ [ 96%]\n...............................................................          [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1791 passed, 5 warnings in 296.01s (0:04:56) =================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills fleet/roles fleet/CONTRACT.md fleet/RUNBOOK.md README.md hooks .github pytest.ini",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet ':(exclude)fleet/tests'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- tests/test_docs_agree_with_code.py tests/test_recommendation_rubric.py tests/test_compile_plan.py tests/test_ultralearn_docs.py tests/test_validate_skill.py tests/test_ultrawrite_skill.py tests/test_fleet_suite.py fleet/tests/test_roles_peer.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills fleet/roles fleet/CONTRACT.md fleet/RUNBOOK.md README.md hooks .github pytest.ini",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet ':(exclude)fleet/tests'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- tests/test_docs_agree_with_code.py tests/test_recommendation_rubric.py tests/test_compile_plan.py tests/test_ultralearn_docs.py tests/test_validate_skill.py tests/test_ultrawrite_skill.py tests/test_fleet_suite.py fleet/tests/test_roles_peer.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills fleet/roles fleet/CONTRACT.md fleet/RUNBOOK.md README.md hooks .github pytest.ini",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet ':(exclude)fleet/tests'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- tests/test_docs_agree_with_code.py tests/test_recommendation_rubric.py tests/test_compile_plan.py tests/test_ultralearn_docs.py tests/test_validate_skill.py tests/test_ultrawrite_skill.py tests/test_fleet_suite.py fleet/tests/test_roles_peer.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills fleet/roles fleet/CONTRACT.md fleet/RUNBOOK.md README.md hooks .github pytest.ini",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet ':(exclude)fleet/tests'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- tests/test_docs_agree_with_code.py tests/test_recommendation_rubric.py tests/test_compile_plan.py tests/test_ultralearn_docs.py tests/test_validate_skill.py tests/test_ultrawrite_skill.py tests/test_fleet_suite.py fleet/tests/test_roles_peer.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills fleet/roles fleet/CONTRACT.md fleet/RUNBOOK.md README.md hooks .github pytest.ini",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet ':(exclude)fleet/tests'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- tests/test_docs_agree_with_code.py tests/test_recommendation_rubric.py tests/test_compile_plan.py tests/test_ultralearn_docs.py tests/test_validate_skill.py tests/test_ultrawrite_skill.py tests/test_fleet_suite.py fleet/tests/test_roles_peer.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 463711,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 51%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 63%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 83%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n.............                                                            [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1813 passed, 5 warnings in 273.72s (0:04:33) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "b94eee9bca2d4714181c4f403b6fbee8dae32c4d",
+      "branches": [
+        "8",
+        "7",
+        "3",
+        "9",
+        "2",
+        "6"
+      ],
+      "joined": []
+    },
+    {
+      "wave": 2,
+      "status": "MERGED",
+      "headSha": "013207994902c9538e07c8b49116e3cb13013e91",
+      "branches": [
+        "10"
+      ],
+      "joined": []
+    },
+    {
+      "wave": 3,
+      "status": "MERGED",
+      "headSha": "6b715fa5caf1f96be1b9cb2b7bfa531abacd5e56",
+      "branches": [
+        "1"
+      ],
+      "joined": []
+    },
+    {
+      "wave": 4,
+      "status": "MERGED",
+      "headSha": "1e4b2b2b5884fcbbf412c7b6ce1724d2d154252d",
+      "branches": [
+        "5"
+      ],
+      "joined": []
+    },
+    {
+      "wave": 5,
+      "status": "MERGED",
+      "headSha": "49917bcacbe2144ef6d96d3d307a2608dfc0e037",
+      "branches": [
+        "4"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-143/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-143/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 2.1830000000000003,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    },
+    {
+      "wave": 2,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-143/frontier/wave-2/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-143/frontier/wave-2/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.825,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    },
+    {
+      "wave": 3,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-143/frontier/wave-3/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-143/frontier/wave-3/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.44,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    },
+    {
+      "wave": 4,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-143/frontier/wave-4/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-143/frontier/wave-4/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.62,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    },
+    {
+      "wave": 5,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-143/frontier/wave-5/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-143/frontier/wave-5/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.363,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 10,
+    "tasks_planned": 10,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 6: Proof leg (e) reads red in this sandbox for an environment reason rather than a tree reason, and it needs no fix: `grep -q 'validate_skill.py \"${s%/}\"' .github/workflows/ci.yml` returns 1 under the sandbox's ugrep-backed `grep` shim, which treats the mid-pattern `$` as an end-of-line anchor, while GNU /usr/bin/grep matches the line at .github/workflows/ci.yml:48. That file is untouched against BASE (the scope Check over `.github` is clean), and the leg's other three greps \u2014 test_ultrawrite_skill_validates, test_validate_skill_accepts_it, test_validate_skill_accepts_the_ultrapowers_skill \u2014 all match. The same shim would have failed this leg at BASE; it asserts only files this task may not modify.",
+    "task 6: tests/test_proof_modes_documented.py's module docstring claimed the file proves `skills/ultrawrite/SKILL.md` still validates, which stopped being true once its only validator test was deleted, so the docstring now names tests/test_validate_skill.py and tests/test_docs_agree_with_code.py as the owners of that run. This is the 4-line insertion in the diff; it adds no shouted whole word, so that file's own surviving M5 leg stays green."
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

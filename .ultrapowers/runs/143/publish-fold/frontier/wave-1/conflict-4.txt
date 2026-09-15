@@ -1,0 +1,1 @@
+path tests/test_proof_modes_documented.py deleted concurrently with text that survives the delete; the text wins the manifest
