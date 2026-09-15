@@ -2877,6 +2877,99 @@ patch_pr_body() { # $1 = outcome
   return 0
 }
 
+# --- disclosures -------------------------------------------------------------
+#
+# An edit a task NEEDED but could not make — the plan froze the file, and the
+# implementer said so rather than reaching outside its scope — is the one piece
+# of a run's record that names work nobody is holding. It rides today as a
+# `judgmentCalls` line of `report.json`, which is to say inside the record,
+# under a `<details>`, behind a click nobody makes. So it goes out as a TICKET
+# beside the PR: one issue per run, one box per disclosure, still open tomorrow.
+#
+# This is NOT the residual checklist and never duplicates it: `residual_read`
+# reads `gateCheck.acks`, `completenessFindings` and the merged tasks' `notes`
+# and never `judgmentCalls`, so the card's `Residuals:` count is what it was
+# before this step existed and a run whose only follow-up is a disclosure still
+# renders `Residuals: none`.
+#
+# The `(not taken)` is the whole distinction. `out-of-FILES:` alone is an edit
+# the task DID make, disclosed so a reader knows the footprint grew — that is
+# in the diff, and nobody owes it anything. `out-of-FILES (not taken):` is the
+# edit that was owed and is not in the diff.
+
+# The disclosure lines of the evidence copy of `report.json`, in report order,
+# one `- [ ] task <id> — <text>` each. No match — and a report that is absent,
+# unparseable or carries no `judgmentCalls` — prints nothing at all.
+disclosure_items() {
+  python3 -c '
+import json, re, sys
+
+DASH = " — "
+# `\S+` for the id: the engine writes `task ` + `task.id`, and an id is one
+# token. The text is the rest of the line, newlines and all.
+LINE = re.compile(r"^task (\S+): out-of-FILES \(not taken\): (.+)$", re.S)
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        doc = json.load(fh)
+except Exception:
+    sys.exit(0)
+
+calls = doc.get("judgmentCalls") if isinstance(doc, dict) else None
+out = ""
+for call in calls if isinstance(calls, list) else []:
+    if not isinstance(call, str):
+        continue
+    hit = LINE.match(call)
+    if hit:
+        out += "- [ ] task " + hit.group(1) + DASH + hit.group(2) + "\n"
+sys.stdout.buffer.write(out.encode("utf-8"))
+' "$EVIDENCE_DIR/$EVIDENCE_PATH/report.json"
+}
+
+# The ticket, filed once, after the PR exists and before the merge decides what
+# becomes of it.
+#
+# The filing is never a gate. A `fleet_curl` that does not complete, a non-2xx,
+# an answer with no `html_url`: each is one log line and `return 0`. What
+# becomes of this run is the merge's business, not the filing's.
+file_disclosures() {
+  local items count heading title body payload answer code reply url
+  # A run that opened no PR files no ticket: the body's first line is the PR.
+  [ -n "$PR_URL" ] || return 0
+  items="$(disclosure_items || true)"
+  # Nothing disclosed is no issue — and no REST call to make one with.
+  [ -n "$items" ] || return 0
+  count="$(printf '%s\n' "$items" | wc -l | tr -d ' ')"
+  heading="$(plan_title)"
+  [ -n "$heading" ] || heading="$RUN_ID"
+  title="fleet $RUN_ID disclosures: $heading"
+  # The PR, a blank line, then the checklist byte for byte: a reader who opens
+  # this issue first can reach the run that filed it in one click.
+  body="$(printf '%s\n\n%s' "$PR_URL" "$items")"
+  # NO `labels` key. A label this script guessed would file the follow-up into
+  # a reader queue nobody chose for it, and the title already names the run.
+  payload="{\"title\":\"$(json_escape "$title")\",\"body\":\"$(json_escape "$body")\"}"
+  answer="$(fleet_curl -sS -X POST "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/issues" \
+    -H 'content-type: application/json' -d "$payload" -w '\n%{http_code}' 2>/dev/null || true)"
+  code="$(printf '%s' "$answer" | tail -n 1)"
+  reply="$(printf '%s' "$answer" | sed '$d')"
+  case "$code" in
+    2[0-9][0-9]) : ;;
+    *) log "disclosures: POST /repos/$TARGET_REPO/issues answered ${code:-<no answer>}"; return 0 ;;
+  esac
+  url="$(printf '%s' "$reply" | json_field html_url)"
+  [ -n "$url" ] || {
+    log "disclosures: POST /repos/$TARGET_REPO/issues answered $code with no html_url"
+    return 0
+  }
+  log "disclosures: $url ($count)"
+  # The filing's own record, beside the PR's: the ticket and how many boxes it
+  # carries. No cell on the status page — the log line and this event are it.
+  append_event publish:disclosures "url=s:$url" "items=i:$count"
+  return 0
+}
+
 # --- merge -------------------------------------------------------------------
 #
 # A ready PR is the sandbox's own to finish, and the run's OWN GATE is what
@@ -3381,6 +3474,11 @@ $(engine_tail)"
   else
     publish "$outcome"
   fi
+
+  # The edits the run could not take, filed beside the PR that carries the rest
+  # — after the PR exists (its URL is the ticket's first line) and before the
+  # merge, so a run whose PUT lands still leaves the follow-up open behind it.
+  file_disclosures
 
   # A ready PR is finished here: the run's own gate decided it, and a parked
   # run's draft is left for the operator either way.

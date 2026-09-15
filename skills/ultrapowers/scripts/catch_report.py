@@ -46,6 +46,13 @@ TEST_GLOBS = ("tests/test_*.py", "fleet/tests/test_*.mjs")
 # bridge) and never earns a catch of its own. Its status is `runner`: never a
 # deletion candidate, never a point on the curve.
 RUNNER_MARKER = "# catch-counter: runner"
+# A test file carrying this line is a GATE — a design gate a person runs before
+# a change (a fold-order probe, a hermetic sweep), not a verdict a run earns
+# catches with. Its status is `gate`, and the treatment is the runner's exactly:
+# listed in the table with its catches and touching runs whatever they are,
+# never a deletion candidate, never a point on the curve. Two names because the
+# two species are kept for different reasons, and a reading should say which.
+GATE_MARKER = "# catch-counter: gate"
 # Where a test with no adding commit "landed": the epoch, so every stamped row
 # is after it and an untracked test's window is the whole record.
 EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
@@ -129,9 +136,11 @@ def _count(value):
     return value
 
 
-def _status(catches, exercised, runner=False):
+def _status(catches, exercised, runner=False, gate=False):
     if runner:
         return "runner"
+    if gate:
+        return "gate"
     if catches > 0:
         return "caught"
     if not exercised:
@@ -139,7 +148,7 @@ def _status(catches, exercised, runner=False):
     return "zero"
 
 
-def catch_table(rows, tree_tests, landings=None, runners=()):
+def catch_table(rows, tree_tests, landings=None, runners=(), gates=()):
     """`{test path: {catches, exercised, touchingRuns, status}}`. [M1]
 
     Keyed over the union of `tree_tests` and every path the record names as a
@@ -152,11 +161,13 @@ def catch_table(rows, tree_tests, landings=None, runners=()):
     STARTED AFTER THE TEST LANDED counts: `landings` maps a test path to the
     instant its adding commit landed (`tree_landings`; absent means the epoch),
     and a row with no `startedAt` counts toward no test's window at all. A path
-    in `runners` has status `runner` whatever its counts. [M2] [M4]
+    in `runners` has status `runner`, and one in `gates` status `gate`,
+    whatever its counts. [M2] [M4]
     """
     rows = _catch_rows(rows)
     landings = landings or {}
     runners = set(runners or ())
+    gates = set(gates or ())
     paths = set(tree_tests or [])
     for row in rows:
         paths.update(_mapping(row, "catches"))
@@ -178,7 +189,8 @@ def catch_table(rows, tree_tests, landings=None, runners=()):
         table[path] = {"catches": catches,
                        "exercised": sorted(exercised),
                        "touchingRuns": touching,
-                       "status": _status(catches, exercised, path in runners)}
+                       "status": _status(catches, exercised, path in runners,
+                                         path in gates)}
     return table
 
 
@@ -188,6 +200,17 @@ def _touching(entry):
 
 def _is_runner(entry):
     return entry.get("status") == "runner"
+
+
+def _is_gate(entry):
+    return entry.get("status") == "gate"
+
+
+def _is_kept(entry):
+    """A runner or a gate: a file the counter KEEPS whatever its counts. Both
+    are listed in the table; neither is ever a deletion candidate or a point on
+    the zero-catch curve. [M4]"""
+    return _is_runner(entry) or _is_gate(entry)
 
 
 def _is_zero(entry):
@@ -209,7 +232,7 @@ def zero_curve(table):
     curve = []
     for n in range(1, max_touching_runs(table) + 1):
         files = sum(1 for entry in table.values()
-                    if _is_zero(entry) and not _is_runner(entry)
+                    if _is_zero(entry) and not _is_kept(entry)
                     and _touching(entry) >= n)
         curve.append({"n": n, "files": files})
     return curve
@@ -218,7 +241,7 @@ def zero_curve(table):
 def zero_over(table, n):
     """The deletion candidates at N: zero catches over ≥ N touching runs."""
     return sorted(path for path, entry in table.items()
-                  if _is_zero(entry) and not _is_runner(entry)
+                  if _is_zero(entry) and not _is_kept(entry)
                   and _touching(entry) >= n)
 
 
@@ -239,8 +262,9 @@ def tree_test_files(tree):
     return sorted(found)
 
 
-def tree_runners(tree, tests):
-    """The tests whose text carries the RUNNER_MARKER line. [M4]"""
+def _tree_marked(tree, tests, marker):
+    """The tests whose text carries `marker` as a line of its own, stripped.
+    One reader for both species, so a gate is read exactly as a runner is."""
     tree = Path(tree)
     out = []
     for rel in tests:
@@ -248,11 +272,21 @@ def tree_runners(tree, tests):
             lines = (tree / rel).read_text(encoding="utf-8",
                                            errors="replace").splitlines()
         except OSError as exc:
-            swallow("test file unreadable; it cannot be a runner", exc)
+            swallow("test file unreadable; it carries no marker", exc)
             continue
-        if any(line.strip() == RUNNER_MARKER for line in lines):
+        if any(line.strip() == marker for line in lines):
             out.append(rel)
     return out
+
+
+def tree_runners(tree, tests):
+    """The tests whose text carries the RUNNER_MARKER line. [M4]"""
+    return _tree_marked(tree, tests, RUNNER_MARKER)
+
+
+def tree_gates(tree, tests):
+    """The tests whose text carries the GATE_MARKER line. [M4]"""
+    return _tree_marked(tree, tests, GATE_MARKER)
 
 
 def tree_landings(tree, tests):
@@ -339,7 +373,8 @@ def main(argv=None):
     rows = _read_jsonl(args.ledger)
     tests = tree_test_files(args.tree)
     table = catch_table(rows, tests, landings=tree_landings(args.tree, tests),
-                        runners=tree_runners(args.tree, tests))
+                        runners=tree_runners(args.tree, tests),
+                        gates=tree_gates(args.tree, tests))
     for line in report_lines(table, args.n, unstamped_rows(rows)):
         print(line)
     return 0

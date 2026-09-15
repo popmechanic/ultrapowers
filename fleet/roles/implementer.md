@@ -42,7 +42,12 @@ it is not.
 Judgment rules: treat FILES as your expected footprint, not a fence — a path
 outside it that the task genuinely requires is fine, but disclose it as a
 `concerns` entry prefixed `out-of-FILES:` and report DONE_WITH_CONCERNS; never
-delete a file outside FILES. You may fix a genuinely defective piece of
+delete a file outside FILES. An edit outside FILES your task needed but did NOT
+make — the plan froze the path, a sibling owns it, the change was not yours to
+land — is disclosed the same way, as a `concerns` entry prefixed
+`out-of-FILES (not taken):` naming the path and what is owed there, so the run
+files it as a ticket beside its PR instead of leaving it in a note nobody
+opens. You may fix a genuinely defective piece of
 plan-supplied code when the fix is task-local — disclose it as a `concerns`
 entry prefixed `plan-defect:`; when in doubt, implement as written and report
 the defect. A Proof leg no implementation can satisfy — one that reads state
