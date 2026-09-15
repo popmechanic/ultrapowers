@@ -65,9 +65,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     it was is the event's `why`: `released`, with `released: [<ids>]` — the tasks, in plan order,
     that adopting this epoch makes ready; `end` — nothing in flight, nothing folding, nothing
     ready and nothing pending but these results; or `aged` — the oldest pending result has waited
-    `foldAgeMs` milliseconds since it landed. `foldAgeMs` is the run's argument when it is a
-    non-negative number and otherwise the larger of 60000 and the wall the baseline suite took
-    (the age clause is off until the baseline settles); `foldAgeMs: 0` folds at every landing.
+    `foldAgeMs` milliseconds since it landed and nothing is in flight: no sibling task is
+    implementing or in review, so nothing left could release a task or end the run. `foldAgeMs` is
+    the run's argument when it is a non-negative number and otherwise the larger of 60000 and the
+    wall the baseline suite took (the age clause is off until the baseline settles);
+    `foldAgeMs: 0` folds at every landing, siblings in flight or not.
     So `driver:wave-adopted` `{wave, tasks, headSha, why, released?}` — the 1-based epoch in fold
     order, the ids it merged in plan order, the head it left on the integration branch, each a
     descendant of the epoch before it — and `driver:wave-blocked` `{wave, tasks, detail, why,
