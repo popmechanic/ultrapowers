@@ -82,3 +82,14 @@
 {"kind":"driver:attention","task":"2","attention":"needs-human","msg":"session ended without hand-off","actor":"","id":"01M2HKM7T000007VAPK1AQ8SS7","ts":1789444890432}
 {"kind":"worker:end","label":"review:2:1","role":"reviewer","sessionId":"65f3fd49-afcd-43b8-bf38-9e9373fff48b","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5551,"output":28642,"cacheRead":2520650,"cacheCreation":125012,"costUsd":3.2542500000000003,"models":["claude-opus-5"]},"id":"01M2HKZNWV0000C593ECDWK8RA","ts":1789445265307}
 {"kind":"transcript:slice","label":"review:2:1","sessionId":"65f3fd49-afcd-43b8-bf38-9e9373fff48b","bytes":11354,"id":"01M2HKZNX50000AR2KGXVXAYFR","ts":1789445265317}
+{"kind":"driver:wave-adopted","wave":2,"tasks":["2"],"headSha":"9bb0c9d780abde4a3b1c0b43e62e94a32668e339","id":"01M2HM0Z2700003E2WP34XNS0J","ts":1789445307463}
+{"kind":"driver:integrated-clean","wave":2,"removed":6,"id":"01M2HM0Z2B0000QF8VDJ7H394B","ts":1789445307467}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/launch.mjs fleet/sandbox-boot.sh fleet/fleet-bootstrap.sh fleet/lobby.mjs fleet/janitor.mjs fleet/publish-fold.mjs fleet/run-main.mjs fleet/run-waves.mjs fleet/run-worker.mjs fleet/confine-hook.mjs skills/ultrapowers/scripts skills/ultrapowers/kernel evals/barrier_slack.py","exit":0,"minor":false,"wave":2,"id":"01M2HM0Z2H0000CQZEZQWZ4XHH","ts":1789445307473}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2HM0Z8B0000VEMY17RDKGB9","ts":1789445307659}
+{"kind":"driver:stage","stage":"finalize","id":"01M2HM0ZBS00006GPC43Y49JD2","ts":1789445307769}
+{"kind":"driver:stage","stage":"gate","id":"01M2HM0ZD400004TY43X0JSN9Y","ts":1789445307812}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M2HM0ZHF0000WY9416ZDVTDD","ts":1789445307951}
+{"kind":"driver:stage","stage":"approve","id":"01M2HM0ZHF0001PDEYBBRY5M15","ts":1789445307951}
+{"kind":"driver:approved","stamp":"run-133","integrationBranch":"ultra/integration-run-133","id":"01M2HM0ZM10000PQG6YP91S2KM","ts":1789445308033}
+{"kind":"run:open","runId":"run-133","base":"2fd301cd6591aef62abdc43df744ca3426543557","source":"fleet/publish-fold.mjs","id":"01M2HM10C30000PFETD28DVT9B","ts":1789445308803}
+{"kind":"driver:publish-fold","run":"133","attempt":"1","base":"2fd301cd6591aef62abdc43df744ca3426543557","tip":"1ed22c42134c6c782d4b0556ac832c68dea43bf2","candidate":"01761809c02ff7338d2adaf88f22a9e372a14e8a","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"pass","disposition":"folded","checks":[],"checkRetries":0,"id":"01M2HM29KP00008V6G5MZTG62V","ts":1789445351030}

@@ -1,0 +1,24 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 8bfe4995a543ccbdb1075a6f40519b50876a5db1..ce18c63f081860c220dd147bb450b2861781ebaa 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -103,12 +103,13 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
+   any VM and none in any argv. Own npm deps in `fleet/package.json`. Not plugin machinery —
+   the sandbox clones the engine at the sha the assignment names, so changes here never require
+   a plugin release.
+-- `fleet/tests/` — the surviving engine sims: `test_run_engine_proof_runs.mjs`,
+-  `test_run_engine_joined_proofs.mjs`, `test_run_engine_infra_retry.mjs`,
+-  `test_run_engine_review_economy.mjs`, `test_sandbox_boot_viz.mjs`, `test_janitor.mjs`,
+-  `test_worker_kata_env.mjs` and `test_sims_are_hermetic.mjs`, plus the live `probe_*.mjs`
+-  (see `PROBES.md`) which are run by hand, not by the suite. They reach pytest through the
+-  bridge, `tests/test_fleet_suite.py`.
++- `fleet/tests/` — the surviving sims, every `test_*.mjs` there (16 on 2026-09-14: the engine
++  sims `test_run_engine_*.mjs`, the launcher sims `test_launch_*.mjs`, the boot sims
++  `test_sandbox_boot_*.mjs`, `test_janitor.mjs`, `test_worker_kata_env.mjs` and
++  `test_sims_are_hermetic.mjs`, which forbids a sim naming a sibling sim), plus the live
++  `probe_*.mjs` (see `PROBES.md`) which are run by hand, not by the suite. They reach pytest
++  through the bridge, `tests/test_fleet_suite.py`; the list is not enumerated here because it
++  drifted twice in one week — `ls fleet/tests/test_*.mjs` is the list.
+ 
+ ## Doctrine
+ 
