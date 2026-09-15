@@ -56,9 +56,14 @@ const STAMP = 'run-12'
 const ADOPTED_RUN = 12
 const RUN_KEY = 'work.adopted_run'
 const SHA_KEY = 'work.adopted_sha'
-// The two keys M1 names and NOTHING else — sorted, for a deep-equal on the
+// `work.state` joined the adoption patch with the hub-state fix (#979): the
+// issue reads `landed` from the driver's capture of the result and `adopted`
+// from the fold that takes it, so the fold's patch carries the state alongside
+// the stamp. Sorted, this is the key set the patch must deep-equal.
+const STATE_KEY = 'work.state'
+// The three keys M1 names and NOTHING else — sorted, for a deep-equal on the
 // patch's key set.
-const ADOPTED_KEYS = [RUN_KEY, SHA_KEY]
+const ADOPTED_KEYS = [RUN_KEY, SHA_KEY, STATE_KEY]
 
 const mkTask = (id, files, over = {}) => ({
   id, title: 'task ' + id, files, tier: 'standard', review: 'lean',
@@ -236,12 +241,14 @@ const stubOf = (labels) => async (prompt, opts, cwd) => {
     UID[1] + ' were: ' + JSON.stringify(patchesForOne.map((c) => c.patch)))
   const stamped = adoptedPatches[0]
   assert.deepEqual(Object.keys(stamped.patch).sort(), ADOPTED_KEYS,
-    '(a) [M1] that patch carries EXACTLY the two flat keys `' + RUN_KEY + '` and `' + SHA_KEY +
-    '` — nothing else rides along: ' + JSON.stringify(stamped.patch))
-  assert.deepEqual(stamped.patch, { [RUN_KEY]: ADOPTED_RUN, [SHA_KEY]: SHA },
+    '(a) [M1] that patch carries EXACTLY the three flat keys `' + RUN_KEY + '`, `' + SHA_KEY +
+    '` and `' + STATE_KEY + '` — nothing else rides along: ' + JSON.stringify(stamped.patch))
+  assert.deepEqual(stamped.patch,
+    { [RUN_KEY]: ADOPTED_RUN, [SHA_KEY]: SHA, [STATE_KEY]: 'adopted' },
     '(a) [M1] and its value is exactly {' + RUN_KEY + ': ' + ADOPTED_RUN + ' (the integer ' +
     'parsed from the run stamp `' + STAMP + '`, not the string), ' + SHA_KEY + ': ' + SHA +
-    ' (the wave-1 adopted head)}; got ' + JSON.stringify(stamped.patch))
+    ' (the wave-1 adopted head), ' + STATE_KEY + ': adopted (the fold is what moves the issue ' +
+    'from `landed` to `adopted`)}; got ' + JSON.stringify(stamped.patch))
   assert.equal(typeof stamped.patch[RUN_KEY], 'number',
     '(a) [M1] the run number is a number, never a string and never NaN: ' +
     JSON.stringify(stamped.patch[RUN_KEY]))

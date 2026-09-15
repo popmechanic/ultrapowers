@@ -556,13 +556,23 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   recorded for that pair is never recorded twice (a second `BLOCKED` naming it is that failure), and
   a sibling that fails leaves the task `blocked — depends on a failed task` through the same
   dependency cascade every plan edge uses.
-  Closes: an adopted task's issue is patched first, with exactly the two flat keys
-  `work.adopted_run` (the run stamp's number as an integer, `null` when the stamp is not `run-<N>`)
-  and `work.adopted_sha` (the wave's adopted head), under the revision the engine last held for that
-  issue; then that task is closed `done` — `adopted in wave <n> (<verdict>)`, evidence the adopted
-  commit (the same sha) and the task's test command, under the idempotency key
-  `<runId>:<task>:close`. A task adopted into the tree is the only task the engine ever closes, and
-  so the only task that carries those two keys — a task left for a person carries neither.
+  Lands, then adopts (#979): a task issue's `work.state` reads `landed` from the driver's capture of
+  its result and `adopted` from its fold, and that capture also clears `work.attention` back to `ok`
+  with an empty `work.attention_msg`, because the worker's SessionEnd hook stamped `needs-human` on
+  a session that in fact handed off to the driver. The `landed` half is one metadata patch carrying
+  exactly those three flat keys, sent the instant the engine settles a mergeable result — after that
+  result's last worker has ended and before any fold can adopt it — under the revision the engine
+  last held for that issue, through the non-fatal path like every other hub write. Only a landing
+  gets it: a re-edge is not a landing, and neither is a parked, failed or blocked row, which keeps
+  the `needs-human` its marking wrote.
+  Closes: an adopted task's issue is patched first, with exactly the three flat keys
+  `work.adopted_run` (the run stamp's number as an integer, `null` when the stamp is not `run-<N>`),
+  `work.adopted_sha` (the wave's adopted head) and `work.state` (`adopted`), under the revision the
+  engine last held for that issue; then that task is closed `done` — `adopted in wave <n>
+  (<verdict>)`, evidence the adopted commit (the same sha) and the task's test command, under the
+  idempotency key `<runId>:<task>:close`. A task adopted into the tree is the only task the engine
+  ever closes, and so the only task that carries those three keys — a task left for a person
+  carries none of them.
   Needs review: a failed task stays OPEN and is marked for a person instead — the label
   `needs-review`, then `work.attention` `needs-human` and `work.attention_msg` `<status>: <verdict>`
   (its first 200 characters) in one metadata patch, then one comment carrying the result's notes.
