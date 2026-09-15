@@ -17,3 +17,13 @@
 {"kind":"worker:end","label":"impl:1","role":"implementer","sessionId":"dec7f593-62fd-438e-b5c4-b25e036753bd","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":20091,"output":227875,"cacheRead":11545623,"cacheCreation":447140,"costUsd":16.021640250000004,"models":["claude-opus-5"]},"id":"01M2HGRM5H0000Q6P4NNF089SD","ts":1789441888433}
 {"kind":"transcript:slice","label":"impl:1","sessionId":"dec7f593-62fd-438e-b5c4-b25e036753bd","bytes":11194,"id":"01M2HGRM6R0000S2P9SK5XV2CH","ts":1789441888472}
 {"kind":"driver:exam-handoff","task":"1","paths":["fleet/tests/test_run_engine_ready_set.mjs"],"id":"01M2HGRWTD00002D7837YKJAMC","ts":1789441897293}
+{"kind":"driver:proof-run","task":"1","cmd":"node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M2HGS75F0000RY6VV7Z2J4WJ","ts":1789441907887}
+{"kind":"driver:proof-run","task":"1","cmd":"node fleet/tests/test_run_engine_joined_proofs.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M2HGSDSK0000EWHKZ96AQZ58","ts":1789441914675}
+{"kind":"driver:proof-run","task":"1","cmd":"node fleet/tests/test_run_engine_infra_retry.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M2HGSPNE0000TBDG18DQ0FXQ","ts":1789441923758}
+{"kind":"driver:proof-run","task":"1","cmd":"node fleet/tests/test_run_engine_one_of_each.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M2HGSQQ90000VTMXENSZSTNA","ts":1789441924841}
+{"kind":"driver:proof-run","task":"1","cmd":"node fleet/tests/test_run_engine_own_proofs.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M2HGSS4D0000Y9534NG07M8K","ts":1789441926285}
+{"kind":"driver:proof-run","task":"1","cmd":"node fleet/tests/test_run_engine_review_economy.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M2HGSV4C0000MR6DZPE3A1BK","ts":1789441928332}
+{"kind":"driver:proof-run","task":"1","cmd":"node fleet/tests/test_run_engine_kata_close.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M2HGSW400000WSJEQFD3XMHX","ts":1789441929344}
+{"kind":"driver:proof-run","task":"1","cmd":"node fleet/tests/test_run_engine_reuse.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M2HGT22W0000Q6PRK1231NAG","ts":1789441935452}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c -e 'CONCURRENCY' -e 'waveLabel' -e 'waveIds' -e 'barrier: retrying' fleet/run-engine.mjs)\" = 0","exit":0,"iter":0,"id":"01M2HGT2330000RN839D0C2EFE","ts":1789441935459}
+{"kind":"driver:proof-run","task":"1","cmd":"sed -n '/The engine.s own wave record/,/driver:exam-run/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'epoch.*ready.*slot frees.*driver:wave-adopted.*descendant'","exit":0,"iter":0,"id":"01M2HGT23A00002PSPDZ3SCMYE","ts":1789441935466}
