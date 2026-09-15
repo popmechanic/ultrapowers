@@ -1079,6 +1079,159 @@ def gate_verdict_violations(plan_path, tasks):
     return violations
 
 
+# --------------------------------------------------------------------------- #
+# The authoring record (#988): what the sitting that produced the plan cost    #
+# --------------------------------------------------------------------------- #
+# A top-level `authoring` object in `<stem>.gate-verdicts.json`, beside `tasks`
+# and `tally`, records the sitting's own cost: the wall-clock minutes to
+# `PLAN OK`, the hub probes made, which branch of the handoff rule fired and
+# which lane the operator picked, and one row per AskUserQuestion. The compiler
+# only READS it — it is written by the authoring skill, never by a compile.
+#
+# Two rules, and no third: a record whose `authoring` object is malformed is a
+# `grammar:` refusal on the same footing as the gate verdicts, and a record
+# with no `authoring` key at all is read exactly as it was before this existed.
+# Extra keys are tolerated everywhere (the skill's own "any extra key … is
+# tolerated"), because the record is a log the authoring side grows.
+AUTHORING_KEY = "authoring"
+AUTHORING_BRANCHES = ("risk", "width", "inline", "subagent")
+AUTHORING_LANES = ("ultrapowers", "subagent", "inline")
+_AUTHORING_BAD = "grammar: authoring record unreadable — "
+
+
+def _authoring_object(plan_path):
+    """The record's `authoring` value, or None when there is nothing to read.
+
+    None covers all three ways this reader declines to speak: no verdicts file
+    (that is `gate_verdict_violations`'s one `gate verdicts missing` refusal,
+    and adding a second would double-report a single fact), a file that is not
+    readable JSON (likewise already refused there), and a record carrying no
+    `authoring` key — the plan that never recorded its cost."""
+    path = verdicts_path(plan_path)
+    if not path.exists():
+        return None
+    try:
+        record = json.loads(path.read_text())
+    except ValueError:
+        return None
+    if not isinstance(record, dict):
+        return None
+    return record.get(AUTHORING_KEY)
+
+
+def _authoring_tally(plan_path):
+    """The record's `tally`, as a dict — `{}` when absent or unreadable."""
+    path = verdicts_path(plan_path)
+    try:
+        record = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    tally = record.get("tally") if isinstance(record, dict) else None
+    return tally if isinstance(tally, dict) else {}
+
+
+def _nonneg_int(value):
+    """A JSON non-negative integer. `True` is an `int` in Python and is not
+    one of these; `"12"` is a string the record's writer did not convert."""
+    return (isinstance(value, int) and not isinstance(value, bool)
+            and value >= 0)
+
+
+def authoring_record_violations(plan_path):
+    """Every refusal the `authoring` object earns, `grammar:`-namespaced.
+
+    One line per offending field, each naming the field it is about. A record
+    with no `authoring` key earns nothing at all — this function is the only
+    thing in the compiler that reads the key, so a plan from before the record
+    existed compiles exactly as it did.
+
+    Each question's checks short-circuit on `options`: a question whose option
+    list is unusable cannot say anything further about which of those options
+    was picked or recommended, so the malformation is reported once, at the
+    field that caused it."""
+    auth = _authoring_object(plan_path)
+    if auth is None:
+        return []
+    name = verdicts_path(plan_path).name
+    out = []
+
+    def bad(field, detail):
+        out.append("%s`%s`: %s: %s" % (_AUTHORING_BAD, name, field, detail))
+
+    if not isinstance(auth, dict):
+        bad("authoring", "must be an object, got %s"
+            % type(auth).__name__)
+        return out
+
+    if not _nonneg_int(auth.get("minutes")):
+        bad("minutes", "must be a non-negative integer, got %r"
+            % (auth.get("minutes"),))
+    if not _nonneg_int(auth.get("probes")):
+        bad("probes", "must be a non-negative integer, got %r"
+            % (auth.get("probes"),))
+
+    routing = auth.get("routing")
+    if not isinstance(routing, dict):
+        bad("routing", "must be an object carrying `branch` and `lane`, got %r"
+            % (routing,))
+    else:
+        if routing.get("branch") not in AUTHORING_BRANCHES:
+            bad("routing.branch", "must be one of %s, got %r"
+                % (", ".join(AUTHORING_BRANCHES), routing.get("branch")))
+        if routing.get("lane") not in AUTHORING_LANES:
+            bad("routing.lane", "must be one of %s, got %r"
+                % (", ".join(AUTHORING_LANES), routing.get("lane")))
+
+    questions = auth.get("questions", [])
+    if not isinstance(questions, list):
+        bad("questions", "must be a list, one row per question, got %r"
+            % (questions,))
+        return out
+    for i, q in enumerate(questions):
+        where = "questions[%d]" % i
+        if not isinstance(q, dict):
+            bad(where, "must be an object, got %r" % (q,))
+            continue
+        options = q.get("options")
+        if not isinstance(options, list) or len(options) < 2:
+            bad(where + ".options",
+                "must be a list of at least 2 entries, got %r" % (options,))
+            continue
+        if q.get("picked") not in options:
+            bad(where + ".picked", "must be one of %r, got %r"
+                % (options, q.get("picked")))
+        recommended = q.get("recommended")
+        if recommended is not None and recommended not in options:
+            bad(where + ".recommended", "must be null or one of %r, got %r"
+                % (options, recommended))
+    return out
+
+
+def authoring_fact_line(plan_path):
+    """The one `AUTHORING fact:` line a `--check --base` compile prints.
+
+    `AUTHORING fact: none recorded` when the record carries no `authoring`
+    key — and equally when it carries one the reader above refuses, because a
+    malformed record has already earned a named violation and the fact line is
+    not where that diagnostic belongs."""
+    auth = _authoring_object(plan_path)
+    if not isinstance(auth, dict) or authoring_record_violations(plan_path):
+        return "AUTHORING fact: none recorded"
+    tally = _authoring_tally(plan_path)
+    # `-` reads as "the record does not say", which is what an absent tally
+    # key means — distinct from a recorded 0.
+    dispatched = tally.get("dispatched", "-")
+    rejected = tally.get("rejected", "-")
+    questions = auth.get("questions", [])
+    with_rec = [q for q in questions if q.get("recommended") is not None]
+    picked = [q for q in with_rec if q.get("picked") == q.get("recommended")]
+    return ("AUTHORING fact: %s min to PLAN OK, %s hub probes, "
+            "%s gate dispatches, %s rejected, routing %s->%s, "
+            "%d questions, %d/%d recommended picked"
+            % (auth["minutes"], auth["probes"], dispatched, rejected,
+               auth["routing"]["branch"], auth["routing"]["lane"],
+               len(questions), len(picked), len(with_rec)))
+
 
 def parse_task(t, raise_on_marker_error=True, plan_claim=None):
     """Parse one task's body. raise_on_marker_error controls how a marker-VALUE
@@ -1689,6 +1842,11 @@ def collect_violations(plan_path, base_tree=None):
     # discovers at dispatch that the gate was never run.
     violations.extend(plan_claim_violations(plan_text))
     violations.extend(gate_verdict_violations(plan_path, tasks))
+    # ... and the authoring record beside it (#988), which is a refusal on the
+    # same footing for the same reason: a record the compiler cannot read is a
+    # record nothing downstream can count. Unconditional, so a bare `--check`
+    # refuses one too; a record with no `authoring` key adds nothing.
+    violations.extend(authoring_record_violations(plan_path))
     # ... and the Global-Constraints `- Check:` commands, which belong to no
     # task and so are checked once for the whole plan.
     violations.extend(constraint_check_violations(plan_text))
@@ -2787,6 +2945,10 @@ def main(argv=None):
             # verdict whichever way it went and change no exit code.
             for line in evaluate_stale_if(tasks, base_tree)[1]:
                 print(line)
+            # ... and last, what the sitting that wrote this plan cost (#988).
+            # Only with a tree to read, like its neighbours above: a bare
+            # `--check` prints its verdict and nothing else.
+            print(authoring_fact_line(args.plan))
         return rc
     if emit_args is not None and emit_launch is None:
         sys.exit("error: --emit-args requires --emit-launch (task bodies must "
