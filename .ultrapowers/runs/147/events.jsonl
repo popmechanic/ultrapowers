@@ -1,0 +1,11 @@
+{"kind":"run:open","runId":"run-147","base":"","source":"fleet/run-main.mjs","id":"01M2K2BS7C00006RQ86AMQEEBW","ts":1789493896428}
+{"kind":"driver:stage","stage":"kata","detail":"record /home/exedev/plans/run-147.kata.json → https://kata.int.exe.xyz","id":"01M2K2BS7D000018CAWD4ZE36C","ts":1789493896429}
+{"kind":"driver:stage","stage":"tiers","detail":"3 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M2K2BS7E0000XR4BHJ9VRQ4M","ts":1789493896430}
+{"kind":"driver:stage","stage":"provision","detail":"BASE 5a8f1ebd7736218823a1156c10615f35043075f4; 3 task clone(s) + integration","id":"01M2K2BSH700000V16K2NANPAC","ts":1789493896743}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M2K2BSX300005A2GB3XY35ZD","ts":1789493897123}
+{"kind":"driver:stage","stage":"engine","detail":"waves 3, width bound 3, patch input armed","id":"01M2K2BSX400002MT284H2B1AK","ts":1789493897124}
+{"kind":"engine:phase","phase":"Setup","id":"01M2K2BSXA0000DD4XA1K39GMH","ts":1789493897130}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-147 at 5a8f1ebd7736218823a1156c10615f35043075f4","id":"01M2K2BT3000008SBMQNYSSWH7","ts":1789493897312}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"7ea28d2e-4ef5-4978-9026-d55e0a17d182","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-147/clones/task-1","model":"opus","id":"01M2K2BTM00000FFAR36CWKF9X","ts":1789493897856}
+{"kind":"worker:start","label":"impl:3","role":"implementer","sessionId":"ed07844d-8b60-4bd8-a582-d78811b23428","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-147/clones/task-3","model":"opus","id":"01M2K2BTMS0000JR32P541A1V1","ts":1789493897881}
+{"kind":"worker:start","label":"impl:2","role":"implementer","sessionId":"e2c189b1-8e45-4541-a79b-ea6414f64b82","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-147/clones/task-2","model":"opus","id":"01M2K2BTMW000007E5WNZ3SCSS","ts":1789493897884}
