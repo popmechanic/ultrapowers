@@ -18,3 +18,7 @@
 {"kind":"engine:log","line":"baseline: green on c3c8fa9bbf1d6a339b81a81234a41066720dd94f","id":"01M2HAYDCN0000H74GY8H9S0PK","ts":1789435786645}
 {"kind":"worker:end","label":"impl:3","role":"implementer","sessionId":"4a3f67da-135d-4725-a8c3-f3d0b73a5ce4","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":34,"output":8298,"cacheRead":779720,"cacheCreation":55689,"costUsd":1.15437,"models":["claude-opus-5"]},"id":"01M2HB24NS0000S6WC9BVDFVR3","ts":1789435908793}
 {"kind":"transcript:slice","label":"impl:3","sessionId":"4a3f67da-135d-4725-a8c3-f3d0b73a5ce4","bytes":11775,"id":"01M2HB24NY00001VPMGY4G4A6F","ts":1789435908798}
+{"kind":"driver:attention","task":"3","attention":"needs-human","msg":"session ended without hand-off","actor":"","id":"01M2HB26900000SMCQNVQ95266","ts":1789435910432}
+{"kind":"worker:end","label":"impl:4","role":"implementer","sessionId":"08060498-65cf-44df-b31b-f1a51cf8d1b6","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":64,"output":16996,"cacheRead":1746699,"cacheCreation":73140,"costUsd":2.0299694999999995,"models":["claude-opus-5"]},"id":"01M2HB47190000SED4RHRDNW4T","ts":1789435976745}
+{"kind":"transcript:slice","label":"impl:4","sessionId":"08060498-65cf-44df-b31b-f1a51cf8d1b6","bytes":11405,"id":"01M2HB471F000090P65TN48P7D","ts":1789435976751}
+{"kind":"driver:attention","task":"4","attention":"needs-human","msg":"session ended without hand-off","actor":"","id":"01M2HB4FHG0000VR2VN7G84G7Q","ts":1789435985456}
