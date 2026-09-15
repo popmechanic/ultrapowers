@@ -1,0 +1,112 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "7961d367769b4542d00160b4fd54effaef2a5268c2d99fb02b638f8a0c4c8e14",
+   "verdict": "pass",
+   "reason": "Every clause has a section-scoped ordered grep on the named bullet; the five regexes are jointly satisfiable in one bullet."
+  },
+  "2": {
+   "hash": "8fd8950fec00ffd1dcaa83e1ddfc3bff73ab56ea2d97c59b88503bbbdbde71db",
+   "verdict": "pass",
+   "reason": "Section-scoped ordered greps per clause, the M7 loop names the first lost literal and the count pins the report phrase to one."
+  },
+  "3": {
+   "hash": "b2e670dab64cb9adca774fb2dbf32c1cc604f7b2798d2037ff83ef265d87a5cb",
+   "verdict": "pass",
+   "reason": "Round 2: exact-line -xF pins on totals, header (both directories) and the run-9 row; round 1 failed on unescaped `..` and an untested empty-directory header."
+  },
+  "4": {
+   "hash": "47f905da2add2149ff1bc278bd918a299a76b5b5a9dd45c8872667f3c7001a06",
+   "verdict": "pass",
+   "reason": "One leg per map compares the newest comment to the quoted block verbatim; the run-<N> placeholder is filled by hand after the run."
+  }
+ },
+ "tally": {
+  "dispatched": 5,
+  "rejected": 1,
+  "rounds": {
+   "1": {
+    "dispatched": 4,
+    "rejected": 1
+   },
+   "2": {
+    "dispatched": 1,
+    "rejected": 0
+   }
+  }
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "3",
+   "verdict": "fail",
+   "reason": "unescaped `..` in grep and the empty-directory header untested; M2 quantified over per-run rows with no leg"
+  }
+ ],
+ "authoring": {
+  "minutes": 20,
+  "probes": 0,
+  "routing": {
+   "branch": "width",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Claim and summary",
+    "options": [
+     "As drafted",
+     "Edit"
+    ],
+    "recommended": "As drafted",
+    "picked": "As drafted"
+   },
+   {
+    "question": "Census script Task 3: keep, drop, or extend to catch_report",
+    "options": [
+     "Keep Task 3",
+     "Drop Task 3",
+     "Also window catch_report.py"
+    ],
+    "recommended": "Keep Task 3",
+    "picked": "Keep Task 3"
+   },
+   {
+    "question": "What counts as a reading",
+    "options": [
+     "Rule-bearing counts only; vendor facts dated",
+     "n=1 on every measured fact"
+    ],
+    "recommended": "Rule-bearing counts only; vendor facts dated",
+    "picked": "Rule-bearing counts only; vendor facts dated"
+   },
+   {
+    "question": "Procedure readings under the floor",
+    "options": [
+     "n and window only",
+     "Also label experiment with rollback"
+    ],
+    "recommended": "n and window only",
+    "picked": "n and window only"
+   },
+   {
+    "question": "Map comments",
+    "options": [
+     "Manual Task 4 verbatim",
+     "Context note only"
+    ],
+    "recommended": "Manual Task 4 verbatim",
+    "picked": "Manual Task 4 verbatim"
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers"
+   }
+  ]
+ }
+}
