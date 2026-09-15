@@ -57,6 +57,17 @@ export function provision({ repo, runDir, taskIds }) {
 // real diff, exactly as in production.
 export function rig({ repo, runDir, waves, edges = [], stub, testCmd = 'bash check.sh',
                       acceptance = { mode: 'suite', reason: 'sim' }, stamp = 'sim',
+                      // The hub's client, for a sim that drives one: an
+                      // injected object, never a network. Left out entirely
+                      // when undefined, so a sim that passes none reaches an
+                      // engine with no hub at all — `kataRecord` travels
+                      // separately, through `extraArgs`.
+                      kata = undefined,
+                      // The exec seam. `execSeam` by default — the sims are
+                      // real below it — and overridable so a sim can RECORD
+                      // what the driver ran (which git verbs, which suites, in
+                      // which clone) by wrapping it.
+                      exec = execSeam,
                       // Extra runEngine args merged last (constraintChecks,
                       // patchInput, and whatever the next knob is).
                       extraArgs = {} }) {
@@ -84,11 +95,12 @@ export function rig({ repo, runDir, waves, edges = [], stub, testCmd = 'bash che
     },
     agent,
     parallel: (thunks) => Promise.all(thunks.map((t) => t())),
-    exec: execSeam,
+    exec,
     paths: { repoDir: repo, runDir, clonesDir },
     log: (l) => logs.push(String(l)),
     phase: (p) => phases.push(String(p)),
     patchBase,
+    ...(kata === undefined ? {} : { kata }),
   })
   return { run, base, clonesDir, patchesDir, integ, logs, phases, patchBase }
 }

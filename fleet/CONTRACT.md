@@ -464,12 +464,33 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   client built on `httpTransport({url})` — no `Authorization` header, because the edge injects the
   bearer — and the record itself; without it the engine makes no request at all and behaves exactly
   as it does with no hub.
-  Per task, once, at the start of its pipeline and before any worker is dispatched: one `getIssue`
-  of the recorded uid. A revision unequal to the recorded one ends the run
+  Per task, once, at setup — for every task of every wave, before the baseline suite starts and
+  before any worker is dispatched: one `getIssue` of the recorded uid. A revision unequal to the
+  recorded one ends the run
   (`kata-revision-mismatch`) — the record and the hub disagree about what this run is, and no retry
   can clear that. The answer's `metadata.factsheet` IS the task from then on: its `files`, its
   `proofTests`, its `guards`, and every exam landing the pipeline uses, read from `landing[p]` and
-  never computed again. Then `claim` — on the hub before the implementer and examiner exist.
+  never computed again. The answer is kept, so the task's own pipeline reads it rather than asking
+  again; then `claim` — on the hub before the implementer and examiner exist.
+  Re-drive reuse (#383): those same answers say which tasks a parked earlier run already finished —
+  an issue whose `status` is `closed` and whose metadata carries both `work.adopted_run` and
+  `work.adopted_sha`, the two flat keys only a `done` close writes. When that set is empty the run
+  proceeds exactly as it does without a parked predecessor and fetches nothing. When it is not
+  empty and every member names the same run `M`, the engine fetches the tag `ultra/evidence/run-<M>`
+  from `origin` into the integration clone, reads `.ultrapowers/runs/<M>/report.json` and
+  `.ultrapowers/runs/<M>/publish-fold/run.patch` off that tag, and folds them through the kernel at
+  `--wave 0` — `--base <report.baseSha>`, `--patch main=` this run's BASE since that base and
+  `--patch reuse=` the tag's own `run.patch`, materialized onto BASE — so the integration head
+  before wave 1 is BASE plus the parked run's adopted work. That head is the base wave 1's clones
+  and the baseline suite start from, and one `driver:reuse` event `{run, tasks, headSha}` records
+  it. A reused task dispatches no worker, is not claimed, is not closed, is not marked
+  `needs-review`, is excluded from its wave's fold, and is reported `status: 'done'`,
+  `reviewVerdict: 'reused'` at that head; the run's suite and its gate still run on the whole tree.
+  Reuse is refused — one `driver:reuse` carrying a `reason` and an empty `tasks`, and the full plan
+  then runs exactly as it does at BASE — when the reused tasks name two different runs, when the tag
+  cannot be fetched, when its `report.json` does not list every reused task as `done`, when its
+  `baseSha` is not an ancestor of BASE, or when the two sides do not fold cleanly (no resolver
+  exists at setup). A refusal is never the run's own failure.
   Every worker of a run with a record is an actor on the hub, and knows which issue it is working:
   its process env carries `KATA_SERVER` (the record's url, `https://kata.int.exe.xyz`),
   `KATA_AUTH_TOKEN=edge-injects-the-bearer`
@@ -516,9 +537,13 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   that round's blocking findings, one per line, the same lines the fix prompt carries; a refused
   post is one `kata:write-failed` and the fix round still runs. A reviewer's own blocking findings
   reach no comment: they end the task, and the row's `notes` carry them.
-  Closes: an adopted task is `done` — `adopted in wave <n> (<verdict>)`, evidence the adopted commit
-  and the task's test command, under the idempotency key `<runId>:<task>:close`. A task adopted into
-  the tree is the only task the engine ever closes.
+  Closes: an adopted task's issue is patched first, with exactly the two flat keys
+  `work.adopted_run` (the run stamp's number as an integer, `null` when the stamp is not `run-<N>`)
+  and `work.adopted_sha` (the wave's adopted head), under the revision the engine last held for that
+  issue; then that task is closed `done` — `adopted in wave <n> (<verdict>)`, evidence the adopted
+  commit (the same sha) and the task's test command, under the idempotency key
+  `<runId>:<task>:close`. A task adopted into the tree is the only task the engine ever closes, and
+  so the only task that carries those two keys — a task left for a person carries neither.
   Needs review: a failed task stays OPEN and is marked for a person instead — the label
   `needs-review`, then `work.attention` `needs-human` and `work.attention_msg` `<status>: <verdict>`
   (its first 200 characters) in one metadata patch, then one comment carrying the result's notes.
