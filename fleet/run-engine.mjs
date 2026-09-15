@@ -1168,7 +1168,7 @@ export async function runEngine({
   // What adopted this task, written on the issue itself and not only into the
   // run's record: a closed issue keeps `evidence: null` on itself (kata v0.17.2
   // — the evidence lives in the close event), so the run and the sha a later
-  // run needs have to sit on the issue's metadata to be readable there. Two
+  // run needs have to sit on the issue's metadata to be readable there. Three
   // flat keys and nothing else: kata stores a dotted key literally and its
   // metadata endpoint is a per-key merge, so these land beside `factsheet`,
   // `touched_files` and `work.attention` without disturbing them. Called once
@@ -1177,6 +1177,10 @@ export async function runEngine({
   // will actually make, which is why the row and the once-guard are read the
   // same way `kataClose` reads them. A stamp that is not `run-<N>` (`sim`)
   // writes `null` rather than a `NaN` the hub would have to store.
+  // `work.state` is the third key (#979): the issue already read `landed` from
+  // `kataLanded` when the driver took this result, and the fold is what moves it
+  // to `adopted`, so the state a reader sees on the hub is the state the run is
+  // actually in rather than one it has to infer from the adoption stamp.
   const kataAdopted = async (id, sha) => {
     const row = kataRowOf(id)
     if (!row || kataClosed.has(id)) return
@@ -1185,7 +1189,38 @@ export async function runEngine({
     await kataCall('metadata', row.uid,
       () => kata.patchMetadata(kataProjectId, row.uid,
         { 'work.adopted_run': Number.isFinite(n) ? n : null,
-          'work.adopted_sha': String(sha) },
+          'work.adopted_sha': String(sha),
+          'work.state': 'adopted' },
+        kataRevisions.get(row.uid)))
+  }
+  // The OTHER half of `work.state` (#979): the instant the driver settles a
+  // mergeable result, before any fold has claimed it. One patch, three flat
+  // keys, and it does two things at once.
+  //
+  // `work.state: 'landed'` is the state itself — the work is captured, the
+  // worker is gone, and what remains is a fold. `work.attention: 'ok'` with an
+  // empty message is the correction: the stamp being cleared is NOT the
+  // engine's. Each worker session runs kata's `attention-hook` on SessionStart
+  // and SessionEnd, and the end hook writes `work.attention: needs-human`,
+  // `work.attention_msg: 'session ended without hand-off'` — which is exactly
+  // what a worker that handed its result to the driver did. On runs 129, 134
+  // and 135 every CLEAN task ended its issue reading `needs-human`, and it
+  // survived adoption and close because nothing ever cleared it. The driver is
+  // the one party that knows the hand-off happened, so the driver clears it.
+  //
+  // Only a landing gets it: a re-edge is not a landing (`settleResult` returns
+  // before this line), and a parked-infra row, a failed row and a `done` row
+  // downgraded for lost coordinates are not mergeable. A task the run could not
+  // finish keeps `kataMark`'s `needs-human` untouched.
+  const kataLanded = async (id) => {
+    const row = kataRowOf(id)
+    if (!row || kataClosed.has(id)) return
+    await drainKataPosts()
+    await kataCall('metadata', row.uid,
+      () => kata.patchMetadata(kataProjectId, row.uid,
+        { 'work.state': 'landed',
+          'work.attention': 'ok',
+          'work.attention_msg': '' },
         kataRevisions.get(row.uid)))
   }
   // The last word on a task's issue. Once per task — the wave's own close wins
@@ -3632,7 +3667,14 @@ export async function runEngine({
   // fold holds the claim). The claim is taken here rather than in the lane that
   // is about to call the fold because `here` is the instant the slot freed, and
   // that instant is what decides which epoch a result belongs to.
-  const settleResult = (r, replacing) => {
+  //
+  // Async since #979, for the `landed` patch alone — and the claim is still
+  // taken synchronously, on the same tick the row was recorded, so the epoch a
+  // result belongs to is decided by the instant the slot freed and not by how
+  // long a hub write took to answer. The patch is awaited AFTER that claim and
+  // before this returns, which is before the lane can fold it: the issue reads
+  // `landed` and then `adopted`, never the other way round.
+  const settleResult = async (r, replacing) => {
     if (!r) return null
     // A re-edge is not a landing at all (#979): the task found a predecessor the
     // plan had not named, so the edge goes into EDGES itself — where readiness
@@ -3674,11 +3716,14 @@ export async function runEngine({
     const at = replacing ? taskResults.indexOf(replacing) : -1
     if (at !== -1) taskResults[at] = r
     else taskResults.push(r)
+    const mergeable = isMergeable(r)
     if (r.status === 'parked-infra') parkedInfraQueue.push(r)
-    else if (isMergeable(r)) pendingResults.push(r)
+    else if (mergeable) pendingResults.push(r)
     noteFailures()
     announceLanding()
-    return claimEpoch()
+    const claimed = claimEpoch()
+    if (mergeable) await kataLanded(r.task)
+    return claimed
   }
 
   // The siblings a dispatch is told about: every task whose work is not in the
@@ -3947,7 +3992,7 @@ export async function runEngine({
     }
     // The epoch this landing claimed, for the lane to fold — or `null`, which
     // is the lane being told that a fold already running will take this result.
-    return settleResult(result)
+    return await settleResult(result)
   }
 
   // #903 (a), re-aimed at the ready set (M4): exactly one retry per parked task,
@@ -3979,7 +4024,7 @@ export async function runEngine({
     } finally {
       inFlight -= 1
     }
-    return settleResult(res, parked)
+    return await settleResult(res, parked)
   }
 
   // ── the lanes ──────────────────────────────────────────────────────────────

@@ -607,8 +607,22 @@ const blockedOnA = (runDir, label, cwd, fake, { withLink = true } = {}) => {
   assert.ok(!d1.fake.labelsOf(UID.B).includes('needs-review'),
     '(d) [M4] B\'s issue is NOT labelled `needs-review` — a task waiting for a sibling is not ' +
     'a question for a person. Its labels are: ' + JSON.stringify(d1.fake.labelsOf(UID.B)))
-  assert.ok(!Object.prototype.hasOwnProperty.call(d1.fake.metaOf(UID.B), 'work.attention'),
-    '(d) [M4] and the driver wrote no `work.attention` on it either: ' +
+  // …and the driver raised no hand on it either. Read off the PATCHES rather
+  // than the final metadata since #979: B is re-dispatched and does land, and
+  // its landing clears `work.attention` to `ok` (the worker's SessionEnd hook
+  // stamped `needs-human` on a session that handed off), so the end-of-run
+  // metadata carries an `ok` the re-edge did not write. What this leg is about
+  // is that no `needs-human` was ever written for B — the re-edge is not a
+  // question for a person — and that is a fact about every patch the driver
+  // sent, not about the last one.
+  const attentionOnB = d1.fake.forUid(UID.B)
+    .filter((c) => c.method === 'patchMetadata' &&
+                   Object.prototype.hasOwnProperty.call(c.patch || {}, 'work.attention'))
+    .map((c) => c.patch['work.attention'])
+  assert.deepEqual(attentionOnB.filter((v) => v !== 'ok'), [],
+    '(d) [M4] and the driver raised no hand on it either — the only `work.attention` it ever ' +
+    'wrote for B is the `ok` its landing clears to, never a `needs-human`. The values it ' +
+    'patched were: ' + JSON.stringify(attentionOnB) + '; B\'s metadata ended as ' +
     JSON.stringify(d1.fake.metaOf(UID.B)))
   const closesB = d1.fake.forUid(UID.B).filter((c) => c.method === 'close')
   assert.equal(closesB.length, 1,
