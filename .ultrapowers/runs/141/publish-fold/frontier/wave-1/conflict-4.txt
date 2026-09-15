@@ -1,0 +1,1 @@
+path tests/test_skill_setup_section.py deleted concurrently with text that survives the delete; the text wins the manifest

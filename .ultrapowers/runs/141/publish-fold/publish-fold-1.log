@@ -1,0 +1,8 @@
+Running as unit: fleet-fold-141-1.service; invocation ID: 4b0bd44e71b847b6a1c87e0394aac3e6
+publish-fold: attempt 1 — conflict parked — fold parked 4 conflict(s) — no annotated narration for fleet/tests/test_run_engine.mjs (delete/modify)
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 5.900s
+CPU time consumed: 5.047s
+Memory peak: 324.0K
+Memory swap peak: 0B

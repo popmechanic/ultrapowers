@@ -1,0 +1,42 @@
+[
+  {
+    "i": 1,
+    "path": "fleet/tests/test_run_engine.mjs",
+    "kind": "delete/modify",
+    "dispatchable": false,
+    "reason": "no annotated narration for fleet/tests/test_run_engine.mjs (delete/modify)",
+    "epoch": 2,
+    "hunksFile": "",
+    "hunkCount": 0
+  },
+  {
+    "i": 2,
+    "path": "tests/test_harvest_evidence.py",
+    "kind": "delete/modify",
+    "dispatchable": false,
+    "reason": "no annotated narration for tests/test_harvest_evidence.py (delete/modify)",
+    "epoch": 2,
+    "hunksFile": "",
+    "hunkCount": 0
+  },
+  {
+    "i": 3,
+    "path": "tests/test_proof_modes_documented.py",
+    "kind": "delete/modify",
+    "dispatchable": false,
+    "reason": "no annotated narration for tests/test_proof_modes_documented.py (delete/modify)",
+    "epoch": 2,
+    "hunksFile": "",
+    "hunkCount": 0
+  },
+  {
+    "i": 4,
+    "path": "tests/test_skill_setup_section.py",
+    "kind": "delete/modify",
+    "dispatchable": false,
+    "reason": "no annotated narration for tests/test_skill_setup_section.py (delete/modify)",
+    "epoch": 2,
+    "hunksFile": "",
+    "hunkCount": 0
+  }
+]

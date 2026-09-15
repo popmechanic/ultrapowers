@@ -1,0 +1,210 @@
+{
+  "integrationBranch": "ultra/integration-run-141",
+  "baseSha": "1c97ba442c65d882354953d16590b1f8eb0c7a7a",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3",
+      "6",
+      "7",
+      "8",
+      "9",
+      "10"
+    ],
+    [
+      "4",
+      "5"
+    ]
+  ],
+  "dependencyEdges": [
+    "1 -> 4 (proof-run)",
+    "6 -> 4 (proof-run)",
+    "6 -> 5 (proof-run)"
+  ],
+  "tasks": [
+    {
+      "task": "1",
+      "status": "done",
+      "reviewVerdict": "reused",
+      "headSha": "8e715281916d9d04ed69992422d7a9181e48c5d2",
+      "patch": "",
+      "branch": "",
+      "notes": "reused from run-134",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "2",
+      "status": "done",
+      "reviewVerdict": "reused",
+      "headSha": "8e715281916d9d04ed69992422d7a9181e48c5d2",
+      "patch": "",
+      "branch": "",
+      "notes": "reused from run-134",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "3",
+      "status": "done",
+      "reviewVerdict": "reused",
+      "headSha": "8e715281916d9d04ed69992422d7a9181e48c5d2",
+      "patch": "",
+      "branch": "",
+      "notes": "reused from run-134",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "6",
+      "status": "done",
+      "reviewVerdict": "reused",
+      "headSha": "8e715281916d9d04ed69992422d7a9181e48c5d2",
+      "patch": "",
+      "branch": "",
+      "notes": "reused from run-134",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "7",
+      "status": "done",
+      "reviewVerdict": "reused",
+      "headSha": "8e715281916d9d04ed69992422d7a9181e48c5d2",
+      "patch": "",
+      "branch": "",
+      "notes": "reused from run-134",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "8",
+      "status": "done",
+      "reviewVerdict": "reused",
+      "headSha": "8e715281916d9d04ed69992422d7a9181e48c5d2",
+      "patch": "",
+      "branch": "",
+      "notes": "reused from run-134",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "9",
+      "status": "done",
+      "reviewVerdict": "reused",
+      "headSha": "8e715281916d9d04ed69992422d7a9181e48c5d2",
+      "patch": "",
+      "branch": "",
+      "notes": "reused from run-134",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "10",
+      "status": "done",
+      "reviewVerdict": "reused",
+      "headSha": "8e715281916d9d04ed69992422d7a9181e48c5d2",
+      "patch": "",
+      "branch": "",
+      "notes": "reused from run-134",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "4",
+      "status": "done",
+      "reviewVerdict": "reused",
+      "headSha": "8e715281916d9d04ed69992422d7a9181e48c5d2",
+      "patch": "",
+      "branch": "",
+      "notes": "reused from run-134",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "5",
+      "status": "done",
+      "reviewVerdict": "reused",
+      "headSha": "8e715281916d9d04ed69992422d7a9181e48c5d2",
+      "patch": "",
+      "branch": "",
+      "notes": "reused from run-134",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": false,
+    "output": "not run \u2014 no wave merged",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [],
+  "reviewEconomy": {
+    "reviewerMs": 0,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 48%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 68%]\n........................................................................ [ 72%]\n........................................................................ [ 76%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 92%]\n........................................................................ [ 96%]\n...............................................................          [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1791 passed, 5 warnings in 294.82s (0:04:54) =================\n"
+  },
+  "waveMerges": [],
+  "frontier": [
+    {
+      "wave": 0,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-141/frontier/wave-0/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-141/frontier/wave-0/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 2,
+      "foldCliWallTimeSec": 1.619,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 10,
+    "tasks_planned": 10,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": false,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
