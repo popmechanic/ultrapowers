@@ -96,7 +96,7 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   `janitor.mjs` reads each fleet VM's comment and asks the kata hub for the run issue's state,
   falling back to the target's evidence through `gh api` only when the hub is dark, never a
   VM's disk; `target.mjs` creates the per-target integration; `doctor.mjs` says which of its
-  nine rows is missing. The engine proper is `run-main.mjs` (entry) → `run-engine.mjs`
+  eight rows is missing. The engine proper is `run-main.mjs` (entry) → `run-engine.mjs`
   (deterministic waves), `run-worker.mjs` (`agent()` backed by one `claude -p`),
   `run-waves.mjs` (clones-at-BASE + `withPatchCapture`), `confine-hook.mjs` (the implementer's
   `PreToolUse` boundary), `fitness.mjs`, `roles/`. No orchestrator, no control VM, no token on

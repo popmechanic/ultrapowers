@@ -112,8 +112,90 @@ plan's Task writes the branch: the store module honours `window.__TINYAPP_SEED__
 — when it is present the store loads that content and starts neither the
 `WsSynchronizer` nor the persister, so the exam owns the state it asserts.
 
-When `TINYAPP_RENDER_URL` is unset or empty the render move is `skipped` and
-recorded as skipped; the exam is still a store exam on a laptop or in CI.
+An `action` need not be a callback. The fixture's
+`tests/state-exams/click-completes-todo.test.ts` is the interaction shape to
+hand an examiner, verbatim:
+
+```ts
+import {stateExam} from 'tinyapp-exam';
+import {createTodosStore} from '../../client/src/storeData';
+
+// Clicking the first todo's checkbox completes that todo and leaves the other
+// one open. `TodoList` renders rows ascending by row id, so `#todo-0` is the
+// first `.todoItem` and `Page.act` clicks the first match of its selector —
+// hence row `0` is the one that moves.
+stateExam({
+  clock: '2026-01-01T00:00:00Z',
+  entry: 'client/index.html',
+  seed: 'state-exams/seeds/two-open-todos.json',
+  store: () => createTodosStore(),
+  action: {click: '.todoItem input[type=checkbox]'},
+  expected: 'state-exams/expected/two-todos-first-done.json',
+  view: [
+    // `.todoItem.completed` names exactly the row that was clicked: the bare
+    // `.todoItem input[type=checkbox]` would match both boxes, and `checked`
+    // asks that *every* match read `data-checked="true"`.
+    {selector: '.todoItem.completed input[type=checkbox]', checked: true},
+    {selector: '.todoItem', count: 2},
+  ],
+  mutant: [{table: 'todos', row: '0', cell: 'completed', value: false}],
+});
+```
+
+Its `tests/state-exams/enter-submits-todo.test.ts` reaches the callback exam's
+state by the app's own path, through two moves:
+
+```ts
+import {stateExam} from 'tinyapp-exam';
+import {createTodosStore} from '../../client/src/storeData';
+
+// Typing into the input and pressing Enter submits the form, and `addTodo`
+// assigns row id `0` on a store seeded empty — so the state reached is the
+// same one-open-todo state the callback exam reaches, by the app's own path.
+stateExam({
+  clock: '2026-01-01T00:00:00Z',
+  entry: 'client/index.html',
+  seed: 'state-exams/seeds/empty.json',
+  store: () => createTodosStore(),
+  action: [
+    {type: ['input[placeholder="What needs to be done?"]', 'buy milk']},
+    {key: ['input[placeholder="What needs to be done?"]', 'Enter']},
+  ],
+  expected: 'state-exams/expected/one-open-todo.json',
+  view: {selector: '.todoItem', count: 1, text: 'buy milk'},
+  mutant: [{table: 'todos', row: '0', cell: 'text', value: ''}],
+});
+```
+
+So an `action` is a store callback, or one of the three interaction forms —
+`{click: selector}`, `{type: [selector, text]}`, `{key: [selector, key]}` — or
+an array of those forms, performed in order.
+
+An exam that names an `entry` renders it and performs its action for real; one
+that names none is a store exam and its render move is recorded as `skipped`.
+The interaction runs in the machine's own Chromium, driven over raw CDP: on the
+fleet image that binary is `/headless-shell/headless-shell` (Chromium 151).
+`TINYAPP_BROWSER` names one elsewhere and `launchBrowser` reads it first;
+`TINYAPP_BROWSER_ARGS` is space-separated extra flags, such as `--no-sandbox`
+on a box that needs it. A missing browser is a red exam that names the path —
+`browser: no such binary <path>`.
+
+The page is a `data:` URL with every request blocked and the clock pinned in
+the page. `walls.json` gained `action_ms`, the interaction's wall alone and
+`null` for a callback, and `browser`, which reads `'ran'` or `'skipped'`.
+`contract.json` records `pinned_in_page`: `true` for an interaction, `false`
+for a callback.
+
+Two rules here are measured, not guessed. `bundleOf` builds with
+`minify: true` because Chromium hangs rather than fails on a `data:` URL over
+2,097,152 characters, and the fixture's unminified bundle is ~1.94 MB against
+789 KB minified. And every seed and expected literal is computed at BASE, never
+written from memory: run-7 parked because its plan pinned
+`two-todos-one-done.json` (row 1 done) as the state of clicking the first box
+(row 0), and asserted a `checked` view over a selector matching both boxes.
+
+A target that exposes `bun run lint:state` has it run over a plan's seeds and
+expected files before the gate readers.
 
 ## The engine boundary
 

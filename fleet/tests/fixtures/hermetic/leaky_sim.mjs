@@ -18,11 +18,11 @@ import { simEnv } from '../../_helpers.mjs'
 // the box reaches the child.
 export const inherits = () => spawnSync('bash', ['-c', 'true'], { env: { ...process.env } })
 
-// (2) An absolute read: the renderer address the box's own setup installed,
-// swallowed so the leak is silent.
+// (2) An absolute read: a file the box's own setup installed, swallowed so the
+// leak is silent.
 export const reads = () => {
   try {
-    return fs.readFileSync('/etc/fleet/render.env', 'utf8')
+    return fs.readFileSync('/etc/fleet/planted.env', 'utf8')
   } catch {
     return ''
   }

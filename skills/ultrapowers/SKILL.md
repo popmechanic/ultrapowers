@@ -46,7 +46,7 @@ cache path itself differs by version and by host, so derive it rather than
 naming it.
 
 The doctor answers with one row per piece, and its row ids are `exe-dev`,
-`capacity`, `claude`, `accounts`, `github`, `integrations`, `verb-drift`, `render`, in that
+`capacity`, `claude`, `accounts`, `github`, `integrations`, `verb-drift`, `kata`, in that
 order. Each row carries
 a `status` of `ok` or `missing`, a human `detail`, and a `fix` naming the `## `
 section of `references/first-run.md` that repairs it. Read the rows back to the
@@ -98,7 +98,7 @@ rather than by the user.
 built, which creates the one object that repository needs on the attachment
 policy `tag:fleet`; the command is idempotent, so an object already there is
 left alone, its policy read and replaced only when it is not `tag:fleet`. When
-the doctor reports another object — `claude-max`, or the renderer's — as off
+the doctor reports another object — `claude-max`, say — as off
 that policy, the agent asks with
 AskUserQuestion: **Put `<name>` on the fleet policy?** — `Yes, set its policy to tag:fleet (Recommended)` / `No, leave it and I will look`,
 and on yes it runs `ssh exe.dev "integrations policy get <name> --json"`, reads

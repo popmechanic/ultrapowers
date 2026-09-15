@@ -21,23 +21,6 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-/**
- * The one fixture set for `renderOf` (#859) — every shape a config's `render`
- * has been seen to take, and the answer all three readers owe it: the doctor's
- * `render` row, `fleet/launch.mjs` and `fleet/setup-script.mjs` each loop this
- * list and assert the same answer, so a shape one of them calls "none" cannot
- * reach another as a renderer. `answer` is null for everything but a plain
- * object whose `integration` and `account` are both non-empty strings.
- */
-export const RENDER_SHAPES = Object.freeze([
-  { label: 'an empty object', value: {}, answer: null },
-  { label: 'an integration alone', value: { integration: 'x' }, answer: null },
-  { label: 'an empty account', value: { integration: 'x', account: '' }, answer: null },
-  { label: 'an empty integration', value: { integration: '', account: 'a' }, answer: null },
-  { label: 'a non-object', value: 'x', answer: null },
-  { label: 'both strings', value: { integration: 'x', account: 'a' }, answer: { integration: 'x', account: 'a' } }
-])
-
 /** Prefixes of the parent's environment that never reach a child. */
 export const DROPPED_PREFIXES = ['ULTRA_', 'TINYAPP_', 'FLEET_', 'ANTHROPIC_', 'CLAUDE_', 'GH_']
 

@@ -65,13 +65,6 @@ if [ -n "${FLEET_BIN_DIR:-}" ]; then
   PATH="$FLEET_BIN_DIR:$PATH"
   export PATH
 fi
-# The one line the setup script writes for the renderer: `TINYAPP_RENDER_URL=…`,
-# exe.dev's edge address for browser rendering. `run_engine` sources it when it
-# is readable and hands the value to the engine unit in its own argv. The
-# production path is the literal; the variable exists so a sim can plant the
-# file, exactly like `FLEET_HOME` and `FLEET_BIN_DIR`.
-FLEET_RENDER_ENV="${FLEET_RENDER_ENV:-/etc/fleet/render.env}"
-
 # systemd's user manager needs a bus address. The unit inherits one; a human
 # debugging over ssh does not, and `systemd-run --user` then dies with "Failed to
 # connect to bus: No medium found" — measured on stock exeuntu. Linger is on in
@@ -128,9 +121,9 @@ ANTHROPIC_PROXY_URL="https://claude-max.int.exe.xyz"
 # bearer of its own: the edge injects the peer key, which is the whole reason a
 # sandbox that holds no kata token at all can still be answered, and the daemon
 # sees the hub's own host as `Host`, which is what kata's `public_origin` check
-# needs. `FLEET_KATA_URL` exists for the same reason `FLEET_RENDER_ENV` does —
-# so a sim can pin the address inside its own home — and the literal is the
-# production value.
+# needs. `FLEET_KATA_URL` exists for the same reason `FLEET_HOME` and
+# `FLEET_BIN_DIR` do — so a sim can pin the address inside its own home — and
+# the literal is the production value.
 KATA_URL="${FLEET_KATA_URL:-https://kata.int.exe.xyz}"
 # The plan's path inside the plan commit's tree, and the run's directory inside
 # the evidence commit's. Both are `.ultrapowers/`, never `.claude/`.
@@ -1161,16 +1154,6 @@ run_engine() {
   # value of this probe is that it happens while nothing has been spent.
   bearer_probe
 
-  # The renderer address, when this box has one. An `if` and not a trailing
-  # `&& .`: a bare `&&` as a function's last command makes the function's exit
-  # status the test's, and a fleet with no such file would fail the boot under
-  # `set -e`. The argv entry below is spelled `${TINYAPP_RENDER_URL:-}` for the
-  # same reason — `set -u` kills a boot that reads an unset name.
-  if [ -r "$FLEET_RENDER_ENV" ]; then
-    . "$FLEET_RENDER_ENV"
-    log "render: sourced $FLEET_RENDER_ENV"
-  fi
-
   set +e
   # Its stdio redirected for the same reason: killing this loop leaves its
   # in-flight `sleep` behind for up to one interval, and a stray sleep holding
@@ -1183,7 +1166,6 @@ run_engine() {
       "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
       "CLAUDE_CODE_OAUTH_TOKEN=placeholder" \
       "ULTRAPOWERS_FLEET_RUN=$RUN_ID" \
-      "TINYAPP_RENDER_URL=${TINYAPP_RENDER_URL:-}" \
       node "$ENGINE_REPO_DIR/fleet/run-main.mjs" \
       "$PLAN_FILE" "$RUN_ID" --repo "$TARGET_DIR" \
       ${kata[@]+"${kata[@]}"} \

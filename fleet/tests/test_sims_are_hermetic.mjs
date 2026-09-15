@@ -31,17 +31,14 @@
  *       without running them, and every sim that held such a list has since
  *       been retired, so no sibling list is left in the tree at all. A mutated
  *       copy of a sim's own text under the temp root is not a sibling run.
- *   M5  `fleet/sandbox-boot.sh` names `/etc/fleet/render.env` exactly once, as
- *       the default in `FLEET_RENDER_ENV="${FLEET_RENDER_ENV:-...}"`, and the
- *       rig pins `FLEET_RENDER_ENV` under every case's own home.
  *   M6  `tests/test_fleet_suite.py` exports `sim_env()` and hands each bridged
  *       `node` the environment it returns.
  *   M7  the probe, pointed at `fleet/tests/fixtures/hermetic/leaky_sim.mjs`,
- *       names its inheriting spawn, its `/etc/fleet/render.env` read and its
+ *       names its inheriting spawn, its `/etc/fleet/planted.env` read and its
  *       sibling-sim spawn — and the probe itself spawns nothing.
  *
  * Legs: (a) M1, (b) M2, (c) M3, (d) M4, (e) M4 at the eight sites, (f) M7,
- * (g) M7, (h) M6, (i) M5.
+ * (g) M7, (h) M6.
  *
  * The sweep (legs b, c, d) is a static read of source, never an execution: it
  * reads every `fleet/tests/test_*.mjs` and `fleet/tests/_*.mjs` except this
@@ -101,10 +98,6 @@ const HELPERS = path.join(TESTS_DIR, '_helpers.mjs')
 const FIXTURE = path.join(TESTS_DIR, 'fixtures', 'hermetic', 'leaky_sim.mjs')
 /** The bridge leg (h) reads. */
 const BRIDGE = path.join(ROOT, 'tests', 'test_fleet_suite.py')
-/** The boot script leg (i) reads. */
-const BOOT_SCRIPT = path.join(ROOT, 'fleet', 'sandbox-boot.sh')
-/** The rig whose `bootEnv` leg (i) reads. */
-const BOOT_HELPERS = path.join(TESTS_DIR, '_sandbox_boot_helpers.mjs')
 
 /** The deliverable, imported dynamically so a tree without it still reports
  *  every other leg rather than dying at load. */
@@ -605,8 +598,8 @@ const test = (name, fn) => { tests.push([name, fn]) }
 
 const PLANT = {
   ULTRA_PLANTED: '1',
-  TINYAPP_RENDER_URL: 'http://planted.invalid',
-  FLEET_RENDER_ENV: '/planted/render.env',
+  TINYAPP_BROWSER: '/planted/chrome',
+  FLEET_PLANTED: '/planted/file',
   CLAUDE_CONFIG_DIR: 'planted-config',
   GH_TOKEN: 'planted',
   ANTHROPIC_API_KEY: 'planted',
@@ -942,13 +935,13 @@ test('the fixture is swept to exactly three offenders, one per rule  [M7 / leg (
     `(g) [M7] one sibling-sim spawn: ${JSON.stringify(named(r.siblings))}`)
   assert.equal(r.inherit.length + r.absolute.length + r.siblings.length, 3,
     '(g) [M7] and three namings in all, one per rule')
-  assert.match(r.absolute[0].why, /\/etc\/fleet\/render\.env/,
-    `(g) [M7] the absolute read is of /etc/fleet/render.env: ${r.absolute[0].why}`)
+  assert.match(r.absolute[0].why, /\/etc\/fleet\/planted\.env/,
+    `(g) [M7] the absolute read is of /etc/fleet/planted.env: ${r.absolute[0].why}`)
 
   const flat = text.replace(/\s+/g, ' ')
   const PINS = [
     "spawnSync('bash', ['-c', 'true'], { env: { ...process.env } })",
-    "fs.readFileSync('/etc/fleet/render.env', 'utf8')",
+    "fs.readFileSync('/etc/fleet/planted.env', 'utf8')",
     "spawnSync(process.execPath, ['fleet/tests/test_fitness.mjs'], { env: simEnv() })",
   ]
   for (const pin of PINS) {
@@ -1056,34 +1049,6 @@ test('tests/test_fleet_suite.py binds env=sim_env() on the node it runs  [M6 / l
     assert.ok(fn.includes(tool),
       `(h) [M6] and builds PATH from the same interpreters, ${tool} among them`)
   }
-})
-
-// ── (i) the boot script names the box's file once, as a default  [M5] ────────
-
-test('fleet/sandbox-boot.sh names /etc/fleet/render.env once, as its default  [M5 / leg (i)]', () => {
-  assert.ok(fs.existsSync(BOOT_SCRIPT), '(i) [M5] fleet/sandbox-boot.sh is the boot the rig drives')
-  const lines = fs.readFileSync(BOOT_SCRIPT, 'utf8').split('\n')
-  const hits = lines.filter((l) => l.includes('/etc/fleet/render.env'))
-  assert.equal(hits.length, 1,
-    `(i) [M5] exactly one line names /etc/fleet/render.env — a boot that opened the box's file by ` +
-    `its own path would put a second there: ${JSON.stringify(hits)}`)
-  assert.equal(hits[0].trim(), 'FLEET_RENDER_ENV="${FLEET_RENDER_ENV:-/etc/fleet/render.env}"',
-    `(i) [M5] and that line is the default the rig overrides: ${JSON.stringify(hits[0].trim())}`)
-})
-
-test('the boot rig pins FLEET_RENDER_ENV under every case\'s own home  [M5 / leg (i)]', () => {
-  assert.ok(fs.existsSync(BOOT_HELPERS), '(i) [M5] fleet/tests/_sandbox_boot_helpers.mjs is the boot rig')
-  const src = scan(fs.readFileSync(BOOT_HELPERS, 'utf8'))
-  const bootEnv = bindingOf(src, 'bootEnv')
-  assert.ok(bootEnv, '(i) [M5] the rig hands every boot one bootEnv')
-  const body = src.code.slice(bootEnv.start, bootEnv.end)
-  assert.match(body, /FLEET_RENDER_ENV\s*:\s*renderEnvPath\(ctx\)/,
-    `(i) [M5] which pins FLEET_RENDER_ENV to the case's own render.env, so no boot falls to the ` +
-    `box's default path: ${body.replace(/\s+/g, ' ').slice(0, 200)}`)
-  const renderEnvPath = bindingOf(src, 'renderEnvPath')
-  assert.ok(renderEnvPath, '(i) [M5] and renderEnvPath is the rig\'s own')
-  assert.match(src.code.slice(renderEnvPath.start, renderEnvPath.end), /ctx\.home/,
-    "(i) [M5] under the case's own home")
 })
 
 // ── the sentinel ─────────────────────────────────────────────────────────────
