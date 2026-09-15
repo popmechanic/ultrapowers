@@ -408,20 +408,6 @@ def test_every_run_less_fixture_plan_still_checks_byte_identically_to_base(
         base_compiler)
 
 
-def test_the_five_species_exam_still_passes():
-    """leg (d) [M4]: `tests/test_compile_plan_proof_species.py` — its
-    five-species fixture printing exactly its five lines, its line-shape regex
-    and its registration pin — passes unchanged."""
-    p = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
-         "tests/test_compile_plan_proof_species.py"],
-        capture_output=True, text=True, cwd=str(ROOT))
-    assert p.returncode == 0, (
-        "leg (d) [M4]: the existing species exam must still pass — the "
-        "five-species fixture (one file per task, one to three clauses) draws "
-        "no new line. Got rc=%d\n%s%s" % (p.returncode, p.stdout, p.stderr))
-
-
 # =========================================================================== #
 # Task "The wide-files knee reads the paths" (#666) — the narrow knee.        #
 #                                                                             #
@@ -693,19 +679,3 @@ def test_666_the_engine_fixture_draws_nothing_without_renders(tmp_path, repo):
     assert "wide-files" not in bare.stdout, (
         "#666 leg (e) [M4]: the frozen `--check` channel names the species "
         "nowhere. Got:\n" + bare.stdout)
-
-
-def test_666_the_species_vocabulary_and_five_species_exams_still_pass():
-    """#666 leg (e) [M4]: the Proof's `Run:` — the five-species fixture
-    (exactly five lines, one per registered species) and the
-    species-vocabulary pins over the skill text, neither of which this task
-    may move."""
-    p = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
-         "tests/test_compile_plan_proof_species.py",
-         "tests/test_compile_plan_check_cost.py"],
-        capture_output=True, text=True, cwd=str(ROOT))
-    assert p.returncode == 0, (
-        "#666 leg (e) [M4]: the narrow knee adds no species and no word to the "
-        "refusal vocabulary, so both exams pass unchanged. Got rc=%d\n%s%s"
-        % (p.returncode, p.stdout, p.stderr))
