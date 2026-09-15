@@ -127,3 +127,9 @@
 {"kind":"driver:attention","task":"1","attention":"needs-human","msg":"session ended without hand-off","actor":"","id":"01M2JZT66S0000ZZ36JKG5KM0N","ts":1789491222745}
 {"kind":"worker:end","label":"review:1:1","role":"reviewer","sessionId":"d90dc8a0-318b-4789-a7f9-d0dd3e7711bf","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":6032,"output":4633,"cacheRead":241711,"cacheCreation":19565,"costUsd":0.4624905,"models":["claude-opus-5"]},"id":"01M2JZVFND00005QX2E88FN5CH","ts":1789491265197}
 {"kind":"transcript:slice","label":"review:1:1","sessionId":"d90dc8a0-318b-4789-a7f9-d0dd3e7711bf","bytes":10211,"id":"01M2JZVFNF0000F0T3NAHY2PHF","ts":1789491265199}
+{"kind":"driver:wave-adopted","wave":2,"tasks":["10"],"headSha":"013207994902c9538e07c8b49116e3cb13013e91","why":"aged","id":"01M2K00YM90000J8NAGA155VVS","ts":1789491444361}
+{"kind":"driver:integrated-clean","wave":2,"removed":9,"id":"01M2K00YMN0000TQB6Y8JPXPAP","ts":1789491444373}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- skills fleet/roles fleet/CONTRACT.md fleet/RUNBOOK.md README.md hooks .github pytest.ini","exit":0,"minor":false,"wave":2,"id":"01M2K00YMZ0000FN4P949ETKAX","ts":1789491444383}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet ':(exclude)fleet/tests'","exit":0,"minor":false,"wave":2,"id":"01M2K00YN80000H2WNGXNM8SAA","ts":1789491444392}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- tests/test_docs_agree_with_code.py tests/test_recommendation_rubric.py tests/test_compile_plan.py tests/test_ultralearn_docs.py tests/test_validate_skill.py tests/test_ultrawrite_skill.py tests/test_fleet_suite.py fleet/tests/test_roles_peer.mjs","exit":0,"minor":false,"wave":2,"id":"01M2K00YNK00009NGA0GEN6BZ4","ts":1789491444403}
+{"kind":"engine:phase","phase":"Wave 3","id":"01M2K00YVY0000TVWRCDHCKWB3","ts":1789491444606}
