@@ -260,7 +260,20 @@ leg (b) actually falsify M2, or merely mention it?
 Its diet is capped mechanically, not by the reader's restraint:
 
     UW=${CLAUDE_PLUGIN_ROOT}/skills/ultrawrite/scripts
-    python3 $UW/extract_gate_input.py <plan.md> --task <id>
+    python3 $UW/extract_gate_input.py <plan.md> --task <id> --base <sha>
+
+Since #989 the reader reads BASE as well: with `--base <sha>` (the launch base, a 40-hex
+commit of the plan's repository, or a checkout directory) the diet carries one more key,
+`base` — for the task's Files and every path its Proof names, whether the path exists
+there, its line count, its headings or test names, and an `excerpt` of the lines that
+carry the diet's own literals, at most `8000` bytes per file and `24000` in total,
+`truncated` flagged when the cap cut. The reader's question gains its second half on that
+excerpt: *whether a named file already pins the opposite of a clause, and whether every
+section, path or symbol a leg names exists at BASE — or does not exist there at all.* — so "this sim already asserts the wave count"
+and "this doc section does not exist" are the reader's to say, not the sandbox's. The
+`hash` a verdict is keyed on is `unchanged` by the excerpt — it is still over the Claim and
+Proof only — so a moved base never stales a verdict; record the base a verdict was read
+against in the tally (`tally.base`), as the 2026-09-15 plans do.
 
 Feed the subagent **only** that output — no plan body, no ledger, no sibling tasks. Write
 each verdict, keyed on the hash the extractor prints, into the sibling
