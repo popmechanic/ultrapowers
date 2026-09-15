@@ -580,7 +580,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `work.state` (`parked` or `failed`), `work.attention` (`needs-human`) and `work.attention_msg`
   (the page's error head) — the three flat keys the boot-script bullet above spells — and the
   operator resolves it and closes it by hand. Only a run that ended `done` is closed, by the boot.
-- **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"wave":"<n or null>","state":"queued|examining|implementing|proving|reviewing|fixing|folded|failed","role":"<worker label or null>","lastProof":"{cmd, exit, ts} or null","park":"<detail or null>","attention":"{value, msg, ts} or null"}}}`
+- **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"wave":"<n or null>","state":"queued|waiting|examining|implementing|proving|reviewing|fixing|folded|failed","role":"<worker label or null>","lastProof":"{cmd, exit, ts} or null","park":"<detail or null>","attention":"{value, msg, ts} or null","blockedBy":"[<task ids>] or null"}}}`
   — the SAME bytes are served at `/status.json` and committed to
   `.ultrapowers/runs/<N>/status.json` on `ultra/evidence-run-<N>` at every transition **and, while
   the engine runs, on the first refresher poll that has seen either `FLEET_COMMIT_EVENTS` new lines
@@ -590,10 +590,14 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `"tasks":` is the LAST cell on the page — a reader answers the FIRST `"state"` in the file, so a
   task's own `folded` must never sit above the run's — and it is a projection of `events.jsonl` and
   nothing else: one key per task id the plan's waves or the log names, each carrying the wave it
-  belongs to, one of the eight states above, the label of the worker open for it, its last proof run
-  (`driver:proof-run`, `driver:check-run` or `driver:exam-run`), the detail it was parked with and
+  belongs to, one of the nine states above, the label of the worker open for it, its last proof run
+  (`driver:proof-run`, `driver:check-run` or `driver:exam-run`), the detail it was parked with,
   its `attention` cell — `{value, msg, ts}` read off that task's latest `driver:attention` event,
-  `null` for a task that never raised a hand.
+  `null` for a task that never raised a hand — and its `blockedBy` cell, the LAST key of the cell.
+  A task the driver re-edged reads `waiting` with `blockedBy` the siblings that `driver:re-edged`
+  named, whatever the `worker:end` before it said, and the state moves on at the task's next
+  `worker:start` while `blockedBy` keeps the record of what it waited on; a task no `driver:re-edged`
+  names reads `null` there.
   The same projection is printed for any log by
   `bash fleet/sandbox-boot.sh project <events.jsonl> [<args.json>]`, which reads and writes nothing.
   `phase` names the SUB-STEP while the engine runs: the run's last phase event alone when no worker

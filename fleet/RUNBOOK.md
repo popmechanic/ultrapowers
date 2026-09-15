@@ -241,9 +241,10 @@ and does not merge it (a measurement run).
   exe.dev's proxy; a browser logged in to exe.dev reads it. Its `phase` names
   the sub-step the run is on — `Wave 2 · impl:3`, the phase and the worker the
   wave is waiting on — and its `tasks` cell says what each task is doing right
-  now: the wave it is in, one of `queued`, `examining`, `implementing`,
-  `proving`, `reviewing`, `fixing`, `folded`, `failed`, the worker open for it,
-  its last proof run and why it was parked.
+  now: the wave it is in, one of `queued`, `waiting`, `examining`,
+  `implementing`, `proving`, `reviewing`, `fixing`, `folded`, `failed`, the
+  worker open for it, its last proof run, why it was parked and, when the driver
+  re-edged it, the siblings it is waiting on.
 - `https://<vm>.exe.xyz/events.jsonl` — the live event log, the same file the
   engine is appending to, recopied on every poll. It is what the page above is
   a projection of; `bash fleet/sandbox-boot.sh project <events.jsonl>` prints

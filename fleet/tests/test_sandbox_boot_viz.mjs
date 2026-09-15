@@ -102,14 +102,33 @@ const B = [
 const BLOCKED_13 = ev(13, { kind: 'driver:wave-blocked', wave: 1, tasks: ['1'], detail: 'x' })
 /** The fifteenth line of one case: `impl:2` ended BLOCKED. */
 const BLOCKED_END_15 = end(15, 'impl:2', 'implementer', 'BLOCKED')
+/**
+ * The sixteenth line of #987's cases, in exactly the shape `run-engine.mjs`
+ * writes it (line 3659): `appendEvent({ kind: 'driver:re-edged', task: r.task,
+ * blockedBy: r.blockedBy.slice() })` — `task` a string id, `blockedBy` a list
+ * of string ids. Its id sorts AFTER `BLOCKED_END_15`'s, which is what makes the
+ * re-edge win over the `BLOCKED` end.
+ */
+const RE_EDGED_16 = ev(16, { kind: 'driver:re-edged', task: '2', blockedBy: ['1'] })
+/** The seventeenth line of #987 leg (d): task 2 dispatched again. */
+const RESTART_17 = start(17, 'impl:2', 'implementer')
 
 /** `args.json` as `ultra_run.py` writes it: `waves`, a list of lists of `{id}`. */
 const ARGS_JSON = `${JSON.stringify({
   waves: [[{ id: '1' }, { id: '2' }], [{ id: '3' }]],
 })}\n`
 
-/** M2's cell, with M2's own defaults, so a case names only what it changes. */
-const cell = (over = {}) => ({ wave: null, state: 'queued', role: null, lastProof: null, park: null, attention: null, ...over })
+/**
+ * M2's cell, with M2's own defaults, so a case names only what it changes.
+ *
+ * #987 M3 adds `blockedBy` as the cell's LAST key, `null` for a task no
+ * `driver:re-edged` event names — so every whole-object pin below reads the
+ * seven-key shape the Produces line spells.
+ */
+const cell = (over = {}) => ({ wave: null, state: 'queued', role: null, lastProof: null, park: null, attention: null, blockedBy: null, ...over })
+
+/** The keys of a cell, in the order the Produces line spells them (#987 M3). */
+const CELL_KEYS = ['wave', 'state', 'role', 'lastProof', 'park', 'attention', 'blockedBy']
 
 /** Leg (b)'s `tasks` for the full log WITH `args.json`. */
 const TASKS_WITH_ARGS = {
@@ -297,15 +316,17 @@ test('(b) the full log with args.json projects three cells and no fourth  [M2]',
 
   assert.deepEqual(doc.tasks['1'],
     { wave: 1, state: 'folded', role: null, lastProof: { cmd: EXAM_CMD, exit: 1, ts: 12 }, park: null,
-      attention: null },
+      attention: null, blockedBy: null },
     'task 1: folded by the `driver:wave-adopted` that lists it, no open `worker:start` so `role` ' +
     'is null, `lastProof` the last of the three proof kinds — the exam-run — and `wave` the ' +
     '1-based index of the args.json wave holding it  [leg (b), M2]')
   assert.deepEqual(doc.tasks['2'],
-    { wave: 1, state: 'implementing', role: 'impl:2', lastProof: null, park: null, attention: null },
+    { wave: 1, state: 'implementing', role: 'impl:2', lastProof: null, park: null, attention: null,
+      blockedBy: null },
     'task 2: `worker:start impl:2` with no later `worker:end` of that label  [leg (b), M2]')
   assert.deepEqual(doc.tasks['3'],
-    { wave: 2, state: 'queued', role: null, lastProof: null, park: null, attention: null },
+    { wave: 2, state: 'queued', role: null, lastProof: null, park: null, attention: null,
+      blockedBy: null },
     'task 3: named only by args.json\'s second wave, so queued in wave 2  [leg (b), M2]')
   assert.deepEqual(Object.keys(doc.tasks).sort(), ['1', '2', '3'],
     'one key per task id the log and args.json name, and no fourth  [leg (b), M2]: ' +
@@ -581,6 +602,118 @@ test('(#952 e) the contract\'s status.json bullet states the skip rule  [M5]', (
     'and must say the kind taken is the last `driver:*`/`worker:*` one  [#952 leg (e), M5]')
 })
 
+// ── #987 task 2 — "The status page reads a re-edged task as waiting, with the
+//    sibling it waits on beside it"  [M1–M6] ────────────────────────────────
+//
+// Six more cases at the same surface. Every assertion below names them
+// `#987 leg (x)`, so run-97's alphabet, #952's and this one never read as one.
+//
+//   M1  a `BLOCKED` `worker:end impl:2` followed by `driver:re-edged
+//       {task: "2", blockedBy: ["1"]}` projects task 2 `waiting`, `blockedBy`
+//       `["1"]`, `role` null                                  → #987 leg (a)
+//   M2  the same log with that line removed still reads `failed`, `blockedBy`
+//       null                                                  → #987 leg (b)
+//   M3  EVERY cell carries a `blockedBy` key, null for a task no
+//       `driver:re-edged` names, and the other six read as at BASE
+//                                                             → #987 leg (c)
+//   M4  a later `worker:start impl:2` moves the state to `implementing` and
+//       keeps `blockedBy`                                     → #987 leg (d)
+//   M5  `fleet/CONTRACT.md`'s `**status.json:**` bullet says `waiting`, names a
+//       `"blockedBy":` cell, says `nine states above` and no longer `eight
+//       states`                                               → #987 leg (e)
+//   M6  `fleet/RUNBOOK.md`'s **Watch.** entry for `status.json` names `waiting`
+//                                                             → #987 leg (f)
+//
+// (a)–(d) are the sim and nothing else; (e)–(f) are scoped greps of the two
+// documents and are never cited as evidence of what the projection does.
+
+/** Leg (a)'s log: the fourteen-line `B`, the BLOCKED end, the re-edge. */
+const RE_EDGED_LOG = [...B, BLOCKED_END_15, RE_EDGED_16]
+
+test('(#987 a) a driver:re-edged after a BLOCKED end reads waiting, with blockedBy  [M1]', () => {
+  const doc = project(plant(RE_EDGED_LOG.join('')))
+  assert.deepEqual(doc.tasks['2'], cell({ state: 'waiting', blockedBy: ['1'] }),
+    'a `worker:end impl:2` with `status` BLOCKED followed by `{kind:"driver:re-edged",task:"2",' +
+    'blockedBy:["1"]}` projects task 2 as `state` `waiting` with `blockedBy` `["1"]` — and `role` ' +
+    'null, because the `impl:2` label the BLOCKED end closed is no longer open; a re-edged task ' +
+    `never reads \`failed\`  [#987 leg (a), M1]: ${JSON.stringify(doc.tasks['2'])}`)
+  assert.deepEqual(doc.tasks['2'].blockedBy, ['1'],
+    'the `blockedBy` cell is the event\'s own list of sibling task ids, as strings  ' +
+    `[#987 leg (a), M1]: ${JSON.stringify(doc.tasks['2'].blockedBy)}`)
+  assert.equal(doc.tasks['1'].blockedBy, null,
+    'and the sibling the event NAMES as a blocker is not itself blocked — task 1\'s own ' +
+    `\`blockedBy\` stays null  [#987 leg (a), M1, M3]: ${JSON.stringify(doc.tasks['1'])}`)
+})
+
+test('(#987 b) the same log with no driver:re-edged still reads failed  [M2]', () => {
+  const doc = project(plant([...B, BLOCKED_END_15].join('')))
+  assert.deepEqual(doc.tasks['2'], cell({ state: 'failed' }),
+    'with the `driver:re-edged` line removed, the `BLOCKED` `worker:end impl:2` is the last word ' +
+    'on task 2: `state` `failed`, `role` null, and `blockedBy` null — the standing case (b) ' +
+    'restated against the WHOLE cell, so a projection that reads every `BLOCKED` end as `waiting` ' +
+    `fails here  [#987 leg (b), M2]: ${JSON.stringify(doc.tasks['2'])}`)
+  assert.equal(doc.tasks['2'].blockedBy, null,
+    'a task no `driver:re-edged` event names has `blockedBy` null, not `[]` and not absent  ' +
+    `[#987 leg (b), M2, M3]: ${JSON.stringify(doc.tasks['2'].blockedBy)}`)
+})
+
+test('(#987 c) every cell the verb prints carries blockedBy, last and null  [M3]', () => {
+  const doc = project(plant(B.join('')), plant(ARGS_JSON, 'json'))
+  assert.deepEqual(doc.tasks, TASKS_WITH_ARGS,
+    'the fourteen-line `B` with `args.json` projects its three cells exactly as at BASE but for ' +
+    'one added key: each carries `blockedBy: null`, because no `driver:re-edged` event names any ' +
+    `of them  [#987 leg (c), M3]: ${JSON.stringify(doc.tasks)}`)
+  for (const tid of ['1', '2', '3']) {
+    assert.deepEqual(Object.keys(doc.tasks[tid]), CELL_KEYS,
+      `task ${tid}'s cell carries exactly the seven keys the Produces line spells, in that ` +
+      'order — the six of BASE unchanged and `blockedBy` LAST; a cell missing the key, or ' +
+      'spelling it anywhere but last, fails  [#987 leg (c), M3]: ' +
+      JSON.stringify(Object.keys(doc.tasks[tid])))
+    assert.equal(doc.tasks[tid].blockedBy, null,
+      `and task ${tid} is named by no \`driver:re-edged\`, so its \`blockedBy\` is null — a ` +
+      'non-null value on an un-edged task fails  [#987 leg (c), M3]')
+  }
+  const noArgs = project(plant(B.join('')))
+  assert.deepEqual(noArgs.tasks, TASKS_NO_ARGS,
+    'and the same log with no `args.json` reads the new shape too  [#987 leg (c), M3]: ' +
+    JSON.stringify(noArgs.tasks))
+})
+
+test('(#987 d) a worker:start after the re-edge implements, and keeps blockedBy  [M4]', () => {
+  const doc = project(plant([...RE_EDGED_LOG, RESTART_17].join('')))
+  assert.deepEqual(doc.tasks['2'], cell({ state: 'implementing', role: 'impl:2', blockedBy: ['1'] }),
+    'a `worker:start impl:2` appended after the `driver:re-edged` line moves task 2 to ' +
+    '`implementing` with `role` `impl:2` through the standing start rule, while `blockedBy` is ' +
+    'still `["1"]` — the record of what it waited on is kept after the re-dispatch, never ' +
+    `cleared  [#987 leg (d), M4]: ${JSON.stringify(doc.tasks['2'])}`)
+  assert.deepEqual(Object.keys(doc.tasks['2']), CELL_KEYS,
+    'and that cell still carries the seven keys in order  [#987 leg (d), M3, M4]: ' +
+    JSON.stringify(Object.keys(doc.tasks['2'])))
+})
+
+test('(#987 e) the contract\'s status.json bullet says waiting, blockedBy and nine  [M5]', () => {
+  // The same `**status.json:**` bullet cases (f) and (#952 e) read, scoped from
+  // its own line to the `**Publish:**` bullet — the Proof's first two `Run:`
+  // lines, spelled here as the leg they are.
+  shOk(`${STATUS_BULLET} | grep -q 'queued|waiting|examining'`,
+    'the `**status.json:**` bullet\'s `"state":` enumeration must read ' +
+    '`queued|waiting|examining|…` — `waiting` immediately after `queued`  [#987 leg (e), M5]')
+  shOk(`${STATUS_BULLET} | grep -q '"blockedBy":'`,
+    'and its task-cell literal must name a `"blockedBy":` cell  [#987 leg (e), M5]')
+  shOk(`${STATUS_BULLET} | grep -q 'nine states above'`,
+    'and the sentence that counted the states must say `nine states above`  [#987 leg (e), M5]')
+  shOk(`test "$(${STATUS_BULLET_LINES} | grep -c 'eight states')" = 0`,
+    'and no line of that bullet may still say `eight states` — the count moved  ' +
+    '[#987 leg (e), M5]')
+})
+
+test('(#987 f) the runbook\'s Watch entry names waiting among the states  [M6]', () => {
+  shOk(`${WATCH_STATUS_ENTRY} | grep -q 'queued.*waiting.*failed'`,
+    'the **Watch.** entry for `status.json`, scoped from its own line to the `events.jsonl` ' +
+    'entry, must name `waiting` between `queued` and `failed` in the list of states a task cell ' +
+    'can read  [#987 leg (f), M6]')
+})
+
 // ── (d) the commit window in events  [M4] ───────────────────────────────────
 
 test('(d) the refresher commits by FLEET_COMMIT_EVENTS, once per window  [M4]', () =>
@@ -619,7 +752,8 @@ test('(d) the refresher commits by FLEET_COMMIT_EVENTS, once per window  [M4]', 
       'the second committed page\'s `tasks` carries the appended tasks  [leg (d), M3, M4]: ' +
       JSON.stringify(second.tasks))
     assert.deepEqual(second.tasks['6'],
-      { wave: null, state: 'implementing', role: 'impl:6', lastProof: null, park: null, attention: null },
+      { wave: null, state: 'implementing', role: 'impl:6', lastProof: null, park: null,
+        attention: null, blockedBy: null },
       'including the line that closed the window  [leg (d), M3, M4]')
 
     // FIVE lines in ONE write: one window, one commit — not five.
@@ -734,6 +868,12 @@ const EVIDENCE_BULLET =
 /** The `**status.json:**` bullet under §Literals, to the `**Publish:**` one. */
 const STATUS_BULLET =
   "sed -n '/^- \\*\\*status\\.json:\\*\\*/,/^- \\*\\*Publish:\\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' '"
+/** The same bullet, LINE by line: a count of matching lines needs its newlines. */
+const STATUS_BULLET_LINES =
+  "sed -n '/^- \\*\\*status\\.json:\\*\\*/,/^- \\*\\*Publish:\\*\\*/p' fleet/CONTRACT.md"
+/** The **Watch.** entry for `status.json`, to the `events.jsonl` entry. */
+const WATCH_STATUS_ENTRY =
+  "sed -n '/status\\.json. — the VM/,/events\\.jsonl. — the live/p' fleet/RUNBOOK.md | tr '\\n' ' '"
 
 test('(f) the contract states the commit window and the page\'s new cells  [M5]', () => {
   shOk(`${EVIDENCE_BULLET} | grep -q 'FLEET_COMMIT_EVENTS.*FLEET_COMMIT_SECONDS'`,
