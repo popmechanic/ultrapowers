@@ -1,0 +1,180 @@
+{
+  "ok": true,
+  "stamp": "run-148",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-148"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "A merged engine change carries a reading of which changed lines a sim reached",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/engine-coverage.mjs",
+          "fleet/run-engine.mjs",
+          "skills/ultrapowers/references/report-format.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`engineCoverage({ tree, base, head, file, sims, width })` in `fleet/engine-coverage.mjs`",
+            "`report.json`'s `engineCoverage` key \u2014 the M1 object or `null`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "A merged engine change carries a reading of which changed lines a sim reached",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/engine-coverage.mjs",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_engine_coverage.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`engineCoverage({ tree, base, head, file, sims, width })` in `fleet/engine-coverage.mjs`",
+              "`report.json`'s `engineCoverage` key \u2014 the M1 object or `null`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/engine-coverage.mjs",
+            "fleet/run-engine.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_engine_coverage.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_engine_coverage.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_engine_coverage.mjs | grep -q 'ALL TESTS PASSED'",
+            "python3 -m pytest -q -n auto -p no:cacheprovider tests/test_fleet_suite.py",
+            "sed -n '/^  - .ultra.evidence-run-<N>. \u2014 the run.s record under/,/^    The engine.s own wave record/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'engineCoverage.*reading.*gates nothing'",
+            "sed -n '/^| .coverage. | no |/,/^| .missingDeliverables. | no |/p' skills/ultrapowers/references/report-format.md | grep -q '^| .engineCoverage. | no |.*changed.*reached.*unreached.*sims.*never gated'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_engine_coverage.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/engine-coverage.mjs",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_engine_coverage.mjs",
+              "skills/ultrapowers/references/report-format.md"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_engine_coverage.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_engine_coverage.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_engine_coverage.mjs": "fleet/tests/test_engine_coverage.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_engine_coverage.mjs"
+            ],
+            "siblingOwned": [],
+            "produces": [
+              "`engineCoverage({ tree, base, head, file, sims, width })` in `fleet/engine-coverage.mjs`",
+              "`report.json`'s `engineCoverage` key \u2014 the M1 object or `null`"
+            ],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "A merged engine change carries a reading of which chang\u2026"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "globalConstraints": "- No kernel, launcher, worker, waves-module, publish-fold or kata-client changes, and no role file other than `fleet/roles/implementer.md` changes; the engine's own edit is one call site and one report key.\n- Nothing here gates: the coverage reading, the disclosure ticket and the probe change no run's verdict \u2014 for the same tree, `tests.passed`, the gate receipt and the merge decision are what they were at BASE.\n- No direct Anthropic API call, no `anthropic` SDK and no API key in any shipped or dev file: the probe is model-free, the coverage reading spawns `node` on sims and nothing else, and the ticket goes over the same edge-proxied GitHub REST the PR uses.\n- Every sim keeps printing `ALL TESTS PASSED` on its last line and names no sibling sim; a `probe_*.mjs` never joins the bridge.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel fleet/launch.mjs fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/publish-fold.mjs fleet/kata-client.mjs fleet/roles/fix.md fleet/roles/reviewer.md fleet/roles/examiner.md fleet/roles/reconcile.md fleet/roles/resolver.md",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-148/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-148/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-148/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-148/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
