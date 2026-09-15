@@ -580,6 +580,16 @@ on the next one, ask her before editing a script.
   prompt` starts it; an on-VM `shelley client chat` against an inactive
   service prints a conversation id and creates nothing.
 
+**The hub.**
+
+- Never restate a kata behaviour from memory. The `Kata facts (measured)` list
+  of `fleet/CONTRACT.md` is the one record, each row carrying the version and
+  the date it was read on; re-read it with
+  `node fleet/tests/probe_kata_facts.mjs` after every kata upgrade and before
+  any plan touching `fleet/kata-client.mjs`, and edit the rows that moved. An
+  issue comment cites the list rather than restating a fact — a fact copied
+  into a thread goes stale where nobody is looking.
+
 **The laptop.**
 
 - macOS has no `timeout`. A wait loop in a shell script gets its deadline
