@@ -1121,6 +1121,73 @@ const PLAN_SHA = seeded.ws.repo.git(['hash-object', seeded.ws.planPath])
   )
 }
 
+// ── Task 1 of 2026-09-15-run-issue-force-new (#1008): the run issue's create
+// carries `force_new`, and no task issue's does ────────────────────────────
+//
+// The hub scores a create's title against the project's open issues and
+// refuses `409 duplicate_candidates`; a relaunched plan's run issue differs
+// from the earlier run's only by N. The launcher asks the client for
+// `forceNew: true` on that one create, the client spells it `force_new: true`
+// in the body, and the task creates — the ones replayed under a key whose
+// fingerprint is the body — send exactly what they sent before.
+{
+  const firstCalls = callsIn(seeded.hub, { to: seeded.boundary })
+  const runs = runCreates(firstCalls)
+  assert.equal(runs.length, 1, `(a) [M1] one launch files one run issue: got ${runs.length}`)
+  assert.equal(
+    runs[0].args[1]?.forceNew, true,
+    `(a) [M1] the run issue's create is asked with forceNew: true: got ${JSON.stringify(runs[0].args[1])}`
+  )
+
+  const tasks = taskCreates(firstCalls)
+  assert.ok(tasks.length >= 2, `(c) [M2] the launch filed task issues to inspect: got ${tasks.length}`)
+  const offender = tasks.find((c) => c.args[1]?.forceNew !== undefined)
+  assert.equal(
+    offender, undefined,
+    '(c) [M2] no task issue\'s create carries forceNew — task ' +
+    `${JSON.stringify(offender?.args[1]?.metadata?.task)} was asked with ` +
+    `forceNew: ${JSON.stringify(offender?.args[1]?.forceNew)}`
+  )
+
+  const sent = []
+  const transport = {
+    request: async (req) => {
+      sent.push(req)
+      return { status: 200, json: { issue: { uid: 'U', revision: 1, short_id: 'K-1' } } }
+    }
+  }
+  const client = kataClient.makeKataClient({ transport, actor: 'x' })
+
+  await client.createIssue(1, { title: 't', forceNew: true })
+  const forced = sent[sent.length - 1]
+  assert.equal(forced.method, 'POST', '(b) [M1] the create is a POST')
+  assert.equal(
+    forced.body?.force_new, true,
+    `(b) [M1] the client spells forceNew as force_new: true in the body: got ${JSON.stringify(forced.body)}`
+  )
+
+  await client.createIssue(1, { title: 't' })
+  const plain = sent[sent.length - 1]
+  assert.deepEqual(
+    Object.keys(plain.body ?? {}).slice().sort(), ['actor', 'body', 'links', 'metadata', 'title'],
+    `(d) [M2] a create asked without forceNew sends exactly the BASE body keys: got ${JSON.stringify(plain.body)}`
+  )
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(plain.body ?? {}, 'force_new'), false,
+    '(d) [M2] and no force_new key at all'
+  )
+
+  const paragraph = fs.readFileSync(path.join(FLEET_DIR, 'CONTRACT.md'), 'utf8')
+    .split('\n')
+  const start = paragraph.findIndex((l) => l.startsWith('  kata: the run filed on the hub'))
+  const end = paragraph.findIndex((l, i) => i > start && l.startsWith('  read back, its metadata patched'))
+  assert.ok(start >= 0 && end > start, `(e) [M3] the contract's kata paragraph is found: lines ${start}..${end}`)
+  assert.match(
+    paragraph.slice(start, end + 1).join(' '), /run issue.*force_new: true/,
+    '(e) [M3] the kata paragraph says the run issue is created with force_new: true'
+  )
+}
+
 seeded.ws.cleanup()
 bumped.ws.cleanup()
 

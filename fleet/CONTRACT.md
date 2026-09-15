@@ -183,7 +183,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   target become `-`) — one project per target and not one per run, so a name the hub already holds
   answers the existing project and this run files into it — one run issue (`run-N: <plan H1>`, body
   the plan's `**Claim:**` line, metadata `{run, target, base, closes}` — `closes` the numbers of the
-  `**Closes:**` line, `[]` when absent), one issue per task in wave order created under an
+  `**Closes:**` line, `[]` when absent — created with `force_new: true`, because the hub scores a
+  title against the project's open issues and a replayed plan's run issue differs from the earlier
+  run's only by N; the task creates carry no such field), one issue per task in wave order created under an
   `Idempotency-Key` `<target>:<plan sha>:task-<id>` (`<plan sha>` the plan text's git blob sha) whose
   create body is the same on every launch of that plan text — `task <id>: <title>`, empty body,
   metadata `{task, plan}`, no links, since kata fingerprints the key with those fields — and then

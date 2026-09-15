@@ -214,9 +214,17 @@ export const makeKataClient = ({ transport, actor }) => {
     // `idempotency_mismatch`. Metadata and initial links are in that
     // fingerprint — the create body a caller wants replayable carries only
     // what it can promise is stable.
-    createIssue: (projectId, { title, body, metadata, links, idempotencyKey } = {}) =>
+    //
+    // `forceNew` is the other 409's bypass: kata scores a create's title
+    // against the project's OPEN issues and refuses `duplicate_candidates`
+    // above a threshold it does not document (0.93 measured against a run
+    // issue of the same plan H1, #1008). It rides the body as `force_new: true`
+    // only when asked, so a create that is replayed under its key — a task's —
+    // sends the body kata fingerprinted the first time and never a new field.
+    createIssue: (projectId, { title, body, metadata, links, idempotencyKey, forceNew } = {}) =>
       mutation({ method: 'POST', path: issuesPath(projectId),
-                 body: { title, body, actor, metadata, links },
+                 body: { title, body, actor, metadata, links,
+                         ...(forceNew === undefined ? {} : { force_new: forceNew }) },
                  headers: idempotencyKey === undefined
                    ? {} : { 'Idempotency-Key': String(idempotencyKey) } }),
 
