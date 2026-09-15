@@ -100,7 +100,7 @@ const PROBES_MD = path.join(HERE, 'PROBES.md')
 
 // ── Context's literals, spelled once ────────────────────────────────────────
 
-/** The 22 fact ids Context lists, in that order. M1 is this list. */
+/** The 24 fact ids Context lists, in that order. M1 is this list. */
 const FACT_IDS = [
   'ping-version',               //  1
   'project-find-or-create',     //  2
@@ -115,15 +115,17 @@ const FACT_IDS = [
   'metadata-dotted-flat',       // 11
   'claim-if-unowned',           // 12
   'unassign-key',               // 13
-  'close-message-40',           // 14
-  'close-retry-protocol',       // 15
-  'close-superseded-evidence',  // 16
-  'ready-unowned',              // 17
-  'next-no-endpoint',           // 18
-  'labels-merge',               // 19
-  'events-issue-uid',           // 20
-  'issue-links-shape',          // 21
-  'purge-ladder',               // 22
+  'close-evidence-required',    // 14  (#1023, kata-close-evidence task 1)
+  'close-message-40',           // 15
+  'close-retry-protocol',       // 16
+  'close-superseded-evidence',  // 17
+  'ready-unowned',              // 18
+  'next-no-endpoint',           // 19
+  'labels-merge',               // 20
+  'events-issue-uid',           // 21
+  'issue-links-shape',          // 22
+  'archive-actor-required',     // 23  (#1023, kata-close-evidence task 1)
+  'purge-ladder',               // 24
 ]
 
 /** Not the hub's real version on purpose: M2 says the line and the stamps come
@@ -380,6 +382,11 @@ const makeFakeHub = ({
 
     // ── the archive (fact 22, and the cleanup's middle rung) ─────────────────
     if (call.method === 'DELETE' && rest.length === 2) {
+      // kata-close-evidence task 1: kata v0.17.2 validates the query before any
+      // state check — a DELETE naming no actor is 400 (#1023).
+      if (!query.get('actor')) {
+        return fail(400, 'actor_required', 'actor: required query parameter is missing')
+      }
       const open = openOf(project)
       if (open.length > 0) {
         return fail(409, 'project_has_open_issues',
@@ -643,6 +650,11 @@ const makeFakeHub = ({
           return fail(422, 'message_too_short',
             'a close message must be at least 40 characters')
         }
+        // kata-close-evidence task 1: a done close needs evidence (#1023).
+        if (b.reason === 'done' && !(Array.isArray(b.evidence) && b.evidence.length > 0)) {
+          return fail(400, 'evidence_required',
+            'evidence required for reason=done. Accepted: commit:<sha>, pr:<url>, test:<cmd>, reviewed-paths:<path>, external:<account>')
+        }
         issue.state = 'closed'
         issue.revision += 1
         event('issue.closed', { project_id: project.id, issue_uid: issue.uid, actor: b.actor })
@@ -755,9 +767,9 @@ await test('(g) [M5] importing the probe makes no request and writes no FACT lin
 // (a) [M1] the 22 ids, and one `holds` line each against the recorded hub
 // ════════════════════════════════════════════════════════════════════════════
 
-await test('(a) [M1] FACTS is Context\'s 22 {id, says} rows, in that order', () => {
+await test('(a) [M1] FACTS is Context\'s 24 {id, says} rows, in that order', () => {
   assert.deepEqual(FACTS.map((fact) => fact.id), FACT_IDS,
-    '(a) [M1] FACTS.map(f => f.id) deep-equals the 22 ids of Context in that order')
+    '(a) [M1] FACTS.map(f => f.id) deep-equals the 24 ids of Context in that order')
   for (const fact of FACTS) {
     assert.equal(typeof fact.says, 'string',
       `(a) [M1] FACTS row ${fact.id} carries its recorded reading as a \`says\` string`)
@@ -769,8 +781,8 @@ await test('(a) [M1] FACTS is Context\'s 22 {id, says} rows, in that order', () 
 await test('(a) [M1] against the recorded hub every fact holds, one line each, in FACTS order', async () => {
   const { hub, lines } = await runWith('holds', {})
   const facts = factLines(lines)
-  assert.equal(facts.length, 22,
-    '(a) [M1] the count of lines matching ^FACT equals 22 — ' +
+  assert.equal(facts.length, 24,
+    '(a) [M1] the count of lines matching ^FACT equals 24 — ' +
     `got ${facts.length}. ${diagnose(hub)}\n  lines:\n    ${lines.join('\n    ')}`)
   assert.deepEqual(idsOf(lines), FACT_IDS,
     '(a) [M1] one FACT line per FACTS entry, in FACTS order, and a FACT line for no other id. ' +
@@ -786,7 +798,7 @@ await test('(a) [M1] against the recorded hub every fact holds, one line each, i
     `got ${JSON.stringify(Object.fromEntries(FACT_IDS.map((id, at) => [id, one[at]])))}`)
   // Context's own tally line, after the FACT lines.
   const probe = lines.filter((line) => line.startsWith('PROBE:'))
-  assert.deepEqual(probe, ['PROBE: 22 facts, 0 drift, 0 unreadable'],
+  assert.deepEqual(probe, ['PROBE: 24 facts, 0 drift, 0 unreadable'],
     '(a) [Context] one PROBE: <n> facts, <d> drift, <u> unreadable line after the FACT lines — ' +
     `got: ${JSON.stringify(probe)}`)
 })
@@ -826,7 +838,7 @@ await test('(c) [M3] the all-holds run resolves exit 0, with a row per fact', as
 await test('(c) [M3] the second parent link answering 200 is one DRIFT line and exit 1', async () => {
   const { hub, lines, result } = await runWith('drift', { driftParentSecond: true })
   const facts = factLines(lines)
-  assert.equal(facts.length, 22,
+  assert.equal(facts.length, 24,
     `(c) [M3] a drifting fact is still one FACT line per id — got ${facts.length}. ${diagnose(hub)}`)
   assert.deepEqual(idsOf(lines), FACT_IDS,
     '(c) [M3] and still in FACTS order, with a FACT line for no other id')
@@ -847,7 +859,7 @@ await test('(c) [M3] the second parent link answering 200 is one DRIFT line and 
   assert.equal(result.exit, 1,
     `(c) [M3] exit is 1 when a fact drifts — got ${JSON.stringify(result.exit)}`)
   const probe = lines.filter((line) => line.startsWith('PROBE:'))
-  assert.deepEqual(probe, ['PROBE: 22 facts, 1 drift, 0 unreadable'],
+  assert.deepEqual(probe, ['PROBE: 24 facts, 1 drift, 0 unreadable'],
     `(c) [Context] the tally counts the one drift — got: ${JSON.stringify(probe)}`)
 })
 
@@ -941,13 +953,74 @@ await test('(e) [M4] the drift run ends the same ladder', async () => {
 })
 
 // ════════════════════════════════════════════════════════════════════════════
+// kata-close-evidence task 1 (#1023): every done close carries evidence and
+// every archive names its actor — legs (b) [M2] and (c) [M3] of that task.
+// ════════════════════════════════════════════════════════════════════════════
+
+const EVIDENCE_ENTRY = [{ type: 'test', command: 'node fleet/tests/probe_kata_facts.mjs' }]
+const isDoneClose = (call) => isClose(call) && call.body && call.body.reason === 'done'
+const isDelete = (call) => call.method === 'DELETE'
+const actorOf = (call) => new URLSearchParams(call.path.includes('?') ? call.path.split('?')[1] : '').get('actor')
+
+await test('(b) [M2] every done close but the deliberately bare one carries the test evidence entry', async () => {
+  const { hub } = await runWith('holds', {})
+  const done = hub.calls.filter(isDoneClose)
+  assert.ok(done.length >= 4, `(b) [M2] the all-holds run sends done closes — got ${done.length}`)
+  const bare = done.filter((call) => !(Array.isArray(call.body.evidence) && call.body.evidence.length > 0))
+  assert.equal(bare.length, 1,
+    `(b) [M2] exactly one done close carries empty evidence — got ${bare.length}: ${bare.map(shown).join(', ')}`)
+  const at = hub.calls.indexOf(bare[0])
+  assert.equal(String(bare[0].body.message).length, 48,
+    `(b) [M2] the bare close carries a 48-character message — got ${String(bare[0].body.message).length}`)
+  assert.equal(bare[0].body.retry_protocol, 'close-v1', '(b) [M2] the bare close carries retry_protocol close-v1')
+  assert.deepEqual(bare[0].body.evidence, [], '(b) [M2] the bare close carries evidence []')
+  const next = hub.calls.slice(at + 1).find(isDoneClose)
+  assert.ok(next && bareOf(next.path) === bareOf(bare[0].path),
+    `(b) [M2] the close after the bare one is on the same issue — got ${shown(next)}`)
+  assert.deepEqual(next.body.evidence, EVIDENCE_ENTRY, '(b) [M2] and it carries the one test entry')
+  const first = done.filter((call) => call !== bare[0]).find((call) =>
+    JSON.stringify(call.body.evidence) !== JSON.stringify(EVIDENCE_ENTRY))
+  assert.equal(first, undefined,
+    `(b) [M2] every other done close carries exactly the test entry — first to fail: ${shown(first)} ` +
+    `with ${first ? JSON.stringify(first.body.evidence) : ''}`)
+  // The bare close is close-evidence-required's: it comes before close-message-40's first close.
+  const line = (await runWith('holds', {})).lines.find((l) => l.startsWith('FACT close-evidence-required:'))
+  assert.match(String(line), /^FACT close-evidence-required: holds — 400, 200\b/,
+    `(b) [M2] close-evidence-required reads 400 then 200 — got ${JSON.stringify(line)}`)
+})
+
+await test('(c) [M3] exactly one DELETE names no actor — archive-actor-required\'s — and the ladder still completes', async () => {
+  const { hub, lines, result } = await runWith('holds', {})
+  const deletes = hub.calls.filter(isDelete)
+  const bare = deletes.filter((call) => !actorOf(call))
+  assert.equal(bare.length, 1,
+    `(c) [M3] exactly one DELETE has no actor query — got ${bare.length}: ${bare.map(shown).join(', ')}`)
+  assert.equal(bareOf(bare[0].path), `/api/v1/projects/${hub.projectId()}`,
+    `(c) [M3] the bare DELETE is on the project — got ${shown(bare[0])}`)
+  const carried = deletes.filter((call) => call !== bare[0])
+  assert.equal(carried.length, 2, `(c) [M3] two DELETEs carry the actor: the open-issue step and the archive — got ${carried.length}`)
+  for (const call of carried) {
+    assert.equal(actorOf(call), ACTOR, `(c) [M3] ${shown(call)} carries actor=${ACTOR}, the run's own actor`)
+  }
+  const line = lines.find((l) => l.startsWith('FACT archive-actor-required:'))
+  assert.match(String(line), /^FACT archive-actor-required: holds — 400\b/,
+    `(c) [M3] archive-actor-required reads 400 — got ${JSON.stringify(line)}`)
+  assert.equal(result.exit, 0, `(c) [M3] the all-holds run resolves exit 0 — got ${JSON.stringify(result.exit)}`)
+  const last = hub.calls[hub.calls.length - 1]
+  assert.ok(isPurge(last) && header(last.headers, 'X-Kata-Confirm') === `PURGE ${hub.projectName()}`,
+    `(c) [M3] the run still ends on the confirmed purge — got ${shown(last)}`)
+  assert.equal(actorOf(hub.calls[hub.calls.length - 2]), ACTOR,
+    '(c) [M3] the archive two requests before the purge carries the actor')
+})
+
+// ════════════════════════════════════════════════════════════════════════════
 // (f) [M4] a purge that fails names the project left behind, and is exit 2
 // ════════════════════════════════════════════════════════════════════════════
 
 await test('(f) [M4] a confirmed purge answering 500 is exit 2 and a `left behind` last line', async () => {
   const { hub, lines, result } = await runWith('purge-500', { purgeStatus: 500 })
   const facts = factLines(lines)
-  assert.equal(facts.length, 22,
+  assert.equal(facts.length, 24,
     `(f) [M4] every fact is still read — got ${facts.length} FACT lines. ${diagnose(hub)}`)
   const notHolds = facts.filter((line) => !/^FACT [^:]+: holds\b/.test(line))
   assert.deepEqual(notHolds, [],

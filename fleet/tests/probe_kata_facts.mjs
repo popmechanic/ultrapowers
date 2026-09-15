@@ -1,4 +1,4 @@
-// fleet/tests/probe_kata_facts.mjs — the fleet's 22 kata facts, re-read against
+// fleet/tests/probe_kata_facts.mjs — the fleet's 24 kata facts, re-read against
 // the live hub, one line per fact, each stamped with the version it was read on.
 //
 // NOT named test_*.mjs on purpose: `tests/test_fleet_suite.py` globs `test_*.mjs`,
@@ -60,7 +60,17 @@ const API = '/api/v1'
 const DEFAULT_ACTOR = 'probe-kata-facts'
 
 /**
- * The 22 facts, in the order they are read. `says` is the reading the fleet
+ * The evidence every `done` close carries — kata v0.17.2 refuses a `done` close
+ * whose `evidence` is empty (`evidence required for reason=done`, #1023), and
+ * the `test` shape is the one the engine already sends. One entry, on every
+ * done close but the deliberately bare one `close-evidence-required` reads.
+ */
+const EVIDENCE = Object.freeze([
+  Object.freeze({ type: 'test', command: 'node fleet/tests/probe_kata_facts.mjs' }),
+])
+
+/**
+ * The 24 facts, in the order they are read. `says` is the reading the fleet
  * holds today — the sentence a drift line quotes back — and the ids are the
  * shared literal the hand-read rows in `fleet/RUNBOOK.md` carry row for row.
  */
@@ -91,6 +101,8 @@ export const FACTS = Object.freeze([
     says: 'claim {if_unowned:true} on an owned issue is 409 already_claimed with error.data.current_owner' },
   { id: 'unassign-key',
     says: 'unassign {expect_owner} is 400 naming expect_owner as unexpected — the documented key is expected_owner' },
+  { id: 'close-evidence-required',
+    says: 'a done close whose evidence is [] is 400 evidence required for reason=done, and the same body with one test entry is 200' },
   { id: 'close-message-40',
     says: 'a close whose message is 39 characters is refused with a 4xx, and the same body with 40 characters is 200' },
   { id: 'close-retry-protocol',
@@ -107,8 +119,10 @@ export const FACTS = Object.freeze([
     says: 'GET /events is 200 and its issue.created rows carry issue_uid, while project.created carries none' },
   { id: 'issue-links-shape',
     says: 'GET /api/v1/issues/<uid> answers links as rows {id, type, from:{uid, short_id}, to:{uid, short_id}}' },
+  { id: 'archive-actor-required',
+    says: 'DELETE /api/v1/projects/<id> with no actor query parameter is 400 actor: required query parameter is missing' },
   { id: 'purge-ladder',
-    says: 'purge with no header is 412 confirm_required, confirmed but unarchived is 409 project_not_archived, DELETE with an open issue is refused, and after every close the archive is 200' },
+    says: 'purge with no header is 412 confirm_required, confirmed but unarchived is 409 project_not_archived, DELETE ?actor= with an open issue is refused, and after every close the archive DELETE ?actor= is 200' },
 ])
 
 // ── Small readings of an answer ─────────────────────────────────────────────
@@ -161,7 +175,7 @@ const closeMessage = (n) => CLOSE_TEXT.slice(0, n)
 // ── The probe ───────────────────────────────────────────────────────────────
 
 /**
- * Read all 22 facts against `transport` and write one line per fact through
+ * Read all 24 facts against `transport` and write one line per fact through
  * `log`.
  *
  * `transport` is the seam `fleet/kata-client.mjs` defines — `request({method,
@@ -268,7 +282,7 @@ export const probeKataFacts = async ({
     return { expect, method: spec.method, path: spec.path, status: res.status, json: res.json }
   }
 
-  // ── The 22 readings ───────────────────────────────────────────────────────
+  // ── The 24 readings ───────────────────────────────────────────────────────
   //
   // Each reader answers `{ steps, note }`: the scored steps, and the half of the
   // reading that is the answer's SHAPE, echoed into the line for the human.
@@ -438,13 +452,26 @@ export const probeKataFacts = async ({
       return { steps: [refused], note: 'expect_owner' }
     },
 
+    'close-evidence-required': async () => {
+      const made = await create(name + ' — the bare-evidence close', { forceNew: true })
+      const at = issuePath(someUid(uidOf(made.json))) + '/actions/close'
+      const close = (evidence) => ({
+        method: 'POST',
+        path: at,
+        body: { actor, reason: 'done', message: closeMessage(48), evidence, retry_protocol: 'close-v1' },
+      })
+      const bare = await step(400, close([]))
+      const carried = await step(200, close(EVIDENCE))
+      return { steps: [bare, carried], note: 'evidence [] then one test entry' }
+    },
+
     'close-message-40': async () => {
       const made = await create(name + ' — the short-message close', { forceNew: true })
       const at = issuePath(someUid(uidOf(made.json))) + '/actions/close'
       const close = (message) => ({
         method: 'POST',
         path: at,
-        body: { actor, reason: 'done', message, evidence: [], retry_protocol: 'close-v1' },
+        body: { actor, reason: 'done', message, evidence: EVIDENCE, retry_protocol: 'close-v1' },
       })
       const short = await step(400, close(closeMessage(39)))
       const long = await step(200, close(closeMessage(40)))
@@ -455,7 +482,7 @@ export const probeKataFacts = async ({
       const made = await create(name + ' — the keyed close', { forceNew: true })
       const at = issuePath(someUid(uidOf(made.json))) + '/actions/close'
       const headers = { 'Idempotency-Key': name + '-close-retry-protocol' }
-      const body = { actor, reason: 'done', message: closeMessage(48), evidence: [] }
+      const body = { actor, reason: 'done', message: closeMessage(48), evidence: EVIDENCE }
       const bare = await step(400, { method: 'POST', path: at, headers, body })
       const named = await step(200, {
         method: 'POST', path: at, headers, body: { ...body, retry_protocol: 'close-v1' },
@@ -537,13 +564,22 @@ export const probeKataFacts = async ({
     // purge is deliberately NOT one of these steps: it is the removal, and
     // whether the project was left behind is an exit code and a last line, not
     // a fact about the hub's shape.
+    'archive-actor-required': async () => {
+      // Read while the issues are still open: the hub validates the missing
+      // parameter before any state check, so the bare read is a 400 and not
+      // the ladder's open-issue refusal.
+      const refused = await step(400, { method: 'DELETE', path: projectsPath })
+      return { steps: [refused], note: 'no actor query' }
+    },
+
     'purge-ladder': async () => {
       const purgePath = projectsPath + '/actions/purge'
+      const archivePath = projectsPath + '?actor=' + encodeURIComponent(actor)
       const bare = await step(412, { method: 'POST', path: purgePath, body: { actor } })
       const unarchived = await step(409, {
         method: 'POST', path: purgePath, headers: { 'X-Kata-Confirm': 'PURGE ' + name }, body: { actor },
       })
-      const open = await step(400, { method: 'DELETE', path: projectsPath })
+      const open = await step(400, { method: 'DELETE', path: archivePath })
 
       // One close per ISSUE THE HUB CREATED, naming each exactly once — a close
       // on an issue a fact already closed is filed all the same, so the block is
@@ -557,13 +593,13 @@ export const probeKataFacts = async ({
             actor,
             reason: 'done',
             message: closeMessage(48),
-            evidence: [],
+            evidence: EVIDENCE,
             retry_protocol: 'close-v1',
           },
         })
       }
 
-      const archive = await step(200, { method: 'DELETE', path: projectsPath })
+      const archive = await step(200, { method: 'DELETE', path: archivePath })
       state.archived = is2xx(archive.status)
       const codeOf = (one) => ((one.json && one.json.error) || {}).code || 'absent'
       return {
