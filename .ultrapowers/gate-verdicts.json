@@ -1,0 +1,102 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "4e40b3e201119921bac54e310e69e825e3bded79ea58437d0729bb051497a7e5",
+   "verdict": "pass",
+   "reason": "M2 and M3 are falsified by legs (b), (c) and (e), which pin the driver:amendment rows' fields, count and position against driver:proof-run and the report's amendments array including [] with the key present."
+  },
+  "2": {
+   "hash": "5e918785e7b8a2965f9b50ea2e6b4bec53ca3519c2e075c45ae043b06f5f1874",
+   "verdict": "pass",
+   "reason": "M1 by leg (a)'s exact-string equality including the empty cases, M2 by legs (b)-(e)'s count/index/order checks, M3's six rows by the ordered greps over the numbered rules and EXAM CONCERN ranges."
+  },
+  "3": {
+   "hash": "b32c8335bc400feca59e9414213c204fb7227bdf6d42af71e42c283c786d6156",
+   "verdict": "pass",
+   "reason": "Leg (a) renders two amendments rows beside one deferred:external ack and pins the Amendments line strictly after Residuals: 1 from review and its errand line; leg (c) holds the BASE residual path unchanged."
+  },
+  "4": {
+   "hash": "d213570776c5df479042d06d06e14f7c7d0c939a8b376a4e6f11d17a6a7431d3",
+   "verdict": "pass",
+   "reason": "(a) pins the column position and the 3/-/- cells for M2, (b) the amendments= suffix for M3, (c)+(d) the exact api report reads and the unwritten 132 file for M1, and M4's 19 def test_ functions is the BASE count."
+  },
+  "5": {
+   "hash": "868c0ed80eedf57eae0ca51bed7b51062618f1dbffe4b89a390295a9fe63ae30",
+   "verdict": "pass",
+   "reason": "Each clause is falsified by its ordered grep: M1 the doctrine bullet after the Ballast sentence, M2 the new paragraph and the surviving Run:..sibling edge, M3 the retitled run-2 row, M4 the validator's exit."
+  }
+ },
+ "tally": {
+  "dispatched": 9,
+  "rejected": 3,
+  "rounds": [
+   {
+    "round": 1,
+    "verdicts": {
+     "1": "pass",
+     "2": "pass",
+     "3": "fail",
+     "4": "fail",
+     "5": "pass"
+    },
+    "note": "task 4's fail and half of task 3's were a short --base sha making the extractor report every file absent; task 3's other half was real: no leg exercised a non-empty residual list"
+   },
+   {
+    "round": 2,
+    "verdicts": {
+     "3": "fail",
+     "4": "pass"
+    },
+    "note": "task 3's fixture used a done task's note, which counts but renders no errand line at BASE"
+   },
+   {
+    "round": 3,
+    "verdicts": {
+     "3": "pass"
+    }
+   }
+  ],
+  "base": "41cb53b606146ee16f7904eaf0440531257426f1"
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "3",
+   "hash": "232a5f5491a14a817f28f461751cbf3ed5b3c9c870040ff4a9f0cdcace4d853b",
+   "verdict": "fail"
+  },
+  {
+   "round": 1,
+   "task": "4",
+   "hash": "d213570776c5df479042d06d06e14f7c7d0c939a8b376a4e6f11d17a6a7431d3",
+   "verdict": "fail"
+  },
+  {
+   "round": 2,
+   "task": "3",
+   "hash": "0cda8effec272bbb60ecee7208f5ad4efc23b8bb2e36862d4c0f39bd9ed0aaf3",
+   "verdict": "fail"
+  }
+ ],
+ "authoring": {
+  "minutes": 9,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "note": "minutes are the afternoon gate sitting (11:04-11:13 PT); the plan and its Claim touch were the morning sitting, all Recommended options taken there, unmeasured",
+  "questions": [
+   {
+    "question": "Afternoon sequence (sweep, probe, gate now)",
+    "options": [
+     "Sweep and probe now, gate at 1 PM",
+     "Try the gate now",
+     "Wait idle until 1 PM"
+    ],
+    "recommended": "Sweep and probe now, gate at 1 PM",
+    "picked": "Try the gate now"
+   }
+  ]
+ }
+}
