@@ -62,6 +62,10 @@ import { failingBlock } from './failing-block.mjs'
 // of the project's own test paths. One module, because the engine, the
 // examiner's prompt and `fleet/strip-exams.sh` all have to agree on the slug.
 import { examSlug, reservedExamPath } from './exam-paths.mjs'
+// The reading a run that changed the engine leaves behind (#992): which of the
+// lines it changed an engine sim reached. Taken once, after the last fold, and
+// read by nothing below — see the call site beside `coverage`.
+import { engineCoverage } from './engine-coverage.mjs'
 
 // ── which tests went red (#871 decisions 1 and 4) ────────────────────────────
 // `failingBlock` above answers "what does the failure read like"; this answers
@@ -4324,6 +4328,39 @@ export async function runEngine({
   const tasksPlanned = WAVES.flat().length
   const coverage = { tasks_merged: mergedBranches.size, tasks_planned: tasksPlanned,
                      complete: mergedBranches.size >= tasksPlanned }
+
+  // ── the engine's own coverage reading (#992 desired state 1) ──────────────
+  // A run that changed `fleet/run-engine.mjs` says which of the lines it
+  // changed an engine sim actually ran, and which none did. A READING beside
+  // the receipt and nothing more: it is computed after the last fold, it is
+  // read by no branch below, and `tests`, `coverage` and the merge decision on
+  // the same tree are what they would have been without it. `null` on every
+  // other run — a run that left the engine alone, and a run whose integration
+  // tree holds no engine sim to read it with. Every failure here is swallowed
+  // for the same reason: a reading that cannot be taken is `null`, never a red.
+  let engineCoverageReading = null
+  try {
+    const touched = await exec('git', ['diff', '--name-only', baseSha, 'HEAD', '--',
+      'fleet/run-engine.mjs'], { cwd: integ })
+    const names = String(touched.stdout || '').split('\n').map((s) => s.trim())
+    if (touched.code === 0 && names.includes('fleet/run-engine.mjs')) {
+      const engineSims = fs.readdirSync(path.join(integ, 'fleet', 'tests'))
+        .filter((n) => /^test_run_engine_.*\.mjs$/.test(n))
+        .map((n) => 'fleet/tests/' + n)
+        .sort()
+      if (engineSims.length) {
+        engineCoverageReading = await engineCoverage({
+          tree: integ,
+          base: baseSha,
+          head: await git(['rev-parse', 'HEAD'], integ),
+          file: 'fleet/run-engine.mjs',
+          sims: engineSims,
+          width: W,
+        })
+      }
+    }
+  } catch { /* a reading, never a gate */ }
+
   const failedIds = taskResults.filter((t) => t.status === 'failed').map((t) => t.task)
   const blockedIds = unfinished
     .map((u) => (typeof u === 'string' ? u.split(/[:\s]/)[0] : (u && u.task)))
@@ -4408,6 +4445,10 @@ export async function runEngine({
     waveMerges,
     frontier,
     coverage,
+    // Which of the engine lines this run changed a sim reached, and which none
+    // did (#992) — the M1 object on a run that changed the engine with sims to
+    // read it, `null` on every other. A reading; it gates nothing.
+    engineCoverage: engineCoverageReading,
     missingDeliverables,
     gitVerified,
     ancestryMisses,
