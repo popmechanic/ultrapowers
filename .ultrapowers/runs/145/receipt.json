@@ -1,0 +1,444 @@
+{
+  "ok": true,
+  "stamp": "run-145",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-145"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "4 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The compiler validates the authoring record and prints one AUTHORING fact line",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/scripts/compile_plan.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`gate_verdict_violations(plan_path, tasks)`",
+            "`verdicts_path(plan_path)`"
+          ],
+          "produces": [
+            "`authoring_record_violations(plan_path) -> list[str]`",
+            "`authoring_fact_line(plan_path) -> str`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The authoring census reads a release's runs into one table and prints the register",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrawrite/scripts/authoring_census.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing"
+          ],
+          "produces": [
+            "`census_rows(root: Path) -> list[dict]`",
+            "`render_table(rows: list[dict]) -> str`",
+            "`render_register(rows: list[dict]) -> str`",
+            "`fetch_runs(target: str, first: int, last: int, into: Path, gh: str) -> list[int]`"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "ultrawrite and CLAUDE.md say the Claim is drafted then confirmed, and the record carries every question with its pick",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "CLAUDE.md",
+          "skills/ultrawrite/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "The launcher carries the AUTHORING fact line onto the launch line",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/RUNBOOK.md",
+          "fleet/launch.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing"
+          ],
+          "produces": [
+            "`verifyPlanCompiles({ exec, repoDir, base, planPath, planText }) -> string[]`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The compiler validates the authoring record and prints one AUTHORING fact line",
+          "files": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "tests/test_authoring_record.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`gate_verdict_violations(plan_path, tasks)`",
+              "`verdicts_path(plan_path)`"
+            ],
+            "produces": [
+              "`authoring_record_violations(plan_path) -> list[str]`",
+              "`authoring_fact_line(plan_path) -> str`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrapowers/scripts/compile_plan.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_authoring_record.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_authoring_record.py",
+          "proofRuns": [
+            "python3 -m pytest -q tests/test_authoring_record.py",
+            "python3 skills/ultrapowers/scripts/compile_plan.py --check evals/fixtures/claims/plan.md | grep -q '^PLAN OK$'",
+            "test \"$(python3 skills/ultrapowers/scripts/compile_plan.py --check evals/fixtures/claims/plan.md | grep -c 'AUTHORING fact:')\" = 0",
+            "python3 -m pytest -q tests/test_compile_plan_edges.py"
+          ],
+          "proofGuards": [
+            "tests/test_authoring_record.py"
+          ],
+          "factsheet": {
+            "files": [
+              "skills/ultrapowers/scripts/compile_plan.py",
+              "tests/test_authoring_record.py"
+            ],
+            "deletes": [],
+            "guards": [
+              "tests/test_authoring_record.py"
+            ],
+            "proofTests": [
+              "tests/test_authoring_record.py"
+            ],
+            "landing": {
+              "tests/test_authoring_record.py": "tests/test_authoring_record.py"
+            },
+            "driverOwned": [
+              "tests/test_authoring_record.py"
+            ],
+            "siblingOwned": [
+              "CLAUDE.md",
+              "fleet/RUNBOOK.md",
+              "fleet/launch.mjs",
+              "fleet/tests/test_launch_compile_facts.mjs",
+              "skills/ultrawrite/SKILL.md",
+              "skills/ultrawrite/scripts/authoring_census.py",
+              "tests/test_authoring_census.py"
+            ],
+            "produces": [
+              "`authoring_record_violations(plan_path) -> list[str]`",
+              "`authoring_fact_line(plan_path) -> str`"
+            ],
+            "consumes": [
+              "`gate_verdict_violations(plan_path, tasks)`",
+              "`verdicts_path(plan_path)`"
+            ]
+          }
+        },
+        {
+          "id": "2",
+          "title": "The authoring census reads a release's runs into one table and prints the register",
+          "files": [
+            "skills/ultrawrite/scripts/authoring_census.py",
+            "tests/test_authoring_census.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing"
+            ],
+            "produces": [
+              "`census_rows(root: Path) -> list[dict]`",
+              "`render_table(rows: list[dict]) -> str`",
+              "`render_register(rows: list[dict]) -> str`",
+              "`fetch_runs(target: str, first: int, last: int, into: Path, gh: str) -> list[int]`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrawrite/scripts/authoring_census.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_authoring_census.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_authoring_census.py",
+          "proofRuns": [
+            "python3 -m pytest -q tests/test_authoring_census.py",
+            "python3 skills/ultrawrite/scripts/authoring_census.py --help | grep -q -- '--register'"
+          ],
+          "proofGuards": [
+            "tests/test_authoring_census.py"
+          ],
+          "factsheet": {
+            "files": [
+              "skills/ultrawrite/scripts/authoring_census.py",
+              "tests/test_authoring_census.py"
+            ],
+            "deletes": [],
+            "guards": [
+              "tests/test_authoring_census.py"
+            ],
+            "proofTests": [
+              "tests/test_authoring_census.py"
+            ],
+            "landing": {
+              "tests/test_authoring_census.py": "tests/test_authoring_census.py"
+            },
+            "driverOwned": [
+              "tests/test_authoring_census.py"
+            ],
+            "siblingOwned": [
+              "CLAUDE.md",
+              "fleet/RUNBOOK.md",
+              "fleet/launch.mjs",
+              "fleet/tests/test_launch_compile_facts.mjs",
+              "skills/ultrapowers/scripts/compile_plan.py",
+              "skills/ultrawrite/SKILL.md",
+              "tests/test_authoring_record.py"
+            ],
+            "produces": [
+              "`census_rows(root: Path) -> list[dict]`",
+              "`render_table(rows: list[dict]) -> str`",
+              "`render_register(rows: list[dict]) -> str`",
+              "`fetch_runs(target: str, first: int, last: int, into: Path, gh: str) -> list[int]`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "3",
+          "title": "ultrawrite and CLAUDE.md say the Claim is drafted then confirmed, and the record carries every question with its pick",
+          "files": [
+            "CLAUDE.md",
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "CLAUDE.md",
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^## Elicit the claim/,/^## Authoring a queue/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'drafted, then confirmed.*drafted by the author.*confirmed by the operator.*one touch.*(elicited).*without a (Recommended).*recommended.*null'",
+            "grep -q '^## Elicit the claim \u2014 drafted, then confirmed$' skills/ultrawrite/SKILL.md",
+            "test \"$(grep -c countersigning skills/ultrawrite/SKILL.md)\" = 0",
+            "test \"$(grep -c countersigning CLAUDE.md)\" = 0",
+            "sed -n '/^## Elicit the claim/,/^## Authoring a queue/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'picked on every plan.*retired.*#727'",
+            "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'authoring.*minutes.*probes.*routing.*questions.*handoff.*authoring_census.py.*--fetch.*totals:'",
+            "sed -n '/^## Execution handoff/,/^## Self-review/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'routing.*branch.*lane'",
+            "sed -n '/^## Working with the operator/,/^## Conventions/p' CLAUDE.md | tr '\\n' ' ' | grep -q 'drafted by the author.*confirmed by the operator.*one touch'",
+            "sed -n '/^- \\*\\*Every choice is an AskUserQuestion\\*\\*/,/^- \\*\\*Test doctrine/p' CLAUDE.md | tr '\\n' ' ' | grep -q 'every.*question.*recorded.*pick.*authoring.*record.*pick rate.*per release'",
+            "wc -w skills/ultrawrite/SKILL.md"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "CLAUDE.md",
+              "skills/ultrawrite/SKILL.md"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [
+              "fleet/RUNBOOK.md",
+              "fleet/launch.mjs",
+              "fleet/tests/test_launch_compile_facts.mjs",
+              "skills/ultrapowers/scripts/compile_plan.py",
+              "skills/ultrawrite/scripts/authoring_census.py",
+              "tests/test_authoring_census.py",
+              "tests/test_authoring_record.py"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        },
+        {
+          "id": "4",
+          "title": "The launcher carries the AUTHORING fact line onto the launch line",
+          "files": [
+            "fleet/RUNBOOK.md",
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch_compile_facts.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing"
+            ],
+            "produces": [
+              "`verifyPlanCompiles({ exec, repoDir, base, planPath, planText }) -> string[]`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/RUNBOOK.md",
+            "fleet/launch.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_launch_compile_facts.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_launch_compile_facts.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_launch_compile_facts.mjs | grep -q 'ALL TESTS PASSED'",
+            "sed -n '/^## Per run/,/^## States/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'BASE fact:.*STALE fact:.*AUTHORING fact:.*launch line'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_launch_compile_facts.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/RUNBOOK.md",
+              "fleet/launch.mjs",
+              "fleet/tests/test_launch_compile_facts.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_launch_compile_facts.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_launch_compile_facts.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_launch_compile_facts.mjs": "fleet/tests/test_launch_compile_facts.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_launch_compile_facts.mjs"
+            ],
+            "siblingOwned": [
+              "CLAUDE.md",
+              "skills/ultrapowers/scripts/compile_plan.py",
+              "skills/ultrawrite/SKILL.md",
+              "skills/ultrawrite/scripts/authoring_census.py",
+              "tests/test_authoring_census.py",
+              "tests/test_authoring_record.py"
+            ],
+            "produces": [
+              "`verifyPlanCompiles({ exec, repoDir, base, planPath, planText }) -> string[]`"
+            ],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "4 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- No engine, boot, worker, role, kernel or publish changes; the edits are confined to the compiler, the new census script, the launcher's compile passthrough, the two documents and the runbook.\n- A gate record without an `authoring` key is read exactly as at BASE: no new refusal, no changed hash, no changed verdict reading \u2014 every existing `*.gate-verdicts.json` fixture still compiles, and a bare `--check` prints nothing it did not print at BASE.\n- The record shape is one literal in every task's Context, and every implementation agrees with it byte for byte: field names, the four routing branches, the three lanes, the fact line.\n- Every sim keeps printing `ALL TESTS PASSED` on its last line and names no sibling sim.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-waves.mjs fleet/run-worker.mjs fleet/run-main.mjs fleet/sandbox-boot.sh fleet/publish-fold-block.mjs fleet/roles skills/ultrapowers/kernel",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-145/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-145/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-145/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-145/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
