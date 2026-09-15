@@ -65,7 +65,8 @@ conflict. Keep both markers in the contiguous run directly under the heading.
   pushes, deploys, or waits on a human is its own `release`/`manual` task.
 - `**Review:**` — optional, `peer` or `lean`, kept for the record. Since the engine plan of
   2026-09-14 (PR #974) every task gets exactly one reviewer and one fix round whatever the
-  value says; the pair `peer` used to buy is gone on its reading (8 marginal findings in 71 runs).
+  value says; the pair `peer` used to buy is gone on its reading (8 marginal findings,
+  n=71 runs through 2026-09-13, #964).
 - There is no `Tier` plan marker. Tier is a signed field of the *intent document* (One
   Driver spec §7), a spend authority — never written on a task here.
 - `Depends-on` and `Commutes` lines are refused outright. Ordering is derived from
@@ -238,9 +239,9 @@ choice found mid-authoring comes back as a question, not as a guess.
 
 Hold the operator to one Claim confirmation and one execute choice per plan, each asked
 with AskUserQuestion. Launches stay serial: N plans are N launches back to back, because
-concurrent launches race on the run number (#667). The 2026-09-05 clock census of runs
-10–12 found authoring throughput, not the sandbox, was the first bound on how many runs
-could be live at once — a queue authored in parallel is what lifts it.
+concurrent launches race on the run number (#667). The clock census (n=3 runs, runs
+10–12, 2026-09-05) found authoring throughput, not the sandbox, was the first bound on
+how many runs could be live at once — a queue authored in parallel is what lifts it.
 
 ## The proof gate — before any compile
 
@@ -301,8 +302,9 @@ path to write beside. A task whose verdict lands first gets its next
 reader the moment its Claim or Proof is edited: re-extract that one task with
 `extract_gate_input.py`, dispatch one reader for it, and do not wait for the round's
 other verdicts to arrive — the verdict is still keyed on the hash, so the edit is what
-re-dispatches, and a round boundary buys nothing. Measured 2026-09-04: the four wide
-rounds took 13 of the 22 minutes; rounds five through nine were one or two tasks apiece,
+re-dispatches, and a round boundary buys nothing. Measured 2026-09-04 (n=1 sitting,
+9 rounds): the four wide rounds took 13 of the 22 minutes; rounds five through nine were
+one or two tasks apiece,
 each of them idle behind a barrier it did not need.
 
 Then resolve provenance and compile:
@@ -393,9 +395,9 @@ Independence is a property of contracts, not of files.
    B needs A's *runtime behaviour*, not A's shape — something no contract can promise.
    Name that behaviour in B's Context, in one sentence. "At this size", "a good engineer
    would keep this together" and "it is one file" are not reasons: same-file edits fold,
-   and size is what width is for. Measured 2026-09-02: the same tool built as a two-task
-   chain took 79 min with one fix round; as nine contracts, seven wide, it took 49.5 min
-   with none (#541).
+   and size is what width is for. Measured 2026-09-02 (n=2 runs, one pair): the same tool
+   built as a two-task chain took 79 min with one fix round; as nine contracts, seven
+   wide, it took 49.5 min with none (#541).
 3. **State the width.** The plan's `**Parallelization rationale:**` line names each
    wave's width and every chain longer than one with its sentence from rule 2. Concluding
    that a plan is genuinely linear is still a legal outcome — it just has to say why.
@@ -412,7 +414,8 @@ Independence is a property of contracts, not of files.
    five lines any order would have satisfied. Give each such task its **own region or
    file**: a registration is a new file discovered by glob, never an appended line.
 5. **Prefer several small concurrent plans** folding into one frontier over one large plan
-   (N=3 drains measured 0.26× batch). Until that fold lands (Tier 2), an effort split
+   (0.26× batch wall, n=1 drain of 3 runs, #454, 2026-09-01). Until that fold lands
+   (Tier 2), an effort split
    across plans gives the **final** plan an integration-spanning acceptance — per-phase
    green never establishes integrated green — or declares the gap explicitly at the final
    gate. Never silently.
@@ -510,3 +513,8 @@ author's own to check — nothing prints it.
 - No pinned number is a guess: every pinned literal was computed, not assumed — the author
   ran the command or did the arithmetic at BASE and pasted back what it printed, rather
   than the figure the sentence wanted to be true.
+- Every reading a plan's Context or Summary cites carries `n=… (window)` — `n=9 merged
+  runs (131–140)`, never a bare count — and a plan whose default flip rests on a reading
+  under the floor says `experiment` in its Summary and names its `rollback` there; the
+  floor is `CLAUDE.md`'s `Test doctrine` bullet (n = 5 runs, 20 tasks for a per-task
+  reading).

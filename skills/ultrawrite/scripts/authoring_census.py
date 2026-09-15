@@ -181,8 +181,18 @@ def _sum(rows, key):
                if isinstance(row.get(key), int) and not isinstance(row[key], bool))
 
 
+def _window(rows):
+    """The runs the census was read over: `<lowest>..<highest>`, `-` when no
+    row was found. `census_rows` sorts by run number, so the ends are the
+    first and last row."""
+    if not rows:
+        return MISSING
+    return "%d..%d" % (rows[0]["run"], rows[-1]["run"])
+
+
 def _totals_line(rows):
-    """The table's last line: the release read as one number per question.
+    """The table's last line: the release read as one number per question,
+    over the window of runs it read (`runs=`, after `plans=`).
 
     `risk_override` is over the rows that carry a routing record at all — a
     pre-plan record has no branch and is no part of the denominator — and the
@@ -195,9 +205,10 @@ def _totals_line(rows):
             p, q = row["recommended_picked"]
             picked += p
             offered += q
-    return ("totals: plans=%d risk_override=%d/%d recommended_picked=%d/%d "
-            "authoring_min=%d run_min=%d"
-            % (len(rows), len(risk), len(routed), picked, offered,
+    return ("totals: plans=%d runs=%s risk_override=%d/%d "
+            "recommended_picked=%d/%d authoring_min=%d run_min=%d"
+            % (len(rows), _window(rows), len(risk), len(routed),
+               picked, offered,
                _sum(rows, "authoring_min"), _sum(rows, "run_min")))
 
 
