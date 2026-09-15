@@ -1,0 +1,201 @@
+{
+  "integrationBranch": "ultra/integration-run-145",
+  "baseSha": "e0526443db3ea88a6e91d39f89234e295d1b1fa5",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3",
+      "4"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "4",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "45ded1f08f0ab9aa67adba57e0fbecee366a7f92",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-145/patches/task-4.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the end-to-end Claim (\"the launch line tells me what authoring it cost\") depends on the compiler actually emitting an `AUTHORING fact:` line under `--check --base`, which is sibling task 1's work (skills/ultrapowers/scripts/compile_plan.py). This patch settles only the launcher half: legs (a)-(c) drive `verifyPlanCompiles`/`renderLaunch` through this file's own `fakeExec`, so they prove the passthrough carries whatever the compiler prints, not that the compiler prints it. The literal used in the exam (`AUTHORING fact: 118 min to PLAN OK, 12 hub probes, 4 gate dispatches, 1 rejected, routing risk->ultrapowers, 1 questions, 1/1 recommended picked`) and in the RUNBOOK sentence both match the Context's shared literal byte for byte, so the halves agree on paper. What would settle it: an integration run of `node fleet/launch.mjs` (or a compile of a plan whose record carries `authoring`) against the merged tree, after task 1 lands. Grading minor because no edit inside this task's FILES can establish it.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "landedAt": 1789491271627,
+      "stateExams": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "dfef96150f7ff295d55db0a7021d486914390802",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-145/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: cross-task reference. Both edited documents now name a file that does not exist at BASE and is created by sibling task 2 (`skills/ultrawrite/scripts/authoring_census.py`): CLAUDE.md's `skills/ultrawrite/` Layout bullet (\"`scripts/authoring_census.py` (`--fetch` a run range, `totals:` for the release notes)\") and SKILL.md's proof-gate paragraph (\"`python3 $UW/authoring_census.py --fetch <owner>/<repo> --runs <A>..<B> --into <dir>`\"). This task's Context explicitly authorizes naming it, and no exam in this task or in the tree pins the path's existence, so nothing here blocks; the prose becomes accurate only once task 2 lands in the same fold. What would settle it: the merged tree carrying `skills/ultrawrite/scripts/authoring_census.py` with a `--fetch`/`--runs`/`--into` interface and a `totals:` last line, as task 2's M1/M3 specify. Note the invocation form differs between the two documents ($UW-relative in SKILL.md, repo-relative in CLAUDE.md); that is the local idiom of each file \u2014 `UW=${CLAUDE_PLUGIN_ROOT}/skills/ultrawrite/scripts` is defined ten lines above in the same SKILL.md section, beside the existing `$UW/extract_gate_input.py` and `$UW/check_provenance.py` invocations \u2014 and is not a defect.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "landedAt": 1789491561492,
+      "stateExams": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "916e5bf9bad1bfadb83f0b823e983212490765ef",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-145/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "Silent skips in `skills/ultrawrite/scripts/authoring_census.py`. `_load_json` (lines 68-81 of the new file) maps an unreadable/malformed `gate-verdicts.json` onto `None`, and `census_rows` then drops the directory entirely (`if not isinstance(record, dict): continue`). M1 says \"one tab-separated row per `run-<N>` directory that holds a `gate-verdicts.json`\"; a directory holding a corrupt record does hold one, so that run vanishes from the table and from the headline `plans=<rows>` count with nothing printed anywhere. The same shape recurs in `render_register`, which `continue`s past a question whose `options` is not a list. No exam leg exercises either case, and the RUN/EXAM evidence is green, so this blocks nothing \u2014 but a census whose job is to count a release should say what it could not read. Suggested fix, inside this task's own FILES: in `census_rows`, when `(entry / RECORD_NAME).exists()` but the parse failed, print one line to stderr naming the run (e.g. `census: run %d has an unreadable gate record \u2014 skipped`) before the `continue`, mirroring the stderr line `fetch_runs` already prints for a skipped run.; `_run_minutes` (authoring_census.py lines 89-103) returns `int((b - a).total_seconds() // 60)` with no floor at zero, so a `status.json` whose `updatedAt` precedes `startedAt` (clock skew across VMs, or a hand-edited fixture) yields a negative `run_min` that then feeds `_sum(rows, \"run_min\")` in the totals line. M1 only defines the column for a forward-running pair, so this is unpinned by the exam rather than wrong; a `max(0, ...)` \u2014 or treating a negative span as unparseable and returning `None` so the column reads `-` \u2014 would keep the release total honest.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "landedAt": 1789491631003,
+      "stateExams": []
+    },
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "1018bfd8dae0333c4b6644928848308befc53b6a",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-145/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Code quality (duplicated read path, not a behaviour defect): `_authoring_tally` in `skills/ultrapowers/scripts/compile_plan.py` (~line 1122) re-implements the read/parse/`isinstance(record, dict)` logic of `_authoring_object` just above it, and `authoring_fact_line` ends up parsing `<stem>.gate-verdicts.json` three times for one line \u2014 once via its own `_authoring_object`, once more inside the `authoring_record_violations(plan_path)` guard, and a third time via `_authoring_tally`. One private `_verdict_record(plan_path) -> dict | None` that does the exists/`json.loads`/dict check once, with `_authoring_object` and `_authoring_tally` both reading its result (and `authoring_fact_line` passing the already-computed violations rather than recomputing them), would remove the copy and the redundant I/O without changing a single observable line. Nothing in the exam is affected \u2014 the behaviour is correct as written and settled by EXAM EVIDENCE (15 passed, exit 0).",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "landedAt": 1789491645829,
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-145/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [209 items]\n\n........................................................................ [ 34%]\n........................................................................ [ 68%]\n.................................................................        [100%]\n============================= 209 passed in 44.20s =============================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-waves.mjs fleet/run-worker.mjs fleet/run-main.mjs fleet/sandbox-boot.sh fleet/publish-fold-block.mjs fleet/roles skills/ultrapowers/kernel",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-waves.mjs fleet/run-worker.mjs fleet/run-main.mjs fleet/sandbox-boot.sh fleet/publish-fold-block.mjs fleet/roles skills/ultrapowers/kernel",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-waves.mjs fleet/run-worker.mjs fleet/run-main.mjs fleet/sandbox-boot.sh fleet/publish-fold-block.mjs fleet/roles skills/ultrapowers/kernel",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 573719,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-145/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [175 items]\n\n........................................................................ [ 41%]\n........................................................................ [ 82%]\n...............................                                          [100%]\n============================= 175 passed in 42.89s =============================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "ed8f4d5f75355accaca2600fd3c4ebde69276a6d",
+      "branches": [
+        "4"
+      ],
+      "joined": []
+    },
+    {
+      "wave": 2,
+      "status": "MERGED",
+      "headSha": "1fe844accbcba66bb265382898bd871a70265b39",
+      "branches": [
+        "3"
+      ],
+      "joined": []
+    },
+    {
+      "wave": 3,
+      "status": "MERGED",
+      "headSha": "f6cae478b90da257b9c1814c7182bfa23322bffb",
+      "branches": [
+        "2",
+        "1"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-145/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-145/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.46299999999999997,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    },
+    {
+      "wave": 2,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-145/frontier/wave-2/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-145/frontier/wave-2/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.5329999999999999,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    },
+    {
+      "wave": 3,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-145/frontier/wave-3/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-145/frontier/wave-3/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.846,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 4,
+    "tasks_planned": 4,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
