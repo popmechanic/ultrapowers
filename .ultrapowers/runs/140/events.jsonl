@@ -1,0 +1,10 @@
+{"kind":"run:open","runId":"run-140","base":"","source":"fleet/run-main.mjs","id":"01M2J8EYQA0000ZBKV3BKW5XDV","ts":1789466737386}
+{"kind":"driver:stage","stage":"kata","detail":"record /home/exedev/plans/run-140.kata.json → https://kata.int.exe.xyz","id":"01M2J8EYQC0000BY9JCS5PBYGE","ts":1789466737388}
+{"kind":"driver:stage","stage":"tiers","detail":"1 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M2J8EYQD00002BDFHBNZS9D6","ts":1789466737389}
+{"kind":"driver:stage","stage":"provision","detail":"BASE 3a7b834d0c63f6d5de7222a516ec1b12e58d7c54; 1 task clone(s) + integration","id":"01M2J8EZ0Z00002M416Z5CY5Z4","ts":1789466737695}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M2J8EZ9N0000W6PX8P1WEB17","ts":1789466737973}
+{"kind":"driver:stage","stage":"engine","detail":"waves 1, width bound 1, patch input armed","id":"01M2J8EZ9P00006MXB5YBYGSYC","ts":1789466737974}
+{"kind":"engine:phase","phase":"Setup","id":"01M2J8EZ9V0000246FAXE4SNQB","ts":1789466737979}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-140 at 3a7b834d0c63f6d5de7222a516ec1b12e58d7c54","id":"01M2J8EZFV00006V0VK1VXP3H3","ts":1789466738171}
+{"kind":"worker:start","label":"exam:1","role":"examiner","sessionId":"d0ddfbac-31f3-43d0-ad78-ac432b6032cd","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-140/clones/exam-1","model":"opus","id":"01M2J8F0410000FX9T33Y5T7D6","ts":1789466738817}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"5f78eb1b-6fd6-49aa-86e0-af07139d65d6","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-140/clones/task-1","model":"opus","id":"01M2J8F045000042KVVFR1935Q","ts":1789466738821}
