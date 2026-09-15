@@ -299,7 +299,19 @@ test-case count and section banners — read them before signing a sentence abou
 the file is; run-90 deleted five exams on the sentence "entirely the check-runs poll"),
 and every file outside a task's Files that carries a literal its Machine clauses pin —
 the shape that parked runs 84, 88 and 90. A carrier that pins the value the task
-changes goes into that task's Files; the line is a fact, never a refusal. The launcher
+changes goes into that task's Files; the line is a fact, never a refusal.
+
+A `**Stale-if:**` predicate is read against the same base, and it is the one thing there
+that does refuse: a predicate that already holds at that base is a `STALE fact: task <id>:
+<entry> holds at BASE` refusal — the task is stale before it is dispatched, so the compile
+exits 2 and prints no `PLAN OK`. An issue predicate the laptop cannot read is unreadable,
+not false: no `gh` on PATH, a non-zero exit, or an answer that is neither `OPEN` nor
+`CLOSED` prints `STALE fact: task <id>: <entry> unreadable at BASE — <reason>` as an
+advisory line after the verdict, beside the `BASE fact:` lines, so an offline laptop still
+prints `PLAN OK` and exits 0. Only `--check --base` asks: a bare `--check` and a plain
+compile evaluate no predicate at all.
+
+The launcher
 runs this same compile at `--base` before it pushes anything and prints the same
 lines, so a plan that does not compile at the launch base is refused on the laptop
 (#865), and a `**BASE facts:**` block generated at another sha is refused with the

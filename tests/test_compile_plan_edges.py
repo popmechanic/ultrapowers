@@ -22,8 +22,10 @@ internals: the assertions read `dag_edges` and `waves` off stdout, and the
 `--check` verdict off the exit code and the two output channels.
 """
 import json
+import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 
@@ -353,3 +355,437 @@ def test_skill_global_constraints_section_documents_the_check_refusal():
     assert p.returncode == 0, (
         "the Global Constraints discipline section of %s does not say a "
         "`Check:` naming a file a task owns is refused" % SKILL_MD)
+
+
+# =========================================================================== #
+# Task 1 (#538 item 2): `compile_plan.py --check --base` evaluates the five    #
+# Stale-if predicates at BASE and refuses a task whose predicate holds.        #
+#                                                                              #
+# A task's Stale-if slot says what would make the task wrong before it runs.   #
+# At BASE nothing reads it. Under `--check --base <base>` each entry is now a  #
+# question the compiler puts to the tree at that base:                         #
+#                                                                              #
+#   * `path-exists:` / `path-absent:` hold on what the tree has (M1, M2),      #
+#     `sha-matches: <path>@<sha>` on the blob id at BASE prefixed by `<sha>`   #
+#     (M3), `issue-open:` / `issue-closed:` on what one `gh issue view` per    #
+#     distinct issue number prints (M4).                                       #
+#   * An entry that holds is one violation, line                               #
+#     `STALE fact: task <id>: <entry> holds at BASE` — exit 2, no `PLAN OK`    #
+#     (M5). `<entry>` is the Stale-if line as written after its bullet, so it  #
+#     carries its backticks.                                                   #
+#   * An issue entry `gh` cannot decide, and a malformed `sha-matches`/issue   #
+#     argument, refuse nothing: the verdict prints as before and one           #
+#     `STALE fact: task <id>: <entry> unreadable at BASE — <reason>` line      #
+#     follows it on stdout (M6).                                               #
+#   * Without a base — bare `--check`, or a plain compile with or without      #
+#     `--base` — no predicate is evaluated at all (M7).                        #
+#   * `skills/ultrawrite/SKILL.md` §The proof gate says both halves (M8).      #
+#                                                                              #
+# Every row below compiles a real plan inside a real one-commit git repository #
+# under `tmp_path`, so the tree these predicates are asked about is a tree,    #
+# not a stub; the plan sits inside that repository because a 40-hex `--base`   #
+# is resolved in the plan's own toplevel. `gh` is never the real one: the      #
+# issue rows put a shell script on a PATH the test built, which prints what a  #
+# file beside it says and appends its argv to a log.                           #
+# =========================================================================== #
+
+PRESENT = "present.py"
+MISSING = "missing.py"
+PRESENT_TEXT = "print(1)\n"
+
+# The two Stale-if bullets the shared TASK_1/TASK_2 templates carry. Neither
+# path exists in the temp repository, so every plan below holds exactly the
+# entries its own row substitutes in — and the eleven cases above, which never
+# pass a `--base`, are untouched by any of this.
+STALE_BULLET_1 = "- path-exists: `fleet/tests/sim_a.mjs`"
+STALE_BULLET_2 = "- path-exists: `fleet/reader.mjs`"
+
+
+def stale_plan(entry1, entry2=None, **kw):
+    """`make_plan`'s body with task 1's (and optionally task 2's) Stale-if
+    entry replaced. `entry` is the text after the bullet — what the compiler
+    parses into `stale_if_entries` and what M5's line must carry verbatim."""
+    text = make_plan(**kw)
+    text = text.replace(STALE_BULLET_1, "- " + entry1)
+    if entry2 is not None:
+        text = text.replace(STALE_BULLET_2, "- " + entry2)
+    return text
+
+
+def _git(repo, *args):
+    p = subprocess.run(["git", "-C", str(repo), *args],
+                       capture_output=True, text=True)
+    assert p.returncode == 0, " ".join(args) + "\n" + p.stdout + p.stderr
+    return p.stdout
+
+
+def base_repo(tmp_path):
+    """A one-commit git repository holding `present.py` and nothing else.
+    Returned as (repo path, HEAD sha, `git hash-object` id of present.py)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", ".")
+    _git(repo, "config", "user.email", "exam@example.invalid")
+    _git(repo, "config", "user.name", "exam")
+    (repo / PRESENT).write_text(PRESENT_TEXT)
+    _git(repo, "add", PRESENT)
+    _git(repo, "commit", "-qm", "present")
+    head = _git(repo, "rev-parse", "HEAD").strip()
+    blob = _git(repo, "hash-object", PRESENT).strip()
+    assert re.fullmatch(r"[0-9a-f]{40}", head), head
+    assert re.fullmatch(r"[0-9a-f]{40}", blob), blob
+    return repo, head, blob
+
+
+def compile_at(repo, name, text, *flags, env=None):
+    """Write the plan (and its gate verdicts) inside `repo` and compile it."""
+    plan = _write_plan(repo, name, text)
+    return subprocess.run([sys.executable, str(COMPILER), str(plan), *flags],
+                          capture_output=True, text=True,
+                          env=None if env is None else dict(os.environ, **env))
+
+
+def check_at(repo, name, text, base, env=None):
+    return compile_at(repo, name, text, "--check", "--base", str(base),
+                      env=env)
+
+
+def holds_line(task_id, entry):
+    """M5's line, exactly."""
+    return "STALE fact: task %s: %s holds at BASE" % (task_id, entry)
+
+
+def unreadable_prefix(task_id, entry):
+    """M6's line, up to the reason — nothing pins the reason's wording."""
+    return "STALE fact: task %s: %s unreadable at BASE — " % (task_id,
+                                                                  entry)
+
+
+def assert_refused(p, *lines):
+    """[M5]: exit 2, each expected `STALE fact:` line present on stdout as a
+    whole line, and no `PLAN OK` on either channel."""
+    out = p.stdout + p.stderr
+    assert p.returncode == 2, out
+    assert "PLAN OK" not in out, out
+    for line in lines:
+        assert line in p.stdout.splitlines(), (line, out)
+
+
+def assert_plan_ok(p):
+    """The entry does not hold: the verdict is the unchanged `PLAN OK` and
+    nothing is refused."""
+    out = p.stdout + p.stderr
+    assert p.returncode == 0, out
+    assert p.stdout.splitlines()[:1] == ["PLAN OK"], out
+    assert "holds at BASE" not in out, out
+
+
+def both_bases(repo, head):
+    """The two ways `--base` names this tree (M1): the checkout directory and
+    its 40-hex HEAD sha. Every path/sha row is asked of each."""
+    return [("directory base", str(repo)), ("sha base", head)]
+
+
+# ── (a) M1: `path-exists:` holds on an entry of the tree at BASE ────────────
+# "a task's `path-exists: <path>` entry holds when `<path>` is an entry of the
+# tree at BASE ... and does not hold otherwise."
+
+def test_a_path_exists_on_a_committed_file_is_refused_under_both_bases(tmp_path):
+    """(a)/[M1]: `present.py` is committed, so task 1's entry holds — exit 2,
+    the line names the task and the entry verbatim, and no `PLAN OK`."""
+    repo, head, _ = base_repo(tmp_path)
+    entry = "path-exists: `%s`" % PRESENT
+    for label, base in both_bases(repo, head):
+        p = check_at(repo, "a-%s.md" % label.split()[0],
+                     stale_plan(entry), base)
+        assert_refused(p, holds_line("1", entry))
+        assert "1 violation(s)" in p.stdout, (label, p.stdout)
+
+
+def test_a_path_exists_on_an_absent_file_passes_under_both_bases(tmp_path):
+    """(a)/[M1]: the same task asking after `missing.py` — the entry does not
+    hold, so the plan is the clean plan it was: `PLAN OK`, exit 0."""
+    repo, head, _ = base_repo(tmp_path)
+    entry = "path-exists: `%s`" % MISSING
+    for label, base in both_bases(repo, head):
+        assert_plan_ok(check_at(repo, "a2-%s.md" % label.split()[0],
+                                stale_plan(entry), base))
+
+
+# ── (b) M2: `path-absent:` holds exactly when the same read finds nothing ───
+# "A `path-absent: <path>` entry holds exactly when the same read finds no
+# entry."
+
+def test_b_path_absent_on_an_absent_file_is_refused(tmp_path):
+    """(b)/[M2]: nothing at `missing.py` at BASE, so `path-absent:` holds and
+    carries its own line."""
+    repo, head, _ = base_repo(tmp_path)
+    entry = "path-absent: `%s`" % MISSING
+    for label, base in both_bases(repo, head):
+        assert_refused(check_at(repo, "b-%s.md" % label.split()[0],
+                                stale_plan(entry), base),
+                       holds_line("1", entry))
+
+
+def test_b_path_absent_on_a_committed_file_passes(tmp_path):
+    """(b)/[M2]: `present.py` is there, so `path-absent:` does not hold."""
+    repo, head, _ = base_repo(tmp_path)
+    entry = "path-absent: `%s`" % PRESENT
+    for label, base in both_bases(repo, head):
+        assert_plan_ok(check_at(repo, "b2-%s.md" % label.split()[0],
+                                stale_plan(entry), base))
+
+
+# ── (c) M3: `sha-matches:` holds on a blob id BASE's id begins with ─────────
+# "A `sha-matches: <path>@<sha>` entry holds when `<path>` is a blob at BASE
+# whose object id ... begins with `<sha>`; a `<path>` absent at BASE, or an id
+# that does not begin with `<sha>`, does not hold."
+
+def test_c_sha_matches_full_id_and_prefix_are_refused(tmp_path):
+    """(c)/[M3]: the committed file's own id, whole and as its 7-character
+    prefix — both hold, under a directory base and a sha base each."""
+    repo, head, blob = base_repo(tmp_path)
+    for n, sha in enumerate((blob, blob[:7])):
+        entry = "sha-matches: `%s`@%s" % (PRESENT, sha)
+        for label, base in both_bases(repo, head):
+            assert_refused(check_at(repo, "c%d-%s.md" % (n, label.split()[0]),
+                                    stale_plan(entry), base),
+                           holds_line("1", entry))
+
+
+def test_c_sha_matches_a_foreign_id_or_an_absent_path_passes(tmp_path):
+    """(c)/[M3]: forty zeros is not a prefix of the blob's id, and a path with
+    no blob at BASE cannot match any id — neither holds."""
+    repo, head, blob = base_repo(tmp_path)
+    rows = ["sha-matches: `%s`@%s" % (PRESENT, "0" * 40),
+            "sha-matches: `%s`@%s" % (MISSING, blob)]
+    for n, entry in enumerate(rows):
+        for label, base in both_bases(repo, head):
+            assert_plan_ok(check_at(repo, "c%d-%s.md" % (n + 2,
+                                                         label.split()[0]),
+                                    stale_plan(entry), base))
+
+
+# ── (d) M4: the issue entries hold on what one `gh` read prints ─────────────
+# "An `issue-open: #N` entry holds when `gh issue view N --json state -q
+# .state`, run with the base repository as its working directory, prints
+# `OPEN`, and an `issue-closed: #N` entry holds when it prints `CLOSED`; `gh`
+# is run once per distinct issue number per compile, however many tasks name
+# it."
+
+ISSUE = "538"
+
+_GH_SCRIPT = """#!/bin/sh
+printf '%s\\n' "$*" >> '{log}'
+cat '{answer}'
+{stderr}exit {code}
+"""
+
+
+def fake_gh(tmp_path, name, answer, code=0, stderr_line=""):
+    """A `gh` on a PATH this test built: it logs its argv and prints what the
+    file beside it says. Returns (the directory to prepend to PATH, its log)."""
+    bindir = tmp_path / name
+    bindir.mkdir()
+    log = bindir / "gh.log"
+    answer_file = bindir / "answer"
+    answer_file.write_text(answer)
+    gh = bindir / "gh"
+    gh.write_text(_GH_SCRIPT.format(
+        log=log, answer=answer_file, code=code,
+        stderr=("printf '%%s\\n' '%s' >&2\n" % stderr_line
+                if stderr_line else "")))
+    gh.chmod(0o755)
+    return bindir, log
+
+
+def with_gh(bindir):
+    return {"PATH": str(bindir) + os.pathsep + os.environ["PATH"]}
+
+
+def test_d_an_open_issue_holds_for_issue_open_and_not_for_issue_closed(tmp_path):
+    """(d)/[M4]: the fake answers `OPEN` — `issue-open: #538` is refused with
+    its line; `issue-closed: #538` does not hold, so the plan passes."""
+    repo, _, _ = base_repo(tmp_path)
+    bindir, _log = fake_gh(tmp_path, "bin-open", "OPEN\n")
+    env = with_gh(bindir)
+    open_entry = "issue-open: #%s" % ISSUE
+    assert_refused(check_at(repo, "d1.md", stale_plan(open_entry), repo,
+                            env=env),
+                   holds_line("1", open_entry))
+    assert_plan_ok(check_at(repo, "d2.md",
+                            stale_plan("issue-closed: #%s" % ISSUE), repo,
+                            env=env))
+
+
+def test_d_a_closed_issue_swaps_the_two(tmp_path):
+    """(d)/[M4]: the same two entries against a fake answering `CLOSED`."""
+    repo, _, _ = base_repo(tmp_path)
+    bindir, _log = fake_gh(tmp_path, "bin-closed", "CLOSED\n")
+    env = with_gh(bindir)
+    closed_entry = "issue-closed: #%s" % ISSUE
+    assert_refused(check_at(repo, "d3.md", stale_plan(closed_entry), repo,
+                            env=env),
+                   holds_line("1", closed_entry))
+    assert_plan_ok(check_at(repo, "d4.md",
+                            stale_plan("issue-open: #%s" % ISSUE), repo,
+                            env=env))
+
+
+def test_d_gh_is_run_once_per_issue_number_however_many_tasks_name_it(tmp_path):
+    """(d)/[M4]: both tasks name `#538` — one from each side. The compile
+    answers both from one `gh` invocation, whose argv is the documented read."""
+    repo, _, _ = base_repo(tmp_path)
+    bindir, log = fake_gh(tmp_path, "bin-cache", "OPEN\n")
+    open_entry = "issue-open: #%s" % ISSUE
+    closed_entry = "issue-closed: #%s" % ISSUE
+    p = check_at(repo, "d5.md", stale_plan(open_entry, closed_entry), repo,
+                 env=with_gh(bindir))
+    # `OPEN`: task 1's entry holds, task 2's does not.
+    assert_refused(p, holds_line("1", open_entry))
+    assert holds_line("2", closed_entry) not in p.stdout, p.stdout
+    invocations = [line for line in log.read_text().splitlines() if line.strip()]
+    assert len(invocations) == 1, invocations
+    argv = invocations[0].split()
+    for token in ("issue", "view", ISSUE):
+        assert token in argv, (token, argv)
+    assert "state" in invocations[0], invocations[0]
+
+
+# ── (e) M5: every entry that holds is one violation ─────────────────────────
+# "Every entry that holds is one violation whose line is `STALE fact: task
+# <id>: <entry> holds at BASE` ... so the compile exits 2, prints those lines
+# and prints no `PLAN OK`."
+
+def test_e_two_holding_entries_are_two_violations(tmp_path):
+    """(e)/[M5]: task 1's `path-exists:` and task 2's `path-absent:` both hold
+    — both lines print, the tally is `2 violation(s)`, the exit is 2."""
+    repo, _, _ = base_repo(tmp_path)
+    entry1 = "path-exists: `%s`" % PRESENT
+    entry2 = "path-absent: `%s`" % MISSING
+    p = check_at(repo, "e.md", stale_plan(entry1, entry2), repo)
+    assert_refused(p, holds_line("1", entry1), holds_line("2", entry2))
+    assert "2 violation(s)" in p.stdout, p.stdout
+
+
+# ── (f) M6: what the machine cannot read is an advisory, not a refusal ──────
+# "An issue entry `gh` cannot decide ... and a `sha-matches` or issue entry
+# whose argument is malformed ... is not a violation: the compile prints its
+# verdict as before and, after it, one line `STALE fact: task <id>: <entry>
+# unreadable at BASE — <reason>` on stdout per such entry, so a plan with
+# nothing else wrong prints `PLAN OK` and exits 0."
+
+def assert_advisory(p, entry):
+    out = p.stdout + p.stderr
+    assert p.returncode == 0, out
+    assert p.stdout.splitlines()[:1] == ["PLAN OK"], out
+    prefix = unreadable_prefix("1", entry)
+    advisories = [line for line in p.stdout.splitlines()
+                  if line.startswith(prefix)]
+    assert len(advisories) == 1, (prefix, out)
+    # An advisory is not a refusal: nothing here is counted or refused.
+    assert "holds at BASE" not in out, out
+    assert "violation(s)" not in out, out
+
+
+def test_f_no_gh_on_path_is_an_advisory(tmp_path):
+    """(f)/[M6]: a PATH holding only `git` — the issue is undecidable, so the
+    verdict is `PLAN OK` and the entry prints as unreadable."""
+    repo, _, _ = base_repo(tmp_path)
+    git = shutil.which("git")
+    assert git, "the exam needs a real `git` to build the gh-less PATH with"
+    bindir = tmp_path / "bin-nogh"
+    bindir.mkdir()
+    (bindir / "git").symlink_to(git)
+    entry = "issue-open: #%s" % ISSUE
+    assert_advisory(check_at(repo, "f1.md", stale_plan(entry), repo,
+                             env={"PATH": str(bindir)}),
+                    entry)
+
+
+def test_f_gh_exiting_non_zero_is_an_advisory(tmp_path):
+    """(f)/[M6]: a `gh` that fails decides nothing."""
+    repo, _, _ = base_repo(tmp_path)
+    bindir, _log = fake_gh(tmp_path, "bin-fail", "", code=1,
+                           stderr_line="could not resolve to an Issue")
+    entry = "issue-open: #%s" % ISSUE
+    assert_advisory(check_at(repo, "f2.md", stale_plan(entry), repo,
+                             env=with_gh(bindir)),
+                    entry)
+
+
+def test_f_gh_printing_neither_state_is_an_advisory(tmp_path):
+    """(f)/[M6]: output that is neither `OPEN` nor `CLOSED`."""
+    repo, _, _ = base_repo(tmp_path)
+    bindir, _log = fake_gh(tmp_path, "bin-maybe", "MAYBE\n")
+    entry = "issue-closed: #%s" % ISSUE
+    assert_advisory(check_at(repo, "f3.md", stale_plan(entry), repo,
+                             env=with_gh(bindir)),
+                    entry)
+
+
+def test_f_an_issue_entry_with_no_digits_is_an_advisory(tmp_path):
+    """(f)/[M6]: `issue-open: #` names no issue — malformed, not false."""
+    repo, _, _ = base_repo(tmp_path)
+    bindir, _log = fake_gh(tmp_path, "bin-open2", "OPEN\n")
+    entry = "issue-open: #"
+    assert_advisory(check_at(repo, "f4.md", stale_plan(entry), repo,
+                             env=with_gh(bindir)),
+                    entry)
+
+
+def test_f_a_sha_matches_with_no_at_is_an_advisory(tmp_path):
+    """(f)/[M6]: `sha-matches:` with no `@` pins no id — malformed, and the
+    path being present at BASE does not make it hold."""
+    repo, _, _ = base_repo(tmp_path)
+    entry = "sha-matches: `%s`" % PRESENT
+    assert_advisory(check_at(repo, "f5.md", stale_plan(entry), repo), entry)
+
+
+# ── (g) M7: no base, no predicate ───────────────────────────────────────────
+# "A bare `--check` without `--base`, and a plain compile with or without
+# `--base`, evaluate no predicate."
+
+def test_g_a_bare_check_evaluates_nothing(tmp_path):
+    """(g)/[M7]: the very plan leg (a) refuses, compiled with no `--base` —
+    `PLAN OK`, exit 0, nothing said about the predicate."""
+    repo, _, _ = base_repo(tmp_path)
+    entry = "path-exists: `%s`" % PRESENT
+    p = compile_at(repo, "g1.md", stale_plan(entry), "--check")
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert p.stdout.strip() == "PLAN OK", p.stdout
+    assert "STALE fact:" not in p.stdout + p.stderr, p.stdout + p.stderr
+
+
+def test_g_a_plain_compile_with_a_base_evaluates_nothing(tmp_path):
+    """(g)/[M7]: the same plan compiled plainly with `--base <dir>` — exit 0,
+    stdout is the launch JSON, and no `STALE fact:` on either channel."""
+    repo, _, _ = base_repo(tmp_path)
+    entry = "path-exists: `%s`" % PRESENT
+    p = compile_at(repo, "g2.md", stale_plan(entry), "--base", str(repo))
+    assert p.returncode == 0, p.stdout + p.stderr
+    json.loads(p.stdout)
+    assert "STALE fact:" not in p.stdout, p.stdout
+    assert "STALE fact:" not in p.stderr, p.stderr
+
+
+# ── (h) M8: the authoring skill says both halves ────────────────────────────
+# "The `## The proof gate` section of `skills/ultrawrite/SKILL.md` says that a
+# Stale-if predicate that holds at the base is a `STALE fact:` refusal and that
+# an issue predicate the laptop cannot read is an advisory line." This is the
+# Proof's `Run:` line, verbatim.
+
+RUN_PROOF_GATE = (
+    "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' "
+    "skills/ultrawrite/SKILL.md | tr '\\n' ' ' "
+    "| grep -q 'STALE fact.*refus.*unreadable.*advisory'")
+
+
+def test_h_proof_gate_section_documents_the_refusal_and_the_advisory():
+    """(h)/[M8]: the proof-gate section's flattened text names `STALE fact`, a
+    refusal, `unreadable` and `advisory`, in that order."""
+    p = _shell(RUN_PROOF_GATE)
+    assert p.returncode == 0, (
+        "the `## The proof gate` section of %s does not say that a Stale-if "
+        "predicate holding at the base is a `STALE fact:` refusal and that an "
+        "unreadable issue predicate is an advisory line" % SKILL_MD)

@@ -601,8 +601,12 @@ const BASE_FACTS_STAMP = /\*\*BASE facts:\*\*\s*\(generated at ([0-9a-f]{7,40})\
  *     record and, since #896, the tree's own facts about the plan (what a
  *     deleted file holds; which files outside a task's Files carry a literal
  *     its clauses pin). A non-zero exit is a refusal carrying the compiler's
- *     text verbatim; the `BASE fact:` lines of a clean compile ride the result
- *     so the launch line prints them.
+ *     text verbatim — including a `STALE fact:` line for a Stale-if predicate
+ *     that holds at BASE, which is what the operator reads on the laptop; the
+ *     `BASE fact:` and `STALE fact:` lines of a clean compile ride the result
+ *     so the launch line prints them, in the order the compiler printed them
+ *     (a `STALE fact:` there is the advisory kind: a predicate the compiler
+ *     could not read at BASE, never a refusal).
  *
  * The compiler runs through the exec seam like every other subprocess, so a sim
  * that answers `python3` decides what the compiler said.
@@ -622,7 +626,9 @@ export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planT
       `launch: compile_plan.py --check --base ${base} refused ${planPath} (exit ${res.code}):\n${output(res)}`
     )
   }
-  return String(res.stdout ?? '').split('\n').filter((line) => line.startsWith('BASE fact:'))
+  return String(res.stdout ?? '').split('\n').filter(
+    (line) => line.startsWith('BASE fact:') || line.startsWith('STALE fact:')
+  )
 }
 
 /**

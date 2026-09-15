@@ -70,7 +70,8 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   collapse, #597/#598 the move onto the target). `fleet/CONTRACT.md` is the authority for
   every literal and `fleet/RUNBOOK.md` the operator procedure — the contract wins.
   `launch.mjs` validates (hash pins, then `compile_plan.py --check --base` through the exec
-  seam — its `BASE fact:` lines print on the launch line), reads the pool from
+  seam — its `BASE fact:` lines and its `STALE fact:` lines print on the launch line),
+  reads the pool from
   `billing plan --json`, computes N from the target's own `ultra/*-run-*` branches, refreshes
   the Claude bearer, pushes the plan as one commit on base to `ultra/plan-run-<N>`
   (tree = base + `.ultrapowers/plan.md`), then issues ONE lobby verb: a per-run `new` carrying
