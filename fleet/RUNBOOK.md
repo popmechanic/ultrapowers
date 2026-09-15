@@ -269,7 +269,19 @@ and does not merge it (a measurement run).
   ```
 
   While the run is still in flight the tag is not written yet, and the same
-  bytes are on its evidence branch; the VM's own page above is the live read.
+  bytes are on its evidence branch. From a shell on the laptop that branch is
+  the read that works with no browser (`curl` on the VM's page answers a
+  redirect to the exe.dev login), so a live run is read by branch and, after
+  publish, by tag — the two spellings of one read:
+
+  ```bash
+  gh api 'repos/<owner>/<repo>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence-run-<N>' --jq .content | base64 -d   # in flight
+  gh api 'repos/<owner>/<repo>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>' --jq .content | base64 -d    # after publish
+  ```
+
+  The branch is deleted when the tag verifies (the contract's two-tags rule),
+  so a watcher polling the branch sees one unreadable read at the moment the run
+  finishes and reads the tag from then on.
 
 **The PR.** There is no approval step between the gate and the PR. Once the
 engine service is inactive and the branch is ahead of base, the sandbox pushes
@@ -306,8 +318,12 @@ node fleet/janitor.mjs
 It lists the fleet, reads each VM's comment for its run and its target, asks
 the hub for that run's issue (`ssh <KATA_URL host> curl localhost:8000/api/v1/…`,
 the bearer sourced on the hub — the road the launcher takes), and `rm`s every
-VM whose run issue has been closed for over an hour. When the hub cannot be
-asked — no `~/.ultrapowers/kata-hub.env`, an ssh that fails — it says so on its
+VM whose run issue has been closed for over an hour — the `--age 1h` default:
+a finished run's VM is kept for one hour so the operator can read its status
+page before it goes, so a janitor that answers `nothing to do` beside `done`
+VMs inside that hour is the hold and not a fault (six such VMs on 2026-09-15);
+`--age 30m`, or `ssh exe.dev "rm <vm> --json"`, takes one sooner. When the hub
+cannot be asked — no `~/.ultrapowers/kata-hub.env`, an ssh that fails — it says so on its
 first line and reads each run's status page off the target with `gh api`
 instead, at the evidence tag `ultra/evidence/run-<N>` first and at the branch
 `ultra/evidence-run-<N>` only while the run is in flight or its sweep is
