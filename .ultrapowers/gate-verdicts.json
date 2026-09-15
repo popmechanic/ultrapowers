@@ -1,0 +1,13 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "f4bcd06f9e099673272f5a2510c5805b02ffe52870f648797c1a9368be6f613d",
+      "verdict": "pass",
+      "reason": "M1's base-vs-new dict equality falsifies no-other-key, M2's ordered regex plus the zero-count check names the absent literal, and M3's equality assert and filtered git diff count exit nonzero on any stray path."
+    }
+  },
+  "tally": { "dispatched": 2, "rejected": 1, "rounds": 2 },
+  "history": [
+    { "round": 1, "hash": "4174ea727d1c83fd3652342a09d9052d58fa9329a39a74d020aa016069d3a6f6", "verdict": "fail", "reason": "M3's diff leg did not license the task's own exam file path." }
+  ]
+}
