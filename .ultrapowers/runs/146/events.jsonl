@@ -24,3 +24,7 @@
 {"kind":"driver:attention","task":"4","attention":"needs-human","msg":"session ended without hand-off","actor":"","id":"01M2K0XAM400009AD0WYG48ZT6","ts":1789492374148}
 {"kind":"worker:end","label":"review:4:1","role":"reviewer","sessionId":"41dc84ac-53e5-48d0-b487-05e8cc6751e0","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5035,"output":1841,"cacheRead":157543,"cacheCreation":32863,"costUsd":0.4786015,"models":["claude-opus-5"]},"id":"01M2K0XMGT00009ZP32NHBQZGQ","ts":1789492384282}
 {"kind":"transcript:slice","label":"review:4:1","sessionId":"41dc84ac-53e5-48d0-b487-05e8cc6751e0","bytes":8669,"id":"01M2K0XMGW0000FMXMAYXXHHKK","ts":1789492384284}
+{"kind":"engine:phase","phase":"Wave 1","id":"01M2K0ZF410000TPZKBPDH8BB0","ts":1789492444289}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["4"],"headSha":"9b6c46bf8681bbbb71686d53e19338dd96a95925","why":"aged","id":"01M2K10TFD0000XBRHBJRD28BP","ts":1789492488685}
+{"kind":"driver:integrated-clean","wave":1,"removed":6,"id":"01M2K10TFH00001CFV4155GFEW","ts":1789492488689}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel fleet/launch.mjs fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/publish-fold.mjs fleet/kata-client.mjs fleet/roles/fix.md fleet/roles/reviewer.md fleet/roles/examiner.md fleet/roles/reconcile.md fleet/roles/resolver.md","exit":0,"minor":false,"wave":1,"id":"01M2K10TFT0000PW4BG41B58BZ","ts":1789492488698}
