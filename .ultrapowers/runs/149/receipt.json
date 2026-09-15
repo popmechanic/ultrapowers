@@ -1,0 +1,330 @@
+{
+  "ok": true,
+  "stamp": "run-149",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-149"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "3 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "CLAUDE.md states the floor, and the two readings the doctrine rests on carry their n",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "CLAUDE.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "Every reading the authoring skill cites carries its n and window, and self-review says a plan writes readings the same way",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/references/report-format.md",
+          "skills/ultrawrite/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The release census's totals line names the runs it read",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrawrite/scripts/authoring_census.py",
+          "tests/test_authoring_census.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing"
+          ],
+          "produces": [
+            "`_totals_line(rows) -> str`"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "The four maps that own a reading carry the floor, posted by hand",
+        "disposition": "manual",
+        "heuristic": false,
+        "writes": [],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "CLAUDE.md states the floor, and the two readings the doctrine rests on carry their n",
+          "files": [
+            "CLAUDE.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "CLAUDE.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^- \\*\\*Test doctrine/,/^## Working with the operator/p' CLAUDE.md | tr '\\n' ' ' | grep -q 'n=.*window.*n = 5 runs.*20 tasks.*experiment.*rollback.*date.*#994'",
+            "sed -n '/^- \\*\\*Test doctrine/,/^## Working with the operator/p' CLAUDE.md | tr '\\n' ' ' | grep -q '#872.*n=9.*#1006.*experiment.*#974.*n=71'",
+            "sed -n '/^- \\*\\*Test doctrine/,/^## Working with the operator/p' CLAUDE.md | tr '\\n' ' ' | grep -q 'never does TDD.*reported sensor.*measured and never asserted.*catch_counter.py.*measurement gate'",
+            "sed -n '/^- \\*\\*One merge, one writer/,/^- \\*\\*Handoffs are opt-in/p' CLAUDE.md | tr '\\n' ' ' | grep -q 'overlap=fold.*0.640.*n=1 fixture.*0.594.*n=12 cells.*evals/results/2026-08-30-one-driver-fold-ab.md'",
+            "sed -n '/^- \\*\\*Run in parallel/,/^- \\*\\*One merge, one writer/p' CLAUDE.md | tr '\\n' ' ' | grep -q 'four kernel-seen pairs.*n=4 pairs.*6 dispatches, 2 misses, both caught.*n=6 dispatches'",
+            "wc -w CLAUDE.md"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "CLAUDE.md"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [
+              "skills/ultrapowers/references/report-format.md",
+              "skills/ultrawrite/SKILL.md",
+              "skills/ultrawrite/scripts/authoring_census.py",
+              "tests/test_authoring_census.py"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "Every reading the authoring skill cites carries its n and window, and self-review says a plan writes readings the same way",
+          "files": [
+            "skills/ultrapowers/references/report-format.md",
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrapowers/references/report-format.md",
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^## Task shape/,/^## Elicit the claim/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q '8 marginal findings.*n=71 runs.*through 2026-09-13.*#964'",
+            "sed -n '/^## Authoring a queue/,/^## The proof gate/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'clock census.*n=3 runs.*runs 10\u201312.*2026-09-05'",
+            "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'Measured 2026-09-04.*n=1 sitting.*9 rounds.*13 of the 22 minutes'",
+            "sed -n '/^## Decomposition judgment/,/^## Global Constraints discipline/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'Measured 2026-09-02.*n=2 runs.*79 min.*49.5 min.*#541'",
+            "sed -n '/^## Decomposition judgment/,/^## Global Constraints discipline/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q '0.26\u00d7.*n=1 drain of 3 runs.*#454.*2026-09-01'",
+            "sed -n '/^## Self-review/,$p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'n=.*window.*experiment.*Summary.*rollback.*CLAUDE.md.*Test doctrine'",
+            "grep 'reviewEconomy' skills/ultrapowers/references/report-format.md | grep -q 'eight marginal findings across 71 runs.*n=71 runs.*through 2026-09-13'",
+            "for s in '8 marginal findings' '10\u201312' '13 of the 22 minutes' '79 min' '49.5 min' '0.26\u00d7'; do grep -q -F -- \"$s\" skills/ultrawrite/SKILL.md || { echo \"lost $s\"; exit 1; }; done",
+            "test \"$(grep -c 'eight marginal findings across 71 runs' skills/ultrapowers/references/report-format.md)\" = 1",
+            "wc -w skills/ultrawrite/SKILL.md"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "skills/ultrapowers/references/report-format.md",
+              "skills/ultrawrite/SKILL.md"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [
+              "CLAUDE.md",
+              "skills/ultrawrite/scripts/authoring_census.py",
+              "tests/test_authoring_census.py"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        },
+        {
+          "id": "3",
+          "title": "The release census's totals line names the runs it read",
+          "files": [
+            "skills/ultrawrite/scripts/authoring_census.py",
+            "tests/test_authoring_census.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing"
+            ],
+            "produces": [
+              "`_totals_line(rows) -> str`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrawrite/scripts/authoring_census.py",
+            "tests/test_authoring_census.py"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "d=$(mktemp -d) && mkdir -p $d/run-9 $d/run-133 && printf '%s' '{\"tasks\":{},\"tally\":{\"dispatched\":3,\"rejected\":0}}' > $d/run-9/gate-verdicts.json && printf '%s' '{\"tasks\":{},\"tally\":{\"dispatched\":2}}' > $d/run-133/gate-verdicts.json && python3 skills/ultrawrite/scripts/authoring_census.py --from $d | tail -1 | grep -qxF 'totals: plans=2 runs=9..133 risk_override=0/0 recommended_picked=0/0 authoring_min=0 run_min=0'",
+            "d=$(mktemp -d) && mkdir -p $d/run-9 $d/run-133 && printf '%s' '{\"tasks\":{},\"tally\":{\"dispatched\":3,\"rejected\":0}}' > $d/run-9/gate-verdicts.json && printf '%s' '{\"tasks\":{},\"tally\":{\"dispatched\":2}}' > $d/run-133/gate-verdicts.json && python3 skills/ultrawrite/scripts/authoring_census.py --from $d | head -1 | grep -qxF \"$(printf 'run\\tauthoring_min\\tprobes\\tdispatched\\trejected\\trouting\\tlane\\tquestions\\trecommended_picked\\trun_min')\"",
+            "d=$(mktemp -d) && mkdir -p $d/run-9 $d/run-133 && printf '%s' '{\"tasks\":{},\"tally\":{\"dispatched\":3,\"rejected\":0}}' > $d/run-9/gate-verdicts.json && printf '%s' '{\"tasks\":{},\"tally\":{\"dispatched\":2}}' > $d/run-133/gate-verdicts.json && python3 skills/ultrawrite/scripts/authoring_census.py --from $d | sed -n 2p | grep -qxF \"$(printf '9\\t-\\t-\\t3\\t0\\t-\\t-\\t-\\t-\\t-')\"",
+            "e=$(mktemp -d) && python3 skills/ultrawrite/scripts/authoring_census.py --from $e | tail -1 | grep -qxF 'totals: plans=0 runs=- risk_override=0/0 recommended_picked=0/0 authoring_min=0 run_min=0'",
+            "e=$(mktemp -d) && python3 skills/ultrawrite/scripts/authoring_census.py --from $e | head -1 | grep -qxF \"$(printf 'run\\tauthoring_min\\tprobes\\tdispatched\\trejected\\trouting\\tlane\\tquestions\\trecommended_picked\\trun_min')\"",
+            "grep -qF 'runs=9..133' tests/test_authoring_census.py && grep -qF 'runs=131..133' tests/test_authoring_census.py",
+            "test \"$(grep -c 'totals: plans=' tests/test_authoring_census.py)\" = 2",
+            "python3 -m pytest -q tests/test_authoring_census.py"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "skills/ultrawrite/scripts/authoring_census.py",
+              "tests/test_authoring_census.py"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [
+              "CLAUDE.md",
+              "skills/ultrapowers/references/report-format.md",
+              "skills/ultrawrite/SKILL.md"
+            ],
+            "produces": [
+              "`_totals_line(rows) -> str`"
+            ],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "3 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- The floor is one literal in every task's Context and every document states it the same way: every reading row carries `n=\u2026 (window)`; no default flips under n = 5 runs (20 tasks for a per-task reading); a flip taken under the floor is an experiment on its map and carries its rollback; a fact read once (a kata seam, a trap) carries its date, not an n.\n- No number is invented: every `n=` written names a count and a window the task's Context supplies, and no existing count, date or issue number is deleted \u2014 a row gains its n beside what it already said.\n- No engine, boot, worker, role, kernel, contract or runbook changes; the fleet's vendor facts are dated facts, not readings, and gain no `n=`.\n- The catch-counter pair already carries n on every row (`touching runs` per test, `Zero catches over N runs`) and is untouched.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet skills/ultrapowers/kernel",
+        "minor": false
+      },
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/catch_report.py skills/ultrapowers/scripts/catch_counter.py",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-149/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-149/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-149/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-149/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
