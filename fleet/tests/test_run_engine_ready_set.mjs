@@ -5,8 +5,9 @@
 // A task starts the moment everything it depends on has been folded in, and
 // never waits for the rest of its wave. The wave barrier — dispatch the whole
 // layer, wait for all of it, fold once — is replaced by a ready set read at
-// dispatch time and an EPOCH: the fold a lane performs when a slot frees and
-// captured, unadopted results are waiting.
+// dispatch time and an EPOCH: the fold a lane performs when a slot frees,
+// captured and unadopted results are waiting, and the fold would release a
+// queued task, end the run or adopt a result that has aged out (#1006).
 //
 // The Machine clauses under test, restated:
 //   M1 — a task is READY when it has not been dispatched, is not failed and is
@@ -16,12 +17,17 @@
 //        never exceeds the width `W` the run's arguments carry as `width`; and
 //        a task's clone is anchored at the adopted head of the moment it is
 //        dispatched.
-//   M2 — whenever a slot frees and captured, unadopted mergeable results exist,
-//        the lane that freed folds ALL of them as one epoch onto the current
-//        head, and on `MERGED` appends `driver:wave-adopted {wave: <epoch>,
-//        tasks, headSha}`, epochs numbered 1, 2, … in fold order, each epoch's
-//        `headSha` a descendant of the previous epoch's; only one fold runs at
-//        a time.
+//   M2 — a lane that frees folds ALL the captured, unadopted mergeable results
+//        as one epoch onto the current head, and it folds when the fold would
+//        do one of three things (#1006): RELEASE a queued task, END the run, or
+//        adopt a result that has aged past `foldAgeMs`. On `MERGED` it appends
+//        `driver:wave-adopted {wave: <epoch>, tasks, headSha, why}` — `why`
+//        naming which of the three — epochs numbered 1, 2, … in fold order,
+//        each epoch's `headSha` a descendant of the previous epoch's; only one
+//        fold runs at a time. `foldAgeMs: 0` makes the age clause true at every
+//        landing's own instant, which is the rule before #1006 and the reading
+//        every scenario below but `c1` is written against; `c1` passes no
+//        `foldAgeMs` at all and is the one that reads the new trigger.
 //   M3 — a task lands in exactly one epoch; a red epoch marks exactly its own
 //        tasks blocked (`driver:wave-blocked` with that epoch's ids) and makes
 //        their consumers unready; a task that never became ready is recorded
@@ -93,10 +99,9 @@ import { makeRepo, rig, passReview, doneImpl, gitSync } from './_engine_helpers.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-ready-set-'))
 process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
 
-// How long a stub waits for the log to say what it is waiting for, and how
-// long the exec seam holds leg (c)'s first fold. Long enough that a loaded box
-// is not the reason a correct engine goes red; bounded so a BASE engine, which
-// will never say it, fails an assertion instead of hanging.
+// How long a stub waits for the log to say what it is waiting for. Long enough
+// that a loaded box is not the reason a correct engine goes red; bounded so a
+// BASE engine, which will never say it, fails an assertion instead of hanging.
 const HOLD_MS = 8000
 // The shorter hold, used where the wait is only there to make two lanes
 // OVERLAP: a width bound is the thing under test, so the hold must not be the
@@ -177,10 +182,6 @@ const cannedReconcile = (runDir, label) => {
   workerEnd(runDir, label)
   return reply
 }
-/** Has this task's referee returned — the last envelope of its pipeline? */
-const judgedEnded = (log, id) => log.some((e) => e.kind === 'worker:end' &&
-  typeof e.label === 'string' && e.label.startsWith('review:' + id + ':'))
-
 // The task shape every scenario uses: one file of its own, no proof paths, so
 // the only workers dispatched are `impl:` and `review:`.
 const taskOf = (id, over = {}) => ({
@@ -194,20 +195,17 @@ const taskOf = (id, over = {}) => ({
 // ── the exec seam, recording the kernel ─────────────────────────────────────
 // The fold is `exec('python3', [KERNEL, <verb>, …])`. This wrapper records each
 // such call's begin and end in order, so leg (c) can ask whether two folds ever
-// overlapped, and leg (e) can ask whether any fold ran at all. `hold` (leg (c))
-// is awaited before the FIRST `fold` is delegated and never again.
+// overlapped, and leg (e) can ask whether any fold ran at all.
 const KERNEL_VERBS = new Set(['fold', 'resolve', 'materialize', 'emit-weave'])
-function kernelSeam({ hold = null } = {}) {
+function kernelSeam() {
   const calls = []
   let step = 0
   let live = 0
   let maxLive = 0
-  let held = false
   const exec = async (cmd, argv, opts) => {
     const verb = (cmd === 'python3' && Array.isArray(argv) && KERNEL_VERBS.has(String(argv[1])))
       ? String(argv[1]) : null
     if (!verb) return execSeam(cmd, argv, opts)
-    if (verb === 'fold' && hold && !held) { held = true; await hold() }
     calls.push({ verb, at: 'begin', step: step++ })
     live += 1
     if (live > maxLive) maxLive = live
@@ -226,18 +224,23 @@ function kernelSeam({ hold = null } = {}) {
 // of the file reads.
 const RUNS = []
 let seq = 0
-async function drive({ tag, tasks, edges = [], width, makeStub, repoFiles = {}, hold = null }) {
+async function drive({ tag, tasks, edges = [], width, makeStub, repoFiles = {},
+                       foldAgeMs = null }) {
   seq += 1
   const stamp = 'rs' + seq + tag
   const repo = makeRepo(path.join(tmp, 'repo-' + stamp), repoFiles)
   const runDir = path.join(tmp, 'run-' + stamp)
-  const seam = kernelSeam({ hold: hold ? () => hold(runDir) : null })
+  const seam = kernelSeam()
   const labels = []
   const stub = makeStub(runDir)
   const built = rig({
     repo, runDir, waves: [tasks], edges, stamp, exec: seam.exec,
     stub: (prompt, opts, cwd) => { labels.push(opts.label); return stub(prompt, opts, cwd) },
-    extraArgs: { width, infraBackoffMs: 0 },
+    // `foldAgeMs` is left OUT when a scenario passes none, so that scenario runs
+    // on the engine's own default threshold; every scenario that passes `0`
+    // wants the fold-at-every-landing rule its assertions were written against.
+    extraArgs: { width, infraBackoffMs: 0,
+                 ...(foldAgeMs === null ? {} : { foldAgeMs }) },
   })
   const report = await built.run()
   const rec = { tag, stamp, runDir, integ: built.integ, base: built.base,
@@ -272,6 +275,10 @@ const isAncestor = (integ, a, b) => {
   const run = await drive({
     tag: 'a1', tasks: [taskOf('A'), taskOf('B'), taskOf('C')],
     edges: [['A', 'C']], width: 2,
+    // This scenario's subject is not the fold trigger, so it takes `foldAgeMs: 0`
+    // — every landing folds at its own instant, which is what it was written
+    // against and what #1006 keeps as the `0` reading.
+    foldAgeMs: 0,
     makeStub: (runDir) => async (prompt, opts, cwd) => {
       const [kind, id] = opts.label.split(':')
       if (kind === 'review') return cannedReview(runDir, opts.label)
@@ -346,6 +353,10 @@ const isAncestor = (integ, a, b) => {
 {
   const run = await drive({
     tag: 'a2', tasks: [taskOf('A'), taskOf('B'), taskOf('C')], edges: [], width: 3,
+    // This scenario's subject is not the fold trigger, so it takes `foldAgeMs: 0`
+    // — every landing folds at its own instant, which is what it was written
+    // against and what #1006 keeps as the `0` reading.
+    foldAgeMs: 0,
     makeStub: (runDir) => async (prompt, opts, cwd) => {
       const [kind, id] = opts.label.split(':')
       if (kind === 'review') return cannedReview(runDir, opts.label)
@@ -408,6 +419,10 @@ const maxOpenImpl = (log) => {
 {
   const run = await drive({
     tag: 'b1', tasks: [taskOf('P'), taskOf('Q')], edges: [], width: 1,
+    // This scenario's subject is not the fold trigger, so it takes `foldAgeMs: 0`
+    // — every landing folds at its own instant, which is what it was written
+    // against and what #1006 keeps as the `0` reading.
+    foldAgeMs: 0,
     makeStub: twoOpenStub,
   })
   const log = run.log
@@ -426,6 +441,10 @@ const maxOpenImpl = (log) => {
 {
   const run = await drive({
     tag: 'b2', tasks: [taskOf('P'), taskOf('Q')], edges: [], width: 2,
+    // This scenario's subject is not the fold trigger, so it takes `foldAgeMs: 0`
+    // — every landing folds at its own instant, which is what it was written
+    // against and what #1006 keeps as the `0` reading.
+    foldAgeMs: 0,
     makeStub: twoOpenStub,
   })
   const log = run.log
@@ -441,28 +460,20 @@ const maxOpenImpl = (log) => {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// leg (c) — one epoch per fold, and one fold at a time [M2]
+// leg (c) — one epoch per fold, and the fold nobody is waiting for [M2]
 //
-// X, Y and Z, width 3, stubs ending in that order. The exec seam holds the
-// kernel's FIRST `fold` until Y's and Z's `worker:end` are on the log: X's
-// landing opened an epoch, and Y's and Z's landings arrive while that epoch is
-// still folding. Exactly two adoptions must follow — the held one carrying X
-// alone, and ONE more carrying Y and Z together, because the lane that folds
-// takes everything captured and unadopted at the moment it folds.
+// X, Y and Z, no edges, width 3, stubs ending in that order — and no
+// `foldAgeMs`, so this is the one scenario of this file that runs on the
+// engine's own default threshold. Nothing an edge names waits on X, so X's
+// landing releases nobody; the run is not over while Y and Z are in flight; and
+// a minute is longer than this run takes. So the first two landings fold
+// NOTHING, and the last one — with no worker left in flight and nothing ready —
+// folds all three as one epoch, `why: 'end'`. That is the whole economy of
+// #1006: three tasks, one fold, one candidate suite instead of three.
 // ════════════════════════════════════════════════════════════════════════════
 {
   const run = await drive({
     tag: 'c1', tasks: [taskOf('X'), taskOf('Y'), taskOf('Z')], edges: [], width: 3,
-    // The hold: the first `fold` is delegated only once Y's and Z's
-    // `worker:end` lines are on the log — the implementers', and then their
-    // referees', which is the last envelope before a result is recorded. So
-    // both results are captured and unadopted while the first epoch is still
-    // in the kernel, which is the whole question this leg asks.
-    hold: (runDir) => waitUntil(() => {
-      const log = readEvents(runDir)
-      return log.some((e) => isEnd(e, 'impl:Y')) && log.some((e) => isEnd(e, 'impl:Z')) &&
-        judgedEnded(log, 'Y') && judgedEnded(log, 'Z')
-    }),
     makeStub: (runDir) => async (prompt, opts, cwd) => {
       const [kind, id] = opts.label.split(':')
       if (kind === 'review') return cannedReview(runDir, opts.label)
@@ -478,23 +489,25 @@ const maxOpenImpl = (log) => {
   })
   const log = run.log
   const adoptions = adoptionsOf(log)
-  assert.equal(adoptions.length, 2,
-    '(c)/M2: X\'s landing folds one epoch; Y\'s and Z\'s landings arrive while it is folding ' +
-    'and are folded together by the next lane — exactly two epochs, not one and not three: ' +
-    JSON.stringify(adoptions.map((e) => ({ wave: e.wave, tasks: e.tasks }))) + ' | ' +
+  assert.equal(adoptions.length, 1,
+    '(c)/M2: no landing of a run with no edges releases anything, so the only fold is the one ' +
+    'that ends the run — exactly one epoch, not three: ' +
+    JSON.stringify(adoptions.map((e) => ({ wave: e.wave, tasks: e.tasks, why: e.why }))) + ' | ' +
     shownLog(log))
   // Indexed through a default, so a run that folded fewer epochs than the
   // count above demands still reads as the assertion it failed rather than as
   // a TypeError in the sim.
   const epoch = (i) => adoptions[i] || { tasks: [] }
-  assert.deepEqual(epoch(0).tasks, ['X'],
-    '(c)/M2: the first epoch is X alone — it was the only captured, unadopted result when the ' +
-    'fold began: ' + JSON.stringify(adoptions[0] || null))
-  assert.deepEqual([...epoch(1).tasks].sort(), ['Y', 'Z'],
-    '(c)/M2: the second epoch folds Y and Z TOGETHER — a lane folds all of what has landed, ' +
-    'not one result per fold: ' + JSON.stringify(adoptions[1] || null))
-  assert.ok(indexOfEvent(log, epoch(0)) < indexOfEvent(log, epoch(1)),
-    '(c)/M2: epochs are appended in fold order: ' + shownLog(log))
+  assert.deepEqual([...epoch(0).tasks].sort(), ['X', 'Y', 'Z'],
+    '(c)/M2: that one epoch folds all three TOGETHER — a lane folds everything captured and ' +
+    'unadopted, not one result per fold: ' + JSON.stringify(adoptions[0] || null))
+  assert.equal(epoch(0).why, 'end',
+    '(c)/M2: and it names its trigger — nothing was in flight, nothing was folding and nothing ' +
+    'was ready when it was claimed: ' + JSON.stringify(adoptions[0] || null))
+  const folds = run.seam.calls.filter((c) => c.verb === 'fold' && c.at === 'begin')
+  assert.equal(folds.length, 1,
+    '(c)/M2: one epoch is one kernel fold — the run paid for a single candidate suite: ' +
+    JSON.stringify(run.seam.calls))
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -508,6 +521,10 @@ const maxOpenImpl = (log) => {
   const run = await drive({
     tag: 'd1', tasks: [taskOf('A'), taskOf('B'), taskOf('C')],
     edges: [['A', 'C']], width: 2,
+    // This scenario's subject is not the fold trigger, so it takes `foldAgeMs: 0`
+    // — every landing folds at its own instant, which is what it was written
+    // against and what #1006 keeps as the `0` reading.
+    foldAgeMs: 0,
     makeStub: (runDir) => async (prompt, opts, cwd) => {
       const [kind, id] = opts.label.split(':')
       if (kind === 'review') return cannedReview(runDir, opts.label)
@@ -548,6 +565,10 @@ const maxOpenImpl = (log) => {
 {
   const run = await drive({
     tag: 'd2', tasks: [taskOf('A'), taskOf('B')], edges: [], width: 2,
+    // This scenario's subject is not the fold trigger, so it takes `foldAgeMs: 0`
+    // — every landing folds at its own instant, which is what it was written
+    // against and what #1006 keeps as the `0` reading.
+    foldAgeMs: 0,
     // Exits non-zero and prints NOTHING once B.txt exists: an output naming no
     // path is not the unattributed-red route, so the candidate takes the
     // reconcile route and the reconcile agent's refusal makes the epoch red.
@@ -601,6 +622,10 @@ const maxOpenImpl = (log) => {
 {
   const run = await drive({
     tag: 'e1', tasks: [taskOf('A'), taskOf('B')], edges: [], width: 2,
+    // This scenario's subject is not the fold trigger, so it takes `foldAgeMs: 0`
+    // — every landing folds at its own instant, which is what it was written
+    // against and what #1006 keeps as the `0` reading.
+    foldAgeMs: 0,
     makeStub: (runDir) => {
       const dead = path.join(runDir, 'A-died')
       let attempts = 0
@@ -651,6 +676,10 @@ const maxOpenImpl = (log) => {
 {
   const run = await drive({
     tag: 'e2', tasks: [taskOf('A'), taskOf('B')], edges: [], width: 2,
+    // This scenario's subject is not the fold trigger, so it takes `foldAgeMs: 0`
+    // — every landing folds at its own instant, which is what it was written
+    // against and what #1006 keeps as the `0` reading.
+    foldAgeMs: 0,
     // `check.sh` is `[ ! -f BROKEN ]`, and BROKEN is committed at BASE.
     repoFiles: { BROKEN: 'the suite was red before this run opened\n' },
     makeStub: (runDir) => async (prompt, opts, cwd) => {

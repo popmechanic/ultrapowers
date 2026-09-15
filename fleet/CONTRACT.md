@@ -55,13 +55,22 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     The engine's own wave record is two kinds in that `events.jsonl`, one per epoch that folded.
     An epoch is a fold, not a layer: the driver keeps its lanes full from the ready set — a task
     is ready when every predecessor an edge names has been adopted — and folds whatever has
-    landed, all of it as one epoch, each time a slot frees. So `driver:wave-adopted`
-    `{wave, tasks, headSha}` — the 1-based epoch in fold order, the ids it merged in plan order,
-    the head it left on the integration branch, each a descendant of the epoch before it — and
-    `driver:wave-blocked` `{wave, tasks, detail}`, the same epoch and ids with the `waveMerges`
-    row's own `detail`. What an epoch adopts is what was captured and unadopted at the INSTANT
-    the slot freed — a result that lands while a fold is running is adopted by the fold after
-    it, never by the one already in flight, and only one fold runs at a time.
+    landed, all of it as one epoch, when a slot frees AND the fold would release a queued task,
+    end the run, or adopt a result older than `foldAgeMs`. A fold costs a suite, so a fold that
+    does none of the three is not run and the results wait for one that does. Which of the three
+    it was is the event's `why`: `released`, with `released: [<ids>]` — the tasks, in plan order,
+    that adopting this epoch makes ready; `end` — nothing in flight, nothing folding, nothing
+    ready and nothing pending but these results; or `aged` — the oldest pending result has waited
+    `foldAgeMs` milliseconds since it landed. `foldAgeMs` is the run's argument when it is a
+    non-negative number and otherwise the larger of 60000 and the wall the baseline suite took
+    (the age clause is off until the baseline settles); `foldAgeMs: 0` folds at every landing.
+    So `driver:wave-adopted` `{wave, tasks, headSha, why, released?}` — the 1-based epoch in fold
+    order, the ids it merged in plan order, the head it left on the integration branch, each a
+    descendant of the epoch before it — and `driver:wave-blocked` `{wave, tasks, detail, why,
+    released?}`, the same epoch and ids with the `waveMerges` row's own `detail`.
+    What an epoch adopts is what was captured and unadopted at the INSTANT the slot freed — a
+    result that lands while a fold is running is adopted by the fold after it, never by the one
+    already in flight, and only one fold runs at a time.
     The driver's own executions are three more kinds, one per command run: `driver:proof-run`
     `{task, cmd, exit, iter}`, `driver:check-run` `{task, cmd, exit, minor, iter}` and
     `driver:exam-run` `{task, cmd, exit, iter, stdout}` — `stdout` is the exam's combined

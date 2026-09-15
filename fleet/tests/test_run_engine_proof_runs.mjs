@@ -132,7 +132,11 @@ async function scenario({ task, review = () => passReview(), onImpl = () => {},
   }
   const { run, clonesDir } = rig({
     repo, runDir, waves: [[task]], stub, stamp,
-    extraArgs: { constraintChecks },
+    // `foldAgeMs: 0` — the fold-at-every-landing reading (#1006). The proof
+    // passes this file reads are what an ADOPTED epoch runs, and its fixtures
+    // pace reviewers on the kernel's folds; the fold trigger is another exam's
+    // subject, so every run here folds at its landings the way it always did.
+    extraArgs: { constraintChecks, foldAgeMs: 0 },
   })
   const report = await run()
   return { report, row: report.tasks[0], calls, prompts, runDir, clonesDir,
@@ -532,6 +536,7 @@ const segmentOf = (block, cmd) => {
   const { run, base: rigBase } = rig({
     repo, runDir, stub, stamp: 'ub1',
     waves: [[entry({ proofRuns: [PRINTENV, TEST_EQ] })]],
+    extraArgs: { foldAgeMs: 0 },
   })
   assert.equal(rigBase, base, 'sim precondition: every clone was provisioned at that sha')
   const report = await run()
@@ -625,6 +630,10 @@ const segmentOf = (block, cmd) => {
   const { run, base } = rig({
     repo, runDir, waves, stub, stamp: 'ub2',
     edges: [['T1', PACER], ['T1', 'T2'], ['T1', 'T3']],
+    // `foldAgeMs: 0` again: T2's and T3's reviews wait for the PACER's own fold
+    // to open, and under the #1006 trigger the pacer's landing releases nobody
+    // — the three-epoch shape this leg needs is the fold-at-every-landing one.
+    extraArgs: { foldAgeMs: 0 },
     exec: async (cmd, argv, opts) => {
       if (cmd === 'python3' && argv[1] === 'fold' &&
           argv[argv.indexOf('--wave') + 1] === '2') fs.writeFileSync(pacerFolding, '')
@@ -939,7 +948,7 @@ const probeSource = ({ tag, runs = [], checks = [], exam = false, pin, why }) =>
   const _r = _h.rig({
     repo: _h.makeRepo(_pp.join(_tmp, 'repo')), runDir: _pp.join(_tmp, 'run'),
     waves: [[_task]], stub: _stub, stamp: '${tag}',
-    extraArgs: { constraintChecks: ${JSON.stringify(checks)} },
+    extraArgs: { constraintChecks: ${JSON.stringify(checks)}, foldAgeMs: 0 },
   })
   await _r.run()
   const evs = _fs.readFileSync(_pp.join(_tmp, 'run', 'events.jsonl'), 'utf8')
