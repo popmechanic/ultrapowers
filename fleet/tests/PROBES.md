@@ -1,12 +1,15 @@
 # fleet/tests probes
 
-A `probe_*.mjs` file is a live measurement, not a test. Each one spends a real
-credential — most of them real tokens against a real `claude -p` — so none is
-named `test_*.mjs`: `tests/test_fleet_suite.py` globs `test_*.mjs`, and CI has
-no credentials. The naming is the whole mechanism — CI and the suite never run
-these. Run them by hand where a credential lives (the orchestrator, or a sandbox
-with `CLAUDE_CODE_OAUTH_TOKEN` exported):
-
+A `probe_*.mjs` file is either a live measurement or a design gate — never a
+suite test. A live measurement spends real tokens against a real `claude -p`; a
+design gate is model-free and spends only minutes, but it is a reading a person
+takes before a change rather than a verdict CI owes on every commit. Either way
+the file is deliberately NOT named `test_*.mjs`: `tests/test_fleet_suite.py`
+globs `test_*.mjs`, CI has no credentials, and the hermetic sweep
+`test_sims_are_hermetic.mjs` never reads a `probe_*.mjs`. The naming is the
+whole mechanism — CI and the suite never run these. Run them by hand; a live
+one, where a credential lives (the orchestrator, or a sandbox with
+`CLAUDE_CODE_OAUTH_TOKEN` exported):
     CLAUDE_CODE_OAUTH_TOKEN=… node fleet/tests/probe_confine_live.mjs
 
 The kata probe is the one exception to the credential: it spends no tokens and
@@ -45,3 +48,15 @@ The current probes:
   removes its `probe-kata-facts-*` project with the very purge ladder its last
   fact measures. Exit 0 every fact holds, 1 at least one drift, 2 the hub was
   unreachable or the project was left behind.
+- `probe_readiness_fold_order.mjs` — the fold-order gate (#832, #810 Phase C):
+  that for every fixture patch set, every sequential adoption order folds to
+  the tree the simultaneous fold lands. The design gate of this list, not a
+  live measurement — the kernel is the real one, every reply is a committed
+  file, no model runs and no token is spent, so it costs about half a minute
+  and needs no credential. Run it by hand before any change to the fold kernel
+  or to the ready-set scheduler (`node fleet/tests/probe_readiness_fold_order.mjs`):
+  five `wave-` lines, one `negative-control` line carrying `caught`, and
+  `ALL TESTS PASSED` last is the pass. A fixture set under
+  `fleet/tests/fixtures/readiness/` whose manifest names a `project` tree at
+  neither resolution is skipped with one stderr line and no stdout line — at
+  BASE all three are, and they read again the day their project trees return.

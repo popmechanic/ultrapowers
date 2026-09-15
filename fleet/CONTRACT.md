@@ -676,9 +676,19 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   ones and the notes of a task whose report row carries `actor` `plan`, and no other reviewer
   sentence appears above the record at all. The same items are also rows of `residuals.jsonl` on the run's record,
   written with the evidence and not at publish — the checklist closes with the PR that carries it,
-  the rows do not — and the sandbox files no issue for them, against this target or any other.
-  The publish record is three event kinds, appended to the run's `events.jsonl` beside the engine's
-  own and carrying the same `id`/`ts` stamp: `publish:pr` (`url`, `number`, `draft`) once the POST
+  the rows do not — and the sandbox files no issue for them, against this target or any other,
+  except the one disclosures ticket, which is not read off that checklist at all. Every
+  `judgmentCalls` entry of `report.json` reading `task <id>: out-of-FILES (not taken): <text>` — an
+  edit a task needed and could not make, as against a plain `out-of-FILES:` entry, which is an edit
+  it did make and is in the diff — goes out, after the PR is opened and before the merge is
+  decided, as ONE issue: `title` `fleet <run> disclosures: <heading>` (the PR title's heading),
+  `body` the PR URL, a blank line and one `- [ ] task <id> — <text>` box per entry in report order,
+  and NO `labels` key. A run with no such entry, and a run that opened no PR, files nothing; a POST
+  that is refused is one log line and the merge goes on unchanged.
+  The publish record is three event kinds — four with the ticket's `publish:disclosures`
+  (`url`, `items`), appended once its POST answers 2xx — appended to the run's `events.jsonl`
+  beside the engine's own and carrying the same `id`/`ts` stamp, in the order the steps run:
+  `publish:pr` (`url`, `number`, `draft`) once the POST
   answers 2xx; `publish:hold` (`why`, the phase's text after `left open: ` — `hold=1`, or
   `publish fold — <disposition text>`) for a PR left open without asking; and `publish:merge` per
   merge decision — `sha` alone when the PUT merged, else `sha` null with `left` one of
