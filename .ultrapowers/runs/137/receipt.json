@@ -1,0 +1,258 @@
+{
+  "ok": true,
+  "stamp": "run-137",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-137"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The compiler evaluates the five predicates at BASE and refuses a task whose predicate holds",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/scripts/compile_plan.py",
+          "skills/ultrawrite/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`evaluate_stale_if(tasks, base_tree) -> tuple[list[str], list[str]]`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The launcher carries the compiler's STALE fact lines onto the launch line",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "CLAUDE.md",
+          "fleet/RUNBOOK.md",
+          "fleet/launch.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The compiler evaluates the five predicates at BASE and refuses a task whose predicate holds",
+          "files": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "skills/ultrawrite/SKILL.md",
+            "tests/test_compile_plan_edges.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`evaluate_stale_if(tasks, base_tree) -> tuple[list[str], list[str]]`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_compile_plan_edges.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_compile_plan_edges.py",
+          "proofRuns": [
+            "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'STALE fact.*refus.*unreadable.*advisory'"
+          ],
+          "proofGuards": [
+            "tests/test_compile_plan_edges.py"
+          ],
+          "factsheet": {
+            "files": [
+              "skills/ultrapowers/scripts/compile_plan.py",
+              "skills/ultrawrite/SKILL.md",
+              "tests/test_compile_plan_edges.py"
+            ],
+            "deletes": [],
+            "guards": [
+              "tests/test_compile_plan_edges.py"
+            ],
+            "proofTests": [
+              "tests/test_compile_plan_edges.py"
+            ],
+            "landing": {
+              "tests/test_compile_plan_edges.py": "tests/test_compile_plan_edges.py"
+            },
+            "driverOwned": [
+              "tests/test_compile_plan_edges.py"
+            ],
+            "siblingOwned": [
+              "CLAUDE.md",
+              "fleet/RUNBOOK.md",
+              "fleet/launch.mjs",
+              "fleet/tests/test_launch_compile_facts.mjs"
+            ],
+            "produces": [
+              "`evaluate_stale_if(tasks, base_tree) -> tuple[list[str], list[str]]`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "The launcher carries the compiler's STALE fact lines onto the launch line",
+          "files": [
+            "CLAUDE.md",
+            "fleet/RUNBOOK.md",
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch_compile_facts.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "CLAUDE.md",
+            "fleet/RUNBOOK.md",
+            "fleet/launch.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_launch_compile_facts.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_launch_compile_facts.mjs",
+          "proofRuns": [
+            "sed -n '/^## Per run/,/^## /p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'BASE fact:.*STALE fact:.*launch line'",
+            "grep -q 'STALE fact:' CLAUDE.md && sed -n '/^## Layout/,/^## Doctrine/p' CLAUDE.md | tr '\\n' ' ' | grep -q 'compile_plan.py --check --base.*STALE fact:'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_launch_compile_facts.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "CLAUDE.md",
+              "fleet/RUNBOOK.md",
+              "fleet/launch.mjs",
+              "fleet/tests/test_launch_compile_facts.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_launch_compile_facts.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_launch_compile_facts.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_launch_compile_facts.mjs": "fleet/tests/test_launch_compile_facts.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_launch_compile_facts.mjs"
+            ],
+            "siblingOwned": [
+              "skills/ultrapowers/scripts/compile_plan.py",
+              "skills/ultrawrite/SKILL.md",
+              "tests/test_compile_plan_edges.py"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 Compilers"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- The engine, the roles, the kernel and the worker are untouched: nothing at runtime re-evaluates a Stale-if predicate.\n- No test and no sim touches the network: every `gh` an exam sees is a fake on a PATH the exam built, and every compiler a sim sees is answered through the exec seam.\n- The `BASE fact:` lines keep their text and their place after the verdict; a `STALE fact:` line is a new line beside them, never a rewording of one.\n- Every sim keeps printing `ALL TESTS PASSED` on its last line and names no sibling sim.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-main.mjs fleet/run-worker.mjs fleet/run-waves.mjs fleet/publish-fold.mjs fleet/sandbox-boot.sh fleet/roles skills/ultrapowers/kernel",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-137/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-137/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-137/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-137/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
