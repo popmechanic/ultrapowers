@@ -3569,33 +3569,13 @@ export async function runEngine({
     landingWaiters = []
     for (const resolve of waiting) resolve()
   }
-  // The next landing, OR the moment the oldest pending result ages out (#1006).
-  // `aged` is the one trigger that becomes true on its own, so a lane that went
-  // to sleep with results pending would otherwise sleep until a landing that
-  // may never come — every other task of the run can be in flight for minutes.
-  // The timer is unref'd, so a wake-up is never the reason a finished run is
-  // still alive, and whichever side wins clears the other.
-  const nextLandingOrAge = () => {
-    const threshold = foldAgeMs()
-    // No timer when a fold already holds the claim: these results belong to the
-    // epoch after it, the fold's own release announces, and a timer that fired
-    // against a claimed epoch would only spin the lane for the fold's duration.
-    if (threshold === null || epochClaimed || pendingResults.length === 0) return nextLanding()
-    const wait = Math.max(0, threshold - oldestPendingAgeMs())
-    return new Promise((resolve) => {
-      let settled = false
-      let timer = null
-      const wake = () => {
-        if (settled) return
-        settled = true
-        if (timer !== null) globalThis.clearTimeout(timer)
-        resolve()
-      }
-      timer = globalThis.setTimeout(wake, wait)
-      if (timer && typeof timer.unref === 'function') timer.unref()
-      landingWaiters.push(wake)
-    })
-  }
+  // No timer arms the age clause (#1006). Once the clause asks that nothing is
+  // in flight and no fold is running, it cannot come true while a lane sleeps: a
+  // lane sleeps here only with results pending and no trigger for them, which
+  // means a sibling is in flight or a fold is running — otherwise the claim just
+  // asked would have been `end`, or the lane would have taken a ready task. Both
+  // of those end in a landing or a fold release, and `announceLanding` resolves
+  // at either, so the landing is the only wake a lane needs.
 
   // ── claiming an epoch ──────────────────────────────────────────────────────
   // What one fold adopts is decided HERE, and the moment this returns a set it
@@ -3810,7 +3790,16 @@ export async function runEngine({
     if (released.length > 0) return { why: 'released', released }
     if (inFlight === 0 && foldingLanes === 0 && !anyReady()) return { why: 'end' }
     const threshold = foldAgeMs()
-    if (threshold !== null && oldestPendingAgeMs() >= threshold) return { why: 'aged' }
+    // The age clause waits for the run to go idle (#1006). A finished result
+    // that ages out while a sibling is still being implemented or reviewed buys
+    // a fold of its own that the sibling's own landing would have carried for
+    // free, so the clause asks the idle half of `end`'s test — nothing in
+    // flight, nothing folding — without `end`'s "nothing ready": an epoch
+    // claimed `aged` is one at whose instant every implementer, reviewer and fix
+    // worker had returned. `foldAgeMs: 0` is exempt and keeps the rule before
+    // this one, a fold at every landing, siblings in flight or not.
+    const idle = threshold === 0 || (inFlight === 0 && foldingLanes === 0)
+    if (threshold !== null && idle && oldestPendingAgeMs() >= threshold) return { why: 'aged' }
     return null
   }
 
@@ -4278,8 +4267,9 @@ export async function runEngine({
       }
       if (quiet) return
       // Not quiet: either work is still moving, or results are pending and no
-      // trigger holds for them yet. The second is what the age race is for.
-      await nextLandingOrAge()
+      // trigger holds for them yet. Both are waiting on the same thing — the
+      // next landing, or the release of the fold that is running.
+      await nextLanding()
     }
   }
   await parallel(Array.from({ length: W }, () => () => lane()))
