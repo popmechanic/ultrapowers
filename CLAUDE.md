@@ -182,6 +182,16 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   (131–140); the fold rule (`#1006`, one replay) stays an `experiment` until five, its rollback
   `foldAgeMs=0` — a fold at every landing; and one reviewer (`#974`) was flipped on `n=71` runs and
   stands.
+- **The plan is a submission, not a contract (operator, 2026-09-15, #990).** A worker that changes a
+  clause, a Files set or a sim outside its own Files has not broken the plan — it declares an
+  amendment, in the open: a `driver:amendment` row on the evidence branch, an entry in the
+  reviewer's lens, a line on the pull request card's list, and a count in the release census. A
+  reviewer judges a declared amendment on its merits and never reverts it for being outside the
+  plan. The plan-defect park stays exactly where it was — for a leg no implementation can pass, not
+  for a Files set a worker outgrew. The reading kept is amendments per run and per task. Reason:
+  run-133's task 1 made four such changes and merged clean, while run-2 died on the ambiguity — a
+  compelled edit outside Files was ruled lawful in round 1, reverted by the fix round, blocked in
+  round 2, and the task lost to `fix-loop-exhausted`.
 
 ## Working with the operator
 
