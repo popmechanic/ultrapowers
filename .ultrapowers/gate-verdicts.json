@@ -1,0 +1,18 @@
+{
+  "tasks": {
+    "1": {"hash": "86663cb11a0b0d000c6ae17f02f1f4cb7dae1b4c8d4327f228f5040190a5129b", "verdict": "pass", "reason": "Every clause has a falsifying leg at the compiler layer: the edge literal, the Test-bullet variant and the .bak whole-token negative for M1, empty dag_edges for M2, the lone interface edge with exit 0 for M3, the non-zero exit naming id and path plus the (minor) and removed-Check variants for M4, section-scoped greps for the text clause M5."},
+    "2": {"hash": "37fd84e47008bcb347a13c6448439ab58041730e27f16e55df3027e674902f37", "verdict": "pass", "reason": "M1-M5 read against a fake hub's call log and issue store with the absence checks named (no blocks at task 1, no purgeProject call, one issue per task after two launches); M6 is a scoped ordered-word grep plus a zero count for purges; M7 the two sentinel runs; every pinned literal computable."},
+    "3": {"hash": "dfa5bf497479529e2bc008cee2994c88ac72c40ad697f50292ce29d6ed050679", "verdict": "pass", "reason": "Legs (a) and (b) drive the reader against a fake hub with a decoy acme-widgets-run-4 project so each fails on a wrong issue, a wrong project, or a stray listIssues call; the two scoped Run lines pin M3's ordered words and the absence of the old name."},
+    "4": {"hash": "dfb25775bab53e616988e2da3cf0db0d642de719a3c83ef42995a8d39fcbbbf7", "verdict": "pass", "reason": "Legs (a) and (b) enumerate the kept rows and name the excluded ones (X9, the uid-less project event); (c) reads the recorded argv for the paging walk and checks byte-identity under the failing issues fetch; the Run line is a section-scoped ordered grep for M4."}
+  },
+  "tally": {"dispatched": 7, "rejected": 3, "rounds": {"1": {"dispatched": 4, "rejected": 3}, "2": {"dispatched": 3, "rejected": 0}}},
+  "history": [
+    {"round": 1, "task": "1", "verdict": "pass"},
+    {"round": 1, "task": "2", "verdict": "fail", "reason": "M6 enumerated five doc facts the greps did not all pin; leg (b) never pinned the title literal"},
+    {"round": 1, "task": "3", "verdict": "fail", "reason": "M3's leg never falsified 'matched on name'; the run-<N> count was broader than the clause"},
+    {"round": 1, "task": "4", "verdict": "fail", "reason": "M3's failed-page half was tested only through the issues fetch; M4's grep pinned one of three halves"},
+    {"round": 2, "task": "2", "verdict": "pass"},
+    {"round": 2, "task": "3", "verdict": "pass"},
+    {"round": 2, "task": "4", "verdict": "pass"}
+  ]
+}
