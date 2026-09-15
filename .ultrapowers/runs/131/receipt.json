@@ -1,0 +1,483 @@
+{
+  "ok": true,
+  "stamp": "run-131",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-131"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "4 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "A proof that runs a sibling's file orders the two, and a run-wide Check that one task's file would green is refused",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/scripts/compile_plan.py",
+          "skills/ultrawrite/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`dag_edges` entries with `why: \"proof-run\"` \u2014 `{\"from\": \"<blocker id>\", \"to\": \"<blocked id>\", \"why\": \"proof-run\"}`, in the compiler's stdout JSON beside the `interface`, `write-after-create` and `non-text-overlap` tiers"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The launcher files a run into the target's one project, as an idempotent seed with its edges, and a bump refiles instead of purging",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/kata-client.mjs",
+          "fleet/launch.mjs",
+          "fleet/lobby.mjs",
+          "fleet/tests/test_launch_bump.mjs",
+          "fleet/tests/test_launch_size.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`kataProjectFor(target: string) -> string` \u2014 `<owner>-<repo>`, one argument, in `fleet/lobby.mjs`",
+            "`createIssue(projectId, { title, body, metadata, links, idempotencyKey })` \u2014 the client sends `Idempotency-Key: <idempotencyKey>` when given",
+            "`link(projectId, fromUid, { type, to_ref, replace })` \u2014 the client sends `replace: true` in the body when given"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The janitor finds a run inside the target's one project",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/janitor.mjs",
+          "fleet/lobby.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "The boot exports the run's own slice of a shared project",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/sandbox-boot.sh"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "A proof that runs a sibling's file orders the two, and a run-wide Check that one task's file would green is refused",
+          "files": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "skills/ultrawrite/SKILL.md",
+            "tests/test_compile_plan_edges.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`dag_edges` entries with `why: \"proof-run\"` \u2014 `{\"from\": \"<blocker id>\", \"to\": \"<blocked id>\", \"why\": \"proof-run\"}`, in the compiler's stdout JSON beside the `interface`, `write-after-create` and `non-text-overlap` tiers"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_compile_plan_edges.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_compile_plan_edges.py",
+          "proofRuns": [
+            "python3 skills/ultrapowers/scripts/compile_plan.py --check evals/fixtures/claims/plan.md | grep -q 'PLAN OK'",
+            "sed -n '/^## Task shape/,/^## Elicit the claim/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'Run:.*sibling'",
+            "sed -n '/^## Global Constraints discipline/,/^## Execution handoff/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'Check:.*refused'"
+          ],
+          "proofGuards": [
+            "tests/test_compile_plan_edges.py"
+          ],
+          "factsheet": {
+            "files": [
+              "skills/ultrapowers/scripts/compile_plan.py",
+              "skills/ultrawrite/SKILL.md",
+              "tests/test_compile_plan_edges.py"
+            ],
+            "deletes": [],
+            "guards": [
+              "tests/test_compile_plan_edges.py"
+            ],
+            "proofTests": [
+              "tests/test_compile_plan_edges.py"
+            ],
+            "landing": {
+              "tests/test_compile_plan_edges.py": "tests/test_compile_plan_edges.py"
+            },
+            "driverOwned": [
+              "tests/test_compile_plan_edges.py"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/janitor.mjs",
+              "fleet/kata-client.mjs",
+              "fleet/launch.mjs",
+              "fleet/lobby.mjs",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_janitor.mjs",
+              "fleet/tests/test_launch_bump.mjs",
+              "fleet/tests/test_launch_kata_seed.mjs",
+              "fleet/tests/test_launch_size.mjs",
+              "fleet/tests/test_sandbox_boot_kata_export.mjs"
+            ],
+            "produces": [
+              "`dag_edges` entries with `why: \"proof-run\"` \u2014 `{\"from\": \"<blocker id>\", \"to\": \"<blocked id>\", \"why\": \"proof-run\"}`, in the compiler's stdout JSON beside the `interface`, `write-after-create` and `non-text-overlap` tiers"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "The launcher files a run into the target's one project, as an idempotent seed with its edges, and a bump refiles instead of purging",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/kata-client.mjs",
+            "fleet/launch.mjs",
+            "fleet/lobby.mjs",
+            "fleet/tests/test_launch_bump.mjs",
+            "fleet/tests/test_launch_kata_seed.mjs",
+            "fleet/tests/test_launch_size.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`kataProjectFor(target: string) -> string` \u2014 `<owner>-<repo>`, one argument, in `fleet/lobby.mjs`",
+              "`createIssue(projectId, { title, body, metadata, links, idempotencyKey })` \u2014 the client sends `Idempotency-Key: <idempotencyKey>` when given",
+              "`link(projectId, fromUid, { type, to_ref, replace })` \u2014 the client sends `replace: true` in the body when given"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/kata-client.mjs",
+            "fleet/launch.mjs",
+            "fleet/lobby.mjs",
+            "fleet/tests/test_launch_bump.mjs",
+            "fleet/tests/test_launch_size.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_launch_kata_seed.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_launch_kata_seed.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_launch_bump.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch_size.mjs | grep -q 'ALL TESTS PASSED'",
+            "test \"$(grep -c 'purgeProject' fleet/launch.mjs fleet/kata-client.mjs | awk -F: '{s+=$2} END {print s}')\" = 0",
+            "sed -n '/kata: the run filed on the hub/,/ONE verb/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'one project per target.*Idempotency-Key.*parent.*replace.*wontfix'",
+            "test \"$(sed -n '/kata: the run filed on the hub/,/ONE verb/p' fleet/CONTRACT.md | grep -c 'purges')\" = 0"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_launch_kata_seed.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/kata-client.mjs",
+              "fleet/launch.mjs",
+              "fleet/lobby.mjs",
+              "fleet/tests/test_launch_bump.mjs",
+              "fleet/tests/test_launch_kata_seed.mjs",
+              "fleet/tests/test_launch_size.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_launch_kata_seed.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_launch_kata_seed.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_launch_kata_seed.mjs": "fleet/tests/test_launch_kata_seed.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_launch_kata_seed.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/janitor.mjs",
+              "fleet/lobby.mjs",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_janitor.mjs",
+              "fleet/tests/test_sandbox_boot_kata_export.mjs",
+              "skills/ultrapowers/scripts/compile_plan.py",
+              "skills/ultrawrite/SKILL.md",
+              "tests/test_compile_plan_edges.py"
+            ],
+            "produces": [
+              "`kataProjectFor(target: string) -> string` \u2014 `<owner>-<repo>`, one argument, in `fleet/lobby.mjs`",
+              "`createIssue(projectId, { title, body, metadata, links, idempotencyKey })` \u2014 the client sends `Idempotency-Key: <idempotencyKey>` when given",
+              "`link(projectId, fromUid, { type, to_ref, replace })` \u2014 the client sends `replace: true` in the body when given"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "3",
+          "title": "The janitor finds a run inside the target's one project",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/janitor.mjs",
+            "fleet/lobby.mjs",
+            "fleet/tests/test_janitor.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/janitor.mjs",
+            "fleet/lobby.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_janitor.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_janitor.mjs",
+          "proofRuns": [
+            "sed -n '/ask the hub for the run.s state/,/is a finished run/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'matched on .name. against the target.s one project.*<owner>-<repo>'",
+            "test \"$(sed -n '/ask the hub for the run.s state/,/is a finished run/p' fleet/CONTRACT.md | grep -c '<owner>-<repo>-run-<N>')\" = 0"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_janitor.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/janitor.mjs",
+              "fleet/lobby.mjs",
+              "fleet/tests/test_janitor.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_janitor.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_janitor.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_janitor.mjs": "fleet/tests/test_janitor.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_janitor.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/kata-client.mjs",
+              "fleet/launch.mjs",
+              "fleet/lobby.mjs",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_launch_bump.mjs",
+              "fleet/tests/test_launch_kata_seed.mjs",
+              "fleet/tests/test_launch_size.mjs",
+              "fleet/tests/test_sandbox_boot_kata_export.mjs",
+              "skills/ultrapowers/scripts/compile_plan.py",
+              "skills/ultrawrite/SKILL.md",
+              "tests/test_compile_plan_edges.py"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        },
+        {
+          "id": "4",
+          "title": "The boot exports the run's own slice of a shared project",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/test_sandbox_boot_kata_export.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_kata_export.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_kata_export.mjs",
+          "proofRuns": [
+            "sed -n '/THE HUB.S OWN RECORD/,/Exported at every/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'the run.s issues.*named by.*events on them'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_sandbox_boot_kata_export.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_sandbox_boot_kata_export.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_sandbox_boot_kata_export.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_sandbox_boot_kata_export.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_sandbox_boot_kata_export.mjs": "fleet/tests/test_sandbox_boot_kata_export.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_sandbox_boot_kata_export.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/janitor.mjs",
+              "fleet/kata-client.mjs",
+              "fleet/launch.mjs",
+              "fleet/lobby.mjs",
+              "fleet/tests/test_janitor.mjs",
+              "fleet/tests/test_launch_bump.mjs",
+              "fleet/tests/test_launch_kata_seed.mjs",
+              "fleet/tests/test_launch_size.mjs",
+              "skills/ultrapowers/scripts/compile_plan.py",
+              "skills/ultrawrite/SKILL.md",
+              "tests/test_compile_plan_edges.py"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "4 Runs"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- The engine, the roles, the kernel and the fleet's other scripts are untouched: `fleet/run-engine.mjs`, `fleet/run-main.mjs`, `fleet/run-waves.mjs`, `fleet/run-worker.mjs`, `fleet/confine-hook.mjs`, `fleet/publish-fold.mjs`, `fleet/fleet-bootstrap.sh`, `fleet/doctor.mjs`, `fleet/target.mjs`, `fleet/claude-token.mjs`, everything under `fleet/roles/` and everything under `skills/ultrapowers/kernel/` are byte-identical to BASE.\n- The hub is reached only through `fleet/kata-client.mjs` from the laptop and the engine, and only through `fleet_curl` from the boot: no task adds a `kata` CLI invocation to the launcher, the janitor or the boot, and every mutation the client sends still carries `actor` in its body.\n- No sim reaches a network or the real hub: every hub a sim drives is an injected object or the boot rig's stub `curl`.\n- The `.ultrapowers/kata.json` record keeps its shape and key order: `{\"url\", \"project\": {id, uid, name}, \"run\": {uid, revision}, \"tasks\": {\"<id>\": {uid, short_id, revision}}}`, `JSON.stringify(\u2026, null, 2)` plus a trailing newline.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-main.mjs fleet/run-waves.mjs fleet/run-worker.mjs fleet/confine-hook.mjs fleet/publish-fold.mjs fleet/fleet-bootstrap.sh fleet/doctor.mjs fleet/target.mjs fleet/claude-token.mjs fleet/roles skills/ultrapowers/kernel",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-131/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-131/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-131/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-131/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
