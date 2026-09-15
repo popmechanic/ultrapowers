@@ -12,3 +12,4 @@
 {"kind":"worker:end","label":"exam:1","role":"examiner","sessionId":"4d3ec676-74a7-42c7-a7df-48ecc5440d9c","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5734,"output":73307,"cacheRead":3913660,"cacheCreation":156595,"costUsd":5.3819125,"models":["claude-opus-5"]},"id":"01M2K898760000XQYVH97Q32BY","ts":1789500104934}
 {"kind":"transcript:slice","label":"exam:1","sessionId":"4d3ec676-74a7-42c7-a7df-48ecc5440d9c","bytes":11038,"id":"01M2K8987X0000C7ZZ8P3990Q1","ts":1789500104957}
 {"kind":"driver:attention","task":"1","attention":"needs-human","msg":"session ended without hand-off","actor":"","id":"01M2K89N790000BDT8VQ667VSE","ts":1789500118249}
+{"kind":"driver:attention","task":"1","attention":"ok","msg":"session ended without hand-off","actor":"","id":"01M2K8BFTY000083S1DJATN9TM","ts":1789500178270}
