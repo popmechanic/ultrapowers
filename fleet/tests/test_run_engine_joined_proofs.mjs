@@ -51,6 +51,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { execSeam } from '../run-main.mjs'
 import { rig, makeRepo, passReview, doneImpl } from './_engine_helpers.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-joined-proofs-'))
@@ -82,7 +83,28 @@ const integratedEvents = (runDir) =>
 const eventShape = (e) => ({ task: e.task, cmd: e.cmd, exit: e.exit, wave: e.wave })
 const runShape = (r) => ({ task: r.task, cmd: r.cmd, exit: r.exit })
 
-// One wave, canned judgments, real everything else. `writes` is
+// Wait for a file the run itself writes. The only clock a sim is allowed: the
+// engine's own progress, polled.
+const waitFor = async (file) => {
+  for (let i = 0; i < 4000; i++) {
+    if (fs.existsSync(file)) return
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
+  throw new Error('timed out waiting for ' + file)
+}
+
+// The PACER (#979). An epoch is a fold and a fold adopts what has LANDED, so two
+// tasks share an epoch only when both land while a fold is already running —
+// there is no barrier left to gather them at. Every fixture here asks what a
+// fold does with two tasks at once, so every fixture gets a pacer task: `P`
+// touches a file nobody else does, lands alone, and the exec seam below writes a
+// sentinel when the kernel opens its fold. Every other task's REVIEW waits for
+// that sentinel, so every other task lands inside the pacer's fold and the next
+// fold adopts them together. The join is epoch 2 in every fixture and
+// `waveMerges[0]` is the pacer's own row.
+const PACER = 'P'
+
+// One plan wave, canned judgments, real everything else. `writes` is
 // { <task id>: { <relative path>: <contents> } } — what that task's implementer
 // stub leaves in its own clone, which is what `withPatchCapture` then captures
 // as the task's patch.
@@ -91,10 +113,18 @@ function fixture({ name, tasks, writes, constraintChecks = null }) {
   const runDir = path.join(tmp, 'run-' + name)
   const dispatched = []
   const prompts = {}
+  const pacerStarted = path.join(runDir, 'pacer-fold-started')
+  const allWrites = { ...writes, [PACER]: { 'pacer.txt': 'pace\n' } }
   const { run: inner, ...rest } = rig({
-    repo, runDir, waves: [tasks], stamp: name,
+    repo, runDir, waves: [[...tasks, mkTask(PACER, ['pacer.txt'])]], stamp: name,
     ...(constraintChecks ? { extraArgs: { constraintChecks } } : {}),
-    stub: (prompt, opts, cwd) => {
+    // The pacer's fold, announced to the stub: the kernel's `fold` for epoch 1.
+    exec: async (cmd, argv, opts) => {
+      if (cmd === 'python3' && argv[1] === 'fold' &&
+          argv[argv.indexOf('--wave') + 1] === '1') fs.writeFileSync(pacerStarted, '')
+      return execSeam(cmd, argv, opts)
+    },
+    stub: async (prompt, opts, cwd) => {
       dispatched.push(opts.label)
       prompts[opts.label] = prompt
       // The rig stubs the agent, so run-worker's own `worker:start` line never
@@ -106,12 +136,16 @@ function fixture({ name, tasks, writes, constraintChecks = null }) {
       const kind = opts.label.split(':')[0]
       if (kind === 'impl') {
         const id = opts.label.split(':')[1]
-        for (const [rel, body] of Object.entries(writes[id] || {})) {
+        for (const [rel, body] of Object.entries(allWrites[id] || {})) {
           fs.writeFileSync(path.join(cwd, rel), body)
         }
         return doneImpl(cwd)
       }
-      if (kind === 'review') return passReview()
+      if (kind === 'review') {
+        // The pacer lands first and alone; everyone else lands inside its fold.
+        if (opts.label.split(':')[1] !== PACER) await waitFor(pacerStarted)
+        return passReview()
+      }
       // Never expected in these fixtures — every proof below is green in its own
       // clone. Answered rather than thrown so the leg's precondition names it.
       if (kind === 'fix') return doneImpl(cwd)
@@ -130,11 +164,14 @@ function assertClean(name, report, dispatched, planned) {
     name + ': sim precondition — every proof is green in its own clone, so no ' +
     'fix round is dispatched: ' + dispatched.join(','))
   assert.equal(report.coverage.complete, true,
-    name + ': sim precondition — all ' + planned + ' tasks merged: ' +
+    name + ': sim precondition — all ' + planned + ' tasks (the pacer included) merged: ' +
     JSON.stringify(report.tasks.map((t) => ({ task: t.task, status: t.status }))))
-  assert.equal(report.waveMerges[0].status, 'MERGED',
-    name + ': sim precondition — the wave was adopted: ' +
-    JSON.stringify(report.waveMerges[0]))
+  assert.equal(report.waveMerges.length, 2,
+    name + ': sim precondition — two epochs, the pacer\'s and the tasks\' own: ' +
+    JSON.stringify(report.waveMerges))
+  assert.equal(report.waveMerges[1].status, 'MERGED',
+    name + ': sim precondition — the epoch under test was adopted: ' +
+    JSON.stringify(report.waveMerges[1]))
 }
 
 // ── the fixtures ─────────────────────────────────────────────────────────────
@@ -202,42 +239,46 @@ const declaredReport = await declared.run()
 const soloReport = await solo.run()
 const trioReport = await trio.run()
 
-assertClean('joined', joinedReport, joined.dispatched, 2)
-assertClean('disjoint', disjointReport, disjoint.dispatched, 2)
-assertClean('declared', declaredReport, declared.dispatched, 2)
-assertClean('solo', soloReport, solo.dispatched, 1)
-assertClean('trio', trioReport, trio.dispatched, 3)
+assertClean('joined', joinedReport, joined.dispatched, 3)
+assertClean('disjoint', disjointReport, disjoint.dispatched, 3)
+assertClean('declared', declaredReport, declared.dispatched, 3)
+assertClean('solo', soloReport, solo.dispatched, 2)
+assertClean('trio', trioReport, trio.dispatched, 4)
 
-// ── leg (a): the wave's joined paths, on the waveMerges row [M1] ─────────────
+// ── leg (a): the epoch's joined paths, on the waveMerges row [M1] ────────────
+// Row index 1 throughout: row 0 is the pacer's epoch, which stands alone.
 {
   // [M1] the join computed from what the patches changed.
-  assert.deepEqual(joinedReport.waveMerges[0].joined, ['shared.txt'],
-    '[M1] a wave whose two implementers both wrote `shared.txt` must record ' +
-    '`waveMerges[0].joined` = ["shared.txt"]; got ' +
-    JSON.stringify(joinedReport.waveMerges[0].joined) + ' on the row ' +
-    JSON.stringify(joinedReport.waveMerges[0]))
+  assert.deepEqual(joinedReport.waveMerges[1].joined, ['shared.txt'],
+    '[M1] an epoch whose two implementers both wrote `shared.txt` must record ' +
+    '`joined` = ["shared.txt"]; got ' +
+    JSON.stringify(joinedReport.waveMerges[1].joined) + ' on the row ' +
+    JSON.stringify(joinedReport.waveMerges[1]))
 
   // [M1] no path in two touch sets ⇒ the array is present and empty, never absent.
-  assert.deepEqual(disjointReport.waveMerges[0].joined, [],
-    '[M1] a wave writing only `a.txt` and `b.txt` must record `joined` = [] — ' +
-    'an array, not an absent key: ' + JSON.stringify(disjointReport.waveMerges[0]))
+  assert.deepEqual(disjointReport.waveMerges[1].joined, [],
+    '[M1] an epoch writing only `a.txt` and `b.txt` must record `joined` = [] — ' +
+    'an array, not an absent key: ' + JSON.stringify(disjointReport.waveMerges[1]))
 
   // [M1] the declared half of the touch set: A never wrote `shared.txt`, it only
   // declared it. A `joined` computed from the patches alone leaves this [].
-  assert.deepEqual(declaredReport.waveMerges[0].joined, ['shared.txt'],
+  assert.deepEqual(declaredReport.waveMerges[1].joined, ['shared.txt'],
     '[M1] a task\'s touch set is its declared `files` UNITED with the paths its ' +
     'patch changed: A declares `shared.txt` and writes only `a.txt`, B writes ' +
     '`shared.txt`, so `joined` = ["shared.txt"]; got ' +
-    JSON.stringify(declaredReport.waveMerges[0].joined))
+    JSON.stringify(declaredReport.waveMerges[1].joined))
 
-  // [M1] a single-task wave has no second touch set to intersect with.
-  assert.deepEqual(soloReport.waveMerges[0].joined, [],
-    '[M1] a single-task wave joins nothing: ' + JSON.stringify(soloReport.waveMerges[0]))
+  // [M1] a single-task epoch has no second touch set to intersect with — and so
+  // has the pacer's own row, in every fixture.
+  assert.deepEqual(soloReport.waveMerges[1].joined, [],
+    '[M1] a single-task epoch joins nothing: ' + JSON.stringify(soloReport.waveMerges[1]))
+  assert.deepEqual(joinedReport.waveMerges[0].joined, [],
+    '[M1] and neither does the pacer\'s: ' + JSON.stringify(joinedReport.waveMerges[0]))
 
   // [M1] three tasks, one shared path — C's `c.txt` is nobody else's.
-  assert.deepEqual(trioReport.waveMerges[0].joined, ['shared.txt'],
+  assert.deepEqual(trioReport.waveMerges[1].joined, ['shared.txt'],
     '[M1] only the path in at least two touch sets is joined; `c.txt` is in one: ' +
-    JSON.stringify(trioReport.waveMerges[0].joined))
+    JSON.stringify(trioReport.waveMerges[1].joined))
 }
 
 // ── leg (b): executed if and only if the touch set meets `joined` [M2] ───────
@@ -251,10 +292,11 @@ assertClean('trio', trioReport, trio.dispatched, 3)
   ], '[M2] both tasks stand on `shared.txt`, so all three commands run on the ' +
      'integrated tree, in plan order: ' + JSON.stringify(joinedReport.integratedRuns.map(runShape)))
   assert.deepEqual(integratedEvents(joined.runDir).map(eventShape), [
-    { task: 'A', cmd: 'test -e a.txt', exit: 0, wave: 1 },
-    { task: 'A', cmd: 'test -e shared.txt', exit: 0, wave: 1 },
-    { task: 'B', cmd: 'test -e b.txt', exit: 0, wave: 1 },
-  ], '[M2] three `driver:integrated-run` events, one per executed command')
+    { task: 'A', cmd: 'test -e a.txt', exit: 0, wave: 2 },
+    { task: 'A', cmd: 'test -e shared.txt', exit: 0, wave: 2 },
+    { task: 'B', cmd: 'test -e b.txt', exit: 0, wave: 2 },
+  ], '[M2] three `driver:integrated-run` events, one per executed command, each ' +
+     'naming the epoch that folded the join')
 
   // [M2] pairwise-disjoint touch sets execute none.
   assert.deepEqual(disjointReport.integratedRuns, [],
@@ -280,8 +322,8 @@ assertClean('trio', trioReport, trio.dispatched, 3)
      'is not re-run while A\'s and B\'s are: ' +
      JSON.stringify(trioReport.integratedRuns.map(runShape)))
   assert.deepEqual(integratedEvents(trio.runDir).map(eventShape), [
-    { task: 'A', cmd: 'test -e a.txt', exit: 0, wave: 1 },
-    { task: 'B', cmd: 'test -e b.txt', exit: 0, wave: 1 },
+    { task: 'A', cmd: 'test -e a.txt', exit: 0, wave: 2 },
+    { task: 'B', cmd: 'test -e b.txt', exit: 0, wave: 2 },
   ], '[M2] and the events carry exactly the executed commands — none of C\'s')
 }
 
@@ -327,10 +369,10 @@ assertClean('trio', trioReport, trio.dispatched, 3)
     },
   })
   const report = await red.run()
-  assertClean('red-on-fold', report, red.dispatched, 2)
-  assert.deepEqual(report.waveMerges[0].joined, ['shared.txt'],
+  assertClean('red-on-fold', report, red.dispatched, 3)
+  assert.deepEqual(report.waveMerges[1].joined, ['shared.txt'],
     '[M1] sim precondition — A and B are joined on `shared.txt`: ' +
-    JSON.stringify(report.waveMerges[0]))
+    JSON.stringify(report.waveMerges[1]))
 
   // The red is recorded: reported, not suppressed.
   assert.deepEqual(report.integratedRuns.map(runShape),
@@ -346,11 +388,11 @@ assertClean('trio', trioReport, trio.dispatched, 3)
     '[M4] a non-zero integrated `Run:` exit must push NO completeness finding ' +
     'whose detail begins `integrated Run:`: ' + JSON.stringify(report.completenessFindings))
 
-  // [M4] and it does not block the run: no wave parked. #964 Task 2 removed the
+  // [M4] and it does not block the run: no epoch parked. #964 Task 2 removed the
   // other half of this leg — that the run still reached the completeness critic
   // — with the critic itself; what is left is the question the red run poses.
   assert.deepEqual(report.blockedWaves, [],
-    '[M4] the red integrated run parks no wave: ' + JSON.stringify(report.blockedWaves))
+    '[M4] the red integrated run parks no epoch: ' + JSON.stringify(report.blockedWaves))
 
   // [M4] the judgment call, verbatim — one line, equal to the ticket's sentence.
   const matching = report.judgmentCalls.filter((j) => String(j) === SENTENCE)
@@ -379,11 +421,13 @@ assertClean('trio', trioReport, trio.dispatched, 3)
     constraintChecks: [{ cmd: CHECK, minor: false }],
   })
   const report = await checked.run()
-  assertClean('check', report, checked.dispatched, 2)
+  assertClean('check', report, checked.dispatched, 3)
 
-  // [M5] the Check: ran on the integrated tree and blocked, exactly as today.
+  // [M5] the Check: runs on every adopted tree — green on the pacer's epoch,
+  // which holds neither file, and red on the epoch that folded both — and the red
+  // one blocks, exactly as today.
   assert.deepEqual(report.integratedChecks.map((c) => ({ cmd: c.cmd, exit: c.exit })),
-    [{ cmd: CHECK, exit: 1 }],
+    [{ cmd: CHECK, exit: 0 }, { cmd: CHECK, exit: 1 }],
     '[M5] the Global Constraints `Check:` still runs on the adopted tree: ' +
     JSON.stringify(report.integratedChecks))
   const checkFindings = (report.completenessFindings || [])

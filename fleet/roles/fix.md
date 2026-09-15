@@ -72,6 +72,20 @@ Set one of those mid-session with that message line — `stuck` for a blockage t
 driver can clear, `needs-human` for one only the operator can — and clear it
 with `kata meta set $KATA_REF work.attention ok` once you are moving again.
 
+A finding that is red only because a sibling's work is missing is the one the
+driver clears by waiting. When a proof runs a file a sibling owns and nothing in
+your own tree can make it green, take the sibling's reference from your
+`SIBLING FILES` line and record the dependency there:
+
+```
+kata edit $KATA_REF --blocked-by <that sibling's reference>
+```
+
+Then set `work.attention` to `stuck` with a message naming that sibling, and
+return `BLOCKED` naming it too. The driver reads the edge off the issue and
+sends the task out again once the sibling's work is in the tree, so the thread
+you wrote into carries what you learned to whoever picks it up.
+
 If you stop short of the listed issues, say so in an honest comment and mark the
 work:
 

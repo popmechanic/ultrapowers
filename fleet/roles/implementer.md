@@ -89,6 +89,22 @@ Set one of those mid-session with that message line — `stuck` for a blockage t
 driver can clear, `needs-human` for one only the operator can. Clear it with
 `kata meta set $KATA_REF work.attention ok` once you are moving again.
 
+One blockage has its own three moves, because the run can clear it by waiting. A
+proof of yours may run a file a sibling owns and be red only because that
+sibling's work is not in your tree yet — the edge the plan should have drawn
+between you. Your `SIBLING FILES` line carries each sibling's kata reference
+beside its id, so file the dependency against the one you need:
+
+```
+kata edit $KATA_REF --blocked-by <that sibling's reference>
+```
+
+Then set `work.attention` to `stuck` with a message naming that sibling, and
+return `BLOCKED` naming it too. The driver reads the edge off your issue, holds
+the task until the sibling's work is folded in, and dispatches it again on a
+tree that carries it — so what would have been a lost task is a delay, and the
+notes you left in the thread are what the next session starts from.
+
 If you stop short of the task, mark the work for review beside an honest
 comment:
 
