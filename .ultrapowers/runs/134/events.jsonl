@@ -101,3 +101,7 @@
 {"kind":"worker:end","label":"review:1:1","role":"reviewer","sessionId":"e336cfbb-fe24-4b8b-9ad8-f5bc2b23065a","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":6034,"output":6516,"cacheRead":309390,"cacheCreation":26686,"costUsd":0.614625,"models":["claude-opus-5"]},"id":"01M2J2J5FV0000ARY1ZCC6SJ0K","ts":1789460551163}
 {"kind":"transcript:slice","label":"review:1:1","sessionId":"e336cfbb-fe24-4b8b-9ad8-f5bc2b23065a","bytes":11750,"id":"01M2J2J5FW00009776K34V5K20","ts":1789460551164}
 {"kind":"driver:attention","task":"10","attention":"needs-human","msg":"session ended without hand-off","actor":"","id":"01M2J2JG220000ZR7YF3HHW2HK","ts":1789460561986}
+{"kind":"worker:end","label":"review:10:1","role":"reviewer","sessionId":"a73d19b8-d9f4-495f-b75c-7970a994504c","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5817,"output":5403,"cacheRead":342345,"cacheCreation":22429,"costUsd":0.5596225,"models":["claude-opus-5"]},"id":"01M2J2M2G60000VB0CZZ3PPNHG","ts":1789460613638}
+{"kind":"transcript:slice","label":"review:10:1","sessionId":"a73d19b8-d9f4-495f-b75c-7970a994504c","bytes":11451,"id":"01M2J2M2G90000TQX71HNG4663","ts":1789460613641}
+{"kind":"engine:log","line":"baseline: green on 1c97ba442c65d882354953d16590b1f8eb0c7a7a","id":"01M2J2MK8H0000Z8C56SB7TDD0","ts":1789460630801}
+{"kind":"engine:phase","phase":"Wave 1","id":"01M2J2MK8J0000STRPTTS4J6W3","ts":1789460630802}
