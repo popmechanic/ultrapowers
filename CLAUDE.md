@@ -49,7 +49,8 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   `fleet/roles/*.md` — one copy, no bake step.
 - `skills/ultrawrite/` — the plan-authoring skill: the claims-v1 grammar (six body slots,
   contracts signed and edges derived; `- Run:` proofs since #592), plus
-  `references/greenfield-stack.md` and the provenance/base-fact scripts.
+  `references/greenfield-stack.md`, the provenance/base-fact scripts, and
+  `scripts/authoring_census.py` (`--fetch` a run range, `totals:` for the release notes).
 - `hooks/session_start.sh` — injects the plan-routing rule into every session. The rule lives
   there, not here.
 - `.claude-plugin/{plugin.json,marketplace.json}` — manifest + marketplace entry; the version
@@ -161,7 +162,9 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   the launcher reaps, by hand after a sleep, no scheduled job on this machine.
 - **Every choice is an AskUserQuestion** — 2–3 concrete options with their consequences and a
   `(Recommended)` tag, never a bare open question; the operator adjudicates, they do not author
-  (see §Working with the operator).
+  (see §Working with the operator). And every sitting-level question is recorded with its pick in
+  the plan's `authoring` record, so the Recommended `pick rate` is read per release and a
+  recommendation taken every time is retired into a written default rather than asked again.
 - **Test doctrine (operator, 2026-09-09).** The implementer never does TDD: it iterates against the
   suite and writes no test of its own. The peer exam plus driver-run probes are the proof, and the
   target's suite is a *reported sensor* with attribution, measured and never asserted on a
@@ -173,7 +176,8 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
 
 - **They adjudicate, they do not author.** Put every decision as 2–3 concrete options with
   their consequences and a `(Recommended)` tag, through AskUserQuestion; never a bare open
-  question. A signed Claim is their own sentence, elicited, never drafted for countersigning.
+  question. A signed Claim is drafted by the author and confirmed by the operator in one touch —
+  the draft, its machine restatement and its summary in a single question; their edit is the Claim.
   Explain an idea; do not state it in the technical register and leave them to decode it.
 - **They never read code or tests.** The trust chain is plan → peer exam → gate receipt →
   smoke. Quote receipts; never narrate a green.

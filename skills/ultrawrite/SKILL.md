@@ -184,7 +184,24 @@ sizes nor caches, so a bad size surfaces as the constructor's own `ValueError`.
 - path-absent: `widgetkit/widget.py`
 ```
 
-## Elicit the claim — never draft it for countersigning
+## Elicit the claim — drafted, then confirmed
+
+A Claim is **drafted by the author** and **confirmed by the operator**, and the two happen in
+one touch: the author writes the sentence off the issue or the conversation, puts it with its
+machine restatement and its summary inside a single AskUserQuestion, and the operator's pick —
+or their edit — is the signature. That, and only that, is what the `(elicited)` tag on a signed
+Claim records: not that the operator typed the sentence, but that they saw it and adopted it.
+Pretending otherwise costs a round trip and buys nothing, because a Claim the author never
+drafted is a bare open question wearing a tag.
+
+A Claim question may also be put **without a (Recommended)** option, when the author has two
+honest drafts and no preference between them. Then the register row for that question records
+its `recommended` as `null`, and the pick carries information: an untagged question is the one
+place where what the operator chose is data rather than assent.
+
+A question whose recommended option is **picked on every plan** of a release is not a question.
+At the release census it is **retired** — its default written down here, the sitting one touch
+shorter (#727) — and what stays in the register is only what a pick can still move.
 
 **From a filed issue** (the common path, and what keeps autonomous drains working): quote
 the operator's own words as the Claim, anchored to the issue; bind the machine
@@ -251,7 +268,19 @@ shape: `{"tasks": {"<id>": {"hash": "<the extractor's hash>", "verdict": "pass" 
 "reason": "<one sentence>"}, …}, "tally": {…}}` — `tasks` keyed by task id with those three
 fields, `verdict` one of `pass`/`fail`, `tally` a free-form count object (`dispatched`,
 `rejected`, per-round counts) that is kept for the record and not validated; any extra
-key, such as a `history` array of every round's verdicts, is tolerated. A missing task, a
+key, such as a `history` array of every round's verdicts, is tolerated. One such key is
+reserved: beside `tasks` and `tally` the record carries the sitting's own `authoring` object,
+
+    {"authoring": {"minutes": 118, "probes": 12, "routing": {"branch": "risk", "lane": "ultrapowers"}, "questions": [{"question": "Claim and summary", "options": ["A", "B"], "recommended": "A", "picked": "A"}]}}
+
+where `minutes` is the sitting's wall-clock minutes to `PLAN OK`, `probes` the hub probes made,
+`routing` the handoff rule's own verdict (§Execution handoff), and `questions` one row per
+AskUserQuestion of the sitting — the execute question included, `recommended` null when no
+option carried the tag. The author writes the whole object once, at the execution handoff after
+`PLAN OK` and before the launch; the compiler prints it as one `AUTHORING fact:` line under
+`--check --base`, and the launcher carries that line onto the launch line. A release reads a run
+range with `python3 $UW/authoring_census.py --fetch <owner>/<repo> --runs <A>..<B> --into <dir>`,
+and its last `totals:` line is what the release notes carry. A missing task, a
 stale hash, or a `fail` is a compile refusal. The verdict is an artifact, not
 a memory: the compiler refuses a plan whose record is missing or whose hashes are stale,
 so an edited Claim or Proof re-dispatches. The gate agent never authors proofs, and the
@@ -436,6 +465,12 @@ winner **(recommended)**:
    launches immediately, without a further approval pause.
 2. **Subagent-Driven** — sequential, fresh context and review between tasks.
 3. **Inline** — continuous inline execution.
+
+Both halves of that go on the record: the branch that fired and the lane they picked are
+written into the plan record's `routing` as `branch` — one of `risk`, `width`, `inline`,
+`subagent`, the four branches above, first match wins — and `lane`, one of `ultrapowers`,
+`subagent`, `inline`, whichever of the three options above they took (§The proof gate). The
+pair is what tells a release how often the recommendation was the lane.
 
 A claims-v1 plan has no steps to follow, but a sequential executor can implement
 task-by-task from contract plus proof.
