@@ -1,0 +1,279 @@
+{
+  "integrationBranch": "ultra/integration-run-131",
+  "baseSha": "c3c8fa9bbf1d6a339b81a81234a41066720dd94f",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3",
+      "4"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "b0c81896bf4acffd3d2fa1fbdc6a293345ca5508",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-131/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "The new refusal is wired only into `collect_violations` (the `--check` path). `main`'s compile-path grammar bundle at compile_plan.py ~2612-2615 \u2014 where its sibling `constraint_check_violations(plan_text)` already sits \u2014 was not extended, so a plain compile or `--emit-launch` of a plan whose run-wide `- Check:` names a task-owned path still exits 0 and emits a payload. M4 is scoped to `--check`, so this is not a gap against the exam, and the Claim's \"refused before anything is filed\" does hold in practice because `fleet/launch.mjs:641` runs `compile_plan.py --check --base` before any lobby verb. But the asymmetry with the backtick check is a trap for any consumer that compiles without `--check`; one line closes it.; The compiler's emitted `why` labels are enumerated in two reference docs that this task's FILES do not cover: `skills/ultrapowers/references/dependency-analysis.md:83` (\"Edge `why` labels emitted by the compiler: `marker`, `text`, `interface`, `write-after-create`.\") and `skills/ultrapowers/references/plan-markers.md:64`. Neither lists `proof-run`. Both were already stale at BASE (neither lists `non-text-overlap` either), so this is not a regression the diff introduces alone, but the new tier widens the gap and the fix lies outside this task's FILES.; Inside the new `proof-run` tier, `task_files(a)` is rebuilt from four `t.get(...)` lists on every (b, cmd, a) triple, and `sorted(...)` materializes a list that is only ever tested for emptiness. This file already carries a documented fix for exactly this shape (compile_plan.py:2055, \"Fix E: ... measured superlinear blowup >= 80 tasks\"), which hoisted per-task state out of the O(N^2) pair loops. Hoisting the Files sets into one dict and replacing the sort with `any(...)` matches that discipline and changes no behavior.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "e6a0449ff680beb1f5099a61277d034e9dd000c5",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-131/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: cross-task edge. `fleet/janitor.mjs:332` (task 3's file, outside this task's FILES) still calls `kataProjectFor(target, run)` with two arguments, and its doc comment at ~20 still says `<owner>-<repo>-run-<N>`. With this patch's one-argument `kataProjectFor` the extra argument is simply ignored and the janitor happens to look up the new, correct project name, so nothing breaks at integration \u2014 but the janitor's call site and comment are only settled when task 3 lands. What would settle it: task 3's diff, or `node fleet/tests/test_janitor.mjs` on the merged tree.; `fleet/tests/test_launch_size.mjs`, fake hub `link`: the predicate `links.find((l) => l.from === fromUid && l.type === spec?.type && spec?.type === 'parent')` folds the parent test into the search, so for any non-parent type the find can never match and every repeated `blocks` link is pushed again. Harmless for that sim's legs (it only counts calls), but it no longer models the live hub's idempotent `blocks` the way the new exam's fake does, so a future leg reading that fake's link store would read duplicates. The exam's own fake (`fleet/tests/test_launch_kata_seed.mjs`) already has the correct shape \u2014 mirroring it here would remove the divergence.; plan-defect: the run issue's create now carries an `Idempotency-Key` (`<target>:<plan sha>:run-<N>`, as the task's Context prescribes) while keeping the body it has today \u2014 `metadata: {run, target, base, closes}` (`fleet/launch.mjs`, `fileRunOnHub`). `base` is not derived from the plan text, so relaunching the same plan text at the same N against a different `--base` replays that key with a different fingerprint and the hub answers 409 `idempotency_mismatch`, which surfaces as a `LobbyError` from `kataCall('createIssue', \u2026)` rather than a legible refusal. No Machine clause covers the run issue's create body (M2 constrains only task creates), so this blocks nothing; if the sharp edge matters, the same treatment the tasks got would fix it \u2014 create the run issue with `{run, target}` only and patch `{base, closes}` on after the read.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "a0585d8d2ab8a6c4922507ae4d561b61cb00e700",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-131/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: cross-task edge, not settleable from this diff. `fleet/lobby.mjs`'s `kataProjectFor` now takes one argument, but `fleet/launch.mjs:1541` (sibling-owned by Task 2) still calls `kataProjectFor(target, n)` and `fleet/tests/test_launch_bump.mjs:103` pins `projectName(n) = 'popmechanic-smoke-run-' + n`, asserted at ~406 and ~480. On this task's tree alone the extra argument is silently ignored, so those launch sims go red until Task 2's matching change to `fleet/launch.mjs`, `fleet/tests/test_launch_bump.mjs` and `fleet/tests/test_launch_size.mjs` merges. This is exactly what the task text directs (\"Task 2 makes the identical one-line change for the launcher, so make exactly this edit and no other in that file\"), and the fix lies outside this task's FILES, so nothing here should change. What would settle it: `node fleet/tests/test_launch_bump.mjs` and `node fleet/tests/test_launch_size.mjs` on the tree with Tasks 2 and 3 both merged.; Test hygiene in `fleet/tests/test_janitor.mjs`: the new T3 block mutates shared module state with `LIVE_DESTS.add(dest(4))` at top level. `LIVE_DESTS` is the allow-list the closing `(g)/M5` sweep checks every leg's ssh destinations against, and run 4 appears in `LEG_A` (line 260) with state `parked` \u2014 i.e. not live \u2014 so before this change `dest(4)` was absent from the set and leg (a)'s executions were covered by `(g)/M5`. After it, an ssh into run 4's destination in leg (a) would no longer be caught by that sweep. The loosening is bounded in practice: leg (a) pins `exec.vm()` by equality at ~327-333 and both T3 legs pin theirs by equality too, so no criterion is left unverified \u2014 hence minor, not blocking. If you want the sweep kept as tight as the peer wrote it, gate the allowance per-exec (e.g. a map from exec to its own extra live destinations consulted inside the `(g)` loop) rather than widening the global set.; concern: sibling-interim-red: fleet/tests/test_launch_bump.mjs is red in my tree. The one-line kataProjectFor change the task told me to make in fleet/lobby.mjs also reaches fleet/launch.mjs:1541, which still calls kataProjectFor(target, n) and so now files 'popmechanic-smoke' where that sim's line 103 expects 'popmechanic-smoke-run-<N>'. Both fleet/launch.mjs and fleet/tests/test_launch_bump.mjs are sibling task 2's declared scope and task 2 makes the identical lobby.mjs edit, so I left them untouched; the red resolves when task 2 lands. Every other fleet sim passes.; concern: note: fleet/janitor.mjs's module docstring points at fleet/tests/test_janitor_hub.mjs as the hub path's exam, but no such file exists at BASE. I left the reference as-is \u2014 the task's Proof names fleet/tests/test_janitor.mjs and the peer's exam lands there.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    },
+    {
+      "task": "4",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "3c543acb9df98456d33e0114fb8404e330b3c61f",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-131/patches/task-4.patch",
+      "reviewVerdict": "clean",
+      "notes": "Robustness, not a required criterion: `kata_assemble` (fleet/sandbox-boot.sh:1400-1417) builds the uid set defensively \u2014 a missing `run.uid` or a non-dict `tasks` simply contributes nothing \u2014 so a `$KATA_FILE` that reads as JSON but names no uid at all yields an EMPTY `mine`, the filter drops every row, the helper exits 0, and the caller's `mv` at line 1346 replaces the previously-exported whole `kata.jsonl` with a zero-byte file. Every other 'the answer did not read' path in `kata_export` deliberately keeps the previous whole export (lines 1309-1313, 1321-1325, 1341-1345); an empty uid set is the same kind of unreadable record and should take the same branch. The Global Constraints' pinned `.ultrapowers/kata.json` shape always carries `run.uid`, so this is not reachable through the launcher's own record today \u2014 hence minor \u2014 but the failure mode is silent loss of the record the export exists to preserve. M1-M4 are all settled by the exam (EXAM EVIDENCE exit 0) and the CONTRACT reader (RUN EVIDENCE exit 0); no criterion depends on this.; Prose nit in fleet/CONTRACT.md:89: the rewritten `kata.jsonl` bullet leaves a ragged short line mid-paragraph (`names no issue is exported. Exported at every`) in a document whose lines are otherwise wrapped near column 99. Content is correct and the Proof's `Run:` reader passes either way; only the wrap is off.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-131/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [147 items]\n\n........................................................................ [ 48%]\n........................................................................ [ 97%]\n...                                                                      [100%]\n============================= 147 passed in 26.86s =============================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_launch_bump.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/lobby.mjs"
+      ],
+      "with": [
+        "3",
+        "4"
+      ]
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_launch_size.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/lobby.mjs"
+      ],
+      "with": [
+        "3",
+        "4"
+      ]
+    },
+    {
+      "task": "2",
+      "cmd": "test \"$(grep -c 'purgeProject' fleet/launch.mjs fleet/kata-client.mjs | awk -F: '{s+=$2} END {print s}')\" = 0",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/lobby.mjs"
+      ],
+      "with": [
+        "3",
+        "4"
+      ]
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/kata: the run filed on the hub/,/ONE verb/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'one project per target.*Idempotency-Key.*parent.*replace.*wontfix'",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/lobby.mjs"
+      ],
+      "with": [
+        "3",
+        "4"
+      ]
+    },
+    {
+      "task": "2",
+      "cmd": "test \"$(sed -n '/kata: the run filed on the hub/,/ONE verb/p' fleet/CONTRACT.md | grep -c 'purges')\" = 0",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/lobby.mjs"
+      ],
+      "with": [
+        "3",
+        "4"
+      ]
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/ask the hub for the run.s state/,/is a finished run/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'matched on .name. against the target.s one project.*<owner>-<repo>'",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/lobby.mjs"
+      ],
+      "with": [
+        "2",
+        "4"
+      ]
+    },
+    {
+      "task": "3",
+      "cmd": "test \"$(sed -n '/ask the hub for the run.s state/,/is a finished run/p' fleet/CONTRACT.md | grep -c '<owner>-<repo>-run-<N>')\" = 0",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/lobby.mjs"
+      ],
+      "with": [
+        "2",
+        "4"
+      ]
+    },
+    {
+      "task": "4",
+      "cmd": "sed -n '/THE HUB.S OWN RECORD/,/Exported at every/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'the run.s issues.*named by.*events on them'",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md"
+      ],
+      "with": [
+        "2",
+        "3"
+      ]
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-main.mjs fleet/run-waves.mjs fleet/run-worker.mjs fleet/confine-hook.mjs fleet/publish-fold.mjs fleet/fleet-bootstrap.sh fleet/doctor.mjs fleet/target.mjs fleet/claude-token.mjs fleet/roles skills/ultrapowers/kernel",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 745349,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-131/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [134 items]\n\n........................................................................ [ 53%]\n..............................................................           [100%]\n============================= 134 passed in 26.91s =============================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "36a0c436ac77dd680ccc8a9d13f893ff9c0221b9",
+      "branches": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/lobby.mjs"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-131/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-131/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 4,
+      "foldCliWallTimeSec": 6.097000000000001,
+      "autoResolved": 0,
+      "resolverTranscripts": [
+        {
+          "conflict": 1,
+          "attempt": 1,
+          "path": "fleet/lobby.mjs",
+          "epoch": 3,
+          "hunksFile": "/home/exedev/target/.claude/ultrapowers/run-run-131/frontier/wave-1/conflict-1.hunks.txt",
+          "replyDir": "/home/exedev/target/.claude/ultrapowers/run-run-131/frontier/wave-1/reply-1-1",
+          "status": "RESOLVED",
+          "notes": "Single hunk: both sides define the identical kataProjectFor function, differing only in docstring wording. Kept the frontier's more detailed docstring (it already covers the janitor/launcher shared-lookup point task 3's docstring made) and preserved the shared trailing blank line from the 'both' section."
+        }
+      ]
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 4,
+    "tasks_planned": 4,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 3: sibling-interim-red: fleet/tests/test_launch_bump.mjs is red in my tree. The one-line kataProjectFor change the task told me to make in fleet/lobby.mjs also reaches fleet/launch.mjs:1541, which still calls kataProjectFor(target, n) and so now files 'popmechanic-smoke' where that sim's line 103 expects 'popmechanic-smoke-run-<N>'. Both fleet/launch.mjs and fleet/tests/test_launch_bump.mjs are sibling task 2's declared scope and task 2 makes the identical lobby.mjs edit, so I left them untouched; the red resolves when task 2 lands. Every other fleet sim passes.",
+    "task 3: note: fleet/janitor.mjs's module docstring points at fleet/tests/test_janitor_hub.mjs as the hub path's exam, but no such file exists at BASE. I left the reference as-is \u2014 the task's Proof names fleet/tests/test_janitor.mjs and the peer's exam lands there."
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
