@@ -1,0 +1,15 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "a1fcebad93381ffb552e4c91cebd01eae7ac3d0219628ca131f494b8c77eb803",
+      "verdict": "pass",
+      "reason": "Every Machine literal is jointly satisfiable (the engine's three unfinished reasons and the three status bullets contain none of the banned tokens, and `the epoch` is required after `one row per epoch` on the same line), each clause has a leg that falsifies it — negations with BASE counts named, enumerations with one leg per row plus a count — and the documentation file is the right layer for a claim about what report-format.md describes."
+    },
+    "2": {
+      "hash": "cf0a0950af1e8c5da89666ab9b54b50e68ef8b8a308e43972391495b09ef3c16",
+      "verdict": "pass",
+      "reason": "Every literal is jointly satisfiable under id-ordered projection (the later driver:re-edged overrides the earlier BLOCKED end to waiting/[\"1\"], its absence leaves failed/null, a blockedBy: null default keeps un-edged cells identical apart from that key, and the contract bullet can say nine states above with no eight states line), and each of M1–M6 has a leg that falsifies it — (a) and (d) for never-failed after a re-edge, (b) for still-failed without one, (c) naming the missing-key/non-null failure for the universal, (e)/(f) one Run per doc row."
+    }
+  },
+  "tally": { "dispatched": 2, "rejected": 0, "rounds": 1, "round-1": { "pass": 2, "fail": 0 } }
+}
