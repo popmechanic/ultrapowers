@@ -335,10 +335,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     (skip when the unit is already active). exe.dev proxies port 8000 at `https://<vm>.exe.xyz/`.
   - engine: `systemd-run --user --unit=fleet-engine-<N> --pipe --wait --collect -p MemoryMax=40G -p MemorySwapMax=0 --
     env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz CLAUDE_CODE_OAUTH_TOKEN=placeholder
-    ULTRAPOWERS_FLEET_RUN=run-N TINYAPP_RENDER_URL=${TINYAPP_RENDER_URL:-} node <engine>/fleet/run-main.mjs /home/exedev/plans/run-N.md run-N --repo /home/exedev/target [--kata /home/exedev/plans/run-N.kata.json] [--tier …]`,
+    ULTRAPOWERS_FLEET_RUN=run-N node <engine>/fleet/run-main.mjs /home/exedev/plans/run-N.md run-N --repo /home/exedev/target [--kata /home/exedev/plans/run-N.kata.json] [--tier …]`,
     cwd `/home/exedev/target`, stdout+stderr teed to `/home/exedev/www/engine.log`; the exit code is the
-    service's (`--wait`). The render entry passes the boot's render address through to the engine and
-    is empty when the run carries no render integration — a value, never a bearer.
+    service's (`--wait`).
     `claude auth status` must show `oauth_token` — logged before the engine starts.
     Beside it, once, the bearer probe: one `GET https://claude-max.int.exe.xyz/api/oauth/usage`
     through the proxy carrying `-sS`, `--max-time 20` and the header
@@ -377,8 +376,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   - publish fold: the target's default branch may have moved while the run worked, so before the PR is
     opened the boot script folds that tip into the run's branch — under state `running` with phase
     `publish fold`, after the engine's unit is inactive and before `publishing`, as its own transient
-    unit through the same `systemd-run` prefix as the engine's line above, save that the fold unit
-    omits the `TINYAPP_RENDER_URL` entry — the fold renders nothing:
+    unit through the same `systemd-run` prefix as the engine's line above, entry for entry:
     `systemd-run --user --unit=fleet-fold-<N>-<attempt> --pipe --wait --collect -p MemoryMax=40G
     -p MemorySwapMax=0 -- env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz
     CLAUDE_CODE_OAUTH_TOKEN=placeholder ULTRAPOWERS_FLEET_RUN=run-N node
