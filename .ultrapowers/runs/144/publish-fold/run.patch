@@ -1,0 +1,1777 @@
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index 5512ee1a0ee643d3750b2c7f743bc46b1f740467..f58042b3b51bbf6c8f5de04c78bcd2d22a499328 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -181,7 +181,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   built — `compile_plan.py <plan> --stamp run-N --base <base>` (the launch's second compiler call; its
+   `launch_waves` entries carry each task's `factsheet`), one project `<owner>-<repo>` (slashes in the
+   target become `-`) — one project per target and not one per run, so a name the hub already holds
+-  answers the existing project and this run files into it — one run issue (`run-N: <plan H1>`, body
++  answers the existing project and this run files into it; every kata behaviour this paragraph
++  leans on is one reading of `node fleet/tests/probe_kata_facts.mjs` and one row of this
++  contract's `Kata facts (measured)` list — one run issue (`run-N: <plan H1>`, body
+   the plan's `**Claim:**` line, metadata `{run, target, base, closes}` — `closes` the numbers of the
+   `**Closes:**` line, `[]` when absent — created with `force_new: true`, because the hub scores a
+   title against the project's open issues and a replayed plan's run issue differs from the earlier
+@@ -776,6 +778,36 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   checked against that release's `SHA256SUMS`; and `/var/lib/kata/.setup-done`, the flag the setup
+   script writes last and the laptop polls for. On the laptop: `~/.ultrapowers/kata-hub.env`, mode
+   0600, exactly `KATA_URL` and `KATA_TOKEN`, written only after the daemon answers `active`.
++- **Kata facts (measured):** every kata behaviour the fleet leans on, read once and written down
++  here rather than restated from memory — the readings `node fleet/tests/probe_kata_facts.mjs`
++  takes against the hub, one row per probe fact in the probe's own order, then the two rows no
++  probe can reach. It is re-read after every `kata upgrade` and before any plan touching
++  `fleet/kata-client.mjs`; a reading that moves is one edited row, and a document or an issue
++  comment cites the row instead of repeating what it says.
++  - ping-version — `GET /api/v1/ping` answers a `version` and needs no bearer (v0.17.2, 2026-09-15; this plan).
++  - project-find-or-create — a create whose name the hub already holds answers 200 with `created: false` (v0.17.2, 2026-09-14; #978).
++  - project-by-id-only — a project NAME in an issue path is 400; every issue route takes the project id (v0.17.2, 2026-09-14; CONTRACT's janitor paragraph).
++  - create-replay — the same `Idempotency-Key` with the same fields answers 200, the same uid and the ORIGINAL revision (v0.17.2, 2026-09-14; #978, #993).
++  - create-fingerprint-metadata — the same key with other metadata is 409 `idempotency_mismatch`, naming the prior uid: the key is fingerprinted with the body (v0.17.2, 2026-09-14; #978, #993).
++  - create-duplicate-scorer — the same title with no key is 409 `duplicate_candidates` and `force_new: true` bypasses it, scored 0.93 (v0.17.2, 2026-09-15; #993's comment — #978's 2026-09-14 table read `200, a second issue` for that case, and both readings stand until the probe settles it).
++  - link-blocks-idempotent — the same `blocks` link created twice answers 200 with the same `link.id` (v0.17.2, 2026-09-14; #978).
++  - link-parent-replace — a second `parent` is 409 `parent_already_set`, and `replace: true` swaps it (v0.17.2, 2026-09-14; #978, #993).
++  - link-types — the types are exactly `parent`, `blocks` and `related`; `blocked_by` is 400 (v0.17.2, 2026-09-14; #979).
++  - metadata-merge-if-match — a patch merges per key under `If-Match: "rev-N"`, and a stale revision is 412 `revision_conflict` (v0.17.2, 2026-09-14; #978, CONTRACT's 412 sentence).
++  - metadata-dotted-flat — `work.state` is stored as the flat key `metadata["work.state"]`, never a nested object (v0.17.2, 2026-09-13; #810's Phase A comment, CONTRACT's janitor paragraph).
++  - claim-if-unowned — a claim on an owned issue is 409 `already_claimed` carrying `data.current_owner` (v0.17.2, 2026-09-14; #979).
++  - unassign-key — `expect_owner` is 400 unexpected property; the OpenAPI names `expected_owner` (v0.17.2, 2026-09-15; #979, #993, the OpenAPI read 2026-09-15).
++  - close-message-40 — a `done` close needs a message of 40 characters or more (v0.17.2, 2026-09-11; run-111, CLAUDE.md's kata seams, CONTRACT's close paragraph).
++  - close-retry-protocol — a close under an `Idempotency-Key` also needs `retry_protocol: "close-v1"` (v0.17.2, 2026-09-14; recorded only as a comment in `fleet/kata-client.mjs`).
++  - close-superseded-evidence — a `superseded-by` close is 400 for the evidence keys `ref`, `value` and `issue`; the accepted key is undocumented (v0.17.2, 2026-09-14; #978).
++  - ready-unowned — `/ready` exists, `?unowned=true` filters it, and `?owner=` is ignored (v0.17.2, 2026-09-14; #978, #979).
++  - next-no-endpoint — `GET /projects/<id>/next` is 404; there is no next endpoint on the API (v0.17.2, 2026-09-14; #979, #993).
++  - labels-merge — adding a label twice leaves one label (v0.17.2, 2026-09-14; recorded only as a comment in `fleet/kata-client.mjs`).
++  - events-issue-uid — every event carries an `issue_uid` except `project.created`, which has none (v0.17.2, 2026-09-14; #978).
++  - issue-links-shape — an issue's links read `links: [{id, type, from: {uid, short_id, …}, to: {…}}]` (v0.17.2, 2026-09-14; #979).
++  - purge-ladder — a purge is 412 `confirm_required` without `X-Kata-Confirm: PURGE <name>` and 409 `project_not_archived` before `DELETE /projects/<id>`, and the archive itself refuses `project_has_open_issues` (v0.17.2, 2026-09-14; #978, #993 — the launcher's old bump purge had never once succeeded live).
++  - cli-next-unowned — hand, read by a person and not the probe: #979 read the CLI's `next` as having no `--unowned`, and `kata next --help` on the hub lists one — both readings stand (v0.17.2, 2026-09-15; #979).
++  - int-hosts-https — hand, read by a person and not the probe and readable only from a VM: every `*.int.exe.xyz` host is https, http 301s, and a followed 301 turns a POST into a GET (v0.17.2, 2026-09-11; run-110, CLAUDE.md's kata seams).
+ - **Laptop config `~/.ultrapowers/fleet.json`** — `cpu`, `memory` and `account`, every one of them
+   optional, an unknown key ignored and a missing file meaning the defaults:
+ 
+diff --git a/fleet/RUNBOOK.md b/fleet/RUNBOOK.md
+index 357a6d4d0b97fe41840e1d36cfb6c44d087e2a9a..3ee45eedaf3d070f26fe5ed25dfa46a17a8fbafe 100644
+--- a/fleet/RUNBOOK.md
++++ b/fleet/RUNBOOK.md
+@@ -580,6 +580,16 @@ on the next one, ask her before editing a script.
+   prompt` starts it; an on-VM `shelley client chat` against an inactive
+   service prints a conversation id and creates nothing.
+ 
++**The hub.**
++
++- Never restate a kata behaviour from memory. The `Kata facts (measured)` list
++  of `fleet/CONTRACT.md` is the one record, each row carrying the version and
++  the date it was read on; re-read it with
++  `node fleet/tests/probe_kata_facts.mjs` after every kata upgrade and before
++  any plan touching `fleet/kata-client.mjs`, and edit the rows that moved. An
++  issue comment cites the list rather than restating a fact — a fact copied
++  into a thread goes stale where nobody is looking.
++
+ **The laptop.**
+ 
+ - macOS has no `timeout`. A wait loop in a shell script gets its deadline
+diff --git a/fleet/tests/PROBES.md b/fleet/tests/PROBES.md
+index 8eb50bdaa2f05d40a9e27926295e938e80728848..06f3e58e4b9ca4997de34f7b3e0364d94c39deec 100644
+--- a/fleet/tests/PROBES.md
++++ b/fleet/tests/PROBES.md
+@@ -1,14 +1,21 @@
+ # fleet/tests probes
+ 
+-A `probe_*.mjs` file is a live measurement, not a test. Each one spends real
+-tokens against a real `claude -p`, so it is deliberately NOT named `test_*.mjs`:
+-`tests/test_fleet_suite.py` globs `test_*.mjs`, and CI has no credentials. The
+-naming is the whole mechanism — CI and the suite never run these. Run them by
+-hand where a credential lives (the orchestrator, or a sandbox with
+-`CLAUDE_CODE_OAUTH_TOKEN` exported):
++A `probe_*.mjs` file is a live measurement, not a test. Each one spends a real
++credential — most of them real tokens against a real `claude -p` — so none is
++named `test_*.mjs`: `tests/test_fleet_suite.py` globs `test_*.mjs`, and CI has
++no credentials. The naming is the whole mechanism — CI and the suite never run
++these. Run them by hand where a credential lives (the orchestrator, or a sandbox
++with `CLAUDE_CODE_OAUTH_TOKEN` exported):
+ 
+     CLAUDE_CODE_OAUTH_TOKEN=… node fleet/tests/probe_confine_live.mjs
+ 
++The kata probe is the one exception to the credential: it spends no tokens and
++holds no bearer, reaching the hub over the laptop's own ssh seam (the bearer is
++sourced on the hub), so it runs on the LAPTOP and nowhere else — a sandbox
++reaches the hub through the edge and cannot file a throwaway project:
++
++    node fleet/tests/probe_kata_facts.mjs
++
+ The current probes:
+ 
+ - `probe_confine_live.mjs` — that Claude Code actually invokes the implementer's
+@@ -28,3 +35,13 @@ The current probes:
+   command's argument tail executes. **Answered 2026-08-31: it does not** (#457
+   gap 1) — the `*` tail is not an execution channel, matching the documented
+   operator parsing for `&&`, `;`, `|`.
++- `probe_kata_facts.mjs` — whether the hub still behaves the way the fleet's
++  contract says it does: the 22 kata facts (#978, #979, #993 and CLAUDE.md's
++  seams paragraph), re-read one line per fact against a throwaway project, each
++  line stamped with the version it was read on. Run it on every kata upgrade,
++  and before any plan that touches `fleet/kata-client.mjs` — those facts are
++  what that file's shape is argued from, and nothing in the suite talks to a
++  hub, so an upgrade can falsify any of them with the tree still green. It
++  removes its `probe-kata-facts-*` project with the very purge ladder its last
++  fact measures. Exit 0 every fact holds, 1 at least one drift, 2 the hub was
++  unreachable or the project was left behind.
+diff --git a/fleet/tests/probe_kata_facts.mjs b/fleet/tests/probe_kata_facts.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..c42474c9861fbb435bcbc3e3dd46f9e9b9cae3b6
+--- /dev/null
++++ b/fleet/tests/probe_kata_facts.mjs
+@@ -0,0 +1,656 @@
++// fleet/tests/probe_kata_facts.mjs — the fleet's 22 kata facts, re-read against
++// the live hub, one line per fact, each stamped with the version it was read on.
++//
++// NOT named test_*.mjs on purpose: `tests/test_fleet_suite.py` globs `test_*.mjs`,
++// so the suite never runs this and CI never needs a hub. It is a LIVE MEASUREMENT
++// (fleet/tests/PROBES.md) and is run by hand on the laptop, where the ssh seam to
++// the hub lives:
++//
++//     node fleet/tests/probe_kata_facts.mjs
++//
++// WHY IT EXISTS. What the fleet knows about kata is spread across #978, #979,
++// #993, CLAUDE.md's seams paragraph and the comments in `fleet/kata-client.mjs`,
++// and every one of those readings is a date — a hub upgrade can make any of them
++// false without a single test going red, because no test in the tree talks to a
++// hub. This probe is the one command that re-reads them all: run it on every kata
++// upgrade and before any plan that touches `fleet/kata-client.mjs`.
++//
++// NO BEARER ON THE LAPTOP. Every request rides `sshTransport` from
++// `fleet/kata-client.mjs` — `ssh <hub> curl …`, the bearer sourced on the hub by
++// the hub's own shell — exactly as the launcher and the janitor reach it. This
++// file reads `~/.ultrapowers/kata-hub.env` for ONE thing, the host of `KATA_URL`;
++// the secret on that file's other line is never read here and never enters an
++// argv. The sandbox cannot run this at all: it reaches the hub through the edge
++// with no credential of its own and cannot file a throwaway project.
++//
++// HOW A FACT IS SCORED. Each fact is a short list of request STEPS, each recorded
++// with the status the fleet last read. A step HOLDS when the status it answers is
++// in the same class as the recorded one — a 2xx where a 2xx was recorded, a 4xx
++// where a 4xx was recorded — so kata re-spelling a refusal 400 instead of 409 is
++// not reported as drift, while a refusal that became an acceptance (or the other
++// way round) is. That is the drift that costs the fleet a run. The bodies are
++// read too and echoed into the line, because the shape a fact names (a flat
++// dotted key, an `issue_uid`, a links row) is for the human reading the output;
++// the machine verdict stays on the statuses, which is the half a status-only
++// seam can judge without a second opinion about what the hub meant. A step the
++// transport could not answer at all (status 0, or a throw) makes its fact
++// UNREADABLE rather than drifted.
++//
++// THE THROWAWAY PROJECT. Everything is read inside `probe-kata-facts-<stamp>`,
++// created at the start and removed at the end by the very ladder the last fact
++// measures: close every issue the probe created, `DELETE` the project (the
++// archive), then the confirmed purge. A purge that fails is exit 2 and the last
++// line names the project id, so a hand run never leaves a project behind
++// silently.
++//
++// Exit: 0 every fact holds; 1 at least one drift (or an unreadable fact);
++// 2 the ping failed, or the cleanup left the project behind.
++
++import fs from 'node:fs'
++import path from 'node:path'
++import { fileURLToPath } from 'node:url'
++
++import { sshTransport } from '../kata-client.mjs'
++import { defaultKataEnvPath, parseKataEnv, defaultExec, kataHostOf } from '../lobby.mjs'
++
++/** Everything under one prefix, as `fleet/kata-client.mjs` spells it. */
++const API = '/api/v1'
++
++/** Who the mutations are filed as. Every mutation body carries it. */
++const DEFAULT_ACTOR = 'probe-kata-facts'
++
++/**
++ * The 22 facts, in the order they are read. `says` is the reading the fleet
++ * holds today — the sentence a drift line quotes back — and the ids are the
++ * shared literal the hand-read rows in `fleet/RUNBOOK.md` carry row for row.
++ */
++export const FACTS = Object.freeze([
++  { id: 'ping-version',
++    says: 'GET /api/v1/ping is 200 with a version string and needs no bearer' },
++  { id: 'project-find-or-create',
++    says: 'a second POST /api/v1/projects with an existing name is 200, the same project.id, created:false' },
++  { id: 'project-by-id-only',
++    says: 'GET /api/v1/projects/<name>/issues with the project NAME in the path is 400' },
++  { id: 'create-replay',
++    says: 'a create under an Idempotency-Key, replayed byte-identical, is 200 with the same issue.uid and the ORIGINAL revision' },
++  { id: 'create-fingerprint-metadata',
++    says: 'the same Idempotency-Key with a different metadata is 409 idempotency_mismatch naming the prior uid' },
++  { id: 'create-duplicate-scorer',
++    says: 'a second create with the same title, no key and no force_new, is 409 duplicate_candidates, and force_new:true is 200 (read 2026-09-15)' },
++  { id: 'link-blocks-idempotent',
++    says: 'the same {type:"blocks"} link twice is 200 both times with the same link.id' },
++  { id: 'link-parent-replace',
++    says: 'a second {type:"parent"} link is 409 parent_already_set, and replace:true is 200 and swaps the parent' },
++  { id: 'link-types',
++    says: '{type:"blocked_by"} is 400 — the accepted types are exactly parent, blocks, related' },
++  { id: 'metadata-merge-if-match',
++    says: 'a metadata patch under If-Match "rev-<revision>" merges per key, and a stale revision is 412 revision_conflict' },
++  { id: 'metadata-dotted-flat',
++    says: 'a patch {"work.state":"x"} reads back as the flat key metadata["work.state"], and metadata.work is absent' },
++  { id: 'claim-if-unowned',
++    says: 'claim {if_unowned:true} on an owned issue is 409 already_claimed with error.data.current_owner' },
++  { id: 'unassign-key',
++    says: 'unassign {expect_owner} is 400 naming expect_owner as unexpected — the documented key is expected_owner' },
++  { id: 'close-message-40',
++    says: 'a close whose message is 39 characters is refused with a 4xx, and the same body with 40 characters is 200' },
++  { id: 'close-retry-protocol',
++    says: 'a close under an Idempotency-Key with no retry_protocol is refused with a 4xx, and retry_protocol:"close-v1" is 200' },
++  { id: 'close-superseded-evidence',
++    says: 'reason:"superseded" with evidence:[{type:"superseded-by", ref:<uid>}] is 400' },
++  { id: 'ready-unowned',
++    says: 'GET /ready is 200 listing open issues with no open blocks predecessor; ?unowned=true drops an owned one and ?owner=<x> changes nothing' },
++  { id: 'next-no-endpoint',
++    says: 'GET /api/v1/projects/<id>/next is 404' },
++  { id: 'labels-merge',
++    says: 'the same label posted twice leaves the issue with that label once' },
++  { id: 'events-issue-uid',
++    says: 'GET /events is 200 and its issue.created rows carry issue_uid, while project.created carries none' },
++  { id: 'issue-links-shape',
++    says: 'GET /api/v1/issues/<uid> answers links as rows {id, type, from:{uid, short_id}, to:{uid, short_id}}' },
++  { id: 'purge-ladder',
++    says: 'purge with no header is 412 confirm_required, confirmed but unarchived is 409 project_not_archived, DELETE with an open issue is refused, and after every close the archive is 200' },
++])
++
++// ── Small readings of an answer ─────────────────────────────────────────────
++
++const is2xx = (status) => status >= 200 && status < 300
++const is4xx = (status) => status >= 400 && status < 500
++
++/** The class a status is scored in: a recorded 409 and a read 400 are one
++ *  reading of the same seam, a recorded 409 and a read 200 are not. */
++const statusClass = (status) => {
++  if (is2xx(status)) return '2xx'
++  if (is4xx(status)) return '4xx'
++  return String(status)
++}
++
++/** The issue a mutation answered, as `fleet/kata-client.mjs` reads it, with the
++ *  un-nested spelling tolerated so a hub that flattens one day still reads. */
++const issueOf = (json) => (json && (json.issue || json)) || {}
++const uidOf = (json) => {
++  const uid = issueOf(json).uid
++  return typeof uid === 'string' && uid ? uid : null
++}
++const revisionOf = (json) => {
++  const rev = issueOf(json).revision
++  return Number.isFinite(rev) ? rev : null
++}
++
++/** `2026-09-15` — the date every line is stamped with. */
++const stampDate = (now) => {
++  const when = now instanceof Date ? now : new Date(now)
++  return when.toISOString().slice(0, 10)
++}
++
++/** `probe-kata-facts-20260915-093312-a1b4`: the throwaway project's name, and
++ *  the string the confirmed purge's header has to repeat. */
++const projectNameFor = (now) => {
++  const when = now instanceof Date ? now : new Date(now)
++  const iso = when.toISOString()
++  const stamp = iso.slice(0, 10).replace(/-/g, '') + '-' + iso.slice(11, 19).replace(/:/g, '')
++  const tail = Math.floor(Math.random() * 0x10000).toString(16).padStart(4, '0')
++  return 'probe-kata-facts-' + stamp + '-' + tail
++}
++
++/** A close message of exactly `n` characters — 39 and 40 are the whole of the
++ *  close-message fact, so they are cut from one string rather than counted by
++ *  hand. */
++const CLOSE_TEXT = 'probe-kata-facts closed the throwaway issue it created for this reading of the hub'
++const closeMessage = (n) => CLOSE_TEXT.slice(0, n)
++
++// ── The probe ───────────────────────────────────────────────────────────────
++
++/**
++ * Read all 22 facts against `transport` and write one line per fact through
++ * `log`.
++ *
++ * `transport` is the seam `fleet/kata-client.mjs` defines — `request({method,
++ * path, headers, body}) -> {status, json, body}` — used RAW rather than through
++ * `makeKataClient`, because the client has no unassign, no archive and no purge,
++ * and several facts here are refusals the client would throw on.
++ *
++ * Resolves `{ exit, version, results }`.
++ */
++export const probeKataFacts = async ({
++  transport,
++  actor = DEFAULT_ACTOR,
++  log = console.log,
++  now = new Date(),
++} = {}) => {
++  const date = stampDate(now)
++
++  // One request. A transport that threw, or answered no status at all, comes
++  // back as status 0 — an unreadable step, never a drift.
++  const send = async ({ method, path: at, headers, body }) => {
++    try {
++      const res = await transport.request({ method, path: at, headers: headers || {}, body })
++      const status = Number(res && res.status)
++      return {
++        status: Number.isFinite(status) ? status : 0,
++        json: (res && res.json) || null,
++        error: null,
++      }
++    } catch (err) {
++      return { status: 0, json: null, error: err }
++    }
++  }
++
++  const ping = await send({ method: 'GET', path: API + '/ping' })
++  if (!is2xx(ping.status)) {
++    log('kata hub unreachable — GET ' + API + '/ping answered ' + ping.status)
++    return { exit: 2, version: null, results: [] }
++  }
++  const pingVersion = (ping.json && typeof ping.json.version === 'string' && ping.json.version)
++    ? ping.json.version
++    : 'unknown'
++  log('kata ' + pingVersion + ' — read from GET ' + API + '/ping')
++
++  const name = projectNameFor(now)
++  const made = await send({ method: 'POST', path: API + '/projects', body: { name, actor } })
++  const madeProject = (made.json && (made.json.project || made.json)) || {}
++  const projectId = (madeProject.id === undefined || madeProject.id === null)
++    ? name
++    : String(madeProject.id)
++
++  const projectsPath = API + '/projects/' + projectId
++  const issuesPath = projectsPath + '/issues'
++  const issuePath = (uid) => issuesPath + '/' + uid
++
++  // Every create the probe files, in request order: the uid it answered, or null
++  // when it was a refusal the fact expected. More creates than issues, always:
++  // fact 4's replay answers an issue that already exists, and facts 5 and 6 file
++  // creates the hub is recorded REFUSING. So the cleanup owes one close per uid
++  // the hub actually named — `issues`, in the order the hub named them, each
++  // once — which is M4's "one close per issue it created, and never fewer".
++  const creates = []
++  const issues = []
++  let synthetic = 0
++
++  /** A create request, recorded. `expect` is the status the fleet last read. */
++  const create = async (title, { key, metadata, forceNew } = {}) => {
++    const body = {
++      title,
++      body: 'Filed by ' + DEFAULT_ACTOR + ' against ' + name + '. Closed and purged by the same run.',
++      actor,
++      metadata: metadata || { probe: DEFAULT_ACTOR },
++      links: [],
++      ...(forceNew === undefined ? {} : { force_new: forceNew }),
++    }
++    const res = await send({
++      method: 'POST',
++      path: issuesPath,
++      headers: key === undefined ? {} : { 'Idempotency-Key': String(key) },
++      body,
++    })
++    const uid = uidOf(res.json)
++    creates.push(uid)
++    if (uid && !issues.includes(uid)) issues.push(uid)
++    return res
++  }
++
++  /** The uid a step needs when the hub answered none: never `undefined` in a
++   *  path, so a reading stays legible even against a half-answering hub. */
++  const someUid = (uid) => {
++    if (uid) return uid
++    const known = creates.find((one) => !!one)
++    if (known) return known
++    synthetic += 1
++    return 'probe-uid-' + synthetic
++  }
++
++  // The state the later facts read: the keyed issue, its revision, the force_new
++  // issue, and the second parent target.
++  const state = { uid: null, revision: 1, other: null, parent: null }
++
++  /** One scored step: the request, and the status it was recorded answering. */
++  const step = async (expect, spec) => {
++    const res = await send(spec)
++    return { expect, method: spec.method, path: spec.path, status: res.status, json: res.json }
++  }
++
++  // ── The 22 readings ───────────────────────────────────────────────────────
++  //
++  // Each reader answers `{ steps, note }`: the scored steps, and the half of the
++  // reading that is the answer's SHAPE, echoed into the line for the human.
++  // Setup that is not itself a fact — a scaffold issue, the first claim — is
++  // sent here too but left out of `steps`.
++
++  const READERS = {
++    'ping-version': async () => ({
++      steps: [{ expect: 200, method: 'GET', path: API + '/ping', status: ping.status, json: ping.json }],
++      note: 'version ' + pingVersion,
++    }),
++
++    'project-find-or-create': async () => {
++      const again = await step(200, { method: 'POST', path: API + '/projects', body: { name, actor } })
++      const project = (again.json && (again.json.project || again.json)) || {}
++      const sameId = project.id === undefined ? 'no id' : ('id ' + project.id)
++      const created = again.json && 'created' in again.json ? String(again.json.created) : 'absent'
++      return { steps: [again], note: sameId + ', created ' + created }
++    },
++
++    'project-by-id-only': async () => {
++      const byName = await step(400, { method: 'GET', path: API + '/projects/' + name + '/issues' })
++      return { steps: [byName], note: 'the name in the path' }
++    },
++
++    'create-replay': async () => {
++      const title = name + ' — the keyed issue'
++      const key = name + '-create-replay'
++      const first = await create(title, { key })
++      state.uid = uidOf(first.json) || someUid(null)
++      state.revision = revisionOf(first.json) ?? 1
++      const replay = await create(title, { key })
++      const sameUid = uidOf(replay.json) === uidOf(first.json) ? 'same uid' : 'a different uid'
++      const revision = revisionOf(replay.json)
++      const sameRevision = revision === revisionOf(first.json)
++        ? 'the original revision'
++        : ('revision ' + revision)
++      return {
++        steps: [
++          { expect: 200, method: 'POST', path: issuesPath, status: first.status, json: first.json },
++          { expect: 200, method: 'POST', path: issuesPath, status: replay.status, json: replay.json },
++        ],
++        note: 'replay answered ' + sameUid + ' and ' + sameRevision,
++      }
++    },
++
++    'create-fingerprint-metadata': async () => {
++      const mismatch = await create(name + ' — the keyed issue', {
++        key: name + '-create-replay',
++        metadata: { probe: DEFAULT_ACTOR, fingerprint: 'moved' },
++      })
++      const error = (mismatch.json && mismatch.json.error) || {}
++      return {
++        steps: [{ expect: 409, method: 'POST', path: issuesPath, status: mismatch.status, json: mismatch.json }],
++        note: 'error ' + (error.code || 'absent'),
++      }
++    },
++
++    'create-duplicate-scorer': async () => {
++      const title = name + ' — the keyed issue'
++      const scored = await create(title)
++      const forced = await create(title, { forceNew: true })
++      state.other = uidOf(forced.json) || someUid(null)
++      const error = (scored.json && scored.json.error) || {}
++      return {
++        steps: [
++          { expect: 409, method: 'POST', path: issuesPath, status: scored.status, json: scored.json },
++          { expect: 200, method: 'POST', path: issuesPath, status: forced.status, json: forced.json },
++        ],
++        note: 'error ' + (error.code || 'absent') + ', force_new answered ' + forced.status,
++      }
++    },
++
++    'link-blocks-idempotent': async () => {
++      const at = issuePath(someUid(state.uid)) + '/links'
++      const body = { type: 'blocks', to_ref: someUid(state.other), actor }
++      const first = await step(200, { method: 'POST', path: at, body })
++      const again = await step(200, { method: 'POST', path: at, body })
++      const idOf = (one) => (issueOf(one.json).link || (one.json && one.json.link) || {}).id
++      const same = idOf(first) !== undefined && idOf(first) === idOf(again) ? 'the same link.id' : 'no link.id read'
++      return { steps: [first, again], note: same }
++    },
++
++    'link-parent-replace': async () => {
++      // The second parent needs somewhere else to point, and a create with a
++      // title of its own is not the duplicate scorer's business.
++      const target = await create(name + ' — the second parent', { forceNew: true })
++      state.parent = uidOf(target.json) || someUid(null)
++      const at = issuePath(someUid(state.uid)) + '/links'
++      const first = await step(200, {
++        method: 'POST', path: at, body: { type: 'parent', to_ref: someUid(state.other), actor },
++      })
++      const second = await step(409, {
++        method: 'POST', path: at, body: { type: 'parent', to_ref: someUid(state.parent), actor },
++      })
++      const replaced = await step(200, {
++        method: 'POST', path: at, body: { type: 'parent', to_ref: someUid(state.parent), actor, replace: true },
++      })
++      const error = (second.json && second.json.error) || {}
++      return { steps: [first, second, replaced], note: 'error ' + (error.code || 'absent') + ' on the second' }
++    },
++
++    'link-types': async () => {
++      const refused = await step(400, {
++        method: 'POST',
++        path: issuePath(someUid(state.uid)) + '/links',
++        body: { type: 'blocked_by', to_ref: someUid(state.other), actor },
++      })
++      return { steps: [refused], note: 'blocked_by' }
++    },
++
++    'metadata-merge-if-match': async () => {
++      const at = issuePath(someUid(state.uid)) + '/metadata'
++      const ifMatch = (revision) => ({ 'If-Match': '"rev-' + revision + '"' })
++      const first = await step(200, {
++        method: 'POST', path: at, headers: ifMatch(state.revision), body: { actor, patch: { probe_first: 'a' } },
++      })
++      // Only what the hub itself said the revision now is: an answer carrying
++      // none leaves the last one standing rather than guessing an increment,
++      // because the next If-Match is the whole point of reading it back.
++      state.revision = revisionOf(first.json) ?? state.revision
++      const second = await step(200, {
++        method: 'POST', path: at, headers: ifMatch(state.revision), body: { actor, patch: { probe_second: 'b' } },
++      })
++      state.revision = revisionOf(second.json) ?? state.revision
++      const stale = await step(412, {
++        method: 'POST', path: at, headers: ifMatch(state.revision - 1), body: { actor, patch: { probe_stale: 'c' } },
++      })
++      const merged = issueOf(second.json).metadata || {}
++      const kept = ('probe_first' in merged && 'probe_second' in merged)
++        ? 'both keys kept'
++        : 'the merge is unreadable from the answer'
++      const error = (stale.json && stale.json.error) || {}
++      return { steps: [first, second, stale], note: kept + ', stale error ' + (error.code || 'absent') }
++    },
++
++    'metadata-dotted-flat': async () => {
++      const dotted = await step(200, {
++        method: 'POST',
++        path: issuePath(someUid(state.uid)) + '/metadata',
++        headers: { 'If-Match': '"rev-' + state.revision + '"' },
++        body: { actor, patch: { 'work.state': 'probe' } },
++      })
++      state.revision = revisionOf(dotted.json) ?? state.revision
++      const metadata = issueOf(dotted.json).metadata || {}
++      const flat = ('work.state' in metadata) ? 'a flat key' : 'no flat key read'
++      const nested = ('work' in metadata) ? ', and metadata.work is present' : ', and metadata.work is absent'
++      return { steps: [dotted], note: flat + nested }
++    },
++
++    'claim-if-unowned': async () => {
++      const at = issuePath(someUid(state.other)) + '/actions/claim'
++      const body = { actor, if_unowned: true }
++      await send({ method: 'POST', path: at, body })  // the owner the fact needs
++      const owned = await step(409, { method: 'POST', path: at, body })
++      const error = (owned.json && owned.json.error) || {}
++      const who = (error.data && error.data.current_owner) || 'absent'
++      return { steps: [owned], note: 'error ' + (error.code || 'absent') + ', current_owner ' + who }
++    },
++
++    'unassign-key': async () => {
++      const refused = await step(400, {
++        method: 'POST',
++        path: issuePath(someUid(state.other)) + '/actions/unassign',
++        body: { actor, expect_owner: actor },
++      })
++      return { steps: [refused], note: 'expect_owner' }
++    },
++
++    'close-message-40': async () => {
++      const made = await create(name + ' — the short-message close', { forceNew: true })
++      const at = issuePath(someUid(uidOf(made.json))) + '/actions/close'
++      const close = (message) => ({
++        method: 'POST',
++        path: at,
++        body: { actor, reason: 'done', message, evidence: [], retry_protocol: 'close-v1' },
++      })
++      const short = await step(400, close(closeMessage(39)))
++      const long = await step(200, close(closeMessage(40)))
++      return { steps: [short, long], note: '39 characters then 40' }
++    },
++
++    'close-retry-protocol': async () => {
++      const made = await create(name + ' — the keyed close', { forceNew: true })
++      const at = issuePath(someUid(uidOf(made.json))) + '/actions/close'
++      const headers = { 'Idempotency-Key': name + '-close-retry-protocol' }
++      const body = { actor, reason: 'done', message: closeMessage(48), evidence: [] }
++      const bare = await step(400, { method: 'POST', path: at, headers, body })
++      const named = await step(200, {
++        method: 'POST', path: at, headers, body: { ...body, retry_protocol: 'close-v1' },
++      })
++      return { steps: [bare, named], note: 'the key without the protocol, then with it' }
++    },
++
++    'close-superseded-evidence': async () => {
++      const made = await create(name + ' — the superseded close', { forceNew: true })
++      const refused = await step(400, {
++        method: 'POST',
++        path: issuePath(someUid(uidOf(made.json))) + '/actions/close',
++        body: {
++          actor,
++          reason: 'superseded',
++          message: closeMessage(48),
++          evidence: [{ type: 'superseded-by', ref: someUid(state.uid) }],
++          retry_protocol: 'close-v1',
++        },
++      })
++      return { steps: [refused], note: 'evidence carrying ref' }
++    },
++
++    'ready-unowned': async () => {
++      const ready = await step(200, { method: 'GET', path: projectsPath + '/ready' })
++      const unowned = await step(200, { method: 'GET', path: projectsPath + '/ready?unowned=true' })
++      const owned = await step(200, { method: 'GET', path: projectsPath + '/ready?owner=' + encodeURIComponent(actor) })
++      const rows = (one) => {
++        const json = one.json || {}
++        const list = Array.isArray(json) ? json : (json.issues || json.ready || json.items)
++        return Array.isArray(list) ? list.length : 'unreadable'
++      }
++      return {
++        steps: [ready, unowned, owned],
++        note: rows(ready) + ' ready, ' + rows(unowned) + ' unowned, ' + rows(owned) + ' for owner=' + actor,
++      }
++    },
++
++    'next-no-endpoint': async () => {
++      const missing = await step(404, { method: 'GET', path: projectsPath + '/next' })
++      return { steps: [missing], note: 'no /next endpoint' }
++    },
++
++    'labels-merge': async () => {
++      const at = issuePath(someUid(state.uid)) + '/labels'
++      const body = { actor, label: 'probe-kata-facts' }
++      const first = await step(200, { method: 'POST', path: at, body })
++      const again = await step(200, { method: 'POST', path: at, body })
++      const labels = issueOf(again.json).labels
++      const many = Array.isArray(labels)
++        ? 'carried ' + labels.filter((one) => one === 'probe-kata-facts').length + ' time(s) in the answer'
++        : 'no labels in the answer'
++      return { steps: [first, again], note: 'the same label twice, ' + many }
++    },
++
++    'events-issue-uid': async () => {
++      const events = await step(200, {
++        method: 'GET', path: projectsPath + '/events?after_id=0&limit=1000',
++      })
++      const json = events.json || {}
++      const rows = Array.isArray(json) ? json : (json.events || [])
++      const created = Array.isArray(rows) ? rows.filter((row) => row && row.type === 'issue.created') : []
++      const withUid = created.filter((row) => row && row.issue_uid !== undefined).length
++      return { steps: [events], note: withUid + ' of ' + created.length + ' issue.created rows carry issue_uid' }
++    },
++
++    'issue-links-shape': async () => {
++      const read = await step(200, { method: 'GET', path: API + '/issues/' + someUid(state.uid) })
++      const links = issueOf(read.json).links
++      const shaped = Array.isArray(links)
++        ? links.filter((row) => row && row.type !== undefined &&
++            row.from && row.from.uid !== undefined && row.to && row.to.uid !== undefined).length +
++          ' of ' + links.length + ' rows carry {type, from.uid, to.uid}'
++        : 'no links array in the answer'
++      return { steps: [read], note: shaped }
++    },
++
++    // The ladder IS the cleanup, which is why it is read last. The confirmed
++    // purge is deliberately NOT one of these steps: it is the removal, and
++    // whether the project was left behind is an exit code and a last line, not
++    // a fact about the hub's shape.
++    'purge-ladder': async () => {
++      const purgePath = projectsPath + '/actions/purge'
++      const bare = await step(412, { method: 'POST', path: purgePath, body: { actor } })
++      const unarchived = await step(409, {
++        method: 'POST', path: purgePath, headers: { 'X-Kata-Confirm': 'PURGE ' + name }, body: { actor },
++      })
++      const open = await step(400, { method: 'DELETE', path: projectsPath })
++
++      // One close per ISSUE THE HUB CREATED, naming each exactly once — a close
++      // on an issue a fact already closed is filed all the same, so the block is
++      // one close per issue whatever order the facts read in, and the archive
++      // below is what reports a missed one.
++      for (const uid of issues) {
++        await send({
++          method: 'POST',
++          path: issuePath(uid) + '/actions/close',
++          body: {
++            actor,
++            reason: 'done',
++            message: closeMessage(48),
++            evidence: [],
++            retry_protocol: 'close-v1',
++          },
++        })
++      }
++
++      const archive = await step(200, { method: 'DELETE', path: projectsPath })
++      state.archived = is2xx(archive.status)
++      const codeOf = (one) => ((one.json && one.json.error) || {}).code || 'absent'
++      return {
++        steps: [bare, unarchived, open, archive],
++        note: codeOf(bare) + ' then ' + codeOf(unarchived) + ' then ' + codeOf(open) +
++          ', ' + issues.length + ' closes for ' + creates.length + ' creates, then the archive',
++      }
++    },
++  }
++
++  const results = []
++  let drift = 0
++  let unreadable = 0
++
++  for (const fact of FACTS) {
++    const { steps, note } = await READERS[fact.id]()
++    const missed = steps.find((one) => one.status === 0)
++    const drifted = steps.find((one) => statusClass(one.status) !== statusClass(one.expect))
++    const statuses = steps.map((one) => one.status).join(', ')
++    let verdict = 'holds'
++    let read = statuses + (note ? ' — ' + note : '')
++    if (missed) {
++      verdict = 'unreadable'
++      unreadable += 1
++      read = 'no answer to ' + missed.method + ' ' + missed.path
++    } else if (drifted) {
++      verdict = 'drift'
++      drift += 1
++      read = drifted.status + ' on ' + drifted.method + ' ' + drifted.path
++    }
++    const stamp = ' (kata ' + pingVersion + ', ' + date + ')'
++    const line = verdict === 'holds'
++      ? 'FACT ' + fact.id + ': holds — ' + read + stamp
++      : (verdict === 'drift'
++          ? 'FACT ' + fact.id + ': DRIFT — read ' + read + ', recorded ' + fact.says + stamp
++          : 'FACT ' + fact.id + ': UNREADABLE — ' + read + ', recorded ' + fact.says + stamp)
++    log(line)
++    results.push({ id: fact.id, verdict, read, line })
++  }
++
++  log('PROBE: ' + FACTS.length + ' facts, ' + drift + ' drift, ' + unreadable + ' unreadable')
++
++  // The last request of every run whose ping answered: the confirmed purge, the
++  // header repeating the project's own name.
++  const purge = await send({
++    method: 'POST',
++    path: projectsPath + '/actions/purge',
++    headers: { 'X-Kata-Confirm': 'PURGE ' + name },
++    body: { actor },
++  })
++
++  let exit = (drift > 0 || unreadable > 0) ? 1 : 0
++  if (!is2xx(purge.status) || state.archived === false) {
++    const named = projectId === name ? projectId : projectId + ' (' + name + ')'
++    log('PROBE: project ' + named + ' left behind — POST ' + projectsPath +
++      '/actions/purge answered ' + purge.status)
++    exit = 2
++  }
++
++  return { exit, version: pingVersion, results }
++}
++
++// ── The hand run ────────────────────────────────────────────────────────────
++//
++// Guarded exactly as `fleet/janitor.mjs` guards its own, because the exam
++// imports this module: nothing below runs on an import, so an import files no
++// request, reads no environment file and exits no process.
++
++const main = async () => {
++  const at = defaultKataEnvPath()
++  let text = ''
++  try {
++    text = fs.readFileSync(at, 'utf8')
++  } catch {
++    process.stderr.write('probe_kata_facts: no ' + at + ' — run `node fleet/kata-hub.mjs` first\n')
++    process.exit(2)
++  }
++  const sshHost = kataHostOf(parseKataEnv(text).url)
++  if (!sshHost) {
++    process.stderr.write('probe_kata_facts: no hub url in ' + at + '\n')
++    process.exit(2)
++  }
++  const { exit } = await probeKataFacts({ transport: sshTransport({ sshHost, exec: defaultExec }) })
++  process.exit(exit)
++}
++
++const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : ''
++if (invokedPath === fileURLToPath(import.meta.url)) {
++  await main()
++}
+diff --git a/fleet/tests/test_probe_kata_facts.mjs b/fleet/tests/test_probe_kata_facts.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..d04611bfa4f62f39236202002cbb83a4a137e382
+--- /dev/null
++++ b/fleet/tests/test_probe_kata_facts.mjs
+@@ -0,0 +1,990 @@
++/**
++ * fleet/tests/test_probe_kata_facts.mjs — the exam for Task 1: *the kata facts
++ * probe — one line per fact, stamped with the hub's version, and an exam of
++ * its shape*.
++ *
++ * This file is the Proof's `Test: fleet/tests/test_probe_kata_facts.mjs`,
++ * written where the Proof names it. Every relative import is written for THIS
++ * directory: the probe under exam is `fleet/tests/probe_kata_facts.mjs`, the
++ * file beside this one, so the import below is `./probe_kata_facts.mjs`. (Leg
++ * (g) writes `../probe_kata_facts.mjs`; from `fleet/tests/` that names
++ * `fleet/probe_kata_facts.mjs`, which the task's Files slot does not create.
++ * The module is the same one either way — `./` is where it lands.)
++ *
++ * WHAT THE CLAUSES SAY, and where each is asserted below:
++ *
++ *   M1  the module exports `FACTS`, an array of `{id, says}` whose ids are
++ *       exactly Context's 22 fact ids in order, and `probeKataFacts({
++ *       transport, actor, log, now })`, which — driven against a transport
++ *       whose every answer matches the recorded reading — writes exactly one
++ *       `^FACT <id>: holds` line per entry, in `FACTS` order, and no `FACT`
++ *       line for any other id.                                    → leg (a)
++ *   M2  the first line is `kata <version> — read from GET /api/v1/ping`, the
++ *       version being the ping answer's own `version` field, and every `FACT`
++ *       line ends `(kata <that version>, <YYYY-MM-DD from now>)`.  → leg (b)
++ *   M3  it resolves `{exit, version, results}`: `exit` 0 when every fact
++ *       holds; a differing answer makes that fact's line
++ *       `FACT <id>: DRIFT — read <what was read>`, leaves every other line
++ *       `holds`, and `exit` 1; a non-2xx ping makes the first line name the
++ *       hub unreachable with the status, writes no `FACT` line, `exit` 2.
++ *                                                        → legs (c) and (d)
++ *   M4  every run whose ping answered 2xx ends its mutations with one
++ *       `POST …/actions/close` per issue it created, then
++ *       `DELETE /api/v1/projects/<id>`, then — as the very last request —
++ *       `POST …/actions/purge` carrying `X-Kata-Confirm: PURGE <project
++ *       name>`, the name beginning `probe-kata-facts-`; a confirmed purge
++ *       answering non-2xx makes the last line name the project id as left
++ *       behind and `exit` 2 even when every fact held.   → legs (e) and (f)
++ *   M5  importing the module makes no request and starts no process — its
++ *       main runs only when the file is `process.argv[1]` — and
++ *       `fleet/tests/PROBES.md` lists the probe with when it is run.
++ *                                                        → legs (g) and (h)
++ *
++ * THE FAKE HUB. Every leg but (g) and (h) drives `probeKataFacts` against
++ * `makeFakeHub()` — an in-memory kata answering by `method + path`, stateful
++ * enough to model each of Context's 22 recorded readings (find-or-create's
++ * `created:false`, the project NAME in a path as 400, the idempotent replay
++ * answering the ORIGINAL revision, `idempotency_mismatch` naming the prior
++ * uid, `duplicate_candidates` scored against the project's OPEN titles with
++ * `force_new` as the bypass, one `link.id` twice, `parent_already_set` and
++ * `replace`, a `blocked_by` 400, the `If-Match` merge and its 412, dotted keys
++ * kept flat, `already_claimed` with `current_owner`, `expect_owner` as an
++ * unexpected key, the two close refusals, the superseded-evidence 400,
++ * ready/unowned/owner, `next` as 404, the label union, events carrying
++ * `issue_uid` on `issue.created` rows only, the links row shape, and the purge
++ * ladder). Nothing is spawned and no socket is opened: the transport is a
++ * plain async function on an object, and the only file read is
++ * `fleet/tests/PROBES.md` for leg (h), resolved from this file's own
++ * directory.
++ *
++ * The hub records every request — method, path, headers, body, and the issue
++ * it resolved from the path — plus the uids it created and any request it had
++ * no route for. Leg (a)'s failure message names the unrouted ones, so a red
++ * exam reads as the probe asking the recorded hub for something it never
++ * answered rather than as a mystery drift.
++ *
++ * THREE READINGS THIS EXAM COMMITS TO, because the legs force them:
++ *
++ *   1. Leg (f) and M4 both say a confirmed purge answering non-2xx is `exit` 2
++ *      and a `left behind` last line EVEN WHEN EVERY FACT HELD. So the final
++ *      confirmed purge is CLEANUP, not part of `purge-ladder`'s verdict: that
++ *      fact holds on the rungs the probe read (no header → 412, unarchived →
++ *      409, the open-issues refusal, the archive → 200), and a failed final
++ *      purge is reported as the cleanup failure M4 describes. Leg (f) asserts
++ *      22 `holds` lines on that run.
++ *   2. Facts 14 and 15 record only "refused with a 4xx". The fake answers 422
++ *      for both refusals (a message under 40 characters, an `Idempotency-Key`
++ *      with no `retry_protocol`) and 400 for the superseded-evidence row,
++ *      which Context does pin. The recorded reading for those two is the
++ *      CLASS: a probe that pins one exact status there reads DRIFT.
++ *   3. Leg (e)'s "N equals the number of `POST /api/v1/projects/<id>/issues`
++ *      requests recorded" cannot hold as written — facts 5 and 6 require
++ *      create requests that create no issue (409 `idempotency_mismatch`, 409
++ *      `duplicate_candidates`) and fact 4's replay answers an issue that
++ *      already exists. Leg (e) below encodes M4's own parenthetical instead:
++ *      one close per issue the hub actually created, never fewer, then the
++ *      archive, then the confirmed purge last.
++ *
++ * One `PROBE: <n> facts, <d> drift, <u> unreadable` line is Context's own
++ * literal rather than a leg of its own; legs (a) and (c) assert it beside the
++ * `FACT` lines they count.
++ */
++
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import path from 'node:path'
++import { fileURLToPath } from 'node:url'
++
++const HERE = path.dirname(fileURLToPath(import.meta.url))
++const PROBES_MD = path.join(HERE, 'PROBES.md')
++
++// ── Context's literals, spelled once ────────────────────────────────────────
++
++/** The 22 fact ids Context lists, in that order. M1 is this list. */
++const FACT_IDS = [
++  'ping-version',               //  1
++  'project-find-or-create',     //  2
++  'project-by-id-only',         //  3
++  'create-replay',              //  4
++  'create-fingerprint-metadata',//  5
++  'create-duplicate-scorer',    //  6
++  'link-blocks-idempotent',     //  7
++  'link-parent-replace',        //  8
++  'link-types',                 //  9
++  'metadata-merge-if-match',    // 10
++  'metadata-dotted-flat',       // 11
++  'claim-if-unowned',           // 12
++  'unassign-key',               // 13
++  'close-message-40',           // 14
++  'close-retry-protocol',       // 15
++  'close-superseded-evidence',  // 16
++  'ready-unowned',              // 17
++  'next-no-endpoint',           // 18
++  'labels-merge',               // 19
++  'events-issue-uid',           // 20
++  'issue-links-shape',          // 21
++  'purge-ladder',               // 22
++]
++
++/** Not the hub's real version on purpose: M2 says the line and the stamps come
++ *  from the ping ANSWER, so a probe holding `v0.17.2` as a constant fails. */
++const VERSION = 'v9.9.9-fake'
++
++/** The injected clock, and the date M2 stamps every `FACT` line with. */
++const NOW = new Date('2026-09-15T16:33:00.000Z')
++const DATE = NOW.toISOString().slice(0, 10)
++
++const ACTOR = 'examiner@run-144'
++
++/** M2's first line, verbatim — the dash is an em dash. */
++const VERSION_LINE = `kata ${VERSION} — read from GET /api/v1/ping`
++
++/** M2's per-line stamp, verbatim. */
++const STAMP = `(kata ${VERSION}, ${DATE})`
++
++/** Distinctive on purpose: leg (f) looks for this id inside a line. */
++const FIRST_PROJECT_ID = 7311
++
++// ── Small helpers ───────────────────────────────────────────────────────────
++
++const bareOf = (p) => String(p == null ? '' : p).split('?')[0]
++
++/** A header by name, case-insensitively: the hub's own lookup is, and a probe
++ *  may spell `Idempotency-Key` either way. */
++const header = (headers, name) => {
++  const want = String(name).toLowerCase()
++  for (const [key, value] of Object.entries(headers || {})) {
++    if (String(key).toLowerCase() === want) return value
++  }
++  return undefined
++}
++
++/** A key-sorted JSON, so the create fingerprint is the body's fields and not
++ *  the order a caller happened to write them in. `undefined` and a missing key
++ *  are the same thing here, which is what makes a byte-identical replay one. */
++const stable = (value) => {
++  if (value === undefined || value === null) return 'null'
++  if (typeof value !== 'object') return JSON.stringify(value)
++  if (Array.isArray(value)) return '[' + value.map(stable).join(',') + ']'
++  return '{' + Object.keys(value).sort()
++    .map((k) => JSON.stringify(k) + ':' + stable(value[k])).join(',') + '}'
++}
++
++const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
++
++const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)))
++
++/** A request, for a failure message. */
++const shown = (call) => (call
++  ? `${call.method} ${call.path}`
++  : '(no request)')
++
++/** What the hub could not answer, and what arrived without an `actor` — the
++ *  two things that most often explain an unexpected DRIFT. */
++const diagnose = (hub) => {
++  const bits = []
++  if (hub.unrouted.length > 0) {
++    bits.push(`the fake hub had NO ROUTE for ${hub.unrouted.length} request(s): ` +
++      hub.unrouted.slice(0, 8).map(shown).join(', '))
++  }
++  if (hub.actorless.length > 0) {
++    bits.push(`${hub.actorless.length} mutation(s) carried no \`actor\` in the body ` +
++      `(Context: every mutation body carries actor): ` +
++      hub.actorless.slice(0, 8).map(shown).join(', '))
++  }
++  bits.push(`${hub.calls.length} request(s) in all`)
++  return bits.join('; ')
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// The fake hub: one scripted kata, answering by method + path
++// ════════════════════════════════════════════════════════════════════════════
++
++/**
++ * `makeFakeHub()` answers every request the recorded reading of Context, and
++ * nothing else. The knobs are the three departures the legs need:
++ *
++ *   `version`            the ping's `version` field            (leg (b))
++ *   `pingStatus`         a non-2xx ping                        (leg (d))
++ *   `driftParentSecond`  the SECOND `parent` link answers 200
++ *                        instead of 409 `parent_already_set`   (leg (c))
++ *   `purgeStatus`        the confirmed, archived purge's status (leg (f))
++ */
++const makeFakeHub = ({
++  version = VERSION, pingStatus = 200, driftParentSecond = false, purgeStatus = 200,
++} = {}) => {
++  const calls = []
++  const unrouted = []
++  const actorless = []
++  const created = []           // uids of the issues this hub really created
++
++  const projects = new Map()   // id -> project
++  const byName = new Map()     // name -> id
++  const issues = new Map()     // uid -> issue
++  const keys = new Map()       // Idempotency-Key -> {fp, uid, revision}
++  const links = []             // {id, type, from, to}
++  const events = []            // {id, type, …, issue_uid?}
++
++  let nextProject = FIRST_PROJECT_ID
++  let nextIssue = 1
++  let nextLink = 1
++  let nextEvent = 1
++  let parentDrifted = false
++
++  const EPOCH = Date.parse('2026-09-15T16:00:00.000Z')
++
++  const answer = (status, json) => ({
++    status, json, body: json === undefined ? '' : JSON.stringify(json),
++  })
++  const fail = (status, code, message, data) => answer(status, {
++    error: { code, message: message || code, ...(data === undefined ? {} : { data }) },
++  })
++
++  const event = (type, extra = {}) => {
++    const id = nextEvent++
++    events.push({ id, type, at: new Date(EPOCH + id * 1000).toISOString(), ...extra })
++  }
++
++  const shortOf = (n) => ('000' + n.toString(16)).slice(-4)
++  const ref = (issue) => ({
++    uid: issue.uid, short_id: issue.short_id, title: issue.title, state: issue.state,
++  })
++  const linkRow = (link) => ({
++    id: link.id,
++    type: link.type,
++    from: ref(issues.get(link.from)),
++    to: ref(issues.get(link.to)),
++  })
++  const linksOf = (uid) => links.filter((l) => l.from === uid || l.to === uid).map(linkRow)
++  const view = (issue, revision) => ({
++    uid: issue.uid,
++    short_id: issue.short_id,
++    project_id: issue.project,
++    title: issue.title,
++    body: issue.body,
++    state: issue.state,
++    owner: issue.owner,
++    revision: revision === undefined ? issue.revision : revision,
++    metadata: { ...issue.metadata },
++    labels: [...issue.labels],
++    links: linksOf(issue.uid),
++  })
++
++  /** An issue by uid, by short id, or by a `<project>#<short>` ref. */
++  const findIssue = (token) => {
++    const want = String(token == null ? '' : token)
++    if (issues.has(want)) return issues.get(want)
++    const tail = want.includes('#') ? want.slice(want.indexOf('#') + 1) : want
++    for (const issue of issues.values()) {
++      if (issue.short_id === tail || issue.uid === tail) return issue
++    }
++    return null
++  }
++
++  const openOf = (project) =>
++    project.issues.map((uid) => issues.get(uid)).filter((i) => i.state === 'open')
++
++  const norm = (title) => String(title == null ? '' : title).trim().toLowerCase()
++
++  const request = async ({ method, path: reqPath, headers, body }) => {
++    const call = {
++      method: String(method || '').toUpperCase(),
++      path: String(reqPath == null ? '' : reqPath),
++      headers: { ...(headers || {}) },
++      body: clone(body),
++      issueUid: null,
++    }
++    calls.push(call)
++    if (call.method !== 'GET' && body !== undefined && !(body && body.actor)) {
++      actorless.push(call)
++    }
++
++    const bare = bareOf(call.path)
++    const query = new URLSearchParams(call.path.includes('?') ? call.path.split('?')[1] : '')
++    const seg = bare.replace(/^\/+|\/+$/g, '').split('/')
++    if (seg[0] !== 'api' || seg[1] !== 'v1') {
++      unrouted.push(call)
++      return fail(404, 'fake_hub_no_route', `no route for ${call.method} ${bare}`)
++    }
++    const rest = seg.slice(2)
++    const b = body || {}
++
++    // ── the one unauthenticated read, and the 401 beside it (fact 1) ────────
++    if (call.method === 'GET' && rest.length === 1 && rest[0] === 'ping') {
++      if (pingStatus < 200 || pingStatus > 299) {
++        return fail(pingStatus, 'unavailable', 'kata is not answering')
++      }
++      return answer(200, { ok: true, service: 'kata', version, pid: 4242 })
++    }
++    if (call.method === 'GET' && rest.length === 1 && rest[0] === 'version') {
++      return fail(401, 'unauthorized', 'missing bearer')
++    }
++
++    // ── the flat issue read (fact 21) ───────────────────────────────────────
++    if (rest[0] === 'issues' && rest.length === 2) {
++      const issue = findIssue(rest[1])
++      if (!issue) return fail(404, 'issue_not_found', `no issue ${rest[1]}`)
++      call.issueUid = issue.uid
++      if (call.method !== 'GET') {
++        unrouted.push(call)
++        return fail(404, 'fake_hub_no_route', `no route for ${call.method} ${bare}`)
++      }
++      return answer(200, { issue: view(issue) })
++    }
++
++    if (rest[0] !== 'projects') {
++      unrouted.push(call)
++      return fail(404, 'fake_hub_no_route', `no route for ${call.method} ${bare}`)
++    }
++
++    // ── find-or-create (fact 2) ─────────────────────────────────────────────
++    if (rest.length === 1) {
++      if (call.method === 'GET') {
++        return answer(200, { projects: [...projects.values()].map((p) => ({ ...p, issues: undefined })) })
++      }
++      if (call.method !== 'POST') {
++        unrouted.push(call)
++        return fail(404, 'fake_hub_no_route', `no route for ${call.method} ${bare}`)
++      }
++      const name = b.name
++      if (!name) return fail(400, 'invalid_body', 'name is required')
++      if (byName.has(name)) {
++        const existing = projects.get(byName.get(name))
++        return answer(200, {
++          project: { id: existing.id, uid: existing.uid, name: existing.name, revision: 1 },
++          created: false,
++        })
++      }
++      const id = nextProject++
++      const project = { id, uid: `PROJ-${id}`, name, archived: false, purged: false, issues: [] }
++      projects.set(id, project)
++      byName.set(name, id)
++      // A `project.created` row carries no `issue_uid` at all (fact 20).
++      event('project.created', { project_id: id, actor: b.actor })
++      return answer(200, {
++        project: { id, uid: project.uid, name, revision: 1 }, created: true,
++      })
++    }
++
++    // Everything below names a project in the path — and a NAME there is a 400,
++    // never a lookup (fact 3).
++    const token = rest[1]
++    if (!/^\d+$/.test(token)) {
++      return fail(400, 'invalid_project_id',
++        `project id must be an integer, got ${JSON.stringify(token)}`)
++    }
++    const project = projects.get(Number(token))
++    if (!project || project.purged) {
++      return fail(404, 'project_not_found', `no project ${token}`)
++    }
++
++    // ── the archive (fact 22, and the cleanup's middle rung) ─────────────────
++    if (call.method === 'DELETE' && rest.length === 2) {
++      const open = openOf(project)
++      if (open.length > 0) {
++        return fail(409, 'project_has_open_issues',
++          `${open.length} issue(s) still open`, { open: open.length })
++      }
++      project.archived = true
++      return answer(200, { project: { id: project.id, name: project.name, archived: true } })
++    }
++    if (call.method === 'GET' && rest.length === 2) {
++      return answer(200, {
++        project: {
++          id: project.id, uid: project.uid, name: project.name, archived: project.archived,
++        },
++      })
++    }
++
++    // ── the purge (fact 22, and the cleanup's last rung) ────────────────────
++    if (call.method === 'POST' && rest.length === 4 && rest[2] === 'actions' && rest[3] === 'purge') {
++      const confirm = header(call.headers, 'X-Kata-Confirm')
++      if (confirm === undefined || confirm === '') {
++        return fail(412, 'confirm_required', 'X-Kata-Confirm is required')
++      }
++      if (confirm !== `PURGE ${project.name}`) {
++        return fail(412, 'confirm_mismatch',
++          `X-Kata-Confirm must be "PURGE ${project.name}"`)
++      }
++      if (!project.archived) {
++        return fail(409, 'project_not_archived', 'archive the project first')
++      }
++      if (purgeStatus < 200 || purgeStatus > 299) {
++        return fail(purgeStatus, 'internal_error', 'the purge failed')
++      }
++      project.purged = true
++      return answer(200, { purged: true, project: { id: project.id, name: project.name } })
++    }
++
++    // ── the ready set (fact 17) ─────────────────────────────────────────────
++    if (call.method === 'GET' && rest.length === 3 && rest[2] === 'ready') {
++      const open = openOf(project)
++      const blocked = new Set()
++      for (const issue of open) {
++        for (const link of links) {
++          if (link.type === 'blocks' && link.from === issue.uid) blocked.add(link.to)
++        }
++      }
++      let rows = open.filter((i) => !blocked.has(i.uid))
++      // `?unowned=true` drops an owned one; `?owner=<x>` changes nothing.
++      if (String(query.get('unowned') || '') === 'true') rows = rows.filter((i) => !i.owner)
++      const listed = rows.map((i) => ({ ...ref(i), owner: i.owner }))
++      return answer(200, { issues: listed, ready: listed })
++    }
++
++    // ── no `next` endpoint at all (fact 18) ─────────────────────────────────
++    if (rest.length === 3 && rest[2] === 'next') {
++      return fail(404, 'not_found', 'no such endpoint')
++    }
++
++    // ── the event log (fact 20) ─────────────────────────────────────────────
++    if (call.method === 'GET' && rest.length === 3 && rest[2] === 'events') {
++      const after = Number(query.get('after_id') || 0)
++      const limit = Number(query.get('limit') || 1000)
++      const rows = events.filter((e) => e.id > after).slice(0, limit)
++      return answer(200, { events: rows, items: rows })
++    }
++
++    if (rest[2] !== 'issues') {
++      unrouted.push(call)
++      return fail(404, 'fake_hub_no_route', `no route for ${call.method} ${bare}`)
++    }
++
++    // ── the create, its replay and the duplicate scorer (facts 4, 5, 6) ─────
++    if (rest.length === 3) {
++      if (call.method === 'GET') {
++        return answer(200, { issues: openOf(project).map(ref) })
++      }
++      if (call.method !== 'POST') {
++        unrouted.push(call)
++        return fail(404, 'fake_hub_no_route', `no route for ${call.method} ${bare}`)
++      }
++      const fp = stable({
++        title: b.title, body: b.body, actor: b.actor, metadata: b.metadata, links: b.links,
++      })
++      const key = header(call.headers, 'Idempotency-Key')
++      if (key !== undefined && keys.has(key)) {
++        const prior = keys.get(key)
++        if (prior.fp !== fp) {
++          return fail(409, 'idempotency_mismatch',
++            `key ${key} was used for ${prior.uid}`,
++            { issue_uid: prior.uid, uid: prior.uid, prior_uid: prior.uid })
++        }
++        const issue = issues.get(prior.uid)
++        call.issueUid = issue.uid
++        // The replay answers the ORIGINAL revision, not today's.
++        return answer(200, { issue: view(issue, prior.revision), created: false })
++      }
++      if (key === undefined && b.force_new !== true) {
++        const twin = openOf(project).find((i) => norm(i.title) === norm(b.title))
++        if (twin) {
++          return fail(409, 'duplicate_candidates',
++            'a title this close is already open here',
++            { candidates: [{ uid: twin.uid, short_id: twin.short_id, title: twin.title, score: 0.93 }] })
++        }
++      }
++      const n = nextIssue++
++      const issue = {
++        uid: `U-${String(n).padStart(4, '0')}`,
++        short_id: shortOf(0xa000 + n),
++        project: project.id,
++        title: b.title == null ? '' : b.title,
++        body: b.body == null ? '' : b.body,
++        metadata: { ...(b.metadata || {}) },
++        labels: [],
++        owner: null,
++        state: 'open',
++        revision: 1,
++      }
++      issues.set(issue.uid, issue)
++      project.issues.push(issue.uid)
++      created.push(issue.uid)
++      call.issueUid = issue.uid
++      // An `issue.created` row carries `issue_uid` (fact 20).
++      event('issue.created', { project_id: project.id, issue_uid: issue.uid, actor: b.actor })
++      for (const row of Array.isArray(b.links) ? b.links : []) {
++        const target = findIssue(row && (row.to_ref || row.to))
++        if (target) links.push({ id: nextLink++, type: row.type, from: issue.uid, to: target.uid })
++      }
++      if (key !== undefined) keys.set(key, { fp, uid: issue.uid, revision: issue.revision })
++      return answer(200, { issue: view(issue), created: true })
++    }
++
++    const issue = findIssue(rest[3])
++    if (!issue) return fail(404, 'issue_not_found', `no issue ${rest[3]}`)
++    call.issueUid = issue.uid
++    const tail = rest.slice(4)
++
++    if (call.method === 'GET' && tail.length === 0) {
++      return answer(200, { issue: view(issue) })
++    }
++
++    // ── the three link readings (facts 7, 8, 9) ─────────────────────────────
++    if (call.method === 'POST' && tail.length === 1 && tail[0] === 'links') {
++      const type = b.type
++      if (!['parent', 'blocks', 'related'].includes(type)) {
++        return fail(400, 'invalid_link_type',
++          `link type must be one of parent, blocks, related; got ${JSON.stringify(type)}`,
++          { accepted: ['parent', 'blocks', 'related'] })
++      }
++      const target = findIssue(b.to_ref)
++      if (!target) return fail(404, 'issue_not_found', `no issue ${b.to_ref}`)
++      if (type === 'parent') {
++        const existing = links.find((l) => l.from === issue.uid && l.type === 'parent')
++        if (existing && b.replace !== true) {
++          if (driftParentSecond && !parentDrifted) {
++            // Leg (c)'s one departure: the second `parent` link answers 200
++            // (and swaps) where the recorded reading is 409.
++            parentDrifted = true
++            existing.to = target.uid
++            return answer(200, { link: linkRow(existing) })
++          }
++          return fail(409, 'parent_already_set',
++            'this issue already has a parent; send replace: true',
++            { current_parent: { uid: existing.to } })
++        }
++        if (existing) {
++          existing.to = target.uid
++          return answer(200, { link: linkRow(existing) })
++        }
++        const link = { id: nextLink++, type, from: issue.uid, to: target.uid }
++        links.push(link)
++        return answer(200, { link: linkRow(link) })
++      }
++      const same = links.find((l) => l.from === issue.uid && l.type === type && l.to === target.uid)
++      if (same) return answer(200, { link: linkRow(same) })
++      const link = { id: nextLink++, type, from: issue.uid, to: target.uid }
++      links.push(link)
++      return answer(200, { link: linkRow(link) })
++    }
++
++    // ── the metadata merge, its 412 and its flat keys (facts 10, 11) ────────
++    if (call.method === 'POST' && tail.length === 1 && tail[0] === 'metadata') {
++      const ifMatch = header(call.headers, 'If-Match')
++      if (ifMatch !== undefined) {
++        const want = `rev-${issue.revision}`
++        if (String(ifMatch).replace(/^"|"$/g, '') !== want) {
++          return fail(412, 'revision_conflict',
++            `If-Match is stale: the issue is at "${want}"`,
++            { revision: issue.revision })
++        }
++      }
++      // Merged per key, and a dotted key stays one flat key.
++      for (const [key, value] of Object.entries(b.patch || {})) {
++        if (value === null) delete issue.metadata[key]
++        else issue.metadata[key] = value
++      }
++      issue.revision += 1
++      event('issue.metadata', { project_id: project.id, issue_uid: issue.uid, actor: b.actor })
++      return answer(200, { issue: view(issue) })
++    }
++
++    // ── the label union (fact 19) ──────────────────────────────────────────
++    if (call.method === 'POST' && tail.length === 1 && tail[0] === 'labels') {
++      const label = b.label
++      if (label !== undefined && !issue.labels.includes(label)) issue.labels.push(label)
++      issue.revision += 1
++      event('issue.labeled', { project_id: project.id, issue_uid: issue.uid, actor: b.actor })
++      return answer(200, { issue: view(issue) })
++    }
++
++    if (call.method === 'POST' && tail.length === 1 && tail[0] === 'comments') {
++      issue.revision += 1
++      event('issue.commented', { project_id: project.id, issue_uid: issue.uid, actor: b.actor })
++      return answer(200, { issue: view(issue), comment: { id: nextEvent } })
++    }
++
++    if (call.method === 'POST' && tail.length === 2 && tail[0] === 'actions') {
++      const action = tail[1]
++
++      // ── the claim (fact 12) ──────────────────────────────────────────────
++      if (action === 'claim') {
++        if (issue.owner && b.if_unowned === true) {
++          return fail(409, 'already_claimed',
++            `${issue.uid} is owned by ${issue.owner}`,
++            { current_owner: issue.owner })
++        }
++        issue.owner = b.actor == null ? 'someone' : b.actor
++        issue.revision += 1
++        event('issue.claimed', { project_id: project.id, issue_uid: issue.uid, actor: b.actor })
++        return answer(200, { issue: view(issue) })
++      }
++
++      // ── the unassign key kata does not know (fact 13) ────────────────────
++      if (action === 'unassign') {
++        if (Object.prototype.hasOwnProperty.call(b, 'expect_owner')) {
++          return fail(400, 'invalid_body',
++            'unexpected key: expect_owner (did you mean expected_owner?)',
++            { unexpected: ['expect_owner'] })
++        }
++        issue.owner = null
++        issue.revision += 1
++        event('issue.unassigned', { project_id: project.id, issue_uid: issue.uid, actor: b.actor })
++        return answer(200, { issue: view(issue) })
++      }
++
++      // ── the three close readings (facts 14, 15, 16) ──────────────────────
++      if (action === 'close') {
++        const key = header(call.headers, 'Idempotency-Key')
++        if (key !== undefined && !b.retry_protocol) {
++          // Context records a 4xx, not a number: the class is the reading.
++          return fail(422, 'retry_protocol_required',
++            'a close under an Idempotency-Key must carry retry_protocol')
++        }
++        if (b.reason === 'superseded') {
++          const rows = Array.isArray(b.evidence) ? b.evidence : []
++          const bare_ref = rows.every((row) => row && Object.keys(row).every((k) => k === 'type' || k === 'ref'))
++          if (rows.length > 0 && bare_ref) {
++            return fail(400, 'invalid_evidence',
++              'a superseded-by row needs more than ref')
++          }
++        }
++        if (String(b.message == null ? '' : b.message).length < 40) {
++          return fail(422, 'message_too_short',
++            'a close message must be at least 40 characters')
++        }
++        issue.state = 'closed'
++        issue.revision += 1
++        event('issue.closed', { project_id: project.id, issue_uid: issue.uid, actor: b.actor })
++        return answer(200, { issue: view(issue) })
++      }
++    }
++
++    unrouted.push(call)
++    return fail(404, 'fake_hub_no_route', `no route for ${call.method} ${bare}`)
++  }
++
++  return {
++    request,
++    calls,
++    unrouted,
++    actorless,
++    created,
++    projectId: () => (projects.size === 0 ? null : [...projects.keys()][0]),
++    projectName: () => (projects.size === 0 ? null : [...projects.values()][0].name),
++  }
++}
++
++// ── The request shapes M4's ladder is read through ──────────────────────────
++
++const isCreate = (call) =>
++  call.method === 'POST' && /^\/api\/v1\/projects\/\d+\/issues$/.test(bareOf(call.path))
++const isClose = (call) =>
++  call.method === 'POST' &&
++  /^\/api\/v1\/projects\/\d+\/issues\/[^/]+\/actions\/close$/.test(bareOf(call.path))
++const isArchive = (call) =>
++  call.method === 'DELETE' && /^\/api\/v1\/projects\/\d+$/.test(bareOf(call.path))
++const isPurge = (call) =>
++  call.method === 'POST' && /^\/api\/v1\/projects\/\d+\/actions\/purge$/.test(bareOf(call.path))
++
++// ════════════════════════════════════════════════════════════════════════════
++// (g) [M5] the import itself — FIRST, because an import happens once
++// ════════════════════════════════════════════════════════════════════════════
++
++// The transport handed nowhere: M5 says a module that reaches a hub on import
++// would show up here as a call.
++const idleHub = makeFakeHub()
++const importLines = []
++const realLog = console.log
++let mod
++console.log = (...args) => { importLines.push(args.map(String).join(' ')) }
++try {
++  mod = await import('./probe_kata_facts.mjs')
++} finally {
++  console.log = realLog
++}
++
++const FACTS = mod.FACTS
++const probeKataFacts = mod.probeKataFacts
++
++// ── The runner: every leg is attempted, and every failure is named ─────────
++
++const failures = []
++const test = async (name, fn) => {
++  try {
++    await fn()
++  } catch (err) {
++    failures.push({ name, err })
++  }
++}
++
++/** One run of the probe against one fake hub, memoised: the legs read the same
++ *  three runs, and a run is driven once. */
++const runs = new Map()
++const runWith = (label, opts) => {
++  if (!runs.has(label)) {
++    runs.set(label, (async () => {
++      const hub = makeFakeHub(opts)
++      const lines = []
++      const result = await probeKataFacts({
++        transport: hub,
++        actor: ACTOR,
++        log: (...args) => { lines.push(args.map(String).join(' ')) },
++        now: NOW,
++      })
++      return { hub, lines, result: result || {} }
++    })())
++  }
++  return runs.get(label)
++}
++
++const factLines = (lines) => lines.filter((line) => /^FACT /.test(line))
++const idsOf = (lines) => factLines(lines).map((line) => (line.match(/^FACT ([^:]+):/) || [])[1])
++
++await test('(g) [M5] importing the probe makes no request and writes no FACT line', () => {
++  assert.equal(typeof probeKataFacts, 'function',
++    '(g) [M1/M5] fleet/tests/probe_kata_facts.mjs exports probeKataFacts({ transport, actor, log, now })')
++  assert.ok(Array.isArray(FACTS),
++    '(g) [M1/M5] fleet/tests/probe_kata_facts.mjs exports FACTS, an array of {id, says}')
++  assert.equal(idleHub.calls.length, 0,
++    '(g) [M5] a fake transport handed nowhere has a call count of 0 after the import resolves — ' +
++    `got ${idleHub.calls.length}: ${idleHub.calls.map(shown).join(', ')}`)
++  assert.deepEqual(factLines(importLines), [],
++    '(g) [M5] the import writes no FACT line through console.log — ' +
++    `got: ${factLines(importLines).join(' | ')}`)
++  // The guard M5 names: main runs only when the file is `process.argv[1]`,
++  // which is what lets this exam import the module at all.
++  const src = fs.readFileSync(path.join(HERE, 'probe_kata_facts.mjs'), 'utf8')
++  assert.match(src, /process\.argv\[1\]/,
++    '(g) [M5] the module guards its main on process.argv[1], as fleet/janitor.mjs guards its own')
++  assert.match(src, /import\.meta\.url/,
++    '(g) [M5] the same guard compares it against import.meta.url')
++})
++
++// ════════════════════════════════════════════════════════════════════════════
++// (a) [M1] the 22 ids, and one `holds` line each against the recorded hub
++// ════════════════════════════════════════════════════════════════════════════
++
++await test('(a) [M1] FACTS is Context\'s 22 {id, says} rows, in that order', () => {
++  assert.deepEqual(FACTS.map((fact) => fact.id), FACT_IDS,
++    '(a) [M1] FACTS.map(f => f.id) deep-equals the 22 ids of Context in that order')
++  for (const fact of FACTS) {
++    assert.equal(typeof fact.says, 'string',
++      `(a) [M1] FACTS row ${fact.id} carries its recorded reading as a \`says\` string`)
++    assert.ok(fact.says.trim().length > 0,
++      `(a) [M1] FACTS row ${fact.id}'s \`says\` is not empty`)
++  }
++})
++
++await test('(a) [M1] against the recorded hub every fact holds, one line each, in FACTS order', async () => {
++  const { hub, lines } = await runWith('holds', {})
++  const facts = factLines(lines)
++  assert.equal(facts.length, 22,
++    '(a) [M1] the count of lines matching ^FACT equals 22 — ' +
++    `got ${facts.length}. ${diagnose(hub)}\n  lines:\n    ${lines.join('\n    ')}`)
++  assert.deepEqual(idsOf(lines), FACT_IDS,
++    '(a) [M1] one FACT line per FACTS entry, in FACTS order, and a FACT line for no other id. ' +
++    `${diagnose(hub)}`)
++  for (const [at, id] of FACT_IDS.entries()) {
++    assert.match(facts[at], new RegExp('^FACT ' + escapeRe(id) + ': holds\\b'),
++      `(a) [M1] the ${id} line reads \`holds\` against a hub answering its recorded reading — ` +
++      `got: ${facts[at]}. ${diagnose(hub)}`)
++  }
++  const one = FACT_IDS.map((id) => facts.filter((line) => line.startsWith(`FACT ${id}:`)).length)
++  assert.deepEqual(one, FACT_IDS.map(() => 1),
++    '(a) [M1] exactly one FACT line per id — ' +
++    `got ${JSON.stringify(Object.fromEntries(FACT_IDS.map((id, at) => [id, one[at]])))}`)
++  // Context's own tally line, after the FACT lines.
++  const probe = lines.filter((line) => line.startsWith('PROBE:'))
++  assert.deepEqual(probe, ['PROBE: 22 facts, 0 drift, 0 unreadable'],
++    '(a) [Context] one PROBE: <n> facts, <d> drift, <u> unreadable line after the FACT lines — ' +
++    `got: ${JSON.stringify(probe)}`)
++})
++
++// ════════════════════════════════════════════════════════════════════════════
++// (b) [M2] the version line, read from the ping, and stamped on every line
++// ════════════════════════════════════════════════════════════════════════════
++
++await test('(b) [M2] the first line is the ping\'s own version, and every FACT line carries it', async () => {
++  const { lines } = await runWith('holds', {})
++  assert.equal(lines[0], VERSION_LINE,
++    `(b) [M2] the first logged line is exactly \`${VERSION_LINE}\` — got: ${JSON.stringify(lines[0])}`)
++  const facts = factLines(lines)
++  const bad = facts.find((line) => !line.endsWith(` ${STAMP}`))
++  assert.equal(bad, undefined,
++    `(b) [M2] every FACT line ends \`${STAMP}\` — the injected now is ${NOW.toISOString()}, ` +
++    `so the date is ${DATE}; the first FACT line that does not: ${JSON.stringify(bad)}`)
++  const { result } = await runWith('holds', {})
++  assert.equal(result.version, VERSION,
++    `(b) [M2/M3] the resolved \`version\` is the ping answer's own — got ${JSON.stringify(result.version)}`)
++})
++
++// ════════════════════════════════════════════════════════════════════════════
++// (c) [M3] exit 0 all-holds; one differing answer is one DRIFT line and exit 1
++// ════════════════════════════════════════════════════════════════════════════
++
++await test('(c) [M3] the all-holds run resolves exit 0, with a row per fact', async () => {
++  const { hub, result } = await runWith('holds', {})
++  assert.equal(result.exit, 0,
++    `(c) [M3] exit is 0 when every fact holds — got ${JSON.stringify(result.exit)}. ${diagnose(hub)}`)
++  assert.ok(Array.isArray(result.results),
++    '(c) [M3] probeKataFacts resolves { exit, version, results } — `results` is an array')
++  assert.deepEqual(result.results.map((row) => row && row.id), FACT_IDS,
++    '(c) [M3] `results` carries one row per fact, in FACTS order')
++})
++
++await test('(c) [M3] the second parent link answering 200 is one DRIFT line and exit 1', async () => {
++  const { hub, lines, result } = await runWith('drift', { driftParentSecond: true })
++  const facts = factLines(lines)
++  assert.equal(facts.length, 22,
++    `(c) [M3] a drifting fact is still one FACT line per id — got ${facts.length}. ${diagnose(hub)}`)
++  assert.deepEqual(idsOf(lines), FACT_IDS,
++    '(c) [M3] and still in FACTS order, with a FACT line for no other id')
++  const drifted = facts.filter((line) => line.startsWith('FACT link-parent-replace:'))
++  assert.equal(drifted.length, 1,
++    `(c) [M3] one line for link-parent-replace — got ${drifted.length}`)
++  assert.match(drifted[0], /^FACT link-parent-replace: DRIFT — read 200\b/,
++    '(c) [M3] the drift line names the status read: it starts ' +
++    '`FACT link-parent-replace: DRIFT — read 200` — ' +
++    `got: ${JSON.stringify(drifted[0])}. ${diagnose(hub)}`)
++  assert.ok(drifted[0].endsWith(` ${STAMP}`),
++    `(c) [M2] the drift line carries the same stamp — got: ${JSON.stringify(drifted[0])}`)
++  const others = facts.filter((line) => !line.startsWith('FACT link-parent-replace:'))
++  const notHolds = others.filter((line) => !/^FACT [^:]+: holds\b/.test(line))
++  assert.deepEqual(notHolds, [],
++    '(c) [M3] every other FACT line still reads `holds` — ' +
++    `got: ${notHolds.join(' | ')}. ${diagnose(hub)}`)
++  assert.equal(result.exit, 1,
++    `(c) [M3] exit is 1 when a fact drifts — got ${JSON.stringify(result.exit)}`)
++  const probe = lines.filter((line) => line.startsWith('PROBE:'))
++  assert.deepEqual(probe, ['PROBE: 22 facts, 1 drift, 0 unreadable'],
++    `(c) [Context] the tally counts the one drift — got: ${JSON.stringify(probe)}`)
++})
++
++// ════════════════════════════════════════════════════════════════════════════
++// (d) [M3] a non-2xx ping: unreachable, no FACT line, exit 2
++// ════════════════════════════════════════════════════════════════════════════
++
++await test('(d) [M3] a ping answering 503 names the hub unreachable and reads no fact', async () => {
++  const { lines, result } = await runWith('unreachable', { pingStatus: 503 })
++  assert.ok(lines.length > 0, '(d) [M3] the probe writes its first line even when the ping fails')
++  assert.match(lines[0], /unreachable/i,
++    `(d) [M3] the first line names the hub as unreachable — got: ${JSON.stringify(lines[0])}`)
++  assert.ok(lines[0].includes('503'),
++    `(d) [M3] and carries the status it read — got: ${JSON.stringify(lines[0])}`)
++  assert.deepEqual(factLines(lines), [],
++    `(d) [M3] no line starting \`FACT \` is written — got: ${factLines(lines).join(' | ')}`)
++  assert.equal(result.exit, 2,
++    `(d) [M3] exit is 2 when the ping failed — got ${JSON.stringify(result.exit)}`)
++})
++
++// ════════════════════════════════════════════════════════════════════════════
++// (e) [M4] the cleanup ladder ends both 2xx-ping runs, in order
++// ════════════════════════════════════════════════════════════════════════════
++
++/**
++ * M4's ladder, read off one run's recorded requests: the closes, then the
++ * archive, then the confirmed purge as the very last request.
++ *
++ * The count is M4's own parenthetical — "one `POST …/actions/close` per issue
++ * it created … and never fewer" — measured against the issues the hub really
++ * created. Leg (e)'s "N equals the number of `POST …/issues` requests
++ * recorded" cannot be that count: facts 5 and 6 require create requests that
++ * create no issue (409 `idempotency_mismatch`, 409 `duplicate_candidates`) and
++ * fact 4's replay answers an issue that already exists.
++ */
++const assertLadder = (label, hub) => {
++  const calls = hub.calls
++  const id = hub.projectId()
++  const name = hub.projectName()
++  assert.ok(id !== null,
++    `(e) [M4] the ${label} run created its own project through POST /api/v1/projects`)
++  assert.match(String(name), /^probe-kata-facts-/,
++    `(e) [M4] the ${label} run's project name begins \`probe-kata-facts-\` — got ${JSON.stringify(name)}`)
++  assert.ok(hub.created.length > 0,
++    `(e) [M4] the ${label} run created at least one issue to close`)
++
++  const last = calls[calls.length - 1]
++  assert.ok(isPurge(last),
++    `(e) [M4] the very last request of the ${label} run is ` +
++    `POST /api/v1/projects/${id}/actions/purge — got ${shown(last)}`)
++  assert.equal(bareOf(last.path), `/api/v1/projects/${id}/actions/purge`,
++    `(e) [M4] and it purges the probe's own project — got ${shown(last)}`)
++  assert.equal(header(last.headers, 'X-Kata-Confirm'), `PURGE ${name}`,
++    `(e) [M4] the purge carries X-Kata-Confirm equal to \`PURGE ${name}\` — the name its ` +
++    `POST /api/v1/projects body carried; got ${JSON.stringify(header(last.headers, 'X-Kata-Confirm'))}`)
++  assert.ok(Object.prototype.hasOwnProperty.call(last.headers, 'X-Kata-Confirm'),
++    '(e) [M4] spelled `X-Kata-Confirm`, as Context spells it — got the header names ' +
++    JSON.stringify(Object.keys(last.headers)))
++
++  const archive = calls[calls.length - 2]
++  assert.ok(isArchive(archive) && bareOf(archive.path) === `/api/v1/projects/${id}`,
++    `(e) [M4] the request before it is DELETE /api/v1/projects/${id} — got ${shown(archive)}`)
++
++  // The closes: the maximal run of them immediately before the archive.
++  let at = calls.length - 3
++  const closes = []
++  while (at >= 0 && isClose(calls[at])) {
++    closes.unshift(calls[at])
++    at -= 1
++  }
++  assert.equal(closes.length, hub.created.length,
++    `(e) [M4] the ${label} run's ladder opens with one POST …/actions/close per issue it created, ` +
++    `and never fewer: ${hub.created.length} created (${hub.created.join(', ')}), ` +
++    `${closes.length} closed in the trailing block. The first request out of order is ` +
++    `${shown(calls[at])} at index ${at} of ${calls.length}. ` +
++    `${calls.filter(isCreate).length} POST …/issues requests were recorded in all, of which ` +
++    `${hub.created.length} created an issue.`)
++  assert.deepEqual(closes.map((call) => call.issueUid).sort(), [...hub.created].sort(),
++    `(e) [M4] and one close per created issue, naming each exactly once — closed ` +
++    `${JSON.stringify(closes.map((call) => call.issueUid))}, created ${JSON.stringify(hub.created)}`)
++}
++
++await test('(e) [M4] the all-holds run ends closes → archive → confirmed purge', async () => {
++  const { hub } = await runWith('holds', {})
++  assertLadder('all-holds', hub)
++})
++
++await test('(e) [M4] the drift run ends the same ladder', async () => {
++  const { hub } = await runWith('drift', { driftParentSecond: true })
++  assertLadder('drift', hub)
++})
++
++// ════════════════════════════════════════════════════════════════════════════
++// (f) [M4] a purge that fails names the project left behind, and is exit 2
++// ════════════════════════════════════════════════════════════════════════════
++
++await test('(f) [M4] a confirmed purge answering 500 is exit 2 and a `left behind` last line', async () => {
++  const { hub, lines, result } = await runWith('purge-500', { purgeStatus: 500 })
++  const facts = factLines(lines)
++  assert.equal(facts.length, 22,
++    `(f) [M4] every fact is still read — got ${facts.length} FACT lines. ${diagnose(hub)}`)
++  const notHolds = facts.filter((line) => !/^FACT [^:]+: holds\b/.test(line))
++  assert.deepEqual(notHolds, [],
++    '(f) [M4] and every FACT line reads `holds`: the confirmed purge is the CLEANUP, so its ' +
++    'failure is exit 2 and not a drift on purge-ladder — ' +
++    `got: ${notHolds.join(' | ')}. ${diagnose(hub)}`)
++  const last = lines[lines.length - 1]
++  assert.ok(String(last).includes(String(hub.projectId())),
++    `(f) [M4] the last logged line carries the project id ${hub.projectId()} — ` +
++    `got: ${JSON.stringify(last)}`)
++  assert.match(String(last), /left behind/,
++    `(f) [M4] and says it is left behind, so a hand run never loses a project silently — ` +
++    `got: ${JSON.stringify(last)}`)
++  assert.equal(result.exit, 2,
++    `(f) [M4] exit is 2 when the cleanup failed — got ${JSON.stringify(result.exit)}`)
++})
++
++// ════════════════════════════════════════════════════════════════════════════
++// (h) [M5] PROBES.md says when the probe is run
++// ════════════════════════════════════════════════════════════════════════════
++
++await test('(h) [M5] PROBES.md lists the probe, the upgrade and the client it guards', () => {
++  const joined = fs.readFileSync(PROBES_MD, 'utf8').split('\n').join(' ')
++  assert.match(joined, /probe_kata_facts\.mjs.*kata upgrade.*kata-client\.mjs/,
++    '(h) [M5] fleet/tests/PROBES.md, joined with spaces, matches ' +
++    'probe_kata_facts.mjs.*kata upgrade.*kata-client.mjs — it lists the probe with when it is ' +
++    'run: on every kata upgrade and before any plan that touches fleet/kata-client.mjs')
++})
++
++// ── The verdict ─────────────────────────────────────────────────────────────
++
++if (failures.length > 0) {
++  for (const { name, err } of failures) {
++    console.error(`FAILED ${name}\n  ${err?.message ?? err}`)
++  }
++  console.error(`${failures.length} failing leg${failures.length === 1 ? '' : 's'}`)
++  process.exit(1)
++}
++
++console.log('ALL TESTS PASSED')

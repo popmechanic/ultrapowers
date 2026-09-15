@@ -1,0 +1,1713 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+index ecbe6453b5d3c445e0294393246d0ba0590ebf81..4a03a3afcf255fe19b485f942d7082bf5a4f3726 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -49,7 +49,8 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
+   `fleet/roles/*.md` — one copy, no bake step.
+ - `skills/ultrawrite/` — the plan-authoring skill: the claims-v1 grammar (six body slots,
+   contracts signed and edges derived; `- Run:` proofs since #592), plus
+-  `references/greenfield-stack.md` and the provenance/base-fact scripts.
++  `references/greenfield-stack.md`, the provenance/base-fact scripts, and
++  `scripts/authoring_census.py` (`--fetch` a run range, `totals:` for the release notes).
+ - `hooks/session_start.sh` — injects the plan-routing rule into every session. The rule lives
+   there, not here.
+ - `.claude-plugin/{plugin.json,marketplace.json}` — manifest + marketplace entry; the version
+@@ -161,7 +162,9 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
+   the launcher reaps, by hand after a sleep, no scheduled job on this machine.
+ - **Every choice is an AskUserQuestion** — 2–3 concrete options with their consequences and a
+   `(Recommended)` tag, never a bare open question; the operator adjudicates, they do not author
+-  (see §Working with the operator).
++  (see §Working with the operator). And every sitting-level question is recorded with its pick in
++  the plan's `authoring` record, so the Recommended `pick rate` is read per release and a
++  recommendation taken every time is retired into a written default rather than asked again.
+ - **Test doctrine (operator, 2026-09-09).** The implementer never does TDD: it iterates against the
+   suite and writes no test of its own. The peer exam plus driver-run probes are the proof, and the
+   target's suite is a *reported sensor* with attribution, measured and never asserted on a
+@@ -173,7 +176,8 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
+ 
+ - **They adjudicate, they do not author.** Put every decision as 2–3 concrete options with
+   their consequences and a `(Recommended)` tag, through AskUserQuestion; never a bare open
+-  question. A signed Claim is their own sentence, elicited, never drafted for countersigning.
++  question. A signed Claim is drafted by the author and confirmed by the operator in one touch —
++  the draft, its machine restatement and its summary in a single question; their edit is the Claim.
+   Explain an idea; do not state it in the technical register and leave them to decode it.
+ - **They never read code or tests.** The trust chain is plan → peer exam → gate receipt →
+   smoke. Quote receipts; never narrate a green.
+diff --git a/fleet/RUNBOOK.md b/fleet/RUNBOOK.md
+index 357a6d4d0b97fe41840e1d36cfb6c44d087e2a9a..15f655fb440029658717c6e5b575ca041cbe6cf6 100644
+--- a/fleet/RUNBOOK.md
++++ b/fleet/RUNBOOK.md
+@@ -216,7 +216,7 @@ never by `integrations attach`.
+ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>
+ ```
+ 
+-The launcher compiles the plan against `--base` itself (`compile_plan.py --check --base`, after the hash pins and before any lobby verb) and refuses on anything but `PLAN OK`; the `BASE fact:` lines and the `STALE fact:` lines of a clean compile are printed on the launch line after the engine line, in the order the compiler printed them. A `STALE fact:` line on a clean compile is an advisory — a Stale-if predicate the compiler could not read at `--base` (`STALE fact: task <id>: <entry> unreadable at BASE — <reason>`); a predicate that holds is a refusal instead, and the compiler's own `STALE fact: task <id>: <entry> holds at BASE` line comes back verbatim in it.
++The launcher compiles the plan against `--base` itself (`compile_plan.py --check --base`, after the hash pins and before any lobby verb) and refuses on anything but `PLAN OK`; the `BASE fact:` lines, the `STALE fact:` lines and the `AUTHORING fact:` line of a clean compile are printed on the launch line after the engine line, in the order the compiler printed them. A `STALE fact:` line on a clean compile is an advisory — a Stale-if predicate the compiler could not read at `--base` (`STALE fact: task <id>: <entry> unreadable at BASE — <reason>`); a predicate that holds is a refusal instead, and the compiler's own `STALE fact: task <id>: <entry> holds at BASE` line comes back verbatim in it. The `AUTHORING fact:` line is what the plan cost to author — `AUTHORING fact: <minutes> min to PLAN OK, <probes> hub probes, <dispatched> gate dispatches, <rejected> rejected, routing <branch>-><lane>, <n> questions, <p>/<q> recommended picked`, and `AUTHORING fact: none recorded` when the gate record carries no `authoring` key — so the cost of the plan is read beside the run it launched, without opening the record.
+ 
+ The launcher, in this order: validates the plan, the target and the base;
+ reads the pool; computes N from the target's `ultra/*-run-*` branches and its
+diff --git a/fleet/launch.mjs b/fleet/launch.mjs
+index 8ad71c0cf7df9d83bb57d7108fa22465b3f3f5c0..de5cf9673882bfa803356089c5b6858ba86d600d 100644
+--- a/fleet/launch.mjs
++++ b/fleet/launch.mjs
+@@ -603,10 +603,12 @@ const BASE_FACTS_STAMP = /\*\*BASE facts:\*\*\s*\(generated at ([0-9a-f]{7,40})\
+  *     its clauses pin). A non-zero exit is a refusal carrying the compiler's
+  *     text verbatim — including a `STALE fact:` line for a Stale-if predicate
+  *     that holds at BASE, which is what the operator reads on the laptop; the
+- *     `BASE fact:` and `STALE fact:` lines of a clean compile ride the result
+- *     so the launch line prints them, in the order the compiler printed them
+- *     (a `STALE fact:` there is the advisory kind: a predicate the compiler
+- *     could not read at BASE, never a refusal).
++ *     `BASE fact:`, `STALE fact:` and `AUTHORING fact:` lines of a clean
++ *     compile ride the result so the launch line prints them, in the order the
++ *     compiler printed them (a `STALE fact:` there is the advisory kind: a
++ *     predicate the compiler could not read at BASE, never a refusal; the
++ *     `AUTHORING fact:` line is what the plan's authoring cost, or
++ *     `AUTHORING fact: none recorded` when the gate record carries none).
+  *
+  * The compiler runs through the exec seam like every other subprocess, so a sim
+  * that answers `python3` decides what the compiler said.
+@@ -627,7 +629,10 @@ export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planT
+     )
+   }
+   return String(res.stdout ?? '').split('\n').filter(
+-    (line) => line.startsWith('BASE fact:') || line.startsWith('STALE fact:')
++    (line) =>
++      line.startsWith('BASE fact:') ||
++      line.startsWith('STALE fact:') ||
++      line.startsWith('AUTHORING fact:')
+   )
+ }
+ 
+diff --git a/fleet/tests/test_launch_compile_facts.mjs b/fleet/tests/test_launch_compile_facts.mjs
+index 44e5aed9407d329b00d438b0d8cc93f13818c395..da8375ce1e619b6f64df7236cb9603992faa34c5 100644
+--- a/fleet/tests/test_launch_compile_facts.mjs
++++ b/fleet/tests/test_launch_compile_facts.mjs
+@@ -271,6 +271,106 @@ await test('(d) [M4] CLAUDE.md\'s fleet/ Layout bullet names STALE fact: after t
+   )
+ })
+ 
++/**
++ * ── "The launcher carries the AUTHORING fact line onto the launch line"
++ * (task 4) ──────────────────────────────────────────────────────────────────
++ *
++ * The same surface, one kind wider: the compiler now prints an `AUTHORING
++ * fact:` line after its BASE and STALE facts under `--check --base`, and the
++ * operator must read what the authoring cost among the fact lines that end the
++ * launch text, without opening the record. Nothing new is imported and nothing
++ * new is spawned: these legs use this file's own `fakeExec`, `compile` and
++ * `sectionOf` helpers, and the legs above stay green because a stdout carrying
++ * no `AUTHORING fact:` line still resolves to exactly its BASE and STALE lines.
++ *
++ *   (a) [M1] a fake `exec` answering exit 0 with `PLAN OK`, one `BASE fact:`
++ *       line, one `STALE fact: … unreadable at BASE — …` line, the Context's
++ *       example `AUTHORING fact:` line and one `note:` line makes
++ *       `verifyPlanCompiles` resolve to exactly those three fact lines, in that
++ *       order and with no other line.
++ *   (b) [M1] the same lines answered `AUTHORING fact:` first resolve with it
++ *       first — M1 says stdout order, not a sort by kind — and
++ *       `AUTHORING fact: none recorded`, the shape the compiler prints for a
++ *       record with no `authoring` key, is carried like any other.
++ *   (c) [M1] `renderLaunch` of a result whose `baseFacts` is
++ *       `['BASE fact: x', 'AUTHORING fact: none recorded']` yields text whose
++ *       LAST line is the `AUTHORING fact:` entry.
++ *   (d) [M2] the `## Per run` section of `fleet/RUNBOOK.md`, read as the text
++ *       between that heading and the next `## `, matches
++ *       `BASE fact:.*STALE fact:.*AUTHORING fact:.*launch line`.
++ */
++
++/**
++ * The compiler's third line shape, as the literal every task in this plan
++ * shares: a record of 118 minutes, 12 probes, 4 dispatches, 1 rejected, routing
++ * `risk`/`ultrapowers` and one question picked as recommended is exactly this.
++ */
++const AUTHORING_FACT =
++  'AUTHORING fact: 118 min to PLAN OK, 12 hub probes, 4 gate dispatches, 1 rejected, ' +
++  'routing risk->ultrapowers, 1 questions, 1/1 recommended picked'
++
++/** What the compiler prints when the gate record carries no `authoring` key. */
++const AUTHORING_NONE = 'AUTHORING fact: none recorded'
++
++await test('(a) [M1] task 4: a clean compile resolves to its BASE, STALE and AUTHORING fact lines, and nothing else', async () => {
++  const exec = fakeExec({
++    code: 0,
++    stdout: `PLAN OK\n${BASE_FACT}\n${STALE_ADVISORY}\n${AUTHORING_FACT}\nnote: 3 tasks in 2 waves\n`
++  })
++  const facts = await compile(exec)
++  assert.deepEqual(
++    facts, [BASE_FACT, STALE_ADVISORY, AUTHORING_FACT],
++    '(a) [M1] exit 0 with PLAN OK, one BASE fact: line, one STALE fact: advisory, the AUTHORING fact: ' +
++    'line and one note: line resolves to exactly those three fact lines, in stdout order and with no ' +
++    `other line, got: ${JSON.stringify(facts)}`
++  )
++})
++
++await test('(b) [M1] task 4: the order is stdout\'s, and `none recorded` is carried like any other', async () => {
++  const first = fakeExec({
++    code: 0,
++    stdout: `PLAN OK\n${AUTHORING_FACT}\n${BASE_FACT}\n${STALE_ADVISORY}\nnote: 3 tasks in 2 waves\n`
++  })
++  assert.deepEqual(
++    await compile(first), [AUTHORING_FACT, BASE_FACT, STALE_ADVISORY],
++    '(b) [M1] the same three lines answered AUTHORING-first resolve AUTHORING-first: M1 says stdout order'
++  )
++  const none = fakeExec({
++    code: 0,
++    stdout: `PLAN OK\n${BASE_FACT}\n${AUTHORING_NONE}\nnote: 3 tasks in 2 waves\n`
++  })
++  assert.deepEqual(
++    await compile(none), [BASE_FACT, AUTHORING_NONE],
++    `(b) [M1] ${JSON.stringify(AUTHORING_NONE)} — the line for a record with no authoring key — is ` +
++    'carried like any other AUTHORING fact: line'
++  )
++})
++
++await test('(c) [M1] task 4: a result\'s AUTHORING fact: entry is the last line of the rendered launch line', () => {
++  const facts = ['BASE fact: x', AUTHORING_NONE]
++  const lines = renderLaunch({ ...RESULT, baseFacts: facts }).split('\n')
++  assert.equal(
++    lines.at(-1), AUTHORING_NONE,
++    `(c) [M1] the last line of the rendered text is the AUTHORING fact: entry, so the launch line ends ` +
++    `with what the authoring cost, got: ${JSON.stringify(lines)}`
++  )
++  assert.deepEqual(
++    lines.slice(-2), facts,
++    `(c) [M1] both baseFacts entries end the launch text, in order, got: ${JSON.stringify(lines)}`
++  )
++})
++
++await test('(d) [M2] task 4: fleet/RUNBOOK.md §Per run names BASE fact:, then STALE fact:, then AUTHORING fact:, then the launch line', () => {
++  const section = sectionOf(fs.readFileSync(RUNBOOK, 'utf8'), '## Per run', '## ')
++  assert.ok(section !== null, '(d) [M2] fleet/RUNBOOK.md has a `## Per run` section')
++  assert.match(
++    section, /BASE fact:.*STALE fact:.*AUTHORING fact:.*launch line/,
++    '(d) [M2] the `## Per run` section says the AUTHORING fact: line of a clean compile prints on the ' +
++    'launch line beside the BASE fact: and STALE fact: lines, in that order, got: ' +
++    `${near(section, 'BASE fact:')}`
++  )
++})
++
+ // ── The verdict ─────────────────────────────────────────────────────────────
+ 
+ if (failures.length > 0) {
+diff --git a/skills/ultrapowers/scripts/compile_plan.py b/skills/ultrapowers/scripts/compile_plan.py
+index a7619bc1dfac6299b1c3259a8aff4b5177b7c088..2ea6129a5c24c212f839a3f68c5029a1f295dd15 100644
+--- a/skills/ultrapowers/scripts/compile_plan.py
++++ b/skills/ultrapowers/scripts/compile_plan.py
+@@ -1079,6 +1079,159 @@ def gate_verdict_violations(plan_path, tasks):
+     return violations
+ 
+ 
++# --------------------------------------------------------------------------- #
++# The authoring record (#988): what the sitting that produced the plan cost    #
++# --------------------------------------------------------------------------- #
++# A top-level `authoring` object in `<stem>.gate-verdicts.json`, beside `tasks`
++# and `tally`, records the sitting's own cost: the wall-clock minutes to
++# `PLAN OK`, the hub probes made, which branch of the handoff rule fired and
++# which lane the operator picked, and one row per AskUserQuestion. The compiler
++# only READS it — it is written by the authoring skill, never by a compile.
++#
++# Two rules, and no third: a record whose `authoring` object is malformed is a
++# `grammar:` refusal on the same footing as the gate verdicts, and a record
++# with no `authoring` key at all is read exactly as it was before this existed.
++# Extra keys are tolerated everywhere (the skill's own "any extra key … is
++# tolerated"), because the record is a log the authoring side grows.
++AUTHORING_KEY = "authoring"
++AUTHORING_BRANCHES = ("risk", "width", "inline", "subagent")
++AUTHORING_LANES = ("ultrapowers", "subagent", "inline")
++_AUTHORING_BAD = "grammar: authoring record unreadable — "
++
++
++def _authoring_object(plan_path):
++    """The record's `authoring` value, or None when there is nothing to read.
++
++    None covers all three ways this reader declines to speak: no verdicts file
++    (that is `gate_verdict_violations`'s one `gate verdicts missing` refusal,
++    and adding a second would double-report a single fact), a file that is not
++    readable JSON (likewise already refused there), and a record carrying no
++    `authoring` key — the plan that never recorded its cost."""
++    path = verdicts_path(plan_path)
++    if not path.exists():
++        return None
++    try:
++        record = json.loads(path.read_text())
++    except ValueError:
++        return None
++    if not isinstance(record, dict):
++        return None
++    return record.get(AUTHORING_KEY)
++
++
++def _authoring_tally(plan_path):
++    """The record's `tally`, as a dict — `{}` when absent or unreadable."""
++    path = verdicts_path(plan_path)
++    try:
++        record = json.loads(path.read_text())
++    except (OSError, ValueError):
++        return {}
++    tally = record.get("tally") if isinstance(record, dict) else None
++    return tally if isinstance(tally, dict) else {}
++
++
++def _nonneg_int(value):
++    """A JSON non-negative integer. `True` is an `int` in Python and is not
++    one of these; `"12"` is a string the record's writer did not convert."""
++    return (isinstance(value, int) and not isinstance(value, bool)
++            and value >= 0)
++
++
++def authoring_record_violations(plan_path):
++    """Every refusal the `authoring` object earns, `grammar:`-namespaced.
++
++    One line per offending field, each naming the field it is about. A record
++    with no `authoring` key earns nothing at all — this function is the only
++    thing in the compiler that reads the key, so a plan from before the record
++    existed compiles exactly as it did.
++
++    Each question's checks short-circuit on `options`: a question whose option
++    list is unusable cannot say anything further about which of those options
++    was picked or recommended, so the malformation is reported once, at the
++    field that caused it."""
++    auth = _authoring_object(plan_path)
++    if auth is None:
++        return []
++    name = verdicts_path(plan_path).name
++    out = []
++
++    def bad(field, detail):
++        out.append("%s`%s`: %s: %s" % (_AUTHORING_BAD, name, field, detail))
++
++    if not isinstance(auth, dict):
++        bad("authoring", "must be an object, got %s"
++            % type(auth).__name__)
++        return out
++
++    if not _nonneg_int(auth.get("minutes")):
++        bad("minutes", "must be a non-negative integer, got %r"
++            % (auth.get("minutes"),))
++    if not _nonneg_int(auth.get("probes")):
++        bad("probes", "must be a non-negative integer, got %r"
++            % (auth.get("probes"),))
++
++    routing = auth.get("routing")
++    if not isinstance(routing, dict):
++        bad("routing", "must be an object carrying `branch` and `lane`, got %r"
++            % (routing,))
++    else:
++        if routing.get("branch") not in AUTHORING_BRANCHES:
++            bad("routing.branch", "must be one of %s, got %r"
++                % (", ".join(AUTHORING_BRANCHES), routing.get("branch")))
++        if routing.get("lane") not in AUTHORING_LANES:
++            bad("routing.lane", "must be one of %s, got %r"
++                % (", ".join(AUTHORING_LANES), routing.get("lane")))
++
++    questions = auth.get("questions", [])
++    if not isinstance(questions, list):
++        bad("questions", "must be a list, one row per question, got %r"
++            % (questions,))
++        return out
++    for i, q in enumerate(questions):
++        where = "questions[%d]" % i
++        if not isinstance(q, dict):
++            bad(where, "must be an object, got %r" % (q,))
++            continue
++        options = q.get("options")
++        if not isinstance(options, list) or len(options) < 2:
++            bad(where + ".options",
++                "must be a list of at least 2 entries, got %r" % (options,))
++            continue
++        if q.get("picked") not in options:
++            bad(where + ".picked", "must be one of %r, got %r"
++                % (options, q.get("picked")))
++        recommended = q.get("recommended")
++        if recommended is not None and recommended not in options:
++            bad(where + ".recommended", "must be null or one of %r, got %r"
++                % (options, recommended))
++    return out
++
++
++def authoring_fact_line(plan_path):
++    """The one `AUTHORING fact:` line a `--check --base` compile prints.
++
++    `AUTHORING fact: none recorded` when the record carries no `authoring`
++    key — and equally when it carries one the reader above refuses, because a
++    malformed record has already earned a named violation and the fact line is
++    not where that diagnostic belongs."""
++    auth = _authoring_object(plan_path)
++    if not isinstance(auth, dict) or authoring_record_violations(plan_path):
++        return "AUTHORING fact: none recorded"
++    tally = _authoring_tally(plan_path)
++    # `-` reads as "the record does not say", which is what an absent tally
++    # key means — distinct from a recorded 0.
++    dispatched = tally.get("dispatched", "-")
++    rejected = tally.get("rejected", "-")
++    questions = auth.get("questions", [])
++    with_rec = [q for q in questions if q.get("recommended") is not None]
++    picked = [q for q in with_rec if q.get("picked") == q.get("recommended")]
++    return ("AUTHORING fact: %s min to PLAN OK, %s hub probes, "
++            "%s gate dispatches, %s rejected, routing %s->%s, "
++            "%d questions, %d/%d recommended picked"
++            % (auth["minutes"], auth["probes"], dispatched, rejected,
++               auth["routing"]["branch"], auth["routing"]["lane"],
++               len(questions), len(picked), len(with_rec)))
++
+ 
+ def parse_task(t, raise_on_marker_error=True, plan_claim=None):
+     """Parse one task's body. raise_on_marker_error controls how a marker-VALUE
+@@ -1689,6 +1842,11 @@ def collect_violations(plan_path, base_tree=None):
+     # discovers at dispatch that the gate was never run.
+     violations.extend(plan_claim_violations(plan_text))
+     violations.extend(gate_verdict_violations(plan_path, tasks))
++    # ... and the authoring record beside it (#988), which is a refusal on the
++    # same footing for the same reason: a record the compiler cannot read is a
++    # record nothing downstream can count. Unconditional, so a bare `--check`
++    # refuses one too; a record with no `authoring` key adds nothing.
++    violations.extend(authoring_record_violations(plan_path))
+     # ... and the Global-Constraints `- Check:` commands, which belong to no
+     # task and so are checked once for the whole plan.
+     violations.extend(constraint_check_violations(plan_text))
+@@ -2787,6 +2945,10 @@ def main(argv=None):
+             # verdict whichever way it went and change no exit code.
+             for line in evaluate_stale_if(tasks, base_tree)[1]:
+                 print(line)
++            # ... and last, what the sitting that wrote this plan cost (#988).
++            # Only with a tree to read, like its neighbours above: a bare
++            # `--check` prints its verdict and nothing else.
++            print(authoring_fact_line(args.plan))
+         return rc
+     if emit_args is not None and emit_launch is None:
+         sys.exit("error: --emit-args requires --emit-launch (task bodies must "
+diff --git a/skills/ultrawrite/SKILL.md b/skills/ultrawrite/SKILL.md
+index 740568b3be11d435626de65839089dc587a5c707..35b4dc95538d5560a19c1557920d681068828b26 100644
+--- a/skills/ultrawrite/SKILL.md
++++ b/skills/ultrawrite/SKILL.md
+@@ -184,7 +184,24 @@ sizes nor caches, so a bad size surfaces as the constructor's own `ValueError`.
+ - path-absent: `widgetkit/widget.py`
+ ```
+ 
+-## Elicit the claim — never draft it for countersigning
++## Elicit the claim — drafted, then confirmed
++
++A Claim is **drafted by the author** and **confirmed by the operator**, and the two happen in
++one touch: the author writes the sentence off the issue or the conversation, puts it with its
++machine restatement and its summary inside a single AskUserQuestion, and the operator's pick —
++or their edit — is the signature. That, and only that, is what the `(elicited)` tag on a signed
++Claim records: not that the operator typed the sentence, but that they saw it and adopted it.
++Pretending otherwise costs a round trip and buys nothing, because a Claim the author never
++drafted is a bare open question wearing a tag.
++
++A Claim question may also be put **without a (Recommended)** option, when the author has two
++honest drafts and no preference between them. Then the register row for that question records
++its `recommended` as `null`, and the pick carries information: an untagged question is the one
++place where what the operator chose is data rather than assent.
++
++A question whose recommended option is **picked on every plan** of a release is not a question.
++At the release census it is **retired** — its default written down here, the sitting one touch
++shorter (#727) — and what stays in the register is only what a pick can still move.
+ 
+ **From a filed issue** (the common path, and what keeps autonomous drains working): quote
+ the operator's own words as the Claim, anchored to the issue; bind the machine
+@@ -251,7 +268,19 @@ shape: `{"tasks": {"<id>": {"hash": "<the extractor's hash>", "verdict": "pass"
+ "reason": "<one sentence>"}, …}, "tally": {…}}` — `tasks` keyed by task id with those three
+ fields, `verdict` one of `pass`/`fail`, `tally` a free-form count object (`dispatched`,
+ `rejected`, per-round counts) that is kept for the record and not validated; any extra
+-key, such as a `history` array of every round's verdicts, is tolerated. A missing task, a
++key, such as a `history` array of every round's verdicts, is tolerated. One such key is
++reserved: beside `tasks` and `tally` the record carries the sitting's own `authoring` object,
++
++    {"authoring": {"minutes": 118, "probes": 12, "routing": {"branch": "risk", "lane": "ultrapowers"}, "questions": [{"question": "Claim and summary", "options": ["A", "B"], "recommended": "A", "picked": "A"}]}}
++
++where `minutes` is the sitting's wall-clock minutes to `PLAN OK`, `probes` the hub probes made,
++`routing` the handoff rule's own verdict (§Execution handoff), and `questions` one row per
++AskUserQuestion of the sitting — the execute question included, `recommended` null when no
++option carried the tag. The author writes the whole object once, at the execution handoff after
++`PLAN OK` and before the launch; the compiler prints it as one `AUTHORING fact:` line under
++`--check --base`, and the launcher carries that line onto the launch line. A release reads a run
++range with `python3 $UW/authoring_census.py --fetch <owner>/<repo> --runs <A>..<B> --into <dir>`,
++and its last `totals:` line is what the release notes carry. A missing task, a
+ stale hash, or a `fail` is a compile refusal. The verdict is an artifact, not
+ a memory: the compiler refuses a plan whose record is missing or whose hashes are stale,
+ so an edited Claim or Proof re-dispatches. The gate agent never authors proofs, and the
+@@ -437,6 +466,12 @@ winner **(recommended)**:
+ 2. **Subagent-Driven** — sequential, fresh context and review between tasks.
+ 3. **Inline** — continuous inline execution.
+ 
++Both halves of that go on the record: the branch that fired and the lane they picked are
++written into the plan record's `routing` as `branch` — one of `risk`, `width`, `inline`,
++`subagent`, the four branches above, first match wins — and `lane`, one of `ultrapowers`,
++`subagent`, `inline`, whichever of the three options above they took (§The proof gate). The
++pair is what tells a release how often the recommendation was the lane.
++
+ A claims-v1 plan has no steps to follow, but a sequential executor can implement
+ task-by-task from contract plus proof.
+ 
+diff --git a/skills/ultrawrite/scripts/authoring_census.py b/skills/ultrawrite/scripts/authoring_census.py
+new file mode 100755
+index 0000000000000000000000000000000000000000..ddc3f0e88967b96a7f40068994fe8ce1f3e7ddef
+--- /dev/null
++++ b/skills/ultrawrite/scripts/authoring_census.py
+@@ -0,0 +1,368 @@
++#!/usr/bin/env python3
++"""Read a release's runs into one table: what authoring cost beside the run.
++
++Every run leaves a gate record, and since this plan that record carries an
++`authoring` object — the minutes, the probes, the routing branch the risk
++override chose, the lane, and the questions with their recommended and picked
++options. One run's record answers one run; a release is a handful of them, and
++the question an operator asks at a release ("what did authoring cost, how often
++did the override send a plan to the fleet, how often was Recommended picked")
++is a question about the pile. This census is that pile read into one table.
++
++    authoring_census.py --from <dir>
++    authoring_census.py --from <dir> --register
++    authoring_census.py --fetch <owner>/<repo> --runs <A>..<B> --into <dir>
++
++`<dir>` holds `run-<N>/gate-verdicts.json` files, optionally with a
++`run-<N>/status.json` beside each; a `run-<N>` with no record is not a row.
++`--register` prints one line per option of every question instead of the table
++(#735). `--fetch` fills `<dir>` from the plan and evidence tags over `gh api`
++and then prints the table over it. `--gh` swaps that binary — the test seam,
++and the hook for a caller with its own wrapper; nothing here reaches the
++network by any other route, and only under `--fetch`.
++"""
++from __future__ import annotations
++
++import argparse
++import base64
++import json
++import re
++import shlex
++import subprocess
++import sys
++from datetime import datetime
++from pathlib import Path
++
++# The stem of a run directory: `run-131` is run 131. The census orders by that
++# number, not by the name — `run-9` sorts ahead of `run-131`.
++RUN_DIR_RE = re.compile(r"^run-(\d+)$")
++
++RECORD_NAME = "gate-verdicts.json"
++STATUS_NAME = "status.json"
++
++#: The table's columns, in order. The first line of `--from` output is exactly
++#: these names, tab-separated.
++COLUMNS = (
++    "run",
++    "authoring_min",
++    "probes",
++    "dispatched",
++    "rejected",
++    "routing",
++    "lane",
++    "questions",
++    "recommended_picked",
++    "run_min",
++)
++
++#: What a column prints when the run's files do not carry it.
++MISSING = "-"
++
++
++def _load_json(path):
++    """The JSON at `path`, or None when it is absent or unreadable.
++
++    A malformed record is read as a record that is not there: the census is a
++    reading tool over a release's leavings, and one run's bad file is not this
++    script's to raise over."""
++    try:
++        text = path.read_text(encoding="utf-8")
++    except OSError:
++        return None
++    try:
++        return json.loads(text)
++    except ValueError:
++        return None
++
++
++def _obj(value):
++    """`value` when it is a JSON object, else an empty one."""
++    return value if isinstance(value, dict) else {}
++
++
++def _run_minutes(status):
++    """Whole minutes, rounded down, from `startedAt` to `updatedAt`.
++
++    The contract's shape (`fleet/CONTRACT.md`): both are ISO-8601 with a `Z`
++    suffix, which `datetime.fromisoformat` reads once the `Z` is spelled
++    `+00:00`. None when either stamp is absent or unparseable."""
++    started, updated = status.get("startedAt"), status.get("updatedAt")
++    if not isinstance(started, str) or not isinstance(updated, str):
++        return None
++    try:
++        a = datetime.fromisoformat(started.replace("Z", "+00:00"))
++        b = datetime.fromisoformat(updated.replace("Z", "+00:00"))
++    except ValueError:
++        return None
++    return int((b - a).total_seconds() // 60)
++
++
++def _questions(authoring):
++    """The record's questions as a list of objects."""
++    questions = authoring.get("questions")
++    if not isinstance(questions, list):
++        return []
++    return [_obj(q) for q in questions]
++
++
++def _recommended_picked(questions):
++    """`(picked, offered)` — the questions that carried a recommended option,
++    and those of them whose `picked` is that option. A question with a null
++    `recommended` offered no recommendation and counts in neither."""
++    offered = [q for q in questions if q.get("recommended") is not None]
++    picked = [q for q in offered if q.get("picked") == q.get("recommended")]
++    return len(picked), len(offered)
++
++
++def census_rows(root):
++    """One row per `run-<N>` directory under `root` that holds a record.
++
++    Each row carries the column values, with None where the run's files do not
++    carry one, plus the raw question list the register prints from. A record
++    older than this plan has no `authoring` key: its row is None in every
++    authoring column, and only `dispatched`/`rejected` — which the tally has
++    always carried — read."""
++    root = Path(root)
++    found = []
++    try:
++        entries = sorted(root.iterdir())
++    except OSError:
++        return []
++    for entry in entries:
++        match = RUN_DIR_RE.match(entry.name)
++        if not match or not entry.is_dir():
++            continue
++        record = _load_json(entry / RECORD_NAME)
++        if not isinstance(record, dict):
++            continue
++        found.append((int(match.group(1)), entry, record))
++
++    rows = []
++    for number, directory, record in sorted(found, key=lambda item: item[0]):
++        tally = _obj(record.get("tally"))
++        authoring = record.get("authoring")
++        has_authoring = isinstance(authoring, dict)
++        authoring = _obj(authoring)
++        routing = _obj(authoring.get("routing"))
++        questions = _questions(authoring) if has_authoring else []
++
++        status = _load_json(directory / STATUS_NAME)
++        run_min = _run_minutes(status) if isinstance(status, dict) else None
++
++        rows.append({
++            "run": number,
++            "authoring_min": authoring.get("minutes") if has_authoring else None,
++            "probes": authoring.get("probes") if has_authoring else None,
++            "dispatched": tally.get("dispatched"),
++            "rejected": tally.get("rejected"),
++            "routing": routing.get("branch") if has_authoring else None,
++            "lane": routing.get("lane") if has_authoring else None,
++            "questions": len(questions) if has_authoring else None,
++            "recommended_picked": (
++                _recommended_picked(questions) if has_authoring else None),
++            "run_min": run_min,
++            "questions_detail": questions,
++        })
++    return rows
++
++
++def _cell(value):
++    """A column's text: `-` for what the run's files do not carry."""
++    if value is None:
++        return MISSING
++    if isinstance(value, tuple):
++        return "%d/%d" % value
++    return str(value)
++
++
++def _sum(rows, key):
++    """The sum of `key` over the rows that carry it."""
++    return sum(row[key] for row in rows
++               if isinstance(row.get(key), int) and not isinstance(row[key], bool))
++
++
++def _totals_line(rows):
++    """The table's last line: the release read as one number per question.
++
++    `risk_override` is over the rows that carry a routing record at all — a
++    pre-plan record has no branch and is no part of the denominator — and the
++    two `recommended_picked` sums are over every row."""
++    routed = [row for row in rows if row["routing"] is not None]
++    risk = [row for row in routed if row["routing"] == "risk"]
++    picked = offered = 0
++    for row in rows:
++        if row["recommended_picked"] is not None:
++            p, q = row["recommended_picked"]
++            picked += p
++            offered += q
++    return ("totals: plans=%d risk_override=%d/%d recommended_picked=%d/%d "
++            "authoring_min=%d run_min=%d"
++            % (len(rows), len(risk), len(routed), picked, offered,
++               _sum(rows, "authoring_min"), _sum(rows, "run_min")))
++
++
++def render_table(rows):
++    """The census as tab-separated text: header, one line per run, totals."""
++    lines = ["\t".join(COLUMNS)]
++    for row in rows:
++        lines.append("\t".join(_cell(row[name]) for name in COLUMNS))
++    lines.append(_totals_line(rows))
++    return "\n".join(lines)
++
++
++def render_register(rows):
++    """One line per option of every question, in row then question then option
++    order (#735): `run-<N>  q<i>  <question>  <option>  <rec|->  <picked|->`.
++
++    The register is the fixed record of what was offered, not a summary of what
++    was chosen — every option gets its line whether or not anyone looked at it,
++    and a question with no recommended option prints `-` in that column on all
++    of them."""
++    lines = []
++    for row in rows:
++        for index, question in enumerate(row["questions_detail"], start=1):
++            options = question.get("options")
++            if not isinstance(options, list):
++                continue
++            recommended = question.get("recommended")
++            picked = question.get("picked")
++            for option in options:
++                lines.append("\t".join([
++                    "run-%d" % row["run"],
++                    "q%d" % index,
++                    str(question.get("question", "")),
++                    str(option),
++                    "rec" if recommended is not None and option == recommended
++                    else MISSING,
++                    "picked" if picked is not None and option == picked
++                    else MISSING,
++                ]))
++    return "\n".join(lines)
++
++
++# --- --fetch: the two tags a run leaves behind -----------------------------
++
++def _contents(target, path, ref):
++    """The `gh api` path for one file at one ref."""
++    return "repos/%s/contents/%s?ref=%s" % (target, path, ref)
++
++
++def _fetch_file(gh, target, path, ref):
++    """The bytes of one file at one ref, or None when `gh` exits non-zero.
++
++    `gh api …/contents/…` answers JSON whose `content` is base64 with embedded
++    newlines, so the decode is over the whole string. The call names exactly
++    two arguments — `api` and the contents path — so a caller's wrapper sees
++    the same shape the real binary does."""
++    proc = subprocess.run(
++        gh + ["api", _contents(target, path, ref)],
++        capture_output=True, text=True)
++    if proc.returncode != 0:
++        return None
++    try:
++        answer = json.loads(proc.stdout)
++    except ValueError:
++        return None
++    content = _obj(answer).get("content")
++    if not isinstance(content, str):
++        return None
++    try:
++        return base64.b64decode(content)
++    except (ValueError, TypeError):
++        return None
++
++
++def fetch_runs(target, first, last, into, gh="gh"):
++    """Fill `into` with `run-<N>/gate-verdicts.json` and `run-<N>/status.json`
++    for each N from `first` to `last` inclusive; return the runs written.
++
++    The plan tag `ultra/plan/run-<N>` carries the record and the evidence tag
++    `ultra/evidence/run-<N>` carries the status. A run whose plan tag has no
++    record is skipped whole — one line on stderr, nothing written for it, no
++    directory left behind — because a run with no record is no row. A status
++    that does not answer leaves that file unwritten and the row's `run_min` a
++    `-`: the authoring numbers are still worth reading without it."""
++    into = Path(into)
++    # The destination exists whether or not any run answers: a release where
++    # every tag is missing is an empty census, not a usage error.
++    into.mkdir(parents=True, exist_ok=True)
++    command = shlex.split(gh) if isinstance(gh, str) else list(gh)
++    written = []
++    for number in range(int(first), int(last) + 1):
++        record = _fetch_file(
++            command, target, ".ultrapowers/gate-verdicts.json",
++            "ultra/plan/run-%d" % number)
++        if record is None:
++            print("census: run %d has no gate record at ultra/plan/run-%d "
++                  "— skipped" % (number, number), file=sys.stderr)
++            continue
++        directory = into / ("run-%d" % number)
++        directory.mkdir(parents=True, exist_ok=True)
++        (directory / RECORD_NAME).write_bytes(record)
++        status = _fetch_file(
++            command, target, ".ultrapowers/runs/%d/status.json" % number,
++            "ultra/evidence/run-%d" % number)
++        if status is not None:
++            (directory / STATUS_NAME).write_bytes(status)
++        written.append(number)
++    return written
++
++
++RUNS_RE = re.compile(r"^(\d+)\.\.(\d+)$")
++
++
++def main(argv=None):
++    ap = argparse.ArgumentParser(
++        description="Read a release's runs into one table: what authoring "
++                    "cost beside what the run cost.")
++    ap.add_argument("--from", dest="root", metavar="DIR",
++                    help="directory holding `run-<N>/gate-verdicts.json` files")
++    ap.add_argument("--register", action="store_true",
++                    help="print one line per option of every question "
++                         "instead of the table")
++    ap.add_argument("--fetch", metavar="OWNER/REPO",
++                    help="fill --into from this repository's run tags, "
++                         "then print the table over it")
++    ap.add_argument("--runs", metavar="A..B",
++                    help="the inclusive run range to fetch")
++    ap.add_argument("--into", metavar="DIR",
++                    help="where --fetch writes the runs it reads")
++    ap.add_argument("--gh", default="gh",
++                    help="the gh binary (or command) to run; default `gh`")
++    args = ap.parse_args(argv)
++
++    if args.fetch:
++        if not args.runs or not args.into:
++            print("census: --fetch needs --runs <A>..<B> and --into <dir>",
++                  file=sys.stderr)
++            return 1
++        match = RUNS_RE.match(args.runs)
++        if not match:
++            print("census: --runs takes `<A>..<B>`, not `%s`" % args.runs,
++                  file=sys.stderr)
++            return 1
++        first, last = int(match.group(1)), int(match.group(2))
++        if first > last:
++            print("census: --runs `%s` counts backwards" % args.runs,
++                  file=sys.stderr)
++            return 1
++        fetch_runs(args.fetch, first, last, Path(args.into), args.gh)
++        root = Path(args.into)
++    elif args.root:
++        root = Path(args.root)
++    else:
++        print("census: give --from <dir> or --fetch <owner>/<repo>",
++              file=sys.stderr)
++        return 1
++
++    if not root.is_dir():
++        print("census: no such directory `%s`" % root, file=sys.stderr)
++        return 1
++
++    rows = census_rows(root)
++    print(render_register(rows) if args.register else render_table(rows))
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/tests/test_authoring_census.py b/tests/test_authoring_census.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..3df37f44a8ba5eb1a82d7818c551a715eee1e796
+--- /dev/null
++++ b/tests/test_authoring_census.py
+@@ -0,0 +1,521 @@
++"""The authoring census: one table per release, the register, and the fetch.
++
++The exam for `skills/ultrawrite/scripts/authoring_census.py`, leg by leg:
++
++  * (a)/[M1] three run directories under one root — `run-131` carrying the
++    Context's example record, `run-133` carrying a record whose `tally` lacks
++    `rejected` and whose first question has no `recommended`, and `run-9`
++    carrying a record from before this plan, with no `authoring` key at all —
++    print the header line exactly, one row per directory in ascending numeric
++    N, and the `totals:` line.
++  * (b)/[M1] a `run-<N>` directory that holds no `gate-verdicts.json` earns no
++    row and is not counted in `plans` — asserted as: the same root plus such a
++    directory prints byte-for-byte what (a) printed.
++  * (c)/[M2] `--register` prints one line per option of every question of every
++    row, in row order then question order then option order, and no header.
++  * (d)/[M3] `--fetch o/r --runs 131..133 --into <dir> --gh <fake>` writes the
++    two files per run from the two tags, skips the run whose plan tag has no
++    record with one stderr line naming it, invokes the binary `--gh` names and
++    no other, and then prints the M1 table over `<dir>`.
++
++The script is driven as a subprocess over directories built under `tmp_path`,
++with a fake `gh` written there that answers from a table keyed on the `ref=`
++and path of its argv — the shape the task's Context asks for. The one test
++that imports the module is the Interfaces check: the four `Produces` symbols
++and the parameter names the task spells.
++
++Two readings this file pins, both from the task's own words:
++
++  * `run-131`'s `status.json` spans 16m30s, not a whole 16 — M1 pins `run_min`
++    as "the whole minutes, rounded down", so the floor is live, and leg (a)'s
++    `16` is the value either way.
++  * `run-9` carries `rejected` 0, which prints `0` and not `-`: `-` is "the
++    run's files do not carry it", which zero is not.
++"""
++import json
++import os
++import pathlib
++import re
++import subprocess
++import sys
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++CENSUS = ROOT / "skills/ultrawrite/scripts/authoring_census.py"
++
++
++def tsv(*cells):
++    return "\t".join(cells)
++
++
++# ---------------------------------------------------------------- the records
++
++# The record shape is the one literal every task in this plan shares: the
++# `authoring` object sits at the top level beside `tasks` and `tally`.
++RECORD_131 = {
++    "tasks": [{"id": "1", "verdict": "pass"}],
++    "tally": {"dispatched": 4, "rejected": 1},
++    "authoring": {
++        "minutes": 118,
++        "probes": 12,
++        "routing": {"branch": "risk", "lane": "ultrapowers"},
++        "questions": [
++            {"question": "Claim and summary", "options": ["A", "B"],
++             "recommended": "A", "picked": "A"},
++        ],
++    },
++}
++
++# A `tally` that lacks `rejected`, a `width` routing, and two questions: one
++# whose `recommended` is null (the question carried no recommended option) and
++# one whose `picked` equals its `recommended`.
++RECORD_133 = {
++    "tasks": [{"id": "1", "verdict": "pass"}],
++    "tally": {"dispatched": 2},
++    "authoring": {
++        "minutes": 47,
++        "probes": 5,
++        "routing": {"branch": "width", "lane": "ultrapowers"},
++        "questions": [
++            {"question": "Lane and shape",
++             "options": ["ultrapowers", "subagent", "inline"],
++             "recommended": None, "picked": "subagent"},
++            {"question": "Probe budget", "options": ["8", "12"],
++             "recommended": "12", "picked": "12"},
++        ],
++    },
++}
++
++# A record older than this plan: no `authoring` key. Its row is `-` everywhere
++# except `dispatched`/`rejected`, which it does carry — `rejected` as 0.
++RECORD_9 = {
++    "tasks": [{"id": "1", "verdict": "pass"}],
++    "tally": {"dispatched": 3, "rejected": 0},
++}
++
++# `fleet/CONTRACT.md`'s shape: ISO-8601 with a `Z` suffix. 22:40:00 to
++# 22:56:30 is 16 whole minutes once the half is floored away.
++STATUS_131 = {
++    "run": "131",
++    "state": "done",
++    "phase": "merged",
++    "pr": "https://github.com/o/r/pull/1",
++    "prAuthor": "o",
++    "merged": "a" * 40,
++    "branch": "ultra/integration-run-131",
++    "vm": "fleet-r131-x",
++    "startedAt": "2026-08-30T22:40:00Z",
++    "updatedAt": "2026-08-30T22:56:30Z",
++    "error": None,
++}
++
++
++def blob(obj):
++    """One record, as the bytes that land on disk — the fetch leg compares the
++    file it wrote against exactly this."""
++    return (json.dumps(obj, indent=2) + "\n").encode("utf-8")
++
++
++# ------------------------------------------------------------ the M1 expected
++
++HEADER = tsv("run", "authoring_min", "probes", "dispatched", "rejected",
++             "routing", "lane", "questions", "recommended_picked", "run_min")
++
++# (a): the no-`authoring` record — `-` in every authoring column, its tally
++# read, and `-` for `run_min` (it carries no `status.json`).
++ROW_9 = tsv("9", "-", "-", "3", "0", "-", "-", "-", "-", "-")
++# (a): the leg's row, verbatim.
++ROW_131 = tsv("131", "118", "12", "4", "1", "risk", "ultrapowers", "1",
++              "1/1", "16")
++# (a): `rejected` and `run_min` both `-`, `recommended_picked` 1/1 — the
++# null-recommended question counts in neither p nor q.
++ROW_133 = tsv("133", "47", "5", "2", "-", "width", "ultrapowers", "2",
++              "1/1", "-")
++# (a): m = the rows with a routing record (131, 133), k = those whose branch
++# is `risk` (131); p/q summed over every row; 118 + 47 = 165; 16 is the one
++# row carrying a `run_min`.
++TOTALS = ("totals: plans=3 risk_override=1/2 recommended_picked=2/2 "
++          "authoring_min=165 run_min=16")
++
++TABLE = [HEADER, ROW_9, ROW_131, ROW_133, TOTALS]
++
++# ------------------------------------------------------------ the M2 expected
++
++REGISTER = [
++    tsv("run-131", "q1", "Claim and summary", "A", "rec", "picked"),
++    tsv("run-131", "q1", "Claim and summary", "B", "-", "-"),
++    tsv("run-133", "q1", "Lane and shape", "ultrapowers", "-", "-"),
++    tsv("run-133", "q1", "Lane and shape", "subagent", "-", "picked"),
++    tsv("run-133", "q1", "Lane and shape", "inline", "-", "-"),
++    tsv("run-133", "q2", "Probe budget", "8", "-", "-"),
++    tsv("run-133", "q2", "Probe budget", "12", "rec", "picked"),
++]
++
++
++# ------------------------------------------------------------------- the seam
++
++def census(*args, env=None):
++    """The script, as a subprocess. Nothing here reaches into its internals."""
++    assert CENSUS.is_file(), (
++        "the census script does not exist yet: %s" % CENSUS)
++    return subprocess.run([sys.executable, str(CENSUS), *args],
++                          capture_output=True, text=True, env=env)
++
++
++def write_run(root, number, record, status=None):
++    d = root / ("run-%s" % number)
++    d.mkdir(parents=True)
++    if record is not None:
++        (d / "gate-verdicts.json").write_bytes(blob(record))
++    if status is not None:
++        (d / "status.json").write_bytes(blob(status))
++    return d
++
++
++def build_root(tmp_path, name="census"):
++    """(a)'s three run directories, under one root."""
++    root = tmp_path / name
++    root.mkdir()
++    write_run(root, 131, RECORD_131, STATUS_131)
++    write_run(root, 133, RECORD_133)
++    write_run(root, 9, RECORD_9)
++    return root
++
++
++DECOY = """#!/bin/sh
++printf '%s\\n' "$*" >> '{log}'
++exit 1
++"""
++
++
++def decoy_env(tmp_path, name="decoy"):
++    """A `gh` first on PATH that logs and fails. `--gh` names a binary, so the
++    real one is never resolved by bare name — the seam `check_provenance.py`
++    gives its own `--gh`. Returns (env, the log that must never appear)."""
++    bindir = tmp_path / name
++    bindir.mkdir()
++    log = bindir / "bare-gh.log"
++    gh = bindir / "gh"
++    gh.write_text(DECOY.format(log=log))
++    gh.chmod(0o755)
++    env = dict(os.environ)
++    env["PATH"] = str(bindir) + os.pathsep + env["PATH"]
++    return env, log
++
++
++FAKE_GH = '''#!/usr/bin/env python3
++"""A `gh` that answers a contents read from a table keyed on argv[1]."""
++import base64
++import json
++import sys
++from pathlib import Path
++
++HERE = Path(__file__).resolve().parent
++argv = sys.argv[1:]
++with (HERE / "calls.jsonl").open("a") as fh:
++    fh.write(json.dumps(argv) + "\\n")
++table = json.loads((HERE / "answers.json").read_text())
++body = table.get(argv[1]) if len(argv) > 1 else None
++if body is None:
++    # No digits of its own: the one stderr line naming the skipped run can
++    # then only be the script's.
++    sys.stderr.write("gh: that ref carries no such file\\n")
++    sys.exit(1)
++payload = base64.b64encode(body.encode("utf-8")).decode("ascii")
++wrapped = "\\n".join(payload[i:i + 60] for i in range(0, len(payload), 60))
++sys.stdout.write(json.dumps({
++    "name": Path(argv[1].split("?")[0]).name,
++    "encoding": "base64",
++    "content": wrapped + "\\n",
++}) + "\\n")
++'''
++
++
++def fake_gh(tmp_path, answers, name="fakebin"):
++    """The fake, plus the table it answers from. Returns (its path, its call
++    log)."""
++    bindir = tmp_path / name
++    bindir.mkdir()
++    (bindir / "answers.json").write_text(json.dumps(answers))
++    gh = bindir / "gh-fake"
++    gh.write_text(FAKE_GH)
++    gh.chmod(0o755)
++    return gh, bindir / "calls.jsonl"
++
++
++def plan_path(number):
++    return ("repos/o/r/contents/.ultrapowers/gate-verdicts.json"
++            "?ref=ultra/plan/run-%d" % number)
++
++
++def status_path(number):
++    return ("repos/o/r/contents/.ultrapowers/runs/%d/status.json"
++            "?ref=ultra/evidence/run-%d" % (number, number))
++
++
++def lines(text):
++    return text.splitlines()
++
++
++# ------------------------------------------------------------------- leg (a)
++
++def test_a_the_table_over_three_runs(tmp_path):
++    """(a)/[M1]: the header exactly, rows for 9, 131 and 133 in that order,
++    and the `totals:` line — the whole of stdout, nothing beside it."""
++    root = build_root(tmp_path)
++    p = census("--from", str(root))
++    assert p.returncode == 0, p.stdout + p.stderr
++    assert lines(p.stdout) == TABLE, p.stdout
++
++
++def test_a_the_header_line_is_exact(tmp_path):
++    """(a)/[M1]: the first line is the ten tab-separated column names, in the
++    clause's order — read on its own so a drift there reads as a drift there."""
++    root = build_root(tmp_path)
++    p = census("--from", str(root))
++    assert lines(p.stdout)[0] == HEADER, p.stdout
++
++
++def test_a_a_record_without_an_authoring_key_is_dashes_but_for_its_tally(
++        tmp_path):
++    """(a)/[M1]: `run-9`'s record predates this plan. Every authoring column is
++    `-`; `dispatched` and `rejected` are its tally's, and `rejected` 0 prints
++    as `0` — `-` is "the run's files do not carry it", which zero is not."""
++    root = build_root(tmp_path)
++    p = census("--from", str(root))
++    assert ROW_9 in lines(p.stdout), p.stdout
++    # The row for 9 comes first: ascending numeric N, not lexical.
++    assert lines(p.stdout)[1] == ROW_9, p.stdout
++
++
++def test_a_a_tally_without_rejected_and_a_run_without_status_are_dashes(
++        tmp_path):
++    """(a)/[M1]: `run-133` carries no `rejected` and no `status.json`, so both
++    columns are `-`, and its `recommended_picked` is 1/1 — the question whose
++    `recommended` is null counts in neither p nor q."""
++    root = build_root(tmp_path)
++    p = census("--from", str(root))
++    assert ROW_133 in lines(p.stdout), p.stdout
++
++
++def test_a_run_min_is_whole_minutes_rounded_down(tmp_path):
++    """(a)/[M1]: 2026-08-30T22:40:00Z to 2026-08-30T22:56:30Z is 16.5 minutes,
++    and the column carries "the whole minutes, rounded down" — 16."""
++    root = build_root(tmp_path)
++    p = census("--from", str(root))
++    assert ROW_131 in lines(p.stdout), p.stdout
++    assert lines(p.stdout)[2].split("\t")[-1] == "16", p.stdout
++
++
++def test_a_the_totals_line_is_exact(tmp_path):
++    """(a)/[M1]: `plans` counts the rows, `risk_override` is the `risk` rows
++    over the rows with a routing record, `recommended_picked` sums p and q over
++    every row, and each minute sum is over the rows carrying that value."""
++    root = build_root(tmp_path)
++    p = census("--from", str(root))
++    assert lines(p.stdout)[-1] == TOTALS, p.stdout
++
++
++# ------------------------------------------------------------------- leg (b)
++
++def test_b_a_run_directory_without_a_record_earns_no_row(tmp_path):
++    """(b)/[M1]: `run-150` holds a `status.json` and no `gate-verdicts.json`.
++    It yields no row and is not counted in `plans` — so the output is what
++    (a) printed, line for line, `plans=3` included."""
++    root = build_root(tmp_path)
++    write_run(root, 150, None, STATUS_131)
++    p = census("--from", str(root))
++    assert p.returncode == 0, p.stdout + p.stderr
++    assert lines(p.stdout) == TABLE, p.stdout
++    assert "150" not in p.stdout, p.stdout
++
++
++# ------------------------------------------------------------------- leg (c)
++
++def test_c_register_prints_one_line_per_option(tmp_path):
++    """(c)/[M2]: one line per option of every question of every row, in row
++    order then question order then option order, and no table header."""
++    root = build_root(tmp_path)
++    p = census("--register", "--from", str(root))
++    assert p.returncode == 0, p.stdout + p.stderr
++    assert lines(p.stdout) == REGISTER, p.stdout
++    assert HEADER not in p.stdout, p.stdout
++    assert "totals:" not in p.stdout, p.stdout
++
++
++def test_c_register_marks_the_recommended_and_the_picked_option(tmp_path):
++    """(c)/[M2]: `run-131`'s two lines, verbatim — `rec` on the option equal to
++    the question's `recommended` and `-` on the others, `picked` on the option
++    equal to `picked` and `-` on the others."""
++    root = build_root(tmp_path)
++    p = census("--register", "--from", str(root))
++    got = [line for line in lines(p.stdout) if line.startswith("run-131\t")]
++    assert got == [
++        tsv("run-131", "q1", "Claim and summary", "A", "rec", "picked"),
++        tsv("run-131", "q1", "Claim and summary", "B", "-", "-"),
++    ], p.stdout
++
++
++def test_c_register_leaves_the_rec_column_dashed_for_a_null_recommended(
++        tmp_path):
++    """(c)/[M2]: `run-133`'s first question carried no recommended option, so
++    every one of its three lines is `-` in the `rec` column and exactly one
++    is `picked`; `<i>` counts from 1, so its second question is `q2`."""
++    root = build_root(tmp_path)
++    p = census("--register", "--from", str(root))
++    q1 = [line.split("\t") for line in lines(p.stdout)
++          if line.startswith("run-133\tq1\t")]
++    assert len(q1) == 3, p.stdout
++    assert [cells[4] for cells in q1] == ["-", "-", "-"], p.stdout
++    assert [cells[5] for cells in q1] == ["-", "picked", "-"], p.stdout
++    q2 = [line for line in lines(p.stdout) if line.startswith("run-133\tq2\t")]
++    assert q2 == [
++        tsv("run-133", "q2", "Probe budget", "8", "-", "-"),
++        tsv("run-133", "q2", "Probe budget", "12", "rec", "picked"),
++    ], p.stdout
++
++
++# ------------------------------------------------------------------- leg (d)
++
++def fetch_answers():
++    """The fake's table: the plan record for 131 and 133, a `status.json` for
++    131 only. Run 132's plan tag and run 133's evidence tag are absent, so the
++    fake exits 1 for them."""
++    return {
++        plan_path(131): blob(RECORD_131).decode("utf-8"),
++        plan_path(133): blob(RECORD_133).decode("utf-8"),
++        status_path(131): blob(STATUS_131).decode("utf-8"),
++    }
++
++
++def run_fetch(tmp_path):
++    into = tmp_path / "fetched"
++    into.mkdir()
++    gh, calls = fake_gh(tmp_path, fetch_answers())
++    env, bare_log = decoy_env(tmp_path)
++    p = census("--fetch", "o/r", "--runs", "131..133", "--into", str(into),
++               "--gh", str(gh), env=env)
++    return p, into, calls, bare_log
++
++
++def test_d_fetch_writes_the_decoded_files(tmp_path):
++    """(d)/[M3]: both files for 131 and the record for 133, each the decoded
++    bytes of the answer's base64 `content`."""
++    p, into, _calls, _bare = run_fetch(tmp_path)
++    assert (into / "run-131/gate-verdicts.json").read_bytes() == \
++        blob(RECORD_131), p.stdout + p.stderr
++    assert (into / "run-131/status.json").read_bytes() == blob(STATUS_131), \
++        p.stdout + p.stderr
++    assert (into / "run-133/gate-verdicts.json").read_bytes() == \
++        blob(RECORD_133), p.stdout + p.stderr
++
++
++def test_d_a_plan_tag_without_a_record_is_skipped_with_one_stderr_line(
++        tmp_path):
++    """(d)/[M3]: run 132's plan tag answers non-zero — nothing is written for
++    it, and exactly one stderr line names it."""
++    p, into, _calls, _bare = run_fetch(tmp_path)
++    assert not (into / "run-132").exists(), sorted(
++        q.name for q in into.iterdir())
++    named = [line for line in lines(p.stderr) if "132" in line]
++    assert len(named) == 1, p.stderr
++
++
++def test_d_a_missing_status_leaves_the_file_unwritten(tmp_path):
++    """(d)/[M3]: run 133's evidence tag answers non-zero for `status.json`
++    alone — that file is unwritten, and the row's `run_min` is `-`."""
++    p, into, _calls, _bare = run_fetch(tmp_path)
++    assert not (into / "run-133/status.json").exists(), p.stdout + p.stderr
++    assert ROW_133 in lines(p.stdout), p.stdout
++
++
++def test_d_fetch_then_prints_the_table_over_the_directory(tmp_path):
++    """(d)/[M3]: the M1 table over `<dir>`, with rows for 131 and 133 only."""
++    p, _into, _calls, _bare = run_fetch(tmp_path)
++    assert lines(p.stdout) == [
++        HEADER, ROW_131, ROW_133,
++        ("totals: plans=2 risk_override=1/2 recommended_picked=2/2 "
++         "authoring_min=165 run_min=16"),
++    ], p.stdout + p.stderr
++
++
++def test_d_every_gh_call_is_an_api_read_of_the_expected_ref(tmp_path):
++    """(d)/[M3]: each call's first two arguments are `api` and a
++    `repos/o/r/contents/` path carrying the expected `ref=` tag — the plan tag
++    for the record, the evidence tag for the status — and no argv names any
++    other repository. The three plan reads and the two status reads the leg
++    asks for are all made."""
++    p, _into, calls, _bare = run_fetch(tmp_path)
++    argvs = [json.loads(line) for line in lines(calls.read_text())
++             if line.strip()]
++    assert argvs, "the fake `gh` was never invoked: " + p.stdout + p.stderr
++    expected = {plan_path(n) for n in (131, 132, 133)}
++    expected |= {status_path(n) for n in (131, 132, 133)}
++    for argv in argvs:
++        assert argv[0] == "api", argv
++        assert argv[1].startswith("repos/o/r/contents/"), argv
++        assert argv[1] in expected, argv
++        for token in argv:
++            for owner_repo in re.findall(r"repos/([^/]+/[^/?]+)", token):
++                assert owner_repo == "o/r", argv
++    made = {argv[1] for argv in argvs}
++    for required in (plan_path(131), plan_path(132), plan_path(133),
++                     status_path(131), status_path(133)):
++        assert required in made, sorted(made)
++
++
++def test_d_the_bare_gh_on_path_is_never_resolved(tmp_path):
++    """(d)/[M3]: the script invokes the binary `--gh` names and no other — the
++    decoy first on PATH is never run."""
++    p, _into, _calls, bare_log = run_fetch(tmp_path)
++    assert not bare_log.exists(), bare_log.read_text() + p.stdout + p.stderr
++
++
++# -------------------------------------------------------- the Proof's `Run:`
++
++def test_help_names_the_register_flag():
++    """The Proof's second `Run:` line: `--help` names `--register`."""
++    p = census("--help")
++    assert p.returncode == 0, p.stdout + p.stderr
++    assert "--register" in p.stdout, p.stdout
++
++
++# ------------------------------------------------------------- the Interfaces
++
++def load_module():
++    import importlib.util
++    assert CENSUS.is_file(), (
++        "the census script does not exist yet: %s" % CENSUS)
++    spec = importlib.util.spec_from_file_location("authoring_census", CENSUS)
++    module = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(module)
++    return module
++
++
++def test_the_produced_symbols_carry_the_names_the_task_spells(tmp_path):
++    """Interfaces/Produces: `census_rows(root)`, `render_table(rows)`,
++    `render_register(rows)` and `fetch_runs(target, first, last, into, gh)`,
++    with those parameter names; `census_rows` answers one dict per row."""
++    import inspect
++    module = load_module()
++    wanted = {
++        "census_rows": ["root"],
++        "render_table": ["rows"],
++        "render_register": ["rows"],
++        "fetch_runs": ["target", "first", "last", "into", "gh"],
++    }
++    for name, params in wanted.items():
++        fn = getattr(module, name, None)
++        assert callable(fn), "no callable `%s` in %s" % (name, CENSUS)
++        got = list(inspect.signature(fn).parameters)
++        assert got == params, "%s%s" % (name, tuple(got))
++    rows = module.census_rows(build_root(tmp_path))
++    assert isinstance(rows, list) and len(rows) == 3, rows
++    assert all(isinstance(row, dict) for row in rows), rows
++
++
++def test_the_module_docstring_carries_the_three_invocations():
++    """Context: the module docstring carries the three invocations."""
++    module = load_module()
++    doc = module.__doc__ or ""
++    for flag in ("--from", "--register", "--fetch"):
++        assert flag in doc, doc
+diff --git a/tests/test_authoring_record.py b/tests/test_authoring_record.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..04d31b267592b3c39ad5a59f49f21985572a8cf2
+--- /dev/null
++++ b/tests/test_authoring_record.py
+@@ -0,0 +1,363 @@
++"""The authoring record: one AUTHORING fact line, and a refusal when it is
++malformed (#988 desired state 1).
++
++The record sits at the top level of `<plan-stem>.gate-verdicts.json` beside
++`tasks` and `tally`, and it is the one literal every task of this plan shares:
++
++    {"authoring": {"minutes": 118, "probes": 12,
++                   "routing": {"branch": "risk", "lane": "ultrapowers"},
++                   "questions": [{"question": "Claim and summary",
++                                  "options": ["A", "B"],
++                                  "recommended": "A", "picked": "A"}]}}
++
++Three clauses, one exam:
++
++  * M1 — under `--check --base <sha>`, a well-formed record prints, after the
++    verdict line, exactly one `AUTHORING fact:` line carrying the sitting's
++    minutes, hub probes, the `tally`'s dispatches and rejections (`-` for an
++    absent key), the routing branch and lane, and the question counts; the
++    compile still exits 0 with `PLAN OK`.
++  * M2 — a record with no `authoring` key prints `AUTHORING fact: none
++    recorded` under the same flags, and a bare `--check` of either record
++    prints no `AUTHORING fact:` line at all.
++  * M3 — a malformed `authoring` object is refused at `--check`: exit 2, no
++    `PLAN OK`, one `grammar: authoring record unreadable —` line naming the
++    offending field.
++
++Every plan below is a real claims-v1 plan written to a temp directory and
++compiled by a subprocess, its gate verdicts hashed by the gate's own extractor,
++so nothing here reaches into the compiler's internals. The `--base` legs put
++that plan inside a one-commit git repository, because a 40-hex `--base` is
++resolved in the plan's own toplevel.
++"""
++import copy
++import json
++import pathlib
++import re
++import subprocess
++import sys
++
++import pytest
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
++
++sys.path.insert(0, str(ROOT / "skills/ultrawrite/scripts"))
++from extract_gate_input import gate_input, verdicts_path  # noqa: E402
++
++# --------------------------------------------------------------------------- #
++# The plan. One claims-v1 task carrying the fixed grammar the compiler         #
++# requires — the header, the six body slots, a numbered Machine clause, a      #
++# cited leg, a provenance tag, a predicate Stale-if whose path is absent from  #
++# the temp repository, so no plan below is refused for anything but its        #
++# record.                                                                      #
++# --------------------------------------------------------------------------- #
++
++PLAN = """# Authoring record probe
++
++**Grammar:** claims-v1
++
++**Acceptance:** waived — exam fixture; this plan is compiled, never executed
++
++**Claim:** An operator compiling this plan is told what the sitting cost. (elicited)
++
++### Task 1: The sim
++
++**Type:** implementation
++
++**Files:**
++- Modify: `fleet/tests/sim_probe.mjs`
++- Test: `tests/test_sim_probe.py`
++
++**Claim:** An operator running the sim sees it pass. (derived)
++Machine: M1. The sim prints `PASSED`.
++
++**Authorized-by:** #988
++
++**Interfaces:**
++- Consumes: nothing
++- Produces: nothing
++
++**Context:** The sim is a standalone script with no registry to update.
++
++**Proof:**
++- Test: `tests/test_sim_probe.py`
++- The suite asserts the sim prints `PASSED`. [M1]
++
++**Stale-if:**
++- path-exists: `fleet/tests/sim_probe.mjs`
++"""
++
++# The Context's example record, verbatim, and the `tally` it is read beside.
++AUTHORING = {
++    "minutes": 118,
++    "probes": 12,
++    "routing": {"branch": "risk", "lane": "ultrapowers"},
++    "questions": [{"question": "Claim and summary", "options": ["A", "B"],
++                   "recommended": "A", "picked": "A"}],
++}
++TALLY = {"dispatched": 4, "rejected": 1}
++
++# M1's line for that pair, exactly as the Context writes it.
++EXAMPLE_LINE = ("AUTHORING fact: 118 min to PLAN OK, 12 hub probes, "
++                "4 gate dispatches, 1 rejected, routing risk->ultrapowers, "
++                "1 questions, 1/1 recommended picked")
++# M2's line for a record with no `authoring` key.
++NONE_LINE = "AUTHORING fact: none recorded"
++# M3's refusal prefix.
++UNREADABLE = "grammar: authoring record unreadable — "
++
++FACT_PREFIX = "AUTHORING fact:"
++
++
++def record(authoring=..., tally=TALLY):
++    """The gate-verdict record minus its `tasks` key (which is hashed per
++    plan). `authoring` omitted entirely when passed as None."""
++    rec = {}
++    if tally is not None:
++        rec["tally"] = copy.deepcopy(tally)
++    if authoring is ...:
++        authoring = AUTHORING
++    if authoring is not None:
++        rec["authoring"] = copy.deepcopy(authoring)
++    return rec
++
++
++def write_plan(dirpath, name, rec):
++    """The plan plus the gate-verdict artifact claims-v1 compiles against
++    (spec §4.5), hashed by the gate's own extractor so a fixture edit re-signs
++    itself rather than going stale against a hand-copied digest."""
++    plan = dirpath / name
++    plan.write_text(PLAN)
++    entry = gate_input(plan, "1")
++    full = dict(rec)
++    full["tasks"] = {"1": {"hash": entry["hash"], "verdict": "pass",
++                           "reason": "fixture"}}
++    verdicts_path(plan).write_text(json.dumps(full))
++    return plan
++
++
++def run_compiler(plan, *flags):
++    return subprocess.run([sys.executable, str(COMPILER), str(plan), *flags],
++                          capture_output=True, text=True)
++
++
++def check(dirpath, name, rec, *flags):
++    return run_compiler(write_plan(dirpath, name, rec), "--check", *flags)
++
++
++def fact_lines(stdout):
++    """Every line beginning `AUTHORING fact:` — the thing M1 and M2 count."""
++    return [line for line in stdout.splitlines()
++            if line.startswith(FACT_PREFIX)]
++
++
++def carrying_lines(stdout):
++    """Every line mentioning the fact prefix anywhere, so leg (d)'s "zero
++    lines containing `AUTHORING fact:`" is read as written."""
++    return [line for line in stdout.splitlines() if FACT_PREFIX in line]
++
++
++def _git(repo, *args):
++    p = subprocess.run(["git", "-C", str(repo), *args],
++                       capture_output=True, text=True)
++    assert p.returncode == 0, " ".join(args) + "\n" + p.stdout + p.stderr
++    return p.stdout
++
++
++def base_repo(tmp_path):
++    """A one-commit git repository holding `present.py` and nothing else,
++    returned as (repo path, HEAD sha). The plan is written inside it, so a
++    40-hex `--base` names a commit of the plan's own repository."""
++    repo = tmp_path / "repo"
++    repo.mkdir()
++    _git(repo, "init", "-q", ".")
++    _git(repo, "config", "user.email", "exam@example.invalid")
++    _git(repo, "config", "user.name", "exam")
++    (repo / "present.py").write_text("print(1)\n")
++    _git(repo, "add", "present.py")
++    _git(repo, "commit", "-qm", "present")
++    head = _git(repo, "rev-parse", "HEAD").strip()
++    assert re.fullmatch(r"[0-9a-f]{40}", head), head
++    return repo, head
++
++
++def assert_one_fact_after_the_verdict(p, expected):
++    """[M1]/[M2]: exit 0, `PLAN OK` as the first stdout line, and exactly one
++    `AUTHORING fact:` line — equal to `expected` in full, and printed after
++    the verdict line."""
++    out = p.stdout + p.stderr
++    assert p.returncode == 0, out
++    assert p.stdout.splitlines()[:1] == ["PLAN OK"], out
++    lines = p.stdout.splitlines()
++    assert fact_lines(p.stdout) == [expected], out
++    assert lines.index(expected) > lines.index("PLAN OK"), out
++
++
++# ── (a) M1: the well-formed record prints the Context's example line ────────
++# "a claims-v1 plan whose `<stem>.gate-verdicts.json` carries a well-formed
++# top-level `authoring` object prints, after the verdict line, exactly one line
++# of the form `AUTHORING fact: <minutes> min to PLAN OK, <probes> hub probes,
++# <dispatched> gate dispatches, <rejected> rejected, routing <branch>-><lane>,
++# <n> questions, <p>/<q> recommended picked` ... and the compile still exits 0
++# with `PLAN OK`."
++
++def test_a_the_example_record_prints_the_example_line(tmp_path):
++    """(a)/[M1]: the Context's example `authoring` object beside a `tally` of
++    dispatched 4 / rejected 1, compiled `--check --base <head>` inside a
++    one-commit repository — exit 0, `PLAN OK` first, and exactly one
++    `AUTHORING fact:` line, the Context's example line verbatim."""
++    repo, head = base_repo(tmp_path)
++    p = check(repo, "a.md", record(), "--base", head)
++    assert_one_fact_after_the_verdict(p, EXAMPLE_LINE)
++
++
++# ── (b) M1: the tally's absent key, and the question counts ─────────────────
++# "`<dispatched>` and `<rejected>` read from the record's `tally` (`-` when the
++# key is absent), `<n>` the length of `questions`, `<q>` the count of questions
++# whose `recommended` is not null and `<p>` the count of those whose `picked`
++# equals `recommended`."
++
++REJECTED_ABSENT_LINE = ("AUTHORING fact: 118 min to PLAN OK, 12 hub probes, "
++                        "4 gate dispatches, - rejected, "
++                        "routing risk->ultrapowers, "
++                        "1 questions, 1/1 recommended picked")
++
++# One question carrying no recommended option, one whose pick is the
++# recommendation: two questions, one of them recommended, that one picked.
++TWO_QUESTIONS = [
++    {"question": "Claim and summary", "options": ["A", "B"],
++     "recommended": None, "picked": "B"},
++    {"question": "Routing", "options": ["A", "B"],
++     "recommended": "A", "picked": "A"},
++]
++TWO_QUESTIONS_LINE = ("AUTHORING fact: 118 min to PLAN OK, 12 hub probes, "
++                      "4 gate dispatches, 1 rejected, "
++                      "routing risk->ultrapowers, "
++                      "2 questions, 1/1 recommended picked")
++
++
++def test_b_a_tally_without_rejected_prints_a_dash(tmp_path):
++    """(b)/[M1]: the same record with `tally` lacking `rejected` — the line is
++    the example line with `- rejected` in place of `1 rejected`."""
++    repo, head = base_repo(tmp_path)
++    p = check(repo, "b1.md", record(tally={"dispatched": 4}), "--base", head)
++    assert_one_fact_after_the_verdict(p, REJECTED_ABSENT_LINE)
++
++
++def test_b_two_questions_count_only_the_recommended_ones(tmp_path):
++    """(b)/[M1]: two questions, one with `recommended` null and one picked
++    equal to its recommendation — `2 questions, 1/1 recommended picked`."""
++    repo, head = base_repo(tmp_path)
++    authoring = copy.deepcopy(AUTHORING)
++    authoring["questions"] = TWO_QUESTIONS
++    p = check(repo, "b2.md", record(authoring=authoring), "--base", head)
++    assert_one_fact_after_the_verdict(p, TWO_QUESTIONS_LINE)
++
++
++# ── (c) M2: no record, one `none recorded` line ─────────────────────────────
++# "The same `--check --base <sha>` compile of a record with no `authoring` key
++# exits 0 with `PLAN OK` and prints exactly one line `AUTHORING fact: none
++# recorded` after the verdict."
++
++def test_c_a_record_with_no_authoring_key_says_none_recorded(tmp_path):
++    """(c)/[M2]: the same plan, the same tally, no `authoring` key — exit 0,
++    `PLAN OK`, and exactly one `AUTHORING fact: none recorded` line."""
++    repo, head = base_repo(tmp_path)
++    p = check(repo, "c.md", record(authoring=None), "--base", head)
++    assert_one_fact_after_the_verdict(p, NONE_LINE)
++
++
++# ── (d) M2: a bare `--check` prints no fact line at all ─────────────────────
++# "a bare `--check` of either record prints no line beginning `AUTHORING
++# fact:` at all."
++
++@pytest.mark.parametrize("label,authoring", [
++    ("with the authoring key", AUTHORING),
++    ("without the authoring key", None),
++])
++def test_d_a_bare_check_prints_no_fact_line(tmp_path, label, authoring):
++    """(d)/[M2]: with no `--base` there is no tree to cost a sitting against —
++    zero lines containing `AUTHORING fact:`, either way. And the bare verdict
++    is the unchanged one the global constraint pins: stdout is `PLAN OK` and
++    nothing else."""
++    p = check(tmp_path, "d.md", record(authoring=authoring))
++    out = p.stdout + p.stderr
++    assert p.returncode == 0, out
++    assert carrying_lines(p.stdout) == [], out
++    assert carrying_lines(p.stderr) == [], out
++    assert p.stdout.strip() == "PLAN OK", out
++
++
++# ── (e) M3: a malformed record is refused, naming the field ─────────────────
++# "A record whose `authoring` object is malformed is refused at `--check` —
++# exit 2, no `PLAN OK` — with one violation line beginning `grammar: authoring
++# record unreadable —` that names the offending field, for each of: `minutes`
++# not a non-negative integer; `probes` not a non-negative integer;
++# `routing.branch` outside `risk`, `width`, `inline`, `subagent`;
++# `routing.lane` outside `ultrapowers`, `subagent`, `inline`; a question whose
++# `options` has fewer than 2 entries; a question whose `picked` is not one of
++# its `options`; a question whose `recommended` is neither null nor one of its
++# `options`."
++
++
++def _with(**fields):
++    """The example record with top-level fields replaced."""
++    a = copy.deepcopy(AUTHORING)
++    a.update(fields)
++    return a
++
++
++def _routing(**fields):
++    a = copy.deepcopy(AUTHORING)
++    a["routing"].update(fields)
++    return a
++
++
++def _question(**fields):
++    a = copy.deepcopy(AUTHORING)
++    a["questions"][0].update(fields)
++    return a
++
++
++# Each row carries exactly one defect, so the one line the clause promises is
++# the line about that row's field and nothing else.
++MALFORMED = [
++    ("minutes -1", _with(minutes=-1), "minutes"),
++    ('minutes "12"', _with(minutes="12"), "minutes"),
++    ("probes -1", _with(probes=-1), "probes"),
++    ('branch "speed"', _routing(branch="speed"), "branch"),
++    ('lane "fleet"', _routing(lane="fleet"), "lane"),
++    ('options ["only"]', _question(options=["only"], recommended="only",
++                                   picked="only"), "options"),
++    ('picked "C"', _question(picked="C"), "picked"),
++    ('recommended "C"', _question(recommended="C"), "recommended"),
++]
++
++
++@pytest.mark.parametrize("row,authoring,field", MALFORMED,
++                         ids=[r[0] for r in MALFORMED])
++def test_e_a_malformed_record_is_refused_naming_the_field(tmp_path, row,
++                                                          authoring, field):
++    """(e)/[M3]: each malformed row, at a bare `--check` — exit 2, no
++    `PLAN OK`, and exactly one line beginning `grammar: authoring record
++    unreadable —`, naming the field the row broke."""
++    p = check(tmp_path, "e.md", record(authoring=authoring))
++    out = p.stdout + p.stderr
++    assert p.returncode == 2, (row, out)
++    assert "PLAN OK" not in out, (row, out)
++    named = [line for line in out.splitlines()
++             if line.startswith(UNREADABLE)]
++    assert len(named) == 1, (row, out)
++    assert field in named[0], (row, named[0])
++
++
++def test_e_the_same_record_made_well_formed_is_not_refused(tmp_path):
++    """(e)/[M3]: the refusal is the malformation and nothing else about the
++    record — the example record, unbroken, still prints `PLAN OK` at a bare
++    `--check` and earns no `unreadable` line."""
++    p = check(tmp_path, "e-ok.md", record())
++    out = p.stdout + p.stderr
++    assert p.returncode == 0, out
++    assert p.stdout.strip() == "PLAN OK", out
++    assert UNREADABLE not in out, out

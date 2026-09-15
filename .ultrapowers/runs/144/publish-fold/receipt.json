@@ -1,0 +1,22 @@
+{
+  "engineHead": "ecd5991c6be9731c1668d3af9bfd61ba15e3676d",
+  "attempts": {
+    "1": {
+      "tip": "8c4f493d4ad52f43ee3bf6ccd9f6c8ff125f932a",
+      "candidate": "c5354d19d6721a229ac8a6e93b0fbc8ba0944217",
+      "disposition": "folded",
+      "pathsJoined": 1,
+      "resolversDispatched": 0,
+      "suite": "pass",
+      "checks": [
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_launch_compile_facts.mjs",
+          "path": "fleet/RUNBOOK.md",
+          "result": "pass"
+        }
+      ],
+      "checkRetries": 0
+    }
+  }
+}
