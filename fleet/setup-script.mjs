@@ -20,8 +20,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { renderOf } from './doctor.mjs'
-
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 
 /** exe.dev's ceiling for a `--setup-script` payload. */
@@ -41,11 +39,6 @@ const BUN_URL =
 
 const BOOTSTRAP_TAG = 'FLEET_BOOTSTRAP_EOF'
 const UNIT_TAG = 'FLEET_UNIT_EOF'
-const RENDER_TAG = 'FLEET_RENDER_EOF'
-
-/** The renderer is reached only through exe.dev's edge, never its own host. */
-const RENDER_INTEGRATION_RE = /^[a-z][a-z0-9-]*$/
-const RENDER_ACCOUNT_RE = /^[A-Za-z0-9_-]+$/
 
 /** The two files the script carries, as they sit beside this module. */
 export function readFleetFiles() {
@@ -66,46 +59,10 @@ function heredocBody(tag, text) {
 }
 
 /**
- * The env file the run reads the renderer's address out of, as a heredoc and
- * the install that puts it under /etc/fleet. Empty when no renderer is named:
- * a run without one says nothing about a renderer at all.
- *
- * The address is the proxy's, so the box never learns the renderer's own host;
- * the file is 0644 because it carries an address and never a secret — the
- * bearer is injected at the edge. /etc/fleet/ is not on the image, hence -D.
- *
- * `render` is read through `renderOf`, the doctor's and the launcher's one
- * reading (#859): a pair lacking either non-empty string is no renderer, so
- * the step is empty for it — never an address ending in `accounts/undefined`,
- * which is what `String()` on a missing account once rendered. The two shape
- * rules below apply to the strings that reading answers.
- */
-function renderEnvStep(render) {
-  const named = renderOf(render)
-  if (named === null) return ''
-  const { integration, account } = named
-  if (!RENDER_INTEGRATION_RE.test(integration)) {
-    throw new Error(`render.integration must match ${RENDER_INTEGRATION_RE.source}`)
-  }
-  if (!RENDER_ACCOUNT_RE.test(account)) {
-    throw new Error(`render.account must match ${RENDER_ACCOUNT_RE.source}`)
-  }
-  const url = `https://${integration}.int.exe.xyz/client/v4/accounts/${account}/browser-rendering`
-  return `cat <<'${RENDER_TAG}' >render.env
-${heredocBody(RENDER_TAG, `TINYAPP_RENDER_URL=${url}`)}${RENDER_TAG}
-sudo -n install -D -m 0644 render.env /etc/fleet/render.env
-`
-}
-
-/**
  * The setup script for one run. `bootstrap` and `unit` are carried verbatim.
- * `render` is `{integration, account}` when a renderer is named, and null when
- * none is — or any shape `renderOf` reads as none.
  */
-export function renderSetupScript({ run, bootstrap, unit, render = null }) {
+export function renderSetupScript({ run, bootstrap, unit }) {
   if (!/^[0-9]+$/.test(String(run))) throw new Error(`run must be digits, got ${run}`)
-  // Before a byte of script exists: a bad name never reaches a render.
-  const renderStep = renderEnvStep(render)
 
   const script = `#!/usr/bin/env bash
 # fleet first-boot setup, generated for one run and thrown away by its own last
@@ -198,7 +155,7 @@ sudo -n install -m 0555 bootstrap.sh "$LIB/bootstrap.sh"
 mkdir -p "$HOME/.config/systemd/user" "$HOME/.claude"
 cat <<'${UNIT_TAG}' >"$HOME/.config/systemd/user/fleet-run@.service"
 ${heredocBody(UNIT_TAG, unit)}${UNIT_TAG}
-${renderStep}printf '%s\\n' '{"env":{"CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS":"0"},"permissions":{"defaultMode":"bypassPermissions"}}' >"$HOME/.claude/settings.json"
+printf '%s\\n' '{"env":{"CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS":"0"},"permissions":{"defaultMode":"bypassPermissions"}}' >"$HOME/.claude/settings.json"
 git config --global user.name fleet
 git config --global user.email fleet@exe.dev
 

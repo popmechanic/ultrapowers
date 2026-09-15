@@ -211,8 +211,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   refuses it since 2026-09-11 (`new --integration cannot safely rewrite a singular attachment
   policy; create the VM first, then use integrations policy get/set with the complete expression`),
   and the launcher refuses its own line before issuing it should the flag ever reappear. The run's
-  credentials reach the VM by POLICY instead: each integration a run needs — `claude-max`,
-  `gh-<owner>-<repo>`, and the rendering one when the laptop config names it — carries the complete
+  credentials reach the VM by POLICY instead: each integration a run needs — `claude-max` and
+  `gh-<owner>-<repo>` — carries the complete
   attachment policy `tag:fleet` (`integrations policy get <name> --json` → `policy.selector`;
   written once with `integrations policy set <name> 'tag:fleet' --permanent --if-revision=<revision>`,
   or at creation with `--policy 'tag:fleet'`), so `--tag fleet` on `new` is the grant, nothing is
@@ -668,8 +668,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `--act-as-user`, not readonly, created on the policy `tag:fleet` by `node fleet/target.mjs
   <owner>/<repo>` (`integrations add github … --policy 'tag:fleet'`; an object that already exists
   has its policy read and, when the selector is not `tag:fleet`, replaced under the read's
-  revision). `claude-max` and the rendering integration carry the same policy — the renderer is
-  named by and present only when `fleet.json` carries `render`. Every one of them reaches a run's VM
+  revision). `claude-max` carries the same policy. Every one of them reaches a run's VM
   by that policy and by nothing else: no `--integration` on `new`, no `attach`, no per-VM grant.
   Never two GitHub integrations naming one repo on a VM — the sandbox refuses to boot into that
   (preflight above); two targets' objects on one VM name two repos, which the edge routes apart.
@@ -678,7 +677,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   fleet VM by its own `tag:fleet` policy — including the hub's `kata` **http-proxy**, which is
   created with `--policy 'tag:fleet'` like the rest. What the `- **Publish:**` rule still forbids is
   the *attachment*: no GitHub integration is attached to the tag, because nothing is attached at all.
-- **Doctor (`fleet/doctor.mjs`) — nine rows, this order, `ROW_IDS`:**
+- **Doctor (`fleet/doctor.mjs`) — eight rows, this order, `ROW_IDS`:**
   | id | what it reads | green when |
   |---|---|---|
   | `exe-dev` | `ssh exe.dev whoami` | the alias answers with a username |
@@ -686,9 +685,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   | `claude` | `integrations list --json` + `node fleet/claude-token.mjs status` | `claude-max` exists and carries a bearer; the keychain's refresh token is a warning, not a failure |
   | `accounts` | `node fleet/claude-token.mjs accounts --json` against `fleet.json`'s `account` | the keychain holds an account; the row names each entry with its expiry, and a config account the keychain does not hold is the red |
   | `github` | `ssh exe.dev "integrations setup github --list"` | at least one GitHub account is linked |
-  | `integrations` | `integrations list --json` + `integrations policy get <name> --json` for `claude-max`, `gh-<owner>-<repo>` (with `--target`) and `render.integration` (when configured) | with `--target <owner>/<repo>`, `gh-<owner>-<repo>` exists; every one of those objects' `policy.selector` is `tag:fleet` — the red names the first that is not and the get/set two-step that fixes it |
+  | `integrations` | `integrations list --json` + `integrations policy get <name> --json` for `claude-max` and `gh-<owner>-<repo>` (with `--target`) | with `--target <owner>/<repo>`, `gh-<owner>-<repo>` exists; every one of those objects' `policy.selector` is `tag:fleet` — the red names the first that is not and the get/set two-step that fixes it |
   | `verb-drift` | `help <verb>` for every verb in `fleet/exe-verbs.json` | the record is readable; a flag that appeared or vanished is a finding in a green row, and only an unreadable record is red |
-  | `render` | `integrations list --json` against `fleet.json`'s `render` | `not configured` when the file names none; otherwise `render.integration` is a name in the listing |
   | `kata` | `integrations list --json` + `ssh exe.dev "integrations policy get kata --json"` + `ssh exe.dev "ls kata-hub --json"` | the `kata` http-proxy exists and carries a bearer, its `policy.selector` is exactly `tag:fleet` (the listing's `attachments` are never consulted for this row), and `.vms[]` has a `kata-hub` row; the red says which of the four is absent, and names `node fleet/kata-hub.mjs` — or, for a wrong policy, the get/set two-step |
 
   The doctor imports only `node:`-prefixed specifiers and no other fleet module, and every row id is a
@@ -755,27 +753,20 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   checked against that release's `SHA256SUMS`; and `/var/lib/kata/.setup-done`, the flag the setup
   script writes last and the laptop polls for. On the laptop: `~/.ultrapowers/kata-hub.env`, mode
   0600, exactly `KATA_URL` and `KATA_TOKEN`, written only after the daemon answers `active`.
-- **Laptop config `~/.ultrapowers/fleet.json`** — `cpu`, `memory`, `account` and `render` (an object
-  of `integration` and `account`), every one of them optional, an unknown key ignored and a missing
-  file meaning the defaults:
+- **Laptop config `~/.ultrapowers/fleet.json`** — `cpu`, `memory` and `account`, every one of them
+  optional, an unknown key ignored and a missing file meaning the defaults:
 
   ```json
   {
     "cpu": "8",
     "memory": "16GB",
-    "account": "<name>",
-    "render": { "integration": "browser-run", "account": "<id>" }
+    "account": "<name>"
   }
   ```
 
   `memory` is `<int>GB` or `<int>G`; a bare number or a fractional `1.5GB` is unreadable. `account`
-  is the keychain account the `accounts` row expects; `render` names the rendering integration the
-  `render` row reads and the account its proxy address carries, and its absence is not a red. A
-  `render` lacking either non-empty string — `{"integration":"x"}`, an empty slot, a non-object —
-  is read as none by the doctor, the launcher and the setup script alike (`renderOf` in
-  `fleet/doctor.mjs`, the one reading): the `render` row says `not configured` and no address is
-  rendered. A well-formed pair whose strings do not fit the object-name or account-id shape is
-  refused by the launcher before anything runs.
+  is the keychain account the `accounts` row expects. A key outside those three is a key nothing
+  reads: the `capacity` row is red and names it.
 - **Logs without an env var:** `ssh <ssh_dest> 'journalctl _SYSTEMD_USER_UNIT=fleet-run@<N>.service --no-pager -n 200'`
   reads the run unit's journal by field match, so it needs no `XDG_RUNTIME_DIR` and no `--user`. The
   setup script's own output is `~/fleet-setup.log` on the VM.

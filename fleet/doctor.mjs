@@ -7,7 +7,7 @@
  * ever existed. Hence the built-ins-only rule: every specifier here is
  * `node:`-prefixed, and the doctor imports no other fleet module.
  *
- * Nine rows, all reads, every one of them answered by exe.dev's own truth or
+ * Eight rows, all reads, every one of them answered by exe.dev's own truth or
  * by this laptop's own keychain:
  *
  *   exe-dev       `ssh exe.dev whoami` names an account.
@@ -20,9 +20,8 @@
  *                 edge carries and whether the config names one the keychain
  *                 does not hold.
  *   github        `integrations setup github --list` lists an account.
- *   integrations  every integration a run needs — `claude-max`, with
- *                 `--target` the target's own `gh-<owner>-<repo>`, and the
- *                 renderer's when the config names one — carries the
+ *   integrations  every integration a run needs — `claude-max`, and with
+ *                 `--target` the target's own `gh-<owner>-<repo>` — carries the
  *                 attachment policy `tag:fleet` (`integrations policy get
  *                 <name> --json`, `policy.selector`). That policy is the one
  *                 way a credential reaches a fleet VM: exe.dev refuses `new
@@ -31,10 +30,6 @@
  *                 the diff against the flags recorded there. A flag that
  *                 appeared or vanished is a finding in a green row; only a
  *                 record the doctor cannot read turns it red.
- *   render        when `~/.ultrapowers/fleet.json` carries a `render` object,
- *                 the http-proxy integration it names exists at the edge. A
- *                 fleet that names none is green and says so: the renderer is
- *                 optional, and a run without it records the move as skipped.
  *   kata          the hub is there: the `kata` http-proxy carries a bearer at
  *                 the edge, its attachment policy is `tag:fleet` (`integrations
  *                 policy get kata --json`, `policy.selector` — never the
@@ -76,11 +71,10 @@ const execFileAsync = promisify(execFile)
  *  would certify a fleet the launcher never looks at. */
 export const DOCTOR_DEFAULTS = Object.freeze({ cpu: '8', memory: '16GB' })
 
-/** The nine rows, in the order the doctor reports them. Each id is also a
+/** The eight rows, in the order the doctor reports them. Each id is also a
  *  `## ` heading in skills/ultrapowers/references/first-run.md. */
 export const ROW_IDS = Object.freeze([
-  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift', 'render',
-  'kata'
+  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift', 'kata'
 ])
 
 /** Each row's `fix` is the `## ` heading in first-run.md that repairs it, and
@@ -242,59 +236,6 @@ export async function fleetConfigAccount ({ path: configPath } = {}) {
   return typeof account === 'string' && account !== '' ? account : null
 }
 
-/**
- * The renderer the config file names: its top-level `render` object, as
- * `{ integration, account }` — the exe.dev http-proxy integration that carries
- * the Cloudflare bearer at the edge, and the Cloudflare account id the proxy
- * address is built from. Null when the file is absent, is not JSON, is not a
- * JSON object, carries no `render`, or carries one that lacks either string:
- * half a renderer is no renderer, and a fleet that names none is green.
- *
- * It travels beside `loadFleetConfig` for the reason `fleetConfigAccount` does:
- * `result.config` stays exactly the two keys the doctor itself reads, and the
- * renderer reaches `doctor()` as its own option.
- */
-export async function fleetConfigRender ({ path: configPath } = {}) {
-  const target = configPath ?? DEFAULT_CONFIG_PATH()
-  let text
-  try {
-    text = await fsp.readFile(target, 'utf8')
-  } catch {
-    return null
-  }
-  let parsed
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    return null
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
-  return renderOf(parsed.render)
-}
-
-/**
- * THE ONE READING of a config's `render` value (#859): `{ integration, account }`
- * when the value is a plain object whose two keys are both non-empty strings,
- * and null for anything else — absent, null, a string, an array, `{}`, or half
- * a pair (`{integration:"x"}`, `{integration:"x",account:""}`,
- * `{integration:"",account:"a"}`). Half a renderer is no renderer.
- *
- * The doctor's `render` row, `fleet/launch.mjs` and `fleet/setup-script.mjs`
- * all read through this one function, so a shape one of them called "none" can
- * never reach another as a renderer: before it, the setup script coerced with
- * `String()` and `{integration:"x"}` rendered an address ending in
- * `accounts/undefined`. Whether a NON-EMPTY pair is well-formed (the exe.dev
- * object-name and Cloudflare account-id shapes) is the launcher's and the setup
- * script's own refusal, made on the strings this answers.
- */
-export function renderOf (value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-  const { integration, account } = value
-  if (typeof integration !== 'string' || integration === '') return null
-  if (typeof account !== 'string' || account === '') return null
-  return { integration, account }
-}
-
 /** The exec seam: resolve `{ code, stdout }`, never reject, so a test drives
  *  every row with a stub and the CLI drives them with a shell. stderr joins
  *  stdout because claude-token logs its status line there. */
@@ -366,13 +307,11 @@ function poolRow (res, config) {
 const READ_KEYS = Object.keys(DOCTOR_DEFAULTS)
 
 /** The names something outside the doctor reads, as the row's detail spells
- *  them: `account` picks the keychain entry a run signs in with, and `render`
- *  names the http-proxy integration a run's render move goes out through. Both
- *  are the launcher's to read; the doctor only asks whether what they name is
- *  there. */
-const LAUNCHER_KEYS = Object.freeze(['account', 'render'])
+ *  them: `account` picks the keychain entry a run signs in with. It is the
+ *  launcher's to read; the doctor only asks whether what it names is there. */
+const LAUNCHER_KEYS = Object.freeze(['account'])
 
-/** Every name the config file may carry: the two the doctor reads, and the two
+/** Every name the config file may carry: the two the doctor reads, and the one
  *  the launcher does. A name outside this list is a key nothing reads. */
 const CONFIG_KEYS = Object.freeze([...READ_KEYS, ...LAUNCHER_KEYS])
 
@@ -384,11 +323,10 @@ const CONFIG_KEYS = Object.freeze([...READ_KEYS, ...LAUNCHER_KEYS])
  * outside `CONFIG_KEYS` is a key left by a fleet from before the lift — the
  * operator wrote a setting nothing consults, so the row is red until the file is
  * rewritten, and the detail names those keys by echoing the file rather than
- * spelling any of them here. `account` and `render` are not among them: the
- * doctor never reads either, but the launcher does, and the `accounts` and
- * `render` rows say whether what they name is there. A file that omits one of
- * the two the doctor does read is not wrong, only silent, so the green detail
- * says which default it fell back to.
+ * spelling any of them here. `account` is not among them: the doctor never reads
+ * it, but the launcher does, and the `accounts` row says whether what it names is
+ * there. A file that omits one of the two the doctor does read is not wrong, only
+ * silent, so the green detail says which default it fell back to.
  */
 function capacityRow (res, config, configKeys = null) {
   const base = poolRow(res, config)
@@ -765,14 +703,13 @@ function githubRow (res) {
 // ── integrations ─────────────────────────────────────────────────────────────
 
 /**
- * The names the row asks about: the bearer's object always, the target's with
- * `--target`, the renderer's when the config names one. Each is read once with
- * `integrations policy get <name> --json`, in this order.
+ * The names the row asks about: the bearer's object always, and the target's
+ * with `--target`. Each is read once with `integrations policy get <name>
+ * --json`, in this order.
  */
-function policyNames (target, render) {
+function policyNames (target) {
   const names = [OAUTH_INTEGRATION]
   if (target !== null) names.push(targetIntegration(target))
-  if (render !== null) names.push(render.integration)
   return names
 }
 
@@ -790,7 +727,7 @@ function policyNames (target, render) {
  * (which spells a policy-attached object as `tag:fleet` too) is not consulted:
  * the policy read is the edge's own answer, revision included.
  */
-function integrationsRow (found, target, render, policies) {
+function integrationsRow (found, target, policies) {
   if (found === null) {
     return row('integrations', 'missing', 'integrations list printed no readable JSON')
   }
@@ -800,9 +737,9 @@ function integrationsRow (found, target, render, policies) {
       return row('integrations', 'missing', `no ${want} integration for ${target} — node fleet/target.mjs ${target}`)
     }
   }
-  const names = policyNames(target, render)
+  const names = policyNames(target)
   for (const name of names) {
-    if (!found.has(name)) continue // the claude and render rows name a missing object
+    if (!found.has(name)) continue // the claude row names a missing object
     // The listing is served by both lobby models (2026-09-11 exe.dev shipped a
     // policy model at noon and rolled it back by 3 PM): an attachment `tag:fleet`
     // in `integrations list --json` is the grant whichever verb set the edge has.
@@ -825,49 +762,6 @@ function integrationsRow (found, target, render, policies) {
     }
   }
   return row('integrations', 'ok', `${names.filter((n) => found.has(n)).join(', ')} on the policy ${FLEET_POLICY}`)
-}
-
-// ── render ───────────────────────────────────────────────────────────────────
-
-/**
- * The renderer is optional, so this row has a green "nothing to check" state:
- * a fleet whose `~/.ultrapowers/fleet.json` carries no `render` object is `ok`
- * and says `not configured`, and its runs record the render move as skipped.
- * The doctor has two row states and `verdict = rows.every(ok)`, so a third
- * state would have to be a colour, and this is the colour it would be.
- *
- * When the file does name one, presence by name in the listing is the whole
- * check: the renderer reaches a sandbox through an http-proxy integration that
- * injects the Cloudflare bearer at the edge, and `integrations test` answers
- * nothing useful for an http-proxy (the header comment above says why), so the
- * listing is the edge-side truth the doctor can read. A listing it could not
- * read is red for the same reason the `claude` row is: the doctor cannot say
- * the object is there.
- */
-function rendererRow (found, render) {
-  if (render === null) {
-    return row(
-      'render',
-      'ok',
-      'not configured — ~/.ultrapowers/fleet.json names no render integration, and a run records the render move as skipped'
-    )
-  }
-  const name = render.integration
-  if (found === null) {
-    return row(
-      'render',
-      'missing',
-      `integrations list printed no readable JSON, so the ${name} integration ~/.ultrapowers/fleet.json names cannot be read off the edge`
-    )
-  }
-  if (!found.has(name)) {
-    return row(
-      'render',
-      'missing',
-      `no ${name} integration at the edge, which is the renderer ~/.ultrapowers/fleet.json names`
-    )
-  }
-  return row('render', 'ok', `${name} carries the renderer at the edge for account ${render.account}`)
 }
 
 // ── kata ─────────────────────────────────────────────────────────────────────
@@ -950,13 +844,11 @@ function kataRow (found, policyRes, vmsRes) {
  * the two keys the doctor reads.
  *
  * `account` is that file's own `account` — `fleetConfigAccount` for the same
- * path — and reaches the `accounts` row alone, for the same reason. `render` is
- * that file's own `render` — `fleetConfigRender` for the same path — and
- * reaches the `render` row alone. `verbsPath` overrides the verb record the
- * `verb-drift` row reads.
+ * path — and reaches the `accounts` row alone, for the same reason. `verbsPath`
+ * overrides the verb record the `verb-drift` row reads.
  */
 export async function doctor ({
-  config, exec, target = null, configKeys = null, account = null, render = null, verbsPath = null
+  config, exec, target = null, configKeys = null, account = null, verbsPath = null
 } = {}) {
   const cfg = { ...DOCTOR_DEFAULTS, ...(config ?? {}) }
   const run = exec ?? defaultExec
@@ -965,9 +857,6 @@ export async function doctor ({
     throw new Error(`--target takes owner/repo, not ${JSON.stringify(want)}`)
   }
   const wantAccount = account === null || account === undefined ? null : String(account)
-  // The `render` option as a row can use it — `renderOf`, the same reading
-  // `fleetConfigRender` and the launcher make: half a renderer is none.
-  const renderer = renderOf(render)
 
   const whoami = await run(READS.whoami)
   const billing = await run(READS.billing)
@@ -981,7 +870,7 @@ export async function doctor ({
   const kataPolicy = await run(READS.kataPolicy)
   const kataVms = await run(READS.kataVm)
   const policies = new Map()
-  for (const name of policyNames(want, renderer)) {
+  for (const name of policyNames(want)) {
     policies.set(name, await run(policyRead(name)))
   }
   const drift = await verbDrift({
@@ -996,9 +885,8 @@ export async function doctor ({
     claudeRow(found, token),
     accountsRow(accounts, found, wantAccount),
     githubRow(github),
-    integrationsRow(found, want, renderer, policies),
+    integrationsRow(found, want, policies),
     verbDriftRow(drift),
-    rendererRow(found, renderer),
     kataRow(found, kataPolicy, kataVms)
   ]
   const verdict = rows.every((r) => r.status === 'ok') ? 'ready' : 'not-ready'
@@ -1040,10 +928,9 @@ async function main (argv) {
   const config = await loadFleetConfig({ path: configPath })
   const configKeys = await fleetConfigKeys({ path: configPath })
   const account = await fleetConfigAccount({ path: configPath })
-  const render = await fleetConfigRender({ path: configPath })
   let result
   try {
-    result = await doctor({ config, exec: defaultExec, target: opts.target, configKeys, account, render })
+    result = await doctor({ config, exec: defaultExec, target: opts.target, configKeys, account })
   } catch (error) {
     process.stderr.write(`${error.message}\n`)
     process.exitCode = 2

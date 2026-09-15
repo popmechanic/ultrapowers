@@ -34,8 +34,8 @@
  *      no `--integration`: exe.dev refuses that flag since 2026-09-11 ("new
  *      --integration cannot safely rewrite a singular attachment policy"), and
  *      the run's credentials reach the VM by policy instead — each integration
- *      (`claude-max`, `gh-<owner>-<repo>`, the renderer's) carries the
- *      attachment policy `tag:fleet`, so `--tag fleet` is what grants them.
+ *      (`claude-max`, `gh-<owner>-<repo>`) carries the attachment policy
+ *      `tag:fleet`, so `--tag fleet` is what grants them.
  *
  * `<cpu>` and `<memory>` are the PLAN's, not the fleet's: the launcher compiles
  * the plan under the run number it is pushing — once, before the verb, unless
@@ -67,15 +67,6 @@
  * pushed: a public repo would still clone from github.com, but nothing could
  * push its branch or open its PR, and a run that cannot publish is a run nobody
  * asked for. `node fleet/target.mjs <owner>/<repo>` builds the object once.
- *
- * The renderer, when the config file names one, reaches the box the same way:
- * its integration rides the `tag:fleet` policy, and the setup script drops the
- * proxy address under /etc/fleet. It is read from `~/.ultrapowers/fleet.json`
- * and never from a flag — an address the whole fleet shares is not a per-launch
- * choice. A `render` the laptop can see is malformed is refused before anything
- * is executed, and a `render.integration` the account has no object for is
- * refused off the same `integrations list --json` the GitHub check reads: the
- * laptop refuses what the sandbox would have refused an hour later.
  *
  * A refusal (exit 2) happens before anything is created, so the account and the
  * target are exactly as they were. A failure after that (exit 1) prints the
@@ -127,7 +118,7 @@ import {
   statusUrlFor,
   vmNameFor
 } from './lobby.mjs'
-import { fleetConfigAccount, fleetConfigRender, renderOf, verbDrift } from './doctor.mjs'
+import { fleetConfigAccount, verbDrift } from './doctor.mjs'
 import { makeKataClient, sshTransport } from './kata-client.mjs'
 import { janitor } from './janitor.mjs'
 import { readFleetFiles, renderSetupScript } from './setup-script.mjs'
@@ -159,20 +150,6 @@ export const EFFORT_VALUES = Object.freeze(['low', 'medium', 'high'])
  */
 export const DEFAULT_ACCOUNT = 'ultrapowers'
 const ACCOUNT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
-
-/**
- * What the config file's `render` may be spelled with. These are
- * `fleet/setup-script.mjs`'s own two rules, copied rather than imported for the
- * reason `ACCOUNT_NAME` is: the laptop refuses on the laptop what the renderer
- * would have thrown on, before a VM exists to throw it. The integration is an
- * exe.dev object name and reaches a proxy hostname; the account is a
- * Cloudflare account id and reaches a URL path segment. They are applied to a
- * pair `renderOf` has already answered — a `render` lacking either non-empty
- * string is read as no renderer at all, the doctor's reading (#859), and never
- * reaches these.
- */
-const RENDER_INTEGRATION_NAME = /^[a-z][a-z0-9-]*$/
-const RENDER_ACCOUNT_ID = /^[A-Za-z0-9_-]+$/
 
 /** The flag `new` may never carry: exe.dev refuses it, and the policy
  *  `tag:fleet` on each integration is what grants a fleet VM its credentials. */
@@ -784,36 +761,7 @@ export async function launch ({
       : config.account
     account = typeof named === 'string' && named !== '' ? named : DEFAULT_ACCOUNT
   }
-  // The renderer this fleet reaches, on the same branch the account takes: the
-  // injected config's own `render`, else the file's — so an exam that hands
-  // `launch` a config never reads the laptop's own. There is no `--render`; an
-  // address the whole fleet shares is not a per-launch choice.
-  // Both branches are `renderOf`'s reading (the file's through
-  // `fleetConfigRender`, the injected object's directly): half a renderer —
-  // `{integration:"x"}`, an empty string in either slot, a non-object — is no
-  // renderer, here as in the doctor's `render` row and the setup script.
-  const render = config === undefined || config === null
-    ? await fleetConfigRender({ path: opts.config })
-    : renderOf(config.render)
-  // The file the renderer was read from, named as the operator named it: the
-  // `--config` path when one was given, the laptop's own otherwise.
-  const configName = opts.config ?? '~/.ultrapowers/fleet.json'
-  // A malformed `render` is refused here, beside `--account`'s own shape check
-  // and before the checkout is read: nothing has been executed yet, so a laptop
-  // that cannot spell its renderer has touched neither exe.dev nor the target.
-  if (render !== null) {
-    if (!RENDER_INTEGRATION_NAME.test(render.integration)) {
-      throw new Refusal(
-        `launch: ${configName} render.integration must match ${RENDER_INTEGRATION_NAME.source}, got ${JSON.stringify(render.integration)}`
-      )
-    }
-    if (!RENDER_ACCOUNT_ID.test(render.account)) {
-      throw new Refusal(
-        `launch: ${configName} render.account must match ${RENDER_ACCOUNT_ID.source}, got ${JSON.stringify(render.account)}`
-      )
-    }
-  }
-  // The hub, on the same branch the account and the renderer take: an injected
+  // The hub, on the same branch the account takes: an injected
   // `kata` is the client (a fake in a sim; `null` means "no hub" outright); with
   // none injected and no injected config, the laptop's own `kata-hub.env` is
   // read and the client is built on it — one `ssh <hub> curl …` per request
@@ -968,23 +916,12 @@ export async function launch ({
     )
   }
 
-  // One `integrations list --json`, two questions asked of it: the target's
-  // GitHub object, and the renderer's — a second read would be a second line on
-  // a launch that already refuses on the first answer.
+  // One `integrations list --json`, asked for the target's GitHub object.
   const integrations = await listIntegrations(exec)
   const githubName = githubIntegrationFor(target)
   if (!integrations.some((row) => row.name === githubName)) {
     throw new Refusal(
       `launch: no ${githubName} integration — the sandbox could still clone a public ${target} from github.com, but could not push its branch or open its PR. Build it once: node fleet/target.mjs ${target}`
-    )
-  }
-  // A renderer the account has no object for is refused here, before the plan
-  // is pushed and before any VM exists: the run would come up with an address
-  // pointing at a proxy the edge does not have. The fix is the first-run walk,
-  // which is where the proxy object is built once per account.
-  if (render !== null && !integrations.some((row) => row.name === render.integration)) {
-    throw new Refusal(
-      `launch: ${configName} names render.integration ${render.integration} but integrations list --json has no ${render.integration} — build it once per account: references/first-run.md §render`
     )
   }
 
@@ -1176,11 +1113,11 @@ export async function launch ({
   // ── The one mutating lobby verb. ──────────────────────────────────────────
   const comment = buildComment({ ...fields, run: String(run), plan: planSha, engine })
   const script = stampWidth(
-    renderSetupScript({ run: String(run), ...readFleetFiles(), render }),
+    renderSetupScript({ run: String(run), ...readFleetFiles() }),
     { width, cpu, memory }
   )
-  // No `--integration` on the verb: the run's credentials — `claude-max`, the
-  // target's object and, when named, the renderer's — reach the box by the
+  // No `--integration` on the verb: the run's credentials — `claude-max` and the
+  // target's object — reach the box by the
   // attachment policy `tag:fleet` each of them carries, so `--tag fleet` is the
   // grant. exe.dev refuses the flag outright since 2026-09-11, and a line that
   // carried it would fail every launch at `new`; hence the guard, which
@@ -1246,11 +1183,6 @@ export async function launch ({
     kata: plan.kata,
     verbDrift: drift,
     github: githubName,
-    // The renderer this run was given, or null for a fleet that names none.
-    // Like `account`, it is a fact about the launch and never a comment key:
-    // `parse_assignment` on the VM refuses one it does not know, and the box
-    // reads its address off /etc/fleet, not off the assignment.
-    render,
     cpu,
     memory,
     // W, the widest wave of the compiled plan: what `cpu` and `memory` were

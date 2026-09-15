@@ -142,7 +142,7 @@ personal.
 credential reaches a fleet VM by the attachment policy on its integration and by
 nothing else: since 2026-09-11 exe.dev refuses `new --integration` and
 `integrations attach`/`detach` ("cannot safely rewrite a singular attachment
-policy"), so `claude-max`, the target's object and the renderer's each carry the
+policy"), so `claude-max` and the target's object each carry the
 complete policy `tag:fleet`, and `new --tag fleet` is the grant. The row reads
 each one's policy and is red for the first whose selector is anything else.
 
