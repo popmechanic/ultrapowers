@@ -1,0 +1,282 @@
+{
+  "ok": true,
+  "stamp": "run-136",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-136"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "A lane folds only when the fold releases a queued task, ends the run, or adopts a result that has aged a suite's length",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/run-engine.mjs",
+          "fleet/tests/test_run_engine_joined_proofs.mjs",
+          "fleet/tests/test_run_engine_proof_runs.mjs",
+          "fleet/tests/test_run_engine_ready_set.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`driver:wave-adopted` and `driver:wave-blocked` gain `why: 'released' | 'end' | 'aged'` and, for `released`, `released: string[]`",
+            "`args.foldAgeMs` \u2014 the engine argument, milliseconds, `0` = fold at every landing"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "A task's issue reads landed when the driver takes its result and adopted when it is folded, and the hook's needs-human is cleared",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/run-engine.mjs",
+          "fleet/tests/test_run_engine_kata_close.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`work.state` on a task issue \u2014 `landed` | `adopted`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "A lane folds only when the fold releases a queued task, ends the run, or adopts a result that has aged a suite's length",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_fold_policy.mjs",
+            "fleet/tests/test_run_engine_joined_proofs.mjs",
+            "fleet/tests/test_run_engine_proof_runs.mjs",
+            "fleet/tests/test_run_engine_ready_set.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`driver:wave-adopted` and `driver:wave-blocked` gain `why: 'released' | 'end' | 'aged'` and, for `released`, `released: string[]`",
+              "`args.foldAgeMs` \u2014 the engine argument, milliseconds, `0` = fold at every landing"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_joined_proofs.mjs",
+            "fleet/tests/test_run_engine_proof_runs.mjs",
+            "fleet/tests/test_run_engine_ready_set.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_fold_policy.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_fold_policy.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_ready_set.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_joined_proofs.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_re_edge.mjs | grep -q 'ALL TESTS PASSED'",
+            "sed -n '/^    The engine.s own wave record/,/^    The driver.s own executions/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'epoch.*ready.*slot frees.*release.*end.*foldAgeMs.*60.*driver:wave-adopted.*descendant'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_fold_policy.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_fold_policy.mjs",
+              "fleet/tests/test_run_engine_joined_proofs.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_run_engine_ready_set.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_fold_policy.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_fold_policy.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_fold_policy.mjs": "fleet/tests/test_run_engine_fold_policy.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_fold_policy.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_kata_close.mjs",
+              "fleet/tests/test_run_engine_kata_landing.mjs"
+            ],
+            "produces": [
+              "`driver:wave-adopted` and `driver:wave-blocked` gain `why: 'released' | 'end' | 'aged'` and, for `released`, `released: string[]`",
+              "`args.foldAgeMs` \u2014 the engine argument, milliseconds, `0` = fold at every landing"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "A task's issue reads landed when the driver takes its result and adopted when it is folded, and the hook's needs-human is cleared",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_kata_close.mjs",
+            "fleet/tests/test_run_engine_kata_landing.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`work.state` on a task issue \u2014 `landed` | `adopted`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_kata_close.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_kata_landing.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_kata_landing.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_kata_close.mjs | grep -q 'ALL TESTS PASSED'",
+            "grep -q \"'work.state': 'adopted'\" fleet/run-engine.mjs && grep -q \"'work.state': 'landed'\" fleet/run-engine.mjs && sed -n '/^  The re-edge (#979)/,/^- \\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'work.state.*landed.*adopted.*work.attention.*ok.*SessionEnd' && test \"$(grep -c 'exactly the two flat keys' fleet/CONTRACT.md)\" = 0 && sed -n '/^  Closes: an adopted task/,/idempotency key/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'three flat keys.*work.adopted_run.*work.adopted_sha.*work.state'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_kata_landing.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_kata_close.mjs",
+              "fleet/tests/test_run_engine_kata_landing.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_kata_landing.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_kata_landing.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_kata_landing.mjs": "fleet/tests/test_run_engine_kata_landing.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_kata_landing.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_fold_policy.mjs",
+              "fleet/tests/test_run_engine_joined_proofs.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_run_engine_ready_set.mjs"
+            ],
+            "produces": [
+              "`work.state` on a task issue \u2014 `landed` | `adopted`"
+            ],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 Results"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- No role prompt, kernel file, launcher, boot or worker module changes; the engine's edits are confined to `fleet/run-engine.mjs`.\n- The record's shapes keep their names and gain keys only: `driver:wave-adopted` and `driver:wave-blocked` keep `wave`, `tasks`, `headSha`/`detail`; an epoch is still every captured, unadopted result at the instant it is claimed, epochs are still numbered in fold order, and only one fold runs at a time.\n- Every sim keeps printing `ALL TESTS PASSED` on its last line and names no sibling sim.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles skills/ultrapowers/kernel fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/launch.mjs fleet/sandbox-boot.sh fleet/publish-fold.mjs",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-136/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-136/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-136/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-136/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
