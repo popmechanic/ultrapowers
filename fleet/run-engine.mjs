@@ -441,6 +441,26 @@ export const examConcernBlock = (concerns) => {
   if (!Array.isArray(concerns) || concerns.length === 0) return ''
   return '\n\n' + concerns.map((c) => 'EXAM CONCERN: ' + String(c)).join('\n')
 }
+// #990 — what the worker SAID it diverged on. An amendment entry is
+// `{amends: 'clause'|'files'|'sim', what, why}` on the worker's reply: the one
+// place a compelled divergence — an edit outside FILES, a clause read
+// otherwise, a sim re-aimed — is declared rather than discovered. Rendered for
+// the referee so the divergence arrives as a declaration to JUDGE rather than
+// as an anomaly in the diff to undo (run-2's compelled out-of-Files edit,
+// reverted by a fix round that never saw why it was made). No entries renders
+// nothing at all, which keeps the prompt of every task that declared none
+// byte-identical to the one it had before this existed.
+export const amendmentBlock = (amendments) => {
+  if (!Array.isArray(amendments) || amendments.length === 0) return ''
+  return '\n\nAMENDMENTS:' + amendments
+    .map((a) => '\n- ' + String(a && a.amends) + ': ' + String(a && a.what) +
+      ' — ' + String(a && a.why))
+    .join('')
+}
+// The entries of one reply, defensively: a worker that declared none, or typed
+// the key as something other than an array, contributes nothing.
+const amendmentsOf = (reply) =>
+  (reply && Array.isArray(reply.amendments)) ? reply.amendments : []
 // ── the state-exam record (spec 2026-09-09 §3.5, §3.6) ──────────────────────
 // A state exam is an exam that measures a running app's STATE — the store diff
 // it produced, whether the render happened, whether a mutant of the expected
@@ -2795,6 +2815,11 @@ export async function runEngine({
                  ...examEditedField() }
       }
     }
+    // #990 — the amendments the review round will read. `impl` is reassigned to
+    // the fix reply below when the pass bought a round, so the implementer's own
+    // declarations are held here, before that happens; the fix round's are
+    // appended after them at the prompt, in the order they were made.
+    const implAmendments = amendmentsOf(impl)
     // A flaky exam beside an otherwise-green pass leaves `reds` empty here, and
     // an empty pass buys no round — the task goes straight to review.
     if (reds.length) {
@@ -2921,6 +2946,12 @@ export async function runEngine({
         // are the driver's fact and the concern is the graded party's claim
         // about them.
         examConcernBlock(examConcerns) +
+        // After the concerns about the exam, before the constraint checks
+        // (#990): the worker's own declaration of where it diverged, the
+        // implementer's entries first and the fix round's after them when a
+        // round ran. A task whose replies declared none renders nothing here,
+        // so its prompt is the one it had before this existed.
+        amendmentBlock(implAmendments.concat(proofFixes ? amendmentsOf(impl) : [])) +
         checkEvidenceBlock(checkEvidence) +
         // Read HERE, not at the pre-review pass: the round grades the tree the
         // pre-review repair round left, so it must read the record that round's
