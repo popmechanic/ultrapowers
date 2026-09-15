@@ -420,6 +420,11 @@ proof, park = {}, {}
 # wrote for it and nothing else. A task that never raised one has no entry, and
 # its cell reads `null`.
 attention = {}
+# The siblings a task was re-edged onto, per task: the ids of the LATEST
+# `driver:re-edged` the engine wrote for it. It is never cleared — once the
+# re-dispatch has moved the state on, what the task waited on is still worth
+# reading. A task no re-edge names has no entry, and its cell reads `null`.
+blocked_by = {}
 # Every `worker:start`, and the positions each label was closed at: a role is
 # the last start of the task that no later end of the SAME label answered.
 opens, closes = [], {}
@@ -443,6 +448,17 @@ for at, doc in enumerate(events):
                 state[tid] = "proving"
                 proof[tid] = {"cmd": doc.get("cmd"), "exit": doc.get("exit"),
                               "ts": doc.get("ts")}
+    elif kind == "driver:re-edged":
+        # A task the driver put back on a sibling WAITS — it is not failed, even
+        # when the `worker:end` that made it `failed` came first. The events are
+        # id-sorted, so the later id of this line is what makes it win; a
+        # `BLOCKED` end with no re-edge after it stays `failed`, and a later
+        # `worker:start` moves the state on through the start rule above.
+        for tid in named(doc):
+            if tid in state:
+                state[tid] = "waiting"
+                blocked_by[tid] = [str(s) for s in listed(doc, "blockedBy")
+                                   if not isinstance(s, (dict, list))]
     elif kind == "driver:attention":
         for tid in named(doc):
             if tid in state:
@@ -501,7 +517,8 @@ cells = {}
 for tid in sorted(ids, key=key):
     cells[tid] = {"wave": wave.get(tid), "state": state[tid], "role": role_of(tid),
                   "lastProof": proof.get(tid), "park": park.get(tid),
-                  "attention": attention.get(tid)}
+                  "attention": attention.get(tid),
+                  "blockedBy": blocked_by.get(tid)}
 
 if MODE == "sub":
     out = (sub or "") + "\n"
