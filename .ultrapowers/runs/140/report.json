@@ -1,0 +1,90 @@
+{
+  "integrationBranch": "ultra/integration-run-140",
+  "baseSha": "3a7b834d0c63f6d5de7222a516ec1b12e58d7c54",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "6626621a18741e36babea2f168d56fc7fb680e57",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-140/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "GLOBAL CONSTRAINT \"Every sim keeps printing `ALL TESTS PASSED` on its last line and names no sibling sim\" is in literal tension with the new exam: `fleet/tests/test_run_engine_fold_policy.mjs` leg (g) (clone lines 745\u2013806) names three siblings as string literals \u2014 `test_run_engine_ready_set.mjs`, `test_run_engine_joined_proofs.mjs`, `test_run_engine_proof_runs.mjs` \u2014 and `readFileSync`s each. This is not the implementer's choice: the task's own Proof leg (g) requires exactly that (\"read as text in the new sim, `test_run_engine_ready_set.mjs` passes `foldAgeMs: 0` in each of the eight scenarios named and not in `c1` \u2026\"), and the Context restates the constraint as \"spawns no sibling sim\". The constraint carries no `Check:` of its own, and the bridge (`python3 -m pytest \u2026 tests/test_fleet_suite.py`, RUN EVIDENCE exit 0, 25 passed) runs the hermeticity sim, so nothing is actually red. Recording it so the operator can reconcile the constraint's wording (\"names\") with the plan's reading (\"spawns\"); no edit to this tree is warranted.; Flake risk in the new exam's wall-clock coupling. `fleet/tests/test_run_engine_fold_policy.mjs` leg (d)/(e) (clone lines ~510\u2013570) asserts `adoptTs - endATs <= AGED_THRESHOLD_MS + WAKE_SLACK_MS` \u2014 300 + 1000 ms \u2014 where `adoptTs` is the `ts` of the `driver:wave-adopted` event, i.e. it is only appended after a whole real kernel fold (python3 `fold`/`resolve`/`materialize`/`emit-weave`, git ops, and the candidate suite) has completed. That leaves the fold under ~1 s of budget; the companion assertion `adoptTs < endBTs` leaves it under `AGED_HOLD_MS` = 2000 ms. Both are green in EXAM EVIDENCE, and the 1-second window is the plan's own number (Proof leg (e): \"within one second of A's `worker:end` plus 300 ms\"), so this is advisory only \u2014 but the exam runs through the bridge under `pytest -n auto`, where several sims fold concurrently, and that is where a loaded box, not the engine, becomes the reason the leg goes red. If it ever flakes, raise `WAKE_SLACK_MS` and `AGED_HOLD_MS` together (keeping `AGED_HOLD_MS > AGED_THRESHOLD_MS + WAKE_SLACK_MS`, which is what makes the leg discriminate a timer wake from a landing wake) rather than loosening the `adoptTs < endBTs` pin, which is the assertion that actually carries M5.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-140/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [175 items]\n\n........................................................................ [ 41%]\n........................................................................ [ 82%]\n...............................                                          [100%]\n============================= 175 passed in 40.35s =============================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles skills/ultrapowers/kernel fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/launch.mjs fleet/sandbox-boot.sh fleet/publish-fold.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 306759,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-140/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [174 items]\n\n........................................................................ [ 41%]\n........................................................................ [ 82%]\n..............................                                           [100%]\n============================= 174 passed in 32.39s =============================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "5aae6884f3a57116997d365deb2d9d97a2b9c3f3",
+      "branches": [
+        "1"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-140/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-140/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.13,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
