@@ -1,0 +1,184 @@
+{
+  "integrationBranch": "ultra/integration-run-132",
+  "baseSha": "a595598a91c7d663fbbfcfcb930b55418e134753",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "99df99bb99aac66827d0d5d6f6e657a175f590c4",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-132/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the `null` branch of the run-number parse is implemented and now asserted by the contract, but no exam leg exercises it. `fleet/run-engine.mjs:1143` writes `Number.isFinite(n) ? n : null`, and the CONTRACT sentence this task added says `work.adopted_run` is \"`null` when the stamp is not `run-<N>`\" \u2014 yet every hub-driving case in fleet/tests/test_run_engine_kata_close.mjs uses `stamp: 'run-12'` (the M3 case passes no hub at all), so deleting the `: null` fallback and letting a `NaN` reach `patchMetadata` leaves the exam green. M1 only names the integer case, so this is advisory, not a missing criterion. What would settle it: a fourth block reusing `makeFakeKata` and `WAVES()` with the rig's default `stamp = 'sim'` plus the same `kataRecord`, asserting task 1's `patchMetadata` patch deep-equals `{'work.adopted_run': null, 'work.adopted_sha': SHA}` \u2014 in particular that the value is `null` and not a `NaN` the hub would have to store.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "1ef60ad5ca9a18932ae90ba16bf7e9bd8e1ec148",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-132/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "Scope creep in `fleet/tests/_engine_helpers.mjs`: beyond the edit the task's Context names verbatim (\"The rig edit is Task 1's literal, made identically here: `kata = undefined` in `rig`'s parameters and `...(kata === undefined ? {} : { kata })` into `runEngine({...})`\"), the diff also adds an `exec = execSeam` parameter and rewires `exec: execSeam` to `exec`. Nothing uses it: the exam `fleet/tests/test_run_engine_reuse.mjs` does not call the shared `rig` at all \u2014 it declares its own `reuseRig`, a full copy of `rig`'s body with the recording seam inlined. So the knob is dead code, and it is dead code in a file the sibling task edits at the same hunk with the plan's literal, which is where a wave fold would have to reconcile two different versions of the same addition. Either use the shared knob from the exam or drop it; the copy of `rig` is justified by `onPhase`/`onExec`/`baselineDir`, the `exec` parameter is not.; Global constraint (prose, no `Check:` behind it): \"a hub read the reuse needs that fails, or a tag that cannot be fetched, means no reuse and the full plan runs.\" The tag half is honoured \u2014 a non-zero fetch refuses. The read half is not: `openKataTask` treats a *failed* read and a *mismatched* read identically \u2014 `kataCall('getissue', \u2026)` returns `null` on any transport failure (`fleet/run-engine.mjs:1030-1039`), and `if (!issue || issue.revision !== row.revision) throw kataFatal(\u2026)` then ends the whole run as `kata-revision-mismatch`. Because the read moved to setup for every task of every wave, one transient failure on any task's issue now aborts the run before wave 1 rather than refusing reuse and running the full plan. I read the constraint as separating the two: a null answer (the hub did not answer) should refuse reuse and let the plan run, while a revision that came back and disagrees stays fatal \u2014 which is what M1's \"the mismatch rule is unchanged\" preserves. Both can hold at once; the diff collapses them. Note this is BASE's own conflation, not one this diff introduced, which is why it is minor: `if (!issue) return` (leaving the task unreused and its sheet uncomputed) versus the existing throw on a revision that disagrees would satisfy both.; unverified: two legs of the Claim that this diff cannot settle on its own. (1) Cross-task \u2014 the reused set is discovered from `work.adopted_run` / `work.adopted_sha`, the keys the sibling task writes at close; every sim here seeds them by hand into a fake hub, so nothing in this patch shows a real relaunch reading a real stamp. What would settle it: an end-to-end run of the two tasks together on the folded tree, or the sibling's own exam landing and the pair being exercised once against a live hub. (2) The `main=`-empty case \u2014 the most likely production shape, a relaunch at exactly the parked run's base, is deliberately excluded by the exam's origin (`makeParkedOrigin` always advances main past the parked base, and the header says \"the reuse fold's `main=` side is never empty\"). The implementer's comment that no special case is needed is correct \u2014 `skills/ultrapowers/kernel/repo_weave.py:87` states \"An empty patch is a task that changed nothing (tree == base's tree)\" \u2014 and a wrong reading would only degrade to a refusal, so this is coverage rather than a defect. What would settle it: one more refusal-shaped or reuse-shaped sim with BASE equal to `report.baseSha`.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-132/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [149 items]\n\n........................................................................ [ 48%]\n........................................................................ [ 96%]\n.....                                                                    [100%]\n============================= 149 passed in 32.29s =============================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "sed -n '/Kata record (engine)/,/status.json:/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'Closes:.*work.adopted_run.*work.adopted_sha.*done'",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/run-engine.mjs",
+        "fleet/tests/_engine_helpers.mjs"
+      ],
+      "with": [
+        "2"
+      ]
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/run-engine.mjs",
+        "fleet/tests/_engine_helpers.mjs"
+      ],
+      "with": [
+        "1"
+      ]
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_worker_kata_env.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "fatal: couldn't find remote ref ultra/integration-run-114\nfatal: couldn't find remote ref ultra/integration-run-114\n",
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/run-engine.mjs",
+        "fleet/tests/_engine_helpers.mjs"
+      ],
+      "with": [
+        "1"
+      ]
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/Kata record (engine)/,/status.json:/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'once, at setup.*closed.*work.adopted_run.*ultra/evidence/run-<M>.*run.patch.*driver:reuse.*refus'",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/run-engine.mjs",
+        "fleet/tests/_engine_helpers.mjs"
+      ],
+      "with": [
+        "1"
+      ]
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/launch.mjs fleet/sandbox-boot.sh fleet/fleet-bootstrap.sh fleet/lobby.mjs fleet/kata-client.mjs fleet/janitor.mjs fleet/publish-fold.mjs fleet/run-main.mjs fleet/run-waves.mjs fleet/run-worker.mjs fleet/confine-hook.mjs fleet/roles skills/ultrapowers/scripts skills/ultrapowers/kernel",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 452652,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-132/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [147 items]\n\n........................................................................ [ 48%]\n........................................................................ [ 97%]\n...                                                                      [100%]\n============================= 147 passed in 47.57s =============================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "4d7845de2a8f2f62ddb722b4681f563fe0e11ec3",
+      "branches": [
+        "1",
+        "2"
+      ],
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/run-engine.mjs",
+        "fleet/tests/_engine_helpers.mjs"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-132/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-132/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 4,
+      "foldCliWallTimeSec": 1.7049999999999998,
+      "autoResolved": 0,
+      "resolverTranscripts": [
+        {
+          "conflict": 1,
+          "attempt": 1,
+          "path": "fleet/tests/_engine_helpers.mjs",
+          "epoch": 2,
+          "hunksFile": "/home/exedev/target/.claude/ultrapowers/run-run-132/frontier/wave-1/conflict-1.hunks.txt",
+          "replyDir": "/home/exedev/target/.claude/ultrapowers/run-run-132/frontier/wave-1/reply-1-1",
+          "status": "RESOLVED",
+          "notes": "Both tasks make the identical rig edit (add `kata = undefined,` to rig's destructured params, both task bodies say so explicitly \u2014 \"Task 2 makes identically\"). The two sides only diverge in the doc comment wording for `kata`, and task 2's diff additionally carries the pre-existing `exec = execSeam,` line along with a new doc comment for it (frontier had that line uncommented, unchanged by task 1). Resolved by keeping a single `kata = undefined,` line (frontier's comment, since it's equally accurate and already-merged) followed by the `exec = execSeam,` line with task 2's added comment \u2014 this keeps the required `exec` parameter declaration intact (used later in the same function) while adding task 2's documentation for it, and avoids any duplicate `kata` line."
+        }
+      ]
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 2: examiner: (f) [M6] \u2014 second half: \"and the two survivor sims by the first two [Run: lines]\" \u2014 Encoded the contract-bullet half in full (the sed range read the same way the third Run: line reads it). The survivor-sims half is deliberately not in the exam file: test_sims_are_hermetic.mjs enforces \"no surviving sim names a sibling sim, run or merely checked for existence\", and asserting those two sims exist inside this file turns that guard red (verified \u2014 the probe failed with the block in and passed once removed). The Proof's first two Run: lines already run both sims and grep their sentinel, which is the coverage the leg names; a header comment in the exam records why the file does not restate it. Kata labelled needs-review."
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
