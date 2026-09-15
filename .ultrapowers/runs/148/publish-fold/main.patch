@@ -1,0 +1,752 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 4a03a3afcf255fe19b485f942d7082bf5a4f3726..d5657ce4c4574353823797bd4131f42f3dcfc553 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -136,11 +136,12 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
+   is refused with a 405 and the sandbox folds its branch onto the new main again, so a second run's
+   edits to the same file meet the first's in the kernel, not in a GitHub squash. Reason: decision 11
+   (#715), read on the 8-wide drain of 2026-09-08 — four kernel-seen pairs all folded green with zero
+-  conflicts, which met the pre-registered condition and retired the earlier rule ("run in parallel
+-  wherever file sets are disjoint"). Caveat on the record: every one of those joins was line-disjoint;
+-  the resolver's only real folds are run-36 (2 resolvers, merged) and run-44 (4 resolvers, 2 misses,
+-  suite red, caught), both 2026-09-07 — 6 dispatches, 2 misses, both caught; the next drain that
+-  produces a conflict is the resolver's measurement, not a reason to serialize. Allocated vCPU stays
++  conflicts (n=4 pairs, 8 runs, 2026-09-08), which met the pre-registered condition and retired the
++  earlier rule ("run in parallel wherever file sets are disjoint"). Caveat on the record: every one
++  of those joins was line-disjoint; the resolver's only real folds are run-36 (2 resolvers, merged)
++  and run-44 (4 resolvers, 2 misses, suite red, caught), both 2026-09-07 —
++  6 dispatches, 2 misses, both caught (n=6 dispatches, runs 36 and 44); the next drain that produces
++  a conflict is the resolver's measurement, not a reason to serialize. Allocated vCPU stays
+   over-committable (48 on a 16-vCPU plan during that drain), so contention, not allocation, bounds
+   concurrent runs.
+ - **One merge, one writer.** Manyana merges file *content* at the fold, and that is the only
+@@ -149,8 +150,10 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
+   no worker needs shared refs. Run STATE has exactly one writer per run — the sandbox — and its
+   record is git: `.ultrapowers/runs/<N>/status.json` plus the receipts, committed at every
+   transition and tagged at publish. `compile_plan.py` has defaulted to `overlap=fold` since the
+-  2026-08-14 A/B (0.640× wall), so same-file concurrent writes are the shipped default: a
+-  substrate that isolates harder than the kernel needs is buying nothing and costing width.
++  2026-08-14 A/B (0.640× wall, n=1 fixture; re-read 2026-08-30 at 0.594× over n=12 cells, 6
++  fixtures, `evals/results/2026-08-30-one-driver-fold-ab.md`), so same-file concurrent writes are
++  the shipped default: a substrate that isolates harder than the kernel needs is buying nothing and
++  costing width.
+ - **Handoffs are opt-in** — a session starts from the operator's intention, never from the last
+   session's agenda; read `.claude/ultrapowers/handoffs/` only when asked to resume (operator,
+   2026-08-31). When you do read them, **sort by mtime, never by filename** — they are named for
+@@ -170,7 +173,15 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
+   target's suite is a *reported sensor* with attribution, measured and never asserted on a
+   narrative. Deletion is owed per file, on the reading: a test file that has never caught anything
+   goes, and `skills/ultrapowers/scripts/catch_counter.py` is what turns that reading into the
+-  deletion. Ballast goes behind a measurement gate, never on an incident narrative.
++  deletion. Ballast goes behind a measurement gate, never on an incident narrative. And every
++  reading states how much it was read over: a reading row carries its `n=…` with the `window` it was
++  read in, and no default flips under `n = 5 runs` — `20 tasks` for a per-task reading. A flip taken
++  under the floor is an `experiment` on its map and carries its `rollback`; a fact read once (a kata
++  seam, a trap) carries its `date`, not an n (operator, 2026-09-15, #994). The decision applied that
++  floor to three readings: `#872`'s escapes reading is over the floor at `n=9` merged runs
++  (131–140); the fold rule (`#1006`, one replay) stays an `experiment` until five, its rollback
++  `foldAgeMs=0` — a fold at every landing; and one reviewer (`#974`) was flipped on `n=71` runs and
++  stands.
+ 
+ ## Working with the operator
+ 
+diff --git a/skills/ultrapowers/references/report-format.md b/skills/ultrapowers/references/report-format.md
+index fb079d572733ecb7486cc3166df9f9f20281c7b6..7e54e25238477f4cce94b44b303baf8ca4625490 100644
+--- a/skills/ultrapowers/references/report-format.md
++++ b/skills/ultrapowers/references/report-format.md
+@@ -102,7 +102,7 @@ The engine (`fleet/run-engine.mjs`) returns a single structured report object; `
+ | `tests` | yes | Result of the suite run on the integration branch: `{ command, passed, output, unattributed }`. `unattributed` is the run's **unattributed reds** (#871) — every test path a wave adopted red because no task of that wave named it, in wave order and once each; `[]` when there was none, on a green run, and on a run that merged nothing (the key is always present). A path is attributed when it equals an entry of some wave task's `files` or `proofTests` — string equality on the path the plan spelled, no globbing and no resolving — and a candidate takes the unattributed route only when its failing paths are non-empty and every one of them is unattributed: one attributed path, or an output that named no path at all, sends the candidate down the `reconcile:` route and on to `TEST_FAILED` as before. An unattributed candidate is adopted exactly as a green one is (same `MERGED` `waveMerges` row, whose `suite` reads `{ passed: false, unattributed, output }`), no `reconcile:` agent is dispatched at it, and each path draws one `judgmentCalls` line `unattributed red: <path> went red on wave <n>'s fold; no task names it`. The gate reads this field: a `passed: false` with a non-empty `unattributed` passes rather than blocks, and the gate receipt's `suite` carries the list |
+ | `integratedRuns` | no | The driver's own execution of the Proof `Run:` commands of every merged task the fold JOINED (#887), re-run on the adopted integration tree. A task is joined when its touch set (declared `files` ∪ the paths its captured patch changed) meets another merged task's, which is the only case where the fold can break a proof its own clone already passed; a single-task wave and a wave of pairwise-disjoint tasks re-run nothing. One item per executed command, `{ task, cmd, exit, stdout, joined, with }`: the task id, the command verbatim, its exit code, its combined stdout/stderr tail, the joined paths this task shares (`waveMerges[w].joined` ∩ its touch set) and the ids of the tasks it shares them with, in plan order. `[]` when no joined task declared a `Run:` proof, when the wave joined nothing and when no tree was adopted — the cases are indistinguishable here, so read it beside `waveMerges` and its `joined`. A non-zero `exit` is **reported, not gated** (#871 decision 1): the run carries one `judgmentCalls` line naming the command, the joined path and the pair it went red on, and nothing blocks — a red on the fold of two tasks is a finding about the join, not a finding against either task, so it is not a blocking one. Because the driver ran these itself, they are settled — a cannot-verify item asking for their re-execution is answered by this field, not deferred |
+ | `integratedChecks` | no | The driver's own execution of every Global Constraints `Check:` command on the adopted integration tree. One item per command, `{ cmd, exit, stdout, minor }`: the command verbatim, its exit code, its combined stdout/stderr tail, and whether the run declared it minor. `[]` when the run declared no checks and when no tree was adopted — the two cases are indistinguishable here, so read it beside `waveMerges`. A non-zero `exit` on a non-minor check is a blocking completeness finding (`integrated Check: <cmd> exited <n> on the adopted tree`): the constraint held in every task's own clone, where each reviewer was right about the tree it read, and the fold broke it — which is precisely what no per-task review can see. A non-zero minor check is a judgment call and nothing more |
+-| `reviewEconomy` | no | What a reviewer-minute bought. `reviewerMs` — the summed wall clock of every `review:` agent call. `blockingFindings` — how many blocking issues the REVIEWERS returned, de-duplicated by `severity|detail` across the run; the driver's own `Run:`/`Check:` reds are excluded, because charging the driver's findings to the reviewers flatters the ratio. `blockingPerReviewerMinute` — `blockingFindings / (reviewerMs / 60000)`, and `0` when no reviewer ran. Three keys and no others: `pairRounds` and `r2MarginalBlocking` — how many rounds dispatched a pair, and what the second reviewer returned that the first did not — were the measurement that retired the pair itself (#964 Task 2: eight marginal findings across 71 runs, none of them one of the five real defects), and went with it |
++| `reviewEconomy` | no | What a reviewer-minute bought. `reviewerMs` — the summed wall clock of every `review:` agent call. `blockingFindings` — how many blocking issues the REVIEWERS returned, de-duplicated by `severity|detail` across the run; the driver's own `Run:`/`Check:` reds are excluded, because charging the driver's findings to the reviewers flatters the ratio. `blockingPerReviewerMinute` — `blockingFindings / (reviewerMs / 60000)`, and `0` when no reviewer ran. Three keys and no others: `pairRounds` and `r2MarginalBlocking` — how many rounds dispatched a pair, and what the second reviewer returned that the first did not — were the measurement that retired the pair itself (#964 Task 2: eight marginal findings across 71 runs, n=71 runs through 2026-09-13, none of them one of the five real defects), and went with it |
+ | `baseline` | no | Result of the suite run on BASE's tree in a clone of its own, `<runDir>/clones/baseline` — started during **Setup**, concurrently with wave 1 but with a deliberate head start on its dispatch: the engine's `BASELINE_HEAD_START_MS` (500 ms in `fleet/run-engine.mjs`) is a bounded race, not a wait — a suite that answers red inside that window parks the run before any worker is dispatched, and one that does not is left running while wave 1 goes out and is read at the barrier. Run **exactly once per run** whatever the waves do. `{ passed, output }` on every run that completed Setup — never `null` there; `null` only on a run that never got that far. `passed: false` means BASE itself was red, and the run PARKS on it: the epoch is pushed as one `TEST_FAILED` row with a `detail` beginning `baseline: the suite is RED on BASE`, every task the red held up is named in `unfinished` as `never dispatched`, no `reconcile:` agent is ever dispatched (there is no red for one to repair that the run did not inherit), and the integration branch is left where the run found it. A red baseline also draws a `baseline:` judgment call. A green one is what makes every later candidate red attributable to the epoch that adopted it |
+ | `waveMerges` | no | The engine writes one row per epoch — an epoch being the set of results one fold adopts, numbered 1, 2, … in fold order — and a row's `wave` is that number, the epoch, never an index into `waves`. A fold's row carries `wave`, `status`, `headSha`, `detail`, `branches` (the task IDs submitted to that fold, listed even when it failed), `joined` (the paths this epoch's tasks met on, `[]` when they met on none) and, when the suite reported unattributed reds, `suite`. Surfaces *how* integration went, not just whether it failed; status semantics are enumerated once under **`waveMerges[].status` values** below. A red baseline on BASE is itself one row: the `TEST_FAILED` row the `baseline` field describes, carrying `wave`, `status`, `detail` and `branches` and no `headSha` (nor `joined`, nor `suite` — those three come from the fold push alone), so a run that parked on a red BASE has a row here, not nothing. The array is empty only when no fold ever ran — a run interrupted before any fold, a run whose every task failed so nothing mergeable was ever captured, or a plan whose dependency cycle let no task be dispatched — and it is never absent. Consumers — the Step-5 gate and display code — MUST degrade gracefully: check that `waveMerges` is present and non-empty and that `waveMerges[last].headSha` exists before indexing it; an empty `waveMerges`, or a last row carrying no `headSha`, is `BLOCKED` at the Step-5 gate as "merge-sha guard unavailable", never a crash. |
+ | `frontier` | no | One entry per epoch fold that took the **contended** merge path (frontier mode) — recorded whether the epoch adopted its folded candidate or fell back: whenever the fold CLI ran, the on-disk `frontier/wave-<n>/` directory is the durable record the production canary harvests. Absent or empty on every run whose every fold ran uncontended: `overlap=fold` has been `compile_plan.py`'s shipped default since the 2026-08-14 A/B (CLAUDE.md, "One merge, one writer"), so an empty `frontier` reads as epochs that held no intersecting `files`, not as a compile that opted out of folding. Fields, all sourced from the contended dispatches' reply scalars — no payload is relayed through an agent (#36): `wave` (the epoch number, in fold order — the same number `waveMerges[].wave` carries, never an index into `waves`); `foldLogPath` (the wave's `fold_log.jsonl`, the self-sufficient event record documented in `kernel/FOLD_LOG.md`); `conflictsIndex` (the `conflicts.json` beside it — the single record of every conflict and every park, with its `dispatchable()` verdict and reason); `selfChecks` (the fold CLI's two live self-checks, **sourced from the completing CLI reply** — the CLI runs them inside whichever call completes the wave, so a stop reply carries none; `ok`, or a named failure that routed the wave to fallback, or the empty string when no reply ever attested; the engine never claims a fold succeeded without them); `foldCliCalls` (how many fold-CLI invocations this wave drove — 1 fold + N resolves + 1 materialize on a clean run, fewer when it fell back. The incremental protocol makes N unbounded by the conflict total, because a drained stop folds on inside the same `resolve` call, so this is the wave's real CLI cost rather than a number derivable from the conflict count); `foldCliWallTimeSec` (the **sum** of the wall clocks the STEP replies reported across every leg — fold, each resolve, and materialize — reported on its own line so the first real-repo reading is not buried inside a passing test result; `null` when no reply timed its invocation); `autoResolved` (how many conflicts the kernel resolved **in process** against the wave's `Commutes:` contract — every writer declared the path and every hunk segment was an addition, so the fold never stopped on it and no resolver was dispatched. **Summed** across the fold and resolve legs, since the kernel folds on past a contract-resolved conflict inside any call; `0` when the wave declared no `Commutes:`, when no declared path conflicted, or when no reply carried the count. Read it beside `resolverTranscripts`: it is the resolver dispatches the contract *bought*); `resolverTranscripts` (one entry per resolver dispatch — `conflict` (the conflicts-index `i`), `attempt`, `path`, `epoch`, `hunksFile`, `replyDir`, `status`, `notes` — recorded verbatim as the A/B grading surface). `foldLogPath` and `conflictsIndex` are empty strings when the fold dispatch threw, returned no reply at all, or returned a reply that carried no paths — in the first two cases the directory the paths would name may never have been written, since the CLI itself may never have run. Fallback **reasons** are **not** recorded here: each one is a `judgmentCalls` entry naming its reason plus the wave's `waveMerges` result — one fact, one record |
+diff --git a/skills/ultrawrite/SKILL.md b/skills/ultrawrite/SKILL.md
+index 35b4dc95538d5560a19c1557920d681068828b26..285cc5f94c3e3a5e38651f5df954d5180aaf9aaa 100644
+--- a/skills/ultrawrite/SKILL.md
++++ b/skills/ultrawrite/SKILL.md
+@@ -65,7 +65,8 @@ conflict. Keep both markers in the contiguous run directly under the heading.
+   pushes, deploys, or waits on a human is its own `release`/`manual` task.
+ - `**Review:**` — optional, `peer` or `lean`, kept for the record. Since the engine plan of
+   2026-09-14 (PR #974) every task gets exactly one reviewer and one fix round whatever the
+-  value says; the pair `peer` used to buy is gone on its reading (8 marginal findings in 71 runs).
++  value says; the pair `peer` used to buy is gone on its reading (8 marginal findings,
++  n=71 runs through 2026-09-13, #964).
+ - There is no `Tier` plan marker. Tier is a signed field of the *intent document* (One
+   Driver spec §7), a spend authority — never written on a task here.
+ - `Depends-on` and `Commutes` lines are refused outright. Ordering is derived from
+@@ -238,9 +239,9 @@ choice found mid-authoring comes back as a question, not as a guess.
+ 
+ Hold the operator to one Claim confirmation and one execute choice per plan, each asked
+ with AskUserQuestion. Launches stay serial: N plans are N launches back to back, because
+-concurrent launches race on the run number (#667). The 2026-09-05 clock census of runs
+-10–12 found authoring throughput, not the sandbox, was the first bound on how many runs
+-could be live at once — a queue authored in parallel is what lifts it.
++concurrent launches race on the run number (#667). The clock census (n=3 runs, runs
++10–12, 2026-09-05) found authoring throughput, not the sandbox, was the first bound on
++how many runs could be live at once — a queue authored in parallel is what lifts it.
+ 
+ ## The proof gate — before any compile
+ 
+@@ -259,7 +260,20 @@ leg (b) actually falsify M2, or merely mention it?
+ Its diet is capped mechanically, not by the reader's restraint:
+ 
+     UW=${CLAUDE_PLUGIN_ROOT}/skills/ultrawrite/scripts
+-    python3 $UW/extract_gate_input.py <plan.md> --task <id>
++    python3 $UW/extract_gate_input.py <plan.md> --task <id> --base <sha>
++
++Since #989 the reader reads BASE as well: with `--base <sha>` (the launch base, a 40-hex
++commit of the plan's repository, or a checkout directory) the diet carries one more key,
++`base` — for the task's Files and every path its Proof names, whether the path exists
++there, its line count, its headings or test names, and an `excerpt` of the lines that
++carry the diet's own literals, at most `8000` bytes per file and `24000` in total,
++`truncated` flagged when the cap cut. The reader's question gains its second half on that
++excerpt: *whether a named file already pins the opposite of a clause, and whether every
++section, path or symbol a leg names exists at BASE — or does not exist there at all.* — so "this sim already asserts the wave count"
++and "this doc section does not exist" are the reader's to say, not the sandbox's. The
++`hash` a verdict is keyed on is `unchanged` by the excerpt — it is still over the Claim and
++Proof only — so a moved base never stales a verdict; record the base a verdict was read
++against in the tally (`tally.base`), as the 2026-09-15 plans do.
+ 
+ Feed the subagent **only** that output — no plan body, no ledger, no sibling tasks. Write
+ each verdict, keyed on the hash the extractor prints, into the sibling
+@@ -301,8 +315,9 @@ path to write beside. A task whose verdict lands first gets its next
+ reader the moment its Claim or Proof is edited: re-extract that one task with
+ `extract_gate_input.py`, dispatch one reader for it, and do not wait for the round's
+ other verdicts to arrive — the verdict is still keyed on the hash, so the edit is what
+-re-dispatches, and a round boundary buys nothing. Measured 2026-09-04: the four wide
+-rounds took 13 of the 22 minutes; rounds five through nine were one or two tasks apiece,
++re-dispatches, and a round boundary buys nothing. Measured 2026-09-04 (n=1 sitting,
++9 rounds): the four wide rounds took 13 of the 22 minutes; rounds five through nine were
++one or two tasks apiece,
+ each of them idle behind a barrier it did not need.
+ 
+ Then resolve provenance and compile:
+@@ -393,9 +408,9 @@ Independence is a property of contracts, not of files.
+    B needs A's *runtime behaviour*, not A's shape — something no contract can promise.
+    Name that behaviour in B's Context, in one sentence. "At this size", "a good engineer
+    would keep this together" and "it is one file" are not reasons: same-file edits fold,
+-   and size is what width is for. Measured 2026-09-02: the same tool built as a two-task
+-   chain took 79 min with one fix round; as nine contracts, seven wide, it took 49.5 min
+-   with none (#541).
++   and size is what width is for. Measured 2026-09-02 (n=2 runs, one pair): the same tool
++   built as a two-task chain took 79 min with one fix round; as nine contracts, seven
++   wide, it took 49.5 min with none (#541).
+ 3. **State the width.** The plan's `**Parallelization rationale:**` line names each
+    wave's width and every chain longer than one with its sentence from rule 2. Concluding
+    that a plan is genuinely linear is still a legal outcome — it just has to say why.
+@@ -412,7 +427,8 @@ Independence is a property of contracts, not of files.
+    five lines any order would have satisfied. Give each such task its **own region or
+    file**: a registration is a new file discovered by glob, never an appended line.
+ 5. **Prefer several small concurrent plans** folding into one frontier over one large plan
+-   (N=3 drains measured 0.26× batch). Until that fold lands (Tier 2), an effort split
++   (0.26× batch wall, n=1 drain of 3 runs, #454, 2026-09-01). Until that fold lands
++   (Tier 2), an effort split
+    across plans gives the **final** plan an integration-spanning acceptance — per-phase
+    green never establishes integrated green — or declares the gap explicitly at the final
+    gate. Never silently.
+@@ -510,3 +526,8 @@ author's own to check — nothing prints it.
+ - No pinned number is a guess: every pinned literal was computed, not assumed — the author
+   ran the command or did the arithmetic at BASE and pasted back what it printed, rather
+   than the figure the sentence wanted to be true.
++- Every reading a plan's Context or Summary cites carries `n=… (window)` — `n=9 merged
++  runs (131–140)`, never a bare count — and a plan whose default flip rests on a reading
++  under the floor says `experiment` in its Summary and names its `rollback` there; the
++  floor is `CLAUDE.md`'s `Test doctrine` bullet (n = 5 runs, 20 tasks for a per-task
++  reading).
+diff --git a/skills/ultrawrite/scripts/authoring_census.py b/skills/ultrawrite/scripts/authoring_census.py
+index ddc3f0e88967b96a7f40068994fe8ce1f3e7ddef..9879ae1f33dec063b03f5e28621a4620d00d790d 100755
+--- a/skills/ultrawrite/scripts/authoring_census.py
++++ b/skills/ultrawrite/scripts/authoring_census.py
+@@ -181,8 +181,18 @@ def _sum(rows, key):
+                if isinstance(row.get(key), int) and not isinstance(row[key], bool))
+ 
+ 
++def _window(rows):
++    """The runs the census was read over: `<lowest>..<highest>`, `-` when no
++    row was found. `census_rows` sorts by run number, so the ends are the
++    first and last row."""
++    if not rows:
++        return MISSING
++    return "%d..%d" % (rows[0]["run"], rows[-1]["run"])
++
++
+ def _totals_line(rows):
+-    """The table's last line: the release read as one number per question.
++    """The table's last line: the release read as one number per question,
++    over the window of runs it read (`runs=`, after `plans=`).
+ 
+     `risk_override` is over the rows that carry a routing record at all — a
+     pre-plan record has no branch and is no part of the denominator — and the
+@@ -195,9 +205,10 @@ def _totals_line(rows):
+             p, q = row["recommended_picked"]
+             picked += p
+             offered += q
+-    return ("totals: plans=%d risk_override=%d/%d recommended_picked=%d/%d "
+-            "authoring_min=%d run_min=%d"
+-            % (len(rows), len(risk), len(routed), picked, offered,
++    return ("totals: plans=%d runs=%s risk_override=%d/%d "
++            "recommended_picked=%d/%d authoring_min=%d run_min=%d"
++            % (len(rows), _window(rows), len(risk), len(routed),
++               picked, offered,
+                _sum(rows, "authoring_min"), _sum(rows, "run_min")))
+ 
+ 
+diff --git a/skills/ultrawrite/scripts/extract_gate_input.py b/skills/ultrawrite/scripts/extract_gate_input.py
+index c260570f8ae23b4ab95de9763946e6b27f408d2e..72bba6a78534f9762ac30bb32e7c585a570d94f0 100755
+--- a/skills/ultrawrite/scripts/extract_gate_input.py
++++ b/skills/ultrawrite/scripts/extract_gate_input.py
+@@ -15,6 +15,16 @@ prints `{"task", "claim", "proof", "hash"}` where hash is
+ when it checks `<plan-stem>.gate-verdicts.json` (§4.5). `verdicts_path` is
+ re-exported here so gate tooling has one import for both halves of the contract.
+ 
++    extract_gate_input.py <plan.md> --task <id> --base <sha|dir>
++
++adds one top-level key, `base` (#989): a capped excerpt of what the task's
++Files and the paths its Proof names hold at that base — present or absent,
++line count, headings or test names, and the lines carrying the diet's own
++literals — so the reader can say "a test already pins the opposite" or "the
++section this leg names does not exist" instead of judging shape alone. The
++hash does not change: it is over the Claim and Proof only, so a moved base
++never stales a verdict (the base a verdict was read against is the tally's).
++
+     extract_gate_input.py <plan.md> --plan
+ 
+ is the plan-level diet (#552): the header's ONE operator sentence and every
+@@ -28,6 +38,7 @@ from __future__ import annotations
+ import argparse
+ import hashlib
+ import json
++import re
+ import sys
+ from pathlib import Path
+ 
+@@ -36,7 +47,17 @@ from pathlib import Path
+ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ultrapowers/scripts"))
+ 
+ from compile_plan import (  # noqa: E402
++    _BANNER_CAP,
++    _BANNER_RE,
++    _CASE_LINE_RE,
++    _LITERAL_MIN,
++    _RULE_RE,
++    _claims_run_command,
++    _path_referent,
++    BaseTree,
+     CLAIMS_GRAMMAR,
++    PATH_RE,
++    RUN_LINE,
+     gate_input_hash,
+     machine_restatement,
+     parse_claims_body,
+@@ -46,8 +67,19 @@ from compile_plan import (  # noqa: E402
+     verdicts_path,
+ )
+ 
+-__all__ = ["gate_input", "gate_input_hash", "plan_input", "verdicts_path",
+-           "main"]
++__all__ = ["base_excerpt", "gate_input", "gate_input_hash", "plan_input",
++           "verdicts_path", "main"]
++
++# The excerpt's caps (#989): three times the largest excerpt measured on the
++# four tasks of the 2026-09-15 authoring-cost plan (6,216 bytes for one file,
++# 9,542 for one task), so a normal task's files reach the reader whole.
++EXCERPT_FILE_CAP = 8000
++EXCERPT_TOTAL_CAP = 24000
++# A carrier line rides with the two lines before it and the two after.
++EXCERPT_MARGIN = 2
++
++_FILES_BULLET = re.compile(r"^-\s*(Create|Modify|Delete|Test):\s*(.+)$")
++_RUN_PATH_TOKEN = re.compile(r"^[^\s]*/[^\s]*\.[A-Za-z0-9]{1,8}$")
+ 
+ 
+ def _claims_text(plan_path):
+@@ -75,6 +107,150 @@ def gate_input(plan_path, task_id):
+             "hash": gate_input_hash(claim, proof)}
+ 
+ 
++def _files_in_block_order(body):
++    """The task's Files paths as the block lists them — `Create:`, `Modify:`,
++    `Delete:` and `Test:` bullets in their written order, first mention wins.
++    `parse_task` sorts each kind; the reader is shown the author's order."""
++    paths = []
++    in_files = False
++    for line in body.splitlines():
++        if line.startswith("**Files:**"):
++            in_files = True
++            continue
++        if in_files and line.startswith("**"):
++            break
++        if not in_files:
++            continue
++        m = _FILES_BULLET.match(line.strip())
++        if not m:
++            continue
++        for tok in PATH_RE.findall(m.group(2)):
++            ref = _path_referent(tok)
++            if ref and ref not in paths:
++                paths.append(ref)
++    return paths
++
++
++def _proof_paths(proof):
++    """Every repository path the Proof names: its backticked tokens that are
++    path referents, then every whitespace-separated token of a `Run:` command
++    that contains `/` and ends in a dot and 1–8 alphanumerics."""
++    paths = []
++    for tok in PATH_RE.findall(proof):
++        ref = _path_referent(tok)
++        if ref and ref not in paths:
++            paths.append(ref)
++    for line in proof.splitlines():
++        m = RUN_LINE.match(line.strip())
++        if not m:
++            continue
++        for tok in _claims_run_command(m.group(1)).split():
++            tok = tok.strip("'\"")
++            if _RUN_PATH_TOKEN.match(tok) and not tok.startswith(("-", "/", "./", "../")):
++                if tok not in paths:
++                    paths.append(tok)
++    return paths
++
++
++def _diet_literals(claim, proof):
++    """The backticked tokens of the Claim and Proof that are at least
++    `_LITERAL_MIN` characters and carry no newline — the words a file line
++    must contain, verbatim, to be a carrier."""
++    out = []
++    for tok in PATH_RE.findall(claim) + PATH_RE.findall(proof):
++        if len(tok) >= _LITERAL_MIN and "\n" not in tok and tok not in out:
++            out.append(tok)
++    return out
++
++
++def _headings(path, lines):
++    """A `.md` file's `#` lines; any other file's test-case lines and section
++    banners (the compiler's own two shapes), in file order."""
++    if path.endswith(".md"):
++        return [l for l in lines if l.startswith("#")]
++    out = []
++    for l in lines:
++        if _CASE_LINE_RE.match(l):
++            out.append(l)
++            continue
++        m = _BANNER_RE.match(l)
++        if m and not _RULE_RE.match(l):
++            out.append(l)
++    return out
++
++
++def _carrier_excerpt(lines, literals):
++    """The numbered carrier regions: every line holding a literal, with
++    `EXCERPT_MARGIN` lines either side, each line once, ascending."""
++    keep = set()
++    for i, l in enumerate(lines):
++        if any(lit in l for lit in literals):
++            for j in range(max(0, i - EXCERPT_MARGIN),
++                           min(len(lines), i + EXCERPT_MARGIN + 1)):
++                keep.add(j)
++    return ["%d: %s" % (j + 1, lines[j]) for j in sorted(keep)]
++
++
++def _cap(rows, budget):
++    """Join `rows` with newlines, cut at a line boundary so the text is at
++    most `budget` bytes of UTF-8. (text, truncated)."""
++    out = []
++    size = 0
++    for r in rows:
++        add = len(r.encode("utf-8")) + (1 if out else 0)
++        if size + add > budget:
++            return "\n".join(out), True
++        out.append(r)
++        size += add
++    return "\n".join(out), False
++
++
++def base_excerpt(plan_path, task_id, base):
++    """The `base` key (#989): what the task's Files and its Proof's paths hold
++    at `base` — a `BaseTree` flag value (40-hex sha of the plan's repository,
++    or a checkout directory). Never touches the hash."""
++    text = _claims_text(plan_path)
++    tasks = split_tasks(text)
++    task = next((t for t in tasks if t["id"] == task_id), None)
++    if task is None:
++        raise SystemExit(
++            "extract_gate_input: no task %s in %s (found: %s)"
++            % (task_id, plan_path, ", ".join(t["id"] for t in tasks) or "none"))
++    claims = parse_claims_body(task["body"], task["id"], parse_plan_claim(text))
++    literals = _diet_literals(claims["claim"], claims["proof"])
++    tree = BaseTree.from_flag(base, plan_path)
++    paths = _files_in_block_order(task["body"])
++    for p in _proof_paths(claims["proof"]):
++        if p not in paths:
++            paths.append(p)
++    files = []
++    spent = 0
++    exhausted = False  # the total cap has cut an entry: nothing later rides
++    for path in paths:
++        if tree._blob_mode(path) is None:
++            files.append({"path": path, "status": "absent"})
++            continue
++        raw = tree.read_text(path)
++        if raw is None:
++            files.append({"path": path, "status": "absent"})
++            continue
++        lines = raw.splitlines()
++        entry = {"path": path, "status": "present", "lines": len(lines),
++                 "headings": _headings(path, lines)}
++        if exhausted or spent >= EXCERPT_TOTAL_CAP:
++            entry["excerpt"], entry["truncated"] = "", True
++        else:
++            rows = _carrier_excerpt(lines, literals)
++            budget = min(EXCERPT_FILE_CAP, EXCERPT_TOTAL_CAP - spent)
++            excerpt, cut = _cap(rows, budget)
++            entry["excerpt"], entry["truncated"] = excerpt, cut
++            spent += len(excerpt.encode("utf-8"))
++            if cut and budget < EXCERPT_FILE_CAP:
++                exhausted = True  # it was the TOTAL that cut this one
++        files.append(entry)
++    return {"rev": str(base), "files": files}
++
++
+ def plan_input(plan_path):
+     """The plan-level diet: the header's operator sentence and every task's
+     Machine restatement, keyed by a hash over exactly those two (#552)."""
+@@ -108,9 +284,18 @@ def main(argv=None):
+                       help="the task id as it appears in `### Task <id>:`")
+     mode.add_argument("--plan", action="store_true", dest="plan_mode",
+                       help="the plan-level diet: header Claim + every Machine")
++    ap.add_argument("--base", metavar="SHA|DIR", default=None,
++                    help="add a capped excerpt of the task's files at this "
++                         "base (a 40-hex commit of the plan's repository, or "
++                         "a checkout directory); the hash is unchanged")
+     args = ap.parse_args(argv)
++    if args.plan_mode and args.base is not None:
++        ap.exit(2, "extract_gate_input: --base rides a task diet only; the "
++                   "plan-level diet (--plan) reads no tree\n")
+     payload = (plan_input(args.plan) if args.plan_mode
+                else gate_input(args.plan, args.task))
++    if args.base is not None:
++        payload["base"] = base_excerpt(args.plan, args.task, args.base)
+     print(json.dumps(payload, indent=2))
+     return 0
+ 
+diff --git a/tests/test_authoring_census.py b/tests/test_authoring_census.py
+index 3df37f44a8ba5eb1a82d7818c551a715eee1e796..f6764365a08395012bb380075b940c171d09c725 100644
+--- a/tests/test_authoring_census.py
++++ b/tests/test_authoring_census.py
+@@ -133,8 +133,8 @@ ROW_133 = tsv("133", "47", "5", "2", "-", "width", "ultrapowers", "2",
+ # (a): m = the rows with a routing record (131, 133), k = those whose branch
+ # is `risk` (131); p/q summed over every row; 118 + 47 = 165; 16 is the one
+ # row carrying a `run_min`.
+-TOTALS = ("totals: plans=3 risk_override=1/2 recommended_picked=2/2 "
+-          "authoring_min=165 run_min=16")
++TOTALS = ("totals: plans=3 runs=9..133 risk_override=1/2 "
++          "recommended_picked=2/2 authoring_min=165 run_min=16")
+ 
+ TABLE = [HEADER, ROW_9, ROW_131, ROW_133, TOTALS]
+ 
+@@ -433,8 +433,8 @@ def test_d_fetch_then_prints_the_table_over_the_directory(tmp_path):
+     p, _into, _calls, _bare = run_fetch(tmp_path)
+     assert lines(p.stdout) == [
+         HEADER, ROW_131, ROW_133,
+-        ("totals: plans=2 risk_override=1/2 recommended_picked=2/2 "
+-         "authoring_min=165 run_min=16"),
++        ("totals: plans=2 runs=131..133 risk_override=1/2 "
++         "recommended_picked=2/2 authoring_min=165 run_min=16"),
+     ], p.stdout + p.stderr
+ 
+ 
+diff --git a/tests/test_extract_gate_input.py b/tests/test_extract_gate_input.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..1add78822d452bd8a4bc60c907b38800277b4e9d
+--- /dev/null
++++ b/tests/test_extract_gate_input.py
+@@ -0,0 +1,285 @@
++"""The proof-gate reader reads BASE (#989) — the exam of
++`skills/ultrawrite/scripts/extract_gate_input.py --base`.
++
++One test per leg of the 2026-09-15 plan `gate-reader-reads-base`, task 1:
++
++  (a) [M1] `--base <sha>` and `--base <dir>` add exactly one key, `base`, whose
++      `rev` is the value given; the hash equals the no-`--base` hash; and the
++      no-`--base` output carries no `base` key.
++  (b) [M2] `files` is the Files block's paths in written order, then the
++      Proof's backticked path, then the `Run:` command's path, no duplicate;
++      an absent path (or a directory) is `{"path", "status": "absent"}` alone.
++  (c) [M3] headings per file kind; the excerpt is the numbered carrier regions,
++      ±2 lines, no line twice, no non-carrier region, no 7-character literal.
++  (d) [M4] the 8,000-byte per-file cap and the 24,000-byte total cap, with
++      `truncated` exactly on the entries the cap cut.
++  (e) [M5] `--plan --base` is refused (exit 2, one stderr line naming --base,
++      empty stdout); an unknown sha exits non-zero with an `error:` line.
++  (f) [M6] the skill's proof-gate section says the new things, in order, and
++      still says the Stale-if things.
++
++The fixture is a one-commit git repository under tmp_path holding the plan
++itself, so a 40-hex `--base` names a commit of the plan's own repository.
++"""
++from __future__ import annotations
++
++import json
++import re
++import subprocess
++import sys
++from pathlib import Path
++
++import pytest
++
++ROOT = Path(__file__).resolve().parents[1]
++SCRIPT = ROOT / "skills/ultrawrite/scripts/extract_gate_input.py"
++SKILL = ROOT / "skills/ultrawrite/SKILL.md"
++
++# A 7-character literal is under the compiler's `_LITERAL_MIN` of 8; the
++# nine-character one is the carrier the exam looks for.
++SHORT_LIT = "sevench"
++LONG_LIT = "carrier_x"
++OTHER_LIT = "second_carrier"
++
++
++def _git(repo, *args):
++    return subprocess.run(["git", "-C", str(repo), *args], check=True,
++                          capture_output=True, text=True).stdout
++
++
++def _plan_text(md_path, py_path, mjs_path, absent_path, dir_path,
++               proof_extra, run_path):
++    return f"""# A plan for the exam
++
++**Grammar:** claims-v1
++
++**Claim:** After this run I can see the thing. (elicited)
++**Summary:** One. Two. Three.
++
++**Goal:** the exam's fixture.
++
++**Tech Stack:** none
++
++**Spec:** none
++
++**Parallelization rationale:** one task.
++
++## Global Constraints
++
++- none
++
++### Task 1: The fixture task
++
++**Type:** implementation
++
++**Files:**
++- Modify: `{md_path}`
++- Modify: `{py_path}`
++- Create: `{absent_path}`
++- Modify: `{mjs_path}`
++- Test: `{dir_path}`
++
++**Claim:** The thing holds `{LONG_LIT}` and `{SHORT_LIT}`. (derived)
++Machine: M1. The file carries `{LONG_LIT}` and `{OTHER_LIT}`.
++
++**Authorized-by:** none
++
++**Interfaces:**
++- Consumes: none
++- Produces: none
++
++**Context:** none.
++
++**Proof:**
++- Test: `{proof_extra}`
++- Legs: (a) [M1] the carrier is there and `{md_path}` is read again.
++- Run: python3 -c 'print(1)' {run_path}
++
++**Stale-if:**
++- path-absent: `{py_path}`
++"""
++
++
++@pytest.fixture
++def repo(tmp_path):
++    """A one-commit repository holding the plan and its fixture files."""
++    r = tmp_path / "repo"
++    r.mkdir()
++    _git(r, "init", "-q", ".")
++    _git(r, "config", "user.email", "exam@example.invalid")
++    _git(r, "config", "user.name", "exam")
++
++    (r / "docs").mkdir()
++    (r / "docs/guide.md").write_text(
++        "# Title\n\nprose\n\n## Section one\n\nmore\n\n### Deep\n\nend\n")
++
++    py_lines = ["import os", "", "# THE FIXTURE MODULE — its banner", "",
++                "def test_alpha():", "    pass", "", "def test_beta():",
++                "    x = 1", "    y = 2", "    z = 3", "    w = 4",
++                f"    assert {LONG_LIT} == 1", "    a = 5", "    b = 6",
++                "    c = 7", f"    assert {OTHER_LIT} == 2", "    d = 8",
++                "    e = 9", "    f = 10", f"    print('{SHORT_LIT}')",
++                "    g = 11", "    h = 12", "    i = 13", "    j = 14",
++                "    k = 15", "def not_a_test():", "    pass", ""]
++    (r / "tests").mkdir()
++    (r / "tests/test_mod.py").write_text("\n".join(py_lines))
++
++    (r / "tests/sim.mjs").write_text(
++        "import x from 'y'\n\ndescribe('outer', () => {\n"
++        "  test('one', () => {})\n  it('two', () => {})\n})\n"
++        "// ─────────────────────────────────────────\n")
++
++    (r / "tests/extra.py").write_text(f"# extra\nq = '{LONG_LIT}'\n")
++    (r / "tests/runme.sh").write_text("echo hi\n")
++    (r / "adir/sub").mkdir(parents=True)
++    (r / "adir/sub/keep").write_text("k\n")
++
++    plan = r / "plan.md"
++    plan.write_text(_plan_text(
++        "docs/guide.md", "tests/test_mod.py", "tests/sim.mjs",
++        "docs/new.md", "adir/sub", "tests/extra.py", "tests/runme.sh"))
++    _git(r, "add", "-A")
++    _git(r, "commit", "-qm", "fixture")
++    head = _git(r, "rev-parse", "HEAD").strip()
++    assert re.fullmatch(r"[0-9a-f]{40}", head)
++    return r, plan, head
++
++
++def run(plan, *args):
++    return subprocess.run([sys.executable, str(SCRIPT), str(plan), *args],
++                          capture_output=True, text=True)
++
++
++def load(p):
++    assert p.returncode == 0, p.stderr
++    return json.loads(p.stdout)
++
++
++def test_a_m1_base_adds_one_key_and_keeps_the_hash(repo):
++    r, plan, head = repo
++    plain = load(run(plan, "--task", "1"))
++    assert "base" not in plain and sorted(plain) == ["claim", "hash", "proof", "task"]
++    for rev in (head, str(r)):
++        d = load(run(plan, "--task", "1", "--base", rev))
++        assert sorted(d) == ["base", "claim", "hash", "proof", "task"], sorted(d)
++        assert d["base"]["rev"] == rev
++        assert d["hash"] == plain["hash"], "(a) [M1] the hash must not change"
++        assert d["claim"] == plain["claim"] and d["proof"] == plain["proof"]
++
++
++def test_b_m2_files_order_and_absent_entries(repo):
++    r, plan, head = repo
++    d = load(run(plan, "--task", "1", "--base", head))
++    paths = [f["path"] for f in d["base"]["files"]]
++    assert paths == ["docs/guide.md", "tests/test_mod.py", "docs/new.md",
++                     "tests/sim.mjs", "adir/sub", "tests/extra.py",
++                     "tests/runme.sh"], paths
++    assert len(paths) == len(set(paths)), "(b) [M2] no duplicate path"
++    by = {f["path"]: f for f in d["base"]["files"]}
++    assert by["docs/new.md"] == {"path": "docs/new.md", "status": "absent"}
++    assert by["adir/sub"] == {"path": "adir/sub", "status": "absent"}, \
++        "(b) [M2] a directory is absent"
++    for p in ("docs/guide.md", "tests/test_mod.py", "tests/sim.mjs",
++              "tests/extra.py", "tests/runme.sh"):
++        assert by[p]["status"] == "present", p
++
++
++def test_c_m3_headings_and_carrier_excerpt(repo):
++    r, plan, head = repo
++    d = load(run(plan, "--task", "1", "--base", head))
++    by = {f["path"]: f for f in d["base"]["files"]}
++    assert by["docs/guide.md"]["headings"] == ["# Title", "## Section one", "### Deep"]
++    assert by["docs/guide.md"]["lines"] == 11
++    assert by["tests/test_mod.py"]["headings"] == [
++        "# THE FIXTURE MODULE — its banner", "def test_alpha():", "def test_beta():"]
++    assert by["tests/sim.mjs"]["headings"] == [
++        "  test('one', () => {})", "  it('two', () => {})"], \
++        by["tests/sim.mjs"]["headings"]
++    ex = by["tests/test_mod.py"]["excerpt"].splitlines()
++    nums = [int(l.split(":", 1)[0]) for l in ex]
++    assert nums == sorted(nums) and len(nums) == len(set(nums)), \
++        "(c) [M3] ascending, no line twice"
++    # LONG_LIT sits on line 13, OTHER_LIT on 17: regions 11–15 and 15–19
++    # overlap on 15 and print once; SHORT_LIT (line 21) is not a carrier.
++    assert nums == list(range(11, 20)), nums
++    assert ex[2] == f"13:     assert {LONG_LIT} == 1"
++    assert not any(SHORT_LIT in l for l in ex), "(c) [M3] a 7-char literal is not a carrier"
++    assert by["docs/guide.md"]["excerpt"] == "" and by["docs/guide.md"]["truncated"] is False
++    assert by["tests/extra.py"]["excerpt"] == f"1: # extra\n2: q = '{LONG_LIT}'"
++
++
++def test_d_m4_caps(tmp_path):
++    r = tmp_path / "repo2"
++    r.mkdir()
++    _git(r, "init", "-q", ".")
++    _git(r, "config", "user.email", "exam@example.invalid")
++    _git(r, "config", "user.name", "exam")
++    (r / "t").mkdir()
++    big = "\n".join(f"line {i} {LONG_LIT} " + "x" * 60 for i in range(200)) + "\n"
++    (r / "t/big.py").write_text(big)          # far over 8,000 bytes of carriers
++    (r / "t/small.py").write_text(f"a = '{LONG_LIT}'\n")
++    for i in range(4):                        # 4 × ~8 KB crosses 24,000
++        (r / f"t/fill{i}.py").write_text(big)
++    plan = r / "plan.md"
++    # Files: big, small, (nothing — absent), fill0, fill1; Proof: fill2 (Test:)
++    # and fill3 (Run:). Present entries in order: big, small, fill0, fill1,
++    # fill2, fill3 — the total cap lands inside fill1.
++    plan.write_text(_plan_text("t/big.py", "t/small.py", "t/fill0.py",
++                               "t/nothing.py", "t/fill1.py", "t/fill2.py",
++                               "t/fill3.py"))
++    _git(r, "add", "-A")
++    _git(r, "commit", "-qm", "caps")
++    head = _git(r, "rev-parse", "HEAD").strip()
++    d = load(run(plan, "--task", "1", "--base", head))
++    by = {f["path"]: f for f in d["base"]["files"]}
++    e = by["t/big.py"]["excerpt"]
++    assert len(e.encode()) <= 8000 and by["t/big.py"]["truncated"] is True
++    assert not e.endswith("\n") and e.splitlines()[-1].startswith(tuple("0123456789")), \
++        "(d) [M4] cut at a line boundary"
++    assert by["t/small.py"]["truncated"] is False
++    present = [f for f in d["base"]["files"] if f["status"] == "present"]
++    total = sum(len(f["excerpt"].encode()) for f in present)
++    assert 23000 < total <= 24000, total
++    # big (file cap), small (whole), fill0 (file cap), fill1 (the total cap
++    # cuts it, non-empty), then every later entry empty and truncated.
++    order = [f["path"] for f in present]
++    assert order == ["t/big.py", "t/small.py", "t/fill0.py", "t/fill1.py",
++                     "t/fill2.py", "t/fill3.py"], order
++    assert by["t/fill0.py"]["truncated"] is True and by["t/fill0.py"]["excerpt"]
++    # The entry the TOTAL cap cut keeps what fit (non-empty, truncated); every
++    # later entry is empty and truncated while still carrying lines/headings.
++    nonempty = [i for i, f in enumerate(present) if f["excerpt"]]
++    last = nonempty[-1]
++    assert last >= order.index("t/fill1.py"), "(d) [M4] the total lands past fill1"
++    assert last < len(present) - 1, "(d) [M4] at least one entry after the cut"
++    assert present[last]["truncated"] is True
++    for f in present[last + 1:]:
++        assert f["excerpt"] == "" and f["truncated"] is True, f["path"]
++        assert "lines" in f and "headings" in f, f["path"]
++
++
++def test_e_m5_refusals(repo):
++    r, plan, head = repo
++    p = run(plan, "--plan", "--base", head)
++    assert p.returncode == 2 and p.stdout == "" and "--base" in p.stderr, (p.returncode, p.stderr)
++    assert len(p.stderr.strip().splitlines()) == 1, p.stderr
++    zeros = "0" * 40
++    q = run(plan, "--task", "1", "--base", zeros)
++    assert q.returncode != 0 and q.stdout == ""
++    assert q.stderr.strip().startswith("error:") and zeros in q.stderr, q.stderr
++
++
++def _section():
++    text = SKILL.read_text()
++    start = text.index("## The proof gate")
++    end = text.index("## The worktree-pure contract")
++    return " ".join(text[start:end].splitlines())
++
++
++def test_f_m6_skill_says_it_in_order():
++    flat = _section()
++    assert re.search(
++        r"--base <sha>.*base.*excerpt.*8000.*24000.*already pins the opposite"
++        r".*does not exist.*hash.*unchanged", flat), "(f) [M6] the new sentence, in order"
++    assert re.search(r"STALE fact.*refus.*unreadable.*advisory", flat), \
++        "(f) [M6] the Stale-if pin still holds"

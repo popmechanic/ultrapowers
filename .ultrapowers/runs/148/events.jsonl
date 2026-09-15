@@ -25,3 +25,14 @@
 {"kind":"worker:end","label":"review:1:1","role":"reviewer","sessionId":"a31e5db7-1d40-4874-8781-7a8377199c53","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5107,"output":11508,"cacheRead":375980,"cacheCreation":50626,"costUsd":1.007485,"models":["claude-opus-5"]},"id":"01M2K3K1AM00005DWXYRZF66Q3","ts":1789495182676}
 {"kind":"transcript:slice","label":"review:1:1","sessionId":"a31e5db7-1d40-4874-8781-7a8377199c53","bytes":11761,"id":"01M2K3K1AV00002E4JWKYWNBP5","ts":1789495182683}
 {"kind":"engine:phase","phase":"Wave 1","id":"01M2K3K1D40000TPM7AWFDSRE3","ts":1789495182756}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["1"],"headSha":"d4ba2f853807d9bfc9d0c8d40f3daae4eb555c98","why":"end","id":"01M2K3MX220000WQ9120E4QSS2","ts":1789495243842}
+{"kind":"driver:integrated-clean","wave":1,"removed":7,"id":"01M2K3MX290000RX1GZAC7FFK6","ts":1789495243849}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel fleet/launch.mjs fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/publish-fold.mjs fleet/kata-client.mjs fleet/roles/fix.md fleet/roles/reviewer.md fleet/roles/examiner.md fleet/roles/reconcile.md fleet/roles/resolver.md","exit":0,"minor":false,"wave":1,"id":"01M2K3MX2H0000GA5GS9MND1JS","ts":1789495243857}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2K3MX9T0000DTKBEAWFWS1Q","ts":1789495244090}
+{"kind":"driver:stage","stage":"finalize","id":"01M2K3MXC70000N1H1T8C4101Y","ts":1789495244167}
+{"kind":"driver:stage","stage":"gate","id":"01M2K3MXDW00004RC6WDKCZTAQ","ts":1789495244220}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M2K3MXGW00005G7X3T8XW9PT","ts":1789495244316}
+{"kind":"driver:stage","stage":"approve","id":"01M2K3MXGW0001N6KX4B52JY54","ts":1789495244316}
+{"kind":"driver:approved","stamp":"run-148","integrationBranch":"ultra/integration-run-148","id":"01M2K3MXJJ0000ZPZ3BD098HC9","ts":1789495244370}
+{"kind":"run:open","runId":"run-148","base":"7f140639212d91432100970e8ec156a1856b25a6","source":"fleet/publish-fold.mjs","id":"01M2K3MYHP0000XCJ37FFYZJ73","ts":1789495245366}
+{"kind":"driver:publish-fold","run":"148","attempt":"1","base":"7f140639212d91432100970e8ec156a1856b25a6","tip":"0bb18d0c8b8e3c1d7c43079dededd668a472af8f","candidate":"838d7b33488aa1fb6c59422e74301f9a1e4b5c9a","pathsJoined":1,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"pass","disposition":"folded","checks":[{"check":"exam","exam":"fleet/tests/test_engine_coverage.mjs","path":"skills/ultrapowers/references/report-format.md","result":"pass"}],"checkRetries":0,"id":"01M2K3Q58300002HB2ZDQDJNWX","ts":1789495317763}

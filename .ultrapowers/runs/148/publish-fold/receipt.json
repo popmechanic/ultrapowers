@@ -1,0 +1,22 @@
+{
+  "engineHead": "d4ba2f853807d9bfc9d0c8d40f3daae4eb555c98",
+  "attempts": {
+    "1": {
+      "tip": "0bb18d0c8b8e3c1d7c43079dededd668a472af8f",
+      "candidate": "838d7b33488aa1fb6c59422e74301f9a1e4b5c9a",
+      "disposition": "folded",
+      "pathsJoined": 1,
+      "resolversDispatched": 0,
+      "suite": "pass",
+      "checks": [
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_engine_coverage.mjs",
+          "path": "skills/ultrapowers/references/report-format.md",
+          "result": "pass"
+        }
+      ],
+      "checkRetries": 0
+    }
+  }
+}

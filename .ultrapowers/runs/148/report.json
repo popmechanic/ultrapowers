@@ -1,0 +1,93 @@
+{
+  "integrationBranch": "ultra/integration-run-148",
+  "baseSha": "7f140639212d91432100970e8ec156a1856b25a6",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "f304b59fb64ffa9be82711a095239b37631f9851",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-148/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "fleet/engine-coverage.mjs: each sim's `NODE_V8_COVERAGE` scratch directory is created with `fs.mkdtempSync` in `runSim` and never removed. The profiles are read once in `simRows` and then abandoned, so every engine-changing run leaves one V8 profile directory per sim (13 at BASE, each holding a full profile of `fleet/run-engine.mjs`) permanently under the OS temp dir. M1 requires only that the directory be fresh and under the temp dir, so this is advisory, not a criterion miss \u2014 but the reading owns those directories and nothing else will collect them.; fleet/run-engine.mjs: the M3 call site uses the block's catch-all (`catch { /* a reading, never a gate */ }`) as the control path for an ordinary, expected condition \u2014 a tree with no `fleet/tests` directory, which is exactly the third leg-(e) case the exam drives. `fs.readdirSync` throws ENOENT there and the swallow turns it into `null`, which is the right answer, but it means the one expected branch and every genuine fault (a `git` seam failure, a bug inside `engineCoverage`) are indistinguishable and equally silent. Making the absent directory explicit leaves the catch for actual faults.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "landedAt": 1789495182684,
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-148/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [222 items]\n\n........................................................................ [ 32%]\n........................................................................ [ 64%]\n........................................................................ [ 97%]\n......                                                                   [100%]\n============================= 222 passed in 59.80s =============================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel fleet/launch.mjs fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/publish-fold.mjs fleet/kata-client.mjs fleet/roles/fix.md fleet/roles/reviewer.md fleet/roles/examiner.md fleet/roles/reconcile.md fleet/roles/resolver.md",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 152691,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-148/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [221 items]\n\n........................................................................ [ 32%]\n........................................................................ [ 65%]\n........................................................................ [ 97%]\n.....                                                                    [100%]\n======================== 221 passed in 63.39s (0:01:03) ========================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "d4ba2f853807d9bfc9d0c8d40f3daae4eb555c98",
+      "branches": [
+        "1"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-148/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-148/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.029,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: examiner: (g) [M3] the second `Run:` line \u2014 the bridge over every sim, the new exam included \u2014 That leg is the Proof's own second Run: line (pytest over the whole fleet suite), which the driver runs. A sim may not spawn another sim or pytest (fleet/tests/test_sims_are_hermetic.mjs, M4), so it cannot be encoded inside the exam file; what the file owes the leg is to be one of the sims the bridge collects, which it is."
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

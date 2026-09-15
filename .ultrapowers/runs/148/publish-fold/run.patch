@@ -1,0 +1,1129 @@
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index 639f9b15ae3fdf1e1b9cb4c91037df07113c2fe1..d2fb3f2ce41b29a4716dec461dee9db1d29d2de7 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -52,6 +52,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+     `receipt.json`, `gate-receipt.json`, `report.json`, `events.jsonl`, `engine.log`,
+     `claude-version.txt` (the boot's `claude --version` line, written before the engine starts), plus
+     `approve-receipt.json` and `standing-approval.json`, present when the engine wrote them.
++    That `report.json`'s `engineCoverage` — on a run that changed `fleet/run-engine.mjs`, which of
++    the lines it changed an engine sim ran and which none did, `null` on every other run — is a
++    reading beside the receipt and gates nothing: for the same tree, `tests.passed`, the gate
++    receipt and the merge decision are what they would have been without it.
+     The engine's own wave record is two kinds in that `events.jsonl`, one per epoch that folded.
+     An epoch is a fold, not a layer: the driver keeps its lanes full from the ready set — a task
+     is ready when every predecessor an edge names has been adopted — and folds whatever has
+diff --git a/fleet/engine-coverage.mjs b/fleet/engine-coverage.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..72e4f77f941db245ea15bdb3c5caed71004281fd
+--- /dev/null
++++ b/fleet/engine-coverage.mjs
+@@ -0,0 +1,201 @@
++// fleet/engine-coverage.mjs — which of the lines a run changed a sim actually ran.
++//
++// A reading, never a gate (#992 desired state 1). The engine's own suite says
++// the sims passed; it does not say they went anywhere near the lines the run
++// edited. This module answers that one question and answers nothing else: it
++// diffs a file between two commits, runs the named sims under V8's own
++// coverage writer, and reports which of the changed lines carried a count
++// above zero in at least one of them. Nothing here reads a verdict, and no
++// caller is expected to branch on the answer.
++//
++// No dependency is added for it. V8 writes the profile itself when
++// `NODE_V8_COVERAGE` names a directory, and the reader below is the c8 rule in
++// forty lines: `result[].functions[].ranges[]` of `{ startOffset, endOffset,
++// count }`, a function's ranges listed outermost first, and the count at an
++// offset the count of the INNERMOST range containing it. The offsets are
++// JavaScript string indices, not byte offsets — `fleet/run-engine.mjs` carries
++// em dashes and box-drawing characters, so the two differ by hundreds of
++// positions and reading them as bytes would attribute every count to the
++// wrong line.
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { spawn, execFile } from 'node:child_process'
++import { pathToFileURL } from 'node:url'
++
++/** Run a command to completion. Resolves, never rejects — callers branch on
++ *  `code`, the same shape the engine's own exec seam answers with. */
++const run = (cmd, argv, opts = {}) => new Promise((resolve) => {
++  execFile(cmd, argv, { maxBuffer: 64 * 1024 * 1024, ...opts }, (err, stdout, stderr) => {
++    const code = err ? (typeof err.code === 'number' ? err.code : 1) : 0
++    resolve({ code, stdout: stdout || '', stderr: stderr || '' })
++  })
++})
++
++/** The new-side line numbers a `git diff -U0` adds or modifies, ascending.
++ *
++ *  Hunk headers read `@@ -a[,b] +c[,d] @@`. The new-side run is `c … c+d-1`,
++ *  with an omitted `d` meaning 1; a `d` of 0 is a PURE DELETION and contributes
++ *  no new-side line at all, which is the whole reason a deletion-only diff
++ *  reads as no change rather than as an empty reading. */
++export function changedLinesOf(diff) {
++  const lines = new Set()
++  for (const line of String(diff).split('\n')) {
++    const m = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line)
++    if (!m) continue
++    const start = Number(m[1])
++    const count = m[2] === undefined ? 1 : Number(m[2])
++    for (let i = 0; i < count; i++) lines.add(start + i)
++  }
++  return [...lines].sort((a, b) => a - b)
++}
++
++/** The string index each 1-based line of `text` begins at. Indices into the
++ *  JavaScript string, which is what V8's offsets are. */
++function lineStartOffsets(text) {
++  const starts = [0]
++  for (let i = 0; i < text.length; i++) if (text[i] === '\n') starts.push(i + 1)
++  return starts
++}
++
++/** The count at `offset` under one script entry's ranges: the innermost range
++ *  containing it, which is the narrowest — a function's own ranges arrive
++ *  outermost first, and a nested function's ranges are narrower still. `0` when
++ *  no range contains the offset (nothing was profiled there). */
++function countAtOffset(ranges, offset) {
++  let best = null
++  for (const r of ranges) {
++    if (!(offset >= r.startOffset && offset < r.endOffset)) continue
++    const span = r.endOffset - r.startOffset
++    if (best === null || span <= best.span) best = { span, count: r.count }
++  }
++  return best === null ? 0 : best.count
++}
++
++/** Every script entry of every coverage file under `dir` whose `url` is one of
++ *  `urls`. Exact URL equality and nothing looser: a sim that lays a copy of the
++ *  same file into a scratch tree of its own profiles that copy too, and the
++ *  copy's counts are not the real file's. Unreadable or half-written JSON is
++ *  skipped rather than thrown — this is a reading. */
++function matchingEntries(dir, urls) {
++  const wanted = new Set(urls)
++  const entries = []
++  let names = []
++  try { names = fs.readdirSync(dir) } catch { return entries }
++  for (const name of names) {
++    if (!name.endsWith('.json')) continue
++    let parsed = null
++    try { parsed = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')) } catch { continue }
++    for (const script of (parsed && Array.isArray(parsed.result) ? parsed.result : [])) {
++      if (!script || !wanted.has(script.url)) continue
++      const ranges = []
++      for (const fn of (Array.isArray(script.functions) ? script.functions : [])) {
++        for (const r of (fn && Array.isArray(fn.ranges) ? fn.ranges : [])) {
++          if (r && Number.isFinite(r.startOffset) && Number.isFinite(r.endOffset)) ranges.push(r)
++        }
++      }
++      entries.push(ranges)
++    }
++  }
++  return entries
++}
++
++/** Run `thunks` with at most `limit` in flight, answers in the order given. */
++async function pooled(items, limit, worker) {
++  const out = new Array(items.length)
++  let next = 0
++  const lanes = Math.max(1, Math.min(limit, items.length))
++  await Promise.all(Array.from({ length: lanes }, async () => {
++    for (;;) {
++      const i = next++
++      if (i >= items.length) return
++      out[i] = await worker(items[i], i)
++    }
++  }))
++  return out
++}
++
++/** One sim, run as `node <tree>/<sim>` with cwd `tree` and the inherited
++ *  environment plus a `NODE_V8_COVERAGE` directory of its own under the OS temp
++ *  dir. A non-zero exit is recorded and its coverage read all the same: a sim
++ *  that reached a line and then failed still reached it. */
++function runSim(tree, sim) {
++  const covDir = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-coverage-'))
++  const started = Date.now()
++  return new Promise((resolve) => {
++    const child = spawn(process.execPath, [path.join(tree, sim)], {
++      cwd: tree,
++      env: { ...process.env, NODE_V8_COVERAGE: covDir },
++      stdio: 'ignore',
++    })
++    const done = (exit) => resolve({ sim, exit, ms: Date.now() - started, covDir })
++    child.on('error', () => done(-1))
++    child.on('close', (code, signal) => done(code === null ? (signal ? -1 : 0) : code))
++  })
++}
++
++/**
++ * The reading.
++ *
++ * `null` when `git diff -U0 <base> <head> -- <file>` in `tree` adds or modifies
++ * no line — a head equal to base, and a head that only deletes lines, both
++ * answer `null` rather than a reading with an empty `changed`.
++ *
++ * Otherwise `{ file, base, head, changed, reached, unreached, sims }`:
++ * `changed` the ascending new-side line numbers of every added or modified
++ * line; `sims` one `{ sim, exit, ms, reached }` per entry of the `sims`
++ * argument, in the order given, at most `width` running at once; `reached` the
++ * ascending subset of `changed` some sim counted above zero; `unreached` the
++ * rest, ascending.
++ */
++export async function engineCoverage({ tree, base, head, file, sims = [], width = 1 } = {}) {
++  const diff = await run('git', ['diff', '-U0', String(base), String(head), '--', file],
++    { cwd: tree })
++  if (diff.code !== 0) {
++    throw new Error('engine-coverage: git diff exited ' + diff.code + ' in ' + tree + ': ' +
++      (diff.stderr || diff.stdout).slice(-400))
++  }
++  const changed = changedLinesOf(diff.stdout)
++  if (changed.length === 0) return null
++
++  const abs = path.join(tree, file)
++  // The URLs a count may come from: the file's own, and its realpath — a temp
++  // root reached through a symlinked `/tmp` is still this file, while a copy at
++  // another path resolves elsewhere and is still excluded.
++  const urls = new Set([pathToFileURL(abs).href])
++  try { urls.add(pathToFileURL(fs.realpathSync(abs)).href) } catch { /* unresolvable */ }
++
++  let text = ''
++  try { text = fs.readFileSync(abs, 'utf8') } catch { /* nothing to attribute */ }
++  const starts = lineStartOffsets(text)
++
++  const lanes = (Number.isInteger(width) && width > 0) ? width : 1
++  const runs = await pooled(sims.map(String), lanes, (sim) => runSim(tree, sim))
++
++  const reachedAll = new Set()
++  const simRows = runs.map(({ sim, exit, ms, covDir }) => {
++    const entries = matchingEntries(covDir, urls)
++    const reached = changed.filter((line) => {
++      // A line's count is the count at its FIRST character. A line past the end
++      // of the file has no offset and no count.
++      const offset = starts[line - 1]
++      if (offset === undefined) return false
++      return entries.some((ranges) => countAtOffset(ranges, offset) > 0)
++    })
++    for (const line of reached) reachedAll.add(line)
++    return { sim, exit, ms, reached }
++  })
++
++  const reached = changed.filter((line) => reachedAll.has(line))
++  return {
++    file,
++    base: String(base),
++    head: String(head),
++    changed,
++    reached,
++    unreached: changed.filter((line) => !reachedAll.has(line)),
++    sims: simRows,
++  }
++}
++
++export default engineCoverage
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index ea61e4e8e4f6c5054339628841f038e0ca32fc83..9179c59529533cd4f107c3d98b382e79c565ee42 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -62,6 +62,10 @@ import { failingBlock } from './failing-block.mjs'
+ // of the project's own test paths. One module, because the engine, the
+ // examiner's prompt and `fleet/strip-exams.sh` all have to agree on the slug.
+ import { examSlug, reservedExamPath } from './exam-paths.mjs'
++// The reading a run that changed the engine leaves behind (#992): which of the
++// lines it changed an engine sim reached. Taken once, after the last fold, and
++// read by nothing below — see the call site beside `coverage`.
++import { engineCoverage } from './engine-coverage.mjs'
+ 
+ // ── which tests went red (#871 decisions 1 and 4) ────────────────────────────
+ // `failingBlock` above answers "what does the failure read like"; this answers
+@@ -4324,6 +4328,39 @@ export async function runEngine({
+   const tasksPlanned = WAVES.flat().length
+   const coverage = { tasks_merged: mergedBranches.size, tasks_planned: tasksPlanned,
+                      complete: mergedBranches.size >= tasksPlanned }
++
++  // ── the engine's own coverage reading (#992 desired state 1) ──────────────
++  // A run that changed `fleet/run-engine.mjs` says which of the lines it
++  // changed an engine sim actually ran, and which none did. A READING beside
++  // the receipt and nothing more: it is computed after the last fold, it is
++  // read by no branch below, and `tests`, `coverage` and the merge decision on
++  // the same tree are what they would have been without it. `null` on every
++  // other run — a run that left the engine alone, and a run whose integration
++  // tree holds no engine sim to read it with. Every failure here is swallowed
++  // for the same reason: a reading that cannot be taken is `null`, never a red.
++  let engineCoverageReading = null
++  try {
++    const touched = await exec('git', ['diff', '--name-only', baseSha, 'HEAD', '--',
++      'fleet/run-engine.mjs'], { cwd: integ })
++    const names = String(touched.stdout || '').split('\n').map((s) => s.trim())
++    if (touched.code === 0 && names.includes('fleet/run-engine.mjs')) {
++      const engineSims = fs.readdirSync(path.join(integ, 'fleet', 'tests'))
++        .filter((n) => /^test_run_engine_.*\.mjs$/.test(n))
++        .map((n) => 'fleet/tests/' + n)
++        .sort()
++      if (engineSims.length) {
++        engineCoverageReading = await engineCoverage({
++          tree: integ,
++          base: baseSha,
++          head: await git(['rev-parse', 'HEAD'], integ),
++          file: 'fleet/run-engine.mjs',
++          sims: engineSims,
++          width: W,
++        })
++      }
++    }
++  } catch { /* a reading, never a gate */ }
++
+   const failedIds = taskResults.filter((t) => t.status === 'failed').map((t) => t.task)
+   const blockedIds = unfinished
+     .map((u) => (typeof u === 'string' ? u.split(/[:\s]/)[0] : (u && u.task)))
+@@ -4408,6 +4445,10 @@ export async function runEngine({
+     waveMerges,
+     frontier,
+     coverage,
++    // Which of the engine lines this run changed a sim reached, and which none
++    // did (#992) — the M1 object on a run that changed the engine with sims to
++    // read it, `null` on every other. A reading; it gates nothing.
++    engineCoverage: engineCoverageReading,
+     missingDeliverables,
+     gitVerified,
+     ancestryMisses,
+diff --git a/fleet/tests/test_engine_coverage.mjs b/fleet/tests/test_engine_coverage.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..d4d47c005208eae889cb889aa7dd0aa86871b9a3
+--- /dev/null
++++ b/fleet/tests/test_engine_coverage.mjs
+@@ -0,0 +1,823 @@
++/**
++ * fleet/tests/test_engine_coverage.mjs — the exam for *a merged engine change
++ * carries a reading of which changed lines a sim reached*.
++ *
++ * This file is the Proof's `Test: fleet/tests/test_engine_coverage.mjs`, written
++ * where the Proof names it. Every relative import is written for THIS directory:
++ * `../` is the repository's `fleet/`, `./` is `fleet/tests/`.
++ *
++ * The Machine clauses under test, restated:
++ *
++ *   M1 — `fleet/engine-coverage.mjs` exports
++ *        `engineCoverage({ tree, base, head, file, sims, width })`. It resolves
++ *        to `null` when `git diff -U0 <base> <head> -- <file>` in `tree` adds or
++ *        modifies no line, and otherwise to
++ *        `{ file, base, head, changed, reached, unreached, sims }`: `changed`
++ *        the ascending new-side line numbers of every added or modified line of
++ *        that diff; `sims` one `{ sim, exit, ms, reached }` per entry of the
++ *        `sims` argument IN THE ORDER GIVEN, each run as `node <tree>/<sim>`
++ *        with cwd `tree` and the inherited environment plus `NODE_V8_COVERAGE`
++ *        set to a fresh directory of its own under the OS temp dir, at most
++ *        `width` at once; `reached` the ascending subset of `changed` whose
++ *        count is greater than zero in at least one sim; `unreached` the rest,
++ *        ascending.
++ *   M2 — a line's count in one sim is the count of the INNERMOST range
++ *        containing the line's first character (ranges of one function listed
++ *        outermost first; offsets index the file's text as a JavaScript string,
++ *        not its bytes), read only from coverage script entries whose `url` is
++ *        exactly the `file://` URL of `<tree>/<file>` — an entry for a copy of
++ *        the same file at another path contributes nothing. A sim that exits
++ *        non-zero has its exit recorded and its coverage read all the same.
++ *   M3 — in `runEngine`, after the last fold and before the report object is
++ *        assembled, when the integration clone's
++ *        `git diff --name-only <baseSha> HEAD -- fleet/run-engine.mjs` names the
++ *        file and the integration tree holds at least one
++ *        `fleet/tests/test_run_engine_*.mjs`, the engine calls `engineCoverage`
++ *        with those sims SORTED BY PATH and `width` the run's width, and the
++ *        report carries the reading as `engineCoverage`; on any other run the
++ *        report carries `engineCoverage: null`. The reading changes no other
++ *        report field.
++ *   M4 — `fleet/CONTRACT.md`'s evidence sub-bullet names `report.json`'s
++ *        `engineCoverage` as a reading that gates nothing, and
++ *        `skills/ultrapowers/references/report-format.md`'s field table carries
++ *        an `engineCoverage` row between the `coverage` and `missingDeliverables`
++ *        rows, stating the M1 shape and that it is never gated.
++ *
++ * The Proof legs, in the Proof's own order, and where each is answered below:
++ *
++ *   (a) [M1] the reading of a two-line engine change: `changed` exactly the two
++ *            new-side line numbers, `reached` the `a()` line, `unreached` the
++ *            `b()` line, one `sims` entry with the sim's path, `exit` 0 and a
++ *            numeric `ms`
++ *   (b) [M1] `head` equal to `base` resolves `null`, and a head that only
++ *            DELETES a line resolves `null` too — not a reading with an empty
++ *            `changed`
++ *   (c) [M2] a byte-identical copy of the stub engine at
++ *            `fleet/tests/fixtures/copy/run-engine.mjs`, imported by the same
++ *            sim and exercised in full, leaves the real file's `b()` line
++ *            `unreached` — the URL is matched exactly, never by suffix
++ *   (d) [M2] a sim that calls `a()` and then exits 1: `sims[0].exit` 1 with the
++ *            `a()` line still `reached`
++ *   (i) [M1] two sims given in reverse alphabetical order come back in the order
++ *            given; `width` 1 serialises them and `width` 2 overlaps them; both
++ *            ran with cwd `tree`, and their two `NODE_V8_COVERAGE` directories
++ *            differ from each other and both sit under `os.tmpdir()`
++ *   (j) [M2] a changed line inside an `if (false) { … }` block of `a()` is
++ *            `unreached` although `a()` ran — the innermost range, not the
++ *            function's, decides
++ *   (e) [M3] a one-task run through `rig` with `width` 1 whose implementer edits
++ *            the scratch tree's `fleet/run-engine.mjs`: `engineCoverage`
++ *            non-null, its `sims` SORTED (`…alpha.mjs` before `…zed.mjs`,
++ *            against the order they were written) and serialised by the run's
++ *            own width; a run whose implementer edits `a.txt` only, and a run
++ *            over a tree with no `fleet/tests/test_run_engine_*.mjs`, both
++ *            report `engineCoverage: null`
++ *   (f) [M3] in leg (e)'s first run `unreached` is non-empty while
++ *            `tests.passed` and `coverage.complete` are both `true` — the
++ *            reading gates nothing
++ *   (g) [M3] the Proof's second `Run:` line: the bridge over every sim. A sim
++ *            may not spawn another sim or `pytest`
++ *            (`fleet/tests/test_sims_are_hermetic.mjs`, M4), so that leg is the
++ *            driver's own `Run:` line and is not encodable inside this file;
++ *            what this file owes it is to BE one of the sims the bridge runs,
++ *            which it is
++ *   (h) [M4] the third and fourth `Run:` lines, asked here in-process with the
++ *            same range-then-match semantics those two lines have, so this sim
++ *            says what those commands say
++ *
++ * ── the readings this exam is written on ────────────────────────────────────
++ *
++ *   • THE FIXTURE ENGINE IS A DOZEN LINES, and every expected line number below
++ *     is computed from a unique marker in its text rather than typed, so a later
++ *     edit to the fixture cannot silently move what an assertion pins.
++ *     Measured at BASE, V8 answers this stub `1` for the `a()` line, `0` for the
++ *     `if (false)` line and `0` for the `b()` line when only `a()` is called —
++ *     which is legs (a), (j) and (c).
++ *   • THE FIRST LINE CARRIES THREE EM DASHES, as leg (a) spells: every later
++ *     character's byte offset differs from its string index by six, so a reader
++ *     that indexed the file's BYTES would be reading the wrong offsets.
++ *   • COVERAGE SURVIVES `process.exit(1)` — measured at BASE — which is what
++ *     lets leg (d) ask for an exit code and a reading from the same sim.
++ *   • THE COPY OF LEG (c) IS EDITED IDENTICALLY in the head commit, so at the
++ *     instant the sim runs both files are byte-identical and the copy is fully
++ *     exercised. That is the only arrangement under which a URL matched by
++ *     SUFFIX would mark the real file's `b()` line reached — which is the leg.
++ *   • THIS FILE MAKES NO SPAWN CALL of its own. Every git verb goes through
++ *     `gitSync` from `./_engine_helpers.mjs`, which passes the rig's `simEnv`
++ *     environment; the fixture sims are named only in `fs` writes; and `node` is
++ *     spawned only by the implementation under test. The fixture sims name no
++ *     sibling of this file — they are text this file writes into a scratch tree
++ *     under `os.tmpdir()`, and no file of `fleet/tests/` is read, run or copied.
++ *   • BELOW THE AGENT SEAM THE RIG IS REAL, as in the sibling engine sims: real
++ *     git repositories, real clones, the real capture and the real fold kernel
++ *     through the real `execSeam`. Only the agent is canned.
++ *
++ * WHY THIS IS RED AT BASE. `fleet/engine-coverage.mjs` does not exist, so the
++ * dynamic import below fails and leg (a)'s first assertion names it; no report
++ * carries an `engineCoverage` key; and neither document carries the row or the
++ * sentence M4 asks for.
++ */
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { fileURLToPath } from 'node:url'
++
++import { rig, makeRepo, gitSync, passReview, doneImpl } from './_engine_helpers.mjs'
++
++const HERE = path.dirname(fileURLToPath(import.meta.url))
++const ROOT = path.resolve(HERE, '..', '..')
++const CONTRACT = path.join(ROOT, 'fleet', 'CONTRACT.md')
++const REPORT_FORMAT = path.join(ROOT, 'skills', 'ultrapowers', 'references', 'report-format.md')
++
++// Realpath'd: leg (i) compares a child's own `process.cwd()` against this path
++// character for character, and a child resolves the symlinks `os.tmpdir()` may
++// carry (macOS `/var` → `/private/var`; a bridged sim's `TMPDIR`).
++const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'engine-coverage-')))
++process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
++
++// ── the deliverable ─────────────────────────────────────────────────────────
++// Imported dynamically so a tree without it reports leg (a)'s own assertion
++// rather than dying at load with a resolution error.
++let engineCoverage = null
++let importError = null
++try {
++  ({ engineCoverage } = await import('../engine-coverage.mjs'))
++} catch (error) {
++  importError = error
++}
++
++// ── the literals the Machine clauses spell, spelled once ────────────────────
++/** The file M3 watches, and the file every direct call below reads. */
++const ENGINE_FILE = 'fleet/run-engine.mjs'
++/** Leg (c)'s copy — the same bytes at another path in the same tree. */
++const COPY_FILE = 'fleet/tests/fixtures/copy/run-engine.mjs'
++/** The keys M1 spells for the reading and for one `sims` row, sorted. */
++const READING_KEYS = ['base', 'changed', 'file', 'head', 'reached', 'sims', 'unreached']
++const SIM_KEYS = ['exit', 'ms', 'reached', 'sim']
++/** Leg (e)'s two sims, and the order they are WRITTEN in (reverse of sorted). */
++const ZED = 'fleet/tests/test_run_engine_zed.mjs'
++const ALPHA = 'fleet/tests/test_run_engine_alpha.mjs'
++/** Legs (a)–(d) and (j)'s single sim. */
++const STUB_SIM = 'fleet/tests/test_run_engine_stub.mjs'
++/** What each stamping sim sleeps between its start and its end stamp. */
++const SLEEP_MS = 300
++
++// ── the fixture engine ──────────────────────────────────────────────────────
++// A dozen lines. `a()` is called by every sim; `b()` by none. The `if (false)`
++// block inside `a()` is leg (j)'s: a range of count 0 nested inside a range of
++// count 1. The `SPARE` line is leg (b)'s: the one line a head commit deletes
++// outright. The first line's three em dashes are leg (a)'s.
++const ENGINE_LINES = [
++  '// stub engine — three em dashes — so a byte offset — is not a string index',
++  'export function a (n) {',
++  '  const alive = n + 1 // A-LIVE',
++  '  if (false) {',
++  '    const dead = n + 100 // A-DEAD',
++  '    return dead',
++  '  }',
++  '  return alive',
++  '}',
++  'export function b (n) {',
++  '  const never = n + 2 // B-NEVER',
++  '  return never',
++  '}',
++  'export const spare = 0 // SPARE',
++  '',
++]
++const ENGINE_BASE = ENGINE_LINES.join('\n')
++
++/** The 1-based line number of the one line carrying `marker`. */
++const lineOf = (text, marker) => {
++  const lines = text.split('\n')
++  const hits = lines.map((l, i) => (l.includes(marker) ? i + 1 : 0)).filter(Boolean)
++  assert.equal(hits.length, 1,
++    'sim precondition: the fixture engine must carry `' + marker + '` on exactly one line, ' +
++    'since every expected line number is computed from it — found ' + JSON.stringify(hits))
++  return hits[0]
++}
++/** The same text with the line carrying `marker` replaced (same line count). */
++const editLine = (text, marker, replacement) => {
++  lineOf(text, marker)
++  return text.split('\n').map((l) => (l.includes(marker) ? replacement : l)).join('\n')
++}
++/** The same text with the line carrying `marker` removed — a pure deletion. */
++const dropLine = (text, marker) => {
++  lineOf(text, marker)
++  return text.split('\n').filter((l) => !l.includes(marker)).join('\n')
++}
++
++const A_LIVE = lineOf(ENGINE_BASE, 'A-LIVE')
++const A_DEAD = lineOf(ENGINE_BASE, 'A-DEAD')
++const B_NEVER = lineOf(ENGINE_BASE, 'B-NEVER')
++
++/** The head every leg but (b) and (j) uses: one line inside `a()` and one
++ *  inside `b()`, each edited in place so no line number moves. */
++const ENGINE_HEAD = editLine(
++  editLine(ENGINE_BASE, 'A-LIVE', '  const alive = n + 11 // A-LIVE'),
++  'B-NEVER', '  const never = n + 22 // B-NEVER')
++/** Leg (j)'s head: the dead line and the live line of `a()`, and nothing else —
++ *  so the same reading says `a()` ran AND that its dead line did not. */
++const ENGINE_HEAD_DEAD = editLine(
++  editLine(ENGINE_BASE, 'A-LIVE', '  const alive = n + 11 // A-LIVE'),
++  'A-DEAD', '    const dead = n + 200 // A-DEAD')
++/** Leg (b)'s head: one line deleted and nothing added or modified. */
++const ENGINE_HEAD_DELETED = dropLine(ENGINE_BASE, 'SPARE')
++
++// ── the fixture sims ────────────────────────────────────────────────────────
++// Text this file WRITES; nothing here is read from `fleet/tests/` and nothing
++// here is a sibling of this sim.
++const q = (value) => JSON.stringify(value)
++
++/** Calls `a()` and nothing else. `exit` 1 is leg (d)'s. */
++const simCallingA = ({ exit = 0 } = {}) => [
++  "import { a } from '../run-engine.mjs'",
++  'if (typeof a(1) !== "number") { throw new Error("the stub engine returned no number") }',
++  "console.log('stub sim: a() called')",
++  ...(exit === 0 ? [] : ['process.exit(' + exit + ')']),
++  '',
++].join('\n')
++
++/** Leg (c)'s sim: the real file's `a()`, and the copy exercised in full. */
++const simCallingCopyInFull = [
++  "import { a } from '../run-engine.mjs'",
++  "import { a as copyA, b as copyB } from './fixtures/copy/run-engine.mjs'",
++  'a(1)',
++  'copyA(1)',
++  'copyB(1)',
++  "console.log('stub sim: the copy ran in full')",
++  '',
++].join('\n')
++
++/**
++ * Legs (i) and (e)'s sim: calls `a()`, records when it started and ended, the
++ * cwd it was given and the `NODE_V8_COVERAGE` it was handed, and sleeps
++ * `SLEEP_MS` in between so two of them either overlap or do not.
++ */
++const stampingSim = ({ name, stampDir }) => [
++  "import fs from 'node:fs'",
++  "import path from 'node:path'",
++  "import { a } from '../run-engine.mjs'",
++  'const OUT = ' + q(stampDir),
++  'const NAME = ' + q(name),
++  'const put = (kind, value) => fs.writeFileSync(path.join(OUT, NAME + "." + kind), String(value))',
++  'put("start", Date.now())',
++  'put("cwd", process.cwd())',
++  'put("cov", process.env.NODE_V8_COVERAGE === undefined ? "" : process.env.NODE_V8_COVERAGE)',
++  'a(1)',
++  'await new Promise((resolve) => { setTimeout(resolve, ' + SLEEP_MS + ') })',
++  'put("end", Date.now())',
++  "console.log('stub sim: ' + NAME + ' done')",
++  '',
++].join('\n')
++
++// ── scratch trees ───────────────────────────────────────────────────────────
++const writeFiles = (dir, files) => {
++  for (const [rel, content] of Object.entries(files)) {
++    const at = path.join(dir, rel)
++    fs.mkdirSync(path.dirname(at), { recursive: true })
++    fs.writeFileSync(at, content)
++  }
++}
++
++/**
++ * A git tree with `files` committed as the base and `edits` (same shape) laid
++ * over and committed as the head. The working tree is left AT THE HEAD, which
++ * is the tree the sims are run against. `edits` empty leaves head === base.
++ */
++const scratchTree = (name, files, edits = {}) => {
++  const dir = path.join(tmp, name)
++  fs.mkdirSync(dir, { recursive: true })
++  gitSync(['init', '-q', '-b', 'main'], dir)
++  gitSync(['config', 'user.email', 'sim@test'], dir)
++  gitSync(['config', 'user.name', 'sim'], dir)
++  writeFiles(dir, files)
++  gitSync(['add', '-A'], dir)
++  gitSync(['commit', '-q', '-m', 'base'], dir)
++  const base = gitSync(['rev-parse', 'HEAD'], dir)
++  let head = base
++  if (Object.keys(edits).length > 0) {
++    writeFiles(dir, edits)
++    gitSync(['add', '-A'], dir)
++    gitSync(['commit', '-q', '-m', 'head'], dir)
++    head = gitSync(['rev-parse', 'HEAD'], dir)
++  }
++  return { dir, base, head }
++}
++
++/** A stamp dir of its own for one call, made before any sim can write into it. */
++const stampDirFor = (name) => {
++  const dir = path.join(tmp, 'stamps-' + name)
++  fs.mkdirSync(dir, { recursive: true })
++  return dir
++}
++const stampOf = (dir, name, kind) => {
++  const at = path.join(dir, name + '.' + kind)
++  if (!fs.existsSync(at)) return null
++  return fs.readFileSync(at, 'utf8').trim()
++}
++const stampMs = (dir, name, kind) => {
++  const raw = stampOf(dir, name, kind)
++  return raw === null || raw === '' ? null : Number(raw)
++}
++
++/** Is `p` under `os.tmpdir()` — asked of the path and of its realpath, so a
++ *  `/var` → `/private/var` box is not the reason leg (i) goes red. */
++const realOf = (p) => {
++  try {
++    return fs.realpathSync(p)
++  } catch {
++    return path.resolve(p)
++  }
++}
++const underTmp = (p) => {
++  if (typeof p !== 'string' || p === '') return false
++  const roots = [path.resolve(os.tmpdir()), realOf(os.tmpdir())]
++  const candidates = [path.resolve(p), realOf(p)]
++  return roots.some((root) => candidates.some((c) => c === root || c.startsWith(root + path.sep)))
++}
++
++const show = (value) => JSON.stringify(value)
++
++// ════════════════════════════════════════════════════════════════════════════
++// leg (a) — the reading of a two-line engine change [M1]
++// ════════════════════════════════════════════════════════════════════════════
++{
++  assert.equal(typeof engineCoverage, 'function',
++    '(a)/M1: `fleet/engine-coverage.mjs` must export ' +
++    '`engineCoverage({ tree, base, head, file, sims, width })` — ' +
++    (importError
++      ? 'the module did not import: ' + String(importError && importError.message)
++      : 'the module imported but exports no such function'))
++
++  const tree = scratchTree('tree-a', {
++    [ENGINE_FILE]: ENGINE_BASE,
++    [STUB_SIM]: simCallingA(),
++  }, { [ENGINE_FILE]: ENGINE_HEAD })
++
++  const reading = await engineCoverage({
++    tree: tree.dir, base: tree.base, head: tree.head, file: ENGINE_FILE,
++    sims: [STUB_SIM], width: 1,
++  })
++
++  assert.notEqual(reading, null,
++    '(a)/M1: a head that modifies two lines of ' + ENGINE_FILE + ' must resolve to a reading')
++  assert.deepEqual(Object.keys(reading).sort(), READING_KEYS,
++    '(a)/M1: the reading carries exactly `{ file, base, head, changed, reached, unreached, sims }`: ' +
++    show(Object.keys(reading)))
++  assert.equal(reading.file, ENGINE_FILE, '(a)/M1: `file` is the file it read: ' + show(reading.file))
++  assert.equal(reading.base, tree.base, '(a)/M1: `base` is the base it was given: ' + show(reading.base))
++  assert.equal(reading.head, tree.head, '(a)/M1: `head` is the head it was given: ' + show(reading.head))
++  assert.deepEqual(reading.changed, [A_LIVE, B_NEVER],
++    '(a)/M1: `changed` is exactly the two new-side line numbers of the diff — the `a()` line ' +
++    A_LIVE + ' and the `b()` line ' + B_NEVER + ': ' + show(reading.changed))
++  assert.deepEqual(reading.reached, [A_LIVE],
++    '(a)/M1: `reached` is the `a()` line alone — the sim calls `a()` and never `b()`: ' +
++    show(reading.reached))
++  assert.deepEqual(reading.unreached, [B_NEVER],
++    '(a)/M1: `unreached` is the `b()` line alone: ' + show(reading.unreached))
++  assert.equal(reading.sims.length, 1,
++    '(a)/M1: one `sims` entry per entry of the `sims` argument: ' + show(reading.sims))
++  assert.deepEqual(Object.keys(reading.sims[0]).sort(), SIM_KEYS,
++    '(a)/M1: a `sims` row is exactly `{ sim, exit, ms, reached }`: ' + show(Object.keys(reading.sims[0])))
++  assert.equal(reading.sims[0].sim, STUB_SIM,
++    '(a)/M1: `sim` is the sim\'s path, as the `sims` argument spelled it: ' + show(reading.sims[0].sim))
++  assert.equal(reading.sims[0].exit, 0,
++    '(a)/M1: the sim exited 0: ' + show(reading.sims[0]))
++  assert.equal(Number.isFinite(reading.sims[0].ms), true,
++    '(a)/M1: `ms` is a number: ' + show(reading.sims[0].ms))
++  assert.equal(reading.sims[0].ms >= 0, true,
++    '(a)/M1: `ms` is a wall clock, never negative: ' + show(reading.sims[0].ms))
++  assert.deepEqual(reading.sims[0].reached, [A_LIVE],
++    '(a)/M1: the one sim\'s own `reached` is the `a()` line: ' + show(reading.sims[0].reached))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// leg (b) — nothing added or modified is `null`, not an empty reading [M1]
++// ════════════════════════════════════════════════════════════════════════════
++{
++  const same = scratchTree('tree-b-same', {
++    [ENGINE_FILE]: ENGINE_BASE,
++    [STUB_SIM]: simCallingA(),
++  })
++  const noDiff = await engineCoverage({
++    tree: same.dir, base: same.base, head: same.base, file: ENGINE_FILE,
++    sims: [STUB_SIM], width: 1,
++  })
++  assert.equal(noDiff, null,
++    '(b)/M1: `head` equal to `base` adds or modifies no line, so the call resolves `null` — ' +
++    'not a reading with an empty `changed`: ' + show(noDiff))
++
++  const deleted = scratchTree('tree-b-del', {
++    [ENGINE_FILE]: ENGINE_BASE,
++    [STUB_SIM]: simCallingA(),
++  }, { [ENGINE_FILE]: ENGINE_HEAD_DELETED })
++  const pureDeletion = await engineCoverage({
++    tree: deleted.dir, base: deleted.base, head: deleted.head, file: ENGINE_FILE,
++    sims: [STUB_SIM], width: 1,
++  })
++  assert.equal(pureDeletion, null,
++    '(b)/M1: a head that only DELETES a line of the engine adds or modifies none, so the call ' +
++    'resolves `null` — a pure-deletion hunk (`@@ -n,1 +m,0 @@`) contributes no new-side line: ' +
++    show(pureDeletion))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// leg (c) — a copy of the same file at another path contributes nothing [M2]
++//
++// Both files are byte-identical at the instant the sim runs, and the COPY is
++// exercised in full while the real file's `b()` is not called at all. A reader
++// that matched the coverage entry's `url` by suffix — or that merged the two
++// entries — would mark the real file's `b()` line reached. The URL is matched
++// exactly, so it does not.
++// ════════════════════════════════════════════════════════════════════════════
++{
++  const tree = scratchTree('tree-c', {
++    [ENGINE_FILE]: ENGINE_BASE,
++    [COPY_FILE]: ENGINE_BASE,
++    [STUB_SIM]: simCallingCopyInFull,
++  }, { [ENGINE_FILE]: ENGINE_HEAD, [COPY_FILE]: ENGINE_HEAD })
++
++  assert.equal(
++    fs.readFileSync(path.join(tree.dir, ENGINE_FILE), 'utf8'),
++    fs.readFileSync(path.join(tree.dir, COPY_FILE), 'utf8'),
++    '(c)/M2: sim precondition — the copy is byte-identical to the file under reading')
++
++  const reading = await engineCoverage({
++    tree: tree.dir, base: tree.base, head: tree.head, file: ENGINE_FILE,
++    sims: [STUB_SIM], width: 1,
++  })
++  assert.notEqual(reading, null, '(c)/M2: the head modifies two lines, so there is a reading')
++  assert.deepEqual(reading.changed, [A_LIVE, B_NEVER],
++    '(c)/M2: `changed` is the real file\'s own two lines — the diff is taken with the ' +
++    '`-- <file>` pathspec, so the copy\'s identical change adds nothing: ' + show(reading.changed))
++  assert.deepEqual(reading.unreached, [B_NEVER],
++    '(c)/M2: the real file\'s `b()` line is STILL unreached though the copy\'s `b()` ran — ' +
++    'only the entry whose `url` is exactly the file:// URL of <tree>/<file> is read: ' +
++    show(reading.unreached))
++  assert.deepEqual(reading.reached, [A_LIVE],
++    '(c)/M2: and the real file\'s `a()` line is reached: ' + show(reading.reached))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// leg (d) — a sim that exits non-zero has its exit recorded and its coverage
++//           read all the same [M2]
++// ════════════════════════════════════════════════════════════════════════════
++{
++  const tree = scratchTree('tree-d', {
++    [ENGINE_FILE]: ENGINE_BASE,
++    [STUB_SIM]: simCallingA({ exit: 1 }),
++  }, { [ENGINE_FILE]: ENGINE_HEAD })
++
++  const reading = await engineCoverage({
++    tree: tree.dir, base: tree.base, head: tree.head, file: ENGINE_FILE,
++    sims: [STUB_SIM], width: 1,
++  })
++  assert.notEqual(reading, null, '(d)/M2: a red sim does not turn the reading into `null`')
++  assert.equal(reading.sims[0].exit, 1,
++    '(d)/M2: the sim exited 1 and the row says so: ' + show(reading.sims[0]))
++  assert.deepEqual(reading.sims[0].reached, [A_LIVE],
++    '(d)/M2: and its coverage is read all the same — the `a()` line it ran before exiting: ' +
++    show(reading.sims[0].reached))
++  assert.deepEqual(reading.reached, [A_LIVE],
++    '(d)/M2: so the reading\'s own `reached` still carries the `a()` line: ' + show(reading.reached))
++  assert.deepEqual(reading.unreached, [B_NEVER],
++    '(d)/M2: and the `b()` line is still unreached: ' + show(reading.unreached))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// leg (i) — the order given, the width bound, the cwd and the coverage dirs [M1]
++//
++// Two sims, passed in REVERSE alphabetical order. The rows come back in the
++// order given (not sorted — sorting is M3's, at the engine's call site). Each
++// sim stamps its start and its end around a SLEEP_MS sleep, so `width` 1 and
++// `width` 2 are two different shapes on the clock.
++// ════════════════════════════════════════════════════════════════════════════
++{
++  const build = (name, stamps) => scratchTree(name, {
++    [ENGINE_FILE]: ENGINE_BASE,
++    [ZED]: stampingSim({ name: 'zed', stampDir: stamps }),
++    [ALPHA]: stampingSim({ name: 'alpha', stampDir: stamps }),
++  }, { [ENGINE_FILE]: ENGINE_HEAD })
++
++  // ── width 1: serial, in the order given ──────────────────────────────────
++  const serialStamps = stampDirFor('i-serial')
++  const serialTree = build('tree-i-serial', serialStamps)
++  const serial = await engineCoverage({
++    tree: serialTree.dir, base: serialTree.base, head: serialTree.head, file: ENGINE_FILE,
++    sims: [ZED, ALPHA], width: 1,
++  })
++  assert.notEqual(serial, null, '(i)/M1: the head modifies two lines, so there is a reading')
++  assert.deepEqual(serial.sims.map((s) => s.sim), [ZED, ALPHA],
++    '(i)/M1: one row per entry of the `sims` argument IN THE ORDER GIVEN — reverse alphabetical ' +
++    'in, reverse alphabetical out: ' + show(serial.sims.map((s) => s.sim)))
++  assert.deepEqual(serial.reached, [A_LIVE],
++    '(i)/M1: both sims call `a()` and neither calls `b()`: ' + show(serial))
++  assert.deepEqual(serial.unreached, [B_NEVER],
++    '(i)/M1: and the `b()` line is unreached by either: ' + show(serial.unreached))
++
++  const zedEnd = stampMs(serialStamps, 'zed', 'end')
++  const alphaStart = stampMs(serialStamps, 'alpha', 'start')
++  assert.equal(typeof zedEnd === 'number' && typeof alphaStart === 'number', true,
++    '(i)/M1: both sims ran and stamped themselves under `width` 1: ' +
++    show({ zedEnd, alphaStart, wrote: fs.readdirSync(serialStamps) }))
++  assert.equal(alphaStart >= zedEnd, true,
++    '(i)/M1: at `width` 1 the SECOND sim\'s start is not before the FIRST\'s end — at most ' +
++    '`width` at once: second start ' + alphaStart + ' vs first end ' + zedEnd +
++    ' (' + (zedEnd - alphaStart) + ' ms of overlap)')
++
++  // ── the environment each sim was given [M1] ──────────────────────────────
++  for (const name of ['zed', 'alpha']) {
++    assert.equal(stampOf(serialStamps, name, 'cwd'), serialTree.dir,
++      '(i)/M1: each sim runs with cwd `tree`: ' + name + ' reported ' +
++      show(stampOf(serialStamps, name, 'cwd')) + ', tree is ' + show(serialTree.dir))
++  }
++  const covZed = stampOf(serialStamps, 'zed', 'cov')
++  const covAlpha = stampOf(serialStamps, 'alpha', 'cov')
++  assert.notEqual(covZed, covAlpha,
++    '(i)/M1: each sim gets a FRESH coverage directory OF ITS OWN: ' + show({ covZed, covAlpha }))
++  assert.equal(underTmp(covZed), true,
++    '(i)/M1: and it sits under the OS temp dir: ' + show(covZed) + ' vs ' + show(os.tmpdir()))
++  assert.equal(underTmp(covAlpha), true,
++    '(i)/M1: and so does the other: ' + show(covAlpha) + ' vs ' + show(os.tmpdir()))
++
++  // ── width 2: the two intervals overlap ───────────────────────────────────
++  const parallelStamps = stampDirFor('i-parallel')
++  const parallelTree = build('tree-i-parallel', parallelStamps)
++  const parallel = await engineCoverage({
++    tree: parallelTree.dir, base: parallelTree.base, head: parallelTree.head, file: ENGINE_FILE,
++    sims: [ZED, ALPHA], width: 2,
++  })
++  assert.notEqual(parallel, null, '(i)/M1: the same tree at `width` 2 still reads')
++  assert.deepEqual(parallel.sims.map((s) => s.sim), [ZED, ALPHA],
++    '(i)/M1: the order given survives the width: ' + show(parallel.sims.map((s) => s.sim)))
++
++  const span = (name) => ({
++    start: stampMs(parallelStamps, name, 'start'), end: stampMs(parallelStamps, name, 'end'),
++  })
++  const zedSpan = span('zed')
++  const alphaSpan = span('alpha')
++  assert.equal([zedSpan.start, zedSpan.end, alphaSpan.start, alphaSpan.end]
++    .every((v) => typeof v === 'number'), true,
++    '(i)/M1: both sims ran and stamped themselves under `width` 2: ' +
++    show({ zedSpan, alphaSpan, wrote: fs.readdirSync(parallelStamps) }))
++  assert.equal(zedSpan.start < alphaSpan.end && alphaSpan.start < zedSpan.end, true,
++    '(i)/M1: at `width` 2 the two intervals OVERLAP — two sims are in flight at once: ' +
++    show({ zedSpan, alphaSpan }))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// leg (j) — the innermost range, not the function's, decides [M2]
++//
++// The head edits two lines of `a()`: the live one and one inside its
++// `if (false) { … }` block. `a()` ran, so its function range counts 1; the
++// block's own range counts 0. A reader that took the FUNCTION's count would
++// call both lines reached.
++// ════════════════════════════════════════════════════════════════════════════
++{
++  const tree = scratchTree('tree-j', {
++    [ENGINE_FILE]: ENGINE_BASE,
++    [STUB_SIM]: simCallingA(),
++  }, { [ENGINE_FILE]: ENGINE_HEAD_DEAD })
++
++  const reading = await engineCoverage({
++    tree: tree.dir, base: tree.base, head: tree.head, file: ENGINE_FILE,
++    sims: [STUB_SIM], width: 1,
++  })
++  assert.notEqual(reading, null, '(j)/M2: the head modifies two lines of `a()`, so there is a reading')
++  assert.deepEqual(reading.changed, [A_LIVE, A_DEAD],
++    '(j)/M2: `changed` is the live line ' + A_LIVE + ' and the dead-block line ' + A_DEAD +
++    ', ascending: ' + show(reading.changed))
++  assert.deepEqual(reading.reached, [A_LIVE],
++    '(j)/M2: `a()` RAN — its live line is reached: ' + show(reading.reached))
++  assert.deepEqual(reading.unreached, [A_DEAD],
++    '(j)/M2: and the line inside its `if (false)` block is UNREACHED all the same — the count ' +
++    'is the innermost containing range\'s, not the function\'s: ' + show(reading.unreached))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// legs (e) and (f) — the engine's own call site [M3]
++// ════════════════════════════════════════════════════════════════════════════
++
++/** The one task every run below dispatches. Its file scope is the engine. */
++const engineTask = (files) => ({
++  id: 'E', title: 'engine task', files, tier: 'standard', review: 'lean',
++  writes: files, commutes: [], proofTests: [], proofRuns: [],
++  body: 'sim task E',
++})
++
++/** One run through the rig: a canned implementer that makes `edit(cwd)`, a
++ *  canned reviewer that passes, and nothing else dispatched. */
++const driveRun = async ({ tag, repoFiles, subdirs, taskFiles, edit }) => {
++  const repoDir = path.join(tmp, 'repo-' + tag)
++  // `makeRepo` writes each entry with one `writeFileSync` and creates no
++  // directory, so the scratch tree's own directories are made first.
++  for (const dir of subdirs) fs.mkdirSync(path.join(repoDir, dir), { recursive: true })
++  const repo = makeRepo(repoDir, repoFiles)
++  const runDir = path.join(tmp, 'run-' + tag)
++  const stub = (prompt, opts) => {
++    const kind = String(opts.label).split(':')[0]
++    if (kind === 'impl') {
++      edit(opts.cwd || '')
++      return doneImpl(opts.cwd || '')
++    }
++    if (kind === 'review') return passReview()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const built = rig({
++    repo,
++    runDir,
++    waves: [[engineTask(taskFiles)]],
++    stamp: 'ec-' + tag,
++    stub: (prompt, opts, cwd) => stub(prompt, { ...opts, cwd }),
++    extraArgs: { width: 1 },
++  })
++  const report = await built.run()
++  return { report, integ: built.integ, base: built.base }
++}
++
++/** The implementer's edit: one line inside `a()` and one inside `b()`. */
++const editEngine = (cwd) => {
++  fs.writeFileSync(path.join(cwd, ENGINE_FILE), ENGINE_HEAD)
++}
++
++{
++  // ── the run that changed the engine ─────────────────────────────────────
++  const stamps = stampDirFor('e-run')
++  const first = await driveRun({
++    tag: 'engine',
++    subdirs: ['fleet/tests'],
++    // Written zed FIRST and alpha second, so an engine that passed them in the
++    // order it found them rather than sorted would come back the other way.
++    repoFiles: {
++      [ENGINE_FILE]: ENGINE_BASE,
++      [ZED]: stampingSim({ name: 'zed', stampDir: stamps }),
++      [ALPHA]: stampingSim({ name: 'alpha', stampDir: stamps }),
++    },
++    taskFiles: [ENGINE_FILE],
++    edit: editEngine,
++  })
++  const report = first.report
++  assert.deepEqual(report.tasks.map((r) => [r.task, r.status]), [['E', 'done']],
++    '(e)/M3: sim precondition — the one task finished: ' + show(report.tasks.map((r) => r.status)))
++  assert.equal(
++    gitSync(['diff', '--name-only', report.baseSha, 'HEAD', '--', ENGINE_FILE], first.integ),
++    ENGINE_FILE,
++    '(e)/M3: sim precondition — the integration clone\'s diff against its base names the engine')
++
++  const reading = report.engineCoverage
++  assert.equal(Object.prototype.hasOwnProperty.call(report, 'engineCoverage'), true,
++    '(e)/M3: the report carries an `engineCoverage` key — an absent key is not `null`, and this ' +
++    'run changed the engine: ' + show(Object.keys(report)))
++  assert.notEqual(reading, null,
++    '(e)/M3: a run whose merged tree changed `' + ENGINE_FILE + '` and that holds ' +
++    '`fleet/tests/test_run_engine_*.mjs` carries the reading as `engineCoverage`: ' + show(reading))
++  assert.deepEqual(Object.keys(reading).sort(), READING_KEYS,
++    '(e)/M3: the report carries the M1 object verbatim: ' + show(Object.keys(reading)))
++  assert.equal(reading.file, ENGINE_FILE,
++    '(e)/M3: the file read is the engine: ' + show(reading.file))
++  assert.equal(gitSync(['rev-parse', reading.base + '^{commit}'], first.integ), report.baseSha,
++    '(e)/M3: the reading\'s `base` is the run\'s own `baseSha`: ' + show(reading.base))
++  assert.equal(gitSync(['rev-parse', reading.head + '^{commit}'], first.integ),
++    gitSync(['rev-parse', 'HEAD'], first.integ),
++    '(e)/M3: and its `head` is the integration clone\'s HEAD after the last fold: ' +
++    show(reading.head))
++  assert.deepEqual(reading.sims.map((s) => s.sim), [ALPHA, ZED],
++    '(e)/M3: the engine passes the tree\'s `fleet/tests/test_run_engine_*.mjs` SORTED BY PATH — ' +
++    '`…alpha.mjs` before `…zed.mjs`, against the order they were written: ' +
++    show(reading.sims.map((s) => s.sim)))
++  assert.deepEqual(reading.changed, [A_LIVE, B_NEVER],
++    '(e)/M3: `changed` is the implementer\'s own two lines: ' + show(reading.changed))
++  assert.deepEqual(reading.reached, [A_LIVE],
++    '(e)/M3: the sims call `a()`: ' + show(reading.reached))
++
++  const alphaEnd = stampMs(stamps, 'alpha', 'end')
++  const zedStart = stampMs(stamps, 'zed', 'start')
++  assert.equal(typeof alphaEnd === 'number' && typeof zedStart === 'number', true,
++    '(e)/M3: both sims ran under the engine\'s own call: ' +
++    show({ alphaEnd, zedStart, wrote: fs.readdirSync(stamps) }))
++  assert.equal(zedStart >= alphaEnd, true,
++    '(e)/M3: `width` is the RUN\'s width, which this run set to 1, so the second sim\'s start is ' +
++    'not before the first\'s end: second start ' + zedStart + ' vs first end ' + alphaEnd)
++
++  // ── leg (f): the reading gates nothing [M3] ──────────────────────────────
++  assert.equal(reading.unreached.length > 0, true,
++    '(f)/M3: sim precondition — this run\'s engine change has a line no sim reached: ' +
++    show(reading.unreached))
++  assert.deepEqual(reading.unreached, [B_NEVER],
++    '(f)/M3: the unreached line is the `b()` line: ' + show(reading.unreached))
++  assert.equal(report.tests.passed, true,
++    '(f)/M3: and the run still ends with the `tests.passed` it would have had without the ' +
++    'reading: ' + show(report.tests))
++  assert.equal(report.coverage.complete, true,
++    '(f)/M3: and the `coverage.complete` it would have had — the structural signal is a ' +
++    'different thing and is untouched: ' + show(report.coverage))
++}
++
++{
++  // ── a run that did not change the engine [M3] ────────────────────────────
++  const stamps = stampDirFor('e-other')
++  const other = await driveRun({
++    tag: 'other',
++    subdirs: ['fleet/tests'],
++    repoFiles: {
++      [ENGINE_FILE]: ENGINE_BASE,
++      [ZED]: stampingSim({ name: 'zed', stampDir: stamps }),
++      [ALPHA]: stampingSim({ name: 'alpha', stampDir: stamps }),
++    },
++    taskFiles: ['a.txt'],
++    edit: (cwd) => { fs.writeFileSync(path.join(cwd, 'a.txt'), 'from E\n') },
++  })
++  assert.deepEqual(other.report.tasks.map((r) => [r.task, r.status]), [['E', 'done']],
++    '(e)/M3: sim precondition — the one task finished: ' + show(other.report.tasks.map((r) => r.status)))
++  assert.equal(
++    gitSync(['diff', '--name-only', other.report.baseSha, 'HEAD', '--', ENGINE_FILE], other.integ),
++    '',
++    '(e)/M3: sim precondition — the merged tree did not change the engine')
++  assert.equal(other.report.engineCoverage, null,
++    '(e)/M3: a run whose implementer edited `a.txt` only carries `engineCoverage: null`: ' +
++    show(other.report.engineCoverage))
++  assert.deepEqual(fs.readdirSync(stamps), [],
++    '(e)/M3: and no sim was run at all — the reading is not taken on a run that did not change ' +
++    'the engine: ' + show(fs.readdirSync(stamps)))
++}
++
++{
++  // ── a run that changed the engine in a tree with no engine sims [M3] ─────
++  const noSims = await driveRun({
++    tag: 'nosims',
++    subdirs: ['fleet'],
++    repoFiles: { [ENGINE_FILE]: ENGINE_BASE },
++    taskFiles: [ENGINE_FILE],
++    edit: editEngine,
++  })
++  assert.deepEqual(noSims.report.tasks.map((r) => [r.task, r.status]), [['E', 'done']],
++    '(e)/M3: sim precondition — the one task finished: ' + show(noSims.report.tasks.map((r) => r.status)))
++  assert.equal(
++    gitSync(['diff', '--name-only', noSims.report.baseSha, 'HEAD', '--', ENGINE_FILE], noSims.integ),
++    ENGINE_FILE,
++    '(e)/M3: sim precondition — the merged tree DID change the engine')
++  assert.deepEqual(
++    fs.readdirSync(path.join(noSims.integ, 'fleet')).filter((n) => n === 'tests'), [],
++    '(e)/M3: sim precondition — and the tree holds no `fleet/tests/test_run_engine_*.mjs` at all')
++  assert.equal(noSims.report.engineCoverage, null,
++    '(e)/M3: with no engine sim to run there is nothing to read, so the report carries ' +
++    '`engineCoverage: null`: ' + show(noSims.report.engineCoverage))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// leg (h) — the two documents [M4]
++//
++// The Proof's third and fourth `Run:` lines, asked here with the same
++// semantics: `sed` prints an inclusive range between two matched lines, `tr`
++// folds it to one line, and `grep -q` asks for a match. A `.` in those lines'
++// patterns stands for the backtick, and is kept as `.` here so this file asks
++// the question those lines ask.
++// ════════════════════════════════════════════════════════════════════════════
++
++/** `sed -n '/start/,/end/p'`: the lines from the first match of `start` through
++ *  the first later match of `end`, inclusive; through the end of the file when
++ *  no later line matches; `null` when `start` matches nothing. */
++const sedRange = (text, start, end) => {
++  const lines = text.split('\n')
++  const from = lines.findIndex((l) => start.test(l))
++  if (from < 0) return null
++  const rest = lines.slice(from + 1).findIndex((l) => end.test(l))
++  return rest < 0 ? lines.slice(from) : lines.slice(from, from + 1 + rest + 1)
++}
++
++{
++  const contract = fs.readFileSync(CONTRACT, 'utf8')
++  const evidence = sedRange(
++    contract,
++    /^  - .ultra.evidence-run-<N>. — the run.s record under/,
++    /^    The engine.s own wave record/)
++  assert.notEqual(evidence, null,
++    '(h)/M4: sim precondition — `fleet/CONTRACT.md` still carries the `ultra/evidence-run-<N>` ' +
++    'sub-bullet of "The three branches on the target", which is the item this task edits')
++  assert.match(evidence.join(' '), /engineCoverage.*reading.*gates nothing/,
++    '(h)/M4: that evidence sub-bullet must name `report.json`\'s `engineCoverage` as a reading ' +
++    'that gates nothing — the Proof\'s third `Run:` line, asked here: ' +
++    show(evidence.join(' ').slice(0, 400)))
++}
++
++{
++  const format = fs.readFileSync(REPORT_FORMAT, 'utf8')
++  const rows = format.split('\n').filter((l) => /^\| .engineCoverage. \| no \|/.test(l))
++  assert.equal(rows.length, 1,
++    '(h)/M4: the field table carries exactly one `engineCoverage` row, written like its ' +
++    'neighbours (`| `engineCoverage` | no | …`): found ' + rows.length)
++
++  const between = sedRange(format, /^\| .coverage. \| no \|/, /^\| .missingDeliverables. \| no \|/)
++  assert.notEqual(between, null,
++    '(h)/M4: sim precondition — `report-format.md` still carries the `coverage` row this task ' +
++    'writes beneath')
++  const inner = between.slice(1, -1)
++  assert.equal(inner.some((l) => /^\| .engineCoverage. \| no \|.*changed.*reached.*unreached.*sims.*never gated/.test(l)), true,
++    '(h)/M4: the `engineCoverage` row sits BETWEEN the `coverage` and `missingDeliverables` rows ' +
++    'and states the M1 shape — `changed`, `reached`, `unreached`, `sims` — and that it is never ' +
++    'gated. The Proof\'s fourth `Run:` line, asked here. The range as it stands: ' +
++    show(between.map((l) => l.slice(0, 60))))
++}
++
++console.log('ALL TESTS PASSED')
+diff --git a/skills/ultrapowers/references/report-format.md b/skills/ultrapowers/references/report-format.md
+index fb079d572733ecb7486cc3166df9f9f20281c7b6..94040371c12fbca1420e267b3a1b4d2a231c7c5a 100644
+--- a/skills/ultrapowers/references/report-format.md
++++ b/skills/ultrapowers/references/report-format.md
+@@ -108,6 +108,7 @@ The engine (`fleet/run-engine.mjs`) returns a single structured report object; `
+ | `frontier` | no | One entry per epoch fold that took the **contended** merge path (frontier mode) — recorded whether the epoch adopted its folded candidate or fell back: whenever the fold CLI ran, the on-disk `frontier/wave-<n>/` directory is the durable record the production canary harvests. Absent or empty on every run whose every fold ran uncontended: `overlap=fold` has been `compile_plan.py`'s shipped default since the 2026-08-14 A/B (CLAUDE.md, "One merge, one writer"), so an empty `frontier` reads as epochs that held no intersecting `files`, not as a compile that opted out of folding. Fields, all sourced from the contended dispatches' reply scalars — no payload is relayed through an agent (#36): `wave` (the epoch number, in fold order — the same number `waveMerges[].wave` carries, never an index into `waves`); `foldLogPath` (the wave's `fold_log.jsonl`, the self-sufficient event record documented in `kernel/FOLD_LOG.md`); `conflictsIndex` (the `conflicts.json` beside it — the single record of every conflict and every park, with its `dispatchable()` verdict and reason); `selfChecks` (the fold CLI's two live self-checks, **sourced from the completing CLI reply** — the CLI runs them inside whichever call completes the wave, so a stop reply carries none; `ok`, or a named failure that routed the wave to fallback, or the empty string when no reply ever attested; the engine never claims a fold succeeded without them); `foldCliCalls` (how many fold-CLI invocations this wave drove — 1 fold + N resolves + 1 materialize on a clean run, fewer when it fell back. The incremental protocol makes N unbounded by the conflict total, because a drained stop folds on inside the same `resolve` call, so this is the wave's real CLI cost rather than a number derivable from the conflict count); `foldCliWallTimeSec` (the **sum** of the wall clocks the STEP replies reported across every leg — fold, each resolve, and materialize — reported on its own line so the first real-repo reading is not buried inside a passing test result; `null` when no reply timed its invocation); `autoResolved` (how many conflicts the kernel resolved **in process** against the wave's `Commutes:` contract — every writer declared the path and every hunk segment was an addition, so the fold never stopped on it and no resolver was dispatched. **Summed** across the fold and resolve legs, since the kernel folds on past a contract-resolved conflict inside any call; `0` when the wave declared no `Commutes:`, when no declared path conflicted, or when no reply carried the count. Read it beside `resolverTranscripts`: it is the resolver dispatches the contract *bought*); `resolverTranscripts` (one entry per resolver dispatch — `conflict` (the conflicts-index `i`), `attempt`, `path`, `epoch`, `hunksFile`, `replyDir`, `status`, `notes` — recorded verbatim as the A/B grading surface). `foldLogPath` and `conflictsIndex` are empty strings when the fold dispatch threw, returned no reply at all, or returned a reply that carried no paths — in the first two cases the directory the paths would name may never have been written, since the CLI itself may never have run. Fallback **reasons** are **not** recorded here: each one is a `judgmentCalls` entry naming its reason plus the wave's `waveMerges` result — one fact, one record |
+ | `blockedWaves` | no | One `{ wave, detail }` per red epoch — a fold that could not be made green, and the red-baseline park. Nothing propagates to "later waves": a red epoch marks exactly its own tasks blocked, which makes the consumers of those tasks unready (they land in `unfinished`), and every other ready task is dispatched as before |
+ | `coverage` | no | Structural completeness signal: `{ tasks_merged, tasks_planned, complete }`. `tasks_planned` = total tasks across all waves; `tasks_merged` = count of distinct task branches that landed via a `MERGED` wave; `complete` = `tasks_merged >= tasks_planned`. A `complete: false` with a green `tests.passed` is the false-green the gate must catch — only existing tests can fail, so a dropped/never-merged task leaves the suite green. The engine reports the *count* it can observe, and since #964 Task 2 that count is the whole signal: no agent reads the finished run, so a per-file presence check on the integrated tree is the human reader's, or a Global Constraint `Check:` the driver runs itself |
++| `engineCoverage` | no | The engine's own coverage reading (#992), taken after the last fold by `fleet/engine-coverage.mjs` on a run whose adopted tree changed `fleet/run-engine.mjs` and holds at least one `fleet/tests/test_run_engine_*.mjs`; `null` on every other run, and `null` too when the diff added or modified no line (a head equal to base, a head that only deletes). Otherwise `{ file, base, head, changed, reached, unreached, sims }`: `changed` the ascending new-side line numbers of every added or modified line of `git diff -U0 <base> <head> -- <file>`; `reached` the ascending subset of them whose V8 count is above zero in at least one sim; `unreached` the rest, ascending; and `sims` one `{ sim, exit, ms, reached }` per engine sim, sorted by path, each run as `node <tree>/<sim>` with cwd the tree and a `NODE_V8_COVERAGE` directory of its own, at most the run's width at once, a non-zero `exit` recorded and its coverage read all the same. A reading beside the receipt and **never gated**: a run whose changed engine lines no sim reached ends with the `tests.passed`, `coverage.complete`, gate receipt and merge decision it would have had without it |
+ | `missingDeliverables` | no | One entry per `failed` task, and per task that never became ready, whose plan-declared `files` did not reach the integration branch: `{ task, files }`. Tasks with no declared file scope are omitted. The gate renders it under unfinished |
+ | `gitVerified` | no | Boolean: are the integration receipts intact — the integration branch tip equals the last adopt receipt's sha, and every task reported merged has a fold event in its wave's fold log (the receipt-based #70 check, surfaced as `ancestryMisses`) — on a run where at least one wave merged? Derived by the DRIVER from the repo and the fold logs (#259; `docs/superpowers/specs/2026-08-26-fold-over-git-heads.md` §2), which is the whole of it since #964 Task 2: the old meaning (a completeness critic's own `onIntegrationHead` attestation after a `git checkout --detach` and re-confirm) cannot exist when no agent reads the finished run. The model-recorded merge sha (`waveMerges[last].headSha`) is one half of the tip comparison, not authority on its own — a mismatch against the derived tip withholds the flag and pushes a checkout-drift judgment call. **Step-5 gating:** `gitVerified` MUST be true to Approve — a false value means the receipts do not line up and is treated as `BLOCKED` pending a manual integration-tree check. This is the report-driven hardening of the gate's `git rev-parse <integrationBranch>` == `waveMerges[last].headSha` check |
+ | `deferredVerification` | no | Deliverables present and structurally complete but whose behavior the sandbox could not execute, each tagged with a `reason` — `browser` (live UI), `runtime` (target runtime the sandbox can't run: boot, device, deploy target), `external` (unreachable service/credential/network), `manual` (human judgment: aesthetic, product-fit — a command the driver executed is never `manual` on its own, because the integrated run evidence already carries its result, and a recorded exit code is not a judgment call. When that evidence settles the deliverable's presence and only the judgment remains, the `why` quotes the settling command verbatim from the `$ <cmd>` line of the integrated run evidence, and `ackDecision` pre-authorizes the resulting `deferred:manual` ack when the quoted command is an integrated `Run:` the driver executed that exited 0; a `deferred:manual` ack whose detail quotes no green run verbatim — or quotes a red one as well — is not pre-authorized and parks for an operator, which is the safe failure for a paraphrase (#753)), `plan-defect` (a per-task reviewer returned a blocking issue whose actor is the **plan**, not the implementer: a machine clause that cannot hold, an interface the task was never given. No fix round can close it and no reviewer can wave it through, so the task merges as reviewed and the defect travels here — one item per distinct detail, on tasks whose final `status` is `done`, plus one item for each task the driver parked for the plan before any fix round (#722): the row that carries `actor: plan`, whose `why` is the implementer's own leg-naming `plan-defect:` concern verbatim rather than a reviewer's detail. A parked task is the one `failed` row that still asks the plan a question, and its files are also listed under `missingDeliverables`; `deliverable` is the task id. `ackDecision` does not pre-authorize the resulting `deferred:plan-defect` ack: an operator reads it or the run does not merge). Gating rule: a non-empty `runtime` or `external` group is a structural false-green and routes into the **same** acknowledgement disposition as `coverage.complete: false`; `browser`/`manual` remain a verify-then-approve checklist. One exception, read by `gate_check.py` before it types the ack (#863): a `browser` or `external` item whose subject is the render (its `deliverable`/`why` says so) is checked against `tasks[].stateExams` — the named task's rows, or every task's rows when it names no task id — and when there is at least one row and every row reads `render: "ran"`, the run's own record contradicts the deferral (the driver ran those exams against the live renderer during the suite), so the item is not an ack at all: it lands in the gate output's `notes` as `{ type: "satisfied-by-record", downgraded: "deferred:<reason>", detail, rows }`, naming each row, and gates nothing. A `render: "skipped"` row, a task with no record, or a deferral whose subject is not the render parks exactly as before. Since #964 Task 2 the plan defects are the whole list — the `browser`/`runtime`/`external`/`manual` reasons above are the taxonomy a reader and `gate_check.py` still apply to items carried in from another producer, but this engine emits none of its own: the critic that used to find them is gone. Empty when no task disclosed a plan defect |
