@@ -1,0 +1,237 @@
+{
+  "ok": true,
+  "stamp": "run-155",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-155"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The producer's one command, and the contract's name for the fact",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/roles/implementer.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The driver's two reads \u2014 seed the consumer from the post, refuse a post the expected file contradicts",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`handshakeOf(issue: {metadata?: object}) -> {expected: string, content: [object, object]} | null`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The producer's one command, and the contract's name for the fact",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/roles/implementer.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/roles/implementer.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^## The state you reached/,/^## /p' fleet/roles/implementer.md | tr '\\n' ' ' | grep -q 'state\\.reached.*kata meta set \\$KATA_REF state\\.reached.*--json-value.*expected.*content'",
+            "sed -n '/^## The state you reached/,/^## /p' fleet/roles/implementer.md | tr '\\n' ' ' | grep -q 'after.*exam.*green'",
+            "sed -n '/^## The state you reached/,/^## /p' fleet/roles/implementer.md | tr '\\n' ' ' | grep -q 'post it once'",
+            "sed -n '/^## The state you reached/,/^## /p' fleet/roles/implementer.md | tr '\\n' ' ' | grep -q 'only a task whose Proof names a state exam'",
+            "sed -n '/Kata record (engine)/,/^- \\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'state\\.reached.*expected.*content.*implementer.*driver'"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/roles/implementer.md"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_state_handshake.mjs"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "The driver's two reads \u2014 seed the consumer from the post, refuse a post the expected file contradicts",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_state_handshake.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`handshakeOf(issue: {metadata?: object}) -> {expected: string, content: [object, object]} | null`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_state_handshake.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_state_handshake.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_state_handshake.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_state_handshake.mjs"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [
+              "fleet/tests/test_run_engine_state_handshake.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_state_handshake.mjs": "fleet/tests/test_run_engine_state_handshake.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_state_handshake.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/roles/implementer.md"
+            ],
+            "produces": [
+              "`handshakeOf(issue: {metadata?: object}) -> {expected: string, content: [object, object]} | null`"
+            ],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "fleet \u00b7 2 tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- The fact is `state.reached`, one metadata key on the producing task's own kata issue, set by that task's implementer with `--json-value`, whose value is exactly `{\"expected\": \"<path under state-exams/expected/>\", \"content\": [tables, values]}` \u2014 the `getContent()` pair of the file `expected` names. No other role posts it and no other key carries it.\n- The durable record is git: every post the driver reads is also one `fact:state.reached` event on `events.jsonl`, and a run with no posts appends none.\n- A run with no kata record (`run-main.mjs` without `--kata`) behaves exactly as at BASE: no hub request, no file written under `state-exams/posted/`, no handshake event.\n- Every role file keeps its register: no shouted imperatives (`fleet/roles/README.md`).",
+    "constraintChecks": [
+      {
+        "cmd": "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-155/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-155/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-155/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-155/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}

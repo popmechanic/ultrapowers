@@ -1,0 +1,11 @@
+{"kind":"run:open","runId":"run-155","base":"","source":"fleet/run-main.mjs","id":"01M2MC778B00000989JYY9968N","ts":1789537787147}
+{"kind":"driver:stage","stage":"kata","detail":"record /home/exedev/plans/run-155.kata.json → https://kata.int.exe.xyz","id":"01M2MC778C00006102XZ7HKS4N","ts":1789537787148}
+{"kind":"driver:stage","stage":"tiers","detail":"2 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M2MC778D00006BC5AJCXJT3H","ts":1789537787149}
+{"kind":"driver:stage","stage":"provision","detail":"BASE 901fc874923210207e041f947407b8ea519c1ab2; 2 task clone(s) + integration","id":"01M2MC77HN00000QBM1TTR1BXT","ts":1789537787445}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M2MC77Y100009NSCM8HBERTB","ts":1789537787841}
+{"kind":"driver:stage","stage":"engine","detail":"waves 2, width bound 2, patch input armed","id":"01M2MC77Y100015KRB44NBFJ7W","ts":1789537787841}
+{"kind":"engine:phase","phase":"Setup","id":"01M2MC77Y70000VFMFN3T8JS94","ts":1789537787847}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-155 at 901fc874923210207e041f947407b8ea519c1ab2","id":"01M2MC784P0000HJ9PP61WHKPD","ts":1789537788054}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"0438cb4e-7d39-4465-b1eb-62bef58c3759","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-155/clones/task-1","model":"opus","id":"01M2MC78RS00002XJMA5FB57PV","ts":1789537788697}
+{"kind":"worker:start","label":"exam:2","role":"examiner","sessionId":"6c8ef2d2-f4ea-431d-8b7f-e2271ff5bcb1","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-155/clones/exam-2","model":"opus","id":"01M2MC78S600004FBJWQ2H5CDQ","ts":1789537788710}
+{"kind":"worker:start","label":"impl:2","role":"implementer","sessionId":"819e2083-7a2e-4ff2-baf4-6e4255587b78","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-155/clones/task-2","model":"opus","id":"01M2MC78SA0000R67221YQVF3J","ts":1789537788714}
