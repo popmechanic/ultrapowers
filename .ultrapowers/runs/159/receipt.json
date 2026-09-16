@@ -1,0 +1,756 @@
+{
+  "ok": true,
+  "stamp": "run-159",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-159"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "7 task(s) in 2 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "A red exam and a resolver miss leave a receipt",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`examReceiptOf({ cmd, exit, stdout, headSha, landings, files }) -> { paths, evidence } | null`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "A fold conflict leaves a receipt",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/publish-fold.mjs",
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`receiptPaths(list: string[]) -> string[]`",
+            "`foldReceiptOf({ open, disposition, reason, base, tip }) -> { paths, evidence } | null`",
+            "`publishFoldEvent(row: object, open: object[]) -> object`"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "A blocking finding and a refuted finding are events",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "The matcher and the FACTS renderer",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/facts-block.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`factsBlock(rows: object[], paths: string[]) -> string`",
+            "`receiptRows(file: string) -> object[]`",
+            "`RECEIPT_KINDS`",
+            "`FACTS_MAX_ROWS`",
+            "`FACTS_FIELD_MAX`"
+          ]
+        }
+      },
+      {
+        "id": "5",
+        "title": "The three judges read the FACTS block",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`factsBlock(rows: object[], paths: string[]) -> string`",
+            "`examReceiptOf({ cmd, exit, stdout, headSha, landings, files }) -> { paths, evidence } | null`"
+          ],
+          "produces": [
+            "`waveContendingBlock({ waveTasks, wavesPath, receipts }) -> (conflict) => string`"
+          ]
+        }
+      },
+      {
+        "id": "7",
+        "title": "The publish fold writes its receipts and reads them back",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/publish-fold.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`publishFoldEvent(row: object, open: object[]) -> object`",
+            "`factsBlock(rows: object[], paths: string[]) -> string`",
+            "`receiptRows(file: string) -> object[]`"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "6",
+        "title": "The contract names the receipts, the block, the reading and the deletion rule",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [
+      {
+        "from": "1",
+        "to": "5",
+        "why": "interface"
+      },
+      {
+        "from": "4",
+        "to": "5",
+        "why": "interface"
+      },
+      {
+        "from": "2",
+        "to": "7",
+        "why": "interface"
+      },
+      {
+        "from": "4",
+        "to": "7",
+        "why": "interface"
+      }
+    ],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4",
+        "6"
+      ],
+      [
+        "5",
+        "7"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "A red exam and a resolver miss leave a receipt",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_proof_runs.mjs",
+            "fleet/tests/test_run_engine_stale_patch.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`examReceiptOf({ cmd, exit, stdout, headSha, landings, files }) -> { paths, evidence } | null`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_proof_runs.mjs",
+            "fleet/tests/test_run_engine_stale_patch.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_proof_runs.mjs && node fleet/tests/test_run_engine_stale_patch.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_stale_patch.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_proof_runs.mjs",
+            "fleet/tests/test_run_engine_stale_patch.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_run_engine_stale_patch.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_run_engine_stale_patch.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_run_engine_stale_patch.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_proof_runs.mjs": "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_run_engine_stale_patch.mjs": "fleet/tests/test_run_engine_stale_patch.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_run_engine_stale_patch.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/facts-block.mjs",
+              "fleet/publish-fold.mjs",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_facts_block.mjs",
+              "fleet/tests/test_resolver_brief.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_run_engine_ready_set.mjs",
+              "fleet/tests/test_run_engine_stale_patch.mjs"
+            ],
+            "produces": [
+              "`examReceiptOf({ cmd, exit, stdout, headSha, landings, files }) -> { paths, evidence } | null`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "A fold conflict leaves a receipt",
+          "files": [
+            "fleet/publish-fold.mjs",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_resolver_brief.mjs",
+            "fleet/tests/test_run_engine_ready_set.mjs",
+            "fleet/tests/test_run_engine_stale_patch.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`receiptPaths(list: string[]) -> string[]`",
+              "`foldReceiptOf({ open, disposition, reason, base, tip }) -> { paths, evidence } | null`",
+              "`publishFoldEvent(row: object, open: object[]) -> object`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/publish-fold.mjs",
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_stale_patch.mjs",
+            "fleet/tests/test_run_engine_ready_set.mjs",
+            "fleet/tests/test_resolver_brief.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_stale_patch.mjs && node fleet/tests/test_run_engine_ready_set.mjs && node fleet/tests/test_resolver_brief.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_stale_patch.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_ready_set.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_resolver_brief.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_stale_patch.mjs",
+            "fleet/tests/test_run_engine_ready_set.mjs",
+            "fleet/tests/test_resolver_brief.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/publish-fold.mjs",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_resolver_brief.mjs",
+              "fleet/tests/test_run_engine_ready_set.mjs",
+              "fleet/tests/test_run_engine_stale_patch.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_stale_patch.mjs",
+              "fleet/tests/test_run_engine_ready_set.mjs",
+              "fleet/tests/test_resolver_brief.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_stale_patch.mjs",
+              "fleet/tests/test_run_engine_ready_set.mjs",
+              "fleet/tests/test_resolver_brief.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_stale_patch.mjs": "fleet/tests/test_run_engine_stale_patch.mjs",
+              "fleet/tests/test_run_engine_ready_set.mjs": "fleet/tests/test_run_engine_ready_set.mjs",
+              "fleet/tests/test_resolver_brief.mjs": "fleet/tests/test_resolver_brief.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_resolver_brief.mjs",
+              "fleet/tests/test_run_engine_ready_set.mjs",
+              "fleet/tests/test_run_engine_stale_patch.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/facts-block.mjs",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_facts_block.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_run_engine_stale_patch.mjs"
+            ],
+            "produces": [
+              "`receiptPaths(list: string[]) -> string[]`",
+              "`foldReceiptOf({ open, disposition, reason, base, tip }) -> { paths, evidence } | null`",
+              "`publishFoldEvent(row: object, open: object[]) -> object`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "3",
+          "title": "A blocking finding and a refuted finding are events",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_proof_runs.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_proof_runs.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_proof_runs.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'",
+            "test \"$(grep -c \"kind: 'driver:finding'\" fleet/run-engine.mjs)\" -ge 2"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_proof_runs.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_proof_runs.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_proof_runs.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_proof_runs.mjs": "fleet/tests/test_run_engine_proof_runs.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_proof_runs.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/facts-block.mjs",
+              "fleet/publish-fold.mjs",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_facts_block.mjs",
+              "fleet/tests/test_resolver_brief.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_run_engine_ready_set.mjs",
+              "fleet/tests/test_run_engine_stale_patch.mjs"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        },
+        {
+          "id": "4",
+          "title": "The matcher and the FACTS renderer",
+          "files": [
+            "fleet/facts-block.mjs",
+            "fleet/tests/test_facts_block.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`factsBlock(rows: object[], paths: string[]) -> string`",
+              "`receiptRows(file: string) -> object[]`",
+              "`RECEIPT_KINDS`",
+              "`FACTS_MAX_ROWS`",
+              "`FACTS_FIELD_MAX`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/facts-block.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_facts_block.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_facts_block.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_facts_block.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_facts_block.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/facts-block.mjs",
+              "fleet/tests/test_facts_block.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_facts_block.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_facts_block.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_facts_block.mjs": "fleet/tests/test_facts_block.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_facts_block.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/publish-fold.mjs",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_resolver_brief.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_run_engine_ready_set.mjs",
+              "fleet/tests/test_run_engine_stale_patch.mjs"
+            ],
+            "produces": [
+              "`factsBlock(rows: object[], paths: string[]) -> string`",
+              "`receiptRows(file: string) -> object[]`",
+              "`RECEIPT_KINDS`",
+              "`FACTS_MAX_ROWS`",
+              "`FACTS_FIELD_MAX`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "6",
+          "title": "The contract names the receipts, the block, the reading and the deletion rule",
+          "files": [
+            "fleet/CONTRACT.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^ *Receipts (2026-09-16):/,/transcripts\\/<sessionId>.jsonl/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'paths.*evidence.*read.*against.*500.*driver:exam-run.*resolver:reply.*driver:wave-blocked.*driver:publish-fold.*driver:finding.*driver:finding-refuted.*handshake:finding'",
+            "sed -n '/^ *Receipts (2026-09-16):/,/transcripts\\/<sessionId>.jsonl/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'driver:finding.*severity.*actor.*round.*detail.*driver:finding-refuted.*verdict.*refutedBy.*flaky.*exam-concern-upheld.*clean.*driver:facts.*receipts'",
+            "sed -n '/^ *Receipts (2026-09-16):/,/transcripts\\/<sessionId>.jsonl/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'FACTS:.*examiner.*reviewer.*resolver.*20.*byte-identical.*never another run'",
+            "sed -n '/^ *Receipts (2026-09-16):/,/transcripts\\/<sessionId>.jsonl/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'n=5 runs.*no finding ever cites.*removed'",
+            "test \"$(grep -c '^ *Receipts (2026-09-16):' fleet/CONTRACT.md)\" = 1"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [
+              "fleet/facts-block.mjs",
+              "fleet/publish-fold.mjs",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_facts_block.mjs",
+              "fleet/tests/test_resolver_brief.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_run_engine_ready_set.mjs",
+              "fleet/tests/test_run_engine_stale_patch.mjs"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ],
+      [
+        {
+          "id": "5",
+          "title": "The three judges read the FACTS block",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_resolver_brief.mjs",
+            "fleet/tests/test_run_engine_proof_runs.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`factsBlock(rows: object[], paths: string[]) -> string`",
+              "`examReceiptOf({ cmd, exit, stdout, headSha, landings, files }) -> { paths, evidence } | null`"
+            ],
+            "produces": [
+              "`waveContendingBlock({ waveTasks, wavesPath, receipts }) -> (conflict) => string`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_proof_runs.mjs",
+            "fleet/tests/test_resolver_brief.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_proof_runs.mjs && node fleet/tests/test_resolver_brief.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_review_economy.mjs | grep -q 'ALL TESTS PASSED'",
+            "test \"$(grep -c 'FACTS' fleet/roles/examiner.md fleet/roles/reviewer.md fleet/roles/resolver.md | grep -c ':0$')\" = 3"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_proof_runs.mjs",
+            "fleet/tests/test_resolver_brief.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_resolver_brief.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_resolver_brief.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_resolver_brief.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_proof_runs.mjs": "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_resolver_brief.mjs": "fleet/tests/test_resolver_brief.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_resolver_brief.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/publish-fold.mjs",
+              "fleet/tests/test_publish_fold.mjs"
+            ],
+            "produces": [
+              "`waveContendingBlock({ waveTasks, wavesPath, receipts }) -> (conflict) => string`"
+            ],
+            "consumes": [
+              "`factsBlock(rows: object[], paths: string[]) -> string`",
+              "`examReceiptOf({ cmd, exit, stdout, headSha, landings, files }) -> { paths, evidence } | null`"
+            ]
+          }
+        },
+        {
+          "id": "7",
+          "title": "The publish fold writes its receipts and reads them back",
+          "files": [
+            "fleet/publish-fold.mjs",
+            "fleet/tests/test_publish_fold.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`publishFoldEvent(row: object, open: object[]) -> object`",
+              "`factsBlock(rows: object[], paths: string[]) -> string`",
+              "`receiptRows(file: string) -> object[]`"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/publish-fold.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_publish_fold.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_publish_fold.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_publish_fold.mjs | grep -q 'ALL TESTS PASSED'",
+            "sed -n '/const resolution = await resolveConflicts({/,/})/p' fleet/publish-fold.mjs | grep -q 'onEvent: eventLog.onEvent'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_publish_fold.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/publish-fold.mjs",
+              "fleet/tests/test_publish_fold.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_publish_fold.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_publish_fold.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_publish_fold.mjs": "fleet/tests/test_publish_fold.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_publish_fold.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_resolver_brief.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs"
+            ],
+            "produces": [],
+            "consumes": [
+              "`publishFoldEvent(row: object, open: object[]) -> object`",
+              "`factsBlock(rows: object[], paths: string[]) -> string`",
+              "`receiptRows(file: string) -> object[]`"
+            ]
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "fleet \u00b7 5 tasks",
+      "fleet \u00b7 2 tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- A run whose record holds no receipt row dispatches every judge with the brief this engine's base produces: no captured prompt of any role contains the token `FACTS:`, and the schedule \u2014 waves, edges, fold epochs, dispatch order, the one review round \u2014 is what it is at BASE.\n- No worker writes an event: every receipt row is appended by the driver \u2014 `appendEvent` in `fleet/run-engine.mjs` or `eventLog.onEvent` in `fleet/publish-fold.mjs` \u2014 and no role file asks a worker to post, edit or read one.\n- A receipt states what was observed and never what to do: `evidence.read` and `evidence.against` are readings, and no rendered `FACTS:` line carries an instruction to a judge beyond the block's own header sentence.\n- A receipt is scoped to the run that wrote it: the matcher reads only rows this run's own process appended \u2014 the engine's in-memory receipts, or the publish fold's own `<runDir>/events.jsonl` \u2014 and never a tag, a hub issue or another run's directory; a relaunch renders nothing of the run before it.\n- The `FACTS:` block is bounded: at most 20 rows, each row's `read` and `against` at most 500 characters, so a block is under 24 KB however many failures the run recorded.\n- Every new event kind and every new event field is named in `fleet/CONTRACT.md`, which wins over `fleet/RUNBOOK.md` on any literal.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/",
+        "minor": false
+      },
+      {
+        "cmd": "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-159/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-159/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-159/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-159/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
