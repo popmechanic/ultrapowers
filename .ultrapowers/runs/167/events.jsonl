@@ -34,3 +34,20 @@
 {"kind":"transcript:slice","label":"exam:1","sessionId":"02bf4850-e4ff-4d9c-bc07-fd4ab330cbd0","bytes":11458,"id":"01M2NTEHAR0000G6CBM859MX07","ts":1789586261336}
 {"kind":"driver:attention","task":"3","attention":"needs-human","msg":"session ended without hand-off","actor":"","id":"01M2NTET6P0000NPR0ZHEQB180","ts":1789586270422}
 {"kind":"driver:attention","task":"1","attention":"needs-human","msg":"session ended without hand-off","actor":"","id":"01M2NTEWP50000PSW6P63VERXY","ts":1789586272965}
+{"kind":"worker:end","label":"exam:2","role":"examiner","sessionId":"c48dca15-b13c-4f0b-871f-f308e0b7df6b","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":4242,"output":29167,"cacheRead":2495061,"cacheCreation":81467,"costUsd":2.8125855,"models":["claude-opus-5"]},"id":"01M2NTFE550000A56WWYSGKADV","ts":1789586290853}
+{"kind":"transcript:slice","label":"exam:2","sessionId":"c48dca15-b13c-4f0b-871f-f308e0b7df6b","bytes":11538,"id":"01M2NTFE5D0000PEWQ4PKQ3BWM","ts":1789586290861}
+{"kind":"driver:exam-handoff","task":"2","paths":["fleet/tests/test_run_engine_reconcile_retry.mjs"],"id":"01M2NTFEGT00007ECSSZ7QZTPJ","ts":1789586291226}
+{"kind":"driver:proof-run","task":"2","cmd":"grep -q \"driver:reconcile-retry\" fleet/CONTRACT.md","exit":0,"iter":0,"id":"01M2NTFEKY0000AD3TDXC03TT3","ts":1789586291326}
+{"kind":"driver:exam-run","task":"2","cmd":"node fleet/tests/test_run_engine_reconcile_retry.mjs","exit":0,"iter":0,"stdout":"ALL TESTS PASSED\n","id":"01M2NTFGAT0000QMFWW9HD3ZFV","ts":1789586293082}
+{"kind":"driver:check-run","task":"2","cmd":"git diff --quiet $ULTRA_BASE -- fleet/roles/","exit":0,"minor":false,"iter":0,"id":"01M2NTFGB00000342Y07P7GGK9","ts":1789586293088}
+{"kind":"driver:check-run","task":"2","cmd":"node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"minor":false,"iter":0,"id":"01M2NTFGMD0000GEESV25MXPJR","ts":1789586293389}
+{"kind":"worker:start","label":"review:2:1","role":"reviewer","sessionId":"89481dea-00cc-4ef4-94bf-67aec02e2da3","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-167/clones/integration","model":"opus","id":"01M2NTFGP50000BDFDK5WECP5H","ts":1789586293445}
+{"kind":"worker:end","label":"impl:1","role":"implementer","sessionId":"9324afbf-fabc-43aa-ba9a-fa052bfe7b00","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5062,"output":17797,"cacheRead":1533929,"cacheCreation":50108,"costUsd":1.7382795,"models":["claude-opus-5"]},"id":"01M2NTFNTY0000GAYY2WAZTG1Z","ts":1789586298718}
+{"kind":"transcript:slice","label":"impl:1","sessionId":"9324afbf-fabc-43aa-ba9a-fa052bfe7b00","bytes":11654,"id":"01M2NTFNV70000FE7PE9SKHBMK","ts":1789586298727}
+{"kind":"driver:exam-handoff","task":"1","paths":["fleet/tests/test_worker_end_reason.mjs"],"id":"01M2NTFNXY0000B54SGZS4GKPR","ts":1789586298814}
+{"kind":"driver:proof-run","task":"1","cmd":"grep -q \"spawn-error\" fleet/CONTRACT.md","exit":0,"iter":0,"id":"01M2NTFP0P0000J3499YZ4VTNC","ts":1789586298902}
+{"kind":"driver:proof-run","task":"1","cmd":"grep -q \"no-envelope\" fleet/CONTRACT.md","exit":0,"iter":0,"id":"01M2NTFP0Y0000NJ4AQ2VBFM1K","ts":1789586298910}
+{"kind":"driver:exam-run","task":"1","cmd":"node fleet/tests/test_worker_end_reason.mjs","exit":0,"iter":0,"stdout":"ALL TESTS PASSED\n","id":"01M2NTFP330000ZJ0S2ZCFJVX2","ts":1789586298979}
+{"kind":"driver:check-run","task":"1","cmd":"git diff --quiet $ULTRA_BASE -- fleet/roles/","exit":0,"minor":false,"iter":0,"id":"01M2NTFP3C0000NRJCCRTMYQKS","ts":1789586298988}
+{"kind":"driver:check-run","task":"1","cmd":"node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"minor":false,"iter":0,"id":"01M2NTFPDE0000D8NZ2KMFVNSB","ts":1789586299310}
+{"kind":"worker:start","label":"review:1:1","role":"reviewer","sessionId":"d38e0c03-366a-4c2b-87ae-1ac4b9176f74","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-167/clones/integration","model":"opus","id":"01M2NTFPF60000M7FFRHQC4472","ts":1789586299366}
