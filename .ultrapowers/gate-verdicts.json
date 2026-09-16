@@ -1,0 +1,74 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "baa5b0635921499cffda3fec264c184a680bf3a608da2de316057e4ae77cc976",
+      "verdict": "pass",
+      "reason": "Leg (a) falsifies M1 by byte-comparing stdin and asserting end, (b) falsifies M2 on every argv element (200,000 bytes satisfiable as 50,000 copies of the 4-byte line), (c) falsifies M3 by recording uncaughtException around a post-close EPIPE; nothing at BASE pins the opposite and the kata-env stub's missing stdin is what leg (d) covers."
+    },
+    "2": {
+      "hash": "6b76843bb538152502a3cb8b19511448658ea2e1fba2967450a23c70c1d157e2",
+      "verdict": "pass",
+      "reason": "Leg (a)'s exact equality on the second prompt falsifies M1, (b) falsifies M2 against BASE's role + HUNKS FILE + contendingBlock shape, (c) falsifies M3 through the byte-identical files, the two FILE: lines and the <1024 bound against a 200,000-byte block, (d)/(e) cover M4's two files one grep each; resolveConflicts defaults contendingBlock='' and the folder's line-809 concatenation is exactly what M1/M3 replace."
+    }
+  },
+  "tally": {
+    "dispatched": 2,
+    "rejected": 0,
+    "rounds": {
+      "1": {
+        "dispatched": 2,
+        "rejected": 0
+      }
+    },
+    "base": "5f75eaaa59aa30801bbab19d0cb6698b3129203b",
+    "note": "One round, both readers foreground, fed the extractor's --base diet only. The author's own pre-dispatch edits: the last Run: of task 1 was re-pinned from a bare '-p', prompt grep (a comment carrier at line 255) to the code-only '-p', prompt] pattern, and task 2's leg (d) was split into (d) role file and (e) contract so M4's two rows each have a leg."
+  },
+  "authoring": {
+    "minutes": 28,
+    "probes": 0,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "How do you want the morning's authoring to start?",
+        "options": [
+          "#1035 + #1038 now, rest after it merges",
+          "Author all four plugin plans now, launch serially",
+          "Fixture plans first"
+        ],
+        "recommended": "#1035 + #1038 now, rest after it merges",
+        "picked": "#1035 + #1038 now, rest after it merges"
+      },
+      {
+        "question": "Claim and summary (two plans, one touch)",
+        "options": [
+          "Both as drafted",
+          "#1038 as the full reviewer plan instead"
+        ],
+        "recommended": "Both as drafted",
+        "picked": "Both as drafted"
+      },
+      {
+        "question": "#1035 execute lane",
+        "options": [
+          "Ultrapowers",
+          "Subagent-Driven",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers"
+      },
+      {
+        "question": "Reword the Summary to the measured cause (task bodies, not main.patch)?",
+        "options": [
+          "Reword to the measured cause",
+          "Leave as signed"
+        ],
+        "recommended": "Reword to the measured cause",
+        "picked": "Reword to the measured cause"
+      }
+    ]
+  }
+}
