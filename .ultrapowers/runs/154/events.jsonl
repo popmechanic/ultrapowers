@@ -1,0 +1,11 @@
+{"kind":"run:open","runId":"run-154","base":"","source":"fleet/run-main.mjs","id":"01M2M2JC0F0000R3GAWAZTVP79","ts":1789527666703}
+{"kind":"driver:stage","stage":"kata","detail":"record /home/exedev/plans/run-154.kata.json → https://kata.int.exe.xyz","id":"01M2M2JC0G00006P8Z0QCRB850","ts":1789527666704}
+{"kind":"driver:stage","stage":"tiers","detail":"3 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M2M2JC0G0001QS6DJZ6NQD6A","ts":1789527666704}
+{"kind":"driver:stage","stage":"provision","detail":"BASE e245b71ce9370e6d32ce0cc7277694cef592fec4; 3 task clone(s) + integration","id":"01M2M2JCA50000W95K54NHZENE","ts":1789527667013}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M2M2JCRF0000A6K7Q25BC0J5","ts":1789527667471}
+{"kind":"driver:stage","stage":"engine","detail":"waves 3, width bound 3, patch input armed","id":"01M2M2JCRG0000YWEA1K3Y8GWD","ts":1789527667472}
+{"kind":"engine:phase","phase":"Setup","id":"01M2M2JCRN0000KA1FWBMT9YK1","ts":1789527667477}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-154 at e245b71ce9370e6d32ce0cc7277694cef592fec4","id":"01M2M2JD0E0000TFHTFQ5MNEDP","ts":1789527667726}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"5d78d489-f8f6-4e08-9956-732cd52f0859","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-154/clones/task-1","model":"opus","id":"01M2M2JDHR00009AJBF4XJJ2BA","ts":1789527668280}
+{"kind":"worker:start","label":"impl:2","role":"implementer","sessionId":"9dac4275-b3bd-4ed8-9dcd-a0f3009538bd","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-154/clones/task-2","model":"opus","id":"01M2M2JDJ10000P4VC0BDJW7YC","ts":1789527668289}
+{"kind":"worker:start","label":"impl:3","role":"implementer","sessionId":"4df85719-dd56-4fca-a247-17c267d0a776","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-154/clones/task-3","model":"opus","id":"01M2M2JDJM0000ZX4S2R186XQQ","ts":1789527668308}

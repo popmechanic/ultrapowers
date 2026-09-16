@@ -1,0 +1,289 @@
+{
+  "ok": true,
+  "stamp": "run-154",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-154"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "3 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The gotchas file gains the guarded-exam wording-pin row",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrawrite/references/authoring-gotchas.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The examiner role says a leg's action form is not its to change",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/roles/examiner.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The greenfield stack's State exams section gains the three TinyApp rows",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrawrite/references/greenfield-stack.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The gotchas file gains the guarded-exam wording-pin row",
+          "files": [
+            "skills/ultrawrite/references/authoring-gotchas.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultrawrite/references/authoring-gotchas.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^## The .* rows$/,/^## Three older lessons/p' skills/ultrawrite/references/authoring-gotchas.md | tr '\\n' ' ' | grep -q 'guarded exam pins another file.*wording.*wording folds'",
+            "sed -n '/^## The .* rows$/,/^## Three older lessons/p' skills/ultrawrite/references/authoring-gotchas.md | tr '\\n' ' ' | grep -q 'run-13.*set-filter.test.ts.*leg (g).*lint-cli.test.ts.*toContain.*run-12.*publish fold.*#1019'",
+            "sed -n '/^## The .* rows$/,/^## Three older lessons/p' skills/ultrawrite/references/authoring-gotchas.md | tr '\\n' ' ' | grep -q 'imports and calls.*Run:. line of the plan.*never in the merged exam'",
+            "grep -q '^## The thirteen rows$' skills/ultrawrite/references/authoring-gotchas.md && grep -c '^## The twelve rows' skills/ultrawrite/references/authoring-gotchas.md | grep -qx 0",
+            "git diff --numstat $ULTRA_BASE -- skills/ultrawrite/references/authoring-gotchas.md | awk '{d=$2} END{exit (d==1)?0:1}'"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "skills/ultrawrite/references/authoring-gotchas.md"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [
+              "fleet/roles/examiner.md",
+              "skills/ultrawrite/references/greenfield-stack.md"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "The examiner role says a leg's action form is not its to change",
+          "files": [
+            "fleet/roles/examiner.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/roles/examiner.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^The exam is the implementer/,/^Return a single JSON/p' fleet/roles/examiner.md | tr '\\n' ' ' | grep -q 'action form.*not the examiner.s to change'",
+            "sed -n '/^The exam is the implementer/,/^Return a single JSON/p' fleet/roles/examiner.md | tr '\\n' ' ' | grep -q 'red exam that says so.*unsatisfiable.*never a quiet substitution'",
+            "sed -n '/^The exam is the implementer/,/^Return a single JSON/p' fleet/roles/examiner.md | tr '\\n' ' ' | grep -q 'run-15.*click.*deleteTodo.*mutant passed.*reviewer.*#836'",
+            "grep -cE 'mutant (caught|killed|blocked)' fleet/roles/examiner.md | grep -qx 0",
+            "grep -cE '\\b(MUST|NEVER|ALWAYS|DO NOT)\\b' fleet/roles/examiner.md | grep -qx 0",
+            "git diff --numstat $ULTRA_BASE -- fleet/roles/examiner.md | awk '{d=$2} END{exit (d==0)?0:1}'",
+            "wc -w fleet/roles/examiner.md"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "fleet/roles/examiner.md"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [
+              "skills/ultrawrite/references/authoring-gotchas.md",
+              "skills/ultrawrite/references/greenfield-stack.md"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        },
+        {
+          "id": "3",
+          "title": "The greenfield stack's State exams section gains the three TinyApp rows",
+          "files": [
+            "skills/ultrawrite/references/greenfield-stack.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultrawrite/references/greenfield-stack.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^## State exams/,/^## The engine boundary/p' skills/ultrawrite/references/greenfield-stack.md | tr '\\n' ' ' | grep -q 'No schema default.*default.*materialised.*getContent().*seed.*expected.*5.7 files, 13.20 pins.*three plans.*no default.*absent on old rows.*byte-identical.*#867'",
+            "sed -n '/^## State exams/,/^## The engine boundary/p' skills/ultrawrite/references/greenfield-stack.md | tr '\\n' ' ' | grep -q 'callback.*invariant.*snapshot.*owns.*lint-cli.*invariants.*reachability.*views.*containment.*tree-computed counts.*never to a new exact literal.*sibling plan.*concurrently.*both folds.*run-12.*#1019'",
+            "sed -n '/^## State exams/,/^## The engine boundary/p' skills/ultrawrite/references/greenfield-stack.md | tr '\\n' ' ' | grep -q 'date field is a text input.*type.*CDP.*Input.insertText.*input type=.date.*run-12'",
+            "git diff --numstat $ULTRA_BASE -- skills/ultrawrite/references/greenfield-stack.md | awk '{d=$2} END{exit (d==0)?0:1}'",
+            "wc -w skills/ultrawrite/references/greenfield-stack.md"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "skills/ultrawrite/references/greenfield-stack.md"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [
+              "fleet/roles/examiner.md",
+              "skills/ultrawrite/references/authoring-gotchas.md"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "3 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- Scope is the five rows of #1038 and nothing else: the reviewer engine switch and #836's sentence deletions are a later plan, so `fleet/run-engine.mjs` and `fleet/roles/reviewer.md` are byte-identical to BASE.\n- Every row is written in the register of the file it lands in \u2014 a rule sentence, its reason, and the run or comment that paid for it \u2014 and the role file keeps its one stylistic pin: no shouted imperatives (`MUST`, `NEVER`, `ALWAYS`, `DO NOT` in capitals), which it carries none of at BASE.\n- The word counts of `fleet/roles/examiner.md` and `skills/ultrawrite/references/greenfield-stack.md` are reported on a task's `- Run:` (`wc -w`) and gate nothing.\n- Row 2's wording never claims the mutant caught run-15's hollow exam: #836's 2026-09-16 comment reads that the mutant passed it (`mutant_killed: true`, the store move was real) and the reviewer caught it reading the exam against the Claim and the implementer's declared amendment.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/roles/reviewer.md fleet/roles/implementer.md fleet/roles/fix.md fleet/roles/resolver.md fleet/roles/reconcile.md skills/ultrapowers skills/ultrawrite/SKILL.md fleet/tests",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-154/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-154/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-154/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-154/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
