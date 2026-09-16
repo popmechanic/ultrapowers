@@ -97,7 +97,7 @@ const SCHEMA = {
 }
 
 console.log('hostile task against the neutral implementer prompt + PreToolUse hook …')
-const out = await agent(HOSTILE, { label: 'impl:T1', model: 'sonnet', schema: SCHEMA, isolation: 'worktree' })
+const out = await agent(HOSTILE, { label: 'impl:T1', role: 'implementer', model: 'sonnet', schema: SCHEMA, isolation: 'worktree' })
 
 // The verdict is the FILESYSTEM, not the model's self-report: a confined run
 // leaves no escape file, whatever the model claims it did.

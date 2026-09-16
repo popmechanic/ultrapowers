@@ -133,15 +133,22 @@ const resolvedModel = (name) => {
 }
 
 // ── fault classifiers — THE ONE SHARED DEFINITION (spec §3.4) ────────────────
-// run-worker.mjs's classify() speaks this vocabulary in its thrown messages;
-// fleet/tests/test_run_worker.mjs pins classify's wording against THIS regex
-// (it used to extract it from waves.js source — the pin now holds the engine
-// that actually runs, not the fallback). A capability-fixable schema trip gets
-// the one tier escalation; everything else retries in place; AGENT_NULL is the
-// engine-minted infra marker and parks for its one re-dispatch — never free-text
-// match Overloaded (agent() returns null rather than throwing overload text).
-export const isSchemaTrip = (msg) =>
-  /schema|structuredoutput|did not conform|required propert|invalid (?:enum|json)/i.test(msg)
+// A capability trip gets the one tier escalation; everything else retries in
+// place; AGENT_NULL is the engine-minted infra marker and parks for its one
+// re-dispatch — never free-text match Overloaded (agent() returns null rather
+// than throwing overload text).
+//
+// The escalation lever is a VALUE, not a sentence (#410 §1). run-worker.mjs's
+// classify() attaches its verdict to every non-fatal throw as
+// `err.workerVerdict`, and these are the two classes that mean "the schema
+// contract went unmet, a stronger model is the lever". Reading the class means
+// rewording a worker's detail text — or a task's own error happening to say
+// "schema" — cannot move a retry between tiers.
+const SCHEMA_TRIP_CLASSES = new Set(['max-turns', 'no-structured-output'])
+const capabilityTrip = (err) => {
+  const v = err && typeof err === 'object' ? err.workerVerdict : null
+  return !!v && typeof v === 'object' && SCHEMA_TRIP_CLASSES.has(v.class)
+}
 export const looksStructural = (msg) =>
   /cannot find module|module not found|no module named|importerror|cannot import|is not defined/i.test(msg)
 export const isInfraFault = (msg) => String(msg).startsWith('AGENT_NULL')
@@ -1118,8 +1125,29 @@ const taskBodyBlock = (task, wavesPath) => {
 // lacks (an OOM-killed worker, a stuck execnet gateway), which is what moved
 // this from theoretical to owed before the golden ships parallel pytest.
 export const SHELL_TIMEOUT_MS = 30 * 60 * 1000
-const shOf = (exec) => (cmd, cwd, env) =>
-  exec('bash', ['-lc', cmd], { cwd, env, timeoutMs: SHELL_TIMEOUT_MS })
+// Where the sandbox installs its pinned toolchain (#1051): `setup-script.mjs`
+// puts Bun at `/usr/local/bin/bun`, and that binary — not whatever a target's
+// `package install` dropped into `node_modules/.bin`, and not whatever the
+// login profile found first — is what the driver's commands must resolve. A
+// run overrides it with `args.toolchainBin`; this is the default.
+export const TOOLCHAIN_BIN = '/usr/local/bin'
+// Single-quote a directory for the shell, so a path with a space or a quote in
+// it still arrives as one word.
+const shSingleQuote = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'"
+// The prefix rides INSIDE the command string, not in `env.PATH`: `bash -l`
+// sources the login profile AFTER the environment is set, and a profile that
+// assigns `PATH=` (macOS `path_helper`, Debian's `/etc/profile`) would throw an
+// inherited prefix away. An assignment in the command runs after the profile
+// has had its say, so the toolchain directory is first whatever the profile or
+// the tree did. `${PATH:+:$PATH}` keeps the rest of the PATH the command would
+// otherwise have had, and adds no stray `:` when there was none.
+const shOf = (exec, toolchainBin) => {
+  const bin = (typeof toolchainBin === 'string' && toolchainBin !== '')
+    ? toolchainBin : TOOLCHAIN_BIN
+  const prefix = 'export PATH=' + shSingleQuote(bin) + '"${PATH:+:$PATH}"\n'
+  return (cmd, cwd, env) =>
+    exec('bash', ['-lc', prefix + cmd], { cwd, env, timeoutMs: SHELL_TIMEOUT_MS })
+}
 // The env for a `Run:`/`Check:` command (#632 part 2). `execSeam` spawns with
 // `env: env || process.env`, so a passed env REPLACES the environment whole —
 // omit the spread and the command loses PATH, HOME and the git config that
@@ -1275,7 +1303,7 @@ export async function resolveConflicts({
             // whole contending-task dossier per path hands a function and each
             // resolver is briefed on its own path alone.
             (typeof contendingBlock === 'function' ? contendingBlock(conflict) : contendingBlock),
-          { label, schema: RESOLVER_SCHEMA })
+          { label, role: 'resolver', schema: RESOLVER_SCHEMA })
       } catch (e) {
         // A run-fatal (credential/config) must surface as the engine crash
         // it is — swallowing it here would misreport a dead credential as a
@@ -1449,7 +1477,7 @@ export async function runEngine({
   patchBase,
 }) {
   const roles = loadRoles(rolesDir)
-  const sh = shOf(exec)
+  const sh = shOf(exec, args.toolchainBin)
   const git = gitOf(exec)
   const { runDir, clonesDir } = paths
   // What a state exam is handed as `ULTRA_RUN_DIR` — absolute, because the
@@ -3103,12 +3131,13 @@ export async function runEngine({
                  { label: 'exam:' + task.id, task: task.id })
       : ''
     const examPrompt = roles.examiner + '\nBASE: ' + baseShaForTask + examinerInputs + examFacts
-    const examOpts = { label: 'exam:' + task.id, isolation: 'worktree', model: baseModel,
-                       schema: EXAMINER_SCHEMA }
+    const examOpts = { label: 'exam:' + task.id, role: 'examiner', isolation: 'worktree',
+                       model: baseModel, schema: EXAMINER_SCHEMA }
     const examCall = examReady ? agent(examPrompt, examOpts) : null
     const implCall = agent(
       roles.implementer + '\nBASE: ' + baseShaForTask + implementerInputs,
-      { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA })
+      { label: 'impl:' + task.id, role: 'implementer', isolation: 'worktree',
+        model: baseModel, schema: IMPLEMENTER_SCHEMA })
     // Both halves are SETTLED before either is judged (#762). `Promise.all`
     // rejected the moment the examiner died — with the implementer still
     // running, un-awaited — and that rejection climbed to runTask, which reset
@@ -3712,7 +3741,7 @@ export async function runEngine({
           filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) +
           '\n\nBlocking issues to resolve:\n' +
           reds.map((r) => '- ' + r.line + '\n  output (last 4,000 characters):\n' + r.stdout).join('\n'),
-        { label: 'fix:' + task.id + ':0', isolation: 'worktree',
+        { label: 'fix:' + task.id + ':0', role: 'implementer', isolation: 'worktree',
           model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA })
       if (impl === null) throw new Error('AGENT_NULL: pre-review fix agent returned null (terminal Overloaded or skipped)')
       stripUntrustedPatch(impl, patchPrefix)
@@ -3977,7 +4006,7 @@ export async function runEngine({
       // not reviewed by a PAIR — the profile survives as the run's record of
       // what the plan asked for, not as a second bill.
       const reviewOpts = () => ({
-        label: 'review:' + task.id + ':' + iter,
+        label: 'review:' + task.id + ':' + iter, role: 'reviewer',
         model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
       })
       const leanOpts = reviewOpts()
@@ -4275,7 +4304,7 @@ export async function runEngine({
                  notes: msg, tier: resolvedModel(task.tier || 'standard'),
                  review: taskReviewProfile(task), fixIterations: 0, proofFixes: 0 }
       }
-      const capabilityFixable = isSchemaTrip(msg)
+      const capabilityFixable = capabilityTrip(e)
       const retryTier = capabilityFixable ? escalateTier(task.tier) : (task.tier || 'standard')
       if (looksStructural(msg)) {
         judgmentCalls.push('task ' + task.id + ': agent error looks structural (' + msg +
@@ -4674,16 +4703,49 @@ export async function runEngine({
     }
     for (let attempt = 1; attempt <= 2 && suite.code !== 0; attempt++) {
       log('wave ' + waveNumber + ' candidate suite RED — reconcile attempt ' + attempt)
-      let rec
-      try {
-        rec = await agent(
-          roles.reconcile + '\nTEST COMMAND: ' + testCmd +
-            '\n\nFailing output:\n' + failingBlock(suite.stdout + suite.stderr),
-          { label: 'reconcile:wave' + waveNumber + ':' + attempt,
-            model: TIER.mostCapable, schema: RECONCILE_SCHEMA })
-      } catch (e) {
-        if (String((e && e.message) || e).startsWith('RUN_FATAL')) throw e
-        rec = null
+      const prompt = roles.reconcile + '\nTEST COMMAND: ' + testCmd +
+        '\n\nFailing output:\n' + failingBlock(suite.stdout + suite.stderr)
+      const label = 'reconcile:wave' + waveNumber + ':' + attempt
+      // One dispatch, as an expression: the reply, or the CLASS of the no-reply
+      // it was. A non-fatal throw is a no-reply like a `null` is — the worker
+      // attaches `{ workerVerdict, label }` to every one of them, so the class
+      // it died of is readable — and a `RUN_FATAL` is the run ending and leaves
+      // here untouched, exactly as at BASE.
+      const askOnce = async () => {
+        try {
+          return { reply: await agent(prompt, { label, role: 'writeSide', model: TIER.mostCapable, schema: RECONCILE_SCHEMA }),
+                   cls: null }
+        } catch (e) {
+          if (String((e && e.message) || e).startsWith('RUN_FATAL')) throw e
+          const verdict = e && e.workerVerdict
+          return { reply: null, cls: (verdict && verdict.class != null) ? verdict.class : null }
+        }
+      }
+      // A reconcile worker that died without answering is asked the same
+      // question once more before the epoch is blocked (#1054, question 2). At
+      // BASE a no-reply on attempt 1 ended the round where it stood, so run-20
+      // paid a whole epoch — tasks 2–5 never dispatched — for one worker that
+      // exited 1 having spent zero tokens. The re-ask is a FRESH worker on the
+      // byte-identical prompt under the same `label`, `model` and `schema`: the
+      // worker derives the second session id and evidence directory
+      // (`<label>.2`) from its own per-label `dispatched` count, so keeping the
+      // label is what keeps the two dispatches distinguishable on the record.
+      // It is IMMEDIATE — no backoff. `INFRA_BACKOFF_MS` (`retryInfraNull`
+      // above) is the answer to an OVERLOADED API being re-asked by every
+      // worker that died in the outage at once; a reconcile is one worker per
+      // epoch, not a storm, and a minute of wall on it buys nothing.
+      // An OBJECT reply is an answer and is read as at BASE — a `BLOCKED` says
+      // the worker looked and could not fix it, which asking twice does not
+      // change — and only the SECOND no-reply is read as no reply, so the
+      // `judgmentCalls` literal and the `TEST_FAILED` route below are BASE's,
+      // byte for byte.
+      let { reply: rec, cls } = await askOnce()
+      if (rec == null) {
+        appendEvent({ kind: 'driver:reconcile-retry', wave: waveNumber, attempt, class: cls })
+        judgmentCalls.push('wave ' + waveNumber + ': reconcile attempt ' + attempt +
+          ' produced no reply (' + cls + ') — re-dispatched once')
+        log(label + ' produced no reply (' + cls + ') — re-dispatching once')
+        ;({ reply: rec } = await askOnce())
       }
       if (!rec || rec.status !== 'FIXED') {
         judgmentCalls.push('wave ' + waveNumber + ': reconcile attempt ' + attempt +

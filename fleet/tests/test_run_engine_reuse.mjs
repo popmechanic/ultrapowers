@@ -493,7 +493,11 @@ async function sim ({ name, waves, issues, edges = [], answerExec = () => null }
     onExec: (call) => {
       // The suite, snapshotted where and when it actually ran: the tree of the
       // clone's HEAD at the moment of the call, which is what leg (e) reads.
-      if (call.cmd === 'bash' && call.argv[0] === '-lc' && call.argv[1] === TEST_CMD) {
+      // The adapter prepends the sandbox's toolchain directory to `PATH` inside
+      // the command string (#1051), so the suite is the TAIL of what `bash -lc`
+      // was handed, never the whole of it.
+      if (call.cmd === 'bash' && call.argv[0] === '-lc' &&
+          String(call.argv[1]).endsWith(TEST_CMD)) {
         suiteRuns.push({ cwd: call.cwd, head: gitSync(['rev-parse', 'HEAD'], call.cwd),
                          tree: treeOf(call.cwd, 'HEAD') })
       }

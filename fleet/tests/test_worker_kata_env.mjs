@@ -343,19 +343,23 @@ async function childEnvsFor ({ name, baseEnv, extra, labels }) {
     ...extra,
   })
   const out = new Map()
-  for (const { label, isolation } of labels) {
+  for (const { label, role, isolation } of labels) {
     const before = seen.length
-    await agent(PROMPT, { label, model: 'opus', ...(isolation ? { isolation } : {}) })
+    await agent(PROMPT, { label, role, model: 'opus', ...(isolation ? { isolation } : {}) })
     assert.equal(seen.length, before + 1, label + ' dispatched exactly one `claude`')
     out.set(label, seen[seen.length - 1].env)
   }
   return out
 }
 
+// The role is DECLARED at the dispatch, never read off the label (#410 §2), so
+// each row carries its own. `integration` is the retired critic label (#964),
+// kept here only as a label naming no task the record knows — it declares the
+// read-only `reviewer` role, since `critic` is dispatched by nothing.
 const DISPATCHES = [
-  { label: 'impl:3', isolation: 'worktree' },
-  { label: 'review:3:1:2' },
-  { label: 'integration' },
+  { label: 'impl:3', role: 'implementer', isolation: 'worktree' },
+  { label: 'review:3:1:2', role: 'reviewer' },
+  { label: 'integration', role: 'reviewer' },
 ]
 
 {

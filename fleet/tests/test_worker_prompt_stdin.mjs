@@ -16,7 +16,7 @@
  *
  *   (a) [M1] One dispatch of a prompt of EXACTLY 200,000 UTF-8 bytes, built
  *       from a repeated line carrying an em-dash, through
- *       `agent(prompt, { label: 'impl:1' })` against a `spawnFn` whose child
+ *       `agent(prompt, { label: 'impl:1', role: 'implementer' })` against a `spawnFn` whose child
  *       records what is written to its `stdin`: the bytes the child's stdin
  *       received are byte-identical to the prompt, and its stdin was ended
  *       (EOF) by the worker. The spawn options' `stdio` is
@@ -200,7 +200,7 @@ function workerFor (name, spawnFn) {
     return child
   })
 
-  const out = await agent(PROMPT, { label: 'impl:1' })
+  const out = await agent(PROMPT, { label: 'impl:1', role: 'implementer' })
 
   assert.equal(seen.length, 1, '(a) [M1] the dispatch spawned exactly one `claude`')
   const { cli, argv, opts, child } = seen[0]
@@ -278,7 +278,7 @@ function workerFor (name, spawnFn) {
   process.on('unhandledRejection', record)
   let out, thrown = null
   try {
-    out = await agent(SHORT, { label: 'impl:2' })
+    out = await agent(SHORT, { label: 'impl:2', role: 'implementer' })
     // Two turns past the dispatch, so anything `stdin.end` scheduled has run.
     await new Promise((r) => setImmediate(() => setImmediate(() => setTimeout(r, 10))))
   } catch (e) {

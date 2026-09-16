@@ -517,9 +517,10 @@ export const makeAddDirsFor = ({ runDir }) => (opts, role) =>
 export function composeAgent({ runId, base, runDir, clonesDir, patchesDir, workersDir,
                                promptFileFor, settingsFor, env, cli, eventLog, spawnFn,
                                implementerEffort, filesFor, envFor, args }) {
-  // One knob, one role. `roleForLabel` maps both `impl:` and `fix:` to
-  // `implementer`; every other role answers undefined, so `buildArgs` pushes no
-  // `--effort` for it and each judge keeps the CLI's own default (#522).
+  // One knob, one role. Both the `impl:` and the `fix:` dispatch declare
+  // `implementer`, so the knob reaches both; every other role answers
+  // undefined, so `buildArgs` pushes no `--effort` for it and each judge keeps
+  // the CLI's own default (#522).
   const effortFor = implementerEffort
     ? (role) => (role === 'implementer' ? implementerEffort : undefined)
     : undefined

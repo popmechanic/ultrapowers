@@ -86,7 +86,7 @@ console.log('arm A: a conforming reply from a real claude -p …')
 const outA = await mk()(
   'Read README.md in the current directory. Reply with the value of PROBE_WORD as `word`, ' +
   'and the basename of your current working directory as `cwdBasename`. Do not write any file.',
-  { label: 'impl:T1', model: 'haiku', schema: SCHEMA, isolation: 'worktree' })
+  { label: 'impl:T1', role: 'implementer', model: 'haiku', schema: SCHEMA, isolation: 'worktree' })
 
 assert.ok(outA && typeof outA === 'object', 'arm A must return the parsed structured object, got: ' + JSON.stringify(outA))
 assert.equal(outA.word, 'marmalade', 'the worker read the file in the clone it was handed')
@@ -104,7 +104,7 @@ let armB = null
 try {
   await mk({ maxTurns: 1 })(
     'Do not call any tool. Reply with exactly the plain text word: hello',
-    { label: 'impl:T1', model: 'haiku', schema: SCHEMA })
+    { label: 'impl:T1', role: 'implementer', model: 'haiku', schema: SCHEMA })
   throw new Error('arm B did not fail — expected error_max_turns')
 } catch (e) {
   armB = e.workerVerdict
@@ -148,7 +148,7 @@ console.log('arm D: an unreachable credential is a FAILED RUN, not a failed task
   delete env.CLAUDE_CODE_OAUTH_TOKEN
   delete env.ANTHROPIC_API_KEY
   await assert.rejects(
-    () => mk({ env })('hi', { label: 'impl:T1', model: 'haiku' }),
+    () => mk({ env })('hi', { label: 'impl:T1', role: 'implementer', model: 'haiku' }),
     (e) => /RUN_FATAL/.test(e.message) && /reaching the API/.test(e.message),
     'an api_error with no HTTP status must fail the RUN, not the task')
   const end = events.filter((e) => e.kind === 'worker:end').pop()
