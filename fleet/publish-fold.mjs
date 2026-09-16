@@ -39,8 +39,13 @@ import {
   ENGINE_DIR, execSeam, composeAgent, writeRoleFiles, copyEngineRoles, writeConfineSettings,
 } from './run-main.mjs'
 import {
-  loadRoles, parseCliJson, receiptPaths, receiptText, resolveConflicts,
+  loadRoles, parseCliJson, receiptPaths, receiptText, renderedReceiptIds, resolveConflicts,
 } from './run-engine.mjs'
+// The matcher over this run's own record, and the block a brief carries. The
+// fold is a separate process from the engine, so it holds no in-memory
+// receipts: the rows it matches are the ones it parses back out of the one log
+// its own `makeEventLog` appends to, and nothing else.
+import { factsBlock, receiptRows } from './facts-block.mjs'
 import { makeEventLog } from './run-waves.mjs'
 import {
   contendingBlock as buildContendingBlock, contendingTasks,
@@ -289,9 +294,16 @@ export const CANDIDATE_CHECKS = [PARSE_CHECK, EXAM_CHECK]
 //   open        the kernel's `open` rows, `{ i, path, hunksFile, epoch }`
 //   blockFor    `(path) => string | Promise<string>`, the contending block
 //   mainPatch   the patch main gained since the run's base, copied in whole
+//   receipts    the rows this run's record already holds — the fold's own
+//               `events.jsonl`, parsed. `[]` when absent, which is a run that
+//               recorded no failure: `factsBlock` renders nothing for it and
+//               every string this returns is then the BASE string byte for
+//               byte.
 //
 // Resolves to the `contendingBlock` function `resolveConflicts` takes.
-export async function writeResolverBriefs ({ briefsDir, attemptKey, open, blockFor, mainPatch }) {
+export async function writeResolverBriefs ({
+  briefsDir, attemptKey, open, blockFor, mainPatch, receipts = [],
+}) {
   fs.mkdirSync(briefsDir, { recursive: true })
   const mainPatchPath = path.resolve(briefsDir, 'main.patch')
   fs.copyFileSync(mainPatch, mainPatchPath)
@@ -308,13 +320,18 @@ export async function writeResolverBriefs ({ briefsDir, attemptKey, open, blockF
 
   // Bounded by the two path lines however long the block was: nothing of the
   // block itself, and no `- run ` line the resolver could mistake for work.
+  // The FACTS block follows them, for the ONE path this conflict is about —
+  // two conflicts of one fold are two different questions, and each resolver
+  // is briefed on its own path alone. It is the tail of the string, so a brief
+  // over a quiet run still ends with the `MAIN PATCH FILE:` line.
   return (conflict) =>
     '\nCONTENDING TASKS FILE: ' +
       (written.get(String(conflict && conflict.i)) || contendingPath(conflict && conflict.i)) +
       ' (the tasks that wrote ' + ((conflict && conflict.path) || '') +
       ' on both sides — read it before resolving)' +
     '\nMAIN PATCH FILE: ' + mainPatchPath +
-      " (everything main gained since this run's base)"
+      " (everything main gained since this run's base)" +
+    factsBlock(receipts, (conflict && conflict.path) ? [conflict.path] : [])
 }
 
 // ── the fold's receipt ───────────────────────────────────────────────────────
@@ -439,12 +456,23 @@ export async function publishFold (opts, deps = {}) {
   }
   const gitOut = async (argv, cwd = repo) => (await gitR(argv, cwd)).stdout.trim()
 
+  const eventsFile = path.join(runDir, 'events.jsonl')
   const eventLog = makeEventLog({
-    file: path.join(runDir, 'events.jsonl'),
+    file: eventsFile,
     runId: process.env.ULTRAPOWERS_FLEET_RUN || ('run-' + run),
     base,
     source: 'fleet/publish-fold.mjs',
   })
+
+  // The receipts this run's record already holds, read ONCE and here: the rows
+  // on the log when the attempt STARTS. The engine appended most of them and a
+  // prior attempt of this fold appended the rest — attempt 2's resolver on a
+  // path attempt 1 parked on is the deletion `driver:publish-fold` is owed. A
+  // row this attempt goes on to append is deliberately not in it: a resolver
+  // is briefed on what was already observed, never on the attempt observing it.
+  // The one file read is the one this process's own `makeEventLog` appends to,
+  // which is what keeps the block run-scoped by construction.
+  const startingReceipts = receiptRows(eventsFile)
 
   // ── engine-head, before anything else ──────────────────────────────────────
   // The branch's sha as the ENGINE left it. Written once and never rewritten:
@@ -540,7 +568,7 @@ export async function publishFold (opts, deps = {}) {
   const record = (fields) => {
     const {
       disposition, reason, conflictPath, candidate, pushedHead = '', suite = 'none',
-      tip = '', pathsJoined = 0, pathsConflicted = 0,
+      tip = '', pathsJoined = 0,
       resolversDispatched = 0, resolverRetries = 0,
       checks = [], checkRetries = 0,
     } = fields
@@ -563,13 +591,15 @@ export async function publishFold (opts, deps = {}) {
     row.checkRetries = checkRetries
     writeReceipt()
     collectWave()
-    eventLog.onEvent({
-      kind: 'driver:publish-fold',
+    // The row and its receipt in one place: `publishFoldEvent` counts the open
+    // conflicts itself off the index the kernel wrote, so `pathsConflicted` and
+    // the files the receipt names can never disagree about the same attempt.
+    eventLog.onEvent(publishFoldEvent({
       run, attempt, base, tip, candidate,
       ...(reason ? { reason } : {}),
-      pathsJoined, pathsConflicted, resolversDispatched, resolverRetries,
+      pathsJoined, resolversDispatched, resolverRetries,
       suite, disposition, checks, checkRetries,
-    })
+    }, conflictsIndex()))
     return receipt
   }
 
@@ -663,23 +693,14 @@ export async function publishFold (opts, deps = {}) {
       if (row.candidate) await gitR(['update-ref', 'refs/heads/' + branch, row.candidate])
       writeReceipt()
       collectWave()
-      eventLog.onEvent({
-        kind: 'driver:publish-fold',
-        run, attempt, base,
-        tip: row.tip || '',
-        candidate: row.candidate || '',
-        ...(row.reason ? { reason: row.reason } : {}),
-        pathsJoined: typeof row.pathsJoined === 'number' ? row.pathsJoined : 0,
-        pathsConflicted: 0,
-        resolversDispatched: typeof row.resolversDispatched === 'number' ? row.resolversDispatched : 0,
-        resolverRetries: 0,
-        suite: row.suite || 'none',
-        disposition: row.disposition,
-        // Replayed, never recomputed: a re-entry re-reads the row it found, so
-        // a row written before #751 stays a row without these two.
-        ...(Array.isArray(row.checks) ? { checks: row.checks } : {}),
-        ...(typeof row.checkRetries === 'number' ? { checkRetries: row.checkRetries } : {}),
-      })
+      // Built from the row the receipt held, through the same event builder as
+      // the fresh append: every cell is replayed and never recomputed — a row
+      // written before #751 stays a row without `checks` and `checkRetries` —
+      // and the one cell that is not the row's is `pathsConflicted`, which the
+      // builder counts off the wave's own index. A replay of an attempt that
+      // met a conflict says so, where the BASE literal hard-coded `0` and
+      // named no file.
+      eventLog.onEvent(publishFoldEvent({ ...row, run, attempt, base }, conflictsIndex()))
       return receipt
     }
 
@@ -711,7 +732,15 @@ export async function publishFold (opts, deps = {}) {
     // ── attempt 2 on an unmoved tip ─────────────────────────────────────────
     // Nothing moved since the attempt that already folded: re-folding would
     // rebuild the same candidate under a fresh wave number for no gain.
-    if (prior && prior.tip && prior.tip === tip) {
+    //
+    // A PARKED attempt is not that attempt. It reached no candidate — its
+    // resolver gave up and the branch stayed on the floor — so a fold of the
+    // same tip after a park is the FIRST fold of that tip and not a rebuild,
+    // and the resolver it dispatches is the one the first attempt's receipts
+    // were recorded for. Inert in production: `fleet/sandbox-boot.sh`
+    // dispatches attempt 2 only after a push 405, which only follows a folded
+    // attempt 1.
+    if (prior && prior.tip && prior.tip === tip && prior.disposition !== 'conflict parked') {
       return record({ disposition: 'tip unmoved', candidate: floor, tip })
     }
 
@@ -796,15 +825,15 @@ export async function publishFold (opts, deps = {}) {
     let checkRetries = 0
     const retriedPaths = new Set()
 
+    // Neither passes a conflict count: `record` reads the wave's own index for
+    // the event it appends, so the count and the files it names are one read.
     const parked = (reason, conflictPath) => record({
       disposition: 'conflict parked', reason, conflictPath, candidate: floor, tip,
-      pathsJoined, pathsConflicted: conflictsIndex().length,
-      resolversDispatched, resolverRetries, checks, checkRetries,
+      pathsJoined, resolversDispatched, resolverRetries, checks, checkRetries,
     })
     const cannot = (reason) => record({
       disposition: 'cannot fold', reason, candidate: floor, tip,
-      pathsJoined, pathsConflicted: conflictsIndex().length,
-      resolversDispatched, resolverRetries, checks, checkRetries,
+      pathsJoined, resolversDispatched, resolverRetries, checks, checkRetries,
     })
 
     // ── the re-brief a red check writes ─────────────────────────────────────
@@ -924,12 +953,33 @@ export async function publishFold (opts, deps = {}) {
         // appends only the re-brief a red check earned.
         const briefsDir = path.join(foldRunDir, 'briefs')
         const blockFor = (p) => buildContendingBlock({ repo, base, tip, run, path: p, tasks })
-        const block = await writeResolverBriefs({ briefsDir, attemptKey, open, blockFor, mainPatch })
+        const block = await writeResolverBriefs({
+          briefsDir, attemptKey, open, blockFor, mainPatch, receipts: startingReceipts,
+        })
         // For the record: the brief saved beside the reply directory now holds
         // the two path lines, so what they pointed at is kept next to it.
         for (const c of open) {
           const name = 'contending-' + c.i + '-' + attemptKey + '.txt'
           fs.copyFileSync(path.join(briefsDir, name), path.join(foldEvidence, name))
+        }
+
+        // That a brief carried a FACTS block, on the record: one `driver:facts`
+        // row per non-empty render and nothing at all for an empty one, so a
+        // run whose record holds no receipt on a conflicted path dispatches the
+        // brief it dispatched at BASE and leaves no row saying otherwise. The
+        // row is the DRIVER's — appended here, never by the block builder and
+        // never by the resolver — and it is not a receipt itself: no `paths`,
+        // no `evidence`, no receipt kind, so it is never rendered into anyone's
+        // brief. Its `receipts` are parsed back OUT of the rendered block, so
+        // the ids it names are exactly the rows the resolver read.
+        for (const c of open) {
+          const rendered = factsBlock(startingReceipts, (c && c.path) ? [c.path] : [])
+          if (!rendered) continue
+          eventLog.onEvent({
+            kind: 'driver:facts',
+            label: 'resolve:publish-fold:' + attemptKey + ':' + c.i,
+            receipts: renderedReceiptIds(rendered),
+          })
         }
 
         // TIP's tree, in the clone the resolver runs in: the frontier side of
@@ -969,11 +1019,17 @@ export async function publishFold (opts, deps = {}) {
           return reply
         }
 
+        // `onEvent` is the driver's sink, so every reply this fold's resolvers
+        // give lands on the run's record the way the wave loop's do: one
+        // `resolver:reply` row per dispatch, and a row whose status is not
+        // `RESOLVED` carrying the conflicted path and what the resolver said
+        // about it. That is the row attempt 2's brief reads back.
         const resolution = await resolveConflicts({
           agent, runCli, roles, common, taskArgs, commutesArgs,
           open, contendingBlock: block,
           waveDir: waveDirOf(attemptKey),
           labelPrefix: 'resolve:publish-fold:' + attemptKey,
+          onEvent: eventLog.onEvent,
         })
         resolverRetries += resolution.transcripts.filter((t) => t.attempt === 2).length
         if (!resolution.ok) {
@@ -987,7 +1043,6 @@ export async function publishFold (opts, deps = {}) {
       // ── step 5: the candidate ─────────────────────────────────────────────
       const mat = await runCli(['materialize', ...common, '--prev-head', tip, ...taskArgs, ...subjectArgs])
       const m = mat.parsed
-      const pathsConflicted = conflictsIndex().length
       if (!m || !m.candidateSha) {
         // A `park` here is the cross-run chmod shape: a path whose mode on main
         // since BASE differs from the mode this run's side carries. The kernel's
@@ -996,7 +1051,7 @@ export async function publishFold (opts, deps = {}) {
           disposition: 'cannot fold',
           reason: (m && (m.park || m.fallback)) || ('materialize refused (exit ' + mat.code +
             '): ' + tail(mat.stderr)),
-          candidate: floor, tip, pathsJoined, pathsConflicted,
+          candidate: floor, tip, pathsJoined,
           resolversDispatched, resolverRetries, checks, checkRetries,
         })
       }
@@ -1040,7 +1095,7 @@ export async function publishFold (opts, deps = {}) {
         return record({
           disposition: red.disposition, reason: red.reason,
           candidate, tip, suite: 'none',
-          pathsJoined, pathsConflicted, resolversDispatched, resolverRetries,
+          pathsJoined, resolversDispatched, resolverRetries,
           checks, checkRetries,
         })
       }
@@ -1050,7 +1105,7 @@ export async function publishFold (opts, deps = {}) {
         await restoreInteg()
         return record({
           disposition: 'folded', candidate, tip, suite: 'none',
-          pathsJoined, pathsConflicted, resolversDispatched, resolverRetries,
+          pathsJoined, resolversDispatched, resolverRetries,
           checks, checkRetries,
         })
       }
@@ -1063,7 +1118,7 @@ export async function publishFold (opts, deps = {}) {
         disposition: suite.code === 0 ? 'folded' : 'suite red',
         ...(suite.code === 0 ? {} : { reason: 'the candidate\'s suite exited ' + suite.code }),
         candidate, tip, suite: suite.code === 0 ? 'pass' : 'fail',
-        pathsJoined, pathsConflicted, resolversDispatched, resolverRetries,
+        pathsJoined, resolversDispatched, resolverRetries,
         checks, checkRetries,
       })
     }
