@@ -1542,7 +1542,478 @@ const namesInOrder = (hay, needles) => {
   assert.equal(row.status, 'done', 'leg (b) [M1]: sim precondition: ' + JSON.stringify(row))
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// Task 5 of the receipts plan — "the three judges read the FACTS block"
+// (kata popmechanic-ultrapowers#dy5f).
+//
+// The Claim: before an examiner, a reviewer or a wave resolver is dispatched,
+// the driver shows it the receipts this run already holds on the files of its
+// brief — and a run with no receipt sends every judge exactly the brief it
+// sends today.
+//
+// The Machine clauses these legs grade, restated:
+//
+//   M1 — the examiner's prompt ENDS WITH `factsBlock(receipts, <the task's
+//        Files and its exam landing paths>)` and the reviewer's with
+//        `factsBlock(receipts, <the task's touch set and its exam landing
+//        paths>)`, where `receipts` is the array of every row this run's
+//        `appendEvent` has appended so far, held in memory and read from no
+//        file — and `factsBlock` renders only a row carrying BOTH `paths` and
+//        `evidence`, so a green `driver:exam-run` row, which carries neither,
+//        is never a line of the block.
+//   M2 — `waveContendingBlock({ waveTasks, wavesPath, receipts })`, exported
+//        from `fleet/run-engine.mjs`, returns a function of a conflict entry
+//        whose string is the BASE `CONTENDING TASKS:` string followed by
+//        `factsBlock(receipts, [<that conflict's path>])`, and THE WAVE LOOP
+//        HANDS THAT FUNCTION to `resolveConflicts` as its `contendingBlock`, so
+//        a wave resolver dispatched after a receipt on its conflicted path
+//        reads a `FACTS:` block naming it. (The function's own string shape is
+//        pinned without a run in `fleet/tests/test_resolver_brief.mjs`; what
+//        needs a run, and is answered here, is that the wave loop hands it
+//        over.)
+//   M3 — each examiner or reviewer dispatch, and each wave resolver brief,
+//        whose block is non-empty appends one `driver:facts` event
+//        `{label, task?, receipts: [<the rendered row ids in block order>]}` —
+//        the resolver's `label` `resolve:wave<n>:<i>`; one whose block is `''`
+//        appends none.
+//   M4 — a run whose log holds no receipt row leaves every captured prompt of
+//        every role free of the token `FACTS:`, appends no `driver:facts`, and
+//        every such prompt is byte-identical to the prompt the base engine
+//        builds for it.
+//
+// The Proof legs answered here:
+//
+//   (a) [M1] a two-task plan, edge T1 -> T2, both declaring `one.txt`, where
+//       T1's exam exits 1 on its pre-review pass and 0 on the re-pass after the
+//       canned `fix:T1:0` round — two `driver:exam-run` rows on the log, the red
+//       one a receipt and the green one carrying no `paths` and no `evidence`:
+//       the captured `review:T1`, `exam:T2` and `review:T2` prompts each end
+//       with a `FACTS:` block carrying exactly one `- receipt` line, its id the
+//       red row's, its kind `driver:exam-run` and its paths including
+//       `one.txt`, while the captured `exam:T1` prompt — dispatched before any
+//       receipt existed — carries no `FACTS:`.
+//   (b) [M2] the second half: an engine rig of tasks A and B in one wave with
+//       no edge, both rewriting line 2 of the seeded `one.txt` to different
+//       text, A's exam exiting 1 on its pre-review pass and 0 after the canned
+//       `fix:A:0` round, B's canned implementer held until A's red
+//       `driver:exam-run` row is on the log, and a canned resolver answering
+//       `RESOLVED` with both lines — the captured `resolve:wave1:1:1` prompt
+//       ends with a `FACTS:` block carrying exactly one `- receipt` line, kind
+//       `driver:exam-run`, paths including `one.txt`, and one `driver:facts`
+//       event with label `resolve:wave1:1` is on the log; the same rig with A's
+//       exam green from the start dispatches a resolver whose prompt carries no
+//       `FACTS:` and appends no `driver:facts` with a `resolve:` label.
+//   (c) [M3] in leg (a)'s run exactly three `driver:facts` events are on the
+//       log, labels `review:T1`, `exam:T2` and `review:T2`, each with
+//       `receipts` equal to `[<that exam-run row's id>]`, and none names
+//       `exam:T1`; and in leg (b)'s red-exam run one `driver:facts` with label
+//       `resolve:wave1:1` and `receipts` `[<A's exam-run row's id>]`.
+//   (d) [M4] a clean one-task run with no red pass, no state exam and a canned
+//       `PASS`: no captured prompt of any label contains `FACTS:` and no
+//       `driver:facts` event is on the log. (The first `Run:` — the
+//       review-economy sim's byte-for-byte comparison of every captured prompt
+//       against BASE's engine — is the other half of M4 and is run as a `Run:`,
+//       not from here.)
+//
+// Leg (e) [M4] — the three role files carry no `FACTS` — is answered in
+// `fleet/tests/test_resolver_brief.mjs`, this task's other Proof `Test:` path.
+//
+// A READING THIS EXAM HAD TO SETTLE, for whoever comes after it. Legs (a) and
+// (c) spell the dispatch labels `review:T1`, `exam:T2` and `review:T2`, but the
+// engine's own reviewer label carries a round — `review:<id>:<iter>`. Leg (a)
+// uses that same triple for the CAPTURED PROMPT keys, which are unambiguously
+// `review:T1:1`, `exam:T2` and `review:T2:1`, so the short spelling is the task
+// text's own shorthand and not a second label shape; and M3 spells only the
+// resolver's label because that one is NOT the dispatch label
+// (`resolve:wave<n>:<i>` against the dispatch's `resolve:wave<n>:<i>:<attempt>`).
+// So the `driver:facts` labels are pinned two ways below and guessed neither
+// way: with any trailing `:<round>` stripped they are exactly leg (c)'s triple,
+// and as they stand they are exactly the labels of the dispatches whose
+// captured prompt carries a block — M3's own rule. The resolver's label, which
+// M3 does spell, is asserted by full equality.
+// ════════════════════════════════════════════════════════════════════════════
+
+const { factsBlock: factsBlockOf } = await import('../facts-block.mjs')
+
+// A row this run appended that carries both receipt keys.
+const receiptRowsOf = (evs) => evs.filter((e) => e && e.paths && e.evidence)
+// Every `driver:facts` row, in the order the run appended them.
+const factsEventsOf = (evs) => evs.filter((e) => e && e.kind === 'driver:facts')
+// A dispatch label with its trailing round stripped: `review:T1:1` -> `review:T1`,
+// `exam:T2` -> `exam:T2`. See the reading above.
+const roundless = (label) => String(label).replace(/:\d+$/, '')
+// The `FACTS:` block at the tail of a prompt — everything from its header on.
+const factsTailOf = (prompt) => {
+  const i = String(prompt || '').indexOf('\n\nFACTS:')
+  return i === -1 ? null : String(prompt).slice(i)
+}
+
+// The seeded three-line file leg (b)'s two tasks both rewrite line 2 of.
+const T5_SEED = 'line1\nline2\nline3\n'
+const rewriteLine2 = (cwd, text) => {
+  const file = path.join(cwd, 'one.txt')
+  const lines = fs.readFileSync(file, 'utf8').split('\n')
+  lines[1] = text
+  fs.writeFileSync(file, lines.join('\n'))
+}
+
+// A rig of this file's own: `scenario` above stands up ONE task in one wave, and
+// legs (a) and (b) both need two. Everything below the agent seam stays the
+// shared rig's — real git, real clones, the real fold kernel, the real `sh`.
+let t5seq = 0
+async function factsRun ({ tasks, edges = [], stub: inner, seed = null, extraArgs = {} }) {
+  t5seq += 1
+  const stamp = 't5' + t5seq
+  const repo = makeRepo(path.join(tmp, 'repo-' + stamp),
+    seed === null ? {} : { 'one.txt': seed })
+  const runDir = path.join(tmp, 'run-' + stamp)
+  const calls = []
+  const prompts = {}
+  const stub = async (prompt, opts, cwd) => {
+    calls.push(opts.label)
+    prompts[opts.label] = String(prompt)
+    return inner({ prompt: String(prompt), opts, cwd, runDir })
+  }
+  const { run } = rig({ repo, runDir, waves: [tasks], edges, stub, stamp, extraArgs })
+  const report = await run()
+  return { report, calls, prompts, runDir, evs: allEvents(runDir) }
+}
+
+// The exam scripts. The red one stays red until the canned fix round writes
+// `repaired.txt`, which is how one run produces a red `driver:exam-run` row and
+// a green one.
+const T5_RED_EXAM = '#!/bin/bash\n' +
+  'echo exam-opened\n' +
+  'echo "FAILED: repaired.txt is missing"\n' +
+  '[ -f repaired.txt ]\n'
+const T5_GREEN_EXAM = '#!/bin/bash\necho exam-opened\n[ -f one.txt ]\n'
+
+// ── legs (a) and (c): T1 -> T2, both declaring `one.txt` ────────────────────
+{
+  const T1 = entry({ id: 'T1', files: ['one.txt'], writes: ['one.txt'],
+                     proofTests: ['t1_test.sh'], testCmd: 'bash t1_test.sh' })
+  // T2 declares `one.txt` too — that is what puts the receipt on the files of
+  // its brief — and writes a file of its own, so its exam can be green.
+  const T2 = entry({ id: 'T2', title: 'the second task', files: ['one.txt', 'two.txt'],
+                     writes: ['two.txt'], proofTests: ['t2_test.sh'],
+                     testCmd: 'bash t2_test.sh' })
+  const { report, calls, prompts, evs } = await factsRun({
+    tasks: [T1, T2],
+    edges: [['T1', 'T2']],
+    stub: ({ opts, cwd }) => {
+      const [kind, id] = String(opts.label).split(':')
+      if (kind === 'exam') {
+        fs.writeFileSync(path.join(cwd, id === 'T1' ? 't1_test.sh' : 't2_test.sh'),
+          id === 'T1' ? T5_RED_EXAM : T5_GREEN_EXAM)
+        return { status: 'DONE', summary: 'exam written' }
+      }
+      if (kind === 'impl') {
+        if (id === 'T1') fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n')
+        else fs.writeFileSync(path.join(cwd, 'two.txt'), 'from T2\n')
+        return doneImpl(cwd)
+      }
+      if (kind === 'fix') {
+        fs.writeFileSync(path.join(cwd, 'repaired.txt'), 'written-by-the-repair-round\n')
+        return doneImpl(cwd)
+      }
+      if (kind === 'review') return passReview()
+      throw new Error('unexpected dispatch: ' + opts.label)
+    },
+  })
+
+  // ── sim preconditions: the two rows leg (a) names, and nothing else ───────
+  const t1Exams = ofKind(evs, 'driver:exam-run', 'T1')
+  assert.deepEqual(t1Exams.map((e) => [e.iter, e.exit]), [[0, 1], [0, 0]],
+    'T5 (a) [M1] sim precondition — T1\'s exam exits 1 on the driver\'s pre-review pass and 0 ' +
+    'on the re-pass the canned `fix:T1:0` round buys, both on that pass (`iter: 0`): ' +
+    JSON.stringify(t1Exams.map((e) => [e.iter, e.exit])) + ' from ' + JSON.stringify(calls))
+  const redRow = t1Exams[0]
+  const greenRow = t1Exams[1]
+  assert.deepEqual(redRow.paths, ['one.txt', 't1_test.sh'],
+    'T5 (a) [M1]: the red row IS a receipt — its `paths` are the sorted union of T1\'s Files ' +
+    'and its exam landing path: ' + JSON.stringify(redRow))
+  assert.ok(redRow.evidence && typeof redRow.evidence.read === 'string' &&
+            typeof redRow.evidence.against === 'string',
+    'T5 (a) [M1]: and it carries `evidence` — `{ read, against }`, two strings: ' +
+    JSON.stringify(redRow))
+  assert.equal('paths' in greenRow, false,
+    'T5 (a) [M1]: the green re-pass row carries NO `paths` key: ' + JSON.stringify(greenRow))
+  assert.equal('evidence' in greenRow, false,
+    'T5 (a) [M1]: and no `evidence` key — which is why `factsBlock` can never render it: ' +
+    JSON.stringify(greenRow))
+  assert.deepEqual(ofKind(evs, 'driver:exam-run', 'T2').map((e) => e.exit), [0],
+    'T5 (a) [M1] sim precondition — T2\'s exam is green on its one pass, so it leaves no ' +
+    'receipt of its own: ' + JSON.stringify(ofKind(evs, 'driver:exam-run', 'T2')))
+  assert.deepEqual(receiptRowsOf(evs).map((e) => e.id), [redRow.id],
+    'T5 (a) [M1] sim precondition — this run\'s record holds EXACTLY ONE receipt row, T1\'s red ' +
+    'exam. Every "exactly one `- receipt` line" below is read against that: ' +
+    JSON.stringify(receiptRowsOf(evs).map((e) => [e.kind, e.id, e.paths])))
+  assert.deepEqual(report.tasks.map((r) => [r.task, r.status]).sort(),
+    [['T1', 'done'], ['T2', 'done']],
+    'T5 (a) sim precondition — both tasks finish, so every dispatch the leg names was made: ' +
+    JSON.stringify(report.tasks.map((r) => ({ task: r.task, status: r.status }))))
+
+  // The block every one of the three briefs must end with: `factsBlock` over
+  // the one receipt, matched on `one.txt` — the path all three path sets carry.
+  // Computed with the real `fleet/facts-block.mjs`, so the expected value is
+  // the module's own rendering and not a second spelling of it.
+  const EXPECTED = factsBlockOf([redRow], ['one.txt'])
+  assert.ok(EXPECTED.includes('\n- receipt ' + redRow.id + ' driver:exam-run [one.txt, t1_test.sh]'),
+    'T5 (a) [M1] sim precondition — the expected block names the red row\'s id, its kind ' +
+    '`driver:exam-run` and its paths, `one.txt` among them: ' + JSON.stringify(EXPECTED))
+
+  // ── the three briefs dispatched after the receipt existed ─────────────────
+  // `review:T1:1` is the reviewer whose touch set carries `one.txt`; `exam:T2`
+  // the examiner whose Files carry it; `review:T2:1` the reviewer whose touch
+  // set carries it. (Leg (a) spells these `review:T1`, `exam:T2`, `review:T2` —
+  // see the reading at the head of this section.)
+  for (const label of ['review:T1:1', 'exam:T2', 'review:T2:1']) {
+    const prompt = prompts[label]
+    assert.equal(typeof prompt, 'string',
+      'T5 (a) [M1] sim precondition — the run dispatched `' + label + '` and this rig captured ' +
+      'its prompt: ' + JSON.stringify(calls))
+    const tail = factsTailOf(prompt)
+    assert.notEqual(tail, null,
+      'T5 (a) [M1]: the `' + label + '` prompt carries a `FACTS:` block — it was dispatched ' +
+      'after T1\'s red exam left a receipt on `one.txt`, a file of its brief: ' +
+      JSON.stringify(prompt.slice(-600)))
+    assert.equal(tail, EXPECTED,
+      'T5 (a) [M1]: and the `' + label + '` prompt ENDS WITH exactly ' +
+      '`factsBlock(receipts, <its own path set>)` — the header sentence and one `- receipt` ' +
+      'line, nothing after it. Got: ' + JSON.stringify(tail))
+    assert.equal((prompt.match(/\n- receipt /g) || []).length, 1,
+      'T5 (a) [M1]: exactly ONE `- receipt` line — the green `driver:exam-run` row of the same ' +
+      'run carries neither `paths` nor `evidence`, so it is never a line of the block: ' +
+      JSON.stringify(tail))
+    assert.equal((prompt.match(/FACTS:/g) || []).length, 1,
+      'T5 (a) [M1]: and exactly one `FACTS:` token — one block per brief: ' +
+      JSON.stringify(tail))
+  }
+
+  // ── the one brief dispatched BEFORE any receipt existed ──────────────────
+  assert.equal(typeof prompts['exam:T1'], 'string',
+    'T5 (a) [M1] sim precondition — `exam:T1` was dispatched and captured: ' +
+    JSON.stringify(calls))
+  assert.equal(prompts['exam:T1'].includes('FACTS:'), false,
+    'T5 (a) [M1]: the `exam:T1` prompt carries NO `FACTS:` — it is dispatched in the same tick ' +
+    'as `impl:T1`, before any exam had run, so the run\'s in-memory receipts were empty and ' +
+    '`factsBlock` answered `\'\'`: ' + JSON.stringify(prompts['exam:T1'].slice(-600)))
+
+  // ── leg (c) [M3]: the `driver:facts` rows this run appended ───────────────
+  const facts = factsEventsOf(evs)
+  assert.equal(facts.length, 3,
+    'T5 (c) [M3]: exactly three `driver:facts` events are on the log — one per dispatch whose ' +
+    'block was non-empty, and none for the dispatch whose block was `\'\'`: ' +
+    JSON.stringify(facts.map((e) => [e.label, e.receipts])))
+  assert.deepEqual(facts.map((e) => roundless(e.label)).sort(),
+    ['exam:T2', 'review:T1', 'review:T2'],
+    'T5 (c) [M3]: their labels are leg (c)\'s three — `review:T1`, `exam:T2` and `review:T2` — ' +
+    'read with any trailing `:<round>` stripped: ' + JSON.stringify(facts.map((e) => e.label)))
+  const withBlock = Object.keys(prompts).filter((l) => prompts[l].includes('FACTS:'))
+  assert.deepEqual(facts.map((e) => roundless(e.label)).sort(),
+    withBlock.map(roundless).sort(),
+    'T5 (c) [M3]: and they are exactly the dispatches whose captured prompt carries a block — ' +
+    'one `driver:facts` per non-empty block, none for an empty one, so the tag\'s count of how ' +
+    'often a brief carried a note is one grep. Events: ' +
+    JSON.stringify(facts.map((e) => e.label)) + ' against prompts with a block: ' +
+    JSON.stringify(withBlock))
+  assert.equal(facts.some((e) => roundless(e.label) === 'exam:T1'), false,
+    'T5 (c) [M3]: and NONE names `exam:T1` — that brief\'s block was `\'\'`: ' +
+    JSON.stringify(facts.map((e) => e.label)))
+  for (const e of facts) {
+    assert.deepEqual(e.receipts, [redRow.id],
+      'T5 (c) [M3]: every `driver:facts` row\'s `receipts` is the rendered row ids in block ' +
+      'order — here the one red `driver:exam-run` row, `[' + redRow.id + ']`: ' +
+      JSON.stringify(e))
+  }
+  assert.equal(receiptRowsOf(facts).length, 0,
+    'T5 (c) [M3]: a `driver:facts` row is a record row and NOT a receipt — no `paths`, no ' +
+    '`evidence`, so it is never rendered into a later brief: ' + JSON.stringify(facts))
+}
+
+// ── leg (b) [M2] and leg (c) [M3]: the wave resolver's brief ────────────────
+// A and B in ONE wave with no edge, both rewriting line 2 of the seeded
+// `one.txt`. No `foldAgeMs` is passed, so the age clause cannot fire before
+// both results are pending and the run's ONE fold epoch is the `end` fold that
+// folds them together — which is what makes the resolver's label
+// `resolve:wave1:1:1` and the block's event's label `resolve:wave1:1`.
+const t5WaveRun = (examScript) => factsRun({
+  seed: T5_SEED,
+  tasks: [
+    entry({ id: 'A', title: 'the first contender', files: ['one.txt'], writes: ['one.txt'],
+            proofTests: ['a_test.sh'], testCmd: 'bash a_test.sh' }),
+    entry({ id: 'B', title: 'the second contender', files: ['one.txt'], writes: ['one.txt'],
+            proofTests: [], testCmd: 'bash check.sh' }),
+  ],
+  stub: async ({ prompt, opts, cwd, runDir }) => {
+    const [kind, id] = String(opts.label).split(':')
+    if (kind === 'exam') {
+      fs.writeFileSync(path.join(cwd, 'a_test.sh'), examScript)
+      return { status: 'DONE', summary: 'exam written' }
+    }
+    if (kind === 'impl') {
+      if (id === 'A') rewriteLine2(cwd, 'A2')
+      else {
+        // Held until A's own `driver:exam-run` row is on the log: in the red rig
+        // that row IS the receipt, so the fold — and the resolver it dispatches
+        // — cannot happen before the record holds it.
+        for (let i = 0; i < 800; i++) {
+          if (allEvents(runDir).some((e) => e.kind === 'driver:exam-run' && e.task === 'A')) break
+          await new Promise((r) => setTimeout(r, 25))
+        }
+        rewriteLine2(cwd, 'B2')
+      }
+      return doneImpl(cwd)
+    }
+    if (kind === 'fix') {
+      fs.writeFileSync(path.join(cwd, 'repaired.txt'), 'written-by-the-repair-round\n')
+      return doneImpl(cwd)
+    }
+    if (kind === 'review') return passReview()
+    if (kind === 'resolve') {
+      // RESOLVED, with both tasks' lines. The hunk ids are read off the hunks
+      // file the driver briefed this resolver on, so the canned reply answers
+      // the narration the kernel actually wrote rather than a guessed id.
+      const m = /\nHUNKS FILE: (.*?) \(conflicted path: /.exec(prompt)
+      const ids = m && fs.existsSync(m[1])
+        ? [...fs.readFileSync(m[1], 'utf8').matchAll(/^HUNK (\S+) /gm)].map((x) => x[1])
+        : []
+      return { status: 'RESOLVED', notes: '',
+               hunks: (ids.length ? ids : ['h1']).map((hid) => ({ id: hid, content: 'A2\nB2\n' })) }
+    }
+    throw new Error('unexpected dispatch: ' + opts.label)
+  },
+})
+
+// ── leg (b): A's exam red on its pre-review pass ────────────────────────────
+{
+  const { report, calls, prompts, evs } = await t5WaveRun(T5_RED_EXAM)
+
+  const aExams = ofKind(evs, 'driver:exam-run', 'A')
+  assert.deepEqual(aExams.map((e) => e.exit), [1, 0],
+    'T5 (b) [M2] sim precondition — A\'s exam exits 1 on the driver\'s pre-review pass and 0 ' +
+    'after the canned `fix:A:0` round: ' + JSON.stringify(aExams.map((e) => [e.iter, e.exit])) +
+    ' from ' + JSON.stringify(calls))
+  const redRow = aExams[0]
+  assert.ok(redRow.paths && redRow.paths.includes('one.txt'),
+    'T5 (b) [M2] sim precondition — A\'s red row is a receipt whose `paths` include `one.txt`, ' +
+    'the path the two tasks contend for: ' + JSON.stringify(redRow))
+  assert.deepEqual(receiptRowsOf(evs).map((e) => e.id), [redRow.id],
+    'T5 (b) [M2] sim precondition — this run\'s record holds exactly one receipt row: ' +
+    JSON.stringify(receiptRowsOf(evs).map((e) => [e.kind, e.id, e.paths])))
+
+  const resolverLabels = calls.filter((l) => String(l).startsWith('resolve:'))
+  assert.deepEqual(resolverLabels, ['resolve:wave1:1:1'],
+    'T5 (b) [M2] sim precondition — A and B both rewrote line 2 of `one.txt`, the run\'s one ' +
+    'fold epoch narrated that one conflict, and exactly one resolver was dispatched for it on ' +
+    'its first attempt: ' + JSON.stringify(calls))
+
+  const prompt = prompts['resolve:wave1:1:1']
+  assert.equal(typeof prompt, 'string',
+    'T5 (b) [M2] sim precondition — the resolver\'s prompt was captured: ' + JSON.stringify(calls))
+  assert.ok(prompt.includes('\nCONTENDING TASKS:'),
+    'T5 (b) [M2]: the resolver still reads the BASE `CONTENDING TASKS:` string — the wave loop ' +
+    'hands `waveContendingBlock`\'s function over, and that function begins with the string the ' +
+    'loop built at BASE: ' + JSON.stringify(prompt.slice(-900)))
+  const tail = factsTailOf(prompt)
+  assert.notEqual(tail, null,
+    'T5 (b) [M2]: and the brief ends with a `FACTS:` block — this resolver was dispatched after ' +
+    'a receipt landed on `one.txt`, its conflicted path: ' + JSON.stringify(prompt.slice(-900)))
+  assert.equal(tail, factsBlockOf([redRow], ['one.txt']),
+    'T5 (b) [M2]: the block is exactly `factsBlock(receipts, [<that conflict\'s path>])` — ' +
+    'the header sentence and one `- receipt` line, nothing after it: ' + JSON.stringify(tail))
+  assert.equal((prompt.match(/\n- receipt /g) || []).length, 1,
+    'T5 (b) [M2]: exactly one `- receipt` line: ' + JSON.stringify(tail))
+  assert.ok(tail.includes(' driver:exam-run ['),
+    'T5 (b) [M2]: its kind is `driver:exam-run`: ' + JSON.stringify(tail))
+  assert.ok(tail.includes('- receipt ' + redRow.id + ' '),
+    'T5 (b) [M2]: and its id is A\'s red exam row\'s: ' + JSON.stringify(tail))
+  assert.ok(/\n- receipt \S+ driver:exam-run \[[^\]]*\bone\.txt\b/.test(tail),
+    'T5 (b) [M2]: and its paths include `one.txt`: ' + JSON.stringify(tail))
+
+  // ── leg (c) [M3]: the resolver brief's own record row ─────────────────────
+  const resolveFacts = factsEventsOf(evs).filter((e) => String(e.label || '').startsWith('resolve:'))
+  assert.deepEqual(resolveFacts.map((e) => e.label), ['resolve:wave1:1'],
+    'T5 (c) [M3]: one `driver:facts` event for the resolver brief, its `label` ' +
+    '`resolve:wave<n>:<i>` — `resolve:wave1:1`, the epoch and the conflict, NOT the dispatch\'s ' +
+    'own `resolve:wave1:1:1`: ' + JSON.stringify(factsEventsOf(evs).map((e) => e.label)))
+  assert.deepEqual(resolveFacts[0].receipts, [redRow.id],
+    'T5 (c) [M3]: and its `receipts` is the rendered row ids in block order — `[' + redRow.id +
+    ']`: ' + JSON.stringify(resolveFacts[0]))
+
+  assert.deepEqual(report.tasks.map((r) => [r.task, r.status]).sort(),
+    [['A', 'done'], ['B', 'done']],
+    'T5 (b) [M2] sim precondition — the resolver answered RESOLVED and both tasks finish: ' +
+    JSON.stringify(report.tasks.map((r) => ({ task: r.task, status: r.status }))))
+}
+
+// ── leg (b): the same rig with A's exam green from the start ────────────────
+{
+  const { calls, prompts, evs } = await t5WaveRun(T5_GREEN_EXAM)
+
+  assert.deepEqual(ofKind(evs, 'driver:exam-run', 'A').map((e) => e.exit), [0],
+    'T5 (b) [M2] sim precondition — A\'s exam is green on its one pass: ' +
+    JSON.stringify(ofKind(evs, 'driver:exam-run', 'A')))
+  assert.deepEqual(receiptRowsOf(evs), [],
+    'T5 (b) [M2] sim precondition — this run\'s record holds NO receipt row at all: ' +
+    JSON.stringify(receiptRowsOf(evs).map((e) => [e.kind, e.paths])))
+  assert.deepEqual(calls.filter((l) => String(l).startsWith('resolve:')), ['resolve:wave1:1:1'],
+    'T5 (b) [M2] sim precondition — the same one conflict, the same one resolver dispatch: ' +
+    JSON.stringify(calls))
+
+  const prompt = prompts['resolve:wave1:1:1']
+  assert.equal(typeof prompt, 'string',
+    'T5 (b) [M2] sim precondition — the resolver\'s prompt was captured: ' + JSON.stringify(calls))
+  assert.ok(prompt.includes('\nCONTENDING TASKS:'),
+    'T5 (b) [M2] sim precondition — it is the wave loop\'s brief: ' +
+    JSON.stringify(prompt.slice(-600)))
+  assert.equal(prompt.includes('FACTS:'), false,
+    'T5 (b) [M2]: with no receipt on the log the resolver\'s brief carries no `FACTS:` at all — ' +
+    'not an empty header, nothing, so it is the brief the wave loop sent at BASE: ' +
+    JSON.stringify(prompt.slice(-600)))
+  assert.deepEqual(
+    factsEventsOf(evs).filter((e) => String(e.label || '').startsWith('resolve:')), [],
+    'T5 (b) [M3]: and no `driver:facts` with a `resolve:` label is on the log — a block that ' +
+    'is `\'\'` appends none: ' + JSON.stringify(factsEventsOf(evs).map((e) => e.label)))
+}
+
+// ── leg (d) [M4]: a run whose record holds no receipt row ───────────────────
+// One task, a green exam throughout, no state exam, a canned `PASS`: no red
+// pass anywhere, so nothing this run appended carries `paths` and `evidence`.
+// The other half of M4 — that every one of these prompts is BYTE-IDENTICAL to
+// the one BASE's engine builds for it — is the Proof's first `Run:`,
+// `fleet/tests/test_run_engine_review_economy.mjs` M8, which restores BASE's
+// engine into the same run directory and compares every captured prompt.
+{
+  const { row, calls, prompts, evs } = await scenario({
+    task: entry({ proofTests: ['t1_test.sh'], testCmd: 'bash t1_test.sh' }),
+    examScript: T5_GREEN_EXAM,
+    onImpl: (cwd) => fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n'),
+  })
+
+  assert.equal(row.status, 'done',
+    'T5 (d) [M4] sim precondition — the task finishes clean: ' + JSON.stringify(row))
+  assert.deepEqual(ofKind(evs, 'driver:exam-run').map((e) => e.exit), [0],
+    'T5 (d) [M4] sim precondition — one exam pass, green: ' +
+    JSON.stringify(ofKind(evs, 'driver:exam-run')))
+  assert.deepEqual(receiptRowsOf(evs), [],
+    'T5 (d) [M4] sim precondition — this run\'s log holds NO receipt row: ' +
+    JSON.stringify(receiptRowsOf(evs).map((e) => [e.kind, e.paths])))
+  assert.ok(calls.includes('exam:T1') && calls.some((l) => l.startsWith('review:')),
+    'T5 (d) [M4] sim precondition — an examiner and a reviewer were both dispatched, so the ' +
+    'leg is read off briefs that exist: ' + JSON.stringify(calls))
+
+  const carrying = Object.keys(prompts).filter((l) => prompts[l].includes('FACTS:'))
+  assert.deepEqual(carrying, [],
+    'T5 (d) [M4]: no captured prompt of ANY label contains the token `FACTS:` — a run whose ' +
+    'record holds no receipt row briefs every role exactly as the base engine briefs it. ' +
+    'Labels that do: ' + JSON.stringify(carrying))
+  assert.deepEqual(factsEventsOf(evs), [],
+    'T5 (d) [M4]: and no `driver:facts` event is on the log: ' +
+    JSON.stringify(factsEventsOf(evs)))
+}
+
 // [M5] leg (f): the sentinel below is this sim's — its existing legs, the #632
-// ones, the #713 ones, the #1037 §3 ones and the receipt legs above. It is
-// printed only if every assertion above held.
+// ones, the #713 ones, the #1037 §3 ones, the receipt legs and the Task 5 legs
+// above. It is printed only if every assertion above held.
 console.log('ALL TESTS PASSED')

@@ -66,6 +66,14 @@ import { failingBlock } from './failing-block.mjs'
 // of the project's own test paths. One module, because the engine, the
 // examiner's prompt and `fleet/strip-exams.sh` all have to agree on the slug.
 import { examSlug, reservedExamPath } from './exam-paths.mjs'
+// What this run already observed about the files of a brief (the operator's
+// brief of 2026-09-16). `factsBlock` is a pure query over rows the caller
+// hands it — the engine hands its own in-memory `receipts`, the rows
+// `appendEvent` appended this run, so the block a judge reads is scoped to
+// this run's own process by construction. The module reads no file for us and
+// imports nothing from here; the publish fold runs the same query in its own
+// process over its own log.
+import { factsBlock } from './facts-block.mjs'
 // The reading a run that changed the engine leaves behind (#992): which of the
 // lines it changed an engine sim reached. Taken once, after the last fold, and
 // read by nothing below — see the call site beside `coverage`.
@@ -1243,6 +1251,47 @@ export async function resolveConflicts({
   return { ok: true, reason: '', transcripts, selfChecks }
 }
 
+// ── the wave resolver's brief, and the receipts on the path it resolves ──────
+// The wave loop's contending block was one string appended to every conflict's
+// brief; a resolver dispatched after this run's own exam went red on the very
+// path it is merging still read a brief that said nothing about it. This is
+// that string, plus the FACTS block for the ONE path this conflict is about —
+// which is why it is a function of the conflict entry (`{ i, path, hunksFile,
+// epoch }`) and not a string: two conflicts of one fold are two different
+// questions, and each resolver is briefed on its own path alone.
+//
+// PURE, and exported for that reason: it reads no file, appends no event and
+// closes over nothing but what it is handed, so `test_resolver_brief.mjs` pins
+// its string without standing a run up. The `driver:facts` row a brief leaves
+// is the DRIVER's, appended by the wave loop's own wrapper around this — no
+// worker writes an event, and neither does a block builder.
+//
+// With `receipts: []` — a run that recorded no failure — every string it
+// returns is the BASE string byte for byte.
+export const waveContendingBlock = ({ waveTasks, wavesPath, receipts } = {}) => {
+  const tasks = Array.isArray(waveTasks) ? waveTasks : []
+  const base =
+    '\nCONTENDING TASKS:' + tasks.map((t) =>
+      '\n- task ' + t.id + ': ' + (t.title || '') +
+      ((Array.isArray(t.files) && t.files.length) ? (' [files: ' + t.files.join(', ') + ']') : '')).join('') +
+    (wavesPath ? ('\nTheir full verbatim task text lives in the JSON file at ' + wavesPath +
+      ' — read the "tasks" array entry whose "id" matches.') : '')
+  return (conflict) =>
+    base + factsBlock(receipts, [String((conflict && conflict.path) || '')])
+}
+
+// The ids a rendered block carries, in block order — parsed back OUT of the
+// block rather than recomputed beside it, so the rows a `driver:facts` row
+// names are exactly the rows the judge read and can never drift from them.
+export const renderedReceiptIds = (block) => {
+  const ids = []
+  for (const line of String(block == null ? '' : block).split('\n')) {
+    const m = /^- receipt (\S+) /.exec(line)
+    if (m) ids.push(m[1])
+  }
+  return ids
+}
+
 // ── the engine ───────────────────────────────────────────────────────────────
 export async function runEngine({
   // The worker seam. Wrapped below as `agent`, so every dispatch this engine
@@ -1550,9 +1599,20 @@ export async function runEngine({
     await kataCall('comment', row.uid,
       () => kata.comment(kataProjectId, row.uid, String(notes)))
   }
+  // Every row this run's `appendEvent` has appended, in append order, held in
+  // MEMORY and re-read from no file. `appendEvent` is the engine's only
+  // writer, so this array is the run's own record and nothing else's: a
+  // relaunch's engine starts it empty, and no tag, hub issue or other run's
+  // directory can reach it. The matcher (`factsBlock`) picks the receipts out
+  // of it — a row carrying `paths` and `evidence` under one of the seven
+  // receipt kinds — so an ordinary `engine:log` line, a green `driver:exam-run`
+  // row and the `driver:facts` rows below are all simply never rendered.
+  const receipts = []
   const appendEvent = (e) => {
     const ts = Date.now()
-    const line = JSON.stringify({ ...e, id: ulid(ts), ts })
+    const row = { ...e, id: ulid(ts), ts }
+    receipts.push(row)
+    const line = JSON.stringify(row)
     try {
       fs.appendFileSync(path.join(runDir, 'events.jsonl'), line + '\n')
     } catch { /* evidence, not control flow */ }
@@ -1560,6 +1620,20 @@ export async function runEngine({
     // the run, on the task's issue when the event names a task the record
     // knows, and on the run's issue otherwise (`kataUidFor`).
     mirrorToHub(e, line)
+  }
+  // The block one brief carries, and the record that it carried one. A
+  // non-empty block leaves one `driver:facts` row — a record row and not a
+  // receipt (no `paths`, no `evidence`, not a receipt kind, never rendered
+  // into anyone's brief): its `receipts` are the ids in block order, so "how
+  // often a brief carried a note" is one grep over the tag. An empty block
+  // leaves nothing at all, which is what keeps a receipt-free run's prompts
+  // byte-identical to the ones the base engine builds.
+  const factsFor = (paths, { label, task }) => {
+    const block = factsBlock(receipts, paths)
+    if (!block) return ''
+    appendEvent({ kind: 'driver:facts', label, ...(task ? { task } : {}),
+                  receipts: renderedReceiptIds(block) })
+    return block
   }
 
   // ── the state handshake, the driver's two reads (#998 ticket 5) ───────────
@@ -2877,7 +2951,17 @@ export async function runEngine({
       await drainKataPosts()
       await kataCall('claim', kataRow.uid, () => kata.claim(kataProjectId, kataRow.uid))
     }
-    const examPrompt = roles.examiner + '\nBASE: ' + baseShaForTask + examinerInputs
+    // What this run already observed about the files this examiner writes for:
+    // its task's own Files, and the paths its exam lands at. Built ONLY when
+    // the examiner is actually dispatched — a prompt nobody reads records no
+    // `driver:facts` — and built once: the round-2 EXAM REJECTED dispatch
+    // below reuses this prompt verbatim, so it reads round 1's block and
+    // appends no second row. One block, one event.
+    const examFacts = examReady
+      ? factsFor([...(Array.isArray(task.files) ? task.files : []), ...proofTests.map(landingOf)],
+                 { label: 'exam:' + task.id, task: task.id })
+      : ''
+    const examPrompt = roles.examiner + '\nBASE: ' + baseShaForTask + examinerInputs + examFacts
     const examOpts = { label: 'exam:' + task.id, isolation: 'worktree', model: baseModel,
                        schema: EXAMINER_SCHEMA }
     const examCall = examReady ? agent(examPrompt, examOpts) : null
@@ -3540,7 +3624,14 @@ export async function runEngine({
         // round grades the tree the pre-review repair round left, so it must
         // read the record that round's own exam pass wrote rather than the
         // first pass's.
-        stateExamBlock(stateExamRows)
+        stateExamBlock(stateExamRows) +
+        // LAST, after every piece of evidence about this patch: what the run
+        // already observed about the files in the reviewer's own diff — the
+        // task's touch set and the paths its exam landed at. Read at the round
+        // for the same reason the rows above are: by now the pre-review pass
+        // and any repair round have written whatever they were going to write.
+        factsFor(touchSetOf(task, impl.patch).concat(examLandings),
+                 { label: 'review:' + task.id, task: task.id })
       // One reviewer per round, whatever the task's `**Review:**` value says
       // (#964 Task 2). The label carries no trailing pass number, because there
       // is no second half to distinguish from the first: `review:<id>:<iter>`.
@@ -3964,12 +4055,24 @@ export async function runEngine({
     // label prefix, and keeps `blocked()` and the frontier entry to itself.
     // The returned transcripts land in this wave's array BEFORE the park, so
     // a reader of `resolverTranscripts` sees what it always saw.
-    const contendingBlock =
-      '\nCONTENDING TASKS:' + waveTasks.map((t) =>
-        '\n- task ' + t.id + ': ' + (t.title || '') +
-        ((Array.isArray(t.files) && t.files.length) ? (' [files: ' + t.files.join(', ') + ']') : '')).join('') +
-      (wavesPath ? ('\nTheir full verbatim task text lives in the JSON file at ' + wavesPath +
-        ' — read the "tasks" array entry whose "id" matches.') : '')
+    // The block itself is `waveContendingBlock`'s, a pure function of the
+    // conflict entry: BASE's contending-task string, then the FACTS block for
+    // the one path this resolver is merging. The wrapper is where the record
+    // is made — the builder stays pure, and the `driver:facts` row is the
+    // driver's own, appended by the same `appendEvent` every other row goes
+    // through. Its label is the brief's, without the attempt suffix the
+    // dispatch label carries: `resolve:wave<n>:<i>`.
+    const blockForConflict = waveContendingBlock({ waveTasks, wavesPath, receipts })
+    const contendingBlock = (conflict) => {
+      const block = blockForConflict(conflict)
+      // The same query the block just rendered, asked a second time for the
+      // record alone: the block's own tail and this row's ids are the same
+      // rows, because a `driver:facts` row is not a receipt and appending one
+      // cannot change what the next query matches.
+      factsFor([String((conflict && conflict.path) || '')],
+               { label: 'resolve:wave' + waveNumber + ':' + conflict.i })
+      return block
+    }
     const resolution = await resolveConflicts({
       agent, runCli, roles, common, taskArgs, commutesArgs,
       open: outstanding, contendingBlock,

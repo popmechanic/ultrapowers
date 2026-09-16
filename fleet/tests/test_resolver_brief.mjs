@@ -530,4 +530,175 @@ const publishFoldEvent = publishFold.publishFoldEvent
     'T2 (e)/M3: and the disposition is the row\'s: ' + JSON.stringify(clean))
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// Task 5 of the receipts plan — "the three judges read the FACTS block"
+// (kata popmechanic-ultrapowers#dy5f).
+//
+// The Claim: before an examiner, a reviewer or a wave resolver is dispatched,
+// the driver shows it the receipts this run already holds on the files of its
+// brief — and a run with no receipt sends every judge exactly the brief it
+// sends today.
+//
+// The Machine clauses this file answers, restated:
+//
+//   M2 — `waveContendingBlock({ waveTasks, wavesPath, receipts })`, exported
+//        from `fleet/run-engine.mjs`, returns a FUNCTION of a conflict entry
+//        whose string is the `CONTENDING TASKS:` string the wave loop builds at
+//        BASE followed by `factsBlock(receipts, [<that conflict's path>])`. (The
+//        second half of the clause — the wave loop hands that function to
+//        `resolveConflicts` as its `contendingBlock`, so a resolver dispatched
+//        after a receipt on its conflicted path reads a `FACTS:` block naming
+//        it — needs a run, and is answered in
+//        `fleet/tests/test_run_engine_proof_runs.mjs`.)
+//   M4 — a run whose log holds no receipt row leaves every captured prompt of
+//        every role free of the token `FACTS:`, appends no `driver:facts`, and
+//        every such prompt is byte-identical to the prompt the base engine
+//        builds for it.
+//
+// The Proof legs answered here:
+//
+//   (b) [M2] the first half: `waveContendingBlock` over two tasks and a
+//        `wavesPath`, with `receipts` holding one receipt on `a.txt` — the
+//        function's string for a conflict on `a.txt` is the BASE
+//        `CONTENDING TASKS:` string followed by a `FACTS:` block naming that
+//        receipt's id, its string for a conflict on `b.txt` is the BASE string
+//        exactly with no `FACTS:`, and with `receipts: []` both strings are the
+//        BASE string.
+//   (e) [M4] the Proof's second `Run:` as an assertion: none of the three role
+//        files — `fleet/roles/examiner.md`, `fleet/roles/reviewer.md`,
+//        `fleet/roles/resolver.md` — contains `FACTS`, so what a judge is told
+//        about the block is the block's own header sentence and nothing a
+//        role-file edit could have changed.
+//
+// Nothing below stands a run up: `waveContendingBlock` is pure and the role
+// files are read off disk.
+//
+// Read through the module namespace, not by name: at BASE `waveContendingBlock`
+// is absent, and a named import of an absent export is an ESM link error that
+// would kill this whole file before the T2 legs above could report. The
+// namespace form lets the leg fail as "the export is not there yet", which is
+// the one reason this exam is red at BASE.
+{
+  const engineMod = await import('../run-engine.mjs')
+  const { factsBlock } = await import('../facts-block.mjs')
+  const waveContendingBlock = engineMod.waveContendingBlock
+
+  assert.equal(typeof waveContendingBlock, 'function',
+    'T5 (b) [M2]: `fleet/run-engine.mjs` exports `waveContendingBlock` — the Produces of this ' +
+    'task, `waveContendingBlock({ waveTasks, wavesPath, receipts }) -> (conflict) => string`: ' +
+    JSON.stringify(Object.keys(engineMod).sort()))
+
+  // The wave loop's own inputs, and the BASE string spelled out here rather
+  // than imported: the clause says the function's string BEGINS with the string
+  // the wave loop builds at BASE, so the exam has to hold its own copy of it or
+  // it pins nothing.
+  const WAVE_TASKS = [
+    { id: 'A', title: 'the first contender', files: ['a.txt', 'shared.txt'] },
+    { id: 'B', title: 'the second contender', files: ['b.txt'] },
+  ]
+  const WAVES_PATH = '/tmp/run-5/waves.json'
+  const BASE_CONTENDING =
+    '\nCONTENDING TASKS:' + WAVE_TASKS.map((t) =>
+      '\n- task ' + t.id + ': ' + (t.title || '') +
+      ((Array.isArray(t.files) && t.files.length)
+        ? (' [files: ' + t.files.join(', ') + ']') : '')).join('') +
+    '\nTheir full verbatim task text lives in the JSON file at ' + WAVES_PATH +
+    ' — read the "tasks" array entry whose "id" matches.'
+
+  // One receipt on `a.txt`, in the shape this plan's tasks share: `paths`
+  // sorted, de-duplicated and non-empty, `evidence` two bounded strings. A
+  // `driver:exam-run` row is the kind leg (b)'s engine rig produces, so it is
+  // the kind this unit uses too.
+  const T5_SHA = '0123456789abcdef0123456789abcdef01234567'
+  const T5_RECEIPT = Object.freeze({
+    id: '01JZZZZZZZZZZZZZZZZZZZZZZ1', kind: 'driver:exam-run', task: 'A',
+    cmd: 'bash a_test.sh', exit: 1, iter: 0,
+    paths: ['a.txt'],
+    evidence: { read: 'exit 1: FAILED: a.txt is missing',
+                against: 'bash a_test.sh at ' + T5_SHA },
+  })
+  const A_BLOCK = factsBlock([T5_RECEIPT], ['a.txt'])
+  assert.notEqual(A_BLOCK, '',
+    'T5 (b) [M2] sim precondition — `factsBlock` matches this receipt on `a.txt`, so the ' +
+    'expected string below is not the empty one: ' + JSON.stringify(A_BLOCK))
+
+  const conflictOn = (i, p) => ({ i, path: p, hunksFile: '/tmp/run-5/h' + i, epoch: 1 })
+
+  // ── with one receipt on `a.txt` ───────────────────────────────────────────
+  const withReceipt = waveContendingBlock({
+    waveTasks: WAVE_TASKS, wavesPath: WAVES_PATH, receipts: [T5_RECEIPT],
+  })
+  assert.equal(typeof withReceipt, 'function',
+    'T5 (b) [M2]: `waveContendingBlock` returns a FUNCTION of a conflict entry — the shape ' +
+    '`resolveConflicts` already accepts as its `contendingBlock` (T2 leg (a) above), so the ' +
+    'wave loop can hand it one brief per conflicted path. Got: ' + typeof withReceipt)
+
+  const onA = withReceipt(conflictOn(1, 'a.txt'))
+  assert.equal(onA, BASE_CONTENDING + A_BLOCK,
+    'T5 (b) [M2]: the function\'s string for a conflict on `a.txt` is EXACTLY the BASE ' +
+    '`CONTENDING TASKS:` string followed by `factsBlock(receipts, [\'a.txt\'])` — nothing ' +
+    'between them, nothing after, and the BASE string unchanged. Got: ' + JSON.stringify(onA))
+  assert.ok(onA.startsWith(BASE_CONTENDING),
+    'T5 (b) [M2]: the BASE string is the HEAD of it — the block is an addition to the wave ' +
+    'loop\'s brief, never a rewrite of it: ' + JSON.stringify(onA.slice(0, 300)))
+  assert.ok(onA.includes('\n\nFACTS: this run\'s record holds 1 receipt(s)'),
+    'T5 (b) [M2]: and the tail is the `FACTS:` block, with its own header sentence: ' +
+    JSON.stringify(onA.slice(BASE_CONTENDING.length)))
+  assert.ok(onA.includes('- receipt ' + T5_RECEIPT.id + ' driver:exam-run [a.txt]'),
+    'T5 (b) [M2]: the block NAMES that receipt\'s id, its kind and its paths — a resolver that ' +
+    'rests a reading on it can cite `receipt ' + T5_RECEIPT.id + '`: ' +
+    JSON.stringify(onA.slice(BASE_CONTENDING.length)))
+  assert.equal((onA.match(/\n- receipt /g) || []).length, 1,
+    'T5 (b) [M2]: exactly one `- receipt` line — the one row whose `paths` name this ' +
+    'conflict\'s path: ' + JSON.stringify(onA.slice(BASE_CONTENDING.length)))
+
+  // ── the same function, a conflict on a path no receipt names ──────────────
+  const onB = withReceipt(conflictOn(2, 'b.txt'))
+  assert.equal(onB, BASE_CONTENDING,
+    'T5 (b) [M2]: the same function\'s string for a conflict on `b.txt` is the BASE ' +
+    '`CONTENDING TASKS:` string EXACTLY — no receipt names `b.txt`, `factsBlock` answers `\'\'`, ' +
+    'and that resolver\'s brief is byte-identical to the one it had at BASE. Got: ' +
+    JSON.stringify(onB))
+  assert.equal(onB.includes('FACTS:'), false,
+    'T5 (b) [M2]: and it carries no `FACTS:` token at all — not an empty header, nothing: ' +
+    JSON.stringify(onB))
+
+  // ── the same two conflicts over a run that recorded nothing ───────────────
+  const noReceipts = waveContendingBlock({
+    waveTasks: WAVE_TASKS, wavesPath: WAVES_PATH, receipts: [],
+  })
+  assert.equal(typeof noReceipts, 'function',
+    'T5 (b) [M2]: `receipts: []` still returns a function of the conflict entry: ' +
+    typeof noReceipts)
+  assert.equal(noReceipts(conflictOn(1, 'a.txt')), BASE_CONTENDING,
+    'T5 (b) [M2]: with `receipts: []` the string for a conflict on `a.txt` is the BASE string: ' +
+    JSON.stringify(noReceipts(conflictOn(1, 'a.txt'))))
+  assert.equal(noReceipts(conflictOn(2, 'b.txt')), BASE_CONTENDING,
+    'T5 (b) [M2]: and so is the string for `b.txt` — a run whose record holds no receipt row ' +
+    'briefs every resolver exactly as the wave loop briefs it today: ' +
+    JSON.stringify(noReceipts(conflictOn(2, 'b.txt'))))
+}
+
+// ── T5 (e) [M4]: the three role files carry no `FACTS` ───────────────────────
+// The Proof's second `Run:` is
+// `test "$(grep -c 'FACTS' fleet/roles/{examiner,reviewer,resolver}.md | grep -c ':0$')" = 3`;
+// this is that command as an assertion. The block's header sentence is its own
+// legend, which is what keeps a receipt-free brief byte-identical to BASE's — a
+// role file that explained the block would have changed every brief of that
+// role whether or not the run recorded anything.
+{
+  for (const role of ['examiner.md', 'reviewer.md', 'resolver.md']) {
+    const file = path.join(FLEET, 'roles', role)
+    const text = fs.readFileSync(file, 'utf8')
+    const hits = text.split('\n')
+      .map((line, n) => [n + 1, line])
+      .filter(([, line]) => line.includes('FACTS'))
+    assert.deepEqual(hits, [],
+      'T5 (e) [M4]: `fleet/roles/' + role + '` contains no `FACTS` — the three role files are ' +
+      'NOT edited by this task, because the block\'s own header sentence is the only legend a ' +
+      'judge is given for it. Lines that do: ' +
+      JSON.stringify(hits.map(([n, line]) => n + ': ' + line.slice(0, 200))))
+  }
+}
+
 console.log('ALL TESTS PASSED')
