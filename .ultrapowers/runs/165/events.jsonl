@@ -27,3 +27,7 @@
 {"kind":"worker:end","label":"review:1:1","role":"reviewer","sessionId":"46cc614f-3f75-4bc3-b741-74db1bca0d35","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5596,"output":10183,"cacheRead":614545,"cacheCreation":50132,"costUsd":1.0911475000000002,"models":["claude-opus-5"]},"id":"01M2NPSRS400006CEPPX96CY79","ts":1789582435108}
 {"kind":"transcript:slice","label":"review:1:1","sessionId":"46cc614f-3f75-4bc3-b741-74db1bca0d35","bytes":11907,"id":"01M2NPSRSD0000R0V3PTMRRPV9","ts":1789582435117}
 {"kind":"engine:phase","phase":"Wave 1","id":"01M2NPSRVX0000XCWABFDS3QP5","ts":1789582435197}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["1"],"headSha":"818963c3dd46bf55592a777bdaed31259bd2a578","why":"end","applied":{"1":"base"},"id":"01M2NPW7WZ0000PT42NHQ7TN8S","ts":1789582516127}
+{"kind":"driver:integrated-clean","wave":1,"removed":7,"id":"01M2NPW7X30000E7HHYBT2P00Y","ts":1789582516131}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/roles/","exit":0,"minor":false,"wave":1,"id":"01M2NPW7XD00007G85HM9622FN","ts":1789582516141}
+{"kind":"driver:integrated-check","cmd":"node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"minor":false,"wave":1,"id":"01M2NPW86D0000MA8AHZQPW1DJ","ts":1789582516429}
