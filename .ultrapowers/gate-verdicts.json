@@ -1,0 +1,96 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "2206ea0b5f460006d2db284bda07afeac900b0c012934feb5876b763df5a0cde",
+      "verdict": "pass",
+      "reason": "Every clause has a falsifying leg: M1's four literals and timing each grep a to-be-created section under a heading absent at BASE; M2's ordered five-term grep over the Kata record (engine) bullet at CONTRACT.md:506 fails on any missing or misordered term."
+    },
+    "2": {
+      "hash": "ebdf94cddc73ac7fe179861ba42eb13091d04d976f12492ce1e30105e474e822",
+      "verdict": "pass",
+      "reason": "M1 a/b, M2 c/d/e including the fix-round route, M3 g/h with the sha and byte-diff computed independently, M4 i, M5 f/f2 per malformed field; M5's explicit never carves its precedence so no two clauses pin opposites for one scenario."
+    }
+  },
+  "tally": {
+    "dispatched": 5,
+    "rejected": 3,
+    "rounds": 3,
+    "base": "901fc874923210207e041f947407b8ea519c1ab2",
+    "per_round": {
+      "1": {
+        "dispatched": 2,
+        "rejected": 2
+      },
+      "2": {
+        "dispatched": 2,
+        "rejected": 1
+      },
+      "3": {
+        "dispatched": 1,
+        "rejected": 0
+      }
+    }
+  },
+  "history": {
+    "1": [
+      "fail",
+      "pass"
+    ],
+    "2": [
+      "fail",
+      "fail",
+      "pass"
+    ]
+  },
+  "authoring": {
+    "minutes": 85,
+    "probes": 13,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "While run-153 folds, what should this session take up?",
+        "options": [
+          "Author #1036 and the two fixture plans",
+          "Author #1037 too",
+          "Grilling sitting on the authoring lint",
+          "Prep the 0.3.31 release notes"
+        ],
+        "recommended": "Author #1036 and the two fixture plans",
+        "picked": "Author #1036 and the two fixture plans"
+      },
+      {
+        "question": "Author the handshake as a plugin plan now?",
+        "options": [
+          "Author it as a plugin plan now",
+          "Fixture-only variant",
+          "Park it and file the kata gap"
+        ],
+        "recommended": "Author it as a plugin plan now",
+        "picked": "Author it as a plugin plan now",
+        "note": "operator's words: explained first, then approved as drafted"
+      },
+      {
+        "question": "Posting shape and where the check lives?",
+        "options": [
+          "Metadata key, checked by the driver",
+          "Comment with a grammar, checked by a lint rule"
+        ],
+        "recommended": "Metadata key, checked by the driver",
+        "picked": "Metadata key, checked by the driver"
+      },
+      {
+        "question": "Handshake execute lane",
+        "options": [
+          "Ultrapowers, launch now",
+          "Ultrapowers, but wait for #1037 and the reviewer plan",
+          "Subagent-Driven here"
+        ],
+        "recommended": "Ultrapowers, launch now",
+        "picked": "Ultrapowers, launch now"
+      }
+    ]
+  }
+}
