@@ -1,0 +1,263 @@
+{
+  "ok": true,
+  "stamp": "run-166",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-166"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The boot copies the run's fold record onto the evidence branch",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/sandbox-boot.sh",
+          "fleet/tests/_sandbox_boot_helpers.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "A census reads conflicts by shape, dispatches and retries off the copied fold record",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/scripts/fold_census.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`census_run(run_dir: str | Path) -> dict`",
+            "`shape_of(kind: str, narration: str) -> str`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The boot copies the run's fold record onto the evidence branch",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot_fold_record.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_fold_record.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_fold_record.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_sandbox_boot_fold_record.mjs | grep -q 'ALL TESTS PASSED'",
+            "sed -n '/ultra\\/evidence-run-<N>. \u2014 the run.s record/,/^- \\*\\*The two tags\\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'frontier/.*manifest.json.*weave-events.jsonl.*weave/blobs/.*FLEET_EVIDENCE_FILE_MAX.*1048576'",
+            "! grep -qE \"^import .*exams/\" fleet/tests/test_sandbox_boot_fold_record.mjs"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_sandbox_boot_fold_record.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/_sandbox_boot_helpers.mjs",
+              "fleet/tests/test_sandbox_boot_fold_record.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_sandbox_boot_fold_record.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_sandbox_boot_fold_record.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_sandbox_boot_fold_record.mjs": "fleet/tests/test_sandbox_boot_fold_record.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_sandbox_boot_fold_record.mjs"
+            ],
+            "siblingOwned": [
+              "skills/ultrapowers/scripts/fold_census.py",
+              "tests/test_fold_census.py"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "A census reads conflicts by shape, dispatches and retries off the copied fold record",
+          "files": [
+            "skills/ultrapowers/scripts/fold_census.py",
+            "tests/test_fold_census.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`census_run(run_dir: str | Path) -> dict`",
+              "`shape_of(kind: str, narration: str) -> str`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrapowers/scripts/fold_census.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_fold_census.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_fold_census.py",
+          "proofRuns": [
+            "python3 -m pytest -q tests/test_fold_census.py",
+            "python3 skills/ultrapowers/scripts/fold_census.py --help | grep -q -- --json"
+          ],
+          "proofGuards": [
+            "tests/test_fold_census.py"
+          ],
+          "factsheet": {
+            "files": [
+              "skills/ultrapowers/scripts/fold_census.py",
+              "tests/test_fold_census.py"
+            ],
+            "deletes": [],
+            "guards": [
+              "tests/test_fold_census.py"
+            ],
+            "proofTests": [
+              "tests/test_fold_census.py"
+            ],
+            "landing": {
+              "tests/test_fold_census.py": "tests/test_fold_census.py"
+            },
+            "driverOwned": [
+              "tests/test_fold_census.py"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/_sandbox_boot_helpers.mjs",
+              "fleet/tests/test_sandbox_boot_fold_record.mjs"
+            ],
+            "produces": [
+              "`census_run(run_dir: str | Path) -> dict`",
+              "`shape_of(kind: str, narration: str) -> str`"
+            ],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 Records"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- Every copy under `frontier/` is file by file \u2014 never `cp -R` of a directory \u2014 so the copy that runs again at every later transition nests nothing and rewrites nothing; the boot reads `frontier/` and writes nothing into it.\n- Neither the kernel nor the engine changes: what the sandbox writes under `frontier/` is exactly what it wrote at BASE.\n- The census is python3 stdlib only, reads nothing but the run directories named on its argv \u2014 no `gh`, no git, no network \u2014 and never raises on a malformed record: a file it cannot read is one stderr line and a count of zero, never a traceback.\n- A guarded exam file is self-contained at its guarded path: a boot sim imports only `./_sandbox_boot_helpers.mjs` and node built-ins, and never imports anything under `fleet/tests/exams/`.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel/ fleet/run-engine.mjs fleet/publish-fold.mjs fleet/run-waves.mjs",
+        "minor": false
+      },
+      {
+        "cmd": "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-166/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-166/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-166/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-166/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for regenerateCmd \u2014 the lockfile regenerator is derived from the same lockfile/manifest beside the bootstrap (and only when the bootstrap itself was derived) and stamped in the args file and receipt; there is no knob for it",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
