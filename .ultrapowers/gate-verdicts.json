@@ -1,0 +1,66 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "778d7912cc880260ac868ad67b2e5ebdc29b3e573964b2915008b9c8d7668c3a",
+      "verdict": "pass",
+      "reason": "Each clause has a falsifying leg (M1 by a/b with the nine byte-identical paths and the tree listing, M2 by c, M3 by d/e at both caps including the exact-cap boundary and the literal skip line, M4 by the sed/grep Run whose literal order matches the clause), and the literals compute against BASE \u2014 the CONTRACT range from line 51 to line 214 is 164 lines and carries neither `weave/blobs` nor `FLEET_EVIDENCE_FILE_MAX`, the sim file is absent as leg (h) expects, and no named file pins the opposite of any clause."
+    },
+    "2": {
+      "hash": "d87172f0390fd61824c910689491cfb7b9501b81a1596942d0f69936b6a0a3a7",
+      "verdict": "pass",
+      "reason": "Every clause has a falsifying leg and the pinned counts follow from the fixture under the clauses' own rules (5 conflicts = 1 binary + 1 delete/modify as deletion-only + 1 insert-only + 1 overlapping + 1 unclassified; dispatches 3, retries 1, resolved 1 since epoch 4 < 5, parked 3), and every named file is correctly absent at BASE."
+    }
+  },
+  "tally": {
+    "dispatched": 2,
+    "rejected": 0,
+    "rounds": [
+      {
+        "round": 1,
+        "dispatched": 2,
+        "rejected": 0
+      }
+    ],
+    "base": "407ead2b11d2af017ecda1302c61ca72b1dcb721"
+  },
+  "history": [],
+  "authoring": {
+    "minutes": 13,
+    "probes": 6,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Which bundles do we author now?",
+        "options": [
+          "#728 evidence record",
+          "#995 fixture persistence exam",
+          "Worker seam: #1054 + #410 + #1051",
+          "Scripts and docs: #873 + #1040 + #1045"
+        ],
+        "recommended": "#728 evidence record",
+        "picked": "#728 evidence record"
+      },
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Confirm as quoted",
+          "Confirm, but drop the census.py name"
+        ],
+        "recommended": "Confirm as quoted",
+        "picked": "Confirm as quoted"
+      },
+      {
+        "question": "And execute it how?",
+        "options": [
+          "Ultrapowers on the new main",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers on the new main",
+        "picked": "Ultrapowers on the new main"
+      }
+    ]
+  }
+}
