@@ -13,11 +13,12 @@ with two disqualifications read off the run's own record — the exam was edited
 (`receipt.json`'s `compile.tasks[].writes`) — and two ways a red simply never
 became a catch (it stayed red, or nothing ran it again).
 
-Read-only and advisory: no model call, no network, no git write. The one file
-it writes is the ledger named by `--ledger`, and only by appending. A missing
-or unreadable record is an empty record, never a traceback; a path under which
-no run directory exists is reported as `LOOKED-EMPTY:` on stderr and is not an
-error.
+Read-only and advisory: no model call, no git write. The one file it writes is
+the ledger named by `--ledger`, and only by appending — beside, under `--fetch`,
+the run directories it pulls off the evidence tags into the `--into` directory
+the operator names. A missing or unreadable record is an empty record, never a
+traceback; a path under which no run directory exists is reported as
+`LOOKED-EMPTY:` on stderr and is not an error.
 
 Ordering is the event log's `id` order and nothing else. `iter` does not
 distinguish the pass before a fix round from the pass after it (run-44 ran the
@@ -30,10 +31,13 @@ resolves or globs a path.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import os
 import re
+import shlex
+import subprocess
 import sys
 from pathlib import Path
 
@@ -70,6 +74,17 @@ CAUGHT, EXAM_EDITED, TASK_WRITES, RERUN, STAYED_RED, NO_GREEN = OUTCOMES
 
 # A directory holding this is a run directory; nothing else makes one.
 RUN_FILE = "events.jsonl"
+
+# What a run directory is, on the evidence tag and on disk alike: the log the
+# counter reads its reds out of, and the three records that judge them
+# (`report.json`'s `examEdited`, `receipt.json`'s `compile.tasks[].writes`,
+# `status.json`'s `startedAt`). `--fetch` pulls these four names and no other
+# — a fifth file on the tag is another reader's business.
+RUN_NAMES = (RUN_FILE, "report.json", "receipt.json", "status.json")
+
+# The tag a run's directory lives on. The plan tag carries the plan; the
+# evidence tag carries `.ultrapowers/runs/<N>/`.
+EVIDENCE_REF = "ultra/evidence/run-%d"
 
 
 # --- the record ------------------------------------------------------------
@@ -348,6 +363,113 @@ def append_rows(rows, ledger_path):
     return {"added": len(added), "skipped": len(rows) - len(added)}
 
 
+# --- --fetch: the record off the evidence tags -----------------------------
+#
+# The runs a release wants counted are on the target, not on this disk: each
+# one's directory is `.ultrapowers/runs/<N>/` on `ultra/evidence/run-<N>`, and
+# `gh api …/contents/…` is the one read that needs no clone and no checkout.
+# What lands under `--into` is a tree of ordinary run directories, which the
+# counter then walks exactly as it walks a `PATH` the operator typed.
+#
+# This mirrors `skills/ultrawrite/scripts/authoring_census.py`'s `_fetch_file`
+# and `fetch_runs` rather than importing them: that file belongs to another
+# skill, and a skill's script is not a library for its neighbours.
+
+def _contents(target, path, ref):
+    """The `gh api` path for one file at one ref."""
+    return "repos/%s/contents/%s?ref=%s" % (target, path, ref)
+
+
+def _fetch_file(gh, target, path, ref):
+    """The bytes of one file at one ref, or None when the read does not answer.
+
+    `gh api …/contents/…` answers JSON whose `content` is base64 with embedded
+    newlines, so the decode is over the whole string. The call names exactly
+    two arguments — `api` and the contents path — so a caller's `--gh` wrapper
+    sees the same shape the real binary does. A non-zero exit, an answer that
+    is not JSON, an answer with no string `content` and a `content` that is not
+    base64 are one answer here: the file did not answer."""
+    try:
+        proc = subprocess.run(gh + ["api", _contents(target, path, ref)],
+                              capture_output=True, text=True)
+    except OSError as exc:
+        swallow("the gh binary did not run; that file did not answer", exc)
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        answer = json.loads(proc.stdout)
+    except ValueError as exc:
+        swallow("gh answered no JSON; that file did not answer", exc)
+        return None
+    content = answer.get("content") if isinstance(answer, dict) else None
+    if not isinstance(content, str):
+        return None
+    try:
+        return base64.b64decode(content)
+    except (ValueError, TypeError) as exc:
+        swallow("gh's content is not base64; that file did not answer", exc)
+        return None
+
+
+def fetch_runs(target, first, last, into, gh="gh"):
+    """Fill `into` with `run-<N>/` for each N from `first` to `last` inclusive,
+    each holding as many of `RUN_NAMES` as answered; return the runs written.
+
+    `events.jsonl` is what makes a run directory, so a run whose log does not
+    answer is SKIPPED WHOLE: one line on stderr naming it, no `run-<N>`
+    directory left behind, and nothing for `find_run_dirs` to find. A run whose
+    log answers keeps it whatever the other three do — a missing `report.json`,
+    `receipt.json` or `status.json` is simply absent, and `derive_catches`
+    already reads an absent record as an empty one."""
+    into = Path(into)
+    # The destination exists whether or not any run answers: a range where
+    # every tag is missing is an empty fetch, not a usage error.
+    into.mkdir(parents=True, exist_ok=True)
+    command = shlex.split(gh) if isinstance(gh, str) else list(gh)
+    written = []
+    for number in range(int(first), int(last) + 1):
+        ref = EVIDENCE_REF % number
+        root = ".ultrapowers/runs/%d/" % number
+        log = _fetch_file(command, target, root + RUN_FILE, ref)
+        if log is None:
+            print("catch-counter: run %d has no %s at %s — skipped"
+                  % (number, RUN_FILE, ref), file=sys.stderr)
+            continue
+        directory = into / ("run-%d" % number)
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / RUN_FILE).write_bytes(log)
+        for name in RUN_NAMES[1:]:
+            body = _fetch_file(command, target, root + name, ref)
+            if body is not None:
+                (directory / name).write_bytes(body)
+        written.append(number)
+    return written
+
+
+RUNS_RE = re.compile(r"^(\d+)\.\.(\d+)$")
+
+
+def _fetch_range(runs, into):
+    """`(first, last)` for a `--fetch`, or a one-line refusal on stderr and
+    None — the census's three refusals, under this script's own name."""
+    if not runs or not into:
+        print("catch-counter: --fetch needs --runs <A>..<B> and --into <dir>",
+              file=sys.stderr)
+        return None
+    match = RUNS_RE.match(runs)
+    if not match:
+        print("catch-counter: --runs takes `<A>..<B>`, not `%s`" % runs,
+              file=sys.stderr)
+        return None
+    first, last = int(match.group(1)), int(match.group(2))
+    if first > last:
+        print("catch-counter: --runs `%s` counts backwards" % runs,
+              file=sys.stderr)
+        return None
+    return first, last
+
+
 # --- CLI -------------------------------------------------------------------
 
 def find_run_dirs(paths):
@@ -380,13 +502,39 @@ def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="catch_counter.py",
         description="Count each run's catches from its own record.")
-    parser.add_argument("paths", nargs="+", metavar="PATH",
+    # `nargs="*"`: under `--fetch` the runs come off the tags, so there is no
+    # positional to give — and with neither, the refusal below is this
+    # script's own one-line usage rather than argparse's.
+    parser.add_argument("paths", nargs="*", metavar="PATH",
                         help="a run directory, or a tree containing them")
     parser.add_argument("--ledger", dest="ledger", metavar="FILE",
                         help="append the rows to this JSONL ledger")
+    parser.add_argument("--fetch", metavar="OWNER/REPO",
+                        help="pull the runs' record off this repository's "
+                             "evidence tags into --into, then count it")
+    parser.add_argument("--runs", metavar="A..B",
+                        help="the inclusive run range to fetch")
+    parser.add_argument("--into", metavar="DIR",
+                        help="where --fetch writes the runs it reads")
+    parser.add_argument("--gh", default="gh", metavar="BIN",
+                        help="the gh binary (or command) to run; default `gh`")
     args = parser.parse_args(argv)
 
-    rows = [derive_catches(run_dir) for run_dir in find_run_dirs(args.paths)]
+    paths = list(args.paths)
+    if args.fetch:
+        bounds = _fetch_range(args.runs, args.into)
+        if bounds is None:
+            return 2
+        fetch_runs(args.fetch, bounds[0], bounds[1], Path(args.into), args.gh)
+        # Counted exactly as a typed PATH is: the fetch's only product is a
+        # tree of run directories, and the walk below is the same walk.
+        paths.append(args.into)
+    elif not paths:
+        print("catch-counter: give a PATH, or --fetch <owner>/<repo> with "
+              "--runs <A>..<B> and --into <dir>", file=sys.stderr)
+        return 2
+
+    rows = [derive_catches(run_dir) for run_dir in find_run_dirs(paths)]
     counts = (append_rows(rows, args.ledger) if args.ledger
               else {"added": 0, "skipped": 0})
     print("%d run(s) counted, %d row(s) appended, %d already recorded"

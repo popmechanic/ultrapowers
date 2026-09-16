@@ -11,6 +11,11 @@ reads them and answers three questions in one pass:
     the curve   how many tests are still at zero catches over N touching runs
     the input   at an operator-chosen N, the deletion candidates themselves
 
+and, under `--zero-over N`, a fourth over a window instead of the whole record:
+the tests of the tree that caught nothing across the last N releases' runs,
+each with how many of those runs exercised it. That reading is what a release
+commit body carries; the table above it stays the all-time one.
+
 A test's exercised set is the union across rows on purpose: what run A taught
 about test T decides whether run B counts as having touched T. A test the
 record has never named is `unobserved`, not `zero` — it is never a deletion
@@ -59,6 +64,13 @@ EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 # The report's closing line when rows carry no `startedAt`: they counted
 # toward no window, and the operator recounts them (last row per run wins).
 NO_STAMP_NOTE = "%d row(s) carry no startedAt — recount them"
+
+# The release window's three lines, verbatim. The heading is what a release
+# commit body is grepped for, so it is a constant and not an f-string in place.
+RELEASE_HEADING = "## Zero catches over the last %d release(s)"
+RELEASE_WINDOW = "window: since %s (%s), %d run(s)"
+RELEASE_WHOLE = "window: the whole record (fewer than %d release tags), %d run(s)"
+RELEASE_ENTRY = "- %s — exercised by %d run(s)"
 
 HEADER = "| test | catches | touching runs | status |"
 # GFM renders a pipe table only when the header is followed by a delimiter row,
@@ -289,6 +301,40 @@ def tree_gates(tree, tests):
     return _tree_marked(tree, tests, GATE_MARKER)
 
 
+def release_tags(tree):
+    """The tree's `v*` tags, MOST RECENT FIRST: `[(instant, stamp, name), …]`.
+
+    A release is a `v*` tag on its `chore(release):` squash commit, and those
+    tags are lightweight, so a tag's creator date is its commit's committer
+    date — which is exactly what `creatordate` answers for either kind, so one
+    read serves both. `stamp` is git's own `iso-strict` text, printed verbatim
+    in the window line rather than re-rendered.
+
+    A tree that is no checkout, a tree git cannot read and a clone with no tags
+    (a depth-1 fetch is one) all have no releases: the empty list, never a
+    traceback. [M2]"""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(tree), "for-each-ref", "--sort=-creatordate",
+             "--format=%(creatordate:iso-strict)%09%(refname:short)",
+             "refs/tags/v*"],
+            capture_output=True, text=True)
+    except OSError as exc:
+        swallow("git unavailable; this tree has no release tags", exc)
+        return []
+    if proc.returncode != 0:
+        return []
+    found = []
+    for line in proc.stdout.splitlines():
+        stamp, tab, name = line.partition("\t")
+        if not tab or not name:
+            continue
+        when = _when(stamp)
+        if when is not None:
+            found.append((when, stamp, name))
+    return found
+
+
 def tree_landings(tree, tests):
     """When each test LANDED: the committer date of the commit that first
     added the file, read from the tree's own history. A file with no such
@@ -340,14 +386,59 @@ def zero_over_lines(table, n):
     return [f"## Zero catches over {n} runs"] + zero_over(table, n)
 
 
-def report_lines(table, n=None, unstamped=0):
+def zero_over_releases(rows, tree, tree_tests, n, runners=(), gates=()):
+    """The release window's section, as lines: the heading, the line naming the
+    window, then one entry per test of the TREE that caught nothing inside it.
+
+    A second reading over the record, beside the table's and not through it.
+    The window is every `catch-count` row whose `startedAt` is after the
+    creator date of the Nth most recent `v*` tag of `tree` — so `n=1` is the
+    runs since the latest release — and a tree with fewer than N such tags
+    opens at the epoch, which its window line says.
+
+    Keyed over `tree_tests` minus `runners` and `gates`, and over nothing else:
+    a path only the record names (`tests/test_gone.py`, deleted by a later run)
+    is not in the tree and is not listed, which is the whole point of reading
+    the tree here. An entry's count is how many rows OF THE WINDOW name the
+    path in their `exercises` — 0 is a real count and is listed, because a test
+    the release's runs never exercised caught nothing in it either. [M2]"""
+    n = int(n)
+    releases = release_tags(tree)
+    since = releases[n - 1] if 1 <= n <= len(releases) else None
+    opened = since[0] if since else EPOCH
+
+    window = []
+    for row in _catch_rows(rows):
+        started = _when(row.get("startedAt"))
+        # A row with no `startedAt` falls in no window at all — the same rule
+        # the table's per-test window keeps, and the closing note counts it.
+        if started is not None and started > opened:
+            window.append(row)
+    window_line = (RELEASE_WINDOW % (since[2], since[1], len(window))
+                   if since else RELEASE_WHOLE % (n, len(window)))
+
+    kept = set(runners or ()) | set(gates or ())
+    lines = [RELEASE_HEADING % n, window_line]
+    for path in sorted(set(tree_tests or ()) - kept):
+        if sum(_count(_mapping(row, "catches").get(path))
+               for row in window):
+            continue
+        exercised_by = sum(1 for row in window
+                           if path in _mapping(row, "exercises"))
+        lines.append(RELEASE_ENTRY % (path, exercised_by))
+    return lines
+
+
+def report_lines(table, n=None, unstamped=0, releases=()):
     """The whole report, in order: table, curve, — only when the operator named
-    an N — the deletion input, and — only when rows carried no `startedAt` —
-    one closing line saying how many, so the report's LAST line is that note
-    whichever sections precede it. [M5] [M2]"""
+    an N — the deletion input, — only under `--zero-over` — the release
+    window's section, and — only when rows carried no `startedAt` — one closing
+    line saying how many, so the report's LAST line is that note whichever
+    sections precede it. [M5] [M2]"""
     lines = table_lines(table) + curve_lines(table)
     if n is not None:
         lines.extend(zero_over_lines(table, n))
+    lines.extend(releases)
     if unstamped > 0:
         lines.append(NO_STAMP_NOTE % unstamped)
     return lines
@@ -368,14 +459,21 @@ def main(argv=None):
     parser.add_argument("--n", type=int, metavar="N",
                         help="also list the tests at zero catches over N "
                              "touching runs")
+    parser.add_argument("--zero-over", dest="zero_over", type=int, metavar="N",
+                        help="also list the tree's tests that caught nothing "
+                             "over the last N releases' runs")
     args = parser.parse_args(argv)
 
     rows = _read_jsonl(args.ledger)
     tests = tree_test_files(args.tree)
+    runners = tree_runners(args.tree, tests)
+    gates = tree_gates(args.tree, tests)
     table = catch_table(rows, tests, landings=tree_landings(args.tree, tests),
-                        runners=tree_runners(args.tree, tests),
-                        gates=tree_gates(args.tree, tests))
-    for line in report_lines(table, args.n, unstamped_rows(rows)):
+                        runners=runners, gates=gates)
+    releases = (zero_over_releases(rows, args.tree, tests, args.zero_over,
+                                   runners=runners, gates=gates)
+                if args.zero_over is not None else ())
+    for line in report_lines(table, args.n, unstamped_rows(rows), releases):
         print(line)
     return 0
 
