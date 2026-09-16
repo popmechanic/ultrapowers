@@ -544,9 +544,15 @@ export function stateExamsOf(runDir, taskId) {
 // is told it is settled FOR THAT FILE and for nothing else. Anything short of every mutant killed renders nothing at
 // all (the run-51 rule), so a task with no record carries the prompt it had
 // before this existed, byte for byte.
+// "Every mutant killed", spelled once. Two readers ask it of the same rows —
+// the reviewer's settled block below and the skipped reviewer of the review
+// round — and they have to mean the same thing by it: a record with no rows is
+// not an answer, and one row short of `true` (a survivor, or a `mutant.json`
+// that was missing or unparsable and left `null`) is a no.
+const everyMutantKilled = (rows) =>
+  Array.isArray(rows) && rows.length > 0 && rows.every((r) => r && r.mutant_killed === true)
 export const stateExamBlock = (rows) => {
-  if (!Array.isArray(rows) || rows.length === 0) return ''
-  if (!rows.every((r) => r && r.mutant_killed === true)) return ''
+  if (!everyMutantKilled(rows)) return ''
   return '\n\nSTATE EXAM: the driver read this task\'s state-exam record and every mutant was ' +
     'killed, so duty 5 is settled for the exam file(s) named below and for nothing else — the ' +
     'implementer\'s own tests stay under duty 5.' +
@@ -1052,6 +1058,18 @@ export async function runEngine({
   // What a state exam is handed as `ULTRA_RUN_DIR` — absolute, because the
   // exam runs with its cwd inside a clone and resolves the path itself.
   const runDirAbs = path.resolve(runDir)
+  // Whether a task whose state exam killed its mutant still gets a reviewer
+  // (#836, the operator's pick of 2026-09-15). OFF is the shipped default and
+  // the experiment: a green pre-review pass beside a record where every mutant
+  // was killed is the driver's own proof that the exam would have caught a
+  // wrong state, so the review round is not dispatched at all and the row reads
+  // `skipped-mutant-killed`. The ROLLBACK is `reviewOnStateExams: true` in the
+  // run's `args.json` — or flipping this default to `true` — which restores the
+  // one reviewer every task gets without it. Read once, here, and read strictly:
+  // off unless the argument is literally `true`, so an absent key (which is
+  // every run on the fleet today — nothing writes this knob), `false`, `'true'`
+  // and `1` are all off.
+  const reviewOnStateExams = args.reviewOnStateExams === true
   // The engine is handed `log` and `phase` (both events of their own kind) but
   // no raw sink, and `driver:proof-run` is a RECORD, not narration: it has to
   // survive the run as data a sense pass can count. So it goes to the same
@@ -2942,6 +2960,42 @@ export async function runEngine({
       // The hunks of the tree this round is reading — the pre-review repair
       // round is the one thing that can have edited the exam before it.
       const editedDiffs = await examEditedDiffs()
+      // ── the reviewer a killed mutant buys nothing from (#836) ─────────────
+      // The experiment, default off: a task whose pre-review pass came back
+      // green all the way — every `Run:` 0, the exam 0 or not runnable, every
+      // non-minor `Check:` 0, and no `exam:` concern to judge (#908) — and
+      // whose state-exam record says every mutant was killed has had its whole
+      // claim measured by the driver already. `stateExamBlock` would tell the
+      // referee exactly that and then ask it to read the diff anyway; here the
+      // round is simply not dispatched, on the SAME predicate the block uses,
+      // so the settled block and the skip can never disagree about what "every
+      // mutant killed" means. What the task still gets is everything the driver
+      // owns — the pass, the one repair round, the fold, the candidate suite,
+      // the integrated `Run:`/`Check:` re-execution and the pre-merge gate.
+      // What it loses is the referee's lens. The judgment call is the record:
+      // no new event kind, and no hub post, because a reviewer's findings never
+      // reach a task issue anyway.
+      const stateExamRows = stateExamRowsOf(runDirAbs, task.id)
+      if (!reviewOnStateExams && examConcerns.length === 0 &&
+          runEvidence.every((r) => r.exit === 0) &&
+          (!examEvidence || examEvidence.exit === 0) &&
+          checkEvidence.every((c) => c.exit === 0 || c.minor) &&
+          everyMutantKilled(stateExamRows)) {
+        judgmentCalls.push('task ' + task.id + ': every mutant killed (' +
+          stateExamRows.map((r) => r.exam).join(', ') +
+          ') — no reviewer was dispatched (reviewOnStateExams off)')
+        log('task ' + task.id + ' every mutant killed — no reviewer dispatched ' +
+          '(reviewOnStateExams off)')
+        // The `done` row of the clean review below, less what no reviewer
+        // produced: `minorFindings` and `planNotes` are empty by construction,
+        // so the notes are the concerns alone.
+        return { task: task.id, baseCorrected, status: 'done', branch: '', exam,
+                 headSha: impl.headSha, patch: impl.patch,
+                 reviewVerdict: 'skipped-mutant-killed',
+                 notes: concerns.map((c) => 'concern: ' + c).join('; '),
+                 tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
+                 ...examEditedField() }
+      }
       const reviewPrompt = roles.reviewer + taskBodyBlock(task, wavesPath) +
         '\nPATCH: ' + impl.patch +
         '\nHEAD: ' + impl.headSha +
@@ -2961,10 +3015,11 @@ export async function runEngine({
         // so its prompt is the one it had before this existed.
         amendmentBlock(implAmendments.concat(proofFixes ? amendmentsOf(impl) : [])) +
         checkEvidenceBlock(checkEvidence) +
-        // Read HERE, not at the pre-review pass: the round grades the tree the
-        // pre-review repair round left, so it must read the record that round's
-        // own exam pass wrote rather than the first pass's.
-        stateExamBlock(stateExamRowsOf(runDirAbs, task.id))
+        // Read in the ROUND, not at the pre-review pass (the rows above): the
+        // round grades the tree the pre-review repair round left, so it must
+        // read the record that round's own exam pass wrote rather than the
+        // first pass's.
+        stateExamBlock(stateExamRows)
       // One reviewer per round, whatever the task's `**Review:**` value says
       // (#964 Task 2). The label carries no trailing pass number, because there
       // is no second half to distinguish from the first: `review:<id>:<iter>`.

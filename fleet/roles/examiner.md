@@ -30,8 +30,7 @@ Work leg by leg:
    paths and directory walks are written for the path it lands at, not for the
    one it maps from. Where the task specifies
    exact outputs, assert full expected values with equality, not loose
-   containment; where a leg pins an exact or verbatim string, keep that check
-   live — one that would pass against a stub is not that leg.
+   containment; where a leg pins an exact or verbatim string, keep that check live.
 3. Expect the exam to be red at BASE, and expect its failure to read as the
    absent implementation rather than as a typo, a bad import, or a fixture the
    exam forgot to create. The driver runs it at BASE and reports what it saw.

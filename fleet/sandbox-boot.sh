@@ -2583,7 +2583,10 @@ def mutant_cell(row):
     killed = [e.get("mutant_killed") for e in exams if isinstance(e, dict)]
     if any(k is False for k in killed) or len(killed) != len(exams):
         return "SURVIVED"
-    return "killed" if all(k is True for k in killed) else EM
+    if not all(k is True for k in killed):
+        return EM
+    skipped = row.get("reviewVerdict") == "skipped-mutant-killed"
+    return "killed, reviewer skipped" if skipped else "killed"
 
 
 def suite_cell(task):

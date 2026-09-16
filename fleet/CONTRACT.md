@@ -189,7 +189,13 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   repeat that follows the pre-review repair round. A pass number above `0` is a value this engine
   no longer emits — the one review round reads the pre-review pass's evidence and dispatches no fix
   worker of its own, so nothing edits the tree after that pass and no round re-executes. The
-  numbers stay in the vocabulary a reader of an older run's record meets. The integrated `Run:` receives `ULTRA_TASK` and
+  numbers stay in the vocabulary a reader of an older run's record meets. Whether that round is
+  dispatched at all is `reviewOnStateExams` (#836), a run argument that is off by default: with it
+  off, a task whose pre-review pass was green and whose state-exam record holds at least one stem
+  with every mutant killed gets no reviewer, and `true` in the run's arguments is the rollback that
+  restores the one reviewer every task gets without it. A task merged that way carries the verdict
+  `skipped-mutant-killed` and is gated exactly as a reviewed one — the wave's fold, the candidate
+  suite, the integrated `Run:`/`Check:` pass and the pre-merge gate all run on it unchanged. The integrated `Run:` receives `ULTRA_TASK` and
   `ULTRA_EXAM_PASS=integrated` and no `ULTRA_RUN_DIR` — the run directory is the driver's, not the
   fold's; the integrated `Check:` receives only `ULTRA_BASE`; and the suite receives none of the four.
 - **Launch order (launcher):** validate `--target`/`--base`/plan — a `--base` that is not an ancestor
@@ -676,7 +682,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   sentence with its provenance tag stripped; then one table,
   `| task | claim | exam | probes | mutant | suite |`, one row per task in the plan's order, whose
   cells are read off the plan, `report.json`, `gate-receipt.json` and the status page and are never
-  narrated at publish time; then `Residuals: <n> from review` — `Residuals: none` at zero — and, as
+  narrated at publish time — the `mutant` cell reads `SURVIVED` when any state exam's mutant lived,
+  and where they were all killed a row whose `reviewVerdict` is `skipped-mutant-killed` reads
+  `killed, reviewer skipped` and every other row reads `killed`;
+  then `Residuals: <n> from review` — `Residuals: none` at zero — and, as
   `- ` lines, only the items nobody else will do; then, below those errands,
   `Amendments: <n> from workers` and, after a blank line, one
   `- task <id> — <amends>: <what> — <why>` line per row of `report.json`'s `amendments` in the

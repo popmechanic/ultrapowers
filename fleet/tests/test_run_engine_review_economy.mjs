@@ -385,4 +385,320 @@ async function pinRun(engine, tasks, rolesDir = ROLES_DIR) {
   }
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// run-156 task 1 — the engine skips the reviewer on a killed mutant, behind
+// `reviewOnStateExams`.
+//
+// The same accounting question this sim already asks, one round earlier: a
+// reviewer-minute spent on a task whose own state exam already proved it would
+// have caught a wrong state buys the run nothing that the driver did not
+// already hold. The switch removes that dispatch and only ever that dispatch,
+// and it is off unless the run's arguments carry literally `true`.
+//
+// Machine clauses under test (legs (a)–(e) of the Proof):
+//   M1 — no `reviewOnStateExams` key + a green pre-review pass + a record whose
+//        every stem reads `killed: true` dispatches no `review:<id>:1`; the row
+//        is `done` / `skipped-mutant-killed` / `fixIterations: 0`, the patch is
+//        adopted by the fold, `reviewEconomy.reviewerMs` is `0`, and exactly
+//        one `judgmentCalls` entry names the stems and the switch.
+//   M2 — the same run with `reviewOnStateExams: true` dispatches
+//        `review:A:1` once, with the `STATE EXAM:` block on its prompt, and the
+//        row reads `clean`.
+//   M3 — with the switch off, `killed: false`, a stem with no `mutant.json` and
+//        no record at all each dispatch `review:A:1` once and read `clean`.
+//   M4 — with the switch off and every mutant killed, a still-red `Run:` ends
+//        `proof-red` with no reviewer, and the #908 path (a still-red exam
+//        beside an `exam:` concern) still dispatches its one reviewer.
+//   M5 — the two documents carry the switch, its default, its rollback and the
+//        verdict, in the places the Proof's `Run:` lines read them.
+
+// The record the driver reads at pass `0`, written by the sim rather than by an
+// exam: `stateExamRowsOf` walks `<runDir>/state-exams/task-<id>/<stem>-<pass>/`
+// and reads these three files. `rig()` provisions synchronously, so a call to
+// this between `rig(...)` and `await run()` lands before the engine looks.
+const WALLS = { store_ms: 5, render_ms: null, render: 'skipped' }
+const CONTRACT_OK = { breach: null }
+const MUTANT_KILLED = { killed: true, path: 'todos/0/completed' }
+const MUTANT_SURVIVED = { killed: false, path: 'todos/0/completed' }
+const writeStateExam = (runDir, taskId, stem, files) => {
+  const dir = path.join(runDir, 'state-exams', 'task-' + taskId, stem + '-0')
+  fs.mkdirSync(dir, { recursive: true })
+  for (const [name, obj] of Object.entries(files)) {
+    fs.writeFileSync(path.join(dir, name), JSON.stringify(obj) + '\n')
+  }
+  return dir
+}
+// The full record of one killed stem: walls, contract and a killed mutant.
+const writeKilledRecord = (runDir, taskId) =>
+  writeStateExam(runDir, taskId, 'todo-state',
+    { 'walls.json': WALLS, 'contract.json': CONTRACT_OK, 'mutant.json': MUTANT_KILLED })
+// A blob of the integration clone, byte for byte — the fold's green path is
+// `reset --hard <candidate>` in that clone, so `HEAD:` is the adopted tree.
+const integBlob = (integ, ref) =>
+  execFileSync('git', ['show', ref], { cwd: integ, env: ENV, encoding: 'utf8' })
+const SKIP_CALL = /^task A: every mutant killed \(todo-state\) — no reviewer was dispatched \(reviewOnStateExams off\)$/
+
+// ── leg (a): the skip itself, and that it is not keyed on an explicit `false`
+// [M1] ───────────────────────────────────────────────────────────────────────
+// Run twice: once with no `reviewOnStateExams` key in the run's arguments (the
+// shipped default — nothing writes the key on the fleet today) and once with it
+// spelled `false`. The assertions are the same both times, so an engine that
+// skips only when the argument is literally `false` fails the first half and an
+// engine that reviews regardless fails both.
+for (const [tag, extraArgs] of [['absent', {}], ['false', { reviewOnStateExams: false }]]) {
+  const repo = makeRepo(path.join(tmp, 'repo-skip-' + tag))
+  const runDir = path.join(tmp, 'run-skip-' + tag)
+  const labels = []
+  const stub = (prompt, opts, cwd) => {
+    labels.push(opts.label)
+    const kind = opts.label.split(':')[0]
+    if (kind === 'impl') {
+      fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n')
+      return doneImpl(cwd)
+    }
+    // A dispatched reviewer fails this leg loudly, at the dispatch, rather than
+    // leaving the label list to be read after a clean-looking run.
+    if (kind === 'review') {
+      throw new Error('(a) [M1] a reviewer was dispatched on a killed-mutant task: ' + opts.label)
+    }
+    throw new Error('unexpected dispatch: ' + opts.label)
+  }
+  const { run, integ } = rig({
+    repo, runDir, stub, stamp: 'skip-' + tag, extraArgs,
+    waves: [[mkTask('A', ['a.txt'])]],
+  })
+  writeKilledRecord(runDir, 'A')
+  const report = await run()
+  const row = report.tasks.find((r) => r.task === 'A')
+
+  assert.deepEqual(labels.filter((l) => l.startsWith('review:')), [],
+    '(a) [M1] with `reviewOnStateExams` ' + tag + ', a task whose every mutant was killed ' +
+    'dispatches no `review:` agent call at all: ' + JSON.stringify(labels))
+  assert.equal(row.status, 'done',
+    '(a) [M1] and the task is still merged: ' + JSON.stringify(row))
+  assert.equal(row.reviewVerdict, 'skipped-mutant-killed',
+    '(a) [M1] its row carries the verdict the skip writes: ' + JSON.stringify(row))
+  assert.equal(row.fixIterations, 0,
+    '(a) [M1] with `fixIterations: 0` — no reviewer ran, so no reviewer\'s findings drove a ' +
+    'round: ' + JSON.stringify(row))
+  assert.equal(integBlob(integ, 'HEAD:a.txt'), 'from-A\n',
+    '(a) [M1] and the wave\'s fold adopted the patch: the integration clone\'s `a.txt` reads ' +
+    'the implementer\'s bytes')
+  assert.equal(report.reviewEconomy.reviewerMs, 0,
+    '(a) [M1] `reviewEconomy.reviewerMs` is exactly 0 on a one-task run that paid for no ' +
+    'reviewer: ' + JSON.stringify(report.reviewEconomy))
+  const calls = report.judgmentCalls.filter((j) => SKIP_CALL.test(String(j)))
+  assert.equal(calls.length, 1,
+    '(a) [M1] exactly one judgmentCalls entry records the skip, naming each stem and the ' +
+    'switch, verbatim: ' + JSON.stringify(report.judgmentCalls))
+}
+
+// ── leg (b): the rollback brings the reviewer back [M2] ──────────────────────
+// The same rig and the same killed record with `reviewOnStateExams: true` in
+// the run's arguments: one reviewer, and the settled block on its prompt — the
+// reading of the record the reviewer gets at BASE, unchanged by this plan.
+{
+  const repo = makeRepo(path.join(tmp, 'repo-switch-on'))
+  const runDir = path.join(tmp, 'run-switch-on')
+  const labels = []
+  const prompts = {}
+  const stub = (prompt, opts, cwd) => {
+    labels.push(opts.label)
+    prompts[opts.label] = prompt
+    const kind = opts.label.split(':')[0]
+    if (kind === 'impl') {
+      fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n')
+      return doneImpl(cwd)
+    }
+    if (kind === 'review') return passReview()
+    throw new Error('unexpected dispatch: ' + opts.label)
+  }
+  const { run } = rig({
+    repo, runDir, stub, stamp: 'switch-on',
+    extraArgs: { reviewOnStateExams: true },
+    waves: [[mkTask('A', ['a.txt'])]],
+  })
+  writeKilledRecord(runDir, 'A')
+  const report = await run()
+  const row = report.tasks.find((r) => r.task === 'A')
+
+  assert.deepEqual(labels.filter((l) => l.startsWith('review:')), ['review:A:1'],
+    '(b) [M2] `reviewOnStateExams: true` restores the one reviewer every task gets at BASE: ' +
+    JSON.stringify(labels))
+  assert.ok(prompts['review:A:1'].includes('STATE EXAM:'),
+    '(b) [M2] and that reviewer is told the record is settled, as the `STATE EXAM:` block')
+  assert.ok(prompts['review:A:1'].includes('\n- todo-state: mutant todos/0/completed killed: true'),
+    '(b) [M2] naming the stem and its mutant path: ' +
+    JSON.stringify(prompts['review:A:1'].slice(-300)))
+  assert.equal(row.reviewVerdict, 'clean',
+    '(b) [M2] and the row reads like any reviewed task\'s: ' + JSON.stringify(row))
+}
+
+// ── leg (c): anything short of every mutant killed is reviewed [M3] ──────────
+// Three runs, no switch argument, a reviewer that passes. The predicate is
+// `stateExamBlock`'s: rows non-empty AND every `mutant_killed === true`. An
+// engine keyed on "no `false`" merges the second row unreviewed; one keyed on
+// the directory's presence merges the third.
+for (const [tag, record] of [
+  ['survived', { 'walls.json': WALLS, 'contract.json': CONTRACT_OK, 'mutant.json': MUTANT_SURVIVED }],
+  ['no-mutant-json', { 'walls.json': WALLS, 'contract.json': CONTRACT_OK }],
+  ['no-record', null],
+]) {
+  const repo = makeRepo(path.join(tmp, 'repo-review-' + tag))
+  const runDir = path.join(tmp, 'run-review-' + tag)
+  const labels = []
+  const stub = (prompt, opts, cwd) => {
+    labels.push(opts.label)
+    const kind = opts.label.split(':')[0]
+    if (kind === 'impl') {
+      fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n')
+      return doneImpl(cwd)
+    }
+    if (kind === 'review') return passReview()
+    throw new Error('unexpected dispatch: ' + opts.label)
+  }
+  const { run } = rig({
+    repo, runDir, stub, stamp: 'rev-' + tag,
+    waves: [[mkTask('A', ['a.txt'])]],
+  })
+  if (record) writeStateExam(runDir, 'A', 'todo-state', record)
+  const report = await run()
+  const row = report.tasks.find((r) => r.task === 'A')
+
+  assert.deepEqual(labels.filter((l) => l.startsWith('review:')), ['review:A:1'],
+    '(c) [M3] the `' + tag + '` record is not every-mutant-killed, so the task is reviewed ' +
+    'exactly as it is at BASE: ' + JSON.stringify(labels))
+  assert.equal(row.reviewVerdict, 'clean',
+    '(c) [M3] and its row reads `clean`, never the skip\'s verdict: ' + JSON.stringify(row))
+}
+
+// ── leg (d), first half: a red proof still outranks the record [M4] ──────────
+// The skip lives inside the review round, which a still-red pre-review pass
+// never reaches: the task parks `proof-red` after its one repair round, with no
+// reviewer, exactly as at BASE. An engine that read the record before the
+// pass's evidence would merge this.
+{
+  const repo = makeRepo(path.join(tmp, 'repo-skip-red'))
+  const runDir = path.join(tmp, 'run-skip-red')
+  const labels = []
+  const stub = (prompt, opts, cwd) => {
+    labels.push(opts.label)
+    const kind = opts.label.split(':')[0]
+    if (kind === 'impl') {
+      fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n')
+      return doneImpl(cwd)
+    }
+    // The repair round repairs nothing: `false` is still `false`.
+    if (kind === 'fix') return doneImpl(cwd)
+    if (kind === 'review') {
+      throw new Error('(d) [M4] a reviewer was dispatched on a proof-red task: ' + opts.label)
+    }
+    throw new Error('unexpected dispatch: ' + opts.label)
+  }
+  const { run } = rig({
+    repo, runDir, stub, stamp: 'skip-red',
+    waves: [[mkTask('A', ['a.txt'], { proofRuns: ['false'] })]],
+  })
+  writeKilledRecord(runDir, 'A')
+  const report = await run()
+  const row = report.tasks.find((r) => r.task === 'A')
+
+  assert.deepEqual(labels.filter((l) => l.startsWith('review:')), [],
+    '(d) [M4] a task whose `Run:` is still red after the repair round dispatches no reviewer: ' +
+    JSON.stringify(labels))
+  assert.equal(row.status, 'failed',
+    '(d) [M4] and a killed mutant does not merge it: ' + JSON.stringify(row))
+  assert.equal(row.reviewVerdict, 'proof-red',
+    '(d) [M4] the row keeps the `proof-red` park it has at BASE, not the skip\'s verdict: ' +
+    JSON.stringify(row))
+}
+
+// ── leg (d), second half: the #908 path still buys its referee [M4] ──────────
+// A red exam that survives the repair round beside that round's `exam:` concern
+// buys review round 1 — the one reading a killed record must not take away,
+// because the question there is whether the exam's case can be satisfied at
+// all, which no mutant answers. The rig is `test_run_engine_one_of_each.mjs`'s
+// `repo-red` leg, copied rather than imported, with the killed record
+// pre-written.
+{
+  const EXAM_CMD = 'bash a_test.sh'
+  // Red at BASE and red on every patch: the case no implementation satisfies.
+  const EXAM = '#!/bin/bash\necho exam-is-red\nexit 1\n'
+  const repo = makeRepo(path.join(tmp, 'repo-skip-908'))
+  const runDir = path.join(tmp, 'run-skip-908')
+  const labels = []
+  const stub = (prompt, opts, cwd) => {
+    labels.push(opts.label)
+    const kind = opts.label.split(':')[0]
+    if (kind === 'exam') {
+      fs.writeFileSync(path.join(cwd, 'a_test.sh'), EXAM)
+      return { status: 'DONE', summary: 'exam written' }
+    }
+    if (kind === 'impl') {
+      fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n')
+      return doneImpl(cwd)
+    }
+    if (kind === 'fix') {
+      return { ...doneImpl(cwd), status: 'DONE_WITH_CONCERNS',
+               concerns: ['exam: the case is red for any output'] }
+    }
+    if (kind === 'review') return passReview()
+    throw new Error('unexpected dispatch: ' + opts.label)
+  }
+  const { run } = rig({
+    repo, runDir, stub, stamp: 'skip-908',
+    waves: [[mkTask('A', ['a.txt'], { proofTests: ['a_test.sh'], testCmd: EXAM_CMD })]],
+  })
+  writeKilledRecord(runDir, 'A')
+  const report = await run()
+  const row = report.tasks.find((r) => r.task === 'A')
+
+  assert.deepEqual(labels.filter((l) => l.startsWith('fix:')), ['fix:A:0'],
+    '(d) [M4] sim precondition: the red exam bought the one repair round: ' +
+    JSON.stringify(labels))
+  assert.deepEqual(labels.filter((l) => l.startsWith('review:')), ['review:A:1'],
+    '(d) [M4] the fix round\'s `exam:` concern buys review round 1 even with every mutant ' +
+    'killed — the skip requires no `exam:` concern: ' + JSON.stringify(labels))
+  assert.equal(row.reviewVerdict, 'fix-loop-exhausted',
+    '(d) [M4] and the still-red exam ends the task, whatever the referee returned: ' +
+    JSON.stringify(row))
+}
+
+// ── leg (e): the two documents [M5] ──────────────────────────────────────────
+// The three `Run:` lines of the Proof, read here so the sim says what the
+// commands say. None of these strings is in either file at BASE.
+{
+  const REPORT_FORMAT = path.join(REPO_ROOT, 'skills', 'ultrapowers', 'references', 'report-format.md')
+  const CONTRACT = path.join(REPO_ROOT, 'fleet', 'CONTRACT.md')
+  const rowOf = (file, key) => {
+    const re = new RegExp('^\\| `tasks\\[\\]\\.' + key + '` \\|')
+    const lines = fs.readFileSync(file, 'utf8').split('\n').filter((l) => re.test(l))
+    assert.equal(lines.length, 1,
+      '(e) [M5] report-format.md carries exactly one `tasks[].' + key + '` table row: ' +
+      lines.length)
+    return lines[0]
+  }
+  const verdictRow = rowOf(REPORT_FORMAT, 'reviewVerdict')
+  assert.ok(verdictRow.includes('skipped-mutant-killed'),
+    '(e) [M5] the `tasks[].reviewVerdict` row names `skipped-mutant-killed` among the values')
+  assert.ok(verdictRow.includes('reviewOnStateExams'),
+    '(e) [M5] and says it is written only when `reviewOnStateExams` is off')
+  assert.ok(rowOf(REPORT_FORMAT, 'stateExams').includes('reviewOnStateExams'),
+    '(e) [M5] the `tasks[].stateExams` row says the `STATE EXAM:` block reaches a reviewer ' +
+    'only when one is dispatched, naming `reviewOnStateExams`')
+
+  // The Exam environment bullet, sliced exactly as the Proof's `sed` slices it
+  // and folded to one line exactly as its `tr` folds it.
+  const contractLines = fs.readFileSync(CONTRACT, 'utf8').split('\n')
+  const from = contractLines.findIndex((l) => /^- \*\*Exam environment:\*\*/.test(l))
+  assert.ok(from !== -1, '(e) [M5] sim precondition: fleet/CONTRACT.md has an Exam environment bullet')
+  const to = contractLines.findIndex((l, i) => i > from && /^- \*\*Launch order/.test(l))
+  assert.ok(to !== -1, '(e) [M5] sim precondition: the Launch order bullet follows it')
+  const bullet = contractLines.slice(from, to + 1).join(' ')
+  assert.ok(/reviewOnStateExams.*off.*true.*skipped-mutant-killed/.test(bullet),
+    '(e) [M5] the Exam environment bullet names `reviewOnStateExams`, its default (off), its ' +
+    'rollback value (`true`) and the verdict `skipped-mutant-killed`, in that order: ' +
+    JSON.stringify(bullet))
+}
+
 console.log('ALL TESTS PASSED')
