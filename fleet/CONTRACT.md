@@ -319,7 +319,14 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   dispatched at all is `reviewOnStateExams` (#836), a run argument that is off by default: with it
   off, a task whose pre-review pass was green and whose state-exam record holds at least one stem
   with every mutant killed gets no reviewer, and `true` in the run's arguments is the rollback that
-  restores the one reviewer every task gets without it. A task merged that way carries the verdict
+  restores the one reviewer every task gets without it. The record a task is read on holds that
+  task's OWN stems and no others: the stems of its Proof `Test:` paths under `tests/state-exams/`
+  (basename, less a `.test.ts`/`.test.tsx` suffix or else its last extension), so a helper's own
+  self-tests, which drive the same exam machinery under the same `ULTRA_TASK` and write their rows
+  into the same directory, are never that task's survivors — on the record, in the reviewer's
+  `STATE EXAM` block, in the hollow finding or on the pull request card; a task whose Proof names no
+  path under `tests/state-exams/` reads every stem in its directory, exactly as before this scoping
+  existed. A task merged that way carries the verdict
   `skipped-mutant-killed` and is gated exactly as a reviewed one — the wave's fold, the candidate
   suite, the integrated `Run:`/`Check:` pass and the pre-merge gate all run on it unchanged. The integrated `Run:` receives `ULTRA_TASK` and
   `ULTRA_EXAM_PASS=integrated` and no `ULTRA_RUN_DIR` — the run directory is the driver's, not the

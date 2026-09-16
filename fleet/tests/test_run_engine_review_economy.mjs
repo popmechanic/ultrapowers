@@ -701,4 +701,364 @@ for (const [tag, record] of [
     JSON.stringify(bullet))
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// run-169 task 1 — the mutant record is read through the task's own state exams
+//
+// The record under `<runDir>/state-exams/task-<id>/` holds a row for ANY exam
+// machinery that ran with the run's environment: the fixture's `evidenceDir`
+// writes under `task-$ULTRA_TASK/<stem>-<pass>` for every call, so a helper's
+// own self-test rigs — run-23's `packages/tinyapp-exam/test/persistence-move.
+// test.ts`, a Proof `Test:` path OUTSIDE `tests/state-exams/`, which drives the
+// exam machinery over deliberately failing pages — leave their surviving
+// mutants beside the real exam's. The mutant a task is judged on has to come
+// from the state exams that task's plan named.
+//
+// This section is legs (c), (d), (g) [M3] and (e) [M4] of that task's Proof.
+// Legs (a), (b) [M1]/[M2] and (f) are in `test_run_engine_state_exams.mjs`, the
+// task's other guarded sim — the pure readings of `stateExamStemsOf` and of
+// `stateExamsOf`'s third argument, with no engine run at all.
+//
+// The Machine clauses these legs are about, restated:
+//   M3 — in the engine, the rows the review round reads (for the hollow
+//        finding, for the reviewer-skip predicate and for the `STATE EXAM`
+//        block) and the `stateExams` row the report writes for each task are
+//        BOTH read with `stems` equal to `stateExamStemsOf` of that task's
+//        `proofTests`. So for a task whose Proof names
+//        `tests/state-exams/real.test.ts` and whose record holds a killed
+//        `real` row and a surviving `rig` row: no `driver:finding` whose
+//        `detail` begins `hollow:` is appended, the task ends
+//        `skipped-mutant-killed` with no `review:<id>:1` dispatched, and its
+//        report row's `stateExams` is exactly one element with `exam` `real`;
+//        while for a task whose Proof names only `a_test.sh` the same two rows
+//        yield one `hollow: rig …` finding, one `review:<id>:1` and a
+//        `stateExams` row of two elements, as at BASE.
+//   M4 — `fleet/CONTRACT.md`'s state-exam record sentence says the task's
+//        stems are those of its Proof `Test:` paths under `tests/state-exams/`
+//        and that a task with none reads every stem in its directory, and
+//        `report-format.md`'s `tasks[].stateExams` prose says the same in one
+//        sentence.
+//
+// How the three runs below are arranged, and why. Each is one task `A` over
+// `a.txt`, with the two record rows written by hand between `rig(...)` and
+// `await run()` exactly as the run-156 legs above write theirs — `real`, the
+// exam the Proof names, and `rig`, the helper's self-test row that the run's
+// environment let land in the same directory. What differs between the runs is
+// only the task's `proofTests` and the two rows' `mutant.json`.
+//
+// The pre-review pass has to come back GREEN for the skip in leg (c) to be
+// reachable at all, so the `exam:` arm writes an exam that exits 0 and the run
+// executes it: measured at BASE, an `exam:` arm that writes NOTHING leaves
+// `examBlobs` a one-pair array of `[landing, null]`, which is truthy, so the
+// exam is runnable, exits 127 for the absent file and parks the task
+// `proof-red` before any review round — a reason that is not this task's
+// claim. The task's `testCmd` therefore names the Proof path itself, and the
+// arm writes the exam at the landing the driver's own `EXAM PATHS:` line
+// gives, which for a path under `tests/state-exams/` is the reserved
+// directory. The `exam is green at BASE` judgment call that follows is the
+// engine's reading of a sim's exam and gates nothing.
+// ═════════════════════════════════════════════════════════════════════════════
+
+// An exam that is green wherever it lands: the pass this section needs is a
+// green one, and what the exam measures is not what these legs are about — the
+// record's rows are the sim's own bytes, not this exam's output.
+const R169_GREEN_EXAM = '#!/bin/bash\nexit 0\n'
+// The eight-key report element each seeded stem reads as: `WALLS` above is
+// `{ store_ms: 5, render_ms: null, render: 'skipped' }`, so every other field
+// is the reading that shape gives. Spelled once, so leg (c)'s one element and
+// leg (d)'s two are pinned to full expected values rather than to a length.
+const R169_ROW = (exam, killed) => ({
+  exam, store_ms: 5, render_ms: null, render: 'skipped',
+  action_ms: null, browser: null, mutant_killed: killed, contract: 'ok',
+})
+// The hollow findings on the run's own log, in the order they were appended.
+const hollowOf = (runDir) => eventsOf(runDir)
+  .filter((e) => e.kind === 'driver:finding' && String(e.detail || '').startsWith('hollow:'))
+  .map((e) => String(e.detail))
+// One run of the arrangement above. The reviewer PASSES rather than throwing
+// at the dispatch: leg (c) reads four separate things off the same run — the
+// findings, the dispatch, the verdict and the report row — and a throw inside
+// the reviewer would take the run to `agent-error` and leave three of them
+// unreadable at BASE. The dispatch itself is read off `labels`.
+const r169Run = async ({ tag, proofTests, testCmd, rows }) => {
+  const repo = makeRepo(path.join(tmp, 'repo-169-' + tag))
+  const runDir = path.join(tmp, 'run-169-' + tag)
+  const labels = []
+  const prompts = {}
+  const examPaths = []
+  const stub = (prompt, opts, cwd) => {
+    labels.push(opts.label)
+    prompts[opts.label] = prompt
+    const kind = opts.label.split(':')[0]
+    if (kind === 'exam') {
+      // Where the driver sent the exam: its own `EXAM PATHS:` line when the
+      // Proof path moved — which is every path under `tests/state-exams/` —
+      // and the Proof path itself when nothing moved.
+      for (const m of prompt.matchAll(/\nEXAM PATHS: (\S+) -> (\S+)/g)) {
+        examPaths.push([m[1], m[2]])
+      }
+      const land = examPaths.length ? examPaths[0][1] : proofTests[0]
+      const dest = path.join(cwd, land)
+      fs.mkdirSync(path.dirname(dest), { recursive: true })
+      fs.writeFileSync(dest, R169_GREEN_EXAM)
+      return { status: 'DONE', summary: 'exam written' }
+    }
+    if (kind === 'impl') {
+      fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n')
+      return doneImpl(cwd)
+    }
+    if (kind === 'fix') return doneImpl(cwd)
+    if (kind === 'review') return passReview()
+    throw new Error('unexpected dispatch: ' + opts.label)
+  }
+  const { run } = rig({
+    repo, runDir, stub, stamp: 'r169' + tag,
+    waves: [[mkTask('A', ['a.txt'], { proofTests, testCmd })]],
+  })
+  for (const [stem, mutant] of rows) {
+    writeStateExam(runDir, 'A', stem,
+      { 'walls.json': WALLS, 'contract.json': CONTRACT_OK, 'mutant.json': mutant })
+  }
+  const report = await run()
+  return {
+    report, labels, prompts, examPaths, runDir,
+    row: report.tasks.find((r) => r.task === 'A'),
+    reviews: labels.filter((l) => l.startsWith('review:')),
+    fixes: labels.filter((l) => l.startsWith('fix:')),
+    examRuns: eventsOf(runDir).filter((e) => e.kind === 'driver:exam-run' && e.task === 'A')
+      .map((e) => [e.iter, e.exit]),
+    hollow: hollowOf(runDir),
+  }
+}
+// The two rows every run below seeds: the exam the Proof names, and the
+// helper's own rig row that the record holds beside it.
+const R169_KILLED_REAL = ['real', MUTANT_KILLED]
+const R169_SURVIVED_REAL = ['real', MUTANT_SURVIVED]
+const R169_SURVIVED_RIG = ['rig', MUTANT_SURVIVED]
+// The Proof path this task's plan names, and the exam command that names it.
+const R169_PROOF_PATH = 'tests/state-exams/real.test.ts'
+const R169_EXAM_CMD = 'bash ' + R169_PROOF_PATH
+
+// ── leg (c) [M3]: the rig's survivor is not this task's record ────────────────
+{
+  const c = await r169Run({
+    tag: 'c', proofTests: [R169_PROOF_PATH], testCmd: R169_EXAM_CMD,
+    rows: [R169_KILLED_REAL, R169_SURVIVED_RIG],
+  })
+
+  // Sim preconditions: the arrangement is the one the legs are read off — the
+  // Proof path moved to the reserved directory, the exam ran green on the
+  // pre-review pass, and that pass bought no repair round.
+  assert.equal(c.examPaths.length, 1,
+    '(c) [M3] sim precondition: a Proof path under `tests/state-exams/` moves, so the ' +
+    'examiner got exactly one `EXAM PATHS:` line: ' + JSON.stringify(c.examPaths))
+  assert.equal(c.examPaths[0][0], R169_PROOF_PATH,
+    '(c) [M3] sim precondition: that line maps the Proof path: ' + JSON.stringify(c.examPaths))
+  assert.notEqual(c.examPaths[0][1], R169_PROOF_PATH,
+    '(c) [M3] sim precondition: to a landing under the reserved directory: ' +
+    JSON.stringify(c.examPaths))
+  assert.deepEqual(c.examRuns, [[0, 0]],
+    '(c) [M3] sim precondition: the task\'s own exam ran once on the pre-review pass and was ' +
+    'green, so the pass is the green one the skip requires: ' + JSON.stringify(c.examRuns))
+  assert.deepEqual(c.fixes, [],
+    '(c) [M3] sim precondition: a green pass buys no repair round: ' + JSON.stringify(c.labels))
+  assert.equal(c.report.tasks.length, 1,
+    '(c) [M3] sim precondition: one task, so `report.tasks[0]` is task A: ' +
+    JSON.stringify(c.report.tasks.map((r) => r.task)))
+  assert.equal(c.report.tasks[0], c.row,
+    '(c) [M3] sim precondition: and it is the row read below')
+
+  assert.deepEqual(c.hollow, [],
+    '(c) [M3] the task\'s Proof names `' + R169_PROOF_PATH + '`, so its record is the `real` ' +
+    'row alone and no `driver:finding` whose `detail` begins `hollow:` is appended at all — ' +
+    'the surviving `rig` mutant belongs to a helper\'s own test rig, not to this task\'s exam. ' +
+    'At BASE the same run appends one `hollow: rig …` finding. Got: ' + JSON.stringify(c.hollow))
+  assert.deepEqual(c.reviews, [],
+    '(c) [M3] and the reviewer-skip predicate reads those same scoped rows: every mutant of ' +
+    'the task\'s own record was killed, so no `review:A:1` is dispatched. At BASE the ' +
+    'rig\'s survivor buys that reviewer. Got: ' + JSON.stringify(c.labels))
+  assert.equal(c.row.status, 'done',
+    '(c) [M3] the task is merged: ' + JSON.stringify(c.row))
+  assert.equal(c.row.reviewVerdict, 'skipped-mutant-killed',
+    '(c) [M3] `report.tasks[0].reviewVerdict` is the verdict the skip writes, not `clean`: ' +
+    JSON.stringify(c.row))
+  assert.deepEqual(c.row.stateExams, [R169_ROW('real', true)],
+    '(c) [M3] and `report.tasks[0].stateExams` is EXACTLY one element — `exam` `real`, ' +
+    '`mutant_killed` true, every other field the reading the seeded evidence gives. The ' +
+    'report row and the review round read the same scoped record, so the pull request card\'s ' +
+    '`mutant` cell is corrected by this row alone. At BASE this is two elements. Got: ' +
+    JSON.stringify(c.row.stateExams))
+  // The skip's own judgment call names the stems it read, so it names the
+  // task's exam and not the rig's row.
+  const skipCalls = c.report.judgmentCalls.filter((j) => String(j).includes('every mutant killed'))
+  assert.equal(skipCalls.length, 1,
+    '(c) [M3] exactly one judgmentCalls entry records the skip: ' +
+    JSON.stringify(c.report.judgmentCalls))
+  assert.ok(skipCalls[0].includes('real') && !skipCalls[0].includes('rig'),
+    '(c) [M3] and it names the stems the skip predicate actually read — `real`, never `rig`: ' +
+    JSON.stringify(skipCalls[0]))
+}
+
+// ── leg (d) [M3]: a Proof that names no state exam reads the whole record ─────
+// The BASE behaviour, held: a task whose Proof names only `a_test.sh` has no
+// state-exam stems of its own, so the scoping is empty and every row in its
+// directory is its record — the same two rows, read as they are at BASE.
+{
+  const d = await r169Run({
+    tag: 'd', proofTests: ['a_test.sh'], testCmd: 'bash a_test.sh',
+    rows: [R169_KILLED_REAL, R169_SURVIVED_RIG],
+  })
+
+  assert.deepEqual(d.examPaths, [],
+    '(d) [M3] sim precondition: `a_test.sh` is under neither test root, so nothing moved and ' +
+    'the exam is its own landing: ' + JSON.stringify(d.examPaths))
+  assert.deepEqual(d.examRuns, [[0, 0]],
+    '(d) [M3] sim precondition: the exam ran green on the pre-review pass: ' +
+    JSON.stringify(d.examRuns))
+  assert.deepEqual(d.fixes, [],
+    '(d) [M3] sim precondition: a green pass buys no repair round: ' + JSON.stringify(d.labels))
+
+  assert.equal(d.hollow.length, 1,
+    '(d) [M3] exactly one `driver:finding` whose `detail` begins `hollow:` is appended — the ' +
+    'BASE behaviour, held: with no stems of its own this task reads every row in its ' +
+    'directory, and the `rig` row\'s mutant survived. Got: ' + JSON.stringify(d.hollow))
+  assert.ok(d.hollow[0].startsWith('hollow: rig'),
+    '(d) [M3] and it is the `rig` row\'s: ' + JSON.stringify(d.hollow[0]))
+  assert.deepEqual(d.reviews, ['review:A:1'],
+    '(d) [M3] one `review:A:1` is dispatched — a record short of every mutant killed is not ' +
+    'an answer, exactly as at BASE: ' + JSON.stringify(d.labels))
+  assert.deepEqual(d.row.stateExams, [R169_ROW('real', true), R169_ROW('rig', false)],
+    '(d) [M3] and `report.tasks[0].stateExams` is two elements, `real` and `rig`, in sorted ' +
+    'order with the same eight keys and values the unscoped read gives at BASE. Got: ' +
+    JSON.stringify(d.row.stateExams))
+  assert.equal(d.row.reviewVerdict, 'clean',
+    '(d) [M3] the reviewed task\'s row reads like any reviewed task\'s, never the skip\'s ' +
+    'verdict: ' + JSON.stringify(d.row))
+}
+
+// ── leg (g) [M3]: the task's OWN hollow exam still reaches its referee ────────
+// The scoping is not a way of losing findings: with the task's own `real`
+// mutant alive, that hollow finding is appended, that reviewer is dispatched
+// and that reviewer reads the finding — and the rig's row is absent from all
+// three, and from the report row.
+{
+  const g = await r169Run({
+    tag: 'g', proofTests: [R169_PROOF_PATH], testCmd: R169_EXAM_CMD,
+    rows: [R169_SURVIVED_REAL, R169_SURVIVED_RIG],
+  })
+
+  assert.deepEqual(g.examRuns, [[0, 0]],
+    '(g) [M3] sim precondition: the exam ran green on the pre-review pass, so the round is ' +
+    'reached: ' + JSON.stringify(g.examRuns))
+  assert.deepEqual(g.fixes, [],
+    '(g) [M3] sim precondition: a green pass buys no repair round: ' + JSON.stringify(g.labels))
+  assert.equal(g.row.reviewVerdict, 'clean',
+    '(g) [M3] sim precondition: a survivor is not every-mutant-killed, so the task is ' +
+    'reviewed and the passing referee leaves it `clean`: ' + JSON.stringify(g.row))
+
+  assert.equal(g.hollow.length, 1,
+    '(g) [M3] exactly one `driver:finding` whose `detail` begins `hollow:` — the task\'s own ' +
+    'exam left its mutant alive, and that is the finding the scoping must not lose. At BASE ' +
+    'this run appends two. Got: ' + JSON.stringify(g.hollow))
+  assert.ok(g.hollow[0].startsWith('hollow: real'),
+    '(g) [M3] and it is the `real` row\'s: ' + JSON.stringify(g.hollow[0]))
+  assert.deepEqual(g.hollow.filter((h) => h.startsWith('hollow: rig')), [],
+    '(g) [M3] none begins `hollow: rig` — the rig\'s survivor is not this task\'s exam: ' +
+    JSON.stringify(g.hollow))
+  assert.deepEqual(g.reviews, ['review:A:1'],
+    '(g) [M3] one `review:A:1` is dispatched: ' + JSON.stringify(g.labels))
+
+  const promptLines = String(g.prompts['review:A:1'] || '').split('\n')
+  assert.ok(promptLines.some((l) => l.includes('hollow: real')),
+    '(g) [M3] sim precondition: the driver\'s hollow finding against the task\'s OWN exam ' +
+    'does reach that reviewer\'s prompt, so the two assertions below are not vacuous')
+  assert.deepEqual(promptLines.filter((l) => l.includes('hollow: rig')), [],
+    '(g) [M3] and no line of that captured prompt contains `hollow: rig`: the referee is ' +
+    'briefed on the task\'s own record and not on a helper\'s test rig. At BASE the prompt ' +
+    'carries that line. Got: ' +
+    JSON.stringify(promptLines.filter((l) => l.includes('hollow: rig'))))
+  assert.deepEqual(promptLines.filter((l) => l.startsWith('- rig:')), [],
+    '(g) [M3] and no line begins `- rig:` — the `STATE EXAM` block the reviewer reads is ' +
+    'built from the same scoped rows: ' +
+    JSON.stringify(promptLines.filter((l) => l.startsWith('- rig:'))))
+
+  assert.deepEqual(g.row.stateExams, [R169_ROW('real', false)],
+    '(g) [M3] and `report.tasks[0].stateExams` is exactly one element with `exam` `real` and ' +
+    '`mutant_killed` false — a survivor the task owns is reported, a survivor it does not is ' +
+    'not. At BASE this is two elements. Got: ' + JSON.stringify(g.row.stateExams))
+}
+
+// ── leg (e) [M4]: the third and fourth `Run:`, and what those sentences say ───
+// At BASE neither document carries the string `tests/state-exams/` at all
+// (zero occurrences in both), so both greps fail there. They are read here so
+// the sim says what the commands say.
+{
+  const CONTRACT = path.join(REPO_ROOT, 'fleet', 'CONTRACT.md')
+  const REPORT_FORMAT = path.join(REPO_ROOT, 'skills', 'ultrapowers', 'references',
+                                  'report-format.md')
+  const contract = fs.readFileSync(CONTRACT, 'utf8')
+  const reportFormat = fs.readFileSync(REPORT_FORMAT, 'utf8')
+
+  // The third `Run:` — grep -q 'tests/state-exams/' fleet/CONTRACT.md
+  assert.ok(contract.includes('tests/state-exams/'),
+    '(e) [M4] the third `Run:`: `fleet/CONTRACT.md` carries `tests/state-exams/`')
+  // The fourth — grep -q 'tests/state-exams/' skills/…/report-format.md
+  assert.ok(reportFormat.includes('tests/state-exams/'),
+    '(e) [M4] the fourth `Run:`: `skills/ultrapowers/references/report-format.md` carries ' +
+    '`tests/state-exams/`')
+
+  // …and that each occurrence is in the prose M4 names, saying what M4 says.
+  // Two readings, not a wording: the sentence carrying the string has to name
+  // the Proof — the stems ARE the stems of the task's Proof `Test:` paths —
+  // and the prose has to answer the task that names none of them, which reads
+  // every stem in its directory. Both are checked against alternations rather
+  // than one spelling, because M4 fixes what the sentence says and not how it
+  // is phrased; neither alternation matches either document at BASE, so
+  // neither is vacuous.
+  const READS_THE_WHOLE = /every stem|all the stems|all of the stems|whole directory|whole record|entire directory|entire record/i
+  const sentencesWith = (text) =>
+    text.split(/(?<=\.)\s+/).filter((s) => s.includes('tests/state-exams/'))
+  const saysTheClause = (where, text) => {
+    const carrying = sentencesWith(text)
+    assert.ok(carrying.length > 0,
+      '(e) [M4] ' + where + ' carries `tests/state-exams/`: ' + JSON.stringify(text.slice(0, 200)))
+    assert.ok(carrying.some((s) => /Proof/.test(s)),
+      '(e) [M4] ' + where + ' says the task\'s stems are those of its PROOF `Test:` paths ' +
+      'under `tests/state-exams/` — the sentence carrying the string names no Proof at all: ' +
+      JSON.stringify(carrying))
+    assert.ok(READS_THE_WHOLE.test(text),
+      '(e) [M4] and it says what a task with none of those paths reads — every stem in its ' +
+      'directory. No such reading is in that prose: ' + JSON.stringify(text.slice(0, 400)))
+  }
+
+  // CONTRACT.md's state-exam record sentence is in the bullet that names the
+  // `skipped-mutant-killed` rule — the bullet `every mutant killed` is in.
+  const contractLines = contract.split('\n')
+  const at = contractLines.findIndex((l) => l.includes('every mutant killed'))
+  assert.ok(at !== -1,
+    '(e) [M4] sim precondition: `fleet/CONTRACT.md` still carries the `every mutant killed` ' +
+    'rule the state-exam record sentence sits with')
+  let from = at
+  while (from > 0 && !/^- \*\*/.test(contractLines[from])) from--
+  let to = at + 1
+  while (to < contractLines.length && !/^- \*\*/.test(contractLines[to])) to++
+  const bullet = contractLines.slice(from, to).join(' ')
+  assert.ok(bullet.includes('tests/state-exams/'),
+    '(e) [M4] and the occurrence is in THAT bullet — the one carrying the ' +
+    '`skipped-mutant-killed` rule and the state-exam record — not somewhere else in the ' +
+    'document: ' + JSON.stringify(bullet.slice(0, 300)))
+  saysTheClause('`fleet/CONTRACT.md`\'s state-exam record sentence', bullet)
+
+  // report-format.md says the same in ONE sentence, in the `tasks[].stateExams`
+  // prose — the row that says one element per stem.
+  const stateExamsRows = reportFormat.split('\n')
+    .filter((l) => /^\| `tasks\[\]\.stateExams` \|/.test(l))
+  assert.equal(stateExamsRows.length, 1,
+    '(e) [M4] sim precondition: `report-format.md` carries exactly one `tasks[].stateExams` ' +
+    'table row: ' + stateExamsRows.length)
+  assert.ok(stateExamsRows[0].includes('tests/state-exams/'),
+    '(e) [M4] the fourth `Run:` reads THAT row: the `tasks[].stateExams` prose is where ' +
+    '`tests/state-exams/` belongs, not another row of the schema')
+  saysTheClause('`report-format.md`\'s `tasks[].stateExams` prose', stateExamsRows[0])
+}
+
 console.log('ALL TESTS PASSED')
