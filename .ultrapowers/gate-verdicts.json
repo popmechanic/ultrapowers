@@ -1,0 +1,70 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "d1230e3599871d890675e404fcce3fce76d1c94b43a0f7045e6c3d551a89642c",
+      "verdict": "pass",
+      "reason": "Every clause has a falsifying leg with a BASE contrast ((c) no fix:B:0 at BASE, (g) grep fails at BASE); the ten M1 examples and the four M2 rows compute as the legs expect; M5's four absent-red cases are each their own run naming what is absent; nothing at BASE pins the opposite of a clause."
+    }
+  },
+  "tally": {
+    "dispatched": 1,
+    "rejected": 0,
+    "rounds": [
+      {
+        "round": 1,
+        "dispatched": 1,
+        "rejected": 0
+      }
+    ],
+    "base": "cf289581ebe2fa8dc23a8683c6d4e31c835d2ae2"
+  },
+  "authoring": {
+    "minutes": 31,
+    "probes": 8,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "What do we do while run-161 runs?",
+        "options": [
+          "Author the collision lint",
+          "Open-issue research sitting",
+          "Next fixture plan for the readings"
+        ],
+        "recommended": "Author the collision lint",
+        "picked": "Author the collision lint"
+      },
+      {
+        "question": "Where should the collision check live?",
+        "options": [
+          "Engine pre-review check",
+          "Compile-time lint only",
+          "Both"
+        ],
+        "recommended": "Engine pre-review check",
+        "picked": "Engine pre-review check"
+      },
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Confirm as drafted",
+          "Tighter claim"
+        ],
+        "recommended": "Confirm as drafted",
+        "picked": "Confirm as drafted"
+      },
+      {
+        "question": "How should the collision plan execute?",
+        "options": [
+          "Ultrapowers now",
+          "Ultrapowers after run-161 merges",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers now",
+        "picked": "Ultrapowers now"
+      }
+    ]
+  }
+}
