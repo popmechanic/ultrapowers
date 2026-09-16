@@ -148,6 +148,40 @@ def derive_bootstrap_cmd(root):
     return None, None
 
 
+def derive_regenerate_cmd(root):
+    """The command that rebuilds this target's lockfile from its manifests,
+    or (None, reason). File presence only, same rungs and same precedence as
+    `derive_bootstrap_cmd` — the regenerator is that ladder's unfrozen twin.
+
+    Every JS rung of the bootstrap is FROZEN (`--frozen-lockfile`, `npm ci`):
+    a worktree installs what the lockfile already says and never rewrites it,
+    which is what makes the bootstrap a clean no-op under `validate_knobs`.
+    So when several tasks in one run add packages, no bootstrap re-run can
+    reconcile their manifests — a second, deliberately unfrozen command has
+    to, from the merged manifests, at the fold (#1050). That is this.
+
+    A bare `package.json` derives nothing: there is no lockfile to rebuild
+    (its bootstrap's `--no-package-lock` says as much), and the rule still
+    names the manifest. `requirements.txt` derives nothing either, and no
+    rule with it — pip has no lockfile to regenerate. Returns (command, rule)
+    on the same shape the bootstrap ladder returns."""
+    root = Path(root)
+    if (root / "package.json").is_file():
+        if (root / "pnpm-lock.yaml").is_file():
+            return "pnpm install --no-frozen-lockfile", "pnpm-lockfile"
+        if (root / "bun.lock").is_file() or (root / "bun.lockb").is_file():
+            return "bun install", "bun-lockfile"
+        if (root / "package-lock.json").is_file():
+            return "npm install --package-lock-only", "npm-lockfile"
+        return None, "package-json"
+    if (root / "uv.lock").is_file():
+        return "uv lock", "uv-lock"
+    pyproject = root / "pyproject.toml"
+    if pyproject.is_file() and "[tool.uv" in pyproject.read_text(errors="ignore"):
+        return "uv lock", "pyproject-uv"
+    return None, None
+
+
 LLM_DERIVES = [
     "waves[][].tier on the args-file wave entries (slots pre-emitted as null; "
     "the engine reads knobs ONLY from these inline entries — never a "
@@ -159,6 +193,10 @@ LLM_DERIVES = [
     "nothing for bootstrapCmd — driver-derived from the target's lockfile/"
     "manifest (or the --bootstrap-cmd knob) and stamped in the args file and "
     "receipt, so validation, the engine and the gate share one value",
+    "nothing for regenerateCmd — the lockfile regenerator is derived from the "
+    "same lockfile/manifest beside the bootstrap (and only when the bootstrap "
+    "itself was derived) and stamped in the args file and receipt; there is "
+    "no knob for it",
     "nothing for review depth — it is plan-authored (**Review:** marker), "
     "pre-filled on the args wave entries",
 ]
@@ -591,6 +629,7 @@ def main(argv=None):
     # target's lockfile/manifest (run-66). The stage is informational — no
     # bootstrap is a valid outcome — but its detail names what was derived
     # and why, so a receipt can answer "why did the clones never install?".
+    regen_cmd, regen_src = None, None
     if a.bootstrap_cmd is not None:
         knob = a.bootstrap_cmd.strip()
         bootstrap_cmd, boot_src = (knob, "knob") if knob else (None, "disabled")
@@ -598,6 +637,12 @@ def main(argv=None):
     else:
         bootstrap_cmd, rule = derive_bootstrap_cmd(root)
         boot_src = ("detected:" + rule) if bootstrap_cmd else None
+        # The lockfile regenerator rides the same branch (#1050): only a
+        # derived install derives one. An operator who overrides the install
+        # — or disables it — owns its lockfile, and there is no
+        # --regenerate-cmd knob to say otherwise.
+        regen_cmd, regen_rule = derive_regenerate_cmd(root)
+        regen_src = ("detected:" + regen_rule) if regen_cmd else None
         if rule == "requirements-txt-externally-managed":
             boot_note = ("none — requirements.txt present but the PATH python3 "
                          "is externally managed (PEP 668)")
@@ -610,6 +655,8 @@ def main(argv=None):
     args_obj["testCmd"] = test_cmd
     if bootstrap_cmd:
         args_obj["bootstrapCmd"] = bootstrap_cmd
+    if regen_cmd:
+        args_obj["regenerateCmd"] = regen_cmd
     args_file.write_text(json.dumps(args_obj, indent=2))
 
     r = write_dirty_baseline(root)
@@ -645,6 +692,9 @@ def main(argv=None):
     if bootstrap_cmd:
         receipt["bootstrapCmd"] = bootstrap_cmd
         receipt["bootstrapCmdSource"] = boot_src
+    if regen_cmd:
+        receipt["regenerateCmd"] = regen_cmd
+        receipt["regenerateCmdSource"] = regen_src
     (run_dir / "receipt.json").write_text(json.dumps(receipt, indent=2))
     print(json.dumps(receipt, indent=2))
     return 0

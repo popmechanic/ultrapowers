@@ -70,15 +70,34 @@ export function rig({ repo, runDir, waves, edges = [], stub, testCmd = 'bash che
                       exec = execSeam,
                       // Extra runEngine args merged last (constraintChecks,
                       // patchInput, and whatever the next knob is).
-                      extraArgs = {} }) {
+                      extraArgs = {},
+                      // Extra `withPatchCapture` options, spread into the call
+                      // below. In production the driver decides these from the
+                      // args file (`dropLockfilesFor`, run-main); a sim has no
+                      // args file, so this is how it arms the same knob.
+                      captureOptions = {} }) {
   const taskIds = waves.flat().map((t) => t.id)
   const { base, clonesDir, patchesDir, integ } = provision({ repo, runDir, taskIds })
   const patchBase = { current: base }
   const cwdFor = makeCwdFor({ clonesDir })
   const inner = async (prompt, opts) => stub(prompt, opts, cwdFor(opts))
+  // The wrapper's own events go where production's go: run-main hands it
+  // `eventLog.onEvent`, which writes the same `events.jsonl` the engine writes,
+  // so a sim reading the run's record sees a `capture:dropped` exactly where a
+  // real run leaves one. The rig passed none until #1050 and the wrapper's
+  // events fell on the floor. `captureOptions` is spread last and can replace
+  // it with a collector of the sim's own.
+  const captureEvent = (e) => {
+    try {
+      fs.mkdirSync(runDir, { recursive: true })
+      fs.appendFileSync(path.join(runDir, 'events.jsonl'),
+        JSON.stringify({ ...e, ts: Date.now() }) + '\n')
+    } catch { /* evidence, not control flow */ }
+  }
   const agent = withPatchCapture({
     agent: inner, clonesDir, base: () => patchBase.current, patchesDir,
-    taskIdOf: defaultTaskIdOf,
+    taskIdOf: defaultTaskIdOf, onEvent: captureEvent,
+    ...captureOptions,
   })
   const logs = []
   // The phases the engine announced, in order. The rig left `phase` a no-op

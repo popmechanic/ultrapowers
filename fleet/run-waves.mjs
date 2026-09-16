@@ -193,6 +193,11 @@ export function withPatchCapture(options) {
   const { agent, clonesDir, base, patchesDir,
           git = defaultGit, taskIdOf = defaultTaskIdOf,
           cloneNameOf = defaultCloneNameOf,
+          // #1050 — the run-wide gate, decided once where the args file is
+          // read (`dropLockfilesFor` in run-main) and passed through to every
+          // capture this wrapper makes. A run with no regenerator never sets
+          // it and captures exactly as at BASE.
+          dropLockfiles = false,
           onEvent = () => {} } = options || {}
   // ONE label→directory mapping: makeCwdFor already owns it (and its
   // fail-loud missing-clone error). A second copy here is where a clone-
@@ -229,6 +234,7 @@ export function withPatchCapture(options) {
       const out = patchAgainstBase({ cwd, base: baseSha,
         out: path.join(patchesDir, cloneNameOf(opts.label, id) + '.patch'), git,
         files: filesFor(opts, id, prompt),
+        dropLockfiles,
         // ONE event per capture, listing every path it dropped — not one event
         // per path: the reader of the log is asking "did this task's patch
         // lose anything, and what", and a per-path stream makes that a join.
@@ -283,25 +289,66 @@ export function makeFilesAllow(files) {
   return (p) => exact.has(p) || dirs.some((d) => p.startsWith(d))
 }
 
-export function droppedBinaryPaths({ cwd, base, files, git = defaultGit }) {
+// ── the lockfiles a run regenerates rather than merges (#1050) ───────────────
+//
+// The five names `derive_bootstrap_cmd`'s ladder knows and derives a
+// regenerator for. A lockfile is a DERIVED file: merging two of them by hand
+// is asking a model to solve a solver's problem, and the answer it writes is
+// not the one the package manager would have written. So the capture drops it
+// and the fold rebuilds it from the merged manifests — but only in a run that
+// CARRIES a regenerator, because a dropped lockfile nobody rebuilds is a stale
+// lockfile on the pull request and a red frozen install at the fold, which is
+// worse than BASE, where the resolver at least sees the file.
+//
+// Order is the ladder's, and it is also sorted: a reader comparing this list
+// against the contract's sentence should not have to re-sort it first.
+export const LOCKFILE_BASENAMES = [
+  'bun.lock', 'bun.lockb', 'package-lock.json', 'pnpm-lock.yaml', 'uv.lock',
+]
+
+// BASENAME at any depth, like `bootstrapManifestChanged`'s manifests: the
+// contended case is a monorepo's `client/bun.lock`, not a root lockfile.
+export const isLockfilePath = (p) =>
+  LOCKFILE_BASENAMES.includes(normalizePath(p).split('/').pop())
+
+// Both drop rules over ONE `--numstat` read. A lockfile's row is NUMERIC (it
+// is text git counts lines of), so it is a second filter over the same rows
+// rather than a widening of the binary one — and the three conditions the
+// binary rule needs (untracked at BASE, binary by git's detection, outside the
+// task's Files) are all wrong for a lockfile: it is tracked, it is text, and
+// it is dropped whether or not the task's Files name it, because under
+// `dropLockfiles` the capture carries no lockfile at all.
+function droppedPaths({ cwd, base, files, git = defaultGit,
+                        dropBinaries = true, dropLockfiles = false }) {
   const allowed = makeFilesAllow(files)
   // -z so a path with a space or a non-ASCII byte arrives raw rather than
   // C-quoted; --no-renames so every row is `added\tdeleted\tpath`.
   const rows = git(['diff', '--cached', '--numstat', '-z', '--no-renames', base], cwd)
     .split('\0').filter(Boolean)
   const candidates = []
+  const lockfiles = []
   for (const row of rows) {
     const m = /^(\S+)\t(\S+)\t([\s\S]*)$/.exec(row)
-    if (!m || m[1] !== '-' || m[2] !== '-') continue
+    if (!m) continue
     const p = normalizePath(m[3])
-    if (p && !allowed(p)) candidates.push(p)
+    if (!p) continue
+    if (dropLockfiles && isLockfilePath(p)) { lockfiles.push(p); continue }
+    if (!dropBinaries || m[1] !== '-' || m[2] !== '-') continue
+    if (!allowed(p)) candidates.push(p)
   }
-  if (candidates.length === 0) return []
+  if (candidates.length === 0) return lockfiles.sort()
   // Only now the tree read: a capture with no unnamed binary in it pays for no
   // second git call.
   const tracked = new Set(git(['ls-tree', '-r', '--name-only', '-z', base], cwd)
     .split('\0').filter(Boolean).map(normalizePath))
-  return candidates.filter((p) => !tracked.has(p)).sort()
+  // ONE sorted list, the union of both rules: `onDropped` fires once per
+  // capture and its reader is asking "what did this patch lose", not "which
+  // rule lost it".
+  return [...candidates.filter((p) => !tracked.has(p)), ...lockfiles].sort()
+}
+
+export function droppedBinaryPaths({ cwd, base, files, git = defaultGit }) {
+  return droppedPaths({ cwd, base, files, git })
 }
 
 // `--output` writes the patch from git's own process: the bytes never pass
@@ -312,13 +359,18 @@ export function droppedBinaryPaths({ cwd, base, files, git = defaultGit }) {
 // the clone.
 //
 // `files` absent (null) is the whole-tree capture this function has always
-// been — the drop arms only for a caller that knows the task's Files, so a
-// direct call with none keeps every byte of the clone.
+// been — the binary drop arms only for a caller that knows the task's Files, so
+// a direct call with none keeps every byte of the clone. `dropLockfiles` is
+// independent of it: a lockfile is dropped on its basename alone, and a caller
+// that knows the run carries a regenerator knows that much without a Files
+// list. Absent or false, the capture is byte-for-byte what it was.
 export function patchAgainstBase({ cwd, base, out, git = defaultGit,
-                                   files = null, onDropped = null }) {
+                                   files = null, onDropped = null,
+                                   dropLockfiles = false }) {
   fs.mkdirSync(path.dirname(out), { recursive: true })
   git(['add', '-A'], cwd)
-  const dropped = files == null ? [] : droppedBinaryPaths({ cwd, base, files, git })
+  const dropped = (files == null && !dropLockfiles) ? []
+    : droppedPaths({ cwd, base, files, git, dropBinaries: files != null, dropLockfiles })
   // The exclusion is a PATHSPEC, not an index edit: the capture stays
   // read-only on the clone (`git rm --cached` would leave the next fix round's
   // `add -A` diffing a tree the worker never saw). `top` makes each path
