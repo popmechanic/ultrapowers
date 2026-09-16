@@ -194,6 +194,15 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `state-exams/` — a tree of `task-<id>/<stem>-<pass>/` directories, one per exam run, whose
     contents are the exam's own output copied file by file — is there on the same terms, present
     when the exams wrote it.
+    `frontier/` — THE RUN'S FOLD RECORD, copied file by file at the same relative paths, present
+    when the engine wrote it: each wave directory `wave-<n>/`'s files (`fold_log.jsonl`,
+    `conflicts.json`, `fold_stats.json`, the `conflict-<i>.txt` narrations and `conflict-<i>.hunks.txt`
+    briefs, the `reply-<i>-<attempt>/` resolver replies) and the `emit-weave` sidecar's
+    `manifest.json` and `weave-events.jsonl` — but never `weave/blobs/`, the sidecar's
+    content-addressed store of whole state strings, which the manifest and the event log already
+    name. Each file is copied only when it is at most `FLEET_EVIDENCE_FILE_MAX` bytes (default
+    `1048576`): a fold log carries a whole resolved file's lines per `resolve` row, so the cap is per
+    file, and one over it is named in the boot log and left behind while the rest of the tree lands.
     `residuals.jsonl` — one JSON object per residual, present when the run had one, and a union
     across transitions — a row an earlier transition recorded stays when a later report no longer
     carries it, and no row is written twice:
