@@ -748,6 +748,26 @@ export const joinedPathsOf = (touchSets) => {
   }
   return [...counts.entries()].filter(([, n]) => n >= 2).map(([p]) => p).sort()
 }
+// ── a receipt's two keys ─────────────────────────────────────────────────────
+// A RECEIPT is a row carrying both `paths` and `evidence`: the files something
+// was observed on, and the reading that observed them. The shape is one literal
+// the whole record agrees on — `paths` an array of repo-relative path strings,
+// sorted, de-duplicated and never empty; `evidence` `{ read, against }`, two
+// strings of at most 500 characters — so the rule that produces it lives here,
+// where the wave loop uses it, and the publish fold imports it rather than
+// spelling a second sort.
+export const receiptPaths = (list) =>
+  [...new Set((Array.isArray(list) ? list : [])
+    .filter((p) => typeof p === 'string' && p))].sort()
+// The bound the shape declares: a longer string is cut to 499 characters plus
+// an ellipsis, so the result is exactly 500 and says it was cut.
+export const RECEIPT_TEXT_MAX = 500
+export const receiptText = (s) => {
+  const text = String(s == null ? '' : s)
+  return text.length <= RECEIPT_TEXT_MAX
+    ? text
+    : text.slice(0, RECEIPT_TEXT_MAX - 1) + '…'
+}
 // #604 (b)+(c) — the INTEGRATED `Run:` proofs were rendered here, for the one
 // reader of the finished run. That reader is gone (#964 Task 2): what the
 // driver's re-execution on the adopted tree found lives in the report's
@@ -4724,9 +4744,26 @@ export async function runEngine({
     // with no event and no hub mark, so the one epoch outcome a reader most
     // wants to see — the fold that stopped on a conflict nobody could resolve —
     // was the one the record was silent about.
+    // A fold that stopped on a conflict nobody resolved leaves a RECEIPT: the
+    // files it stopped on and what it was folding onto. The paths are this
+    // epoch's narrated set — the same `conflicts.json` rows the `applied`
+    // reading above was taken from — sorted and de-duplicated by
+    // `receiptPaths`; the reading is the row's own `detail`, against the epoch
+    // and the head the fold was made onto. A `TEST_FAILED` epoch carries
+    // neither key: its candidate materialized and the suite is what said no, so
+    // there is no file the fold stopped on to name. Nor does a fold that
+    // narrated nothing at all — a receipt names files.
+    const conflictPaths = merge.status === 'CONFLICT' ? receiptPaths([...narrated]) : []
+    const receipt = conflictPaths.length ? {
+      paths: conflictPaths,
+      evidence: {
+        read: receiptText(detail),
+        against: receiptText('epoch ' + epoch + ' onto ' + prevHead),
+      },
+    } : {}
     if (merge.status === 'TEST_FAILED' || merge.status === 'CONFLICT') {
       appendEvent({ kind: 'driver:wave-blocked', wave: epoch,
-        tasks: epochTasks.map((t) => t.id), detail, ...trigger, applied })
+        tasks: epochTasks.map((t) => t.id), detail, ...trigger, applied, ...receipt })
       // The fold could not be made green, so nothing in it landed — every task
       // of the epoch is left OPEN and marked for a person, carrying the row's
       // own detail. Work the driver could not fold is a question for someone,

@@ -121,6 +121,38 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     the same rows in the same order, `[]` when the run collected none. Nothing here gates: an
     amendment is a note to whoever writes the next plan, so for the same tree `tests.passed`, the
     gate receipt and the merge decision are what they would have been without it.
+    Receipts (2026-09-16): a receipt is `paths` and `evidence` — `paths` an array of repo-relative
+    path strings, sorted, de-duplicated, never empty; `evidence` is `{ read, against }`, two
+    strings of at most 500 characters each, a longer one cut to 499 characters plus `…`. Seven
+    kinds carry one: `driver:exam-run` (red rows only), `resolver:reply` (rows whose status is not
+    `RESOLVED`), `driver:wave-blocked` (`CONFLICT` epochs), `driver:publish-fold` (attempts with at
+    least one open conflict, whatever their disposition), `driver:finding`, `driver:finding-refuted`
+    and `handshake:finding` (whose `paths` is the post's expected path). The two finding kinds are
+    new with the receipts. `driver:finding` records a block: its `severity`, the `actor` that raised
+    it, the `round` it was raised in and the `detail` of the block itself — `{task, round, severity,
+    actor, detail, paths, evidence}` — one row per blocking finding of a review round after plan
+    routing, and one for the `minor`/`examiner` hollow-exam row. `driver:finding-refuted` `{task,
+    round, paths, evidence, verdict, refutedBy, detail}` records a block shown wrong: `verdict` says
+    how and `refutedBy` says what showed it, `verdict` one of `flaky` — the driver's re-run went
+    green — `exam-concern-upheld` — review round 1 agreed the fix round's `exam:` concern — and
+    `clean` — review round 2 cleared an exam its author left unchanged after an exam-rejected round.
+    The `FACTS:` block is what a judge sees of them: `factsBlock` from `fleet/facts-block.mjs`
+    renders it at dispatch of an examiner (its Files and its exam landing paths), a reviewer (its
+    touch set and those same landing paths) and a resolver (its conflicted path), by kind and exact
+    path match, at most 20 rows, newest kept, `''` when none — so a run whose record holds no
+    receipt dispatches briefs byte-identical to today's. The rows it matches are the ones this run's
+    own process appended and never another run's. Each non-empty render is one `driver:facts`
+    `{label, task?, receipts}` row — `receipts` the ids it rendered — which is a record row and not
+    a receipt itself. The reading is the operator's, pre-registered and read over `n=5 runs`, the
+    five that follow this merge: how often a block is non-empty (`driver:facts` rows per dispatch),
+    how often a finding cites one (a `detail` naming `receipt <id>`), and whether a judge that saw a
+    prior failure on a path catches more or repeats less than one that did not. Each kind is owed a
+    deletion — `driver:exam-run` a later judge on the same file re-raising the leg that already went
+    red, `resolver:reply` and `driver:wave-blocked` a resolver re-briefed on a path it already gave
+    up on, `driver:publish-fold` a second fold attempt blind to the first attempt's conflict on the
+    same path, `driver:finding` the same block raised twice on one file, `driver:finding-refuted` a
+    false block repeated after it was shown wrong, `handshake:finding` a consumer's examiner blind
+    to the producer's rejected post — and a kind no finding ever cites over that window is removed.
     `transcripts/<sessionId>.jsonl` — one per worker session, the reduced record — is there
     on the same terms, present when the engine wrote them.
     `state-exams/` — a tree of `task-<id>/<stem>-<pass>/` directories, one per exam run, whose

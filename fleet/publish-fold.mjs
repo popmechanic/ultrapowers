@@ -38,7 +38,9 @@ import { fileURLToPath } from 'node:url'
 import {
   ENGINE_DIR, execSeam, composeAgent, writeRoleFiles, copyEngineRoles, writeConfineSettings,
 } from './run-main.mjs'
-import { loadRoles, parseCliJson, resolveConflicts } from './run-engine.mjs'
+import {
+  loadRoles, parseCliJson, receiptPaths, receiptText, resolveConflicts,
+} from './run-engine.mjs'
 import { makeEventLog } from './run-waves.mjs'
 import {
   contendingBlock as buildContendingBlock, contendingTasks,
@@ -313,6 +315,71 @@ export async function writeResolverBriefs ({ briefsDir, attemptKey, open, blockF
       ' on both sides — read it before resolving)' +
     '\nMAIN PATCH FILE: ' + mainPatchPath +
       " (everything main gained since this run's base)"
+}
+
+// ── the fold's receipt ───────────────────────────────────────────────────────
+// A publish fold that met a conflict says which files it met it on and what it
+// was folding — the same two keys the wave loop's blocked epoch carries, built
+// from the same `receiptPaths` so the sort-and-dedupe rule is spelled once.
+//
+//   open         the attempt's open conflict rows, `conflictsIndex()`'s shape
+//   disposition  `folded`, `suite red`, `conflict parked` or `cannot fold`
+//   reason       the row's reason, when it has one
+//   base         BASE, and `tip` the tip this attempt folded onto
+//
+// `null` when no path conflicted, whatever the disposition: a receipt names
+// files, and a fold that conflicted on none has none to name. A fold that ended
+// `folded` over conflicts that WERE resolved still leaves one — a resolved
+// conflict on a path is exactly what the next attempt's resolver on that path
+// should see.
+export const foldReceiptOf = ({ open, disposition, reason, base, tip }) => {
+  const rows = Array.isArray(open) ? open : []
+  if (rows.length === 0) return null
+  const paths = receiptPaths(rows.map((c) => c && c.path))
+  if (paths.length === 0) return null
+  const why = reason == null ? '' : String(reason)
+  return {
+    paths,
+    evidence: {
+      read: receiptText(String(disposition == null ? '' : disposition) + (why ? ': ' + why : '')),
+      against: receiptText('base ' + String(base == null ? '' : base) +
+        ' tip ' + String(tip == null ? '' : tip)),
+    },
+  }
+}
+
+// The `driver:publish-fold` event a fold appends, receipt and all: the row's
+// own cells as at BASE, `pathsConflicted` the count of open conflicts, and the
+// receipt's two keys spread in when there is one. Pure, so the shape is pinned
+// without driving a fold; the two append sites below are wired to it by the
+// task that builds the rig that drives one.
+export const publishFoldEvent = (row, open) => {
+  const r = (row && typeof row === 'object') ? row : {}
+  const rows = Array.isArray(open) ? open : []
+  const receipt = foldReceiptOf({
+    open: rows, disposition: r.disposition, reason: r.reason, base: r.base, tip: r.tip,
+  })
+  const num = (v) => (typeof v === 'number' ? v : 0)
+  return {
+    kind: 'driver:publish-fold',
+    run: r.run,
+    attempt: r.attempt,
+    base: r.base,
+    tip: r.tip || '',
+    candidate: r.candidate || '',
+    ...(r.reason ? { reason: r.reason } : {}),
+    pathsJoined: num(r.pathsJoined),
+    pathsConflicted: rows.length,
+    resolversDispatched: num(r.resolversDispatched),
+    resolverRetries: num(r.resolverRetries),
+    suite: r.suite || 'none',
+    disposition: r.disposition,
+    // Replayed, never recomputed: a row written before the candidate checks
+    // existed stays a row without these two.
+    ...(Array.isArray(r.checks) ? { checks: r.checks } : {}),
+    ...(typeof r.checkRetries === 'number' ? { checkRetries: r.checkRetries } : {}),
+    ...(receipt || {}),
+  }
 }
 
 /**
