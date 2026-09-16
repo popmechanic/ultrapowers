@@ -50,3 +50,11 @@
 {"kind":"driver:integrated-clean","wave":1,"removed":7,"id":"01M2NQ9F390000NZW2T6R1WMKG","ts":1789582949481}
 {"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/roles/","exit":0,"minor":false,"wave":1,"id":"01M2NQ9F3F0000FQHRBEGR9YHM","ts":1789582949487}
 {"kind":"driver:integrated-check","cmd":"node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"minor":false,"wave":1,"id":"01M2NQ9FC70000EFCDZPCT120W","ts":1789582949767}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2NQAZEW00009TAZFNXCGJAJ","ts":1789582999004}
+{"kind":"driver:stage","stage":"finalize","id":"01M2NQAZHX00003MWV7CK0AFK5","ts":1789582999101}
+{"kind":"driver:stage","stage":"gate","id":"01M2NQAZKS000094SRXV0CV0MB","ts":1789582999161}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M2NQAZQF000046DAVTHDF6SM","ts":1789582999279}
+{"kind":"driver:stage","stage":"approve","id":"01M2NQAZQF0001DRZQD1W6HF29","ts":1789582999279}
+{"kind":"driver:approved","stamp":"run-164","integrationBranch":"ultra/integration-run-164","id":"01M2NQAZSW0000ARTVYZ81QGZ3","ts":1789582999356}
+{"kind":"run:open","runId":"run-164","base":"4434e0687178d02cfb658ea62467e937e6eda663","source":"fleet/publish-fold.mjs","id":"01M2NQB0Z60000YR9V4PPN9KGS","ts":1789583000550}
+{"kind":"driver:publish-fold","run":"164","attempt":"1","base":"4434e0687178d02cfb658ea62467e937e6eda663","tip":"996975b0971c2f2e533e0585223f230334ef76f7","candidate":"a7d76a86fb758ccf0d42be883fa5c16bc0546e19","pathsJoined":2,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"pass","disposition":"folded","checks":[{"check":"parse","path":"fleet/run-engine.mjs","result":"pass"},{"check":"exam","exam":"fleet/tests/test_run_engine_nul_guard.mjs","path":"fleet/CONTRACT.md","result":"pass"},{"check":"exam","exam":"fleet/tests/test_run_engine_lockfile_regen.mjs","path":"fleet/CONTRACT.md","result":"pass"}],"checkRetries":0,"id":"01M2NQDYAX0000TC33XKSTBSP0","ts":1789583096157}

@@ -1,0 +1,1486 @@
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index e526b972194b270b14a8af2b7442a0857e26775e..8d9ab142c05d0dd8ee41556fb4056071776d6e36 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -80,6 +80,24 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+     and `applied` with the `waveMerges` row's own `detail` — appended for an epoch whose fold the
+     kernel could not complete (`CONFLICT`, the conflict it stopped on being what `applied` reads
+     `resolved` off) exactly as for one whose candidate suite stayed red.
++    And `driver:regenerated` `{wave, cmd, exit, paths}` — the epoch, the run's `regenerateCmd`
++    exactly as it ran, its exit code, and the sorted lockfile paths it rewrote, appended once by
++    a fold that ran it and by no other. A lockfile is a derived file and no model merges one: a
++    run that carries a `regenerateCmd` drops the lockfile basenames `bun.lock`, `bun.lockb`,
++    `package-lock.json`, `pnpm-lock.yaml` and `uv.lock`, at any depth, from every patch its
++    capture writes, and names each dropped path on that capture's `capture:dropped`
++    `{label, paths}` beside the unnamed binaries it already drops; a run carrying no
++    `regenerateCmd` drops no lockfile, runs no regenerator, appends no `driver:regenerated`, and
++    captures and folds a lockfile exactly as it captures and folds any other file. The
++    regenerator runs in the integration clone on the materialized candidate, when the paths
++    between `prevHead` and that candidate changed a bootstrap manifest, and BEFORE the
++    candidate's own bootstrap — the install is frozen against a lockfile, so a rebuild that ran
++    after it would be rebuilding against an install that already failed. The lockfile it writes
++    is committed onto the candidate, subject `wave <n> regenerated <paths>` under the plan's H1
++    when one is set, and that commit is the candidate every later step of the fold uses: the
++    bootstrap, the suite, the adopt, the weave and the epoch's own `headSha`. A regenerator that
++    exits non-zero rewrites nothing, stands in place of the suite exactly as a failed bootstrap
++    does (`exit` its own, `paths` empty), and the epoch takes the route a red bootstrap takes.
+     What an epoch adopts is what was captured and unadopted at the INSTANT the slot freed — a
+     result that lands while a fold is running is adopted by the fold after it, never by the one
+     already in flight, and only one fold runs at a time.
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index d207007fe4ae8b592314b30f68d2053231263093..1ea58edd3a6a4106c6be44757cc9879158887b5d 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -45,7 +45,7 @@ import { createHash } from 'node:crypto'
+ // `cloneAtBase` and `patchAgainstBase` come from there too: the examiner's
+ // clone is cut at dispatch time (only the engine knows which tasks have an
+ // exam), and the implementer's capture is retaken after the handoff.
+-import { ulid, cloneAtBase, patchAgainstBase } from './run-waves.mjs'
++import { ulid, cloneAtBase, patchAgainstBase, isLockfilePath } from './run-waves.mjs'
+ // Which head a dispatch's capture is diffed against travels with the dispatch
+ // and not in a variable the whole run shares — see `captureAnchors` below: the
+ // ready set keeps two dispatches in flight against different heads, and async
+@@ -2079,6 +2079,15 @@ export async function runEngine({
+     : []
+   const testCmd = (typeof args.testCmd === 'string' && args.testCmd.trim()) || undefined
+   const bootstrapCmd = (typeof args.bootstrapCmd === 'string' && args.bootstrapCmd.trim()) || undefined
++  // #1050 — the command that rebuilds this project's lockfile from its
++  // manifests, written by the launcher beside `bootstrapCmd` and read exactly
++  // as it is. Absent, the run captures, folds and installs as at BASE.
++  const regenerateCmd = (typeof args.regenerateCmd === 'string' && args.regenerateCmd.trim()) || undefined
++  // The same gate the capture is armed by in run-main: a run that can rebuild
++  // a lockfile carries none through a patch. The engine's own exam-handoff
++  // re-capture writes over the file the fold reads, so it must drop what the
++  // wrapper's capture dropped or the lockfile rides back in behind it.
++  const dropLockfiles = regenerateCmd !== undefined
+   const reviewProfile = isPairReview(args.reviewProfile) ? args.reviewProfile : 'lean'
+   const globalConstraints = (typeof args.globalConstraints === 'string' && args.globalConstraints.trim()) || ''
+   // The executable half of the Global Constraints: `{ cmd, minor }` entries the
+@@ -3236,6 +3245,7 @@ export async function runEngine({
+           impl.patch = patchAgainstBase({ cwd: cloneDir, base: baseShaForTask,
+             out: patchPrefix + 'task-' + task.id + '.patch',
+             files: Array.isArray(task.files) ? task.files : [],
++            dropLockfiles,
+             onDropped: (paths) => appendEvent({ kind: 'capture:dropped',
+               label: 'impl:' + task.id, paths }) })
+         } catch (e) {
+@@ -4409,7 +4419,11 @@ export async function runEngine({
+     if (!m || !m.candidateSha) {
+       return blocked('materialize refused: ' + ((m && (m.park || m.fallback)) || tail(mat.stderr, 300)))
+     }
+-    const candidate = m.candidateSha
++    // A `let`: a run that carries a regenerator commits the lockfile it writes
++    // ONTO this candidate, and every later step of the fold — the bootstrap,
++    // the suite, the `reset --hard`, `emit-weave` and the epoch's `headSha` —
++    // uses that commit instead (#1050).
++    let candidate = m.candidateSha
+     // The adopt leg's last kernel call (Tier 1, spec 2026-09-01 §2.1): the
+     // weave dir is a sidecar seeded from the head that was ACTUALLY adopted,
+     // so it runs after the branch moved and never before. Its refusal costs
+@@ -4421,6 +4435,67 @@ export async function runEngine({
+         ': emit-weave failed (exit ' + r.code + ') — weave persistence skipped, fold unaffected')
+     }
+     await git(['read-tree', '-u', '--reset', candidate + '^{tree}'], integ)
++    // ── #1050 — regenerate, never resolve ────────────────────────────────────
++    // A lockfile is a DERIVED file: two tasks that each added a package left
++    // two lockfiles that differ everywhere, and at BASE the kernel narrated
++    // that as a conflict and a `resolve:` worker was asked to merge a solver's
++    // output by hand. It is not a merge anyone can do correctly — the answer
++    // is whatever the package manager would write over the MERGED manifest,
++    // which no resolver can compute. So the capture carries no lockfile at all
++    // (run-waves' `dropLockfiles`, armed from this same `regenerateCmd`) and
++    // the fold rebuilds it here, from the manifests the kernel just merged.
++    //
++    // BEFORE the #825 bootstrap, and gated on the same question: the install
++    // the candidate needs is frozen against a lockfile, so the regenerator has
++    // to have run first or the install is red on a lockfile that describes a
++    // manifest nobody has any more. The gate is `bootstrapManifestChanged`
++    // over `prevHead..candidate` for exactly that reason — a fold that changed
++    // no manifest needs no rebuild, runs no regenerator, and appends nothing.
++    let regenerateRed = null
++    if (regenerateCmd) {
++      const changedForRegen = await git(['diff', '--name-only', prevHead, candidate], integ)
++      if (bootstrapManifestChanged(changedForRegen.split('\n').map((s) => s.trim()).filter(Boolean))) {
++        const r = await sh(regenerateCmd, integ)
++        let paths = []
++        if (r.code === 0) {
++          // The working tree against the candidate: `git diff <commit>` is
++          // tracked paths only, which is the clause's own word — a lockfile
++          // the project does not track is not one this fold commits.
++          const touched = await git(['diff', '--name-only', candidate], integ)
++          paths = touched.split('\n').map((s) => s.trim())
++            .filter((p) => p && isLockfilePath(p)).sort()
++          if (paths.length) {
++            // ONTO the candidate: `--soft` moves HEAD and leaves the index —
++            // which `read-tree` above filled with the candidate's own tree —
++            // exactly where it is, so the commit's parent is the materialized
++            // candidate and the adopted head's log reads
++            // `wave <n> regenerated <paths>` on top of it. Titled from the
++            // plan like the materialize candidate and the reconcile commit
++            // (#651), so a squash-merge of a regenerated wave's head reads the
++            // same as an untouched one's.
++            await git(['reset', '--soft', candidate], integ)
++            await git(['add', '--', ...paths], integ)
++            await git(['commit', '-q', ...(planTitle ? ['-m', planTitle] : []),
++              '-m', 'wave ' + waveNumber + ' regenerated ' + paths.join(' ')], integ)
++            candidate = await git(['rev-parse', 'HEAD'], integ)
++            log('wave ' + waveNumber + ' regenerated ' + paths.join(' ') +
++              ' onto the candidate')
++          }
++        } else {
++          // Exactly the shape a failed bootstrap takes below: the candidate is
++          // red on the regenerator's own output, so the reconcile prompt and
++          // the TEST_FAILED detail quote the rebuild that broke rather than a
++          // suite that never ran on this candidate.
++          judgmentCalls.push('wave ' + waveNumber + ': regenerate failed (exit ' + r.code +
++            ') — the candidate is red on the lockfile rebuild, not on its suite: ' +
++            tail(r.stderr || r.stdout, 300))
++          log('wave ' + waveNumber + ' regenerate failed (exit ' + r.code + ')')
++          regenerateRed = r
++        }
++        appendEvent({ kind: 'driver:regenerated', wave: waveNumber, cmd: regenerateCmd,
++          exit: r.code, paths })
++      }
++    }
+     // #825 — the candidate's own install, before its suite. The setup loop
+     // bootstrapped this clone at BASE and knows nothing about a manifest the
+     // fold changed, so a suite run straight off the read-tree fails on a
+@@ -4429,8 +4504,12 @@ export async function runEngine({
+     // below is `reset --hard` in this same directory and the install is
+     // untracked, so it survives adoption (and the TEST_FAILED path's
+     // `git clean -fd`, which has no `-x`) — nothing to re-run afterwards.
+-    let bootstrapRed = null
+-    if (bootstrapCmd) {
++    // A failed regenerator stands in the same place: there is nothing for the
++    // install to install against, so it is not run and its value is the one
++    // the suite quotes. With no regenerator this is `null` and the block below
++    // is BASE's, byte for byte.
++    let bootstrapRed = regenerateRed
++    if (bootstrapCmd && !bootstrapRed) {
+       const changed = await git(['diff', '--name-only', prevHead, candidate], integ)
+       if (bootstrapManifestChanged(changed.split('\n').map((s) => s.trim()).filter(Boolean))) {
+         const b = await sh(bootstrapCmd, integ)
+diff --git a/fleet/run-main.mjs b/fleet/run-main.mjs
+index 955737a57a379c947f03036dacb328ad14b10a11..77f49c2ea1cf27c80a7f259ce153d6628ca9e4d6 100644
+--- a/fleet/run-main.mjs
++++ b/fleet/run-main.mjs
+@@ -516,7 +516,7 @@ export const makeAddDirsFor = ({ runDir }) => (opts, role) =>
+ // ── agent composition — the one decision, both halves ────────────────────────
+ export function composeAgent({ runId, base, runDir, clonesDir, patchesDir, workersDir,
+                                promptFileFor, settingsFor, env, cli, eventLog, spawnFn,
+-                               implementerEffort, filesFor, envFor }) {
++                               implementerEffort, filesFor, envFor, args }) {
+   // One knob, one role. `roleForLabel` maps both `impl:` and `fix:` to
+   // `implementer`; every other role answers undefined, so `buildArgs` pushes no
+   // `--effort` for it and each judge keeps the CLI's own default (#522).
+@@ -566,6 +566,10 @@ export function composeAgent({ runId, base, runDir, clonesDir, patchesDir, worke
+     // once; without a lookup it falls back to the `FILES:` line of the prompt
+     // the worker was handed, which is the same compiled array.
+     ...(filesFor ? { filesFor } : {}),
++    // #1050: the run's args decide it, once — `true` exactly when the run
++    // carries a regenerator to rebuild what the capture drops. A boolean is
++    // accepted too, for a caller that already made the decision.
++    dropLockfiles: (typeof args === 'boolean') ? args : dropLockfilesFor(args),
+   })
+   // `envFor` is read at dispatch, not here: the short id of a task's issue
+   // lands on the kata record at that task's own dispatch (run-engine.mjs),
+@@ -580,6 +584,16 @@ export function composeAgent({ runId, base, runDir, clonesDir, patchesDir, worke
+   return { agent, patchInput: patchesDir }
+ }
+ 
++// #1050 — whether this run's captures drop lockfiles. The gate is the run's
++// own `regenerateCmd`, the string the launcher writes beside `bootstrapCmd`:
++// the capture may drop a lockfile only when the fold can rebuild it, because a
++// dropped lockfile nobody regenerates is a stale lockfile on the pull request
++// and a red frozen install at the fold. A pure one-liner, exported beside
++// `boundedParallel`, so the exam pins the rule without standing a run up.
++export const dropLockfilesFor = (argsObj) =>
++  typeof (argsObj && argsObj.regenerateCmd) === 'string' &&
++  argsObj.regenerateCmd.trim() !== ''
++
+ // Bounded parallel: at most `limit` thunks in flight. Rejection semantics match
+ // defaultParallel (the first rejection propagates); waves.js's dispatch sites
+ // catch their own agent errors, so a rejection here is a programming error
+@@ -879,6 +893,9 @@ async function runMainInner(parsed, deps, hub) {
+     clonesDir: tree.clonesDir, patchesDir: tree.patchesDir, workersDir: tree.workersDir,
+     promptFileFor, settingsFor, env: workerEnv, cli, eventLog, implementerEffort,
+     filesFor, envFor,
++    // The args file, read at step 1 above — the capture's lockfile gate is
++    // decided from its `regenerateCmd` and from nothing else (#1050).
++    args: argsObj,
+   })
+   // #213 credential evidence (restored after the cutover deleted the shim's
+   // copy — review finding 6): name the credential the workers will ride, in
+diff --git a/fleet/run-waves.mjs b/fleet/run-waves.mjs
+index 342f8f462afc676fa8121b2af315d3fc9930940c..2c78b7c67fd006ba18a8df066d1d694543ad5042 100644
+--- a/fleet/run-waves.mjs
++++ b/fleet/run-waves.mjs
+@@ -193,6 +193,11 @@ export function withPatchCapture(options) {
+   const { agent, clonesDir, base, patchesDir,
+           git = defaultGit, taskIdOf = defaultTaskIdOf,
+           cloneNameOf = defaultCloneNameOf,
++          // #1050 — the run-wide gate, decided once where the args file is
++          // read (`dropLockfilesFor` in run-main) and passed through to every
++          // capture this wrapper makes. A run with no regenerator never sets
++          // it and captures exactly as at BASE.
++          dropLockfiles = false,
+           onEvent = () => {} } = options || {}
+   // ONE label→directory mapping: makeCwdFor already owns it (and its
+   // fail-loud missing-clone error). A second copy here is where a clone-
+@@ -229,6 +234,7 @@ export function withPatchCapture(options) {
+       const out = patchAgainstBase({ cwd, base: baseSha,
+         out: path.join(patchesDir, cloneNameOf(opts.label, id) + '.patch'), git,
+         files: filesFor(opts, id, prompt),
++        dropLockfiles,
+         // ONE event per capture, listing every path it dropped — not one event
+         // per path: the reader of the log is asking "did this task's patch
+         // lose anything, and what", and a per-path stream makes that a join.
+@@ -283,25 +289,66 @@ export function makeFilesAllow(files) {
+   return (p) => exact.has(p) || dirs.some((d) => p.startsWith(d))
+ }
+ 
+-export function droppedBinaryPaths({ cwd, base, files, git = defaultGit }) {
++// ── the lockfiles a run regenerates rather than merges (#1050) ───────────────
++//
++// The five names `derive_bootstrap_cmd`'s ladder knows and derives a
++// regenerator for. A lockfile is a DERIVED file: merging two of them by hand
++// is asking a model to solve a solver's problem, and the answer it writes is
++// not the one the package manager would have written. So the capture drops it
++// and the fold rebuilds it from the merged manifests — but only in a run that
++// CARRIES a regenerator, because a dropped lockfile nobody rebuilds is a stale
++// lockfile on the pull request and a red frozen install at the fold, which is
++// worse than BASE, where the resolver at least sees the file.
++//
++// Order is the ladder's, and it is also sorted: a reader comparing this list
++// against the contract's sentence should not have to re-sort it first.
++export const LOCKFILE_BASENAMES = [
++  'bun.lock', 'bun.lockb', 'package-lock.json', 'pnpm-lock.yaml', 'uv.lock',
++]
++
++// BASENAME at any depth, like `bootstrapManifestChanged`'s manifests: the
++// contended case is a monorepo's `client/bun.lock`, not a root lockfile.
++export const isLockfilePath = (p) =>
++  LOCKFILE_BASENAMES.includes(normalizePath(p).split('/').pop())
++
++// Both drop rules over ONE `--numstat` read. A lockfile's row is NUMERIC (it
++// is text git counts lines of), so it is a second filter over the same rows
++// rather than a widening of the binary one — and the three conditions the
++// binary rule needs (untracked at BASE, binary by git's detection, outside the
++// task's Files) are all wrong for a lockfile: it is tracked, it is text, and
++// it is dropped whether or not the task's Files name it, because under
++// `dropLockfiles` the capture carries no lockfile at all.
++function droppedPaths({ cwd, base, files, git = defaultGit,
++                        dropBinaries = true, dropLockfiles = false }) {
+   const allowed = makeFilesAllow(files)
+   // -z so a path with a space or a non-ASCII byte arrives raw rather than
+   // C-quoted; --no-renames so every row is `added\tdeleted\tpath`.
+   const rows = git(['diff', '--cached', '--numstat', '-z', '--no-renames', base], cwd)
+     .split('\0').filter(Boolean)
+   const candidates = []
++  const lockfiles = []
+   for (const row of rows) {
+     const m = /^(\S+)\t(\S+)\t([\s\S]*)$/.exec(row)
+-    if (!m || m[1] !== '-' || m[2] !== '-') continue
++    if (!m) continue
+     const p = normalizePath(m[3])
+-    if (p && !allowed(p)) candidates.push(p)
++    if (!p) continue
++    if (dropLockfiles && isLockfilePath(p)) { lockfiles.push(p); continue }
++    if (!dropBinaries || m[1] !== '-' || m[2] !== '-') continue
++    if (!allowed(p)) candidates.push(p)
+   }
+-  if (candidates.length === 0) return []
++  if (candidates.length === 0) return lockfiles.sort()
+   // Only now the tree read: a capture with no unnamed binary in it pays for no
+   // second git call.
+   const tracked = new Set(git(['ls-tree', '-r', '--name-only', '-z', base], cwd)
+     .split('\0').filter(Boolean).map(normalizePath))
+-  return candidates.filter((p) => !tracked.has(p)).sort()
++  // ONE sorted list, the union of both rules: `onDropped` fires once per
++  // capture and its reader is asking "what did this patch lose", not "which
++  // rule lost it".
++  return [...candidates.filter((p) => !tracked.has(p)), ...lockfiles].sort()
++}
++
++export function droppedBinaryPaths({ cwd, base, files, git = defaultGit }) {
++  return droppedPaths({ cwd, base, files, git })
+ }
+ 
+ // `--output` writes the patch from git's own process: the bytes never pass
+@@ -312,13 +359,18 @@ export function droppedBinaryPaths({ cwd, base, files, git = defaultGit }) {
+ // the clone.
+ //
+ // `files` absent (null) is the whole-tree capture this function has always
+-// been — the drop arms only for a caller that knows the task's Files, so a
+-// direct call with none keeps every byte of the clone.
++// been — the binary drop arms only for a caller that knows the task's Files, so
++// a direct call with none keeps every byte of the clone. `dropLockfiles` is
++// independent of it: a lockfile is dropped on its basename alone, and a caller
++// that knows the run carries a regenerator knows that much without a Files
++// list. Absent or false, the capture is byte-for-byte what it was.
+ export function patchAgainstBase({ cwd, base, out, git = defaultGit,
+-                                   files = null, onDropped = null }) {
++                                   files = null, onDropped = null,
++                                   dropLockfiles = false }) {
+   fs.mkdirSync(path.dirname(out), { recursive: true })
+   git(['add', '-A'], cwd)
+-  const dropped = files == null ? [] : droppedBinaryPaths({ cwd, base, files, git })
++  const dropped = (files == null && !dropLockfiles) ? []
++    : droppedPaths({ cwd, base, files, git, dropBinaries: files != null, dropLockfiles })
+   // The exclusion is a PATHSPEC, not an index edit: the capture stays
+   // read-only on the clone (`git rm --cached` would leave the next fix round's
+   // `add -A` diffing a tree the worker never saw). `top` makes each path
+diff --git a/fleet/tests/_engine_helpers.mjs b/fleet/tests/_engine_helpers.mjs
+index 9b11e97484fdae1e1d1ee3a4bb74135c7805c8ea..21661d2db86efd3d9229b10652dd39f9a3afa0e0 100644
+--- a/fleet/tests/_engine_helpers.mjs
++++ b/fleet/tests/_engine_helpers.mjs
+@@ -70,15 +70,34 @@ export function rig({ repo, runDir, waves, edges = [], stub, testCmd = 'bash che
+                       exec = execSeam,
+                       // Extra runEngine args merged last (constraintChecks,
+                       // patchInput, and whatever the next knob is).
+-                      extraArgs = {} }) {
++                      extraArgs = {},
++                      // Extra `withPatchCapture` options, spread into the call
++                      // below. In production the driver decides these from the
++                      // args file (`dropLockfilesFor`, run-main); a sim has no
++                      // args file, so this is how it arms the same knob.
++                      captureOptions = {} }) {
+   const taskIds = waves.flat().map((t) => t.id)
+   const { base, clonesDir, patchesDir, integ } = provision({ repo, runDir, taskIds })
+   const patchBase = { current: base }
+   const cwdFor = makeCwdFor({ clonesDir })
+   const inner = async (prompt, opts) => stub(prompt, opts, cwdFor(opts))
++  // The wrapper's own events go where production's go: run-main hands it
++  // `eventLog.onEvent`, which writes the same `events.jsonl` the engine writes,
++  // so a sim reading the run's record sees a `capture:dropped` exactly where a
++  // real run leaves one. The rig passed none until #1050 and the wrapper's
++  // events fell on the floor. `captureOptions` is spread last and can replace
++  // it with a collector of the sim's own.
++  const captureEvent = (e) => {
++    try {
++      fs.mkdirSync(runDir, { recursive: true })
++      fs.appendFileSync(path.join(runDir, 'events.jsonl'),
++        JSON.stringify({ ...e, ts: Date.now() }) + '\n')
++    } catch { /* evidence, not control flow */ }
++  }
+   const agent = withPatchCapture({
+     agent: inner, clonesDir, base: () => patchBase.current, patchesDir,
+-    taskIdOf: defaultTaskIdOf,
++    taskIdOf: defaultTaskIdOf, onEvent: captureEvent,
++    ...captureOptions,
+   })
+   const logs = []
+   // The phases the engine announced, in order. The rig left `phase` a no-op
+diff --git a/fleet/tests/test_run_engine_lockfile_regen.mjs b/fleet/tests/test_run_engine_lockfile_regen.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..ada75ba4a937cefcd39d8e118f901748dccd813a
+--- /dev/null
++++ b/fleet/tests/test_run_engine_lockfile_regen.mjs
+@@ -0,0 +1,827 @@
++// fleet/tests/test_run_engine_lockfile_regen.mjs — the capture drops lockfiles
++// and the fold regenerates them (#1050): when several tasks of one run add
++// packages, the run's lockfile is REBUILT from the merged manifests at each
++// fold, and no worker is ever asked to merge a lockfile by hand.
++//
++// Everything below the agent seam is real — real git repos, real clones at
++// BASE, the real `withPatchCapture` capture, the real fold kernel through the
++// real `execSeam`, the real `bash -lc` for the bootstrap and the regenerator.
++// Only the judgments are canned, so every ordering these assertions read is the
++// driver's own.
++//
++// Machine clauses under test:
++//   M1 — `LOCKFILE_BASENAMES`, exported from `fleet/run-waves.mjs`, is exactly
++//        `bun.lock`, `bun.lockb`, `package-lock.json`, `pnpm-lock.yaml`,
++//        `uv.lock`. `patchAgainstBase` takes a `dropLockfiles` option and, when
++//        it is `true`, excludes from the patch every staged path whose basename
++//        is one of them, at any depth, alongside the unnamed binaries it
++//        already drops, calling `onDropped` ONCE with the sorted union of both
++//        lists; with the option absent or `false` the capture is byte-for-byte
++//        BASE's. `withPatchCapture` passes its own `dropLockfiles` through to
++//        every capture it makes, and `dropLockfilesFor(argsObj)`, exported from
++//        `fleet/run-main.mjs`, is `true` exactly when `argsObj.regenerateCmd`
++//        is a non-empty string.
++//   M2 — on a wave fold, after `read-tree` of the materialized candidate and
++//        before the #825 bootstrap, a manifest-changing candidate in a run that
++//        carries a `regenerateCmd` runs that command in the integration clone;
++//        on exit `0` with at least one changed lockfile the driver stages those
++//        paths, commits them onto the candidate (`wave <n> regenerated
++//        <paths>`), makes that commit the candidate every later step uses, and
++//        appends one `driver:regenerated {wave, cmd, exit: 0, paths}` with the
++//        sorted paths. A command that changed no lockfile appends the event
++//        with `paths: []` and commits nothing.
++//   M3 — a regenerator that exits non-zero stands in place of the suite exactly
++//        as a failed bootstrap does: the candidate is red on the regenerator's
++//        output, one `driver:regenerated {wave, cmd, exit, paths: []}` is
++//        appended, and the wave takes the route a red bootstrap takes at BASE.
++//   M4 — a fold whose candidate changed no manifest runs no regenerator and
++//        appends no `driver:regenerated`; a run with no `regenerateCmd` drops
++//        no lockfile at capture, runs no regenerator, appends no
++//        `driver:regenerated` and folds a lockfile conflict exactly as at BASE;
++//        and in a run that carries a regenerator a lockfile a task's tree
++//        changed is never a conflict the kernel narrates — no `resolve:` worker
++//        is dispatched on it and no `resolver:reply` names it.
++//   M5 — `fleet/CONTRACT.md` names `driver:regenerated {wave, cmd, exit,
++//        paths}` in the paragraph that names `driver:wave-adopted`, says a
++//        patch capture drops lockfile basenames only in a run that carries a
++//        `regenerateCmd` and names them on `capture:dropped`, and says the
++//        regenerator runs before the candidate's bootstrap and the lockfile it
++//        writes is committed onto the candidate.
++//
++// Legs: (a) M1, (b) M2, (c) M2, (d) M3, (e) M4, (f) M4, (g) M5, (h) M1.
++//
++// ── three readings this file settles, because the Proof and the Context can be
++//    read two ways and a later session would otherwise have to guess ──────────
++//
++// 1. THE RIG IS LOCAL. Leg (a) reads each task's `capture:dropped` event, and
++//    that event is the WRAPPER's — `withPatchCapture`'s `onDropped`. The shared
++//    rig in `_engine_helpers.mjs` passes no `onEvent` to `withPatchCapture`, so
++//    in a sim that event reaches nothing at all. This file therefore composes
++//    `provision` + `withPatchCapture({… dropLockfiles, onEvent})` + `runEngine`
++//    itself, the way the pre-review-pass sim's own prompt-pin does. That is the
++//    direct pin on M1's "`withPatchCapture` passes its own `dropLockfiles`
++//    option through to every capture it makes", and it does not depend on how
++//    the passthrough knob the Context asks `_engine_helpers.mjs` for is spelled
++//    — that knob is Context, not a Machine clause, so the implementer still
++//    owes it and this exam does not grade it.
++//
++// 2. NO `foldAgeMs: 0`. The Context sketches `extraArgs: { width: 2,
++//    foldAgeMs: 0, … }`, but leg (b) needs ONE epoch folding BOTH tasks: `wave`
++//    `1`, exactly one `driver:regenerated`, and `resolve:wave1:1:1` at BASE.
++//    With `foldAgeMs: 0` the age clause fires at the first landing and folds
++//    each task alone — two epochs, no contention, no `resolve:wave1:1:1`. So no
++//    `foldAgeMs` is passed at all: the default is at least 60s, the age clause
++//    cannot fire inside a sim, and the run's one fold epoch is the `end` fold
++//    that takes both results. The Proof leg wins over the Context's sketch.
++//
++// 3. "ON TOP OF THE MATERIALIZED CANDIDATE" IS READ ON THE TREE, NOT ON THE
++//    PARENTAGE. The regenerated commit can sit on `prevHead` carrying the
++//    candidate tree (the reconcile commit's own shape, which the Context points
++//    at) or on the candidate itself; no Machine clause pins which. So leg (b)
++//    is asserted as: the adopted head's subject is exactly `wave 1 regenerated
++//    bun.lock`, its `package.json` is the merged manifest byte for byte, and
++//    its `bun.lock` is byte for byte the regenerator's output over that
++//    manifest. Leg (c)'s "the adopted `headSha` equals the materialized
++//    candidate" is asserted as `rev-list --count <base>..<adopted>` of `1` plus
++//    an unchanged lockfile — no regenerated commit exists there, so the count
++//    is parentage-safe.
++//
++// Leg (f) names the whole pre-review-pass sim, which the DRIVER runs as the
++// Proof's second `Run:`; this file may not spawn a sibling sim (the hermetic
++// sims' M4), so what stands for it here is scenario S6 — a run with no
++// `regenerateCmd` whose tasks change no manifest folds green, dispatches no
++// resolver and appends no `driver:regenerated`, which is the first Global
++// Constraint stated directly.
++//
++// WHY THIS IS RED AT BASE. `LOCKFILE_BASENAMES` and `dropLockfilesFor` do not
++// exist; `patchAgainstBase` has no `dropLockfiles` option, so every lockfile
++// rides into every patch; the fold runs no regenerator and appends no
++// `driver:regenerated`; and `fleet/CONTRACT.md` names neither the event nor the
++// drop. The first assertion below says so by name.
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { createHash } from 'node:crypto'
++import { execFileSync } from 'node:child_process'
++import { fileURLToPath } from 'node:url'
++import * as waves from '../run-waves.mjs'
++import * as runMain from '../run-main.mjs'
++import { cloneAtBase, makeCwdFor, withPatchCapture, defaultTaskIdOf,
++         patchAgainstBase } from '../run-waves.mjs'
++import { execSeam } from '../run-main.mjs'
++import { runEngine } from '../run-engine.mjs'
++import { ENV, makeRepo, provision, gitSync, passReview, doneImpl } from './_engine_helpers.mjs'
++
++const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-lockfile-regen-'))
++process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
++
++// ── the two produced symbols, by namespace ──────────────────────────────────
++// A NAMED import of a symbol BASE does not export is a link-time error that
++// takes the whole file down with it, and legs (g) and (h) — which touch neither
++// symbol — would never report. The namespace import plus these two assertions
++// is the same red for the same reason, leg by leg.
++const LOCKFILE_BASENAMES = waves.LOCKFILE_BASENAMES
++const dropLockfilesFor = runMain.dropLockfilesFor
++assert.ok(LOCKFILE_BASENAMES != null,
++  '[M1] `fleet/run-waves.mjs` exports `LOCKFILE_BASENAMES` — the lockfile names the ' +
++  'launcher\'s bootstrap ladder knows. Got: ' + String(LOCKFILE_BASENAMES))
++assert.equal(typeof dropLockfilesFor, 'function',
++  '[M1] `fleet/run-main.mjs` exports `dropLockfilesFor(argsObj) -> boolean`. Got: ' +
++  typeof dropLockfilesFor)
++
++// ══════════════════════════════════════════════════════════════════════════
++// fixtures — a manifest whose lockfile is a fixed function of it
++// ══════════════════════════════════════════════════════════════════════════
++//
++// `bun.lock` holds the first 16 hex characters of `sha256(package.json)`, which
++// is what the sim's regenerator writes and what its FROZEN bootstrap checks —
++// so the bootstrap can pass on a folded candidate ONLY IF the regenerator ran
++// on the merged manifest first. That is the whole instrument behind leg (b)'s
++// ordering claim, and it is a fact about the files, not about the engine.
++const sha16 = (buf) => createHash('sha256').update(buf).digest('hex').slice(0, 16)
++
++const PKG_LINES = [
++  '{',
++  '  "name": "sim-target",',
++  '  "private": true,',
++  '  "dependencies": {',
++  '    "alpha": "1.0.0",',
++  '    "bravo": "1.0.0",',
++  '    "charlie": "1.0.0",',
++  '    "delta": "1.0.0",',
++  '    "echo": "1.0.0",',
++  '    "foxtrot": "1.0.0",',
++  '    "golf": "1.0.0",',
++  '    "hotel": "1.0.0"',
++  '  }',
++  '}',
++]
++// A adds its dependency near the TOP and B near the BOTTOM — seven lines apart,
++// more than twice a diff's three lines of context — so the two manifests fold
++// as text with nothing narrated and the only contended path is the lockfile.
++const DEPS_LINE = '  "dependencies": {'
++const LAST_DEP_LINE = '    "hotel": "1.0.0"'
++const withA = (lines) => {
++  const out = lines.slice()
++  out.splice(out.indexOf(DEPS_LINE) + 1, 0, '    "a-added": "1.0.0",')
++  return out
++}
++const withB = (lines) => {
++  const out = lines.slice()
++  out.splice(out.indexOf(LAST_DEP_LINE), 0, '    "z-added": "1.0.0",')
++  return out
++}
++const text = (lines) => lines.join('\n') + '\n'
++const PKG_BASE = text(PKG_LINES)
++const PKG_A = text(withA(PKG_LINES))
++const PKG_B = text(withB(PKG_LINES))
++const PKG_MERGED = text(withB(withA(PKG_LINES)))
++const lockOf = (pkg) => sha16(Buffer.from(pkg)) + '\n'
++const LOCK_BASE = lockOf(PKG_BASE)
++const LOCK_MERGED = lockOf(PKG_MERGED)
++
++// The shell lines. `>> <order>` is how the regenerator and the bootstrap each
++// leave a mark naming the manifest they saw, so leg (b) can read their ORDER
++// off the file rather than off a log line's prose.
++const regenCmd = (order) =>
++  'h=$(sha256sum package.json | cut -c1-16); echo "regenerate $h" >> ' + order +
++  '; printf "%s\\n" "$h" > bun.lock'
++const frozenBootstrapCmd = (order) =>
++  'h=$(sha256sum package.json | cut -c1-16); l=$(cut -c1-16 bun.lock)' +
++  '; echo "bootstrap $h $l" >> ' + order + '; test "$l" = "$h"'
++
++// ══════════════════════════════════════════════════════════════════════════
++// the sim: provision, the real capture, the real engine
++// ══════════════════════════════════════════════════════════════════════════
++const RESOLVED_LOCK = 'resolved-by-the-canned-resolver\n'
++
++const allEvents = (runDir) => {
++  const file = path.join(runDir, 'events.jsonl')
++  if (!fs.existsSync(file)) return []
++  return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
++    .map((l) => { try { return JSON.parse(l) } catch { return null } })
++    .filter(Boolean)
++}
++const ofKind = (evs, kind) => evs.filter((e) => e.kind === kind)
++// Raw bytes out of a tree: `git show` through the sim's own environment, never
++// decoded and never trimmed — a lockfile's trailing newline is part of what the
++// legs compare.
++const showBytes = (cwd, sha, p) =>
++  execFileSync('git', ['show', sha + ':' + p],
++    { cwd, env: ENV, maxBuffer: 64 * 1024 * 1024 })
++// The paths a patch file carries a hunk for, read off its own `diff --git`
++// headers.
++const patchHeaders = (file) =>
++  [...fs.readFileSync(file, 'utf8').matchAll(/^diff --git a\/(\S+) b\/(\S+)$/gm)]
++    .map((m) => m[2]).sort()
++
++const entry = (id, files) => ({
++  id,
++  title: 'task ' + id,
++  files,
++  writes: files,
++  commutes: [],
++  tier: 'standard',
++  review: 'lean',
++  interfaces: { consumes: [], produces: [] },
++  testCmd: 'bash check.sh',
++  proofTests: [],
++  proofRuns: [],
++  body: '**Claim:** ' + id + ' adds one dependency\n' +
++    'Machine: M1. The manifest gains one line.\n\n' +
++    '**Proof:**\n- Legs: (a) the line is in the manifest [M1]',
++})
++
++let seq = 0
++/**
++ * One engine run over a two-task wave.
++ *
++ *   files          extra tracked files for the target repo
++ *   seed           a last commit on the repo, for a tracked path at depth
++ *   tasks          the wave's task entries
++ *   onImpl         (cwd, id) — what each implementer leaves in its own clone
++ *   dropLockfiles  passed to `withPatchCapture` only when true, so a run
++ *                  without it reaches the capture BASE reaches
++ *   bootstrapCmd / regenerateCmd — the run's own arguments
++ *
++ * No `foldAgeMs`: reading 2 in the header. `width: 2` so both lanes dispatch at
++ * once and both results are pending when the `end` fold takes them.
++ */
++async function simRun(opts) {
++  seq += 1
++  const stamp = 'lr' + seq
++  const repo = makeRepo(path.join(tmp, 'repo-' + stamp), opts.files || {})
++  if (opts.seed) opts.seed(repo)
++  const runDir = path.join(tmp, 'run-' + stamp)
++  const { base, clonesDir, patchesDir, integ } =
++    provision({ repo, runDir, taskIds: opts.tasks.map((t) => t.id) })
++  const patchBase = { current: base }
++  const cwdFor = makeCwdFor({ clonesDir })
++  const calls = []
++  const prompts = {}
++  const dropped = []
++  const inner = async (prompt, o) => {
++    const cwd = cwdFor(o)
++    calls.push(o.label)
++    prompts[o.label] = prompt
++    const [kind, id] = String(o.label).split(':')
++    if (kind === 'impl') { opts.onImpl(cwd, id); return doneImpl(cwd) }
++    if (kind === 'review') return passReview()
++    if (kind === 'resolve') {
++      // The canned resolver: RESOLVED, with the hunk ids read off the hunks
++      // file the driver briefed it on. It exists so that a run which DOES
++      // dispatch one (a BASE-shaped run, or this engine at BASE) still folds
++      // and the assertion that fires is the one about the dispatch, not an
++      // unexpected-dispatch throw three layers down.
++      const m = /\nHUNKS FILE: (.*?) \(conflicted path: ([^)]*)\)/.exec(prompt)
++      const ids = m && fs.existsSync(m[1])
++        ? [...fs.readFileSync(m[1], 'utf8').matchAll(/^HUNK (\S+) /gm)].map((x) => x[1])
++        : []
++      return { status: 'RESOLVED', notes: '',
++               hunks: (ids.length ? ids : ['h1']).map((hid) => ({ id: hid, content: RESOLVED_LOCK })) }
++    }
++    // The sim never repairs a red candidate: a fold that goes red is a fold
++    // this file wants to read the BLOCKED route of.
++    if (kind === 'reconcile') return { status: 'BLOCKED', summary: 'the sim never reconciles' }
++    throw new Error('unexpected dispatch: ' + o.label)
++  }
++  const agent = withPatchCapture({
++    agent: inner, clonesDir, base: () => patchBase.current, patchesDir,
++    taskIdOf: defaultTaskIdOf,
++    ...(opts.dropLockfiles ? { dropLockfiles: true } : {}),
++    onEvent: (e) => { if (e && e.kind === 'capture:dropped') dropped.push(e) },
++  })
++  const report = await runEngine({
++    args: {
++      waves: [opts.tasks], edges: [], testCmd: opts.testCmd || 'bash check.sh',
++      acceptance: { mode: 'suite', reason: 'sim' }, stamp,
++      integrationBranch: 'ultra/integration-' + stamp,
++      dependencyEdges: [], patchInput: patchesDir, width: 2,
++      ...(opts.bootstrapCmd ? { bootstrapCmd: opts.bootstrapCmd } : {}),
++      ...(opts.regenerateCmd ? { regenerateCmd: opts.regenerateCmd } : {}),
++    },
++    agent,
++    parallel: (thunks) => Promise.all(thunks.map((t) => t())),
++    exec: execSeam,
++    paths: { repoDir: repo, runDir, clonesDir },
++    log: () => {},
++    phase: () => {},
++    patchBase,
++  })
++  return { report, base, repo, runDir, patchesDir, integ, calls, prompts, dropped,
++           events: allEvents(runDir) }
++}
++
++const resolverLabels = (calls) => calls.filter((l) => String(l).startsWith('resolve:'))
++const statuses = (report) =>
++  report.tasks.map((r) => [r.task, r.status]).sort((x, y) => (x[0] < y[0] ? -1 : 1))
++
++// The manifest tasks, shared by every scenario that folds two manifests.
++const MANIFEST_TASKS = [entry('A', ['package.json', 'bun.lock']),
++                        entry('B', ['package.json', 'bun.lock'])]
++// Each implementer writes its own manifest AND its own lockfile — the lockfile
++// being its own regenerator's output over its own manifest, which is why the
++// two lockfiles contend at BASE.
++const manifestImpl = (cwd, id) => {
++  const pkg = id === 'A' ? PKG_A : PKG_B
++  fs.writeFileSync(path.join(cwd, 'package.json'), pkg)
++  fs.writeFileSync(path.join(cwd, 'bun.lock'), lockOf(pkg))
++}
++// The non-manifest pair: a text file each, no manifest anywhere near it.
++const TEXT_TASKS = [entry('A', ['a.txt']), entry('B', ['b.txt'])]
++const textImpl = (cwd, id) => {
++  fs.writeFileSync(path.join(cwd, id === 'A' ? 'a.txt' : 'b.txt'), 'written by ' + id + '\n')
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (a) [M1] the names, the gate, and what a capture drops
++// ══════════════════════════════════════════════════════════════════════════
++{
++  assert.deepEqual([...LOCKFILE_BASENAMES].slice().sort(),
++    ['bun.lock', 'bun.lockb', 'package-lock.json', 'pnpm-lock.yaml', 'uv.lock'],
++    '(a) [M1] `LOCKFILE_BASENAMES` is EXACTLY the five lockfiles the launcher\'s bootstrap ' +
++    'ladder knows and derives a regenerator for — no more and no fewer. Got: ' +
++    JSON.stringify([...LOCKFILE_BASENAMES]))
++  assert.equal([...LOCKFILE_BASENAMES].length, 5,
++    '(a) [M1] and it names each of them once: ' + JSON.stringify([...LOCKFILE_BASENAMES]))
++
++  // `true` EXACTLY when `regenerateCmd` is a non-empty string.
++  assert.equal(dropLockfilesFor({ regenerateCmd: 'bun install' }), true,
++    '(a) [M1] `dropLockfilesFor({ regenerateCmd: \'bun install\' })` is `true` — the run can ' +
++    'rebuild what the capture drops')
++  assert.equal(dropLockfilesFor({}), false,
++    '(a) [M1] `dropLockfilesFor({})` is `false` — a dropped lockfile nobody regenerates is ' +
++    'worse than BASE')
++  assert.equal(dropLockfilesFor({ regenerateCmd: '' }), false,
++    '(a) [M1] `dropLockfilesFor({ regenerateCmd: \'\' })` is `false`')
++  assert.equal(dropLockfilesFor({ regenerateCmd: '  ' }), false,
++    '(a) [M1] `dropLockfilesFor({ regenerateCmd: \'  \' })` is `false` — whitespace is not a ' +
++    'command')
++  assert.equal(dropLockfilesFor({ regenerateCmd: true }), false,
++    '(a) [M1] and `false` for a `regenerateCmd` that is not a string at all')
++}
++
++// ── (a) the direct `patchAgainstBase` calls: the option, and only the option ─
++{
++  const repo = makeRepo(path.join(tmp, 'direct-repo'),
++    { 'package.json': PKG_BASE, 'bun.lock': LOCK_BASE })
++  fs.mkdirSync(path.join(repo, 'client'), { recursive: true })
++  fs.writeFileSync(path.join(repo, 'client', 'bun.lock'), 'nested-base\n')
++  gitSync(['add', '-A'], repo)
++  gitSync(['commit', '-q', '-m', 'the nested lockfile'], repo)
++  const base = gitSync(['rev-parse', 'HEAD'], repo)
++  const clone = path.join(tmp, 'direct-clone')
++  cloneAtBase({ repo, dest: clone, base })
++  // What a worker's tree looks like after it added a package and ran a test:
++  // a changed manifest, a changed lockfile, a changed lockfile AT DEPTH, and
++  // an untracked binary no task named.
++  fs.writeFileSync(path.join(clone, 'package.json'), PKG_A)
++  fs.writeFileSync(path.join(clone, 'bun.lock'), lockOf(PKG_A))
++  fs.writeFileSync(path.join(clone, 'client', 'bun.lock'), 'nested-changed\n')
++  fs.mkdirSync(path.join(clone, 'out'), { recursive: true })
++  // Written as BYTES, never as a literal in this file's own source: a raw NUL
++  // in a source file is what #1062 was.
++  fs.writeFileSync(path.join(clone, 'out', 'blob.bin'),
++    Buffer.from([0x00, 0x01, 0x02, 0xff, 0x00, 0x7f, 0x00]))
++  // `bun.lock` is INSIDE the task's Files here, on purpose: the drop is the
++  // option's, not the scope's.
++  const FILES = ['package.json', 'bun.lock']
++
++  const absentDrops = []
++  const absent = patchAgainstBase({ cwd: clone, base, out: path.join(tmp, 'p-absent.patch'),
++    files: FILES, onDropped: (p) => absentDrops.push(p) })
++  const falseDrops = []
++  const withFalse = patchAgainstBase({ cwd: clone, base, out: path.join(tmp, 'p-false.patch'),
++    files: FILES, dropLockfiles: false, onDropped: (p) => falseDrops.push(p) })
++  const trueDrops = []
++  const withTrue = patchAgainstBase({ cwd: clone, base, out: path.join(tmp, 'p-true.patch'),
++    files: FILES, dropLockfiles: true, onDropped: (p) => trueDrops.push(p) })
++
++  assert.deepEqual(patchHeaders(absent),
++    ['bun.lock', 'client/bun.lock', 'package.json'],
++    '(a) [M1] a direct `patchAgainstBase` over a clone that changed `bun.lock`, with NO ' +
++    '`dropLockfiles` option, writes a patch that DOES carry the `bun.lock` header — and the ' +
++    'nested one, and the manifest. (`out/blob.bin` is the unnamed binary BASE already drops.) ' +
++    'Got: ' + JSON.stringify(patchHeaders(absent)))
++  assert.deepEqual(absentDrops, [['out/blob.bin']],
++    '(a) [M1] and with the option absent the ONLY drop is the unnamed binary, reported once: ' +
++    JSON.stringify(absentDrops))
++  assert.deepEqual(falseDrops, [['out/blob.bin']],
++    '(a) [M1] `dropLockfiles: false` drops the same one thing: ' + JSON.stringify(falseDrops))
++  assert.equal(fs.readFileSync(withFalse, 'utf8'), fs.readFileSync(absent, 'utf8'),
++    '(a) [M1] with the option absent or `false` the capture is byte-for-byte the same patch — ' +
++    'BASE\'s')
++
++  assert.deepEqual(patchHeaders(withTrue), ['package.json'],
++    '(a) [M1] with `dropLockfiles: true` the patch carries the manifest and NO lockfile hunk ' +
++    'at any depth — not `bun.lock`, which the task\'s own Files name, and not ' +
++    '`client/bun.lock`. Got: ' + JSON.stringify(patchHeaders(withTrue)))
++  assert.deepEqual(trueDrops, [['bun.lock', 'client/bun.lock', 'out/blob.bin']],
++    '(a) [M1] and `onDropped` is called ONCE with the sorted union of both lists — the ' +
++    'lockfiles at any depth alongside the unnamed binaries it already drops. Got: ' +
++    JSON.stringify(trueDrops))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// S1 — legs (a) and (b) [M1, M2]: the two-task regenerating run
++// ══════════════════════════════════════════════════════════════════════════
++//
++// Two tasks, one wave, both adding a package and both writing their own
++// lockfile. The bootstrap is FROZEN: it passes only when `bun.lock` already
++// holds the hash of the `package.json` beside it, which on a folded candidate
++// is true only after the regenerator ran on the MERGED manifest.
++const S1_ORDER = path.join(tmp, 'order-s1.log')
++const S1_REGEN = regenCmd(S1_ORDER)
++const S1_BOOT = frozenBootstrapCmd(S1_ORDER)
++const s1 = await simRun({
++  files: { 'package.json': PKG_BASE, 'bun.lock': LOCK_BASE },
++  seed: (repo) => {
++    // A tracked lockfile AT DEPTH, so leg (a)'s depth clause is read off a real
++    // run and not only off the direct call above.
++    fs.mkdirSync(path.join(repo, 'client'), { recursive: true })
++    fs.writeFileSync(path.join(repo, 'client', 'bun.lock'), 'nested-base\n')
++    gitSync(['add', '-A'], repo)
++    gitSync(['commit', '-q', '-m', 'the nested lockfile'], repo)
++  },
++  tasks: [entry('A', ['package.json', 'bun.lock', 'client/bun.lock']),
++          entry('B', ['package.json', 'bun.lock'])],
++  onImpl: (cwd, id) => {
++    manifestImpl(cwd, id)
++    if (id === 'A') fs.writeFileSync(path.join(cwd, 'client', 'bun.lock'), 'nested-A\n')
++  },
++  dropLockfiles: true,
++  bootstrapCmd: S1_BOOT,
++  regenerateCmd: S1_REGEN,
++})
++
++{
++  // ── (a) [M1] what each task's capture carried, and what it named ──────────
++  for (const id of ['A', 'B']) {
++    const patch = path.join(s1.patchesDir, 'task-' + id + '.patch')
++    assert.ok(fs.existsSync(patch),
++      '(a) [M1] sim precondition — the driver captured ' + id + '\'s patch at ' + patch)
++    assert.deepEqual(patchHeaders(patch), ['package.json'],
++      '(a) [M1] in the two-task regenerating run, ' + id + '\'s captured patch carries a ' +
++      '`diff --git` header for `package.json` and NONE for `bun.lock` — the tree it left had ' +
++      'a changed lockfile and the patch carries no hunk for it. Got: ' +
++      JSON.stringify(patchHeaders(patch)))
++  }
++  const dropOf = (label) => s1.dropped.filter((e) => e.label === label)
++  for (const id of ['A', 'B']) {
++    assert.equal(dropOf('impl:' + id).length, 1,
++      '(a) [M1] ' + id + '\'s capture appended exactly one `capture:dropped` event: ' +
++      JSON.stringify(s1.dropped))
++  }
++  assert.deepEqual(dropOf('impl:A')[0].paths, ['bun.lock', 'client/bun.lock'],
++    '(a) [M1] A\'s `capture:dropped` names `bun.lock` — and `client/bun.lock`, the same drop ' +
++    'at depth, sorted. Got: ' + JSON.stringify(dropOf('impl:A')[0]))
++  assert.deepEqual(dropOf('impl:B')[0].paths, ['bun.lock'],
++    '(a) [M1] and B\'s names `bun.lock`: ' + JSON.stringify(dropOf('impl:B')[0]))
++
++  // ── (b) [M2] no resolver was asked to merge a lockfile ────────────────────
++  assert.deepEqual(resolverLabels(s1.calls), [],
++    '(b) [M2, M4] in a run that carries a regenerator, a lockfile a task\'s tree changed is ' +
++    'never a conflict the kernel narrates: NO `resolve:` worker is dispatched. Got: ' +
++    JSON.stringify(s1.calls))
++  assert.deepEqual(
++    s1.events.filter((e) => String(e.label || '').startsWith('resolve:')).map((e) => e.kind), [],
++    '(b) [M2, M4] and the record carries no row for one either — no `worker:start` and no ' +
++    '`resolver:reply` whose label begins `resolve:`: ' +
++    JSON.stringify(s1.events.filter((e) => String(e.label || '').startsWith('resolve:'))))
++  assert.deepEqual(ofKind(s1.events, 'resolver:reply'), [],
++    '(b) [M4] and no `resolver:reply` names anything at all: ' +
++    JSON.stringify(ofKind(s1.events, 'resolver:reply')))
++
++  // ── (b) [M2] the one `driver:regenerated` ─────────────────────────────────
++  const regen = ofKind(s1.events, 'driver:regenerated')
++  assert.equal(regen.length, 1,
++    '(b) [M2] exactly one `driver:regenerated` event — one fold, one regenerator run. Got: ' +
++    JSON.stringify(regen))
++  assert.deepEqual(
++    { wave: regen[0].wave, cmd: regen[0].cmd, exit: regen[0].exit, paths: regen[0].paths },
++    { wave: 1, cmd: S1_REGEN, exit: 0, paths: ['bun.lock'] },
++    '(b) [M2] `driver:regenerated {wave, cmd, exit, paths}` — the 1-based epoch, the command ' +
++    'verbatim, exit `0`, and the sorted paths it rebuilt. Got: ' + JSON.stringify(regen[0]))
++
++  // ── (b) [M2] what the epoch adopted ───────────────────────────────────────
++  const adopted = ofKind(s1.events, 'driver:wave-adopted')
++  assert.equal(adopted.length, 1,
++    '(b) [M2] the wave adopted once: ' + JSON.stringify(adopted) + ' from ' +
++    JSON.stringify(s1.calls))
++  assert.deepEqual([...adopted[0].tasks].sort(), ['A', 'B'],
++    '(b) [M2] and `driver:wave-adopted` names both tasks: ' + JSON.stringify(adopted[0]))
++  const head = adopted[0].headSha
++  assert.equal(showBytes(s1.integ, head, 'package.json').toString(), PKG_MERGED,
++    '(b) [M2] the adopted head\'s `package.json` is the merged manifest — A\'s line near the ' +
++    'top and B\'s near the bottom, both of them. Got: ' +
++    JSON.stringify(showBytes(s1.integ, head, 'package.json').toString()))
++  assert.equal(showBytes(s1.integ, head, 'bun.lock').toString(), LOCK_MERGED,
++    '(b) [M2] and its `bun.lock` is EXACTLY the regenerator\'s output over that merged ' +
++    '`package.json` — not either task\'s lockfile and not BASE\'s. Got: ' +
++    JSON.stringify(showBytes(s1.integ, head, 'bun.lock').toString()) + ', wanted ' +
++    JSON.stringify(LOCK_MERGED))
++  assert.equal(showBytes(s1.integ, head, 'client/bun.lock').toString(), 'nested-base\n',
++    '(b) [M2] and the lockfile at depth is BASE\'s — A\'s change to it was dropped at capture ' +
++    'and no regenerator rebuilt it')
++  assert.equal(gitSync(['log', '-1', '--format=%s', head], s1.integ),
++    'wave 1 regenerated bun.lock',
++    '(b) [M2] the adopted head IS the regenerated commit: its subject is the line `wave <n> ' +
++    'regenerated <paths>`, sitting on the tree the fold materialized. Got: ' +
++    JSON.stringify(gitSync(['log', '-1', '--format=%s', head], s1.integ)))
++  assert.ok(Number(gitSync(['rev-list', '--count', s1.base + '..' + head], s1.integ)) >= 1,
++    '(b) [M2] and it is a descendant of the head the epoch folded onto')
++
++  // ── (b) [M2] the regenerator ran BEFORE the candidate's bootstrap ─────────
++  // Each command left a line naming the manifest it saw. The setup pass
++  // bootstrapped four clones at BASE, so those lines name BASE's hash; the
++  // fold's own pair names the MERGED hash, and only in that order can the
++  // frozen check have passed.
++  const order = fs.readFileSync(S1_ORDER, 'utf8').split('\n').filter(Boolean)
++  const mergedH = sha16(Buffer.from(PKG_MERGED))
++  const iRegen = order.indexOf('regenerate ' + mergedH)
++  const iBoot = order.indexOf('bootstrap ' + mergedH + ' ' + mergedH)
++  assert.ok(iRegen !== -1,
++    '(b) [M2] the regenerator ran on the MERGED manifest: ' + JSON.stringify(order))
++  assert.ok(iBoot !== -1,
++    '(b) [M2] the candidate\'s bootstrap ran on the merged manifest and found the rebuilt ' +
++    'lockfile beside it — the FROZEN check, which cannot pass before regeneration: ' +
++    JSON.stringify(order))
++  assert.ok(iRegen < iBoot,
++    '(b) [M2] and the regenerator\'s mark is BEFORE the bootstrap\'s: the regenerator runs ' +
++    'after `read-tree` of the candidate and before the #825 bootstrap. Got: ' +
++    JSON.stringify(order))
++
++  assert.deepEqual(statuses(s1.report), [['A', 'done'], ['B', 'done']],
++    '(b) [M2] and both tasks finish: ' + JSON.stringify(statuses(s1.report)))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// S2 — leg (c) [M2]: a regenerator that rewrites nothing
++// ══════════════════════════════════════════════════════════════════════════
++//
++// Same shape, but the lockfile is already equal to the regenerator's output
++// over the merged manifest: the command runs, writes the same bytes, and the
++// fold has nothing to commit.
++const S2_REGEN = 'printf "lock-v1\\n" > bun.lock'
++const S2_BOOT = 'test "$(cat bun.lock)" = "lock-v1"'
++{
++  const s2 = await simRun({
++    files: { 'package.json': PKG_BASE, 'bun.lock': 'lock-v1\n' },
++    tasks: MANIFEST_TASKS,
++    onImpl: (cwd, id) => {
++      fs.writeFileSync(path.join(cwd, 'package.json'), id === 'A' ? PKG_A : PKG_B)
++      fs.writeFileSync(path.join(cwd, 'bun.lock'), 'lock-written-by-' + id + '\n')
++    },
++    dropLockfiles: true,
++    bootstrapCmd: S2_BOOT,
++    regenerateCmd: S2_REGEN,
++  })
++
++  const regen = ofKind(s2.events, 'driver:regenerated')
++  assert.equal(regen.length, 1,
++    '(c) [M2] the regenerator ran — the candidate changed a manifest — so one ' +
++    '`driver:regenerated` is appended even though it rebuilt nothing: ' + JSON.stringify(regen))
++  assert.deepEqual(
++    { wave: regen[0].wave, cmd: regen[0].cmd, exit: regen[0].exit, paths: regen[0].paths },
++    { wave: 1, cmd: S2_REGEN, exit: 0, paths: [] },
++    '(c) [M2] and when the command changed no lockfile the event carries `paths: []`. Got: ' +
++    JSON.stringify(regen[0]))
++
++  const adopted = ofKind(s2.events, 'driver:wave-adopted')
++  assert.equal(adopted.length, 1,
++    '(c) [M2] the wave adopted once: ' + JSON.stringify(adopted) + ' from ' +
++    JSON.stringify(s2.calls))
++  const head = adopted[0].headSha
++  assert.equal(gitSync(['rev-list', '--count', s2.base + '..' + head], s2.integ), '1',
++    '(c) [M2] nothing was committed: the adopted `headSha` IS the materialized candidate — one ' +
++    'commit on the head the epoch folded onto, not two. `git log`: ' +
++    JSON.stringify(gitSync(['log', '--format=%s', s2.base + '..' + head], s2.integ)))
++  assert.doesNotMatch(gitSync(['log', '-1', '--format=%s', head], s2.integ),
++    /^wave \d+ regenerated /,
++    '(c) [M2] and no regenerated commit sits on top of it: ' +
++    JSON.stringify(gitSync(['log', '-1', '--format=%s', head], s2.integ)))
++  assert.equal(showBytes(s2.integ, head, 'bun.lock').toString(), 'lock-v1\n',
++    '(c) [M2] the adopted lockfile is the one the candidate already held')
++  assert.equal(showBytes(s2.integ, head, 'package.json').toString(), PKG_MERGED,
++    '(c) [M2] over the merged manifest')
++  assert.deepEqual(resolverLabels(s2.calls), [],
++    '(c) [M2, M4] and no resolver was dispatched: ' + JSON.stringify(s2.calls))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// S3 — leg (d) [M3]: a regenerator that exits 2
++// ══════════════════════════════════════════════════════════════════════════
++const S3_REGEN = 'echo "regen boom"; exit 2'
++{
++  const s3 = await simRun({
++    files: { 'package.json': PKG_BASE, 'bun.lock': LOCK_BASE },
++    tasks: MANIFEST_TASKS,
++    onImpl: manifestImpl,
++    dropLockfiles: true,
++    bootstrapCmd: 'true',
++    regenerateCmd: S3_REGEN,
++  })
++
++  const regen = ofKind(s3.events, 'driver:regenerated')
++  assert.equal(regen.length, 1,
++    '(d) [M3] one `driver:regenerated` for the failed run: ' + JSON.stringify(regen))
++  assert.deepEqual(
++    { wave: regen[0].wave, cmd: regen[0].cmd, exit: regen[0].exit, paths: regen[0].paths },
++    { wave: 1, cmd: S3_REGEN, exit: 2, paths: [] },
++    '(d) [M3] carrying the command\'s own exit `2` and `paths: []`. Got: ' +
++    JSON.stringify(regen[0]))
++
++  assert.deepEqual(ofKind(s3.events, 'driver:wave-adopted'), [],
++    '(d) [M3] and the epoch adopted nothing — a regenerator that exits non-zero stands in ' +
++    'place of the suite exactly as a failed bootstrap does, so the candidate is RED before a ' +
++    'reconcile is attempted: ' + JSON.stringify(ofKind(s3.events, 'driver:wave-adopted')))
++  const blocked = ofKind(s3.events, 'driver:wave-blocked')
++  assert.equal(blocked.length, 1,
++    '(d) [M3] the wave took the route a red bootstrap takes at BASE and was blocked once ' +
++    '(the sim\'s canned reconcile answers BLOCKED): ' + JSON.stringify(blocked) + ' from ' +
++    JSON.stringify(s3.calls))
++  assert.deepEqual([...blocked[0].tasks].sort(), ['A', 'B'],
++    '(d) [M3] naming both tasks of the epoch: ' + JSON.stringify(blocked[0]))
++  assert.ok(String(blocked[0].detail).includes('regen boom'),
++    '(d) [M3] and its `detail` quotes the REGENERATOR\'s own output — the candidate is red on ' +
++    'the regenerator, not on a suite that never ran. Got: ' + JSON.stringify(blocked[0].detail))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// S4 — leg (e) [M4], first half: a regenerating run that changed no manifest
++// ══════════════════════════════════════════════════════════════════════════
++const S4_ORDER = path.join(tmp, 'order-s4.log')
++{
++  const s4 = await simRun({
++    files: { 'package.json': PKG_BASE, 'bun.lock': LOCK_BASE },
++    tasks: TEXT_TASKS,
++    onImpl: textImpl,
++    dropLockfiles: true,
++    bootstrapCmd: frozenBootstrapCmd(S4_ORDER),
++    regenerateCmd: regenCmd(S4_ORDER),
++  })
++
++  assert.deepEqual(ofKind(s4.events, 'driver:regenerated'), [],
++    '(e) [M4] a fold whose candidate changed no manifest runs no regenerator and appends no ' +
++    '`driver:regenerated`: ' + JSON.stringify(ofKind(s4.events, 'driver:regenerated')))
++  const order = fs.existsSync(S4_ORDER)
++    ? fs.readFileSync(S4_ORDER, 'utf8').split('\n').filter(Boolean) : []
++  assert.deepEqual(order.filter((l) => l.startsWith('regenerate ')), [],
++    '(e) [M4] and the regenerator left no mark of its own — it was never executed: ' +
++    JSON.stringify(order))
++  assert.deepEqual(resolverLabels(s4.calls), [],
++    '(e) [M4] no `resolve:` dispatch: ' + JSON.stringify(s4.calls))
++  const adopted = ofKind(s4.events, 'driver:wave-adopted')
++  assert.equal(adopted.length, 1,
++    '(e) [M4] the wave adopted once: ' + JSON.stringify(adopted) + ' from ' +
++    JSON.stringify(s4.calls))
++  const head = adopted[0].headSha
++  assert.equal(showBytes(s4.integ, head, 'bun.lock').toString(), LOCK_BASE,
++    '(e) [M4] and the adopted `bun.lock` is byte-equal to BASE\'s')
++  assert.equal(showBytes(s4.integ, head, 'package.json').toString(), PKG_BASE,
++    '(e) [M4] over the manifest BASE had, unchanged')
++  assert.deepEqual(statuses(s4.report), [['A', 'done'], ['B', 'done']],
++    '(e) [M4] both tasks finish: ' + JSON.stringify(statuses(s4.report)))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// S5 — leg (e) [M4], second half: the same manifests with NO regenerator
++// ══════════════════════════════════════════════════════════════════════════
++//
++// No `regenerateCmd` in the args and no `dropLockfiles` on the capture: the run
++// is BASE's, and BASE's is a run whose two lockfiles contend and whose fold
++// asks a model to merge one.
++{
++  const s5 = await simRun({
++    files: { 'package.json': PKG_BASE, 'bun.lock': LOCK_BASE },
++    tasks: MANIFEST_TASKS,
++    onImpl: manifestImpl,
++    bootstrapCmd: 'true',
++  })
++
++  for (const id of ['A', 'B']) {
++    const patch = path.join(s5.patchesDir, 'task-' + id + '.patch')
++    assert.deepEqual(patchHeaders(patch), ['bun.lock', 'package.json'],
++      '(e) [M4] with no `regenerateCmd` the run drops no lockfile at capture: ' + id + '\'s ' +
++      'patch carries the `bun.lock` header. Got: ' + JSON.stringify(patchHeaders(patch)))
++  }
++  assert.deepEqual(s5.dropped, [],
++    '(e) [M4] and nothing was dropped at all: ' + JSON.stringify(s5.dropped))
++  assert.deepEqual(resolverLabels(s5.calls), ['resolve:wave1:1:1'],
++    '(e) [M4] the fold narrates the lockfile conflict and dispatches `resolve:wave1:1:1` on ' +
++    'it, exactly as at BASE: ' + JSON.stringify(s5.calls))
++  const brief = s5.prompts['resolve:wave1:1:1']
++  const conflicted = /\nHUNKS FILE: .*? \(conflicted path: ([^)]*)\)/.exec(String(brief))
++  assert.equal(conflicted && conflicted[1], 'bun.lock',
++    '(e) [M4] and the path it was briefed on is `bun.lock`: ' +
++    JSON.stringify(conflicted && conflicted[1]))
++  assert.deepEqual(ofKind(s5.events, 'driver:regenerated'), [],
++    '(e) [M4] no `driver:regenerated` is on the log of a run that carries no regenerator: ' +
++    JSON.stringify(ofKind(s5.events, 'driver:regenerated')))
++  assert.equal(ofKind(s5.events, 'driver:wave-adopted').length, 1,
++    '(e) [M4] and the wave folds with the canned resolver, as it does at BASE: ' +
++    JSON.stringify(s5.calls))
++  assert.deepEqual(statuses(s5.report), [['A', 'done'], ['B', 'done']],
++    '(e) [M4] both tasks finish: ' + JSON.stringify(statuses(s5.report)))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// S6 — leg (f) [M4]: the untouched fold path, stated in file
++// ══════════════════════════════════════════════════════════════════════════
++//
++// Leg (f) is the Proof's second `Run:`, the whole pre-review-pass sim, which
++// the DRIVER executes — this file may not spawn a sibling sim. What stands for
++// it here is the first Global Constraint said directly: a run whose tasks touch
++// no lockfile and whose fold changes no manifest, with no `regenerateCmd`
++// anywhere, runs exactly as at BASE — no regenerator, no `driver:regenerated`,
++// no resolver, and the lockfile it started with.
++{
++  const s6 = await simRun({
++    files: { 'package.json': PKG_BASE, 'bun.lock': LOCK_BASE },
++    tasks: TEXT_TASKS,
++    onImpl: textImpl,
++    bootstrapCmd: 'true',
++  })
++
++  assert.deepEqual(ofKind(s6.events, 'driver:regenerated'), [],
++    '(f) [M4] a run with no `regenerateCmd` whose fold changes no manifest appends no ' +
++    '`driver:regenerated`: ' + JSON.stringify(ofKind(s6.events, 'driver:regenerated')))
++  assert.deepEqual(resolverLabels(s6.calls), [],
++    '(f) [M4] and dispatches no resolver: ' + JSON.stringify(s6.calls))
++  assert.deepEqual(s6.dropped, [],
++    '(f) [M4] and its captures drop nothing: ' + JSON.stringify(s6.dropped))
++  const adopted = ofKind(s6.events, 'driver:wave-adopted')
++  assert.equal(adopted.length, 1,
++    '(f) [M4] the fold path a manifest-free run takes is unchanged — it adopts: ' +
++    JSON.stringify(adopted) + ' from ' + JSON.stringify(s6.calls))
++  assert.equal(showBytes(s6.integ, adopted[0].headSha, 'bun.lock').toString(), LOCK_BASE,
++    '(f) [M4] with BASE\'s lockfile still in the tree')
++  assert.deepEqual(statuses(s6.report), [['A', 'done'], ['B', 'done']],
++    '(f) [M4] and both tasks finish: ' + JSON.stringify(statuses(s6.report)))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (g) [M5] the contract — the Proof's third `Run:`, read here too
++// ══════════════════════════════════════════════════════════════════════════
++{
++  const contract = fs.readFileSync(new URL('../CONTRACT.md', import.meta.url), 'utf8')
++  assert.ok(contract.includes('driver:regenerated'),
++    '(g) [M5] `driver:regenerated` occurs in `fleet/CONTRACT.md` — every new event kind is ' +
++    'named there. At BASE it does not, which is what makes this red.')
++
++  const lines = contract.split('\n')
++  const from = lines.findIndex((l) => l.includes('An epoch is a fold, not a layer'))
++  const to = lines.findIndex((l) => l.includes('three more kinds'))
++  assert.ok(from !== -1 && to > from,
++    '(g) [M5] sim precondition — the wave-record paragraph runs from `An epoch is a fold, not ' +
++    'a layer` to the line before `three more kinds`: ' + JSON.stringify([from, to]))
++  const range = lines.slice(from, to).join(' ')
++  assert.ok(range.includes('driver:wave-adopted'),
++    '(g) [M5] sim precondition — that range is the paragraph naming `driver:wave-adopted`')
++  assert.ok(range.includes('driver:regenerated'),
++    '(g) [M5] and `driver:regenerated` is named in THAT paragraph, beside it. The range ' +
++    'reads: ' + JSON.stringify(range.slice(-1200)))
++  assert.match(range, /driver:regenerated.{0,12}\{\s*wave,\s*cmd,\s*exit,\s*paths\s*\}/,
++    '(g) [M5] with its four fields, in order — `{wave, cmd, exit, paths}`. The range reads: ' +
++    JSON.stringify(range.slice(-1200)))
++
++  // One sentence has to carry both halves of the capture rule: the leg asks
++  // that the sentence naming `capture:dropped` also name `bun.lock`.
++  const flat = contract.replace(/\s+/g, ' ')
++  const sentences = flat.split(/(?<=[.;]) /)
++  const dropSentences = sentences.filter((s) => s.includes('capture:dropped'))
++  assert.ok(dropSentences.length >= 1,
++    '(g) [M5] `fleet/CONTRACT.md` says what a patch capture drops and names it on ' +
++    '`capture:dropped`')
++  assert.ok(dropSentences.some((s) => s.includes('bun.lock')),
++    '(g) [M5] and the sentence naming `capture:dropped` also names `bun.lock`. The sentences ' +
++    'naming it read: ' + JSON.stringify(dropSentences))
++  assert.ok(dropSentences.some((s) => s.includes('regenerateCmd')),
++    '(g) [M5] and says the drop happens only in a run that carries a `regenerateCmd`: ' +
++    JSON.stringify(dropSentences))
++  assert.ok(sentences.some((s) => /regenerat/i.test(s) && s.includes('bootstrap')),
++    '(g) [M5] and one sentence says the regenerator runs before the candidate\'s bootstrap')
++  assert.ok(sentences.some((s) => /regenerat/i.test(s) && /commit/i.test(s)),
++    '(g) [M5] and one says the lockfile it writes is committed onto the candidate')
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (h) [M1] the guard — the Proof's fourth `Run:`, read here too
++// ══════════════════════════════════════════════════════════════════════════
++//
++// #1053: an exam reached by an `import` line naming a path under
++// `fleet/tests/exams/` is stripped at publish and leaves main red. This file
++// stands whole at its guarded path, and reads its own text to say so.
++{
++  const self = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n')
++  const pointers = self.filter((l) => /^import .*exams\//.test(l))
++  assert.deepEqual(pointers, [],
++    '(h) [M1] the guarded sim carries no `import` line naming a path under `exams/` — it ' +
++    'imports the engine and the sim helpers by their `fleet/tests/`-relative paths and ' +
++    'nothing else. Found: ' + JSON.stringify(pointers))
++}
++
++// The sentinel the Proof's first `Run:` greps for: printed only if every
++// assertion above held.
++console.log('ALL TESTS PASSED')
+diff --git a/skills/ultrapowers/scripts/ultra_run.py b/skills/ultrapowers/scripts/ultra_run.py
+index 53473286d511fd67a7dbb4888a227b0b34a8e65f..9ca4d5f8f4e84b0205a56646bbc3d9811c9d5a46 100755
+--- a/skills/ultrapowers/scripts/ultra_run.py
++++ b/skills/ultrapowers/scripts/ultra_run.py
+@@ -148,6 +148,40 @@ def derive_bootstrap_cmd(root):
+     return None, None
+ 
+ 
++def derive_regenerate_cmd(root):
++    """The command that rebuilds this target's lockfile from its manifests,
++    or (None, reason). File presence only, same rungs and same precedence as
++    `derive_bootstrap_cmd` — the regenerator is that ladder's unfrozen twin.
++
++    Every JS rung of the bootstrap is FROZEN (`--frozen-lockfile`, `npm ci`):
++    a worktree installs what the lockfile already says and never rewrites it,
++    which is what makes the bootstrap a clean no-op under `validate_knobs`.
++    So when several tasks in one run add packages, no bootstrap re-run can
++    reconcile their manifests — a second, deliberately unfrozen command has
++    to, from the merged manifests, at the fold (#1050). That is this.
++
++    A bare `package.json` derives nothing: there is no lockfile to rebuild
++    (its bootstrap's `--no-package-lock` says as much), and the rule still
++    names the manifest. `requirements.txt` derives nothing either, and no
++    rule with it — pip has no lockfile to regenerate. Returns (command, rule)
++    on the same shape the bootstrap ladder returns."""
++    root = Path(root)
++    if (root / "package.json").is_file():
++        if (root / "pnpm-lock.yaml").is_file():
++            return "pnpm install --no-frozen-lockfile", "pnpm-lockfile"
++        if (root / "bun.lock").is_file() or (root / "bun.lockb").is_file():
++            return "bun install", "bun-lockfile"
++        if (root / "package-lock.json").is_file():
++            return "npm install --package-lock-only", "npm-lockfile"
++        return None, "package-json"
++    if (root / "uv.lock").is_file():
++        return "uv lock", "uv-lock"
++    pyproject = root / "pyproject.toml"
++    if pyproject.is_file() and "[tool.uv" in pyproject.read_text(errors="ignore"):
++        return "uv lock", "pyproject-uv"
++    return None, None
++
++
+ LLM_DERIVES = [
+     "waves[][].tier on the args-file wave entries (slots pre-emitted as null; "
+     "the engine reads knobs ONLY from these inline entries — never a "
+@@ -159,6 +193,10 @@ LLM_DERIVES = [
+     "nothing for bootstrapCmd — driver-derived from the target's lockfile/"
+     "manifest (or the --bootstrap-cmd knob) and stamped in the args file and "
+     "receipt, so validation, the engine and the gate share one value",
++    "nothing for regenerateCmd — the lockfile regenerator is derived from the "
++    "same lockfile/manifest beside the bootstrap (and only when the bootstrap "
++    "itself was derived) and stamped in the args file and receipt; there is "
++    "no knob for it",
+     "nothing for review depth — it is plan-authored (**Review:** marker), "
+     "pre-filled on the args wave entries",
+ ]
+@@ -591,6 +629,7 @@ def main(argv=None):
+     # target's lockfile/manifest (run-66). The stage is informational — no
+     # bootstrap is a valid outcome — but its detail names what was derived
+     # and why, so a receipt can answer "why did the clones never install?".
++    regen_cmd, regen_src = None, None
+     if a.bootstrap_cmd is not None:
+         knob = a.bootstrap_cmd.strip()
+         bootstrap_cmd, boot_src = (knob, "knob") if knob else (None, "disabled")
+@@ -598,6 +637,12 @@ def main(argv=None):
+     else:
+         bootstrap_cmd, rule = derive_bootstrap_cmd(root)
+         boot_src = ("detected:" + rule) if bootstrap_cmd else None
++        # The lockfile regenerator rides the same branch (#1050): only a
++        # derived install derives one. An operator who overrides the install
++        # — or disables it — owns its lockfile, and there is no
++        # --regenerate-cmd knob to say otherwise.
++        regen_cmd, regen_rule = derive_regenerate_cmd(root)
++        regen_src = ("detected:" + regen_rule) if regen_cmd else None
+         if rule == "requirements-txt-externally-managed":
+             boot_note = ("none — requirements.txt present but the PATH python3 "
+                          "is externally managed (PEP 668)")
+@@ -610,6 +655,8 @@ def main(argv=None):
+     args_obj["testCmd"] = test_cmd
+     if bootstrap_cmd:
+         args_obj["bootstrapCmd"] = bootstrap_cmd
++    if regen_cmd:
++        args_obj["regenerateCmd"] = regen_cmd
+     args_file.write_text(json.dumps(args_obj, indent=2))
+ 
+     r = write_dirty_baseline(root)
+@@ -645,6 +692,9 @@ def main(argv=None):
+     if bootstrap_cmd:
+         receipt["bootstrapCmd"] = bootstrap_cmd
+         receipt["bootstrapCmdSource"] = boot_src
++    if regen_cmd:
++        receipt["regenerateCmd"] = regen_cmd
++        receipt["regenerateCmdSource"] = regen_src
+     (run_dir / "receipt.json").write_text(json.dumps(receipt, indent=2))
+     print(json.dumps(receipt, indent=2))
+     return 0
+diff --git a/tests/test_ultra_run_bootstrap_cmd.py b/tests/test_ultra_run_bootstrap_cmd.py
+index 22977697c90f4acfac34ffb2cfc9b4af18c9ab0e..5e84aee4bf5ac9209b9b47917dca1c8a1db049b8 100644
+--- a/tests/test_ultra_run_bootstrap_cmd.py
++++ b/tests/test_ultra_run_bootstrap_cmd.py
+@@ -27,7 +27,7 @@ SCRIPTS = ROOT / "skills/ultrapowers/scripts"
+ RUN = SCRIPTS / "ultra_run.py"
+ sys.path.insert(0, str(SCRIPTS))
+ import ultra_run  # noqa: E402
+-from ultra_run import derive_bootstrap_cmd  # noqa: E402
++from ultra_run import derive_bootstrap_cmd, derive_regenerate_cmd  # noqa: E402
+ 
+ FLEET_ENV = dict(os.environ, ULTRAPOWERS_FLEET_RUN="run-test")
+ 
+@@ -293,3 +293,170 @@ def test_derived_bootstrap_runs_in_the_probe_worktree_before_the_suite(tmp_path)
+     assert argv == "ci"
+     assert "/.claude/ultrapowers/wt-knob-" in cwd, cwd   # the probe, never the checkout
+     assert not list((repo / ".claude/ultrapowers").glob("wt-knob-*"))
++
++
++# === Task A: the launcher derives the regenerator beside the bootstrap ======
++#
++# Every JS rung of `derive_bootstrap_cmd` above is FROZEN (`--frozen-lockfile`,
++# `npm ci`), which is why rebuilding a lockfile from merged manifests is a
++# SECOND command and not the bootstrap re-run. `derive_regenerate_cmd(root)`
++# is that second ladder: the same rungs, the same precedence, file presence
++# only, returning `(command, rule)`.
++#
++# M1. `derive_regenerate_cmd(root)` answers by file presence alone, mirroring
++#     `derive_bootstrap_cmd`'s rungs and precedence.
++# M2. The preflight writes `regenerateCmd` into the args file, and
++#     `regenerateCmd` + `regenerateCmdSource` (`detected:<rule>`) into
++#     `receipt.json`, exactly when a command was derived — neither key when
++#     none was, and none derived at all when `--bootstrap-cmd ''` disabled
++#     bootstrap derivation.
++
++
++def run_dir_files(repo, stamp="t1"):
++    """The two files M2 stamps, read off disk. The leg names `receipt.json`,
++    so this reads the written receipt rather than the driver's stdout copy."""
++    run_dir = repo / ".claude/ultrapowers" / ("run-" + stamp)
++    return (json.loads((run_dir / "args.json").read_text()),
++            json.loads((run_dir / "receipt.json").read_text()))
++
++
++# --- leg (a) [M1]: the six derived rungs, one tree each ---------------------
++
++def test_regenerate_pnpm_lockfile_rung(tmp_path):
++    # [M1, leg a] package.json + pnpm-lock.yaml -> the unfrozen pnpm install.
++    (tmp_path / "package.json").write_text("{}")
++    (tmp_path / "pnpm-lock.yaml").write_text("")
++    assert derive_regenerate_cmd(tmp_path) == (
++        "pnpm install --no-frozen-lockfile", "pnpm-lockfile")
++
++
++@pytest.mark.parametrize("lockfile", ["bun.lock", "bun.lockb"])
++def test_regenerate_bun_lockfile_rung(tmp_path, lockfile):
++    # [M1, leg a] both bun lockfile spellings are the same rung: `bun install`
++    # with no --frozen-lockfile, which rewrites the lockfile from package.json.
++    (tmp_path / "package.json").write_text("{}")
++    (tmp_path / lockfile).write_text("")
++    assert derive_regenerate_cmd(tmp_path) == ("bun install", "bun-lockfile")
++
++
++def test_regenerate_npm_lockfile_rung(tmp_path):
++    # [M1, leg a] package-lock.json -> the lockfile-only npm install.
++    (tmp_path / "package.json").write_text("{}")
++    (tmp_path / "package-lock.json").write_text("{}")
++    assert derive_regenerate_cmd(tmp_path) == (
++        "npm install --package-lock-only", "npm-lockfile")
++
++
++def test_regenerate_uv_lock_rung(tmp_path):
++    # [M1, leg a] no package.json, uv.lock present -> `uv lock`.
++    (tmp_path / "uv.lock").write_text("")
++    assert derive_regenerate_cmd(tmp_path) == ("uv lock", "uv-lock")
++
++
++def test_regenerate_pyproject_tool_uv_rung(tmp_path):
++    # [M1, leg a] a pyproject carrying [tool.uv] is a uv project even with no
++    # uv.lock yet — the same `[tool.uv` sniff the bootstrap ladder uses.
++    (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n[tool.uv]\n")
++    assert derive_regenerate_cmd(tmp_path) == ("uv lock", "pyproject-uv")
++
++
++# --- leg (b) [M1]: the rows that derive no command -------------------------
++
++def test_regenerate_bare_package_json_derives_nothing_but_names_the_rule(tmp_path):
++    # [M1, leg b] a lockfile-less package.json has no lockfile to rebuild —
++    # the bootstrap's own `--no-package-lock` rung says as much. The rule is
++    # still named, so a receipt could answer why nothing was derived.
++    (tmp_path / "package.json").write_text("{}")
++    assert derive_regenerate_cmd(tmp_path) == (None, "package-json")
++
++
++def test_regenerate_empty_tree_derives_nothing(tmp_path):
++    # [M1, leg b] no manifest at all: both halves None.
++    assert derive_regenerate_cmd(tmp_path) == (None, None)
++
++
++def test_regenerate_requirements_txt_tree_derives_nothing(tmp_path):
++    # [M1, leg b] requirements.txt is not a lockfile and pins no resolution —
++    # it is a (None, None) tree here even though the bootstrap ladder has a
++    # requirements rung. No PEP 668 probe is involved on this ladder.
++    (tmp_path / "requirements.txt").write_text("requests\n")
++    assert derive_regenerate_cmd(tmp_path) == (None, None)
++
++
++# --- leg (c) [M1]: precedence, the same order as the bootstrap ladder -------
++
++def test_regenerate_js_precedence_mirrors_the_bootstrap_ladder(tmp_path):
++    """[M1, leg c] pnpm over bun over npm — the same order
++    `derive_bootstrap_cmd` answers on the same trees, so a tree carrying two
++    lockfiles regenerates with the runner it installs and tests under."""
++    (tmp_path / "package.json").write_text("{}")
++    (tmp_path / "pnpm-lock.yaml").write_text("")
++    (tmp_path / "bun.lock").write_text("")
++    (tmp_path / "package-lock.json").write_text("{}")
++    assert derive_regenerate_cmd(tmp_path) == (
++        "pnpm install --no-frozen-lockfile", "pnpm-lockfile")
++    assert derive_regenerate_cmd(tmp_path)[1] == derive_bootstrap_cmd(tmp_path)[1]
++
++    (tmp_path / "pnpm-lock.yaml").unlink()
++    assert derive_regenerate_cmd(tmp_path) == ("bun install", "bun-lockfile")
++    assert derive_regenerate_cmd(tmp_path)[1] == derive_bootstrap_cmd(tmp_path)[1]
++
++
++# --- legs (d) and (e) [M2]: what the preflight stamps -----------------------
++
++def test_preflight_stamps_the_derived_regenerate_cmd(tmp_path):
++    """[M2, leg d] a repository carrying package.json and bun.lock: the args
++    file gets `regenerateCmd` (the key `fleet/run-engine.mjs` reads as
++    `args.regenerateCmd`, beside `args.bootstrapCmd`), and receipt.json gets
++    `regenerateCmd` with `regenerateCmdSource` naming the rule."""
++    repo = make_repo(tmp_path, {"package.json": "{}", "bun.lock": ""})
++    r = run_driver(repo, "--test-cmd", "true")
++    assert r.returncode == 0, r.stdout + r.stderr
++    args, receipt = run_dir_files(repo)
++    assert args["regenerateCmd"] == "bun install"
++    assert receipt["regenerateCmd"] == "bun install"
++    assert receipt["regenerateCmdSource"] == "detected:bun-lockfile"
++    # ...beside, not instead of, the frozen bootstrap this run still installs with.
++    assert receipt["bootstrapCmd"] == "bun install --frozen-lockfile"
++
++
++def test_preflight_stamps_no_regenerate_cmd_without_a_lockfile(tmp_path):
++    """[M2, leg e] a requirements.txt-only repository derives no regenerator,
++    so neither key is written into either file."""
++    repo = make_repo(tmp_path, {"requirements.txt": "requests\n"})
++    r = run_driver(repo, "--test-cmd", "true")
++    assert r.returncode == 0, r.stdout + r.stderr
++    args, receipt = run_dir_files(repo)
++    assert "regenerateCmd" not in args
++    assert "regenerateCmd" not in receipt
++    assert "regenerateCmdSource" not in receipt
++
++
++def test_preflight_stamps_no_regenerate_cmd_for_a_bare_package_json(tmp_path):
++    """[M2] the discriminating row for "exactly when a command was derived":
++    a bare package.json DOES derive a bootstrap (`npm install
++    --no-package-lock`) and does NOT derive a regenerator, so the regenerator
++    keys cannot ride on the bootstrap's own truth guard."""
++    repo = make_repo(tmp_path, {"package.json": "{}"})
++    r = run_driver(repo, "--test-cmd", "true")
++    assert r.returncode == 0, r.stdout + r.stderr
++    args, receipt = run_dir_files(repo)
++    assert receipt["bootstrapCmd"] == "npm install --no-package-lock"
++    assert "regenerateCmd" not in args
++    assert "regenerateCmd" not in receipt
++    assert "regenerateCmdSource" not in receipt
++
++
++@pytest.mark.parametrize("knob", ["", "   "])
++def test_disabled_bootstrap_derives_no_regenerate_cmd(tmp_path, knob):
++    """[M2, leg e] `--bootstrap-cmd ''` disables bootstrap derivation, and no
++    regenerator is derived or written either — the operator who overrides the
++    install owns its lockfile."""
++    repo = make_repo(tmp_path, {"package.json": "{}", "bun.lock": ""})
++    r = run_driver(repo, "--test-cmd", "true", "--bootstrap-cmd", knob)
++    assert r.returncode == 0, r.stdout + r.stderr
++    args, receipt = run_dir_files(repo)
++    assert "bootstrapCmd" not in receipt
++    assert "regenerateCmd" not in args
++    assert "regenerateCmd" not in receipt
++    assert "regenerateCmdSource" not in receipt

@@ -1,0 +1,33 @@
+{
+  "engineHead": "13310e911939f7113875c01df98a5332f62ec04f",
+  "attempts": {
+    "1": {
+      "tip": "996975b0971c2f2e533e0585223f230334ef76f7",
+      "candidate": "a7d76a86fb758ccf0d42be883fa5c16bc0546e19",
+      "disposition": "folded",
+      "pathsJoined": 2,
+      "resolversDispatched": 0,
+      "suite": "pass",
+      "checks": [
+        {
+          "check": "parse",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_nul_guard.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_lockfile_regen.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "pass"
+        }
+      ],
+      "checkRetries": 0
+    }
+  }
+}
