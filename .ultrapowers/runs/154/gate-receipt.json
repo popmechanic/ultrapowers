@@ -1,0 +1,56 @@
+{
+  "mode": "gate",
+  "stamp": "run-154",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-154/report.json",
+  "branch": "ultra/integration-run-154",
+  "gateCheck": {
+    "verdict": "PASS",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [],
+    "notes": [],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 0,
+  "suite": {
+    "passed": true,
+    "unattributed": [],
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-154/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [276 items]\n\n........................................................................ [ 26%]\n........................................................................ [ 52%]\n........................................................................ [ 78%]\n............................................................             [100%]\n======================== 276 passed in 83.58s (0:01:23) ========================\n"
+  },
+  "verdict": "PASS"
+}

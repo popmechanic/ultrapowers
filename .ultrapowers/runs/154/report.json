@@ -1,0 +1,134 @@
+{
+  "integrationBranch": "ultra/integration-run-154",
+  "baseSha": "e245b71ce9370e6d32ce0cc7277694cef592fec4",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "de015dc9af150dfa2d7da4c485cad4086563d8bd",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-154/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "landedAt": 1789527776371,
+      "stateExams": []
+    },
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "d76de39eb9607e09f70b1bb4c291d0e51e5e6dc0",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-154/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "landedAt": 1789527779170,
+      "stateExams": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "28cfba559f16dfe4c1807ded4be5e1dbb9c629ba",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-154/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "Style, not correctness: row 3 carries two measurement parentheticals in one sentence and repeats its scope \u2014 \"(measured: 5\u20137 files, 13\u201320 pins across three plans)\" and then \"(measured across the three plans of the #867 trio, popmechanic/tinyapp-fixture, 2026-09-15)\". The section's register (the `Two rules here are measured, not guessed.` paragraph at lines 189\u2013195, and the `run-7 parked` sentence) states a measurement once and closes with the run. Both parentheticals are prescribed by the task's Context, so this is faithful transcription rather than a divergence, and every M1 anchor still lands if the second one is tightened to the run alone \u2014 `\u2026 round-trips byte-identical (the #867 trio, popmechanic/tinyapp-fixture, 2026-09-15).` \u2014 because `three plans` is already satisfied by `across three plans` earlier in the required order. Advisory only; the exam is green as written.; concern: Row 3's proof leg is locale-sensitive and nothing in the row's text says so. The grep matches the en dashes in `5-7 files, 13-20 pins` with `.`, which spans a 3-byte en dash only under a UTF-8 locale. It is green in this tree (C.UTF-8) and I kept the en dashes because the task text is explicit that they are the issue's and that the Run: matches them with `.` \u2014 but the identical leg run under LC_ALL=C exits 1. Recorded on the kata issue so a future red there is read as a locale, not as a missing row.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "landedAt": 1789527854615,
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-154/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [276 items]\n\n........................................................................ [ 26%]\n........................................................................ [ 52%]\n........................................................................ [ 78%]\n............................................................             [100%]\n======================== 276 passed in 83.58s (0:01:23) ========================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/roles/reviewer.md fleet/roles/implementer.md fleet/roles/fix.md fleet/roles/resolver.md fleet/roles/reconcile.md skills/ultrapowers skills/ultrawrite/SKILL.md fleet/tests",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 135663,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-154/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [276 items]\n\n........................................................................ [ 26%]\n........................................................................ [ 52%]\n........................................................................ [ 78%]\n............................................................             [100%]\n======================== 276 passed in 83.73s (0:01:23) ========================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "35a7d35c3fc673e929e0cd702d2135d28ce5456c",
+      "branches": [
+        "2",
+        "1",
+        "3"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-154/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-154/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.613,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 3,
+    "tasks_planned": 3,
+    "complete": true
+  },
+  "engineCoverage": null,
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 3: Row 3's proof leg is locale-sensitive and nothing in the row's text says so. The grep matches the en dashes in `5-7 files, 13-20 pins` with `.`, which spans a 3-byte en dash only under a UTF-8 locale. It is green in this tree (C.UTF-8) and I kept the en dashes because the task text is explicit that they are the issue's and that the Run: matches them with `.` \u2014 but the identical leg run under LC_ALL=C exits 1. Recorded on the kata issue so a future red there is read as a locale, not as a missing row."
+  ],
+  "amendments": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
