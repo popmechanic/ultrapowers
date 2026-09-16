@@ -46,3 +46,16 @@
 {"kind":"worker:end","label":"review:A:1","role":"reviewer","sessionId":"b5fafa93-3e82-4d8d-a95c-03872107b020","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":6166,"output":24075,"cacheRead":2291637,"cacheCreation":94401,"costUsd":2.7225335,"models":["claude-opus-5"]},"id":"01M2NERJ9F0000HMN2YYB1AZC1","ts":1789574007087}
 {"kind":"transcript:slice","label":"review:A:1","sessionId":"b5fafa93-3e82-4d8d-a95c-03872107b020","bytes":11483,"id":"01M2NERJA000008QPTP0QTABRT","ts":1789574007104}
 {"kind":"engine:phase","phase":"Wave 1","id":"01M2NERJD20000NMEMA3G0EA5G","ts":1789574007202}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["A","B"],"headSha":"d6c5eb20b1e764e21628219053850380e5545a11","why":"end","applied":{"A":"base","B":"base"},"id":"01M2NEV4TA0000CDVVSTB0S1TF","ts":1789574091594}
+{"kind":"driver:integrated-clean","wave":1,"removed":7,"id":"01M2NEV4TF00008W1VSQ00CZ0G","ts":1789574091599}
+{"kind":"driver:integrated-check","cmd":"node fleet/tests/test_run_engine_review_economy.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"minor":false,"wave":1,"id":"01M2NEV9NB000035KXHXA7X4H2","ts":1789574096555}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/roles/","exit":0,"minor":false,"wave":1,"id":"01M2NEV9NM0000MQEFVZBPTZVG","ts":1789574096564}
+{"kind":"driver:integrated-check","cmd":"node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"minor":false,"wave":1,"id":"01M2NEV9YN0000TVE0H8SZ3PVV","ts":1789574096853}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2NEWSZV0000T348SQG5T4JZ","ts":1789574146043}
+{"kind":"driver:stage","stage":"finalize","id":"01M2NEWT1Z000044WBABKN9HA6","ts":1789574146111}
+{"kind":"driver:stage","stage":"gate","id":"01M2NEWT3V0000FN3EMM9G51DZ","ts":1789574146171}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M2NEWT6A000038SQ1JQD1XET","ts":1789574146250}
+{"kind":"driver:stage","stage":"approve","id":"01M2NEWT6B0000A8MXV2S6YH0X","ts":1789574146251}
+{"kind":"driver:approved","stamp":"run-160","integrationBranch":"ultra/integration-run-160","id":"01M2NEWT7X00009G80SYPWYC2R","ts":1789574146301}
+{"kind":"run:open","runId":"run-160","base":"80c0ef304c0410332180ee58e33a68ac8438bc0a","source":"fleet/publish-fold.mjs","id":"01M2NEWVER0000MQK6BHK1F8YM","ts":1789574147544}
+{"kind":"driver:publish-fold","run":"160","attempt":"1","base":"80c0ef304c0410332180ee58e33a68ac8438bc0a","tip":"80c0ef304c0410332180ee58e33a68ac8438bc0a","candidate":"d6c5eb20b1e764e21628219053850380e5545a11","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M2NEWXA300003617G5G5MW33","ts":1789574149443}
