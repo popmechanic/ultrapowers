@@ -35,6 +35,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+// The state handshake's fact carries a `sha256` over the post's canonical JSON
+// (#998 ticket 5): the record says WHICH state a task reached, not only that it
+// reached one, and a digest is what makes two readings of one post comparable.
+import { createHash } from 'node:crypto'
 // The run's event log lives in run-waves.mjs; the engine borrows its ULID
 // stamp so the driver's own records sort with the worker envelopes rather
 // than beside them (readers order by id, never by line — run-waves.mjs).
@@ -587,6 +591,110 @@ export const stateExamBlock = (rows) => {
     rows.map((r) => '\n- ' + r.exam + ': mutant ' +
       String(r.mutant_path || '') + ' killed: true').join('')
 }
+// ── the state handshake (#998 ticket 5, #811 decisions 2 and 7) ─────────────
+// One fact travels between two tasks of a run: the state a producer actually
+// reached. Its implementer posts it on that task's OWN issue, as the single
+// metadata key `state.reached`, whose value is
+// `{"expected": "<path under state-exams/expected/>", "content": [tables,
+// values]}` — the `getContent()` pair of the file `expected` names. kata has no
+// fact kinds, so the shape is refused HERE, by the driver, rather than trusted:
+// a value that is not that shape is never written as a seed and never recorded
+// as a fact.
+//
+// `state-exams/expected/` is where a plan pins the states its exams assert
+// (`skills/ultrawrite/references/greenfield-stack.md`), so a post naming a path
+// anywhere else is naming something that is not an expected state.
+const HANDSHAKE_ROOT = 'state-exams/expected/'
+// The flat key kata stores `kata meta set <ref> state.reached --json-value …`
+// under — the same reading `work.attention` gets above (measured on the hub
+// 2026-09-13: `show --json` answers the dotted key flat). A client that expands
+// dotted keys into a nested object is the fallback, never the reading.
+const handshakeRawOf = (issue) => {
+  const meta = (issue && issue.metadata && typeof issue.metadata === 'object')
+    ? issue.metadata : {}
+  if (meta['state.reached'] !== undefined) return meta['state.reached']
+  const nested = (meta.state && typeof meta.state === 'object') ? meta.state : {}
+  return nested.reached
+}
+// Which half of a post is malformed, or `null` when it is well-formed: an
+// object whose `expected` is a string under `state-exams/expected/` and whose
+// `content` is an array of exactly two elements. `expected` is read first, so a
+// value that is not an object at all is reported as its missing path.
+export const handshakeFault = (raw) => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return 'expected'
+  if (typeof raw.expected !== 'string' || !raw.expected.startsWith(HANDSHAKE_ROOT)) {
+    return 'expected'
+  }
+  if (!Array.isArray(raw.content) || raw.content.length !== 2) return 'content'
+  return null
+}
+// The `Produces:` contract: a task's issue in, its well-formed post out, `null`
+// for an issue that carries none AND for one whose post is malformed — the
+// caller that has to tell those two apart asks `handshakeRawOf`/`handshakeFault`.
+export const handshakeOf = (issue) => {
+  const raw = handshakeRawOf(issue)
+  if (handshakeFault(raw) !== null) return null
+  return { expected: raw.expected, content: raw.content }
+}
+// `JSON.stringify` with keys sorted at every level: the canonical text the
+// post's `sha256` is taken over, and the equality the comparison below uses.
+// Two posts that differ only in key order are the same state.
+export const canonicalJson = (v) => {
+  if (Array.isArray(v)) return '[' + v.map(canonicalJson).join(',') + ']'
+  if (v && typeof v === 'object') {
+    return '{' + Object.keys(v).sort()
+      .map((k) => JSON.stringify(k) + ':' + canonicalJson(v[k])).join(',') + '}'
+  }
+  return JSON.stringify(v === undefined ? null : v)
+}
+export const handshakeSha = (content) =>
+  createHash('sha256').update(canonicalJson(content)).digest('hex')
+// One cell, as a finding reads it. A cell is a string, a number or a boolean
+// (TinyBase's own vocabulary), so it is spelled bare; a side that has no cell
+// at all is `absent`, which is a difference a mutant makes too.
+const handshakeCellText = (v) => {
+  if (v === undefined) return 'absent'
+  const t = typeof v
+  if (t === 'string' || t === 'number' || t === 'boolean') return String(v)
+  return JSON.stringify(v)
+}
+const objectOf = (v) => ((v && typeof v === 'object' && !Array.isArray(v)) ? v : {})
+const unionKeys = (a, b) => [...new Set([...Object.keys(objectOf(a)), ...Object.keys(objectOf(b))])].sort()
+// The FIRST cell where the post and the file disagree, rendered as
+// `<table>/<row>/<cell> got <posted> wanted <file>` — `got` is what the
+// producer posted, `wanted` is what its own expected file holds. Tables are
+// walked in sorted order at every level, so "first" is a fact about the pair
+// and not about whichever key order a JSON writer happened to use. A pair that
+// agrees on every cell but differs in its second element (the store's VALUES)
+// is named the same way under `values`; a pair that agrees everywhere the walk
+// can see returns `null`, which is the caller's signal that the difference is
+// structural rather than a cell's.
+export const firstDifferingCell = (posted, file) => {
+  const [pTables, pValues] = Array.isArray(posted) ? posted : []
+  const [fTables, fValues] = Array.isArray(file) ? file : []
+  for (const table of unionKeys(pTables, fTables)) {
+    const pRows = objectOf(objectOf(pTables)[table])
+    const fRows = objectOf(objectOf(fTables)[table])
+    for (const row of unionKeys(pRows, fRows)) {
+      const pCells = objectOf(pRows[row])
+      const fCells = objectOf(fRows[row])
+      for (const cell of unionKeys(pCells, fCells)) {
+        if (canonicalJson(pCells[cell]) === canonicalJson(fCells[cell])) continue
+        return table + '/' + row + '/' + cell +
+          ' got ' + handshakeCellText(pCells[cell]) +
+          ' wanted ' + handshakeCellText(fCells[cell])
+      }
+    }
+  }
+  for (const name of unionKeys(pValues, fValues)) {
+    const p = objectOf(pValues)[name]
+    const f = objectOf(fValues)[name]
+    if (canonicalJson(p) === canonicalJson(f)) continue
+    return 'values/' + name + ' got ' + handshakeCellText(p) + ' wanted ' + handshakeCellText(f)
+  }
+  return null
+}
+
 // ── #887 — the join: which paths two of a wave's tasks both touched ──────────
 //
 // Re-running every merged task's `Run:` on the fold asks most tasks a question
@@ -1365,6 +1473,98 @@ export async function runEngine({
     // the run, on the task's issue when the event names a task the record
     // knows, and on the run's issue otherwise (`kataUidFor`).
     mirrorToHub(e, line)
+  }
+
+  // ── the state handshake, the driver's two reads (#998 ticket 5) ───────────
+  // The producer's implementer posts the state it reached on its own issue
+  // while it works; the driver reads that post twice. Once for the CONSUMER —
+  // the post becomes a seed file in the clones the consumer's exam runs in —
+  // and once for the PRODUCER, at its own pre-review pass, where the post is
+  // held against the expected file the patch itself carries.
+  //
+  // Neither read can be the Setup read (`kataIssues`): that answer was taken
+  // before any worker ran, so it cannot carry a fact a worker wrote. Both are
+  // fresh, and both go through `kataCall` — a read the hub refuses is one
+  // `kata:write-failed` and a task with no post, never the run's failure.
+  const readStateReached = async (taskId) => {
+    const row = kataOn ? kataRowOf(taskId) : null
+    if (!row) return null
+    await drainKataPosts()
+    const issue = await kataCall('getissue', null, () => kata.getIssue(row.uid))
+    const raw = issue ? handshakeRawOf(issue) : undefined
+    if (raw === undefined) return { raw: undefined, post: null, fault: null }
+    return { raw, post: handshakeOf(issue), fault: handshakeFault(raw) }
+  }
+  // Every fact is an event (spec §3.5), and every post the driver reads is one
+  // `fact:state.reached` — once. A post read at both ends (the producer's pass
+  // and its consumer's seeding) is ONE post and one line: the dedup key is the
+  // producing task and the digest, so a producer that re-posts a different
+  // state appends a second line and a re-read of the same state appends none.
+  const handshakeFacts = new Set()
+  const noteHandshakeFact = (taskId, post) => {
+    const sha256 = handshakeSha(post.content)
+    const key = taskId + '|' + sha256
+    if (handshakeFacts.has(key)) return sha256
+    handshakeFacts.add(key)
+    appendEvent({ kind: 'fact:state.reached', task: taskId, expected: post.expected, sha256 })
+    return sha256
+  }
+  // The pair a consumer could not be seeded from: one line per (consumer,
+  // producer), whatever brings the driver past it a second time.
+  const handshakeAbsences = new Set()
+  const noteHandshakeAbsent = (taskId, producer) => {
+    const key = taskId + '|' + producer
+    if (handshakeAbsences.has(key)) return
+    handshakeAbsences.add(key)
+    appendEvent({ kind: 'handshake:absent', task: taskId, producer })
+  }
+  // The producer's post agreeing with its own expected file, once per state.
+  const handshakeSettlements = new Set()
+  const noteHandshakeSettled = (taskId, post, sha256) => {
+    const key = taskId + '|' + sha256
+    if (handshakeSettlements.has(key)) return
+    handshakeSettlements.add(key)
+    appendEvent({ kind: 'handshake:settled', task: taskId, expected: post.expected })
+  }
+  // ── the driver's own findings, per task ───────────────────────────────────
+  // A finding the DRIVER raised rather than a referee: `{severity, actor,
+  // detail}`, the shape a reviewer's issue has, distinct by detail, in the
+  // order they were raised. They ride the task's report row as `findings`, so a
+  // reader sees what the driver held against a task without reading the fix
+  // round's prompt back out of a transcript. Empty on every task that has none,
+  // which is every task of a run with no handshake.
+  const taskFindings = new Map()
+  const findingsOf = (taskId) => (taskFindings.get(taskId) || []).map((f) => ({ ...f }))
+  const raiseFinding = (taskId, finding) => {
+    const held = taskFindings.get(taskId) || []
+    if (held.some((f) => f.detail === finding.detail)) return
+    held.push(finding)
+    taskFindings.set(taskId, held)
+    appendEvent({ kind: 'handshake:finding', task: taskId,
+                  severity: finding.severity, actor: finding.actor, detail: finding.detail })
+  }
+  // The run's dependency edges as pairs, whichever spelling the run was given:
+  // `args.edges` when the caller supplied the pairs (and re-edges appended to
+  // them), and the `<a> -> <b>` strings of `dependencyEdges` otherwise. Both
+  // name the same graph, and a consumer's producers are the `a` of every edge
+  // pointing at it.
+  const handshakeProducersOf = (id) => {
+    const out = []
+    const seen = new Set()
+    const take = (a, b) => {
+      if (b !== id || a === id || seen.has(a)) return
+      seen.add(a)
+      out.push(a)
+    }
+    for (const [a, b] of EDGES) take(String(a), String(b))
+    if (!out.length) {
+      for (const line of dependencyEdges) {
+        const parts = String(line).split('->')
+        if (parts.length !== 2) continue
+        take(parts[0].trim(), parts[1].trim())
+      }
+    }
+    return out
   }
 
   // ── the task's issue, read once (#913, moved to Setup by #383) ─────────────
@@ -2337,6 +2537,60 @@ export async function runEngine({
     // (Amendment 10) — no prompt asks anyone to run git or report a sha.
     const cloneDir = path.join(clonesDir, 'task-' + task.id)
     const examDir = path.join(clonesDir, 'exam-' + task.id)
+    // ── the seed this task's exam is handed (#998 ticket 5) ─────────────────
+    // What this task CONSUMES FROM, and what each of those producers posted as
+    // the state it reached. Read once per dispatch, from the hub, and written
+    // into every clone an exam command of this task can run in — the graded
+    // clone and the examiner's — before any of them runs one. A producer whose
+    // issue carries no post seeds nothing and is recorded as the absence it is;
+    // a post whose shape the driver refuses (M5) seeds nothing either, and is
+    // answered at that producer's own pre-review pass rather than here.
+    let handshakeSeedsRead = null
+    const handshakeSeeds = async () => {
+      if (handshakeSeedsRead) return handshakeSeedsRead
+      const seeds = []
+      for (const producer of (kataOn ? handshakeProducersOf(task.id) : [])) {
+        const read = await readStateReached(producer)
+        if (!read || read.raw === undefined) {
+          noteHandshakeAbsent(task.id, producer)
+          continue
+        }
+        if (!read.post) continue
+        noteHandshakeFact(producer, read.post)
+        seeds.push([producer, read.post])
+      }
+      handshakeSeedsRead = seeds
+      return seeds
+    }
+    // A seed is run-local state in a working tree the driver also captures a
+    // patch from, so the directory is excluded in the clone's own git config
+    // before anything is written into it: `patchAgainstBase` stages with
+    // `add -A`, and a seed that reached the index would ride the patch into the
+    // fold and out to the target. The exclude file is the one place to say so
+    // that edits nothing the worker can see.
+    const excludeSeeds = (dir) => {
+      try {
+        const gitDir = path.join(dir, '.git')
+        if (!fs.statSync(gitDir).isDirectory()) return
+        const file = path.join(gitDir, 'info', 'exclude')
+        const line = 'state-exams/posted/'
+        let text = ''
+        try { text = fs.readFileSync(file, 'utf8') } catch { /* no file yet */ }
+        if (text.split('\n').includes(line)) return
+        fs.mkdirSync(path.dirname(file), { recursive: true })
+        fs.appendFileSync(file, (text && !text.endsWith('\n') ? '\n' : '') + line + '\n')
+      } catch { /* the seed is still written; the exclude is a courtesy */ }
+    }
+    const seedHandshake = async (dir) => {
+      const seeds = await handshakeSeeds()
+      if (!seeds.length) return
+      excludeSeeds(dir)
+      for (const [producer, post] of seeds) {
+        const f = path.resolve(dir, 'state-exams', 'posted', producer + '.json')
+        fs.mkdirSync(path.dirname(f), { recursive: true })
+        fs.writeFileSync(f, JSON.stringify(post.content))
+      }
+    }
     // `git hash-object` on the path as it stands in a clone; an absent path is
     // recorded as null, which is itself a value the drift check compares
     // (creating a path the examiner declined to write IS an edit).
@@ -2421,6 +2675,11 @@ export async function runEngine({
       fs.rmSync(examDir, { recursive: true, force: true })
       cloneAtBase({ repo: await cloneSourceFor(baseShaForTask), dest: examDir,
                     base: baseShaForTask })
+      // The seed goes in with the clone, every time one is cut: the examiner's
+      // at-BASE probe is the FIRST exam command this task runs, and the
+      // re-cut a dead examiner buys (#762) must not open its eyes on a tree
+      // that lost it.
+      await seedHandshake(examDir)
     }
     const bootstrapExamClone = async () => {
       if (!bootstrapCmd) return
@@ -2449,6 +2708,10 @@ export async function runEngine({
       await bootstrapExamClone()
       return true
     })()
+    // …and into the graded clone, before the pair is dispatched: every exam
+    // command that runs there — the pre-review pass's, and the repeat after the
+    // repair round — reads the state its producers reached.
+    await seedHandshake(cloneDir)
     // The Proof paths whose blob no longer matches what the examiner left.
     const examDrift = async () => {
       if (!examBlobs) return []
@@ -2838,6 +3101,49 @@ export async function runEngine({
     // A red exam is a red of the same standing as a red `Run:`: the Proof's
     // `Test:` paths are the task's contract just as its `Run:` commands are.
     const EXAM_FAIL = (e) => 'the Proof\'s exam failed: ' + e.cmd + ' — exit ' + e.exit
+    // ── the producer's post, against its own expected file (#998 ticket 5) ──
+    // A task that posted the state it reached is held to it at the same pass
+    // that runs its `Run:` commands: the file its patch carries at `expected`
+    // is read out of the graded clone — the tree the captured patch describes —
+    // and compared with what was posted. Agreement is a fact on the record and
+    // nothing else. A disagreement is ONE blocking finding on this task, actor
+    // `implementer`, and it buys the `fix:<id>:0` round every other red of this
+    // pass buys: the producer is the one party that can move either side, and
+    // the differing cell is named so the round knows which one to move. A post
+    // the driver refuses on shape (M5) is the same finding naming the field —
+    // never a cell comparison, and never a fact.
+    const HANDSHAKE = (detail) => 'handshake: ' + detail
+    const handshakeCheck = async () => {
+      if (!kataOn) return null
+      const read = await readStateReached(task.id)
+      if (!read || read.raw === undefined) return null
+      const fail = (detail, stdout = '') => {
+        const finding = { severity: 'blocking', actor: 'implementer', detail: HANDSHAKE(detail) }
+        raiseFinding(task.id, finding)
+        return { line: finding.detail, stdout }
+      }
+      const posted = tail('state.reached: ' + canonicalJson(read.raw), 2000)
+      if (!read.post) {
+        return fail('state.reached ' + (read.fault === 'content'
+          ? 'content is not an array of exactly two elements'
+          : 'expected is not a path under ' + HANDSHAKE_ROOT), posted)
+      }
+      const sha256 = noteHandshakeFact(task.id, read.post)
+      const at = path.resolve(cloneDir, read.post.expected)
+      if (!fs.existsSync(at)) {
+        return fail(read.post.expected + ' is absent from the captured tree', posted)
+      }
+      let onDisk
+      try { onDisk = JSON.parse(fs.readFileSync(at, 'utf8')) } catch {
+        return fail(read.post.expected + ' is not readable JSON', posted)
+      }
+      if (canonicalJson(onDisk) === canonicalJson(read.post.content)) {
+        noteHandshakeSettled(task.id, read.post, sha256)
+        return null
+      }
+      return fail(firstDifferingCell(read.post.content, onDisk) ||
+        (read.post.expected + ' is not the [tables, values] pair that was posted'), posted)
+    }
     // #713 Task 1: the pass's evidence is KEPT, not discarded. Round 1 reads
     // the tree the pass measured — no fix stands between them — so executing
     // again would record the same commands twice and bill the clone for it.
@@ -2861,6 +3167,10 @@ export async function runEngine({
         if (c.minor) { noteMinorCheck(c); continue }
         reds.push({ line: CHECK_FAIL(c), stdout: c.stdout })
       }
+      // Last, after the commands: the post is a claim about the tree those
+      // commands just read, so it is judged against the tree they left.
+      const handshake = await handshakeCheck()
+      if (handshake) reds.push(handshake)
       return reds
     }
     // The fix round's `exam:` entries, when they bought the review round below
@@ -4744,8 +5054,12 @@ export async function runEngine({
   // not finish. `[]` when the task's exam wrote nothing (which is every task
   // whose exam is not a state exam), so the row a reader knew is unchanged
   // apart from the new key.
+  // …and its driver-raised findings beside it (#998 ticket 5): what the DRIVER
+  // held against the task, `{severity, actor, detail}` per entry, distinct by
+  // detail and in the order they were raised. `[]` on every task that has none,
+  // which is every task of a run with no state handshake.
   const taskRows = taskResults.map((r) => ((r && typeof r === 'object')
-    ? { ...r, stateExams: stateExamsOf(runDirAbs, r.task) }
+    ? { ...r, stateExams: stateExamsOf(runDirAbs, r.task), findings: findingsOf(r.task) }
     : r))
 
   // ── the hub's last word (#913) ────────────────────────────────────────────

@@ -217,6 +217,32 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   suite, the integrated `Run:`/`Check:` pass and the pre-merge gate all run on it unchanged. The integrated `Run:` receives `ULTRA_TASK` and
   `ULTRA_EXAM_PASS=integrated` and no `ULTRA_RUN_DIR` — the run directory is the driver's, not the
   fold's; the integrated `Check:` receives only `ULTRA_BASE`; and the suite receives none of the four.
+- **State handshake:** a task that reaches a state its consumers are examined against posts it on
+  its own kata issue, as the single metadata key `state.reached` with
+  `{"expected":"<path under state-exams/expected/>","content":[tables, values]}` — the pair
+  `getContent()` answers, beside the snapshot the task left in its tree. The driver reads that post
+  twice and writes nothing to it. Once for each consumer, before that consumer's exam command first
+  runs: for every producer the run's dependency edges point from, one `getIssue` of the producer's
+  recorded uid (a fresh read — the Setup pass's read predates every worker, so it cannot carry a
+  fact a worker wrote), and a well-formed value's `content` is written as JSON to
+  `state-exams/posted/<producer id>.json` in both the consumer's task clone and its examiner's
+  clone, each clone's `.git/info/exclude` first taking `state-exams/posted/` so a seed never rides
+  the captured patch. A producer carrying no post seeds nothing and is one
+  `handshake:absent {task, producer}` event. Once more at the producer's own pre-review pass, after
+  its `Run:`/`Check:` commands: the file `expected` names is read from the tree the captured patch
+  describes and compared with `content` — equal is one `handshake:settled {task, expected}` event
+  and nothing else; unequal is one `blocking` finding with `actor` `implementer` whose detail is
+  `handshake: <table>/<row>/<cell> got <posted> wanted <file>`, routed to `fix:<id>:0` like any
+  blocking finding, and an `expected` the patch does not carry is that same finding naming the
+  path. Well-formed is exactly an object whose `expected` is a string under `state-exams/expected/`
+  and whose `content` is an array of two elements; anything else seeds nothing and raises the same
+  finding naming the field that is wrong (`content` or `expected`) rather than a cell. Every post
+  the driver reads is one `fact:state.reached {task, expected, sha256}` event, the digest taken over
+  the canonical JSON (keys sorted at every level) of `content`, and a post read at both ends is
+  still one event. A run whose issues carry no post writes no file, appends no `fact:state.reached`
+  and no `handshake:settled`, and dispatches the prompts it dispatched before the handshake existed;
+  a run without `--kata` also makes no `getIssue` for it. The findings a task collected this way
+  ride its `report.json` row as `tasks[].findings`, `[]` when it collected none.
 - **Launch order (launcher):** validate `--target`/`--base`/plan — a `--base` that is not an ancestor
   of the target's default branch is refused (the publish fold would have nothing to fold onto), and so
   is a shallow launch clone, whose history cannot answer that question → read the pool
@@ -575,6 +601,13 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `KATA_REF=<project name>#<short_id>` of that task's issue — the `short_id` read from the SAME
   `getIssue` answer that checked the revision above and kept on the task's row, never a second read.
   `reconcile:*` names no task, so it carries no `KATA_REF`.
+  The state a task reached (#998): `state.reached` is the one metadata key that carries it, set with
+  `--json-value` so the hub holds JSON and not a string, and its value is exactly two fields —
+  `expected`, the path under `state-exams/expected/` of the file that task's own exam names, and
+  `content`, the `getContent()` pair of tables and values that file holds. The producing task's own
+  implementer is the only writer of it, posting it once from its worker session after that task's
+  exam is green (`fleet/roles/implementer.md`), and the driver is the only reader: no other role
+  posts it, no other key carries it, and a task whose Proof names no state exam posts nothing.
   The settings file handed to the three write roles carries, beside the unchanged PreToolUse confine
   hook, a `SessionStart` hook running `kata attention-hook start` and a `SessionEnd` hook running
   `kata attention-hook end`, so a worker's start and end are stamped on its issue without the worker

@@ -131,3 +131,26 @@ thread your next session reads.
 You never run `kata close`: a close carries a verified outcome, and the driver
 holds that. If `KATA_REF` is unset there is no kata at all — skip every command
 in this section and change nothing else about how you work.
+
+## The state you reached
+
+A task whose Proof names a state exam finishes holding something no later task
+can see for itself: the state that exam measured. The key `state.reached` on
+your own kata issue is where that state goes, and one command puts it there:
+
+```
+kata meta set $KATA_REF state.reached "{\"expected\":\"<path>\",\"content\":$(cat <path>)}" --json-value
+```
+
+`<path>` is the expected file your exam names, under `state-exams/expected/`.
+The `--json-value` flag is load-bearing — without it kata stores the value as a
+string — and the value it stores carries exactly two fields: `expected`, that
+same path, and `content`, the `getContent()` pair of tables and values the file
+holds. That key is the whole of what you publish; the driver reads it and
+nothing else of yours.
+
+Timing and count are the discipline. The post goes out after your task's own
+exam is green, so the state you publish is a state you proved, and you post it
+once — a second post on the same issue is a reading a later session has to
+untangle. It is only a task whose Proof names a state exam that posts at all:
+a plugin task or a prose task reaches no such state and leaves the key unset.
