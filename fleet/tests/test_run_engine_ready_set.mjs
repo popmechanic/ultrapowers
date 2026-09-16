@@ -812,4 +812,70 @@ const maxOpenImpl = (log) => {
     'scheduled and folded:\n' + JSON.stringify(bullet))
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// TASK 2 — "A fold conflict leaves a receipt" — leg (b) [M1]
+//
+// M1's negative clause, restated: a `driver:wave-blocked` event whose fold
+// ended `TEST_FAILED` carries NEITHER key — no `paths`, no `evidence`. A
+// receipt names the files a fold stopped on; a fold that reached a candidate
+// and found the suite red stopped on no file, so it names none.
+//
+// Leg (b) reads that off this rig's PARKED run — the red-baseline scenario
+// whose `report.waveMerges` carry `TEST_FAILED` and whose park appends its
+// `driver:wave-blocked` before any fold. No new run is driven: every scenario
+// above registered itself in `RUNS`, so the rows are already on the log this
+// file read.
+//
+// This is the one leg of this task's exam that is GREEN at BASE, and by
+// construction: at BASE no blocked row carries a receipt at all. It stays green
+// under a correct implementation and goes red under one that hangs a receipt on
+// every blocked row rather than on the `CONFLICT` ones alone.
+//
+// The rows are read back off `<runDir>/events.jsonl`, so `hasOwnProperty` on
+// the parsed object is the question being asked: a key JSON never wrote is a
+// key the record does not carry.
+// ════════════════════════════════════════════════════════════════════════════
+{
+  const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k)
+
+  const parkedRuns = RUNS.filter((r) => r.report &&
+    Array.isArray(r.report.waveMerges) &&
+    r.report.waveMerges.some((m) => m && m.status === 'TEST_FAILED'))
+  assert.ok(parkedRuns.length >= 1,
+    '(b)/M1: sim precondition — this rig drove a parked run whose `waveMerges` carry ' +
+    '`TEST_FAILED`. Registered runs and their merge statuses: ' + JSON.stringify(RUNS.map(
+      (r) => ({ tag: r.tag, statuses: (r.report.waveMerges || []).map((m) => m && m.status) }))))
+
+  for (const parkedRun of parkedRuns) {
+    const parkedBlocks = blocksOf(parkedRun.log)
+    assert.ok(parkedBlocks.length >= 1,
+      '(b)/M1: sim precondition — the parked run [' + parkedRun.tag + '] appended its ' +
+      '`driver:wave-blocked`: ' + shownLog(parkedRun.log))
+
+    for (const row of parkedBlocks) {
+      assert.equal(has(row, 'paths'), false,
+        '(b)/M1: the parked run [' + parkedRun.tag + ']\'s `TEST_FAILED` `driver:wave-blocked` ' +
+        'row has NO `paths` key — a fold that ended on a red suite stopped on no file, and a ' +
+        'receipt names files: ' + JSON.stringify(row))
+      assert.equal(has(row, 'evidence'), false,
+        '(b)/M1: and no `evidence` key either — the two keys are a receipt together, and a ' +
+        '`TEST_FAILED` epoch carries neither: ' + JSON.stringify(row))
+    }
+  }
+
+  // The same question of every OTHER run of this rig that folded no `CONFLICT`
+  // epoch — which, at BASE, is all of them. A run that does fold one is out of
+  // this leg's scope: M1 gives a `CONFLICT` epoch a receipt, and leg (a) of the
+  // stale-patch rig is where that half is graded.
+  for (const r of RUNS) {
+    const conflicted = (r.report.waveMerges || []).some((m) => m && m.status === 'CONFLICT')
+    if (conflicted) continue
+    for (const row of blocksOf(r.log)) {
+      assert.equal(has(row, 'paths') || has(row, 'evidence'), false,
+        '(b)/M1: run [' + r.tag + '] folded no `CONFLICT` epoch, so none of its ' +
+        '`driver:wave-blocked` rows may carry `paths` or `evidence`: ' + JSON.stringify(row))
+    }
+  }
+}
+
 console.log('ALL TESTS PASSED')

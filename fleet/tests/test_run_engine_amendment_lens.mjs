@@ -302,7 +302,13 @@ async function scenario({ task, implAmendments = null, fixAmendments = null,
     '(' + iAmend + ' vs ' + iConcern + '):\n' + tail.slice(iExamEv))
   assert.ok(iAmend > iExamEv,
     'leg (d) [M2]: and after the exam evidence itself (' + iAmend + ' vs ' + iExamEv + ')')
-  assert.equal(tail.slice(tail.indexOf('\n\nAMENDMENTS:')),
+  // The block runs to the end of the prompt, or to the `FACTS:` block that
+  // follows it (run-159 task 5: this rig's exam is red for any output, so the
+  // reviewer's brief now ends with the receipt that red left). What this leg
+  // is about is unchanged — the block itself, entry for entry.
+  const fromAmend = tail.slice(tail.indexOf('\n\nAMENDMENTS:'))
+  const iFacts = fromAmend.indexOf('\n\nFACTS:')
+  assert.equal(iFacts === -1 ? fromAmend : fromAmend.slice(0, iFacts),
     '\n\nAMENDMENTS:' + FIX_LINE,
     'leg (d) [M2]: carrying the fix round\'s one entry — an implementer that declared none ' +
     'contributes no line:\n' + JSON.stringify(tail.slice(-400)))

@@ -325,4 +325,380 @@ const drive = async (contendingBlock, label) => {
   console.log('(e) [M4] fleet/roles/resolver.md: ' + words + ' words (reported; gates nothing)')
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// TASK 2 — "A fold conflict leaves a receipt" — legs (c), (d) [M2] and (e) [M3]
+//
+// Everything above this line belongs to the task that wrote this file. What
+// follows is a second task's exam, sharing this sim because this is the file
+// that already imports `fleet/publish-fold.mjs` — and it imports it as a
+// NAMESPACE, which is what lets the two exports below be absent at BASE
+// without an ESM link error killing the legs above.
+//
+// Task 2's own legs are lettered by ITS Proof, so every assertion message below
+// opens `T2 (x)/Mn` to keep the two letterings apart.
+//
+// The Machine clauses these legs come from, restated:
+//
+//   M2 — `foldReceiptOf({ open, disposition, reason, base, tip })`, exported
+//        from `fleet/publish-fold.mjs`, returns `null` whenever `open` is
+//        empty, WHATEVER the disposition — a fold that conflicted on no path
+//        names no file, and a receipt names files — and otherwise
+//        `{ paths, evidence }`: `paths` the distinct `path` values of the
+//        `open` rows in lexical order; `evidence.read` the disposition followed
+//        by `: <reason>` when a reason is given and the BARE disposition when
+//        none is; `evidence.against` `base <base> tip <tip>` — each string cut
+//        to the 500-character bound (the plan's shared RECEIPT SHAPE: a longer
+//        one is 499 characters plus `…`).
+//   M3 — `publishFoldEvent(row, open)`, exported from the same file, returns
+//        the `driver:publish-fold` event object the fold appends — `kind`,
+//        `run`, `attempt`, `base`, `tip`, `candidate`, `reason` when present,
+//        `pathsJoined`, `pathsConflicted` (the LENGTH of `open`),
+//        `resolversDispatched`, `resolverRetries`, `suite`, `disposition`,
+//        `checks` and `checkRetries`, each taken from `row` as at BASE — with
+//        `foldReceiptOf`'s object spread in when it is not `null`, and no
+//        `paths`/`evidence` key when it is.
+//
+// Both are PURE functions, which is why they are pinned here without driving a
+// fold: no sim at BASE drives `publishFold` end to end. WIRING the two
+// `eventLog.onEvent({ kind: 'driver:publish-fold', … })` literals to
+// `publishFoldEvent` is Task 7's, and is deliberately NOT graded here.
+// ════════════════════════════════════════════════════════════════════════════
+
+// The two shas the publish fold's row carries, 40 hex each, as the row carries
+// them. Spelled once so `base <base> tip <tip>` is one literal below.
+const T2_BASE = '1111111111111111111111111111111111111111'
+const T2_TIP = '2222222222222222222222222222222222222222'
+// The plan's shared RECEIPT SHAPE bound: each of `read` and `against` is at
+// most this many characters, a longer one cut to BOUND-1 plus the ellipsis.
+const T2_BOUND = 500
+const T2_ELLIPSIS = '…'
+
+{
+  assert.equal(typeof publishFold.foldReceiptOf, 'function',
+    'T2 (c)/M2: `foldReceiptOf` is exported from `fleet/publish-fold.mjs`. At BASE there is no ' +
+    'such export and this is the assertion that says so. Exported names: ' +
+    JSON.stringify(Object.keys(publishFold)))
+  assert.equal(typeof publishFold.publishFoldEvent, 'function',
+    'T2 (e)/M3: and `publishFoldEvent` beside it — the `driver:publish-fold` event object the ' +
+    'fold appends, built in one place so both append sites can be wired to it. Exported ' +
+    'names: ' + JSON.stringify(Object.keys(publishFold)))
+}
+const foldReceiptOf = publishFold.foldReceiptOf
+const publishFoldEvent = publishFold.publishFoldEvent
+
+// ── T2 leg (c) [M2] — an empty `open` is no receipt, and `folded` still is one ─
+{
+  assert.equal(foldReceiptOf({ open: [], disposition: 'folded', reason: '', base: 'b', tip: 't' }),
+    null,
+    'T2 (c)/M2: `foldReceiptOf` returns `null` whenever `open` is empty — a fold that ' +
+    'conflicted on no path names no file, and a receipt names files. Got: ' +
+    JSON.stringify(foldReceiptOf({ open: [], disposition: 'folded', reason: '', base: 'b', tip: 't' })))
+
+  const redArgs = { open: [], disposition: 'suite red',
+                    reason: 'the candidate\'s suite exited 1', base: 'b', tip: 't' }
+  assert.equal(foldReceiptOf(redArgs), null,
+    'T2 (c)/M2: and `null` WHATEVER the disposition — an empty `open` under `suite red` with a ' +
+    'reason given is still no receipt, because the rule is about the files, not about how the ' +
+    'fold ended. Got: ' + JSON.stringify(foldReceiptOf(redArgs)))
+
+  // run-157's shape: a publish fold that ended `folded` after its conflicts
+  // were resolved. A resolved conflict is still a conflict a later attempt's
+  // resolver on the same path should see, so the fold still leaves a receipt.
+  const folded = foldReceiptOf({
+    open: [{ i: 1, path: 'a.txt' }],
+    disposition: 'folded', reason: '', base: T2_BASE, tip: T2_TIP,
+  })
+  assert.ok(folded && typeof folded === 'object',
+    'T2 (c)/M2: one open row on `a.txt` with `disposition: \'folded\'` IS a receipt — a ' +
+    'resolved publish-fold conflict is still a conflict, and the record names it. Got: ' +
+    JSON.stringify(folded))
+  assert.equal(folded.evidence.read, 'folded',
+    'T2 (c)/M2: with `reason: \'\'` the `read` is the BARE disposition, exactly `folded` — no ' +
+    'trailing `: `, nothing appended: ' + JSON.stringify(folded))
+  assert.deepEqual(folded.paths, ['a.txt'],
+    'T2 (c)/M2: and its `paths` is `[\'a.txt\']`: ' + JSON.stringify(folded))
+  assert.equal(folded.evidence.against, 'base ' + T2_BASE + ' tip ' + T2_TIP,
+    'T2 (c)/M2: and `evidence.against` is `base <base> tip <tip>` — what the fold was folding ' +
+    'onto: ' + JSON.stringify(folded))
+}
+
+// ── T2 leg (d) [M2] — sorted and de-duplicated, the reasoned `read`, the bound ─
+{
+  const REASON = 'resolver reported BLOCKED on a.txt'
+  const parked = foldReceiptOf({
+    open: [{ i: 1, path: 'z.txt' }, { i: 2, path: 'a.txt' }, { i: 3, path: 'a.txt' }],
+    disposition: 'conflict parked', reason: REASON, base: T2_BASE, tip: T2_TIP,
+  })
+  assert.ok(parked && typeof parked === 'object',
+    'T2 (d)/M2: three open rows are a receipt: ' + JSON.stringify(parked))
+  assert.deepEqual(parked.paths, ['a.txt', 'z.txt'],
+    'T2 (d)/M2: `paths` is the DISTINCT `path` values of the `open` rows in LEXICAL order — ' +
+    'exactly `[\'a.txt\', \'z.txt\']`. A result that keeps the duplicate `a.txt`, or that keeps ' +
+    'the input order `z.txt` first, fails this leg: ' + JSON.stringify(parked))
+  assert.equal(parked.evidence.read, 'conflict parked: ' + REASON,
+    'T2 (d)/M2: `evidence.read` is the disposition followed by `: <reason>` when a reason is ' +
+    'given: ' + JSON.stringify(parked))
+  assert.equal(parked.evidence.against, 'base ' + T2_BASE + ' tip ' + T2_TIP,
+    'T2 (d)/M2: and `evidence.against` is `base <base> tip <tip>`: ' + JSON.stringify(parked))
+
+  // The bound. 900 characters of reason, so `read` is over 500 before the cut.
+  const LONG = 'x'.repeat(900)
+  const cut = foldReceiptOf({
+    open: [{ i: 1, path: 'a.txt' }],
+    disposition: 'conflict parked', reason: LONG, base: T2_BASE, tip: T2_TIP,
+  })
+  assert.ok(cut && cut.evidence && typeof cut.evidence.read === 'string',
+    'T2 (d)/M2: the long-reason call is still a receipt: ' + JSON.stringify(cut && cut.paths))
+  assert.equal(cut.evidence.read.length, T2_BOUND,
+    'T2 (d)/M2: with a 900-character `reason` the returned `read` is cut to the ' + T2_BOUND +
+    '-character bound — exactly ' + T2_BOUND + ' characters, so a `FACTS:` block of 20 rows ' +
+    'stays under 24 KB. It is ' + cut.evidence.read.length + ' characters.')
+  assert.ok(cut.evidence.read.endsWith(T2_ELLIPSIS),
+    'T2 (d)/M2: and it ends in `' + T2_ELLIPSIS + '` — the shared RECEIPT SHAPE cuts a longer ' +
+    'string to ' + (T2_BOUND - 1) + ' characters plus the ellipsis, so a reader can see it was ' +
+    'cut. It ends: ' + JSON.stringify(cut.evidence.read.slice(-8)))
+  assert.equal(cut.evidence.read, ('conflict parked: ' + LONG).slice(0, T2_BOUND - 1) + T2_ELLIPSIS,
+    'T2 (d)/M2: and the ' + (T2_BOUND - 1) + ' characters it keeps are the first ' +
+    (T2_BOUND - 1) + ' of the uncut `read` — the cut takes the tail, it does not rewrite the ' +
+    'head: ' + JSON.stringify(cut.evidence.read.slice(0, 40)))
+}
+
+// ── T2 leg (e) [M3] — the event object, key for key ──────────────────────────
+{
+  const row = {
+    run: '7', attempt: '1', base: T2_BASE, tip: T2_TIP, candidate: '',
+    reason: 'resolver reported BLOCKED on a.txt',
+    pathsJoined: 1, resolversDispatched: 1, resolverRetries: 0,
+    suite: 'none', disposition: 'conflict parked', checks: [], checkRetries: 0,
+  }
+  const open = [{ i: 1, path: 'a.txt' }]
+  const ev = publishFoldEvent(row, open)
+
+  assert.ok(ev && typeof ev === 'object',
+    'T2 (e)/M3: `publishFoldEvent(row, open)` returns the event object: ' + JSON.stringify(ev))
+  assert.deepEqual(Object.keys(ev).sort(),
+    ['attempt', 'base', 'candidate', 'checkRetries', 'checks', 'disposition', 'evidence',
+     'kind', 'paths', 'pathsConflicted', 'pathsJoined', 'reason', 'resolverRetries',
+     'resolversDispatched', 'run', 'suite', 'tip'],
+    'T2 (e)/M3: the event carries exactly the BASE literal\'s keys — `kind`, `run`, `attempt`, ' +
+    '`base`, `tip`, `candidate`, `reason` (present here), `pathsJoined`, `pathsConflicted`, ' +
+    '`resolversDispatched`, `resolverRetries`, `suite`, `disposition`, `checks`, ' +
+    '`checkRetries` — with `foldReceiptOf`\'s `paths` and `evidence` spread in. No more, no ' +
+    'fewer. Got: ' + JSON.stringify(Object.keys(ev).sort()))
+
+  assert.equal(ev.kind, 'driver:publish-fold',
+    'T2 (e)/M3: its `kind` is `driver:publish-fold`: ' + JSON.stringify(ev))
+  assert.equal(ev.pathsConflicted, 1,
+    'T2 (e)/M3: `pathsConflicted` is the LENGTH of `open`, not a key of the row: ' +
+    JSON.stringify(ev))
+  assert.deepEqual(ev.paths, ['a.txt'],
+    'T2 (e)/M3: `paths` is `foldReceiptOf`\'s, `[\'a.txt\']`: ' + JSON.stringify(ev))
+  assert.equal(ev.evidence.read, 'conflict parked: resolver reported BLOCKED on a.txt',
+    'T2 (e)/M3: and `evidence.read` the disposition with its reason: ' + JSON.stringify(ev))
+  assert.equal(ev.evidence.against, 'base ' + T2_BASE + ' tip ' + T2_TIP,
+    'T2 (e)/M3: and `evidence.against` `base <base> tip <tip>`: ' + JSON.stringify(ev))
+
+  // Every other value is the row's own, taken as at BASE.
+  for (const k of ['run', 'attempt', 'base', 'tip', 'candidate', 'reason', 'pathsJoined',
+                   'resolversDispatched', 'resolverRetries', 'suite', 'disposition',
+                   'checkRetries']) {
+    assert.equal(ev[k], row[k],
+      'T2 (e)/M3: `' + k + '` is taken from `row`, as the BASE literal takes it — expected ' +
+      JSON.stringify(row[k]) + ', got ' + JSON.stringify(ev[k]))
+  }
+  assert.deepEqual(ev.checks, row.checks,
+    'T2 (e)/M3: and `checks` likewise: ' + JSON.stringify(ev.checks))
+
+  // The same row folded clean: no reason, no open conflicts. `pathsConflicted`
+  // is `0` and the three absent keys are ABSENT, not `undefined`-valued — the
+  // receipt is spread in only when `foldReceiptOf` returned an object.
+  const cleanRow = { ...row, disposition: 'folded' }
+  delete cleanRow.reason
+  const clean = publishFoldEvent(cleanRow, [])
+  assert.deepEqual(Object.keys(clean).sort(),
+    ['attempt', 'base', 'candidate', 'checkRetries', 'checks', 'disposition', 'kind',
+     'pathsConflicted', 'pathsJoined', 'resolverRetries', 'resolversDispatched', 'run',
+     'suite', 'tip'],
+    'T2 (e)/M3: the same row with `disposition: \'folded\'`, no `reason` and `open` `[]` ' +
+    'returns an object with NO `paths` key, NO `evidence` key and NO `reason` key — ' +
+    '`foldReceiptOf` returned `null`, so nothing was spread in, and `reason` is carried only ' +
+    'when present. Got: ' + JSON.stringify(Object.keys(clean).sort()))
+  assert.equal(clean.pathsConflicted, 0,
+    'T2 (e)/M3: and `pathsConflicted` is `0` — the length of the empty `open`: ' +
+    JSON.stringify(clean))
+  assert.equal(clean.disposition, 'folded',
+    'T2 (e)/M3: and the disposition is the row\'s: ' + JSON.stringify(clean))
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Task 5 of the receipts plan — "the three judges read the FACTS block"
+// (kata popmechanic-ultrapowers#dy5f).
+//
+// The Claim: before an examiner, a reviewer or a wave resolver is dispatched,
+// the driver shows it the receipts this run already holds on the files of its
+// brief — and a run with no receipt sends every judge exactly the brief it
+// sends today.
+//
+// The Machine clauses this file answers, restated:
+//
+//   M2 — `waveContendingBlock({ waveTasks, wavesPath, receipts })`, exported
+//        from `fleet/run-engine.mjs`, returns a FUNCTION of a conflict entry
+//        whose string is the `CONTENDING TASKS:` string the wave loop builds at
+//        BASE followed by `factsBlock(receipts, [<that conflict's path>])`. (The
+//        second half of the clause — the wave loop hands that function to
+//        `resolveConflicts` as its `contendingBlock`, so a resolver dispatched
+//        after a receipt on its conflicted path reads a `FACTS:` block naming
+//        it — needs a run, and is answered in
+//        `fleet/tests/test_run_engine_proof_runs.mjs`.)
+//   M4 — a run whose log holds no receipt row leaves every captured prompt of
+//        every role free of the token `FACTS:`, appends no `driver:facts`, and
+//        every such prompt is byte-identical to the prompt the base engine
+//        builds for it.
+//
+// The Proof legs answered here:
+//
+//   (b) [M2] the first half: `waveContendingBlock` over two tasks and a
+//        `wavesPath`, with `receipts` holding one receipt on `a.txt` — the
+//        function's string for a conflict on `a.txt` is the BASE
+//        `CONTENDING TASKS:` string followed by a `FACTS:` block naming that
+//        receipt's id, its string for a conflict on `b.txt` is the BASE string
+//        exactly with no `FACTS:`, and with `receipts: []` both strings are the
+//        BASE string.
+//   (e) [M4] the Proof's second `Run:` as an assertion: none of the three role
+//        files — `fleet/roles/examiner.md`, `fleet/roles/reviewer.md`,
+//        `fleet/roles/resolver.md` — contains `FACTS`, so what a judge is told
+//        about the block is the block's own header sentence and nothing a
+//        role-file edit could have changed.
+//
+// Nothing below stands a run up: `waveContendingBlock` is pure and the role
+// files are read off disk.
+//
+// Read through the module namespace, not by name: at BASE `waveContendingBlock`
+// is absent, and a named import of an absent export is an ESM link error that
+// would kill this whole file before the T2 legs above could report. The
+// namespace form lets the leg fail as "the export is not there yet", which is
+// the one reason this exam is red at BASE.
+{
+  const engineMod = await import('../run-engine.mjs')
+  const { factsBlock } = await import('../facts-block.mjs')
+  const waveContendingBlock = engineMod.waveContendingBlock
+
+  assert.equal(typeof waveContendingBlock, 'function',
+    'T5 (b) [M2]: `fleet/run-engine.mjs` exports `waveContendingBlock` — the Produces of this ' +
+    'task, `waveContendingBlock({ waveTasks, wavesPath, receipts }) -> (conflict) => string`: ' +
+    JSON.stringify(Object.keys(engineMod).sort()))
+
+  // The wave loop's own inputs, and the BASE string spelled out here rather
+  // than imported: the clause says the function's string BEGINS with the string
+  // the wave loop builds at BASE, so the exam has to hold its own copy of it or
+  // it pins nothing.
+  const WAVE_TASKS = [
+    { id: 'A', title: 'the first contender', files: ['a.txt', 'shared.txt'] },
+    { id: 'B', title: 'the second contender', files: ['b.txt'] },
+  ]
+  const WAVES_PATH = '/tmp/run-5/waves.json'
+  const BASE_CONTENDING =
+    '\nCONTENDING TASKS:' + WAVE_TASKS.map((t) =>
+      '\n- task ' + t.id + ': ' + (t.title || '') +
+      ((Array.isArray(t.files) && t.files.length)
+        ? (' [files: ' + t.files.join(', ') + ']') : '')).join('') +
+    '\nTheir full verbatim task text lives in the JSON file at ' + WAVES_PATH +
+    ' — read the "tasks" array entry whose "id" matches.'
+
+  // One receipt on `a.txt`, in the shape this plan's tasks share: `paths`
+  // sorted, de-duplicated and non-empty, `evidence` two bounded strings. A
+  // `driver:exam-run` row is the kind leg (b)'s engine rig produces, so it is
+  // the kind this unit uses too.
+  const T5_SHA = '0123456789abcdef0123456789abcdef01234567'
+  const T5_RECEIPT = Object.freeze({
+    id: '01JZZZZZZZZZZZZZZZZZZZZZZ1', kind: 'driver:exam-run', task: 'A',
+    cmd: 'bash a_test.sh', exit: 1, iter: 0,
+    paths: ['a.txt'],
+    evidence: { read: 'exit 1: FAILED: a.txt is missing',
+                against: 'bash a_test.sh at ' + T5_SHA },
+  })
+  const A_BLOCK = factsBlock([T5_RECEIPT], ['a.txt'])
+  assert.notEqual(A_BLOCK, '',
+    'T5 (b) [M2] sim precondition — `factsBlock` matches this receipt on `a.txt`, so the ' +
+    'expected string below is not the empty one: ' + JSON.stringify(A_BLOCK))
+
+  const conflictOn = (i, p) => ({ i, path: p, hunksFile: '/tmp/run-5/h' + i, epoch: 1 })
+
+  // ── with one receipt on `a.txt` ───────────────────────────────────────────
+  const withReceipt = waveContendingBlock({
+    waveTasks: WAVE_TASKS, wavesPath: WAVES_PATH, receipts: [T5_RECEIPT],
+  })
+  assert.equal(typeof withReceipt, 'function',
+    'T5 (b) [M2]: `waveContendingBlock` returns a FUNCTION of a conflict entry — the shape ' +
+    '`resolveConflicts` already accepts as its `contendingBlock` (T2 leg (a) above), so the ' +
+    'wave loop can hand it one brief per conflicted path. Got: ' + typeof withReceipt)
+
+  const onA = withReceipt(conflictOn(1, 'a.txt'))
+  assert.equal(onA, BASE_CONTENDING + A_BLOCK,
+    'T5 (b) [M2]: the function\'s string for a conflict on `a.txt` is EXACTLY the BASE ' +
+    '`CONTENDING TASKS:` string followed by `factsBlock(receipts, [\'a.txt\'])` — nothing ' +
+    'between them, nothing after, and the BASE string unchanged. Got: ' + JSON.stringify(onA))
+  assert.ok(onA.startsWith(BASE_CONTENDING),
+    'T5 (b) [M2]: the BASE string is the HEAD of it — the block is an addition to the wave ' +
+    'loop\'s brief, never a rewrite of it: ' + JSON.stringify(onA.slice(0, 300)))
+  assert.ok(onA.includes('\n\nFACTS: this run\'s record holds 1 receipt(s)'),
+    'T5 (b) [M2]: and the tail is the `FACTS:` block, with its own header sentence: ' +
+    JSON.stringify(onA.slice(BASE_CONTENDING.length)))
+  assert.ok(onA.includes('- receipt ' + T5_RECEIPT.id + ' driver:exam-run [a.txt]'),
+    'T5 (b) [M2]: the block NAMES that receipt\'s id, its kind and its paths — a resolver that ' +
+    'rests a reading on it can cite `receipt ' + T5_RECEIPT.id + '`: ' +
+    JSON.stringify(onA.slice(BASE_CONTENDING.length)))
+  assert.equal((onA.match(/\n- receipt /g) || []).length, 1,
+    'T5 (b) [M2]: exactly one `- receipt` line — the one row whose `paths` name this ' +
+    'conflict\'s path: ' + JSON.stringify(onA.slice(BASE_CONTENDING.length)))
+
+  // ── the same function, a conflict on a path no receipt names ──────────────
+  const onB = withReceipt(conflictOn(2, 'b.txt'))
+  assert.equal(onB, BASE_CONTENDING,
+    'T5 (b) [M2]: the same function\'s string for a conflict on `b.txt` is the BASE ' +
+    '`CONTENDING TASKS:` string EXACTLY — no receipt names `b.txt`, `factsBlock` answers `\'\'`, ' +
+    'and that resolver\'s brief is byte-identical to the one it had at BASE. Got: ' +
+    JSON.stringify(onB))
+  assert.equal(onB.includes('FACTS:'), false,
+    'T5 (b) [M2]: and it carries no `FACTS:` token at all — not an empty header, nothing: ' +
+    JSON.stringify(onB))
+
+  // ── the same two conflicts over a run that recorded nothing ───────────────
+  const noReceipts = waveContendingBlock({
+    waveTasks: WAVE_TASKS, wavesPath: WAVES_PATH, receipts: [],
+  })
+  assert.equal(typeof noReceipts, 'function',
+    'T5 (b) [M2]: `receipts: []` still returns a function of the conflict entry: ' +
+    typeof noReceipts)
+  assert.equal(noReceipts(conflictOn(1, 'a.txt')), BASE_CONTENDING,
+    'T5 (b) [M2]: with `receipts: []` the string for a conflict on `a.txt` is the BASE string: ' +
+    JSON.stringify(noReceipts(conflictOn(1, 'a.txt'))))
+  assert.equal(noReceipts(conflictOn(2, 'b.txt')), BASE_CONTENDING,
+    'T5 (b) [M2]: and so is the string for `b.txt` — a run whose record holds no receipt row ' +
+    'briefs every resolver exactly as the wave loop briefs it today: ' +
+    JSON.stringify(noReceipts(conflictOn(2, 'b.txt'))))
+}
+
+// ── T5 (e) [M4]: the three role files carry no `FACTS` ───────────────────────
+// The Proof's second `Run:` is
+// `test "$(grep -c 'FACTS' fleet/roles/{examiner,reviewer,resolver}.md | grep -c ':0$')" = 3`;
+// this is that command as an assertion. The block's header sentence is its own
+// legend, which is what keeps a receipt-free brief byte-identical to BASE's — a
+// role file that explained the block would have changed every brief of that
+// role whether or not the run recorded anything.
+{
+  for (const role of ['examiner.md', 'reviewer.md', 'resolver.md']) {
+    const file = path.join(FLEET, 'roles', role)
+    const text = fs.readFileSync(file, 'utf8')
+    const hits = text.split('\n')
+      .map((line, n) => [n + 1, line])
+      .filter(([, line]) => line.includes('FACTS'))
+    assert.deepEqual(hits, [],
+      'T5 (e) [M4]: `fleet/roles/' + role + '` contains no `FACTS` — the three role files are ' +
+      'NOT edited by this task, because the block\'s own header sentence is the only legend a ' +
+      'judge is given for it. Lines that do: ' +
+      JSON.stringify(hits.map(([n, line]) => n + ': ' + line.slice(0, 200))))
+  }
+}
+
 console.log('ALL TESTS PASSED')
