@@ -27,3 +27,4 @@
 {"kind":"worker:end","label":"impl:B","role":"implementer","sessionId":"888f1d15-9e45-415d-bf44-f928f1e0e9f2","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5035,"output":50344,"cacheRead":6364173,"cacheCreation":116297,"costUsd":5.6288314999999995,"models":["claude-opus-5"]},"id":"01M2NPEANQ0000434HYB89HVA0","ts":1789582060215}
 {"kind":"transcript:slice","label":"impl:B","sessionId":"888f1d15-9e45-415d-bf44-f928f1e0e9f2","bytes":11432,"id":"01M2NPEAP70000S7XE6PBFCXWY","ts":1789582060231}
 {"kind":"driver:attention","task":"B","attention":"needs-human","msg":"session ended without hand-off","actor":"","id":"01M2NPEEN70000A6BWZM4HB0NA","ts":1789582064295}
+{"kind":"driver:attention","task":"B","attention":"ok","msg":"session ended without hand-off","actor":"","id":"01M2NPNS690000DFWV23YF6Q5H","ts":1789582304457}
