@@ -1,0 +1,1629 @@
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index f9237668e05db8c1e328fc6210ee9d9f73057946..181f7f61e27787de67bcc5ae713e0f802679854d 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -76,10 +76,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+     captured against an older one and the kernel three-way merged it with nothing narrated, and
+     `resolved` when a narrated conflict of the fold named one of the task's own files — then the
+     head it left on the integration branch, each a descendant of the epoch before it. And
+-    `driver:wave-blocked` `{wave, tasks, detail, why, released?, applied}`, the same epoch, ids
+-    and `applied` with the `waveMerges` row's own `detail` — appended for an epoch whose fold the
+-    kernel could not complete (`CONFLICT`, the conflict it stopped on being what `applied` reads
+-    `resolved` off) exactly as for one whose candidate suite stayed red.
++    `driver:wave-blocked` `{wave, tasks, detail, why, released?, applied, paths?, evidence?}`, the
++    same epoch, ids and `applied` with the `waveMerges` row's own `detail` — appended for an epoch
++    whose fold the kernel could not complete (`CONFLICT`, the conflict it stopped on being what
++    `applied` reads `resolved` off) exactly as for one whose candidate suite stayed red. `paths`
++    and `evidence` are the receipt below, carried on a `CONFLICT` epoch's row and on no other.
+     And `driver:regenerated` `{wave, cmd, exit, paths}` — the epoch, the run's `regenerateCmd`
+     exactly as it ran, its exit code, and the sorted lockfile paths it rewrote, appended once by
+     a fold that ran it and by no other. A lockfile is a derived file and no model merges one: a
+@@ -103,8 +104,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+     already in flight, and only one fold runs at a time.
+     The driver's own executions are three more kinds, one per command run: `driver:proof-run`
+     `{task, cmd, exit, iter}`, `driver:check-run` `{task, cmd, exit, minor, iter}` and
+-    `driver:exam-run` `{task, cmd, exit, iter, stdout}` — `stdout` is the exam's combined
+-    stdout+stderr, last 4,000 characters, the same tail the fix prompt reads (#944), so a parked
++    `driver:exam-run` `{task, cmd, exit, iter, stdout, paths?, evidence?}` — `paths` and
++    `evidence` are the receipt below, carried on a red row and on no other; `stdout` is the exam's
++    combined stdout+stderr, last 4,000 characters, the same tail the fix prompt reads (#944), so a parked
+     task's red is legible from the tag and the hub. The pre-review pass (`iter: 0`) parks a task
+     for the plan (`reviewVerdict: plan-defect`, actor `plan`, no fix round) only on the pair: the
+     implementer's `plan-defect:` concern names a Proof leg by its `(x)` label AND says it cannot
+diff --git a/fleet/RUNBOOK.md b/fleet/RUNBOOK.md
+index f0518c0be1da8b782b32d78d58195972a29b543c..765ad633266f238856c5516009b0a592ebe50493 100644
+--- a/fleet/RUNBOOK.md
++++ b/fleet/RUNBOOK.md
+@@ -647,6 +647,25 @@ is green and main has not moved, and `--hold` to keep a human at the merge
+ button. Credentials lapse on wall clock with nothing to revoke. The Claude
+ token is on no VM and in no argv.
+ 
++## Release
++
++Two commands before the release commit, both on the laptop. First pull the
++runs since the last release off their evidence tags and count them:
++`python3 skills/ultrapowers/scripts/catch_counter.py --fetch <owner>/<repo>
++--runs <last tag's run + 1>..<latest> --into <dir> --ledger
++docs/superpowers/observations/ledger.jsonl` — the run numbers are off
++`git ls-remote --tags origin 'ultra/evidence/run-*'`, and the ledger is the
++untracked laptop one, never a sandbox path. Then read it over the window:
++`python3 skills/ultrapowers/scripts/catch_report.py --ledger
++docs/superpowers/observations/ledger.jsonl --tree . --zero-over 1` prints a
++`## Zero catches over the last 1 release(s)` section — its window line naming
++the `v*` tag it opened at and how many runs fell inside it, then one
++`- <path> — exercised by <k> run(s)` line per test of the tree that caught
++nothing since that tag — and that section is pasted into the release commit
++body as it is, beside the prose sizes. It is report-only: nothing in it deletes
++anything, and deletion of a listed file follows on the reading, one file at a
++time in its own pull request, as `CLAUDE.md`'s Test doctrine has it.
++
+ ## Rollback
+ 
+ The move onto the target is one release. If it does not hold:
+diff --git a/fleet/tests/README.md b/fleet/tests/README.md
+index 03b9baaac9a42912e766f4cf48a225f788c42b11..40538005c6ea7fa852787436c7963060198fbaaa 100644
+--- a/fleet/tests/README.md
++++ b/fleet/tests/README.md
+@@ -3,17 +3,143 @@
+ These are the fleet engine's own tests — `.mjs` suites run under `node` and
+ joined into the Python suite through `tests/test_fleet_suite.py`.
+ 
+-Main areas under test:
+-
+-- `test_run_worker.mjs` — the worker dispatcher: launching one implementer,
+-  handing it its task, and reaping the result.
+-- `test_run_waves.mjs` — the waves loader and patch capture: reading the wave
+-  plan and turning each finished clone into a diff against its base.
+-- `test_confine_hook.mjs` — the implementer confinement boundary: which tool
+-  calls a task's clone is allowed to make.
+-- `test_run_engine*.mjs` — the engine kernel: wave scheduling, review pairing,
+-  the fix loop, the examiner, and the gate.
++This file is the index a stranger reads before opening one: every
++`fleet/tests/test_*.mjs` in the tree gets a line, basename first and then what
++it examines. The `probe_*.mjs` files are not indexed here — they are live
++measurements and design gates, and `PROBES.md` is their list.
++
++## The engine kernel — `test_run_engine_*`
++
++The wave scheduler, the review pairing, the fix loop, the examiner and the gate,
++one sim per question:
++
++- `test_run_engine_ready_set.mjs` — the ready set and the epoch: a task is
++  dispatched the moment everything it depends on has been folded in, and a lane
++  folds whatever has landed when a slot frees, instead of waiting on a wave
++  barrier.
++- `test_run_engine_fold_policy.mjs` — when a freed lane claims an epoch at all:
++  a fold that releases a queued task, ends the run, or adopts a result that has
++  aged a suite's length, with the record saying which in a `why`.
++- `test_run_engine_stale_patch.mjs` — the anchor the engine hands the kernel per
++  result, and the `applied` reading the record owes afterwards: `base`,
++  `rebased` or `resolved` per task.
++- `test_run_engine_lockfile_regen.mjs` — the capture drops lockfiles and the
++  fold regenerates them: the run's lockfile is rebuilt from the merged manifests
++  at each fold, and no worker is asked to merge one by hand.
++- `test_run_engine_reuse.mjs` — two exams at one path: the reuse refusal naming
++  the fold's own reason, and a run whose issues are already closed `done`.
++- `test_run_engine_re_edge.mjs` — a task whose proof needs a sibling still in
++  flight waits for that sibling and is dispatched again, instead of failing the
++  run.
++- `test_run_engine_joined_proofs.mjs` — the integrated pass re-runs a merged
++  task's `Run:` lines only when one of that task's files appears in the fold's
++  joined paths.
++- `test_run_engine_own_proofs.mjs` — the implementer iterates against its own
++  task's proofs: a `PROOFS:` block built from the task's `Run:` commands and the
++  run's Global Constraints `Check:` commands, in place of a `TEST COMMAND:`
++  line the examiner alone keeps.
++- `test_run_engine_proof_runs.mjs` — the driver runs a task's `Run:` proofs
++  itself, after the implementer and before the review, in the task's own clone
++  through the engine's `sh` seam, and a non-zero exit sends the task back
++  whatever the reviewer said.
++- `test_run_engine_one_of_each.mjs` — the run's judgment economy: one referee
++  per task, at most one repair round, and no critic reading the finished run.
++- `test_run_engine_review_economy.mjs` — what a reviewer-minute bought, and the
++  removal of the `cannotVerify` channel that bought nothing.
++- `test_run_engine_infra_retry.mjs` — one bounded retry for the single-dispatch
++  judgments, whose death would otherwise park or fail-close a whole run on one
++  overloaded minute.
++- `test_run_engine_export_collision.mjs` — a worker that adds a public name a
++  sibling task was contracted to provide is told so on the driver's own
++  pre-review pass, and gets the one repair round every other red of that pass
++  buys.
++- `test_run_engine_nul_guard.mjs` — the same pass on a patch that puts a stray
++  `0x00` byte into a source file, so no later merge stalls on a file git and the
++  fold kernel read as binary.
++- `test_run_engine_amendments.mjs` — a worker declares an amendment and the
++  driver writes the typed row onto `events.jsonl` and `report.json`, per task.
++- `test_run_engine_amendment_lens.mjs` — those declared amendments rendered into
++  the prompt of the referee who grades them, as a lens rather than an
++  undisclosed divergence.
++- `test_run_engine_state_exams.mjs` — the report row's state-exam record: the
++  action wall and whether the browser ran.
++- `test_run_engine_state_handshake.mjs` — the state handshake: what a task
++  publishes as the state it reached, and what the driver holds against it.
++- `test_run_engine_kata_close.mjs` — the engine stamps an issue with the run and
++  sha that adopted it before it closes it.
++- `test_run_engine_kata_landing.mjs` — a task's issue reads `landed` when the
++  driver takes its result and `adopted` when it is folded, and the hook's
++  `needs-human` is cleared.
++
++## The launcher — `test_launch_*`
++
++- `test_launch_size.mjs` — the VM is sized from the compiled plan's widest wave
++  and the dispatch width is the plan's, not a process constant.
++- `test_launch_bump.mjs` — a launch whose push of `ultra/plan-run-<N>` is
++  refused bumps to N+1 and re-files its first payload under the number it got.
++- `test_launch_duplicate.mjs` — the launcher refuses a plan already live on the
++  target, names the run, and takes `--again`.
++- `test_launch_kata_seed.mjs` — a launch files a run into the target's one
++  project as an idempotent seed with its edges, and a bump refiles rather than
++  purges.
++- `test_launch_compile_facts.mjs` — the launch line carries the compiler's
++  `Stale-if` fact lines: an advisory beside the base facts on a clean compile,
++  and the compiler's own refusal line otherwise.
++
++## The sandbox boot — `test_sandbox_boot_*`
++
++- `test_sandbox_boot_engine_env.mjs` — the boot starts a run's engine with no
++  renderer address and reads no address file.
++- `test_sandbox_boot_fold_record.mjs` — the boot copies the run's fold record —
++  fold logs, conflicts index, narration, resolver briefs and replies, the weave
++  sidecar's manifest and event log — onto the evidence branch beside the
++  receipts, and never the weave's blob store.
++- `test_sandbox_boot_kata_export.mjs` — the `kata.jsonl` on a run's evidence tag
++  holds only that run's issues and events, out of a project holding every run of
++  the repository.
++- `test_sandbox_boot_close_evidence.mjs` — the boot's `done` close of the run
++  issue always carries evidence, built from the PR URL and the merged sha.
++- `test_sandbox_boot_amendments.mjs` — the pull request body lists every
++  amendment by task, above the folded record.
++- `test_sandbox_boot_disclosures.mjs` — an edit a task needed but could not make
++  becomes a ticket the run opens beside its PR.
++- `test_sandbox_boot_card_cells.mjs` — the PR card says which task no reviewer
++  read, rendered inside the existing mutant cell rather than a new column.
++- `test_sandbox_boot_viz.mjs` — the refresher serves `events.jsonl` beside the
++  page, so the page shows the fleet turning and the record keeps up.
++
++## The worker seam — `test_worker_*`
++
++- `test_worker_prompt_stdin.mjs` — the worker hands every prompt to the child on
++  stdin, never on argv.
++- `test_worker_kata_env.mjs` — every worker session is a kata actor with its
++  issue in hand.
++
++## The singletons
++
++- `test_publish_fold.mjs` — the publish fold writes its receipts and reads them
++  back.
++- `test_resolver_brief.mjs` — the publish-fold brief names its contending block
++  and main's patch by path, one conflicted path per brief.
++- `test_facts_block.mjs` — the matcher and the `FACTS:` renderer: which of a
++  run's receipts a brief's files pick up, kept short, and rendered as nothing
++  when there is nothing to say.
++- `test_engine_coverage.mjs` — `fleet/engine-coverage.mjs`: which changed lines
++  of an engine diff a sim reached, and the `null` it resolves to when the diff
++  adds or modifies no line.
++- `test_janitor.mjs` — the janitor's fallback, driven with `kata: null`: a run
++  read off the target's own evidence when there is no hub to ask.
++- `test_doctor_rows.mjs` — the doctor's `ROW_IDS`, the launcher's config keys
++  and the setup script's env file, after the renderer left the laptop side.
++- `test_probe_kata_facts.mjs` — the shape of `probe_kata_facts.mjs`: one line
++  per fact, stamped with the hub's version.
++- `test_sims_are_hermetic.mjs` — the probe below.
++
++## The rig
++
+ - `_helpers.mjs` — the rig's environment: `simEnv()` builds the environment
+   every process a sim starts runs under, so a sim sees what it was handed and
+   never the box it runs on. `test_sims_are_hermetic.mjs` is the probe that
+-  keeps it true.
++  keeps it true. `_engine_helpers.mjs`, `_lobby_helpers.mjs`,
++  `_readiness_helpers.mjs` and `_sandbox_boot_helpers.mjs` are the per-family
++  rigs built on it, and `fixtures/` holds what they read.
+diff --git a/fleet/tests/test_run_engine_fold_policy.mjs b/fleet/tests/test_run_engine_fold_policy.mjs
+index dcd90b3960032324f617405c39ec5926e9e202da..0dd2ee3d206b10b22e5fd3efa760809e70ccfdc1 100644
+--- a/fleet/tests/test_run_engine_fold_policy.mjs
++++ b/fleet/tests/test_run_engine_fold_policy.mjs
+@@ -211,9 +211,12 @@ const STAGGER_MS = 500
+ // ask against.
+ const AGED_THRESHOLD_MS = 300
+ const AGED_HOLD_MS = 2000
+-// [idle-gate] leg (i)'s middle hold: B lands this long after dispatch, so at B's
++// [idle-gate] leg (i)'s middle hold, and the positive-threshold half of that leg
++// is the whole of what it drives: B lands this long after dispatch, so at B's
+ // landing A's result is already past the 300 ms threshold while C — held
+-// `AGED_HOLD_MS` — is still in flight. That instant is M8's negative.
++// `AGED_HOLD_MS` — is still in flight. That instant is M8's negative. The leg's
++// zero-threshold half holds B on no clock at all: there B's landing is sequenced
++// on the log, behind the run's first adoption.
+ const MID_HOLD_MS = 500
+ // [idle-gate] leg (e)'s extra hold: the kernel's first fold is released this
+ // long after Y's whole pipeline returned, so Y's result is at least this old
+@@ -854,7 +857,10 @@ const SLOW_SUITE = '#!/bin/bash\nsleep 0.2\n[ ! -f BROKEN ]\n'
+ // the run folds once, at the end, with all three.
+ //
+ // And the same run at `foldAgeMs: 0`, so the pair differs in one argument: there
+-// A's own landing folds A alone before B ever returns.
++// A's own landing folds A alone before B ever returns. That second run holds B
++// and C on the log rather than on a clock: B returns once the run's first
++// adoption has been appended, C once B's `worker:end` has, so the order the leg
++// asks about is sequenced on the record instead of raced against a fixed hold.
+ // ════════════════════════════════════════════════════════════════════════════
+ const ABC = () => [taskOf('A'), taskOf('B'), taskOf('C')]
+ const abcHeldStub = (runDir) => async (prompt, opts, cwd) => {
+@@ -918,7 +924,21 @@ const abcHeldStub = (runDir) => async (prompt, opts, cwd) => {
+   const run = await drive({
+     tag: 'i2', tasks: ABC(), edges: [], width: 3,
+     ageArgs: { foldAgeMs: 0 },
+-    makeStub: abcHeldStub,
++    // No clock holds B and C here. B returns once the run's first adoption is on
++    // the log, C once B's `worker:end` is — so the instant this leg asks about is
++    // read off the record rather than raced against a fixed hold. Both waits are
++    // bounded by `HOLD_MS` and neither throws: an engine that does NOT fold A at
++    // its own landing lets B return at the deadline and C after it, the run folds
++    // once with all three, and the `['A']` assertion below goes red honestly.
++    makeStub: (runDir) => async (prompt, opts, cwd) => {
++      const [kind, id] = opts.label.split(':')
++      if (kind === 'review') return cannedReview(runDir, opts.label)
++      if (kind !== 'impl') throw new Error('unexpected dispatch: ' + opts.label)
++      workerStart(runDir, opts.label, cwd)
++      if (id === 'B') await waitUntil(() => adoptionsOf(readEvents(runDir)).length > 0)
++      if (id === 'C') await waitUntil(() => readEvents(runDir).some((e) => isEnd(e, 'impl:B')))
++      return plainImpl(runDir, opts, cwd, id)
++    },
+   })
+   const log = run.log
+   const adoptions = adoptionsOf(log)
+diff --git a/skills/ultrapowers/references/report-format.md b/skills/ultrapowers/references/report-format.md
+index 724b36c5e4d0e1dafcfeb9ee536d41936148ef95..0979805e57f539792fcc3f80e29bf700fbeabb55 100644
+--- a/skills/ultrapowers/references/report-format.md
++++ b/skills/ultrapowers/references/report-format.md
+@@ -103,6 +103,7 @@ The engine (`fleet/run-engine.mjs`) returns a single structured report object; `
+ | `tasks[].proposedPatches` | no | The number of blocking issues in the review round that carried a non-empty `proposedPatch`; `0` when none, on a clean review, and on a task that failed before any review. Since #964 Task 2 no fix worker reads those patches — they are a count of what the referee offered, and a person reads the referee's own reply for the patch itself |
+ | `tasks[].proofFixes` | no | Pre-review repair rounds this task consumed: `0` when the driver's own `Run:`/`Check:` pass was green the first time it ran (and on every task the run declared no commands for), `1` when a red command bought one `fix:<id>:0` round before any reviewer was dispatched. Never more than 1 — a second red pass ends the task at `proof-red`, with one exception (#908): a still-red exam beside an `exam:` concern on the `fix:<id>:0` reply goes to review round 1 with an `EXAM CONCERN:` line instead of parking, so the row keeps `proofFixes: 1` and carries a reviewed verdict (`fixIterations` is `0`, as it is on every row since #964 Task 2). Read it beside `fixIterations`, which counts only the rounds a REVIEWER's findings drove: a task can be `proofFixes: 1, fixIterations: 0` — the driver caught it, and the reviewers then found nothing |
+ | `tasks[].stateExams` | no | The task's state-exam record, read back by the driver from `<runDir>/state-exams/task-<id>/` — one element per exam stem, `[]` when the task's exam wrote nothing there (which is every task whose exam is not a state exam, and every `failed` row that never got that far; the key is present on every row either way). A stem's directories are named `<stem>-<pass>`, split at the last `-`, and the element is read from that stem's highest-numbered pass, never `base` and never any other non-numeric suffix. The exam's own pass is `0` — the pre-review pass, and the repeat that follows the pre-review repair round — so the row carries the last record the task's own tree produced. (A `2` directory is the exam-rejected round's re-execution (#1037) — the only numbered pass above `0` this engine writes, and on a task that had one the highest-numbered rule finds it rather than `0`, which is right: it is the last record the task's own tree produced. #964 Task 2 retired the round-2 re-execution that followed a review-round fix, so a `2` directory is never that any more.)  `base` is the at-BASE probe's pass, taken on a tree that predates the patch, so a stem whose only directory is `-base` contributes no element at all. Each element is `{ exam, store_ms, render_ms, render, action_ms, browser, mutant_killed, contract }`: `exam` is the stem; `store_ms` and `render` (`ran`/`skipped`) are read from that directory's `walls.json`; `render_ms` is that file's reading when `render` is `ran` and `null` when the render was skipped; `action_ms` is that file's `action_ms` — how long the exam's interaction took — when it is a number and `null` otherwise, which is both a callback exam that had no interaction to time and a pre-#834 `walls.json` that wrote no such key; `browser` is that file's `browser` — whether the exam drove a live browser — when it reads `ran` or `skipped`, and `null` otherwise, again including the pre-#834 shape; `mutant_killed` is `killed` from `mutant.json` — the driver's own proof that the exam would have caught a wrong state; `contract` is `ok` when `contract.json`'s `breach` is `null` and the breach line verbatim otherwise. Unreadable or missing JSON leaves `null` in the fields it could not supply rather than dropping the element — evidence, not control flow. When every element's `mutant_killed` is `true`, the driver also tells that task's reviewer so, as a `STATE EXAM:` block naming each exam and its mutant path: duty 5 is settled for those exam files and for nothing else. That block reaches a reviewer only when a reviewer is dispatched — with `reviewOnStateExams` off (the default) the same condition skips the review round entirely and the row reads `reviewVerdict: 'skipped-mutant-killed'`, so the block is written into a prompt only on a run that set `reviewOnStateExams: true` |
++| `tasks[].findings` | no | The findings the DRIVER itself raised against this task, as against the ones a referee returned — present on every `tasks[]` row, and an array. Each element is `{severity, actor, detail}`, the shape a reviewer's issue has: `severity` how it was held (`blocking`), `actor` who the driver held it against (`implementer`), and `detail` the finding itself. De-duplicated by `detail` — a finding whose `detail` was already raised against this task is dropped, not appended twice — and in the order they were raised. `[]` on a task that has none, which is every task of a run with no state handshake, since the handshake is what raises them today: a task's `state.reached` post read against the tree the capture describes (`handshake: …`). The row's element carries those three keys and no more; the receipt — `paths`, the one expected path the post named, and `evidence` — rides the `handshake:finding` event on `events.jsonl` instead, so a post the driver refused on shape (no `expected` path, so no receipt) still writes the same row. A reader sees what the driver held against a task without reading the fix round's prompt back out of a transcript. |
+ | `tasks[].exam` | no | #553 — what the wave-0 examiner established for this task, in the examiner's own clone (since #653 the examiner and the implementer start together, and the driver hands the exam into the implementer's clone once both have returned). `null` when no exam was dispatched (the wave entry carried no non-empty `proofTests`, or no per-task `testCmd` to run them with); `red` when the task's own `testCmd` failed against the examiner's tests at BASE (the exam establishes something); `green-at-base` when it passed there — recorded with a judgment call, because an exam that is already green establishes nothing; `blocked` when the examiner reported BLOCKED, returned no reply, or had no role file, in which case the implementer proceeds unexamined. Driver-derived: the blob shas and the red run are `exec` in the examiner's clone, never a model report (Amendment 10). |
+ | `tasks[].examEdited` | no | Present on every row returned after the implementer when the wave-0 examiner recorded an exam (#553): the `proofTests` paths whose blob no longer matches what the examiner left — edited by the pre-review repair round (since #653 the implementer never holds the exam while it works, and since #964 Task 2 that round is the only fix round there is) — `[]` when none moved. The driver never refuses the edit: it names the paths to the reviewer as `EXAM EDITED` and pushes one matching `judgmentCalls` entry; the reviewer decides whether the exam was wrong (reviewer.md rule 8). Absent when no exam was recorded. |
+ | `tasks[].examRounds` | no | How many exam rounds the task's examiner ran (#1037). `1` on every row of a task whose wave-0 examiner recorded an exam — `examEdited`'s presence rule, so the key is absent from a task with no examiner, one whose examiner was BLOCKED or died, and every `Run:`-only proof — and `2` when a review round's blocking finding named one of the Proof `Test:` landing paths in backticks (the token equal to the path, or the path followed by `:<digits>` or `:<digits>-<digits>`) and bought the peer who wrote the exam one round to rewrite the leg. The round ran whatever it returned: a BLOCKED or dead second examiner leaves the exam as it was and still reads `2`, review round 2 running on the unchanged tree. Read it beside `reviewVerdict`: a `fix-loop-exhausted` row with `examRounds: 2` is a task whose exam was rewritten and still did not satisfy the referee, and one with `examRounds: 1` is a task whose finding was against the patch — which is the distinction between "exhausted" and "the examiner was never asked" that run-15 task 1 could not draw |
+@@ -140,7 +141,7 @@ When the workflow completes, the main agent renders the report as a concise huma
+ 1. **Integration branch** — name of the branch ready for review.
+ 2. **Plan layering and epochs** — the compiled `waves` layering the plan asked for, and beside it one line per epoch in fold order naming the task results that fold adopted. They are two different readings: the run dispatches from the ready set, so an epoch is what one fold took, not a row of the plan.
+ 3. **Baseline** — whether the suite is green on BASE itself, read once per run in `clones/baseline` during Setup and so present on every run that completed Setup (`null` only when the run never did — nothing to render, omit the line); a red baseline reframes every later test result and is why the run parked with nothing merged.
+-4. **Per-task status** — a compact table or bullet list: task name, status, review verdict, and any notes; include tier, review depth, and fix iterations so the human can judge cost vs. benefit per task.
++4. **Per-task status** — a compact table or bullet list: task name, status, review verdict, and any notes; include tier, review depth, and fix iterations so the human can judge cost vs. benefit per task. Render a row's `tasks[].findings` here too, beside its notes and by the same reading the field reference above gives them — they are what the DRIVER held against the task rather than what a referee returned, so a row with a non-empty array is a row whose `notes` alone do not say why it went the way it did; `[]` renders as nothing.
+ 5. **Epoch folds** — one line per `waveMerges` row: the epoch, its `status`, the task IDs it folded, and the integration `headSha` (or the conflict/failure detail). Lets the human see the integration sequence, not just the final state.
+ 6. **Blocked epochs** — any epoch whose fold did not land, with its failure detail; its own tasks, and the consumers those tasks left unready, appear under unfinished. Omit the section only when the array is empty.
+ 7. **Test result** — pass or fail, the command run, and any relevant output excerpt. When `coverage.complete` is false, show a ⚠ "green suite but `tasks_merged`/`tasks_planned` tasks merged" beside the result: a passing suite over an incomplete merge is a false-green (only existing tests can fail), and the unmerged tasks' deliverables are itemized in `missingDeliverables` under unfinished.
+diff --git a/skills/ultrapowers/scripts/catch_counter.py b/skills/ultrapowers/scripts/catch_counter.py
+index e4a7b32a2b25b3bccd8e6b1c16c81eca6526a927..f8651aa9142381922826c20a5cebab102889b500 100644
+--- a/skills/ultrapowers/scripts/catch_counter.py
++++ b/skills/ultrapowers/scripts/catch_counter.py
+@@ -13,11 +13,12 @@ with two disqualifications read off the run's own record — the exam was edited
+ (`receipt.json`'s `compile.tasks[].writes`) — and two ways a red simply never
+ became a catch (it stayed red, or nothing ran it again).
+ 
+-Read-only and advisory: no model call, no network, no git write. The one file
+-it writes is the ledger named by `--ledger`, and only by appending. A missing
+-or unreadable record is an empty record, never a traceback; a path under which
+-no run directory exists is reported as `LOOKED-EMPTY:` on stderr and is not an
+-error.
++Read-only and advisory: no model call, no git write. The one file it writes is
++the ledger named by `--ledger`, and only by appending — beside, under `--fetch`,
++the run directories it pulls off the evidence tags into the `--into` directory
++the operator names. A missing or unreadable record is an empty record, never a
++traceback; a path under which no run directory exists is reported as
++`LOOKED-EMPTY:` on stderr and is not an error.
+ 
+ Ordering is the event log's `id` order and nothing else. `iter` does not
+ distinguish the pass before a fix round from the pass after it (run-44 ran the
+@@ -30,10 +31,13 @@ resolves or globs a path.
+ from __future__ import annotations
+ 
+ import argparse
++import base64
+ import hashlib
+ import json
+ import os
+ import re
++import shlex
++import subprocess
+ import sys
+ from pathlib import Path
+ 
+@@ -71,6 +75,17 @@ CAUGHT, EXAM_EDITED, TASK_WRITES, RERUN, STAYED_RED, NO_GREEN = OUTCOMES
+ # A directory holding this is a run directory; nothing else makes one.
+ RUN_FILE = "events.jsonl"
+ 
++# What a run directory is, on the evidence tag and on disk alike: the log the
++# counter reads its reds out of, and the three records that judge them
++# (`report.json`'s `examEdited`, `receipt.json`'s `compile.tasks[].writes`,
++# `status.json`'s `startedAt`). `--fetch` pulls these four names and no other
++# — a fifth file on the tag is another reader's business.
++RUN_NAMES = (RUN_FILE, "report.json", "receipt.json", "status.json")
++
++# The tag a run's directory lives on. The plan tag carries the plan; the
++# evidence tag carries `.ultrapowers/runs/<N>/`.
++EVIDENCE_REF = "ultra/evidence/run-%d"
++
+ 
+ # --- the record ------------------------------------------------------------
+ 
+@@ -348,6 +363,113 @@ def append_rows(rows, ledger_path):
+     return {"added": len(added), "skipped": len(rows) - len(added)}
+ 
+ 
++# --- --fetch: the record off the evidence tags -----------------------------
++#
++# The runs a release wants counted are on the target, not on this disk: each
++# one's directory is `.ultrapowers/runs/<N>/` on `ultra/evidence/run-<N>`, and
++# `gh api …/contents/…` is the one read that needs no clone and no checkout.
++# What lands under `--into` is a tree of ordinary run directories, which the
++# counter then walks exactly as it walks a `PATH` the operator typed.
++#
++# This mirrors `skills/ultrawrite/scripts/authoring_census.py`'s `_fetch_file`
++# and `fetch_runs` rather than importing them: that file belongs to another
++# skill, and a skill's script is not a library for its neighbours.
++
++def _contents(target, path, ref):
++    """The `gh api` path for one file at one ref."""
++    return "repos/%s/contents/%s?ref=%s" % (target, path, ref)
++
++
++def _fetch_file(gh, target, path, ref):
++    """The bytes of one file at one ref, or None when the read does not answer.
++
++    `gh api …/contents/…` answers JSON whose `content` is base64 with embedded
++    newlines, so the decode is over the whole string. The call names exactly
++    two arguments — `api` and the contents path — so a caller's `--gh` wrapper
++    sees the same shape the real binary does. A non-zero exit, an answer that
++    is not JSON, an answer with no string `content` and a `content` that is not
++    base64 are one answer here: the file did not answer."""
++    try:
++        proc = subprocess.run(gh + ["api", _contents(target, path, ref)],
++                              capture_output=True, text=True)
++    except OSError as exc:
++        swallow("the gh binary did not run; that file did not answer", exc)
++        return None
++    if proc.returncode != 0:
++        return None
++    try:
++        answer = json.loads(proc.stdout)
++    except ValueError as exc:
++        swallow("gh answered no JSON; that file did not answer", exc)
++        return None
++    content = answer.get("content") if isinstance(answer, dict) else None
++    if not isinstance(content, str):
++        return None
++    try:
++        return base64.b64decode(content)
++    except (ValueError, TypeError) as exc:
++        swallow("gh's content is not base64; that file did not answer", exc)
++        return None
++
++
++def fetch_runs(target, first, last, into, gh="gh"):
++    """Fill `into` with `run-<N>/` for each N from `first` to `last` inclusive,
++    each holding as many of `RUN_NAMES` as answered; return the runs written.
++
++    `events.jsonl` is what makes a run directory, so a run whose log does not
++    answer is SKIPPED WHOLE: one line on stderr naming it, no `run-<N>`
++    directory left behind, and nothing for `find_run_dirs` to find. A run whose
++    log answers keeps it whatever the other three do — a missing `report.json`,
++    `receipt.json` or `status.json` is simply absent, and `derive_catches`
++    already reads an absent record as an empty one."""
++    into = Path(into)
++    # The destination exists whether or not any run answers: a range where
++    # every tag is missing is an empty fetch, not a usage error.
++    into.mkdir(parents=True, exist_ok=True)
++    command = shlex.split(gh) if isinstance(gh, str) else list(gh)
++    written = []
++    for number in range(int(first), int(last) + 1):
++        ref = EVIDENCE_REF % number
++        root = ".ultrapowers/runs/%d/" % number
++        log = _fetch_file(command, target, root + RUN_FILE, ref)
++        if log is None:
++            print("catch-counter: run %d has no %s at %s — skipped"
++                  % (number, RUN_FILE, ref), file=sys.stderr)
++            continue
++        directory = into / ("run-%d" % number)
++        directory.mkdir(parents=True, exist_ok=True)
++        (directory / RUN_FILE).write_bytes(log)
++        for name in RUN_NAMES[1:]:
++            body = _fetch_file(command, target, root + name, ref)
++            if body is not None:
++                (directory / name).write_bytes(body)
++        written.append(number)
++    return written
++
++
++RUNS_RE = re.compile(r"^(\d+)\.\.(\d+)$")
++
++
++def _fetch_range(runs, into):
++    """`(first, last)` for a `--fetch`, or a one-line refusal on stderr and
++    None — the census's three refusals, under this script's own name."""
++    if not runs or not into:
++        print("catch-counter: --fetch needs --runs <A>..<B> and --into <dir>",
++              file=sys.stderr)
++        return None
++    match = RUNS_RE.match(runs)
++    if not match:
++        print("catch-counter: --runs takes `<A>..<B>`, not `%s`" % runs,
++              file=sys.stderr)
++        return None
++    first, last = int(match.group(1)), int(match.group(2))
++    if first > last:
++        print("catch-counter: --runs `%s` counts backwards" % runs,
++              file=sys.stderr)
++        return None
++    return first, last
++
++
+ # --- CLI -------------------------------------------------------------------
+ 
+ def find_run_dirs(paths):
+@@ -380,13 +502,39 @@ def main(argv=None):
+     parser = argparse.ArgumentParser(
+         prog="catch_counter.py",
+         description="Count each run's catches from its own record.")
+-    parser.add_argument("paths", nargs="+", metavar="PATH",
++    # `nargs="*"`: under `--fetch` the runs come off the tags, so there is no
++    # positional to give — and with neither, the refusal below is this
++    # script's own one-line usage rather than argparse's.
++    parser.add_argument("paths", nargs="*", metavar="PATH",
+                         help="a run directory, or a tree containing them")
+     parser.add_argument("--ledger", dest="ledger", metavar="FILE",
+                         help="append the rows to this JSONL ledger")
++    parser.add_argument("--fetch", metavar="OWNER/REPO",
++                        help="pull the runs' record off this repository's "
++                             "evidence tags into --into, then count it")
++    parser.add_argument("--runs", metavar="A..B",
++                        help="the inclusive run range to fetch")
++    parser.add_argument("--into", metavar="DIR",
++                        help="where --fetch writes the runs it reads")
++    parser.add_argument("--gh", default="gh", metavar="BIN",
++                        help="the gh binary (or command) to run; default `gh`")
+     args = parser.parse_args(argv)
+ 
+-    rows = [derive_catches(run_dir) for run_dir in find_run_dirs(args.paths)]
++    paths = list(args.paths)
++    if args.fetch:
++        bounds = _fetch_range(args.runs, args.into)
++        if bounds is None:
++            return 2
++        fetch_runs(args.fetch, bounds[0], bounds[1], Path(args.into), args.gh)
++        # Counted exactly as a typed PATH is: the fetch's only product is a
++        # tree of run directories, and the walk below is the same walk.
++        paths.append(args.into)
++    elif not paths:
++        print("catch-counter: give a PATH, or --fetch <owner>/<repo> with "
++              "--runs <A>..<B> and --into <dir>", file=sys.stderr)
++        return 2
++
++    rows = [derive_catches(run_dir) for run_dir in find_run_dirs(paths)]
+     counts = (append_rows(rows, args.ledger) if args.ledger
+               else {"added": 0, "skipped": 0})
+     print("%d run(s) counted, %d row(s) appended, %d already recorded"
+diff --git a/skills/ultrapowers/scripts/catch_report.py b/skills/ultrapowers/scripts/catch_report.py
+index cd59112acb80f10aacb75beca702c542d22cdda5..88c1ece90c4549dddf03fdce2a4590d38ad17211 100644
+--- a/skills/ultrapowers/scripts/catch_report.py
++++ b/skills/ultrapowers/scripts/catch_report.py
+@@ -11,6 +11,11 @@ reads them and answers three questions in one pass:
+     the curve   how many tests are still at zero catches over N touching runs
+     the input   at an operator-chosen N, the deletion candidates themselves
+ 
++and, under `--zero-over N`, a fourth over a window instead of the whole record:
++the tests of the tree that caught nothing across the last N releases' runs,
++each with how many of those runs exercised it. That reading is what a release
++commit body carries; the table above it stays the all-time one.
++
+ A test's exercised set is the union across rows on purpose: what run A taught
+ about test T decides whether run B counts as having touched T. A test the
+ record has never named is `unobserved`, not `zero` — it is never a deletion
+@@ -60,6 +65,13 @@ EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+ # toward no window, and the operator recounts them (last row per run wins).
+ NO_STAMP_NOTE = "%d row(s) carry no startedAt — recount them"
+ 
++# The release window's three lines, verbatim. The heading is what a release
++# commit body is grepped for, so it is a constant and not an f-string in place.
++RELEASE_HEADING = "## Zero catches over the last %d release(s)"
++RELEASE_WINDOW = "window: since %s (%s), %d run(s)"
++RELEASE_WHOLE = "window: the whole record (fewer than %d release tags), %d run(s)"
++RELEASE_ENTRY = "- %s — exercised by %d run(s)"
++
+ HEADER = "| test | catches | touching runs | status |"
+ # GFM renders a pipe table only when the header is followed by a delimiter row,
+ # one cell per column — a delimiter row of the same shape as the one
+@@ -289,6 +301,40 @@ def tree_gates(tree, tests):
+     return _tree_marked(tree, tests, GATE_MARKER)
+ 
+ 
++def release_tags(tree):
++    """The tree's `v*` tags, MOST RECENT FIRST: `[(instant, stamp, name), …]`.
++
++    A release is a `v*` tag on its `chore(release):` squash commit, and those
++    tags are lightweight, so a tag's creator date is its commit's committer
++    date — which is exactly what `creatordate` answers for either kind, so one
++    read serves both. `stamp` is git's own `iso-strict` text, printed verbatim
++    in the window line rather than re-rendered.
++
++    A tree that is no checkout, a tree git cannot read and a clone with no tags
++    (a depth-1 fetch is one) all have no releases: the empty list, never a
++    traceback. [M2]"""
++    try:
++        proc = subprocess.run(
++            ["git", "-C", str(tree), "for-each-ref", "--sort=-creatordate",
++             "--format=%(creatordate:iso-strict)%09%(refname:short)",
++             "refs/tags/v*"],
++            capture_output=True, text=True)
++    except OSError as exc:
++        swallow("git unavailable; this tree has no release tags", exc)
++        return []
++    if proc.returncode != 0:
++        return []
++    found = []
++    for line in proc.stdout.splitlines():
++        stamp, tab, name = line.partition("\t")
++        if not tab or not name:
++            continue
++        when = _when(stamp)
++        if when is not None:
++            found.append((when, stamp, name))
++    return found
++
++
+ def tree_landings(tree, tests):
+     """When each test LANDED: the committer date of the commit that first
+     added the file, read from the tree's own history. A file with no such
+@@ -340,14 +386,59 @@ def zero_over_lines(table, n):
+     return [f"## Zero catches over {n} runs"] + zero_over(table, n)
+ 
+ 
+-def report_lines(table, n=None, unstamped=0):
++def zero_over_releases(rows, tree, tree_tests, n, runners=(), gates=()):
++    """The release window's section, as lines: the heading, the line naming the
++    window, then one entry per test of the TREE that caught nothing inside it.
++
++    A second reading over the record, beside the table's and not through it.
++    The window is every `catch-count` row whose `startedAt` is after the
++    creator date of the Nth most recent `v*` tag of `tree` — so `n=1` is the
++    runs since the latest release — and a tree with fewer than N such tags
++    opens at the epoch, which its window line says.
++
++    Keyed over `tree_tests` minus `runners` and `gates`, and over nothing else:
++    a path only the record names (`tests/test_gone.py`, deleted by a later run)
++    is not in the tree and is not listed, which is the whole point of reading
++    the tree here. An entry's count is how many rows OF THE WINDOW name the
++    path in their `exercises` — 0 is a real count and is listed, because a test
++    the release's runs never exercised caught nothing in it either. [M2]"""
++    n = int(n)
++    releases = release_tags(tree)
++    since = releases[n - 1] if 1 <= n <= len(releases) else None
++    opened = since[0] if since else EPOCH
++
++    window = []
++    for row in _catch_rows(rows):
++        started = _when(row.get("startedAt"))
++        # A row with no `startedAt` falls in no window at all — the same rule
++        # the table's per-test window keeps, and the closing note counts it.
++        if started is not None and started > opened:
++            window.append(row)
++    window_line = (RELEASE_WINDOW % (since[2], since[1], len(window))
++                   if since else RELEASE_WHOLE % (n, len(window)))
++
++    kept = set(runners or ()) | set(gates or ())
++    lines = [RELEASE_HEADING % n, window_line]
++    for path in sorted(set(tree_tests or ()) - kept):
++        if sum(_count(_mapping(row, "catches").get(path))
++               for row in window):
++            continue
++        exercised_by = sum(1 for row in window
++                           if path in _mapping(row, "exercises"))
++        lines.append(RELEASE_ENTRY % (path, exercised_by))
++    return lines
++
++
++def report_lines(table, n=None, unstamped=0, releases=()):
+     """The whole report, in order: table, curve, — only when the operator named
+-    an N — the deletion input, and — only when rows carried no `startedAt` —
+-    one closing line saying how many, so the report's LAST line is that note
+-    whichever sections precede it. [M5] [M2]"""
++    an N — the deletion input, — only under `--zero-over` — the release
++    window's section, and — only when rows carried no `startedAt` — one closing
++    line saying how many, so the report's LAST line is that note whichever
++    sections precede it. [M5] [M2]"""
+     lines = table_lines(table) + curve_lines(table)
+     if n is not None:
+         lines.extend(zero_over_lines(table, n))
++    lines.extend(releases)
+     if unstamped > 0:
+         lines.append(NO_STAMP_NOTE % unstamped)
+     return lines
+@@ -368,14 +459,21 @@ def main(argv=None):
+     parser.add_argument("--n", type=int, metavar="N",
+                         help="also list the tests at zero catches over N "
+                              "touching runs")
++    parser.add_argument("--zero-over", dest="zero_over", type=int, metavar="N",
++                        help="also list the tree's tests that caught nothing "
++                             "over the last N releases' runs")
+     args = parser.parse_args(argv)
+ 
+     rows = _read_jsonl(args.ledger)
+     tests = tree_test_files(args.tree)
++    runners = tree_runners(args.tree, tests)
++    gates = tree_gates(args.tree, tests)
+     table = catch_table(rows, tests, landings=tree_landings(args.tree, tests),
+-                        runners=tree_runners(args.tree, tests),
+-                        gates=tree_gates(args.tree, tests))
+-    for line in report_lines(table, args.n, unstamped_rows(rows)):
++                        runners=runners, gates=gates)
++    releases = (zero_over_releases(rows, args.tree, tests, args.zero_over,
++                                   runners=runners, gates=gates)
++                if args.zero_over is not None else ())
++    for line in report_lines(table, args.n, unstamped_rows(rows), releases):
+         print(line)
+     return 0
+ 
+diff --git a/tests/test_catch_counter.py b/tests/test_catch_counter.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..a94ba80adbf05da5bf3fa18d58af7897be656d3c
+--- /dev/null
++++ b/tests/test_catch_counter.py
+@@ -0,0 +1,471 @@
++"""tests/test_catch_counter.py — the exam for the catch-counter ratchet's first
++half: the record pulled off the evidence tags and counted.
++
++Written against the task's Machine clauses, leg by leg. Every assertion names
++the leg it belongs to and the clause it comes from, so a reader can map this
++file back to the contract:
++
++  M1  `catch_counter.py --fetch <owner>/<repo> --runs <A>..<B> --into <dir>`
++      writes, for each N from A to B inclusive, `<dir>/run-<N>/events.jsonl`,
++      `report.json`, `receipt.json` and `status.json`, each read through the
++      binary `--gh` names (`gh` by default) with exactly the arguments
++      `api repos/<owner>/<repo>/contents/.ultrapowers/runs/<N>/<name>?ref=ultra/evidence/run-<N>`
++      and decoded from the answer's base64 `content`; a run whose
++      `events.jsonl` does not answer is skipped whole — one stderr line naming
++      the run, no `run-<N>` directory — and a run whose other three files do
++      not answer keeps `events.jsonl` with the missing file absent; the fetched
++      run directories are then counted exactly as `PATH` arguments are, so with
++      `--ledger` one `catch-count` row per fetched run is appended and the
++      closing `%d run(s) counted, %d row(s) appended, %d already recorded` line
++      counts them; `--fetch` without both `--runs <A>..<B>` and `--into <dir>`,
++      or with a range that counts backwards, exits 2 with one line on stderr.
++
++Legs: (a) [M1] the three fetched runs — four files for 7, 8 skipped whole, 9
++without its `receipt.json` — the call log's shape, and the decoy `gh` first on
++PATH that must stay unrun; (b) [M1] the same call with `--ledger`: two rows
++keyed on the `run:open` ids, the closing line, and a second call that appends
++nothing; (c) [M1] the three refusals at exit 2, and that no positional `PATH`
++is needed beside `--fetch`; (h) [M1] the Proof's second `Run:` — `--help` names
++`--fetch`.
++
++The script is driven as a subprocess, with a fake `gh` written under `tmp_path`
++that answers a contents read from a table keyed on its argv and logs every
++call, and a decoy `gh` first on `PATH` whose log must stay empty — the shape
++`tests/test_authoring_census.py` uses, written here rather than imported, so
++this exam depends on no other exam. The real binary is never invoked and
++nothing here reaches the network.
++
++The module is imported the way `tests/test_catch_report.py` does it
++(`sys.path.insert(0, SCRIPTS)`), and the name this task PRODUCES (`fetch_runs`)
++is reached as an attribute of the module rather than imported at the top, so at
++BASE the legs red on the absent `--fetch` surface rather than on an ImportError.
++Neither `ULTRA_BASE` nor any commit sha is read.
++"""
++import base64
++import inspect
++import json
++import os
++import pathlib
++import re
++import subprocess
++import sys
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++SCRIPTS = ROOT / "skills/ultrapowers/scripts"
++sys.path.insert(0, str(SCRIPTS))
++import catch_counter  # noqa: E402
++
++COUNTER = SCRIPTS / "catch_counter.py"
++
++TARGET = "o/r"
++RUN_FILES = ("events.jsonl", "report.json", "receipt.json", "status.json")
++
++
++# --- the fake `gh` and the decoy -------------------------------------------
++
++FAKE_GH = '''#!/usr/bin/env python3
++"""A `gh` that answers a contents read from a table keyed on argv[1]."""
++import base64
++import json
++import sys
++from pathlib import Path
++
++HERE = Path(__file__).resolve().parent
++argv = sys.argv[1:]
++with (HERE / "calls.jsonl").open("a") as fh:
++    fh.write(json.dumps(argv) + "\\n")
++table = json.loads((HERE / "answers.json").read_text())
++body = table.get(argv[1]) if len(argv) > 1 else None
++if body is None:
++    # No digits of its own: the one stderr line naming the skipped run can
++    # then only be the script's.
++    sys.stderr.write("gh: that ref carries no such file\\n")
++    sys.exit(1)
++payload = base64.b64encode(body.encode("utf-8")).decode("ascii")
++wrapped = "\\n".join(payload[i:i + 60] for i in range(0, len(payload), 60))
++sys.stdout.write(json.dumps({
++    "name": Path(argv[1].split("?")[0]).name,
++    "encoding": "base64",
++    "content": wrapped + "\\n",
++}) + "\\n")
++'''
++
++DECOY = """#!/bin/sh
++printf '%s\\n' "$*" >> '{log}'
++exit 1
++"""
++
++
++def fake_gh(tmp_path, answers, name="fakebin"):
++    """The fake, plus the table it answers from. Returns (its path, its call
++    log). [M1]"""
++    bindir = tmp_path / name
++    bindir.mkdir()
++    (bindir / "answers.json").write_text(json.dumps(answers))
++    gh = bindir / "gh-fake"
++    gh.write_text(FAKE_GH)
++    gh.chmod(0o755)
++    return gh, bindir / "calls.jsonl"
++
++
++def decoy_env(tmp_path, name="decoy"):
++    """A `gh` first on PATH that logs and fails. `--gh` names a binary, so the
++    real one is never resolved by bare name. Returns (env, the log that must
++    never appear). [M1]"""
++    bindir = tmp_path / name
++    bindir.mkdir()
++    log = bindir / "bare-gh.log"
++    gh = bindir / "gh"
++    gh.write_text(DECOY.format(log=log))
++    gh.chmod(0o755)
++    env = dict(os.environ)
++    env["PATH"] = str(bindir) + os.pathsep + env["PATH"]
++    return env, log
++
++
++def contents_path(number, name):
++    """M1's argument, spelled exactly as the clause spells it."""
++    return ("repos/%s/contents/.ultrapowers/runs/%d/%s?ref=ultra/evidence/"
++            "run-%d" % (TARGET, number, name, number))
++
++
++# --- the record the fake answers with --------------------------------------
++#
++# Run 7 answers all four files, run 8 answers no `events.jsonl` (its
++# `report.json` is on the table, so "skipped whole" has something to skip), and
++# run 9 answers three files but no `receipt.json`.
++
++EVENTS_7 = "\n".join(json.dumps(event) for event in [
++    {"id": 1, "kind": "run:open", "runId": "opened-seven"},
++    {"id": 2, "kind": "driver:exam-run", "task": "1", "exit": 1,
++     "cmd": "python3 -m pytest tests/test_x.py"},
++    {"id": 3, "kind": "worker:end", "label": "fix:1:0"},
++    {"id": 4, "kind": "driver:exam-run", "task": "1", "exit": 0,
++     "cmd": "python3 -m pytest tests/test_x.py"},
++]) + "\n"
++REPORT_7 = json.dumps({"tasks": [{"task": "1", "examEdited": []}]}) + "\n"
++RECEIPT_7 = json.dumps(
++    {"compile": {"tasks": [{"id": "1", "writes": ["lib/x.py"]}]}}) + "\n"
++STATUS_7 = json.dumps({"startedAt": "2026-03-15T00:00:00Z"}) + "\n"
++
++EVENTS_9 = "\n".join(json.dumps(event) for event in [
++    {"id": 1, "kind": "run:open", "runId": "opened-nine"},
++    {"id": 2, "kind": "driver:proof-run", "task": "2", "exit": 0,
++     "cmd": "python3 -m pytest tests/test_y.py"},
++]) + "\n"
++REPORT_9 = json.dumps({"tasks": [{"task": "2", "examEdited": []}]}) + "\n"
++STATUS_9 = json.dumps({"startedAt": "2026-03-16T00:00:00Z"}) + "\n"
++
++REPORT_8 = json.dumps({"tasks": []}) + "\n"
++
++ANSWERS = {
++    contents_path(7, "events.jsonl"): EVENTS_7,
++    contents_path(7, "report.json"): REPORT_7,
++    contents_path(7, "receipt.json"): RECEIPT_7,
++    contents_path(7, "status.json"): STATUS_7,
++    contents_path(8, "report.json"): REPORT_8,
++    contents_path(9, "events.jsonl"): EVENTS_9,
++    contents_path(9, "report.json"): REPORT_9,
++    contents_path(9, "status.json"): STATUS_9,
++}
++
++EXPECTED_PATHS = {contents_path(n, name)
++                  for n in (7, 8, 9) for name in RUN_FILES}
++
++
++# --- driving the script ----------------------------------------------------
++
++def counter(*args, env=None):
++    return subprocess.run([sys.executable, str(COUNTER), *args],
++                          capture_output=True, text=True, env=env)
++
++
++def lines(text):
++    return [line for line in text.splitlines() if line.strip()]
++
++
++def run_fetch(tmp_path, *extra, into_name="fetched"):
++    """`--fetch o/r --runs 7..9 --into <dir> --gh <fake>`, with the decoy first
++    on PATH. Returns (proc, into, the call log, the decoy's log)."""
++    into = tmp_path / into_name
++    into.mkdir(exist_ok=True)
++    # Named off the destination, so a second call in the same `tmp_path` gets
++    # its own fake, its own call log and its own decoy.
++    gh, calls = fake_gh(tmp_path, ANSWERS, name="fakebin-" + into_name)
++    env, bare_log = decoy_env(tmp_path, name="decoy-" + into_name)
++    proc = counter("--fetch", TARGET, "--runs", "7..9", "--into", str(into),
++                   "--gh", str(gh), *extra, env=env)
++    return proc, into, calls, bare_log
++
++
++def sanitized(text, tmp_path):
++    """The lines of `text` with the sandbox's own path removed, so a digit in
++    `tmp_path` is never read as a run number."""
++    return [line.replace(str(tmp_path), "") for line in lines(text)]
++
++
++# ------------------------------------------------------------------- leg (a)
++
++def test_leg_a_the_four_files_of_run_7_are_the_decoded_answers(tmp_path):
++    """(a) [M1]: `run-7/` holds the four files, each byte-equal to the decoded
++    bytes of its answer's base64 `content`."""
++    proc, into, _calls, _bare = run_fetch(tmp_path)
++    assert proc.returncode == 0, (
++        "(a) [M1] `--fetch` with `--runs` and `--into` and no positional "
++        f"`PATH` succeeds: {proc.stdout + proc.stderr}")
++    for name, body in (("events.jsonl", EVENTS_7), ("report.json", REPORT_7),
++                       ("receipt.json", RECEIPT_7), ("status.json", STATUS_7)):
++        got = (into / "run-7" / name)
++        assert got.is_file(), (
++            f"(a) [M1] `run-7/{name}` is written: {proc.stdout + proc.stderr}")
++        assert got.read_bytes() == body.encode("utf-8"), (
++            f"(a) [M1] `run-7/{name}` is the decoded answer, byte for byte")
++
++
++def test_leg_a_run_8_is_skipped_whole_with_one_stderr_line(tmp_path):
++    """(a) [M1]: run 8's `events.jsonl` does not answer, so no `run-8`
++    directory is left behind and exactly one stderr line names the run."""
++    proc, into, _calls, _bare = run_fetch(tmp_path)
++    assert not (into / "run-8").exists(), (
++        "(a) [M1] a run whose `events.jsonl` does not answer leaves no "
++        f"`run-8` directory: {sorted(p.name for p in into.iterdir())}")
++    assert sorted(p.name for p in into.iterdir()) == ["run-7", "run-9"], (
++        "(a) [M1] the fetch writes run 7 and run 9 and nothing else: "
++        f"{sorted(p.name for p in into.iterdir())}")
++    named = [line for line in sanitized(proc.stderr, tmp_path)
++             if re.search(r"\b8\b", line)]
++    assert len(named) == 1, (
++        "(a) [M1] exactly one stderr line names the skipped run 8, got "
++        f"{named!r} out of {proc.stderr!r}")
++
++
++def test_leg_a_run_9_keeps_its_events_with_the_receipt_absent(tmp_path):
++    """(a) [M1]: run 9's `receipt.json` does not answer — the run keeps
++    `events.jsonl` and the missing file is simply absent."""
++    proc, into, _calls, _bare = run_fetch(tmp_path)
++    assert (into / "run-9/events.jsonl").read_bytes() == \
++        EVENTS_9.encode("utf-8"), proc.stdout + proc.stderr
++    assert (into / "run-9/report.json").read_bytes() == \
++        REPORT_9.encode("utf-8"), proc.stdout + proc.stderr
++    assert (into / "run-9/status.json").read_bytes() == \
++        STATUS_9.encode("utf-8"), proc.stdout + proc.stderr
++    assert not (into / "run-9/receipt.json").exists(), (
++        "(a) [M1] the file that did not answer is absent, and the run is kept: "
++        f"{sorted(p.name for p in (into / 'run-9').iterdir())}")
++
++
++def test_leg_a_every_call_is_api_plus_the_contents_path_and_nothing_else(
++        tmp_path):
++    """(a) [M1]: each logged call is exactly `api` and a
++    `repos/o/r/contents/.ultrapowers/runs/<N>/<name>?ref=ultra/evidence/run-<N>`
++    path — two arguments, no third — and no argv names another repository. The
++    four reads of run 7 and the `events.jsonl` reads of 8 and 9 are all made."""
++    proc, _into, calls, _bare = run_fetch(tmp_path)
++    assert calls.exists(), (
++        "(a) [M1] the fake `gh` was invoked: " + proc.stdout + proc.stderr)
++    argvs = [json.loads(line) for line in lines(calls.read_text())]
++    assert argvs, "(a) [M1] the fake `gh` was never invoked"
++    for argv in argvs:
++        assert argv[0] == "api", (
++            f"(a) [M1] every call's first argument is `api`, got {argv!r}")
++        assert len(argv) == 2, (
++            "(a) [M1] every call names exactly `api` and the contents path, "
++            f"and nothing else, got {argv!r}")
++        assert argv[1] in EXPECTED_PATHS, (
++            "(a) [M1] every call reads "
++            "`repos/o/r/contents/.ultrapowers/runs/<N>/<name>"
++            f"?ref=ultra/evidence/run-<N>`, got {argv[1]!r}")
++        for owner_repo in re.findall(r"repos/([^/]+/[^/?]+)", argv[1]):
++            assert owner_repo == TARGET, argv
++    made = {argv[1] for argv in argvs}
++    for required in [contents_path(7, name) for name in RUN_FILES] + [
++            contents_path(8, "events.jsonl"),
++            contents_path(9, "events.jsonl"),
++            contents_path(9, "receipt.json")]:
++        assert required in made, (
++            f"(a) [M1] the fetch reads {required!r}: {sorted(made)}")
++
++
++def test_leg_a_the_bare_gh_on_path_is_never_resolved(tmp_path):
++    """(a) [M1]: the script runs the binary `--gh` names and no other — the
++    decoy first on PATH logs nothing."""
++    proc, _into, _calls, bare_log = run_fetch(tmp_path)
++    assert not bare_log.exists(), (
++        "(a) [M1] the decoy `gh` first on PATH was invoked: "
++        + bare_log.read_text() + proc.stdout + proc.stderr)
++
++
++# ------------------------------------------------------------------- leg (b)
++
++LEDGER_FIRST = "2 run(s) counted, 2 row(s) appended, 0 already recorded"
++LEDGER_AGAIN = "2 run(s) counted, 0 row(s) appended, 2 already recorded"
++
++
++def catch_rows(ledger):
++    return [json.loads(line) for line in lines(ledger.read_text())]
++
++
++def test_leg_b_the_ledger_gains_one_row_per_fetched_run(tmp_path):
++    """(b) [M1]: the fetched run directories are counted exactly as `PATH`
++    arguments are — two `catch-count` rows, keyed on the `run:open` ids of the
++    runs that answered, and the closing line counts them."""
++    ledger = tmp_path / "ledger.jsonl"
++    proc, _into, _calls, _bare = run_fetch(tmp_path, "--ledger", str(ledger))
++    assert proc.returncode == 0, proc.stdout + proc.stderr
++
++    rows = catch_rows(ledger)
++    assert len(rows) == 2, (
++        "(b) [M1] the ledger gains exactly two rows — one per fetched run, "
++        f"and none for the skipped run 8: {rows!r}")
++    assert [row.get("kind") for row in rows] == ["catch-count", "catch-count"], (
++        f"(b) [M1] both rows are `catch-count` rows: {rows!r}")
++    assert [row.get("runId") for row in rows] == ["opened-seven",
++                                                  "opened-nine"], (
++        "(b) [M1] the rows' `runId`s are the `run:open` ids of runs 7 and 9, "
++        f"read out of the fetched `events.jsonl`: {rows!r}")
++    assert lines(proc.stdout)[-1] == LEDGER_FIRST, (
++        f"(b) [M1] the closing stdout line is {LEDGER_FIRST!r}: {proc.stdout!r}")
++
++
++def test_leg_b_the_row_is_the_reading_of_the_fetched_record(tmp_path):
++    """(b) [M1]: the row is derived from the four fetched files — run 7's
++    `receipt.json` and `report.json` stand behind its catch, and run 9, whose
++    `receipt.json` never answered, carries the empty `touched` and
++    `exercises` that absence makes."""
++    ledger = tmp_path / "ledger.jsonl"
++    proc, _into, _calls, _bare = run_fetch(tmp_path, "--ledger", str(ledger))
++    assert proc.returncode == 0, proc.stdout + proc.stderr
++    seven, nine = catch_rows(ledger)
++
++    assert seven["catches"] == {"tests/test_x.py": 1}, (
++        "(b) [M1] run 7's row is the reading of its own fetched record: "
++        f"{seven!r}")
++    assert seven["touched"] == ["lib/x.py"], (
++        f"(b) [M1] read off the fetched `receipt.json`: {seven!r}")
++    assert seven["startedAt"] == "2026-03-15T00:00:00Z", (
++        f"(b) [M1] and its `startedAt` off the fetched `status.json`: {seven!r}")
++    assert nine["touched"] == [] and nine["exercises"] == {}, (
++        "(b) [M1] run 9's `receipt.json` did not answer, so nothing stands "
++        f"behind its paths: {nine!r}")
++    assert nine["startedAt"] == "2026-03-16T00:00:00Z", (
++        f"(b) [M1] its `status.json` did answer: {nine!r}")
++
++
++def test_leg_b_a_second_identical_call_appends_nothing(tmp_path):
++    """(b) [M1]: a second identical call appends nothing — `0 row(s) appended,
++    2 already recorded` — and the ledger's rows are unchanged."""
++    ledger = tmp_path / "ledger.jsonl"
++    first, _into, _calls, _bare = run_fetch(tmp_path, "--ledger", str(ledger))
++    assert first.returncode == 0, first.stdout + first.stderr
++    before = ledger.read_bytes()
++
++    again, _into2, _calls2, _bare2 = run_fetch(
++        tmp_path, "--ledger", str(ledger), into_name="fetched-again")
++    assert again.returncode == 0, again.stdout + again.stderr
++    assert lines(again.stdout)[-1] == LEDGER_AGAIN, (
++        f"(b) [M1] the second call's closing line is {LEDGER_AGAIN!r}: "
++        f"{again.stdout!r}")
++    assert ledger.read_bytes() == before, (
++        "(b) [M1] and the ledger's bytes are unchanged by it")
++
++
++# ------------------------------------------------------------------- leg (c)
++
++def refusal(tmp_path, *args, name="bin"):
++    gh, _calls = fake_gh(tmp_path, ANSWERS, name=name)
++    env, _bare = decoy_env(tmp_path, name=name + "-decoy")
++    return counter(*args, "--gh", str(gh), env=env)
++
++
++def test_leg_c_fetch_without_runs_is_refused(tmp_path):
++    """(c) [M1]: `--fetch` without `--runs` exits 2 with one line on stderr."""
++    proc = refusal(tmp_path, "--fetch", TARGET, "--into", str(tmp_path / "d"))
++    assert proc.returncode == 2, (
++        "(c) [M1] `--fetch` without `--runs <A>..<B>` exits 2, got "
++        f"{proc.returncode}: {proc.stdout + proc.stderr}")
++    assert len(lines(proc.stderr)) == 1, (
++        f"(c) [M1] with one line on stderr: {proc.stderr!r}")
++
++
++def test_leg_c_fetch_without_into_is_refused(tmp_path):
++    """(c) [M1]: `--fetch` without `--into` exits 2 with one line on stderr."""
++    proc = refusal(tmp_path, "--fetch", TARGET, "--runs", "7..9")
++    assert proc.returncode == 2, (
++        "(c) [M1] `--fetch` without `--into <dir>` exits 2, got "
++        f"{proc.returncode}: {proc.stdout + proc.stderr}")
++    assert len(lines(proc.stderr)) == 1, (
++        f"(c) [M1] with one line on stderr: {proc.stderr!r}")
++
++
++def test_leg_c_a_backwards_range_is_refused(tmp_path):
++    """(c) [M1]: a range that counts backwards exits 2 with one line on
++    stderr."""
++    proc = refusal(tmp_path, "--fetch", TARGET, "--runs", "9..7",
++                   "--into", str(tmp_path / "d"))
++    assert proc.returncode == 2, (
++        "(c) [M1] `--runs 9..7` counts backwards and exits 2, got "
++        f"{proc.returncode}: {proc.stdout + proc.stderr}")
++    assert len(lines(proc.stderr)) == 1, (
++        f"(c) [M1] with one line on stderr: {proc.stderr!r}")
++
++
++def test_leg_c_neither_fetch_nor_a_path_is_refused(tmp_path):
++    """(c) [M1]: `paths` is `nargs="*"`, so no positional is needed beside
++    `--fetch` — leg (a)'s call carries none and exits 0 — and a call that names
++    neither `--fetch` nor a `PATH` exits 2 saying so."""
++    proc = counter()
++    assert proc.returncode == 2, (
++        "(c) [M1] neither `--fetch` nor a `PATH`: exit 2, got "
++        f"{proc.returncode}: {proc.stdout + proc.stderr}")
++    assert proc.stderr.strip(), (
++        "(c) [M1] with a usage message on stderr: " + repr(proc.stderr))
++
++
++# ------------------------------------------------------------------- leg (h)
++
++def test_leg_h_help_names_the_fetch_flag():
++    """(h) [M1]: the Proof's second `Run:` — `--help` names `--fetch`."""
++    proc = counter("--help")
++    assert proc.returncode == 0, proc.stdout + proc.stderr
++    assert "--fetch" in proc.stdout, (
++        "(h) [M1] `catch_counter.py --help` names `--fetch`: " + proc.stdout)
++
++
++# ------------------------------------------------------------- the Interfaces
++
++def test_produces_fetch_runs_signature_and_return(tmp_path):
++    """[Produces] `fetch_runs(target: str, first: int, last: int, into: Path,
++    gh="gh") -> list[int]`, with those parameter names, that default, and the
++    runs written as its answer."""
++    fetch_runs = getattr(catch_counter, "fetch_runs", None)
++    assert callable(fetch_runs), (
++        "[Produces] `catch_counter.fetch_runs` does not exist yet")
++    signature = inspect.signature(fetch_runs)
++    assert list(signature.parameters) == ["target", "first", "last", "into",
++                                          "gh"], (
++        "[Produces] `fetch_runs(target, first, last, into, gh)`, got "
++        f"{signature}")
++    assert signature.parameters["gh"].default == "gh", (
++        f'[Produces] `gh="gh"` is the default, got {signature}')
++
++    gh, _calls = fake_gh(tmp_path, ANSWERS, name="produces-bin")
++    into = tmp_path / "produced"
++    written = fetch_runs(TARGET, 7, 9, into, str(gh))
++    assert written == [7, 9], (
++        "[Produces] the runs written, in order, as a list of ints — run 8 "
++        f"answered no `events.jsonl`: {written!r}")
++    assert (into / "run-7/events.jsonl").read_bytes() == \
++        EVENTS_7.encode("utf-8"), "[Produces] and the files are on disk"
++
++
++def test_the_answer_is_decoded_from_the_base64_content(tmp_path):
++    """[M1]: the bytes on disk are the decode of the answer's base64
++    `content` — asserted against the encoding itself, so a fetch that wrote the
++    envelope, or the payload undecoded, reds here."""
++    _proc, into, _calls, _bare = run_fetch(tmp_path)
++    on_disk = (into / "run-7/events.jsonl").read_bytes()
++    assert base64.b64encode(on_disk).decode("ascii") == \
++        base64.b64encode(EVENTS_7.encode("utf-8")).decode("ascii"), (
++        "[M1] `<dir>/run-7/events.jsonl` is the decoded `content`")
++    assert b"content" not in on_disk and b"base64" not in on_disk, (
++        "[M1] and not the JSON envelope `gh` answered with")
+diff --git a/tests/test_catch_report.py b/tests/test_catch_report.py
+index b08b738b73256cd5913cc97556c80cd2c281760a..e2cfc897b400cac223bfb6734c06b48298f4870d 100644
+--- a/tests/test_catch_report.py
++++ b/tests/test_catch_report.py
+@@ -42,6 +42,11 @@ names this task PRODUCES (`tree_gates`, `catch_table`'s `gates=`) are reached
+ as attributes of the module rather than imported at the top, so at BASE each
+ M4 leg reds on its own missing name while the M1/M2/M3 legs red on the absent
+ probe.
++
++A second task's legs live at the end of this file, under their own banner:
++"the catch-counter ratchet — the zero-catch reading per release" (`--zero-over`,
++`fleet/RUNBOOK.md`'s `## Release` section). They are read over a git fixture
++tree of their own and share nothing with the legs above but the import.
+ """
+ import inspect
+ import json
+@@ -371,3 +376,469 @@ def test_leg_f_probes_md_lists_the_probe():
+         "(f) [M3] with the sentence that it is run by hand before any change "
+         "to the fold kernel or the ready-set scheduler: "
+         f"{entry!r}")
++
++
++# ===========================================================================
++# The catch-counter ratchet — the zero-catch reading per release
++# ===========================================================================
++#
++# The exam for the second task carried in this file: `--zero-over N`, the
++# report's release window, and the RUNBOOK's `## Release` section. Written
++# against that task's Machine clauses, leg by leg, with every assertion naming
++# the leg it belongs to and the clause it comes from:
++#
++#   M2  `catch_report.py --ledger <f> --tree <dir> --zero-over N` prints, after
++#       the table and the curve, a section headed exactly
++#       `## Zero catches over the last N release(s)` (N the number given),
++#       whose first line names the window — the `v*` tag that opens it, that
++#       tag's instant and how many `catch-count` rows fall inside it — and then
++#       one line `- <path> — exercised by <k> run(s)` per test file of the
++#       tree, sorted, for every path `tree_test_files` lists (never a path only
++#       the record names, never a `runner` or `gate`) whose catches summed over
++#       the rows in the window are 0, `k` being the number of rows in the
++#       window whose `exercises` names the path; the window is every row whose
++#       `startedAt` is after the creator date of the Nth most recent `v*` tag
++#       of `--tree`, and a tree with fewer than N `v*` tags opens the window at
++#       the epoch with the first line saying so.
++#   M3  Without `--zero-over` the report is what it is at BASE: the table, the
++#       curve, `--n`'s `## Zero catches over N runs` section and the unstamped
++#       note, unchanged.
++#   M4  `fleet/RUNBOOK.md` carries a `## Release` section, before
++#       `## Rollback`, naming the two commands in order and saying the
++#       `## Zero catches over the last 1 release(s)` section is pasted into the
++#       release commit body beside the prose sizes, report-only, with deletion
++#       following on the reading as `CLAUDE.md`'s Test doctrine has it.
++#
++# Legs: (d) [M2] `--zero-over 1` over the two-tag fixture; (e) [M2]
++# `--zero-over 2`; (f) [M2] `--zero-over 5` on the same two-tag fixture — the
++# epoch window; (g) [M3] the report without `--zero-over`, line for line;
++# (h) [M2] the Proof's third `Run:`; (i) [M4] the fourth; (j) [M2] the fifth.
++#
++# Two readings this section pins, both from the task's own words:
++#
++#   * the window line's template is verbatim — `window: since <tag>
++#     (<instant>), <k> run(s)` — but `<instant>` is matched as a group and
++#     compared as a MOMENT against the tag's own `%(creatordate:iso-strict)`,
++#     so an implementation that spells the same instant `…Z` rather than
++#     `…+00:00` is not failed for the spelling.
++#   * the epoch line is `window: the whole record (fewer than N release tags),
++#     <k> run(s)`, where the task writes a bare `N` in a template whose heading
++#     it writes as `%d`; that one token is matched as the number or the letter
++#     and every other character of the line verbatim.
++#
++# The fixture tree is a real `git init` repository — two commits tagged
++# `v0.1.0` and `v0.2.0` with `GIT_COMMITTER_DATE` set to T1 and T2, T1 < T2,
++# `user.name`/`user.email` configured locally so `HOME` is irrelevant — so
++# `for-each-ref` reads the tags the way the tool does. Neither `ULTRA_BASE` nor
++# any commit sha is read.
++
++from datetime import datetime  # noqa: E402
++
++REPORT = SCRIPTS / "catch_report.py"
++RUNBOOK = ROOT / "fleet/RUNBOOK.md"
++
++# The fixture's four test files: three plain, one carrying the runner marker.
++R_P = "tests/test_p.py"
++R_Q = "tests/test_q.py"
++R_R = "tests/test_r.py"
++R_RUNNER = "tests/test_runner.py"
++# A path the record names and the tree does not have: never listed.
++R_GONE = "tests/test_gone.py"
++
++T1 = "2026-02-01T00:00:00+00:00"          # v0.1.0
++T2 = "2026-03-01T00:00:00+00:00"          # v0.2.0
++
++# run-1 before T1, run-2 between the tags, run-3 and run-4 after T2.
++R_ROWS = [
++    {"kind": "catch-count", "runId": "run-1",
++     "startedAt": "2026-01-15T00:00:00Z",
++     "touched": ["lib/a.py"],
++     "catches": {R_P: 1, R_Q: 1},
++     "exercises": {R_P: ["lib/a.py"], R_Q: ["lib/a.py"]}},
++    {"kind": "catch-count", "runId": "run-2",
++     "startedAt": "2026-02-15T00:00:00Z",
++     "touched": ["lib/a.py"],
++     "catches": {R_P: 1},
++     "exercises": {R_P: ["lib/a.py"], R_Q: ["lib/a.py"],
++                   R_RUNNER: ["lib/a.py"]}},
++    {"kind": "catch-count", "runId": "run-3",
++     "startedAt": "2026-03-15T00:00:00Z",
++     "touched": ["lib/a.py"],
++     "catches": {},
++     "exercises": {R_P: ["lib/a.py"], R_Q: ["lib/a.py"],
++                   R_GONE: ["lib/a.py"]}},
++    {"kind": "catch-count", "runId": "run-4",
++     "startedAt": "2026-03-16T00:00:00Z",
++     "touched": ["lib/a.py"],
++     "catches": {},
++     "exercises": {R_P: ["lib/a.py"]}},
++]
++
++
++def _git(tree, *args, when=None):
++    env = dict(os.environ)
++    if when is not None:
++        env["GIT_AUTHOR_DATE"] = when
++        env["GIT_COMMITTER_DATE"] = when
++    proc = subprocess.run(["git", "-C", str(tree), *args],
++                          capture_output=True, text=True, env=env)
++    assert proc.returncode == 0, (
++        "the fixture repository could not be built: git %s\n%s%s"
++        % (" ".join(args), proc.stdout, proc.stderr))
++    return proc.stdout
++
++
++@pytest.fixture(scope="module")
++def release_tree(tmp_path_factory):
++    """The fixture tree: four test files under `tests/`, one of them a runner,
++    in a real git repository whose two lightweight `v*` tags sit on commits
++    dated T1 and T2. [M2]"""
++    root = tmp_path_factory.mktemp("release-tree")
++    _git(root, "init", "-q")
++    _git(root, "config", "user.name", "exam")
++    _git(root, "config", "user.email", "exam@example.invalid")
++    _git(root, "config", "commit.gpgsign", "false")
++    _git(root, "config", "tag.gpgsign", "false")
++
++    for rel in (R_P, R_Q, R_R):
++        _write(root / rel, "def test_x():\n    assert True\n")
++    _write(root / R_RUNNER, f"{RUNNER_LINE}\nimport pytest\n")
++    _write(root / "lib/a.py", "value = 1\n")
++    _git(root, "add", "-A")
++    _git(root, "commit", "-q", "-m", "the tests", when=T1)
++    _git(root, "tag", "v0.1.0")
++
++    _write(root / "NOTES.md", "the second release\n")
++    _git(root, "add", "-A")
++    _git(root, "commit", "-q", "-m", "chore(release): v0.2.0", when=T2)
++    _git(root, "tag", "v0.2.0")
++    return root
++
++
++@pytest.fixture(scope="module")
++def release_ledger(tmp_path_factory):
++    """The four `catch-count` rows, one JSON object per line. [M2]"""
++    path = tmp_path_factory.mktemp("release-ledger") / "ledger.jsonl"
++    path.write_text("".join(json.dumps(row) + "\n" for row in R_ROWS),
++                    encoding="utf-8")
++    return path
++
++
++def _creatordate(tree, tag):
++    """The tag's creator date as the tool reads it — the Context's own command,
++    so the exam and the implementation read one clock."""
++    out = _git(tree, "for-each-ref",
++               "--format=%(creatordate:iso-strict)", "refs/tags/" + tag)
++    return out.strip()
++
++
++def _report(*args):
++    return subprocess.run([sys.executable, str(REPORT), *args],
++                          capture_output=True, text=True)
++
++
++def _lines(text):
++    return [line for line in text.splitlines() if line.strip()]
++
++
++def _heading(n):
++    """M2's heading, verbatim."""
++    return "## Zero catches over the last %d release(s)" % n
++
++
++def _section(stdout, heading):
++    """The lines under `heading`, up to the next `## ` heading or the end —
++    the closing unstamped note, which is no part of the section, excluded."""
++    body = _lines(stdout)
++    assert body.count(heading) == 1, (
++        f"[M2] exactly one {heading!r} in the report: {body!r}")
++    out = []
++    for line in body[body.index(heading) + 1:]:
++        if line.startswith("## "):
++            break
++        if re.fullmatch(r"\d+ row\(s\) carry no startedAt — recount them",
++                        line):
++            continue
++        out.append(line)
++    return out
++
++
++WINDOW_SINCE = re.compile(
++    r"^window: since (?P<tag>\S+) \((?P<instant>[^()]+)\), "
++    r"(?P<runs>\d+) run\(s\)$")
++# The one ambiguous token: the task's template writes `fewer than N release
++# tags` while spelling the heading's N as `%d`, so either reading passes and
++# every other character is verbatim.
++WINDOW_EPOCH = re.compile(
++    r"^window: the whole record \(fewer than (?:\d+|N) release tags\), "
++    r"(?P<runs>\d+) run\(s\)$")
++
++
++def _assert_window_since(line, tree, tag, runs, leg):
++    match = WINDOW_SINCE.match(line)
++    assert match, (
++        f"{leg} [M2] the section's first line names the window: "
++        f"`window: since <tag> (<instant>), <k> run(s)`, got {line!r}")
++    assert match.group("tag") == tag, (
++        f"{leg} [M2] the `v*` tag that opens the window is {tag!r}, got "
++        f"{match.group('tag')!r}")
++    assert match.group("runs") == str(runs), (
++        f"{leg} [M2] {runs} `catch-count` row(s) fall inside it, got "
++        f"{match.group('runs')!r}")
++    wanted = datetime.fromisoformat(_creatordate(tree, tag))
++    got = catch_report._when(match.group("instant"))
++    assert got is not None and got == wanted, (
++        f"{leg} [M2] and that tag's own instant ({wanted.isoformat()}), got "
++        f"{match.group('instant')!r}")
++
++
++# --- (d) [M2] `--zero-over 1`: the window since the latest tag --------------
++
++def test_ratchet_leg_d_zero_over_one(release_tree, release_ledger):
++    """(d) [M2]: `--zero-over 1` opens at `v0.2.0` — run-3 and run-4 — where
++    nothing caught, so all three of the tree's plain tests are listed with the
++    runs that exercised them; the runner and the record-only path are not."""
++    proc = _report("--ledger", str(release_ledger), "--tree",
++                   str(release_tree), "--zero-over", "1")
++    assert proc.returncode == 0, proc.stdout + proc.stderr
++
++    body = _lines(proc.stdout)
++    heading = _heading(1)
++    assert heading in body, (
++        f"(d) [M2] the section is headed exactly {heading!r}: {proc.stdout!r}")
++    assert body.index(heading) > body.index(catch_report.CURVE_HEADING), (
++        "(d) [M2] the section prints after the table and the curve: "
++        f"{body!r}")
++
++    section = _section(proc.stdout, heading)
++    _assert_window_since(section[0], release_tree, "v0.2.0", 2, "(d)")
++    assert section[1:] == [
++        "- tests/test_p.py — exercised by 2 run(s)",
++        "- tests/test_q.py — exercised by 1 run(s)",
++        "- tests/test_r.py — exercised by 0 run(s)",
++    ], ("(d) [M2] one `- <path> — exercised by <k> run(s)` line per zero-catch "
++        f"test of the tree, sorted: {section[1:]!r}")
++
++
++def test_ratchet_leg_d_neither_the_runner_nor_the_record_only_path(
++        release_tree, release_ledger):
++    """(d) [M2]: never a `runner`, and never a path only the record names."""
++    proc = _report("--ledger", str(release_ledger), "--tree",
++                   str(release_tree), "--zero-over", "1")
++    assert proc.returncode == 0, proc.stdout + proc.stderr
++    section = _section(proc.stdout, _heading(1))
++    assert not [line for line in section if R_RUNNER in line], (
++        f"(d) [M2] the runner is not under the heading: {section!r}")
++    assert not [line for line in section if R_GONE in line], (
++        "(d) [M2] and neither is `tests/test_gone.py`, which only the record "
++        f"names: {section!r}")
++
++
++# --- (e) [M2] `--zero-over 2`: the window since the tag before -------------
++
++def test_ratchet_leg_e_zero_over_two(release_tree, release_ledger):
++    """(e) [M2]: `--zero-over 2` opens at `v0.1.0` — run-2, run-3, run-4 —
++    where run-2 caught with `test_p`, so `test_p` is absent and the fixture's
++    two never-catching tests are exactly what is listed."""
++    proc = _report("--ledger", str(release_ledger), "--tree",
++                   str(release_tree), "--zero-over", "2")
++    assert proc.returncode == 0, proc.stdout + proc.stderr
++
++    section = _section(proc.stdout, _heading(2))
++    _assert_window_since(section[0], release_tree, "v0.1.0", 3, "(e)")
++    assert section[1:] == [
++        "- tests/test_q.py — exercised by 2 run(s)",
++        "- tests/test_r.py — exercised by 0 run(s)",
++    ], ("(e) [M2] `test_p` caught inside the window and is gone; `test_q` is "
++        "named by run-2 and run-3, and run-4 exercises `test_p` alone: "
++        f"{section[1:]!r}")
++
++
++# --- (f) [M2] `--zero-over 5`: fewer tags than releases asked for ----------
++
++def test_ratchet_leg_f_zero_over_five_opens_at_the_epoch(release_tree,
++                                                         release_ledger):
++    """(f) [M2]: the two-tag fixture has fewer than five `v*` tags, so the
++    window opens at the epoch — the first line says so and names all four rows
++    — and only `test_r` is listed, `test_p` and `test_q` having caught in
++    run-1."""
++    proc = _report("--ledger", str(release_ledger), "--tree",
++                   str(release_tree), "--zero-over", "5")
++    assert proc.returncode == 0, proc.stdout + proc.stderr
++
++    section = _section(proc.stdout, _heading(5))
++    match = WINDOW_EPOCH.match(section[0])
++    assert match, (
++        "(f) [M2] a tree with fewer than N `v*` tags opens the window at the "
++        "epoch with the first line saying so — `window: the whole record "
++        f"(fewer than N release tags), <k> run(s)`, got {section[0]!r}")
++    assert match.group("runs") == "4", (
++        "(f) [M2] with every row of the record inside it, got "
++        f"{match.group('runs')!r}")
++    assert section[1:] == [
++        "- tests/test_r.py — exercised by 0 run(s)",
++    ], ("(f) [M2] `test_p` and `test_q` caught in run-1, which is inside this "
++        f"window: {section[1:]!r}")
++
++
++# --- (g) [M3] the report without `--zero-over`, line for line --------------
++
++BASE_SHAPE = [
++    "| test | catches | touching runs | status |",
++    "| --- | --- | --- | --- |",
++    "| tests/test_gone.py | 0 | 4 | zero |",
++    "| tests/test_p.py | 2 | 3 | caught |",
++    "| tests/test_q.py | 1 | 3 | caught |",
++    "| tests/test_r.py | 0 | 0 | unobserved |",
++    "| tests/test_runner.py | 0 | 3 | runner |",
++    "## Zero-catch curve",
++    "N=1: 1 file(s)",
++    "N=2: 1 file(s)",
++    "N=3: 1 file(s)",
++    "N=4: 1 file(s)",
++    "max touching runs: 4",
++    "## Zero catches over 1 runs",
++    "tests/test_gone.py",
++]
++
++
++def test_ratchet_leg_g_without_zero_over_the_report_is_the_base_shape(
++        release_tree, release_ledger):
++    """(g) [M3]: without `--zero-over` the report is line for line what it is
++    at BASE — the table, the curve, `--n`'s own section — and nothing of the
++    release window appears in it."""
++    proc = _report("--ledger", str(release_ledger), "--tree",
++                   str(release_tree), "--n", "1")
++    assert proc.returncode == 0, proc.stdout + proc.stderr
++    assert _lines(proc.stdout) == BASE_SHAPE, (
++        "(g) [M3] the BASE report, unchanged: "
++        f"{_lines(proc.stdout)!r}")
++    assert not [line for line in _lines(proc.stdout)
++                if line.startswith("## Zero catches over the last")], (
++        "(g) [M3] and no release section without the option")
++
++
++def test_ratchet_leg_g_the_unstamped_note_stays_last(release_tree,
++                                                     release_ledger,
++                                                     tmp_path):
++    """(g) [M3]: the unstamped note is still the report's last line — without
++    `--zero-over`, and with it, since the section is wired before the note."""
++    ledger = tmp_path / "unstamped.jsonl"
++    rows = R_ROWS + [{"kind": "catch-count", "runId": "run-5",
++                      "catches": {}, "exercises": {}, "touched": []}]
++    ledger.write_text("".join(json.dumps(row) + "\n" for row in rows),
++                      encoding="utf-8")
++    note = "1 row(s) carry no startedAt — recount them"
++
++    plain = _report("--ledger", str(ledger), "--tree", str(release_tree),
++                    "--n", "1")
++    assert plain.returncode == 0, plain.stdout + plain.stderr
++    assert _lines(plain.stdout)[-1] == note, (
++        f"(g) [M3] the note is the last line: {_lines(plain.stdout)!r}")
++
++    windowed = _report("--ledger", str(ledger), "--tree", str(release_tree),
++                       "--n", "1", "--zero-over", "1")
++    assert windowed.returncode == 0, windowed.stdout + windowed.stderr
++    body = _lines(windowed.stdout)
++    assert body[-1] == note, (
++        "(g) [M3] and stays the last line with the release section printed "
++        f"before it: {body!r}")
++    assert _heading(1) in body, (
++        f"(g) [M2] with the section itself still printed: {body!r}")
++
++
++# --- (h) [M2] the Proof's third `Run:` -------------------------------------
++
++def test_ratchet_leg_h_help_names_the_zero_over_flag():
++    """(h) [M2]: `catch_report.py --help` names `--zero-over`."""
++    proc = _report("--help")
++    assert proc.returncode == 0, proc.stdout + proc.stderr
++    assert "--zero-over" in proc.stdout, (
++        "(h) [M2] `--help` names `--zero-over`: " + proc.stdout)
++
++
++# --- (i) [M4] the Proof's fourth `Run:` — the RUNBOOK's `## Release` -------
++
++def test_ratchet_leg_i_runbook_release_section_sits_before_rollback():
++    """(i) [M4]: `fleet/RUNBOOK.md` carries a `## Release` section between
++    `## Trust` and `## Rollback`."""
++    headings = [line for line in RUNBOOK.read_text(encoding="utf-8").
++                splitlines() if line.startswith("## ")]
++    assert "## Release" in headings, (
++        f"(i) [M4] `fleet/RUNBOOK.md` carries a `## Release` section: "
++        f"{headings!r}")
++    assert "## Rollback" in headings, headings
++    assert headings.index("## Release") < headings.index("## Rollback"), (
++        f"(i) [M4] before `## Rollback`: {headings!r}")
++    assert headings.index("## Trust") < headings.index("## Release"), (
++        f"(i) [M4] and after `## Trust`: {headings!r}")
++
++
++def test_ratchet_leg_i_runbook_names_the_two_commands_in_order():
++    """(i) [M4]: the fourth `Run:` itself — the section, read to
++    `## Rollback`, carries the `catch_counter.py --fetch` line, then the
++    `catch_report.py … --zero-over 1` line, then the release commit body."""
++    text = RUNBOOK.read_text(encoding="utf-8")
++    blob = _sed_range(text, r"^## Release", r"^## Rollback")
++    assert blob, (
++        "(i) [M4] there is no `## Release` section to read")
++    assert re.search(r"catch_counter\.py --fetch.*catch_report\.py.*"
++                     r"--zero-over 1.*release commit body", blob), (
++        "(i) [M4] the two commands in order, then the release commit body: "
++        f"{blob!r}")
++
++
++def test_ratchet_leg_i_runbook_says_what_the_reading_is_for():
++    """(i) [M4]: and says the `## Zero catches over the last 1 release(s)`
++    section is pasted into the release commit body beside the prose sizes,
++    report-only, with deletion following on the reading as the Test doctrine
++    has it."""
++    text = RUNBOOK.read_text(encoding="utf-8")
++    blob = _sed_range(text, r"^## Release", r"^## Rollback")
++    assert _heading(1) in blob, (
++        "(i) [M4] the section named is `## Zero catches over the last 1 "
++        f"release(s)`: {blob!r}")
++    assert "prose sizes" in blob, (
++        f"(i) [M4] pasted beside the prose sizes: {blob!r}")
++    assert re.search(r"report-only", blob, re.I), (
++        f"(i) [M4] report-only: {blob!r}")
++    assert re.search(r"delet", blob, re.I) and "Test doctrine" in blob, (
++        "(i) [M4] and deletion follows on the reading, as `CLAUDE.md`'s Test "
++        f"doctrine has it: {blob!r}")
++
++
++# --- (j) [M2] the Proof's fifth `Run:` — this tree, an empty ledger --------
++
++def test_ratchet_leg_j_the_heading_prints_on_this_tree():
++    """(j) [M2]: `--ledger /dev/null --tree . --zero-over 1` on this repository
++    prints the heading — `/dev/null` reads as no rows, and a tree with no `v*`
++    tag opens the window at the epoch rather than failing."""
++    proc = _report("--ledger", "/dev/null", "--tree", str(ROOT),
++                   "--zero-over", "1")
++    assert proc.returncode == 0, proc.stdout + proc.stderr
++    assert _heading(1) in _lines(proc.stdout), (
++        "(j) [M2] the section heading prints for N=1: " + proc.stdout)
++
++
++# ------------------------------------------------------------- the Interfaces
++
++def test_ratchet_produces_zero_over_releases_signature(release_tree):
++    """[Produces] `zero_over_releases(rows, tree, tree_tests, n, runners=(),
++    gates=()) -> list[str]`, with those parameter names and those defaults."""
++    fn = getattr(catch_report, "zero_over_releases", None)
++    assert callable(fn), (
++        "[Produces] `catch_report.zero_over_releases` does not exist yet")
++    signature = inspect.signature(fn)
++    assert list(signature.parameters) == ["rows", "tree", "tree_tests", "n",
++                                          "runners", "gates"], (
++        "[Produces] `zero_over_releases(rows, tree, tree_tests, n, runners=(), "
++        f"gates=())`, got {signature}")
++    assert signature.parameters["runners"].default == () and \
++        signature.parameters["gates"].default == (), (
++        f"[Produces] with `runners=()` and `gates=()`, got {signature}")
++    answer = fn(list(R_ROWS), release_tree,
++                catch_report.tree_test_files(release_tree), 1,
++                runners=[R_RUNNER])
++    assert isinstance(answer, list) and all(isinstance(line, str)
++                                            for line in answer), (
++        f"[Produces] the answer is a list of strings, got {answer!r}")

@@ -1,0 +1,12 @@
+[
+  {
+    "i": 1,
+    "path": "fleet/CONTRACT.md",
+    "kind": "lines",
+    "dispatchable": true,
+    "reason": "",
+    "epoch": 2,
+    "hunksFile": "/home/exedev/target/.claude/ultrapowers/run-run-167/publish-fold/frontier/wave-1/conflict-1.hunks.txt",
+    "hunkCount": 1
+  }
+]

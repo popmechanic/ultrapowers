@@ -1,0 +1,19 @@
+    `driver:exam-run` `{task, cmd, exit, iter, stdout, paths?, evidence?}` — `paths` and
+    `evidence` are the receipt below, carried on a red row and on no other; `stdout` is the exam's
+    combined stdout+stderr, last 4,000 characters, the same tail the fix prompt reads (#944), so a parked
+    task's red is legible from the tag and the hub.
+    Every command the driver runs as a shell string — the suite (`testCmd`), a Proof `Run:`, a
+    Global `Check:`, a task's exam and the bootstrap — goes through the engine's one `bash -lc`
+    adapter, which prepends the sandbox's toolchain directory to `PATH` inside the command string:
+    `args.toolchainBin` when the run's args carry a non-empty string, else `TOOLCHAIN_BIN`, the
+    engine's export, `/usr/local/bin` — where the sandbox installs the pinned Bun. The prefix is
+    written into the command rather than into the environment because `-l` sources the login
+    profile AFTER the environment is set and a profile may reassign `PATH`; the rest of the PATH
+    the command would otherwise have had follows the toolchain directory, so a direct `bun` or
+    `bunx` is the sandbox's, whatever the profile or the tree's `node_modules/.bin` put first.
+    (`bun run <script>` prepends `node_modules/.bin` itself and is not reached by this; a tree
+    whose suite is a `bun run` script pins its own toolchain.) The prefix lives in the adapter and
+    never in the record: the `cmd` a `driver:proof-run`, `driver:check-run` or `driver:exam-run`
+    carries is the command as the plan wrote it — the exam's is the task's `testCmd` with its
+    Proof `Test:` path substituted by the exam's landing path — and carries no toolchain directory
+    and no `PATH=`. The pre-review pass (`iter: 0`) parks a task

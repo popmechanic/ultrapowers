@@ -1,0 +1,2770 @@
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index f9237668e05db8c1e328fc6210ee9d9f73057946..3a6fdb6c0466b6cc23d9064b77a8bc74c0ec4e75 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -98,6 +98,19 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+     bootstrap, the suite, the adopt, the weave and the epoch's own `headSha`. A regenerator that
+     exits non-zero rewrites nothing, stands in place of the suite exactly as a failed bootstrap
+     does (`exit` its own, `paths` empty), and the epoch takes the route a red bootstrap takes.
++    And `driver:reconcile-retry` `{wave, attempt, class}` — the epoch, the 1-based reconcile
++    attempt that produced no reply, and the class it died of: the `workerVerdict.class` the worker
++    attached to its non-fatal throw, and `null` when the reply was simply `null`. A reconcile
++    dispatch that produced no reply is asked the same question ONCE more — a fresh worker on the
++    byte-identical prompt under the same `label`, `model` and `schema`, immediately and with no
++    backoff — before the attempt is read as no reply, and that one re-dispatch is what this event
++    and the `wave <n>: reconcile attempt <a> produced no reply (<class>) — re-dispatched once`
++    judgment call beside it record. The second reply is the attempt's: an object there is read
++    exactly as a first-dispatch reply is, a `FIXED` committed and the suite re-run. A second
++    no-reply is the attempt's no reply — the `wave <n>: reconcile attempt <a> produced no reply`
++    judgment call and the epoch's `TEST_FAILED` route, with no third dispatch. A first dispatch
++    that answered at all — `BLOCKED` included, an object being an answer — and one whose throw
++    began `RUN_FATAL` are never re-dispatched and append no event.
+     What an epoch adopts is what was captured and unadopted at the INSTANT the slot freed — a
+     result that lands while a fold is running is adopted by the fold after it, never by the one
+     already in flight, and only one fold runs at a time.
+@@ -105,7 +118,22 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+     `{task, cmd, exit, iter}`, `driver:check-run` `{task, cmd, exit, minor, iter}` and
+     `driver:exam-run` `{task, cmd, exit, iter, stdout}` — `stdout` is the exam's combined
+     stdout+stderr, last 4,000 characters, the same tail the fix prompt reads (#944), so a parked
+-    task's red is legible from the tag and the hub. The pre-review pass (`iter: 0`) parks a task
++    task's red is legible from the tag and the hub.
++    Every command the driver runs as a shell string — the suite (`testCmd`), a Proof `Run:`, a
++    Global `Check:`, a task's exam and the bootstrap — goes through the engine's one `bash -lc`
++    adapter, which prepends the sandbox's toolchain directory to `PATH` inside the command string:
++    `args.toolchainBin` when the run's args carry a non-empty string, else `TOOLCHAIN_BIN`, the
++    engine's export, `/usr/local/bin` — where the sandbox installs the pinned Bun. The prefix is
++    written into the command rather than into the environment because `-l` sources the login
++    profile AFTER the environment is set and a profile may reassign `PATH`; the rest of the PATH
++    the command would otherwise have had follows the toolchain directory, so a direct `bun` or
++    `bunx` is the sandbox's, whatever the profile or the tree's `node_modules/.bin` put first.
++    (`bun run <script>` prepends `node_modules/.bin` itself and is not reached by this; a tree
++    whose suite is a `bun run` script pins its own toolchain.) The prefix lives in the adapter and
++    never in the record: the `cmd` a `driver:proof-run`, `driver:check-run` or `driver:exam-run`
++    carries is the command as the plan wrote it — the exam's is the task's `testCmd` with its
++    Proof `Test:` path substituted by the exam's landing path — and carries no toolchain directory
++    and no `PATH=`. The pre-review pass (`iter: 0`) parks a task
+     for the plan (`reviewVerdict: plan-defect`, actor `plan`, no fix round) only on the pair: the
+     implementer's `plan-defect:` concern names a Proof leg by its `(x)` label AND says it cannot
+     pass (`cannot pass|can't pass|unsatisfiable|no output|for any output`, case-insensitive), and
+@@ -523,6 +551,17 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+     the unit: a probe never manufactures a park out of a flake, and a credential that really is dead
+     is still stopped by the engine's own credential row at its first worker.
+     No `--scope`, no `KillMode=process`, no re-exec, no self-hash.
++  - the worker's role is DECLARED, never derived: `createRunWorker(...).agent(prompt, opts)` takes
++    `role` as a required dispatch option beside `label`, one of exactly five values — `examiner`,
++    `implementer`, `reviewer`, `resolver`, `writeSide` — and a dispatch with no `role`, or a `role`
++    outside that set, throws before anything is spawned, naming `role`. The declared role is the one
++    the worker gets: it rides the `role` key of that dispatch's `worker:start` and `worker:end`, and
++    it alone picks the prompt file (`fleet/roles/<role>.md`), the confine settings, the `--add-dir`
++    set, the timeout, the effort and the `--permission-mode` / `--allowedTools` /
++    `--disallowedTools` of `ROLES[role]`. A `label` is an identity and may be renamed freely; its
++    spelling decides no confinement. The engine's declarations: `exam:<id>` examiner, `impl:<id>`
++    and `fix:<id>:<iter>` implementer, `review:<id>:<iter>` reviewer, `resolve:wave<n>:<i>:<a>`
++    resolver, `reconcile:wave<n>:<a>` writeSide.
+   - the worker's API-layer classes (`fleet/run-worker.mjs` `classify`), read off the envelope's
+     `api_error_status`: `infra` is 429, 500, 502, 503, 504 and 529 — the call answers `null` and the
+     engine's infra lane owns the one re-dispatch after `INFRA_BACKOFF_MS`; `credential` is 401, 403
+@@ -542,6 +581,16 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+     `detail`), on that worker's `worker:end`, on `run:fatal` when it fails the run, and on the
+     engine's `driver:infra-retry` when the lane re-dispatches a judgment — it is the only handle
+     exe.dev support resolves.
++  - `reason` on every `worker:end` (`fleet/run-worker.mjs`, `reasonFor`): `null` when a result
++    envelope was read off the child's stdout — the `class` then says what happened and no reason is
++    invented for it — and otherwise `{ kind, code, stderr }`, the two shapes of a death before the
++    first token told apart. `kind` is `spawn-error` when the child's `error` event fired before any
++    `close` (the process never started), with `code` the error's errno string — `E2BIG`, `ENOENT`, …
++    `kind` is `no-envelope` when the child ran and closed with no envelope on stdout, with `code` the
++    exit code as a number; a SIGTERM or timeout death is `no-envelope` with `code` 143 and not a
++    third kind. `stderr` is the last 400 characters the child itself wrote to stderr, `''` when it
++    wrote nothing. The same object rides the thrown error at `workerVerdict.reason`, so a caller that
++    never reads the event still learns which death this was (#1054).
+   - publish fold: the target's default branch may have moved while the run worked, so before the PR is
+     opened the boot script folds that tip into the run's branch — under state `running` with phase
+     `publish fold`, after the engine's unit is inactive and before `publishing`, as its own transient
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index c73d577a0225b2b7d7e67c4f54bd71d27fa3588d..a0c0119c611165b89e0fc0dc601f1f34b60b2a2b 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -133,15 +133,22 @@ const resolvedModel = (name) => {
+ }
+ 
+ // ── fault classifiers — THE ONE SHARED DEFINITION (spec §3.4) ────────────────
+-// run-worker.mjs's classify() speaks this vocabulary in its thrown messages;
+-// fleet/tests/test_run_worker.mjs pins classify's wording against THIS regex
+-// (it used to extract it from waves.js source — the pin now holds the engine
+-// that actually runs, not the fallback). A capability-fixable schema trip gets
+-// the one tier escalation; everything else retries in place; AGENT_NULL is the
+-// engine-minted infra marker and parks for its one re-dispatch — never free-text
+-// match Overloaded (agent() returns null rather than throwing overload text).
+-export const isSchemaTrip = (msg) =>
+-  /schema|structuredoutput|did not conform|required propert|invalid (?:enum|json)/i.test(msg)
++// A capability trip gets the one tier escalation; everything else retries in
++// place; AGENT_NULL is the engine-minted infra marker and parks for its one
++// re-dispatch — never free-text match Overloaded (agent() returns null rather
++// than throwing overload text).
++//
++// The escalation lever is a VALUE, not a sentence (#410 §1). run-worker.mjs's
++// classify() attaches its verdict to every non-fatal throw as
++// `err.workerVerdict`, and these are the two classes that mean "the schema
++// contract went unmet, a stronger model is the lever". Reading the class means
++// rewording a worker's detail text — or a task's own error happening to say
++// "schema" — cannot move a retry between tiers.
++const SCHEMA_TRIP_CLASSES = new Set(['max-turns', 'no-structured-output'])
++const capabilityTrip = (err) => {
++  const v = err && typeof err === 'object' ? err.workerVerdict : null
++  return !!v && typeof v === 'object' && SCHEMA_TRIP_CLASSES.has(v.class)
++}
+ export const looksStructural = (msg) =>
+   /cannot find module|module not found|no module named|importerror|cannot import|is not defined/i.test(msg)
+ export const isInfraFault = (msg) => String(msg).startsWith('AGENT_NULL')
+@@ -1118,8 +1125,29 @@ const taskBodyBlock = (task, wavesPath) => {
+ // lacks (an OOM-killed worker, a stuck execnet gateway), which is what moved
+ // this from theoretical to owed before the golden ships parallel pytest.
+ export const SHELL_TIMEOUT_MS = 30 * 60 * 1000
+-const shOf = (exec) => (cmd, cwd, env) =>
+-  exec('bash', ['-lc', cmd], { cwd, env, timeoutMs: SHELL_TIMEOUT_MS })
++// Where the sandbox installs its pinned toolchain (#1051): `setup-script.mjs`
++// puts Bun at `/usr/local/bin/bun`, and that binary — not whatever a target's
++// `package install` dropped into `node_modules/.bin`, and not whatever the
++// login profile found first — is what the driver's commands must resolve. A
++// run overrides it with `args.toolchainBin`; this is the default.
++export const TOOLCHAIN_BIN = '/usr/local/bin'
++// Single-quote a directory for the shell, so a path with a space or a quote in
++// it still arrives as one word.
++const shSingleQuote = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'"
++// The prefix rides INSIDE the command string, not in `env.PATH`: `bash -l`
++// sources the login profile AFTER the environment is set, and a profile that
++// assigns `PATH=` (macOS `path_helper`, Debian's `/etc/profile`) would throw an
++// inherited prefix away. An assignment in the command runs after the profile
++// has had its say, so the toolchain directory is first whatever the profile or
++// the tree did. `${PATH:+:$PATH}` keeps the rest of the PATH the command would
++// otherwise have had, and adds no stray `:` when there was none.
++const shOf = (exec, toolchainBin) => {
++  const bin = (typeof toolchainBin === 'string' && toolchainBin !== '')
++    ? toolchainBin : TOOLCHAIN_BIN
++  const prefix = 'export PATH=' + shSingleQuote(bin) + '"${PATH:+:$PATH}"\n'
++  return (cmd, cwd, env) =>
++    exec('bash', ['-lc', prefix + cmd], { cwd, env, timeoutMs: SHELL_TIMEOUT_MS })
++}
+ // The env for a `Run:`/`Check:` command (#632 part 2). `execSeam` spawns with
+ // `env: env || process.env`, so a passed env REPLACES the environment whole —
+ // omit the spread and the command loses PATH, HOME and the git config that
+@@ -1275,7 +1303,7 @@ export async function resolveConflicts({
+             // whole contending-task dossier per path hands a function and each
+             // resolver is briefed on its own path alone.
+             (typeof contendingBlock === 'function' ? contendingBlock(conflict) : contendingBlock),
+-          { label, schema: RESOLVER_SCHEMA })
++          { label, role: 'resolver', schema: RESOLVER_SCHEMA })
+       } catch (e) {
+         // A run-fatal (credential/config) must surface as the engine crash
+         // it is — swallowing it here would misreport a dead credential as a
+@@ -1449,7 +1477,7 @@ export async function runEngine({
+   patchBase,
+ }) {
+   const roles = loadRoles(rolesDir)
+-  const sh = shOf(exec)
++  const sh = shOf(exec, args.toolchainBin)
+   const git = gitOf(exec)
+   const { runDir, clonesDir } = paths
+   // What a state exam is handed as `ULTRA_RUN_DIR` — absolute, because the
+@@ -3103,12 +3131,13 @@ export async function runEngine({
+                  { label: 'exam:' + task.id, task: task.id })
+       : ''
+     const examPrompt = roles.examiner + '\nBASE: ' + baseShaForTask + examinerInputs + examFacts
+-    const examOpts = { label: 'exam:' + task.id, isolation: 'worktree', model: baseModel,
+-                       schema: EXAMINER_SCHEMA }
++    const examOpts = { label: 'exam:' + task.id, role: 'examiner', isolation: 'worktree',
++                       model: baseModel, schema: EXAMINER_SCHEMA }
+     const examCall = examReady ? agent(examPrompt, examOpts) : null
+     const implCall = agent(
+       roles.implementer + '\nBASE: ' + baseShaForTask + implementerInputs,
+-      { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA })
++      { label: 'impl:' + task.id, role: 'implementer', isolation: 'worktree',
++        model: baseModel, schema: IMPLEMENTER_SCHEMA })
+     // Both halves are SETTLED before either is judged (#762). `Promise.all`
+     // rejected the moment the examiner died — with the implementer still
+     // running, un-awaited — and that rejection climbed to runTask, which reset
+@@ -3712,7 +3741,7 @@ export async function runEngine({
+           filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) +
+           '\n\nBlocking issues to resolve:\n' +
+           reds.map((r) => '- ' + r.line + '\n  output (last 4,000 characters):\n' + r.stdout).join('\n'),
+-        { label: 'fix:' + task.id + ':0', isolation: 'worktree',
++        { label: 'fix:' + task.id + ':0', role: 'implementer', isolation: 'worktree',
+           model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA })
+       if (impl === null) throw new Error('AGENT_NULL: pre-review fix agent returned null (terminal Overloaded or skipped)')
+       stripUntrustedPatch(impl, patchPrefix)
+@@ -3977,7 +4006,7 @@ export async function runEngine({
+       // not reviewed by a PAIR — the profile survives as the run's record of
+       // what the plan asked for, not as a second bill.
+       const reviewOpts = () => ({
+-        label: 'review:' + task.id + ':' + iter,
++        label: 'review:' + task.id + ':' + iter, role: 'reviewer',
+         model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
+       })
+       const leanOpts = reviewOpts()
+@@ -4275,7 +4304,7 @@ export async function runEngine({
+                  notes: msg, tier: resolvedModel(task.tier || 'standard'),
+                  review: taskReviewProfile(task), fixIterations: 0, proofFixes: 0 }
+       }
+-      const capabilityFixable = isSchemaTrip(msg)
++      const capabilityFixable = capabilityTrip(e)
+       const retryTier = capabilityFixable ? escalateTier(task.tier) : (task.tier || 'standard')
+       if (looksStructural(msg)) {
+         judgmentCalls.push('task ' + task.id + ': agent error looks structural (' + msg +
+@@ -4674,16 +4703,49 @@ export async function runEngine({
+     }
+     for (let attempt = 1; attempt <= 2 && suite.code !== 0; attempt++) {
+       log('wave ' + waveNumber + ' candidate suite RED — reconcile attempt ' + attempt)
+-      let rec
+-      try {
+-        rec = await agent(
+-          roles.reconcile + '\nTEST COMMAND: ' + testCmd +
+-            '\n\nFailing output:\n' + failingBlock(suite.stdout + suite.stderr),
+-          { label: 'reconcile:wave' + waveNumber + ':' + attempt,
+-            model: TIER.mostCapable, schema: RECONCILE_SCHEMA })
+-      } catch (e) {
+-        if (String((e && e.message) || e).startsWith('RUN_FATAL')) throw e
+-        rec = null
++      const prompt = roles.reconcile + '\nTEST COMMAND: ' + testCmd +
++        '\n\nFailing output:\n' + failingBlock(suite.stdout + suite.stderr)
++      const label = 'reconcile:wave' + waveNumber + ':' + attempt
++      // One dispatch, as an expression: the reply, or the CLASS of the no-reply
++      // it was. A non-fatal throw is a no-reply like a `null` is — the worker
++      // attaches `{ workerVerdict, label }` to every one of them, so the class
++      // it died of is readable — and a `RUN_FATAL` is the run ending and leaves
++      // here untouched, exactly as at BASE.
++      const askOnce = async () => {
++        try {
++          return { reply: await agent(prompt, { label, role: 'writeSide', model: TIER.mostCapable, schema: RECONCILE_SCHEMA }),
++                   cls: null }
++        } catch (e) {
++          if (String((e && e.message) || e).startsWith('RUN_FATAL')) throw e
++          const verdict = e && e.workerVerdict
++          return { reply: null, cls: (verdict && verdict.class != null) ? verdict.class : null }
++        }
++      }
++      // A reconcile worker that died without answering is asked the same
++      // question once more before the epoch is blocked (#1054, question 2). At
++      // BASE a no-reply on attempt 1 ended the round where it stood, so run-20
++      // paid a whole epoch — tasks 2–5 never dispatched — for one worker that
++      // exited 1 having spent zero tokens. The re-ask is a FRESH worker on the
++      // byte-identical prompt under the same `label`, `model` and `schema`: the
++      // worker derives the second session id and evidence directory
++      // (`<label>.2`) from its own per-label `dispatched` count, so keeping the
++      // label is what keeps the two dispatches distinguishable on the record.
++      // It is IMMEDIATE — no backoff. `INFRA_BACKOFF_MS` (`retryInfraNull`
++      // above) is the answer to an OVERLOADED API being re-asked by every
++      // worker that died in the outage at once; a reconcile is one worker per
++      // epoch, not a storm, and a minute of wall on it buys nothing.
++      // An OBJECT reply is an answer and is read as at BASE — a `BLOCKED` says
++      // the worker looked and could not fix it, which asking twice does not
++      // change — and only the SECOND no-reply is read as no reply, so the
++      // `judgmentCalls` literal and the `TEST_FAILED` route below are BASE's,
++      // byte for byte.
++      let { reply: rec, cls } = await askOnce()
++      if (rec == null) {
++        appendEvent({ kind: 'driver:reconcile-retry', wave: waveNumber, attempt, class: cls })
++        judgmentCalls.push('wave ' + waveNumber + ': reconcile attempt ' + attempt +
++          ' produced no reply (' + cls + ') — re-dispatched once')
++        log(label + ' produced no reply (' + cls + ') — re-dispatching once')
++        ;({ reply: rec } = await askOnce())
+       }
+       if (!rec || rec.status !== 'FIXED') {
+         judgmentCalls.push('wave ' + waveNumber + ': reconcile attempt ' + attempt +
+diff --git a/fleet/run-main.mjs b/fleet/run-main.mjs
+index 77f49c2ea1cf27c80a7f259ce153d6628ca9e4d6..146fae0bb2104a2afd5edc38f0952c1454e65a2d 100644
+--- a/fleet/run-main.mjs
++++ b/fleet/run-main.mjs
+@@ -517,9 +517,10 @@ export const makeAddDirsFor = ({ runDir }) => (opts, role) =>
+ export function composeAgent({ runId, base, runDir, clonesDir, patchesDir, workersDir,
+                                promptFileFor, settingsFor, env, cli, eventLog, spawnFn,
+                                implementerEffort, filesFor, envFor, args }) {
+-  // One knob, one role. `roleForLabel` maps both `impl:` and `fix:` to
+-  // `implementer`; every other role answers undefined, so `buildArgs` pushes no
+-  // `--effort` for it and each judge keeps the CLI's own default (#522).
++  // One knob, one role. Both the `impl:` and the `fix:` dispatch declare
++  // `implementer`, so the knob reaches both; every other role answers
++  // undefined, so `buildArgs` pushes no `--effort` for it and each judge keeps
++  // the CLI's own default (#522).
+   const effortFor = implementerEffort
+     ? (role) => (role === 'implementer' ? implementerEffort : undefined)
+     : undefined
+diff --git a/fleet/run-worker.mjs b/fleet/run-worker.mjs
+index e7cc08f234bdbc2d0118fa440c578b7c0fdbd00c..24e876d1683ce5a327eb175478c1e9b4dd202e7c 100644
+--- a/fleet/run-worker.mjs
++++ b/fleet/run-worker.mjs
+@@ -169,44 +169,38 @@ export const ROLES = {
+   },
+ }
+ 
+-// ── label -> role ────────────────────────────────────────────────────────────
+-// The complete taxonomy of labels waves.js emits, read off the ten call sites.
+-// Exhaustive by construction: an unrecognised label is a FAILED RUN, never a
+-// silent fallback to a permissive role. A new dispatch site in waves.js must
+-// declare its role here or the driver refuses to start it — which is the point.
++// ── the declared role ────────────────────────────────────────────────────────
++// #410 §2: the role is DECLARED at the dispatch site, never derived from the
++// label's prose. A label is an identity — it names a worker in the events, the
++// transcript path and the evidence dir — and identities get renamed; a role is
++// the tool allowlist, the permission mode and the writable root, and deriving
++// one from the other meant a renamed label silently changed a worker's
++// confinement. So `agent(prompt, opts)` requires `opts.role` and refuses the
++// dispatch before it spawns anything when it is missing or unknown.
+ //
+-// Under the Amendment 10 engine (fleet/run-engine.mjs) the label set shrinks:
+-// setup and merge:* are driver code and never dispatch. The rows are kept so a
+-// stray old-style label still resolves to a non-permissive role rather than
+-// crashing a run mid-wave; `resolve` moves to its own read-only role (the
+-// driver writes the reply dir from the resolver's schema reply).
+-//
+-//   exam:<id>                                   examiner  (isolation, #553)
+-//   impl:<id>                                   implementer  (isolation)
+-//   fix:<id>:<iter>                             implementer  (isolation)
+-//   review:<id>:<iter>[:<pass>]                 reviewer
+-//   integration                                 critic  (completeness, read-only)
+-//   resolve:wave<n>:<i>:<a>                     resolver (read-only)
+-//   reconcile:wave<n>:<a>                       writeSide
+-//   setup / merge:wave<n>[...]                  writeSide (legacy labels; driver code now)
+-export function roleForLabel(label) {
+-  if (typeof label !== 'string' || !label) {
++// The five roles a dispatch may declare. `critic` (the retired `integration`
++// label, #964) keeps its ROLES row and is dispatched by nothing, so it is not
++// declarable here: an undispatched role that no site can name cannot be handed
++// a worker by accident.
++export const DISPATCH_ROLES = ['examiner', 'implementer', 'reviewer', 'resolver', 'writeSide']
++
++// Throws — never falls back. A permissive default is how isolation is lost
++// silently, and the throw names `role` so the dispatch site reads its own bug.
++export function assertDeclaredRole(opts) {
++  if (typeof opts.label !== 'string' || !opts.label) {
+     throw new Error('runWorker: opts.label is required (it is the worker identity)')
+   }
+-  if (label === 'integration') return 'critic'
+-  if (label === 'setup') return 'writeSide'
+-  const prefix = label.split(':')[0]
+-  switch (prefix) {
+-    case 'exam': return 'examiner'
+-    case 'impl': case 'fix': return 'implementer'
+-    case 'review': return 'reviewer'
+-    case 'resolve': return 'resolver'
+-    case 'merge': case 'reconcile': return 'writeSide'
+-    default:
+-      throw new Error('runWorker: no role declared for label "' + label + '". ' +
+-        'A new agent() dispatch site must declare its role in roleForLabel — ' +
+-        'defaulting one to a permissive role is how isolation is lost silently.')
++  if (opts.role === undefined || opts.role === null || opts.role === '') {
++    throw new Error('runWorker: opts.role is required for dispatch "' + opts.label + '" — ' +
++      'declare one of ' + DISPATCH_ROLES.join(', ') + ' at the call site. ' +
++      'A role is the tool allowlist, the permission mode and the writable root; ' +
++      'it is not read off the label.')
++  }
++  if (!DISPATCH_ROLES.includes(opts.role)) {
++    throw new Error('runWorker: opts.role "' + String(opts.role) + '" is not a role (dispatch "' +
++      opts.label + '") — it must be one of ' + DISPATCH_ROLES.join(', ') + '.')
+   }
++  return opts.role
+ }
+ 
+ // ── label -> session uuid ────────────────────────────────────────────────────
+@@ -423,6 +417,36 @@ export function probeReflection({ env = process.env, spawnSyncFn = spawnSync,
+       : name + ' is not attached to this VM (reflection lists: ' + (names.join(', ') || 'nothing') + ')' }
+ }
+ 
++// The tail of a child's stderr kept on a `worker:end` reason — the same
++// 400-character slice a git failure keeps, for the same reason: enough to name
++// what died, short enough that an event line stays readable.
++export const REASON_STDERR_TAIL = 400
++
++// Why a dispatch reached the end of the process with nothing to read, or `null`
++// when there was something. A death before the first token has two shapes and
++// they are not the same failure:
++//
++//   spawn-error  the child's `error` event fired before any `close` — the
++//                process never started at all, and `code` is the error's errno
++//                string (`E2BIG`, `ENOENT`, …).
++//   no-envelope  the child ran and closed with no result envelope on stdout,
++//                and `code` is its exit code as a number. A SIGTERM/timeout
++//                death (143) is this kind with `code` 143, not a third one.
++//
++// At BASE the two were indistinguishable downstream: a spawn `error` was folded
++// into `stderr` and exited 127, so a worker that died on an oversized argv read
++// exactly like one whose model refused (#1054). An envelope having been read is
++// the whole of the `null` condition — the class then says what happened, and no
++// reason is invented for it.
++export function reasonFor({ envelope, exitCode, stderr, spawnError }) {
++  if (envelope) return null
++  const tail = String(stderr == null ? '' : stderr).slice(-REASON_STDERR_TAIL)
++  if (spawnError) {
++    return { kind: 'spawn-error', code: spawnError.code, stderr: tail }
++  }
++  return { kind: 'no-envelope', code: exitCode, stderr: tail }
++}
++
+ export function classify({ exitCode, envelope, stdout }) {
+   // 143 = SIGTERM, and there is NO ENVELOPE AT ALL — stdout is empty (R-o7a).
+   // Retryable once, then the task fails. Checked first precisely because there
+@@ -514,13 +538,11 @@ export function classify({ exitCode, envelope, stdout }) {
+     // ([structured-output-enforce], R-o2/R-o2d) — so reaching here means the
+     // in-loop nudge already failed. Escalating the tier is the driver's lever.
+     //
+-    // The wording is load-bearing, not decoration: waves.js:879 routes a retry
+-    // to TIER ESCALATION only when the thrown message matches its isSchemaTrip
+-    // regex (/schema|structuredoutput|…/i), and to a retry-in-place otherwise.
+-    // A capability trip wants the stronger model. Naming StructuredOutput here
+-    // is both accurate — it IS the tool that never produced a conforming reply
+-    // — and the way this speaks the vocabulary waves.js already reads, rather
+-    // than adding a second classifier beside the one that exists.
++    // The lever is the CLASS, not this sentence: the engine reads
++    // `err.workerVerdict.class` and escalates for exactly `max-turns` and
++    // `no-structured-output` (#410 §1). So `detail` is free to be reworded for
++    // a human reader — it says StructuredOutput because that IS the tool that
++    // never produced a conforming reply — without moving the retry tier.
+     return { outcome: 'retry', class: 'max-turns',
+       detail: 'no conforming StructuredOutput reply within the turn cap (schema contract unmet)' }
+   }
+@@ -534,7 +556,7 @@ export function classify({ exitCode, envelope, stdout }) {
+   if (envelope.structured_output === null || envelope.structured_output === undefined) {
+     // Exit 0, no error, and still no typed reply. Retry with escalation rather
+     // than hand waves.js an undefined it would dereference.
+-    // Same escalation vocabulary as max-turns above.
++    // Same escalating class as max-turns above.
+     return { outcome: 'retry', class: 'no-structured-output',
+       detail: 'completed without a StructuredOutput reply (schema contract unmet)' }
+   }
+@@ -943,7 +965,9 @@ export function createRunWorker(cfg) {
+       throw new Error('WORKER_BUDGET: ' + opts.label +
+         ' already exhausted its per-worker budget; refusing to spend the backstop again')
+     }
+-    const role = roleForLabel(opts.label)
++    // Before the dispatch counter, before the cwd, before any spawn: a worker
++    // with no declared role does not start.
++    const role = assertDeclaredRole(opts)
+     const attempt = (dispatched.get(opts.label) || 0) + 1
+     dispatched.set(opts.label, attempt)
+     const sessionId = sessionIdFor(runId, attempt === 1 ? opts.label : opts.label + '#' + attempt)
+@@ -980,7 +1004,7 @@ export function createRunWorker(cfg) {
+ 
+     onEvent({ kind: 'worker:start', label: opts.label, role, sessionId, cwd, model: opts.model || null })
+ 
+-    const { exitCode, stdout, stderr, timedOut } = await runProcess({
++    const { exitCode, stdout, stderr, childStderr, timedOut, spawnError } = await runProcess({
+       cli, argv, cwd, env: childEnvFor(env, prompt), prompt,
+       timeoutMs: (timeoutMsFor && timeoutMsFor(role)) || timeoutMs,
+       graceMs, spawnFn,
+@@ -994,9 +1018,16 @@ export function createRunWorker(cfg) {
+     recordEnvelopeDenials({ workersDir, label: opts.label, role, envelope })
+     let verdict = classify({ exitCode, envelope, stdout })
+     if (verdict.outcome === 'probe') verdict = resolveAttachment(verdict, opts.label)
++    // Why this dispatch had nothing to read, or `null` because it did. The key
++    // rides the verdict as well as the event, so the throw below carries the
++    // same object at `workerVerdict.reason` and a caller that never sees the
++    // event still learns which of the two deaths this was.
++    const reason = reasonFor({ envelope, exitCode, stderr: childStderr, spawnError })
++    verdict = { ...verdict, reason }
+     onEvent({ kind: 'worker:end', label: opts.label, role, sessionId, exitCode, timedOut,
+       outcome: verdict.outcome, class: verdict.class, status: verdict.status || null,
+       ...(verdict.trace ? { trace: verdict.trace } : {}),
++      reason,
+       meter: envelope ? meterOf(envelope) : null })
+ 
+     // #702 Task 1 — the slice, after `worker:end` and before the verdict is
+@@ -1036,11 +1067,11 @@ export function createRunWorker(cfg) {
+         // did was the defect. `waves.js:1014` catches EVERY throw out of
+         // agent() by design — "a thrown agent() call must cost ONE task, never
+         // the run" — and its classifiers only recognise two things: a message
+-        // starting `AGENT_NULL` (isInfraFault) and a schema-shaped message
+-        // (isSchemaTrip). `RUN_FATAL: …` matches neither, so it became a
+-        // same-tier retry and then a failed task: TWO dispatches per task, each
+-        // learning the same dead credential. Exactly the burn the credential
+-        // row exists to prevent, doubled.
++        // starting `AGENT_NULL` (isInfraFault) and a verdict class the engine
++        // escalates for. `RUN_FATAL: …` is neither, so it became a same-tier
++        // retry and then a failed task: TWO dispatches per task, each learning
++        // the same dead credential. Exactly the burn the credential row exists
++        // to prevent, doubled.
+         //
+         // waves.js cannot be taught a third class without editing it, and this
+         // stage does not edit it (port, don't rewrite). So the driver enforces
+@@ -1054,11 +1085,12 @@ export function createRunWorker(cfg) {
+         throw new Error('RUN_FATAL: ' + verdict.detail + ' (label ' + opts.label + ')')
+       }
+       default:
+-        // 'retry' and 'fail-task' both leave by a throw, and waves.js retries
++        // 'retry' and 'fail-task' both leave by a throw, and the engine retries
+         // ANY non-AGENT_NULL throw exactly once — so the two outcomes differ
+-        // only in the message, via isSchemaTrip (schema-shaped -> escalate a
+-        // tier; anything else -> retry in place). That is the engine's ladder
+-        // and this stage does not rewrite it.
++        // only in the tier that retry runs at, which the engine takes from the
++        // `workerVerdict` attached below (`max-turns`/`no-structured-output` ->
++        // escalate a tier; anything else -> retry in place). That is the
++        // engine's ladder and this stage does not rewrite it.
+         //
+         // The one place that costs real money is `budget`: the per-worker
+         // --max-budget-usd backstop has already tripped, and waves.js's retry
+@@ -1099,6 +1131,13 @@ function runProcess({ cli, argv, cwd, env, prompt, timeoutMs, graceMs = 10 * 100
+       cwd, env, stdio: ['pipe', 'pipe', 'pipe'],
+     })
+     let stdout = '', stderr = '', timedOut = false, settled = false
++    // Set only when the child's `error` event fires BEFORE any `close` — the
++    // process never started, which is a different death from one that ran and
++    // answered nothing, and at BASE the two were the same exit 127. `stderr`
++    // below stays the folded text (the evidence bundle's `stderr` file keeps
++    // the spawn message); `childStderr` is only what the child itself wrote, so
++    // a spawn failure reports `''` rather than our own sentence.
++    let spawnError = null
+     // setEncoding, NOT `stdout += buffer`. Concatenating Buffers decodes each
+     // chunk independently, so a multi-byte character straddling a chunk
+     // boundary becomes U+FFFD on both sides — and the result is still VALID
+@@ -1131,9 +1170,23 @@ function runProcess({ cli, argv, cwd, env, prompt, timeoutMs, graceMs = 10 * 100
+       settled = true
+       clearTimeout(timer)
+       if (killTimer) clearTimeout(killTimer)
+-      resolve({ exitCode, stdout, stderr, timedOut })
++      resolve({
++        exitCode, stdout, timedOut, spawnError,
++        stderr: stderr + (spawnError ? spawnError.message : ''),
++        childStderr: stderr,
++      })
+     }
+-    child.on('error', (e) => { stderr += String(e && e.message || e); done(127) })
++    child.on('error', (e) => {
++      if (!settled) {
++        spawnError = {
++          // The errno string (`E2BIG`, `ENOENT`, …) is the whole diagnosis; an
++          // error without one falls back to the exit code we settle with.
++          code: (e && e.code != null) ? e.code : 127,
++          message: String((e && e.message) || e),
++        }
++      }
++      done(127)
++    })
+     // A SIGTERM the child answered itself arrives as code 143; one it did not
+     // arrives as signal SIGTERM; a SIGKILL arrives as signal SIGKILL. All three
+     // are the same class — killed, no envelope, retryable once.
+diff --git a/fleet/tests/probe_confine_live.mjs b/fleet/tests/probe_confine_live.mjs
+index ca9d118b783aa199912df2cc7ec2e342ff56f9a1..71e2f24c5f034c1c86f56096d972fa9cf0592ba3 100644
+--- a/fleet/tests/probe_confine_live.mjs
++++ b/fleet/tests/probe_confine_live.mjs
+@@ -97,7 +97,7 @@ const SCHEMA = {
+ }
+ 
+ console.log('hostile task against the neutral implementer prompt + PreToolUse hook …')
+-const out = await agent(HOSTILE, { label: 'impl:T1', model: 'sonnet', schema: SCHEMA, isolation: 'worktree' })
++const out = await agent(HOSTILE, { label: 'impl:T1', role: 'implementer', model: 'sonnet', schema: SCHEMA, isolation: 'worktree' })
+ 
+ // The verdict is the FILESYSTEM, not the model's self-report: a confined run
+ // leaves no escape file, whatever the model claims it did.
+diff --git a/fleet/tests/probe_run_worker_live.mjs b/fleet/tests/probe_run_worker_live.mjs
+index 4ea6c7178ab392dbbbae42bddd6e0c0b19d67336..8773b7c85ad336e0ce0265eb84116eb76202bc52 100644
+--- a/fleet/tests/probe_run_worker_live.mjs
++++ b/fleet/tests/probe_run_worker_live.mjs
+@@ -86,7 +86,7 @@ console.log('arm A: a conforming reply from a real claude -p …')
+ const outA = await mk()(
+   'Read README.md in the current directory. Reply with the value of PROBE_WORD as `word`, ' +
+   'and the basename of your current working directory as `cwdBasename`. Do not write any file.',
+-  { label: 'impl:T1', model: 'haiku', schema: SCHEMA, isolation: 'worktree' })
++  { label: 'impl:T1', role: 'implementer', model: 'haiku', schema: SCHEMA, isolation: 'worktree' })
+ 
+ assert.ok(outA && typeof outA === 'object', 'arm A must return the parsed structured object, got: ' + JSON.stringify(outA))
+ assert.equal(outA.word, 'marmalade', 'the worker read the file in the clone it was handed')
+@@ -104,7 +104,7 @@ let armB = null
+ try {
+   await mk({ maxTurns: 1 })(
+     'Do not call any tool. Reply with exactly the plain text word: hello',
+-    { label: 'impl:T1', model: 'haiku', schema: SCHEMA })
++    { label: 'impl:T1', role: 'implementer', model: 'haiku', schema: SCHEMA })
+   throw new Error('arm B did not fail — expected error_max_turns')
+ } catch (e) {
+   armB = e.workerVerdict
+@@ -148,7 +148,7 @@ console.log('arm D: an unreachable credential is a FAILED RUN, not a failed task
+   delete env.CLAUDE_CODE_OAUTH_TOKEN
+   delete env.ANTHROPIC_API_KEY
+   await assert.rejects(
+-    () => mk({ env })('hi', { label: 'impl:T1', model: 'haiku' }),
++    () => mk({ env })('hi', { label: 'impl:T1', role: 'implementer', model: 'haiku' }),
+     (e) => /RUN_FATAL/.test(e.message) && /reaching the API/.test(e.message),
+     'an api_error with no HTTP status must fail the RUN, not the task')
+   const end = events.filter((e) => e.kind === 'worker:end').pop()
+diff --git a/fleet/tests/test_run_engine_reconcile_retry.mjs b/fleet/tests/test_run_engine_reconcile_retry.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..5e2cdd81c987eb2f25fd2ecc56da686640f8107b
+--- /dev/null
++++ b/fleet/tests/test_run_engine_reconcile_retry.mjs
+@@ -0,0 +1,415 @@
++// fleet/tests/test_run_engine_reconcile_retry.mjs — the exam for "a reconcile
++// that produced no reply is dispatched once more before the epoch is blocked".
++//
++// Claim: fold a wave whose candidate suite is red and whose reconcile worker
++// dies without answering; the driver asks a FRESH reconcile worker the same
++// question once more, records that it did, and only blocks the epoch when the
++// second one has no reply either.
++//
++// The Machine clauses under test, restated:
++//   M1 — in the wave-fold's reconcile round, a dispatch whose reply is `null`,
++//        or whose call threw an error not beginning `RUN_FATAL`, is dispatched
++//        a SECOND time with a byte-identical prompt and the same `label`,
++//        `model` and `schema`, before the attempt is read as no reply.
++//   M2 — the second dispatch's reply, when it is an object, IS the attempt's
++//        reply: a `FIXED` there is committed and the suite re-run exactly as a
++//        first-dispatch `FIXED` is at BASE.
++//   M3 — a second no-reply ends the round as at BASE: the `judgmentCalls` entry
++//        `wave <n>: reconcile attempt <a> produced no reply` and the epoch's
++//        `TEST_FAILED` route, with no third dispatch.
++//   M4 — each re-dispatch appends ONE `driver:reconcile-retry` event
++//        `{ wave, attempt, class }` to `events.jsonl` — `class` the thrown
++//        error's `workerVerdict.class` when it carries one, `null` for a `null`
++//        reply — and one `judgmentCalls` entry `wave <n>: reconcile attempt <a>
++//        produced no reply (<class>) — re-dispatched once`.
++//   M5 — a first dispatch whose reply is an object, or whose throw begins
++//        `RUN_FATAL`, is never re-dispatched.
++//   M6 — `fleet/CONTRACT.md` names `driver:reconcile-retry` with its three keys.
++//
++// The Proof legs, and where each is answered:
++//   (a) [M1, M2] throw-with-`workerVerdict` then `FIXED`: two dispatches, same
++//                prompt/model/schema, `MERGED`                — scenario A
++//   (b) [M4]     that run's one `driver:reconcile-retry` and its judgment line
++//                                                            — scenario A
++//   (c) [M1, M2, M4] `null` then `FIXED`: two dispatches, `MERGED`, `class`
++//                is `null`                                   — scenario C
++//   (d) [M3]     a throw on BOTH calls: two dispatches and no third, the BASE
++//                literal as the final reconcile entry, `TEST_FAILED`
++//                                                            — scenario D
++//   (e) [M5]     a first-dispatch `BLOCKED`: one dispatch, no retry event
++//                                                            — scenario E
++//   (f) [M5]     a first-dispatch `RUN_FATAL`: one dispatch, the throw reaches
++//                the sim                                     — scenario F
++//   (g) [M6]     the contract names the event and its three keys — and the
++//                Proof's `Run:` grep says the same thing     — scenario G
++//
++// ── how this sim provokes the reconcile round ───────────────────────────────
++// Everything below the agent seam is real: real git repos, real clones at BASE,
++// the real capture, the real fold kernel through the real exec seam. Only the
++// judgments are canned, so every dispatch counted below is the driver's own.
++//
++// One task, whose implementer writes `A.txt`. The repository's suite is
++// `[ ! -f A.txt ] || [ -f FIX ]`: green at BASE, RED on the folded candidate,
++// and green again once a `FIX` file exists. It prints nothing when it fails, so
++// the failing output names no path, the unattributed-red route is not taken,
++// and the candidate goes down the reconcile route — exactly one reconcile round
++// per run.
++//
++// WHY THE FIX IS A NEW FILE AND NOT A REMOVED MARKER. The reconcile worker runs
++// in the integration clone, whose HEAD is `prevHead`. A stub that repaired the
++// candidate by DELETING what the implementer wrote would leave an index equal
++// to `HEAD`, and BASE's own guard ("reconcile reported FIXED but changed
++// nothing — not committing") would break the round before any commit. Writing
++// `FIX` is a change against both the candidate and `HEAD`, so a `FIXED` here
++// takes the commit-and-re-run path M2 names.
++//
++// TWO READINGS THIS FILE SETTLES, because a later session would otherwise have
++// to reconstruct them:
++//
++// 1. THE RE-DISPATCH IS INSIDE ATTEMPT 1. M3's final literal is `wave 1:
++//    reconcile attempt 1 produced no reply` and M4's retry literal names
++//    attempt 1 as well, so a retry does NOT advance the round's attempt
++//    counter. Leg (d) therefore reads "no third dispatch" as: exactly two
++//    dispatches, both labelled `reconcile:wave1:1`, and no `reconcile:wave1:2`
++//    anywhere in the run.
++//
++// 2. "EXACTLY AS A FIRST-DISPATCH `FIXED` IS AT BASE" (M2) IS PINNED ON WHAT
++//    BASE DOES WITH ONE. At BASE a first-dispatch `FIXED` that changed the tree
++//    commits `wave 1 reconcile (attempt 1)` onto the candidate, re-runs the
++//    suite and pushes `wave 1: candidate adopted after reconcile (…)`. Legs (a)
++//    and (c) assert that same subject and that same judgment line for a reply
++//    that arrived on the SECOND dispatch — which is what makes it the attempt's
++//    reply rather than a second attempt's.
++//
++// WHY THIS IS RED AT BASE. At BASE a reconcile dispatch that throws or answers
++// `null` is read as no reply at once: one dispatch, no `driver:reconcile-retry`
++// event, no retry judgment line, and the epoch takes `TEST_FAILED`. Scenario A
++// — leg (a), the falsifier — records one dispatch where the Claim asks for two,
++// and says so in its first assertion.
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { fileURLToPath } from 'node:url'
++import { makeRepo, rig, passReview, doneImpl, gitSync } from './_engine_helpers.mjs'
++
++const HERE = path.dirname(fileURLToPath(import.meta.url))
++const FLEET_DIR = path.resolve(HERE, '..')
++const CONTRACT_SRC = path.join(FLEET_DIR, 'CONTRACT.md')
++
++const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-reconcile-retry-'))
++process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
++
++// The suite: green at BASE, red once the implementer's file exists, green again
++// once the reconciler's `FIX` exists. Silent on failure, so its output names no
++// path and the fold takes the reconcile route rather than the unattributed one.
++const CHECK_SH = '#!/bin/bash\n[ ! -f A.txt ] || [ -f FIX ]\n'
++
++const TASK = {
++  id: 'A', title: 'task A', files: ['A.txt'], writes: ['A.txt'], commutes: [],
++  tier: 'standard', review: 'lean', testCmd: 'bash check.sh',
++  proofTests: [], proofRuns: [], body: 'sim task A',
++}
++
++/** The record the run left. An absent file reads as no events, so an engine
++ *  that writes none fails an assertion instead of throwing ENOENT. */
++const readEvents = (runDir) => {
++  const file = path.join(runDir, 'events.jsonl')
++  if (!fs.existsSync(file)) return []
++  return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
++    .map((l) => { try { return JSON.parse(l) } catch { return null } })
++    .filter(Boolean)
++}
++
++const retriesOf = (events) => events.filter((e) => e && e.kind === 'driver:reconcile-retry')
++/** The three keys M4 names, projected so a deep-equal grades those and only
++ *  those (a `ts` the rig stamps on every event is not one of them). */
++const threeKeysOf = (e) => ({ wave: e.wave, attempt: e.attempt, class: e.class })
++
++/**
++ * One run. `reconcile(n, cwd)` is the canned reconcile worker, `n` being which
++ * call this is (1 for the first dispatch of the round, 2 for a re-dispatch);
++ * `cwd` is the integration clone, where the red candidate lives.
++ */
++async function drive({ tag, reconcile }) {
++  const repo = makeRepo(path.join(tmp, 'repo-' + tag), { 'check.sh': CHECK_SH })
++  const runDir = path.join(tmp, 'run-' + tag)
++  const labels = []
++  const dispatches = []
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    const kind = String(opts.label).split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'A.txt'), 'from A\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    if (kind === 'reconcile') {
++      dispatches.push({ label: opts.label, prompt, model: opts.model, schema: opts.schema })
++      return reconcile(dispatches.length, cwd)
++    }
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const built = rig({ repo, runDir, stub, stamp: 'rr' + tag, waves: [[TASK]] })
++  let report = null
++  let threw = null
++  try {
++    report = await built.run()
++  } catch (e) {
++    threw = e
++  }
++  return { tag, runDir, integ: built.integ, report, threw, labels, dispatches,
++           events: readEvents(runDir),
++           judgmentCalls: ((report || {}).judgmentCalls || []),
++           mergeStatuses: ((report || {}).waveMerges || []).map((m) => m && m.status) }
++}
++
++/** A reconcile stub that repairs the candidate and reports FIXED. */
++const fixAndReport = (cwd) => {
++  fs.writeFileSync(path.join(cwd, 'FIX'), 'the reconciler\'s fix\n')
++  return { status: 'FIXED', summary: 's' }
++}
++
++/** A dead worker: the non-fatal throw the real worker raises, carrying the
++ *  `{ workerVerdict, label }` it attaches to every non-fatal throw. */
++const deadWorker = (cls, label) => {
++  const e = new Error('sim: the reconcile worker died without an envelope')
++  e.workerVerdict = { class: cls }
++  e.label = label
++  throw e
++}
++
++/** The reconcile entries of `judgmentCalls`, in order. */
++const reconcileEntries = (calls) => calls.filter((c) => /reconcile/.test(String(c)))
++
++// ════════════════════════════════════════════════════════════════════════════
++// scenario A — legs (a) and (b): a dead first worker, a FIXED second one
++// ════════════════════════════════════════════════════════════════════════════
++{
++  const run = await drive({
++    tag: 'a',
++    reconcile: (n, cwd) => (n === 1
++      ? deadWorker('no-envelope', 'reconcile:wave1:1')
++      : fixAndReport(cwd)),
++  })
++  assert.equal(run.threw, null,
++    '(a) sim precondition — the run completes: ' + String(run.threw && run.threw.message))
++  assert.ok(run.labels.some((l) => l === 'impl:A'),
++    '(a) sim precondition — the implementer was dispatched: ' + JSON.stringify(run.labels))
++
++  // [M1] two dispatches, same label. THE FALSIFIER OF BASE: at BASE the same
++  // stub records one.
++  assert.deepEqual(run.dispatches.map((d) => d.label),
++    ['reconcile:wave1:1', 'reconcile:wave1:1'],
++    '(a) [M1] a reconcile dispatch that threw a non-`RUN_FATAL` error is dispatched a ' +
++    'SECOND time under the same label before the attempt is read as no reply — the ' +
++    'reconcile dispatches of this run were: ' + JSON.stringify(run.dispatches.map((d) => d.label)) +
++    ' (all labels: ' + JSON.stringify(run.labels) + ')')
++
++  const [first, second] = run.dispatches
++  assert.ok(typeof first.prompt === 'string' && first.prompt.includes('TEST COMMAND:'),
++    '(a) sim precondition — the reconcile prompt is the engine\'s own: ' +
++    JSON.stringify(String(first.prompt).slice(0, 120)))
++  // [M1] byte-identical prompt, same model, same schema.
++  assert.equal(second.prompt, first.prompt,
++    '(a) [M1] the second dispatch carries a BYTE-IDENTICAL prompt — the same question, asked ' +
++    'of a fresh worker. First (' + String(first.prompt).length + ' bytes) vs second (' +
++    String(second.prompt).length + ' bytes).')
++  assert.deepEqual(second.model, first.model,
++    '(a) [M1] and the same `model`: ' + JSON.stringify([first.model, second.model]))
++  assert.deepEqual(second.schema, first.schema,
++    '(a) [M1] and the same `schema`: ' + JSON.stringify([first.schema, second.schema]))
++
++  // [M2] the second dispatch's FIXED is the attempt's reply: committed, suite
++  // re-run, epoch adopted.
++  assert.deepEqual(run.mergeStatuses, ['MERGED'],
++    '(a) [M2] the `FIXED` that arrived on the second dispatch is the attempt\'s reply, so the ' +
++    'epoch merges: ' + JSON.stringify((run.report || {}).waveMerges) + ' | judgmentCalls: ' +
++    JSON.stringify(run.judgmentCalls))
++  assert.equal(gitSync(['log', '-1', '--format=%s'], run.integ), 'wave 1 reconcile (attempt 1)',
++    '(a) [M2] committed exactly as a first-dispatch `FIXED` is at BASE — the adopted head\'s ' +
++    'subject is the round\'s own, attempt 1, because a re-dispatch does not advance the attempt')
++  assert.ok(run.judgmentCalls.some((c) => /^wave 1: candidate adopted after reconcile \(/.test(String(c))),
++    '(a) [M2] and the suite was re-run and the candidate adopted, as at BASE: ' +
++    JSON.stringify(run.judgmentCalls))
++
++  // [M4] exactly one retry event, on the three keys M4 names.
++  const retries = retriesOf(run.events)
++  assert.equal(retries.length, 1,
++    '(b) [M4] the re-dispatch appends exactly ONE `driver:reconcile-retry` to `events.jsonl`: ' +
++    JSON.stringify(run.events.map((e) => e.kind)))
++  assert.deepEqual(threeKeysOf(retries[0]), { wave: 1, attempt: 1, class: 'no-envelope' },
++    '(b) [M4] `{ wave, attempt, class }` — the epoch, the attempt being re-dispatched, and the ' +
++    'thrown error\'s `workerVerdict.class`: ' + JSON.stringify(retries[0]))
++
++  // [M4] the retry judgment entry, verbatim.
++  assert.ok(run.judgmentCalls.includes(
++    'wave 1: reconcile attempt 1 produced no reply (no-envelope) — re-dispatched once'),
++    '(b) [M4] and the `judgmentCalls` entry naming the class and the re-dispatch, verbatim: ' +
++    JSON.stringify(run.judgmentCalls))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// scenario C — leg (c): a `null` first reply, a FIXED second one
++// ════════════════════════════════════════════════════════════════════════════
++{
++  const run = await drive({
++    tag: 'c',
++    reconcile: (n, cwd) => (n === 1 ? null : fixAndReport(cwd)),
++  })
++  assert.equal(run.threw, null,
++    '(c) sim precondition — the run completes: ' + String(run.threw && run.threw.message))
++
++  // [M1] a `null` reply buys the same second dispatch a throw does.
++  assert.deepEqual(run.dispatches.map((d) => d.label),
++    ['reconcile:wave1:1', 'reconcile:wave1:1'],
++    '(c) [M1] a reconcile dispatch whose reply is `null` is dispatched a second time under the ' +
++    'same label: ' + JSON.stringify(run.dispatches.map((d) => d.label)) +
++    ' (all labels: ' + JSON.stringify(run.labels) + ')')
++  assert.equal(run.dispatches[1].prompt, run.dispatches[0].prompt,
++    '(c) [M1] with a byte-identical prompt')
++
++  // [M2] and the second reply is the attempt's.
++  assert.deepEqual(run.mergeStatuses, ['MERGED'],
++    '(c) [M2] the second dispatch\'s `FIXED` is committed, the suite re-run and the epoch ' +
++    'merged: ' + JSON.stringify((run.report || {}).waveMerges) + ' | judgmentCalls: ' +
++    JSON.stringify(run.judgmentCalls))
++  assert.equal(gitSync(['log', '-1', '--format=%s'], run.integ), 'wave 1 reconcile (attempt 1)',
++    '(c) [M2] committed exactly as a first-dispatch `FIXED` is at BASE')
++
++  // [M4] `class` is `null` for a `null` reply — the key is present and it is
++  // `null`, not an absent key and not the string "null".
++  const retries = retriesOf(run.events)
++  assert.equal(retries.length, 1,
++    '(c) [M4] exactly one `driver:reconcile-retry`: ' +
++    JSON.stringify(run.events.map((e) => e.kind)))
++  assert.ok(Object.prototype.hasOwnProperty.call(retries[0], 'class'),
++    '(c) [M4] the event carries a `class` key even when the reply was `null`: ' +
++    JSON.stringify(retries[0]))
++  assert.deepEqual(threeKeysOf(retries[0]), { wave: 1, attempt: 1, class: null },
++    '(c) [M4] and that `class` is `null` — there was no thrown error to read a ' +
++    '`workerVerdict.class` off: ' + JSON.stringify(retries[0]))
++  assert.ok(run.judgmentCalls.includes(
++    'wave 1: reconcile attempt 1 produced no reply (null) — re-dispatched once'),
++    '(c) [M4] and the retry judgment entry spells that same class: ' +
++    JSON.stringify(run.judgmentCalls))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// scenario D — leg (d): dead on both calls, the round ends as at BASE
++// ════════════════════════════════════════════════════════════════════════════
++{
++  const run = await drive({
++    tag: 'd',
++    reconcile: () => deadWorker('error', 'reconcile:wave1:1'),
++  })
++  assert.equal(run.threw, null,
++    '(d) sim precondition — a dead reconcile worker is not a fatal run error: ' +
++    String(run.threw && run.threw.message))
++
++  // [M3] exactly two dispatches — one retry, and no third.
++  assert.deepEqual(run.dispatches.map((d) => d.label),
++    ['reconcile:wave1:1', 'reconcile:wave1:1'],
++    '(d) [M3] a second no-reply ends the round: exactly TWO dispatches, and no third: ' +
++    JSON.stringify(run.dispatches.map((d) => d.label)))
++  assert.deepEqual(run.labels.filter((l) => String(l).startsWith('reconcile:')),
++    ['reconcile:wave1:1', 'reconcile:wave1:1'],
++    '(d) [M3] and no `reconcile:wave1:2` — the re-dispatch is inside attempt 1 and does not ' +
++    'advance the round: ' + JSON.stringify(run.labels))
++
++  // [M4] the retry was still recorded, once, with its class.
++  const retries = retriesOf(run.events)
++  assert.equal(retries.length, 1,
++    '(d) [M4] the one re-dispatch appended one `driver:reconcile-retry`: ' +
++    JSON.stringify(run.events.map((e) => e.kind)))
++  assert.deepEqual(threeKeysOf(retries[0]), { wave: 1, attempt: 1, class: 'error' },
++    '(d) [M4] carrying the thrown error\'s class: ' + JSON.stringify(retries[0]))
++
++  // [M3] the BASE literal, byte for byte, as the round's LAST reconcile entry.
++  const entries = reconcileEntries(run.judgmentCalls)
++  assert.equal(entries[entries.length - 1], 'wave 1: reconcile attempt 1 produced no reply',
++    '(d) [M3] the round ends on BASE\'s own `judgmentCalls` literal, byte for byte, as its ' +
++    'final reconcile entry: ' + JSON.stringify(entries))
++  assert.ok(entries.includes(
++    'wave 1: reconcile attempt 1 produced no reply (error) — re-dispatched once'),
++    '(d) [M4] with the retry entry ahead of it: ' + JSON.stringify(entries))
++
++  // [M3] and the epoch takes the TEST_FAILED route.
++  assert.deepEqual(run.mergeStatuses, ['TEST_FAILED'],
++    '(d) [M3] and the epoch is blocked on the `TEST_FAILED` route, as at BASE: ' +
++    JSON.stringify((run.report || {}).waveMerges))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// scenario E — leg (e): a first-dispatch `BLOCKED` is an object, never retried
++// ════════════════════════════════════════════════════════════════════════════
++{
++  const run = await drive({
++    tag: 'e',
++    reconcile: () => ({ status: 'BLOCKED', summary: 'b' }),
++  })
++  assert.equal(run.threw, null,
++    '(e) sim precondition — the run completes: ' + String(run.threw && run.threw.message))
++
++  // [M5] an object reply is a reply, whatever its status.
++  assert.deepEqual(run.dispatches.map((d) => d.label), ['reconcile:wave1:1'],
++    '(e) [M5] a first dispatch whose reply is an OBJECT is never re-dispatched — a `BLOCKED` ' +
++    'is read as at BASE: ' + JSON.stringify(run.dispatches.map((d) => d.label)) +
++    ' (all labels: ' + JSON.stringify(run.labels) + ')')
++  assert.deepEqual(retriesOf(run.events), [],
++    '(e) [M5] and no `driver:reconcile-retry` is appended: ' +
++    JSON.stringify(run.events.map((e) => e.kind)))
++  assert.ok(run.judgmentCalls.includes('wave 1: reconcile attempt 1 reported BLOCKED: b'),
++    '(e) [M5] the BLOCKED is recorded exactly as at BASE: ' + JSON.stringify(run.judgmentCalls))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// scenario F — leg (f): a `RUN_FATAL` throw is never retried and never caught
++// ════════════════════════════════════════════════════════════════════════════
++{
++  const run = await drive({
++    tag: 'f',
++    reconcile: () => { throw new Error('RUN_FATAL: sim') },
++  })
++
++  // [M5] the throw reaches the sim.
++  assert.ok(run.threw instanceof Error,
++    '(f) [M5] a reconcile throw beginning `RUN_FATAL` is re-thrown and reaches the caller of ' +
++    '`runEngine`: the run returned ' + JSON.stringify((run.report || {}).waveMerges) +
++    ' instead of throwing')
++  assert.equal(String(run.threw.message), 'RUN_FATAL: sim',
++    '(f) [M5] and it is the sim\'s own error, unwrapped: ' + String(run.threw.message))
++
++  // [M5] and it bought no second dispatch.
++  assert.deepEqual(run.dispatches.map((d) => d.label), ['reconcile:wave1:1'],
++    '(f) [M5] exactly one `reconcile:wave1:1` dispatch — a fatal throw is not a no-reply: ' +
++    JSON.stringify(run.dispatches.map((d) => d.label)))
++  assert.deepEqual(retriesOf(run.events), [],
++    '(f) [M5] and no `driver:reconcile-retry` is appended: ' +
++    JSON.stringify(run.events.map((e) => e.kind)))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// scenario G — leg (g) [M6]: the contract names the event and its three keys
++//
++// The Proof's `Run:` line is `grep -q "driver:reconcile-retry"
++// fleet/CONTRACT.md`; the first assertion below is that grep, and the second is
++// the rest of M6 — the three keys, beside the name.
++// ════════════════════════════════════════════════════════════════════════════
++{
++  const contract = fs.readFileSync(CONTRACT_SRC, 'utf8')
++  const at = contract.indexOf('driver:reconcile-retry')
++  assert.ok(at !== -1,
++    '(g) [M6] `fleet/CONTRACT.md` names `driver:reconcile-retry` — a field added to an event ' +
++    'the engine appends is named in the contract in the same task that adds it')
++  // The window is the name and what follows it: a contract that names the event
++  // and then its keys reads `driver:reconcile-retry {wave, attempt, class}`.
++  const window = contract.slice(at, at + 300)
++  for (const key of ['wave', 'attempt', 'class']) {
++    assert.ok(new RegExp('\\b' + key + '\\b').test(window),
++      '(g) [M6] and names its key `' + key + '` beside it: ' + JSON.stringify(window.slice(0, 160)))
++  }
++}
++
++// The sentinel: printed only if every assertion above held.
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine_reuse.mjs b/fleet/tests/test_run_engine_reuse.mjs
+index 0e36b4b617dad019bc9ef7d76be09a5b82911eae..498b1ea48b242ac347715b6ed3be88ff3badfdfe 100644
+--- a/fleet/tests/test_run_engine_reuse.mjs
++++ b/fleet/tests/test_run_engine_reuse.mjs
+@@ -493,7 +493,11 @@ async function sim ({ name, waves, issues, edges = [], answerExec = () => null }
+     onExec: (call) => {
+       // The suite, snapshotted where and when it actually ran: the tree of the
+       // clone's HEAD at the moment of the call, which is what leg (e) reads.
+-      if (call.cmd === 'bash' && call.argv[0] === '-lc' && call.argv[1] === TEST_CMD) {
++      // The adapter prepends the sandbox's toolchain directory to `PATH` inside
++      // the command string (#1051), so the suite is the TAIL of what `bash -lc`
++      // was handed, never the whole of it.
++      if (call.cmd === 'bash' && call.argv[0] === '-lc' &&
++          String(call.argv[1]).endsWith(TEST_CMD)) {
+         suiteRuns.push({ cwd: call.cwd, head: gitSync(['rev-parse', 'HEAD'], call.cwd),
+                          tree: treeOf(call.cwd, 'HEAD') })
+       }
+diff --git a/fleet/tests/test_run_engine_schema_escalation.mjs b/fleet/tests/test_run_engine_schema_escalation.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..519ead7c38d2dbb5191b951fb8aad0e9e7da1b17
+--- /dev/null
++++ b/fleet/tests/test_run_engine_schema_escalation.mjs
+@@ -0,0 +1,282 @@
++// fleet/tests/test_run_engine_schema_escalation.mjs — the exam for "the retry
++// tier is decided by the worker's verdict CLASS, not by the wording of its
++// message" (#410 §1).
++//
++// The Claim: rename or reword what a worker says when it fails; see: a schema
++// trip still gets the stronger model and any other failure still gets the
++// same-tier retry, because the driver reads the class the worker attached, not
++// the sentence it wrote.
++//
++// The Machine clauses under test, restated:
++//   M1 — when a task's worker call throws an error whose `workerVerdict.class`
++//        is `max-turns` or `no-structured-output`, the task is retried once at
++//        `escalateTier(task.tier)` and its `judgmentCalls` entry carries
++//        `(schema trip → escalate)`.
++//   M2 — when the thrown error carries any other `workerVerdict.class`
++//        (`no-envelope`, `error`, `budget`, `api-error`, `sigterm`), or no
++//        `workerVerdict` at all, the task is retried once at its OWN tier and
++//        the entry carries `(same tier)` — whatever the message says, a message
++//        containing `schema` or `StructuredOutput` included.
++//   M3 — `fleet/run-engine.mjs` exports no `isSchemaTrip`, and neither
++//        `fleet/run-engine.mjs` nor `fleet/run-worker.mjs` contains the token
++//        `isSchemaTrip` anywhere, comments included.
++//
++// The Proof legs, and where each is answered:
++//   (a) [M1] `class: 'max-turns'` on `Error('WORKER_MAX_TURNS: x')`: two
++//            `impl:T1` dispatches, the second's `opts.model` equals
++//            `TIER.mostCapable`, the task ends `done`, and `judgmentCalls`
++//            holds an entry containing `(schema trip → escalate)`.
++//   (b) [M1] the same with `class: 'no-structured-output'`: the second's
++//            `opts.model` equals `TIER.mostCapable`.
++//   (c) [M2] `Error('StructuredOutput did not conform to schema')` carrying
++//            `class: 'error'`: the second's `opts.model` equals `TIER.standard`
++//            and the entry contains `(same tier)`.
++//   (d) [M2] `Error('schema')` with NO `workerVerdict` property: the second's
++//            `opts.model` equals `TIER.standard` and the entry contains
++//            `(same tier)`.
++//   (e) [M2] each of `no-envelope`, `budget`, `api-error`, `sigterm` as
++//            `workerVerdict.class` with the message `'WORKER_X: schema'`: the
++//            retry's `opts.model` equals `TIER.standard`.
++//   (f) [M3] `import * as engine from '../run-engine.mjs'` has no
++//            `isSchemaTrip` export — and, beside its `Run:` line, the token
++//            appears zero times in either source file.
++//
++// ── how this sim reads the tier the driver chose ────────────────────────────
++// Through the stub, which is the channel the task's Context names. The engine
++// passes `model: baseModel` on an `impl:<id>` dispatch, where `baseModel` is
++// `resolvedModel(tierName)` and `tierName` is the retry's `tierOverride` on the
++// second pass. So the SECOND `impl:T1` dispatch's `opts.model` reads
++// `TIER.mostCapable` under an escalation and `TIER.standard` under a same-tier
++// retry. The rig's stub receives `(prompt, opts, cwd)`; a throw from the stub
++// is what the engine catches, and the error object reaches that catch intact —
++// `withPatchCapture` awaits the inner agent with no try/catch around the call,
++// and `runTaskInner` rethrows `implSettled.reason` itself — so a
++// `workerVerdict` hung on the Error as an own property survives the seam, which
++// is exactly how `run-worker.mjs` attaches it.
++//
++// Everything below the agent seam is real: real git repos, real clones at BASE,
++// the real capture, the real exec seam. Only `agent` is canned.
++//
++// ── what the marker legs grade, and what they deliberately do not ───────────
++// M1 and M2 say the entry CARRIES a marker. The two markers are the verbatim
++// parentheticals `(schema trip → escalate)` and `(same tier)`, and those are
++// checked as written. The sentence around them — "task T1: agent error at
++// standard — retrying once at …" — is the task's Context describing what BASE
++// says today, not a clause, so it is not pinned here: pinning a sentence is the
++// very defect #410 is about. Each marker leg also asserts the OTHER marker is
++// absent from that run's `judgmentCalls`, so a record that pushes both is not a
++// pass. `TIER` and `escalateTier` are read off the engine rather than spelled
++// `'opus'`/`'sonnet'`, because that is how the Proof legs name them.
++//
++// Leg (f) uses a NAMESPACE import on purpose. A named import of an export that
++// does not exist is a link error, which would make this whole file red at BASE
++// for the wrong reason; a namespace import simply has no such key.
++//
++// Every assertion below names its Proof leg and the clause it comes from.
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { fileURLToPath } from 'node:url'
++import * as engine from '../run-engine.mjs'
++import { makeRepo, rig, passReview, doneImpl } from './_engine_helpers.mjs'
++
++const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-schema-escalation-'))
++process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
++
++// The two markers of M1 and M2, spelled once, verbatim.
++const ESCALATE_MARK = '(schema trip → escalate)'
++const SAME_TIER_MARK = '(same tier)'
++
++let seq = 0
++const freshNames = (tag) => {
++  seq += 1
++  const stamp = 'se' + seq + tag
++  return { stamp, repo: makeRepo(path.join(tmp, 'repo-' + stamp)), runDir: path.join(tmp, 'run-' + stamp) }
++}
++
++// The one task every scenario runs. `tier: 'standard'`, so `escalateTier` of it
++// is `mostCapable` and the two answers are distinguishable; no Proof `Test:`
++// path, so no examiner is dispatched and `impl:T1` is the only worktree call.
++const plainTask = () => ({
++  id: 'T1', title: 't', files: ['T1.txt'], tier: 'standard', review: 'lean',
++  writes: ['T1.txt'], commutes: [], proofTests: [], proofRuns: [],
++  body: 'sim task T1',
++})
++
++/**
++ * A one-task run whose FIRST `impl:T1` dispatch throws what `makeError()`
++ * returns and whose second returns a done reply. Records the options object of
++ * every `impl:` dispatch, in order, so the caller can read the model the driver
++ * chose for the retry.
++ */
++async function retryRun({ tag, makeError }) {
++  const { stamp, repo, runDir } = freshNames(tag)
++  const labels = []
++  const implOpts = []
++  const stub = (prompt, o, cwd) => {
++    labels.push(o.label)
++    const kind = String(o.label).split(':')[0]
++    if (kind === 'impl') {
++      implOpts.push(o)
++      if (implOpts.length === 1) throw makeError()
++      fs.writeFileSync(path.join(cwd, 'T1.txt'), 'v1\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    throw new Error('unexpected dispatch: ' + o.label)
++  }
++  const { run } = rig({
++    repo, runDir, waves: [[plainTask()]], stub, stamp,
++    extraArgs: { infraBackoffMs: 0 },
++  })
++  const report = await run()
++  return { report, labels, implOpts, runDir, shown: report.judgmentCalls.join(' | ') }
++}
++
++/** The error a worker throws: a real Error with the verdict hung off it. */
++const workerError = (message, verdict) => {
++  const e = new Error(message)
++  if (verdict !== undefined) e.workerVerdict = verdict
++  return e
++}
++
++/** The two `impl:T1` dispatches, asserted for the named leg. */
++const twoImplDispatches = (r, leg) => {
++  assert.equal(r.labels.filter((l) => l === 'impl:T1').length, 2,
++    leg + ': the task must be dispatched as impl:T1 exactly twice — once, then the one retry; got ' +
++    JSON.stringify(r.labels))
++  assert.equal(r.implOpts.length, 2,
++    leg + ': exactly two impl dispatches must have been recorded, got ' + r.implOpts.length)
++  assert.equal(r.implOpts[0].model, engine.TIER.standard,
++    leg + ": the FIRST dispatch runs at the task's own tier, so opts.model must be TIER.standard (" +
++    engine.TIER.standard + '), got ' + String(r.implOpts[0].model))
++}
++
++// ══ (a) a `max-turns` schema trip escalates [M1] ════════════════════════════
++{
++  const r = await retryRun({
++    tag: 'a', makeError: () => workerError('WORKER_MAX_TURNS: x', { class: 'max-turns' }),
++  })
++  twoImplDispatches(r, '(a)/M1')
++  assert.equal(r.implOpts[1].model, engine.TIER.mostCapable,
++    '(a)/M1: workerVerdict.class `max-turns` is a schema trip, so the one retry runs at ' +
++    'escalateTier(standard) = ' + engine.escalateTier('standard') + ' and the second impl:T1 ' +
++    "dispatch's opts.model must be TIER.mostCapable (" + engine.TIER.mostCapable + '), got ' +
++    String(r.implOpts[1].model))
++  const row = r.report.tasks.find((t) => t && t.task === 'T1')
++  assert.ok(row, '(a)/M1: the run must record a row for task T1; got ' +
++    JSON.stringify(r.report.tasks.map((t) => t && t.task)))
++  assert.equal(row.status, 'done',
++    '(a)/M1: the retry returned a done reply, so the task ends `done`; got ' + String(row.status) +
++    ' (' + String(row.notes) + ')')
++  assert.ok(r.report.judgmentCalls.some((j) => String(j).includes(ESCALATE_MARK)),
++    '(a)/M1: judgmentCalls must hold an entry carrying ' + ESCALATE_MARK + '; got ' + r.shown)
++  assert.ok(!r.report.judgmentCalls.some((j) => String(j).includes(SAME_TIER_MARK)),
++    '(a)/M1: the same run must not also record ' + SAME_TIER_MARK + '; got ' + r.shown)
++  console.log('ok - (a)/M1: class `max-turns` — the retry runs at TIER.mostCapable, the task ends done, ' +
++    'the entry carries ' + ESCALATE_MARK)
++}
++
++// ══ (b) a `no-structured-output` schema trip escalates [M1] ═════════════════
++{
++  const r = await retryRun({
++    tag: 'b',
++    makeError: () => workerError('WORKER_NO_STRUCTURED_OUTPUT: x', { class: 'no-structured-output' }),
++  })
++  twoImplDispatches(r, '(b)/M1')
++  assert.equal(r.implOpts[1].model, engine.TIER.mostCapable,
++    '(b)/M1: workerVerdict.class `no-structured-output` is the second schema trip, so the retry ' +
++    "runs at escalateTier(standard) and the second impl:T1 dispatch's opts.model must be " +
++    'TIER.mostCapable (' + engine.TIER.mostCapable + '), got ' + String(r.implOpts[1].model))
++  assert.ok(r.report.judgmentCalls.some((j) => String(j).includes(ESCALATE_MARK)),
++    '(b)/M1: judgmentCalls must hold an entry carrying ' + ESCALATE_MARK + '; got ' + r.shown)
++  assert.ok(!r.report.judgmentCalls.some((j) => String(j).includes(SAME_TIER_MARK)),
++    '(b)/M1: the same run must not also record ' + SAME_TIER_MARK + '; got ' + r.shown)
++  console.log('ok - (b)/M1: class `no-structured-output` — the retry runs at TIER.mostCapable')
++}
++
++// ══ (c) a schema-WORDED message with class `error` stays in tier [M2] ═══════
++// At BASE this message escalates: the regex `/schema|structuredoutput|…/i`
++// matches it. The class says otherwise, and the class is what decides.
++{
++  const r = await retryRun({
++    tag: 'c',
++    makeError: () => workerError('StructuredOutput did not conform to schema', { class: 'error' }),
++  })
++  twoImplDispatches(r, '(c)/M2')
++  assert.equal(r.implOpts[1].model, engine.TIER.standard,
++    '(c)/M2: workerVerdict.class `error` is not a schema trip however the message is worded, so the ' +
++    "retry runs at the task's own tier and the second impl:T1 dispatch's opts.model must be " +
++    'TIER.standard (' + engine.TIER.standard + '), got ' + String(r.implOpts[1].model) +
++    ' — a message-reading driver escalates here')
++  assert.ok(r.report.judgmentCalls.some((j) => String(j).includes(SAME_TIER_MARK)),
++    '(c)/M2: judgmentCalls must hold an entry carrying ' + SAME_TIER_MARK + '; got ' + r.shown)
++  assert.ok(!r.report.judgmentCalls.some((j) => String(j).includes(ESCALATE_MARK)),
++    '(c)/M2: the run must not record ' + ESCALATE_MARK + ' for a class that is not a schema trip; got ' +
++    r.shown)
++  console.log('ok - (c)/M2: class `error` under a `StructuredOutput did not conform to schema` message — ' +
++    'the retry runs at TIER.standard and the entry carries ' + SAME_TIER_MARK)
++}
++
++// ══ (d) no `workerVerdict` at all stays in tier [M2] ════════════════════════
++{
++  const r = await retryRun({ tag: 'd', makeError: () => workerError('schema', undefined) })
++  twoImplDispatches(r, '(d)/M2')
++  assert.equal(r.implOpts[1].model, engine.TIER.standard,
++    '(d)/M2: an error carrying no workerVerdict property is not a schema trip however the message is ' +
++    "worded, so the retry runs at the task's own tier and the second impl:T1 dispatch's opts.model " +
++    'must be TIER.standard (' + engine.TIER.standard + '), got ' + String(r.implOpts[1].model))
++  assert.ok(r.report.judgmentCalls.some((j) => String(j).includes(SAME_TIER_MARK)),
++    '(d)/M2: judgmentCalls must hold an entry carrying ' + SAME_TIER_MARK + '; got ' + r.shown)
++  assert.ok(!r.report.judgmentCalls.some((j) => String(j).includes(ESCALATE_MARK)),
++    '(d)/M2: the run must not record ' + ESCALATE_MARK + ' for an error with no workerVerdict; got ' +
++    r.shown)
++  console.log('ok - (d)/M2: no workerVerdict under the message `schema` — the retry runs at TIER.standard ' +
++    'and the entry carries ' + SAME_TIER_MARK)
++}
++
++// ══ (e) the four remaining classes, each under a `schema` message [M2] ══════
++for (const cls of ['no-envelope', 'budget', 'api-error', 'sigterm']) {
++  const r = await retryRun({
++    tag: 'e-' + cls, makeError: () => workerError('WORKER_X: schema', { class: cls }),
++  })
++  twoImplDispatches(r, '(e)/M2 [' + cls + ']')
++  assert.equal(r.implOpts[1].model, engine.TIER.standard,
++    '(e)/M2: workerVerdict.class `' + cls + '` is not a schema trip, so the retry runs at the task\'s ' +
++    "own tier and the second impl:T1 dispatch's opts.model must be TIER.standard (" +
++    engine.TIER.standard + '), got ' + String(r.implOpts[1].model) +
++    ' — the message `WORKER_X: schema` is what a message-reading driver escalates on')
++  assert.ok(r.report.judgmentCalls.some((j) => String(j).includes(SAME_TIER_MARK)),
++    '(e)/M2 [' + cls + ']: judgmentCalls must hold an entry carrying ' + SAME_TIER_MARK + '; got ' + r.shown)
++  assert.ok(!r.report.judgmentCalls.some((j) => String(j).includes(ESCALATE_MARK)),
++    '(e)/M2 [' + cls + ']: the run must not record ' + ESCALATE_MARK + '; got ' + r.shown)
++  console.log('ok - (e)/M2: class `' + cls + '` under a `schema` message — the retry runs at TIER.standard')
++}
++
++// ══ (f) the lever is gone [M3] ══════════════════════════════════════════════
++assert.ok(!Object.prototype.hasOwnProperty.call(engine, 'isSchemaTrip'),
++  '(f)/M3: fleet/run-engine.mjs must export no `isSchemaTrip`; the namespace import still has the key. ' +
++  'Exports seen: ' + Object.keys(engine).join(', '))
++assert.equal(engine.isSchemaTrip, undefined,
++  '(f)/M3: `isSchemaTrip` must not be reachable on the run-engine namespace; got ' +
++  typeof engine.isSchemaTrip)
++
++// M3's second half, graded here beside the task's `Run:` line: the token
++// appears nowhere in either source file, comments included. Resolved against
++// this file's own URL — never a literal absolute path — so the hermetic probe's
++// rules stay satisfied and the sim spawns nothing.
++for (const rel of ['../run-engine.mjs', '../run-worker.mjs']) {
++  const file = fileURLToPath(new URL(rel, import.meta.url))
++  const text = fs.readFileSync(file, 'utf8')
++  const hits = text.split('\n')
++    .map((line, i) => (line.includes('isSchemaTrip') ? (i + 1) + ': ' + line.trim() : null))
++    .filter(Boolean)
++  assert.equal(hits.length, 0,
++    '(f)/M3: fleet/' + rel.replace('../', '') + ' must contain the token `isSchemaTrip` zero times, ' +
++    'comments included; found ' + hits.length + ' — ' + hits.join(' | '))
++}
++console.log('ok - (f)/M3: no `isSchemaTrip` export, and the token appears zero times in run-engine.mjs ' +
++  'and run-worker.mjs')
++
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine_shell_path.mjs b/fleet/tests/test_run_engine_shell_path.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..a73ab3e3be8aeb3e3647381708a2b4c28744ecff
+--- /dev/null
++++ b/fleet/tests/test_run_engine_shell_path.mjs
+@@ -0,0 +1,342 @@
++/**
++ * fleet/tests/test_run_engine_shell_path.mjs — the sandbox toolchain rides first
++ * on the PATH of every shell command the driver runs (#1051).
++ *
++ * Everything below the agent seam is real: real git repos, real clones, the real
++ * `sh` adapter (`bash -lc`) through the real `execSeam`. Only the judgments are
++ * canned — so the PATH these assertions read is the PATH the driver's own
++ * commands actually saw.
++ *
++ * How PATH is observed, once, for every leg: each command the sim hands the rig
++ * is `printf %s "$PATH" > <absolute temp file>`, and the exam reads the first
++ * `:`-separated entry of the file the command wrote. The command carries no
++ * `PATH=` token and never names the toolchain directory, which is also what
++ * makes leg (g)'s reading of the recorded `cmd` honest.
++ *
++ * Machine clauses under test:
++ *   M1  every shell command the engine runs through its `bash -lc` adapter —
++ *       the suite (`testCmd`), a Proof `Run:` command, a Global `Check:`
++ *       command and a task's exam command — sees a `PATH` whose first entry is
++ *       `args.toolchainBin` when that is a non-empty string, else
++ *       `TOOLCHAIN_BIN`, followed by the PATH it would otherwise have had.
++ *   M2  `fleet/run-engine.mjs` exports `TOOLCHAIN_BIN` equal to `/usr/local/bin`.
++ *   M3  the prefix survives a login profile that reassigns `PATH`: with a `HOME`
++ *       whose `.bash_profile` prepends a sentinel directory, the command's first
++ *       entry is still the toolchain directory and the sentinel appears after it.
++ *   M4  the `cmd` recorded on `driver:proof-run`, `driver:check-run` and
++ *       `driver:exam-run` carries no PATH prefix: the first two are the command
++ *       as the plan wrote it, the third is the `examRunCmd` the driver composes
++ *       (the task's `testCmd` with its Proof `Test:` path substituted by the
++ *       exam's landing path), and none of the three contains the toolchain
++ *       directory or the token `PATH=`.
++ *   M5  `fleet/CONTRACT.md` names `TOOLCHAIN_BIN` and its default.
++ *
++ * Legs, in the order they run below:
++ *   (a) toolchainBin set, the suite writes `$PATH`: first entry is that
++ *       directory, the remainder non-empty [M1] — the falsifier of BASE, where
++ *       the first entry is whatever the profile left.
++ *   (b) a task's `proofRuns` command: first entry is that directory [M1].
++ *   (c) a `constraintChecks` command: first entry is that directory [M1].
++ *   (d) a task's exam command (`testCmd` with a `proofTests` path): first entry
++ *       is that directory [M1].
++ *   (e) no toolchainBin: the suite's first entry is `/usr/local/bin`, and
++ *       `engine.TOOLCHAIN_BIN === '/usr/local/bin'` [M1, M2].
++ *   (f) a `HOME` whose `.bash_profile` prepends a sentinel: the suite's first
++ *       entry is still the toolchain directory, the sentinel later in the same
++ *       PATH [M3].
++ *   (g) the recorded `cmd` of runs (b), (c) and (d) [M4].
++ *   (h) `fleet/CONTRACT.md` names `TOOLCHAIN_BIN` within 200 characters of
++ *       `/usr/local/bin`, newlines joined — the same read the Proof's `Run:`
++ *       makes [M5].
++ *
++ * `engine` is imported as a NAMESPACE on purpose: leg (e) reads
++ * `engine.TOOLCHAIN_BIN`, and a BASE that exports no such name has to fail that
++ * leg's assertion rather than fail to link this module.
++ */
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { fileURLToPath } from 'node:url'
++import { execSeam } from '../run-main.mjs'
++import * as engine from '../run-engine.mjs'
++import { simEnv } from './_helpers.mjs'
++import { rig, makeRepo, passReview, doneImpl } from './_engine_helpers.mjs'
++
++const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-shell-path-'))
++process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
++
++const CONTRACT_MD = fileURLToPath(new URL('../CONTRACT.md', import.meta.url))
++
++// The one command shape every leg hands the rig. No `PATH=` token and no
++// mention of any toolchain directory: whatever the recorded `cmd` of leg (g)
++// carries beyond this string came from the driver.
++const writesPath = (file) => 'printf %s "$PATH" > ' + file
++
++/** The `:`-separated entries of the PATH a command wrote to `file`. */
++const pathEntriesIn = (file) => {
++  assert.ok(fs.existsSync(file),
++    'the command that writes $PATH never ran — nothing at ' + file)
++  const seen = fs.readFileSync(file, 'utf8')
++  assert.notEqual(seen.trim(), '', 'the command wrote an empty PATH to ' + file)
++  return seen.split(path.delimiter)
++}
++
++/** Every record the run wrote, in the order it wrote them. */
++const allEvents = (runDir) => {
++  const file = path.join(runDir, 'events.jsonl')
++  if (!fs.existsSync(file)) return []
++  return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
++    .map((l) => { try { return JSON.parse(l) } catch { return null } })
++    .filter(Boolean)
++}
++const ofKind = (evs, kind) => evs.filter((e) => e.kind === kind)
++
++// ── the exec seam the sims hand the rig ──────────────────────────────────────
++// Every shell the engine spawns goes out with an environment this file built:
++// `simEnv`'s, with the engine's OWN env laid over it — whatever keys it set,
++// PATH included, so an implementation that arranges PATH through the env is
++// read as it wrote it — and HOME, TMPDIR and FLEET_HOME pinned to a directory
++// the sim owns. Never `process.env`. The pinned HOME is what leg (f) needs:
++// `bash -l` sources the profile the sim wrote there and never the box's, so
++// every leg's reading of the first entry is a fact about the driver rather than
++// about the box.
++//
++// Everything else the engine spawns (git, the fold kernel) goes through
++// untouched — this seam is about the shell adapter, and git identity is the
++// rig's business. The adapter is recognised by its argv as well as by its
++// argv[0], so a command handed to `bash -lc` through a wrapper is still the
++// sim's shell.
++const shellEnvFor = (home, env) =>
++  simEnv({ home, env: { ...env, HOME: home, TMPDIR: home, FLEET_HOME: home } })
++const isShell = (cmd, argv) =>
++  cmd === 'bash' || (Array.isArray(argv) && argv.includes('bash'))
++const execFor = (home) => (cmd, argv, opts = {}) =>
++  isShell(cmd, argv)
++    ? execSeam(cmd, argv, { ...opts, env: shellEnvFor(home, opts.env) })
++    : execSeam(cmd, argv, opts)
++
++// ── the task the sims run ────────────────────────────────────────────────────
++// `t1_test.sh` is under neither test root, so its landing path is itself — the
++// substitution leg (g) reads is the identity here, and the exam is handed back
++// at the path the Proof named.
++const EXAM_PATH = 't1_test.sh'
++const BODY = '**Claim:** the tree gains one.txt\n' +
++  'Machine: M1. The tree holds `one.txt` whose content is "from T1".\n\n' +
++  '**Proof:**\n- Legs: (a) the tree holds one.txt [M1]'
++const entry = (over = {}) => ({
++  id: 'T1', title: 'write one.txt', files: ['one.txt'], tier: 'standard', review: 'lean',
++  writes: ['one.txt'], commutes: [],
++  interfaces: { consumes: [], produces: ['`ONE`'] },
++  proofTests: [], proofRuns: [],
++  body: BODY,
++  ...over,
++})
++
++let seq = 0
++/**
++ * One engine run. `profile`, when given, is written to the sim's own HOME as
++ * `.bash_profile` before anything runs; `examScript` is what the canned
++ * examiner leaves at the task's Proof `Test:` path.
++ */
++async function scenario ({ task, testCmd, extraArgs = {}, profile = null, examScript = null }) {
++  seq += 1
++  const stamp = 'sp' + seq
++  const home = fs.mkdtempSync(path.join(tmp, 'home-' + stamp + '-'))
++  if (profile !== null) fs.writeFileSync(path.join(home, '.bash_profile'), profile)
++  const repo = makeRepo(path.join(tmp, 'repo-' + stamp))
++  const runDir = path.join(tmp, 'run-' + stamp)
++  const calls = []
++  const stub = (prompt, opts, cwd) => {
++    calls.push(opts.label)
++    const kind = opts.label.split(':')[0]
++    if (kind === 'exam') {
++      fs.writeFileSync(path.join(cwd, EXAM_PATH), String(examScript))
++      return { status: 'DONE', summary: 'exam written' }
++    }
++    if (kind === 'impl' || kind === 'fix') {
++      fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run } = rig({
++    repo, runDir, waves: [[task]], stub, stamp, testCmd,
++    exec: execFor(home),
++    // `foldAgeMs: 0` — the fold-at-every-landing reading (#1006), so the run
++    // folds and reaches its integrated pass deterministically.
++    extraArgs: { foldAgeMs: 0, ...extraArgs },
++  })
++  const report = await run()
++  return { report, row: report.tasks[0], calls, runDir, home,
++           evs: allEvents(runDir) }
++}
++
++// ── leg (a): the suite's PATH begins with `toolchainBin` [M1] ────────────────
++// The falsifier of BASE: there the first entry is whatever the login profile
++// left, and never a directory this sim minted a moment ago.
++{
++  const toolchain = fs.mkdtempSync(path.join(tmp, 'toolchain-a-'))
++  const suiteFile = path.join(tmp, 'path-a.txt')
++  await scenario({
++    task: entry(),
++    testCmd: writesPath(suiteFile),
++    extraArgs: { toolchainBin: toolchain },
++  })
++  const entries = pathEntriesIn(suiteFile)
++  assert.equal(entries[0], toolchain,
++    'leg (a) [M1]: the suite command\'s PATH starts with `args.toolchainBin` — ' +
++    'the first `:` entry of what it printed: ' + JSON.stringify(entries.slice(0, 3)))
++  assert.ok(entries.length > 1 && entries.slice(1).join(path.delimiter) !== '',
++    'leg (a) [M1]: …followed by the PATH it would otherwise have had, which is ' +
++    'not empty: ' + JSON.stringify(entries))
++}
++
++// ── leg (b): a Proof `Run:` command's PATH [M1], and its record [M4] ─────────
++{
++  const toolchain = fs.mkdtempSync(path.join(tmp, 'toolchain-b-'))
++  const runFile = path.join(tmp, 'path-b.txt')
++  const RUN_CMD = writesPath(runFile)
++  const { evs } = await scenario({
++    task: entry({ proofRuns: [RUN_CMD] }),
++    extraArgs: { toolchainBin: toolchain },
++  })
++  const entries = pathEntriesIn(runFile)
++  assert.equal(entries[0], toolchain,
++    'leg (b) [M1]: the Proof `Run:` command\'s PATH starts with `args.toolchainBin`: ' +
++    JSON.stringify(entries.slice(0, 3)))
++
++  // [M4] the record is the command as the plan wrote it — the prefix stayed
++  // inside the adapter.
++  const runs = ofKind(evs, 'driver:proof-run')
++  assert.ok(runs.length >= 1, 'leg (g) [M4]: the run was recorded at all')
++  for (const e of runs) {
++    assert.equal(e.cmd, RUN_CMD,
++      'leg (g) [M4]: `driver:proof-run` carries the command the sim handed the rig, verbatim')
++    assert.ok(!e.cmd.includes(toolchain),
++      'leg (g) [M4]: and no toolchain directory: ' + e.cmd)
++    assert.ok(!e.cmd.includes('PATH='),
++      'leg (g) [M4]: and no `PATH=` token: ' + e.cmd)
++  }
++}
++
++// ── leg (c): a Global `Check:` command's PATH [M1], and its record [M4] ──────
++{
++  const toolchain = fs.mkdtempSync(path.join(tmp, 'toolchain-c-'))
++  const checkFile = path.join(tmp, 'path-c.txt')
++  const CHECK_CMD = writesPath(checkFile)
++  const { evs } = await scenario({
++    task: entry(),
++    extraArgs: { toolchainBin: toolchain, constraintChecks: [{ cmd: CHECK_CMD, minor: false }] },
++  })
++  const entries = pathEntriesIn(checkFile)
++  assert.equal(entries[0], toolchain,
++    'leg (c) [M1]: the Global `Check:` command\'s PATH starts with `args.toolchainBin`: ' +
++    JSON.stringify(entries.slice(0, 3)))
++
++  const checks = ofKind(evs, 'driver:check-run')
++  assert.ok(checks.length >= 1, 'leg (g) [M4]: the check was recorded at all')
++  for (const e of checks) {
++    assert.equal(e.cmd, CHECK_CMD,
++      'leg (g) [M4]: `driver:check-run` carries the command the sim handed the rig, verbatim')
++    assert.ok(!e.cmd.includes(toolchain),
++      'leg (g) [M4]: and no toolchain directory: ' + e.cmd)
++    assert.ok(!e.cmd.includes('PATH='),
++      'leg (g) [M4]: and no `PATH=` token: ' + e.cmd)
++  }
++}
++
++// ── leg (d): the task's exam command's PATH [M1], and its record [M4] ────────
++// The exam is red at BASE (no `one.txt` in the examiner's clone) and green on
++// the implementer's tree, so the graded exam pass is the one whose PATH the
++// file below holds.
++{
++  const toolchain = fs.mkdtempSync(path.join(tmp, 'toolchain-d-'))
++  const examFile = path.join(tmp, 'path-d.txt')
++  const EXAM_TEST_CMD = writesPath(examFile) + ' && bash ' + EXAM_PATH
++  const EXAM_SCRIPT = '#!/bin/bash\n[ -f one.txt ]\n'
++  const { evs } = await scenario({
++    task: entry({ proofTests: [EXAM_PATH], testCmd: EXAM_TEST_CMD }),
++    examScript: EXAM_SCRIPT,
++    extraArgs: { toolchainBin: toolchain },
++  })
++  const entries = pathEntriesIn(examFile)
++  assert.equal(entries[0], toolchain,
++    'leg (d) [M1]: the exam command\'s PATH starts with `args.toolchainBin`: ' +
++    JSON.stringify(entries.slice(0, 3)))
++
++  // [M4] the recorded `cmd` is the `examRunCmd` the driver composes: the task's
++  // testCmd with its Proof `Test:` path substituted by the exam's landing path.
++  // `t1_test.sh` is under no test root, so the landing IS the path and the
++  // substitution below is the identity — which is what makes the expected
++  // string the one the sim handed.
++  const LANDING = EXAM_PATH
++  const EXPECTED = EXAM_TEST_CMD.split(EXAM_PATH).join(LANDING)
++  const exams = ofKind(evs, 'driver:exam-run')
++  assert.ok(exams.length >= 1, 'leg (g) [M4]: the exam run was recorded at all')
++  for (const e of exams) {
++    assert.equal(e.cmd, EXPECTED,
++      'leg (g) [M4]: `driver:exam-run` carries the examRunCmd — the task\'s testCmd ' +
++      'with its Proof `Test:` path substituted by the exam\'s landing path')
++    assert.ok(!e.cmd.includes(toolchain),
++      'leg (g) [M4]: and no toolchain directory: ' + e.cmd)
++    assert.ok(!e.cmd.includes('PATH='),
++      'leg (g) [M4]: and no `PATH=` token: ' + e.cmd)
++  }
++}
++
++// ── leg (e): no `toolchainBin` — the default, and the export [M1, M2] ────────
++// The first-entry half of this leg is weak on a box that already puts
++// `/usr/local/bin` first (one whose `node` lives there, say): it can read green
++// at BASE by coincidence. The export is what makes the leg discriminating, and
++// legs (a) and (f) — whose directory is one this sim minted a moment ago —
++// carry the falsification.
++{
++  const suiteFile = path.join(tmp, 'path-e.txt')
++  await scenario({ task: entry(), testCmd: writesPath(suiteFile) })
++  const entries = pathEntriesIn(suiteFile)
++  assert.equal(entries[0], '/usr/local/bin',
++    'leg (e) [M1]: with no `toolchainBin` the first entry is `TOOLCHAIN_BIN`: ' +
++    JSON.stringify(entries.slice(0, 3)))
++  assert.equal(engine.TOOLCHAIN_BIN, '/usr/local/bin',
++    'leg (e) [M2]: `fleet/run-engine.mjs` exports `TOOLCHAIN_BIN` equal to `/usr/local/bin`')
++}
++
++// ── leg (f): a login profile that reassigns PATH does not win [M3] ───────────
++// The `.bash_profile` of the HOME the sim hands every `bash` prepends a
++// sentinel directory. `bash -lc` sources it BEFORE it runs the command, so a
++// prefix that rides in `env.PATH` is gone by then and one that rides inside the
++// command string is not: the first entry must still be the toolchain
++// directory, with the sentinel somewhere after it — which is also the proof
++// that the profile ran at all.
++{
++  const toolchain = fs.mkdtempSync(path.join(tmp, 'toolchain-f-'))
++  const sentinel = fs.mkdtempSync(path.join(tmp, 'sentinel-f-'))
++  const suiteFile = path.join(tmp, 'path-f.txt')
++  await scenario({
++    task: entry(),
++    testCmd: writesPath(suiteFile),
++    extraArgs: { toolchainBin: toolchain },
++    profile: 'PATH=' + sentinel + ':$PATH\n',
++  })
++  const entries = pathEntriesIn(suiteFile)
++  assert.equal(entries[0], toolchain,
++    'leg (f) [M3]: the profile reassigned PATH and the toolchain directory is ' +
++    'STILL the first entry: ' + JSON.stringify(entries.slice(0, 3)))
++  const at = entries.indexOf(sentinel)
++  assert.ok(at > 0,
++    'leg (f) [M3]: and the sentinel the profile prepended occurs after it in the ' +
++    'same PATH — the profile ran and did not win: ' + JSON.stringify(entries))
++}
++
++// ── leg (h): the contract names TOOLCHAIN_BIN and its default [M5] ──────────
++// The same read the Proof's `Run:` makes, newlines joined to spaces.
++{
++  const joined = fs.readFileSync(CONTRACT_MD, 'utf8').split('\n').join(' ')
++  assert.ok(/TOOLCHAIN_BIN.{0,200}\/usr\/local\/bin/.test(joined),
++    'leg (h) [M5]: `fleet/CONTRACT.md` names `TOOLCHAIN_BIN` within 200 characters ' +
++    'of its default `/usr/local/bin`')
++}
++
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_worker_end_reason.mjs b/fleet/tests/test_worker_end_reason.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..137b740c1c550d1903de7b51c2845a09f61231cd
+--- /dev/null
++++ b/fleet/tests/test_worker_end_reason.mjs
+@@ -0,0 +1,477 @@
++/**
++ * fleet/tests/test_worker_end_reason.mjs — the exam for Task 1: *a death before
++ * the first token carries a typed reason on `worker:end`*.
++ *
++ * This file is the Proof's `Test: fleet/tests/test_worker_end_reason.mjs`,
++ * written where the Proof names it. Every relative import is written for THIS
++ * directory: `../` is the repository's `fleet/`, `./` is `fleet/tests/`.
++ *
++ * WHAT THE CLAIM ASKS FOR. Read the record of a worker that exited without ever
++ * reaching the model, and the `worker:end` line says which of two things
++ * happened — the process never started, or it ran and exited with no reply —
++ * with the exit code or errno and the last of what it wrote to stderr. At BASE
++ * the two deaths are indistinguishable downstream: `runProcess` folds a spawn
++ * `error` into `stderr` and settles `127`, `classify` answers the same
++ * `no-envelope` class for both, and the `worker:end` at run-worker.mjs:997
++ * carries `outcome/class/status/trace/meter` and nothing about why.
++ *
++ * THE MACHINE CLAUSES, restated:
++ *
++ *   M1  Every `worker:end` event `createRunWorker`'s `agent()` emits carries a
++ *       `reason` KEY: `null` when a result envelope was read off the child's
++ *       stdout, and otherwise an object `{ kind, code, stderr }`.
++ *   M2  `kind` is `spawn-error` when the child's `error` event fired before any
++ *       `close` (the process never started), with `code` the error's `code`
++ *       string (`E2BIG`, `ENOENT`, …); `kind` is `no-envelope` when the child
++ *       ran and closed with no result envelope on stdout, with `code` the exit
++ *       code as a NUMBER.
++ *   M3  `stderr` is the last 400 characters of what the child wrote to stderr,
++ *       `''` when it wrote nothing.
++ *   M4  The error `agent()` throws for such a dispatch carries the same object
++ *       at `workerVerdict.reason`.
++ *   M5  `fleet/CONTRACT.md` names `reason` on `worker:end` with both kinds,
++ *       `spawn-error` and `no-envelope`.
++ *
++ * THE LEGS, and what each asserts. Every assertion below names its leg and the
++ * clause it comes from, so a reader can map this file back to the contract:
++ *
++ *   (a) [M1, M2, M3] A `spawnFn` stub whose child writes `boom` to stderr,
++ *       nothing to stdout, and closes with code `1`: `await agent(prompt,
++ *       opts)` rejects, and the last `worker:end` event carries `reason`
++ *       deep-equal to `{ kind: 'no-envelope', code: 1, stderr: 'boom' }`.
++ *   (b) [M4] On that same dispatch, the rejection's `workerVerdict.reason` is
++ *       deep-equal to the event's `reason`.
++ *   (c) [M2] A stub whose child emits an `error` event carrying `code: 'E2BIG'`
++ *       and never `close`s on its own: the `worker:end` `reason.kind` is
++ *       `spawn-error` and `reason.code` is `'E2BIG'`. Besides those two the leg
++ *       pins only the object's KEY SET, `{ kind, code, stderr }` from M1, and
++ *       that `stderr` is a string — leg (c) says nothing about what stderr text
++ *       a process that never started should carry, and an exam that invented a
++ *       value would be pinning one implementation rather than the clause.
++ *   (d) [M3] A stub whose child writes 1,000 distinct characters to stderr and
++ *       closes `1`: `reason.stderr` has length 400 and equals the last 400 of
++ *       what was written.
++ *   (e) [M2, M3] A stub that writes nothing to stderr and closes `2`: `reason`
++ *       is `{ kind: 'no-envelope', code: 2, stderr: '' }`.
++ *   (f) [M1] A stub that prints a success envelope and closes `0`: `reason` is
++ *       exactly `null` and `agent()` resolves.
++ *   (g) [M1] A stub that prints an envelope and closes `1` with `is_error`
++ *       true: `reason` is `null` — an envelope was read, so the class says what
++ *       happened and no reason is invented.
++ *   (h) [M5] The two `Run:` greps, one per kind, exit 0 against
++ *       `fleet/CONTRACT.md`.
++ *
++ * ON LEG (h)'s FORM. The Proof's two `Run:` lines — `grep -q "spawn-error"
++ * fleet/CONTRACT.md` and `grep -q "no-envelope" fleet/CONTRACT.md` — are run
++ * live by the driver, as the Proof names them; they are not replaced here. What
++ * this file asserts is the SAME PREDICATE in-process, against the same file,
++ * read through `import.meta.url` rather than a literal absolute path: both
++ * literals are present. It is read rather than spawned because `simEnv`'s
++ * `PATH` carries `node`, `python3`, `git`, `bash` and `sh` and no `grep`, so a
++ * hermetic spawn of `grep` is not available to a sim here
++ * (`fleet/tests/_helpers.mjs`, and `test_sims_are_hermetic.mjs` M2). Beside the
++ * two grep predicates the leg also asserts M5's own words — that `reason` is
++ * named ON `worker:end`, with both kinds — as a paragraph-sized window around
++ * some occurrence of `worker:end` holding all three words. Any prose that says
++ * what M5 says satisfies it; no particular sentence is pinned.
++ *
++ * Nothing here spawns a process or reaches a network: the worker's process seam
++ * is the injected `spawnFn`, every child is a fake, and the environment the
++ * worker is handed comes from `simEnv()`.
++ */
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { EventEmitter } from 'node:events'
++import { fileURLToPath } from 'node:url'
++
++import { createRunWorker } from '../run-worker.mjs'
++import { simEnv } from './_helpers.mjs'
++import { deadlineBudget } from './deadline-slack.mjs'
++
++const HERE = path.dirname(fileURLToPath(import.meta.url))
++const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'worker-end-reason-')))
++process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
++
++// ══ the rig ════════════════════════════════════════════════════════════════
++
++/**
++ * A stdin the worker can write to. `runProcess` attaches an `error` listener
++ * and then calls `child.stdin.end(prompt)` before anything else happens, so
++ * every stub child needs one or the dispatch throws before it reaches the
++ * behaviour under test. It keeps what it is handed; no leg reads it.
++ */
++function makeStdin () {
++  const stdin = new EventEmitter()
++  stdin.chunks = []
++  stdin.ended = false
++  stdin.writable = true
++  const take = (chunk, encoding) => {
++    if (chunk === null || chunk === undefined || typeof chunk === 'function') return
++    stdin.chunks.push(Buffer.isBuffer(chunk)
++      ? chunk
++      : Buffer.from(String(chunk), typeof encoding === 'string' ? encoding : 'utf8'))
++  }
++  const callback = (...args) => {
++    const cb = args.find((a) => typeof a === 'function')
++    if (cb) setImmediate(cb)
++  }
++  stdin.setDefaultEncoding = () => stdin
++  stdin.cork = () => {}
++  stdin.uncork = () => {}
++  stdin.destroy = () => { stdin.writable = false }
++  stdin.write = (chunk, encoding, cb) => { take(chunk, encoding); callback(encoding, cb); return true }
++  stdin.end = (chunk, encoding, cb) => {
++    take(chunk, encoding)
++    stdin.ended = true
++    stdin.writable = false
++    callback(chunk, encoding, cb)
++    return stdin
++  }
++  return stdin
++}
++
++/**
++ * A stub child. `act(child)` runs on `setImmediate` — after `runProcess` has
++ * attached its `stdout`/`stderr`/`error`/`close` listeners and written the
++ * prompt, which it does synchronously with the spawn — and is the whole of what
++ * this particular child does.
++ */
++function makeChild (act) {
++  const child = new EventEmitter()
++  child.stdout = new EventEmitter(); child.stdout.setEncoding = () => {}
++  child.stderr = new EventEmitter(); child.stderr.setEncoding = () => {}
++  child.kill = () => {}
++  child.stdin = makeStdin()
++  setImmediate(() => act(child))
++  return child
++}
++
++/**
++ * A worker with its own run directory, its own `cwd`, an injected spawn, and an
++ * `events` array that collects every `onEvent` the dispatch emits.
++ *
++ * `spawnSyncFn` is stubbed to a non-zero answer so that no leg can reach a real
++ * `curl`: none of these envelopes is a 403, so the reflection probe is never
++ * asked, and this is a belt on that.
++ */
++function workerFor (name, act) {
++  const runDir = path.join(tmp, name)
++  const workersDir = path.join(runDir, 'workers')
++  const cwd = path.join(runDir, 'clone')
++  const home = path.join(runDir, 'home')
++  for (const d of [workersDir, cwd, home]) fs.mkdirSync(d, { recursive: true })
++  const events = []
++  const agent = createRunWorker({
++    runId: 'run-end-reason',
++    workersDir,
++    cwdFor: () => cwd,
++    cli: 'claude',
++    env: simEnv({ home }),
++    spawnFn: () => makeChild(act),
++    spawnSyncFn: () => ({ status: 1, stdout: '', stderr: 'no curl in a sim', error: null }),
++    onEvent: (e) => events.push(e),
++  })
++  return { agent, events }
++}
++
++/** The last `worker:end` this dispatch emitted, or null when it emitted none. */
++function lastEnd (events) {
++  const ends = events.filter((e) => e && e.kind === 'worker:end')
++  return ends.length ? ends[ends.length - 1] : null
++}
++
++/**
++ * Await one dispatch and answer `{ value }` or `{ error }` — both outcomes are
++ * data here, since half these legs end in a rejection by design.
++ *
++ * Raced against a wall-clock budget so that a dispatch which never settles
++ * fails NAMING ITS LEG rather than hanging until the suite's own timeout kills
++ * the file with nothing said. The budget is scaled by `deadline-slack.mjs`, the
++ * one multiplier the suite's deadlines use; every child here answers on the
++ * next turn of the event loop, so any real wait is a wedge.
++ */
++async function settle (leg, promise) {
++  const budget = deadlineBudget(5000)
++  let timer = null
++  const guard = new Promise((_, reject) => {
++    timer = setTimeout(() => reject(new Error(
++      leg + ' — `agent()` never settled within ' + budget + ' ms. The dispatch is wedged: ' +
++      'its child has already answered, so nothing is left to wait for.')), budget)
++  })
++  try {
++    return await Promise.race([
++      promise.then((value) => ({ value, error: null })).catch((error) => ({ value: undefined, error })),
++      guard,
++    ])
++  } finally {
++    clearTimeout(timer)
++  }
++}
++
++/** The one-line envelope a stub child prints when it has a reply to give. */
++const envelopeLine = (fields) => JSON.stringify({
++  type: 'result', subtype: 'success', session_id: 's', usage: {}, total_cost_usd: 0, ...fields,
++}) + '\n'
++
++const PROMPT = 'the brief a worker that never reached the model was handed\n'
++
++// Every dispatch below declares `role: 'implementer'`. The role is not read off
++// the label — `assertDeclaredRole` refuses a dispatch without one BEFORE the
++// spawn, so an opts without it would throw ahead of `runProcess` and the legs
++// here would read a dispatch that never had a child rather than one that died
++// before its first token. The role itself is nothing to these legs: `reason`
++// is about the child's death, not about the allowlist it was handed.
++
++// ══════════════════════════════════════════════════════════════════════════
++// (a) [M1, M2, M3] the child ran, wrote `boom` to stderr, and closed 1
++// (b) [M4]         and the rejection carries the same object
++// ══════════════════════════════════════════════════════════════════════════
++{
++  const { agent, events } = workerFor('a-b', (child) => {
++    child.stderr.emit('data', 'boom')
++    child.emit('close', 1, null)
++  })
++
++  const { value, error } = await settle('(a) [M1]', agent(PROMPT, { label: 'impl:1', role: 'implementer' }))
++
++  assert.ok(error,
++    '(a) [M1] `agent()` rejects for a dispatch with no envelope on stdout — it resolved with ' +
++    JSON.stringify(value))
++
++  const end = lastEnd(events)
++  assert.ok(end,
++    '(a) [M1] the dispatch emitted a `worker:end` event')
++  assert.ok(Object.prototype.hasOwnProperty.call(end, 'reason'),
++    '(a) [M1] every `worker:end` carries a `reason` KEY. This one carries only: ' +
++    Object.keys(end).join(', ') + '. At BASE the event is built from ' +
++    '`outcome/class/status/trace/meter` and nothing says why a worker died before its first ' +
++    'token.')
++  assert.deepEqual(end.reason, { kind: 'no-envelope', code: 1, stderr: 'boom' },
++    '(a) [M1, M2, M3] the child ran and closed with no result envelope on stdout, so `reason` is ' +
++    "`{ kind: 'no-envelope', code: 1, stderr: 'boom' }` — `kind` the second of the two deaths " +
++    '(M2), `code` the exit code as a NUMBER (M2), `stderr` the last 400 characters of what the ' +
++    'child wrote (M3). It carries: ' + JSON.stringify(end.reason))
++
++  // ── (b) [M4] the thrown error carries the same object ─────────────────────
++  assert.ok(error.workerVerdict && typeof error.workerVerdict === 'object',
++    '(b) [M4] the thrown error carries its `workerVerdict` — it threw: ' +
++    String((error && error.message) || error))
++  assert.ok(Object.prototype.hasOwnProperty.call(error.workerVerdict, 'reason'),
++    '(b) [M4] and that verdict carries a `reason` key. It carries only: ' +
++    Object.keys(error.workerVerdict).join(', '))
++  assert.deepEqual(error.workerVerdict.reason, end.reason,
++    '(b) [M4] the error `agent()` throws for such a dispatch carries the SAME object at ' +
++    '`workerVerdict.reason` as the event does. Event: ' + JSON.stringify(end.reason) +
++    '; thrown: ' + JSON.stringify(error.workerVerdict.reason))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (c) [M2] the process never started: `error` before any `close`
++// ══════════════════════════════════════════════════════════════════════════
++{
++  // The shape run-14 died on: a brief too large for `MAX_ARG_STRLEN`, refused by
++  // the kernel at `execve`. Node emits `error` on the child and the process
++  // never runs, so no `close` of its own ever follows — the stub does exactly
++  // that and nothing else.
++  const { agent, events } = workerFor('c', (child) => {
++    child.emit('error', Object.assign(new Error('spawn claude E2BIG'),
++      { code: 'E2BIG', errno: -7, syscall: 'spawn claude', path: 'claude' }))
++  })
++
++  const { error } = await settle('(c) [M2]', agent(PROMPT, { label: 'impl:2', role: 'implementer' }))
++  assert.ok(error,
++    '(c) [M2] a dispatch whose process never started does not resolve')
++
++  const end = lastEnd(events)
++  assert.ok(end,
++    '(c) [M2] the dispatch emitted a `worker:end` event')
++  assert.ok(Object.prototype.hasOwnProperty.call(end, 'reason'),
++    '(c) [M1] and it carries a `reason` key. It carries only: ' + Object.keys(end).join(', '))
++  assert.ok(end.reason && typeof end.reason === 'object' && !Array.isArray(end.reason),
++    '(c) [M1] `reason` is an object here — no envelope was read off stdout. It is: ' +
++    JSON.stringify(end.reason))
++  assert.deepEqual(Object.keys(end.reason).slice().sort(), ['code', 'kind', 'stderr'],
++    '(c) [M1] and that object is `{ kind, code, stderr }` — exactly those three keys. It has: ' +
++    Object.keys(end.reason).join(', '))
++  assert.equal(end.reason.kind, 'spawn-error',
++    "(c) [M2] `kind` is `spawn-error` when the child's `error` event fired before any `close` — " +
++    'the process never started. It is: ' + JSON.stringify(end.reason.kind) + '. At BASE this ' +
++    'death is folded into stderr and settled 127, indistinguishable from a child that ran.')
++  assert.equal(end.reason.code, 'E2BIG',
++    "(c) [M2] and `code` is the error's own `code` string, `'E2BIG'` — not an exit code and not " +
++    'a number. It is: ' + JSON.stringify(end.reason.code))
++  assert.equal(typeof end.reason.stderr, 'string',
++    '(c) [M3] `stderr` is a string on every reason object. Leg (c) pins no value for it: a ' +
++    'process that never started wrote nothing of its own.')
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (d) [M3] the 400-character tail
++// ══════════════════════════════════════════════════════════════════════════
++{
++  // 1,000 DISTINCT characters, so "the last 400" has exactly one answer and an
++  // implementation that kept the first 400, or the last 400 of one chunk,
++  // cannot coincide with it. U+0100…U+04E7: distinct, and each a single UTF-16
++  // code unit, so `.length` counts characters — which is what M3 says, and what
++  // the `.slice(-400)` tail `gitOf` keeps for a git failure does.
++  let BIG = ''
++  for (let i = 0; i < 1000; i += 1) BIG += String.fromCharCode(0x100 + i)
++  assert.equal(BIG.length, 1000,
++    '(d) [M3] the fixture is 1,000 characters')
++  assert.equal(new Set(BIG).size, 1000,
++    '(d) [M3] and all 1,000 are distinct')
++
++  // Three chunks, as a pipe would deliver them, and the last 400 characters
++  // straddle the last two — so a worker that reports one chunk rather than the
++  // accumulated text fails here.
++  const CHUNKS = [BIG.slice(0, 400), BIG.slice(400, 750), BIG.slice(750)]
++  assert.equal(CHUNKS.join(''), BIG,
++    '(d) [M3] the chunks reassemble to the fixture')
++
++  const { agent, events } = workerFor('d', (child) => {
++    for (const c of CHUNKS) child.stderr.emit('data', c)
++    child.emit('close', 1, null)
++  })
++
++  const { error } = await settle('(d) [M3]', agent(PROMPT, { label: 'impl:3', role: 'implementer' }))
++  assert.ok(error,
++    '(d) [M3] a dispatch with no envelope on stdout rejects')
++
++  const end = lastEnd(events)
++  assert.ok(end && Object.prototype.hasOwnProperty.call(end, 'reason'),
++    '(d) [M1] the `worker:end` carries a `reason` key')
++  assert.ok(end.reason && typeof end.reason === 'object',
++    '(d) [M1] and `reason` is an object — no envelope was read. It is: ' +
++    JSON.stringify(end.reason))
++  assert.equal(end.reason.stderr.length, 400,
++    '(d) [M3] `stderr` is the LAST 400 characters of what the child wrote — the child wrote ' +
++    '1,000, so this is 400 long. It is ' + String(end.reason.stderr.length) + ' long.')
++  assert.equal(end.reason.stderr, BIG.slice(-400),
++    '(d) [M3] and it equals the last 400 of what was written, character for character — not the ' +
++    'first 400, not the last chunk, not a byte-counted tail.')
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (e) [M2, M3] nothing on stderr, closed 2
++// ══════════════════════════════════════════════════════════════════════════
++{
++  const { agent, events } = workerFor('e', (child) => {
++    child.emit('close', 2, null)
++  })
++
++  const { error } = await settle('(e) [M2]', agent(PROMPT, { label: 'impl:4', role: 'implementer' }))
++  assert.ok(error,
++    '(e) [M2] a dispatch with no envelope on stdout rejects')
++
++  const end = lastEnd(events)
++  assert.ok(end && Object.prototype.hasOwnProperty.call(end, 'reason'),
++    '(e) [M1] the `worker:end` carries a `reason` key. It carries only: ' +
++    Object.keys(end || {}).join(', '))
++  assert.deepEqual(end.reason, { kind: 'no-envelope', code: 2, stderr: '' },
++    "(e) [M2, M3] `reason` is `{ kind: 'no-envelope', code: 2, stderr: '' }` — `code` the exit " +
++    'code as a number, whatever number it is, and `stderr` the empty string when the child wrote ' +
++    'nothing (M3), never null and never absent. It is: ' + JSON.stringify(end.reason))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (f) [M1] an envelope was read: `reason` is exactly null
++// ══════════════════════════════════════════════════════════════════════════
++{
++  const { agent, events } = workerFor('f', (child) => {
++    child.stdout.emit('data', envelopeLine({ is_error: false, structured_output: { ok: true } }))
++    child.emit('close', 0, null)
++  })
++
++  const { value, error } = await settle('(f) [M1]', agent(PROMPT, { label: 'impl:5', role: 'implementer' }))
++  assert.equal(error, null,
++    '(f) [M1] `agent()` resolves for a child that printed a success envelope and closed 0 — it ' +
++    'threw: ' + String((error && (error.stack || error.message)) || error))
++  assert.deepEqual(value, { ok: true },
++    "(f) [M1] and resolves with the envelope's `structured_output`")
++
++  const end = lastEnd(events)
++  assert.ok(end,
++    '(f) [M1] the dispatch emitted a `worker:end` event')
++  assert.ok(Object.prototype.hasOwnProperty.call(end, 'reason'),
++    '(f) [M1] which carries a `reason` KEY — every `worker:end` does, including the ones that ' +
++    'succeeded. It carries only: ' + Object.keys(end).join(', '))
++  assert.equal(end.reason, null,
++    '(f) [M1] and `reason` is exactly `null` when a result envelope was read off the child\'s ' +
++    'stdout. It is: ' + JSON.stringify(end.reason))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (g) [M1] an envelope was read and it reported an error: still null
++// ══════════════════════════════════════════════════════════════════════════
++{
++  const { agent, events } = workerFor('g', (child) => {
++    child.stdout.emit('data', envelopeLine({
++      is_error: true, result: 'the worker reported a failure', structured_output: null,
++    }))
++    child.emit('close', 1, null)
++  })
++
++  const { error } = await settle('(g) [M1]', agent(PROMPT, { label: 'impl:6', role: 'implementer' }))
++  assert.ok(error,
++    '(g) [M1] a worker whose envelope reports `is_error` still fails its task')
++
++  const end = lastEnd(events)
++  assert.ok(end && Object.prototype.hasOwnProperty.call(end, 'reason'),
++    '(g) [M1] the `worker:end` carries a `reason` key. It carries only: ' +
++    Object.keys(end || {}).join(', '))
++  assert.equal(end.reason, null,
++    '(g) [M1] `reason` is `null` here too: an envelope WAS read off stdout, so this is not a ' +
++    'death before the first token. The class says what happened and no reason is invented. It ' +
++    'is: ' + JSON.stringify(end.reason))
++  assert.equal(end.class, 'error',
++    "(g) [M1] and the class is still `error`, read off the envelope as it was at BASE — the " +
++    "event's other keys are unchanged by this task")
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (h) [M5] fleet/CONTRACT.md names `reason` on `worker:end` with both kinds
++// ══════════════════════════════════════════════════════════════════════════
++{
++  // The same predicate as the Proof's two `Run:` lines, asserted in-process:
++  //   grep -q "spawn-error" fleet/CONTRACT.md
++  //   grep -q "no-envelope" fleet/CONTRACT.md
++  // Both greps are run live by the driver; this is the exam's own reading of
++  // them, against the same file, resolved from this file's location rather than
++  // a literal absolute path.
++  const contractPath = path.join(HERE, '..', 'CONTRACT.md')
++  let contract = null
++  try { contract = fs.readFileSync(contractPath, 'utf8') } catch { contract = null }
++  assert.equal(typeof contract, 'string',
++    '(h) [M5] fleet/CONTRACT.md is in the tree and readable')
++
++  assert.ok(contract.includes('spawn-error'),
++    '(h) [M5] fleet/CONTRACT.md names the kind `spawn-error` — the Proof\'s first `Run:`, ' +
++    '`grep -q "spawn-error" fleet/CONTRACT.md`. At BASE the file has no occurrence of it.')
++  assert.ok(contract.includes('no-envelope'),
++    '(h) [M5] fleet/CONTRACT.md names the kind `no-envelope` — the Proof\'s second `Run:`, ' +
++    '`grep -q "no-envelope" fleet/CONTRACT.md`. At BASE the file has no occurrence of it either, ' +
++    'though `classify` has answered that class since long before this task.')
++
++  // And M5's own words: `reason` named ON `worker:end`, with both kinds — not
++  // three words scattered across a 1,000-line document. A paragraph-sized
++  // window around SOME occurrence of `worker:end` must hold all three. Any
++  // prose that says what M5 says passes; no sentence is pinned.
++  const WINDOW = 1200
++  let named = false
++  let best = ''
++  for (let i = contract.indexOf('worker:end'); i !== -1; i = contract.indexOf('worker:end', i + 1)) {
++    const w = contract.slice(Math.max(0, i - WINDOW), i + WINDOW)
++    if (w.includes('reason') && w.includes('spawn-error') && w.includes('no-envelope')) { named = true; break }
++    if (w.includes('reason')) best = w
++  }
++  assert.ok(named,
++    '(h) [M5] fleet/CONTRACT.md names `reason` ON `worker:end`, with both kinds: some occurrence ' +
++    'of `worker:end` has `reason`, `spawn-error` and `no-envelope` all within ' + WINDOW +
++    ' characters of it. Naming the two kinds somewhere else in the document is not the clause — ' +
++    'the reader has to be able to tell that they are what the key on that event carries.' +
++    (best ? '' : ' No occurrence of `worker:end` has `reason` near it at all.'))
++}
++
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_worker_kata_env.mjs b/fleet/tests/test_worker_kata_env.mjs
+index 4a51db0801b701fd5a4d06b31001499b25453e3a..a8dac0158e02efdc9b2dd92d8922de151e8d0933 100644
+--- a/fleet/tests/test_worker_kata_env.mjs
++++ b/fleet/tests/test_worker_kata_env.mjs
+@@ -343,19 +343,23 @@ async function childEnvsFor ({ name, baseEnv, extra, labels }) {
+     ...extra,
+   })
+   const out = new Map()
+-  for (const { label, isolation } of labels) {
++  for (const { label, role, isolation } of labels) {
+     const before = seen.length
+-    await agent(PROMPT, { label, model: 'opus', ...(isolation ? { isolation } : {}) })
++    await agent(PROMPT, { label, role, model: 'opus', ...(isolation ? { isolation } : {}) })
+     assert.equal(seen.length, before + 1, label + ' dispatched exactly one `claude`')
+     out.set(label, seen[seen.length - 1].env)
+   }
+   return out
+ }
+ 
++// The role is DECLARED at the dispatch, never read off the label (#410 §2), so
++// each row carries its own. `integration` is the retired critic label (#964),
++// kept here only as a label naming no task the record knows — it declares the
++// read-only `reviewer` role, since `critic` is dispatched by nothing.
+ const DISPATCHES = [
+-  { label: 'impl:3', isolation: 'worktree' },
+-  { label: 'review:3:1:2' },
+-  { label: 'integration' },
++  { label: 'impl:3', role: 'implementer', isolation: 'worktree' },
++  { label: 'review:3:1:2', role: 'reviewer' },
++  { label: 'integration', role: 'reviewer' },
+ ]
+ 
+ {
+diff --git a/fleet/tests/test_worker_prompt_stdin.mjs b/fleet/tests/test_worker_prompt_stdin.mjs
+index 1d55b0714e20d4020c755eac65cf6144f8a28cb3..3ee29d0831e69868a3ebf29551998e9093f39fdb 100644
+--- a/fleet/tests/test_worker_prompt_stdin.mjs
++++ b/fleet/tests/test_worker_prompt_stdin.mjs
+@@ -16,7 +16,7 @@
+  *
+  *   (a) [M1] One dispatch of a prompt of EXACTLY 200,000 UTF-8 bytes, built
+  *       from a repeated line carrying an em-dash, through
+- *       `agent(prompt, { label: 'impl:1' })` against a `spawnFn` whose child
++ *       `agent(prompt, { label: 'impl:1', role: 'implementer' })` against a `spawnFn` whose child
+  *       records what is written to its `stdin`: the bytes the child's stdin
+  *       received are byte-identical to the prompt, and its stdin was ended
+  *       (EOF) by the worker. The spawn options' `stdio` is
+@@ -200,7 +200,7 @@ function workerFor (name, spawnFn) {
+     return child
+   })
+ 
+-  const out = await agent(PROMPT, { label: 'impl:1' })
++  const out = await agent(PROMPT, { label: 'impl:1', role: 'implementer' })
+ 
+   assert.equal(seen.length, 1, '(a) [M1] the dispatch spawned exactly one `claude`')
+   const { cli, argv, opts, child } = seen[0]
+@@ -278,7 +278,7 @@ function workerFor (name, spawnFn) {
+   process.on('unhandledRejection', record)
+   let out, thrown = null
+   try {
+-    out = await agent(SHORT, { label: 'impl:2' })
++    out = await agent(SHORT, { label: 'impl:2', role: 'implementer' })
+     // Two turns past the dispatch, so anything `stdin.end` scheduled has run.
+     await new Promise((r) => setImmediate(() => setImmediate(() => setTimeout(r, 10))))
+   } catch (e) {
+diff --git a/fleet/tests/test_worker_role_declared.mjs b/fleet/tests/test_worker_role_declared.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..665577d4779e1b10cea78e7758a47234b1286696
+--- /dev/null
++++ b/fleet/tests/test_worker_role_declared.mjs
+@@ -0,0 +1,555 @@
++/**
++ * fleet/tests/test_worker_role_declared.mjs — the exam for Task 4: *a worker's
++ * role is declared where it is dispatched, never derived from its label*.
++ *
++ * This file is the Proof's `Test: fleet/tests/test_worker_role_declared.mjs`,
++ * written where the Proof names it. Every relative import below is written for
++ * THIS directory: `../` is the repository's `fleet/`, `./` is `fleet/tests/`.
++ *
++ * The Claim: add a dispatch site or rename a label; the worker refuses to start
++ * until that site says which role it is, and the tool allowlist, permission
++ * mode and writable root it gets are the DECLARED role's — a label's spelling
++ * decides nothing.
++ *
++ * The Machine clauses, restated:
++ *
++ *   M1 — `createRunWorker`'s `agent(prompt, opts)` requires `opts.role`, one of
++ *        `examiner`, `implementer`, `reviewer`, `resolver`, `writeSide`; a
++ *        dispatch with no `role`, or a `role` outside that set, throws BEFORE
++ *        `spawnFn` is called, with a message naming `role`.
++ *   M2 — the declared role is the one the worker uses: it is the `role` on that
++ *        dispatch's `worker:start` and `worker:end` events and the argument
++ *        handed to `promptFileFor`, `settingsFor`, `addDirsFor`, `timeoutMsFor`
++ *        and `effortFor`, and the argv handed to `spawnFn` carries
++ *        `--permission-mode` followed by `ROLES[role].permissionMode`,
++ *        `--allowedTools` exactly when `ROLES[role].allowedTools` is set and
++ *        `--disallowedTools` exactly when `ROLES[role].disallowedTools` is set
++ *        — even when the label's prefix would have named another role.
++ *   M3 — `fleet/run-worker.mjs` exports no `roleForLabel`, and the token
++ *        `roleForLabel` occurs in none of `fleet/run-worker.mjs`,
++ *        `fleet/run-engine.mjs`, `fleet/run-main.mjs`.
++ *   M4 — every dispatch `fleet/run-engine.mjs` makes declares its role, for
++ *        each of the label families `exam:<id>` (examiner), `impl:<id>`
++ *        (implementer), `fix:<id>:0` (implementer), `review:<id>:<iter>`
++ *        (reviewer), `reconcile:wave<n>:<a>` (writeSide) and
++ *        `resolve:wave<n>:<i>:<a>` (resolver).
++ *   M5 — `fleet/CONTRACT.md` names `role` as a required dispatch option and,
++ *        within 400 characters of that word, lists its five values `examiner`,
++ *        `implementer`, `reviewer`, `resolver`, `writeSide` in that order.
++ *
++ * The Proof legs, and where each is answered below. Every assertion names its
++ * leg and the clause it comes from, so a reader can map this file back to the
++ * contract:
++ *
++ *   (a) [M1] `agent('p', { label: 'impl:1' })` against a `spawnFn` stub rejects
++ *            with a message containing `role`, and the stub was never called.
++ *            One of the two falsifiers of BASE, where `roleForLabel('impl:1')`
++ *            answers `implementer` and the dispatch RESOLVES.
++ *   (b) [M1] `agent('p', { label: 'impl:1', role: 'janitor' })` rejects the
++ *            same way, stub never called.
++ *   (c) [M1, M2] five rows, one per declared role, each with `label: 'impl:1'`
++ *            and a stub child that prints a success envelope: `agent()`
++ *            resolves, the `worker:start` and `worker:end` events carry that
++ *            role, the sim's `promptFileFor`, `settingsFor`, `addDirsFor`,
++ *            `timeoutMsFor` and `effortFor` each recorded that role as their
++ *            argument, and the argv the stub received carries
++ *            `--permission-mode` followed by `ROLES[role].permissionMode`,
++ *            contains `--allowedTools` iff `ROLES[role].allowedTools` is set
++ *            and `--disallowedTools` iff `ROLES[role].disallowedTools` is set.
++ *   (d) [M2] `label: 'impl:1', role: 'reviewer'`: the events' `role` is
++ *            `reviewer`, the argv carries `--permission-mode dontAsk` and
++ *            `--allowedTools` and no `--disallowedTools` — not the
++ *            implementer's `bypassPermissions` row the label's prefix names at
++ *            BASE. The second falsifier of BASE, which reports `implementer`.
++ *   (e) [M3] `import * as worker from '../run-worker.mjs'` has no
++ *            `roleForLabel` export. (The Proof's first `Run:` — the token's
++ *            zero count across the three sources — is encoded beside it, since
++ *            M3 names the token and not only the export.)
++ *   (f) [M4] a rig-driven one-task run with a Proof `Test:` path, a red
++ *            `proofRuns` command, a passing reviewer and a `check.sh` that is
++ *            red after the fold: the recorded `opts.role` is `examiner` for the
++ *            `exam:T1` dispatch.
++ *   (g) [M4] `implementer` for `impl:T1`.
++ *   (h) [M4] `implementer` for `fix:T1:0`.
++ *   (i) [M4] `reviewer` for the `review:T1:1` dispatch.
++ *   (j) [M4] `writeSide` for `reconcile:wave1:1`.
++ *   (k) [M4] `resolveConflicts` with an injected agent over one conflict: the
++ *            `resolve:…` dispatch's `opts.role` is `resolver`.
++ *   (l) [M5] the Proof's second `Run:`, encoded here: with newlines joined, the
++ *            word `role` in `fleet/CONTRACT.md` is followed within 400
++ *            characters by `examiner`, then `implementer`, `reviewer`,
++ *            `resolver` and `writeSide`, each within 80 characters of the one
++ *            before. At BASE the contract carries no `writeSide` at all.
++ *
++ * Nothing here spawns a `claude` or reaches a network. The worker's process
++ * seam is the injected `spawnFn` and its child is a fake; the engine legs run
++ * the shared rig (`./_engine_helpers.mjs`), which is real below the agent seam
++ * and whose every child is handed a `simEnv()` environment; `resolveConflicts`
++ * is driven directly with its `agent` and `runCli` seams injected as fakes.
++ * Every path this sim writes is under one `mkdtemp` directory in `os.tmpdir()`,
++ * removed on exit.
++ */
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { EventEmitter } from 'node:events'
++import { fileURLToPath } from 'node:url'
++
++// Read through the namespace, never by name: leg (e) is an assertion ABOUT the
++// module's exports, and at BASE a named import of a symbol the task deletes
++// would link fine while after the task it would not — the namespace form lets
++// every leg report rather than letting one link error kill the file.
++import * as worker from '../run-worker.mjs'
++import { resolveConflicts } from '../run-engine.mjs'
++import { simEnv } from './_helpers.mjs'
++import { rig, makeRepo, passReview, doneImpl } from './_engine_helpers.mjs'
++
++const HERE = path.dirname(fileURLToPath(import.meta.url))
++const FLEET = path.join(HERE, '..')
++const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'worker-role-declared-')))
++process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
++
++// The five values M1 names, in the order M1 and M5 name them.
++const ROLE_NAMES = ['examiner', 'implementer', 'reviewer', 'resolver', 'writeSide']
++
++assert.equal(typeof worker.createRunWorker, 'function',
++  'sim precondition: `fleet/run-worker.mjs` exports `createRunWorker`')
++assert.equal(typeof worker.ROLES, 'object',
++  'sim precondition: `fleet/run-worker.mjs` exports the `ROLES` table the argv is read against')
++for (const role of ROLE_NAMES) {
++  assert.ok(worker.ROLES[role],
++    'sim precondition: `ROLES` carries the row `' + role + '` M1 names')
++}
++
++// ══ the worker rig ═════════════════════════════════════════════════════════
++// A `createRunWorker` whose process seam is a fake child, whose five per-role
++// lookups record the argument they were handed, and whose events are kept.
++
++/** The one-line envelope the stub child prints; `agent()` returns its `structured_output`. */
++const ENVELOPE = JSON.stringify({
++  type: 'result', subtype: 'success', is_error: false, session_id: 's',
++  structured_output: { ok: true }, usage: {}, total_cost_usd: 0,
++}) + '\n'
++
++/** A stdin the worker can attach an `error` listener to and end. */
++function makeStdin () {
++  const stdin = new EventEmitter()
++  stdin.chunks = []
++  stdin.write = (chunk) => { if (chunk != null) stdin.chunks.push(String(chunk)); return true }
++  stdin.end = (chunk) => { if (chunk != null && typeof chunk !== 'function') stdin.chunks.push(String(chunk)); return stdin }
++  stdin.destroy = () => {}
++  stdin.setDefaultEncoding = () => stdin
++  return stdin
++}
++
++/** The stub child: prints the success envelope and closes 0 on `setImmediate`. */
++function makeChild () {
++  const child = new EventEmitter()
++  child.stdout = new EventEmitter(); child.stdout.setEncoding = () => {}
++  child.stderr = new EventEmitter(); child.stderr.setEncoding = () => {}
++  child.stdin = makeStdin()
++  child.kill = () => {}
++  setImmediate(() => {
++    child.stdout.emit('data', ENVELOPE)
++    child.emit('close', 0, null)
++  })
++  return child
++}
++
++/**
++ * One worker, its own run directory, its own fake spawn.
++ *
++ * `seen` holds what each per-role lookup was handed: `promptFileFor`,
++ * `settingsFor`, `timeoutMsFor` and `effortFor` take the role alone;
++ * `addDirsFor(opts, role)` takes it second, and the SECOND argument is what is
++ * recorded — leg (c) reads the role each was given, not the arity.
++ */
++function workerRig (name) {
++  const runDir = path.join(tmp, name)
++  const workersDir = path.join(runDir, 'workers')
++  const cwd = path.join(runDir, 'clone')
++  const home = path.join(runDir, 'home')
++  for (const d of [workersDir, cwd, home]) fs.mkdirSync(d, { recursive: true })
++  const spawns = []
++  const events = []
++  const seen = {
++    promptFileFor: [], settingsFor: [], addDirsFor: [], timeoutMsFor: [], effortFor: [],
++  }
++  const agent = worker.createRunWorker({
++    runId: 'run-role-declared',
++    workersDir,
++    cwdFor: () => cwd,
++    cli: 'claude',
++    env: simEnv({ home }),
++    promptFileFor: (role) => { seen.promptFileFor.push(role); return path.join(runDir, 'prompt.md') },
++    settingsFor: (role) => { seen.settingsFor.push(role); return path.join(runDir, 'settings.json') },
++    addDirsFor: (opts, role) => { seen.addDirsFor.push(role); return [] },
++    timeoutMsFor: (role) => { seen.timeoutMsFor.push(role); return 30 * 1000 },
++    effortFor: (role) => { seen.effortFor.push(role); return 'medium' },
++    onEvent: (e) => events.push(e),
++    spawnFn: (cli, argv, opts) => {
++      const child = makeChild()
++      spawns.push({ cli, argv: Array.isArray(argv) ? argv.slice() : argv, opts: opts || {}, child })
++      return child
++    },
++  })
++  return { agent, spawns, events, seen }
++}
++
++/** Every event of a kind this dispatch appended, in order. */
++const eventsOf = (events, kind) => events.filter((e) => e && e.kind === kind)
++
++// ══════════════════════════════════════════════════════════════════════════
++// (a) [M1] a dispatch with NO role refuses, before any process is spawned
++// ══════════════════════════════════════════════════════════════════════════
++{
++  const { agent, spawns, events } = workerRig('leg-a')
++
++  let thrown = null
++  try {
++    await agent('p', { label: 'impl:1' })
++  } catch (e) {
++    thrown = e
++  }
++
++  assert.ok(thrown !== null,
++    '(a) [M1] `agent(\'p\', { label: \'impl:1\' })` REJECTS: `opts.role` is a required ' +
++    'dispatch option and this dispatch declares none. At BASE `roleForLabel` reads the ' +
++    '`impl` prefix, answers `implementer`, and the dispatch resolves — which is the whole ' +
++    'defect: the role came from the label\'s spelling.')
++  assert.ok(String((thrown && thrown.message) || thrown).includes('role'),
++    '(a) [M1] and the message names `role`, so a new dispatch site is told what it omitted. ' +
++    'It said: ' + JSON.stringify(String((thrown && thrown.message) || thrown)))
++  assert.equal(spawns.length, 0,
++    '(a) [M1] and the refusal came BEFORE `spawnFn` was called — no process was started for a ' +
++    'dispatch whose role is unknown. Spawns recorded: ' + spawns.length)
++  assert.deepEqual(eventsOf(events, 'worker:start'), [],
++    '(a) [M1] and no `worker:start` was appended: there is no worker to start')
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (b) [M1] a role outside the set refuses the same way
++// ══════════════════════════════════════════════════════════════════════════
++{
++  const { agent, spawns } = workerRig('leg-b')
++
++  let thrown = null
++  try {
++    await agent('p', { label: 'impl:1', role: 'janitor' })
++  } catch (e) {
++    thrown = e
++  }
++
++  assert.ok(thrown !== null,
++    '(b) [M1] `role: \'janitor\'` REJECTS: the option is one of `' + ROLE_NAMES.join('`, `') +
++    '` and nothing else. A role outside the set that fell back to the label\'s prefix would ' +
++    'hand a typo the implementer\'s bypassPermissions posture.')
++  assert.ok(String((thrown && thrown.message) || thrown).includes('role'),
++    '(b) [M1] and the message names `role`. It said: ' +
++    JSON.stringify(String((thrown && thrown.message) || thrown)))
++  assert.equal(spawns.length, 0,
++    '(b) [M1] and `spawnFn` was never called. Spawns recorded: ' + spawns.length)
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (c) [M1, M2] five rows: the declared role is the one the worker uses
++// ══════════════════════════════════════════════════════════════════════════
++// The label is `impl:1` on every row — the prefix that names `implementer` at
++// BASE — so each row where the declared role is NOT `implementer` is also a
++// direct reading of M2's "even when the label's prefix would have named
++// another role".
++for (const role of ROLE_NAMES) {
++  const row = worker.ROLES[role]
++  const { agent, spawns, events, seen } = workerRig('leg-c-' + role)
++
++  const out = await agent('p', { label: 'impl:1', role })
++
++  assert.deepEqual(out, { ok: true },
++    '(c) [M1] role `' + role + '`: the dispatch is accepted and `agent()` resolves with the ' +
++    'envelope\'s `structured_output`')
++  assert.equal(spawns.length, 1,
++    '(c) [M1] role `' + role + '`: exactly one child was spawned')
++
++  // ── the events ───────────────────────────────────────────────────────────
++  const starts = eventsOf(events, 'worker:start')
++  const ends = eventsOf(events, 'worker:end')
++  assert.equal(starts.length, 1,
++    '(c) [M2] role `' + role + '`: one `worker:start` was appended')
++  assert.equal(ends.length, 1,
++    '(c) [M2] role `' + role + '`: one `worker:end` was appended')
++  assert.equal(starts[0].role, role,
++    '(c) [M2] role `' + role + '`: the `worker:start` event carries the DECLARED role, not the ' +
++    'one the `impl:` prefix names. It carries: ' + JSON.stringify(starts[0].role))
++  assert.equal(ends[0].role, role,
++    '(c) [M2] role `' + role + '`: and so does `worker:end`. It carries: ' +
++    JSON.stringify(ends[0].role))
++
++  // ── the five per-role lookups ────────────────────────────────────────────
++  for (const fn of ['promptFileFor', 'settingsFor', 'addDirsFor', 'timeoutMsFor', 'effortFor']) {
++    assert.deepEqual(seen[fn], [role],
++      '(c) [M2] role `' + role + '`: `' + fn + '` was called exactly once and handed the ' +
++      'declared role. It was handed: ' + JSON.stringify(seen[fn]) + '. `promptFileFor` ' +
++      'resolves `roles/<role>.md` and `settingsFor` the confine settings, so a lookup handed ' +
++      'the label\'s role gets a worker the wrong preamble and the wrong hook.')
++  }
++
++  // ── the argv ─────────────────────────────────────────────────────────────
++  const argv = spawns[0].argv
++  assert.ok(Array.isArray(argv),
++    '(c) [M2] role `' + role + '`: the spawn was handed an argv array')
++  assert.equal(argv.filter((a) => a === '--permission-mode').length, 1,
++    '(c) [M2] role `' + role + '`: the argv carries exactly one `--permission-mode`')
++  assert.equal(argv[argv.indexOf('--permission-mode') + 1], row.permissionMode,
++    '(c) [M2] role `' + role + '`: `--permission-mode` is followed by `ROLES.' + role +
++    '.permissionMode` (`' + row.permissionMode + '`). The argv has: ' +
++    JSON.stringify(argv[argv.indexOf('--permission-mode') + 1]))
++  assert.equal(argv.includes('--allowedTools'), Boolean(row.allowedTools),
++    '(c) [M2] role `' + role + '`: `--allowedTools` is on the argv EXACTLY when `ROLES.' +
++    role + '.allowedTools` is set (it is ' + (row.allowedTools ? 'set' : 'not set') + ')')
++  assert.equal(argv.includes('--disallowedTools'), Boolean(row.disallowedTools),
++    '(c) [M2] role `' + role + '`: `--disallowedTools` is on the argv EXACTLY when `ROLES.' +
++    role + '.disallowedTools` is set (it is ' + (row.disallowedTools ? 'set' : 'not set') + ')')
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (d) [M2] an `impl:` label declared `reviewer` gets the REVIEWER's posture
++// ══════════════════════════════════════════════════════════════════════════
++// The row leg (c) already walked, spelled out against the literal values the
++// Proof names — `dontAsk`, an allowlist, no denylist — so the falsifier reads
++// as itself rather than as a lookup in a table the implementation supplies.
++{
++  const { agent, spawns, events } = workerRig('leg-d')
++
++  await agent('p', { label: 'impl:1', role: 'reviewer' })
++
++  assert.equal(spawns.length, 1, '(d) [M2] one child was spawned')
++  const starts = eventsOf(events, 'worker:start')
++  const ends = eventsOf(events, 'worker:end')
++  assert.deepEqual(starts.map((e) => e.role), ['reviewer'],
++    '(d) [M2] the one `worker:start` event\'s `role` is `reviewer` — the declared role, not ' +
++    'the `implementer` the `impl:` prefix names at BASE. It carries: ' +
++    JSON.stringify(starts.map((e) => e.role)))
++  assert.deepEqual(ends.map((e) => e.role), ['reviewer'],
++    '(d) [M2] and so does the one `worker:end`. It carries: ' +
++    JSON.stringify(ends.map((e) => e.role)))
++
++  const argv = spawns[0].argv
++  assert.equal(argv[argv.indexOf('--permission-mode') + 1], 'dontAsk',
++    '(d) [M2] the argv carries `--permission-mode dontAsk` — the reviewer\'s posture. At BASE ' +
++    'this label spawns with `bypassPermissions`, which is the whole of what a label deciding ' +
++    'the posture costs. The argv has: ' +
++    JSON.stringify(argv[argv.indexOf('--permission-mode') + 1]))
++  assert.equal(argv.includes('--allowedTools'), true,
++    '(d) [M2] and it carries `--allowedTools` — for the allowlist roles the allowlist IS the ' +
++    'boundary for writes: ' + JSON.stringify(argv))
++  assert.equal(argv.includes('--disallowedTools'), false,
++    '(d) [M2] and no `--disallowedTools`, which is the implementer\'s row and not this one: ' +
++    JSON.stringify(argv))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (e) [M3] the derivation is gone: no export, and no token
++// ══════════════════════════════════════════════════════════════════════════
++{
++  assert.equal(worker.roleForLabel, undefined,
++    '(e) [M3] `fleet/run-worker.mjs` exports no `roleForLabel`. The derivation is DELETED, ' +
++    'not merely unused: an exported label→role switch beside a declared `opts.role` is a ' +
++    'second answer to the same question, and the next dispatch site would find it. It is ' +
++    'currently: ' + typeof worker.roleForLabel)
++  assert.equal(Object.prototype.hasOwnProperty.call(worker, 'roleForLabel'), false,
++    '(e) [M3] and the name is not on the module namespace at all')
++
++  // The Proof's first `Run:`, encoded: the token's count across the three
++  // sources is zero. M3 names the TOKEN, not only the export — the comment in
++  // `fleet/run-main.mjs` (520-522) that names it is as much a hit as the
++  // definition, because a reader who finds the name there goes looking for a
++  // function that no longer decides anything.
++  const SOURCES = ['run-worker.mjs', 'run-engine.mjs', 'run-main.mjs']
++  for (const name of SOURCES) {
++    const src = fs.readFileSync(path.join(FLEET, name), 'utf8')
++    const hits = src.split('\n')
++      .map((line, i) => [i + 1, line])
++      .filter(([, line]) => line.includes('roleForLabel'))
++    assert.deepEqual(hits, [],
++      '(e) [M3] the token `roleForLabel` occurs nowhere in `fleet/' + name + '` — comments ' +
++      'included. Lines that carry it: ' +
++      JSON.stringify(hits.map(([n, line]) => n + ': ' + line.trim())))
++  }
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (f)-(j) [M4] every family the engine dispatches declares its role
++// ══════════════════════════════════════════════════════════════════════════
++// ONE rig-driven run provokes all five, exactly as the task's Context asks: the
++// task carries a Proof `Test:` path (so an examiner is dispatched beside the
++// implementer), a `proofRuns` command that is red until the repair round writes
++// its marker (so the driver's pre-review pass buys one `fix:T1:0`), a passing
++// reviewer (so `review:T1:1` is dispatched), and an implementer that writes the
++// rig's `BROKEN` marker, which makes the run-wide `bash check.sh` red on the
++// folded candidate and buys exactly one `reconcile:wave1:1`.
++//
++// Everything below the agent seam is the rig's real thing — real git repos,
++// real clones, the real capture, the real fold kernel, the real `sh` — so every
++// label read here is a dispatch the engine actually made, and `opts.role` is
++// read off the options object the engine handed the seam.
++const roleByLabel = {}
++const dispatchOrder = []
++{
++  const repo = makeRepo(path.join(tmp, 'repo-engine'))
++  const runDir = path.join(tmp, 'run-engine')
++  // Red at BASE (the implementer's clone has no `one.txt`), green on the patch:
++  // an exam that is green at BASE establishes nothing and the driver says so.
++  const EXAM = '#!/bin/bash\n[ -f one.txt ]\n'
++  // Red until the repair round writes `fixed.txt`.
++  const RED_RUN = "sh -c 'test -f fixed.txt'"
++
++  const stub = (prompt, opts, cwd) => {
++    dispatchOrder.push(opts.label)
++    roleByLabel[opts.label] = Object.prototype.hasOwnProperty.call(opts, 'role')
++      ? opts.role : '(no role declared)'
++    const kind = opts.label.split(':')[0]
++    if (kind === 'exam') {
++      fs.writeFileSync(path.join(cwd, 't1_test.sh'), EXAM)
++      return { status: 'DONE', summary: 'exam written' }
++    }
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n')
++      fs.writeFileSync(path.join(cwd, 'BROKEN'), 'the marker check.sh reads\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'fix') {
++      fs.writeFileSync(path.join(cwd, 'fixed.txt'), 'the marker the Run: proof reads\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    if (kind === 'reconcile') {
++      // cwd is the integration clone (the reconcile dispatch carries no
++      // `isolation: 'worktree'`), which is where the red candidate lives.
++      fs.rmSync(path.join(cwd, 'BROKEN'), { force: true })
++      return { status: 'FIXED', summary: 'removed the marker' }
++    }
++    // Recorded above before this throw, so an unexpected family still shows in
++    // `dispatchOrder` rather than only as an engine error.
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++
++  const FILES = ['one.txt', 'BROKEN', 'fixed.txt', 't1_test.sh']
++  const task = {
++    id: 'T1', title: 'the role is declared at the dispatch', files: FILES,
++    tier: 'standard', review: 'peer', writes: FILES, commutes: [],
++    interfaces: { consumes: [], produces: [] },
++    testCmd: 'bash t1_test.sh', proofTests: ['t1_test.sh'], proofRuns: [RED_RUN],
++    body: '**Claim:** the tree gains one.txt\n' +
++      'Machine: M1. The tree holds `one.txt`.\n\n' +
++      '**Proof:**\n- Test: `t1_test.sh`\n- Legs: (a) the exam is green on the patch [M1]',
++  }
++
++  const { run } = rig({
++    repo, runDir, stub, stamp: 'rd1', waves: [[task]], testCmd: 'bash check.sh',
++    // The fold-at-every-landing reading (#1006): the fold trigger is another
++    // exam's subject, and this run folds at its landing so the candidate suite
++    // runs and the reconcile family is provoked.
++    extraArgs: { foldAgeMs: 0 },
++  })
++  const report = await run()
++
++  // ── sim preconditions: the five families were each dispatched once ───────
++  const EXPECTED = ['exam:T1', 'impl:T1', 'fix:T1:0', 'review:T1:1', 'reconcile:wave1:1']
++  assert.deepEqual(dispatchOrder, EXPECTED,
++    'sim precondition: the run dispatched exactly one worker of each of the five families ' +
++    'M4 names, in that order. It dispatched: ' + JSON.stringify(dispatchOrder) +
++    ' (report: ' + JSON.stringify(report.tasks) + ')')
++
++  // ── (f) [M4] the examiner ────────────────────────────────────────────────
++  assert.equal(roleByLabel['exam:T1'], 'examiner',
++    '(f) [M4] the `exam:T1` dispatch declares `role: \'examiner\'`. The examiner is a role of ' +
++    'its own precisely because `promptFileFor` resolves `roles/<role>.md`, and the one agent ' +
++    'that must not be told to make the suite green is the one writing the thing that measures ' +
++    'it. It declared: ' + JSON.stringify(roleByLabel['exam:T1']))
++
++  // ── (g) [M4] the implementer ─────────────────────────────────────────────
++  assert.equal(roleByLabel['impl:T1'], 'implementer',
++    '(g) [M4] the `impl:T1` dispatch declares `role: \'implementer\'`. It declared: ' +
++    JSON.stringify(roleByLabel['impl:T1']))
++
++  // ── (h) [M4] the pre-review repair round ─────────────────────────────────
++  assert.equal(roleByLabel['fix:T1:0'], 'implementer',
++    '(h) [M4] the `fix:T1:0` dispatch declares `role: \'implementer\'` — the repair round is ' +
++    'the implementer again, and says so rather than spelling a prefix that happens to map ' +
++    'there. It declared: ' + JSON.stringify(roleByLabel['fix:T1:0']))
++
++  // ── (i) [M4] the referee ─────────────────────────────────────────────────
++  assert.equal(roleByLabel['review:T1:1'], 'reviewer',
++    '(i) [M4] the `review:T1:1` dispatch declares `role: \'reviewer\'`. It declared: ' +
++    JSON.stringify(roleByLabel['review:T1:1']))
++
++  // ── (j) [M4] the reconciler ──────────────────────────────────────────────
++  assert.equal(roleByLabel['reconcile:wave1:1'], 'writeSide',
++    '(j) [M4] the `reconcile:wave1:1` dispatch declares `role: \'writeSide\'` — the role that ' +
++    'writes to the integration clone. It declared: ' +
++    JSON.stringify(roleByLabel['reconcile:wave1:1']))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (k) [M4] the resolver, driven through the exported `resolveConflicts`
++// ══════════════════════════════════════════════════════════════════════════
++// No conflict has to be manufactured: `resolveConflicts({ … agent })` is the
++// engine's own dispatch site for the `resolve:…` family, and it takes its agent
++// as a seam — the same way `fleet/tests/test_resolver_brief.mjs` drives it.
++{
++  const root = fs.mkdtempSync(path.join(tmp, 'leg-k-'))
++  const waveDir = fs.mkdtempSync(path.join(root, 'wave-'))
++  const open = [{ i: 1, path: 'a.txt', hunksFile: path.join(root, 'h1'), epoch: 1 }]
++
++  // The fake resolver: records the options it was handed, answers RESOLVED.
++  const calls = []
++  const agent = async (prompt, opts) => {
++    calls.push({ label: opts && opts.label,
++      role: opts && Object.prototype.hasOwnProperty.call(opts, 'role')
++        ? opts.role : '(no role declared)' })
++    return { status: 'RESOLVED', hunks: [{ id: 'h1', content: 'x' }], notes: '' }
++  }
++  // The fake kernel CLI: the one conflict's `resolve` completes the stop.
++  const runCli = async () => ({ code: 0, parsed: { applied: true, complete: true, selfChecks: 'ok' } })
++
++  const out = await resolveConflicts({
++    agent, runCli, roles: { resolver: 'ROLE\n' }, common: [], taskArgs: [], commutesArgs: [],
++    open, contendingBlock: '\nBLOCK', waveDir, labelPrefix: 'resolve:wave1',
++  })
++
++  assert.equal(out.ok, true,
++    '(k) [M4] sim precondition — the one-conflict stop drains: ' + out.reason)
++  assert.equal(calls.length, 1,
++    '(k) [M4] sim precondition — one brief for the one open conflict. Got ' + calls.length +
++    ': ' + JSON.stringify(calls))
++  assert.equal(calls[0].label, 'resolve:wave1:1:1',
++    '(k) [M4] sim precondition — the dispatch is the `resolve:wave<n>:<i>:<a>` family: ' +
++    JSON.stringify(calls[0].label))
++  assert.equal(calls[0].role, 'resolver',
++    '(k) [M4] the `resolve:…` dispatch declares `role: \'resolver\'` — since Amendment 10 the ' +
++    'driver writes the kernel reply directory from the schema reply, so the resolver is ' +
++    'read-only and is NOT the write-side role its label once shared. It declared: ' +
++    JSON.stringify(calls[0].role))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (l) [M5] the contract names the option and lists its five values
++// ══════════════════════════════════════════════════════════════════════════
++// The Proof's second `Run:`, encoded as that command reads it: newlines joined
++// to spaces, then the one window. At BASE the contract carries no `writeSide`
++// at all, so this is red there whatever else it says about `role`.
++{
++  const contract = fs.readFileSync(path.join(FLEET, 'CONTRACT.md'), 'utf8')
++  const joined = contract.replace(/\n/g, ' ')
++  const WINDOW = /role.{0,400}examiner.{0,80}implementer.{0,80}reviewer.{0,80}resolver.{0,80}writeSide/
++  assert.match(joined, WINDOW,
++    '(l) [M5] `fleet/CONTRACT.md`, with its newlines joined, carries the word `role` followed ' +
++    'within 400 characters by `examiner`, then `implementer`, `reviewer`, `resolver` and ' +
++    '`writeSide`, each within 80 characters of the one before — the required dispatch option ' +
++    'and its five values, in that order, in one window. This is the Proof\'s second `Run:` ' +
++    'line, encoded. The contract currently carries `writeSide` ' +
++    (contract.includes('writeSide') ? 'somewhere, but not in that window' : 'nowhere at all') + '.')
++}
++
++console.log('ALL TESTS PASSED')

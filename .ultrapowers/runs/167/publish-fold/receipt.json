@@ -1,0 +1,40 @@
+{
+  "engineHead": "f28ce25b245e63cda99e400a22f77ee2bee28ce8",
+  "attempts": {
+    "1": {
+      "tip": "a4a1a686f7340c533fe7b0aaee93800b69396877",
+      "candidate": "9ba8c90ae3f0cebc3dffc6954903364d332e51e3",
+      "disposition": "folded",
+      "pathsJoined": 1,
+      "resolversDispatched": 1,
+      "suite": "pass",
+      "checks": [
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_worker_end_reason.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_reconcile_retry.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_worker_role_declared.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_shell_path.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "pass"
+        }
+      ],
+      "checkRetries": 0
+    }
+  }
+}

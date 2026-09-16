@@ -1,0 +1,111 @@
+HUNK h1 lines 120-146
+--- context (read-only)
+      same epoch, ids and `applied` with the `waveMerges` row's own `detail` — appended for an epoch
+      whose fold the kernel could not complete (`CONFLICT`, the conflict it stopped on being what
+      `applied` reads `resolved` off) exactly as for one whose candidate suite stayed red. `paths`
+      and `evidence` are the receipt below, carried on a `CONFLICT` epoch's row and on no other.
+      And `driver:regenerated` `{wave, cmd, exit, paths}` — the epoch, the run's `regenerateCmd`
+      exactly as it ran, its exit code, and the sorted lockfile paths it rewrote, appended once by
+      a fold that ran it and by no other. A lockfile is a derived file and no model merges one: a
+      run that carries a `regenerateCmd` drops the lockfile basenames `bun.lock`, `bun.lockb`,
+      `package-lock.json`, `pnpm-lock.yaml` and `uv.lock`, at any depth, from every patch its
+      capture writes, and names each dropped path on that capture's `capture:dropped`
+      `{label, paths}` beside the unnamed binaries it already drops; a run carrying no
+      `regenerateCmd` drops no lockfile, runs no regenerator, appends no `driver:regenerated`, and
+      captures and folds a lockfile exactly as it captures and folds any other file. The
+      regenerator runs in the integration clone on the materialized candidate, when the paths
+      between `prevHead` and that candidate changed a bootstrap manifest, and BEFORE the
+      candidate's own bootstrap — the install is frozen against a lockfile, so a rebuild that ran
+      after it would be rebuilding against an install that already failed. The lockfile it writes
+      is committed onto the candidate, subject `wave <n> regenerated <paths>` under the plan's H1
+      when one is set, and that commit is the candidate every later step of the fold uses: the
+      bootstrap, the suite, the adopt, the weave and the epoch's own `headSha`. A regenerator that
+      exits non-zero rewrites nothing, stands in place of the suite exactly as a failed bootstrap
+      does (`exit` its own, `paths` empty), and the epoch takes the route a red bootstrap takes.
+      And `driver:reconcile-retry` `{wave, attempt, class}` — the epoch, the 1-based reconcile
+      attempt that produced no reply, and the class it died of: the `workerVerdict.class` the worker
+      attached to its non-fatal throw, and `null` when the reply was simply `null`. A reconcile
+      dispatch that produced no reply is asked the same question ONCE more — a fresh worker on the
+      byte-identical prompt under the same `label`, `model` and `schema`, immediately and with no
+      backoff — before the attempt is read as no reply, and that one re-dispatch is what this event
+      and the `wave <n>: reconcile attempt <a> produced no reply (<class>) — re-dispatched once`
+      judgment call beside it record. The second reply is the attempt's: an object there is read
+      exactly as a first-dispatch reply is, a `FIXED` committed and the suite re-run. A second
+      no-reply is the attempt's no reply — the `wave <n>: reconcile attempt <a> produced no reply`
+      judgment call and the epoch's `TEST_FAILED` route, with no third dispatch. A first dispatch
+      that answered at all — `BLOCKED` included, an object being an answer — and one whose throw
+      began `RUN_FATAL` are never re-dispatched and append no event.
+      What an epoch adopts is what was captured and unadopted at the INSTANT the slot freed — a
+      result that lands while a fold is running is adopted by the fold after it, never by the one
+      already in flight, and only one fold runs at a time.
+      The driver's own executions are three more kinds, one per command run: `driver:proof-run`
+      `{task, cmd, exit, iter}`, `driver:check-run` `{task, cmd, exit, minor, iter}` and
+--- conflict
+<<<<<<< begin added frontier
+    `driver:exam-run` `{task, cmd, exit, iter, stdout, paths?, evidence?}` — `paths` and
+    `evidence` are the receipt below, carried on a red row and on no other; `stdout` is the exam's
+    combined stdout+stderr, last 4,000 characters, the same tail the fix prompt reads (#944), so a parked
+======= begin deleted frontier
+    `driver:exam-run` `{task, cmd, exit, iter, stdout}` — `stdout` is the exam's combined
+    stdout+stderr, last 4,000 characters, the same tail the fix prompt reads (#944), so a parked
+======= begin added run-167
+    task's red is legible from the tag and the hub.
+    Every command the driver runs as a shell string — the suite (`testCmd`), a Proof `Run:`, a
+    Global `Check:`, a task's exam and the bootstrap — goes through the engine's one `bash -lc`
+    adapter, which prepends the sandbox's toolchain directory to `PATH` inside the command string:
+    `args.toolchainBin` when the run's args carry a non-empty string, else `TOOLCHAIN_BIN`, the
+    engine's export, `/usr/local/bin` — where the sandbox installs the pinned Bun. The prefix is
+    written into the command rather than into the environment because `-l` sources the login
+    profile AFTER the environment is set and a profile may reassign `PATH`; the rest of the PATH
+    the command would otherwise have had follows the toolchain directory, so a direct `bun` or
+    `bunx` is the sandbox's, whatever the profile or the tree's `node_modules/.bin` put first.
+    (`bun run <script>` prepends `node_modules/.bin` itself and is not reached by this; a tree
+    whose suite is a `bun run` script pins its own toolchain.) The prefix lives in the adapter and
+    never in the record: the `cmd` a `driver:proof-run`, `driver:check-run` or `driver:exam-run`
+    carries is the command as the plan wrote it — the exam's is the task's `testCmd` with its
+    Proof `Test:` path substituted by the exam's landing path — and carries no toolchain directory
+    and no `PATH=`. The pre-review pass (`iter: 0`) parks a task
+======= begin deleted run-167
+    task's red is legible from the tag and the hub. The pre-review pass (`iter: 0`) parks a task
+>>>>>>> end conflict
+--- context (read-only)
+      for the plan (`reviewVerdict: plan-defect`, actor `plan`, no fix round) only on the pair: the
+      implementer's `plan-defect:` concern names a Proof leg by its `(x)` label AND says it cannot
+      pass (`cannot pass|can't pass|unsatisfiable|no output|for any output`, case-insensitive), and
+      the exam is red on the pass AND on the one re-run the driver then makes in the same clone
+      and environment — a second `driver:exam-run` at `iter: 0` carrying `rerun: true`. A green
+      re-run also carries `flaky: true` and is read as green: the exam's red leaves the pass and
+      the task proceeds (to review, or to the ordinary repair round if a `Run:`/`Check:` is still
+      red). An ordinary red exam with no such concern is never re-run; it buys the one repair round.
+      The pass reads the captured patch's own added top-level exports against the plan's other
+      contracts: an added export whose name equals the symbol another task's `Produces:` entry
+      names — and none this task's own `Produces:` names — is a red of the pass like any other,
+      routed to the same `fix:<id>:0` repair round with the line in its blocking-issues block
+      (`the patch exports <name> at <path>, a symbol task <id> is contracted to Produce and this
+      task is not — rename it or drop the export`), and recorded as one `driver:finding` at
+      `round` `0`, `severity` `blocking`, `actor` `implementer`, `paths` the export's file — one
+      per distinct name-and-path pair, so the collision is answered before any reviewer reads it.
+      The pass reads the same patch's bytes the same way: a patch that introduces a `NUL` (`0x00`)
+      byte into a path that was text or absent at the dispatch head — a path git and the fold
+      kernel read as `binary` from that byte on — is a red of the pass routed to the same
+      `fix:<id>:0` repair round with the line in its blocking-issues block (`the patch writes a NUL
+      byte into <path> at byte <offset> — git and the fold kernel read the file as binary from here
+      on; write the escape, never the byte`), and recorded as one `driver:finding` at `round` `0`,
+      `severity` `blocking`, `actor` `implementer`, `paths` the one path — one red and one row per
+      path, over the paths the capture touched, with a path whose base blob already carried a
+      `0x00` and a new path the task's `Files` declare (a binary deliverable the plan named) both
+      drawing none.
+      One more kind records a blocking finding the graded party could not have answered:
+      `driver:exam-rejected` `{task, path, detail}` — one per blocking issue of a review round whose
+      `detail` names, in backticks, one of the task's Proof `Test:` landing paths (the token equal to
+      that path, or the path followed by `:<digits>` or `:<digits>-<digits>`), appended only in round
+      1 and only for a task whose examiner recorded an exam. It buys one `exam:<id>:2` round in the
+      examiner's own clone — its prompt the first round's with an `EXAM REJECTED:` block carrying
+      those details one per line — then a second `driver:exam-handoff`, a fresh capture, a
+      `driver:exam-run` at `iter: 2` and one `review:<id>:2`. No fix worker is dispatched from either
+      round: the implementation was never what the finding was about. A round 2 with no blocking issue
+      ends the task `done`/`clean`; one with a blocking issue, or a red exam at `iter: 2`, ends it
+      `failed`/`fix-loop-exhausted`. A blocking finding naming no landing path ends the task at that
+      exit from round 1, as it did before this kind existed. The row itself says which of those
+      happened: `report.json`'s `tasks[].examRounds` is `2` when the exam-rejected round ran and `1`
+      otherwise, present on every row of a task whose examiner recorded an exam — `examEdited`'s
