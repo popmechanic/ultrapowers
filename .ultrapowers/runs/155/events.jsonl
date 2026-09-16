@@ -24,3 +24,4 @@
 {"kind":"transcript:slice","label":"review:1:1","sessionId":"bf86a293-3c8b-4168-905a-4491d4b1fd60","bytes":11424,"id":"01M2MCFR7C000002B3YZW4VGYR","ts":1789538066668}
 {"kind":"worker:end","label":"exam:2","role":"examiner","sessionId":"6c8ef2d2-f4ea-431d-8b7f-e2271ff5bcb1","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5993,"output":97529,"cacheRead":5580757,"cacheCreation":193911,"costUsd":7.1974085,"models":["claude-opus-5"]},"id":"01M2MDD23900005CQ1VKAA6TDY","ts":1789539027049}
 {"kind":"transcript:slice","label":"exam:2","sessionId":"6c8ef2d2-f4ea-431d-8b7f-e2271ff5bcb1","bytes":11689,"id":"01M2MDD23Y00000H5695NZA6GD","ts":1789539027070}
+{"kind":"driver:attention","task":"2","attention":"needs-human","msg":"session ended without hand-off","actor":"","id":"01M2MDD94300005QSPA1GQZ0J7","ts":1789539034243}
