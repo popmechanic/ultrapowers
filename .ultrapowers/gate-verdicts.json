@@ -1,0 +1,98 @@
+{
+  "tasks": {
+    "A": {
+      "hash": "4142d12d261f5c1af9ca61fb5cf46fef17cc807e0958406f56d9494d8db82bb2",
+      "verdict": "pass",
+      "reason": "Each M1 rung, both None rows and precedence are their own legs that cannot pass at BASE; leg (d) fixes the stamped literals in both files and (e) names the absent key for the no-derivation and disabled-bootstrap cases."
+    },
+    "B": {
+      "hash": "9bb83b47bdbef45614cfcb9ae0d7ccf6b41ebf8264818fa85ba8a0eb75c02aa6",
+      "verdict": "pass",
+      "reason": "Round 2: the five names, the dropLockfilesFor truth table and the drop-on/off capture contrast pin M1; (b)-(d) pin M2/M3's fields, the regenerated commit and the bootstrap-after-regenerator order; (e) names each M4 absence, the no-regenerator run folding as at BASE included."
+    }
+  },
+  "tally": {
+    "dispatched": 3,
+    "rejected": 1,
+    "rounds": [
+      {
+        "round": 1,
+        "dispatched": 2,
+        "rejected": 1
+      },
+      {
+        "round": 2,
+        "dispatched": 1,
+        "rejected": 0
+      }
+    ],
+    "base": "4434e0687178d02cfb658ea62467e937e6eda663",
+    "history": [
+      {
+        "task": "B",
+        "round": 1,
+        "verdict": "fail",
+        "reason": "the drop list named lockfiles no regenerator rebuilds, and a run with no regenerator dropped the lockfile and went red on the frozen install"
+      }
+    ]
+  },
+  "authoring": {
+    "minutes": 52,
+    "probes": 11,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Which blackboard race do we take on next?",
+        "options": [
+          "#1050 regenerate lockfiles at the fold",
+          "#665 append-only regions in the kernel",
+          "#983 spoke daemon per sandbox"
+        ],
+        "recommended": "#1050 regenerate lockfiles at the fold",
+        "picked": "#1050 regenerate lockfiles at the fold"
+      },
+      {
+        "question": "Author #1050 in the two-move shape?",
+        "options": [
+          "Yes, the two-move shape",
+          "Exclude-only, no commit step",
+          "Full regenerate-at-fold as #1050 wrote it"
+        ],
+        "recommended": "Yes, the two-move shape",
+        "picked": "Full regenerate-at-fold as #1050 wrote it"
+      },
+      {
+        "question": "Author #1050 as regenerate-at-fold in that minimal form?",
+        "options": [
+          "Yes, author it",
+          "Author it, but wait to launch",
+          "Not now"
+        ],
+        "recommended": "Yes, author it",
+        "picked": "Yes, author it"
+      },
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Confirm as drafted",
+          "Tighter claim"
+        ],
+        "recommended": "Confirm as drafted",
+        "picked": "Confirm as drafted"
+      },
+      {
+        "question": "How should the lockfile plan execute?",
+        "options": [
+          "Ultrapowers on the NUL-free main",
+          "Inline",
+          "Hold"
+        ],
+        "recommended": "Ultrapowers on the NUL-free main",
+        "picked": "Ultrapowers on the NUL-free main"
+      }
+    ]
+  }
+}
