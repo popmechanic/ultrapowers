@@ -1,0 +1,41 @@
+{
+  "wave": 1,
+  "entries": {
+    "fleet/CONTRACT.md": {
+      "stateBlob": "74421927b5806c2331c36ad503b3b5b7444e0589505f92f5d33e3079799b99b8",
+      "visibleSha": "181f7f61e27787de67bcc5ae713e0f802679854d"
+    },
+    "fleet/RUNBOOK.md": {
+      "stateBlob": "be0fa55ab6375408cce1f908d217c69f29aa34d2e3dfd8643687cdea5c793e27",
+      "visibleSha": "765ad633266f238856c5516009b0a592ebe50493"
+    },
+    "fleet/tests/README.md": {
+      "stateBlob": "f6b1945d8b8e2fc6a89647b04735bbcf3d15c999084f5342d19e51c57acc4d3d",
+      "visibleSha": "40538005c6ea7fa852787436c7963060198fbaaa"
+    },
+    "fleet/tests/test_run_engine_fold_policy.mjs": {
+      "stateBlob": "cd4a86818f33f3ea4495c522e99c54f9358da3b9ebc168da74e733bdeae75597",
+      "visibleSha": "0dd2ee3d206b10b22e5fd3efa760809e70ccfdc1"
+    },
+    "skills/ultrapowers/references/report-format.md": {
+      "stateBlob": "cae610963ca19f936ef378902e2e9f2c695827b8325bd573927bdb5ff0f7de43",
+      "visibleSha": "0979805e57f539792fcc3f80e29bf700fbeabb55"
+    },
+    "skills/ultrapowers/scripts/catch_counter.py": {
+      "stateBlob": "60b80d7993d82e6b582dddeaeaa960c47208f8f55b070271efcf70c1fc28bf56",
+      "visibleSha": "f8651aa9142381922826c20a5cebab102889b500"
+    },
+    "skills/ultrapowers/scripts/catch_report.py": {
+      "stateBlob": "ab0a7d511bef531eb182572efa5bd45be5670af05966339f7b4aa3b686b1e7dd",
+      "visibleSha": "88c1ece90c4549dddf03fdce2a4590d38ad17211"
+    },
+    "tests/test_catch_counter.py": {
+      "stateBlob": "d511ff09299b806c19662059d1cd1bbf81b19d81a7cef8f94e77afe77a1ec7dc",
+      "visibleSha": "a94ba80adbf05da5bf3fa18d58af7897be656d3c"
+    },
+    "tests/test_catch_report.py": {
+      "stateBlob": "63483f3eb61f3cf7a9e11e4e7e1b98172088c43a20718dfda3da2e93995b5b8d",
+      "visibleSha": "e2cfc897b400cac223bfb6734c06b48298f4870d"
+    }
+  }
+}
