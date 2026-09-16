@@ -2013,7 +2013,559 @@ const t5WaveRun = (examScript) => factsRun({
     JSON.stringify(factsEventsOf(evs)))
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// Task A (run-160) — A BLOCKING FINDING AND A REFUTED FINDING ARE EVENTS
+//
+// Claim: when a review blocks a task, when a state exam lets its mutant live,
+// and when a block is later shown wrong — by the driver's own re-run, by a
+// referee agreeing the exam was at fault, or by a second referee clearing an
+// exam its author left as written — the run's record carries that as its own
+// line, saying which files it was about and what showed it.
+//
+// ── what each Machine clause asserts, restated ──────────────────────────────
+//   M1 — in a review round, after plan routing, each blocking issue held
+//        against the task appends one `driver:finding` event `{task, round,
+//        severity: 'blocking', actor, detail, paths, evidence}`. `actor` is the
+//        issue's own, and `implementer` when the issue carries none. `paths`
+//        are the backticked tokens of `detail` that equal a path of the task's
+//        touch set (`touchSetOf(task, impl.patch)`) or one of its exam landing
+//        paths — with or without a `:<digits>` or `:<digits>-<digits>` suffix —
+//        sorted and de-duplicated; when no token matches, the whole sorted
+//        touch set. `evidence.read` is the `detail` and `evidence.against` is
+//        `review round <n> of <headSha>`, the 40-hex graded head.
+//   M2 — a state-exam row read in the review round with `mutant_killed` `false`
+//        appends one `driver:finding` with `severity` `minor`, `actor`
+//        `examiner`, `detail` exactly `hollow: <stem> left its mutant <path>
+//        alive — the exam did not catch the wrong state`, `paths` the task's
+//        exam landing paths, `evidence.read` that `detail` and
+//        `evidence.against` `review round <n> of <headSha>`, at most once per
+//        exam stem in the task; a `true` row appends none, and a `null` row —
+//        a `mutant.json` missing or unparsable — appends none.
+//   M3 — a `driver:finding-refuted` event `{task, round, paths, evidence,
+//        verdict, refutedBy, detail}` is appended in exactly three cases:
+//        (i) the driver's re-run of a red exam beside a leg-naming plan-defect
+//        concern exits `0` — `verdict` `flaky`, `refutedBy` `rerun`, `round`
+//        `0`, `detail` the red exam's own finding line; (ii) review round 1
+//        holds an `EXAM CONCERN:` and a blocking issue whose `detail` names an
+//        exam landing path — `verdict` `exam-concern-upheld`, `refutedBy`
+//        `review round 1`, `detail` the concern; (iii) after an exam-rejected
+//        round, review round 2 returns no blocking issue and every exam landing
+//        path's blob is the sha it had before that round — `verdict` `clean`,
+//        `refutedBy` `review round 2`, `round` `2`, one event per round-1
+//        rejection with its `detail`. In each case `paths` are the exam landing
+//        paths, `evidence.read` says what showed the finding wrong and
+//        `evidence.against` is the finding's own `detail`.
+//   M4 — is the state-handshake sim's half (legs (i) and (j)), answered in
+//        `fleet/tests/test_run_engine_state_handshake.mjs`, this task's other
+//        Proof `Test:` path.
+//
+// ── the legs answered here, and where ───────────────────────────────────────
+//   (a) [M1] the blocking issue naming `one.txt`, with `actor: 'implementer'`
+//       and with no `actor` key at all.
+//   (b) [M1] the `:7` suffix; the landing path with a `:12-14` suffix, and the
+//       `driver:finding` sitting on the log BEFORE the `driver:exam-rejected`
+//       that same issue buys.
+//   (c) [M1] a detail naming no path in backticks — the whole SORTED touch set
+//       — and a canned `PASS`, which appends no `driver:finding` at all.
+//   (d) [M2] the hollow row: `killed: false`, `killed: true`, and no
+//       `mutant.json` beside a present `walls.json`.
+//   (e) [M3] case (i), the flaky re-run.
+//   (f) [M3] case (ii), the exam concern review round 1 upheld.
+//   (g) [M3] case (iii), the exam-rejected round whose examiner left the file
+//       as written — and the same rig with an examiner that rewrote it.
+//   (h) [M1] the third `Run:`, read here as an assertion too.
+//   (k) [M1] [M4] the fourth `Run:`, likewise — neither guarded sim carries an
+//       `import` line naming a path under `exams/`.
+//
+// A READING THIS EXAM HAD TO SETTLE, for whoever comes after it. Every leg
+// above pins `evidence.against` (or M2's) against "the task's captured
+// `headSha`", which is `impl.headSha` — a value no report row of a blocked task
+// carries. It is read here off the engine's OWN `review:T1:<n>` prompt, whose
+// `HEAD: ` line is built from that same `impl.headSha` (`'\nHEAD: ' +
+// impl.headSha`, the reviewer's brief). So the expected string is the driver's
+// own coordinate rather than a sha this file re-derived from a clone.
+//
+// The rig is `factsRun` above, not `scenario`: these legs need a fix reply that
+// carries `concerns` (leg (f)) and a stub that can reach the run directory (leg
+// (d)'s `state-exams/` record), and `scenario`'s canned arms give neither.
+// Everything below the agent seam stays real — real git, real clones, the real
+// fold kernel, the real `sh`.
+// ════════════════════════════════════════════════════════════════════════════
+
+// The one Proof `Test:` path every exam-carrying leg below uses. It is under
+// neither test root, so its LANDING path is itself — which is the path M1 and
+// M3 read a backticked token against, and the path M2's `paths` are.
+const A_LAND = 't1_test.sh'
+const A_CMD = 'bash ' + A_LAND
+const A_LANDINGS = [A_LAND]
+// The exam bodies. Green once the implementer wrote `one.txt` (red in the
+// examiner's own clone, which is a tree at BASE).
+const A_EXAM_GREEN = '#!/bin/bash\n[ -f one.txt ]\n'
+// Red on every execution: leg (f) needs an exam the repair round cannot clear.
+const A_EXAM_ALWAYS_RED = '#!/bin/bash\nexit 1\n'
+// Leg (e)'s flaky exam — red the first time it runs in a tree, green the
+// second. The marker is written in the clone the execution happens in, so the
+// examiner's own `base` probe (which runs in the EXAMINER's clone) leaves the
+// graded clone's first execution red, exactly as #944's one-off renderer
+// failure was.
+const A_EXAM_TOGGLE = '#!/bin/bash\nif [ -e seen.txt ]; then exit 0; fi\n: > seen.txt\nexit 1\n'
+// What leg (g)'s second examiner writes when it rewrites the exam.
+const A_EXAM_REWRITTEN = '#!/bin/bash\n# rewritten by the exam-rejected round\n[ -f one.txt ]\n'
+// The red exam's own finding line, `EXAM_FAIL` in the engine — the string M3's
+// cases (i) and (ii) name as what the refutation is read against.
+const A_FAIL_LINE = 'the Proof\'s exam failed: ' + A_CMD + ' — exit 1'
+
+// A task with an exam, and one without.
+const aExamTask = (over = {}) => entry({ proofTests: [A_LAND], testCmd: A_CMD, ...over })
+
+// The stub every leg is built from: one task `T1`, the implementer writing
+// `one.txt`, the examiner writing `exam` (and `exam2` on an `exam:T1:2` label,
+// or nothing at all when `exam2` is left undefined — which is leg (g)'s
+// "returns `DONE` and writes nothing"). `impl` and `fix` are merged over the
+// canned reply, which is how a leg cans `DONE_WITH_CONCERNS`.
+const aStub = ({ exam = null, exam2 = undefined, onImpl = () => {},
+                 impl = null, fix = null, review = () => passReview() }) =>
+  ({ opts, cwd, runDir }) => {
+    const label = String(opts.label)
+    const kind = label.split(':')[0]
+    if (kind === 'exam') {
+      const second = label.split(':').length > 2
+      const body = second ? exam2 : exam
+      if (body !== undefined && body !== null) fs.writeFileSync(path.join(cwd, A_LAND), body)
+      return { status: 'DONE', summary: 'exam written' }
+    }
+    if (kind === 'impl') {
+      fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n')
+      onImpl(cwd, runDir)
+      return { ...doneImpl(cwd), ...(impl || {}) }
+    }
+    if (kind === 'fix') {
+      fs.writeFileSync(path.join(cwd, 'repaired.txt'), 'written-by-the-repair-round\n')
+      return { ...doneImpl(cwd), ...(fix || {}) }
+    }
+    if (kind === 'review') return review(Number(label.split(':')[2]))
+    throw new Error('unexpected dispatch: ' + label)
+  }
+
+// A canned reviewer returning one blocking issue, with whatever extra keys the
+// leg gives it — `actor`, or none at all.
+const aBlocking = (issue) => ({ verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', ...issue }] })
+
+// The two kinds this task mints, for T1, in the order the run appended them.
+const aFindings = (evs) => ofKind(evs, 'driver:finding')
+const aRefuted = (evs) => ofKind(evs, 'driver:finding-refuted')
+// The captured `headSha` the evidence is read against: the driver's own
+// coordinate, off the `HEAD:` line of the brief it built for that round.
+const aHeadSha = (prompts, leg, label = 'review:T1:1') => {
+  const m = /\nHEAD: ([0-9a-f]{40})\n/.exec(String(prompts[label] || ''))
+  assert.ok(m,
+    'leg (' + leg + ') sim precondition — the `' + label + '` prompt carries the driver\'s ' +
+    'captured `HEAD: <40 hex>` line, which is the `impl.headSha` every `evidence.against` ' +
+    'below is pinned against: ' + JSON.stringify(String(prompts[label] || '').slice(0, 400)))
+  return m[1]
+}
+// One run of the one-task plan, with T1's own report row read out beside the
+// log: `factsRun` answers the whole report, and every leg below asks about the
+// one task in it.
+const aRunOne = async ({ task, ...stubArgs }) => {
+  const out = await factsRun({ tasks: [task], stub: aStub(stubArgs), extraArgs: { foldAgeMs: 0 } })
+  const row = (out.report.tasks || []).find((r) => r && r.task === 'T1')
+  assert.ok(row, 'sim precondition — the report carries a row for T1: ' +
+    JSON.stringify(out.report.tasks))
+  return { ...out, row }
+}
+
+// ── leg (a) [M1]: one blocking issue naming `one.txt`, actor `implementer` ──
+{
+  const DETAIL = 'the assignment in `one.txt` is not what the Claim names'
+  const { prompts, evs, calls } = await aRunOne({
+    task: entry(),
+    review: () => aBlocking({ detail: DETAIL, actor: 'implementer' }),
+  })
+  assert.ok(calls.includes('review:T1:1'),
+    'leg (a) [M1] sim precondition — one review round was dispatched: ' + JSON.stringify(calls))
+  const found = aFindings(evs)
+  assert.equal(found.length, 1,
+    'leg (a) [M1]: exactly ONE `driver:finding` is on the log — one per blocking issue held ' +
+    'against the task after plan routing, and this round held one: ' + JSON.stringify(found))
+  assert.deepEqual(
+    { task: found[0].task, round: found[0].round, severity: found[0].severity,
+      actor: found[0].actor, detail: found[0].detail, paths: found[0].paths },
+    { task: 'T1', round: 1, severity: 'blocking', actor: 'implementer', detail: DETAIL,
+      paths: ['one.txt'] },
+    'leg (a) [M1]: its `{task, round, severity, actor, detail, paths}` are the clause\'s own — ' +
+    'round 1, `blocking`, the issue\'s own `actor`, the reviewer\'s detail verbatim, and the ' +
+    'one backticked token that equals a path of the touch set: ' + JSON.stringify(found[0]))
+  assert.deepEqual(found[0].evidence,
+    { read: DETAIL, against: 'review round 1 of ' + aHeadSha(prompts, 'a') },
+    'leg (a) [M1]: and its `evidence` is `{read: <the detail>, against: "review round 1 of ' +
+    '<headSha>"}` — the reading, and the 40-hex graded head it was read at: ' +
+    JSON.stringify(found[0]))
+}
+
+// ── leg (a) [M1]: the same issue with no `actor` key at all ────────────────
+{
+  const DETAIL = 'the assignment in `one.txt` is not what the Claim names'
+  const { evs } = await aRunOne({
+    task: entry(),
+    review: () => aBlocking({ detail: DETAIL }),
+  })
+  const found = aFindings(evs)
+  assert.equal(found.length, 1,
+    'leg (a) [M1]: the same one `driver:finding` when the issue carries no `actor`: ' +
+    JSON.stringify(found))
+  assert.equal(found[0].actor, 'implementer',
+    'leg (a) [M1]: whose `actor` is `implementer` — the fallback, because `REVIEWER_SCHEMA` ' +
+    'does not require an actor and the blocking issues the driver itself mints carry none: ' +
+    JSON.stringify(found[0]))
+}
+
+// ── leg (b) [M1]: a `:<digits>` suffix on a touch-set path ─────────────────
+{
+  const DETAIL = 'the assignment at `one.txt:7` is not what the Claim names'
+  const { evs } = await aRunOne({
+    task: entry(),
+    review: () => aBlocking({ detail: DETAIL, actor: 'implementer' }),
+  })
+  const found = aFindings(evs)
+  assert.equal(found.length, 1,
+    'leg (b) [M1]: one `driver:finding` for the one blocking issue: ' + JSON.stringify(found))
+  assert.deepEqual(found[0].paths, ['one.txt'],
+    'leg (b) [M1]: `paths` is `[\'one.txt\']` — a backticked token that is a touch-set path ' +
+    'followed by `:<digits>` names that path, and the suffix is not part of it: ' +
+    JSON.stringify(found[0]))
+}
+
+// ── leg (b) [M1]: a `:<digits>-<digits>` suffix on the exam's landing path ──
+// The same issue buys the exam-rejected round (#1037), so this leg also pins
+// the ORDER: the finding is on the log before the rejection it bought.
+{
+  const DETAIL = 'the exam at `' + A_LAND + ':12-14` substitutes a store call for the click'
+  const { evs, calls } = await aRunOne({
+    task: aExamTask(),
+    exam: A_EXAM_GREEN,
+    exam2: A_EXAM_REWRITTEN,
+    review: (n) => (n === 1 ? aBlocking({ detail: DETAIL, actor: 'examiner' }) : passReview()),
+  })
+  assert.ok(calls.includes('exam:T1:2'),
+    'leg (b) [M1] sim precondition — the blocking issue named the exam, so the exam-rejected ' +
+    'round ran and the rejection this leg orders against exists: ' + JSON.stringify(calls))
+  const found = aFindings(evs).filter((e) => e.detail === DETAIL)
+  assert.equal(found.length, 1,
+    'leg (b) [M1]: one `driver:finding` carries the reviewer\'s detail: ' +
+    JSON.stringify(aFindings(evs)))
+  assert.deepEqual(found[0].paths, A_LANDINGS,
+    'leg (b) [M1]: `paths` is the exam\'s LANDING path — a backticked token that is a landing ' +
+    'path followed by `:<digits>-<digits>` names that path, exactly as a touch-set path does: ' +
+    JSON.stringify(found[0]))
+  const rejected = ofKind(evs, 'driver:exam-rejected')
+  assert.equal(rejected.length, 1,
+    'leg (b) [M1] sim precondition — one `driver:exam-rejected` for the one issue: ' +
+    JSON.stringify(rejected))
+  assert.ok(evs.indexOf(found[0]) < evs.indexOf(rejected[0]),
+    'leg (b) [M1]: and the `driver:finding` sits on the log BEFORE the `driver:exam-rejected` ' +
+    'that same issue then buys — the block is recorded where it was raised, and the round it ' +
+    'buys is recorded after it. Log: ' +
+    JSON.stringify(evs.map((e) => e.kind).filter((k) => String(k).indexOf('driver:') === 0)))
+}
+
+// ── leg (c) [M1]: a detail naming no path — the whole SORTED touch set ─────
+// The task declares `one.txt` and `b.txt` and its patch also writes
+// `extra.txt`, so `touchSetOf`'s own order (declared first, then the capture's)
+// is `['one.txt', 'b.txt', 'extra.txt']` and the SORTED set the clause asks for
+// is a different array — which is what makes "sorted" a live word here.
+{
+  const DETAIL = 'the patch does not do what the Claim says'
+  const { evs } = await aRunOne({
+    task: entry({ files: ['one.txt', 'b.txt'] }),
+    onImpl: (cwd) => fs.writeFileSync(path.join(cwd, 'extra.txt'), 'also written by T1\n'),
+    review: () => aBlocking({ detail: DETAIL, actor: 'implementer' }),
+  })
+  const found = aFindings(evs)
+  assert.equal(found.length, 1,
+    'leg (c) [M1]: one `driver:finding` for the one blocking issue: ' + JSON.stringify(found))
+  assert.deepEqual(found[0].paths, ['b.txt', 'extra.txt', 'one.txt'],
+    'leg (c) [M1]: a detail naming no path in backticks carries the WHOLE SORTED touch set — ' +
+    'the task\'s declared files (`one.txt`, `b.txt`) plus the paths its patch wrote ' +
+    '(`extra.txt`), sorted, not in `touchSetOf`\'s declared-then-captured order: ' +
+    JSON.stringify(found[0]))
+  assert.equal(found[0].detail, DETAIL,
+    'leg (c) [M1]: and the detail is still the reviewer\'s own: ' + JSON.stringify(found[0]))
+}
+
+// ── leg (c) [M1]: a canned `PASS` with no issues ───────────────────────────
+{
+  const { row, calls, evs } = await aRunOne({ task: entry(), review: () => passReview() })
+  assert.ok(calls.includes('review:T1:1'),
+    'leg (c) [M1] sim precondition — a review round ran, so the zero below is a round that ' +
+    'held nothing rather than a round that never happened: ' + JSON.stringify(calls))
+  assert.equal(row.status, 'done',
+    'leg (c) [M1] sim precondition — the task finished clean: ' + JSON.stringify(row))
+  assert.deepEqual(aFindings(evs), [],
+    'leg (c) [M1]: a round with no blocking issue appends NO `driver:finding` at all — the ' +
+    'event is one per block, so a clean round leaves the record exactly as it was: ' +
+    JSON.stringify(aFindings(evs)))
+  assert.deepEqual(aRefuted(evs), [],
+    'leg (c) [M3]: and no `driver:finding-refuted` either — nothing was shown wrong because ' +
+    'nothing was held: ' + JSON.stringify(aRefuted(evs)))
+}
+
+// ── leg (d) [M2]: the hollow exam — a mutant that lived ────────────────────
+// The state-exam record is written where the fixture writes it, from the
+// implementer's own session: `<runDir>/state-exams/task-T1/<stem>-<pass>/`,
+// `mutant.json` beside `walls.json`, which is the pair `stateExamRowsOf` reads.
+const A_MUTANT = 'todos/0/x'
+const A_HOLLOW = 'hollow: s left its mutant ' + A_MUTANT +
+  ' alive — the exam did not catch the wrong state'
+const aWriteStateExam = (runDir, mutant) => {
+  const dir = path.join(runDir, 'state-exams', 'task-T1', 's-0')
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'walls.json'),
+    JSON.stringify({ store_ms: 4, render: 'skipped', action_ms: null, browser: 'skipped' }))
+  if (mutant !== null) fs.writeFileSync(path.join(dir, 'mutant.json'), JSON.stringify(mutant))
+}
+{
+  const { row, calls, prompts, evs } = await aRunOne({
+    task: aExamTask(),
+    exam: A_EXAM_GREEN,
+    onImpl: (cwd, runDir) => aWriteStateExam(runDir, { killed: false, path: A_MUTANT }),
+    review: () => passReview(),
+  })
+  assert.ok(calls.includes('review:T1:1'),
+    'leg (d) [M2] sim precondition — a mutant that lived does not settle duty 5, so the ' +
+    'review round was dispatched and the row was read in it: ' + JSON.stringify(calls))
+  assert.deepEqual(row.stateExams.map((r) => [r.exam, r.mutant_killed]), [['s', false]],
+    'leg (d) [M2] sim precondition — the run read exactly one state-exam row, stem `s`, ' +
+    'whose mutant was NOT killed: ' + JSON.stringify(row.stateExams))
+  const found = aFindings(evs)
+  assert.equal(found.length, 1,
+    'leg (d) [M2]: exactly ONE `driver:finding` — the hollow row, once for that exam stem ' +
+    '(the round held no blocking issue of its own): ' + JSON.stringify(found))
+  assert.deepEqual(
+    { task: found[0].task, round: found[0].round, severity: found[0].severity,
+      actor: found[0].actor, detail: found[0].detail, paths: found[0].paths },
+    { task: 'T1', round: 1, severity: 'minor', actor: 'examiner', detail: A_HOLLOW,
+      paths: A_LANDINGS },
+    'leg (d) [M2]: `severity` `minor`, `actor` `examiner` — the party that wrote the exam, ' +
+    'not the party that wrote the patch — `detail` exactly `' + A_HOLLOW + '`, and `paths` ' +
+    'the task\'s exam landing paths: ' + JSON.stringify(found[0]))
+  assert.deepEqual(found[0].evidence,
+    { read: A_HOLLOW, against: 'review round 1 of ' + aHeadSha(prompts, 'd') },
+    'leg (d) [M2]: and the same evidence shape a block carries — the detail as the reading, ' +
+    'the round and the graded head as what it was read against: ' + JSON.stringify(found[0]))
+}
+
+// ── leg (d) [M2]: `killed: true` appends nothing ───────────────────────────
+{
+  const { row, evs } = await aRunOne({
+    task: aExamTask(),
+    exam: A_EXAM_GREEN,
+    onImpl: (cwd, runDir) => aWriteStateExam(runDir, { killed: true, path: A_MUTANT }),
+    review: () => passReview(),
+  })
+  assert.deepEqual(row.stateExams.map((r) => [r.exam, r.mutant_killed]), [['s', true]],
+    'leg (d) [M2] sim precondition — the same one row, its mutant killed: ' +
+    JSON.stringify(row.stateExams))
+  assert.deepEqual(aFindings(evs).filter((e) => e.severity === 'minor'), [],
+    'leg (d) [M2]: a row whose mutant was killed appends NO `driver:finding` of severity ' +
+    '`minor` — the exam caught the wrong state, so there is nothing to record: ' +
+    JSON.stringify(aFindings(evs)))
+}
+
+// ── leg (d) [M2]: no `mutant.json` beside a present `walls.json` ───────────
+{
+  const { row, calls, evs } = await aRunOne({
+    task: aExamTask(),
+    exam: A_EXAM_GREEN,
+    onImpl: (cwd, runDir) => aWriteStateExam(runDir, null),
+    review: () => passReview(),
+  })
+  assert.ok(calls.includes('review:T1:1'),
+    'leg (d) [M2] sim precondition — a `null` row is not "every mutant killed" either, so the ' +
+    'review round ran and read it: ' + JSON.stringify(calls))
+  assert.deepEqual(row.stateExams.map((r) => [r.exam, r.mutant_killed]), [['s', null]],
+    'leg (d) [M2] sim precondition — the row exists (its `walls.json` is there) and its ' +
+    '`mutant_killed` is `null`: ' + JSON.stringify(row.stateExams))
+  assert.deepEqual(aFindings(evs).filter((e) => e.severity === 'minor'), [],
+    'leg (d) [M2]: a `null` row — a `mutant.json` missing or unparsable — appends NO ' +
+    '`driver:finding` of severity `minor`: a reading the driver has not got is not a ' +
+    'survivor it observed: ' + JSON.stringify(aFindings(evs)))
+}
+
+// ── leg (e) [M3] case (i): the driver's re-run went green ──────────────────
+{
+  const CONCERN = 'plan-defect: leg (a) cannot pass'
+  const { row, calls, prompts, evs } = await aRunOne({
+    task: aExamTask(),
+    exam: A_EXAM_TOGGLE,
+    impl: { status: 'DONE_WITH_CONCERNS', concerns: [CONCERN] },
+    review: () => passReview(),
+  })
+  const runs = ofKind(evs, 'driver:exam-run')
+  assert.deepEqual(runs.map((e) => [e.iter, e.exit, Boolean(e.rerun)]), [[0, 1, false], [0, 0, true]],
+    'leg (e) [M3] sim precondition — the exam was red on the driver\'s pre-review pass and ' +
+    'green on the re-run that the leg-naming `plan-defect:` concern bought: ' +
+    JSON.stringify(runs.map((e) => [e.iter, e.exit, e.rerun])))
+  assert.notEqual(row.reviewVerdict, 'plan-defect',
+    'leg (e) [M3] sim precondition — green on the re-run is green, so the task was not parked ' +
+    'for the plan: ' + JSON.stringify(row))
+  assert.ok(calls.includes('review:T1:1'),
+    'leg (e) [M3] sim precondition — and it reached a reviewer: ' + JSON.stringify(calls))
+  const refuted = aRefuted(evs)
+  assert.equal(refuted.length, 1,
+    'leg (e) [M3]: exactly ONE `driver:finding-refuted` — the red exam\'s finding, shown ' +
+    'wrong by the driver\'s own re-run: ' + JSON.stringify(refuted))
+  assert.deepEqual(
+    { task: refuted[0].task, round: refuted[0].round, verdict: refuted[0].verdict,
+      refutedBy: refuted[0].refutedBy, detail: refuted[0].detail, paths: refuted[0].paths },
+    { task: 'T1', round: 0, verdict: 'flaky', refutedBy: 'rerun', detail: A_FAIL_LINE,
+      paths: A_LANDINGS },
+    'leg (e) [M3] case (i): `verdict` `flaky`, `refutedBy` `rerun`, `round` `0` — the ' +
+    'pre-review pass, not a review round — `detail` the red exam\'s own finding line, and ' +
+    '`paths` the exam landing paths: ' + JSON.stringify(refuted[0]))
+  assert.equal(refuted[0].evidence.against, A_FAIL_LINE,
+    'leg (e) [M3]: `evidence.against` is the finding\'s own `detail` — the line beginning ' +
+    '`the Proof\'s exam failed:` that the re-run refuted: ' + JSON.stringify(refuted[0]))
+  assert.ok(typeof refuted[0].evidence.read === 'string' && refuted[0].evidence.read.length > 0 &&
+            refuted[0].evidence.read.length <= 500,
+    'leg (e) [M3]: and `evidence.read` says what showed it wrong — a string, within the ' +
+    'receipt bound: ' + JSON.stringify(refuted[0].evidence))
+}
+
+// ── leg (f) [M3] case (ii): review round 1 upheld the fix round's concern ──
+{
+  const CONCERN = 'exam: case (b) cannot pass for any output'
+  const DETAIL = 'the exam at `' + A_LAND + '` asks for an output no implementation can produce'
+  const { calls, prompts, evs } = await aRunOne({
+    task: aExamTask(),
+    exam: A_EXAM_ALWAYS_RED,
+    exam2: A_EXAM_REWRITTEN,
+    fix: { status: 'DONE_WITH_CONCERNS', concerns: [CONCERN] },
+    review: (n) => (n === 1 ? aBlocking({ detail: DETAIL, actor: 'examiner' }) : passReview()),
+  })
+  assert.ok(calls.includes('fix:T1:0'),
+    'leg (f) [M3] sim precondition — the red exam bought the one pre-review repair round: ' +
+    JSON.stringify(calls))
+  assert.ok(String(prompts['review:T1:1'] || '').includes('EXAM CONCERN'),
+    'leg (f) [M3] sim precondition — the exam was STILL red after that round and the round ' +
+    'said so as an `exam:` concern, so review round 1 was dispatched to judge the exam and ' +
+    'its brief carries the concern: ' +
+    JSON.stringify(String(prompts['review:T1:1'] || '').slice(-600)))
+  const refuted = aRefuted(evs)
+  assert.equal(refuted.length, 1,
+    'leg (f) [M3]: exactly ONE `driver:finding-refuted`: ' + JSON.stringify(refuted))
+  assert.deepEqual(
+    { task: refuted[0].task, verdict: refuted[0].verdict, refutedBy: refuted[0].refutedBy,
+      detail: refuted[0].detail, paths: refuted[0].paths },
+    { task: 'T1', verdict: 'exam-concern-upheld', refutedBy: 'review round 1', detail: CONCERN,
+      paths: A_LANDINGS },
+    'leg (f) [M3] case (ii): `verdict` `exam-concern-upheld`, `refutedBy` `review round 1`, ' +
+    '`detail` the fix round\'s own concern, `paths` the exam landing paths: ' +
+    JSON.stringify(refuted[0]))
+  assert.ok(String(refuted[0].evidence.read).includes(DETAIL),
+    'leg (f) [M3]: `evidence.read` NAMES the reviewer\'s issue — the blocking detail that ' +
+    'agreed the exam was at fault is what showed the red wrong: ' +
+    JSON.stringify(refuted[0].evidence))
+  assert.equal(refuted[0].evidence.against, A_FAIL_LINE,
+    'leg (f) [M3]: and `evidence.against` is the exam\'s own finding line, beginning `the ' +
+    'Proof\'s exam failed:`: ' + JSON.stringify(refuted[0].evidence))
+  const rejected = ofKind(evs, 'driver:exam-rejected')
+  assert.equal(rejected.length, 1,
+    'leg (f) [M3] sim precondition — the same issue bought one exam-rejected round: ' +
+    JSON.stringify(rejected))
+  assert.ok(evs.indexOf(refuted[0]) < evs.indexOf(rejected[0]),
+    'leg (f) [M3]: and the refutation is appended BEFORE the `driver:exam-rejected` that same ' +
+    'issue then buys: ' +
+    JSON.stringify(evs.map((e) => e.kind).filter((k) => String(k).indexOf('driver:') === 0)))
+}
+
+// ── leg (g) [M3] case (iii): round 2 cleared an exam left as written ───────
+{
+  const DETAIL = 'the exam at `' + A_LAND + '` asserts nothing the Claim names'
+  const { calls, evs } = await aRunOne({
+    task: aExamTask(),
+    exam: A_EXAM_GREEN,
+    // No `exam2`: the canned `exam:T1:2` returns DONE and writes nothing, so
+    // every landing path's blob is the sha it had before that round.
+    review: (n) => (n === 1 ? aBlocking({ detail: DETAIL, actor: 'examiner' }) : passReview()),
+  })
+  assert.ok(calls.includes('exam:T1:2') && calls.includes('review:T1:2'),
+    'leg (g) [M3] sim precondition — the round-1 finding named the exam, so the exam-rejected ' +
+    'round ran and round 2 read it: ' + JSON.stringify(calls))
+  const rejections = ofKind(evs, 'driver:exam-rejected')
+  assert.deepEqual(rejections.map((e) => e.detail), [DETAIL],
+    'leg (g) [M3] sim precondition — exactly one round-1 rejection, carrying that detail: ' +
+    JSON.stringify(rejections))
+  const refuted = aRefuted(evs)
+  assert.equal(refuted.length, 1,
+    'leg (g) [M3]: ONE `driver:finding-refuted` per round-1 rejection, and there was one: ' +
+    JSON.stringify(refuted))
+  assert.deepEqual(
+    { task: refuted[0].task, round: refuted[0].round, verdict: refuted[0].verdict,
+      refutedBy: refuted[0].refutedBy, detail: refuted[0].detail, paths: refuted[0].paths },
+    { task: 'T1', round: 2, verdict: 'clean', refutedBy: 'review round 2', detail: DETAIL,
+      paths: A_LANDINGS },
+    'leg (g) [M3] case (iii): `verdict` `clean`, `refutedBy` `review round 2`, `round` `2`, ' +
+    '`detail` the rejection\'s own, `paths` the exam landing paths — round 2 returned no ' +
+    'blocking issue and the exam\'s author left the file as written: ' + JSON.stringify(refuted[0]))
+  assert.ok(String(refuted[0].evidence.read).startsWith('review round 2'),
+    'leg (g) [M3]: `evidence.read` BEGINS `review round 2` — what showed the finding wrong is ' +
+    'that round, on the unchanged exam: ' + JSON.stringify(refuted[0].evidence))
+  assert.equal(refuted[0].evidence.against, DETAIL,
+    'leg (g) [M3]: and `evidence.against` is the finding\'s own `detail`: ' +
+    JSON.stringify(refuted[0].evidence))
+}
+
+// ── leg (g) [M3]: the same rig with an examiner that REWROTE the exam ──────
+{
+  const DETAIL = 'the exam at `' + A_LAND + '` asserts nothing the Claim names'
+  const { row, calls, evs } = await aRunOne({
+    task: aExamTask(),
+    exam: A_EXAM_GREEN,
+    exam2: A_EXAM_REWRITTEN,
+    review: (n) => (n === 1 ? aBlocking({ detail: DETAIL, actor: 'examiner' }) : passReview()),
+  })
+  assert.ok(calls.includes('exam:T1:2') && calls.includes('review:T1:2'),
+    'leg (g) [M3] sim precondition — the same two rounds ran: ' + JSON.stringify(calls))
+  assert.equal(row.examRounds, 2,
+    'leg (g) [M3] sim precondition — the row records the exam-rejected round: ' +
+    JSON.stringify(row))
+  assert.deepEqual(aRefuted(evs), [],
+    'leg (g) [M3]: NO `driver:finding-refuted` at all — a round-2 examiner that rewrote the ' +
+    'exam and then cleared round 2 UPHELD the finding, so nothing was shown wrong: ' +
+    JSON.stringify(aRefuted(evs)))
+}
+
+// ── leg (h) [M1]: the third `Run:`, read here as an assertion too ──────────
+// The same text the Proof's `Run:` greps for, counted over the engine's own
+// source: the review round's site and the hollow site. The closing quote is
+// part of the literal, so `driver:finding-refuted` is not counted by it. At
+// BASE the count is zero — which is this file's one reason to be red.
+{
+  const engineSrc = fs.readFileSync(path.join(FLEET_DIR, 'run-engine.mjs'), 'utf8')
+  const NEEDLE = 'kind: \'driver:finding\''
+  const count = engineSrc.split(NEEDLE).length - 1
+  assert.ok(count >= 2,
+    'leg (h) [M1]: the exact text `' + NEEDLE + '` occurs at least TWICE in ' +
+    '`fleet/run-engine.mjs` — the review round\'s site (M1) and the hollow site (M2) — and ' +
+    'the closing quote keeps `driver:finding-refuted` out of the count. Found ' + count +
+    ' occurrence(s); at BASE there are none, because the driver does not append this event yet.')
+}
+
+// ── leg (k) [M1] [M4]: the fourth `Run:`, likewise ─────────────────────────
+// An exam written under `fleet/tests/exams/<run>/` and reached by an `import`
+// line at the guarded path is stripped at publish and leaves main red (#1053,
+// run-155 → run-158). So each guarded sim stands whole at its own path.
+for (const sim of ['test_run_engine_proof_runs.mjs', 'test_run_engine_state_handshake.mjs']) {
+  const lines = fs.readFileSync(path.join(TESTS_DIR, sim), 'utf8').split('\n')
+  const pointers = lines.filter((l) => /^import .*exams\//.test(l))
+  assert.deepEqual(pointers, [],
+    'leg (k) [M1] [M4]: `fleet/tests/' + sim + '` carries no `import` line naming a path ' +
+    'under `exams/` — the exam that reaches main is the file at the guarded path and not a ' +
+    'pointer publish would strip. Found: ' + JSON.stringify(pointers))
+}
+
 // [M5] leg (f): the sentinel below is this sim's — its existing legs, the #632
-// ones, the #713 ones, the #1037 §3 ones, the receipt legs and the Task 5 legs
-// above. It is printed only if every assertion above held.
+// ones, the #713 ones, the #1037 §3 ones, the receipt legs, the Task 5 legs and
+// the Task A legs above. It is printed only if every assertion above held.
 console.log('ALL TESTS PASSED')

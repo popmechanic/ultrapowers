@@ -971,4 +971,110 @@ await malformed('(f2)', 'f2', { expected: 'expected/prod.json', content: CONTENT
   }
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// fleet run-160 Task A — *a blocking finding and a refuted finding are events*
+// legs (i) and (j) [M4]: the `handshake:finding` row this file's own rigs
+// already raise now carries the run's receipt shape.
+//
+// ── what M4 asserts, restated ───────────────────────────────────────────────
+//   A `handshake:finding` event raised on a post that NAMES an `expected` path
+//   carries `paths` `[<that expected path>]` and `evidence` with `read` the
+//   finding's `detail` and `against` `the captured tree at <headSha>`; one
+//   raised on a `state.reached` that names no `expected` path — its content is
+//   not an array of exactly two elements — carries NO `paths` key and NO
+//   `evidence` key.
+//
+// The shared receipt shape of this run: `paths` is repo-relative, sorted,
+// de-duplicated and never empty; `evidence` is exactly `{read, against}`, two
+// strings. So both assertions below are deep-equals over the whole value, not
+// containments: a row carrying a third evidence key, or a path list with
+// something extra on it, is not the shape.
+//
+// ── two readings this block is written on ───────────────────────────────────
+//   • `<headSha>` is the task's CAPTURED head — `impl.headSha`, which
+//     `withPatchCapture` overwrites with `git rev-parse HEAD` in the task's own
+//     clone (run-waves.mjs:239). `patchAgainstBase` stages and diffs but never
+//     commits, and `cloneAtBase` leaves the clone detached at BASE, so that sha
+//     is the repository's HEAD at provision time for the whole run. This block
+//     therefore reads it straight off the repository, before the run, rather
+//     than out of a report row: a blocked producer's row carries no `headSha`
+//     of its own.
+//   • Each leg drives a run OF ITS OWN rather than reaching into run E's or run
+//     F's block, whose bindings are local to them. The posts are theirs,
+//     though: leg (i) is run E's rig — an `expected` the captured tree lacks —
+//     and leg (j) is run F's — a three-element `content`.
+// ════════════════════════════════════════════════════════════════════════════
+const A_FINDING_KIND = 'handshake:finding'
+const aHeadShaOf = (repo) =>
+  execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, env: simEnv(), encoding: 'utf8' }).trim()
+// The one `handshake:finding` a rig raised, with the row asserted to be alone
+// on the log: every leg below is about ONE finding's receipt.
+const aLoneFinding = (R, leg) => {
+  const rows = kindsOf(R.events, A_FINDING_KIND)
+  assert.equal(rows.length, 1,
+    'Task A leg ' + leg + ' [M4] sim precondition — the rig raised exactly one `' +
+    A_FINDING_KIND + '` event, which is the row this leg is about. Got: ' +
+    JSON.stringify(rows))
+  return rows[0]
+}
+
+// ── Task A leg (i) [M4]: a post whose `expected` the captured tree lacks ─────
+{
+  const MISSING = EXPECTED_DIR + 'never-written.json'
+  const repo = makeRepo(path.join(tmp, 'repo-ta-i'))
+  const headSha = aHeadShaOf(repo)
+  assert.match(headSha, /^[0-9a-f]{40}$/,
+    'Task A leg (i) [M4] sim precondition — the repository the producer\'s clone is ' +
+    'provisioned from is at a 40-hex head, which is the `headSha` the capture hands the ' +
+    'driver: ' + JSON.stringify(headSha))
+  const R = await driveRun({
+    label: 'TA-i', repo, runDir: path.join(tmp, 'run-ta-i'),
+    post: { expected: MISSING, content: CONTENT },
+    expectedPath: MISSING, expectedFile: ABSENT,
+  })
+  const row = aLoneFinding(R, '(i)')
+  assert.equal(row.detail, FINDING_PREFIX + ' ' + MISSING + ' is absent from the captured tree',
+    'Task A leg (i) [M4] sim precondition — that row is the finding M2 raises on an ' +
+    '`expected` path the captured tree has not got, which is a post that NAMES an ' +
+    '`expected` path: ' + JSON.stringify(row))
+  assert.deepEqual(row.paths, [MISSING],
+    'Task A leg (i) [M4]: a `' + A_FINDING_KIND + '` raised on a post that names an ' +
+    '`expected` path carries `paths` equal to `[<that expected path>]` — the one ' +
+    'repo-relative path the finding is about, and nothing else: ' + JSON.stringify(row))
+  assert.deepEqual(row.evidence,
+    { read: row.detail, against: 'the captured tree at ' + headSha },
+    'Task A leg (i) [M4]: and `evidence` is exactly `{read, against}` — `read` the ' +
+    'finding\'s own `detail`, `against` `the captured tree at ` followed by the task\'s ' +
+    'captured `headSha` (' + headSha + '): ' + JSON.stringify(row))
+}
+
+// ── Task A leg (j) [M4]: a `state.reached` naming no `expected` path ─────────
+{
+  const repo = makeRepo(path.join(tmp, 'repo-ta-j'))
+  const R = await driveRun({
+    label: 'TA-j', repo, runDir: path.join(tmp, 'run-ta-j'),
+    post: { expected: EXPECTED_PATH, content: [...CONTENT, { extra: true }] },
+    expectedFile: CONTENT,
+  })
+  const row = aLoneFinding(R, '(j)')
+  assert.equal(row.detail,
+    FINDING_PREFIX + ' state.reached content is not an array of exactly two elements',
+    'Task A leg (j) [M4] sim precondition — that row is M5\'s refusal of a `state.reached` ' +
+    'whose content is a THREE-element array, which is the case that names no `expected` ' +
+    'path: ' + JSON.stringify(row))
+  assert.equal(Object.prototype.hasOwnProperty.call(row, 'paths'), false,
+    'Task A leg (j) [M4]: that row has NO `paths` key at all — not an empty array and not ' +
+    'a null, since `paths` is never empty and the refused post named no path to carry. ' +
+    'Keys: ' + JSON.stringify(Object.keys(row)))
+  assert.equal(Object.prototype.hasOwnProperty.call(row, 'evidence'), false,
+    'Task A leg (j) [M4]: and NO `evidence` key either — there is no captured tree read ' +
+    'to record when the post was refused on shape. Keys: ' + JSON.stringify(Object.keys(row)))
+}
+
+// Task A leg (k) [M1] [M4]: every `import` line in this file names `../run-engine.mjs`,
+// `../run-main.mjs`, `../run-waves.mjs`, `./_engine_helpers.mjs` or
+// `./_helpers.mjs` — `fleet/tests/` depth, nothing under `exams/`. Asserted
+// over the file's own text in the proof-runs sim, which greps both guarded
+// paths at once; here the rule is kept by construction.
+
 console.log('ALL TESTS PASSED')

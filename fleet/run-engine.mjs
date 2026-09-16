@@ -1696,13 +1696,20 @@ export async function runEngine({
   // which is every task of a run with no handshake.
   const taskFindings = new Map()
   const findingsOf = (taskId) => (taskFindings.get(taskId) || []).map((f) => ({ ...f }))
-  const raiseFinding = (taskId, finding) => {
+  // `receipt` — `{paths, evidence}` or nothing — is what makes the EVENT a
+  // receipt; the report row's finding keeps the three keys it always had, so
+  // nothing that reads `findingsOf` sees a shape change. A post the driver
+  // refused on shape names no `expected` path at all, and a receipt with no
+  // path is not a receipt: those callers hand `null` and the row goes out
+  // exactly as it did before receipts existed.
+  const raiseFinding = (taskId, finding, receipt = null) => {
     const held = taskFindings.get(taskId) || []
     if (held.some((f) => f.detail === finding.detail)) return
     held.push(finding)
     taskFindings.set(taskId, held)
     appendEvent({ kind: 'handshake:finding', task: taskId,
-                  severity: finding.severity, actor: finding.actor, detail: finding.detail })
+                  severity: finding.severity, actor: finding.actor, detail: finding.detail,
+                  ...(receipt || {}) })
   }
   // The run's dependency edges as pairs, whichever spelling the run was given:
   // `args.edges` when the caller supplied the pairs (and re-edges appended to
@@ -3207,6 +3214,20 @@ export async function runEngine({
                ...examEditedField(), ...examRoundsField() }
     }
 
+    // ── the receipt shape, for every row this task appends ───────────────────
+    // `paths` is "sorted, de-duplicated, never empty" (CONTRACT.md's receipts
+    // paragraph), so the two sentences a caller needs are spelled once here.
+    // The fallback is M1's own rule — a finding whose detail names no path of
+    // the task is about the whole touch set — and it doubles as the guarantee
+    // that no row of this task can leave with an empty `paths` and so be a
+    // receipt `factsBlock` refuses to render. The touch set is read at the
+    // call, not captured: `impl` is reassigned to the fix round's reply.
+    const sortedPaths = (list) =>
+      [...new Set((Array.isArray(list) ? list : []).map(String).filter(Boolean))].sort()
+    const receiptPathsOf = (list) => {
+      const out = sortedPaths(list)
+      return out.length ? out : sortedPaths(touchSetOf(task, impl.patch))
+    }
     // ── the driver's own Run:/Check: pass ────────────────────────────────────
     // A referee's minutes are the scarcest thing the run spends, and a red
     // command is not a judgment — the driver already has the answer. So every
@@ -3301,9 +3322,19 @@ export async function runEngine({
       if (!kataOn) return null
       const read = await readStateReached(task.id)
       if (!read || read.raw === undefined) return null
+      // The receipt a handshake finding carries (M4): the one path the post
+      // named, read against the tree the capture describes. A post the driver
+      // refused on shape names no path — `read.post` is `null` — and that row
+      // carries neither key, because a receipt's `paths` is never empty.
       const fail = (detail, stdout = '') => {
         const finding = { severity: 'blocking', actor: 'implementer', detail: HANDSHAKE(detail) }
-        raiseFinding(task.id, finding)
+        raiseFinding(task.id, finding, read.post ? {
+          paths: [read.post.expected],
+          evidence: {
+            read: cutToBound(finding.detail),
+            against: cutToBound('the captured tree at ' + String(impl.headSha || '')),
+          },
+        } : null)
         return { line: finding.detail, stdout }
       }
       const posted = tail('state.reached: ' + canonicalJson(read.raw), 2000)
@@ -3361,6 +3392,11 @@ export async function runEngine({
     // (#908). Empty on every other task, which is what keeps their review
     // prompts unchanged.
     let examConcerns = []
+    // The red the concerns were raised against, held for the receipt review
+    // round 1 writes when it upholds them (M3 case (ii)): `preExam` is
+    // reassigned to the exam-rejected round's run, so the line is kept here
+    // rather than recomputed from it later.
+    let examConcernRedLine = null
     let reds = await prePass()
     if (reds.length) {
       // ── the implementer's own plan-defect against a Proof leg (#722) ────
@@ -3398,6 +3434,21 @@ export async function runEngine({
           judgmentCalls.push('task ' + task.id + ': the exam was red once and green on the ' +
             'driver\'s re-run — read as green (flaky), the plan-defect concern recorded and ' +
             'no park — ' + legDefects.join('; '))
+          // ── the finding the driver's own re-run refuted (M3 case (i)) ────
+          // The red exam line WAS the finding: it is what would have parked
+          // the task. Green on the same clone with the same env says the red
+          // was the harness's and not the patch's, and that reading is a row
+          // of the record rather than a sentence in the judgment calls alone.
+          // `examLandings` is declared later, inside the review round, so the
+          // landings are computed here the way `runExam` computes them.
+          appendEvent({ kind: 'driver:finding-refuted', task: task.id, round: 0,
+                        verdict: 'flaky', refutedBy: 'rerun', detail: examRedLine,
+                        paths: receiptPathsOf(proofTests.map(landingOf)),
+                        evidence: {
+                          read: cutToBound('the driver\'s re-run of the exam exited 0 — ' +
+                            examRunCmd),
+                          against: cutToBound(examRedLine),
+                        } })
           preExam = again
           reds = reds.filter((r) => r.line !== examRedLine)
           legDefects = []
@@ -3499,6 +3550,7 @@ export async function runEngine({
                    ...examEditedField(), ...examRoundsField() }
         }
         examConcerns = entries
+        examConcernRedLine = examStillRedLine
         judgmentCalls.push('task ' + task.id + ': exam concern from the fix round beside a ' +
           'still-red exam (' + entries.join('; ') + ') — review round 1 dispatched to judge ' +
           'the exam instead of parking proof-red')
@@ -3513,6 +3565,16 @@ export async function runEngine({
     // one round there is no second reviewer to tell, and the list is simply
     // what the report keeps.
     const minorFindings = []
+    // The exam stems whose surviving mutant this task has already recorded —
+    // "at most once per exam stem", across both rounds an exam-rejected task
+    // takes.
+    const hollowNoted = new Set()
+    // What round 1 rejected the exam for, and the blobs the exam's landing
+    // paths carried before the examiner was given its round — both empty on
+    // every task that takes no exam-rejected round, which is every task but
+    // the one M3 case (iii) is about.
+    let roundOneRejections = []
+    let blobsBeforeExamRound = []
     // ── where this task's exam landed, and reading one off a finding (#1037) ─
     // The reviewer's issue object carries no file field (`REVIEWER_SCHEMA`), so
     // the path is read off the detail's backticked tokens exactly as
@@ -3533,6 +3595,28 @@ export async function runEngine({
         }
       }
       return null
+    }
+    // The same reading, widened to every path the task is about and answering
+    // ALL of them rather than the first: a finding's `paths` are the files it
+    // named, and a detail that named none is about the whole touch set
+    // (`receiptPathsOf`). Line and line-range suffixes are admitted exactly as
+    // `examPathIn` admits them — run-15's finding cited a range — and nothing
+    // else is, so a backticked symbol or a path the task never touched adds
+    // no path to the row.
+    const pathsNamedIn = (detail) => {
+      const candidates = sortedPaths(touchSetOf(task, impl.patch).concat(examLandings))
+      const out = []
+      for (const m of String(detail || '').matchAll(/`([^`]+)`/g)) {
+        const token = m[1]
+        for (const p of candidates) {
+          if (token === p ||
+              (token.startsWith(p + ':') && /^:\d+(?:-\d+)?$/.test(token.slice(p.length)))) {
+            out.push(p)
+            break
+          }
+        }
+      }
+      return sortedPaths(out)
     }
     // ONE review round (#964 Task 2), and one more only when the round's
     // blocking finding is against the EXAM rather than the implementation
@@ -3581,6 +3665,32 @@ export async function runEngine({
       // no new event kind, and no hub post, because a reviewer's findings never
       // reach a task issue anyway.
       const stateExamRows = stateExamRowsOf(runDirAbs, task.id)
+      // ── the hollow exam (#836, M2) ───────────────────────────────────────
+      // A mutant that LIVED is the driver's own reading that the exam did not
+      // measure what it claims to: the wrong state was written under it and it
+      // stayed green. That is a `minor` finding against the EXAMINER — it
+      // blocks nothing, because the implementation is not what it is about —
+      // and it goes on the record so the reviewer of this task, and any later
+      // judge briefed on the exam's landing paths, reads it. Once per stem:
+      // an exam-rejected round brings this round back a second time, and the
+      // same hollow exam is one finding, not two. A `mutant_killed` of `null`
+      // — a `mutant.json` missing or unparsable — is the absence of a reading
+      // and never a survivor, so it appends nothing at all.
+      for (const r of stateExamRows) {
+        if (!r || r.mutant_killed !== false) continue
+        if (hollowNoted.has(r.exam)) continue
+        hollowNoted.add(r.exam)
+        const detail = 'hollow: ' + r.exam + ' left its mutant ' + String(r.mutant_path || '') +
+          ' alive — the exam did not catch the wrong state'
+        appendEvent({ kind: 'driver:finding', task: task.id, round: iter,
+                      severity: 'minor', actor: 'examiner', detail,
+                      paths: receiptPathsOf(examLandings),
+                      evidence: {
+                        read: cutToBound(detail),
+                        against: cutToBound('review round ' + iter + ' of ' +
+                          String(impl.headSha || '')),
+                      } })
+      }
       if (!reviewOnStateExams && examConcerns.length === 0 &&
           runEvidence.every((r) => r.exit === 0) &&
           (!examEvidence || examEvidence.exit === 0) &&
@@ -3739,6 +3849,26 @@ export async function runEngine({
           planDefects.push({ task: task.id, detail })
         }
       }
+      // ── the block, as a row of the record (M1) ───────────────────────────
+      // After plan routing, because a plan-defect is not a block held against
+      // THIS task — it is the plan's, and it travels to the gate as one. What
+      // remains is a finding somebody is expected to act on, and the run's
+      // record carries it: who raised it, which round, what it said, and which
+      // files it was about. `REVIEWER_SCHEMA` does not require `actor`, and
+      // the blocking issues the driver itself minted above — a red `Run:`, a
+      // red exam, a red `Check:` — carry none; all of those are the
+      // implementer's to clear, which is what the fallback says.
+      for (const b of blocking) {
+        const detail = String(b.detail || '')
+        appendEvent({ kind: 'driver:finding', task: task.id, round: iter,
+                      severity: 'blocking', actor: String(b.actor || 'implementer'), detail,
+                      paths: receiptPathsOf(pathsNamedIn(detail)),
+                      evidence: {
+                        read: cutToBound(detail),
+                        against: cutToBound('review round ' + iter + ' of ' +
+                          String(impl.headSha || '')),
+                      } })
+      }
       const planNotes = planDefects.filter((p) => p.task === task.id)
         .map((p) => 'plan-defect: ' + p.detail)
       const minors = issues.filter((i) => i.severity === 'minor')
@@ -3748,6 +3878,32 @@ export async function runEngine({
         if (!minorFindings.some((p) => p.detail === m.detail)) minorFindings.push(m)
       }
       if (blocking.length === 0) {
+        // ── the exam the second round cleared as written (M3 case (iii)) ───
+        // Round 1 said the exam was wrong and the peer who wrote it was given
+        // a round to rewrite it. It left every landing path byte for byte as
+        // it was — the blobs read now are the blobs read then — and a second
+        // referee, reading that same exam, held nothing against it. Two
+        // referees over one unchanged file, the second clearing what the first
+        // blocked: the first reading is refuted, one row per rejection it
+        // made. An examiner that DID rewrite the exam agreed with round 1, and
+        // a round-2 clearance of the new bytes refutes nothing.
+        if (roundOneRejections.length && blobsBeforeExamRound.length) {
+          const now = await readExaminerBlobs()
+          const unchanged = blobsBeforeExamRound.length === now.length &&
+            blobsBeforeExamRound.every(([p, sha], k) => now[k][0] === p && now[k][1] === sha)
+          if (unchanged) {
+            for (const r of roundOneRejections) {
+              appendEvent({ kind: 'driver:finding-refuted', task: task.id, round: 2,
+                            verdict: 'clean', refutedBy: 'review round 2', detail: r.detail,
+                            paths: receiptPathsOf(examLandings),
+                            evidence: {
+                              read: cutToBound('review round 2 held nothing against the exam ' +
+                                'its author left unchanged at ' + examLandings.join(', ')),
+                              against: cutToBound(r.detail),
+                            } })
+            }
+          }
+        }
         if (verdicts.indexOf('FIX_REQUIRED') !== -1 && planNotes.length === 0) {
           judgmentCalls.push('task ' + task.id +
             ': reviewer said FIX_REQUIRED with no blocking issues — merged on the severity rule')
@@ -3776,10 +3932,35 @@ export async function runEngine({
             .filter((r) => r.path)
         : []
       if (rejections.length) {
+        // ── the concern the round upheld (M3 case (ii)) ──────────────────
+        // The fix round said the exam had a case no output could satisfy, and
+        // the driver spent a review round on that claim instead of parking
+        // `proof-red`. A round-1 blocking issue naming the exam's own landing
+        // path is the referee agreeing: the red the task was going to be
+        // failed for is the exam's, so the finding it was is refuted here —
+        // before the `driver:exam-rejected` row the same issue buys, because
+        // the refutation is what the rejection is FOR.
+        for (const c of examConcerns) {
+          appendEvent({ kind: 'driver:finding-refuted', task: task.id, round: iter,
+                        verdict: 'exam-concern-upheld', refutedBy: 'review round ' + iter,
+                        detail: String(c),
+                        paths: receiptPathsOf(examLandings),
+                        evidence: {
+                          read: cutToBound('review round ' + iter + ' held the exam at fault: ' +
+                            rejections[0].detail),
+                          against: cutToBound(String(examConcernRedLine || '')),
+                        } })
+        }
         for (const r of rejections) {
           appendEvent({ kind: 'driver:exam-rejected', task: task.id, path: r.path,
                         detail: r.detail })
         }
+        // What round 2 is measured against (M3 case (iii)): the rejections it
+        // has to clear, and the blob each landing carried BEFORE the examiner
+        // was given its round. An examiner that rewrote the exam moved a blob
+        // and upheld the finding; one that left it as written did not.
+        roundOneRejections = rejections.map((r) => ({ ...r }))
+        blobsBeforeExamRound = await readExaminerBlobs()
         judgmentCalls.push('task ' + task.id + ': review round ' + iter + '\'s blocking ' +
           'finding names the exam at ' + [...new Set(rejections.map((r) => r.path))].join(', ') +
           ' — the examiner gets one round to rewrite it, and no fix round is dispatched: ' +
