@@ -1,0 +1,79 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "ea9345e05c4ab99c129863480ae10ebed17af7853639f128da771597a638bfa1",
+      "verdict": "pass",
+      "reason": "Legs (a)/(b) falsify M1/M2 at BASE (the waitingOn-empty path at run-engine.mjs:3199 ends B failed/not-reviewed when the sibling was adopted after dispatch) and pass only when the clause holds; (d) pins M3 against CONTRACT.md:698 with a sed range carrying no `not adopted in the head` at BASE; (c)/(e) hold the regression and guarded-path conditions."
+    }
+  },
+  "tally": {
+    "dispatched": 1,
+    "rejected": 0,
+    "rounds": [
+      {
+        "round": 1,
+        "dispatched": 1,
+        "rejected": 0
+      }
+    ],
+    "base": "cf289581ebe2fa8dc23a8683c6d4e31c835d2ae2"
+  },
+  "authoring": {
+    "minutes": 38,
+    "probes": 6,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Where do we start this sitting?",
+        "options": [
+          "Fix the late landing under the aged fold",
+          "Open-issue research sitting",
+          "Feed the readings first"
+        ],
+        "recommended": "Fix the late landing under the aged fold",
+        "picked": "Fix the late landing under the aged fold"
+      },
+      {
+        "question": "What goes in the plan for this sitting?",
+        "options": [
+          "Re-edge fix only",
+          "Re-edge fix + one own-files fix round",
+          "Re-edge fix + plan-lint for duplicate exports"
+        ],
+        "recommended": "Re-edge fix only",
+        "picked": "Re-edge fix only"
+      },
+      {
+        "question": "The #1057 record: file a correcting comment now?",
+        "options": [
+          "File it",
+          "Hold until the fix merges"
+        ],
+        "recommended": "File it",
+        "picked": "File it"
+      },
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Confirm as drafted",
+          "Tighter claim"
+        ],
+        "recommended": "Confirm as drafted",
+        "picked": "Confirm as drafted"
+      },
+      {
+        "question": "How should the re-edge plan execute?",
+        "options": [
+          "Ultrapowers",
+          "Inline",
+          "Subagent-Driven"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers"
+      }
+    ]
+  }
+}
