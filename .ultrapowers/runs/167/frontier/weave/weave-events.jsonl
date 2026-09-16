@@ -1,0 +1,14 @@
+{"event": "emitted", "wave": 1, "path": "fleet/CONTRACT.md", "stateBlob": "e7295f453df7cc48883a44235727c78f5250ccb36fe2b123679fc3f20d9c8b97", "visibleSha": "3a6fdb6c0466b6cc23d9064b77a8bc74c0ec4e75"}
+{"event": "emitted", "wave": 1, "path": "fleet/run-engine.mjs", "stateBlob": "558676fbdda12309a444c4e386d2863d02733972a353ebe81d63c8a375994cc5", "visibleSha": "a0c0119c611165b89e0fc0dc601f1f34b60b2a2b"}
+{"event": "emitted", "wave": 1, "path": "fleet/run-main.mjs", "stateBlob": "6e205a7e9cbd33896a5b4f1626404ae57fca31ab7216eb21832f726153ac7bb9", "visibleSha": "146fae0bb2104a2afd5edc38f0952c1454e65a2d"}
+{"event": "emitted", "wave": 1, "path": "fleet/run-worker.mjs", "stateBlob": "401c1b0489b11fbb8c939a11034112b5d29de202ce78f641b537f001d83ebc64", "visibleSha": "24e876d1683ce5a327eb175478c1e9b4dd202e7c"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/probe_confine_live.mjs", "stateBlob": "8ba41e6b3aa4ff8d0c07ce7a4704c7e17f0e4b1201136a3508d7ec803ae8b337", "visibleSha": "71e2f24c5f034c1c86f56096d972fa9cf0592ba3"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/probe_run_worker_live.mjs", "stateBlob": "d0d8d380a8fd8a0f305325b354346675f1b29d8ccb1535e1b8177f97548a8120", "visibleSha": "8773b7c85ad336e0ce0265eb84116eb76202bc52"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/test_run_engine_reconcile_retry.mjs", "stateBlob": "615bfd06b8679e897f2c10485d591db04fef3eaadf3d326afa50824122a15057", "visibleSha": "5e2cdd81c987eb2f25fd2ecc56da686640f8107b"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/test_run_engine_reuse.mjs", "stateBlob": "a6bcd67884393fec2a66449a0113d0a5b6b9cd94be18285fcbfe3bfaf6ec5d97", "visibleSha": "498b1ea48b242ac347715b6ed3be88ff3badfdfe"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/test_run_engine_schema_escalation.mjs", "stateBlob": "23d0a5192800639ac49eaeed9a8ad6916675d2af499348fd84f3db46f8dadf5d", "visibleSha": "519ead7c38d2dbb5191b951fb8aad0e9e7da1b17"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/test_run_engine_shell_path.mjs", "stateBlob": "96ab90b3d3e540d0916346d9149c25421d66b0c65a4d6a0f5c38c760831f4cd8", "visibleSha": "a73ab3e3be8aeb3e3647381708a2b4c28744ecff"}
+{"event": "superseded", "wave": 1, "path": "fleet/tests/test_worker_end_reason.mjs", "reason": "adopt head blob differs from the folded weave"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/test_worker_kata_env.mjs", "stateBlob": "62d08a5bacbd8ee21b42054ab8abd3a3a81a83057179880f179a28396667f47f", "visibleSha": "a8dac0158e02efdc9b2dd92d8922de151e8d0933"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/test_worker_prompt_stdin.mjs", "stateBlob": "bf90dc287cf388f2d47441e0264819a6b89b6044312eaffac8aab9ddd81ada5e", "visibleSha": "3ee29d0831e69868a3ebf29551998e9093f39fdb"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/test_worker_role_declared.mjs", "stateBlob": "d97656751a3c975ab6381a25e1ebca248979e89ed98931c3e242a23ff33cc28f", "visibleSha": "665577d4779e1b10cea78e7758a47234b1286696"}
