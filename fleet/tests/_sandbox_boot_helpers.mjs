@@ -1083,6 +1083,19 @@ export const checkReads = checkRunRequests
 /** How many times Reflection's /integrations was read. */
 export const integrationsReads = (ctx) => stream(ctx).filter((l) => l.startsWith('CALL curl integrations')).length
 
+// ── reading the evidence copy ────────────────────────────────────────────────
+
+/** The run's directory inside the evidence worktree (`evidenceDir` below is the
+ *  worktree itself) — what `collect_evidence` copied and what each evidence
+ *  commit staged. */
+export const evidenceRunDir = (ctx) => path.join(ctx.home, 'evidence', RUN_PATH)
+/** The absolute path of one file inside it, named by its path RELATIVE to the
+ *  run directory (`frontier/wave-1/fold_log.jsonl`, `transcripts/s.jsonl`).
+ *  A PATH and not its contents, the way `evidenceEventsFile` is: a leg that
+ *  asks whether a file was copied at all has to tell absent from empty, and a
+ *  leg that asks whether it was copied whole compares bytes. */
+export const evidenceFile = (ctx, rel) => path.join(evidenceRunDir(ctx), rel)
+
 // ── reading the publish fold ─────────────────────────────────────────────────
 
 /** The fold's directory inside the evidence worktree. */

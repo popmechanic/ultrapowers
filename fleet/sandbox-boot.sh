@@ -160,6 +160,12 @@ STATUS_INTERVAL="${FLEET_STATUS_INTERVAL:-30}"
 # wave writes its phase once and then works for an hour.
 COMMIT_EVENTS="${FLEET_COMMIT_EVENTS:-10}"                   # new lines that earn a commit
 COMMIT_SECONDS="${FLEET_COMMIT_SECONDS:-120}"                # seconds that earn one
+# The per-file ceiling on the fold record `collect_evidence` copies out of
+# `frontier/`. A `resolve` row in a fold log carries the WHOLE resolved file's
+# lines, so one folded generated file can push a single log past any sane size
+# — the cap is per file for that reason, and a file over it is named in the boot
+# log and left behind rather than swamping the record every run reads.
+EVIDENCE_FILE_MAX="${FLEET_EVIDENCE_FILE_MAX:-1048576}"      # 1 MiB per file under `frontier/`
 ENGINE_STOP_TIMEOUT="${FLEET_ENGINE_STOP_TIMEOUT:-300}"     # 5 min for the service to go inactive
 PUBLISH_BRANCH_WAIT="${PUBLISH_BRANCH_WAIT:-60}"             # for the pushed branch to show at the edge
 MERGE_CHECK_WAIT="${FLEET_MERGE_CHECK_WAIT:-1800}"           # 30 min for GitHub to recompute mergeability
@@ -1579,7 +1585,7 @@ print(json.dumps({"actor": os.environ["KATA_ACTOR"], "patch": patch},
 error_head() { { printf '%s' "$ERROR" || true; } | head -n 1; }
 
 collect_evidence() {
-  local dest receipt approve run_dir f rel rows
+  local dest receipt approve run_dir f rel rows size
   dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
   mkdir -p "$dest"
   receipt="$(gate_receipt_path)"
@@ -1628,6 +1634,46 @@ collect_evidence() {
       mkdir -p "$dest/state-exams/$(dirname "$rel")" 2>/dev/null || true
       cp "$f" "$dest/state-exams/$rel" 2>/dev/null \
         || log "evidence: state-exams/$rel could not be copied — skipped"
+    done
+  fi
+  # THE RUN'S FOLD RECORD — the engine's `frontier/wave-<n>/` (`fold_log.jsonl`,
+  # `conflicts.json`, `fold_stats.json`, the `conflict-<i>` narrations and
+  # briefs, the `reply-<i>-<attempt>/` resolver replies) and the `emit-weave`
+  # sidecar's `frontier/weave/manifest.json` and `weave-events.jsonl`. Walked
+  # file by file for the reason the two walks above give: this function runs
+  # again at every later transition, and `cp -R` onto a destination that already
+  # holds `frontier/` nests a second one inside the first. Nothing here creates
+  # `$dest/frontier` until there is a file to put in it, and this walk is
+  # `$run_dir/frontier` only — the publish fold's own `frontier/wave-<attempt>/`
+  # lives under `$run_dir/publish-fold` and `fleet/publish-fold.mjs` already
+  # copies it onto the branch.
+  #
+  # TWO THINGS NEVER LAND. `frontier/weave/blobs/` is the sidecar's
+  # content-addressed store — one whole manyana state string per folded path,
+  # the bulk of the sidecar and readable from the manifest and the event log
+  # that do land. And a file over `EVIDENCE_FILE_MAX`: measured with
+  # `wc -c <"$f"`, never `stat`, whose flags differ between the box and the
+  # laptop. An over-cap file is named in the log ONCE AND ONLY ONCE — this
+  # function runs at every `write_status` transition and once more at `fail`, so
+  # the memo of what has already been named is the boot log itself, which keeps
+  # the once-ever property without a state file and without a name on the
+  # record. Every command in the loop is `|| true`-tolerant (#859): the body
+  # runs under `set -euo pipefail` in the pipeline's subshell, so one unreadable
+  # artifact would otherwise end the walk, the commit and the transition with it
+  # — and the record is evidence, never control flow.
+  if [ -d "$run_dir/frontier" ]; then
+    find "$run_dir/frontier" -type f -not -path '*/frontier/weave/blobs/*' -print | while IFS= read -r f; do
+      rel="${f#"$run_dir/frontier/"}"
+      size="$({ wc -c <"$f" 2>/dev/null || printf 0; } | tr -dc '0-9')"
+      [ -n "$size" ] || size=0
+      if [ "$size" -gt "$EVIDENCE_FILE_MAX" ]; then
+        grep -qF "evidence: frontier/$rel is " "$BOOT_LOG" 2>/dev/null \
+          || log "evidence: frontier/$rel is $size bytes over FLEET_EVIDENCE_FILE_MAX=$EVIDENCE_FILE_MAX — skipped"
+        continue
+      fi
+      mkdir -p "$dest/frontier/$(dirname "$rel")" 2>/dev/null || true
+      cp "$f" "$dest/frontier/$rel" 2>/dev/null \
+        || log "evidence: frontier/$rel could not be copied — skipped"
     done
   fi
   # The engine's combined output rides along: it is the only evidence a run that
