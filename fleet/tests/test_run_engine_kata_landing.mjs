@@ -7,9 +7,99 @@
  * written where the Proof names it. Every relative import is written for THIS
  * directory: `../` is the repository's `fleet/`, `./` is `fleet/tests/`.
  *
- * The legs, and what each asserts — every assertion below names its leg and the
- * Machine clause it comes from, so a reader can map this file back to the
- * contract:
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ TWO exams share this path, and their leg letters collide, so every       │
+ * │ assertion message says which one it belongs to:                          │
+ * │                                                                          │
+ * │   • the LANDING exam (#1005) — legs `(a)`…`(d)`, clauses `[M1]`…`[M4]`,  │
+ * │     labelled bare, exactly as they were written. `work.state` reads       │
+ * │     `landed` at the capture and `adopted` at the fold.                   │
+ * │   • the SETUP-CLEAR exam (this task) — legs `(a)`…`(g)`, clauses `[M1]`  │
+ * │     …`[M5]`, every one of them labelled `setup-clear (x) [Mn]`. A        │
+ * │     relaunch never shows the earlier run's verdict on a task its own     │
+ * │     workers have not touched yet.                                        │
+ * │                                                                          │
+ * │ A bare `(a) [M1]` is therefore the landing exam's; a `setup-clear (a)    │
+ * │ [M1]` is this one's.                                                     │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * ── the SETUP-CLEAR legs, and what each asserts ────────────────────────────
+ *
+ *   (a) [M1] Run HUB (the two-task run the landing legs also read): task 1's
+ *       issue OPENS at `work.attention: needs-human`, `work.attention_msg:
+ *       'failed: fix-loop-exhausted'` — the mark an earlier run's `kataMark`
+ *       left on a reused issue — and task 2's opens with no `work.attention`
+ *       key at all. For task 1's uid the fake's call log holds ONE
+ *       `patchMetadata` whose patch deep-equals `{'work.attention': 'ok',
+ *       'work.attention_msg': ''}` — two flat keys, nothing else — and that
+ *       call went out BEFORE the first worker dispatch of task 1, read off the
+ *       stub's own label order (each recorded call is stamped with the labels
+ *       the stub had been handed by then). `events.jsonl` holds EXACTLY ONE
+ *       `driver:attention-cleared` for task 1, `{task: '1', was: 'needs-human',
+ *       msg: 'failed: fix-loop-exhausted'}`. Task 2's uid gets no such two-key
+ *       patch and no `driver:attention-cleared` at all.
+ *   (b) [M1] Run STUCK, a second run: task 1's issue opens at `work.attention:
+ *       stuck`, `work.attention_msg: 'waiting on task 2'` and task 2's opens at
+ *       `work.attention: 'ok'` EXPLICITLY — the key present, reading rest. Same
+ *       two-key patch on task 1's uid before its first worker dispatch, exactly
+ *       one `driver:attention-cleared` with `was: 'stuck'`, `msg: 'waiting on
+ *       task 2'`; task 2's uid gets neither.
+ *   (c) [M1] Run CLOSED, a third run: task 1's issue is `status: 'closed'`,
+ *       carries neither `work.adopted_run` nor `work.adopted_sha` (so the reuse
+ *       pass does not take it and the task is worked) and opens at
+ *       `work.attention: needs-human`. No `driver:attention-cleared` at all, no
+ *       patch anywhere in the run deep-equal to the two-key clear, and — the
+ *       Setup window M1 names — NO `patchMetadata` whatsoever on that uid
+ *       before the first worker dispatch of task 1. `impl:1` is still
+ *       dispatched.
+ *   (d) [M2] In run HUB: no `driver:attention` event for task 1 carries
+ *       `msg: 'failed: fix-loop-exhausted'` and none carries `attention: 'ok'`.
+ *       A poll whose baseline was the stale value records the clear as a move
+ *       to `ok`; a poll that never read the clear records the stale mark
+ *       itself. Either one fails this leg.
+ *   (e) [M3] Run MIDRUN, a fourth run at `attentionPollMs: 50` whose `impl:1`
+ *       stub writes `work.attention: stuck`, `work.attention_msg: 'mid-run'`
+ *       into the fake's store and then waits 200 ms: `events.jsonl` holds
+ *       EXACTLY ONE `driver:attention` for task 1, `attention: 'stuck'`,
+ *       `msg: 'mid-run'` — the worker's raised hand is still recorded, exactly
+ *       as at BASE.
+ *   (f) [M4] In run HUB: task 2, whose reviewer blocks, ends the run with its
+ *       issue reading `work.attention: needs-human` and a `work.attention_msg`
+ *       beginning `failed:` — `kataMark`'s own, so the Setup clear is not a
+ *       suppression of THIS run's marks — and task 1, whose SessionEnd hook
+ *       stamped `session ended without hand-off` at every session's end, ends
+ *       `status: 'done'`, `reviewVerdict: 'clean'`, its issue reading
+ *       `work.attention: 'ok'`.
+ *   (g) [M5] `fleet/CONTRACT.md`'s worker's-raised-hand paragraph — the lines
+ *       from `The worker's raised hand:` through `The re-edge (#979)`, the
+ *       Proof's own sed range — read as one line names `driver:attention-
+ *       cleared`, then `work.attention`, then `ok`, then `work.attention_msg`,
+ *       then `closed`, in that order.
+ *
+ * Two readings of the SETUP-CLEAR legs that a later session would otherwise
+ * have to reconstruct, both settled against BASE rather than assumed:
+ *
+ *   • Leg (d) needs a LIVE poll. At the default `ATTENTION_POLL_MS` (15000)
+ *     this sim finishes before a single read, so the leg would be vacuously
+ *     green whatever the engine does. Run HUB therefore passes
+ *     `attentionPollMs: 50` and holds each of task 1's sessions ~250 ms, and
+ *     the leg opens on a precondition that at least one `driver:attention` for
+ *     task 1 WAS recorded — the poll is proven live before its readings are
+ *     read.
+ *   • Leg (c)'s "no `patchMetadata` on its uid" is taken over the Setup window
+ *     M1 names, not over the whole run. A task the engine dispatches always
+ *     ends with a metadata patch on its issue, whichever way it goes:
+ *     `kataLanded` then `kataAdopted` on an adopted task, `kataMark` on one the
+ *     run could not finish. Asserting zero patches across the run would be red
+ *     at BASE for a reason that is not the missing Setup clear, so the leg is
+ *     encoded as exactly what M1 says a `closed` issue gets — neither the
+ *     event nor the patch, nothing at all on that uid before its first worker —
+ *     and the absolute phrasing is returned under `unsatisfiable`.
+ *
+ * ── the LANDING legs, and what each asserts ─────────────────────────────────
+ *
+ * Every assertion below names its leg and the Machine clause it comes from, so
+ * a reader can map this file back to the contract:
  *
  *   (a) [M1] One run, a fake hub, two tasks: task 1's reviewer passes, task 2's
  *       blocks. For task 1's uid the fake's call log holds EXACTLY ONE
@@ -108,6 +198,42 @@ const HOOK_MSG = 'session ended without hand-off'
 // narration of that task's grading, and the comment leg (a) reads against.
 const PROOF_RUN = "sh -c 'echo proof-ok'"
 
+// ── the SETUP-CLEAR literals ────────────────────────────────────────────────
+// M1's patch, whole: the two flat keys and their exact values, and nothing
+// else. `kataLanded`'s patch carries a third key (`work.state`) and
+// `kataMark`'s carries `needs-human`, so a deep-equal against this object
+// names the Setup clear and nothing the engine already sent at BASE.
+const CLEAR_PATCH = { [ATTENTION_KEY]: 'ok', [ATTENTION_MSG_KEY]: '' }
+const CLEARED = 'driver:attention-cleared'
+// The marks an earlier run left on the issues this run reuses. (a)'s is the
+// one run-16 of popmechanic/tinyapp-fixture actually read at Setup — run-15's
+// `kataMark` after that task's fix loop ran out.
+const STALE_A = { was: 'needs-human', msg: 'failed: fix-loop-exhausted' }
+const STALE_B = { was: 'stuck', msg: 'waiting on task 2' }
+// (e)'s: what a worker moves `work.attention` to WHILE it runs, which M3 keeps
+// recorded exactly as at BASE.
+const MIDRUN = { attention: 'stuck', msg: 'mid-run' }
+
+const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms) })
+
+// Deep equality over a flat metadata patch: the same key set and the same value
+// under every key. `assert.deepEqual` states it in the message; this is the
+// predicate the `filter`s below need.
+const eqPatch = (patch, want) => {
+  const got = (patch && typeof patch === 'object') ? patch : {}
+  const ks = Object.keys(got).sort()
+  const ws = Object.keys(want).sort()
+  return ks.length === ws.length && ks.every((k, i) => k === ws[i] && got[k] === want[k])
+}
+// The Setup clear, as a call: a `patchMetadata` whose patch IS `CLEAR_PATCH`.
+const isClear = (c) => c.method === 'patchMetadata' && eqPatch(c.patch, CLEAR_PATCH)
+// "before the first worker dispatch of task <id>", read off the stub's own
+// label order: no session whose label's second colon-segment names that task
+// had been handed to the stub when this call went out.
+const beforeAnyWorkerOf = (call, id) =>
+  !(call.dispatchedBy || []).some((l) => String(l).split(':')[1] === id)
+const kindsOf = (runDir, kind) => eventsOf(runDir).filter((e) => e.kind === kind)
+
 const mkTask = (id, files, over = {}) => ({
   id, title: 'task ' + id, files, tier: 'standard', review: 'lean',
   writes: files, commutes: [], proofTests: [], proofRuns: [PROOF_RUN],
@@ -130,14 +256,16 @@ const eventsOf = (runDir) => {
 // then (so "after the last worker ended" is a fact about the call, not a guess),
 // and `hookStamp`, the worker's SessionEnd write — the hook's, not the engine's,
 // so it is neither recorded nor revision-bumping.
-function makeFakeKata ({ projectId, issues, witness = () => [] }) {
+function makeFakeKata ({ projectId, issues, witness = () => [], seen = () => [] }) {
   const calls = []
   const hookStamps = []
   const store = new Map()
   for (const [uid, iss] of Object.entries(issues)) {
+    // `status` is the issue's as the hub holds it — `open` unless the sim opens
+    // it `closed`, which is setup-clear leg (c)'s whole subject.
     store.set(uid, { uid, revision: iss.revision, short_id: iss.short_id,
                      metadata: { ...(iss.metadata || {}) }, owner: null,
-                     status: 'open', labels: [] })
+                     status: iss.status || 'open', labels: [] })
   }
   const need = (uid) => {
     const iss = store.get(uid)
@@ -145,7 +273,11 @@ function makeFakeKata ({ projectId, issues, witness = () => [] }) {
     return iss
   }
   const record = (method, uid, fields, answer) => {
-    calls.push({ method, uid, ...fields, answer, ended: witness() })
+    // `ended`: what the stub had FINISHED by then (the landing legs' "after the
+    // last worker"). `dispatchedBy`: what the stub had been HANDED by then —
+    // the setup-clear legs' "before the first worker dispatch of task 1", read
+    // off the stub's own label order rather than guessed.
+    calls.push({ method, uid, ...fields, answer, ended: witness(), dispatchedBy: seen() })
     return answer
   }
   const kata = {
@@ -205,6 +337,14 @@ function makeFakeKata ({ projectId, issues, witness = () => [] }) {
       iss.metadata = { ...iss.metadata,
                        [ATTENTION_KEY]: HOOK_ATTENTION, [ATTENTION_MSG_KEY]: HOOK_MSG }
     },
+    // The same door, for a worker that raises its hand mid-run with
+    // `kata meta set $KATA_REF work.attention stuck` (setup-clear leg (e)): the
+    // WORKER's write, so it is not an engine call and not in the call log.
+    storeSet: (uid, patch) => {
+      const iss = store.get(uid)
+      if (!iss) return
+      iss.metadata = { ...iss.metadata, ...patch }
+    },
   }
 }
 
@@ -239,9 +379,16 @@ const WAVES = () => [[mkTask('1', ['t1.txt']), mkTask('2', ['t2.txt'])]]
   const fake = makeFakeKata({
     projectId: PROJECT_ID,
     witness: () => ended.slice(),
+    seen: () => dispatched.slice(),
     issues: {
       RUN0: { revision: 1, short_id: 'run9', metadata: {} },
-      'U-1': { revision: 1, short_id: 'aa11', metadata: {} },
+      // setup-clear (a) [M1]: this is a RELAUNCH. Task 1's issue is the one the
+      // earlier run's `kataMark` left marked when its fix loop ran out — the
+      // issue `openKataTask` reads at Setup, sixteen seconds before its own
+      // first worker starts. Task 2's carries no `work.attention` key at all.
+      'U-1': { revision: 1,
+               short_id: 'aa11',
+               metadata: { [ATTENTION_KEY]: STALE_A.was, [ATTENTION_MSG_KEY]: STALE_A.msg } },
       'U-2': { revision: 1, short_id: 'bb22', metadata: {} },
     },
   })
@@ -269,13 +416,19 @@ const WAVES = () => [[mkTask('1', ['t1.txt']), mkTask('2', ['t2.txt'])]]
     } else {
       throw new Error('unexpected dispatch: ' + label)
     }
+    // setup-clear (d) [M2] needs a poll that actually READ this issue while a
+    // worker of task 1 was in flight: with `attentionPollMs: 50` below, holding
+    // each of task 1's sessions ~250 ms puts several readings inside the
+    // dispatch. Without the hold the sim outruns the timer and (d) would be
+    // vacuously green whatever the engine does.
+    if (id === '1') await sleep(250)
     if (UID[id]) fake.hookStamp(UID[id])
     ended.push(label)
     return reply
   }
   const { run } = rig({
     repo, runDir, waves: WAVES(), stub, stamp: STAMP,
-    kata: fake.kata, extraArgs: { kataRecord: record },
+    kata: fake.kata, extraArgs: { kataRecord: record, attentionPollMs: 50 },
   })
   const report = await run()
 
@@ -466,6 +619,346 @@ const WAVES = () => [[mkTask('1', ['t1.txt']), mkTask('2', ['t2.txt'])]]
   assert.ok(fake.labelsOf(UID[2]).includes('needs-review'),
     '(c) [M3] sim precondition: with the `needs-review` label the mark always added: ' +
     JSON.stringify(fake.labelsOf(UID[2])))
+
+  // ══════════════════════════════════════════════════════════════════════
+  // setup-clear (a) [M1] — the stale mark is cleared at Setup, before any
+  // worker of that task is dispatched
+  // ══════════════════════════════════════════════════════════════════════
+  const clearsOne = seqOne.filter(isClear)
+  assert.equal(clearsOne.length, 1,
+    'setup-clear (a) [M1] task 1\'s issue opened at `' + ATTENTION_KEY + ': ' + STALE_A.was +
+    '`, `' + ATTENTION_MSG_KEY + ': ' + STALE_A.msg + '` — an earlier run\'s mark on an issue ' +
+    'this relaunch reuses — so `openKataTask` sent EXACTLY ONE `patchMetadata` on ' + UID[1] +
+    ' whose patch deep-equals ' + JSON.stringify(CLEAR_PATCH) + '. The patches the fake ' +
+    'recorded for ' + UID[1] + ' were: ' +
+    JSON.stringify(seqOne.filter((c) => c.method === 'patchMetadata').map((c) => c.patch)))
+  assert.deepEqual(clearsOne[0].patch, CLEAR_PATCH,
+    'setup-clear (a) [M1] and that patch carries exactly the two flat keys `' + ATTENTION_KEY +
+    '` and `' + ATTENTION_MSG_KEY + '` with exactly the values ' + JSON.stringify(CLEAR_PATCH) +
+    ' — no `' + STATE_KEY + '`, nothing else: ' + JSON.stringify(clearsOne[0].patch))
+  assert.ok(beforeAnyWorkerOf(clearsOne[0], '1'),
+    'setup-clear (a) [M1] and it went out BEFORE the first worker dispatch of task 1: the issue ' +
+    'is cleared when the run OPENS it, so no window exists in which this run\'s record shows the ' +
+    'earlier run\'s verdict on a task its own workers have not touched yet. The stub had been ' +
+    'handed these labels when that patch was sent: ' + JSON.stringify(clearsOne[0].dispatchedBy) +
+    '; task 1\'s sessions were: ' + JSON.stringify(taskOneWorkers))
+
+  const clearedOne = kindsOf(runDir, CLEARED).filter((e) => e.task === '1')
+  assert.equal(clearedOne.length, 1,
+    'setup-clear (a) [M1] and the run NARRATES it: exactly one `' + CLEARED + '` event for ' +
+    'task 1 on events.jsonl. Got: ' + JSON.stringify(clearedOne))
+  assert.equal(clearedOne[0].was, STALE_A.was,
+    'setup-clear (a) [M1] whose `was` is the value the issue actually held (`' + STALE_A.was +
+    '`): ' + JSON.stringify(clearedOne[0]))
+  assert.equal(clearedOne[0].msg, STALE_A.msg,
+    'setup-clear (a) [M1] and whose `msg` is the message it held (`' + STALE_A.msg +
+    '`) — the earlier run\'s reading, kept on the record as history: ' +
+    JSON.stringify(clearedOne[0]))
+
+  // …and task 2, whose issue carries no `work.attention` key at all, gets
+  // neither: an absent key is a resting task, not a stale mark.
+  const clearsTwo = seqTwo.filter(isClear)
+  assert.deepEqual(clearsTwo.map((c) => c.patch), [],
+    'setup-clear (a) [M1] task 2\'s issue carries NO `' + ATTENTION_KEY + '` key, so nothing is ' +
+    'cleared on it — no `patchMetadata` on ' + UID[2] + ' deep-equal to ' +
+    JSON.stringify(CLEAR_PATCH) + '. Got: ' + JSON.stringify(clearsTwo.map((c) => c.patch)))
+  assert.deepEqual(kindsOf(runDir, CLEARED).filter((e) => e.task === '2'), [],
+    'setup-clear (a) [M1] and no `' + CLEARED + '` event for task 2 at all')
+
+  // ══════════════════════════════════════════════════════════════════════
+  // setup-clear (d) [M2] — the poll's first reading for a cleared task is
+  // against `ok`
+  // ══════════════════════════════════════════════════════════════════════
+  const attnOne = kindsOf(runDir, 'driver:attention').filter((e) => e.task === '1')
+  assert.ok(attnOne.length > 0,
+    'setup-clear (d) [M2] sim precondition: the attention poll RAN for task 1 and recorded at ' +
+    'least one reading — this run passes `attentionPollMs: 50` and holds each of task 1\'s ' +
+    'sessions ~250 ms precisely so that it did. A run in which the poll never read is one where ' +
+    'this leg proves nothing. events.jsonl\'s `driver:attention` rows: ' +
+    JSON.stringify(kindsOf(runDir, 'driver:attention')))
+  for (const e of attnOne) {
+    assert.notEqual(e.msg, STALE_A.msg,
+      'setup-clear (d) [M2] no `driver:attention` event of this run carries the message the ' +
+      'issue held at Setup (`' + STALE_A.msg + '`): the poll\'s first reading for a cleared task ' +
+      'is against `ok`, and a run that records the earlier run\'s verdict as its own reading is ' +
+      'exactly what M2 forbids. This event was: ' + JSON.stringify(e))
+    assert.notEqual(e.attention, 'ok',
+      'setup-clear (d) [M2] and none carries `attention: "ok"` — a poll whose baseline was the ' +
+      'stale value would record the clear itself as a move BACK to `ok`, which is the same stale ' +
+      'reading wearing the other face. This event was: ' + JSON.stringify(e))
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // setup-clear (f) [M4] — the Setup clear is not a suppression of THIS
+  // run's marks, and the hook's stamp still ends clean
+  // ══════════════════════════════════════════════════════════════════════
+  assert.equal(metaTwo[ATTENTION_KEY], HOOK_ATTENTION,
+    'setup-clear (f) [M4] task 2\'s reviewer blocked it, so the run marks it for a person: its ' +
+    'issue ends the run reading `' + ATTENTION_KEY + ': ' + HOOK_ATTENTION + '`. The Setup clear ' +
+    'drops the EARLIER run\'s verdict, never this one\'s: ' + JSON.stringify(metaTwo))
+  assert.equal(typeof metaTwo[ATTENTION_MSG_KEY], 'string',
+    'setup-clear (f) [M4] with a message of its own: ' + JSON.stringify(metaTwo))
+  assert.ok(String(metaTwo[ATTENTION_MSG_KEY]).startsWith('failed:'),
+    'setup-clear (f) [M4] and that message is `kataMark`\'s own `<status>: <verdict>` — task 2 ' +
+    'ended `failed`, so it begins `failed:`. Got ' + JSON.stringify(metaTwo[ATTENTION_MSG_KEY]))
+  assert.equal(rowOf('1').status, 'done',
+    'setup-clear (f) [M4] while task 1 — the task whose stale mark was cleared, and whose ' +
+    'SessionEnd hook stamped `' + HOOK_MSG + '` at every session\'s end — ends `status: "done"`: ' +
+    JSON.stringify(rowOf('1')))
+  assert.equal(rowOf('1').reviewVerdict, 'clean',
+    'setup-clear (f) [M4] and `reviewVerdict: "clean"`: ' + JSON.stringify(rowOf('1')))
+  assert.equal(metaOne[ATTENTION_KEY], 'ok',
+    'setup-clear (f) [M4] with its issue reading `' + ATTENTION_KEY + ': ok` at the end of the ' +
+    'run — the landing patch cleared the hook\'s stamp, as at BASE: ' + JSON.stringify(metaOne))
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// setup-clear (b) [M1] — run STUCK: the other value M1 names is cleared the
+// same way, and an issue reading `ok` EXPLICITLY is not touched
+// ══════════════════════════════════════════════════════════════════════════
+{
+  const repo = makeRepo(path.join(tmp, 'repo-stuck'))
+  const runDir = path.join(tmp, 'run-stuck')
+  const PROJECT_ID = 7
+  const UID = { 1: 'S-1', 2: 'S-2' }
+  const record = {
+    url: 'https://kata.int.exe.xyz',
+    project: { id: PROJECT_ID, uid: 'PROJ0', name: 'ultrapowers' },
+    run: { uid: 'RUNS', revision: 1 },
+    tasks: { 1: { uid: UID[1], short_id: 'ss11', revision: 1 },
+             2: { uid: UID[2], short_id: 'ss22', revision: 1 } },
+  }
+  const dispatched = []
+  const fake = makeFakeKata({
+    projectId: PROJECT_ID,
+    seen: () => dispatched.slice(),
+    issues: {
+      RUNS: { revision: 1, short_id: 'runS', metadata: {} },
+      // The other value M1 names: a worker of the EARLIER run raised its hand
+      // and the run ended with the hand still up.
+      'S-1': { revision: 1,
+               short_id: 'ss11',
+               metadata: { [ATTENTION_KEY]: STALE_B.was, [ATTENTION_MSG_KEY]: STALE_B.msg } },
+      // And the case the absent key does not cover: the key is PRESENT and
+      // reads `ok`. A task at rest is not a stale mark, so it is not cleared.
+      'S-2': { revision: 1, short_id: 'ss22', metadata: { [ATTENTION_KEY]: 'ok' } },
+    },
+  })
+  const stub = async (prompt, opts, cwd) => {
+    const label = String(opts.label)
+    dispatched.push(label)
+    const kind = label.split(':')[0]
+    const id = label.split(':')[1]
+    if (kind === 'impl' || kind === 'fix') {
+      fs.writeFileSync(path.join(cwd, 't' + id + '.txt'), 'from ' + label + '\n')
+      return doneImpl(cwd)
+    }
+    if (kind === 'review') return passReview()
+    if (label === 'integration') return cleanCritic()
+    throw new Error('unexpected dispatch: ' + label)
+  }
+  const { run } = rig({
+    repo, runDir, waves: WAVES(), stub, stamp: 'run-13',
+    // The poll is silenced here: leg (b) is about the Setup clear itself, and
+    // the poll's own readings are leg (d)'s and leg (e)'s subject.
+    kata: fake.kata, extraArgs: { kataRecord: record, attentionPollMs: 600000 },
+  })
+  const report = await run()
+
+  assert.ok(dispatched.includes('impl:1'),
+    'setup-clear (b) [M1] sim precondition: task 1 was worked — ' + JSON.stringify(dispatched))
+  assert.ok(report && Array.isArray(report.tasks),
+    'setup-clear (b) [M1] sim precondition: the run produced a report — ' + JSON.stringify(report))
+
+  const seqOne = fake.forUid(UID[1])
+  const clearsOne = seqOne.filter(isClear)
+  assert.equal(clearsOne.length, 1,
+    'setup-clear (b) [M1] task 1\'s issue opened at `' + ATTENTION_KEY + ': ' + STALE_B.was +
+    '` — `stuck` is the other value M1 names — so exactly one `patchMetadata` on ' + UID[1] +
+    ' deep-equals ' + JSON.stringify(CLEAR_PATCH) + '. The patches the fake recorded for ' +
+    UID[1] + ' were: ' +
+    JSON.stringify(seqOne.filter((c) => c.method === 'patchMetadata').map((c) => c.patch)))
+  assert.deepEqual(clearsOne[0].patch, CLEAR_PATCH,
+    'setup-clear (b) [M1] carrying exactly ' + JSON.stringify(CLEAR_PATCH) + ': ' +
+    JSON.stringify(clearsOne[0].patch))
+  assert.ok(beforeAnyWorkerOf(clearsOne[0], '1'),
+    'setup-clear (b) [M1] and sent before the first worker dispatch of task 1. The stub had been ' +
+    'handed these labels when it went out: ' + JSON.stringify(clearsOne[0].dispatchedBy))
+
+  const clearedOne = kindsOf(runDir, CLEARED).filter((e) => e.task === '1')
+  assert.equal(clearedOne.length, 1,
+    'setup-clear (b) [M1] with exactly one `' + CLEARED + '` event for task 1: ' +
+    JSON.stringify(clearedOne))
+  assert.equal(clearedOne[0].was, STALE_B.was,
+    'setup-clear (b) [M1] whose `was` is `' + STALE_B.was + '`: ' + JSON.stringify(clearedOne[0]))
+  assert.equal(clearedOne[0].msg, STALE_B.msg,
+    'setup-clear (b) [M1] and whose `msg` is `' + STALE_B.msg + '`: ' +
+    JSON.stringify(clearedOne[0]))
+
+  const clearsTwo = fake.forUid(UID[2]).filter(isClear)
+  assert.deepEqual(clearsTwo.map((c) => c.patch), [],
+    'setup-clear (b) [M1] task 2\'s issue reads `' + ATTENTION_KEY + ': ok` already, so there is ' +
+    'nothing to clear and no `patchMetadata` on ' + UID[2] + ' deep-equal to ' +
+    JSON.stringify(CLEAR_PATCH) + ' — an engine that patched every issue it opened would write ' +
+    'one here. Got: ' + JSON.stringify(clearsTwo.map((c) => c.patch)))
+  assert.deepEqual(kindsOf(runDir, CLEARED).filter((e) => e.task === '2'), [],
+    'setup-clear (b) [M1] and no `' + CLEARED + '` event for task 2 at all')
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// setup-clear (c) [M1] — run CLOSED: a closed issue is never patched, and the
+// task is worked anyway
+// ══════════════════════════════════════════════════════════════════════════
+{
+  const repo = makeRepo(path.join(tmp, 'repo-closed'))
+  const runDir = path.join(tmp, 'run-closed')
+  const PROJECT_ID = 7
+  const UID_ONE = 'C-1'
+  const record = {
+    url: 'https://kata.int.exe.xyz',
+    project: { id: PROJECT_ID, uid: 'PROJ0', name: 'ultrapowers' },
+    run: { uid: 'RUNC', revision: 1 },
+    tasks: { 1: { uid: UID_ONE, short_id: 'cc11', revision: 1 } },
+  }
+  const dispatched = []
+  const fake = makeFakeKata({
+    projectId: PROJECT_ID,
+    seen: () => dispatched.slice(),
+    issues: {
+      RUNC: { revision: 1, short_id: 'runC', metadata: {} },
+      // Closed, marked, and carrying NEITHER `work.adopted_run` nor
+      // `work.adopted_sha` — so the reuse pass does not take it (those two keys
+      // are what a `done` close writes) and this run works the task itself.
+      // A closed issue is not this run's to patch, whatever its attention reads.
+      'C-1': { revision: 1,
+               short_id: 'cc11',
+               status: 'closed',
+               metadata: { [ATTENTION_KEY]: STALE_A.was, [ATTENTION_MSG_KEY]: STALE_A.msg } },
+    },
+  })
+  const stub = async (prompt, opts, cwd) => {
+    const label = String(opts.label)
+    dispatched.push(label)
+    const kind = label.split(':')[0]
+    const id = label.split(':')[1]
+    if (kind === 'impl' || kind === 'fix') {
+      fs.writeFileSync(path.join(cwd, 't' + id + '.txt'), 'from ' + label + '\n')
+      return doneImpl(cwd)
+    }
+    if (kind === 'review') return passReview()
+    if (label === 'integration') return cleanCritic()
+    throw new Error('unexpected dispatch: ' + label)
+  }
+  const { run } = rig({
+    repo, runDir, waves: [[mkTask('1', ['t1.txt'])]], stub, stamp: 'run-14',
+    kata: fake.kata, extraArgs: { kataRecord: record, attentionPollMs: 600000 },
+  })
+  await run()
+
+  assert.ok(dispatched.includes('impl:1'),
+    'setup-clear (c) [M1] `impl:1` is still dispatched: a closed issue that carries neither `' +
+    RUN_KEY + '` nor `' + SHA_KEY + '` is not a reusable task, so the run works it exactly as it ' +
+    'would have. The stub was handed: ' + JSON.stringify(dispatched))
+  assert.deepEqual(kindsOf(runDir, 'driver:reuse'), [],
+    'setup-clear (c) [M1] sim precondition: nothing was reused — the reuse pass found no ' +
+    'candidate and made no event, so this task went through the ordinary pipeline: ' +
+    JSON.stringify(kindsOf(runDir, 'driver:reuse')))
+
+  assert.deepEqual(kindsOf(runDir, CLEARED), [],
+    'setup-clear (c) [M1] a `closed` issue gets NO `' + CLEARED + '` event at all — not for this ' +
+    'task, not for any. Got: ' + JSON.stringify(kindsOf(runDir, CLEARED)))
+  const seqOne = fake.forUid(UID_ONE)
+  assert.deepEqual(seqOne.filter(isClear).map((c) => c.patch), [],
+    'setup-clear (c) [M1] and no `patchMetadata` anywhere in the run deep-equal to ' +
+    JSON.stringify(CLEAR_PATCH) + ' on ' + UID_ONE + ': ' +
+    JSON.stringify(seqOne.filter((c) => c.method === 'patchMetadata').map((c) => c.patch)))
+  // "gets neither", read over the window M1 names: the Setup pass, which ends
+  // at the first worker of this task. (The whole run cannot be the window —
+  // every dispatched task ends with a metadata patch on its issue whichever way
+  // it goes, `kataLanded` + `kataAdopted` when it is adopted and `kataMark`
+  // when the run could not finish it, and those are BASE's own writes.)
+  const atSetup = seqOne.filter((c) => c.method === 'patchMetadata' && beforeAnyWorkerOf(c, '1'))
+  assert.deepEqual(atSetup.map((c) => c.patch), [],
+    'setup-clear (c) [M1] and NO `patchMetadata` whatsoever on ' + UID_ONE + ' before the first ' +
+    'worker dispatch of task 1 — the Setup pass reads a `closed` issue and writes nothing to it. ' +
+    'Got, with the labels the stub had been handed by then: ' +
+    JSON.stringify(atSetup.map((c) => ({ patch: c.patch, dispatchedBy: c.dispatchedBy }))))
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// setup-clear (e) [M3] — run MIDRUN: a worker that raises its hand WHILE it
+// runs is still recorded, exactly as at BASE
+// ══════════════════════════════════════════════════════════════════════════
+{
+  const repo = makeRepo(path.join(tmp, 'repo-midrun'))
+  const runDir = path.join(tmp, 'run-midrun')
+  const PROJECT_ID = 7
+  const UID_ONE = 'M-1'
+  const record = {
+    url: 'https://kata.int.exe.xyz',
+    project: { id: PROJECT_ID, uid: 'PROJ0', name: 'ultrapowers' },
+    run: { uid: 'RUNM', revision: 1 },
+    tasks: { 1: { uid: UID_ONE, short_id: 'mm11', revision: 1 } },
+  }
+  const dispatched = []
+  const fake = makeFakeKata({
+    projectId: PROJECT_ID,
+    seen: () => dispatched.slice(),
+    issues: {
+      RUNM: { revision: 1, short_id: 'runM', metadata: {} },
+      // Nothing stale here: this issue opens at rest, so the Setup clear has
+      // nothing to do and the only attention the record shows is the one this
+      // run's own worker raises.
+      'M-1': { revision: 1, short_id: 'mm11', metadata: {} },
+    },
+  })
+  const stub = async (prompt, opts, cwd) => {
+    const label = String(opts.label)
+    dispatched.push(label)
+    const kind = label.split(':')[0]
+    const id = label.split(':')[1]
+    if (kind === 'impl' || kind === 'fix') {
+      fs.writeFileSync(path.join(cwd, 't' + id + '.txt'), 'from ' + label + '\n')
+      // `kata meta set $KATA_REF work.attention stuck`, from inside the worker:
+      // the WORKER's write, straight into the fake's store, so it is not an
+      // engine call. Then the session stays up longer than one poll interval,
+      // which is what gives the timer a reading to take.
+      fake.storeSet(UID_ONE,
+        { [ATTENTION_KEY]: MIDRUN.attention, [ATTENTION_MSG_KEY]: MIDRUN.msg })
+      await sleep(200)
+      return doneImpl(cwd)
+    }
+    if (kind === 'review') return passReview()
+    if (label === 'integration') return cleanCritic()
+    throw new Error('unexpected dispatch: ' + label)
+  }
+  const { run } = rig({
+    repo, runDir, waves: [[mkTask('1', ['t1.txt'])]], stub, stamp: 'run-15',
+    kata: fake.kata, extraArgs: { kataRecord: record, attentionPollMs: 50 },
+  })
+  await run()
+
+  assert.ok(dispatched.includes('impl:1'),
+    'setup-clear (e) [M3] sim precondition: task 1\'s implementer ran — ' +
+    JSON.stringify(dispatched))
+  const attnOne = kindsOf(runDir, 'driver:attention').filter((e) => e.task === '1')
+  assert.equal(attnOne.length, 1,
+    'setup-clear (e) [M3] the implementer moved `' + ATTENTION_KEY + '` to `' + MIDRUN.attention +
+    '` while it ran and stayed up 200 ms with the poll at 50 ms, so the run recorded EXACTLY ONE ' +
+    '`driver:attention` event for task 1 — the Setup clear is a Setup-time correction of a ' +
+    'PRIOR run\'s mark and touches nothing the poll does afterwards. events.jsonl\'s ' +
+    '`driver:attention` rows: ' + JSON.stringify(kindsOf(runDir, 'driver:attention')))
+  assert.equal(attnOne[0].attention, MIDRUN.attention,
+    'setup-clear (e) [M3] whose `attention` is `' + MIDRUN.attention + '`: ' +
+    JSON.stringify(attnOne[0]))
+  assert.equal(attnOne[0].msg, MIDRUN.msg,
+    'setup-clear (e) [M3] and whose `msg` is the worker\'s own (`' + MIDRUN.msg + '`): ' +
+    JSON.stringify(attnOne[0]))
+  assert.equal(attnOne[0].task, '1',
+    'setup-clear (e) [M3] on task 1: ' + JSON.stringify(attnOne[0]))
+  assert.deepEqual(kindsOf(runDir, CLEARED), [],
+    'setup-clear (e) [M3] and this issue opened at rest, so no `' + CLEARED + '` event was ' +
+    'written for it: ' + JSON.stringify(kindsOf(runDir, CLEARED)))
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -527,6 +1020,34 @@ const WAVES = () => [[mkTask('1', ['t1.txt']), mkTask('2', ['t2.txt'])]]
     '(d) [M4] the `Closes:` sentence names the adoption patch\'s THREE flat keys — ' +
     '`work.adopted_run`, `work.adopted_sha`, `work.state` — in that order. The range reads:\n' +
     closesRange)
+
+  // ══════════════════════════════════════════════════════════════════════
+  // setup-clear (g) [M5] — the worker's-raised-hand paragraph names the
+  // Setup clear
+  // ══════════════════════════════════════════════════════════════════════
+  // The Proof's own range and its own read, taken here:
+  //   sed -n '/The worker.s raised hand/,/re-edge (#979)/p' fleet/CONTRACT.md \
+  //     | tr '\n' ' ' \
+  //     | grep -q 'driver:attention-cleared.*work\.attention.*ok.*work\.attention_msg.*closed'
+  const handStart = lines.findIndex((l) => /The worker.s raised hand/.test(l))
+  assert.ok(handStart !== -1,
+    'setup-clear (g) [M5] fleet/CONTRACT.md carries the `The worker\'s raised hand:` line the ' +
+    'Proof\'s `Run:` seds from — M5 names that paragraph of the `Kata record (engine)` bullet as ' +
+    'where the Setup clear is written down')
+  let handEnd = -1
+  for (let i = handStart + 1; i < lines.length; i += 1) {
+    if (lines[i].includes('re-edge (#979)')) { handEnd = i; break }
+  }
+  assert.ok(handEnd !== -1,
+    'setup-clear (g) [M5] and the `The re-edge (#979)` line that closes the sed range')
+  const handRange = flatten(handStart, handEnd)
+  assert.match(handRange,
+    /driver:attention-cleared[\s\S]*work\.attention[\s\S]*ok[\s\S]*work\.attention_msg[\s\S]*closed/,
+    'setup-clear (g) [M5] the worker\'s-raised-hand paragraph, read as one line, names the Setup ' +
+    'clear: `driver:attention-cleared`, then the two flat keys it writes (`work.attention` set to ' +
+    '`ok`, `work.attention_msg` emptied), then that a `closed` issue is never patched — in that ' +
+    'order, the order the Proof\'s second `Run:` line greps for. A paragraph lacking any of the ' +
+    'five fails this leg. The range reads:\n' + handRange)
 }
 
 console.log('ALL TESTS PASSED')

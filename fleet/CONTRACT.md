@@ -96,6 +96,22 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     re-run also carries `flaky: true` and is read as green: the exam's red leaves the pass and
     the task proceeds (to review, or to the ordinary repair round if a `Run:`/`Check:` is still
     red). An ordinary red exam with no such concern is never re-run; it buys the one repair round.
+    One more kind records a blocking finding the graded party could not have answered:
+    `driver:exam-rejected` `{task, path, detail}` — one per blocking issue of a review round whose
+    `detail` names, in backticks, one of the task's Proof `Test:` landing paths (the token equal to
+    that path, or the path followed by `:<digits>` or `:<digits>-<digits>`), appended only in round
+    1 and only for a task whose examiner recorded an exam. It buys one `exam:<id>:2` round in the
+    examiner's own clone — its prompt the first round's with an `EXAM REJECTED:` block carrying
+    those details one per line — then a second `driver:exam-handoff`, a fresh capture, a
+    `driver:exam-run` at `iter: 2` and one `review:<id>:2`. No fix worker is dispatched from either
+    round: the implementation was never what the finding was about. A round 2 with no blocking issue
+    ends the task `done`/`clean`; one with a blocking issue, or a red exam at `iter: 2`, ends it
+    `failed`/`fix-loop-exhausted`. A blocking finding naming no landing path ends the task at that
+    exit from round 1, as it did before this kind existed. The row itself says which of those
+    happened: `report.json`'s `tasks[].examRounds` is `2` when the exam-rejected round ran and `1`
+    otherwise, present on every row of a task whose examiner recorded an exam — `examEdited`'s
+    presence rule — and absent from every other, so "exhausted" is distinguishable from "the
+    examiner was never asked".
     One more kind records what a worker asked the PLAN for rather than what it did:
     `driver:amendment` `{task, amends, what, why}` — the task the worker was dispatched at, which
     part of that task it would have the plan change (`amends` is one of `clause`, `files` and
@@ -185,10 +201,13 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   base the tree was cut at. The two exam sites and the per-task `Run:`/`Check:` sites also receive
   `ULTRA_TASK` (the task id), `ULTRA_RUN_DIR` (`<target>/.claude/ultrapowers/run-<N>`, the same
   directory as `FLEET_RUN_DIR`) and `ULTRA_EXAM_PASS`, whose values are
-  `base`, `0` and `integrated`: `base` at the at-BASE probe, `0` at the pre-review pass and at the
-  repeat that follows the pre-review repair round. A pass number above `0` is a value this engine
-  no longer emits — the one review round reads the pre-review pass's evidence and dispatches no fix
-  worker of its own, so nothing edits the tree after that pass and no round re-executes. The
+  `base`, `0`, `2` and `integrated`: `base` at the at-BASE probe, `0` at the pre-review pass and at the
+  repeat that follows the pre-review repair round, and one numbered pass above `0` for the
+  exam-rejected round's run (#1037) — taken on the graded tree after a review round's blocking
+  finding named the exam's own landing path and the examiner rewrote it, and numbered `2` for the
+  review round that reads it. `1` is emitted by
+  nothing: review round 1 reads the pre-review pass's evidence and dispatches no fix worker of its
+  own, so nothing edits the tree between that pass and that round. The
   numbers stay in the vocabulary a reader of an older run's record meets. Whether that round is
   dispatched at all is `reviewOnStateExams` (#836), a run argument that is off by default: with it
   off, a task whose pre-review pass was green and whose state-exam record holds at least one stem
@@ -540,8 +559,12 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   Reuse is refused — one `driver:reuse` carrying a `reason` and an empty `tasks`, and the full plan
   then runs exactly as it does at BASE — when the reused tasks name two different runs, when the tag
   cannot be fetched, when its `report.json` does not list every reused task as `done`, when its
-  `baseSha` is not an ancestor of BASE, or when the two sides do not fold cleanly (no resolver
-  exists at setup). A refusal is never the run's own failure.
+  `baseSha` is not an ancestor of BASE, or when the `--wave 0` fold gives up. In that last case the
+  `reason` is the fold's own sentence and never a generic one: the conflict count when the two sides
+  do not fold cleanly (`<N> conflict(s)`, and no resolver exists at setup), the `materialize`
+  refusal the kernel printed, or the missing `fold` verdict. That one sentence is what the event's
+  `reason` carries, what the `reuse fold of <tag>: …` judgment call carries after its colon, and
+  what the `reuse refused: <reason>` log line carries. A refusal is never the run's own failure.
   Every worker of a run with a record is an actor on the hub, and knows which issue it is working:
   its process env carries `KATA_SERVER` (the record's url, `https://kata.int.exe.xyz`),
   `KATA_AUTH_TOKEN=edge-injects-the-bearer`
@@ -576,9 +599,21 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   drained before run-main returns; the record is read before the first stage the log records, so
   the hub's view starts where the record's does.
   The worker's raised hand: while a task's worker runs, the engine READS that task's issue metadata
-  every `ATTENTION_POLL_MS` (`args.attentionPollMs`, default 15000 ms) and never writes it —
-  `work.attention` is the worker's, and the coordinator only ever reads it. Each change of that
-  value to `stuck`, to `needs-human`, or back to `ok` is one `driver:attention` event
+  every `ATTENTION_POLL_MS` (`args.attentionPollMs`, default 15000 ms) and does not write it — the
+  value is the worker's for as long as that worker is alive. The driver writes it at two instants of
+  its own, both outside any worker's life: the landing below, and the Setup clear.
+  The Setup clear (#1037): a relaunch reuses the same task issues, so the one read `openKataTask`
+  takes at Setup finds whatever the EARLIER run left on them — a `kataMark` verdict on work this
+  run's workers have not touched yet, which is history and not a raised hand. An OPEN task issue
+  whose metadata reads `work.attention` `needs-human` or `stuck` therefore gets, before any worker
+  of that task is dispatched, one `driver:attention-cleared` event `{task, was, msg}` on the run's
+  log — `was` the value read, `msg` the issue's `work.attention_msg` or `''` — and one metadata
+  patch whose two flat keys — and it carries no others — are `work.attention` back to `ok` and
+  `work.attention_msg` emptied. An issue already resting (`ok`, or no `work.attention` key at all) gets neither, and a
+  `closed` issue is never patched at all: it is the reuse pass's, and its last state belongs to the
+  run that finished it. The poll's baseline for a cleared task is that `ok`, so the clear records no
+  `driver:attention` of its own and the status page's attention cell is unchanged by it. Each change
+  of that value to `stuck`, to `needs-human`, or back to `ok` is one `driver:attention` event
   `{task, attention, msg, actor}` on the run's log: `msg` is the metadata's `work.attention_msg`,
   and `actor` is the actor the metadata answer exposes — `''` when it exposes none. An unchanged
   value records nothing, a read the hub refuses records nothing and does not end the run, and a task

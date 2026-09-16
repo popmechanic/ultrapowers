@@ -148,9 +148,13 @@ export const INFRA_BACKOFF_MS = 60000
 
 // ── the worker's raised hand (#810 Phase A) ──────────────────────────────────
 // A kata worker says it is stuck by writing its OWN issue's `work.attention`;
-// the coordinator only ever READS it (kata's orchestration recipe — the
-// coordinator never writes attention). So while a worker runs the engine polls
-// that task's issue metadata on this interval and records what it finds. Fifteen
+// while that worker runs the value is the worker's alone and the coordinator
+// only READS it (kata's orchestration recipe). The driver writes it at exactly
+// two instants outside any worker's life: `kataLanded` clears the SessionEnd
+// hook's stamp off a result it has taken, and `openKataTask` clears an EARLIER
+// run's mark off an issue this run is about to work. So while a worker runs the
+// engine polls that task's issue metadata on this interval and records what it
+// finds, and what it finds is this run's own hand and nobody else's. Fifteen
 // seconds is the resting cadence: a hand raised mid-worker reaches the record
 // and the page well inside the minute an operator takes to look, and a run of
 // twenty tasks still costs the hub four reads a minute per running worker.
@@ -182,6 +186,30 @@ export const attentionActorOf = (issue) => {
     if (typeof candidate === 'string' && candidate.trim() !== '') return candidate
   }
   return ''
+}
+/**
+ * What an issue's metadata says about `work.attention`, in the one shape both
+ * readers want — the poll's timer, and Setup's clear of a prior run's mark.
+ *
+ * kata stores `kata meta set <ref> work.attention …` as the FLAT key
+ * `"work.attention"` (measured on the hub 2026-09-13: `show --json` answers
+ * `{"work.attention": "stuck", "work.attention_msg": "…"}`), so the flat key is
+ * the reading; a nested `work` object is the fallback for a client that expands
+ * dotted keys. An absent, null or empty value reads `ok` — a resting worker is
+ * the state every task starts in — and a metadata carrying no message reads
+ * `''`, never `undefined`, because both readers put this straight on an event.
+ */
+export const attentionReadingOf = (issue) => {
+  const doc = (issue && typeof issue === 'object') ? issue : {}
+  const meta = (doc.metadata && typeof doc.metadata === 'object') ? doc.metadata : {}
+  const nested = (meta.work && typeof meta.work === 'object') ? meta.work : {}
+  const pick = (flat, key) => (meta[flat] !== undefined ? meta[flat] : nested[key])
+  const raw = pick('work.attention', 'attention')
+  const msg = pick('work.attention_msg', 'attention_msg')
+  return {
+    value: (raw === undefined || raw === null || raw === '') ? 'ok' : String(raw),
+    msg: (msg === undefined || msg === null) ? '' : String(msg),
+  }
 }
 
 // #825 — does this set of changed paths change what the project installs? The
@@ -1380,13 +1408,48 @@ export async function runEngine({
       if (Array.isArray(fromHub.proofTests)) task.proofTests = fromHub.proofTests
       if (Array.isArray(fromHub.guards)) task.proofGuards = fromHub.guards
     }
+    // ── a prior run's mark is history, not this run's (#1037 §2) ────────────
+    // A relaunch reuses the same task issues (the launcher's
+    // `Idempotency-Key`), so the `needs-human` an EARLIER run's `kataMark` left
+    // — `failed: fix-loop-exhausted`, `skipped: an upstream dependency failed`
+    // — is exactly what this read finds, and the poll would then record it as
+    // this run's own hand: run-16 on the tinyapp fixture (2026-09-16) wrote
+    // `driver:attention task 1 needs-human "failed: fix-loop-exhausted"`
+    // sixteen seconds into Setup, before any worker had done anything, and it
+    // was run-15's mark. A verdict on work this run's workers have not touched
+    // yet is not a raised hand; it is history.
+    //
+    // So the driver clears what it did not write, here, in the Setup loop that
+    // runs before wave 1 is dispatched: one `driver:attention-cleared` naming
+    // what was cleared, and the same two flat keys `kataLanded` writes, without
+    // `work.state` — this is not a landing. The poll's own baseline is `ok`
+    // when it has read nothing (`attentionSeen`), which is what the issue now
+    // reads, so the clear is invisible to it and every `driver:attention` of
+    // the run is a worker's. An issue already resting — `ok`, or no
+    // `work.attention` key at all — is not written to.
+    //
+    // A CLOSED issue is never patched: it is the reuse pass's, its task is not
+    // worked again, and its last state is the run that finished it to keep.
+    const attention = attentionReadingOf(issue)
+    if (issue.status !== 'closed' && attention.value !== 'ok' &&
+        ATTENTION_READINGS.has(attention.value)) {
+      appendEvent({ kind: 'driver:attention-cleared', task: task.id,
+        was: attention.value, msg: attention.msg })
+      await drainKataPosts()
+      await kataCall('metadata', row.uid,
+        () => kata.patchMetadata(kataProjectId, row.uid,
+          { 'work.attention': 'ok', 'work.attention_msg': '' },
+          kataRevisions.get(row.uid)))
+    }
   }
 
   // ── the worker's raised hand (#810 Phase A) ────────────────────────────────
   // While a task's worker runs, the engine READS that task's issue metadata on
-  // a timer and writes nothing: `work.attention` is the worker's to move (the
-  // coordinator never writes it), and the run's record is where an operator —
-  // and the status page, through `driver:attention` — sees that it moved.
+  // a timer and writes nothing: `work.attention` is the worker's to move for as
+  // long as that worker is alive (the driver's own two writes are Setup's clear
+  // and `kataLanded`'s, both outside any worker's life), and the run's record is
+  // where an operator — and the status page, through `driver:attention` — sees
+  // that it moved.
   //
   // The timer is per TASK and reference-counted, not per dispatch: the
   // implementer runs beside its examiner, and two timers on one issue would
@@ -1418,30 +1481,15 @@ export async function runEngine({
       // The revision tracker is left alone for the same reason; the writes that
       // need an `If-Match` carry the revision their own last answer gave them.
       const issue = await kata.getIssue(row.uid)
-      const meta = ((issue && issue.metadata) && typeof issue.metadata === 'object')
-        ? issue.metadata : {}
-      // kata stores `kata meta set <ref> work.attention …` as the FLAT key
-      // `"work.attention"` (measured on the hub 2026-09-13: `show --json`
-      // answers `{"work.attention": "stuck", "work.attention_msg": "…"}`), so
-      // the flat key is the reading; a nested `work` object is kept as the
-      // fallback for a client that expands dotted keys.
-      const nested = (meta.work && typeof meta.work === 'object') ? meta.work : {}
-      const work = {
-        ...nested,
-        ...(meta['work.attention'] !== undefined ? { attention: meta['work.attention'] } : {}),
-        ...(meta['work.attention_msg'] !== undefined ? { attention_msg: meta['work.attention_msg'] } : {}),
-        ...(meta['work.attention_actor'] !== undefined ? { attention_actor: meta['work.attention_actor'] } : {}),
-      }
-      const raw = work.attention
-      const value = (raw === undefined || raw === null || raw === '') ? 'ok' : String(raw)
+      // The flat key is the reading, `ok` the absent default — one shape, read
+      // here and at Setup's clear (`attentionReadingOf`).
+      const { value, msg } = attentionReadingOf(issue)
       if (!ATTENTION_READINGS.has(value)) return
       const was = attentionSeen.has(taskId) ? attentionSeen.get(taskId) : 'ok'
       if (value === was) return
       attentionSeen.set(taskId, value)
-      const msg = work.attention_msg
       appendEvent({ kind: 'driver:attention', task: taskId, attention: value,
-        msg: (msg === undefined || msg === null) ? '' : String(msg),
-        actor: attentionActorOf(issue) })
+        msg, actor: attentionActorOf(issue) })
     } catch { /* a read the hub refused: nothing to record, and no run to end */
     } finally {
       attentionBusy.delete(taskId)
@@ -1950,11 +1998,14 @@ export async function runEngine({
       }
       const mainPatch = path.join(reuseDir, 'main.patch')
       fs.writeFileSync(mainPatch, mainDiff.stdout)
+      // `foldReuse` gives up in three ways — no verdict, an unclean fold, a
+      // materialize refusal — and hands back the sentence it gave up with, so
+      // the refusal below says which one and not merely that reuse failed.
       const folded = await foldReuse({ parkedBase, mainPatch, runPatch, tag })
-      if (!folded) return refuse('the reuse fold of ' + tag + ' did not produce a head')
-      appendEvent({ kind: 'driver:reuse', run: parkedRun, tasks: reusable, headSha: folded })
-      log('reuse: ' + reusable.length + ' task(s) folded in from ' + tag + ' → ' + folded)
-      return folded
+      if (!folded.head) return refuse(folded.reason)
+      appendEvent({ kind: 'driver:reuse', run: parkedRun, tasks: reusable, headSha: folded.head })
+      log('reuse: ' + reusable.length + ' task(s) folded in from ' + tag + ' → ' + folded.head)
+      return folded.head
     })()
     if (head) {
       reuseHead = head
@@ -2419,6 +2470,14 @@ export async function runEngine({
     // after the implementer when an exam was recorded, absent when none was.
     let examEdited = null
     const examEditedField = () => (examEdited === null ? {} : { examEdited })
+    // How many exam rounds this task's examiner ran (#1037): `1` on every task
+    // whose exam was recorded, `2` when a referee's blocking finding named the
+    // exam's own landing path and bought the examiner one round to rewrite it.
+    // Same presence rule as `examEdited` — set at the handoff, so a task with
+    // no exam carries no key and "exhausted" is distinguishable from "the
+    // examiner never ran".
+    let examRounds = null
+    const examRoundsField = () => (examRounds === null ? {} : { examRounds })
     const noteDrift = async (who) => {
       if (!examBlobs) return
       const moved = await examDrift()
@@ -2629,7 +2688,11 @@ export async function runEngine({
     // Only after all that are the blobs the drift check compares recorded:
     // before this line the implementer held no exam, so nothing it did can be
     // an edit of one.
-    if (examinerBlobs) {
+    //
+    // A function rather than a block because it happens twice (#1037): the
+    // exam-rejected round below rewrites the exam in the examiner's own clone,
+    // and the bytes reach the graded tree by exactly this crossing again.
+    const handoffExam = async () => {
       const handed = []
       for (const [p, sha] of examinerBlobs) {
         if (!sha) continue
@@ -2664,7 +2727,24 @@ export async function runEngine({
       }
       examBlobs = []
       for (const [p] of examinerBlobs) examBlobs.push([p, await blobShaOf(p)])
+    }
+    // The paths the examiner's blobs are read at, re-read from the examiner's
+    // own clone: a second round may write a path the first left absent, and a
+    // BLOCKED second round leaves every blob exactly as it was, which makes the
+    // re-handoff the no-op it should be.
+    const readExaminerBlobs = async () => {
+      const rows = []
+      for (const p of proofTests) {
+        const land = landingOf(p)
+        rows.push([land, await blobShaIn(examDir, land)])
+      }
+      return rows
+    }
+    if (examinerBlobs) {
+      await handoffExam()
       examEdited = []
+      // The first exam round has run, and the row says so from here on (#1037).
+      examRounds = 1
     }
 
     if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
@@ -2679,7 +2759,7 @@ export async function runEngine({
       return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                reviewVerdict: 'not-reviewed', notes: impl.summary,
                tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
-               ...examEditedField() }
+               ...examEditedField(), ...examRoundsField() }
     }
     if (!hasCoordinates(impl)) {
       // With driver capture the only way here is a capture failure — reply
@@ -2690,7 +2770,7 @@ export async function runEngine({
                reviewVerdict: 'lost-coordinates',
                notes: 'no driver-captured patch/headSha — downgraded to failed before review',
                tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
-               ...examEditedField() }
+               ...examEditedField(), ...examRoundsField() }
     }
 
     // ── the driver's own Run:/Check: pass ────────────────────────────────────
@@ -2838,7 +2918,7 @@ export async function runEngine({
         return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                  reviewVerdict: 'plan-defect', notes, actor: 'plan',
                  tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
-                 ...examEditedField() }
+                 ...examEditedField(), ...examRoundsField() }
       }
     }
     // #990 — the amendments the review round will read. `impl` is reassigned to
@@ -2874,7 +2954,7 @@ export async function runEngine({
                  reviewVerdict: 'lost-coordinates',
                  notes: 'pre-review fix round produced no driver-captured patch/headSha',
                  tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
-                 ...examEditedField() }
+                 ...examEditedField(), ...examRoundsField() }
       }
       if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
         // Same reading as the implementer's own BLOCKED above: `fix.md` teaches
@@ -2887,7 +2967,7 @@ export async function runEngine({
         return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                  reviewVerdict: 'blocked-after-fix', notes: impl.summary,
                  tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
-                 ...examEditedField() }
+                 ...examEditedField(), ...examRoundsField() }
       }
       reds = await prePass()
       if (reds.length) {
@@ -2922,7 +3002,7 @@ export async function runEngine({
           return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                    reviewVerdict: 'proof-red', notes,
                    tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
-                   ...examEditedField() }
+                   ...examEditedField(), ...examRoundsField() }
         }
         examConcerns = entries
         judgmentCalls.push('task ' + task.id + ': exam concern from the fix round beside a ' +
@@ -2939,22 +3019,53 @@ export async function runEngine({
     // one round there is no second reviewer to tell, and the list is simply
     // what the report keeps.
     const minorFindings = []
-    // ONE review round (#964 Task 2). A blocking issue in it ends the task at
-    // the `fix-loop-exhausted` exit below instead of buying a repair and a
-    // second reading: the 2026-09-13 review reading counted 27 first fix rounds
-    // against 9 second, and runs with a fix merged 11 times of 17. `iter`
-    // survives as the round number the label and the driver's `iter:` fields
-    // carry, which is always 1.
-    {
-      const iter = 1
+    // ── where this task's exam landed, and reading one off a finding (#1037) ─
+    // The reviewer's issue object carries no file field (`REVIEWER_SCHEMA`), so
+    // the path is read off the detail's backticked tokens exactly as
+    // `routeToPlan` below already reads plan-defect tokens. A token counts when
+    // it IS a landing path or is that path followed by `:<digits>` or
+    // `:<digits>-<digits>` — run-15's finding cited
+    // `…/delete-to-trash.test.ts:129-144`, which is why the line range is
+    // admitted and why nothing else is.
+    const examLandings = proofTests.map((p) => landingOf(p))
+    const examPathIn = (detail) => {
+      for (const m of String(detail || '').matchAll(/`([^`]+)`/g)) {
+        const token = m[1]
+        for (const land of examLandings) {
+          if (token === land) return land
+          if (token.startsWith(land + ':') && /^:\d+(?:-\d+)?$/.test(token.slice(land.length))) {
+            return land
+          }
+        }
+      }
+      return null
+    }
+    // ONE review round (#964 Task 2), and one more only when the round's
+    // blocking finding is against the EXAM rather than the implementation
+    // (#1037). A blocking issue ends the task at the `fix-loop-exhausted` exit
+    // below instead of buying a repair and a second reading: the 2026-09-13
+    // review reading counted 27 first fix rounds against 9 second, and runs
+    // with a fix merged 11 times of 17. What the exam-rejected round buys is
+    // not a second reading of the same patch — it is the one party that CAN act
+    // on that finding getting a round to act on it, since the graded party may
+    // not edit the exam (#663) and a fix round would land exactly where the
+    // first did (run-15 task 1: `fix-loop-exhausted, fixIterations: 0`, the
+    // examiner never asked). `iter` is the round number the label and the
+    // driver's `iter:` fields carry: 1, or 2 after a rejection.
+    let iter = 1
+    for (;;) {
       // ── the `Run:` proofs (#589) ─────────────────────────────────────────
       // Once per FIX, not once per round (#713 Task 1): the round reads the
       // pre-review pass's evidence, because nothing edited the tree between
       // that pass and this dispatch. With one round nothing edits it after the
       // dispatch either — no post-fix round executes afresh, so the pass is the
-      // only execution a referee ever reads.
+      // only execution a referee ever reads. An exam-rejected round edits the
+      // EXAM and nothing else, so round 2 reads the same `Run:` and `Check:`
+      // evidence round 1 did.
       const runEvidence = preRuns
-      // The exam and the Check:s on the same terms (#638).
+      // The exam and the Check:s on the same terms (#638). `preExam` is
+      // reassigned to the `iter: 2` run when an exam-rejected round ran, so
+      // round 2's referee reads the rewritten exam's own output.
       const examEvidence = preExam
       const checkEvidence = preChecks
       // The hunks of the tree this round is reading — the pre-review repair
@@ -3147,20 +3258,93 @@ export async function runEngine({
                    .concat(planNotes)
                    .concat(concerns.map((c) => 'concern: ' + c)).join('; '),
                  tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
-                 ...examEditedField() }
+                 ...examEditedField(), ...examRoundsField() }
+      }
+      // ── the finding against the EXAM, not the patch (#1037) ──────────────
+      // Asked here, after plan routing has taken the plan's issues out: what
+      // remains is a finding somebody is expected to act on, and when the file
+      // it names is the exam's own landing path the one party that can act on
+      // it is the peer who wrote the exam. So the finding is handed back to
+      // that peer, in the clone it still holds, with one round to rewrite the
+      // leg — and only the round AFTER that can call the task exhausted. Round
+      // 2 never re-enters here (`iter === 1`), so the examiner gets one round
+      // and never two, and no `fix:<id>:<iter>` is dispatched from either
+      // round: the implementation was never what the finding was about.
+      const rejections = (iter === 1 && examinerBlobs)
+        ? blocking.map((b) => ({ path: examPathIn(b.detail), detail: String(b.detail || '') }))
+            .filter((r) => r.path)
+        : []
+      if (rejections.length) {
+        for (const r of rejections) {
+          appendEvent({ kind: 'driver:exam-rejected', task: task.id, path: r.path,
+                        detail: r.detail })
+        }
+        judgmentCalls.push('task ' + task.id + ': review round ' + iter + '\'s blocking ' +
+          'finding names the exam at ' + [...new Set(rejections.map((r) => r.path))].join(', ') +
+          ' — the examiner gets one round to rewrite it, and no fix round is dispatched: ' +
+          rejections.map((r) => r.detail).join('; '))
+        log('task ' + task.id + ' exam rejected by the review — one examiner round')
+        // The examiner's own clone is NOT re-cut: it still holds the exam it
+        // wrote, and the round is a rewrite of that file rather than a second
+        // attempt at it. The prompt is the first round's, byte for byte, with
+        // the referee's details appended as one labelled block — `examiner.md`
+        // is where that block's meaning is spelled.
+        let ex2 = null
+        try {
+          ex2 = await agent(
+            examPrompt + '\n\nEXAM REJECTED:\n' + rejections.map((r) => r.detail).join('\n'),
+            { ...examOpts, label: 'exam:' + task.id + ':2' })
+        } catch (e) {
+          // An examiner that dies here must not climb: the implementation is
+          // finished and captured, and a whole-pair retry would throw it away
+          // to re-earn a finding the run already has. It reads exactly as a
+          // BLOCKED round — the exam stands, round 2 runs.
+          ex2 = null
+          log('task ' + task.id + ' exam-rejected round died — round 2 on the unchanged exam')
+        }
+        examRounds = 2
+        if (!ex2 || ex2.status !== 'DONE') {
+          // A dead or BLOCKED second examiner leaves the exam exactly as it
+          // was: the re-read below finds the same blobs, the re-handoff copies
+          // the same bytes, and round 2 reads the unchanged tree. Never a
+          // failure of this task — the same standing the first round's BLOCKED
+          // already has.
+          judgmentCalls.push('task ' + task.id + ': the exam-rejected round ' +
+            (ex2 ? (ex2.status + ' (' + (ex2.summary || 'no summary') + ')') : 'returned no reply') +
+            ' — the exam stands as it was and review round 2 reads the unchanged tree')
+        }
+        for (const u of ((ex2 && Array.isArray(ex2.unsatisfiable)) ? ex2.unsatisfiable : [])) {
+          judgmentCalls.push('task ' + task.id + ': exam-rejected round: ' + u.leg + ' — ' + u.why)
+        }
+        // The same handoff the pair's exam took, on the rewritten bytes: the
+        // blobs are re-read from the examiner's clone (a round may write a path
+        // the first left absent), copied over the graded tree, the capture
+        // retaken, and the drift baseline refreshed so round 2's EXAM EDITED
+        // reads against what the peer left THIS round.
+        examinerBlobs = await readExaminerBlobs()
+        ensurePackageInits(examDir, examinerBlobs.map(([p]) => p))
+        await handoffExam()
+        // And the exam runs again on the graded tree, as this round's pass —
+        // which is the evidence round 2's referee reads, and the red that
+        // outranks whatever it returns.
+        preExam = await runExam(2)
+        iter += 1
+        continue
       }
       // The round's blocking issues end the task (#964 Task 2). This is the
       // `fix-loop-exhausted` exit that already existed at the bottom of the
       // loop; what changed is that it is now reached after the FIRST red rather
       // than the second, and no fix worker is dispatched from here — the only
       // repair round a task gets is the pre-review `fix:<id>:0` above, which
-      // answers the driver's own evidence rather than a referee's reading.
+      // answers the driver's own evidence rather than a referee's reading. An
+      // exam-rejected round is the one thing that defers this exit, and then it
+      // is reached from round 2 instead (#1037).
       // `fixIterations` is therefore 0 on every row: no round a REVIEWER's
       // findings drove exists any more.
       return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                reviewVerdict: 'fix-loop-exhausted', notes: blocking.map((b) => b.detail).join('; '),
                tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
-               ...examEditedField() }
+               ...examEditedField(), ...examRoundsField() }
     }
   }
 
@@ -3251,10 +3435,13 @@ export async function runEngine({
       autoResolved,
       resolverTranscripts: [],
     })
+    // One sentence per way of giving up, and it leaves here with the answer:
+    // the caller's `driver:reuse` and its log line say what the fold said, not
+    // that a head failed to appear (#1037 §1).
     const give = (reason) => {
       pushEntry()
       judgmentCalls.push('reuse fold of ' + tag + ': ' + reason)
-      return null
+      return { head: null, reason }
     }
     const common = ['--repo', '.', '--run-dir', runDir, '--wave', '0']
     // main FIRST, as the publish fold orders it: the frontier side of every
@@ -3281,7 +3468,7 @@ export async function runEngine({
     pushEntry()
     await git(['read-tree', '-u', '--reset', m.candidateSha + '^{tree}'], integ)
     await git(['reset', '--hard', m.candidateSha], integ)
-    return m.candidateSha
+    return { head: m.candidateSha, reason: null }
   }
 
   async function foldWave(merged, waveIdx, waveTasks, prevHead) {

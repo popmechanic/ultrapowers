@@ -102,10 +102,13 @@ let seq = 0
 // `examScript`, when given, is what the canned examiner writes at the task's
 // one Proof `Test:` path (`t1_test.sh`) — the only way to give a sim a RUNNABLE
 // exam, since `examRunnable` needs proofTests, a testCmd and blobs the examiner
-// actually left. `constraintChecks` is the run's executable Global Constraints.
+// actually left. `examScript2`, when given, is what it writes instead on a
+// SECOND examiner round (a label carrying a round field, `exam:<id>:2`), which
+// is how #1037 §3's leg (f) gives that round an exam of its own to be graded by.
+// `constraintChecks` is the run's executable Global Constraints.
 async function scenario({ task, review = () => passReview(), onImpl = () => {},
                           onFix = () => {}, orderFile = null, examScript = null,
-                          constraintChecks = [] }) {
+                          examScript2 = null, constraintChecks = [] }) {
   seq += 1
   const stamp = 'pr' + seq
   const repo = makeRepo(path.join(tmp, 'repo-' + stamp))
@@ -119,7 +122,12 @@ async function scenario({ task, review = () => passReview(), onImpl = () => {},
     if (orderFile) fs.appendFileSync(orderFile, opts.label + '\n')
     const kind = opts.label.split(':')[0]
     if (kind === 'exam') {
-      fs.writeFileSync(path.join(cwd, 't1_test.sh'), String(examScript))
+      // A round field on the label (`exam:T1:2`) and a second script given:
+      // the second round writes the second body. Every other exam dispatch —
+      // including every sim that passes no `examScript2` — writes the first,
+      // exactly as it did before this knob existed.
+      const second = opts.label.split(':').length > 2 && examScript2 !== null
+      fs.writeFileSync(path.join(cwd, 't1_test.sh'), String(second ? examScript2 : examScript))
       return { status: 'DONE', summary: 'exam written' }
     }
     if (kind === 'impl') { onImpl(cwd); return doneImpl(cwd) }
@@ -468,6 +476,14 @@ async function pinPrompt(engine, task, rolesDir = ROLES_DIR) {
   assert.equal(row.reviewVerdict, 'fix-loop-exhausted')
   assert.equal(row.notes, 'the reviewer is not satisfied',
     'the recorded issues are the reviewer\'s own, with nothing added by the runs')
+  // #1037 §3 leg (h) [M3] [M4]: this task declares `proofTests: []`, so no
+  // examiner was ever dispatched for it — and a row for a task with no examiner
+  // carries no `examRounds` key at all. (`examRounds` follows `examEdited`'s
+  // presence rule: the key is a fact about a round that could have run, not a
+  // zero on every row in the report.) The exit above is BASE's, unchanged.
+  assert.equal('examRounds' in row, false,
+    'leg (h) [M3]: a task with no examiner carries no examRounds key on its row: ' +
+    JSON.stringify(row))
 }
 
 // ── leg (f): proofRuns with the proofTests key absent dispatches no examiner [M6]
@@ -1005,6 +1021,352 @@ for (const [leg, simName, probe, pinName] of [
     ' prints no sentinel — the re-scoped pin is a pin and not a deletion')
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// #1037 §3 — a blocking finding against the EXAM buys the examiner one round
+// before the task is called exhausted, and the record shows whether it ran.
+//
+// Claim: when the reviewer's blocking finding is against the exam file rather
+// than the implementation, the peer who WROTE the exam gets the finding and one
+// round to rewrite it, the rewritten exam is run and reviewed once more, and
+// only then is the task called exhausted. Run-15 task 1 is the case: the one
+// blocking finding read "the exam at `…:129-144` substitutes a direct store
+// callback", the row was `fix-loop-exhausted, fixIterations: 0`, and the
+// examiner — the one party that could have answered it — was never asked.
+//
+// Machine clauses under test:
+//   M1 — a review round whose blocking issues (AFTER plan routing) include at
+//        least one whose `detail` names in backticks one of the task's Proof
+//        `Test:` LANDING paths — the token equal to the path, or the path
+//        followed by `:<digits>` or `:<digits>-<digits>` — on a task whose
+//        examiner was dispatched: the driver appends one `driver:exam-rejected`
+//        `{task, path, detail}` per such issue and dispatches ONE examiner
+//        labelled `exam:<id>:2` in the examiner's own clone, whose prompt is the
+//        original examiner prompt followed by an `EXAM REJECTED:` block carrying
+//        those details one per line. No `fix:<id>:1`, no second implementer.
+//   M2 — after that examiner returns DONE the driver hands the Proof paths over
+//        again (a second `driver:exam-handoff`), retakes the capture, runs the
+//        exam on the graded tree as `driver:exam-run` at `iter: 2`, and
+//        dispatches one `review:<id>:2` whose prompt carries that run's
+//        `EXAM EVIDENCE`. Round 2 with no blocking issue ends the task `done`,
+//        `clean`; with a blocking issue — or a red exam at `iter: 2`, blocking
+//        whatever the reviewer said — `failed`, `fix-loop-exhausted`.
+//   M3 — every row returned after an examiner was dispatched carries
+//        `examRounds`: `2` when the exam-rejected round ran, `1` otherwise; a
+//        row for a task with no examiner carries no `examRounds` key.
+//   M4 — a blocking finding naming no exam path ends the task exactly as at
+//        BASE: no `exam:<id>:2`, no `review:<id>:2`, `fix-loop-exhausted` with
+//        the reviewer's notes.
+//   M5 — `fleet/roles/examiner.md` names the `EXAM REJECTED` input.
+//   M6 — `fleet/CONTRACT.md`'s exam-environment bullet names `2` as the
+//        `ULTRA_EXAM_PASS` value of that round's run, and report-format.md
+//        carries a `tasks[].examRounds` row and names the exam-rejected round
+//        under `fix-loop-exhausted`.
+
+// The runnable exam the peer writes for legs (a)–(g): red at BASE (no `one.txt`
+// in the examiner's clone), green on the implementer's patch — the same shape
+// the #713 leg (a) above uses. Four lines, so `t1_test.sh:3` and
+// `t1_test.sh:3-4` are real coordinates in it rather than invented ones.
+const REJ_EXAM = '#!/bin/bash\n' +
+  '# the exam the peer wrote\n' +
+  'echo exam-line\n' +
+  '[ -f one.txt ]\n'
+// A second body for the one leg that needs the rewritten exam to be RED: it is
+// what the canned examiner writes on `exam:T1:2`, and only there.
+const REJ_EXAM_RED = '#!/bin/bash\nexit 1\n'
+const EXAM_CMD_T1 = 'bash t1_test.sh'
+// The task every leg below runs: one Proof `Test:` path, a testCmd that runs it.
+// `t1_test.sh` is under neither test root, so its landing path is itself — which
+// is the path M1 says the reviewer's backticked token is matched against.
+const rejTask = () => entry({ proofTests: ['t1_test.sh'], testCmd: EXAM_CMD_T1 })
+const rejImpl = (cwd) => fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n')
+const blockingWith = (...details) => ({ verdict: 'FIX_REQUIRED',
+  issues: details.map((detail) => ({ severity: 'blocking', detail })) })
+// The `driver:exam-rejected` records for T1, projected onto the three fields M1
+// spells — so the comparison is an equality against the clause's own shape and
+// not a containment that a record missing `path` would still satisfy.
+const rejectedOf = (evs) => ofKind(evs, 'driver:exam-rejected')
+  .map((e) => ({ task: e.task, path: e.path, detail: e.detail }))
+// The exam-rejected round's dispatch shape, shared by the legs that get one.
+const REJ_LABELS = ['exam:T1', 'impl:T1', 'review:T1:1', 'exam:T1:2', 'review:T1:2']
+const assertRejLabels = (leg, calls) => {
+  for (const label of REJ_LABELS) {
+    assert.ok(calls.includes(label),
+      'leg (' + leg + ') [M1] [M2]: `' + label + '` was dispatched: ' + calls.join(','))
+  }
+  assert.ok(!calls.some((l) => l.startsWith('fix:')),
+    'leg (' + leg + ') [M1]: no fix: label at all — the finding is the EXAM\'s, so it buys ' +
+    'an examiner round and never a second implementer: ' + calls.join(','))
+}
+
+// The reviewer's finding, verbatim from the Proof's leg (a) — a line RANGE
+// suffix, which is the shape run-15's own blocking detail carried.
+const REJ_DETAIL = 'the exam at `t1_test.sh:3-4` substitutes a store call for the click'
+
+// ── leg (a): the whole round — labels, events, both prompts, the row [M1][M2][M3]
+{
+  const { row, calls, prompts, evs } = await scenario({
+    task: rejTask(), examScript: REJ_EXAM, onImpl: rejImpl,
+    review: (n) => (n === 1 ? blockingWith(REJ_DETAIL) : passReview()),
+  })
+
+  // [M1] [M2] the five dispatches, and no fix worker of any kind.
+  assertRejLabels('a', calls)
+
+  // [M1] exactly one `driver:exam-rejected`, carrying the task, the landing path
+  // read off the backticked `t1_test.sh:3-4` token, and the reviewer's detail.
+  assert.deepEqual(rejectedOf(evs),
+    [{ task: 'T1', path: 't1_test.sh', detail: REJ_DETAIL }],
+    'leg (a) [M1]: one driver:exam-rejected {task, path, detail} for the one blocking issue ' +
+    'whose detail names the Proof Test: landing path: ' +
+    JSON.stringify(ofKind(evs, 'driver:exam-rejected')))
+
+  // [M2] the Proof paths are handed over AGAIN after the second examiner: two
+  // handoffs, not one — the rewritten exam has to reach the graded tree.
+  assert.equal(ofKind(evs, 'driver:exam-handoff').length, 2,
+    'leg (a) [M2]: a second driver:exam-handoff for T1 after the exam-rejected round: ' +
+    JSON.stringify(ofKind(evs, 'driver:exam-handoff')))
+
+  // [M2] and the rewritten exam is RUN on the graded tree, at `iter: 2` — the
+  // driver's own pre-review pass (`iter: 0`) and that one, and nothing else.
+  assert.deepEqual(ofKind(evs, 'driver:exam-run').map((e) => e.iter), [0, 2],
+    'leg (a) [M2]: the exam runs at iter 0 (the pre-review pass) and again at iter 2 (the ' +
+    'exam-rejected round\'s run on the graded tree): ' +
+    JSON.stringify(ofKind(evs, 'driver:exam-run').map((e) => [e.iter, e.exit])))
+
+  // [M1] the second examiner's prompt IS the first's, followed by the block.
+  const p2 = prompts['exam:T1:2']
+  assert.equal(typeof p2, 'string', 'leg (a) [M1]: the exam:T1:2 prompt was recorded')
+  assert.ok(p2.startsWith(prompts['exam:T1']),
+    'leg (a) [M1]: the exam-rejected round\'s prompt is the ORIGINAL examiner prompt followed ' +
+    'by the rejection — the peer is re-dispatched with everything it had, plus what the ' +
+    'referee said: ' + JSON.stringify(p2.slice(0, 200)))
+  const rejAt = p2.indexOf('EXAM REJECTED:')
+  assert.ok(rejAt !== -1,
+    'leg (a) [M1]: the prompt carries an `EXAM REJECTED:` block: ' + JSON.stringify(p2.slice(-400)))
+  assert.ok(p2.slice(rejAt).includes(REJ_DETAIL),
+    'leg (a) [M1]: `EXAM REJECTED:` is followed by the reviewer\'s detail verbatim: ' +
+    JSON.stringify(p2.slice(rejAt)))
+
+  // [M2] round 2's referee reads the run the driver just made, green.
+  const r2 = prompts['review:T1:2']
+  assert.equal(typeof r2, 'string', 'leg (a) [M2]: the review:T1:2 prompt was recorded')
+  assert.ok(r2.includes('EXAM EVIDENCE'),
+    'leg (a) [M2]: the round-2 review prompt carries an EXAM EVIDENCE block')
+  assert.ok(r2.includes('\n\n$ ' + EXAM_CMD_T1 + '\nexit 0\n'),
+    'leg (a) [M2]: and that block is the iter-2 run\'s — the exam command and `exit 0`: ' +
+    JSON.stringify(r2.slice(r2.indexOf('EXAM EVIDENCE'), r2.indexOf('EXAM EVIDENCE') + 600)))
+
+  // [M2] [M3] a round 2 with no blocking issue ends the task done, and the row
+  // says the exam-rejected round ran.
+  assert.equal(row.status, 'done', 'leg (a) [M2]: ' + JSON.stringify(row))
+  assert.equal(row.reviewVerdict, 'clean', 'leg (a) [M2]: ' + JSON.stringify(row))
+  assert.equal(row.examRounds, 2,
+    'leg (a) [M3]: the row records TWO examiner rounds — "exhausted" and "never ran" are ' +
+    'different outcomes and the record distinguishes them: ' + JSON.stringify(row))
+}
+
+// ── leg (b): the bare token, no suffix at all [M1] ──────────────────────────
+{
+  const DETAIL = 'the exam at `t1_test.sh` substitutes a store call for the click'
+  const { calls, evs } = await scenario({
+    task: rejTask(), examScript: REJ_EXAM, onImpl: rejImpl,
+    review: (n) => (n === 1 ? blockingWith(DETAIL) : passReview()),
+  })
+  assert.ok(calls.includes('exam:T1:2'),
+    'leg (b) [M1]: a backticked token EQUAL to the Proof Test: path names the exam just as a ' +
+    'line-ranged one does: ' + calls.join(','))
+  assert.deepEqual(rejectedOf(evs), [{ task: 'T1', path: 't1_test.sh', detail: DETAIL }],
+    'leg (b) [M1]: one driver:exam-rejected, its `path` the bare path: ' +
+    JSON.stringify(ofKind(evs, 'driver:exam-rejected')))
+}
+
+// ── leg (c): two findings against the exam, ONE round, both details [M1] ────
+// The round is the examiner's, not the finding's: two blocking issues naming the
+// exam buy one rewrite carrying both, never two examiners.
+{
+  const D1 = 'the exam at `t1_test.sh:3` asserts nothing the Claim names'
+  const D2 = 'the exam at `t1_test.sh:3-4` substitutes a store call for the click'
+  const { calls, prompts, evs } = await scenario({
+    task: rejTask(), examScript: REJ_EXAM, onImpl: rejImpl,
+    review: (n) => (n === 1 ? blockingWith(D1, D2) : passReview()),
+  })
+  assert.deepEqual(rejectedOf(evs),
+    [{ task: 'T1', path: 't1_test.sh', detail: D1 },
+     { task: 'T1', path: 't1_test.sh', detail: D2 }],
+    'leg (c) [M1]: exactly two driver:exam-rejected events, each carrying its OWN detail and ' +
+    'the path read off its own token: ' + JSON.stringify(ofKind(evs, 'driver:exam-rejected')))
+  assert.equal(calls.filter((l) => l === 'exam:T1:2').length, 1,
+    'leg (c) [M1]: and exactly ONE exam:T1:2 dispatch for the two of them: ' + calls.join(','))
+  const p2 = prompts['exam:T1:2']
+  const rejAt = p2.indexOf('EXAM REJECTED:')
+  assert.ok(rejAt !== -1, 'leg (c) [M1]: the prompt carries an `EXAM REJECTED:` block')
+  const blockLines = p2.slice(rejAt).split('\n')
+  const lineOf = (d) => blockLines.findIndex((l) => l.includes(d))
+  assert.ok(lineOf(D1) !== -1 && lineOf(D2) !== -1,
+    'leg (c) [M1]: the block carries both details: ' + JSON.stringify(p2.slice(rejAt)))
+  assert.notEqual(lineOf(D1), lineOf(D2),
+    'leg (c) [M1]: one per LINE — two findings run together on one line are one finding to ' +
+    'the peer reading them: ' + JSON.stringify(p2.slice(rejAt)))
+}
+
+// ── leg (d): a finding naming no exam path ends the task as at BASE [M1] [M4] ─
+// `other_file.sh` is backticked and is not the Proof's `Test:` path, and the
+// detail does not start `plan-defect:` — so it is an ordinary blocking finding
+// against the IMPLEMENTATION, and the exam-rejected round must not exist for it.
+{
+  const DETAIL = 'the patch at `other_file.sh` does the wrong thing'
+  const { row, calls, evs } = await scenario({
+    task: rejTask(), examScript: REJ_EXAM, onImpl: rejImpl,
+    review: (n) => (n === 1 ? blockingWith(DETAIL) : passReview()),
+  })
+  assert.ok(!calls.includes('exam:T1:2'),
+    'leg (d) [M1] [M4]: no second examiner for a finding that is not against the exam: ' +
+    calls.join(','))
+  assert.ok(!calls.includes('review:T1:2'),
+    'leg (d) [M4]: and no second reviewer: ' + calls.join(','))
+  assert.deepEqual(rejectedOf(evs), [],
+    'leg (d) [M1]: and no driver:exam-rejected record at all: ' +
+    JSON.stringify(ofKind(evs, 'driver:exam-rejected')))
+  assert.equal(row.status, 'failed', 'leg (d) [M4]: ' + JSON.stringify(row))
+  assert.equal(row.reviewVerdict, 'fix-loop-exhausted',
+    'leg (d) [M4]: exactly the BASE exit: ' + JSON.stringify(row))
+  assert.equal(row.notes, DETAIL,
+    'leg (d) [M4]: with the reviewer\'s own notes: ' + JSON.stringify(row))
+  assert.equal(row.examRounds, 1,
+    'leg (d) [M3]: an examiner WAS dispatched for this task, and exactly one round of it ran: ' +
+    JSON.stringify(row))
+}
+
+// ── leg (e): the round-2 reviewer blocks again — exhausted, and it says so [M2][M3]
+{
+  const ROUND2 = 'the rewritten exam still does not perform the click the Claim names'
+  const { row, calls } = await scenario({
+    task: rejTask(), examScript: REJ_EXAM, onImpl: rejImpl,
+    review: (n) => (n === 1 ? blockingWith(REJ_DETAIL) : blockingWith(ROUND2)),
+  })
+  // Leg (e) says "labels as in the previous leg": the shape a leg demanding
+  // `examRounds: 2` and a round-2 detail can only have — the exam-rejected
+  // round's own, leg (a)'s.
+  assertRejLabels('e', calls)
+  assert.equal(row.status, 'failed', 'leg (e) [M2]: ' + JSON.stringify(row))
+  assert.equal(row.reviewVerdict, 'fix-loop-exhausted',
+    'leg (e) [M2]: a blocking issue in round 2 is where the task is finally called exhausted: ' +
+    JSON.stringify(row))
+  assert.equal(row.examRounds, 2,
+    'leg (e) [M3]: and the record shows the rewrite round DID run: ' + JSON.stringify(row))
+  assert.equal(row.notes, ROUND2,
+    'leg (e) [M2]: the notes are round 2\'s finding, not round 1\'s: ' + JSON.stringify(row))
+}
+
+// ── leg (f): a rewritten exam that is RED at iter 2 blocks whatever round 2 said [M2]
+// The canned examiner writes a failing body on `exam:T1:2`, and the round-2
+// reviewer passes. The exam is the submission's own grading: a red one outranks
+// the referee's PASS at round 2 exactly as it does at round 1.
+{
+  const { row, evs } = await scenario({
+    task: rejTask(), examScript: REJ_EXAM, examScript2: REJ_EXAM_RED, onImpl: rejImpl,
+    review: (n) => (n === 1 ? blockingWith(REJ_DETAIL) : passReview()),
+  })
+  assert.deepEqual(ofKind(evs, 'driver:exam-run').map((e) => [e.iter, e.exit]), [[0, 0], [2, 1]],
+    'leg (f) [M2]: the green pre-review pass, then the rewritten exam red on the graded tree ' +
+    'at iter 2: ' + JSON.stringify(ofKind(evs, 'driver:exam-run').map((e) => [e.iter, e.exit])))
+  assert.equal(row.status, 'failed',
+    'leg (f) [M2]: a red exam at iter 2 cannot merge on a canned PASS: ' + JSON.stringify(row))
+  assert.equal(row.reviewVerdict, 'fix-loop-exhausted', 'leg (f) [M2]: ' + JSON.stringify(row))
+  assert.equal(row.examRounds, 2, 'leg (f) [M3]: ' + JSON.stringify(row))
+  assert.ok(String(row.notes).includes('the Proof\'s exam failed'),
+    'leg (f) [M2]: and the notes name the red exam as the blocking issue: ' + JSON.stringify(row))
+}
+
+// ── leg (g): a task WITH an examiner whose finding is not the exam's [M3] [M4] ─
+// The plainest reviewer detail there is: no backticks, no path, nothing to read
+// a Proof path out of. `examRounds: 1` is the row's record that the examiner
+// existed and that the rewrite round did not run — the distinction #1037 §3 asks
+// the report to draw between "exhausted" and "never ran".
+{
+  const DETAIL = 'the reviewer is not satisfied'
+  const { row, calls } = await scenario({
+    task: rejTask(), examScript: REJ_EXAM, onImpl: rejImpl,
+    review: (n) => (n === 1 ? blockingWith(DETAIL) : passReview()),
+  })
+  assert.ok(!calls.includes('exam:T1:2'),
+    'leg (g) [M4]: no exam-rejected round for a finding naming no exam path: ' + calls.join(','))
+  assert.ok(!calls.includes('review:T1:2'),
+    'leg (g) [M4]: and no second reviewer: ' + calls.join(','))
+  assert.equal(row.status, 'failed', 'leg (g) [M4]: ' + JSON.stringify(row))
+  assert.equal(row.reviewVerdict, 'fix-loop-exhausted', 'leg (g) [M4]: ' + JSON.stringify(row))
+  assert.equal(row.examRounds, 1,
+    'leg (g) [M3]: one examiner round ran, and the row says so: ' + JSON.stringify(row))
+  assert.equal(row.notes, DETAIL, 'leg (g) [M4]: ' + JSON.stringify(row))
+}
+
+// ── legs (i), (j): the role file, the contract and the report format [M5] [M6] ─
+// Each is the Proof's own `Run:` grep, re-read here with the same semantics, so
+// the ORDER those greps pin is pinned by the exam too: `sed -n '<start>,<end>p'`
+// is the first line matching `<start>` through the first line after it matching
+// `<end>`, inclusive, and `tr '\n' ' '` folds that span to one line.
+const sedRange = (text, startRe, endRe) => {
+  const lines = String(text).split('\n')
+  const s = lines.findIndex((l) => startRe.test(l))
+  if (s === -1) return null
+  for (let i = s + 1; i < lines.length; i += 1) {
+    if (endRe.test(lines[i])) return lines.slice(s, i + 1).join(' ')
+  }
+  return lines.slice(s).join(' ')
+}
+// `a` then `b` then `c`, each after the one before it — `grep 'a.*b.*c'` on one
+// line, which is what the Proof runs.
+const namesInOrder = (hay, needles) => {
+  let at = 0
+  for (const n of needles) {
+    const i = String(hay).indexOf(n, at)
+    if (i === -1) return false
+    at = i + n.length
+  }
+  return true
+}
+
+// ── leg (i): examiner.md names the EXAM REJECTED input, and what to do with it [M5]
+{
+  const examinerMd = fs.readFileSync(path.join(ROLES_DIR, 'examiner.md'), 'utf8')
+  // `sed -n '1,/^## The issue/p'`: `/^/` matches line 1, so the span starts there.
+  const above = sedRange(examinerMd, /^/, /^## The issue/)
+  assert.ok(above !== null, 'leg (i) [M5]: fleet/roles/examiner.md has a `## The issue` section')
+  assert.ok(namesInOrder(above, ['EXAM REJECTED', 'as the Proof states it', 'unsatisfiable']),
+    'leg (i) [M5]: fleet/roles/examiner.md above `## The issue`, read as one line, names ' +
+    '`EXAM REJECTED`, then `as the Proof states it`, then `unsatisfiable`, in that order — the ' +
+    'referee\'s finding against the exam AS WRITTEN, answered by rewriting the leg as the Proof ' +
+    'states it, with an action the page cannot perform still an `unsatisfiable` entry and never ' +
+    'a substituted action (#836). The examiner reads the rejection in its own role file or it ' +
+    'reads it nowhere: ' + JSON.stringify(String(above).slice(0, 1200)))
+}
+
+// ── leg (j): the contract's exam-environment bullet, and the report format [M6] ─
+{
+  const contract = fs.readFileSync(path.join(FLEET_DIR, 'CONTRACT.md'), 'utf8')
+  const bullet = sedRange(contract, /Exam environment/, /^- \*\*/)
+  assert.ok(bullet !== null,
+    'leg (j) [M6]: fleet/CONTRACT.md carries an `Exam environment` bullet')
+  assert.ok(namesInOrder(bullet, ['ULTRA_EXAM_PASS', 'exam-rejected', '2']),
+    'leg (j) [M6]: the exam-environment bullet, read as one line, names `ULTRA_EXAM_PASS`, then ' +
+    '`exam-rejected`, then `2`, in that order — the contract wins over the RUNBOOK on any ' +
+    'literal, and `2` is a pass value this engine emits again: ' + JSON.stringify(bullet))
+
+  const reportFormat = fs.readFileSync(
+    path.join(REPO_ROOT, 'skills', 'ultrapowers', 'references', 'report-format.md'), 'utf8')
+  assert.ok(reportFormat.includes('tasks[].examRounds'),
+    'leg (j) [M6]: skills/ultrapowers/references/report-format.md carries a `tasks[].examRounds` ' +
+    'row — a new report field is named where a reader of the report looks it up')
+  const verdictRows = reportFormat.split('\n').filter((l) => l.includes('tasks[].reviewVerdict'))
+  assert.ok(verdictRows.length > 0,
+    'leg (j) [M6]: report-format.md carries a `tasks[].reviewVerdict` row')
+  assert.ok(verdictRows.some((l) => l.includes('exam-rejected')),
+    'leg (j) [M6]: and that row names the exam-rejected round under `fix-loop-exhausted` — the ' +
+    'exit is reached after the exam\'s own peer has had its round, not before it: ' +
+    JSON.stringify(verdictRows.map((l) => l.slice(0, 300))))
+}
+
 // [M5] leg (f): the sentinel below is this sim's — its existing legs, the #632
-// ones and the #713 ones. It is printed only if every assertion above held.
+// ones, the #713 ones and the #1037 §3 ones. It is printed only if every
+// assertion above held.
 console.log('ALL TESTS PASSED')

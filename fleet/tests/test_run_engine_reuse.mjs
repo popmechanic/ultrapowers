@@ -1,12 +1,95 @@
 /**
- * fleet/tests/test_run_engine_reuse.mjs — the exam for Task 2: *a run whose
- * issues are already closed `done` folds that run's work in at setup and works
- * only the rest*.
+ * fleet/tests/test_run_engine_reuse.mjs — two exams in one file, because two
+ * tasks name this path in their Proof's `Test:` slot.
+ *
+ *   • #1037 §1, *the reuse refusal names the fold's own reason* — the CURRENT
+ *     task. Its legs are `#1037 (a)`…`#1037 (e)` below, and every assertion
+ *     belonging to it carries that prefix.
+ *   • #383 Task 2, *a run whose issues are already closed `done` folds that
+ *     run's work in at setup and works only the rest* — the standing guard this
+ *     file was first written as. Its legs are the bare `(a)`…`(f)` below.
  *
  * This file is the Proof's `Test: fleet/tests/test_run_engine_reuse.mjs`,
  * written where the Proof names it. Every relative import is written for THIS
  * directory: `../` is the repository's `fleet/`, `./` is `fleet/tests/`.
  *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * #1037 §1 — the reuse refusal names the fold's own reason
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Claim: when a relaunch cannot fold the earlier run's finished work back in,
+ * the run's record and its log say why in the FOLD's own words — how many
+ * conflicts, or which kernel step refused — instead of only that no head came
+ * out.
+ *
+ * The clauses this exam encodes:
+ *
+ *   M1  For each of the Setup reuse fold's three ways of giving up, the ONE
+ *       `driver:reuse` refusal event's `reason` is the sentence `foldReuse`
+ *       gave up with; the same sentence its `reuse fold of <tag>: …` judgment
+ *       call carries after the colon; and the log line `reuse refused:
+ *       <reason>` carries that same sentence.
+ *   M2  The shape of each of those three sentences: a conflicting fold names
+ *       the count as `<N> conflict(s)` and says `no resolver exists at Setup`;
+ *       a missing verdict begins `fold printed no verdict`; a materialize
+ *       refusal begins `materialize refused:`.
+ *   M3  The phrase `did not produce a head` occurs zero times in
+ *       `fleet/run-engine.mjs`.
+ *   M4  The reuse paragraph of `fleet/CONTRACT.md`'s `Kata record (engine)`
+ *       bullet — the lines from `Re-drive reuse (#383)` to `A refusal is never
+ *       the run's own failure.` — says the refusal's `reason` is the fold's
+ *       own: the conflict count, the materialize refusal, or the missing
+ *       verdict.
+ *
+ * Its legs, and what each asserts:
+ *
+ *   #1037 (a) [M1] [M2] A FIFTH refusal row in the table leg (d) below already
+ *       loops: task 1's issue closed and stamped with run 6, whose evidence tag
+ *       on the sim's own origin carries a `run.patch` that adds `third.txt`
+ *       with bytes DIFFERENT from the ones main's own move wrote — an add/add
+ *       clash the kernel reports as `conflicts > 0`. Exactly one
+ *       `driver:reuse`, whose `reason` matches `/[0-9]+ conflict\(s\)/` and
+ *       contains `no resolver exists at Setup`; the engine's log holds one line
+ *       beginning `reuse refused: ` whose remainder EQUALS that `reason`; the
+ *       report's `judgmentCalls` holds one entry beginning `reuse fold of
+ *       ultra/evidence/run-6: ` whose remainder EQUALS that `reason`; no
+ *       `--wave 0` materialize ran; and both `impl:1` and `impl:2` are
+ *       dispatched off BASE.
+ *   #1037 (b) [M1] [M2] A sixth row: task 1 stamped run 9 (the origin's clean
+ *       tag) and an exec seam that answers the kernel's `fold … --wave 0` call
+ *       itself with empty stdout and exit 3. Exactly one `driver:reuse` whose
+ *       `reason` begins `fold printed no verdict (exit 3)`; the log's `reuse
+ *       refused: ` remainder and the `reuse fold of ultra/evidence/run-9: `
+ *       judgment-call remainder each EQUAL to that `reason`; both implementers
+ *       dispatched off BASE.
+ *   #1037 (c) [M1] [M2] A seventh row: the same stamp, an exec seam that lets
+ *       the `--wave 0` fold through and answers the `materialize … --wave 0`
+ *       call with stdout `{"park":"simulated"}` and exit 0. Exactly one
+ *       `driver:reuse` whose `reason` begins `materialize refused: simulated`;
+ *       the log and judgment-call remainders EQUAL to it; no `headSha` on the
+ *       event; both implementers dispatched off BASE.
+ *   #1037 (d) [M3] The literal phrase `did not produce a head` occurs zero
+ *       times in `fleet/run-engine.mjs` — a surviving line, in code or in a
+ *       comment, fails the leg. This is the count the Proof's second `Run:`
+ *       line takes with `grep -c`, taken here over the same file's bytes.
+ *   #1037 (e) [M4] The contract's reuse paragraph, read as one line, names
+ *       `reason`, then `fold's own`, then `conflict`, then `materialize`, then
+ *       `verdict`, in that order — a paragraph lacking any of the five fails
+ *       the leg. This is the Proof's third `Run:` line's `sed` range and its
+ *       ordered grep, read the same way.
+ *
+ * The reading this file encodes for M1, recorded on the kata issue as well: "the
+ * same sentence" is asserted as EQUALITY between three strings taken from three
+ * places — the event's `reason` field, the log line's remainder after `reuse
+ * refused: `, and the judgment call's remainder after `reuse fold of <tag>: ` —
+ * and not as three independent prefix checks against a literal this file spells.
+ * The per-row shape assertions pin WHICH sentence it has to be; the equalities
+ * pin that one sentence reaches all three places. The sim owns the exit code and
+ * the `park` payload legs (b) and (c) turn on, so neither reason is a constant
+ * an implementation could name without reading the fold's own answer.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * #383 Task 2 — the standing guard
+ * ─────────────────────────────────────────────────────────────────────────────
  * The legs, and what each asserts — every assertion below names its leg and the
  * Machine clause it comes from, so a reader can map this file back to the
  * contract:
@@ -75,12 +158,15 @@
  *      green on the adopted tree. `ultra_gate.py` is the periphery and runs
  *      outside this engine.
  *
- * The rig below is a COPY of `_engine_helpers.rig`'s body with two additions —
- * `kata` passed through to `runEngine`, and a RECORDING `exec` wrapper around
- * the real `execSeam` — because legs (b), (d) and (e) are assertions about what
- * the exec seam recorded, and the shared rig exposes neither seam. Everything
- * below the agent seam is the real thing: real git repositories, real clones,
- * the real capture, the real fold kernel.
+ * The rig below is a COPY of `_engine_helpers.rig`'s body with three additions —
+ * `kata` passed through to `runEngine`, a RECORDING `exec` wrapper around the
+ * real `execSeam`, and an `answerExec` hook by which a sim may ANSWER one
+ * recorded call itself — because legs (b), (d) and (e) are assertions about what
+ * the exec seam recorded, legs `#1037 (b)` and `#1037 (c)` are assertions about
+ * what the engine does with one kernel answer, and the shared rig exposes
+ * neither seam. Everything below the agent seam is otherwise the real thing:
+ * real git repositories, real clones, the real capture, the real fold kernel —
+ * `answerExec` reaches exactly the one call a leg names and nothing else.
  */
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -121,6 +207,11 @@ const SHA40 = /^[0-9a-f]{40}$/
 // `run.patch`, and main's own move after the parked run's base.
 const ONE_TXT = 'reused work from run 9\n'
 const THIRD_TXT = 'main moved on after the parked run\n'
+// `#1037 (a)`'s clash: a parked run that wrote `third.txt` too, with bytes main
+// never wrote. Both sides ADD the same path off the same base, which is the
+// add/add the kernel has to answer with `conflicts > 0` — and, at Setup, with
+// no resolver to dispatch.
+const CLASH_TXT = 'the parked run wrote third.txt too, and differently\n'
 
 // ══════════════════════════════════════════════════════════════════════════
 // the sim's origin — the repository every clone is cut from
@@ -161,12 +252,24 @@ function makeParkedOrigin (dir) {
   const sideSha = gitSync(['rev-parse', 'HEAD'], dir)
   gitSync(['checkout', '-q', 'main'], dir)
 
-  const evidence = (run, report) => {
+  // The same work, written against the same base, but ALSO touching `third.txt`
+  // — the path main's own move below adds. `#1037 (a)`'s tag carries this patch.
+  gitSync(['checkout', '-q', '-b', 'clashing-work', parkedBase], dir)
+  fs.writeFileSync(path.join(dir, 'one.txt'), ONE_TXT)
+  fs.writeFileSync(path.join(dir, 'third.txt'), CLASH_TXT)
+  gitSync(['add', '-A'], dir)
+  gitSync(['commit', '-q', '-m', 'task 1 of a parked run that also wrote third.txt'], dir)
+  const clashSha = gitSync(['rev-parse', 'HEAD'], dir)
+  const clashPatch = gitRaw(
+    ['diff', '--binary', '--full-index', '--no-renames', parkedBase + '..' + clashSha], dir)
+  gitSync(['checkout', '-q', 'main'], dir)
+
+  const evidence = (run, report, patch = runPatch) => {
     gitSync(['checkout', '-q', '-b', 'ev-' + run, parkedBase], dir)
     const under = path.join(dir, '.ultrapowers', 'runs', String(run))
     fs.mkdirSync(path.join(under, 'publish-fold'), { recursive: true })
     fs.writeFileSync(path.join(under, 'report.json'), JSON.stringify(report, null, 2) + '\n')
-    fs.writeFileSync(path.join(under, 'publish-fold', 'run.patch'), runPatch)
+    fs.writeFileSync(path.join(under, 'publish-fold', 'run.patch'), patch)
     gitSync(['add', '-A'], dir)
     gitSync(['commit', '-q', '-m', 'evidence for run ' + run], dir)
     gitSync(['tag', 'ultra/evidence/run-' + run], dir)
@@ -179,6 +282,13 @@ function makeParkedOrigin (dir) {
   evidence(9, report9)
   // Run 7: the same work published against a base that is off main's history.
   evidence(7, { run: '7', baseSha: sideSha, tasks: [{ task: '1', status: 'done' }] })
+  // Run 6: `#1037 (a)`'s parked run. Everything ABOUT the tag is in order — it
+  // is on this origin, its report lists task 1 `done`, its `baseSha` is the
+  // parked base and so an ancestor of BASE — so the run clears every pre-fold
+  // refusal and reaches `foldReuse`, where the two sides clash over
+  // `third.txt`. That is the only way this sim can reach the fold's own refusal.
+  evidence(6, { run: '6', baseSha: parkedBase, tasks: [{ task: '1', status: 'done' }] },
+    clashPatch)
 
   // Main moves on, and this tip is the run's BASE.
   fs.writeFileSync(path.join(dir, 'third.txt'), THIRD_TXT)
@@ -186,7 +296,7 @@ function makeParkedOrigin (dir) {
   gitSync(['commit', '-q', '-m', 'main moves on'], dir)
   const base = gitSync(['rev-parse', 'HEAD'], dir)
 
-  return { dir, parkedBase, adoptedSha, sideSha, runPatch, report9, base }
+  return { dir, parkedBase, adoptedSha, sideSha, runPatch, clashPatch, report9, base }
 }
 
 // One origin, cloned afresh by every sim below (`provision` clones, never
@@ -290,7 +400,8 @@ const mkTask = (id, over = {}) => ({
 })
 
 function reuseRig ({ repo, runDir, waves, edges = [], stub, kata, stamp = 'reuse',
-                     onExec = () => {}, onPhase = () => {}, extraArgs = {} }) {
+                     onExec = () => {}, onPhase = () => {}, answerExec = () => null,
+                     extraArgs = {} }) {
   const taskIds = waves.flat().map((t) => t.id)
   const { base, clonesDir, patchesDir, integ } = provision({ repo, runDir, taskIds })
   const patchBase = { current: base }
@@ -308,6 +419,14 @@ function reuseRig ({ repo, runDir, waves, edges = [], stub, kata, stamp = 'reuse
                    cwd: (opts && opts.cwd) || null }
     execCalls.push(call)
     onExec(call)
+    // The one seam a sim may answer itself: `answerExec` returns a canned
+    // `{code, stdout, stderr}` for the call it recognises and `null` for every
+    // other, which then runs for real. `#1037 (b)` and `#1037 (c)` use it to
+    // put the kernel's `--wave 0` step into one of the two states a real
+    // kernel reaches only under conditions a hermetic sim cannot stage; the
+    // call is still RECORDED, so what the engine asked for stays assertable.
+    const canned = answerExec(call)
+    if (canned) return Promise.resolve({ stdout: '', stderr: '', ...canned })
     return execSeam(cmd, argv, opts)
   }
   const run = () => runEngine({
@@ -341,7 +460,7 @@ function reuseRig ({ repo, runDir, waves, edges = [], stub, kata, stamp = 'reuse
  * hub's calls, the engine's phase marks and the worker dispatches — so "before
  * wave 1" and "before the first worker" are questions this file can ask.
  */
-async function sim ({ name, waves, issues, edges = [] }) {
+async function sim ({ name, waves, issues, edges = [], answerExec = () => null }) {
   const runDir = path.join(tmp, 'run-' + name)
   const record = RECORD()
   const trace = []
@@ -367,6 +486,7 @@ async function sim ({ name, waves, issues, edges = [] }) {
   const rigged = reuseRig({
     repo: ORIGIN.dir, runDir, waves, edges, stub, kata: fake.kata, stamp: name,
     extraArgs: { kataRecord: record },
+    answerExec,
     // The phase marks land in the same ordered trace as the reads and the
     // dispatches, so "before wave 1" is a question about one list.
     onPhase: (p) => trace.push({ at: 'phase', phase: p }),
@@ -402,6 +522,9 @@ const flagOf = (argv, flag) => {
   const i = argv.indexOf(flag)
   return i === -1 ? null : argv[i + 1]
 }
+/** The kernel calls of one verb the Setup fold makes — `--wave 0` and no other. */
+const wave0Calls = (execCalls, verb) =>
+  kernelCalls(execCalls, verb).filter((c) => flagOf(c.argv, '--wave') === '0')
 const allOf = (argv, flag) =>
   argv.map((a, i) => (a === flag ? argv[i + 1] : null)).filter((v) => v !== null)
 const fetches = (execCalls) => execCalls.filter((c) => c.cmd === 'git' && c.argv[0] === 'fetch')
@@ -718,58 +841,146 @@ const labelled = (labels, prefix) => labels.filter((l) => l.startsWith(prefix))
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// (d) [M4] four refusals — one event carrying a reason, and the full plan runs
+// (d) [M4] + #1037 (a)(b)(c) [M1] [M2] — seven refusals: one event carrying a
+// reason, the full plan runs, and for the three the FOLD itself refuses, the
+// event, the log and the judgment call carry one and the same sentence
 // ══════════════════════════════════════════════════════════════════════════
 {
+  // The kernel's `--wave 0` steps, as this table's rows recognise them: the
+  // same match `kernelCalls`/`flagOf` make when the assertions read them back.
+  const isWave0 = (call, verb) =>
+    call.cmd === 'python3' && call.argv[1] === verb && flagOf(call.argv, '--wave') === '0'
+
+  // Four rows the reuse refuses BEFORE the fold (#383 leg (d)), then three the
+  // FOLD itself refuses (#1037 legs (a), (b), (c)). A row declares how many
+  // `--wave 0` kernel calls of each verb it expects — the first four expect
+  // none, which is the assertion they carried at BASE, now exact — and a row
+  // the fold refuses also declares the `reason` spec its sentence must satisfy.
   const REFUSALS = [
     { name: 'd1-two-runs', why: 'the reused tasks name two different runs',
-      issues: { 'U-1': stamped('1', 9), 'U-2': stamped('2', 8) } },
+      issues: { 'U-1': stamped('1', 9), 'U-2': stamped('2', 8) }, folds: 0, materializes: 0 },
     { name: 'd2-no-tag', why: 'the tag cannot be fetched',
-      issues: { 'U-1': stamped('1', 77), 'U-2': plain('2') } },
+      issues: { 'U-1': stamped('1', 77), 'U-2': plain('2') }, folds: 0, materializes: 0 },
     { name: 'd3-not-done', why: 'the tag\'s report.json does not list the reused task `done`',
-      issues: { 'U-1': plain('1'), 'U-2': stamped('2', 9) } },
+      issues: { 'U-1': plain('1'), 'U-2': stamped('2', 9) }, folds: 0, materializes: 0 },
     { name: 'd4-not-ancestor', why: 'report.baseSha is not an ancestor of BASE',
-      issues: { 'U-1': stamped('1', 7), 'U-2': plain('2') } },
+      issues: { 'U-1': stamped('1', 7), 'U-2': plain('2') }, folds: 0, materializes: 0 },
+
+    // #1037 (a) — the two sides do not fold cleanly. Nothing is answered by the
+    // sim here: run 6's tag really does add `third.txt` with other bytes, and
+    // the real kernel really does report the clash.
+    { name: 'e1-conflicts', leg: '#1037 (a)',
+      why: 'the parked run\'s work and main\'s move do not fold cleanly',
+      issues: { 'U-1': stamped('1', 6), 'U-2': plain('2') }, folds: 1, materializes: 0,
+      reason: { tag: 'ultra/evidence/run-6',
+                match: /[0-9]+ conflict\(s\)/, contains: ['no resolver exists at Setup'] } },
+
+    // #1037 (b) — the kernel printed no verdict. The clean tag, and the fold
+    // call answered with empty stdout and exit 3.
+    { name: 'e2-no-verdict', leg: '#1037 (b)',
+      why: 'the `--wave 0` fold printed no verdict',
+      issues: { 'U-1': stamped('1', 9), 'U-2': plain('2') }, folds: 1, materializes: 0,
+      answerExec: (call) => (isWave0(call, 'fold') ? { code: 3, stdout: '', stderr: '' } : null),
+      reason: { tag: 'ultra/evidence/run-9', startsWith: 'fold printed no verdict (exit 3)' } },
+
+    // #1037 (c) — the fold is let through for real and `materialize` refuses:
+    // the kernel's own park answer, which `foldReuse` reads off the parsed
+    // stdout as `m.park || m.fallback`.
+    { name: 'e3-materialize', leg: '#1037 (c)',
+      why: 'the `--wave 0` materialize refused',
+      issues: { 'U-1': stamped('1', 9), 'U-2': plain('2') }, folds: 1, materializes: 1,
+      answerExec: (call) => (isWave0(call, 'materialize')
+        ? { code: 0, stdout: '{"park":"simulated"}', stderr: '' } : null),
+      reason: { tag: 'ultra/evidence/run-9', startsWith: 'materialize refused: simulated' } },
   ]
   for (const refusal of REFUSALS) {
     const s = await sim({
       name: refusal.name,
       waves: [[mkTask('1'), mkTask('2')]],
       issues: { RUN0: { revision: 1, short_id: 'run0', metadata: {} }, ...refusal.issues },
+      answerExec: refusal.answerExec || (() => null),
     })
+    const leg = refusal.leg || '(d) [M4]'
     const where = ' [' + refusal.name + ': ' + refusal.why + ']'
 
     const evs = reuseEventsOf(s.runDir)
     assert.equal(evs.length, 1,
-      '(d) [M4] reuse is refused with exactly one `driver:reuse` event; got ' +
+      leg + ' reuse is refused with exactly one `driver:reuse` event; got ' +
       JSON.stringify(evs) + where)
     const ev = evs[0]
     assert.equal(typeof ev.reason, 'string',
-      '(d) [M4] carrying a `reason`: ' + JSON.stringify(ev) + where)
+      leg + ' carrying a `reason`: ' + JSON.stringify(ev) + where)
     assert.ok(ev.reason.trim() !== '',
-      '(d) [M4] and the reason is not empty: ' + JSON.stringify(ev) + where)
+      leg + ' and the reason is not empty: ' + JSON.stringify(ev) + where)
     assert.deepEqual(ev.tasks, [],
-      '(d) [M4] and an empty `tasks`: ' + JSON.stringify(ev) + where)
+      leg + ' and an empty `tasks`: ' + JSON.stringify(ev) + where)
     assert.equal(ev.headSha, undefined,
-      '(d) [M4] and no reuse head on the event: ' + JSON.stringify(ev) + where)
+      leg + ' and no reuse head on the event: ' + JSON.stringify(ev) + where)
 
-    // No reuse head was recorded anywhere: nothing was folded before wave 1.
-    assert.deepEqual(
-      kernelCalls(s.execCalls, 'fold').filter((c) => flagOf(c.argv, '--wave') === '0')
-        .map((c) => c.argv.join(' ')), [],
-      '(d) [M4] no `--wave 0` fold ran' + where)
-    assert.deepEqual(
-      kernelCalls(s.execCalls, 'materialize').filter((c) => flagOf(c.argv, '--wave') === '0')
-        .map((c) => c.argv.join(' ')), [],
-      '(d) [M4] and no `--wave 0` materialize' + where)
+    // The `--wave 0` kernel calls this row expects, and no others: the four
+    // pre-fold refusals reach the kernel not at all, and a fold refusal reaches
+    // exactly the step it refuses at.
+    assert.equal(wave0Calls(s.execCalls, 'fold').length, refusal.folds,
+      leg + ' exactly ' + refusal.folds + ' `--wave 0` fold call(s) ran; got ' +
+      JSON.stringify(wave0Calls(s.execCalls, 'fold').map((c) => c.argv.join(' '))) + where)
+    assert.equal(wave0Calls(s.execCalls, 'materialize').length, refusal.materializes,
+      leg + ' and exactly ' + refusal.materializes + ' `--wave 0` materialize call(s); got ' +
+      JSON.stringify(wave0Calls(s.execCalls, 'materialize').map((c) => c.argv.join(' '))) + where)
 
-    // …and the full plan then runs as at BASE.
+    // ── #1037 [M1] [M2] the fold's own sentence, in all three places ─────────
+    if (refusal.reason) {
+      const spec = refusal.reason
+      const reason = ev.reason
+
+      // [M2] which sentence it is — the shape this way of giving up carries.
+      if (spec.startsWith) {
+        assert.ok(reason.startsWith(spec.startsWith),
+          leg + ' [M2] the refusal\'s `reason` begins `' + spec.startsWith + '` — the sentence ' +
+          '`foldReuse` gave up with, not the caller\'s line. The event carried: ' +
+          JSON.stringify(reason) + where)
+      }
+      if (spec.match) {
+        assert.match(reason, spec.match,
+          leg + ' [M2] the refusal\'s `reason` names the count as `<N> conflict(s)` (' +
+          String(spec.match) + '). The event carried: ' + JSON.stringify(reason) + where)
+      }
+      for (const needle of spec.contains || []) {
+        assert.ok(reason.includes(needle),
+          leg + ' [M2] and it says `' + needle + '`. The event carried: ' +
+          JSON.stringify(reason) + where)
+      }
+
+      // [M1] the log line — one of them, and its remainder IS the reason.
+      const refusedLines = s.logs.filter((l) => l.startsWith('reuse refused: '))
+      assert.equal(refusedLines.length, 1,
+        leg + ' [M1] the engine\'s log holds exactly one line beginning `reuse refused: `; got ' +
+        JSON.stringify(s.logs.filter((l) => l.includes('reuse'))) + where)
+      assert.equal(refusedLines[0].slice('reuse refused: '.length), reason,
+        leg + ' [M1] and what follows `reuse refused: ` is that same sentence. The log says ' +
+        JSON.stringify(refusedLines[0].slice('reuse refused: '.length)) +
+        ', the event\'s `reason` is ' + JSON.stringify(reason) + where)
+
+      // [M1] the judgment call — one of them, and its remainder IS the reason.
+      const prefix = 'reuse fold of ' + spec.tag + ': '
+      const foldCalls = (s.report.judgmentCalls || []).filter((l) => l.startsWith(prefix))
+      assert.equal(foldCalls.length, 1,
+        leg + ' [M1] the report\'s `judgmentCalls` holds exactly one entry beginning `' +
+        prefix + '`; got ' + JSON.stringify(s.report.judgmentCalls) + where)
+      assert.equal(foldCalls[0].slice(prefix.length), reason,
+        leg + ' [M1] and what follows that colon is that same sentence, so the event, the log ' +
+        'and the judgment call all carry the fold\'s own words. The judgment call says ' +
+        JSON.stringify(foldCalls[0].slice(prefix.length)) + ', the event\'s `reason` is ' +
+        JSON.stringify(reason) + where)
+    }
+
+    // …and the full plan then runs as at BASE. A refusal is never the run's own
+    // failure, whichever of the seven ways it was refused.
     assert.deepEqual(labelled(s.labels, 'impl:').sort(), ['impl:1', 'impl:2'],
-      '(d) [M4] the full plan runs: both implementers are dispatched; got ' +
+      leg + ' the full plan runs: both implementers are dispatched; got ' +
       JSON.stringify(s.labels) + where)
     for (const id of ['1', '2']) {
       assert.equal(s.startHeads.get(id), s.base,
-        '(d) [M4] each off BASE (' + s.base + ') — task ' + id + ' started at ' +
+        leg + ' each off BASE (' + s.base + ') — task ' + id + ' started at ' +
         s.startHeads.get(id) + where)
     }
     // Under the ready set (#974 Task 1) an epoch is one FOLD, not one plan
@@ -780,14 +991,14 @@ const labelled = (labels, prefix) => labels.filter((l) => l.startsWith(prefix))
     // did both tasks itself and adopted both — so it reads the epochs together
     // rather than expecting the barrier's single one.
     assert.ok(s.report.waveMerges.length >= 1,
-      '(d) [M4] and the run folds the work the reuse refused: ' +
+      leg + ' and the run folds the work the reuse refused: ' +
       JSON.stringify(s.report.waveMerges) + where)
     for (const m of s.report.waveMerges) {
       assert.equal(m.status, 'MERGED',
-        '(d) [M4] every epoch of it adopted: ' + JSON.stringify(m) + where)
+        leg + ' every epoch of it adopted: ' + JSON.stringify(m) + where)
     }
     assert.deepEqual(s.report.waveMerges.flatMap((m) => m.branches).slice().sort(), ['1', '2'],
-      '(d) [M4] with both branches in the fold, each in exactly one epoch: ' +
+      leg + ' with both branches in the fold, each in exactly one epoch: ' +
       JSON.stringify(s.report.waveMerges) + where)
   }
 }
@@ -820,6 +1031,62 @@ const labelled = (labels, prefix) => labels.filter((l) => l.startsWith(prefix))
     '`closed`, `work.adopted_run`, `ultra/evidence/run-<M>`, `run.patch`, `driver:reuse` and ' +
     '`refus` — the words the Proof\'s third `Run:` line greps for. The bullet reads:\n' + bullet)
 }
+// ══════════════════════════════════════════════════════════════════════════
+// #1037 (d) [M3] the caller's generic line is gone from the engine
+// ══════════════════════════════════════════════════════════════════════════
+{
+  // The Proof's second `Run:` line is
+  //   test "$(grep -c 'did not produce a head' fleet/run-engine.mjs)" = 0
+  // — this is that count, taken over the same file's bytes. `grep -c` counts
+  // LINES carrying the phrase, so this counts lines too, and a surviving one in
+  // a comment counts exactly as a surviving one in code does: the phrase leaves
+  // the engine, it does not move into prose.
+  const engine = fs.readFileSync(path.join(HERE, '..', 'run-engine.mjs'), 'utf8')
+  const PHRASE = 'did not produce a head'
+  const hits = engine.split('\n')
+    .map((line, i) => ({ line: i + 1, text: line }))
+    .filter((l) => l.text.includes(PHRASE))
+  assert.equal(hits.length, 0,
+    '#1037 (d) [M3] the phrase `' + PHRASE + '` occurs zero times in fleet/run-engine.mjs — ' +
+    'the reuse refusal carries the fold\'s own sentence, so the caller has no generic line ' +
+    'left to write. Surviving line(s): ' +
+    JSON.stringify(hits.map((h) => 'run-engine.mjs:' + h.line + ': ' + h.text.trim())))
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// #1037 (e) [M4] the contract's reuse paragraph says whose words the reason is
+// ══════════════════════════════════════════════════════════════════════════
+{
+  // The Proof's third `Run:` line is
+  //   sed -n '/Re-drive reuse (#383)/,/A refusal is never the run.s own failure/p' \
+  //     fleet/CONTRACT.md | tr '\n' ' ' \
+  //     | grep -q 'reason.*fold.s own.*conflict.*materialize.*verdict'
+  // — this is that range, joined the same way and read against the same order.
+  const lines = fs.readFileSync(path.join(HERE, '..', 'CONTRACT.md'), 'utf8').split('\n')
+  const start = lines.findIndex((l) => l.includes('Re-drive reuse (#383)'))
+  assert.notEqual(start, -1,
+    '#1037 (e) [M4] fleet/CONTRACT.md\'s `Kata record (engine)` bullet still opens its reuse ' +
+    'paragraph with `Re-drive reuse (#383)` — the line the Proof\'s `sed` range starts at')
+  let end = -1
+  for (let i = start; i < lines.length; i++) {
+    if (/A refusal is never the run.s own failure/.test(lines[i])) { end = i; break }
+  }
+  assert.notEqual(end, -1,
+    '#1037 (e) [M4] and closes it with `A refusal is never the run\'s own failure.` — the line ' +
+    'the range ends at')
+  const paragraph = lines.slice(start, end + 1).join(' ')
+  // The five, in the Proof's order. `grep`'s `.` matches any character, which is
+  // how `fold.s own` reads an apostrophe of either spelling; `[\s\S]*` is that
+  // same permissiveness across the joined line.
+  const ORDER = new RegExp(['reason', 'fold.s own', 'conflict', 'materialize', 'verdict']
+    .join('[\\s\\S]*'))
+  assert.match(paragraph, ORDER,
+    '#1037 (e) [M4] the reuse paragraph, read as one line, names `reason`, then `fold\'s own`, ' +
+    'then `conflict`, then `materialize`, then `verdict`, in that order — it has to say that ' +
+    'the refusal\'s reason is the FOLD\'s own, and name all three of the fold\'s ways of ' +
+    'giving up. The paragraph reads:\n' + paragraph)
+}
+
 // Leg (f)'s other half — the two survivor sims — is carried by the Proof's
 // first two `Run:` lines, which RUN those sims and grep their sentinel. It is
 // deliberately not re-asserted here: `test_sims_are_hermetic.mjs` holds every

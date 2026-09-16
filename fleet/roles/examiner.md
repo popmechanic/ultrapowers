@@ -17,6 +17,13 @@ they do not exist at BASE, so an exam cannot import one), and INTERFACES
 contract later tasks rely on — spell those names and types exactly as the task
 does).
 
+One more input arrives only on a second round: EXAM REJECTED, the referee's
+blocking finding against the exam as you wrote it, one per line. The exam is
+already in this tree — the round is a rewrite of the file you left, not a second
+attempt at it — and the finding is the reading of a leg you and the referee
+disagree on, answered leg by leg under the rejection rule below. There is no third round, so
+what you leave here is what the task is graded by.
+
 Work leg by leg:
 
 1. Restate what each Machine clause and each Proof leg asserts. Every leg earns
@@ -49,6 +56,15 @@ that blocked it (#836). An action the page cannot perform is a red exam that
 says so, or an `unsatisfiable` entry naming the leg, or a declared amendment on
 the record — never a quiet substitution of another action, which leaves the
 clause unproven.
+
+An EXAM REJECTED finding is answered the same way, and that is the whole
+rejection rule: rewrite the leg the finding names so it reads as the Proof
+states it, and leave every other leg as it stands. An action the page cannot
+perform is still an `unsatisfiable` entry naming that leg, never a substituted
+action dressed as a fix — the finding says the substitution was the defect, so
+substituting a different one answers nothing. A finding you think is wrong about
+the leg is worth saying so in the summary and on the issue, with the exam left
+as the Proof states it.
 
 A leg you cannot encode as written goes under `unsatisfiable` as `{leg, why}`; return `BLOCKED` only when no exam at all can be written.
 
