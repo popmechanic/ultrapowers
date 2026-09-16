@@ -1,0 +1,124 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "4f4832f6b201fde624457b1f6b7371aad92dd6db643e0f21ee29912c5435417b",
+      "verdict": "pass",
+      "reason": "Recomputed from M2's window the fixture counts of legs (d), (e), (f) hold, every literal checks against BASE (no `## Release` heading in RUNBOOK, `--zero-over`/`--fetch` absent so the help and report Runs fail at BASE, the counter's closing-line format and the catch-count row shape match lines 272\u2013282 and 392, `tests/test_catch_counter.py` absent and created); the one unfalsified detail is M4's `before ## Rollback` ordering, which the Claim does not rest on."
+    },
+    "2": {
+      "hash": "045ba27d00b21421bde57b1a4062cfdc42cb35e93ac7cd9ceea30968d97e518a",
+      "verdict": "pass",
+      "reason": "Legs (a)\u2013(h) each falsify their clause with a Run: that is red at BASE by the excerpt \u2014 the three stale README rows are confirmed absent files, `tasks[].findings` is absent from report-format.md, and the `driver:wave-blocked` (line 79) and `driver:exam-run` (line 106) braces omit `paths`/`evidence` while the Receipts rule (lines 160\u2013164) names both kinds; leg (i)'s `_review_row` counts only `tasks[].review` lines, so the new row cannot break it."
+    },
+    "3": {
+      "hash": "ec4638d4d09cbee2d1ab8dd9502d26ad2ab0be62ed3804df6ff8e84a738a7ffe",
+      "verdict": "pass",
+      "reason": "Every pinned literal computes against the excerpt \u2014 `tag: 'i2'` at 919 with `{` at 917 and `makeStub: abcHeldStub,` at 921, `tag: 'i1'` at 872 with `{` at 870, the helpers at 227/256/257, `indexOfEvent(log, first) < endB` at 936 \u2014 and leg (e)'s ordered grep is red at BASE and goes green only when the i2 block holds B on an adoption and C on B's worker:end, which with (c), (d) and (a) falsifies the Claim at the sim's own layer."
+    }
+  },
+  "tally": {
+    "dispatched": 6,
+    "rejected": 3,
+    "rounds": [
+      {
+        "round": 1,
+        "dispatched": 3,
+        "rejected": 2
+      },
+      {
+        "round": 2,
+        "dispatched": 2,
+        "rejected": 1
+      },
+      {
+        "round": 3,
+        "dispatched": 1,
+        "rejected": 0
+      }
+    ],
+    "base": "d5bf796afb2dcaccd0d0d3b0eba8cbfb0dff4425"
+  },
+  "history": [
+    {
+      "round": 1,
+      "task": "1",
+      "hash": "c5cce0ec0e8b9c6b71b2e3011c76254f02907021dd1fc7a82ffe2fba6aa303c6",
+      "verdict": "fail",
+      "reason": "Leg (e) miscomputed its own fixture: with --zero-over 2 only run-2 and run-3 name tests/test_q.py in exercises, so the line must read `exercised by 2 run(s)`, not 3."
+    },
+    {
+      "round": 1,
+      "task": "2",
+      "hash": "045ba27d00b21421bde57b1a4062cfdc42cb35e93ac7cd9ceea30968d97e518a",
+      "verdict": "pass",
+      "reason": "as recorded in tasks.2"
+    },
+    {
+      "round": 1,
+      "task": "3",
+      "hash": "c14e6037cb6fefa2b677d669f00a8e2d12ed4e1f754efc07dd9927ffdfc53fd8",
+      "verdict": "fail",
+      "reason": "The BASE excerpt (truncated at line 565 of 1263 by early-file literals) carried none of `tag: 'i1'`, `tag: 'i2'`, `abcHeldStub`, `MID_HOLD_MS` or `endB`, so the sed/awk ranges and the i1 sha pin were uncomputable; the laptop-layer Claim rested only on that unverified text pin."
+    },
+    {
+      "round": 2,
+      "task": "1",
+      "hash": "4f4832f6b201fde624457b1f6b7371aad92dd6db643e0f21ee29912c5435417b",
+      "verdict": "pass",
+      "reason": "as recorded in tasks.1"
+    },
+    {
+      "round": 2,
+      "task": "3",
+      "hash": "4bdc5e65cd830d616b133651c6c3a052da09675b028f43ec6944cfed3c206fd4",
+      "verdict": "fail",
+      "reason": "M3's `lines 872\u2013917, 44 lines` was wrong against the excerpt (line 917 opens the i2 block; the i1 block closes at 915), and M2/leg (e) presented `waitUntil`, `adoptionsOf`, `isEnd` as existing helpers with no excerpt line carrying them."
+    },
+    {
+      "round": 3,
+      "task": "3",
+      "hash": "ec4638d4d09cbee2d1ab8dd9502d26ad2ab0be62ed3804df6ff8e84a738a7ffe",
+      "verdict": "pass",
+      "reason": "as recorded in tasks.3"
+    }
+  ],
+  "authoring": {
+    "minutes": 20,
+    "probes": 7,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Two authors are drafting and run-166 is folding. Add what?",
+        "options": [
+          "Third author: #873 + #1040 + #1045",
+          "Write tomorrow's handoff now",
+          "#1013 reuse opt-out"
+        ],
+        "recommended": "Third author: #873 + #1040 + #1045",
+        "picked": "Third author: #873 + #1040 + #1045"
+      },
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Confirm as drafted",
+          "Tighter summary"
+        ],
+        "recommended": "Confirm as drafted",
+        "picked": "Confirm as drafted"
+      },
+      {
+        "question": "Execute both how?",
+        "options": [
+          "Both on the fleet now, serial launches",
+          "Seam on the fleet, scripts inline",
+          "Seam now, scripts after it lands"
+        ],
+        "recommended": "Both on the fleet now, serial launches",
+        "picked": "Both on the fleet now, serial launches"
+      }
+    ]
+  }
+}
