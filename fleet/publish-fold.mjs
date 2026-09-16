@@ -271,6 +271,50 @@ export const EXAM_CHECK = {
 
 export const CANDIDATE_CHECKS = [PARSE_CHECK, EXAM_CHECK]
 
+// ── the briefs a resolver is pointed at, one file per conflicted path ────────
+// The contending-task block for a path is the bodies of every task that wrote
+// it — tens of kilobytes each — and a stop with seven conflicted paths used to
+// hand all seven to every resolver. So the block goes to disk, one file per
+// conflict, and the brief carries the two paths instead: the resolver reads
+// the one dossier that is its own, and opens main's patch when a hunk's
+// frontier side needs explaining.
+//
+//   briefsDir   a directory of the driver's own under the run tree — the
+//               resolver's `--add-dir` is the run directory, so a path it is
+//               handed has to live there; never inside a `frontier/wave-<a>/`
+//               the kernel owns
+//   attemptKey  the fold attempt, naming the file with the conflict's `i`
+//   open        the kernel's `open` rows, `{ i, path, hunksFile, epoch }`
+//   blockFor    `(path) => string | Promise<string>`, the contending block
+//   mainPatch   the patch main gained since the run's base, copied in whole
+//
+// Resolves to the `contendingBlock` function `resolveConflicts` takes.
+export async function writeResolverBriefs ({ briefsDir, attemptKey, open, blockFor, mainPatch }) {
+  fs.mkdirSync(briefsDir, { recursive: true })
+  const mainPatchPath = path.resolve(briefsDir, 'main.patch')
+  fs.copyFileSync(mainPatch, mainPatchPath)
+
+  const contendingPath = (i) =>
+    path.resolve(briefsDir, 'contending-' + i + '-' + String(attemptKey) + '.txt')
+
+  const written = new Map()
+  for (const c of (Array.isArray(open) ? open : [])) {
+    const file = contendingPath(c.i)
+    fs.writeFileSync(file, String(await blockFor(c.path)))
+    written.set(String(c.i), file)
+  }
+
+  // Bounded by the two path lines however long the block was: nothing of the
+  // block itself, and no `- run ` line the resolver could mistake for work.
+  return (conflict) =>
+    '\nCONTENDING TASKS FILE: ' +
+      (written.get(String(conflict && conflict.i)) || contendingPath(conflict && conflict.i)) +
+      ' (the tasks that wrote ' + ((conflict && conflict.path) || '') +
+      ' on both sides — read it before resolving)' +
+    '\nMAIN PATCH FILE: ' + mainPatchPath +
+      " (everything main gained since this run's base)"
+}
+
 /**
  * One attempt of the publish fold.
  *
@@ -806,16 +850,20 @@ export async function publishFold (opts, deps = {}) {
 
       // ── step 4: the resolvers ─────────────────────────────────────────────
       if (open.length) {
-        // The brief, per conflicted path, concatenated in the kernel's own
-        // `open` order — `resolveConflicts` briefs every dispatch of a
-        // multi-path stop with ONE string, so a two-path stop's block is the
-        // two blocks whole, first path first. The folder prepends nothing, and
+        // The brief, one conflicted path per resolver: the contending block
+        // for each open path goes to its own file under the run tree and the
+        // brief names it, so a seven-path stop briefs each resolver on its own
+        // dossier rather than on all seven. The folder prepends nothing, and
         // appends only the re-brief a red check earned.
-        const blocks = []
+        const briefsDir = path.join(foldRunDir, 'briefs')
+        const blockFor = (p) => buildContendingBlock({ repo, base, tip, run, path: p, tasks })
+        const block = await writeResolverBriefs({ briefsDir, attemptKey, open, blockFor, mainPatch })
+        // For the record: the brief saved beside the reply directory now holds
+        // the two path lines, so what they pointed at is kept next to it.
         for (const c of open) {
-          blocks.push(await buildContendingBlock({ repo, base, tip, run, path: c.path, tasks }))
+          const name = 'contending-' + c.i + '-' + attemptKey + '.txt'
+          fs.copyFileSync(path.join(briefsDir, name), path.join(foldEvidence, name))
         }
-        const block = blocks.join('')
 
         // TIP's tree, in the clone the resolver runs in: the frontier side of
         // every hunk is main since BASE, so the tree a resolver can open has to

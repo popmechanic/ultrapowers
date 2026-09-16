@@ -141,7 +141,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     sent back), `engine-head`, `main.patch`, `run.patch`, `frontier/wave-<attempt>/`,
     `frontier/wave-<attempt>-retried/` (the wave a red check re-folded, kept whole),
     `resolver-brief-<i>-<attempt>.txt`, `resolver-brief-<i>-<attempt>-retry.txt` (the re-brief a red
-    check earned), `exam-<attempt>-<n>.txt` (one per exam run, `n` from 1 in the order they ran),
+    check earned), `contending-<i>-<attempt>.txt` (the contending task bodies for that conflict's
+    path, which the brief names by path rather than inlining),
+    `exam-<attempt>-<n>.txt` (one per exam run, `n` from 1 in the order they ran),
     `suite-<attempt>.txt` and `publish-fold-<attempt>.log`.
     Committed from a detached worktree at every transition **and, while the engine runs, on the
     first refresher poll that has seen either `FLEET_COMMIT_EVENTS` new lines in that

@@ -10,8 +10,13 @@ each hunk, produce the lines that should replace the whole conflict block, top
 to bottom, with no conflict markers and no context lines; an empty string means
 the block resolves to nothing.
 
+A `CONTENDING TASKS FILE:` line below names a file holding the bodies of the
+tasks that wrote this path on both sides — read it before resolving. A
+`MAIN PATCH FILE:` line names the patch main gained since the run's base; open
+it when a hunk's frontier side needs explaining.
+
 Honor both sides' intent where they are compatible; where they are not, prefer
-the semantics the contending task bodies (below) describe over surface text.
+the semantics the contending task bodies describe over surface text.
 Never drop a side silently — if two sides are irreconcilable, still write your
 best merge for that hunk and say so in `notes`. Invent nothing that appears in
 neither side nor the narration. When a hunk header carries a contract line,

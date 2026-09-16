@@ -327,6 +327,10 @@ async function childEnvsFor ({ name, baseEnv, extra, labels }) {
     const child = new EventEmitter()
     child.stdout = new EventEmitter(); child.stdout.setEncoding = () => {}
     child.stderr = new EventEmitter(); child.stderr.setEncoding = () => {}
+    // The worker writes the prompt to stdin and ends it; this stub only has to
+    // accept that. What the prompt transport itself proves is in
+    // `test_worker_prompt_stdin.mjs` — this file owns the env surface.
+    child.stdin = new EventEmitter(); child.stdin.end = () => {}
     child.kill = () => {}
     setImmediate(() => { child.stdout.emit('data', ENVELOPE); child.emit('close', 0, null) })
     return child
