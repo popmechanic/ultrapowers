@@ -1,0 +1,358 @@
+{
+  "ok": true,
+  "stamp": "run-168",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-168"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "3 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The catch-counter ratchet \u2014 the record from the evidence tags, and the zero-catch reading per release",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/RUNBOOK.md",
+          "skills/ultrapowers/scripts/catch_counter.py",
+          "skills/ultrapowers/scripts/catch_report.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`fetch_runs(target: str, first: int, last: int, into: Path, gh=\"gh\") -> list[int]`",
+            "`zero_over_releases(rows, tree, tree_tests, n, runners=(), gates=()) -> list[str]`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The three references describe the tree \u2014 the sims index, the findings row, the receipt keys",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/tests/README.md",
+          "skills/ultrapowers/references/report-format.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The fold-policy sim waits for the fold it asks about \u2014 green on the laptop as in the sandbox",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/tests/test_run_engine_fold_policy.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The catch-counter ratchet \u2014 the record from the evidence tags, and the zero-catch reading per release",
+          "files": [
+            "fleet/RUNBOOK.md",
+            "skills/ultrapowers/scripts/catch_counter.py",
+            "skills/ultrapowers/scripts/catch_report.py",
+            "tests/test_catch_counter.py",
+            "tests/test_catch_report.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`fetch_runs(target: str, first: int, last: int, into: Path, gh=\"gh\") -> list[int]`",
+              "`zero_over_releases(rows, tree, tree_tests, n, runners=(), gates=()) -> list[str]`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/RUNBOOK.md",
+            "skills/ultrapowers/scripts/catch_counter.py",
+            "skills/ultrapowers/scripts/catch_report.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_catch_counter.py",
+            "tests/test_catch_report.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_catch_counter.py tests/test_catch_report.py",
+          "proofRuns": [
+            "python3 -m pytest tests/test_catch_counter.py tests/test_catch_report.py -q",
+            "python3 skills/ultrapowers/scripts/catch_counter.py --help | grep -q -- '--fetch'",
+            "python3 skills/ultrapowers/scripts/catch_report.py --help | grep -q -- '--zero-over'",
+            "sed -n '/^## Release/,/^## Rollback/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'catch_counter.py --fetch.*catch_report.py.*--zero-over 1.*release commit body'",
+            "python3 skills/ultrapowers/scripts/catch_report.py --ledger /dev/null --tree . --zero-over 1 | grep -q '^## Zero catches over the last 1 release(s)$'"
+          ],
+          "proofGuards": [
+            "tests/test_catch_counter.py",
+            "tests/test_catch_report.py"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/RUNBOOK.md",
+              "skills/ultrapowers/scripts/catch_counter.py",
+              "skills/ultrapowers/scripts/catch_report.py",
+              "tests/test_catch_counter.py",
+              "tests/test_catch_report.py"
+            ],
+            "deletes": [],
+            "guards": [
+              "tests/test_catch_counter.py",
+              "tests/test_catch_report.py"
+            ],
+            "proofTests": [
+              "tests/test_catch_counter.py",
+              "tests/test_catch_report.py"
+            ],
+            "landing": {
+              "tests/test_catch_counter.py": "tests/test_catch_counter.py",
+              "tests/test_catch_report.py": "tests/test_catch_report.py"
+            },
+            "driverOwned": [
+              "tests/test_catch_counter.py",
+              "tests/test_catch_report.py"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/tests/README.md",
+              "fleet/tests/test_run_engine_fold_policy.mjs",
+              "skills/ultrapowers/references/report-format.md"
+            ],
+            "produces": [
+              "`fetch_runs(target: str, first: int, last: int, into: Path, gh=\"gh\") -> list[int]`",
+              "`zero_over_releases(rows, tree, tree_tests, n, runners=(), gates=()) -> list[str]`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "The three references describe the tree \u2014 the sims index, the findings row, the receipt keys",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/tests/README.md",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/tests/README.md",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "for f in fleet/tests/test_*.mjs; do grep -q \"$(basename \"$f\")\" fleet/tests/README.md || exit 1; done",
+            "for n in $(grep -o 'test_[a-z0-9_]*\\.mjs' fleet/tests/README.md | sort -u); do test -f \"fleet/tests/$n\" || exit 1; done",
+            "! grep -q 'test_run_worker.mjs' fleet/tests/README.md",
+            "! grep -q 'test_run_waves.mjs' fleet/tests/README.md",
+            "! grep -q 'test_confine_hook.mjs' fleet/tests/README.md",
+            "grep -q 'tasks\\[\\]\\.findings' skills/ultrapowers/references/report-format.md",
+            "awk '/tasks\\[\\]\\.stateExams/{s=NR} /tasks\\[\\]\\.findings/{f=NR} END{exit !(s && f && f>s)}' skills/ultrapowers/references/report-format.md",
+            "grep 'tasks\\[\\]\\.findings' skills/ultrapowers/references/report-format.md | tr '\\n' ' ' | grep -q 'every.*severity.*actor.*detail.*handshake:finding'",
+            "grep -o 'driver:wave-blocked. .{[^}]*}' fleet/CONTRACT.md | grep -q 'paths.*evidence'",
+            "grep -o 'driver:exam-run. .{[^}]*}' fleet/CONTRACT.md | grep -q 'paths.*evidence'",
+            "python3 -m pytest tests/test_review_peer.py -q"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/tests/README.md",
+              "skills/ultrapowers/references/report-format.md"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [
+              "fleet/RUNBOOK.md",
+              "fleet/tests/test_run_engine_fold_policy.mjs",
+              "skills/ultrapowers/scripts/catch_counter.py",
+              "skills/ultrapowers/scripts/catch_report.py",
+              "tests/test_catch_counter.py",
+              "tests/test_catch_report.py"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        },
+        {
+          "id": "3",
+          "title": "The fold-policy sim waits for the fold it asks about \u2014 green on the laptop as in the sandbox",
+          "files": [
+            "fleet/tests/test_run_engine_fold_policy.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/tests/test_run_engine_fold_policy.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_fold_policy.mjs | grep -q 'ALL TESTS PASSED'",
+            "bash -c 'start=$(date +%s); node fleet/tests/test_run_engine_fold_policy.mjs > /dev/null 2>&1; echo \"fold-policy exit=$? elapsed=$(( $(date +%s) - start ))s\"'",
+            "! awk '/tag: .i2./,/^}/' fleet/tests/test_run_engine_fold_policy.mjs | grep -q 'abcHeldStub'",
+            "test \"$(sed -n '/tag: .i1./,/^}/p' fleet/tests/test_run_engine_fold_policy.mjs | git hash-object --stdin)\" = 5704983738af0d06533ef859ff2398ef7dba2587",
+            "awk '/tag: .i2./,/^}/' fleet/tests/test_run_engine_fold_policy.mjs | tr '\\n' ' ' | grep -q \"waitUntil.*adoptionsOf.*waitUntil.*isEnd(e, 'impl:B').*deepEqual(first.tasks, \\['A'\\].*first.why, 'aged'.*indexOfEvent(log, first) < endB\"",
+            "! grep -q 'fold_policy' tests/test_fleet_suite.py"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "fleet/tests/test_run_engine_fold_policy.mjs"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/RUNBOOK.md",
+              "fleet/tests/README.md",
+              "skills/ultrapowers/references/report-format.md",
+              "skills/ultrapowers/scripts/catch_counter.py",
+              "skills/ultrapowers/scripts/catch_report.py",
+              "tests/test_catch_counter.py",
+              "tests/test_catch_report.py"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "3 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- The engine and the boot are untouched: every behaviour a sim or a document describes is the one the tree already has, and only the scripts, the documents and the one sim change.\n- Every line a script prints is a fact of the record it read: no listed path is one the tree does not hold, no count is a guess, and a file the record never named is `unobserved`, never a deletion candidate.\n- Every sentence a reference document gains names a file, a field or an event that exists at BASE, spelled as the tree spells it.",
+    "constraintChecks": [
+      {
+        "cmd": "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+        "minor": false
+      },
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/",
+        "minor": false
+      },
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-main.mjs fleet/run-waves.mjs fleet/run-worker.mjs fleet/sandbox-boot.sh",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-168/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-168/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-168/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-168/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for regenerateCmd \u2014 the lockfile regenerator is derived from the same lockfile/manifest beside the bootstrap (and only when the bootstrap itself was derived) and stamped in the args file and receipt; there is no knob for it",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}

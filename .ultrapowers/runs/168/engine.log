@@ -1,0 +1,6 @@
+Running as unit: fleet-engine-168.service; invocation ID: 92d356f7ceb046aeadf62b6668a5921e
+run-main: preflight
+run-main: kata — record /home/exedev/plans/run-168.kata.json → https://kata.int.exe.xyz
+run-main: tiers — 3 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)
+run-main: provision — BASE d5bf796afb2dcaccd0d0d3b0eba8cbfb0dff4425; 3 task clone(s) + integration
+run-main: engine — waves 3, width bound 3, patch input armed
