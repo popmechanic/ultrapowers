@@ -1,0 +1,327 @@
+{
+  "integrationBranch": "ultra/integration-run-153",
+  "baseSha": "5f75eaaa59aa30801bbab19d0cb6698b3129203b",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "3ebaa1414bd3d3bdc0677579cdf11bd26454e2bb",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-153/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "fleet/publish-fold.mjs \u2014 `writeResolverBriefs`'s returned function silently falls back to a *constructed* path for a conflict that was never written: `(written.get(String(conflict && conflict.i)) || contendingPath(conflict && conflict.i))`. `resolveConflicts` does not only drain the `open` list it was handed \u2014 its continued-fold branch replaces the worklist wholesale (`outstanding = a.open.slice()`, fleet/run-engine.mjs ~line 990, and the conflict row carries an `epoch` precisely because the kernel opens conflicts in later epochs). A later-epoch conflict's `i` was never in the `open` array `writeResolverBriefs` iterated, so its brief names `contending-<i>-<attempt>.txt` \u2014 a file that does not exist \u2014 and tells the resolver \"read it before resolving\". The resolver Reads, gets ENOENT, and loses its contending context on a hunk it is still expected to resolve. (BASE degraded on the same edge \u2014 it handed later-epoch conflicts the *first* epoch's blocks \u2014 so this is a changed symptom, not a new hole, which is why it is minor rather than blocking.) The `conflict == null` fallback is the same expression and yields `contending-false-<attempt>.txt`. Fix: when `written` has no entry, emit the `MAIN PATCH FILE:` line alone. The exam stays green \u2014 legs (c) only ask for conflicts that were in `open`.; fleet/publish-fold.mjs step 4 \u2014 the evidence-copy loop re-derives the filename `'contending-' + c.i + '-' + attemptKey + '.txt'` that `writeResolverBriefs` owns internally via its private `contendingPath`. The two spellings agree today (`attemptKey` is already a String, so `String(attemptKey)` is a no-op), but the coupling is undeclared: if the name ever changes inside the helper, `fs.copyFileSync` throws ENOENT out of `publishFold`, and `publishFold`'s own contract is that it \"REJECTS only on a fault that is not a disposition\" \u2014 a receipt-copy typo would become a whole-fold fault. The Produces interface pins the helper's return to the brief function alone, so it cannot return the paths; exporting the name builder (e.g. `export const contendingFileName = (i, attemptKey) => ...`) and using it in both places removes the duplicate literal without changing the interface.; Test coverage: the exam pins `writeResolverBriefs` in isolation (leg c) and `resolveConflicts`'s dispatch (legs a, b), but nothing exercises the step-4 wiring the Context requires \u2014 that `briefsDir` is `path.join(foldRunDir, 'briefs')` (under the run directory the resolver gets as `--add-dir`, never inside a kernel-owned `frontier/wave-<a>/`), that `blockFor` is `buildContendingBlock({ repo, base, tip, run, path: p, tasks })`, that the result is passed as `contendingBlock`, and that each `contending-<i>-<attempt>.txt` is copied into `foldEvidence`. Those are all present and correct on inspection (fleet/publish-fold.mjs step 4, the `briefsDir`/`blockFor`/`block` lines and the copy loop), and the Proof names no leg for them, so this is advisory only \u2014 but a regression that pointed `briefsDir` outside the add-dir, or dropped the evidence copy the CONTRACT.md receipt now advertises, would leave the whole exam green. A sim driving `publishFold` with injected `exec`/`makeAgent` is what would settle it.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "landedAt": 1789527168695,
+      "stateExams": []
+    },
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "78f7e530d1b776209eaa7defe5303173283959e6",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-153/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Stale prose left inside this task's own FILES. `fleet/run-worker.mjs` (the comment above `childEnvFor`, BASE lines 840\u2013845, post-patch ~843\u2013848) still asserts in the present tense that a `pkill -f` \"matched the `claude -p` argv that carries that very text\" \u2014 after this diff the argv carries neither the prompt nor the TEST COMMAND line, which is precisely the property M2 pins and the new sim's leg (b) proves. The task's Context reserves `childEnvFor` itself (\"line 851 and everything below the spawn are untouched\") and the mechanism it documents is unaffected \u2014 the hook never sees the prompt, so the worker still hands it the line \u2014 so this is prose only, and the diff already rewrote its two siblings (the `buildArgs` block and the `runProcess` block). Graded minor because no Machine clause or Run reads it.; `fleet/confine-hook.mjs` lines 202\u2013208 carry the same claim this change falsifies \u2014 \"The worker is a `claude -p <prompt>` process, so its argv carries the whole prompt \u2014 the role text, the FILES line, the TEST COMMAND line\" \u2014 and it is the stated justification for the `pkill`/`killall` deny. The deny's behaviour is unaffected and stays fail-safe (it now refuses a pattern that could no longer match the worker, i.e. it is over-broad rather than unsound), so nothing breaks; but the file is pinned byte-identical to BASE by Global Constraint 1 and is outside this task's FILES, so no edit in this tree can answer it. Actor `plan`: it wants a follow-up task, not a fix round.; unverified: `fleet/tests/test_run_engine_infra_retry.mjs` (line ~702) is the one `test_*.mjs` that drives the REAL `createRunWorker` with the default `spawnFn` against a real fake `claude` node script (line ~657) that never reads its stdin. This diff turns that child's fd 0 from `'ignore'` into a pipe the worker writes the whole prompt to and ends. The reasoning says it is safe \u2014 a prompt of this size fits the 64 KiB pipe buffer, and an early exit raises `EPIPE` on a stdin that now has an `error` listener \u2014 but that path is not in this task's Proof `Run:` list and no RUN/EXAM/CHECK evidence covers it. What would settle it: `node fleet/tests/test_run_engine_infra_retry.mjs`. Graded minor because the diff cannot settle it by reading and it blocks nothing this task claims.; concern: out-of-FILES (not taken): `fleet/tests/README.md` line 8 names `test_run_worker.mjs`, which does not exist at BASE, and the index names neither `test_worker_kata_env.mjs` nor the new `test_worker_prompt_stdin.mjs`. The index is owed an entry for the prompt-transport sim and a removal of the stale row; the path is outside this task's FILES so the edit was not made.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "landedAt": 1789527378234,
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-153/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [276 items]\n\n........................................................................ [ 26%]\n........................................................................ [ 52%]\n........................................................................ [ 78%]\n............................................................             [100%]\n======================== 276 passed in 84.01s (0:01:24) ========================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel fleet/run-waves.mjs fleet/confine-hook.mjs fleet/run-main.mjs fleet/publish-fold-block.mjs fleet/roles/reviewer.md fleet/roles/implementer.md fleet/roles/fix.md fleet/roles/examiner.md fleet/roles/reconcile.md",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 435100,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-153/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [274 items]\n\n........................................................................ [ 26%]\n........................................................................ [ 52%]\n........................................................................ [ 78%]\n..........................................................               [100%]\n======================== 274 passed in 85.63s (0:01:25) ========================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "6a13794003a2c9be0694172de9a8d416c5853c30",
+      "branches": [
+        "2",
+        "1"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-153/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-153/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.4320000000000002,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "engineCoverage": {
+    "file": "fleet/run-engine.mjs",
+    "base": "5f75eaaa59aa30801bbab19d0cb6698b3129203b",
+    "head": "6a13794003a2c9be0694172de9a8d416c5853c30",
+    "changed": [
+      895,
+      896,
+      897,
+      898,
+      920,
+      921,
+      922,
+      923,
+      924
+    ],
+    "reached": [
+      895,
+      896,
+      897,
+      898,
+      920,
+      921,
+      922,
+      923,
+      924
+    ],
+    "unreached": [],
+    "sims": [
+      {
+        "sim": "fleet/tests/test_run_engine_amendment_lens.mjs",
+        "exit": 0,
+        "ms": 2263,
+        "reached": [
+          895,
+          896,
+          897,
+          898
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_amendments.mjs",
+        "exit": 0,
+        "ms": 2031,
+        "reached": [
+          895,
+          896,
+          897,
+          898
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_fold_policy.mjs",
+        "exit": 0,
+        "ms": 22967,
+        "reached": [
+          895,
+          896,
+          897,
+          898
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_infra_retry.mjs",
+        "exit": 0,
+        "ms": 7967,
+        "reached": [
+          895,
+          896,
+          897,
+          898
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_joined_proofs.mjs",
+        "exit": 0,
+        "ms": 6272,
+        "reached": [
+          895,
+          896,
+          897,
+          898
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_kata_close.mjs",
+        "exit": 0,
+        "ms": 966,
+        "reached": [
+          895,
+          896,
+          897,
+          898
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_kata_landing.mjs",
+        "exit": 0,
+        "ms": 633,
+        "reached": [
+          895,
+          896,
+          897,
+          898
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_one_of_each.mjs",
+        "exit": 0,
+        "ms": 653,
+        "reached": [
+          895,
+          896,
+          897,
+          898
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_own_proofs.mjs",
+        "exit": 0,
+        "ms": 1380,
+        "reached": [
+          895,
+          896,
+          897,
+          898
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_proof_runs.mjs",
+        "exit": 0,
+        "ms": 7906,
+        "reached": [
+          895,
+          896,
+          897,
+          898
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_re_edge.mjs",
+        "exit": 0,
+        "ms": 2279,
+        "reached": [
+          895,
+          896,
+          897,
+          898
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_ready_set.mjs",
+        "exit": 0,
+        "ms": 7283,
+        "reached": [
+          895,
+          896,
+          897,
+          898
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_reuse.mjs",
+        "exit": 0,
+        "ms": 4765,
+        "reached": [
+          895,
+          896,
+          897,
+          898
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_review_economy.mjs",
+        "exit": 0,
+        "ms": 1471,
+        "reached": [
+          895,
+          896,
+          897,
+          898
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_stale_patch.mjs",
+        "exit": 0,
+        "ms": 3015,
+        "reached": [
+          895,
+          896,
+          897,
+          898,
+          920,
+          921,
+          922,
+          923,
+          924
+        ]
+      },
+      {
+        "sim": "fleet/tests/test_run_engine_state_exams.mjs",
+        "exit": 0,
+        "ms": 55,
+        "reached": [
+          895,
+          896,
+          897,
+          898
+        ]
+      }
+    ]
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: out-of-FILES (not taken): `fleet/tests/README.md` line 8 names `test_run_worker.mjs`, which does not exist at BASE, and the index names neither `test_worker_kata_env.mjs` nor the new `test_worker_prompt_stdin.mjs`. The index is owed an entry for the prompt-transport sim and a removal of the stale row; the path is outside this task's FILES so the edit was not made.",
+    "task 1: examiner: (d) the kata-env sim, whose stub now carries a stdin, still prints its sentinel \u2014 the first `Run:` [M1] \u2014 Encoded, but not as a live run: the leg's own words assign its proof to the Proof's first `Run:` (`node fleet/tests/test_worker_kata_env.mjs | grep -q 'ALL TESTS PASSED'`), and `fleet/tests/test_sims_are_hermetic.mjs` M4 forbids a `test_*.mjs` spawning another, so the exam cannot run the sibling sim itself. It asserts the static equivalent instead \u2014 that sim's `const spawnFn` stub, up to its `return child`, names `stdin` (absent at BASE, so the leg is red there). The Context's instruction about the evidence `cmd` file (keep the prompt, first line `claude -p \u2026` with a `(prompt on stdin)` note rather than the `<prompt>` placeholder) is likewise unasserted: it is Context, not a Machine clause or a leg, and no `Run:` covers it \u2014 it is left to the reviewer and flagged on the kata issue."
+  ],
+  "amendments": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
