@@ -96,6 +96,14 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     re-run also carries `flaky: true` and is read as green: the exam's red leaves the pass and
     the task proceeds (to review, or to the ordinary repair round if a `Run:`/`Check:` is still
     red). An ordinary red exam with no such concern is never re-run; it buys the one repair round.
+    The pass reads the captured patch's own added top-level exports against the plan's other
+    contracts: an added export whose name equals the symbol another task's `Produces:` entry
+    names — and none this task's own `Produces:` names — is a red of the pass like any other,
+    routed to the same `fix:<id>:0` repair round with the line in its blocking-issues block
+    (`the patch exports <name> at <path>, a symbol task <id> is contracted to Produce and this
+    task is not — rename it or drop the export`), and recorded as one `driver:finding` at
+    `round` `0`, `severity` `blocking`, `actor` `implementer`, `paths` the export's file — one
+    per distinct name-and-path pair, so the collision is answered before any reviewer reads it.
     One more kind records a blocking finding the graded party could not have answered:
     `driver:exam-rejected` `{task, path, detail}` — one per blocking issue of a review round whose
     `detail` names, in backticks, one of the task's Proof `Test:` landing paths (the token equal to

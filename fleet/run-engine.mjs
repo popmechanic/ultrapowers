@@ -802,6 +802,85 @@ export const touchSetOf = (task, patchFile) => {
   }
   return out
 }
+// ── a `Produces:` entry's symbol, the compiler's own reduction ──────────────
+// The engine has to answer the same question the compiler answers when it pairs
+// an interface edge — WHICH symbol does this entry name? — and the two must
+// agree, or a collision the engine reports is against a contract the plan never
+// drew. So this restates `_interface_token`
+// (`skills/ultrapowers/scripts/compile_plan.py`) rather than inventing a second
+// rule: the FIRST backtick span's leading identifier with the declaration
+// keywords skipped, or a bare identifier that stands alone or leads a `(`
+// signature, an `->` or an `=`. Everything else is prose — this repo's house
+// style for Interfaces is a sentence — and prose names no symbol, so it reduces
+// to `''` and can never collide. Placeholders (`none`, `nothing (…)`) reduce to
+// `''` on top of that, for the same reason the compiler does it: a placeholder
+// that paired would pair with every other placeholder in the plan.
+const PLACEHOLDER_TOKENS = new Set(['nothing', 'none', 'n/a', 'na'])
+// The compiler's own `_DECL_KEYWORDS`, not a shorter restatement of it: an
+// entry the compiler reduces to `Shape` and the engine reduces to `interface`
+// is a contract the engine cannot see a collision against, which is the one
+// thing this helper exists to do.
+const DECL_KEYWORDS = new Set(['class', 'def', 'async', 'function', 'const', 'let', 'var',
+                               'interface', 'type', 'struct', 'enum', 'export', 'abstract',
+                               'static'])
+const BARE_SYMBOL_LEAD = /^([A-Za-z_][\w.\-]*)\s*(?:$|\(|->|=)/
+export const producedSymbolOf = (entry) => {
+  const s = String(entry == null ? '' : entry).trim()
+  if (!s) return ''
+  let token = ''
+  if (s.startsWith('`')) {
+    const m = /^`([^`]+)`/.exec(s)
+    if (!m) return ''  // a lone opening backtick with no close — not a symbol
+    let words = m[1].trim().split(/\s+/).filter(Boolean)
+    while (words.length && DECL_KEYWORDS.has(words[0].toLowerCase())) words = words.slice(1)
+    if (!words.length) return ''  // keywords all the way down — not a symbol
+    token = words.join(' ').split(/\(|->|=|\s|:/)[0].replace(/`/g, '').trim()
+  } else {
+    const m = BARE_SYMBOL_LEAD.exec(s)
+    if (!m) return ''  // a bare word trailed by more prose — documentation
+    token = m[1]
+  }
+  return PLACEHOLDER_TOKENS.has(token.toLowerCase()) ? '' : token
+}
+// ── the public names a captured patch ADDS ──────────────────────────────────
+// Read off the unified diff rather than the tree, because the question is what
+// THIS task wrote: a file that already carried the export at BASE is nobody's
+// collision, and only an added line can be one. A removed line and a context
+// line are both skipped for that reason, and an unreadable patch answers `[]`
+// the way `patchPaths` does — evidence, not control flow.
+//
+// `path` is the `b/` half of the enclosing `diff --git` header, the same
+// capture `patchPaths` reads, so a row's path is spelled the way every other
+// path of the run is.
+const JS_SOURCE = /\.(mjs|js|ts|tsx|cjs|mts)$/
+const JS_EXPORT = /^\s*export\s+(?:default\s+)?(?:async\s+)?(?:const|let|var|function\s*\*|function|class)\s+([A-Za-z_$][\w$]*)/
+const PY_TOP_LEVEL_DECL = /^(?:def|class)\s+([A-Za-z_]\w*)/
+export const addedExportsOf = (patchFile) => {
+  let text = ''
+  try { text = fs.readFileSync(String(patchFile || ''), 'utf8') } catch { return [] }
+  const out = []
+  const seen = new Set()
+  let current = ''
+  for (const line of text.split('\n')) {
+    if (line.startsWith('diff --git ')) {
+      const m = /^diff --git a\/(.*) b\/(.*)$/.exec(line)
+      current = (m && m[2]) ? m[2] : ''
+      continue
+    }
+    if (!current) continue
+    if (!line.startsWith('+') || line.startsWith('+++')) continue
+    const body = line.slice(1)
+    let m = null
+    if (JS_SOURCE.test(current)) m = JS_EXPORT.exec(body)
+    else if (/\.py$/.test(current)) m = PY_TOP_LEVEL_DECL.exec(body)
+    if (!m) continue
+    const key = current + ' ' + m[1]
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ path: current, name: m[1] })
+  }
+  return out
+}
 // The wave's joined set: every path at least TWO of its touch sets carry,
 // sorted. A one-task wave joins nothing to itself and a wave whose tasks are
 // pairwise disjoint joins nothing either — both answer `[]`. Computed from the
@@ -3367,6 +3446,51 @@ export async function runEngine({
     let preRuns = []
     let preExam = null
     let preChecks = []
+    // ── the patch's added exports against the SIBLINGS' contracts ────────────
+    // A worker that adds a public name another task of the plan was contracted
+    // to provide has taken that task's name, and the collision is invisible to
+    // everyone until both patches are in one tree: the sibling's implementer
+    // never sees this code, and a reviewer reading this patch alone sees a
+    // perfectly ordinary export. #1057's class exactly — the collision was
+    // caught by a reviewer's block, after the one repair round was already
+    // spent, so the task died of something a grep could have told it. The
+    // driver holds both contracts, so the driver answers it here, on the pass,
+    // where the answer still buys a round.
+    //
+    // The sibling list is `WAVES` — in scope, unlike `PLAN`, which is declared
+    // after this function and would throw on every task if read from inside it.
+    // A name this task's own `Produces:` also names is not a collision: two
+    // contracts naming one symbol is the plan's business, not the patch's.
+    const COLLISION = (name, at, sibling) => 'the patch exports ' + name + ' at ' + at +
+      ', a symbol task ' + sibling + ' is contracted to Produce and this task is not — ' +
+      'rename it or drop the export'
+    const producesTokensOf = (t) => {
+      const i = (t && t.interfaces && typeof t.interfaces === 'object') ? t.interfaces : {}
+      const entries = Array.isArray(i.produces) ? i.produces : []
+      return entries.map(producedSymbolOf).filter(Boolean)
+    }
+    const exportCollisions = () => {
+      const mine = new Set(producesTokensOf(task))
+      // Plan order, so the sibling a line names is the first one that claims
+      // the symbol however many claim it.
+      const siblings = WAVES.flat().filter((t) => t && t.id !== task.id)
+        .map((t) => ({ id: t.id, tokens: new Set(producesTokensOf(t)) }))
+      const out = []
+      for (const row of addedExportsOf(impl.patch)) {
+        if (mine.has(row.name)) continue
+        const owner = siblings.find((s) => s.tokens.has(row.name))
+        if (!owner) continue
+        const line = COLLISION(row.name, row.path, owner.id)
+        appendEvent({ kind: 'driver:finding', task: task.id, round: 0, severity: 'blocking',
+                      actor: 'implementer', detail: line, paths: [row.path],
+                      evidence: {
+                        read: cutToBound(line),
+                        against: cutToBound('the captured patch at ' + String(impl.headSha || '')),
+                      } })
+        out.push({ line, stdout: '' })
+      }
+      return out
+    }
     const prePass = async () => {
       const reds = []
       preRuns = await runCommands(0)
@@ -3386,6 +3510,9 @@ export async function runEngine({
       // commands just read, so it is judged against the tree they left.
       const handshake = await handshakeCheck()
       if (handshake) reds.push(handshake)
+      // Last of all, and cheap: no command runs for it, so a pass that finds no
+      // collision records exactly what it recorded before this existed.
+      for (const c of exportCollisions()) reds.push(c)
       return reds
     }
     // The fix round's `exam:` entries, when they bought the review round below
