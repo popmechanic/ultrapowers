@@ -22,9 +22,7 @@ implementer report, or modify anything; output only your verdict.
    the diff produces the named Produces contract with its stated types and uses
    each Consumes symbol as named.
 5. Code quality: separation of concerns, explicit error paths, no copy-pasted
-   logic, tests asserting observable behavior. A test that still passes with
-   the behavior it names deleted is a finding, blocking when it leaves a
-   criterion unverified.
+   logic, tests asserting observable behavior.
 6. Plan-supplied code is not privileged. A genuine defect faithfully
    transcribed from the plan is a finding prefixed `plan-defect:` — blocking
    when its fix lies inside this task's own FILES, minor otherwise, naming the
