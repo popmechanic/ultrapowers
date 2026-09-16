@@ -1,0 +1,373 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "2b4a0fdd1a0c1e324f7d5db1985b2913b182f710524658dea586b1f57f7faf7c",
+      "verdict": "pass",
+      "reason": "M1's literals are computed by leg (a) and both key branches of the one exam-run append site by (b); (c)/(d) cover both members of the RESOLVED/BLOCKED enum on the existing resolver:reply event, the 'wave loop passes none' comment being what the task changes."
+    },
+    "2": {
+      "hash": "861d793f00c9f5a8e9d46d3cb392600cb9f4db8c8ac3e0a279e275eaed40c494",
+      "verdict": "pass",
+      "reason": "Sort/dedupe/empty, CONFLICT vs TEST_FAILED key presence, null-on-empty across dispositions, bare vs suffixed read, the 500-char cut and the exact 17-key event set are each falsified by a leg; against is pinned to the adopted row's head rather than BASE; the append-site wiring is Task 7's."
+    },
+    "3": {
+      "hash": "0f8a149329258707b4a5d848d787b1549fc296159d5c9aa00ea4c844683a626b",
+      "verdict": "pass",
+      "reason": "Both suffix forms, the no-token fallback, the PASS/killed-true/rewritten-exam negatives, all three refutation verdicts with their refutedBy, round, paths and evidence, and the handshake row each have a falsifying leg; the grep Run is stated as zero at BASE."
+    },
+    "4": {
+      "hash": "177e13a26a1845a67aba91bad51e4cd3a403fa60ec562c85910f36c55749918a",
+      "verdict": "pass",
+      "reason": "The seven kinds and every path/kind/evidence mismatch are falsified by (a), byte-exact format and order by (b), the M3 literals compute (01A05..01A24; 499+ellipsis is 500) by (c)/(d), M4 by (e); module and sim are created by the task."
+    },
+    "5": {
+      "hash": "26d5ff0e3c8fc5805d571ce888e5ce65a2817c53d5df133d58dba96049c056ec",
+      "verdict": "pass",
+      "reason": "Each judge has its own falsifying leg (exam:T2 with / exam:T1 without; review:T1/T2; the conflicted-path rig with its b.txt and green-exam controls); the driver:facts counts are pinned exactly; the no-receipt run rides the review-economy byte pin and the no-FACTS assertion."
+    },
+    "6": {
+      "hash": "7d39857438ef6a87b0c947b653d8d1f3cac26ad15394da6506e07d930f535cad",
+      "verdict": "pass",
+      "reason": "Every enumeration is pinned in order by a scoped grep over the one Receipts paragraph whose closing anchor exists at BASE and whose opening anchor cannot, so every grep fails at BASE; the commands are POSIX BRE-clean."
+    },
+    "7": {
+      "hash": "0ed98ea54128d61b7ef2f6b11222ecb2827c7ed1fb7f39095a8029c4c91af028",
+      "verdict": "pass",
+      "reason": "(a) pins the resolver:reply row and the onEvent wiring the leg states is absent at BASE, (b) both driver:publish-fold sites plus the no-conflict negative, (c) the FACTS block with its two ordered ids and the one driver:facts row, (d) the absence of both on a receipt-free attempt."
+    }
+  },
+  "tally": {
+    "dispatched": 18,
+    "rejected": 11,
+    "rounds": 6,
+    "base": "4a63b4ef097ac1a81e539a3f3c79771ebc9a04be",
+    "round1": {
+      "dispatched": 6,
+      "rejected": 5,
+      "passed": [
+        "6"
+      ],
+      "species": "a grep-shaped last mile the reader could not falsify (tasks 1, 2, 5), an enumerated clause with one leg per row (3: token forms; 4: the seven kinds)"
+    },
+    "round2": {
+      "dispatched": 5,
+      "rejected": 4,
+      "passed": [
+        "4"
+      ],
+      "species": "the publish-fold wiring pinned by source greps (1, 2, 5) \u2014 moved into a new Task 7 with a real publishFold rig; the hollow row's evidence unasserted (3)"
+    },
+    "round3": {
+      "dispatched": 5,
+      "rejected": 4,
+      "passed": [
+        "1"
+      ],
+      "species": "sort/dedupe unfed (2); two refutation cases without paths/evidence legs (3); the reader misread a green re-pass row as a second receipt \u2014 'receipt' spelled in the clause (5); a planted row instead of the prior attempt's own reply (7)"
+    },
+    "round4": {
+      "dispatched": 4,
+      "rejected": 1,
+      "passed": [
+        "3",
+        "5",
+        "7"
+      ],
+      "species": "against pinned by regex rather than to the adopted head (2)"
+    },
+    "round5": {
+      "dispatched": 2,
+      "rejected": 1,
+      "passed": [
+        "5"
+      ],
+      "species": "foldReceiptOf's empty-open branch across dispositions unlegged (2)"
+    },
+    "round6": {
+      "dispatched": 1,
+      "rejected": 0,
+      "passed": [
+        "2"
+      ]
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "task": "1",
+      "verdict": "fail",
+      "reason": "M3's onEvent grep read as vacuous; the publish-fold half later moved to Task 7"
+    },
+    {
+      "round": 1,
+      "task": "2",
+      "verdict": "fail",
+      "reason": "M3's foldReceiptOf( count neither falsifies the spread nor is satisfiable with an arrow definition"
+    },
+    {
+      "round": 1,
+      "task": "3",
+      "verdict": "fail",
+      "reason": "M1 enumerates four token forms; only the bare touch-set token had a leg"
+    },
+    {
+      "round": 1,
+      "task": "4",
+      "verdict": "fail",
+      "reason": "M1 enumerates seven RECEIPT_KINDS; only driver:exam-run exercised positively"
+    },
+    {
+      "round": 1,
+      "task": "5",
+      "verdict": "fail",
+      "reason": "M2's wave-loop wiring had no behavioural leg; the contendingBlock grep already passes at BASE"
+    },
+    {
+      "round": 1,
+      "task": "6",
+      "verdict": "pass",
+      "reason": "scoped greps, closing anchor at BASE, opening anchor absent"
+    },
+    {
+      "round": 2,
+      "task": "1",
+      "verdict": "fail",
+      "reason": "a source grep for onEvent cannot show a reply reaching the log"
+    },
+    {
+      "round": 2,
+      "task": "2",
+      "verdict": "fail",
+      "reason": "onEvent(publishFoldEvent( grep never pins the open argument"
+    },
+    {
+      "round": 2,
+      "task": "3",
+      "verdict": "fail",
+      "reason": "hollow driver:finding's evidence never read by leg (d)"
+    },
+    {
+      "round": 2,
+      "task": "4",
+      "verdict": "pass",
+      "reason": "seven kinds, format, order, the 20-of-25 and 500-char literals computed"
+    },
+    {
+      "round": 2,
+      "task": "5",
+      "verdict": "fail",
+      "reason": "publishFold's receiptRows pass rests on a grep a comment satisfies"
+    },
+    {
+      "round": 3,
+      "task": "1",
+      "verdict": "pass",
+      "reason": "publish-fold half removed; both enum members and both key branches legged"
+    },
+    {
+      "round": 3,
+      "task": "2",
+      "verdict": "fail",
+      "reason": "no leg feeds a duplicate or unsorted path"
+    },
+    {
+      "round": 3,
+      "task": "3",
+      "verdict": "fail",
+      "reason": "cases (ii) and (iii) lacked paths/evidence assertions; grep count's BASE value unstated"
+    },
+    {
+      "round": 3,
+      "task": "5",
+      "verdict": "fail",
+      "reason": "reader counted the green re-pass exam-run row as a receipt; the clause now spells that a receipt carries both keys"
+    },
+    {
+      "round": 3,
+      "task": "7",
+      "verdict": "fail",
+      "reason": "leg (c) planted a row instead of re-driving attempt 2 after attempt 1's BLOCKED reply"
+    },
+    {
+      "round": 4,
+      "task": "2",
+      "verdict": "fail",
+      "reason": "against matched by regex, not pinned to the adopted head"
+    },
+    {
+      "round": 4,
+      "task": "3",
+      "verdict": "pass",
+      "reason": "every token form, verdict and negative legged"
+    },
+    {
+      "round": 4,
+      "task": "5",
+      "verdict": "pass",
+      "reason": "each judge legged; one label wart fixed after (re-read round 5: pass)"
+    },
+    {
+      "round": 4,
+      "task": "7",
+      "verdict": "pass",
+      "reason": "attempt 2 reads attempt 1's reply and fold row; attempt 1 carries no FACTS"
+    },
+    {
+      "round": 5,
+      "task": "2",
+      "verdict": "fail",
+      "reason": "empty-open with a non-folded disposition unlegged"
+    },
+    {
+      "round": 5,
+      "task": "5",
+      "verdict": "pass",
+      "reason": "re-read after the resolve:wave1:1 label fix"
+    },
+    {
+      "round": 6,
+      "task": "2",
+      "verdict": "pass",
+      "reason": "null-on-empty across dispositions, bare read, 17-key set"
+    }
+  ],
+  "authoring": {
+    "minutes": 55,
+    "probes": 0,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "When should the receipts plan be authored?",
+        "options": [
+          "After runs 155, 156 and 157 merge",
+          "Now, on 901fc874, re-pin at launch",
+          "Your forked session authors it; this one only launches"
+        ],
+        "recommended": "After runs 155, 156 and 157 merge",
+        "picked": "After runs 155, 156 and 157 merge"
+      },
+      {
+        "question": "Claim and summary",
+        "options": [
+          "The brief's sentence verbatim as the Claim, with the three-sentence summary drafted here",
+          "Re-draft the Claim in do:/see: form"
+        ],
+        "recommended": "The brief's sentence verbatim as the Claim, with the three-sentence summary drafted here",
+        "picked": "The brief's sentence verbatim as the Claim, with the three-sentence summary drafted here"
+      },
+      {
+        "question": "How does a judge learn what FACTS is?",
+        "options": [
+          "The block carries its own one-sentence legend; no role file changes (briefs byte-identical in the strict sense; Check: git diff --quiet $ULTRA_BASE -- fleet/roles/)",
+          "Each of examiner.md, reviewer.md, resolver.md gains a FACTS paragraph"
+        ],
+        "recommended": "The block carries its own one-sentence legend; no role file changes (briefs byte-identical in the strict sense; Check: git diff --quiet $ULTRA_BASE -- fleet/roles/)",
+        "picked": "The block carries its own one-sentence legend; no role file changes (briefs byte-identical in the strict sense; Check: git diff --quiet $ULTRA_BASE -- fleet/roles/)"
+      },
+      {
+        "question": "Where does the FACTS block live and how is it bounded?",
+        "options": [
+          "Inline in the brief, at most 20 rows, each read/against at most 500 characters (under 24 KB; prompts ride stdin since #1035)",
+          "A file the brief names by path, like the resolver's CONTENDING TASKS FILE"
+        ],
+        "recommended": "Inline in the brief, at most 20 rows, each read/against at most 500 characters (under 24 KB; prompts ride stdin since #1035)",
+        "picked": "Inline in the brief, at most 20 rows, each read/against at most 500 characters (under 24 KB; prompts ride stdin since #1035)"
+      },
+      {
+        "question": "Which failures carry a receipt?",
+        "options": [
+          "The brief's five plus the handshake finding: red exam, resolver miss, fold conflict (wave and publish), blocking finding, refuted finding, hollow exam as a minor driver:finding \u2014 never a red Run:/Check:",
+          "Also red driver:proof-run and driver:check-run rows, paths = the task's Files"
+        ],
+        "recommended": "The brief's five plus the handshake finding: red exam, resolver miss, fold conflict (wave and publish), blocking finding, refuted finding, hollow exam as a minor driver:finding \u2014 never a red Run:/Check:",
+        "picked": "The brief's five plus the handshake finding: red exam, resolver miss, fold conflict (wave and publish), blocking finding, refuted finding, hollow exam as a minor driver:finding \u2014 never a red Run:/Check:"
+      },
+      {
+        "question": "How is a hollow exam recorded?",
+        "options": [
+          "One driver:finding row, severity minor, actor examiner (no new kind; the deletion reading is per kind)",
+          "Its own kind driver:exam-hollow"
+        ],
+        "recommended": "One driver:finding row, severity minor, actor examiner (no new kind; the deletion reading is per kind)",
+        "picked": "One driver:finding row, severity minor, actor examiner (no new kind; the deletion reading is per kind)"
+      },
+      {
+        "question": "What counts as a refuted finding?",
+        "options": [
+          "Three writers: the flaky re-run (#944), the fix round's exam concern upheld by review round 1 (#908), and review round 2 clearing an exam its author left unchanged (#1037)",
+          "Only the #1037 round-2 case"
+        ],
+        "recommended": "Three writers: the flaky re-run (#944), the fix round's exam concern upheld by review round 1 (#908), and review round 2 clearing an exam its author left unchanged (#1037)",
+        "picked": "Three writers: the flaky re-run (#944), the fix round's exam concern upheld by review round 1 (#908), and review round 2 clearing an exam its author left unchanged (#1037)"
+      },
+      {
+        "question": "How is 'how often a brief carried a note' read from the tag?",
+        "options": [
+          "One driver:facts record row per non-empty render, carrying the rendered ids (not a receipt, never rendered)",
+          "Read it off the recorded briefs by hand"
+        ],
+        "recommended": "One driver:facts record row per non-empty render, carrying the rendered ids (not a receipt, never rendered)",
+        "picked": "One driver:facts record row per non-empty render, carrying the rendered ids (not a receipt, never rendered)"
+      },
+      {
+        "question": "Execute how?",
+        "options": [
+          "Ultrapowers \u2014 /ultrapowers docs/superpowers/plans/2026-09-16-failure-receipts.md",
+          "Subagent-Driven",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers \u2014 /ultrapowers docs/superpowers/plans/2026-09-16-failure-receipts.md",
+        "picked": "Ultrapowers \u2014 /ultrapowers docs/superpowers/plans/2026-09-16-failure-receipts.md"
+      },
+      {
+        "question": "Receipts execute lane",
+        "options": [
+          "Ultrapowers, launch now",
+          "Subagent-Driven",
+          "Hold"
+        ],
+        "recommended": "Ultrapowers, launch now",
+        "picked": "Ultrapowers, launch now"
+      },
+      {
+        "question": "How does a judge learn what the FACTS block is?",
+        "options": [
+          "The block carries its own one-sentence legend",
+          "A FACTS paragraph in each judge's role file"
+        ],
+        "recommended": "The block carries its own one-sentence legend",
+        "picked": "The block carries its own one-sentence legend"
+      },
+      {
+        "question": "How is the block bounded?",
+        "options": [
+          "Inline, at most 20 rows of 500 characters each",
+          "A file the brief names"
+        ],
+        "recommended": "Inline, at most 20 rows of 500 characters each",
+        "picked": "Inline, at most 20 rows of 500 characters each"
+      },
+      {
+        "question": "Which failures leave a receipt?",
+        "options": [
+          "The brief's five plus the handshake finding; a hollow exam as a minor finding",
+          "Also red Run and Check lines"
+        ],
+        "recommended": "The brief's five plus the handshake finding; a hollow exam as a minor finding",
+        "picked": "The brief's five plus the handshake finding; a hollow exam as a minor finding"
+      },
+      {
+        "question": "Refuted-finding writers and the reading of rendered blocks",
+        "options": [
+          "Three writers, and one record row per rendered block",
+          "Only #1037's case, read briefs by hand"
+        ],
+        "recommended": "Three writers, and one record row per rendered block",
+        "picked": "Three writers, and one record row per rendered block"
+      }
+    ]
+  }
+}
