@@ -215,6 +215,37 @@ comment).
 *A date field is a text input.* The exam's `type` is CDP `Input.insertText`,
 which does not reach `<input type="date">` (run-12's authoring, measured).
 
+## Styling (experiment, 2026-09-16)
+
+A TinyApp's styling is **Tailwind v4 + shadcn/ui installed by its CLI + `@shadcn/lint`**,
+signed by the operator on 2026-09-16 as an *experiment* on popmechanic/tinyapp-fixture
+(spec `2026-09-16-linted-design-system-experiment.md`, on the laptop), read over the next
+five fixture runs after the re-platform merges — no default until `n = 5 runs`. The trade
+is stated: more specificity in the stack, bought for a sensor nothing else in the fleet
+carries — presentation checked mechanically, with diagnostics the fix round converges on
+(shadcn-ui/lint's evals: zero findings in one round across 150+ agent task runs).
+
+- **The system.** `bunx --bun shadcn@latest init -d --yes` on the Vite client, then `add`
+  only the components the app uses; tokens in the client's `index.css` `@theme inline`
+  block; Tailwind v4 through `@tailwindcss/vite`. No hand-written CSS files. The tsconfig
+  alias is `paths: {"@/*": ["./src/*"]}` with **no `baseUrl`** (TypeScript 6 refuses it).
+- **The lint.** A root `lint:ui` script runs ESLint 9 with the six `@shadcn/lint` rules
+  (`no-restyle` allowing `layout`, `no-raw-colors`, `no-arbitrary-values`,
+  `no-inline-styles`, `no-unknown-classes`, `require-static-classes`) over the client's
+  source, with `components/ui/**` excluded from every rule — shadcn's own generated files
+  carry arbitrary values by design (8 of the probe's 15 baseline findings). Every TinyApp
+  plan carries `- Check: bun run lint:ui` in its Global Constraints, blocking; `(minor)`
+  on that line is the rollback inside the experiment.
+- **The exams.** Interactions select by role and accessible name
+  (`{click: {role, name}}`), never by a class: `no-unknown-classes` flags a semantic class
+  on a plain element too (7 of the 15). Views use tags and shadcn's `data-slot`
+  attributes. Every control has an accessible name; one the tree cannot name is a red exam.
+- **The reading.** Per task: `lint:ui` findings on the first `driver:check-run` (drift), and
+  whether the fix round reached exit 0 (correction). Keep when drift is non-zero on at
+  least one task per run and every task reaches zero in its one round; flat drift over the
+  window retires the section. **Rollback:** the fixture's CSS files as they stand at
+  `062aebf63e8f21290e7bd7348fa60ed7d76d6332`.
+
 ## The engine boundary
 
 The ultrapowers engine runs whatever `testCmd` it is handed and knows nothing
