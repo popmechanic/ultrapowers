@@ -1,0 +1,14 @@
+  `base`, `0`, `2` and `integrated`: `base` at the at-BASE probe, `0` at the pre-review pass and at the
+  repeat that follows the pre-review repair round, and one numbered pass above `0` for the
+  exam-rejected round's run (#1037) — taken on the graded tree after a review round's blocking
+  finding named the exam's own landing path and the examiner rewrote it, and numbered `2` for the
+  review round that reads it. `1` is emitted by
+  nothing: review round 1 reads the pre-review pass's evidence and dispatches no fix worker of its
+  own, so nothing edits the tree between that pass and that round. The
+  numbers stay in the vocabulary a reader of an older run's record meets. Whether that round is
+  dispatched at all is `reviewOnStateExams` (#836), a run argument that is off by default: with it
+  off, a task whose pre-review pass was green and whose state-exam record holds at least one stem
+  with every mutant killed gets no reviewer, and `true` in the run's arguments is the rollback that
+  restores the one reviewer every task gets without it. A task merged that way carries the verdict
+  `skipped-mutant-killed` and is gated exactly as a reviewed one — the wave's fold, the candidate
+  suite, the integrated `Run:`/`Check:` pass and the pre-merge gate all run on it unchanged. The integrated `Run:` receives `ULTRA_TASK` and

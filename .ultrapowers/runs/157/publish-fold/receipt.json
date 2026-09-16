@@ -1,0 +1,51 @@
+{
+  "engineHead": "d759e7afec2cb15df4df360b1fb102dfe1bd017f",
+  "attempts": {
+    "1": {
+      "tip": "725b1cdcc9e4e89aae9b1e38d1a2c5c3cac73bbe",
+      "candidate": "e959546b675cb25f7fe7fcf04541b07867484d48",
+      "disposition": "folded",
+      "pathsJoined": 4,
+      "resolversDispatched": 2,
+      "suite": "pass",
+      "checks": [
+        {
+          "check": "parse",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_review_economy.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_sandbox_boot_card_cells.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_reuse.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_kata_landing.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_proof_runs.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "pass"
+        }
+      ],
+      "checkRetries": 0
+    }
+  }
+}

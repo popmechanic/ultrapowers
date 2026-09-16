@@ -1,0 +1,862 @@
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index 123d7113a9b710cef9a0c5ebf747cf1f0285ccae..13e212547d3de9aad6a7a2248e4fdfa1c663312d 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -189,7 +189,13 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   repeat that follows the pre-review repair round. A pass number above `0` is a value this engine
+   no longer emits — the one review round reads the pre-review pass's evidence and dispatches no fix
+   worker of its own, so nothing edits the tree after that pass and no round re-executes. The
+-  numbers stay in the vocabulary a reader of an older run's record meets. The integrated `Run:` receives `ULTRA_TASK` and
++  numbers stay in the vocabulary a reader of an older run's record meets. Whether that round is
++  dispatched at all is `reviewOnStateExams` (#836), a run argument that is off by default: with it
++  off, a task whose pre-review pass was green and whose state-exam record holds at least one stem
++  with every mutant killed gets no reviewer, and `true` in the run's arguments is the rollback that
++  restores the one reviewer every task gets without it. A task merged that way carries the verdict
++  `skipped-mutant-killed` and is gated exactly as a reviewed one — the wave's fold, the candidate
++  suite, the integrated `Run:`/`Check:` pass and the pre-merge gate all run on it unchanged. The integrated `Run:` receives `ULTRA_TASK` and
+   `ULTRA_EXAM_PASS=integrated` and no `ULTRA_RUN_DIR` — the run directory is the driver's, not the
+   fold's; the integrated `Check:` receives only `ULTRA_BASE`; and the suite receives none of the four.
+ - **Launch order (launcher):** validate `--target`/`--base`/plan — a `--base` that is not an ancestor
+@@ -676,7 +682,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   sentence with its provenance tag stripped; then one table,
+   `| task | claim | exam | probes | mutant | suite |`, one row per task in the plan's order, whose
+   cells are read off the plan, `report.json`, `gate-receipt.json` and the status page and are never
+-  narrated at publish time; then `Residuals: <n> from review` — `Residuals: none` at zero — and, as
++  narrated at publish time — the `mutant` cell reads `SURVIVED` when any state exam's mutant lived,
++  and where they were all killed a row whose `reviewVerdict` is `skipped-mutant-killed` reads
++  `killed, reviewer skipped` and every other row reads `killed`;
++  then `Residuals: <n> from review` — `Residuals: none` at zero — and, as
+   `- ` lines, only the items nobody else will do; then, below those errands,
+   `Amendments: <n> from workers` and, after a blank line, one
+   `- task <id> — <amends>: <what> — <why>` line per row of `report.json`'s `amendments` in the
+diff --git a/fleet/roles/examiner.md b/fleet/roles/examiner.md
+index daa2d2bee7e9d7fc28c6146a42043a5cb0f7671c..8789f325fd947e2b049899948bf8ee6f6a442af3 100644
+--- a/fleet/roles/examiner.md
++++ b/fleet/roles/examiner.md
+@@ -30,8 +30,7 @@ Work leg by leg:
+    paths and directory walks are written for the path it lands at, not for the
+    one it maps from. Where the task specifies
+    exact outputs, assert full expected values with equality, not loose
+-   containment; where a leg pins an exact or verbatim string, keep that check
+-   live — one that would pass against a stub is not that leg.
++   containment; where a leg pins an exact or verbatim string, keep that check live.
+ 3. Expect the exam to be red at BASE, and expect its failure to read as the
+    absent implementation rather than as a typo, a bad import, or a fixture the
+    exam forgot to create. The driver runs it at BASE and reports what it saw.
+diff --git a/fleet/roles/reviewer.md b/fleet/roles/reviewer.md
+index 700a527702b86bc95dd269284f639218f43d2dbb..e015e88185d95d726120030ee1e5e1d8842b2e40 100644
+--- a/fleet/roles/reviewer.md
++++ b/fleet/roles/reviewer.md
+@@ -22,9 +22,7 @@ implementer report, or modify anything; output only your verdict.
+    the diff produces the named Produces contract with its stated types and uses
+    each Consumes symbol as named.
+ 5. Code quality: separation of concerns, explicit error paths, no copy-pasted
+-   logic, tests asserting observable behavior. A test that still passes with
+-   the behavior it names deleted is a finding, blocking when it leaves a
+-   criterion unverified.
++   logic, tests asserting observable behavior.
+ 6. Plan-supplied code is not privileged. A genuine defect faithfully
+    transcribed from the plan is a finding prefixed `plan-defect:` — blocking
+    when its fix lies inside this task's own FILES, minor otherwise, naming the
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index 665b3fd24ee581aa26af5c2afb75fa282ac4df85..6589d94698d2fa470d5622b0559bf1f9efaf821f 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -544,9 +544,15 @@ export function stateExamsOf(runDir, taskId) {
+ // is told it is settled FOR THAT FILE and for nothing else. Anything short of every mutant killed renders nothing at
+ // all (the run-51 rule), so a task with no record carries the prompt it had
+ // before this existed, byte for byte.
++// "Every mutant killed", spelled once. Two readers ask it of the same rows —
++// the reviewer's settled block below and the skipped reviewer of the review
++// round — and they have to mean the same thing by it: a record with no rows is
++// not an answer, and one row short of `true` (a survivor, or a `mutant.json`
++// that was missing or unparsable and left `null`) is a no.
++const everyMutantKilled = (rows) =>
++  Array.isArray(rows) && rows.length > 0 && rows.every((r) => r && r.mutant_killed === true)
+ export const stateExamBlock = (rows) => {
+-  if (!Array.isArray(rows) || rows.length === 0) return ''
+-  if (!rows.every((r) => r && r.mutant_killed === true)) return ''
++  if (!everyMutantKilled(rows)) return ''
+   return '\n\nSTATE EXAM: the driver read this task\'s state-exam record and every mutant was ' +
+     'killed, so duty 5 is settled for the exam file(s) named below and for nothing else — the ' +
+     'implementer\'s own tests stay under duty 5.' +
+@@ -1052,6 +1058,18 @@ export async function runEngine({
+   // What a state exam is handed as `ULTRA_RUN_DIR` — absolute, because the
+   // exam runs with its cwd inside a clone and resolves the path itself.
+   const runDirAbs = path.resolve(runDir)
++  // Whether a task whose state exam killed its mutant still gets a reviewer
++  // (#836, the operator's pick of 2026-09-15). OFF is the shipped default and
++  // the experiment: a green pre-review pass beside a record where every mutant
++  // was killed is the driver's own proof that the exam would have caught a
++  // wrong state, so the review round is not dispatched at all and the row reads
++  // `skipped-mutant-killed`. The ROLLBACK is `reviewOnStateExams: true` in the
++  // run's `args.json` — or flipping this default to `true` — which restores the
++  // one reviewer every task gets without it. Read once, here, and read strictly:
++  // off unless the argument is literally `true`, so an absent key (which is
++  // every run on the fleet today — nothing writes this knob), `false`, `'true'`
++  // and `1` are all off.
++  const reviewOnStateExams = args.reviewOnStateExams === true
+   // The engine is handed `log` and `phase` (both events of their own kind) but
+   // no raw sink, and `driver:proof-run` is a RECORD, not narration: it has to
+   // survive the run as data a sense pass can count. So it goes to the same
+@@ -2942,6 +2960,42 @@ export async function runEngine({
+       // The hunks of the tree this round is reading — the pre-review repair
+       // round is the one thing that can have edited the exam before it.
+       const editedDiffs = await examEditedDiffs()
++      // ── the reviewer a killed mutant buys nothing from (#836) ─────────────
++      // The experiment, default off: a task whose pre-review pass came back
++      // green all the way — every `Run:` 0, the exam 0 or not runnable, every
++      // non-minor `Check:` 0, and no `exam:` concern to judge (#908) — and
++      // whose state-exam record says every mutant was killed has had its whole
++      // claim measured by the driver already. `stateExamBlock` would tell the
++      // referee exactly that and then ask it to read the diff anyway; here the
++      // round is simply not dispatched, on the SAME predicate the block uses,
++      // so the settled block and the skip can never disagree about what "every
++      // mutant killed" means. What the task still gets is everything the driver
++      // owns — the pass, the one repair round, the fold, the candidate suite,
++      // the integrated `Run:`/`Check:` re-execution and the pre-merge gate.
++      // What it loses is the referee's lens. The judgment call is the record:
++      // no new event kind, and no hub post, because a reviewer's findings never
++      // reach a task issue anyway.
++      const stateExamRows = stateExamRowsOf(runDirAbs, task.id)
++      if (!reviewOnStateExams && examConcerns.length === 0 &&
++          runEvidence.every((r) => r.exit === 0) &&
++          (!examEvidence || examEvidence.exit === 0) &&
++          checkEvidence.every((c) => c.exit === 0 || c.minor) &&
++          everyMutantKilled(stateExamRows)) {
++        judgmentCalls.push('task ' + task.id + ': every mutant killed (' +
++          stateExamRows.map((r) => r.exam).join(', ') +
++          ') — no reviewer was dispatched (reviewOnStateExams off)')
++        log('task ' + task.id + ' every mutant killed — no reviewer dispatched ' +
++          '(reviewOnStateExams off)')
++        // The `done` row of the clean review below, less what no reviewer
++        // produced: `minorFindings` and `planNotes` are empty by construction,
++        // so the notes are the concerns alone.
++        return { task: task.id, baseCorrected, status: 'done', branch: '', exam,
++                 headSha: impl.headSha, patch: impl.patch,
++                 reviewVerdict: 'skipped-mutant-killed',
++                 notes: concerns.map((c) => 'concern: ' + c).join('; '),
++                 tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
++                 ...examEditedField() }
++      }
+       const reviewPrompt = roles.reviewer + taskBodyBlock(task, wavesPath) +
+         '\nPATCH: ' + impl.patch +
+         '\nHEAD: ' + impl.headSha +
+@@ -2961,10 +3015,11 @@ export async function runEngine({
+         // so its prompt is the one it had before this existed.
+         amendmentBlock(implAmendments.concat(proofFixes ? amendmentsOf(impl) : [])) +
+         checkEvidenceBlock(checkEvidence) +
+-        // Read HERE, not at the pre-review pass: the round grades the tree the
+-        // pre-review repair round left, so it must read the record that round's
+-        // own exam pass wrote rather than the first pass's.
+-        stateExamBlock(stateExamRowsOf(runDirAbs, task.id))
++        // Read in the ROUND, not at the pre-review pass (the rows above): the
++        // round grades the tree the pre-review repair round left, so it must
++        // read the record that round's own exam pass wrote rather than the
++        // first pass's.
++        stateExamBlock(stateExamRows)
+       // One reviewer per round, whatever the task's `**Review:**` value says
+       // (#964 Task 2). The label carries no trailing pass number, because there
+       // is no second half to distinguish from the first: `review:<id>:<iter>`.
+diff --git a/fleet/sandbox-boot.sh b/fleet/sandbox-boot.sh
+index b43894adfeff40ea7869dc831323aa0209ef63a1..fdd51653535e4376e98a53f1ada04b5cfccb61f8 100755
+--- a/fleet/sandbox-boot.sh
++++ b/fleet/sandbox-boot.sh
+@@ -2583,7 +2583,10 @@ def mutant_cell(row):
+     killed = [e.get("mutant_killed") for e in exams if isinstance(e, dict)]
+     if any(k is False for k in killed) or len(killed) != len(exams):
+         return "SURVIVED"
+-    return "killed" if all(k is True for k in killed) else EM
++    if not all(k is True for k in killed):
++        return EM
++    skipped = row.get("reviewVerdict") == "skipped-mutant-killed"
++    return "killed, reviewer skipped" if skipped else "killed"
+ 
+ 
+ def suite_cell(task):
+diff --git a/fleet/tests/test_run_engine_review_economy.mjs b/fleet/tests/test_run_engine_review_economy.mjs
+index 752d0ad2420dbedf0de2ba17dfc400ab29c9e8b6..2bfe05d818f559258df55e6c05cc2eb5f1ad8471 100644
+--- a/fleet/tests/test_run_engine_review_economy.mjs
++++ b/fleet/tests/test_run_engine_review_economy.mjs
+@@ -385,4 +385,320 @@ async function pinRun(engine, tasks, rolesDir = ROLES_DIR) {
+   }
+ }
+ 
++// ═════════════════════════════════════════════════════════════════════════════
++// run-156 task 1 — the engine skips the reviewer on a killed mutant, behind
++// `reviewOnStateExams`.
++//
++// The same accounting question this sim already asks, one round earlier: a
++// reviewer-minute spent on a task whose own state exam already proved it would
++// have caught a wrong state buys the run nothing that the driver did not
++// already hold. The switch removes that dispatch and only ever that dispatch,
++// and it is off unless the run's arguments carry literally `true`.
++//
++// Machine clauses under test (legs (a)–(e) of the Proof):
++//   M1 — no `reviewOnStateExams` key + a green pre-review pass + a record whose
++//        every stem reads `killed: true` dispatches no `review:<id>:1`; the row
++//        is `done` / `skipped-mutant-killed` / `fixIterations: 0`, the patch is
++//        adopted by the fold, `reviewEconomy.reviewerMs` is `0`, and exactly
++//        one `judgmentCalls` entry names the stems and the switch.
++//   M2 — the same run with `reviewOnStateExams: true` dispatches
++//        `review:A:1` once, with the `STATE EXAM:` block on its prompt, and the
++//        row reads `clean`.
++//   M3 — with the switch off, `killed: false`, a stem with no `mutant.json` and
++//        no record at all each dispatch `review:A:1` once and read `clean`.
++//   M4 — with the switch off and every mutant killed, a still-red `Run:` ends
++//        `proof-red` with no reviewer, and the #908 path (a still-red exam
++//        beside an `exam:` concern) still dispatches its one reviewer.
++//   M5 — the two documents carry the switch, its default, its rollback and the
++//        verdict, in the places the Proof's `Run:` lines read them.
++
++// The record the driver reads at pass `0`, written by the sim rather than by an
++// exam: `stateExamRowsOf` walks `<runDir>/state-exams/task-<id>/<stem>-<pass>/`
++// and reads these three files. `rig()` provisions synchronously, so a call to
++// this between `rig(...)` and `await run()` lands before the engine looks.
++const WALLS = { store_ms: 5, render_ms: null, render: 'skipped' }
++const CONTRACT_OK = { breach: null }
++const MUTANT_KILLED = { killed: true, path: 'todos/0/completed' }
++const MUTANT_SURVIVED = { killed: false, path: 'todos/0/completed' }
++const writeStateExam = (runDir, taskId, stem, files) => {
++  const dir = path.join(runDir, 'state-exams', 'task-' + taskId, stem + '-0')
++  fs.mkdirSync(dir, { recursive: true })
++  for (const [name, obj] of Object.entries(files)) {
++    fs.writeFileSync(path.join(dir, name), JSON.stringify(obj) + '\n')
++  }
++  return dir
++}
++// The full record of one killed stem: walls, contract and a killed mutant.
++const writeKilledRecord = (runDir, taskId) =>
++  writeStateExam(runDir, taskId, 'todo-state',
++    { 'walls.json': WALLS, 'contract.json': CONTRACT_OK, 'mutant.json': MUTANT_KILLED })
++// A blob of the integration clone, byte for byte — the fold's green path is
++// `reset --hard <candidate>` in that clone, so `HEAD:` is the adopted tree.
++const integBlob = (integ, ref) =>
++  execFileSync('git', ['show', ref], { cwd: integ, env: ENV, encoding: 'utf8' })
++const SKIP_CALL = /^task A: every mutant killed \(todo-state\) — no reviewer was dispatched \(reviewOnStateExams off\)$/
++
++// ── leg (a): the skip itself, and that it is not keyed on an explicit `false`
++// [M1] ───────────────────────────────────────────────────────────────────────
++// Run twice: once with no `reviewOnStateExams` key in the run's arguments (the
++// shipped default — nothing writes the key on the fleet today) and once with it
++// spelled `false`. The assertions are the same both times, so an engine that
++// skips only when the argument is literally `false` fails the first half and an
++// engine that reviews regardless fails both.
++for (const [tag, extraArgs] of [['absent', {}], ['false', { reviewOnStateExams: false }]]) {
++  const repo = makeRepo(path.join(tmp, 'repo-skip-' + tag))
++  const runDir = path.join(tmp, 'run-skip-' + tag)
++  const labels = []
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n')
++      return doneImpl(cwd)
++    }
++    // A dispatched reviewer fails this leg loudly, at the dispatch, rather than
++    // leaving the label list to be read after a clean-looking run.
++    if (kind === 'review') {
++      throw new Error('(a) [M1] a reviewer was dispatched on a killed-mutant task: ' + opts.label)
++    }
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run, integ } = rig({
++    repo, runDir, stub, stamp: 'skip-' + tag, extraArgs,
++    waves: [[mkTask('A', ['a.txt'])]],
++  })
++  writeKilledRecord(runDir, 'A')
++  const report = await run()
++  const row = report.tasks.find((r) => r.task === 'A')
++
++  assert.deepEqual(labels.filter((l) => l.startsWith('review:')), [],
++    '(a) [M1] with `reviewOnStateExams` ' + tag + ', a task whose every mutant was killed ' +
++    'dispatches no `review:` agent call at all: ' + JSON.stringify(labels))
++  assert.equal(row.status, 'done',
++    '(a) [M1] and the task is still merged: ' + JSON.stringify(row))
++  assert.equal(row.reviewVerdict, 'skipped-mutant-killed',
++    '(a) [M1] its row carries the verdict the skip writes: ' + JSON.stringify(row))
++  assert.equal(row.fixIterations, 0,
++    '(a) [M1] with `fixIterations: 0` — no reviewer ran, so no reviewer\'s findings drove a ' +
++    'round: ' + JSON.stringify(row))
++  assert.equal(integBlob(integ, 'HEAD:a.txt'), 'from-A\n',
++    '(a) [M1] and the wave\'s fold adopted the patch: the integration clone\'s `a.txt` reads ' +
++    'the implementer\'s bytes')
++  assert.equal(report.reviewEconomy.reviewerMs, 0,
++    '(a) [M1] `reviewEconomy.reviewerMs` is exactly 0 on a one-task run that paid for no ' +
++    'reviewer: ' + JSON.stringify(report.reviewEconomy))
++  const calls = report.judgmentCalls.filter((j) => SKIP_CALL.test(String(j)))
++  assert.equal(calls.length, 1,
++    '(a) [M1] exactly one judgmentCalls entry records the skip, naming each stem and the ' +
++    'switch, verbatim: ' + JSON.stringify(report.judgmentCalls))
++}
++
++// ── leg (b): the rollback brings the reviewer back [M2] ──────────────────────
++// The same rig and the same killed record with `reviewOnStateExams: true` in
++// the run's arguments: one reviewer, and the settled block on its prompt — the
++// reading of the record the reviewer gets at BASE, unchanged by this plan.
++{
++  const repo = makeRepo(path.join(tmp, 'repo-switch-on'))
++  const runDir = path.join(tmp, 'run-switch-on')
++  const labels = []
++  const prompts = {}
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    prompts[opts.label] = prompt
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run } = rig({
++    repo, runDir, stub, stamp: 'switch-on',
++    extraArgs: { reviewOnStateExams: true },
++    waves: [[mkTask('A', ['a.txt'])]],
++  })
++  writeKilledRecord(runDir, 'A')
++  const report = await run()
++  const row = report.tasks.find((r) => r.task === 'A')
++
++  assert.deepEqual(labels.filter((l) => l.startsWith('review:')), ['review:A:1'],
++    '(b) [M2] `reviewOnStateExams: true` restores the one reviewer every task gets at BASE: ' +
++    JSON.stringify(labels))
++  assert.ok(prompts['review:A:1'].includes('STATE EXAM:'),
++    '(b) [M2] and that reviewer is told the record is settled, as the `STATE EXAM:` block')
++  assert.ok(prompts['review:A:1'].includes('\n- todo-state: mutant todos/0/completed killed: true'),
++    '(b) [M2] naming the stem and its mutant path: ' +
++    JSON.stringify(prompts['review:A:1'].slice(-300)))
++  assert.equal(row.reviewVerdict, 'clean',
++    '(b) [M2] and the row reads like any reviewed task\'s: ' + JSON.stringify(row))
++}
++
++// ── leg (c): anything short of every mutant killed is reviewed [M3] ──────────
++// Three runs, no switch argument, a reviewer that passes. The predicate is
++// `stateExamBlock`'s: rows non-empty AND every `mutant_killed === true`. An
++// engine keyed on "no `false`" merges the second row unreviewed; one keyed on
++// the directory's presence merges the third.
++for (const [tag, record] of [
++  ['survived', { 'walls.json': WALLS, 'contract.json': CONTRACT_OK, 'mutant.json': MUTANT_SURVIVED }],
++  ['no-mutant-json', { 'walls.json': WALLS, 'contract.json': CONTRACT_OK }],
++  ['no-record', null],
++]) {
++  const repo = makeRepo(path.join(tmp, 'repo-review-' + tag))
++  const runDir = path.join(tmp, 'run-review-' + tag)
++  const labels = []
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run } = rig({
++    repo, runDir, stub, stamp: 'rev-' + tag,
++    waves: [[mkTask('A', ['a.txt'])]],
++  })
++  if (record) writeStateExam(runDir, 'A', 'todo-state', record)
++  const report = await run()
++  const row = report.tasks.find((r) => r.task === 'A')
++
++  assert.deepEqual(labels.filter((l) => l.startsWith('review:')), ['review:A:1'],
++    '(c) [M3] the `' + tag + '` record is not every-mutant-killed, so the task is reviewed ' +
++    'exactly as it is at BASE: ' + JSON.stringify(labels))
++  assert.equal(row.reviewVerdict, 'clean',
++    '(c) [M3] and its row reads `clean`, never the skip\'s verdict: ' + JSON.stringify(row))
++}
++
++// ── leg (d), first half: a red proof still outranks the record [M4] ──────────
++// The skip lives inside the review round, which a still-red pre-review pass
++// never reaches: the task parks `proof-red` after its one repair round, with no
++// reviewer, exactly as at BASE. An engine that read the record before the
++// pass's evidence would merge this.
++{
++  const repo = makeRepo(path.join(tmp, 'repo-skip-red'))
++  const runDir = path.join(tmp, 'run-skip-red')
++  const labels = []
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n')
++      return doneImpl(cwd)
++    }
++    // The repair round repairs nothing: `false` is still `false`.
++    if (kind === 'fix') return doneImpl(cwd)
++    if (kind === 'review') {
++      throw new Error('(d) [M4] a reviewer was dispatched on a proof-red task: ' + opts.label)
++    }
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run } = rig({
++    repo, runDir, stub, stamp: 'skip-red',
++    waves: [[mkTask('A', ['a.txt'], { proofRuns: ['false'] })]],
++  })
++  writeKilledRecord(runDir, 'A')
++  const report = await run()
++  const row = report.tasks.find((r) => r.task === 'A')
++
++  assert.deepEqual(labels.filter((l) => l.startsWith('review:')), [],
++    '(d) [M4] a task whose `Run:` is still red after the repair round dispatches no reviewer: ' +
++    JSON.stringify(labels))
++  assert.equal(row.status, 'failed',
++    '(d) [M4] and a killed mutant does not merge it: ' + JSON.stringify(row))
++  assert.equal(row.reviewVerdict, 'proof-red',
++    '(d) [M4] the row keeps the `proof-red` park it has at BASE, not the skip\'s verdict: ' +
++    JSON.stringify(row))
++}
++
++// ── leg (d), second half: the #908 path still buys its referee [M4] ──────────
++// A red exam that survives the repair round beside that round's `exam:` concern
++// buys review round 1 — the one reading a killed record must not take away,
++// because the question there is whether the exam's case can be satisfied at
++// all, which no mutant answers. The rig is `test_run_engine_one_of_each.mjs`'s
++// `repo-red` leg, copied rather than imported, with the killed record
++// pre-written.
++{
++  const EXAM_CMD = 'bash a_test.sh'
++  // Red at BASE and red on every patch: the case no implementation satisfies.
++  const EXAM = '#!/bin/bash\necho exam-is-red\nexit 1\n'
++  const repo = makeRepo(path.join(tmp, 'repo-skip-908'))
++  const runDir = path.join(tmp, 'run-skip-908')
++  const labels = []
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    const kind = opts.label.split(':')[0]
++    if (kind === 'exam') {
++      fs.writeFileSync(path.join(cwd, 'a_test.sh'), EXAM)
++      return { status: 'DONE', summary: 'exam written' }
++    }
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'fix') {
++      return { ...doneImpl(cwd), status: 'DONE_WITH_CONCERNS',
++               concerns: ['exam: the case is red for any output'] }
++    }
++    if (kind === 'review') return passReview()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run } = rig({
++    repo, runDir, stub, stamp: 'skip-908',
++    waves: [[mkTask('A', ['a.txt'], { proofTests: ['a_test.sh'], testCmd: EXAM_CMD })]],
++  })
++  writeKilledRecord(runDir, 'A')
++  const report = await run()
++  const row = report.tasks.find((r) => r.task === 'A')
++
++  assert.deepEqual(labels.filter((l) => l.startsWith('fix:')), ['fix:A:0'],
++    '(d) [M4] sim precondition: the red exam bought the one repair round: ' +
++    JSON.stringify(labels))
++  assert.deepEqual(labels.filter((l) => l.startsWith('review:')), ['review:A:1'],
++    '(d) [M4] the fix round\'s `exam:` concern buys review round 1 even with every mutant ' +
++    'killed — the skip requires no `exam:` concern: ' + JSON.stringify(labels))
++  assert.equal(row.reviewVerdict, 'fix-loop-exhausted',
++    '(d) [M4] and the still-red exam ends the task, whatever the referee returned: ' +
++    JSON.stringify(row))
++}
++
++// ── leg (e): the two documents [M5] ──────────────────────────────────────────
++// The three `Run:` lines of the Proof, read here so the sim says what the
++// commands say. None of these strings is in either file at BASE.
++{
++  const REPORT_FORMAT = path.join(REPO_ROOT, 'skills', 'ultrapowers', 'references', 'report-format.md')
++  const CONTRACT = path.join(REPO_ROOT, 'fleet', 'CONTRACT.md')
++  const rowOf = (file, key) => {
++    const re = new RegExp('^\\| `tasks\\[\\]\\.' + key + '` \\|')
++    const lines = fs.readFileSync(file, 'utf8').split('\n').filter((l) => re.test(l))
++    assert.equal(lines.length, 1,
++      '(e) [M5] report-format.md carries exactly one `tasks[].' + key + '` table row: ' +
++      lines.length)
++    return lines[0]
++  }
++  const verdictRow = rowOf(REPORT_FORMAT, 'reviewVerdict')
++  assert.ok(verdictRow.includes('skipped-mutant-killed'),
++    '(e) [M5] the `tasks[].reviewVerdict` row names `skipped-mutant-killed` among the values')
++  assert.ok(verdictRow.includes('reviewOnStateExams'),
++    '(e) [M5] and says it is written only when `reviewOnStateExams` is off')
++  assert.ok(rowOf(REPORT_FORMAT, 'stateExams').includes('reviewOnStateExams'),
++    '(e) [M5] the `tasks[].stateExams` row says the `STATE EXAM:` block reaches a reviewer ' +
++    'only when one is dispatched, naming `reviewOnStateExams`')
++
++  // The Exam environment bullet, sliced exactly as the Proof's `sed` slices it
++  // and folded to one line exactly as its `tr` folds it.
++  const contractLines = fs.readFileSync(CONTRACT, 'utf8').split('\n')
++  const from = contractLines.findIndex((l) => /^- \*\*Exam environment:\*\*/.test(l))
++  assert.ok(from !== -1, '(e) [M5] sim precondition: fleet/CONTRACT.md has an Exam environment bullet')
++  const to = contractLines.findIndex((l, i) => i > from && /^- \*\*Launch order/.test(l))
++  assert.ok(to !== -1, '(e) [M5] sim precondition: the Launch order bullet follows it')
++  const bullet = contractLines.slice(from, to + 1).join(' ')
++  assert.ok(/reviewOnStateExams.*off.*true.*skipped-mutant-killed/.test(bullet),
++    '(e) [M5] the Exam environment bullet names `reviewOnStateExams`, its default (off), its ' +
++    'rollback value (`true`) and the verdict `skipped-mutant-killed`, in that order: ' +
++    JSON.stringify(bullet))
++}
++
+ console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_sandbox_boot_card_cells.mjs b/fleet/tests/test_sandbox_boot_card_cells.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..73ee3c685786a9d679407f4b54af6b6ac936d183
+--- /dev/null
++++ b/fleet/tests/test_sandbox_boot_card_cells.mjs
+@@ -0,0 +1,333 @@
++/**
++ * fleet/tests/test_sandbox_boot_card_cells.mjs — the exam for run-156 task 3,
++ * "The pull request card says which task no reviewer read" (#836, the
++ * operator's pick of 2026-09-15: the card should say the reviewer was skipped
++ * because the mutant was killed, rendered inside the EXISTING mutant cell —
++ * one cell, no new column, so the CONTRACT's table header and every card of a
++ * past run keep their shape).
++ *
++ * CLAIM. When I open the run's pull request, the task table's mutant cell
++ * tells me a task's reviewer was skipped because its mutant was killed.
++ *
++ * Three machine clauses, read here leg by leg and nowhere else:
++ *
++ *   M1  on the PR body the boot POSTs, the task table row of a `report.json`
++ *       task whose `stateExams` every element reads `mutant_killed: true` and
++ *       whose `reviewVerdict` is `skipped-mutant-killed` carries the mutant
++ *       cell `killed, reviewer skipped`                          → leg (a)
++ *   M2  a row with every `mutant_killed: true` and any other `reviewVerdict`
++ *       (`approve`, the rig's default) carries the cell `killed`, as at BASE;
++ *       a row whose `stateExams` holds a `mutant_killed: false` element and
++ *       whose `reviewVerdict` IS `skipped-mutant-killed` carries the cell
++ *       `SURVIVED`, the verdict notwithstanding                  → leg (b)
++ *   M3  `fleet/CONTRACT.md`'s Publish card paragraph — the one that spells
++ *       `| task | claim | exam | probes | mutant | suite |` — says the mutant
++ *       cell reads `killed, reviewer skipped` when the row's `reviewVerdict`
++ *       is `skipped-mutant-killed`                               → leg (c)
++ *
++ * THREE BOOTS, NO MORE. A boot is ~40 forks of stub shell, so the legs that
++ * need one share exactly three — two started here and the rig's own shared
++ * green one — and each is started ONCE and awaited by everyone who reads it,
++ * the shape every sandbox-boot sim uses:
++ *
++ *   SKIPPED   the rig's `DEFAULT_REPORT` with its `approve` verdict replaced
++ *             by `skipped-mutant-killed`, its one `stateExams` element still
++ *             `mutant_killed: true`. Leg (a) reads it.
++ *   SURVIVED  that same report with its `mutant_killed` flipped to `false`,
++ *             so the survivor stands BESIDE the skip verdict. Leg (b)'s
++ *             second half reads it.
++ *   DEFAULT   the rig's shared default green boot (`greenAsync`), whose one
++ *             row is `approve` and `mutant_killed: true`. Leg (b)'s first half
++ *             reads it.
++ *
++ * THE FIXTURES ARE EDITS OF THE RIG'S OWN REPORT, NOT COPIES OF IT. Each is
++ * `DEFAULT_REPORT` put through `replace`, and `edit()` below asserts the
++ * needle was there exactly once and that the string actually changed — so a
++ * fixture that moves under this exam fails loudly here rather than quietly
++ * booting the default report a second time and passing leg (b) twice.
++ *
++ * LEG (b) IS GREEN AT BASE, ON PURPOSE. It is M2's regression half: the card
++ * at BASE already renders `killed` for the default row and `SURVIVED` for the
++ * survivor, and this exam pins both so the edit M1 asks for cannot be bought
++ * by keying on the verdict before the survivor check, or by moving the new
++ * branch above the `SURVIVED` and dash branches. Legs (a) and (c) are the ones
++ * red at BASE.
++ *
++ * THE ROWS ARE PINNED WHOLE. Every row assertion is an equality against the
++ * entire `| … |` line, not a containment of the mutant cell, so a card that
++ * bought the new cell by disturbing the claim, exam, probes or suite cell
++ * fails here too.
++ */
++
++import assert from 'node:assert/strict'
++import { spawnSync } from 'node:child_process'
++import fs from 'node:fs'
++import path from 'node:path'
++
++import {
++  SCRIPT, ENV, DEFAULT_REPORT, PLAN_TASK_ID, PLAN_TASK_CLAIM,
++  makeHome, bootAsync, greenAsync,
++  prPosts, runTests,
++} from './_sandbox_boot_helpers.mjs'
++
++const tests = []
++const test = (name, fn) => tests.push([name, fn])
++
++/** The checkout, from the script the rig points at — `fleet/sandbox-boot.sh`. */
++const ROOT = path.resolve(SCRIPT, '..', '..')
++
++// ── the wave's shared literals ───────────────────────────────────────────────
++
++/**
++ * The verdict string Task 1's engine writes on a row whose reviewer it skipped
++ * because the mutant was killed (`tasks[].reviewVerdict`). This task never
++ * needs that engine — the card reads a `report.json` the rig's sim writes —
++ * but the literal is the same one, and it is the literal M1 and M3 name.
++ */
++const SKIP_VERDICT = 'skipped-mutant-killed'
++/** The rig's default verdict, which M2's first row keeps. */
++const APPROVE_VERDICT = 'approve'
++/** What M1 says the mutant cell reads; `killed` and `SURVIVED` are BASE's. */
++const SKIPPED_CELL = 'killed, reviewer skipped'
++const KILLED_CELL = 'killed'
++const SURVIVED_CELL = 'SURVIVED'
++/** The half of the new cell that must appear nowhere on an M2 card. */
++const SKIP_PHRASE = 'reviewer skipped'
++
++// ── the two reports this exam boots on ───────────────────────────────────────
++
++/**
++ * One `replace` of the rig's report, with the premise stated rather than
++ * assumed: the needle is present EXACTLY once and the result differs. A
++ * fixture that moves out from under this exam fails here, by name, instead of
++ * handing some leg the default report under another variable.
++ */
++const edit = (source, needle, replacement, leg) => {
++  const hits = source.split(needle).length - 1
++  assert.equal(
++    hits, 1,
++    `${leg} the rig's DEFAULT_REPORT must carry \`${needle}\` exactly once — found ${hits}; `
++    + `the fixture this exam was written against has moved\n${source}`,
++  )
++  const edited = source.replace(needle, replacement)
++  assert.notEqual(
++    edited, source,
++    `${leg} replacing \`${needle}\` with \`${replacement}\` changed nothing`,
++  )
++  return edited
++}
++
++/** M1's row: every `mutant_killed: true`, and the skip verdict. */
++const SKIPPED_REPORT = edit(
++  DEFAULT_REPORT,
++  `"reviewVerdict":"${APPROVE_VERDICT}"`,
++  `"reviewVerdict":"${SKIP_VERDICT}"`,
++  '(a) [M1]',
++)
++
++/** M2's second row: a `mutant_killed: false` element BESIDE the skip verdict. */
++const SURVIVED_REPORT = edit(
++  SKIPPED_REPORT,
++  '"mutant_killed":true',
++  '"mutant_killed":false',
++  '(b) [M2]',
++)
++
++// ── what M1 and M2 say the table row reads ───────────────────────────────────
++
++/**
++ * The Proof's own row, character for character. The rig's plan signs ONE task
++ * `1` whose Claim is `PLAN_TASK_CLAIM`, the report gives it a green `red` exam
++ * on a `done` status, one `integratedRuns` entry with `exit: 0` and a green
++ * `waveMerges` row — so every cell but the mutant one is fixed, and this line
++ * differs from the default green card's in that cell alone.
++ */
++const EXPECTED_SKIPPED_ROW =
++  '| 1 | The smoke target grows the one file the plan names. '
++  + '| red at BASE → green | 1/1 | killed, reviewer skipped | green |'
++
++/** The same row with the mutant cell swapped — the rendering rule, not a copy. */
++const rowWith = (mutant) =>
++  `| ${PLAN_TASK_ID} | ${PLAN_TASK_CLAIM} | red at BASE → green | 1/1 | ${mutant} | green |`
++
++/** The prefix that finds the one task row of the card's table. */
++const ROW_PREFIX = `| ${PLAN_TASK_ID} | `
++
++/** The table header M3 names, and the row under it, as the card writes them. */
++const TABLE_HEADER = '| task | claim | exam | probes | mutant | suite |'
++
++// ── the two boots this exam starts ───────────────────────────────────────────
++
++/** One green boot on `report`, started once and awaited by every reader. */
++const memo = (report, what) => {
++  let started = null
++  return () => {
++    if (!started) {
++      const ctx = makeHome()
++      started = bootAsync(ctx, ['boot'], { STUB_REPORT: report }).then((r) => {
++        assert.equal(
++          r.status, 0,
++          `the ${what} run did not finish\n${r.stdout}${r.stderr}`,
++        )
++        return ctx
++      })
++    }
++    return started
++  }
++}
++
++const skipped = memo(SKIPPED_REPORT, 'skipped-verdict')
++const survived = memo(SURVIVED_REPORT, 'survivor-beside-skip')
++
++// ── reading the card ─────────────────────────────────────────────────────────
++
++/** The one PR body this run POSTed, as its lines. */
++const bodyLines = (ctx) => {
++  const posts = prPosts(ctx)
++  assert.equal(posts.length, 1, `the run opened ${posts.length} PRs, not one`)
++  return String(posts[0].body).split('\n')
++}
++
++/** The card's one task row, which must be exactly one line. */
++const taskRow = (lines, leg) => {
++  const found = lines.filter((l) => l.startsWith(ROW_PREFIX))
++  assert.equal(
++    found.length, 1,
++    `${leg} the card's table must carry EXACTLY ONE line starting \`${ROW_PREFIX}\` — `
++    + `found ${found.length}\n${lines.join('\n')}`,
++  )
++  assert.ok(
++    lines.includes(TABLE_HEADER),
++    `${leg} the card must still carry its table header \`${TABLE_HEADER}\``,
++  )
++  return found[0]
++}
++
++// ── leg (a) — M1: the skipped reviewer, named in the mutant cell ─────────────
++
++test('(a) [M1] a killed mutant whose verdict is skipped-mutant-killed renders `killed, reviewer skipped`', async () => {
++  // The fixture, stated rather than assumed: every `stateExams` element of the
++  // row this boot runs on reads `mutant_killed: true`, and the verdict is the
++  // skip one. Without both, this leg would be leg (b)'s second half wearing
++  // leg (a)'s name.
++  const row = JSON.parse(SKIPPED_REPORT).tasks[0]
++  assert.equal(
++    row.reviewVerdict, SKIP_VERDICT,
++    `(a) [M1] the fixture's row must carry \`reviewVerdict: ${SKIP_VERDICT}\``,
++  )
++  assert.ok(
++    Array.isArray(row.stateExams) && row.stateExams.length > 0
++      && row.stateExams.every((e) => e.mutant_killed === true),
++    `(a) [M1] every \`stateExams\` element of the fixture must read \`mutant_killed: true\`: `
++    + JSON.stringify(row.stateExams),
++  )
++
++  // And the Proof's verbatim row is the rendering rule applied to that fixture,
++  // so the literal below is the clause and not a second copy of it.
++  assert.equal(
++    EXPECTED_SKIPPED_ROW, rowWith(SKIPPED_CELL),
++    '(a) [M1] the Proof\'s verbatim row and the rig\'s plan fixture no longer agree',
++  )
++
++  const lines = bodyLines(await skipped())
++  assert.equal(
++    taskRow(lines, '(a) [M1]'), EXPECTED_SKIPPED_ROW,
++    `(a) [M1] the row of a task whose \`stateExams\` are every \`mutant_killed: true\` and whose `
++    + `\`reviewVerdict\` is \`${SKIP_VERDICT}\` must carry the mutant cell \`${SKIPPED_CELL}\` — `
++    + `a card that ignores the verdict renders \`${KILLED_CELL}\`\n${lines.join('\n')}`,
++  )
++})
++
++// ── leg (b) — M2: the two rows the new cell must not take ────────────────────
++
++test('(b) [M2] the shared default green card still renders `killed`, and says `reviewer skipped` nowhere', async () => {
++  // The premise: the rig's default row is the killed mutant with ANY OTHER
++  // verdict — `approve`.
++  const row = JSON.parse(DEFAULT_REPORT).tasks[0]
++  assert.equal(
++    row.reviewVerdict, APPROVE_VERDICT,
++    `(b) [M2] the rig's DEFAULT_REPORT is expected to carry \`reviewVerdict: ${APPROVE_VERDICT}\``,
++  )
++  assert.ok(
++    row.stateExams.every((e) => e.mutant_killed === true),
++    '(b) [M2] the rig\'s DEFAULT_REPORT is expected to carry a killed mutant',
++  )
++
++  const lines = bodyLines(await greenAsync())
++  assert.equal(
++    taskRow(lines, '(b) [M2]'), rowWith(KILLED_CELL),
++    `(b) [M2] a row with every \`mutant_killed: true\` and any other \`reviewVerdict\` must carry `
++    + `the mutant cell \`${KILLED_CELL}\`, as at BASE\n${lines.join('\n')}`,
++  )
++  assert.ok(
++    !lines.join('\n').includes(SKIP_PHRASE),
++    `(b) [M2] the default green card must say \`${SKIP_PHRASE}\` nowhere at all\n`
++    + lines.join('\n'),
++  )
++})
++
++test('(b) [M2] a survivor beside a skipped-mutant-killed verdict still renders `SURVIVED`', async () => {
++  // The premise: the row carries a `mutant_killed: false` element AND the skip
++  // verdict. This is the pairing a card keying on the verdict before the
++  // survivor check gets wrong.
++  const row = JSON.parse(SURVIVED_REPORT).tasks[0]
++  assert.equal(
++    row.reviewVerdict, SKIP_VERDICT,
++    `(b) [M2] the survivor fixture must carry \`reviewVerdict: ${SKIP_VERDICT}\``,
++  )
++  assert.ok(
++    row.stateExams.some((e) => e.mutant_killed === false),
++    `(b) [M2] the survivor fixture must hold a \`mutant_killed: false\` element: `
++    + JSON.stringify(row.stateExams),
++  )
++
++  const lines = bodyLines(await survived())
++  assert.equal(
++    taskRow(lines, '(b) [M2]'), rowWith(SURVIVED_CELL),
++    `(b) [M2] a row whose \`stateExams\` holds a \`mutant_killed: false\` element must carry the `
++    + `mutant cell \`${SURVIVED_CELL}\`, the \`${SKIP_VERDICT}\` verdict notwithstanding — the `
++    + `\`SURVIVED\` branch comes first and is untouched\n${lines.join('\n')}`,
++  )
++  assert.ok(
++    !lines.join('\n').includes(SKIP_PHRASE),
++    `(b) [M2] a card whose mutant survived must say \`${SKIP_PHRASE}\` nowhere at all, whatever `
++    + `the verdict reads\n${lines.join('\n')}`,
++  )
++})
++
++// ── leg (c) — M3: the reader the driver runs, verbatim ───────────────────────
++
++/**
++ * The Proof's second `Run:` line, copied character for character: the
++ * CONTRACT's card paragraph read from its table line to the `Residuals:`
++ * sentence, folded to one line, carrying `mutant`, then `skipped-mutant-killed`,
++ * then `killed, reviewer skipped`, in that order. Running it here is what makes
++ * this exam red at BASE for the document too, and not only for the card.
++ */
++const CONTRACT_READER =
++  "sed -n '/| task | claim | exam | probes | mutant | suite |/,/Residuals: <n> from review/p'"
++  + " fleet/CONTRACT.md | tr '\\n' ' '"
++  + " | grep -q 'mutant.*skipped-mutant-killed.*killed, reviewer skipped'"
++
++test('(c) [M3] the CONTRACT\'s Publish card paragraph says what the mutant cell reads on a skipped reviewer', () => {
++  // The paragraph exists to be read: without its table line the `sed` range is
++  // empty and the grep would fail for the wrong reason.
++  const contract = fs.readFileSync(path.join(ROOT, 'fleet', 'CONTRACT.md'), 'utf8')
++  assert.ok(
++    contract.includes(TABLE_HEADER),
++    `(c) [M3] fleet/CONTRACT.md must still spell the card's table header \`${TABLE_HEADER}\``,
++  )
++
++  const r = spawnSync('bash', ['-c', CONTRACT_READER], {
++    cwd: ROOT, encoding: 'utf8', timeout: 60000, env: ENV,
++  })
++  assert.equal(
++    r.status, 0,
++    `(c) [M3] the Publish card paragraph — the one spelling \`${TABLE_HEADER}\` — must say that `
++    + `the mutant cell reads \`${SKIPPED_CELL}\` when the row's \`reviewVerdict\` is `
++    + `\`${SKIP_VERDICT}\`, in that order and in the register the paragraph already has`
++    + `\n  $ ${CONTRACT_READER}\n${r.stdout || ''}${r.stderr || ''}`,
++  )
++})
++
++runTests(tests)
+diff --git a/skills/ultrapowers/references/report-format.md b/skills/ultrapowers/references/report-format.md
+index 9653ec529805eebc44d2b277f7a1efe7d6e4e362..f6861680c9372542d66905f3945f1afc81cb71a7 100644
+--- a/skills/ultrapowers/references/report-format.md
++++ b/skills/ultrapowers/references/report-format.md
+@@ -94,7 +94,7 @@ The engine (`fleet/run-engine.mjs`) returns a single structured report object; `
+ | `tasks[].headSha` | no | The implementer's final worktree HEAD (what the merge agent merges); distinct from `commit` below |
+ | `tasks[].commit` | no | The implementer's final commit on the task's worktree branch (self-reported); the integration merge SHA lives in `waveMerges[].headSha` |
+ | `headSha` provenance | — | headSha values are derived at finalization from git ancestry by `finalize_report.py --report <file> --repo <path> --branch <integrationBranch>` (#259; `docs/superpowers/specs/2026-08-26-fold-over-git-heads.md` §3): each merged task's `headSha` is its branch tip (`git rev-parse <branch>`), asserted to be an ancestor of the integration branch tip; the final MERGED `waveMerges` entry's `headSha` is the integration branch tip itself. finalize_report.py rewrites the saved result envelope's `result.*` headSha fields in place before ultra_gate.py runs. Intermediate (non-final) `waveMerges[].headSha` values are left as model-recorded — context, not authority; no mechanical consumer reads them. The `<runDir>/heads/` sidecars no longer exist. |
+-| `tasks[].reviewVerdict` | no | Review outcome. Merged tasks: `clean` — the one review round returned no blocking issue. (`fixed`, a task that passed after a review-round fix, is a value this engine no longer writes: since #964 Task 2 there is one review round and it dispatches no fix worker, so a row is `clean` or it failed. Older runs' reports still carry it.) Failed tasks: `not-reviewed` (implementer BLOCKED/NEEDS_CONTEXT), `fix-loop-exhausted` (blocking issues in the one review round — the exit is the same one the capped fix loop used to reach on its second red, reached now on the first), `blocked-after-fix` (implementer blocked during the pre-review repair round), `agent-error` (the agent call itself failed), `lost-coordinates` (reported done without driver-captured coordinates — downgraded to failed; see the matching judgmentCalls entry), `reanchor-failed` (0.3.0 engine: a later wave's clone could not be re-anchored onto the adopted head — failed closed before dispatch, since a mis-anchored patch would silently revert the prior wave), `proof-red` (the driver's own `Run:`/`Check:` pass was still red after its one pre-review repair round — no reviewer was ever dispatched, because a patch whose own proof fails is not a patch a reviewer can grade; one case now proceeds instead (#908) — when the still-red proof is the task's own exam and the `fix:<id>:0` reply was `DONE_WITH_CONCERNS` carrying an `exam:` concern, the fix round's claim that a named exam case cannot pass for any output, the task goes to review round 1 with that entry on the prompt as an `EXAM CONCERN:` line and its row then reads like any reviewed task's — `clean` or `fix-loop-exhausted`, never `proof-red`. Nothing merges on that claim alone: a red exam stays a blocking issue in the review round whatever the reviewer returned, so only a repair round that actually turns the exam green ends the task `done`), `plan-defect` (#722 — the implementer's own reply named a `plan-defect:` concern against a Proof leg, by the leg's label AND saying the leg cannot pass (`cannot pass`, `can't pass`, `unsatisfiable`, `no output`, `for any output` — a concern that merely cites `(a)` is not this, #944), while the driver's pre-review pass had that task's exam red twice — once on the pass and once on the driver's own re-run (`driver:exam-run … rerun: true`; a green re-run reads as green, the event carries `flaky: true`, and the task proceeds); the implementer may not edit the exam, so no fix round could close it and none was dispatched — the task is parked for the plan, carries `actor` below, and the concern travels to the gate under `deferredVerification`). An edited exam is never a verdict of its own: it is recorded under `examEdited` and reviewed (2026-09-02). |
++| `tasks[].reviewVerdict` | no | Review outcome. Merged tasks: `clean` — the one review round returned no blocking issue; `skipped-mutant-killed` (#836) — no review round was dispatched at all, because the driver's pre-review pass came back green (every `Run:` 0, the exam 0 or not runnable, every non-minor `Check:` 0, no `exam:` concern) beside a `stateExams` record holding at least one stem and every one of them `mutant_killed: true`, which is the driver's own proof that the exam would have caught a wrong state; the row carries `fixIterations: 0` and `notes` holding the implementer's concerns alone (no reviewer ran, so there are no minor findings and no plan notes), and the run's `judgmentCalls` names the task and its stems. Written only when the run's `reviewOnStateExams` argument is off, which is the default; with `reviewOnStateExams: true` — the rollback — every task gets its one reviewer and no row ever reads this. Nothing else about the task changes: the wave's fold, the candidate suite, the integrated `Run:`/`Check:` pass and the pre-merge gate run on it exactly as on a reviewed row. (`fixed`, a task that passed after a review-round fix, is a value this engine no longer writes: since #964 Task 2 there is one review round and it dispatches no fix worker, so a row is `clean` or it failed. Older runs' reports still carry it.) Failed tasks: `not-reviewed` (implementer BLOCKED/NEEDS_CONTEXT), `fix-loop-exhausted` (blocking issues in the one review round — the exit is the same one the capped fix loop used to reach on its second red, reached now on the first), `blocked-after-fix` (implementer blocked during the pre-review repair round), `agent-error` (the agent call itself failed), `lost-coordinates` (reported done without driver-captured coordinates — downgraded to failed; see the matching judgmentCalls entry), `reanchor-failed` (0.3.0 engine: a later wave's clone could not be re-anchored onto the adopted head — failed closed before dispatch, since a mis-anchored patch would silently revert the prior wave), `proof-red` (the driver's own `Run:`/`Check:` pass was still red after its one pre-review repair round — no reviewer was ever dispatched, because a patch whose own proof fails is not a patch a reviewer can grade; one case now proceeds instead (#908) — when the still-red proof is the task's own exam and the `fix:<id>:0` reply was `DONE_WITH_CONCERNS` carrying an `exam:` concern, the fix round's claim that a named exam case cannot pass for any output, the task goes to review round 1 with that entry on the prompt as an `EXAM CONCERN:` line and its row then reads like any reviewed task's — `clean` or `fix-loop-exhausted`, never `proof-red`. Nothing merges on that claim alone: a red exam stays a blocking issue in the review round whatever the reviewer returned, so only a repair round that actually turns the exam green ends the task `done`), `plan-defect` (#722 — the implementer's own reply named a `plan-defect:` concern against a Proof leg, by the leg's label AND saying the leg cannot pass (`cannot pass`, `can't pass`, `unsatisfiable`, `no output`, `for any output` — a concern that merely cites `(a)` is not this, #944), while the driver's pre-review pass had that task's exam red twice — once on the pass and once on the driver's own re-run (`driver:exam-run … rerun: true`; a green re-run reads as green, the event carries `flaky: true`, and the task proceeds); the implementer may not edit the exam, so no fix round could close it and none was dispatched — the task is parked for the plan, carries `actor` below, and the concern travels to the gate under `deferredVerification`). An edited exam is never a verdict of its own: it is recorded under `examEdited` and reviewed (2026-09-02). |
+ | `tasks[].actor` | no | Who a failed row's question belongs to. Present only on a row the driver parked for the **plan** (#722), where it reads `plan`: the implementer reported a leg-labelled cannot-pass `plan-defect:` concern against a Proof leg whose exam the pre-review pass found red twice (pass + re-run, #944), so the driver spent no `fix:<id>:0` round and dispatched no reviewer (`reviewVerdict: 'plan-defect'`, `fixIterations: 0`, `proofFixes: 0`, `notes` = the matching concerns joined by `; `). Absent from every other row — a row without the key is a row whose findings the implementer owned. Not the same field as a reviewer issue's `actor`, which routes a finding inside a review round rather than ending the task |
+ | `tasks[].notes` | no | Free-form notes from the implementing or reviewing subagent (minor review findings and implementer concerns) |
+ | `tasks[].tier` | no | Resolved model alias the implementer ran at (`haiku`/`sonnet`/`opus`) |
+@@ -102,7 +102,7 @@ The engine (`fleet/run-engine.mjs`) returns a single structured report object; `
+ | `tasks[].fixIterations` | no | Fix rounds a REVIEWER's findings drove. `0` on every row this engine writes: the one review round dispatches no fix worker, so a reviewer's blocking issue ends the task instead of buying a round (#964 Task 2). The key stays, and an older run's report may carry `1`. The driver's own pre-review repair round is counted by `proofFixes` below, never here |
+ | `tasks[].proposedPatches` | no | The number of blocking issues in the review round that carried a non-empty `proposedPatch`; `0` when none, on a clean review, and on a task that failed before any review. Since #964 Task 2 no fix worker reads those patches — they are a count of what the referee offered, and a person reads the referee's own reply for the patch itself |
+ | `tasks[].proofFixes` | no | Pre-review repair rounds this task consumed: `0` when the driver's own `Run:`/`Check:` pass was green the first time it ran (and on every task the run declared no commands for), `1` when a red command bought one `fix:<id>:0` round before any reviewer was dispatched. Never more than 1 — a second red pass ends the task at `proof-red`, with one exception (#908): a still-red exam beside an `exam:` concern on the `fix:<id>:0` reply goes to review round 1 with an `EXAM CONCERN:` line instead of parking, so the row keeps `proofFixes: 1` and carries a reviewed verdict (`fixIterations` is `0`, as it is on every row since #964 Task 2). Read it beside `fixIterations`, which counts only the rounds a REVIEWER's findings drove: a task can be `proofFixes: 1, fixIterations: 0` — the driver caught it, and the reviewers then found nothing |
+-| `tasks[].stateExams` | no | The task's state-exam record, read back by the driver from `<runDir>/state-exams/task-<id>/` — one element per exam stem, `[]` when the task's exam wrote nothing there (which is every task whose exam is not a state exam, and every `failed` row that never got that far; the key is present on every row either way). A stem's directories are named `<stem>-<pass>`, split at the last `-`, and the element is read from that stem's highest-numbered pass, never `base` and never any other non-numeric suffix. The exam's own pass is `0` — the pre-review pass, and the repeat that follows the pre-review repair round — so the row carries the last record the task's own tree produced. (A `2` directory was a round-2 re-execution after a review-round fix; #964 Task 2 retired that round, so this engine writes no numbered pass above `0` and the highest-numbered rule simply finds `0`.)  `base` is the at-BASE probe's pass, taken on a tree that predates the patch, so a stem whose only directory is `-base` contributes no element at all. Each element is `{ exam, store_ms, render_ms, render, action_ms, browser, mutant_killed, contract }`: `exam` is the stem; `store_ms` and `render` (`ran`/`skipped`) are read from that directory's `walls.json`; `render_ms` is that file's reading when `render` is `ran` and `null` when the render was skipped; `action_ms` is that file's `action_ms` — how long the exam's interaction took — when it is a number and `null` otherwise, which is both a callback exam that had no interaction to time and a pre-#834 `walls.json` that wrote no such key; `browser` is that file's `browser` — whether the exam drove a live browser — when it reads `ran` or `skipped`, and `null` otherwise, again including the pre-#834 shape; `mutant_killed` is `killed` from `mutant.json` — the driver's own proof that the exam would have caught a wrong state; `contract` is `ok` when `contract.json`'s `breach` is `null` and the breach line verbatim otherwise. Unreadable or missing JSON leaves `null` in the fields it could not supply rather than dropping the element — evidence, not control flow. When every element's `mutant_killed` is `true`, the driver also tells that task's reviewer so, as a `STATE EXAM:` block naming each exam and its mutant path: duty 5 is settled for those exam files and for nothing else |
++| `tasks[].stateExams` | no | The task's state-exam record, read back by the driver from `<runDir>/state-exams/task-<id>/` — one element per exam stem, `[]` when the task's exam wrote nothing there (which is every task whose exam is not a state exam, and every `failed` row that never got that far; the key is present on every row either way). A stem's directories are named `<stem>-<pass>`, split at the last `-`, and the element is read from that stem's highest-numbered pass, never `base` and never any other non-numeric suffix. The exam's own pass is `0` — the pre-review pass, and the repeat that follows the pre-review repair round — so the row carries the last record the task's own tree produced. (A `2` directory was a round-2 re-execution after a review-round fix; #964 Task 2 retired that round, so this engine writes no numbered pass above `0` and the highest-numbered rule simply finds `0`.)  `base` is the at-BASE probe's pass, taken on a tree that predates the patch, so a stem whose only directory is `-base` contributes no element at all. Each element is `{ exam, store_ms, render_ms, render, action_ms, browser, mutant_killed, contract }`: `exam` is the stem; `store_ms` and `render` (`ran`/`skipped`) are read from that directory's `walls.json`; `render_ms` is that file's reading when `render` is `ran` and `null` when the render was skipped; `action_ms` is that file's `action_ms` — how long the exam's interaction took — when it is a number and `null` otherwise, which is both a callback exam that had no interaction to time and a pre-#834 `walls.json` that wrote no such key; `browser` is that file's `browser` — whether the exam drove a live browser — when it reads `ran` or `skipped`, and `null` otherwise, again including the pre-#834 shape; `mutant_killed` is `killed` from `mutant.json` — the driver's own proof that the exam would have caught a wrong state; `contract` is `ok` when `contract.json`'s `breach` is `null` and the breach line verbatim otherwise. Unreadable or missing JSON leaves `null` in the fields it could not supply rather than dropping the element — evidence, not control flow. When every element's `mutant_killed` is `true`, the driver also tells that task's reviewer so, as a `STATE EXAM:` block naming each exam and its mutant path: duty 5 is settled for those exam files and for nothing else. That block reaches a reviewer only when a reviewer is dispatched — with `reviewOnStateExams` off (the default) the same condition skips the review round entirely and the row reads `reviewVerdict: 'skipped-mutant-killed'`, so the block is written into a prompt only on a run that set `reviewOnStateExams: true` |
+ | `tasks[].exam` | no | #553 — what the wave-0 examiner established for this task, in the examiner's own clone (since #653 the examiner and the implementer start together, and the driver hands the exam into the implementer's clone once both have returned). `null` when no exam was dispatched (the wave entry carried no non-empty `proofTests`, or no per-task `testCmd` to run them with); `red` when the task's own `testCmd` failed against the examiner's tests at BASE (the exam establishes something); `green-at-base` when it passed there — recorded with a judgment call, because an exam that is already green establishes nothing; `blocked` when the examiner reported BLOCKED, returned no reply, or had no role file, in which case the implementer proceeds unexamined. Driver-derived: the blob shas and the red run are `exec` in the examiner's clone, never a model report (Amendment 10). |
+ | `tasks[].examEdited` | no | Present on every row returned after the implementer when the wave-0 examiner recorded an exam (#553): the `proofTests` paths whose blob no longer matches what the examiner left — edited by the pre-review repair round (since #653 the implementer never holds the exam while it works, and since #964 Task 2 that round is the only fix round there is) — `[]` when none moved. The driver never refuses the edit: it names the paths to the reviewer as `EXAM EDITED` and pushes one matching `judgmentCalls` entry; the reviewer decides whether the exam was wrong (reviewer.md rule 8). Absent when no exam was recorded. |
+ | `tasks[].baseCorrected` | no | The #314 provisioning-drift record. `null` when the implementer's reported `startHead` (its pre-work `git rev-parse HEAD`, a required implementer-schema field) equalled the dispatched `BASE`; `{ from, to }` when it differed and the implementer reset to `BASE` (`from` = the sha the worktree was provisioned at, `to` = `BASE`); absent when no implementer reply was received (`agent-error`, infra-park). Engine-derived, never model-typed; the predicate is exact equality, not ancestry. Every correction also pushes an `autonomy` judgment call naming both shas; a reply with no `startHead` (engine-bypass class — the schema requires it) pushes a `degradation` call `BASE anchoring unverified` instead. Fix-round replies are not compared: their `BASE` is the prior implementation HEAD by design. |
