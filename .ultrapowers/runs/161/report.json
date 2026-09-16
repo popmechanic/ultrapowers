@@ -1,0 +1,74 @@
+{
+  "integrationBranch": "ultra/integration-run-161",
+  "baseSha": "cf289581ebe2fa8dc23a8683c6d4e31c835d2ae2",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "failed",
+      "branch": "",
+      "exam": "red",
+      "reviewVerdict": "fix-loop-exhausted",
+      "notes": "fleet/run-engine.mjs: the dispatch snapshot is taken at a later instant than the head it claims to describe, so it can name a sibling whose work is not in the tree the worker was handed \u2014 the exact case M1 exists to re-edge. In `dispatchOnce` `head` is read at the top (`const head = adoptedHead`), but `adoptedAtDispatch.set(task.id, new Set(adoptedIds))` runs only after `await anchorClone(task, head)` (git fetch + detached checkout + `resetTaskClone` + the bootstrap command) and the optional `resetTaskClone` for a re-edged task. `foldEpoch` assigns `adoptedHead = merge.headSha` and `for (const t of epochTasks) adoptedIds.add(t.id)` on adjacent lines, and it runs on another lane under `underFoldLock`, which `anchorClone` does not hold \u2014 so a fold completing inside that window adds sibling S to `adoptedIds` while this dispatch's `head` still predates S. The worker is handed `head` (`runTask(task, head, siblingsNow(task))`), which lacks S's work; it returns BLOCKED naming S; `blockingSiblingsOf` reads `adoptedThen`, finds S present, filters it out, and the task ends `failed: not-reviewed` instead of being re-edged. `retryParkedInfra` has the identical skew (`head` at its top, snapshot after `anchorClone` and `resetTaskClone`). The added comment asserts the invariant the placement does not hold: \"task id \u2192 the ids IN that head\". The window is not theoretical \u2014 `anchorClone` is seconds of git and bootstrap IO and folds run concurrently on other lanes at width \u2265 2. Fix is to read the set in the same tick as `head`, which is the only instant at which `adoptedHead` and `adoptedIds` are consistent; both sites are inside this task's FILES. The exam does not catch this because (d.5a) adopts A strictly after B's `worker:start` is already on the log, i.e. after the snapshot was taken.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 1,
+      "proofFixes": 0,
+      "examEdited": [],
+      "examRounds": 1,
+      "landedAt": 1789579493629,
+      "stateExams": [],
+      "findings": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": false,
+    "output": "not run \u2014 no wave merged",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [],
+  "reviewEconomy": {
+    "reviewerMs": 182999,
+    "blockingFindings": 1,
+    "blockingPerReviewerMinute": 0.3278706441018803
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-161/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [281 items]\n\n........................................................................ [ 25%]\n........................................................................ [ 51%]\n........................................................................ [ 76%]\n.................................................................        [100%]\n======================== 281 passed in 79.41s (0:01:19) ========================\n"
+  },
+  "waveMerges": [],
+  "frontier": [],
+  "coverage": {
+    "tasks_merged": 0,
+    "tasks_planned": 1,
+    "complete": false
+  },
+  "engineCoverage": null,
+  "missingDeliverables": [
+    {
+      "task": "1",
+      "files": [
+        "fleet/CONTRACT.md",
+        "fleet/run-engine.mjs",
+        "fleet/tests/test_run_engine_re_edge.mjs"
+      ]
+    }
+  ],
+  "gitVerified": false,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [],
+  "amendments": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
