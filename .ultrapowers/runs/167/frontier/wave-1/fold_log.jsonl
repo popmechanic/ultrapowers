@@ -1,0 +1,5 @@
+{"type": "base", "sha": "d5bf796afb2dcaccd0d0d3b0eba8cbfb0dff4425"}
+{"type": "fold", "task": "3", "headSha": "602e54bc7cea2891bfeb42bb0083e84c170695d9", "patch": "/home/exedev/target/.claude/ultrapowers/run-run-167/patches/task-3.patch"}
+{"type": "fold", "task": "2", "headSha": "a28ff70fb40c352a82d17e5e3ee2c57b8ea9f9a0", "patch": "/home/exedev/target/.claude/ultrapowers/run-run-167/patches/task-2.patch"}
+{"type": "fold", "task": "1", "headSha": "900b0ebc71eb1268981a49aeab1a840f5d14ac56", "patch": "/home/exedev/target/.claude/ultrapowers/run-run-167/patches/task-1.patch"}
+{"type": "fold", "task": "4", "headSha": "85be67a79af392774405ad24add2b57c1dd88faa", "patch": "/home/exedev/target/.claude/ultrapowers/run-run-167/patches/task-4.patch"}

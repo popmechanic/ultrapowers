@@ -1,0 +1,142 @@
+HUNK h1 lines 4685-4742
+--- context (read-only)
+      // A green baseline makes every candidate red the fold's own; it does not
+      // make it any TASK's. When the paths that went red are named by no task of
+      // this wave — not in its `files`, not in its `proofTests` — there is no
+      // implementer to hold to it and no reconcile agent who could be told what
+      // to repair: the candidate is adopted exactly as a green one is, and the
+      // red is RECORDED, one judgment-call line per path, so the run keeps going
+      // with the fact on the record rather than parking on someone else's test.
+      // Attribution is string equality on the path the record spelled — no
+      // globbing, no resolving — and it takes the WHOLE PLAN, not just the tasks
+      // this epoch folded: a task whose review failed still names the files it was
+      // given, and under the ready set the tasks beside this fold are not a wave a
+      // fold could name. One attributed path in the list is enough to send the
+      // candidate down the reconcile route below, as is an output that named no
+      // path at all (a bare non-zero exit, a dead install).
+      const failing = failingTestPaths(suite.stdout + suite.stderr)
+      const claimed = new Set()
+      for (const t of (PLAN.length > 0 ? PLAN : waveTasks)) {
+        for (const key of ['files', 'proofTests']) {
+          for (const p of (Array.isArray(t && t[key]) ? t[key] : [])) {
+            if (typeof p === 'string' && p) claimed.add(p)
+          }
+        }
+      }
+      const unattributed = failing.filter((p) => !claimed.has(p))
+      if (failing.length && unattributed.length === failing.length) {
+        await git(['reset', '--hard', candidate], integ)
+        await emitWeave(candidate)
+        frontier.push(entry())
+        for (const p of unattributed) {
+          judgmentCalls.push('unattributed red: ' + p + ' went red on wave ' +
+            waveNumber + '\'s fold; no task names it')
+        }
+        log('wave ' + waveNumber + ' candidate suite RED in ' + unattributed.join(', ') +
+          ' — no task names it: adopted and recorded, no reconcile dispatched')
+        return { status: 'MERGED', headSha: candidate,
+                 suite: { passed: false, unattributed,
+                          output: tail(suite.stdout + suite.stderr) } }
+      }
+      for (let attempt = 1; attempt <= 2 && suite.code !== 0; attempt++) {
+        log('wave ' + waveNumber + ' candidate suite RED — reconcile attempt ' + attempt)
+--- conflict
+<<<<<<< begin added frontier
+      const prompt = roles.reconcile + '\nTEST COMMAND: ' + testCmd +
+        '\n\nFailing output:\n' + failingBlock(suite.stdout + suite.stderr)
+      const label = 'reconcile:wave' + waveNumber + ':' + attempt
+      // One dispatch, as an expression: the reply, or the CLASS of the no-reply
+      // it was. A non-fatal throw is a no-reply like a `null` is — the worker
+      // attaches `{ workerVerdict, label }` to every one of them, so the class
+      // it died of is readable — and a `RUN_FATAL` is the run ending and leaves
+      // here untouched, exactly as at BASE.
+      const askOnce = async () => {
+        try {
+          return { reply: await agent(prompt, { label, model: TIER.mostCapable, schema: RECONCILE_SCHEMA }),
+                   cls: null }
+        } catch (e) {
+          if (String((e && e.message) || e).startsWith('RUN_FATAL')) throw e
+          const verdict = e && e.workerVerdict
+          return { reply: null, cls: (verdict && verdict.class != null) ? verdict.class : null }
+        }
+      }
+      // A reconcile worker that died without answering is asked the same
+      // question once more before the epoch is blocked (#1054, question 2). At
+      // BASE a no-reply on attempt 1 ended the round where it stood, so run-20
+      // paid a whole epoch — tasks 2–5 never dispatched — for one worker that
+      // exited 1 having spent zero tokens. The re-ask is a FRESH worker on the
+      // byte-identical prompt under the same `label`, `model` and `schema`: the
+      // worker derives the second session id and evidence directory
+      // (`<label>.2`) from its own per-label `dispatched` count, so keeping the
+      // label is what keeps the two dispatches distinguishable on the record.
+      // It is IMMEDIATE — no backoff. `INFRA_BACKOFF_MS` (`retryInfraNull`
+      // above) is the answer to an OVERLOADED API being re-asked by every
+      // worker that died in the outage at once; a reconcile is one worker per
+      // epoch, not a storm, and a minute of wall on it buys nothing.
+      // An OBJECT reply is an answer and is read as at BASE — a `BLOCKED` says
+      // the worker looked and could not fix it, which asking twice does not
+      // change — and only the SECOND no-reply is read as no reply, so the
+      // `judgmentCalls` literal and the `TEST_FAILED` route below are BASE's,
+      // byte for byte.
+      let { reply: rec, cls } = await askOnce()
+      if (rec == null) {
+        appendEvent({ kind: 'driver:reconcile-retry', wave: waveNumber, attempt, class: cls })
+        judgmentCalls.push('wave ' + waveNumber + ': reconcile attempt ' + attempt +
+          ' produced no reply (' + cls + ') — re-dispatched once')
+        log(label + ' produced no reply (' + cls + ') — re-dispatching once')
+        ;({ reply: rec } = await askOnce())
+======= begin deleted frontier
+      let rec
+      try {
+        rec = await agent(
+          roles.reconcile + '\nTEST COMMAND: ' + testCmd +
+            '\n\nFailing output:\n' + failingBlock(suite.stdout + suite.stderr),
+======= begin added 4
+          { label: 'reconcile:wave' + waveNumber + ':' + attempt, role: 'writeSide',
+======= begin deleted frontier
+            model: TIER.mostCapable, schema: RECONCILE_SCHEMA })
+      } catch (e) {
+        if (String((e && e.message) || e).startsWith('RUN_FATAL')) throw e
+        rec = null
+>>>>>>> end conflict
+--- context (read-only)
+        }
+        if (!rec || rec.status !== 'FIXED') {
+          judgmentCalls.push('wave ' + waveNumber + ': reconcile attempt ' + attempt +
+            (rec ? (' reported ' + rec.status + ': ' + (rec.summary || '')) : ' produced no reply'))
+          break
+        }
+        await git(['add', '-A'], integ)
+        // A FIXED report over an unchanged tree must not move the branch
+        // (review finding 5): there is no fix to adopt, and a flaky suite going
+        // green on re-run would otherwise credit an empty commit. "Changed
+        // nothing" is two comparisons because the index legitimately differs
+        // from HEAD on attempt 1 (it holds the candidate tree from read-tree):
+        // no change vs the CANDIDATE means attempt 1 edited nothing; no change
+        // vs HEAD means a later attempt edited nothing (and git commit would
+        // refuse anyway).
+        const vsCandidate = await exec('git', ['diff', '--cached', '--quiet', candidate], { cwd: integ })
+        const vsHead = await exec('git', ['diff', '--cached', '--quiet', 'HEAD'], { cwd: integ })
+        if (vsCandidate.code === 0 || vsHead.code === 0) {
+          judgmentCalls.push('wave ' + waveNumber + ': reconcile reported FIXED but changed nothing — not committing')
+          break
+        }
+        // Titled from the plan like the materialize candidate above (#651): when
+        // `planTitle` is set the reconcile commit takes the plan's H1 as its
+        // SUBJECT and the wave/attempt line moves down into the body, so a
+        // squash-merge of a reconciled wave's head reads the same as a green
+        // one's. `git commit -m <a> -m <b>` joins its values as paragraphs. With
+        // no title the single `-m` stays and the message is BASE's, unchanged.
+        const reconcileLine = 'wave ' + waveNumber + ' reconcile (attempt ' + attempt + ')'
+        await git(['commit', '-q',
+          ...(planTitle ? ['-m', planTitle] : []), '-m', reconcileLine], integ)
+        suite = await sh(testCmd, integ)
+      }
+      if (suite.code === 0) {
+        const headSha = await git(['rev-parse', 'HEAD'], integ)
+        // The reconcile commits sit on top of prevHead carrying the candidate
+        // tree + fixes: reset --hard is unnecessary (the commit already moved
+        // the branch), but assert the tree is clean before declaring MERGED.
+        await emitWeave(headSha)
+        frontier.push(entry())
+        judgmentCalls.push('wave ' + waveNumber + ': candidate adopted after reconcile (' +
