@@ -1,0 +1,171 @@
+{
+  "ok": true,
+  "stamp": "run-161",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-161"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The re-edge reads the tree the worker was handed",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The re-edge reads the tree the worker was handed",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_re_edge.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_re_edge.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_re_edge.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_re_edge.mjs | grep -q 'ALL TESTS PASSED'",
+            "! grep -q 'not yet adopted' fleet/CONTRACT.md",
+            "sed -n '/The re-edge (#979)/,/dispatched again/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'not adopted in the head'",
+            "! grep -qE \"^import .*exams/\" fleet/tests/test_run_engine_re_edge.mjs"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_re_edge.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_re_edge.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_re_edge.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_re_edge.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_re_edge.mjs": "fleet/tests/test_run_engine_re_edge.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_re_edge.mjs"
+            ],
+            "siblingOwned": [],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The re-edge reads the tree the worker was handed"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "globalConstraints": "- A BLOCKED naming no `blocks` link, a BLOCKED whose link names a sibling that was in the tree the worker was handed, and a second BLOCKED naming a pair already re-edged are the failures they are at BASE (`failed: not-reviewed`); a link naming a sibling that has failed still records the edge and ends `unfinished: blocked \u2014 depends on a failed task`.\n- No worker's prompt changes: the `SIBLING FILES` line, the role files and every other prompt byte are what they are at BASE.\n- A guarded exam file is self-contained at its guarded path: it imports the engine and the sim helpers by their `fleet/tests/`-relative paths and never imports anything under `fleet/tests/exams/`.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/",
+        "minor": false
+      },
+      {
+        "cmd": "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-161/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-161/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-161/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-161/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
