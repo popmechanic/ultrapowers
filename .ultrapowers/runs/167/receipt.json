@@ -1,0 +1,583 @@
+{
+  "ok": true,
+  "stamp": "run-167",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-167"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "5 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "A death before the first token carries a typed reason on `worker:end`",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/run-worker.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`worker:end.reason` \u2014 `null | { kind: 'spawn-error' | 'no-envelope', code: string | number, stderr: string }`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "A reconcile that produced no reply is dispatched once more before the epoch is blocked",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`driver:reconcile-retry` \u2014 event `{ wave, attempt, class }`"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The retry tier is decided by the worker's verdict class, not by the wording of its message",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs",
+          "fleet/run-worker.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing new \u2014 `isSchemaTrip` is removed"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "A worker's role is declared where it is dispatched, never derived from its label",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/run-engine.mjs",
+          "fleet/run-main.mjs",
+          "fleet/run-worker.mjs",
+          "fleet/tests/probe_confine_live.mjs",
+          "fleet/tests/probe_run_worker_live.mjs",
+          "fleet/tests/test_worker_kata_env.mjs",
+          "fleet/tests/test_worker_prompt_stdin.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`opts.role` \u2014 a required dispatch option, one of `examiner | implementer | reviewer | resolver | writeSide`"
+          ]
+        }
+      },
+      {
+        "id": "5",
+        "title": "Every command the driver runs sees the sandbox toolchain first on its PATH",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/run-engine.mjs",
+          "fleet/tests/test_run_engine_reuse.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`TOOLCHAIN_BIN` \u2014 exported string `/usr/local/bin`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "A death before the first token carries a typed reason on `worker:end`",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/run-worker.mjs",
+            "fleet/tests/test_worker_end_reason.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`worker:end.reason` \u2014 `null | { kind: 'spawn-error' | 'no-envelope', code: string | number, stderr: string }`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/run-worker.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_worker_end_reason.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_worker_end_reason.mjs",
+          "proofRuns": [
+            "grep -q \"spawn-error\" fleet/CONTRACT.md",
+            "grep -q \"no-envelope\" fleet/CONTRACT.md"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_worker_end_reason.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/run-worker.mjs",
+              "fleet/tests/test_worker_end_reason.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_worker_end_reason.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_worker_end_reason.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_worker_end_reason.mjs": "fleet/tests/test_worker_end_reason.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_worker_end_reason.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/run-main.mjs",
+              "fleet/run-worker.mjs",
+              "fleet/tests/probe_confine_live.mjs",
+              "fleet/tests/probe_run_worker_live.mjs",
+              "fleet/tests/test_run_engine_reconcile_retry.mjs",
+              "fleet/tests/test_run_engine_reuse.mjs",
+              "fleet/tests/test_run_engine_schema_escalation.mjs",
+              "fleet/tests/test_run_engine_shell_path.mjs",
+              "fleet/tests/test_worker_kata_env.mjs",
+              "fleet/tests/test_worker_prompt_stdin.mjs",
+              "fleet/tests/test_worker_role_declared.mjs"
+            ],
+            "produces": [
+              "`worker:end.reason` \u2014 `null | { kind: 'spawn-error' | 'no-envelope', code: string | number, stderr: string }`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "A reconcile that produced no reply is dispatched once more before the epoch is blocked",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_reconcile_retry.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`driver:reconcile-retry` \u2014 event `{ wave, attempt, class }`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_reconcile_retry.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_reconcile_retry.mjs",
+          "proofRuns": [
+            "grep -q \"driver:reconcile-retry\" fleet/CONTRACT.md"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_reconcile_retry.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_reconcile_retry.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_reconcile_retry.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_reconcile_retry.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_reconcile_retry.mjs": "fleet/tests/test_run_engine_reconcile_retry.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_reconcile_retry.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/run-main.mjs",
+              "fleet/run-worker.mjs",
+              "fleet/tests/probe_confine_live.mjs",
+              "fleet/tests/probe_run_worker_live.mjs",
+              "fleet/tests/test_run_engine_reuse.mjs",
+              "fleet/tests/test_run_engine_schema_escalation.mjs",
+              "fleet/tests/test_run_engine_shell_path.mjs",
+              "fleet/tests/test_worker_end_reason.mjs",
+              "fleet/tests/test_worker_kata_env.mjs",
+              "fleet/tests/test_worker_prompt_stdin.mjs",
+              "fleet/tests/test_worker_role_declared.mjs"
+            ],
+            "produces": [
+              "`driver:reconcile-retry` \u2014 event `{ wave, attempt, class }`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "3",
+          "title": "The retry tier is decided by the worker's verdict class, not by the wording of its message",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/run-worker.mjs",
+            "fleet/tests/test_run_engine_schema_escalation.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing new \u2014 `isSchemaTrip` is removed"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-engine.mjs",
+            "fleet/run-worker.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_schema_escalation.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_schema_escalation.mjs",
+          "proofRuns": [
+            "test \"$(grep -c isSchemaTrip fleet/run-engine.mjs fleet/run-worker.mjs | cut -d: -f2 | paste -sd+ - | bc)\" = 0"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_schema_escalation.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/run-engine.mjs",
+              "fleet/run-worker.mjs",
+              "fleet/tests/test_run_engine_schema_escalation.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_schema_escalation.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_schema_escalation.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_schema_escalation.mjs": "fleet/tests/test_run_engine_schema_escalation.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_schema_escalation.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/run-main.mjs",
+              "fleet/run-worker.mjs",
+              "fleet/tests/probe_confine_live.mjs",
+              "fleet/tests/probe_run_worker_live.mjs",
+              "fleet/tests/test_run_engine_reconcile_retry.mjs",
+              "fleet/tests/test_run_engine_reuse.mjs",
+              "fleet/tests/test_run_engine_shell_path.mjs",
+              "fleet/tests/test_worker_end_reason.mjs",
+              "fleet/tests/test_worker_kata_env.mjs",
+              "fleet/tests/test_worker_prompt_stdin.mjs",
+              "fleet/tests/test_worker_role_declared.mjs"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        },
+        {
+          "id": "4",
+          "title": "A worker's role is declared where it is dispatched, never derived from its label",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/run-main.mjs",
+            "fleet/run-worker.mjs",
+            "fleet/tests/probe_confine_live.mjs",
+            "fleet/tests/probe_run_worker_live.mjs",
+            "fleet/tests/test_worker_kata_env.mjs",
+            "fleet/tests/test_worker_prompt_stdin.mjs",
+            "fleet/tests/test_worker_role_declared.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`opts.role` \u2014 a required dispatch option, one of `examiner | implementer | reviewer | resolver | writeSide`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/run-main.mjs",
+            "fleet/run-worker.mjs",
+            "fleet/tests/probe_confine_live.mjs",
+            "fleet/tests/probe_run_worker_live.mjs",
+            "fleet/tests/test_worker_kata_env.mjs",
+            "fleet/tests/test_worker_prompt_stdin.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_worker_role_declared.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_worker_role_declared.mjs",
+          "proofRuns": [
+            "test \"$(grep -c roleForLabel fleet/run-worker.mjs fleet/run-engine.mjs fleet/run-main.mjs | cut -d: -f2 | paste -sd+ - | bc)\" = 0",
+            "tr '\\n' ' ' < fleet/CONTRACT.md | grep -q 'role.\\{0,400\\}examiner.\\{0,80\\}implementer.\\{0,80\\}reviewer.\\{0,80\\}resolver.\\{0,80\\}writeSide'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_worker_role_declared.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/run-main.mjs",
+              "fleet/run-worker.mjs",
+              "fleet/tests/probe_confine_live.mjs",
+              "fleet/tests/probe_run_worker_live.mjs",
+              "fleet/tests/test_worker_kata_env.mjs",
+              "fleet/tests/test_worker_prompt_stdin.mjs",
+              "fleet/tests/test_worker_role_declared.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_worker_role_declared.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_worker_role_declared.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_worker_role_declared.mjs": "fleet/tests/test_worker_role_declared.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_worker_role_declared.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/run-worker.mjs",
+              "fleet/tests/test_run_engine_reconcile_retry.mjs",
+              "fleet/tests/test_run_engine_reuse.mjs",
+              "fleet/tests/test_run_engine_schema_escalation.mjs",
+              "fleet/tests/test_run_engine_shell_path.mjs",
+              "fleet/tests/test_worker_end_reason.mjs"
+            ],
+            "produces": [
+              "`opts.role` \u2014 a required dispatch option, one of `examiner | implementer | reviewer | resolver | writeSide`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "5",
+          "title": "Every command the driver runs sees the sandbox toolchain first on its PATH",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_reuse.mjs",
+            "fleet/tests/test_run_engine_shell_path.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`TOOLCHAIN_BIN` \u2014 exported string `/usr/local/bin`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_reuse.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_shell_path.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_shell_path.mjs",
+          "proofRuns": [
+            "tr '\\n' ' ' < fleet/CONTRACT.md | grep -q 'TOOLCHAIN_BIN.\\{0,200\\}/usr/local/bin'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_shell_path.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_reuse.mjs",
+              "fleet/tests/test_run_engine_shell_path.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_shell_path.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_shell_path.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_shell_path.mjs": "fleet/tests/test_run_engine_shell_path.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_shell_path.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/run-main.mjs",
+              "fleet/run-worker.mjs",
+              "fleet/tests/probe_confine_live.mjs",
+              "fleet/tests/probe_run_worker_live.mjs",
+              "fleet/tests/test_run_engine_reconcile_retry.mjs",
+              "fleet/tests/test_run_engine_schema_escalation.mjs",
+              "fleet/tests/test_worker_end_reason.mjs",
+              "fleet/tests/test_worker_kata_env.mjs",
+              "fleet/tests/test_worker_prompt_stdin.mjs",
+              "fleet/tests/test_worker_role_declared.mjs"
+            ],
+            "produces": [
+              "`TOOLCHAIN_BIN` \u2014 exported string `/usr/local/bin`"
+            ],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "fleet \u00b7 5 tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- Findings are about the result \u2014 what the tree, the record and the sims now do \u2014 never about the order the work was done in, the number of commits, or whether a test was written before its code.\n- No sim under `fleet/tests/` names a sibling `test_*.mjs` or `pytest` in a spawn; every spawn passes an env derived from `simEnv`; imports are written for `fleet/tests/` depth (`../run-engine.mjs`, `./_helpers.mjs`).\n- A field added to an event the engine or the worker appends to `events.jsonl` is named in `fleet/CONTRACT.md` in the same task that adds it.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/",
+        "minor": false
+      },
+      {
+        "cmd": "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-167/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-167/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-167/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-167/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for regenerateCmd \u2014 the lockfile regenerator is derived from the same lockfile/manifest beside the bootstrap (and only when the bootstrap itself was derived) and stamped in the args file and receipt; there is no knob for it",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
