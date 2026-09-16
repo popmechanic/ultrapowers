@@ -1,0 +1,57 @@
+# A BLOCKED on a sibling adopted after the task's dispatch re-edges and re-dispatches — the re-edge reads the tree the worker was handed, not the tree of the moment it returned
+
+**Grammar:** claims-v1
+
+**Claim:** A task whose worker reports it is blocked on a sibling that has landed since the task was sent out is sent out again on the tree that carries that sibling, instead of failing. (elicited)
+**Summary:** This closes the gap run-159 fell through: a worker dispatched on an older tree said it was blocked on a sibling, that sibling had already landed by the time the worker returned, and the engine read the block as a failure rather than a reason to try again. After this, the engine compares the sibling against the tree the worker was actually handed, so a block on work that arrived later re-dispatches the task on the current tree, exactly as a block on work still in flight already waits for it. A task like run-159's task 7 lands instead of dying not-reviewed, and no run pays a relaunch for it.
+
+**Goal:** land on popmechanic/ultrapowers, read at `cf289581ebe2fa8dc23a8683c6d4e31c835d2ae2`, the one-clause correction to the re-edge of #979: `blockingSiblingsOf` in `fleet/run-engine.mjs` drops a linked sibling because it is in `adoptedIds` *now*, on the premise that an adopted sibling's work is already in the tree the task was handed — false whenever the sibling was adopted after that task's dispatch went out (run-159 task 7: dispatched 07:52:45Z on wave 1's head, task 1 adopted 07:56:44Z in wave 2, the worker returned BLOCKED on task 1 at 08:03:37Z and the task ended `failed: not-reviewed`, #1057). The driver keeps, per dispatch, the set of tasks adopted in the head that dispatch went out on, and the re-edge reads that set; the contract bullet says so.
+**Closes:** #1057
+
+**Tech Stack:** Node ≥ 20 (`fleet/`), the engine sims under `fleet/tests/test_*.mjs` (sentinel `ALL TESTS PASSED`, bridged by `tests/test_fleet_suite.py`, 300 s per file), the hub's REST API through `fleet/kata-client.mjs` (a fake in every sim).
+
+**Spec:** #1057 and its correcting comment of 2026-09-17 (the reading off `ultra/evidence/run-159`: no aged fold — wave 1 `released`, wave 2 `released`, wave 3 `end`; task 7's row `failed: not-reviewed` after a BLOCKED naming task 1, adopted in wave 2 after task 7's dispatch); #979 (the re-edge); `fleet/CONTRACT.md` "The re-edge (#979)" bullet.
+
+**Parallelization rationale:** one task, width 1. The fix, its contract sentence and its exam are one behaviour surface — the re-edge — and the exam file that owns that surface already exists; splitting the sentence from the code would leave one wave with a contract that names a behaviour the tree does not have.
+
+## Global Constraints
+
+- A BLOCKED naming no `blocks` link, a BLOCKED whose link names a sibling that was in the tree the worker was handed, and a second BLOCKED naming a pair already re-edged are the failures they are at BASE (`failed: not-reviewed`); a link naming a sibling that has failed still records the edge and ends `unfinished: blocked — depends on a failed task`.
+- No worker's prompt changes: the `SIBLING FILES` line, the role files and every other prompt byte are what they are at BASE.
+- Check: git diff --quiet $ULTRA_BASE -- fleet/roles/
+- Check: node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'
+- A guarded exam file is self-contained at its guarded path: it imports the engine and the sim helpers by their `fleet/tests/`-relative paths and never imports anything under `fleet/tests/exams/`.
+
+### Task 1: The re-edge reads the tree the worker was handed
+
+**Type:** implementation
+**Review:** peer
+
+**Files:**
+- Modify: `fleet/run-engine.mjs`
+- Modify: `fleet/CONTRACT.md`
+- Test: `fleet/tests/test_run_engine_re_edge.mjs`
+
+**Claim:** A task whose worker reports it is blocked on a sibling that has landed since the task was sent out is sent out again on the tree that carries that sibling, instead of failing. (derived)
+Machine: M1. When an implementer returns `BLOCKED` and the task's issue, read after that return, carries a `blocks` link whose `from` is a sibling task of this run that was NOT adopted in the head this task's dispatch went out on — whether that sibling is still in flight or has been adopted since — the driver appends one `driver:re-edged {task, blockedBy: [<sibling ids>]}` event naming it, records the edge sibling → task, dispatches no fix round and no reviewer for that attempt, and dispatches the task again — a fresh implementer, a second `worker:start` — on a clone anchored at the head of the epoch that adopted the sibling, after that epoch's `driver:wave-adopted`; the task then lands `done` and the run is complete. M2. A `blocks` link whose `from` is a sibling that WAS adopted in the head this task's dispatch went out on is not a re-edge: the task ends `failed` with `reviewVerdict` `not-reviewed`, as at BASE. M3. `fleet/CONTRACT.md`'s "The re-edge (#979)" bullet says the link's `from` is another task of this run that was not adopted in the head the task's dispatch went out on, and no longer says `not yet adopted`.
+
+**Authorized-by:** #1057 (its correcting comment of 2026-09-17: "A BLOCKED naming a sibling that was adopted after this task's dispatch head re-edges the task and re-dispatches it on the current head"); #979; `fleet/CONTRACT.md` "The re-edge (#979)"
+
+**Interfaces:**
+- Consumes: none
+- Produces: none
+
+**Context:** The one wrong line is the filter in `blockingSiblingsOf` (`fleet/run-engine.mjs` line 4665; the filter at 4678 reads `!adoptedIds.has(t.id)`), whose comment says "an adopted sibling's work is already in the tree this task was handed, so nothing is waiting to arrive" — true only of siblings adopted before the dispatch. Every dispatch already records the head it went out on: `anchorOf.set(task.id, head)` at lines 5190 (`dispatchOnce`) and 5216 (`retryParkedInfra`), where `head` is `adoptedHead` at that instant and `adoptedIds` (line 4498) is the set of tasks in that head. Record beside it, at both sites, the ids adopted at that instant — a `Map` of task id → `Set`, snapshotted with `new Set(adoptedIds)` — and have the filter read that snapshot instead of the live set; a task with no snapshot (none can exist, every dispatch passes one of the two sites) reads the live set as at BASE. Nothing else changes: the re-edge row (`reEdgedRow`, line 4684) and its landing in `settleResult` (`if (r.status === 're-edged')`, line 4828) already push `[sib, task]` onto `EDGES`, delete the task from `dispatchedIds`, append `driver:re-edged` and call `announceLanding()`; `isReady` (line 4689) then finds the task ready at once — its new predecessor is adopted — and the next lane's `takeReady` dispatches it through `dispatchOnce`, whose `anchorClone(task, adoptedHead)` re-anchors the clone at the current head. `reEdges` (line 4663) still forbids a second re-edge of the same pair (M2's sibling clause and the (d.4) leg at BASE stay as they are). The two `waitingOn` sites, lines 3199 and 3511, are unchanged. `siblingsNow` (line 4879) keeps reading the live `adoptedIds` — the `SIBLING FILES` line names what is not in the tree at dispatch, which is the same instant. THE RIG for the new leg: `fleet/tests/test_run_engine_re_edge.mjs` scenario (d.1) at lines 561–672 is the shape — two tasks A and B, no plan edge, width 2, `driveHub` (line 518) with a per-scenario stub; `blockedOnA` (line 550) files the link through the fake hub and returns BLOCKED; `startsOf`, `adoptionsOf`, `reEdgesOf` (lines 140–143) read the ordered log; `waitUntil` (line 107, bounded by `HOLD_MS` 8000) is the hold. For A to be adopted while B is still in flight the fold must not wait for idle: pass `foldAgeMs: 0` in `extraArgs` (the rule before #1006, `foldAgeFixed` at line 4483; `test_run_engine_amendments.mjs` line 175 passes it the same way) — or give A a dependent third task so A's landing folds `released`; either is lawful, and `foldAgeMs: 0` is the smaller rig. B's first implementer then holds until `adoptionsOf(readEvents(runDir))` names A, files the link, and returns BLOCKED; at BASE that run ends B `failed: not-reviewed` with no `driver:re-edged` and one `impl:B` start, which is what leg (a) fails on. Write the new scenario as (d.5) under a comment naming this task, before the sentinel line, whole in the guarded file (#1053). Leg (a)'s M1 text and the existing assertion message at line 590 say "not yet adopted"; the message is prose and may stay, but the header comment's M4 restatement (lines 26–34) should be re-read to say "not adopted in the head the dispatch went out on". `fleet/CONTRACT.md` line 698 carries the sentence M3 replaces: `\`from\` is another task of this run not yet adopted.`
+
+**Proof:**
+- Test: `fleet/tests/test_run_engine_re_edge.mjs`
+- Guard: `fleet/tests/test_run_engine_re_edge.mjs`
+- Run: node fleet/tests/test_run_engine_re_edge.mjs | grep -q 'ALL TESTS PASSED'
+- Run: ! grep -q 'not yet adopted' fleet/CONTRACT.md
+- Run: sed -n '/The re-edge (#979)/,/dispatched again/p' fleet/CONTRACT.md | tr '\n' ' ' | grep -q 'not adopted in the head'
+- Run: ! grep -qE "^import .*exams/" fleet/tests/test_run_engine_re_edge.mjs
+- Legs: (a) [M1] scenario (d.5): A and B, no plan edge, width 2, `foldAgeMs: 0`; A's implementer writes its file and returns done; B's first implementer holds until a `driver:wave-adopted` naming A is on the log, files `blocks` A → B through the fake hub, and returns BLOCKED naming A: the log carries exactly one `driver:re-edged` with `task` `B` and `blockedBy` `['A']`, no `fix:B:` start and no `review:B:` start before that event, two `worker:start impl:B` rows, the second after the `driver:wave-adopted` naming A and after the `driver:re-edged`, with `head` equal to that adoption's `headSha`; B's row is `done`, `unfinished` is `[]`, `coverage.complete` is `true`, and the adoptions name both A and B — at BASE the same rig ends B `failed` with `reviewVerdict` `not-reviewed`, one `impl:B` start and no `driver:re-edged`; (b) [M2] scenario (d.5)'s counterpart: A adopted before B is dispatched (B's plan edge A → B, so B's dispatch head carries A), B's implementer files `blocks` A → B and returns BLOCKED: no `driver:re-edged` on the log, one `impl:B` start, B's row `failed` with `reviewVerdict` `not-reviewed`; (c) [M1] the first `Run:` — the whole sim, its (d.1)–(d.4) legs included, prints the sentinel: the happy path, the no-link failure, the failed-sibling cascade and the second-BLOCKED failure hold as at BASE; (d) [M3] the second and third `Run:` — `not yet adopted` occurs nowhere in `fleet/CONTRACT.md`, and the re-edge bullet, read from its `The re-edge (#979)` heading to `dispatched again`, carries `not adopted in the head`; at BASE the second `Run:` fails (the phrase is at line 698) and the third fails (the phrase is absent); (e) [M1] [M2] the fourth `Run:` — the guarded sim carries no `import` line naming a path under `exams/`, so the exam that reaches main is the file at the guarded path.
+
+**Stale-if:**
+- issue-closed: #1057
+- path-absent: `fleet/tests/test_run_engine_re_edge.mjs`
