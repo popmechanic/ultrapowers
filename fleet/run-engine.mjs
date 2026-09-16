@@ -874,7 +874,7 @@ export const addedExportsOf = (patchFile) => {
     if (JS_SOURCE.test(current)) m = JS_EXPORT.exec(body)
     else if (/\.py$/.test(current)) m = PY_TOP_LEVEL_DECL.exec(body)
     if (!m) continue
-    const key = current + ' ' + m[1]
+    const key = current + '\0' + m[1]
     if (seen.has(key)) continue
     seen.add(key)
     out.push({ path: current, name: m[1] })

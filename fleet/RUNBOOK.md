@@ -614,6 +614,15 @@ on the next one, ask her before editing a script.
 - macOS has no `timeout`. A wait loop in a shell script gets its deadline
   from a counter, or the script is a `.mjs`.
 
+**The fold kernel.**
+
+- A NUL byte in a source file makes git diff it as binary, `is_binary` in
+  `skills/ultrapowers/kernel/repo_weave.py` agrees, and every fold that touches the file parks
+  with `no annotated narration for <path> (binary)` and zero resolvers — run-163's publish fold,
+  2026-09-16, after run-162's implementer wrote a `'\0'` key separator into `fleet/run-engine.mjs`
+  as the raw byte. GitHub still merges such a PR by hand. Find one with
+  `grep -Plc '\x00' fleet/*.mjs`; the fix is the escape, one byte.
+
 ## Capacity
 
 Read the meter, never sum the allocation: `billing usage --json --range=24h`
