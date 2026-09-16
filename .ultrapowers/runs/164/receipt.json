@@ -1,0 +1,274 @@
+{
+  "ok": true,
+  "stamp": "run-164",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-164"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "A",
+        "title": "The launcher derives the regenerator beside the bootstrap",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/scripts/ultra_run.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`derive_regenerate_cmd(root) -> tuple[str | None, str | None]`"
+          ]
+        }
+      },
+      {
+        "id": "B",
+        "title": "The capture drops lockfiles and the fold regenerates them",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/run-engine.mjs",
+          "fleet/run-main.mjs",
+          "fleet/run-waves.mjs",
+          "fleet/tests/_engine_helpers.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`LOCKFILE_BASENAMES`",
+            "`dropLockfilesFor(argsObj: object) -> boolean`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "A",
+        "B"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "A",
+          "title": "The launcher derives the regenerator beside the bootstrap",
+          "files": [
+            "skills/ultrapowers/scripts/ultra_run.py",
+            "tests/test_ultra_run_bootstrap_cmd.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`derive_regenerate_cmd(root) -> tuple[str | None, str | None]`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrapowers/scripts/ultra_run.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_ultra_run_bootstrap_cmd.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_ultra_run_bootstrap_cmd.py",
+          "proofRuns": [
+            "python3 -m pytest -q tests/test_ultra_run_bootstrap_cmd.py"
+          ],
+          "proofGuards": [
+            "tests/test_ultra_run_bootstrap_cmd.py"
+          ],
+          "factsheet": {
+            "files": [
+              "skills/ultrapowers/scripts/ultra_run.py",
+              "tests/test_ultra_run_bootstrap_cmd.py"
+            ],
+            "deletes": [],
+            "guards": [
+              "tests/test_ultra_run_bootstrap_cmd.py"
+            ],
+            "proofTests": [
+              "tests/test_ultra_run_bootstrap_cmd.py"
+            ],
+            "landing": {
+              "tests/test_ultra_run_bootstrap_cmd.py": "tests/test_ultra_run_bootstrap_cmd.py"
+            },
+            "driverOwned": [
+              "tests/test_ultra_run_bootstrap_cmd.py"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/run-main.mjs",
+              "fleet/run-waves.mjs",
+              "fleet/tests/_engine_helpers.mjs",
+              "fleet/tests/test_run_engine_lockfile_regen.mjs"
+            ],
+            "produces": [
+              "`derive_regenerate_cmd(root) -> tuple[str | None, str | None]`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "B",
+          "title": "The capture drops lockfiles and the fold regenerates them",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/run-main.mjs",
+            "fleet/run-waves.mjs",
+            "fleet/tests/_engine_helpers.mjs",
+            "fleet/tests/test_run_engine_lockfile_regen.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`LOCKFILE_BASENAMES`",
+              "`dropLockfilesFor(argsObj: object) -> boolean`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/run-main.mjs",
+            "fleet/run-waves.mjs",
+            "fleet/tests/_engine_helpers.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_lockfile_regen.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_lockfile_regen.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_lockfile_regen.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'",
+            "grep -q 'driver:regenerated' fleet/CONTRACT.md",
+            "! grep -qE \"^import .*exams/\" fleet/tests/test_run_engine_lockfile_regen.mjs"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_lockfile_regen.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/run-main.mjs",
+              "fleet/run-waves.mjs",
+              "fleet/tests/_engine_helpers.mjs",
+              "fleet/tests/test_run_engine_lockfile_regen.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_lockfile_regen.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_lockfile_regen.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_lockfile_regen.mjs": "fleet/tests/test_run_engine_lockfile_regen.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_lockfile_regen.mjs"
+            ],
+            "siblingOwned": [
+              "skills/ultrapowers/scripts/ultra_run.py",
+              "tests/test_ultra_run_bootstrap_cmd.py"
+            ],
+            "produces": [
+              "`LOCKFILE_BASENAMES`",
+              "`dropLockfilesFor(argsObj: object) -> boolean`"
+            ],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- A run whose tasks' patches touch no lockfile and whose folds change no manifest runs exactly as at BASE: the same kernel calls, the same bootstrap and suite commands in the same order, no `driver:regenerated` event, and every worker prompt byte-for-byte what BASE dispatches.\n- In a run that carries a `regenerateCmd`, a lockfile is never merged by a model: no `resolve:` worker is dispatched on a path whose basename is a lockfile, and no lockfile hunk reaches the kernel's fold; a run without one folds exactly as at BASE.\n- Every new event kind and every new event field is named in `fleet/CONTRACT.md`.\n- A guarded exam file is self-contained at its guarded path: it imports the engine and the sim helpers by their `fleet/tests/`-relative paths and never imports anything under `fleet/tests/exams/`.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/",
+        "minor": false
+      },
+      {
+        "cmd": "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-164/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-164/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-164/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-164/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
