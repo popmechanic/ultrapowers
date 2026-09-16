@@ -1,0 +1,88 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "3391cb324ce3fe068b26282872e1f390ff16fde33ed9ff24ec6dd7282b2399fc",
+      "verdict": "pass",
+      "reason": "Rounds 3 and 4: legs (c) and (g) contrast BASE on the hollow finding, the skip predicate, the brief and the report row with a scoped survivor present; (a) and (b) compute under M1/M2; (e) fails at BASE on the confirmed zero count; round 4 read leg (g)'s prompt pin as 'no line containing hollow: rig', which is how it is now worded."
+    }
+  },
+  "tally": {
+    "dispatched": 4,
+    "rejected": 2,
+    "rounds": [
+      {
+        "round": 1,
+        "dispatched": 1,
+        "rejected": 1
+      },
+      {
+        "round": 2,
+        "dispatched": 1,
+        "rejected": 1
+      },
+      {
+        "round": 3,
+        "dispatched": 1,
+        "rejected": 0
+      },
+      {
+        "round": 4,
+        "dispatched": 1,
+        "rejected": 0
+      }
+    ],
+    "base": "935fe1974c7a3d2a1aff4260a5ab65067f0d680b"
+  },
+  "history": [
+    {
+      "round": 1,
+      "verdict": "fail",
+      "reason": "M2's non-array call shape had no row"
+    },
+    {
+      "round": 2,
+      "verdict": "fail",
+      "reason": "no leg ran the review round with a scoped survivor present"
+    }
+  ],
+  "authoring": {
+    "minutes": 38,
+    "probes": 9,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "The surviving-mutant plan: what now?",
+        "options": [
+          "Scope it to the task's own exams, re-gate, launch",
+          "Shelve it and record the reading",
+          "Launch as authored"
+        ],
+        "recommended": "Scope it to the task's own exams, re-gate, launch",
+        "picked": "Scope it to the task's own exams, re-gate, launch"
+      },
+      {
+        "question": "Split it that way?",
+        "options": [
+          "Ship the scope only, shelve the flip",
+          "Ship both as one plan, flip as an experiment",
+          "Do nothing on the engine; record the reading"
+        ],
+        "recommended": "Ship the scope only, shelve the flip",
+        "picked": "Ship the scope only, shelve the flip"
+      },
+      {
+        "question": "Confirm the scope plan's Claim and launch?",
+        "options": [
+          "Confirm and launch on main 935fe197",
+          "Confirm, hold the launch",
+          "Edit the Claim"
+        ],
+        "recommended": "Confirm and launch on main 935fe197",
+        "picked": "Confirm and launch on main 935fe197"
+      }
+    ]
+  }
+}
