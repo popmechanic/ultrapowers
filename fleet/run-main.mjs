@@ -516,7 +516,7 @@ export const makeAddDirsFor = ({ runDir }) => (opts, role) =>
 // ── agent composition — the one decision, both halves ────────────────────────
 export function composeAgent({ runId, base, runDir, clonesDir, patchesDir, workersDir,
                                promptFileFor, settingsFor, env, cli, eventLog, spawnFn,
-                               implementerEffort, filesFor, envFor }) {
+                               implementerEffort, filesFor, envFor, args }) {
   // One knob, one role. `roleForLabel` maps both `impl:` and `fix:` to
   // `implementer`; every other role answers undefined, so `buildArgs` pushes no
   // `--effort` for it and each judge keeps the CLI's own default (#522).
@@ -566,6 +566,10 @@ export function composeAgent({ runId, base, runDir, clonesDir, patchesDir, worke
     // once; without a lookup it falls back to the `FILES:` line of the prompt
     // the worker was handed, which is the same compiled array.
     ...(filesFor ? { filesFor } : {}),
+    // #1050: the run's args decide it, once — `true` exactly when the run
+    // carries a regenerator to rebuild what the capture drops. A boolean is
+    // accepted too, for a caller that already made the decision.
+    dropLockfiles: (typeof args === 'boolean') ? args : dropLockfilesFor(args),
   })
   // `envFor` is read at dispatch, not here: the short id of a task's issue
   // lands on the kata record at that task's own dispatch (run-engine.mjs),
@@ -579,6 +583,16 @@ export function composeAgent({ runId, base, runDir, clonesDir, patchesDir, worke
   // the driver's directory is inert.
   return { agent, patchInput: patchesDir }
 }
+
+// #1050 — whether this run's captures drop lockfiles. The gate is the run's
+// own `regenerateCmd`, the string the launcher writes beside `bootstrapCmd`:
+// the capture may drop a lockfile only when the fold can rebuild it, because a
+// dropped lockfile nobody regenerates is a stale lockfile on the pull request
+// and a red frozen install at the fold. A pure one-liner, exported beside
+// `boundedParallel`, so the exam pins the rule without standing a run up.
+export const dropLockfilesFor = (argsObj) =>
+  typeof (argsObj && argsObj.regenerateCmd) === 'string' &&
+  argsObj.regenerateCmd.trim() !== ''
 
 // Bounded parallel: at most `limit` thunks in flight. Rejection semantics match
 // defaultParallel (the first rejection propagates); waves.js's dispatch sites
@@ -879,6 +893,9 @@ async function runMainInner(parsed, deps, hub) {
     clonesDir: tree.clonesDir, patchesDir: tree.patchesDir, workersDir: tree.workersDir,
     promptFileFor, settingsFor, env: workerEnv, cli, eventLog, implementerEffort,
     filesFor, envFor,
+    // The args file, read at step 1 above — the capture's lockfile gate is
+    // decided from its `regenerateCmd` and from nothing else (#1050).
+    args: argsObj,
   })
   // #213 credential evidence (restored after the cutover deleted the shim's
   // copy — review finding 6): name the credential the workers will ride, in

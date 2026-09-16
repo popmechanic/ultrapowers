@@ -45,7 +45,7 @@ import { createHash } from 'node:crypto'
 // `cloneAtBase` and `patchAgainstBase` come from there too: the examiner's
 // clone is cut at dispatch time (only the engine knows which tasks have an
 // exam), and the implementer's capture is retaken after the handoff.
-import { ulid, cloneAtBase, patchAgainstBase } from './run-waves.mjs'
+import { ulid, cloneAtBase, patchAgainstBase, isLockfilePath } from './run-waves.mjs'
 // Which head a dispatch's capture is diffed against travels with the dispatch
 // and not in a variable the whole run shares — see `captureAnchors` below: the
 // ready set keeps two dispatches in flight against different heads, and async
@@ -2125,6 +2125,15 @@ export async function runEngine({
     : []
   const testCmd = (typeof args.testCmd === 'string' && args.testCmd.trim()) || undefined
   const bootstrapCmd = (typeof args.bootstrapCmd === 'string' && args.bootstrapCmd.trim()) || undefined
+  // #1050 — the command that rebuilds this project's lockfile from its
+  // manifests, written by the launcher beside `bootstrapCmd` and read exactly
+  // as it is. Absent, the run captures, folds and installs as at BASE.
+  const regenerateCmd = (typeof args.regenerateCmd === 'string' && args.regenerateCmd.trim()) || undefined
+  // The same gate the capture is armed by in run-main: a run that can rebuild
+  // a lockfile carries none through a patch. The engine's own exam-handoff
+  // re-capture writes over the file the fold reads, so it must drop what the
+  // wrapper's capture dropped or the lockfile rides back in behind it.
+  const dropLockfiles = regenerateCmd !== undefined
   const reviewProfile = isPairReview(args.reviewProfile) ? args.reviewProfile : 'lean'
   const globalConstraints = (typeof args.globalConstraints === 'string' && args.globalConstraints.trim()) || ''
   // The executable half of the Global Constraints: `{ cmd, minor }` entries the
@@ -3282,6 +3291,7 @@ export async function runEngine({
           impl.patch = patchAgainstBase({ cwd: cloneDir, base: baseShaForTask,
             out: patchPrefix + 'task-' + task.id + '.patch',
             files: Array.isArray(task.files) ? task.files : [],
+            dropLockfiles,
             onDropped: (paths) => appendEvent({ kind: 'capture:dropped',
               label: 'impl:' + task.id, paths }) })
         } catch (e) {
@@ -4500,7 +4510,11 @@ export async function runEngine({
     if (!m || !m.candidateSha) {
       return blocked('materialize refused: ' + ((m && (m.park || m.fallback)) || tail(mat.stderr, 300)))
     }
-    const candidate = m.candidateSha
+    // A `let`: a run that carries a regenerator commits the lockfile it writes
+    // ONTO this candidate, and every later step of the fold — the bootstrap,
+    // the suite, the `reset --hard`, `emit-weave` and the epoch's `headSha` —
+    // uses that commit instead (#1050).
+    let candidate = m.candidateSha
     // The adopt leg's last kernel call (Tier 1, spec 2026-09-01 §2.1): the
     // weave dir is a sidecar seeded from the head that was ACTUALLY adopted,
     // so it runs after the branch moved and never before. Its refusal costs
@@ -4512,6 +4526,67 @@ export async function runEngine({
         ': emit-weave failed (exit ' + r.code + ') — weave persistence skipped, fold unaffected')
     }
     await git(['read-tree', '-u', '--reset', candidate + '^{tree}'], integ)
+    // ── #1050 — regenerate, never resolve ────────────────────────────────────
+    // A lockfile is a DERIVED file: two tasks that each added a package left
+    // two lockfiles that differ everywhere, and at BASE the kernel narrated
+    // that as a conflict and a `resolve:` worker was asked to merge a solver's
+    // output by hand. It is not a merge anyone can do correctly — the answer
+    // is whatever the package manager would write over the MERGED manifest,
+    // which no resolver can compute. So the capture carries no lockfile at all
+    // (run-waves' `dropLockfiles`, armed from this same `regenerateCmd`) and
+    // the fold rebuilds it here, from the manifests the kernel just merged.
+    //
+    // BEFORE the #825 bootstrap, and gated on the same question: the install
+    // the candidate needs is frozen against a lockfile, so the regenerator has
+    // to have run first or the install is red on a lockfile that describes a
+    // manifest nobody has any more. The gate is `bootstrapManifestChanged`
+    // over `prevHead..candidate` for exactly that reason — a fold that changed
+    // no manifest needs no rebuild, runs no regenerator, and appends nothing.
+    let regenerateRed = null
+    if (regenerateCmd) {
+      const changedForRegen = await git(['diff', '--name-only', prevHead, candidate], integ)
+      if (bootstrapManifestChanged(changedForRegen.split('\n').map((s) => s.trim()).filter(Boolean))) {
+        const r = await sh(regenerateCmd, integ)
+        let paths = []
+        if (r.code === 0) {
+          // The working tree against the candidate: `git diff <commit>` is
+          // tracked paths only, which is the clause's own word — a lockfile
+          // the project does not track is not one this fold commits.
+          const touched = await git(['diff', '--name-only', candidate], integ)
+          paths = touched.split('\n').map((s) => s.trim())
+            .filter((p) => p && isLockfilePath(p)).sort()
+          if (paths.length) {
+            // ONTO the candidate: `--soft` moves HEAD and leaves the index —
+            // which `read-tree` above filled with the candidate's own tree —
+            // exactly where it is, so the commit's parent is the materialized
+            // candidate and the adopted head's log reads
+            // `wave <n> regenerated <paths>` on top of it. Titled from the
+            // plan like the materialize candidate and the reconcile commit
+            // (#651), so a squash-merge of a regenerated wave's head reads the
+            // same as an untouched one's.
+            await git(['reset', '--soft', candidate], integ)
+            await git(['add', '--', ...paths], integ)
+            await git(['commit', '-q', ...(planTitle ? ['-m', planTitle] : []),
+              '-m', 'wave ' + waveNumber + ' regenerated ' + paths.join(' ')], integ)
+            candidate = await git(['rev-parse', 'HEAD'], integ)
+            log('wave ' + waveNumber + ' regenerated ' + paths.join(' ') +
+              ' onto the candidate')
+          }
+        } else {
+          // Exactly the shape a failed bootstrap takes below: the candidate is
+          // red on the regenerator's own output, so the reconcile prompt and
+          // the TEST_FAILED detail quote the rebuild that broke rather than a
+          // suite that never ran on this candidate.
+          judgmentCalls.push('wave ' + waveNumber + ': regenerate failed (exit ' + r.code +
+            ') — the candidate is red on the lockfile rebuild, not on its suite: ' +
+            tail(r.stderr || r.stdout, 300))
+          log('wave ' + waveNumber + ' regenerate failed (exit ' + r.code + ')')
+          regenerateRed = r
+        }
+        appendEvent({ kind: 'driver:regenerated', wave: waveNumber, cmd: regenerateCmd,
+          exit: r.code, paths })
+      }
+    }
     // #825 — the candidate's own install, before its suite. The setup loop
     // bootstrapped this clone at BASE and knows nothing about a manifest the
     // fold changed, so a suite run straight off the read-tree fails on a
@@ -4520,8 +4595,12 @@ export async function runEngine({
     // below is `reset --hard` in this same directory and the install is
     // untracked, so it survives adoption (and the TEST_FAILED path's
     // `git clean -fd`, which has no `-x`) — nothing to re-run afterwards.
-    let bootstrapRed = null
-    if (bootstrapCmd) {
+    // A failed regenerator stands in the same place: there is nothing for the
+    // install to install against, so it is not run and its value is the one
+    // the suite quotes. With no regenerator this is `null` and the block below
+    // is BASE's, byte for byte.
+    let bootstrapRed = regenerateRed
+    if (bootstrapCmd && !bootstrapRed) {
       const changed = await git(['diff', '--name-only', prevHead, candidate], integ)
       if (bootstrapManifestChanged(changed.split('\n').map((s) => s.trim()).filter(Boolean))) {
         const b = await sh(bootstrapCmd, integ)

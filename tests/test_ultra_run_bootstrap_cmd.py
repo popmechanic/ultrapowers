@@ -27,7 +27,7 @@ SCRIPTS = ROOT / "skills/ultrapowers/scripts"
 RUN = SCRIPTS / "ultra_run.py"
 sys.path.insert(0, str(SCRIPTS))
 import ultra_run  # noqa: E402
-from ultra_run import derive_bootstrap_cmd  # noqa: E402
+from ultra_run import derive_bootstrap_cmd, derive_regenerate_cmd  # noqa: E402
 
 FLEET_ENV = dict(os.environ, ULTRAPOWERS_FLEET_RUN="run-test")
 
@@ -293,3 +293,170 @@ def test_derived_bootstrap_runs_in_the_probe_worktree_before_the_suite(tmp_path)
     assert argv == "ci"
     assert "/.claude/ultrapowers/wt-knob-" in cwd, cwd   # the probe, never the checkout
     assert not list((repo / ".claude/ultrapowers").glob("wt-knob-*"))
+
+
+# === Task A: the launcher derives the regenerator beside the bootstrap ======
+#
+# Every JS rung of `derive_bootstrap_cmd` above is FROZEN (`--frozen-lockfile`,
+# `npm ci`), which is why rebuilding a lockfile from merged manifests is a
+# SECOND command and not the bootstrap re-run. `derive_regenerate_cmd(root)`
+# is that second ladder: the same rungs, the same precedence, file presence
+# only, returning `(command, rule)`.
+#
+# M1. `derive_regenerate_cmd(root)` answers by file presence alone, mirroring
+#     `derive_bootstrap_cmd`'s rungs and precedence.
+# M2. The preflight writes `regenerateCmd` into the args file, and
+#     `regenerateCmd` + `regenerateCmdSource` (`detected:<rule>`) into
+#     `receipt.json`, exactly when a command was derived — neither key when
+#     none was, and none derived at all when `--bootstrap-cmd ''` disabled
+#     bootstrap derivation.
+
+
+def run_dir_files(repo, stamp="t1"):
+    """The two files M2 stamps, read off disk. The leg names `receipt.json`,
+    so this reads the written receipt rather than the driver's stdout copy."""
+    run_dir = repo / ".claude/ultrapowers" / ("run-" + stamp)
+    return (json.loads((run_dir / "args.json").read_text()),
+            json.loads((run_dir / "receipt.json").read_text()))
+
+
+# --- leg (a) [M1]: the six derived rungs, one tree each ---------------------
+
+def test_regenerate_pnpm_lockfile_rung(tmp_path):
+    # [M1, leg a] package.json + pnpm-lock.yaml -> the unfrozen pnpm install.
+    (tmp_path / "package.json").write_text("{}")
+    (tmp_path / "pnpm-lock.yaml").write_text("")
+    assert derive_regenerate_cmd(tmp_path) == (
+        "pnpm install --no-frozen-lockfile", "pnpm-lockfile")
+
+
+@pytest.mark.parametrize("lockfile", ["bun.lock", "bun.lockb"])
+def test_regenerate_bun_lockfile_rung(tmp_path, lockfile):
+    # [M1, leg a] both bun lockfile spellings are the same rung: `bun install`
+    # with no --frozen-lockfile, which rewrites the lockfile from package.json.
+    (tmp_path / "package.json").write_text("{}")
+    (tmp_path / lockfile).write_text("")
+    assert derive_regenerate_cmd(tmp_path) == ("bun install", "bun-lockfile")
+
+
+def test_regenerate_npm_lockfile_rung(tmp_path):
+    # [M1, leg a] package-lock.json -> the lockfile-only npm install.
+    (tmp_path / "package.json").write_text("{}")
+    (tmp_path / "package-lock.json").write_text("{}")
+    assert derive_regenerate_cmd(tmp_path) == (
+        "npm install --package-lock-only", "npm-lockfile")
+
+
+def test_regenerate_uv_lock_rung(tmp_path):
+    # [M1, leg a] no package.json, uv.lock present -> `uv lock`.
+    (tmp_path / "uv.lock").write_text("")
+    assert derive_regenerate_cmd(tmp_path) == ("uv lock", "uv-lock")
+
+
+def test_regenerate_pyproject_tool_uv_rung(tmp_path):
+    # [M1, leg a] a pyproject carrying [tool.uv] is a uv project even with no
+    # uv.lock yet — the same `[tool.uv` sniff the bootstrap ladder uses.
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n[tool.uv]\n")
+    assert derive_regenerate_cmd(tmp_path) == ("uv lock", "pyproject-uv")
+
+
+# --- leg (b) [M1]: the rows that derive no command -------------------------
+
+def test_regenerate_bare_package_json_derives_nothing_but_names_the_rule(tmp_path):
+    # [M1, leg b] a lockfile-less package.json has no lockfile to rebuild —
+    # the bootstrap's own `--no-package-lock` rung says as much. The rule is
+    # still named, so a receipt could answer why nothing was derived.
+    (tmp_path / "package.json").write_text("{}")
+    assert derive_regenerate_cmd(tmp_path) == (None, "package-json")
+
+
+def test_regenerate_empty_tree_derives_nothing(tmp_path):
+    # [M1, leg b] no manifest at all: both halves None.
+    assert derive_regenerate_cmd(tmp_path) == (None, None)
+
+
+def test_regenerate_requirements_txt_tree_derives_nothing(tmp_path):
+    # [M1, leg b] requirements.txt is not a lockfile and pins no resolution —
+    # it is a (None, None) tree here even though the bootstrap ladder has a
+    # requirements rung. No PEP 668 probe is involved on this ladder.
+    (tmp_path / "requirements.txt").write_text("requests\n")
+    assert derive_regenerate_cmd(tmp_path) == (None, None)
+
+
+# --- leg (c) [M1]: precedence, the same order as the bootstrap ladder -------
+
+def test_regenerate_js_precedence_mirrors_the_bootstrap_ladder(tmp_path):
+    """[M1, leg c] pnpm over bun over npm — the same order
+    `derive_bootstrap_cmd` answers on the same trees, so a tree carrying two
+    lockfiles regenerates with the runner it installs and tests under."""
+    (tmp_path / "package.json").write_text("{}")
+    (tmp_path / "pnpm-lock.yaml").write_text("")
+    (tmp_path / "bun.lock").write_text("")
+    (tmp_path / "package-lock.json").write_text("{}")
+    assert derive_regenerate_cmd(tmp_path) == (
+        "pnpm install --no-frozen-lockfile", "pnpm-lockfile")
+    assert derive_regenerate_cmd(tmp_path)[1] == derive_bootstrap_cmd(tmp_path)[1]
+
+    (tmp_path / "pnpm-lock.yaml").unlink()
+    assert derive_regenerate_cmd(tmp_path) == ("bun install", "bun-lockfile")
+    assert derive_regenerate_cmd(tmp_path)[1] == derive_bootstrap_cmd(tmp_path)[1]
+
+
+# --- legs (d) and (e) [M2]: what the preflight stamps -----------------------
+
+def test_preflight_stamps_the_derived_regenerate_cmd(tmp_path):
+    """[M2, leg d] a repository carrying package.json and bun.lock: the args
+    file gets `regenerateCmd` (the key `fleet/run-engine.mjs` reads as
+    `args.regenerateCmd`, beside `args.bootstrapCmd`), and receipt.json gets
+    `regenerateCmd` with `regenerateCmdSource` naming the rule."""
+    repo = make_repo(tmp_path, {"package.json": "{}", "bun.lock": ""})
+    r = run_driver(repo, "--test-cmd", "true")
+    assert r.returncode == 0, r.stdout + r.stderr
+    args, receipt = run_dir_files(repo)
+    assert args["regenerateCmd"] == "bun install"
+    assert receipt["regenerateCmd"] == "bun install"
+    assert receipt["regenerateCmdSource"] == "detected:bun-lockfile"
+    # ...beside, not instead of, the frozen bootstrap this run still installs with.
+    assert receipt["bootstrapCmd"] == "bun install --frozen-lockfile"
+
+
+def test_preflight_stamps_no_regenerate_cmd_without_a_lockfile(tmp_path):
+    """[M2, leg e] a requirements.txt-only repository derives no regenerator,
+    so neither key is written into either file."""
+    repo = make_repo(tmp_path, {"requirements.txt": "requests\n"})
+    r = run_driver(repo, "--test-cmd", "true")
+    assert r.returncode == 0, r.stdout + r.stderr
+    args, receipt = run_dir_files(repo)
+    assert "regenerateCmd" not in args
+    assert "regenerateCmd" not in receipt
+    assert "regenerateCmdSource" not in receipt
+
+
+def test_preflight_stamps_no_regenerate_cmd_for_a_bare_package_json(tmp_path):
+    """[M2] the discriminating row for "exactly when a command was derived":
+    a bare package.json DOES derive a bootstrap (`npm install
+    --no-package-lock`) and does NOT derive a regenerator, so the regenerator
+    keys cannot ride on the bootstrap's own truth guard."""
+    repo = make_repo(tmp_path, {"package.json": "{}"})
+    r = run_driver(repo, "--test-cmd", "true")
+    assert r.returncode == 0, r.stdout + r.stderr
+    args, receipt = run_dir_files(repo)
+    assert receipt["bootstrapCmd"] == "npm install --no-package-lock"
+    assert "regenerateCmd" not in args
+    assert "regenerateCmd" not in receipt
+    assert "regenerateCmdSource" not in receipt
+
+
+@pytest.mark.parametrize("knob", ["", "   "])
+def test_disabled_bootstrap_derives_no_regenerate_cmd(tmp_path, knob):
+    """[M2, leg e] `--bootstrap-cmd ''` disables bootstrap derivation, and no
+    regenerator is derived or written either — the operator who overrides the
+    install owns its lockfile."""
+    repo = make_repo(tmp_path, {"package.json": "{}", "bun.lock": ""})
+    r = run_driver(repo, "--test-cmd", "true", "--bootstrap-cmd", knob)
+    assert r.returncode == 0, r.stdout + r.stderr
+    args, receipt = run_dir_files(repo)
+    assert "bootstrapCmd" not in receipt
+    assert "regenerateCmd" not in args
+    assert "regenerateCmd" not in receipt
+    assert "regenerateCmdSource" not in receipt

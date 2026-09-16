@@ -80,6 +80,24 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     and `applied` with the `waveMerges` row's own `detail` — appended for an epoch whose fold the
     kernel could not complete (`CONFLICT`, the conflict it stopped on being what `applied` reads
     `resolved` off) exactly as for one whose candidate suite stayed red.
+    And `driver:regenerated` `{wave, cmd, exit, paths}` — the epoch, the run's `regenerateCmd`
+    exactly as it ran, its exit code, and the sorted lockfile paths it rewrote, appended once by
+    a fold that ran it and by no other. A lockfile is a derived file and no model merges one: a
+    run that carries a `regenerateCmd` drops the lockfile basenames `bun.lock`, `bun.lockb`,
+    `package-lock.json`, `pnpm-lock.yaml` and `uv.lock`, at any depth, from every patch its
+    capture writes, and names each dropped path on that capture's `capture:dropped`
+    `{label, paths}` beside the unnamed binaries it already drops; a run carrying no
+    `regenerateCmd` drops no lockfile, runs no regenerator, appends no `driver:regenerated`, and
+    captures and folds a lockfile exactly as it captures and folds any other file. The
+    regenerator runs in the integration clone on the materialized candidate, when the paths
+    between `prevHead` and that candidate changed a bootstrap manifest, and BEFORE the
+    candidate's own bootstrap — the install is frozen against a lockfile, so a rebuild that ran
+    after it would be rebuilding against an install that already failed. The lockfile it writes
+    is committed onto the candidate, subject `wave <n> regenerated <paths>` under the plan's H1
+    when one is set, and that commit is the candidate every later step of the fold uses: the
+    bootstrap, the suite, the adopt, the weave and the epoch's own `headSha`. A regenerator that
+    exits non-zero rewrites nothing, stands in place of the suite exactly as a failed bootstrap
+    does (`exit` its own, `paths` empty), and the epoch takes the route a red bootstrap takes.
     What an epoch adopts is what was captured and unadopted at the INSTANT the slot freed — a
     result that lands while a fold is running is adopted by the fold after it, never by the one
     already in flight, and only one fold runs at a time.
