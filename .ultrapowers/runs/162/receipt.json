@@ -1,0 +1,176 @@
+{
+  "ok": true,
+  "stamp": "run-162",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-162"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The pre-review pass reads the patch's exports against the siblings' contracts",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`producedSymbolOf(entry: string) -> string`",
+            "`addedExportsOf(patchFile: string) -> { path: string, name: string }[]`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The pre-review pass reads the patch's exports against the siblings' contracts",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_export_collision.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`producedSymbolOf(entry: string) -> string`",
+              "`addedExportsOf(patchFile: string) -> { path: string, name: string }[]`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_export_collision.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_export_collision.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_export_collision.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'",
+            "sed -n '/three more kinds/,/One more kind records/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'exports.*Produces.*fix:<id>:0.*driver:finding'",
+            "! grep -qE \"^import .*exams/\" fleet/tests/test_run_engine_export_collision.mjs"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_export_collision.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_export_collision.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_export_collision.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_export_collision.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_export_collision.mjs": "fleet/tests/test_run_engine_export_collision.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_export_collision.mjs"
+            ],
+            "siblingOwned": [],
+            "produces": [
+              "`producedSymbolOf(entry: string) -> string`",
+              "`addedExportsOf(patchFile: string) -> { path: string, name: string }[]`"
+            ],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The pre-review pass reads the patch's exports against t\u2026"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "globalConstraints": "- A patch whose added lines export no name that a sibling's `Produces:` names sees the pre-review pass it sees at BASE: the same commands in the same order, no new red, no `driver:finding` at `round` `0`, and every prompt of every role byte-for-byte what BASE dispatches.\n- No worker's prompt template changes and no role file changes: the collision reaches the fix worker only as one more red line in the block a red `Run:` already fills.\n- Every new event field this plan writes is carried by an event kind `fleet/CONTRACT.md` already names; the plan adds no event kind.\n- A guarded exam file is self-contained at its guarded path: it imports the engine and the sim helpers by their `fleet/tests/`-relative paths and never imports anything under `fleet/tests/exams/`.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/",
+        "minor": false
+      },
+      {
+        "cmd": "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-162/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-162/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-162/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-162/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
