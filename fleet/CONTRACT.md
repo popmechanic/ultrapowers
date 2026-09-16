@@ -99,6 +99,19 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     bootstrap, the suite, the adopt, the weave and the epoch's own `headSha`. A regenerator that
     exits non-zero rewrites nothing, stands in place of the suite exactly as a failed bootstrap
     does (`exit` its own, `paths` empty), and the epoch takes the route a red bootstrap takes.
+    And `driver:reconcile-retry` `{wave, attempt, class}` — the epoch, the 1-based reconcile
+    attempt that produced no reply, and the class it died of: the `workerVerdict.class` the worker
+    attached to its non-fatal throw, and `null` when the reply was simply `null`. A reconcile
+    dispatch that produced no reply is asked the same question ONCE more — a fresh worker on the
+    byte-identical prompt under the same `label`, `model` and `schema`, immediately and with no
+    backoff — before the attempt is read as no reply, and that one re-dispatch is what this event
+    and the `wave <n>: reconcile attempt <a> produced no reply (<class>) — re-dispatched once`
+    judgment call beside it record. The second reply is the attempt's: an object there is read
+    exactly as a first-dispatch reply is, a `FIXED` committed and the suite re-run. A second
+    no-reply is the attempt's no reply — the `wave <n>: reconcile attempt <a> produced no reply`
+    judgment call and the epoch's `TEST_FAILED` route, with no third dispatch. A first dispatch
+    that answered at all — `BLOCKED` included, an object being an answer — and one whose throw
+    began `RUN_FATAL` are never re-dispatched and append no event.
     What an epoch adopts is what was captured and unadopted at the INSTANT the slot freed — a
     result that lands while a fold is running is adopted by the fold after it, never by the one
     already in flight, and only one fold runs at a time.
@@ -107,7 +120,22 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `driver:exam-run` `{task, cmd, exit, iter, stdout, paths?, evidence?}` — `paths` and
     `evidence` are the receipt below, carried on a red row and on no other; `stdout` is the exam's
     combined stdout+stderr, last 4,000 characters, the same tail the fix prompt reads (#944), so a parked
-    task's red is legible from the tag and the hub. The pre-review pass (`iter: 0`) parks a task
+    task's red is legible from the tag and the hub.
+    Every command the driver runs as a shell string — the suite (`testCmd`), a Proof `Run:`, a
+    Global `Check:`, a task's exam and the bootstrap — goes through the engine's one `bash -lc`
+    adapter, which prepends the sandbox's toolchain directory to `PATH` inside the command string:
+    `args.toolchainBin` when the run's args carry a non-empty string, else `TOOLCHAIN_BIN`, the
+    engine's export, `/usr/local/bin` — where the sandbox installs the pinned Bun. The prefix is
+    written into the command rather than into the environment because `-l` sources the login
+    profile AFTER the environment is set and a profile may reassign `PATH`; the rest of the PATH
+    the command would otherwise have had follows the toolchain directory, so a direct `bun` or
+    `bunx` is the sandbox's, whatever the profile or the tree's `node_modules/.bin` put first.
+    (`bun run <script>` prepends `node_modules/.bin` itself and is not reached by this; a tree
+    whose suite is a `bun run` script pins its own toolchain.) The prefix lives in the adapter and
+    never in the record: the `cmd` a `driver:proof-run`, `driver:check-run` or `driver:exam-run`
+    carries is the command as the plan wrote it — the exam's is the task's `testCmd` with its
+    Proof `Test:` path substituted by the exam's landing path — and carries no toolchain directory
+    and no `PATH=`. The pre-review pass (`iter: 0`) parks a task
     for the plan (`reviewVerdict: plan-defect`, actor `plan`, no fix round) only on the pair: the
     implementer's `plan-defect:` concern names a Proof leg by its `(x)` label AND says it cannot
     pass (`cannot pass|can't pass|unsatisfiable|no output|for any output`, case-insensitive), and
@@ -525,6 +553,17 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     the unit: a probe never manufactures a park out of a flake, and a credential that really is dead
     is still stopped by the engine's own credential row at its first worker.
     No `--scope`, no `KillMode=process`, no re-exec, no self-hash.
+  - the worker's role is DECLARED, never derived: `createRunWorker(...).agent(prompt, opts)` takes
+    `role` as a required dispatch option beside `label`, one of exactly five values — `examiner`,
+    `implementer`, `reviewer`, `resolver`, `writeSide` — and a dispatch with no `role`, or a `role`
+    outside that set, throws before anything is spawned, naming `role`. The declared role is the one
+    the worker gets: it rides the `role` key of that dispatch's `worker:start` and `worker:end`, and
+    it alone picks the prompt file (`fleet/roles/<role>.md`), the confine settings, the `--add-dir`
+    set, the timeout, the effort and the `--permission-mode` / `--allowedTools` /
+    `--disallowedTools` of `ROLES[role]`. A `label` is an identity and may be renamed freely; its
+    spelling decides no confinement. The engine's declarations: `exam:<id>` examiner, `impl:<id>`
+    and `fix:<id>:<iter>` implementer, `review:<id>:<iter>` reviewer, `resolve:wave<n>:<i>:<a>`
+    resolver, `reconcile:wave<n>:<a>` writeSide.
   - the worker's API-layer classes (`fleet/run-worker.mjs` `classify`), read off the envelope's
     `api_error_status`: `infra` is 429, 500, 502, 503, 504 and 529 — the call answers `null` and the
     engine's infra lane owns the one re-dispatch after `INFRA_BACKOFF_MS`; `credential` is 401, 403
@@ -544,6 +583,16 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `detail`), on that worker's `worker:end`, on `run:fatal` when it fails the run, and on the
     engine's `driver:infra-retry` when the lane re-dispatches a judgment — it is the only handle
     exe.dev support resolves.
+  - `reason` on every `worker:end` (`fleet/run-worker.mjs`, `reasonFor`): `null` when a result
+    envelope was read off the child's stdout — the `class` then says what happened and no reason is
+    invented for it — and otherwise `{ kind, code, stderr }`, the two shapes of a death before the
+    first token told apart. `kind` is `spawn-error` when the child's `error` event fired before any
+    `close` (the process never started), with `code` the error's errno string — `E2BIG`, `ENOENT`, …
+    `kind` is `no-envelope` when the child ran and closed with no envelope on stdout, with `code` the
+    exit code as a number; a SIGTERM or timeout death is `no-envelope` with `code` 143 and not a
+    third kind. `stderr` is the last 400 characters the child itself wrote to stderr, `''` when it
+    wrote nothing. The same object rides the thrown error at `workerVerdict.reason`, so a caller that
+    never reads the event still learns which death this was (#1054).
   - publish fold: the target's default branch may have moved while the run worked, so before the PR is
     opened the boot script folds that tip into the run's branch — under state `running` with phase
     `publish fold`, after the engine's unit is inactive and before `publishing`, as its own transient

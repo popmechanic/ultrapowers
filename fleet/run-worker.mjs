@@ -169,44 +169,38 @@ export const ROLES = {
   },
 }
 
-// ── label -> role ────────────────────────────────────────────────────────────
-// The complete taxonomy of labels waves.js emits, read off the ten call sites.
-// Exhaustive by construction: an unrecognised label is a FAILED RUN, never a
-// silent fallback to a permissive role. A new dispatch site in waves.js must
-// declare its role here or the driver refuses to start it — which is the point.
+// ── the declared role ────────────────────────────────────────────────────────
+// #410 §2: the role is DECLARED at the dispatch site, never derived from the
+// label's prose. A label is an identity — it names a worker in the events, the
+// transcript path and the evidence dir — and identities get renamed; a role is
+// the tool allowlist, the permission mode and the writable root, and deriving
+// one from the other meant a renamed label silently changed a worker's
+// confinement. So `agent(prompt, opts)` requires `opts.role` and refuses the
+// dispatch before it spawns anything when it is missing or unknown.
 //
-// Under the Amendment 10 engine (fleet/run-engine.mjs) the label set shrinks:
-// setup and merge:* are driver code and never dispatch. The rows are kept so a
-// stray old-style label still resolves to a non-permissive role rather than
-// crashing a run mid-wave; `resolve` moves to its own read-only role (the
-// driver writes the reply dir from the resolver's schema reply).
-//
-//   exam:<id>                                   examiner  (isolation, #553)
-//   impl:<id>                                   implementer  (isolation)
-//   fix:<id>:<iter>                             implementer  (isolation)
-//   review:<id>:<iter>[:<pass>]                 reviewer
-//   integration                                 critic  (completeness, read-only)
-//   resolve:wave<n>:<i>:<a>                     resolver (read-only)
-//   reconcile:wave<n>:<a>                       writeSide
-//   setup / merge:wave<n>[...]                  writeSide (legacy labels; driver code now)
-export function roleForLabel(label) {
-  if (typeof label !== 'string' || !label) {
+// The five roles a dispatch may declare. `critic` (the retired `integration`
+// label, #964) keeps its ROLES row and is dispatched by nothing, so it is not
+// declarable here: an undispatched role that no site can name cannot be handed
+// a worker by accident.
+export const DISPATCH_ROLES = ['examiner', 'implementer', 'reviewer', 'resolver', 'writeSide']
+
+// Throws — never falls back. A permissive default is how isolation is lost
+// silently, and the throw names `role` so the dispatch site reads its own bug.
+export function assertDeclaredRole(opts) {
+  if (typeof opts.label !== 'string' || !opts.label) {
     throw new Error('runWorker: opts.label is required (it is the worker identity)')
   }
-  if (label === 'integration') return 'critic'
-  if (label === 'setup') return 'writeSide'
-  const prefix = label.split(':')[0]
-  switch (prefix) {
-    case 'exam': return 'examiner'
-    case 'impl': case 'fix': return 'implementer'
-    case 'review': return 'reviewer'
-    case 'resolve': return 'resolver'
-    case 'merge': case 'reconcile': return 'writeSide'
-    default:
-      throw new Error('runWorker: no role declared for label "' + label + '". ' +
-        'A new agent() dispatch site must declare its role in roleForLabel — ' +
-        'defaulting one to a permissive role is how isolation is lost silently.')
+  if (opts.role === undefined || opts.role === null || opts.role === '') {
+    throw new Error('runWorker: opts.role is required for dispatch "' + opts.label + '" — ' +
+      'declare one of ' + DISPATCH_ROLES.join(', ') + ' at the call site. ' +
+      'A role is the tool allowlist, the permission mode and the writable root; ' +
+      'it is not read off the label.')
   }
+  if (!DISPATCH_ROLES.includes(opts.role)) {
+    throw new Error('runWorker: opts.role "' + String(opts.role) + '" is not a role (dispatch "' +
+      opts.label + '") — it must be one of ' + DISPATCH_ROLES.join(', ') + '.')
+  }
+  return opts.role
 }
 
 // ── label -> session uuid ────────────────────────────────────────────────────
@@ -423,6 +417,36 @@ export function probeReflection({ env = process.env, spawnSyncFn = spawnSync,
       : name + ' is not attached to this VM (reflection lists: ' + (names.join(', ') || 'nothing') + ')' }
 }
 
+// The tail of a child's stderr kept on a `worker:end` reason — the same
+// 400-character slice a git failure keeps, for the same reason: enough to name
+// what died, short enough that an event line stays readable.
+export const REASON_STDERR_TAIL = 400
+
+// Why a dispatch reached the end of the process with nothing to read, or `null`
+// when there was something. A death before the first token has two shapes and
+// they are not the same failure:
+//
+//   spawn-error  the child's `error` event fired before any `close` — the
+//                process never started at all, and `code` is the error's errno
+//                string (`E2BIG`, `ENOENT`, …).
+//   no-envelope  the child ran and closed with no result envelope on stdout,
+//                and `code` is its exit code as a number. A SIGTERM/timeout
+//                death (143) is this kind with `code` 143, not a third one.
+//
+// At BASE the two were indistinguishable downstream: a spawn `error` was folded
+// into `stderr` and exited 127, so a worker that died on an oversized argv read
+// exactly like one whose model refused (#1054). An envelope having been read is
+// the whole of the `null` condition — the class then says what happened, and no
+// reason is invented for it.
+export function reasonFor({ envelope, exitCode, stderr, spawnError }) {
+  if (envelope) return null
+  const tail = String(stderr == null ? '' : stderr).slice(-REASON_STDERR_TAIL)
+  if (spawnError) {
+    return { kind: 'spawn-error', code: spawnError.code, stderr: tail }
+  }
+  return { kind: 'no-envelope', code: exitCode, stderr: tail }
+}
+
 export function classify({ exitCode, envelope, stdout }) {
   // 143 = SIGTERM, and there is NO ENVELOPE AT ALL — stdout is empty (R-o7a).
   // Retryable once, then the task fails. Checked first precisely because there
@@ -514,13 +538,11 @@ export function classify({ exitCode, envelope, stdout }) {
     // ([structured-output-enforce], R-o2/R-o2d) — so reaching here means the
     // in-loop nudge already failed. Escalating the tier is the driver's lever.
     //
-    // The wording is load-bearing, not decoration: waves.js:879 routes a retry
-    // to TIER ESCALATION only when the thrown message matches its isSchemaTrip
-    // regex (/schema|structuredoutput|…/i), and to a retry-in-place otherwise.
-    // A capability trip wants the stronger model. Naming StructuredOutput here
-    // is both accurate — it IS the tool that never produced a conforming reply
-    // — and the way this speaks the vocabulary waves.js already reads, rather
-    // than adding a second classifier beside the one that exists.
+    // The lever is the CLASS, not this sentence: the engine reads
+    // `err.workerVerdict.class` and escalates for exactly `max-turns` and
+    // `no-structured-output` (#410 §1). So `detail` is free to be reworded for
+    // a human reader — it says StructuredOutput because that IS the tool that
+    // never produced a conforming reply — without moving the retry tier.
     return { outcome: 'retry', class: 'max-turns',
       detail: 'no conforming StructuredOutput reply within the turn cap (schema contract unmet)' }
   }
@@ -534,7 +556,7 @@ export function classify({ exitCode, envelope, stdout }) {
   if (envelope.structured_output === null || envelope.structured_output === undefined) {
     // Exit 0, no error, and still no typed reply. Retry with escalation rather
     // than hand waves.js an undefined it would dereference.
-    // Same escalation vocabulary as max-turns above.
+    // Same escalating class as max-turns above.
     return { outcome: 'retry', class: 'no-structured-output',
       detail: 'completed without a StructuredOutput reply (schema contract unmet)' }
   }
@@ -943,7 +965,9 @@ export function createRunWorker(cfg) {
       throw new Error('WORKER_BUDGET: ' + opts.label +
         ' already exhausted its per-worker budget; refusing to spend the backstop again')
     }
-    const role = roleForLabel(opts.label)
+    // Before the dispatch counter, before the cwd, before any spawn: a worker
+    // with no declared role does not start.
+    const role = assertDeclaredRole(opts)
     const attempt = (dispatched.get(opts.label) || 0) + 1
     dispatched.set(opts.label, attempt)
     const sessionId = sessionIdFor(runId, attempt === 1 ? opts.label : opts.label + '#' + attempt)
@@ -980,7 +1004,7 @@ export function createRunWorker(cfg) {
 
     onEvent({ kind: 'worker:start', label: opts.label, role, sessionId, cwd, model: opts.model || null })
 
-    const { exitCode, stdout, stderr, timedOut } = await runProcess({
+    const { exitCode, stdout, stderr, childStderr, timedOut, spawnError } = await runProcess({
       cli, argv, cwd, env: childEnvFor(env, prompt), prompt,
       timeoutMs: (timeoutMsFor && timeoutMsFor(role)) || timeoutMs,
       graceMs, spawnFn,
@@ -994,9 +1018,16 @@ export function createRunWorker(cfg) {
     recordEnvelopeDenials({ workersDir, label: opts.label, role, envelope })
     let verdict = classify({ exitCode, envelope, stdout })
     if (verdict.outcome === 'probe') verdict = resolveAttachment(verdict, opts.label)
+    // Why this dispatch had nothing to read, or `null` because it did. The key
+    // rides the verdict as well as the event, so the throw below carries the
+    // same object at `workerVerdict.reason` and a caller that never sees the
+    // event still learns which of the two deaths this was.
+    const reason = reasonFor({ envelope, exitCode, stderr: childStderr, spawnError })
+    verdict = { ...verdict, reason }
     onEvent({ kind: 'worker:end', label: opts.label, role, sessionId, exitCode, timedOut,
       outcome: verdict.outcome, class: verdict.class, status: verdict.status || null,
       ...(verdict.trace ? { trace: verdict.trace } : {}),
+      reason,
       meter: envelope ? meterOf(envelope) : null })
 
     // #702 Task 1 — the slice, after `worker:end` and before the verdict is
@@ -1036,11 +1067,11 @@ export function createRunWorker(cfg) {
         // did was the defect. `waves.js:1014` catches EVERY throw out of
         // agent() by design — "a thrown agent() call must cost ONE task, never
         // the run" — and its classifiers only recognise two things: a message
-        // starting `AGENT_NULL` (isInfraFault) and a schema-shaped message
-        // (isSchemaTrip). `RUN_FATAL: …` matches neither, so it became a
-        // same-tier retry and then a failed task: TWO dispatches per task, each
-        // learning the same dead credential. Exactly the burn the credential
-        // row exists to prevent, doubled.
+        // starting `AGENT_NULL` (isInfraFault) and a verdict class the engine
+        // escalates for. `RUN_FATAL: …` is neither, so it became a same-tier
+        // retry and then a failed task: TWO dispatches per task, each learning
+        // the same dead credential. Exactly the burn the credential row exists
+        // to prevent, doubled.
         //
         // waves.js cannot be taught a third class without editing it, and this
         // stage does not edit it (port, don't rewrite). So the driver enforces
@@ -1054,11 +1085,12 @@ export function createRunWorker(cfg) {
         throw new Error('RUN_FATAL: ' + verdict.detail + ' (label ' + opts.label + ')')
       }
       default:
-        // 'retry' and 'fail-task' both leave by a throw, and waves.js retries
+        // 'retry' and 'fail-task' both leave by a throw, and the engine retries
         // ANY non-AGENT_NULL throw exactly once — so the two outcomes differ
-        // only in the message, via isSchemaTrip (schema-shaped -> escalate a
-        // tier; anything else -> retry in place). That is the engine's ladder
-        // and this stage does not rewrite it.
+        // only in the tier that retry runs at, which the engine takes from the
+        // `workerVerdict` attached below (`max-turns`/`no-structured-output` ->
+        // escalate a tier; anything else -> retry in place). That is the
+        // engine's ladder and this stage does not rewrite it.
         //
         // The one place that costs real money is `budget`: the per-worker
         // --max-budget-usd backstop has already tripped, and waves.js's retry
@@ -1099,6 +1131,13 @@ function runProcess({ cli, argv, cwd, env, prompt, timeoutMs, graceMs = 10 * 100
       cwd, env, stdio: ['pipe', 'pipe', 'pipe'],
     })
     let stdout = '', stderr = '', timedOut = false, settled = false
+    // Set only when the child's `error` event fires BEFORE any `close` — the
+    // process never started, which is a different death from one that ran and
+    // answered nothing, and at BASE the two were the same exit 127. `stderr`
+    // below stays the folded text (the evidence bundle's `stderr` file keeps
+    // the spawn message); `childStderr` is only what the child itself wrote, so
+    // a spawn failure reports `''` rather than our own sentence.
+    let spawnError = null
     // setEncoding, NOT `stdout += buffer`. Concatenating Buffers decodes each
     // chunk independently, so a multi-byte character straddling a chunk
     // boundary becomes U+FFFD on both sides — and the result is still VALID
@@ -1131,9 +1170,23 @@ function runProcess({ cli, argv, cwd, env, prompt, timeoutMs, graceMs = 10 * 100
       settled = true
       clearTimeout(timer)
       if (killTimer) clearTimeout(killTimer)
-      resolve({ exitCode, stdout, stderr, timedOut })
+      resolve({
+        exitCode, stdout, timedOut, spawnError,
+        stderr: stderr + (spawnError ? spawnError.message : ''),
+        childStderr: stderr,
+      })
     }
-    child.on('error', (e) => { stderr += String(e && e.message || e); done(127) })
+    child.on('error', (e) => {
+      if (!settled) {
+        spawnError = {
+          // The errno string (`E2BIG`, `ENOENT`, …) is the whole diagnosis; an
+          // error without one falls back to the exit code we settle with.
+          code: (e && e.code != null) ? e.code : 127,
+          message: String((e && e.message) || e),
+        }
+      }
+      done(127)
+    })
     // A SIGTERM the child answered itself arrives as code 143; one it did not
     // arrives as signal SIGTERM; a SIGKILL arrives as signal SIGKILL. All three
     // are the same class — killed, no envelope, retryable once.
