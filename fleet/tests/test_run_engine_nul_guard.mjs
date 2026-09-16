@@ -1,0 +1,625 @@
+// fleet/tests/test_run_engine_nul_guard.mjs — the NUL guard (#1063): a worker
+// whose patch puts a stray `0x00` byte into a source file is told so on the
+// driver's own pre-review pass, before any reviewer reads it, and gets the one
+// repair round every other red of that pass buys — so no later merge stalls on
+// a file git and the fold kernel can no longer read as text.
+//
+// This file is the Proof's `Test:`, written whole at the guarded path it names.
+// Every relative import is written for THIS directory: `../` is the
+// repository's `fleet/`, `./` is `fleet/tests/`. Nothing under
+// `fleet/tests/exams/` is imported — #1053: a pointer at the guarded path is
+// stripped at publish and leaves main red, so the sim stands here entire.
+//
+// Everything below the agent seam is the real thing — real git repos, real
+// clones at BASE, the real `withPatchCapture` diff (binary hunks and all), the
+// real fold kernel and the real `sh` — and only the judgments are canned, so
+// the byte the assertions read is the driver's own reading of a patch the
+// driver captured.
+//
+// The Machine clauses under test, restated so a reader can map each assertion
+// back to the contract:
+//
+//   M1 — `nulOffsetOf(bytes)`, EXPORTED from `fleet/run-engine.mjs`, returns
+//        the zero-based offset of the first `0x00` byte in a `Buffer` and `-1`
+//        when there is none. `nulIntroducedBy({ paths, declared, readNow,
+//        readBase })`, EXPORTED from the same file, takes the touched paths,
+//        the task's declared `Files` paths, and two async readers — `readNow(p)`
+//        the file's bytes in the graded tree or `null` when absent,
+//        `readBase(p)` the blob's bytes at the dispatch head or `null` when
+//        absent — and returns `[{ path, offset }]` rows, IN THE GIVEN ORDER,
+//        for every path whose current bytes carry a `0x00` at `offset` and
+//        whose base bytes either carry none (a text file turned binary,
+//        declared or not) or are `null` while the path is NOT in `declared` (a
+//        new binary file nobody declared). A path whose base bytes already
+//        carry a `0x00`, a new path in `declared` (a binary deliverable the
+//        plan named), a path absent now, and a path with no `0x00` now each
+//        yield no row.
+//   M2 — on the pre-review pass, after the export-collision scan and before the
+//        pass returns, the driver calls `nulIntroducedBy` over
+//        `patchPaths(impl.patch)` with `declared` the task's `files`, `readNow`
+//        reading the graded clone and `readBase` reading `git show <dispatch
+//        head>:<path>` in that clone, and for each row pushes one red
+//        `{ line, stdout: '' }` whose `line` is exactly the sentence `NUL_LINE`
+//        spells below, and appends one `driver:finding` event `{task, round: 0,
+//        severity: 'blocking', actor: 'implementer', detail: <that line>,
+//        paths: [<path>], evidence: { read: <that line>, against: 'the captured
+//        patch at <impl.headSha>' }}`; one red and one row per path.
+//   M3 — that red is handled as every other red of the pass: it buys the
+//        `fix:<id>:0` round whose prompt carries the line, the pass is re-run
+//        after the fix on the new capture, and a fix that leaves the byte in
+//        place ends the task `failed` with `reviewVerdict` `proof-red` and
+//        `notes` carrying the line, while a fix that replaces the byte with its
+//        escape leaves the pass green and the task goes to its review round.
+//   M4 — a patch that writes the two-character escape `\0` into a source file,
+//        a patch that touches only files with no `0x00`, a patch that modifies
+//        a file whose base blob ALREADY carried a `0x00`, and a patch that
+//        creates a new binary file the task's `Files` name, each add no red and
+//        no `driver:finding` at `round` `0` whose `detail` begins `the patch
+//        writes a NUL byte`, and the pass's `driver:proof-run`,
+//        `driver:exam-run` and `driver:check-run` rows are exactly those of
+//        BASE.
+//   M5 — `fleet/CONTRACT.md`'s pre-review paragraph — the sentences that begin
+//        `The pass reads the captured patch's own added top-level exports` — is
+//        followed by a sentence carrying `NUL`, `binary`, `fix:<id>:0` and
+//        `driver:finding` in that order.
+//
+// Legs: (a) M1, (b) M2+M3, (c) M3, (d) M4, (e) M4, (f) M5, (g) M2, (h) M1.
+//
+// Legs (e), (f), (g) and (h) are the Proof's second, third, fourth and fifth
+// `Run:` commands, which the driver executes itself. (f), (g) and (h) are cheap
+// to read here and are read here too. (e) names the sibling collision sim,
+// which this file may NOT spawn — `test_sims_are_hermetic.mjs` M4 forbids one
+// `test_*.mjs` running another — so what stands for it here is the collision
+// red itself, driven in this file: the sibling red of this pass, raised
+// unchanged beside the new one and BEFORE it, which is the order M2 spells.
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import * as engine from '../run-engine.mjs'
+import { rig, makeRepo, gitSync, passReview, doneImpl } from './_engine_helpers.mjs'
+
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-nul-guard-'))
+process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
+
+// ── the two helpers, by namespace ───────────────────────────────────────────
+// A NAMED import of a symbol BASE does not export is a link-time error that
+// takes the whole file down with it, and legs (f), (g) and (h) — which do not
+// touch either helper — would never report. The namespace import plus these two
+// assertions is the same red for the same reason, leg by leg.
+const nulOffsetOf = engine.nulOffsetOf
+const nulIntroducedBy = engine.nulIntroducedBy
+assert.equal(typeof nulOffsetOf, 'function',
+  '[M1] `fleet/run-engine.mjs` exports `nulOffsetOf(bytes)`. Got: ' + typeof nulOffsetOf)
+assert.equal(typeof nulIntroducedBy, 'function',
+  '[M1] `fleet/run-engine.mjs` exports `nulIntroducedBy({ paths, declared, readNow, readBase })`. ' +
+  'Got: ' + typeof nulIntroducedBy)
+
+// The sentence M2 spells, exactly — the fifth red line shape of the pass,
+// beside `RUN_FAIL`, `EXAM_FAIL`, `CHECK_FAIL` and the collision line, and the
+// one that begins `the patch writes a NUL byte` so a reader can grep it apart
+// from the other four.
+const NUL_LINE = (at, offset) =>
+  'the patch writes a NUL byte into ' + at + ' at byte ' + offset +
+  ' — git and the fold kernel read the file as binary from here on; ' +
+  'write the escape, never the byte'
+
+// ══════════════════════════════════════════════════════════════════════════
+// (a) [M1] the two helpers, driven directly
+// ══════════════════════════════════════════════════════════════════════════
+//
+// `nulOffsetOf` over three buffers — none, one in the middle, one at the very
+// front (where a reader that treats `0` as falsey answers `-1`) — and
+// `nulIntroducedBy` over the seven paths the leg names, with canned readers:
+// every arm of the rule, and the answer is the three rows IN THE GIVEN ORDER.
+{
+  assert.equal(nulOffsetOf(Buffer.from('abc')), -1,
+    '(a) [M1] `nulOffsetOf` over bytes with no `0x00` is `-1`. Got: ' +
+    JSON.stringify(nulOffsetOf(Buffer.from('abc'))))
+  assert.equal(nulOffsetOf(Buffer.from([0x61, 0x00, 0x62])), 1,
+    '(a) [M1] `nulOffsetOf` returns the zero-based offset of the FIRST `0x00` — byte 1 of ' +
+    '`a\\0b`. Got: ' + JSON.stringify(nulOffsetOf(Buffer.from([0x61, 0x00, 0x62]))))
+  assert.equal(nulOffsetOf(Buffer.from([0x00])), 0,
+    '(a) [M1] a `0x00` at the very front is offset `0`, not `-1` — the offset is a number, ' +
+    'never a truthiness. Got: ' + JSON.stringify(nulOffsetOf(Buffer.from([0x00]))))
+
+  const A_NUL_B = Buffer.from([0x61, 0x00, 0x62])   // `a\0b` — a NUL at byte 1
+  const AB = Buffer.from([0x61, 0x62])              // `ab` — text
+  const X_NUL_Y = Buffer.from([0x78, 0x00, 0x79])   // `x\0y` — already binary
+  const NOW = { p1: A_NUL_B, p2: A_NUL_B, p3: A_NUL_B, p4: null,
+                p5: AB, p6: A_NUL_B, p7: A_NUL_B }
+  const AT_BASE = { p1: AB, p2: null, p3: X_NUL_Y, p4: AB,
+                    p5: AB, p6: null, p7: AB }
+  const PATHS = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7']
+  const DECLARED = ['p6', 'p7']
+  const asked = { now: [], base: [] }
+  const call = nulIntroducedBy({
+    paths: PATHS,
+    declared: DECLARED,
+    readNow: async (p) => { asked.now.push(p); return NOW[p] },
+    readBase: async (p) => { asked.base.push(p); return AT_BASE[p] },
+  })
+  assert.equal(typeof (call && call.then), 'function',
+    '(a) [M1] `nulIntroducedBy` is async — it returns a Promise, because its two readers are. ' +
+    'Got: ' + JSON.stringify(String(call)))
+  const rows = await call
+  assert.deepEqual(rows, [
+    { path: 'p1', offset: 1 },
+    { path: 'p2', offset: 1 },
+    { path: 'p7', offset: 1 },
+  ], '(a) [M1] over the seven paths `nulIntroducedBy` returns exactly the rows for `p1` (text ' +
+     'at the head, a NUL now), `p2` (absent at the head, a NUL now, NOT in `declared`) and ' +
+     '`p7` (text at the head, a NUL now, in `declared` — a declared file that turned binary is ' +
+     'red all the same), in the given order. `p3` (already binary at the head), `p4` (absent ' +
+     'now), `p5` (no NUL now) and `p6` (absent at the head, in `declared` — the binary ' +
+     'deliverable the plan named) each yield no row. Got: ' + JSON.stringify(rows))
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// the rig the engine legs share
+// ══════════════════════════════════════════════════════════════════════════
+//
+// A one-task wave, T1, width 2 — a single task is enough for every engine leg
+// here, since the scan reads one task's own patch against its own base. No
+// `Run:`, no `Check:`, no `Test:` unless a scenario asks for one: with none,
+// the pre-review pass at BASE is empty and green, so the only red any of these
+// runs can carry is the byte itself.
+const BODY = '**Claim:** the task writes its own file\n' +
+  'Machine: M1. The tree holds the task\'s file.\n\n' +
+  '**Proof:**\n- Legs: (a) the file is there [M1]'
+const taskOf = (id, over = {}) => ({
+  id,
+  title: 'task ' + id,
+  files: ['src.mjs'],
+  tier: 'standard',
+  review: 'lean',
+  writes: ['src.mjs'],
+  commutes: [],
+  interfaces: { consumes: ['none'], produces: ['none'] },
+  testCmd: 'bash check.sh',
+  proofTests: [],
+  proofRuns: [],
+  body: BODY,
+  ...over,
+})
+
+/**
+ * Stand one run up. `write(cwd, id, kind)` is what the implementer (and the fix
+ * round) leaves in the task's own clone; every judgment is canned, and any
+ * dispatch this sim did not expect throws rather than being quietly answered.
+ */
+const drive = async ({ tag, waves, repoFiles = {}, write, extra = {} }) => {
+  const repo = makeRepo(path.join(tmp, 'repo-' + tag), repoFiles)
+  const runDir = path.join(tmp, 'run-' + tag)
+  const calls = []
+  const prompts = {}
+  const heads = {}
+  const stub = (prompt, opts, cwd) => {
+    const label = String(opts.label)
+    calls.push(label)
+    prompts[label] = prompt
+    const kind = label.split(':')[0]
+    const id = label.split(':')[1]
+    if (kind === 'impl' || kind === 'fix') {
+      write(cwd, id, kind)
+      // The sha `withPatchCapture` records for this reply: it runs `rev-parse
+      // HEAD` in this same clone after the worker returns, and no sim here
+      // commits, so reading it now reads the same value.
+      heads[label] = gitSync(['rev-parse', 'HEAD'], cwd)
+      return doneImpl(cwd)
+    }
+    if (kind === 'review') return passReview()
+    throw new Error('unexpected dispatch: ' + label)
+  }
+  const { run } = rig({
+    repo, runDir, waves, stub, stamp: 'nul-' + tag,
+    extraArgs: { width: 2, foldAgeMs: 0, ...extra },
+  })
+  const report = await run()
+  const file = path.join(runDir, 'events.jsonl')
+  const evs = (fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '')
+    .split('\n').filter(Boolean)
+    .map((l) => { try { return JSON.parse(l) } catch { return null } })
+    .filter(Boolean)
+  return { report, calls, prompts, heads, evs, runDir }
+}
+/** The report row of one task — the rows come back in completion order. */
+const rowOf = (report, id) => report.tasks.find((t) => t.task === id)
+/** Every finding the driver raised on a pre-review pass. */
+const findingsAtRoundZero = (evs) =>
+  evs.filter((e) => e.kind === 'driver:finding' && e.round === 0)
+/** Those of them that are this scan's — the line M2 spells begins that way. */
+const nulFindings = (evs) => findingsAtRoundZero(evs)
+  .filter((e) => String(e.detail || '').startsWith('the patch writes a NUL byte'))
+/** The captured patch of one task, as text — the touched set the scan reads. */
+const captureOf = (runDir, id) =>
+  fs.readFileSync(path.join(runDir, 'patches', 'task-' + id + '.patch'), 'utf8')
+
+// The bytes the implementer writes when the sim wants the stray byte: a source
+// line with a raw `0x00` in the middle of it. The offset is read off the buffer
+// rather than counted by hand, so the expected line and the file agree by
+// construction.
+const RAW = Buffer.concat([
+  Buffer.from('export const a = '), Buffer.from([0x00]), Buffer.from('\'b\'\n'),
+])
+const OFFSET = RAW.indexOf(0)
+assert.equal(OFFSET, 17,
+  'sim precondition: the sim writes its stray `0x00` at byte 17 of `src.mjs`. Got: ' + OFFSET)
+// The two-character escape: a backslash and a zero, which is what the line tells
+// the worker to write instead. `\\0` in this source is those two characters.
+const ESCAPED = 'export const a = \'\\0\'\n'
+assert.equal(ESCAPED.indexOf('\0'), -1,
+  'sim precondition: the escaped form carries NO `0x00` byte — it is the two characters `\\` ' +
+  'and `0`. Got: ' + JSON.stringify(ESCAPED))
+// What the file held at the dispatch head. The red case is the file that WAS
+// text and is binary now — run-162's case, and M1's `p1`/`p7` — so every run
+// that expects a red seeds the path into the sim's repository first: a NEW path
+// the task's `Files` name is the binary deliverable of M1's `p6`, which draws no
+// row however many `0x00` bytes it carries, and (d.4) is that case on purpose.
+const BASE_TEXT = 'export const a = 1\n'
+
+// ══════════════════════════════════════════════════════════════════════════
+// (b) [M2] [M3] the byte, the receipt, the repair round, the review
+// ══════════════════════════════════════════════════════════════════════════
+//
+// `src.mjs` is ordinary text at the dispatch head; T1's implementer rewrites it
+// with a raw `0x00` between two characters, and its fix round rewrites it again
+// with the two-character escape. At BASE this
+// run dispatches `impl:T1` and `review:T1:1`, appends no `driver:finding` and
+// buys no `fix:T1:0` — which is where these assertions fail there, and they
+// fail saying the byte was not refused.
+{
+  const { report, calls, prompts, heads, evs, runDir } = await drive({
+    tag: 'raw', waves: [[taskOf('T1')]], repoFiles: { 'src.mjs': BASE_TEXT },
+    write: (cwd, id, kind) => fs.writeFileSync(path.join(cwd, 'src.mjs'),
+      kind === 'fix' ? Buffer.from(ESCAPED) : RAW),
+  })
+
+  // The capture really carries the path: `patchPaths` reads `diff --git`
+  // headers, and a run whose patch had lost the file would pass what follows
+  // for the wrong reason.
+  const captured = captureOf(runDir, 'T1')
+  assert.ok(captured.includes('diff --git a/src.mjs b/src.mjs'),
+    '(b) sim precondition: T1\'s captured patch carries `src.mjs` — the touched set the scan ' +
+    'reads. Got: ' + JSON.stringify(captured.slice(0, 400)))
+
+  // [M2] one row, and one only: one red and one `driver:finding` per path, and
+  // the green second pass adds none.
+  const found = findingsAtRoundZero(evs)
+  assert.equal(found.length, 1,
+    '(b) [M2] the run appends exactly ONE `driver:finding` at `round` 0 — one per path with a ' +
+    'newly-introduced `0x00`, and the pass after the fix adds no second. Got: ' +
+    JSON.stringify(found))
+  const f = found[0]
+  const DETAIL = NUL_LINE('src.mjs', OFFSET)
+  assert.equal(f.task, 'T1',
+    '(b) [M2] the finding is held against T1, the task whose patch carries the byte. Got: ' +
+    JSON.stringify(f.task))
+  assert.equal(f.round, 0,
+    '(b) [M2] the finding is at `round` 0 — the driver\'s own pre-review pass, before any ' +
+    'reviewer. Got: ' + JSON.stringify(f.round))
+  assert.equal(f.severity, 'blocking',
+    '(b) [M2] `severity` is `blocking`. Got: ' + JSON.stringify(f.severity))
+  assert.equal(f.actor, 'implementer',
+    '(b) [M2] `actor` is `implementer` — the party that wrote the byte is the party that can ' +
+    'replace it. Got: ' + JSON.stringify(f.actor))
+  assert.equal(f.detail, DETAIL,
+    '(b) [M2] `detail` is exactly the sentence M2 spells, naming the path and the BYTE offset ' +
+    'the stray `0x00` sits at (' + OFFSET + '). Got: ' + JSON.stringify(f.detail))
+  assert.deepEqual(f.paths, ['src.mjs'],
+    '(b) [M2] `paths` is the one path the byte was written into. Got: ' + JSON.stringify(f.paths));
+  // The receipt's two strings: what was read, and what it was read against —
+  // the captured patch at the head the driver itself derived for that reply.
+  {
+    const head = heads['impl:T1']
+    assert.ok(head, '(b) sim precondition: the stub recorded `impl:T1`\'s clone head')
+    assert.deepEqual(f.evidence, {
+      read: DETAIL,
+      against: 'the captured patch at ' + head,
+    }, '(b) [M2] `evidence.read` is the finding\'s own line and `evidence.against` names the ' +
+       'captured patch at T1\'s FIRST captured `headSha` (' + head + ') — the capture the pass ' +
+       'read, not the fix round\'s. Got: ' + JSON.stringify(f.evidence))
+  }
+
+  // [M3] the red buys the `fix:T1:0` round, and the round is told the line.
+  assert.ok(calls.includes('fix:T1:0'),
+    '(b) [M3] the NUL red buys T1 the `fix:T1:0` round every other red of the pass buys. The ' +
+    'dispatches were: ' + JSON.stringify(calls))
+  assert.ok(String(prompts['fix:T1:0'] || '').includes(DETAIL),
+    '(b) [M3] the `fix:T1:0` prompt carries the line in its blocking-issues block. Got: ' +
+    JSON.stringify(String(prompts['fix:T1:0'] || '').slice(-600)))
+
+  // [M3] the fix wrote the escape, so the second pass is green and T1 reaches
+  // its reviewer — after the fix, never before it.
+  assert.ok(calls.includes('review:T1:1'),
+    '(b) [M3] a fix that replaces the byte with its escape leaves the pass green and T1 goes ' +
+    'to its review round. The dispatches were: ' + JSON.stringify(calls))
+  assert.deepEqual(calls, ['impl:T1', 'fix:T1:0', 'review:T1:1'],
+    '(b) [M3] the order is `impl:T1`, then `fix:T1:0`, then `review:T1:1` — the repair round ' +
+    'stands between the implementer and the first referee. Got: ' + JSON.stringify(calls))
+  assert.equal(rowOf(report, 'T1').status, 'done',
+    '(b) [M3] T1 ends `done`. Got: ' + JSON.stringify(rowOf(report, 'T1')))
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// (c) [M3] the fix that leaves the byte in place
+// ══════════════════════════════════════════════════════════════════════════
+//
+// The same run, with a fix round that rewrites the line around the byte and
+// keeps the byte: the second pass finds the same NUL, and a task still red
+// after its one repair round never reaches a referee at all.
+{
+  const STUBBORN = Buffer.concat([
+    Buffer.from('export const a = '), Buffer.from([0x00]),
+    Buffer.from('\'b\'\n// the fix round moved nothing\n'),
+  ])
+  assert.equal(STUBBORN.indexOf(0), OFFSET,
+    '(c) sim precondition: the fix round\'s file keeps the byte at the same offset (' + OFFSET +
+    '). Got: ' + STUBBORN.indexOf(0))
+  const { report, calls, evs } = await drive({
+    tag: 'stubborn', waves: [[taskOf('T1')]], repoFiles: { 'src.mjs': BASE_TEXT },
+    write: (cwd, id, kind) => fs.writeFileSync(path.join(cwd, 'src.mjs'),
+      kind === 'fix' ? STUBBORN : RAW),
+  })
+
+  assert.ok(!calls.some((l) => l.startsWith('review:T1:')),
+    '(c) [M3] a task still red after its pre-review repair round reaches NO reviewer. The ' +
+    'dispatches were: ' + JSON.stringify(calls))
+  const row = rowOf(report, 'T1')
+  assert.equal(row.status, 'failed',
+    '(c) [M3] T1 ends `failed`. Got: ' + JSON.stringify(row))
+  assert.equal(row.reviewVerdict, 'proof-red',
+    '(c) [M3] T1\'s `reviewVerdict` is `proof-red` — the NUL red is a red of the pass like any ' +
+    'other. Got: ' + JSON.stringify(row.reviewVerdict))
+  assert.ok(String(row.notes || '').includes('the patch writes a NUL byte into src.mjs'),
+    '(c) [M3] T1\'s `notes` carry the line. Got: ' + JSON.stringify(row.notes))
+
+  const found = findingsAtRoundZero(evs)
+  assert.equal(found.length, 2,
+    '(c) [M3] the pass ran twice and found the byte twice, so the record carries one ' +
+    '`driver:finding` per pass. Got: ' + JSON.stringify(found))
+  assert.deepEqual(found.map((e) => e.detail),
+    [NUL_LINE('src.mjs', OFFSET), NUL_LINE('src.mjs', OFFSET)],
+    '(c) [M3] both rows carry the same line. Got: ' + JSON.stringify(found.map((e) => e.detail)))
+  assert.deepEqual(found.map((e) => [e.task, e.round]), [['T1', 0], ['T1', 0]],
+    '(c) [M3] both rows are T1\'s, both at `round` 0. Got: ' +
+    JSON.stringify(found.map((e) => [e.task, e.round])))
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// (d) [M4] the four runs that add no red
+// ══════════════════════════════════════════════════════════════════════════
+
+// (d.1) the two-character escape `\0` — the very thing the line asks for.
+{
+  const { report, calls, evs } = await drive({
+    tag: 'escaped', waves: [[taskOf('T1')]], repoFiles: { 'src.mjs': BASE_TEXT },
+    write: (cwd) => fs.writeFileSync(path.join(cwd, 'src.mjs'), ESCAPED),
+  })
+  assert.deepEqual(nulFindings(evs), [],
+    '(d.1) [M4] a patch that writes the two-character escape `\\0` carries no `0x00` byte and ' +
+    'adds no finding. Got: ' + JSON.stringify(nulFindings(evs)))
+  assert.ok(!calls.some((l) => l.startsWith('fix:')),
+    '(d.1) [M4] no repair round. The dispatches were: ' + JSON.stringify(calls))
+  assert.deepEqual(calls.filter((l) => l.startsWith('review:')), ['review:T1:1'],
+    '(d.1) [M4] one review dispatch. Got: ' + JSON.stringify(calls))
+  assert.equal(rowOf(report, 'T1').status, 'done',
+    '(d.1) [M4] T1 ends `done`. Got: ' + JSON.stringify(rowOf(report, 'T1')))
+}
+
+// (d.2) ordinary text, no `0x00` anywhere — and this is the run that carries a
+// `Run:` command and a Global Constraints `Check:`, so M4's sentence about the
+// pass's three row kinds has rows to be read off.
+{
+  const RUN_CMD = 'sh -c \'echo pre-review-pass\''
+  const CHECK_CMD = 'sh -c \'exit 0\''
+  const { report, calls, evs } = await drive({
+    tag: 'plain', waves: [[taskOf('T1', { proofRuns: [RUN_CMD] })]],
+    repoFiles: { 'src.mjs': BASE_TEXT },
+    write: (cwd) => fs.writeFileSync(path.join(cwd, 'src.mjs'), 'export const a = 2\n'),
+    extra: { constraintChecks: [{ cmd: CHECK_CMD, minor: false }] },
+  })
+  assert.deepEqual(nulFindings(evs), [],
+    '(d.2) [M4] a patch that touches only files with no `0x00` adds no finding. Got: ' +
+    JSON.stringify(nulFindings(evs)))
+  assert.ok(!calls.some((l) => l.startsWith('fix:')),
+    '(d.2) [M4] no repair round. The dispatches were: ' + JSON.stringify(calls))
+  assert.deepEqual(calls.filter((l) => l.startsWith('review:')), ['review:T1:1'],
+    '(d.2) [M4] one review dispatch. Got: ' + JSON.stringify(calls))
+  assert.equal(rowOf(report, 'T1').status, 'done',
+    '(d.2) [M4] T1 ends `done`. Got: ' + JSON.stringify(rowOf(report, 'T1')))
+
+  // [M4] the pass's own executions, in order: exactly what BASE records — one
+  // `driver:proof-run` and one `driver:check-run` at `iter: 0`, both exit 0,
+  // and no `driver:exam-run` at all (this task has no `Test:`). The scan the
+  // plan adds runs BESIDE those three kinds and adds none of its own — it runs
+  // no command, so a pass that finds no byte records exactly what it recorded
+  // before this existed.
+  const rows = evs
+    .filter((e) => /^driver:(proof|check|exam)-run$/.test(e.kind) && e.task === 'T1')
+    .map((e) => [e.kind, e.cmd, e.exit, e.iter])
+  assert.deepEqual(rows, [
+    ['driver:proof-run', RUN_CMD, 0, 0],
+    ['driver:check-run', CHECK_CMD, 0, 0],
+  ], '(d.2) [M4] the pre-review pass records exactly the rows BASE records: the `Run:` command ' +
+     'then the `Check:` command, both at `iter` 0 and both exit 0, and no `driver:exam-run`. ' +
+     'Got: ' + JSON.stringify(rows))
+}
+
+// (d.3) a file whose base blob ALREADY carried a `0x00`: the repository at BASE
+// holds `legacy.bin`, and the implementer appends a byte to it. The patch
+// touches a binary file, but it did not make it binary — run-162's case is the
+// other one, a file that WAS text.
+{
+  const AT_BASE = Buffer.from([0x01, 0x00, 0x02])
+  const APPENDED = Buffer.from([0x01, 0x00, 0x02, 0x03])
+  assert.ok(AT_BASE.indexOf(0) !== -1 && APPENDED.indexOf(0) !== -1,
+    '(d.3) sim precondition: `legacy.bin` carries a `0x00` both at the head and after the patch')
+  const { report, calls, evs, runDir } = await drive({
+    tag: 'legacy', waves: [[taskOf('T1', { files: ['legacy.bin'], writes: ['legacy.bin'] })]],
+    repoFiles: { 'legacy.bin': AT_BASE },
+    write: (cwd) => fs.writeFileSync(path.join(cwd, 'legacy.bin'), APPENDED),
+  })
+  assert.ok(captureOf(runDir, 'T1').includes('diff --git a/legacy.bin b/legacy.bin'),
+    '(d.3) sim precondition: the captured patch carries `legacy.bin`, so the path IS in the ' +
+    'touched set the scan reads and the green below is the base blob\'s doing, not an absent ' +
+    'path\'s. Got: ' + JSON.stringify(captureOf(runDir, 'T1').slice(0, 400)))
+  assert.deepEqual(nulFindings(evs), [],
+    '(d.3) [M4] a path whose base bytes already carry a `0x00` yields no row — the patch did ' +
+    'not turn this file binary. Got: ' + JSON.stringify(nulFindings(evs)))
+  assert.ok(!calls.some((l) => l.startsWith('fix:')),
+    '(d.3) [M4] no repair round. The dispatches were: ' + JSON.stringify(calls))
+  assert.deepEqual(calls.filter((l) => l.startsWith('review:')), ['review:T1:1'],
+    '(d.3) [M4] one review dispatch. Got: ' + JSON.stringify(calls))
+  assert.equal(rowOf(report, 'T1').status, 'done',
+    '(d.3) [M4] T1 ends `done`. Got: ' + JSON.stringify(rowOf(report, 'T1')))
+}
+
+// (d.4) the binary deliverable the plan named: the task's `Files` name
+// `logo.png` and the implementer creates it — a new path with a `0x00` and no
+// ancestor, told apart from a stray byte by the plan's own `Files`.
+{
+  const PNG = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from([0x00]),
+  ])
+  assert.ok(PNG.indexOf(0) !== -1,
+    '(d.4) sim precondition: the PNG the sim writes really carries a `0x00`')
+  const { report, calls, evs, runDir } = await drive({
+    tag: 'png', waves: [[taskOf('T1', { files: ['logo.png'], writes: ['logo.png'] })]],
+    write: (cwd) => fs.writeFileSync(path.join(cwd, 'logo.png'), PNG),
+  })
+  assert.ok(captureOf(runDir, 'T1').includes('diff --git a/logo.png b/logo.png'),
+    '(d.4) sim precondition: the captured patch carries `logo.png` — a Files-named binary is ' +
+    'kept by the capture, so the path IS in the touched set the scan reads. Got: ' +
+    JSON.stringify(captureOf(runDir, 'T1').slice(0, 400)))
+  assert.deepEqual(nulFindings(evs), [],
+    '(d.4) [M4] a NEW path the task\'s `Files` name is the binary deliverable the plan asked ' +
+    'for, and yields no row. Got: ' + JSON.stringify(nulFindings(evs)))
+  assert.ok(!calls.some((l) => l.startsWith('fix:')),
+    '(d.4) [M4] no repair round. The dispatches were: ' + JSON.stringify(calls))
+  assert.deepEqual(calls.filter((l) => l.startsWith('review:')), ['review:T1:1'],
+    '(d.4) [M4] one review dispatch. Got: ' + JSON.stringify(calls))
+  assert.equal(rowOf(report, 'T1').status, 'done',
+    '(d.4) [M4] T1 ends `done`. Got: ' + JSON.stringify(rowOf(report, 'T1')))
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// (e) [M4] the sibling red of this pass — the second `Run:`, stood for here
+// ══════════════════════════════════════════════════════════════════════════
+//
+// The Proof's second `Run:` is the collision sim, which the driver runs itself
+// and this file may not spawn. What stands for it here is the collision red
+// driven directly: A is contracted to Produce `receiptPaths`, B's implementer
+// exports it from `b.mjs` AND writes the stray byte into `n.mjs`, and both reds
+// are raised on the one pass — the collision FIRST, which is the order M2
+// spells (`after the export-collision scan and before the pass returns`). The
+// two files are separate on purpose: a file carrying a `0x00` is captured as a
+// binary hunk with no `+` lines in it, so a collision and a byte cannot be read
+// off the same file at all.
+{
+  const A = taskOf('A', {
+    files: ['a.mjs'], writes: ['a.mjs'],
+    interfaces: { consumes: ['none'], produces: ['`receiptPaths(list: string[]) -> string[]`'] },
+  })
+  const B = taskOf('B', { files: ['b.mjs', 'n.mjs'], writes: ['b.mjs', 'n.mjs'] })
+  const COLLISION = 'the patch exports receiptPaths at b.mjs, a symbol task A is contracted to ' +
+    'Produce and this task is not — rename it or drop the export'
+  const { report, calls, prompts, evs } = await drive({
+    tag: 'beside', waves: [[A, B]], repoFiles: { 'n.mjs': BASE_TEXT },
+    write: (cwd, id, kind) => {
+      if (id === 'A') { fs.writeFileSync(path.join(cwd, 'a.mjs'), 'export const aOwn = 1\n'); return }
+      fs.writeFileSync(path.join(cwd, 'b.mjs'),
+        kind === 'fix' ? 'export const bPaths = 1\n' : 'export const receiptPaths = 1\n')
+      fs.writeFileSync(path.join(cwd, 'n.mjs'), kind === 'fix' ? Buffer.from(ESCAPED) : RAW)
+    },
+  })
+
+  const found = findingsAtRoundZero(evs)
+  assert.deepEqual(found.map((e) => [e.task, e.detail]), [
+    ['B', COLLISION],
+    ['B', NUL_LINE('n.mjs', OFFSET)],
+  ], '(e) [M4] the pass raises the export collision FIRST and the NUL second — the scan runs ' +
+     'after the collision scan and before the pass returns, so the sibling red of this pass is ' +
+     'raised unchanged and ahead of the new one. Got: ' + JSON.stringify(found.map(
+       (e) => [e.task, e.detail])))
+  const fixPrompt = String(prompts['fix:B:0'] || '')
+  assert.ok(fixPrompt.includes(COLLISION) && fixPrompt.includes(NUL_LINE('n.mjs', OFFSET)),
+    '(e) [M4] the one `fix:B:0` round is told both lines, each as its own blocking issue. Got: ' +
+    JSON.stringify(fixPrompt.slice(-900)))
+  assert.ok(calls.includes('review:B:1'),
+    '(e) [M4] a fix that renames the export and writes the escape leaves the pass green and B ' +
+    'goes to its review round. The dispatches were: ' + JSON.stringify(calls))
+  assert.ok(!calls.some((l) => l.startsWith('fix:A:')),
+    '(e) [M4] A buys no repair round: its own patch carries neither a sibling\'s symbol nor a ' +
+    'byte. The dispatches were: ' + JSON.stringify(calls))
+  assert.deepEqual(report.tasks.map((t) => t.status), ['done', 'done'],
+    '(e) [M4] both tasks end `done`. Got: ' + JSON.stringify(report.tasks.map(
+      (t) => [t.task, t.status])))
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// (f) [M5] the contract's pre-review paragraph — the third `Run:`, read here
+// ══════════════════════════════════════════════════════════════════════════
+//
+// The same range the Proof's `sed` takes: from the line carrying `The pass
+// reads the captured patch` to the line carrying `One more kind records`,
+// newlines folded to spaces, then the four words in that order. At BASE the
+// range carries `NUL` nowhere, so the grep fails.
+{
+  const contract = fs.readFileSync(new URL('../CONTRACT.md', import.meta.url), 'utf8')
+  const lines = contract.split('\n')
+  const from = lines.findIndex((l) => l.includes('The pass reads the captured patch'))
+  assert.ok(from !== -1,
+    '(f) [M5] sim precondition: `fleet/CONTRACT.md` carries the line `The pass reads the ' +
+    'captured patch`, which opens the sentences the new one follows')
+  const to = lines.findIndex((l, i) => i >= from && l.includes('One more kind records'))
+  assert.ok(to !== -1,
+    '(f) [M5] sim precondition: the paragraph is closed by the line `One more kind records` — ' +
+    'the NUL sentence belongs INSIDE that range, appended after the collision sentences and ' +
+    'before it')
+  const range = lines.slice(from, to + 1).join(' ')
+  assert.match(range, /NUL[\s\S]*binary[\s\S]*fix:<id>:0[\s\S]*driver:finding/,
+    '(f) [M5] the pre-review paragraph carries `NUL`, `binary`, `fix:<id>:0` and ' +
+    '`driver:finding` in that order, saying that a patch that introduces a `0x00` byte into a ' +
+    'path that was text or absent at the dispatch head is a red of the pass routed to ' +
+    '`fix:<id>:0` and recorded as a `driver:finding` at `round` 0. The range reads: ' +
+    JSON.stringify(range))
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// (g) [M2] the four engine files carry no `0x00` — the fourth `Run:`
+// ══════════════════════════════════════════════════════════════════════════
+//
+// The very condition this task exists to keep true, read off the bytes rather
+// than off a decoded string: a `0x00` anywhere in one of these is the state the
+// pass now refuses, and the file that implements the refusal must not carry one
+// itself.
+{
+  for (const name of ['run-engine.mjs', 'run-waves.mjs', 'run-main.mjs', 'publish-fold.mjs']) {
+    const bytes = fs.readFileSync(new URL('../' + name, import.meta.url))
+    assert.equal(bytes.indexOf(0), -1,
+      '(g) [M2] `fleet/' + name + '` carries no `0x00` byte — the escape is written, never the ' +
+      'byte. First offset: ' + bytes.indexOf(0))
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// (h) [M1] the guard — the fifth `Run:`, read here too
+// ══════════════════════════════════════════════════════════════════════════
+//
+// #1053: an exam reached by an `import` line naming a path under
+// `fleet/tests/exams/` is stripped at publish and leaves main red. This file
+// stands whole at its guarded path, and reads its own text to say so.
+{
+  const self = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n')
+  const pointers = self.filter((l) => /^import .*exams\//.test(l))
+  assert.deepEqual(pointers, [],
+    '(h) [M1] the guarded sim carries no `import` line naming a path under `exams/` — it ' +
+    'imports the engine and the sim helpers by their `fleet/tests/`-relative paths and nothing ' +
+    'else. Found: ' + JSON.stringify(pointers))
+}
+
+// The sentinel the Proof's first `Run:` greps for: printed only if every
+// assertion above held.
+console.log('ALL TESTS PASSED')
