@@ -152,3 +152,5 @@
 {"kind":"driver:fail","verdict":"gate-blocked","detail":"ultra_gate exited 1 — gate receipt is the terminal artifact","id":"01M2MMNYJK0000FZZ11DT98D86","ts":1789546658387}
 {"kind":"run:open","runId":"run-159","base":"75feb7165a6d3f175aa95f6731d5d1df78e1908e","source":"fleet/publish-fold.mjs","id":"01M2MMNZN3000046G2BY6M3R23","ts":1789546659491}
 {"kind":"driver:publish-fold","run":"159","attempt":"1","base":"75feb7165a6d3f175aa95f6731d5d1df78e1908e","tip":"75feb7165a6d3f175aa95f6731d5d1df78e1908e","candidate":"dae72b4f834c70132f87cad00071299b7efc487a","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M2MMP0KT0000Q6VMX5P19NNS","ts":1789546660474}
+{"kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1055","number":1055,"draft":true,"id":"01M2MMP74E0000N9CZAZ1RFR8A","ts":1789546667150}
+{"kind":"publish:disclosures","url":"https://github.com/popmechanic/ultrapowers/issues/1056","items":3,"id":"01M2MMP7RC0000QTQXQ1CK7808","ts":1789546667788}
