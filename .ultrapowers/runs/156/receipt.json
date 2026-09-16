@@ -1,0 +1,348 @@
+{
+  "ok": true,
+  "stamp": "run-156",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-156"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "3 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The engine skips the reviewer on a killed mutant, behind `reviewOnStateExams`",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/run-engine.mjs",
+          "skills/ultrapowers/references/report-format.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`runEngine({ args: { reviewOnStateExams?: boolean, ... } })`",
+            "`tasks[].reviewVerdict === 'skipped-mutant-killed'`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The examiner's stub clause and the reviewer's duty-5 sentence come out of the role files",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/roles/examiner.md",
+          "fleet/roles/reviewer.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The pull request card says which task no reviewer read",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/sandbox-boot.sh"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The engine skips the reviewer on a killed mutant, behind `reviewOnStateExams`",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_review_economy.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`runEngine({ args: { reviewOnStateExams?: boolean, ... } })`",
+              "`tasks[].reviewVerdict === 'skipped-mutant-killed'`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_review_economy.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_review_economy.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_review_economy.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_state_exams.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_one_of_each.mjs | grep -q 'ALL TESTS PASSED'",
+            "grep '^| .tasks\\[\\].reviewVerdict. |' skills/ultrapowers/references/report-format.md | grep 'skipped-mutant-killed' | grep -q 'reviewOnStateExams'",
+            "grep '^| .tasks\\[\\].stateExams. |' skills/ultrapowers/references/report-format.md | grep -q 'reviewOnStateExams'",
+            "sed -n '/^- \\*\\*Exam environment:\\*\\*/,/^- \\*\\*Launch order/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'reviewOnStateExams.*off.*true.*skipped-mutant-killed'",
+            "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_review_economy.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_review_economy.mjs",
+              "skills/ultrapowers/references/report-format.md"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_review_economy.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_review_economy.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_review_economy.mjs": "fleet/tests/test_run_engine_review_economy.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_review_economy.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/roles/examiner.md",
+              "fleet/roles/reviewer.md",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_sandbox_boot_card_cells.mjs"
+            ],
+            "produces": [
+              "`runEngine({ args: { reviewOnStateExams?: boolean, ... } })`",
+              "`tasks[].reviewVerdict === 'skipped-mutant-killed'`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "The examiner's stub clause and the reviewer's duty-5 sentence come out of the role files",
+          "files": [
+            "fleet/roles/examiner.md",
+            "fleet/roles/reviewer.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/roles/examiner.md",
+            "fleet/roles/reviewer.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "test \"$(grep -c 'against a stub' fleet/roles/examiner.md)\" = 0 && sed -n '/^2\\. /,/^3\\. /p' fleet/roles/examiner.md | tr '\\n' ' ' | grep -q 'keep that check live\\.'",
+            "test \"$(grep -c 'still passes with' fleet/roles/reviewer.md)\" = 0 && grep -q '^5\\. Code quality:' fleet/roles/reviewer.md && grep -q 'tests asserting observable behavior' fleet/roles/reviewer.md",
+            "test \"$(git diff --name-only $ULTRA_BASE -- fleet/roles | sort | tr '\\n' ' ')\" = 'fleet/roles/examiner.md fleet/roles/reviewer.md ' && test \"$(git diff -U0 $ULTRA_BASE -- fleet/roles/examiner.md | grep -c '^+[^+]')\" -le 1 && test \"$(git diff -U0 $ULTRA_BASE -- fleet/roles/reviewer.md | grep -c '^+[^+]')\" -le 1",
+            "node fleet/tests/test_run_engine_amendment_lens.mjs | grep -q 'ALL TESTS PASSED'",
+            "wc -w fleet/roles/examiner.md fleet/roles/reviewer.md"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "fleet/roles/examiner.md",
+              "fleet/roles/reviewer.md"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_run_engine_review_economy.mjs",
+              "fleet/tests/test_sandbox_boot_card_cells.mjs",
+              "skills/ultrapowers/references/report-format.md"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        },
+        {
+          "id": "3",
+          "title": "The pull request card says which task no reviewer read",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/test_sandbox_boot_card_cells.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_card_cells.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_card_cells.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_sandbox_boot_card_cells.mjs | grep -q 'ALL TESTS PASSED'",
+            "sed -n '/| task | claim | exam | probes | mutant | suite |/,/Residuals: <n> from review/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'mutant.*skipped-mutant-killed.*killed, reviewer skipped'",
+            "bash -n fleet/sandbox-boot.sh",
+            "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_sandbox_boot_card_cells.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_sandbox_boot_card_cells.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_sandbox_boot_card_cells.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_sandbox_boot_card_cells.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_sandbox_boot_card_cells.mjs": "fleet/tests/test_sandbox_boot_card_cells.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_sandbox_boot_card_cells.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/roles/examiner.md",
+              "fleet/roles/reviewer.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_review_economy.mjs",
+              "skills/ultrapowers/references/report-format.md"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "3 Reviewers"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- The worker, the clone/capture layer, the entry, the launcher, the four other role files and the kernel are byte-identical to BASE: this plan changes when a reviewer is dispatched, what two role files say, and one cell of the card \u2014 never how a worker runs, how a patch is captured or how a fold merges.\n- The switch defaults off and only ever removes a dispatch: with `reviewOnStateExams: true` in the run's arguments every task gets the one reviewer it gets at BASE and every prompt the run captures is byte-identical to BASE's for the same run; with it off, a task whose record holds a `killed: false`, a stem with no `mutant.json`, or no record at all is reviewed exactly as at BASE.\n- A skipped reviewer never changes what gates a merge: the skip applies only to a task whose pre-review pass left every `Run:`, the exam and every non-minor `Check:` green, and the wave's fold, the candidate suite, the integrated `Run:`/`Check:` passes and the pre-merge gate run on that task exactly as they do on a reviewed one.\n- No shouted imperatives in a role file: the deletions leave `fleet/roles/examiner.md` and `fleet/roles/reviewer.md` in the register they have at BASE, and add no sentence.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/launch.mjs fleet/roles/implementer.md fleet/roles/fix.md fleet/roles/resolver.md fleet/roles/reconcile.md skills/ultrapowers/kernel",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-156/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-156/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-156/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-156/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
