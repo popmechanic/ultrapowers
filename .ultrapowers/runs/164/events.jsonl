@@ -22,3 +22,5 @@
 {"kind":"driver:check-run","task":"A","cmd":"git diff --quiet $ULTRA_BASE -- fleet/roles/","exit":0,"minor":false,"iter":0,"id":"01M2NNWFTA00004CJDXBTCWFY5","ts":1789581475658}
 {"kind":"driver:check-run","task":"A","cmd":"node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"minor":false,"iter":0,"id":"01M2NNWG3W00006P42NTTM17X1","ts":1789581475964}
 {"kind":"worker:start","label":"review:A:1","role":"reviewer","sessionId":"688b426d-10dd-46b2-be4d-27fec2201ca3","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-164/clones/integration","model":"opus","id":"01M2NNWG5M00008NQCDDPV3HEW","ts":1789581476020}
+{"kind":"worker:end","label":"review:A:1","role":"reviewer","sessionId":"688b426d-10dd-46b2-be4d-27fec2201ca3","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5418,"output":7292,"cacheRead":465058,"cacheCreation":37078,"costUsd":0.812699,"models":["claude-opus-5"]},"id":"01M2NNZE920000PKV2YFHXYGGV","ts":1789581572386}
+{"kind":"transcript:slice","label":"review:A:1","sessionId":"688b426d-10dd-46b2-be4d-27fec2201ca3","bytes":11250,"id":"01M2NNZE980000QM0BNEY4N27Z","ts":1789581572392}
