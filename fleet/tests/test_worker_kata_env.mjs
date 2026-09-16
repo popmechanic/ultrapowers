@@ -623,7 +623,12 @@ function kataRig ({ repo, runDir, waves, stub, stamp = 'sim', kata, extraArgs = 
       'U-T2': { revision: 1, short_id: SHORT['U-T2'], metadata: {} },
     },
   })
+  // The reads taken before the first worker — setup's. A read the engine takes
+  // later in the run answers another clause (the state handshake takes one per
+  // task inside the wave); what M3 counts is the read the short id comes from.
+  let setupReads = null
   const stub = async (prompt, opts, cwd) => {
+    if (setupReads === null) setupReads = fake.of('getIssue').slice()
     const kind = String(opts.label).split(':')[0]
     if (kind === 'impl') {
       const id = String(opts.label).split(':')[1]
@@ -652,9 +657,9 @@ function kataRig ({ repo, runDir, waves, stub, stamp = 'sim', kata, extraArgs = 
   assert.deepEqual(report.waveMerges.flatMap((m) => m.branches).slice().sort(), ['T1', 'T2'],
     '(c) [M3] so both tasks went through dispatch — ' + JSON.stringify(report.waveMerges))
 
-  const reads = fake.of('getIssue')
+  const reads = setupReads || []
   assert.equal(reads.length, 2,
-    '(c) [M3] exactly one getIssue per task through the whole dispatch — no second hub read ' +
+    '(c) [M3] exactly one getIssue per task before the first worker — no second hub read ' +
     'for the short id; got ' + reads.length + ': ' + JSON.stringify(reads.map((c) => c.uid)))
   for (const uid of ['U-T1', 'U-T2']) {
     const forUid = reads.filter((c) => c.uid === uid)

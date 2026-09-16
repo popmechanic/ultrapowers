@@ -557,26 +557,31 @@ const labelled = (labels, prefix) => labels.filter((l) => l.startsWith(prefix))
     })
     const where = ' [' + shape.name + ']'
 
-    // Exactly one read per task — the read that checks the revision and takes
-    // the fact sheet, and no second one.
-    const reads = s.fake.of('getIssue')
-    assert.equal(reads.length, 2,
-      '(a) [M1] the hub is read exactly once per task; got ' + reads.length + ': ' +
-      JSON.stringify(reads.map((c) => c.uid)) + where)
-    for (const uid of ['U-1', 'U-2']) {
-      assert.equal(reads.filter((c) => c.uid === uid).length, 1,
-        '(a) [M1] issue ' + uid + ' was read exactly once' + where)
-    }
-
-    // At SETUP: every read is behind the `Wave 1` mark and behind the first
-    // worker of the run.
-    const lastRead = lastAt(s.trace, (e) => e.at === 'hub' && e.method === 'getIssue')
+    // The SETUP reads: the run's FIRST read of each task's issue — the one that
+    // checks the revision and takes the fact sheet — is one per task and is
+    // taken before any worker. A read the engine takes later in the run belongs
+    // to another clause (the state handshake takes one per task inside the
+    // wave), so M1 is measured over the reads that precede the first dispatch.
     const firstDispatch = firstAt(s.trace, (e) => e.at === 'dispatch')
     const wave1 = firstAt(s.trace, (e) => e.at === 'phase' && e.phase === 'Wave 1')
     assert.notEqual(firstDispatch, -1, '(a) sim precondition: a worker was dispatched' + where)
     assert.notEqual(wave1, -1,
       '(a) sim precondition: the engine announced the `Wave 1` phase; got ' +
       JSON.stringify(s.phases) + where)
+    const readsAt = s.trace
+      .map((e, i) => ((e.at === 'hub' && e.method === 'getIssue') ? { i, uid: e.uid } : null))
+      .filter(Boolean)
+    const setupReads = readsAt.filter((r) => r.i < firstDispatch)
+    assert.equal(setupReads.length, 2,
+      '(a) [M1] the hub is read exactly once per task at setup; got ' + setupReads.length + ': ' +
+      JSON.stringify(setupReads.map((r) => r.uid)) + where)
+    for (const uid of ['U-1', 'U-2']) {
+      assert.equal(setupReads.filter((r) => r.uid === uid).length, 1,
+        '(a) [M1] issue ' + uid + ' was read exactly once at setup' + where)
+      assert.equal(readsAt.find((r) => r.uid === uid).i < firstDispatch, true,
+        '(a) [M1] and that setup read is issue ' + uid + '\'s first read of the run' + where)
+    }
+    const lastRead = setupReads[setupReads.length - 1].i
     assert.ok(lastRead < firstDispatch,
       '(a) [M1] every task\'s issue is read before the first worker is dispatched — the ' +
       'read moved ahead of wave 1. Trace: ' + JSON.stringify(s.trace.slice(0, 12)) + where)
@@ -737,10 +742,14 @@ const labelled = (labels, prefix) => labels.filter((l) => l.startsWith(prefix))
     '(c) [M3] a reused task is never `unfinished`: ' + JSON.stringify(s.report.unfinished))
 
   // Setup still read both issues, exactly once each — the read that FOUND the
-  // stamp is the same one M1 counts.
-  assert.equal(s.fake.of('getIssue').length, 2,
+  // stamp is the same one M1 counts. Reads the engine takes later, inside the
+  // wave, answer another clause and are not setup's.
+  const cFirstDispatch = firstAt(s.trace, (e) => e.at === 'dispatch')
+  const cSetupReads = s.trace.slice(0, cFirstDispatch === -1 ? s.trace.length : cFirstDispatch)
+    .filter((e) => e.at === 'hub' && e.method === 'getIssue')
+  assert.equal(cSetupReads.length, 2,
     '(c) [M1] the reuse is discovered by the setup read itself: exactly one `getIssue` per ' +
-    'task; got ' + JSON.stringify(s.fake.of('getIssue').map((c) => c.uid)))
+    'task; got ' + JSON.stringify(cSetupReads.map((c) => c.uid)))
 
   // ── (e) [M5] the whole tree: main's move and the parked run's work ─────────
   assert.equal(blobAt(s.integ, reuseHead, 'third.txt'), THIRD_TXT,
@@ -800,14 +809,20 @@ const labelled = (labels, prefix) => labels.filter((l) => l.startsWith(prefix))
     '(c) [M2] naming the reused task: ' + JSON.stringify(evs[0]))
 
   // Both issues are read at setup — every task of EVERY wave, not only wave 1's.
-  const reads = s.fake.of('getIssue')
+  // Measured over the reads that precede the first worker: a read the engine
+  // takes once the waves are running is another clause's, not setup's.
+  const wave1 = firstAt(s.trace, (e) => e.at === 'phase' && e.phase === 'Wave 1')
+  const firstWorker = firstAt(s.trace, (e) => e.at === 'dispatch')
+  assert.notEqual(firstWorker, -1, '(c) sim precondition: a worker was dispatched')
+  const reads = s.trace.slice(0, firstWorker)
+    .filter((e) => e.at === 'hub' && e.method === 'getIssue')
   assert.equal(reads.length, 2,
     '(c) [M1] both waves\' issues are read, once each; got ' +
     JSON.stringify(reads.map((c) => c.uid)))
-  const lastRead = lastAt(s.trace, (e) => e.at === 'hub' && e.method === 'getIssue')
-  const wave1 = firstAt(s.trace, (e) => e.at === 'phase' && e.phase === 'Wave 1')
-  assert.ok(wave1 !== -1 && lastRead < wave1,
-    '(c) [M1] including wave 2\'s, before the `Wave 1` mark: ' +
+  const lastRead = lastAt(s.trace.slice(0, firstWorker),
+    (e) => e.at === 'hub' && e.method === 'getIssue')
+  assert.ok(wave1 !== -1 && lastRead < firstWorker,
+    '(c) [M1] including wave 2\'s, before the run\'s first worker: ' +
     JSON.stringify(s.trace.slice(0, 12)))
 
   // A reused task is folded at setup, not by the run: under the ready set
