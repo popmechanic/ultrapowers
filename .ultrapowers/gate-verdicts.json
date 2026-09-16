@@ -1,0 +1,60 @@
+{
+  "tasks": {
+    "A": {
+      "hash": "bc87c76f34713ccf7fd0d6742e831f2c2db8ef60b001a934d14d828388e85ee4",
+      "verdict": "pass",
+      "reason": "Every clause has a falsifying leg with its negative rows; weakest point is M3(ii)'s `evidence.against` \u2014 leg (f) pins it as the red exam's finding line while the event's `detail` is the concern \u2014 and leg (h)'s zero count at BASE, read off the excerpt."
+    },
+    "B": {
+      "hash": "6d26a48a44fa296e393765a5189def9d3d64179a582ebc3a3542d6f1adb568a1",
+      "verdict": "pass",
+      "reason": "Every clause has a falsifying leg with the required negative rows and base agrees (append sites unwired, writeResolverBriefs takes no receipts); leg (e) is an import-hygiene guard that falsifies nothing of M3 on its own."
+    }
+  },
+  "tally": {
+    "dispatched": 2,
+    "rejected": 0,
+    "rounds": 1,
+    "base": "6c0dbecad01a10f64222750b3403e07eeb832863",
+    "round1": {
+      "dispatched": 2,
+      "rejected": 0,
+      "passed": [
+        "A",
+        "B"
+      ]
+    },
+    "note": "the two tasks are run-159's Tasks 3 and 7, whose gate record on the original plan took 4 and 3 rounds; the clauses here carry the three amendments run-159's implementers declared, so this round read them already closed"
+  },
+  "authoring": {
+    "minutes": 32,
+    "probes": 0,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Run-159 (receipts): how to unpark?",
+        "options": [
+          "Merge the five, re-run 3 and 7 as a narrow plan",
+          "Close #1055, fix the driver, relaunch whole",
+          "Close #1055, relaunch whole with foldAgeMs=0"
+        ],
+        "recommended": "Merge the five, re-run 3 and 7 as a narrow plan",
+        "picked": "Merge the five, re-run 3 and 7 as a narrow plan"
+      },
+      {
+        "question": "Narrow receipts plan execute lane",
+        "options": [
+          "Ultrapowers, launch alone",
+          "Subagent-Driven",
+          "Hold"
+        ],
+        "recommended": "Ultrapowers, launch alone",
+        "picked": "Ultrapowers, launch alone",
+        "note": "lane taken from the morning's unpark pick (merge the five, re-run 3 and 7 as a narrow plan)"
+      }
+    ]
+  }
+}
