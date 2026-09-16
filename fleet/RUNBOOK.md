@@ -647,6 +647,25 @@ is green and main has not moved, and `--hold` to keep a human at the merge
 button. Credentials lapse on wall clock with nothing to revoke. The Claude
 token is on no VM and in no argv.
 
+## Release
+
+Two commands before the release commit, both on the laptop. First pull the
+runs since the last release off their evidence tags and count them:
+`python3 skills/ultrapowers/scripts/catch_counter.py --fetch <owner>/<repo>
+--runs <last tag's run + 1>..<latest> --into <dir> --ledger
+docs/superpowers/observations/ledger.jsonl` — the run numbers are off
+`git ls-remote --tags origin 'ultra/evidence/run-*'`, and the ledger is the
+untracked laptop one, never a sandbox path. Then read it over the window:
+`python3 skills/ultrapowers/scripts/catch_report.py --ledger
+docs/superpowers/observations/ledger.jsonl --tree . --zero-over 1` prints a
+`## Zero catches over the last 1 release(s)` section — its window line naming
+the `v*` tag it opened at and how many runs fell inside it, then one
+`- <path> — exercised by <k> run(s)` line per test of the tree that caught
+nothing since that tag — and that section is pasted into the release commit
+body as it is, beside the prose sizes. It is report-only: nothing in it deletes
+anything, and deletion of a listed file follows on the reading, one file at a
+time in its own pull request, as `CLAUDE.md`'s Test doctrine has it.
+
 ## Rollback
 
 The move onto the target is one release. If it does not hold:

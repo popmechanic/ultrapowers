@@ -211,9 +211,12 @@ const STAGGER_MS = 500
 // ask against.
 const AGED_THRESHOLD_MS = 300
 const AGED_HOLD_MS = 2000
-// [idle-gate] leg (i)'s middle hold: B lands this long after dispatch, so at B's
+// [idle-gate] leg (i)'s middle hold, and the positive-threshold half of that leg
+// is the whole of what it drives: B lands this long after dispatch, so at B's
 // landing A's result is already past the 300 ms threshold while C — held
-// `AGED_HOLD_MS` — is still in flight. That instant is M8's negative.
+// `AGED_HOLD_MS` — is still in flight. That instant is M8's negative. The leg's
+// zero-threshold half holds B on no clock at all: there B's landing is sequenced
+// on the log, behind the run's first adoption.
 const MID_HOLD_MS = 500
 // [idle-gate] leg (e)'s extra hold: the kernel's first fold is released this
 // long after Y's whole pipeline returned, so Y's result is at least this old
@@ -854,7 +857,10 @@ const SLOW_SUITE = '#!/bin/bash\nsleep 0.2\n[ ! -f BROKEN ]\n'
 // the run folds once, at the end, with all three.
 //
 // And the same run at `foldAgeMs: 0`, so the pair differs in one argument: there
-// A's own landing folds A alone before B ever returns.
+// A's own landing folds A alone before B ever returns. That second run holds B
+// and C on the log rather than on a clock: B returns once the run's first
+// adoption has been appended, C once B's `worker:end` has, so the order the leg
+// asks about is sequenced on the record instead of raced against a fixed hold.
 // ════════════════════════════════════════════════════════════════════════════
 const ABC = () => [taskOf('A'), taskOf('B'), taskOf('C')]
 const abcHeldStub = (runDir) => async (prompt, opts, cwd) => {
@@ -918,7 +924,21 @@ const abcHeldStub = (runDir) => async (prompt, opts, cwd) => {
   const run = await drive({
     tag: 'i2', tasks: ABC(), edges: [], width: 3,
     ageArgs: { foldAgeMs: 0 },
-    makeStub: abcHeldStub,
+    // No clock holds B and C here. B returns once the run's first adoption is on
+    // the log, C once B's `worker:end` is — so the instant this leg asks about is
+    // read off the record rather than raced against a fixed hold. Both waits are
+    // bounded by `HOLD_MS` and neither throws: an engine that does NOT fold A at
+    // its own landing lets B return at the deadline and C after it, the run folds
+    // once with all three, and the `['A']` assertion below goes red honestly.
+    makeStub: (runDir) => async (prompt, opts, cwd) => {
+      const [kind, id] = opts.label.split(':')
+      if (kind === 'review') return cannedReview(runDir, opts.label)
+      if (kind !== 'impl') throw new Error('unexpected dispatch: ' + opts.label)
+      workerStart(runDir, opts.label, cwd)
+      if (id === 'B') await waitUntil(() => adoptionsOf(readEvents(runDir)).length > 0)
+      if (id === 'C') await waitUntil(() => readEvents(runDir).some((e) => isEnd(e, 'impl:B')))
+      return plainImpl(runDir, opts, cwd, id)
+    },
   })
   const log = run.log
   const adoptions = adoptionsOf(log)

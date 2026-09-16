@@ -76,10 +76,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     captured against an older one and the kernel three-way merged it with nothing narrated, and
     `resolved` when a narrated conflict of the fold named one of the task's own files — then the
     head it left on the integration branch, each a descendant of the epoch before it. And
-    `driver:wave-blocked` `{wave, tasks, detail, why, released?, applied}`, the same epoch, ids
-    and `applied` with the `waveMerges` row's own `detail` — appended for an epoch whose fold the
-    kernel could not complete (`CONFLICT`, the conflict it stopped on being what `applied` reads
-    `resolved` off) exactly as for one whose candidate suite stayed red.
+    `driver:wave-blocked` `{wave, tasks, detail, why, released?, applied, paths?, evidence?}`, the
+    same epoch, ids and `applied` with the `waveMerges` row's own `detail` — appended for an epoch
+    whose fold the kernel could not complete (`CONFLICT`, the conflict it stopped on being what
+    `applied` reads `resolved` off) exactly as for one whose candidate suite stayed red. `paths`
+    and `evidence` are the receipt below, carried on a `CONFLICT` epoch's row and on no other.
     And `driver:regenerated` `{wave, cmd, exit, paths}` — the epoch, the run's `regenerateCmd`
     exactly as it ran, its exit code, and the sorted lockfile paths it rewrote, appended once by
     a fold that ran it and by no other. A lockfile is a derived file and no model merges one: a
@@ -103,8 +104,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     already in flight, and only one fold runs at a time.
     The driver's own executions are three more kinds, one per command run: `driver:proof-run`
     `{task, cmd, exit, iter}`, `driver:check-run` `{task, cmd, exit, minor, iter}` and
-    `driver:exam-run` `{task, cmd, exit, iter, stdout}` — `stdout` is the exam's combined
-    stdout+stderr, last 4,000 characters, the same tail the fix prompt reads (#944), so a parked
+    `driver:exam-run` `{task, cmd, exit, iter, stdout, paths?, evidence?}` — `paths` and
+    `evidence` are the receipt below, carried on a red row and on no other; `stdout` is the exam's
+    combined stdout+stderr, last 4,000 characters, the same tail the fix prompt reads (#944), so a parked
     task's red is legible from the tag and the hub. The pre-review pass (`iter: 0`) parks a task
     for the plan (`reviewVerdict: plan-defect`, actor `plan`, no fix round) only on the pair: the
     implementer's `plan-defect:` concern names a Proof leg by its `(x)` label AND says it cannot
