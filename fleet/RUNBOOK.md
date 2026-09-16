@@ -233,7 +233,10 @@ exits before the plan branch is pushed and before any lobby verb runs.
 repository, because the sandbox clones from GitHub. `--run N` overrides the
 run number; `--tier` rides the comment to the engine.
 `--hold` keeps the pull request open for a person: the sandbox publishes it
-and does not merge it (a measurement run).
+and does not merge it (a measurement run). `--again` is the one way to launch
+a plan that is already live on the target: without it the launcher refuses
+before anything is pushed, naming the live run and its VM (a duplicate launch
+re-answers the live run's task issues on the hub and kills it, #1036).
 
 **Watch.** The same bytes are in two places:
 

@@ -196,7 +196,12 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   of the target's default branch is refused (the publish fold would have nothing to fold onto), and so
   is a shallow launch clone, whose history cannot answer that question → read the pool
   (`ssh exe.dev "billing plan --json"`) and refuse a run larger than it → run the janitor
-  (`fleet/janitor.mjs`, the reap) → `git ls-remote` the target's
+  (`fleet/janitor.mjs`, the reap) → refuse a plan that is already live on the target (#1036): the
+  plan text's git blob sha — the `<plan sha>` of the kata `Idempotency-Key` below — is compared with
+  the `.ultrapowers/plan.md` blob on `ultra/plan-run-<N>` of every running `fleet-r*` VM whose
+  comment names this target and whose record (hub, else evidence) does not say the run ended; a
+  match is a `Refusal` naming `run-<N>`, the VM and `--again`, the one flag that launches it again on
+  purpose, and a run whose record says it ended never refuses, however recently → `git ls-remote` the target's
   `ultra/*-run-*` branches and `ultra/{plan,evidence}/run-*` tags for N → refuse when `integrations list --json` has no `gh-<owner>-<repo>` (the fix
   named is `node fleet/target.mjs <owner>/<repo>`; a public target would still clone from github.com
   but could not push or open its PR, so it is not launched) → `node fleet/claude-token.mjs refresh` →

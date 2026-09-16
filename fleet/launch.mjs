@@ -128,7 +128,7 @@ import { readFleetFiles, renderSetupScript } from './setup-script.mjs'
 export const USAGE = `usage: node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <40-hex>
                              [--repo <dir>] [--engine <40-hex>]
                              [--tier standard|mostCapable]
-                             [--implementer-effort low|medium|high] [--hold]
+                             [--implementer-effort low|medium|high] [--hold] [--again]
                              [--cpu <n>] [--memory <n>GB]
                              [--run <N>] [--config <path>] [--account <name>] [--json]`
 
@@ -707,6 +707,36 @@ export function defaultRefreshCredential (account = DEFAULT_ACCOUNT, spawn = spa
 }
 
 /**
+ * The rows of the janitor's `runs` list that carry this launch's plan on this
+ * launch's target and whose record does not say the run ended (#1036). The
+ * plan's identity is its text's blob sha: the launcher hashes `planText` with
+ * `git hash-object --stdin` (no `-w` — nothing is written before the refusal
+ * is decided), and reads each candidate row's `.ultrapowers/plan.md` blob off
+ * the run's own plan branch, `ultra/plan-run-<N>`, fetched from the target
+ * through the clone's `origin`. A fetch or a `rev-parse` that fails means the
+ * branch is gone — the run is publishing or has published, and no engine reads
+ * its task issues any more — so that row is not a duplicate.
+ */
+export async function liveDuplicatesOf ({ exec, repoDir, target, planText, runs }) {
+  const candidates = runs.filter((r) => r.target === target && r.live !== false && isRunNumber(r.run))
+  if (candidates.length === 0) return []
+  const hashed = await exec('git', ['-C', repoDir, 'hash-object', '--stdin'], { input: planText })
+  if (hashed.code !== 0) return []
+  const wanted = String(hashed.stdout ?? '').trim()
+  const found = []
+  for (const row of candidates) {
+    const branch = planBranchFor(row.run)
+    const fetched = await git(exec, repoDir, ['fetch', 'origin', branch])
+    if (fetched.code !== 0) continue
+    const commit = isSafeSha(row.plan) ? row.plan : `refs/remotes/origin/${branch}`
+    const blob = await git(exec, repoDir, ['rev-parse', '--verify', '--quiet', `${commit}:.ultrapowers/plan.md`])
+    if (blob.code !== 0) continue
+    if (String(blob.stdout ?? '').trim() === wanted) found.push({ run: row.run, vm: row.vm })
+  }
+  return found
+}
+
+/**
  * Everything the launcher does, with the exec seam, the clock, the sleep and
  * the name's random half injected. Answers the launched run's record.
  */
@@ -715,7 +745,7 @@ export async function launch ({
   refreshCredential = defaultRefreshCredential, verbsPath = VERBS_PATH,
   kata, kataEnvPath = defaultKataEnvPath()
 }) {
-  const { opts, positional } = parseArgs(argv, { flags: ['json', 'hold'] })
+  const { opts, positional } = parseArgs(argv, { flags: ['json', 'hold', 'again'] })
 
   // ── Local validation. Nothing has been executed at this point, and nothing
   //    will be until every one of these passes. ──────────────────────────────
@@ -745,6 +775,12 @@ export async function launch ({
   // become one that merges.
   if (opts.hold !== undefined && opts.hold !== true) {
     throw new Refusal(`launch: --hold takes no value, got ${JSON.stringify(opts.hold)}`)
+  }
+  // `--again` is the same shape: the one flag that launches a plan already
+  // live on the target (#1036), and a value on it is a refusal before anything
+  // is read.
+  if (opts.again !== undefined && opts.again !== true) {
+    throw new Refusal(`launch: --again takes no value, got ${JSON.stringify(opts.again)}`)
   }
   if (opts.run !== undefined && !isRunNumber(opts.run)) {
     throw new Refusal(`launch: --run must be a positive integer, got ${JSON.stringify(opts.run)}`)
@@ -980,13 +1016,36 @@ export async function launch ({
   //    more than the ballast the janitor came for.
   const reaped = []
   let reapError = null
+  let fleetRuns = null
   try {
     const reap = await janitor({ argv: [], exec, config: settings, now, kata: hub })
+    fleetRuns = Array.isArray(reap.runs) ? reap.runs : []
     for (const action of reap.actions) {
       if (action.kind === 'rm' && action.applied === true) reaped.push(action.vm)
     }
   } catch (error) {
     reapError = String(error?.message ?? error) || 'launch: the reap failed'
+  }
+
+  // ── The duplicate check (#1036). A plan that is already live on this target
+  //    is refused here, before the run number is read and before anything is
+  //    pushed: a second launch of the same plan re-answers the live run's task
+  //    issues on the hub and bumps their revision, and the first run dies at
+  //    Setup on `kata-revision-mismatch`. "The same plan" is the plan text's
+  //    git blob sha — the identity the hub's `Idempotency-Key` is built from —
+  //    never the comment's `plan=` commit, which carries the run number in its
+  //    subject and so differs on every launch. A row whose record says the run
+  //    ended never refuses, however recently; a row with no record yet counts
+  //    as live. When the reap itself failed there is no list and no refusal.
+  const again = fleetRuns === null
+    ? []
+    : await liveDuplicatesOf({ exec, repoDir, target, planText, runs: fleetRuns })
+  if (again.length > 0 && opts.again !== true) {
+    throw new Refusal(again.map((d) =>
+      `launch: run-${d.run} is live on ${target} with this plan (VM ${d.vm}) — nothing was pushed; ` +
+      'pass --again to launch it again on purpose (a byte-identical replay re-answers the live ' +
+      "run's task issues on the hub and bumps their revision)"
+    ).join('\n'))
   }
 
   // The N this launch asks for. Without `--run` it is one past the highest the
@@ -1209,6 +1268,7 @@ export async function launch ({
     commands,
     reaped,
     reapError,
+    again,
     // What the compiler read off the tree at `--base` about this plan (#896):
     // printed by the launch line, never a refusal.
     baseFacts
@@ -1647,6 +1707,7 @@ export const renderLaunch = (result) => [
   result.statusUrl,
   result.comment,
   ...(result.reaped ?? []).map((vm) => `reaped ${vm}`),
+  ...(result.again ?? []).map((d) => `again run-${d.run} ${d.vm}`),
   result.account === undefined ? null : `account=${result.account}`,
   result.kata ? `kata=${result.kata.project.name} ${Object.keys(result.kata.tasks).length} tasks` : null,
   result.verbDrift === undefined ? null : `verb-drift: ${result.verbDrift.detail}`,
@@ -1655,7 +1716,7 @@ export const renderLaunch = (result) => [
 ].filter((line) => line !== null).join('\n')
 
 async function main (argv) {
-  const { opts } = parseArgs(argv, { flags: ['json', 'hold'] })
+  const { opts } = parseArgs(argv, { flags: ['json', 'hold', 'again'] })
   const result = await launch({ argv })
   process.stdout.write(opts.json ? `${JSON.stringify(result)}\n` : `${renderLaunch(result)}\n`)
 }
