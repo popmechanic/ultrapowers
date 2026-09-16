@@ -24,7 +24,8 @@
  *        beside the six keys it carries at BASE.
  *   M4 — when an implementer returns `BLOCKED` and the task's issue, read after
  *        that return, carries a `blocks` link whose `from` is a sibling task of
- *        this run not yet adopted, the driver records the edge sibling → task,
+ *        this run not adopted in the head the dispatch went out on, the driver
+ *        records the edge sibling → task,
  *        appends `driver:re-edged {task, blockedBy: [<sibling ids>]}`, marks the
  *        task unstarted (its slot frees, no fix round, no `needs-review`, no
  *        close), and the task is dispatched again — a fresh implementer, clone
@@ -50,9 +51,47 @@
  *   (a) [M1] the two prompt shapes              — two runs, hub and no hub
  *   (d) [M4] the four scheduling scenarios      — four runs
  *
- * The cheap static legs run first on purpose: at BASE the first thing that
- * fails is the client's projection, which is exactly the absent implementation
- * and nothing else.
+ * The cheap static legs run first on purpose: at that task's BASE the first
+ * thing that fails is the client's projection, which is exactly the absent
+ * implementation and nothing else.
+ *
+ * ── the addendum: "the re-edge reads the tree the worker was handed" ─────────
+ * The re-edge as M4 above left it reads the LIVE adopted set, so a sibling that
+ * was adopted while this task's worker was working reads as "already in the
+ * tree it was handed" — which it is not. That task's clauses, restated:
+ *   M1 — when an implementer returns `BLOCKED` and the task's issue, read after
+ *        that return, carries a `blocks` link whose `from` is a sibling task of
+ *        this run that was NOT adopted in the head this task's dispatch went
+ *        out on — whether that sibling is still in flight or has been adopted
+ *        since — the driver appends one `driver:re-edged {task, blockedBy:
+ *        [<sibling ids>]}` naming it, records the edge sibling → task,
+ *        dispatches no fix round and no reviewer for that attempt, and
+ *        dispatches the task again — a fresh implementer, a second
+ *        `worker:start` — on a clone anchored at the head of the epoch that
+ *        adopted the sibling, after that epoch's `driver:wave-adopted`; the
+ *        task then lands `done` and the run is complete.
+ *   M2 — a `blocks` link whose `from` is a sibling that WAS adopted in the head
+ *        this task's dispatch went out on is not a re-edge: the task ends
+ *        `failed` with `reviewVerdict` `not-reviewed`, as at BASE.
+ *   M3 — `fleet/CONTRACT.md`'s "The re-edge (#979)" bullet says the link's
+ *        `from` is another task of this run that was not adopted in the head
+ *        the task's dispatch went out on, and no longer says `not yet adopted`.
+ *
+ * and its legs, and where each is answered:
+ *   (a) [M1] scenario (d.5), first half   — A is adopted while B is in flight
+ *   (b) [M2] scenario (d.5), second half  — A is adopted before B is dispatched
+ *   (c) [M1] the whole sim prints the sentinel — (d.1)–(d.4) are untouched
+ *            below and hold exactly as at BASE, and this file's last line is
+ *            the sentinel the first `Run:` greps for
+ *   (d) [M3] the second and third `Run:` lines' own reads of the contract,
+ *            re-read here so the exam grades them
+ *   (e) [M1] [M2] the fourth `Run:` — this file's own import lines, re-read
+ *            here: the guarded sim imports nothing under `exams/`
+ *
+ * Those legs' assertions run AFTER (d.1)–(d.4) and (d.5), at the foot of the
+ * file, so that at that task's BASE the first thing that fails is (d.5) — the
+ * scheduling gap M1 names, which is the absent implementation itself — rather
+ * than a sentence in a document.
  *
  * ── how this sim reads what the engine did ──────────────────────────────────
  * Nothing here reaches a hub or a network: the client is a fake with the
@@ -515,15 +554,20 @@ const hubFor = () => makeFakeKata({
 // Every scenario is the same two tasks, A and B, with NO plan edge between
 // them and width 2: the edge under test is the one the driver records itself,
 // from a link a worker filed. The stubs differ only in what B returns and when.
-const driveHub = async ({ tag, makeStub }) => {
+//
+// `edges` and `extra` default to what (d.1)–(d.4) already passed — no plan edge
+// and no extra engine argument — so those four scenarios reach the engine with
+// the arguments they had at BASE; (d.5) is the only caller that passes either.
+const driveHub = async ({ tag, makeStub, edges = [], extra = {} }) => {
   const repo = makeRepo(path.join(tmp, 'repo-' + tag))
   const runDir = path.join(tmp, 'run-' + tag)
   const fake = hubFor()
   const labels = []
   const stub = makeStub({ runDir, fake })
   const { run } = rig({
-    repo, runDir, waves: [[taskOf('A'), taskOf('B')]], stamp: 'ree-' + tag,
-    kata: fake.kata, extraArgs: { width: 2, infraBackoffMs: 0, kataRecord: recordFor() },
+    repo, runDir, waves: [[taskOf('A'), taskOf('B')]], edges, stamp: 'ree-' + tag,
+    kata: fake.kata,
+    extraArgs: { width: 2, infraBackoffMs: 0, kataRecord: recordFor(), ...extra },
     stub: (prompt, opts, cwd) => { labels.push(String(opts.label)); return stub(prompt, opts, cwd) },
   })
   const report = await run()
@@ -797,6 +841,259 @@ const blockedOnA = (runDir, label, cwd, fake, { withLink = true } = {}) => {
   assert.ok(adoptedA,
     '(d) [M4] and was adopted — which is what released B\'s second dispatch: ' +
     shownLog(d4.log))
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// (d.5) the re-edge reads the tree the worker was HANDED
+// ══════════════════════════════════════════════════════════════════════════
+//
+// The task: *a task whose worker reports it is blocked on a sibling that has
+// landed SINCE the task was sent out is sent out again on the tree that carries
+// that sibling, instead of failing.*
+//
+// (d.1) above is the case where the sibling is still in flight at the moment
+// the driver reads the link. This is the other half: the sibling was adopted
+// while the blocked worker was working, so by the time the driver reads the
+// link the live adopted set already names it — and the question M1 answers is
+// whether the sibling was in the head THIS DISPATCH WENT OUT ON, which it was
+// not. (b) below is the case where it was, and that one is not a re-edge.
+//
+// THE RIG. (d.1)'s shape — A and B, no plan edge, width 2, the fake hub — plus
+// `foldAgeMs: 0`, the fold rule before #1006: every landing folds at its own
+// instant, siblings in flight or not, so A can be adopted while B is still
+// being implemented. Both holds are the bounded `waitUntil`, so a BASE engine
+// fails an assertion rather than hanging.
+
+// ── (a) [M1] the sibling was adopted AFTER this task's dispatch went out ─────
+{
+  const attempts = { B: 0 }
+  const d5a = await driveHub({
+    tag: 'm1-adopted-since',
+    extra: { foldAgeMs: 0 },
+    makeStub: ({ runDir, fake }) => async (prompt, opts, cwd) => {
+      const label = String(opts.label)
+      const kind = label.split(':')[0]
+      const id = label.split(':')[1]
+      if (kind !== 'impl' && kind !== 'fix') return cannedJudgment(runDir, label)
+      if (id === 'A') {
+        // A holds until B's first implementer has opened, so B's dispatch — and
+        // the head that dispatch went out on — is READ before A lands and is
+        // adopted. Without this the scenario would be a race between the two
+        // lanes, and the leg is about the ordering, not about who won it.
+        await waitUntil(() => startsOf(readEvents(runDir), 'impl:B').length > 0)
+        return plainImpl(runDir, label, cwd, id)
+      }
+      attempts.B += 1
+      if (attempts.B === 1 && kind === 'impl') {
+        workerStart(runDir, label, cwd)
+        // …and B's first implementer holds until A has been ADOPTED: at the
+        // instant it files the link and returns, A is in the live adopted set
+        // and was not in the head B went out on.
+        await waitUntil(() => adoptionsOf(readEvents(runDir))
+          .some((e) => Array.isArray(e.tasks) && e.tasks.includes('A')))
+        fake.fileBlockedBy(UID.B, UID.A)
+        const reply = { status: 'BLOCKED', summary: 'the proof runs A.txt, which task A owns ' +
+                                                    'and which was not in the tree I was handed' }
+        workerEnd(runDir, label)
+        return reply
+      }
+      return plainImpl(runDir, label, cwd, id)
+    },
+  })
+  const log = d5a.log
+  const rowOf = (id) => d5a.report.tasks.find((r) => r && r.task === id)
+  const startsB = startsOf(log, 'impl:B')
+  const adoptedA = adoptionsOf(log).find((e) => Array.isArray(e.tasks) && e.tasks.includes('A'))
+
+  // ── the sim's own preconditions: the ordering the leg is about ────────────
+  assert.ok(adoptedA,
+    '(a) [M1] sim precondition: A was adopted — a `driver:wave-adopted` naming it. The log ' +
+    'was: ' + shownLog(log))
+  assert.ok(startsB.length >= 1 && log.indexOf(startsB[0]) < log.indexOf(adoptedA),
+    '(a) [M1] sim precondition: B\'s FIRST implementer opened before that adoption — B\'s ' +
+    'dispatch went out on a head that did not carry A, which is the whole case this leg is. ' +
+    'The log was: ' + shownLog(log))
+  assert.ok(d5a.fake.links.some((l) => l.type === 'blocks' && l.from.uid === UID.A &&
+                                       l.to.uid === UID.B),
+    '(a) [M1] sim precondition: B filed the `blocks` link from A — `kata edit $KATA_REF ' +
+    '--blocked-by <A>`: ' + JSON.stringify(d5a.fake.links))
+
+  // ── the event ─────────────────────────────────────────────────────────────
+  const edges = reEdgesOf(log)
+  assert.equal(edges.length, 1,
+    '(a) [M1] the driver appended exactly ONE `driver:re-edged` — B returned BLOCKED and its ' +
+    'issue carried a `blocks` link from A, a sibling of this run that was not adopted in the ' +
+    'head B\'s dispatch went out on. That A has been adopted SINCE is not the question: an ' +
+    'adopted sibling\'s work is in the tree a LATER dispatch is handed, not in the one B was ' +
+    'handed. The log was: ' + shownLog(log))
+  assert.equal(edges[0].task, 'B',
+    '(a) [M1] naming the blocked task in `task`: ' + JSON.stringify(edges[0]))
+  assert.deepEqual(edges[0].blockedBy, ['A'],
+    '(a) [M1] and the sibling ids the link named in `blockedBy` — `[\'A\']`, the TASK id the ' +
+    'link\'s `from.uid` resolves to, not a uid and not a short id: ' + JSON.stringify(edges[0]))
+
+  // ── no fix round and no reviewer for that attempt ─────────────────────────
+  assert.deepEqual(startsOf(log, 'fix:B:').map((e) => e.label), [],
+    '(a) [M1] a re-edged BLOCKED buys NO fix round — the task is unstarted, not repaired. The ' +
+    'log was: ' + shownLog(log))
+  const reviewsBefore = startsOf(log, 'review:B:')
+    .filter((e) => log.indexOf(e) < log.indexOf(edges[0]))
+  assert.deepEqual(reviewsBefore.map((e) => e.label), [],
+    '(a) [M1] and no reviewer read that attempt: nothing of B reached a referee before the ' +
+    're-edge. The log was: ' + shownLog(log))
+
+  // ── dispatched again, after that adoption, on that adoption's head ────────
+  assert.equal(startsB.length, 2,
+    '(a) [M1] B is dispatched AGAIN — a fresh implementer, so exactly two `worker:start ' +
+    'impl:B` rows on the log. At BASE there is one, and B fails instead. The log was: ' +
+    shownLog(log))
+  assert.ok(log.indexOf(startsB[1]) > log.indexOf(adoptedA),
+    '(a) [M1] the second one AFTER the `driver:wave-adopted` naming A (indexes ' +
+    log.indexOf(startsB[1]) + ' and ' + log.indexOf(adoptedA) + '). The log was: ' +
+    shownLog(log))
+  assert.ok(log.indexOf(startsB[1]) > log.indexOf(edges[0]),
+    '(a) [M1] and after the `driver:re-edged` that owed it (indexes ' +
+    log.indexOf(startsB[1]) + ' and ' + log.indexOf(edges[0]) + '). The log was: ' +
+    shownLog(log))
+  assert.equal(startsB[1].head, adoptedA.headSha,
+    '(a) [M1] with its clone anchored at the head of the epoch that adopted A — B\'s second ' +
+    'worker opened on ' + JSON.stringify(startsB[1].head) + ', that epoch adopted ' +
+    JSON.stringify(adoptedA.headSha) + '. The tree the re-dispatch is handed is the one that ' +
+    'carries the sibling it was blocked on; anything else is the mis-anchored patch the driver ' +
+    'exists to prevent.')
+
+  // ── the run's approval ────────────────────────────────────────────────────
+  assert.equal(rowOf('B') && rowOf('B').status, 'done',
+    '(a) [M1] B\'s row is `done` — the task whose worker reported it was blocked on a sibling ' +
+    'that had landed since was sent out again and RAN, instead of failing: ' +
+    JSON.stringify(rowOf('B')))
+  assert.equal(rowOf('A') && rowOf('A').status, 'done',
+    '(a) [M1] A landed too: ' + JSON.stringify(rowOf('A')))
+  assert.deepEqual(d5a.report.unfinished, [],
+    '(a) [M1] nothing is unfinished: ' + JSON.stringify(d5a.report.unfinished))
+  assert.equal(d5a.report.coverage.complete, true,
+    '(a) [M1] and the run is complete — both planned tasks adopted: ' +
+    JSON.stringify(d5a.report.coverage))
+  const adoptedIds5 = new Set(adoptionsOf(log).flatMap((e) => e.tasks || []))
+  assert.deepEqual([...adoptedIds5].sort(), ['A', 'B'],
+    '(a) [M1] and the adoptions name both tasks: ' + shownLog(log))
+}
+
+// ── (b) [M2] the sibling WAS adopted in the head this dispatch went out on ───
+//
+// The counterpart, and the line M2 draws: the plan edge A -> B holds B until A
+// is adopted, so B's dispatch goes out on a head that CARRIES A. B then files
+// the same `blocks` link and returns BLOCKED — and that is not a re-edge,
+// because the work the worker says it is waiting for was already in the tree it
+// was handed. The BASE failure, unchanged.
+{
+  const d5b = await driveHub({
+    tag: 'm2-adopted-before',
+    edges: [['A', 'B']],
+    extra: { foldAgeMs: 0 },
+    makeStub: ({ runDir, fake }) => async (prompt, opts, cwd) => {
+      const label = String(opts.label)
+      const kind = label.split(':')[0]
+      const id = label.split(':')[1]
+      if (kind !== 'impl' && kind !== 'fix') return cannedJudgment(runDir, label)
+      if (id === 'B') return blockedOnA(runDir, label, cwd, fake)
+      return plainImpl(runDir, label, cwd, id)
+    },
+  })
+  const log = d5b.log
+  const rowOf = (id) => d5b.report.tasks.find((r) => r && r.task === id)
+  const startsB = startsOf(log, 'impl:B')
+  const adoptedA = adoptionsOf(log).find((e) => Array.isArray(e.tasks) && e.tasks.includes('A'))
+
+  assert.equal(rowOf('A') && rowOf('A').status, 'done',
+    '(b) [M2] sim precondition: A landed: ' + JSON.stringify(rowOf('A')))
+  assert.ok(adoptedA,
+    '(b) [M2] sim precondition: A was adopted — a `driver:wave-adopted` naming it. The log ' +
+    'was: ' + shownLog(log))
+  assert.equal(startsB.length, 1,
+    '(b) [M2] B is NOT dispatched again: exactly one `worker:start impl:B` in the whole run — ' +
+    'the BASE behaviour, unchanged. The log was: ' + shownLog(log))
+  assert.ok(log.indexOf(startsB[0]) > log.indexOf(adoptedA),
+    '(b) [M2] sim precondition: the plan edge A -> B held B until A was adopted, so B\'s one ' +
+    'dispatch went out on a head that CARRIES A (indexes ' + log.indexOf(startsB[0]) + ' and ' +
+    log.indexOf(adoptedA) + '). The log was: ' + shownLog(log))
+  assert.equal(startsB[0].head, adoptedA.headSha,
+    '(b) [M2] sim precondition: and its clone opened on that very head — ' +
+    JSON.stringify(startsB[0].head) + ' is the head the epoch adopting A left (' +
+    JSON.stringify(adoptedA.headSha) + '), so A\'s work is in the tree B was handed.')
+  assert.ok(d5b.fake.links.some((l) => l.type === 'blocks' && l.from.uid === UID.A &&
+                                       l.to.uid === UID.B),
+    '(b) [M2] sim precondition: B filed the same `blocks` link from A: ' +
+    JSON.stringify(d5b.fake.links))
+  assert.deepEqual(reEdgesOf(log), [],
+    '(b) [M2] a `blocks` link whose `from` is a sibling that WAS adopted in the head this ' +
+    'dispatch went out on is not a re-edge — no `driver:re-edged` event anywhere. Nothing is ' +
+    'waiting to arrive: it already arrived before the worker opened. The log was: ' +
+    shownLog(log))
+  assert.equal(rowOf('B') && rowOf('B').status, 'failed',
+    '(b) [M2] the task ends `failed`, as at BASE: ' + JSON.stringify(rowOf('B')))
+  assert.equal(rowOf('B') && rowOf('B').reviewVerdict, 'not-reviewed',
+    '(b) [M2] with the BASE verdict `not-reviewed`: ' + JSON.stringify(rowOf('B')))
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// (d) [M3] the contract bullet, read the way the Proof's `Run:` lines read it
+// ══════════════════════════════════════════════════════════════════════════
+//
+// The Proof's second `Run:` is
+//   ! grep -q 'not yet adopted' fleet/CONTRACT.md
+// and its third is
+//   sed -n '/The re-edge (#979)/,/dispatched again/p' fleet/CONTRACT.md \
+//     | tr '\n' ' ' | grep -q 'not adopted in the head'
+// — the `The re-edge (#979)` line through the first `dispatched again` line,
+// flattened with `tr`, which is a newline replaced by ONE space. These are
+// those two reads, done the same way.
+{
+  const contract = fs.readFileSync(path.join(HERE, '..', 'CONTRACT.md'), 'utf8')
+  const lines = contract.split('\n')
+  const hits = lines
+    .map((l, i) => (l.includes('not yet adopted') ? (i + 1) + ': ' + l.trim() : null))
+    .filter(Boolean)
+  assert.deepEqual(hits, [],
+    '(d) [M3] `not yet adopted` occurs NOWHERE in fleet/CONTRACT.md — the phrase the re-edge ' +
+    'bullet carried at BASE is the wrong reading of the rule, and no other line may reintroduce ' +
+    'it. These lines still carry it:\n' + hits.join('\n'))
+
+  const start = lines.findIndex((l) => l.includes('The re-edge (#979)'))
+  assert.ok(start !== -1,
+    '(d) [M3] sim precondition: fleet/CONTRACT.md carries a `The re-edge (#979)` bullet the ' +
+    'Proof\'s sed range starts at')
+  let end = -1
+  for (let i = start; i < lines.length; i += 1) {
+    if (lines[i].includes('dispatched again')) { end = i; break }
+  }
+  assert.ok(end !== -1,
+    '(d) [M3] sim precondition: the Proof\'s sed range ends at a `dispatched again` line after it')
+  const bullet = lines.slice(start, end + 1).join(' ')
+  assert.ok(bullet.includes('not adopted in the head'),
+    '(d) [M3] the re-edge bullet says the link\'s `from` is another task of this run NOT ' +
+    'ADOPTED IN THE HEAD the task\'s dispatch went out on — the rule the engine now keeps, ' +
+    'written where the contract states it. The range from `The re-edge (#979)` to `dispatched ' +
+    'again` reads:\n' + bullet)
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// (e) [M1] [M2] the guarded sim is self-contained at its guarded path
+// ══════════════════════════════════════════════════════════════════════════
+//
+// The Proof's fourth `Run:` is
+//   ! grep -qE "^import .*exams/" fleet/tests/test_run_engine_re_edge.mjs
+// — the guarded file imports the engine and the sim helpers by their
+// `fleet/tests/`-relative paths and nothing under `fleet/tests/exams/`, so the
+// exam that reaches main is the file at the guarded path and it runs there.
+// This is that read, over this file itself.
+{
+  const self = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8')
+  const offenders = self.split('\n').filter((l) => /^import .*exams\//.test(l))
+  assert.deepEqual(offenders, [],
+    '(e) [M1] [M2] this file — the sim at its guarded path — carries no `import` line naming a ' +
+    'path under `exams/`: it reaches for the engine and the helpers beside it and for nothing a ' +
+    'publish strips. These lines do:\n' + offenders.join('\n'))
 }
 
 console.log('ALL TESTS PASSED')

@@ -4623,6 +4623,14 @@ export async function runEngine({
   // head before the first epoch, so it is adopted from the start and anything an
   // edge points from it is ready.
   const adoptedIds = new Set(reusedIds)
+  // What was adopted at the instant each dispatch READ the head it went out on:
+  // task id → the ids in that head. `adoptedIds` grows on another lane — the
+  // fold assigns `adoptedHead` and adds its epoch's ids on adjacent lines — so
+  // by the time a worker returns the live set can name a sibling that was NOT in
+  // the tree that worker was handed. Each dispatch snapshots it in the same
+  // synchronous statement group as its `const head = adoptedHead`, before the
+  // first `await`, and the re-edge reads the snapshot (#1057).
+  const adoptedAtDispatch = new Map()
   const dispatchedIds = new Set()
   // Captured, unadopted mergeable results in landing order — what the next fold
   // adopts — and the tasks whose one re-dispatch is owed (#903, M4).
@@ -4778,11 +4786,16 @@ export async function runEngine({
   // reply, through the non-fatal path: a hub that refuses the read answers no
   // links, and a BLOCKED with no link is the failure it is at BASE.
   //
-  // What counts is a link naming another task OF THIS RUN that has not been
-  // adopted — an adopted sibling's work is already in the tree this task was
-  // handed, so nothing is waiting to arrive. A sibling that has FAILED still
-  // counts: the edge is recorded and the dependency cascade then says what the
-  // task is, which is `blocked — depends on a failed task`.
+  // What counts is a link naming another task OF THIS RUN that was not adopted
+  // IN THE HEAD THIS TASK'S DISPATCH WENT OUT ON — the tree the worker was
+  // handed. Only such a sibling's work is missing from that tree; a sibling
+  // adopted before the dispatch is one the clone can already read, so nothing is
+  // waiting to arrive. Whether the sibling is still in flight or has been
+  // adopted SINCE that head was read makes no difference to the worker that just
+  // returned, which is why the reading is the dispatch's snapshot and not the
+  // live set (#1057). A sibling that has FAILED still counts: the edge is
+  // recorded and the dependency cascade then says what the task is, which is
+  // `blocked — depends on a failed task`.
   //
   // One re-edge per task per sibling, which is what makes a cycle of them
   // impossible: the pairs already recorded are remembered here, and a second
@@ -4801,8 +4814,11 @@ export async function runEngine({
     }
     if (blockers.size === 0) return []
     const already = reEdgedOn(task.id)
+    // Every dispatch passes one of the two sites that snapshot this, so the
+    // fallback is unreachable in practice; it reads the live set, as at BASE.
+    const adoptedThen = adoptedAtDispatch.get(task.id) || adoptedIds
     return PLAN
-      .filter((t) => t.id !== task.id && !adoptedIds.has(t.id) && !already.has(t.id) &&
+      .filter((t) => t.id !== task.id && !adoptedThen.has(t.id) && !already.has(t.id) &&
                      blockers.has((kataRowOf(t.id) || {}).uid))
       .map((t) => t.id)
   }
@@ -5297,6 +5313,11 @@ export async function runEngine({
   // ── dispatch ───────────────────────────────────────────────────────────────
   const dispatchOnce = async (task) => {
     const head = adoptedHead
+    // In the same breath as the read: `anchorClone` below is seconds of fetch,
+    // checkout and bootstrap, and a fold on another lane can adopt an epoch in
+    // that window. What this dispatch's worker is handed is what was adopted
+    // HERE (#1057).
+    adoptedAtDispatch.set(task.id, new Set(adoptedIds))
     inFlight += 1
     let result = null
     try {
@@ -5333,6 +5354,8 @@ export async function runEngine({
   const retryParkedInfra = async (parked) => {
     const task = PLAN.find((t) => t.id === parked.task)
     const head = adoptedHead
+    // Same breath, same reason as `dispatchOnce` (#1057).
+    adoptedAtDispatch.set(task.id, new Set(adoptedIds))
     inFlight += 1
     let res
     try {
