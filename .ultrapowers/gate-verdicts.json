@@ -1,0 +1,70 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "5a7e5833e88d916db39172758cd50a7c3c998d77b3b9f5fb76bf26a13dfcbc5a",
+      "verdict": "pass",
+      "reason": "p1, p2, p7 yield rows and p3-p6 and the declared PNG yield none under M1's rule; M4's four negations and M1's four no-row cases each have their own run or row; leg (f)'s range at BASE carries no NUL so the ordered grep fails there; the byte probe is a keep-true condition beside the falsifying Run: lines."
+    }
+  },
+  "tally": {
+    "dispatched": 1,
+    "rejected": 0,
+    "rounds": [
+      {
+        "round": 1,
+        "dispatched": 1,
+        "rejected": 0
+      }
+    ],
+    "base": "4434e0687178d02cfb658ea62467e937e6eda663"
+  },
+  "authoring": {
+    "minutes": 24,
+    "probes": 4,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "What next while run-164 runs?",
+        "options": [
+          "Author #1063, the NUL guard",
+          "Next fixture plan for the readings",
+          "Open-issue research sitting"
+        ],
+        "recommended": "Author #1063, the NUL guard",
+        "picked": "Author #1063, the NUL guard"
+      },
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Confirm as drafted",
+          "Tighter claim"
+        ],
+        "recommended": "Confirm as drafted",
+        "picked": "Confirm as drafted"
+      },
+      {
+        "question": "How should the NUL-guard plan execute?",
+        "options": [
+          "Ultrapowers now",
+          "Ultrapowers after run-164 merges",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers now",
+        "picked": "Ultrapowers now"
+      },
+      {
+        "question": "And after that launch, while both runs run?",
+        "options": [
+          "Write tomorrow's handoff",
+          "Open-issue research sitting",
+          "Next fixture plan for the readings"
+        ],
+        "recommended": "Write tomorrow's handoff",
+        "picked": "Open-issue research sitting"
+      }
+    ]
+  }
+}
