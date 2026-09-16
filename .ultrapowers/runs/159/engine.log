@@ -4,3 +4,13 @@ run-main: kata — record /home/exedev/plans/run-159.kata.json → https://kata.
 run-main: tiers — 7 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)
 run-main: provision — BASE 75feb7165a6d3f175aa95f6731d5d1df78e1908e; 7 task clone(s) + integration
 run-main: engine — waves 5/2, width bound 5, patch input armed
+run-main: engine-done — report saved
+run-main: finalize
+run-main: gate
+run-main: gate-blocked — ultra_gate exited 1 — gate receipt is the terminal artifact
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 37min 1.494s
+CPU time consumed: 36min 1.452s
+Memory peak: 512.0K
+Memory swap peak: 0B

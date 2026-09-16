@@ -142,3 +142,13 @@
 {"kind":"worker:end","label":"review:5:1","role":"reviewer","sessionId":"7d5aafc1-963b-49c1-b366-61f94022775b","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":6133,"output":17227,"cacheRead":1441953,"cacheCreation":64361,"costUsd":1.8259265,"models":["claude-opus-5"]},"id":"01M2MMK4S00000C3A5KAEWR15W","ts":1789546566432}
 {"kind":"transcript:slice","label":"review:5:1","sessionId":"7d5aafc1-963b-49c1-b366-61f94022775b","bytes":11449,"id":"01M2MMK4S8000065XM2M4RMHJV","ts":1789546566440}
 {"kind":"engine:phase","phase":"Wave 3","id":"01M2MMK4VC0000D5V4ZXYWFBCX","ts":1789546566508}
+{"kind":"driver:wave-adopted","wave":3,"tasks":["5"],"headSha":"dae72b4f834c70132f87cad00071299b7efc487a","why":"end","applied":{"5":"base"},"id":"01M2MMN69F0000WAQENAN5XPJR","ts":1789546633519}
+{"kind":"driver:integrated-clean","wave":3,"removed":7,"id":"01M2MMN69K00005RGDE0A1M13Y","ts":1789546633523}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/roles/","exit":0,"minor":false,"wave":3,"id":"01M2MMN69X0000514R88BQE0PX","ts":1789546633533}
+{"kind":"driver:integrated-check","cmd":"node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"minor":false,"wave":3,"id":"01M2MMN6J700007PQ551MS4TQ0","ts":1789546633799}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2MMNY8Y0000NSZ09PX7H271","ts":1789546658078}
+{"kind":"driver:stage","stage":"finalize","id":"01M2MMNYCT0000DPEVD0XVHT2X","ts":1789546658202}
+{"kind":"driver:stage","stage":"gate","id":"01M2MMNYE000004NRGDBNA79M1","ts":1789546658240}
+{"kind":"driver:fail","verdict":"gate-blocked","detail":"ultra_gate exited 1 — gate receipt is the terminal artifact","id":"01M2MMNYJK0000FZZ11DT98D86","ts":1789546658387}
+{"kind":"run:open","runId":"run-159","base":"75feb7165a6d3f175aa95f6731d5d1df78e1908e","source":"fleet/publish-fold.mjs","id":"01M2MMNZN3000046G2BY6M3R23","ts":1789546659491}
+{"kind":"driver:publish-fold","run":"159","attempt":"1","base":"75feb7165a6d3f175aa95f6731d5d1df78e1908e","tip":"75feb7165a6d3f175aa95f6731d5d1df78e1908e","candidate":"dae72b4f834c70132f87cad00071299b7efc487a","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M2MMP0KT0000Q6VMX5P19NNS","ts":1789546660474}
