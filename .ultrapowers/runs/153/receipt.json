@@ -1,0 +1,272 @@
+{
+  "ok": true,
+  "stamp": "run-153",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-153"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The worker hands every prompt to the child on stdin, never on argv",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-worker.mjs",
+          "fleet/tests/test_worker_kata_env.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`createRunWorker(cfg)` (unchanged signature; its `runProcess` now spawns `[cli, ['-p', ...argv]]` with `stdio: ['pipe', 'pipe', 'pipe']` and ends the child's stdin with the prompt)"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The publish-fold brief names its contending block and main's patch by path, one conflicted path per brief",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/publish-fold.mjs",
+          "fleet/roles/resolver.md",
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`resolveConflicts({ \u2026, contendingBlock: string | ((conflict) => string) })`",
+            "`writeResolverBriefs({ briefsDir, attemptKey, open, blockFor, mainPatch }) -> Promise<(conflict) => string>`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The worker hands every prompt to the child on stdin, never on argv",
+          "files": [
+            "fleet/run-worker.mjs",
+            "fleet/tests/test_worker_kata_env.mjs",
+            "fleet/tests/test_worker_prompt_stdin.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`createRunWorker(cfg)` (unchanged signature; its `runProcess` now spawns `[cli, ['-p', ...argv]]` with `stdio: ['pipe', 'pipe', 'pipe']` and ends the child's stdin with the prompt)"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-worker.mjs",
+            "fleet/tests/test_worker_kata_env.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_worker_prompt_stdin.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_worker_prompt_stdin.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_worker_kata_env.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_worker_prompt_stdin.mjs | grep -q 'ALL TESTS PASSED'",
+            "grep -c \"'-p', prompt\\]\" fleet/run-worker.mjs | grep -qx 0"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_worker_prompt_stdin.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/run-worker.mjs",
+              "fleet/tests/test_worker_kata_env.mjs",
+              "fleet/tests/test_worker_prompt_stdin.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_worker_prompt_stdin.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_worker_prompt_stdin.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_worker_prompt_stdin.mjs": "fleet/tests/test_worker_prompt_stdin.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_worker_prompt_stdin.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/publish-fold.mjs",
+              "fleet/roles/resolver.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_resolver_brief.mjs"
+            ],
+            "produces": [
+              "`createRunWorker(cfg)` (unchanged signature; its `runProcess` now spawns `[cli, ['-p', ...argv]]` with `stdio: ['pipe', 'pipe', 'pipe']` and ends the child's stdin with the prompt)"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "The publish-fold brief names its contending block and main's patch by path, one conflicted path per brief",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/publish-fold.mjs",
+            "fleet/roles/resolver.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_resolver_brief.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`resolveConflicts({ \u2026, contendingBlock: string | ((conflict) => string) })`",
+              "`writeResolverBriefs({ briefsDir, attemptKey, open, blockFor, mainPatch }) -> Promise<(conflict) => string>`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/publish-fold.mjs",
+            "fleet/roles/resolver.md",
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_resolver_brief.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_resolver_brief.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_resolver_brief.mjs | grep -q 'ALL TESTS PASSED'",
+            "grep -q 'CONTENDING TASKS FILE' fleet/roles/resolver.md && grep -q 'MAIN PATCH FILE' fleet/roles/resolver.md",
+            "grep -q 'contending-<i>-<attempt>.txt' fleet/CONTRACT.md",
+            "wc -w fleet/roles/resolver.md"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_resolver_brief.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/publish-fold.mjs",
+              "fleet/roles/resolver.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_resolver_brief.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_resolver_brief.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_resolver_brief.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_resolver_brief.mjs": "fleet/tests/test_resolver_brief.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_resolver_brief.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/run-worker.mjs",
+              "fleet/tests/test_worker_kata_env.mjs",
+              "fleet/tests/test_worker_prompt_stdin.mjs"
+            ],
+            "produces": [
+              "`resolveConflicts({ \u2026, contendingBlock: string | ((conflict) => string) })`",
+              "`writeResolverBriefs({ briefsDir, attemptKey, open, blockFor, mainPatch }) -> Promise<(conflict) => string>`"
+            ],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "fleet \u00b7 2 tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- The fold kernel, the wave loop's clone-and-capture, the confine hook, the agent composition and the block renderer are byte-identical to BASE: this plan moves where a prompt travels and what a brief names, never what is folded or how.\n- No worker prompt appears as an element of any child's argv, whole or in part, and no `--input-format` flag is added: the CLI's default text input on stdin is the whole mechanism (verified on the laptop against `2.1.273 (Claude Code)`, Context of Task 1).\n- The resolver stays the read-only role it is at BASE (`ROLES.resolver` in `fleet/run-worker.mjs`: `dontAsk`, the read-only tool list, no writable root) and reads only files under the run directory it is already given as `--add-dir`.\n- `fleet/roles/resolver.md` keeps its one stylistic pin \u2014 no shouted imperatives (`MUST`, `NEVER`, `ALWAYS`, `DO NOT` in capitals), of which it carries none at BASE \u2014 and its word count is reported on a `- Run:` (`wc -w`) and gates nothing.\n- A sim of this plan spawns no real `claude` and reaches no network: the worker seam is exercised through an injected `spawnFn`, and the brief through `resolveConflicts`'s injected `agent` and `runCli`.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel fleet/run-waves.mjs fleet/confine-hook.mjs fleet/run-main.mjs fleet/publish-fold-block.mjs fleet/roles/reviewer.md fleet/roles/implementer.md fleet/roles/fix.md fleet/roles/examiner.md fleet/roles/reconcile.md",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-153/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-153/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-153/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-153/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
