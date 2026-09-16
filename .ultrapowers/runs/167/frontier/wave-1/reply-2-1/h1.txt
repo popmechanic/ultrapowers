@@ -1,0 +1,43 @@
+      const prompt = roles.reconcile + '\nTEST COMMAND: ' + testCmd +
+        '\n\nFailing output:\n' + failingBlock(suite.stdout + suite.stderr)
+      const label = 'reconcile:wave' + waveNumber + ':' + attempt
+      // One dispatch, as an expression: the reply, or the CLASS of the no-reply
+      // it was. A non-fatal throw is a no-reply like a `null` is — the worker
+      // attaches `{ workerVerdict, label }` to every one of them, so the class
+      // it died of is readable — and a `RUN_FATAL` is the run ending and leaves
+      // here untouched, exactly as at BASE.
+      const askOnce = async () => {
+        try {
+          return { reply: await agent(prompt, { label, role: 'writeSide', model: TIER.mostCapable, schema: RECONCILE_SCHEMA }),
+                   cls: null }
+        } catch (e) {
+          if (String((e && e.message) || e).startsWith('RUN_FATAL')) throw e
+          const verdict = e && e.workerVerdict
+          return { reply: null, cls: (verdict && verdict.class != null) ? verdict.class : null }
+        }
+      }
+      // A reconcile worker that died without answering is asked the same
+      // question once more before the epoch is blocked (#1054, question 2). At
+      // BASE a no-reply on attempt 1 ended the round where it stood, so run-20
+      // paid a whole epoch — tasks 2–5 never dispatched — for one worker that
+      // exited 1 having spent zero tokens. The re-ask is a FRESH worker on the
+      // byte-identical prompt under the same `label`, `model` and `schema`: the
+      // worker derives the second session id and evidence directory
+      // (`<label>.2`) from its own per-label `dispatched` count, so keeping the
+      // label is what keeps the two dispatches distinguishable on the record.
+      // It is IMMEDIATE — no backoff. `INFRA_BACKOFF_MS` (`retryInfraNull`
+      // above) is the answer to an OVERLOADED API being re-asked by every
+      // worker that died in the outage at once; a reconcile is one worker per
+      // epoch, not a storm, and a minute of wall on it buys nothing.
+      // An OBJECT reply is an answer and is read as at BASE — a `BLOCKED` says
+      // the worker looked and could not fix it, which asking twice does not
+      // change — and only the SECOND no-reply is read as no reply, so the
+      // `judgmentCalls` literal and the `TEST_FAILED` route below are BASE's,
+      // byte for byte.
+      let { reply: rec, cls } = await askOnce()
+      if (rec == null) {
+        appendEvent({ kind: 'driver:reconcile-retry', wave: waveNumber, attempt, class: cls })
+        judgmentCalls.push('wave ' + waveNumber + ': reconcile attempt ' + attempt +
+          ' produced no reply (' + cls + ') — re-dispatched once')
+        log(label + ' produced no reply (' + cls + ') — re-dispatching once')
+        ;({ reply: rec } = await askOnce())
