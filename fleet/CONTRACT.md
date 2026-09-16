@@ -695,11 +695,13 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   sibling>`, sets `work.attention` `stuck` naming it and returns `BLOCKED`; the engine then reads
   that task's issue once more (one `getIssue`, through the non-fatal path — a refused read answers
   nothing and the task fails as it would have) and looks at its `links` for a `blocks` link whose
-  `from` is another task of this run not yet adopted. Each such link is recorded as the edge
-  sibling → task and appended as one `driver:re-edged` event `{task, blockedBy}`; the task itself is
-  put back to unstarted — no row, no fold, no fix round, no `needs-review`, no close — its slot
-  frees, and it is dispatched again, a fresh worker on a re-anchored clone, once every one of those
-  siblings is adopted. A `BLOCKED` naming no such link is the failure it always was, an edge already
+  `from` is another task of this run that was not adopted in the head this task's dispatch went out
+  on — the tree that worker was handed does not carry it, whether the sibling is still in flight or
+  has been adopted since. Each such link is recorded as the edge sibling → task and appended as one
+  `driver:re-edged` event `{task, blockedBy}`; the task itself is put back to unstarted — no row, no
+  fold, no fix round, no `needs-review`, no close — its slot frees, and it is
+  dispatched again, a fresh worker on a clone re-anchored at the head of the moment, once every one
+  of those siblings is adopted. A `BLOCKED` naming no such link is the failure it always was, an edge already
   recorded for that pair is never recorded twice (a second `BLOCKED` naming it is that failure), and
   a sibling that fails leaves the task `blocked — depends on a failed task` through the same
   dependency cascade every plan edge uses.
