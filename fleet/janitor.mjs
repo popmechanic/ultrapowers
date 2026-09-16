@@ -699,6 +699,12 @@ export async function janitor ({
   const unknown = []
   const deaths = []
   const kept = []
+  // Every row that parsed to an assignment, with what its record said — the
+  // launcher's duplicate check reads this list instead of listing the fleet a
+  // second time (#1036). A row whose record answered nothing is here too, with
+  // `live` and `state` null: the seconds after a launch, before any record
+  // exists, are exactly when a double launch happens.
+  const runs = []
   // The only targets there are: a row's assignment comment is where the
   // janitor learns of one, so a target no row names is nobody's here.
   const targets = new Set()
@@ -721,6 +727,14 @@ export async function janitor ({
 
     // The hub first; the target's evidence when the hub cannot answer this row.
     const reading = await fromHub(target, run) ?? await evidenceReading(exec, target, run)
+    runs.push({
+      vm: row.name,
+      run,
+      target,
+      plan: parseComment(row.comment).plan ?? null,
+      live: reading?.live ?? null,
+      state: reading?.state ?? null
+    })
     // No record anywhere: nothing to decide on, and nothing to age it by.
     if (reading === null) continue
 
@@ -781,7 +795,7 @@ export async function janitor ({
   const hubReport = hub.client === null && hub.host === null && hub.dark === null
     ? null
     : { host: hub.host, dark: hub.dark }
-  return { dryRun, age, actions, stale, unknown, deaths, branches, kept, hub: hubReport }
+  return { dryRun, age, actions, stale, unknown, deaths, branches, kept, hub: hubReport, runs }
 }
 
 const renderAction = (a, dryRun) =>

@@ -317,7 +317,7 @@ const legAExec = () => newExec([...lsRules(FLEET), ghRule({ pages: pagesAt(tagPa
   // in this fleet carries one. #938 adds the last, `hub`: null here, since the
   // janitor was told there is none.
   const BASE_KEYS = ['dryRun', 'age', 'actions', 'stale', 'unknown', 'deaths']
-  const ADDED_KEYS = ['branches', 'kept', 'hub']
+  const ADDED_KEYS = ['branches', 'kept', 'hub', 'runs']
   for (const key of BASE_KEYS) {
     assert.equal(Object.hasOwn(result, key), true,
       `(a)/M1 the result carries its six fields { dryRun, age, actions, stale, unknown, deaths } — ${key} is missing`)
