@@ -1,0 +1,103 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "245d8e43a476f82a31936681e717bfd71158bbb8f1649c44b7bfc09428a91724",
+      "verdict": "pass",
+      "reason": "Every M1 phrase set is pinned in order within the sed-bounded rows section (whose both headings exist at BASE, and the heading regex matches both the old and new heading), leg (d) pins the rename and leg (e)'s one-deletion numstat pins every existing line surviving; the only slack is that no leg checks the new text is literally a bullet rather than prose inside the section, too small to make the Claim slip."
+    },
+    "2": {
+      "hash": "4b81f1aa68a22c18b034627eb8be852dd131ea93eaee4c99c762c4cf88523cf6",
+      "verdict": "pass",
+      "reason": "Every clause has a failing leg: the sed span's two anchors exist at BASE (lines 39 and 46), the ordered greps pin M1's rule and remedy and M2's six anchors, the mutant-caught and shouted-imperative counts are exact-matched to 0, numstat's second column is deletions so 0 deleted lines holds the BASE text, and wc -w is reported without gating, so a passing exam makes the Claim true at the role-file layer."
+    },
+    "3": {
+      "hash": "e103eb6ba8c38cc2e595f42dcb8775db7305b9028e0c456d828b46dcceba0ac6",
+      "verdict": "pass",
+      "reason": "M1-M3 each require anchors (#867, lint-cli..views, #1019, Input.insertText, run-12) absent from the BASE section so the rows must be added with their runs, the BRE literals match the clause literals, both section headings exist at BASE for the sed range, and numstat column 2 at 0 pins every BASE line as retained; the only looseness is that the ordered grep spans the joined section rather than one row, which cannot admit a section missing any trap, reason or run."
+    }
+  },
+  "tally": {
+    "base": "5f75eaaa59aa30801bbab19d0cb6698b3129203b",
+    "dispatched": 4,
+    "rejected": 1,
+    "rounds": {
+      "1": {
+        "dispatched": 3,
+        "rejected": 1
+      },
+      "2": {
+        "dispatched": 1,
+        "rejected": 0
+      }
+    },
+    "note": "Round 1 rejected task 3: rows 3 and 4 pinned no run identifier, so a section naming the traps without their runs passed every leg; the re-read added #867 and run-12/#1019 anchors to M1 and M2 and their Run: lines."
+  },
+  "authoring": {
+    "minutes": 16,
+    "probes": 0,
+    "routing": {
+      "branch": "width",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "How do you want the morning's authoring to start?",
+        "options": [
+          "#1035 + #1038 now, rest after it merges",
+          "Author all four plugin plans now, launch serially",
+          "Fixture plans first"
+        ],
+        "recommended": "#1035 + #1038 now, rest after it merges",
+        "picked": "#1035 + #1038 now, rest after it merges"
+      },
+      {
+        "question": "Claim and summary (two plans, one touch)",
+        "options": [
+          "Both as drafted",
+          "#1038 as the full reviewer plan instead"
+        ],
+        "recommended": "Both as drafted",
+        "picked": "Both as drafted"
+      },
+      {
+        "question": "#1038 execute lane",
+        "options": [
+          "Ultrapowers, after #1035 merges",
+          "Inline now"
+        ],
+        "recommended": "Ultrapowers, after #1035 merges",
+        "picked": "Ultrapowers, after #1035 merges"
+      }
+    ]
+  },
+  "history": [
+    {
+      "round": 1,
+      "task": "1",
+      "hash": "245d8e43a476f82a31936681e717bfd71158bbb8f1649c44b7bfc09428a91724",
+      "verdict": "pass",
+      "reason": "as recorded in tasks"
+    },
+    {
+      "round": 1,
+      "task": "2",
+      "hash": "4b81f1aa68a22c18b034627eb8be852dd131ea93eaee4c99c762c4cf88523cf6",
+      "verdict": "pass",
+      "reason": "as recorded in tasks"
+    },
+    {
+      "round": 1,
+      "task": "3",
+      "hash": "1e7e5d73a0c7e3c9490de614429640ee1ff80852ebe66c30fe1ec8b5b89e3843",
+      "verdict": "fail",
+      "reason": "The Claim promises each trap is named with its reason and its run, but only M3 pins a run literal (run-12); M1's and M2's anchor lists contain no run identifier, so a section whose first two rows name no run passes every leg while the Claim's sentence is false."
+    },
+    {
+      "round": 2,
+      "task": "3",
+      "hash": "e103eb6ba8c38cc2e595f42dcb8775db7305b9028e0c456d828b46dcceba0ac6",
+      "verdict": "pass",
+      "reason": "as recorded in tasks"
+    }
+  ]
+}
