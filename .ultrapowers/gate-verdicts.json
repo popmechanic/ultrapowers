@@ -1,0 +1,135 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "8ca2b8d16648bc2b7b30c74e58f414f0a9e472c6e362a0a88c8bf76d02bd74f7",
+      "verdict": "pass",
+      "reason": "Each of M1's three give-up paths has its own leg asserting the event reason, the log remainder and the judgment-call remainder are one sentence, M3's negation is pinned by a zero-count Run, and M4's sed range anchors exist at BASE lines 520-538 where the paragraph currently lacks the words, so the Run is not vacuous."
+    },
+    "2": {
+      "hash": "6015551f648c9386c69bf58fde6c84e50c19745f16288dcb9815c23b0dc84917",
+      "verdict": "pass",
+      "reason": "M1's five opening rows each get a leg with the exact two-key patch ordered before dispatch and the exact event or its absence, leg (d) names the ok-move event that would betray a stale poll baseline, M3/M4 pin the unchanged BASE behaviours, and the M5 sed range exists at CONTRACT.md lines 572-585."
+    },
+    "3": {
+      "hash": "fec99584a2745dac11f9c7a9f20a404905bf2f4b7c0b4c1fe032c4f684382d3f",
+      "verdict": "pass",
+      "reason": "Each clause has a leg that would fail at BASE: legs a-d pin the three token forms and the no-exam-path negation, a/e/f pin the clean, blocking and red-at-iter-2 round-2 outcomes, a/e/f/g/h pin examRounds 2, 1 and absent, and i/j grep literals absent at BASE inside sections that exist (examiner.md:58, CONTRACT.md:195, report-format.md:97)."
+    }
+  },
+  "tally": {
+    "dispatched": 9,
+    "rejected": 4,
+    "rounds": 4,
+    "misfed": 1,
+    "round1": {
+      "dispatched": 3,
+      "rejected": 3,
+      "species": "enumerated clause with one leg per row"
+    },
+    "round2": {
+      "dispatched": 3,
+      "rejected": 1,
+      "passed": 1,
+      "misfed": 1,
+      "note": "task 2's reader was fed a sibling author's diet: the shared scratchpad file gate-2.json was overwritten by a concurrent author; re-extracted under a plan-unique name"
+    },
+    "round3": {
+      "dispatched": 2,
+      "rejected": 0
+    },
+    "base": "901fc874923210207e041f947407b8ea519c1ab2",
+    "round4": {
+      "dispatched": 1,
+      "rejected": 0,
+      "note": "task 3 re-dispatched after a leg-letter repair (a leg cited another leg by letter, which the compiler read as a leg citing no clause)"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "task": "1",
+      "verdict": "fail",
+      "reason": "only the conflict branch of M1 exercised; materialize refusal and missing verdict unfalsified"
+    },
+    {
+      "round": 1,
+      "task": "2",
+      "verdict": "fail",
+      "reason": "M1 enumerates five opening states, legs covered three; M2 not falsified by one excluded message"
+    },
+    {
+      "round": 1,
+      "task": "3",
+      "verdict": "fail",
+      "reason": "M1 enumerates three token forms and one event per issue; every leg used one range-form finding"
+    },
+    {
+      "round": 2,
+      "task": "1",
+      "verdict": "fail",
+      "reason": "reader could not see the M4 sed anchors in the excerpt; anchors named in the clause so the extractor carries them"
+    },
+    {
+      "round": 2,
+      "task": "3",
+      "verdict": "pass",
+      "reason": "as recorded"
+    },
+    {
+      "round": 3,
+      "task": "1",
+      "verdict": "pass",
+      "reason": "as recorded"
+    },
+    {
+      "round": 3,
+      "task": "2",
+      "verdict": "pass",
+      "reason": "as recorded"
+    },
+    {
+      "round": 4,
+      "task": "3",
+      "verdict": "pass",
+      "reason": "as recorded"
+    }
+  ],
+  "authoring": {
+    "minutes": 68,
+    "probes": 0,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Handshake approved; author #1037 and the reviewer plan now on main?",
+        "options": [
+          "Yes, both now",
+          "Wait for run-17"
+        ],
+        "recommended": "Yes, both now",
+        "picked": "Yes, both now"
+      },
+      {
+        "question": "#1037 execute lane",
+        "options": [
+          "Ultrapowers, launch now",
+          "Ultrapowers, after 155 and 156 merge",
+          "Hold"
+        ],
+        "recommended": "Ultrapowers, launch now",
+        "picked": "Ultrapowers, launch now"
+      },
+      {
+        "question": "Clear attention at open and examiner-then-reviewer round, no implementer round?",
+        "options": [
+          "Keep both",
+          "Add an implementer fix round after a rewritten exam"
+        ],
+        "recommended": "Keep both",
+        "picked": "Keep both"
+      }
+    ]
+  }
+}
