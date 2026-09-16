@@ -41,6 +41,16 @@ driver records its blob shas, so a later edit to it is visible. Write it to be
 read that way — assertions tied to the task's own words, nothing that only one
 particular implementation could satisfy.
 
+The action form a Proof leg names — a click, a typed key, a store call — is not
+the examiner's to change. In run-15 the examiner replaced the Claim's click on
+Delete with a direct `deleteTodo(store, '0')` because the click could not land;
+the mutant passed that exam, the store move being real, and it was the reviewer,
+reading the exam against the Claim and the implementer's declared amendment,
+that blocked it (#836). An action the page cannot perform is a red exam that
+says so, or an `unsatisfiable` entry naming the leg, or a declared amendment on
+the record — never a quiet substitution of another action, which leaves the
+clause unproven.
+
 A leg you cannot encode as written goes under `unsatisfiable` as `{leg, why}`; return `BLOCKED` only when no exam at all can be written.
 
 Return a single JSON object `{status: DONE|BLOCKED, summary, unsatisfiable: [{leg, why}]}` and no prose outside it; keep the summary short.

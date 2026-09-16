@@ -197,6 +197,24 @@ written from memory: run-7 parked because its plan pinned
 A target that exposes `bun run lint:state` has it run over a plan's seeds and
 expected files before the gate readers.
 
+*No schema defaults on a cell or value a plan adds.* A `default` is materialised
+into every existing row's `getContent()`, rewriting every seed and expected file
+(measured: 5–7 files, 13–20 pins across three plans); a cell with no default is
+absent on old rows and every BASE snapshot round-trips byte-identical (measured
+across the three plans of the #867 trio, popmechanic/tinyapp-fixture,
+2026-09-15).
+
+*A plan that adds a callback, an invariant or a snapshot owns the linter's four
+test files.*
+`packages/tinyapp-lint/test/{lint-cli,invariants,reachability,views}.test.ts`
+pin exact counts and lists; loosen them to containment and tree-computed counts,
+never to a new exact literal, because a sibling plan changes them concurrently
+(both folds of 2026-09-15 — run-12's publish fold onto run-13's merge, #1019
+comment).
+
+*A date field is a text input.* The exam's `type` is CDP `Input.insertText`,
+which does not reach `<input type="date">` (run-12's authoring, measured).
+
 ## The engine boundary
 
 The ultrapowers engine runs whatever `testCmd` it is handed and knows nothing

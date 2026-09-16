@@ -13,7 +13,7 @@ command carrying a backtick is `command carries a backtick` from
 check, here, against this file — `suite-total-pin` and `directory-absence-pin`
 included. Nothing prints them.
 
-## The twelve rows
+## The thirteen rows
 
 - **A zero-count grep over a source file counts its comments too.** A `Run:` that pins
   `grep -c <symbol> <file>` = 0 goes red the moment the implementer deletes the code and
@@ -112,6 +112,14 @@ included. Nothing prints them.
   rather than per round. And the provenance quote is trusted to no eyeball
   check: a `quoted from #NNN` claim is a verbatim substring of the raw issue
   body, markdown asterisks and backticks included (run-45, 2026-09-01).
+- **A `Run:` grep inside a guarded exam pins another file's wording, and
+  wording folds.** On run-13, `set-filter.test.ts` leg (g) grepped
+  `lint-cli.test.ts` for the literal `toContain('setFilter')`, and run-12's
+  publish fold had already merged that file semantically, so the literal was
+  gone. A guarded exam asserts behaviour through imports and calls; a text
+  pin on a sibling file belongs in a `Run:` line of the plan, and
+  never in the merged exam (run-13 and run-12, popmechanic/tinyapp-fixture,
+  2026-09-15; #1019).
 
 ## Three older lessons of the same kind
 
