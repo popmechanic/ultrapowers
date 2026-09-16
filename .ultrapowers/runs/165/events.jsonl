@@ -31,3 +31,11 @@
 {"kind":"driver:integrated-clean","wave":1,"removed":7,"id":"01M2NPW7X30000E7HHYBT2P00Y","ts":1789582516131}
 {"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/roles/","exit":0,"minor":false,"wave":1,"id":"01M2NPW7XD00007G85HM9622FN","ts":1789582516141}
 {"kind":"driver:integrated-check","cmd":"node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"minor":false,"wave":1,"id":"01M2NPW86D0000MA8AHZQPW1DJ","ts":1789582516429}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2NPZYVS0000M6M7CQD0YM2B","ts":1789582637945}
+{"kind":"driver:stage","stage":"finalize","id":"01M2NPZYXN0000HD0VGC5Y1SR4","ts":1789582638005}
+{"kind":"driver:stage","stage":"gate","id":"01M2NPZYYK0000P2M3NTN59KX6","ts":1789582638035}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M2NPZZ1K0000REG0A1WDCQ7C","ts":1789582638131}
+{"kind":"driver:stage","stage":"approve","id":"01M2NPZZ1K0001JFNF879426DB","ts":1789582638131}
+{"kind":"driver:approved","stamp":"run-165","integrationBranch":"ultra/integration-run-165","id":"01M2NPZZ370000NE47XY3TGZJ9","ts":1789582638183}
+{"kind":"run:open","runId":"run-165","base":"4434e0687178d02cfb658ea62467e937e6eda663","source":"fleet/publish-fold.mjs","id":"01M2NQ00560000X3DCBMFJYJYG","ts":1789582639270}
+{"kind":"driver:publish-fold","run":"165","attempt":"1","base":"4434e0687178d02cfb658ea62467e937e6eda663","tip":"4434e0687178d02cfb658ea62467e937e6eda663","candidate":"818963c3dd46bf55592a777bdaed31259bd2a578","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M2NQ00KV00003ZMPW42JPB7Y","ts":1789582639739}
