@@ -59,6 +59,11 @@
  * At BASE this file is red for one reason: the engine's `stateExamsOf` drops
  * `action_ms` and `browser` (its own comment calls the row six keys), and
  * `report-format.md` documents six.
+ *
+ * run-169 task 1 adds a second exam to this same guarded file — *the mutant
+ * record is read through the task's own state exams*, legs (a), (b) and (f) of
+ * its Proof. Its section is at the bottom, under its own banner; everything
+ * above it is the task-4 exam above, unchanged.
  */
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -67,6 +72,12 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { stateExamsOf, stateExamBlock } from '../run-engine.mjs'
+// run-169 task 1 reads one symbol the engine does not export at BASE. A named
+// import of an absent export is a link-time SyntaxError that takes the whole
+// file down before any assertion runs, which would hide the legs below it; the
+// namespace import lets leg (a) name the missing `Produces:` export in an
+// assertion of its own and lets every other leg still be read.
+import * as engine from '../run-engine.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'engine-state-exams-')))
@@ -400,6 +411,190 @@ const CLEAN = { breach: null }
   assert.equal(occurrences(engine, 'six keys'), 0,
     '(d) [M4] no `six keys` is left in `fleet/run-engine.mjs`: the row is eight — ' +
     'found ' + occurrences(engine, 'six keys') + ' occurrence(s)')
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// run-169 task 1 — the mutant record is read through the task's own state exams
+//
+// The record under `<runDir>/state-exams/task-<id>/` holds a row for ANY exam
+// machinery that ran with the run's environment, a helper's own self-test rigs
+// included; the mutant a task is judged on has to come from the state exams
+// that task's plan named. This section is legs (a), (b) and (f) of that task's
+// Proof — the pure readings, no engine run. Legs (c), (d) and (g) [M3] and leg
+// (e) [M4] are in `test_run_engine_review_economy.mjs`, the task's other
+// guarded sim.
+//
+// The Machine clauses these three legs are about, restated:
+//   M1 — `stateExamStemsOf(proofTests)`, exported from `fleet/run-engine.mjs`,
+//        returns the sorted, de-duplicated STEMS of the entries of
+//        `proofTests` whose path starts with `tests/state-exams/` — a stem
+//        being the file's basename without a `.test.ts` or `.test.tsx` suffix,
+//        or without its last extension when it has neither — and `[]` for an
+//        empty list, a non-array, or a list with no such path.
+//   M2 — `stateExamRowsOf(runDir, taskId, stems)` and
+//        `stateExamsOf(runDir, taskId, stems)` take an optional THIRD
+//        argument: with a non-empty array of stems they return only the rows
+//        whose `exam` is in it, in the same sorted order and with the same
+//        fields as before; with the argument absent, not an array, or empty,
+//        they return every row exactly as at BASE.
+//
+// The legs, and where each is answered below — every assertion names its leg
+// and the clause it comes from:
+//   run-169 (a) [M1] the Proof's own five-entry list is exactly
+//       `['buy-milk', 'pin-todo', 'probe']`; `['a_test.sh']`, `[]` and
+//       `undefined` are each `[]` (and, by the same clause's "a non-array",
+//       `null` and a bare string too).
+//   run-169 (b) [M2] over one record seeded with stems `real` (killed), `rig`
+//       (survived) and `other` (killed): `['real']` is one row; `['real',
+//       'other']` is two, in the order `other`, `real`; and `[]`, the string
+//       `'real'` and no third argument at all are each the same three rows in
+//       the order `other`, `real`, `rig`, with the same eight keys and values.
+//   run-169 (f) [M2] the fifth `Run:`: neither guarded sim imports a path
+//       under `exams/`.
+//
+// At BASE this section is red for one reason: `stateExamStemsOf` is not
+// exported at all, and `stateExamsOf` reads no third argument (it is
+// `stateExamsOf(runDir, taskId)`), so a scoped call answers the whole record.
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════
+// run-169 (a) [M1] the stems of a Proof's `Test:` paths
+// ══════════════════════════════════════════════════════════════════════════
+{
+  assert.equal(typeof engine.stateExamStemsOf, 'function',
+    'run-169 (a) [M1] `stateExamStemsOf` is exported from `fleet/run-engine.mjs` — it is ' +
+    'this task\'s whole `Produces:` contract. Got: ' + typeof engine.stateExamStemsOf)
+  const stemsOf = engine.stateExamStemsOf
+
+  // The Proof's own list, verbatim: two state exams, one exam-shaped test that
+  // is NOT under the reserved directory, a state exam with no `.test.*` suffix
+  // at all, and `buy-milk` a second time.
+  const PROOF_LIST = ['tests/state-exams/buy-milk.test.ts',
+                      'client/test/exam-page.test.ts',
+                      'tests/state-exams/pin-todo.test.tsx',
+                      'tests/state-exams/probe.ts',
+                      'tests/state-exams/buy-milk.test.ts']
+  const stems = stemsOf(PROOF_LIST)
+  assert.ok(Array.isArray(stems),
+    'run-169 (a) [M1] `stateExamStemsOf` returns an array of stems: ' + JSON.stringify(stems))
+  assert.deepEqual(stems, ['buy-milk', 'pin-todo', 'probe'],
+    'run-169 (a) [M1] the Proof\'s five entries are exactly the three stems ' +
+    '`[\'buy-milk\', \'pin-todo\', \'probe\']`: `buy-milk.test.ts` drops `.test.ts`, ' +
+    '`pin-todo.test.tsx` drops `.test.tsx`, `probe.ts` has neither suffix so it drops its ' +
+    'last extension, `client/test/exam-page.test.ts` is not under `tests/state-exams/` at all, ' +
+    'the repeat of `buy-milk` is de-duplicated, and the answer is sorted. Got: ' +
+    JSON.stringify(stems))
+
+  // The three `[]` cases the leg names, each spelled on its own so a failure
+  // says which one moved.
+  assert.deepEqual(stemsOf(['a_test.sh']), [],
+    'run-169 (a) [M1] a list with no path under `tests/state-exams/` is `[]` — a task whose ' +
+    'Proof names `a_test.sh` has no state-exam stems of its own')
+  assert.deepEqual(stemsOf([]), [],
+    'run-169 (a) [M1] an empty list is `[]`')
+  assert.deepEqual(stemsOf(undefined), [],
+    'run-169 (a) [M1] `undefined` — a task compiled before the field existed — is `[]`')
+  // The same clause's "or a non-array": the two other shapes a caller can
+  // reach it with, both of which have to read as "no stems" rather than throw.
+  assert.deepEqual(stemsOf(null), [],
+    'run-169 (a) [M1] `null` is a non-array, so it is `[]`')
+  assert.deepEqual(stemsOf('tests/state-exams/buy-milk.test.ts'), [],
+    'run-169 (a) [M1] a bare string is a non-array, so it is `[]` however state-exam-shaped ' +
+    'it reads — the argument is the Proof\'s LIST')
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// run-169 (b) [M2] the optional third argument: only the task's own rows
+// ══════════════════════════════════════════════════════════════════════════
+{
+  // One record, three stems: the task's real exam (its mutant killed), a
+  // helper's own test rig that drove the exam machinery over a deliberately
+  // failing page (its mutant survived), and a third real exam (killed). The
+  // walls are the fixture's own shape so all eight keys carry a reading and
+  // the assertion below is about WHICH ROWS come back, not about the fields.
+  const WALLS = { store_ms: 545, render_ms: 125, action_ms: 94, mutant_ms: 0.3,
+                  render: 'ran', browser: 'ran' }
+  const SURVIVED = { killed: false, path: 'todos/1/title' }
+  const runDir = runDirWith('b169-scoped', {
+    real: { walls: WALLS, mutant: KILLED, contract: CLEAN },
+    rig: { walls: WALLS, mutant: SURVIVED, contract: CLEAN },
+    other: { walls: WALLS, mutant: KILLED, contract: CLEAN }
+  })
+  // The eight-key row each stem reads as, spelled once — "the same fields as
+  // before" is the clause, so the scoped rows are pinned to the same values
+  // the unscoped read gives.
+  const rowFor = (exam, killed) => ({
+    exam, store_ms: 545, render_ms: 125, render: 'ran', action_ms: 94, browser: 'ran',
+    mutant_killed: killed, contract: 'ok'
+  })
+  const REAL = rowFor('real', true)
+  const RIG = rowFor('rig', false)
+  const OTHER = rowFor('other', true)
+  const ALL_THREE = [OTHER, REAL, RIG]
+
+  const one = stateExamsOf(runDir, TASK_ID, ['real'])
+  assert.deepEqual(one, [REAL],
+    'run-169 (b) [M2] `stateExamsOf(runDir, \'1\', [\'real\'])` is exactly one row, the one ' +
+    'whose `exam` is in the stems — the rig\'s surviving mutant is not this task\'s record. ' +
+    'Got: ' + JSON.stringify(one))
+  assert.deepEqual(Object.keys(one[0] || {}).sort(), EIGHT_KEYS,
+    'run-169 (b) [M2] and the scoped row carries the same eight keys the unscoped read gives: ' +
+    JSON.stringify(Object.keys(one[0] || {}).sort()))
+
+  const two = stateExamsOf(runDir, TASK_ID, ['real', 'other'])
+  assert.deepEqual(two, [OTHER, REAL],
+    'run-169 (b) [M2] `[\'real\', \'other\']` is two rows IN THE SAME SORTED ORDER the ' +
+    'unscoped read uses — `other` then `real`, not the order the stems were passed in. ' +
+    'Got: ' + JSON.stringify(two.map((r) => r && r.exam)))
+
+  // The three shapes that are not a scoping: the argument absent, not an
+  // array, or empty. Each reads the whole record, exactly as at BASE.
+  assert.deepEqual(stateExamsOf(runDir, TASK_ID, []), ALL_THREE,
+    'run-169 (b) [M2] an EMPTY stems array is not a scoping: every row comes back, in the ' +
+    'order `other`, `real`, `rig`, exactly as at BASE. Got: ' +
+    JSON.stringify(stateExamsOf(runDir, TASK_ID, []).map((r) => r && r.exam)))
+  assert.deepEqual(stateExamsOf(runDir, TASK_ID, 'real'), ALL_THREE,
+    'run-169 (b) [M2] a STRING is not an array, so it is not a scoping either — every row ' +
+    'comes back rather than the one stem it spells. Got: ' +
+    JSON.stringify(stateExamsOf(runDir, TASK_ID, 'real').map((r) => r && r.exam)))
+  assert.deepEqual(stateExamsOf(runDir, TASK_ID), ALL_THREE,
+    'run-169 (b) [M2] and with NO third argument the reading is the one every caller had at ' +
+    'BASE: the same three rows, the same eight keys, the same values. Got: ' +
+    JSON.stringify(stateExamsOf(runDir, TASK_ID)))
+
+  // A stems list the record does not name is the empty record, not the whole
+  // one: the scoping is by membership. `everyMutantKilled` is unchanged and
+  // reads no rows as "not an answer", so this case cannot skip a reviewer.
+  assert.deepEqual(stateExamsOf(runDir, TASK_ID, ['ghost']), [],
+    'run-169 (b) [M2] a non-empty stems list naming no stem the record holds is `[]` — ' +
+    'membership, not a fallback to the whole record. Got: ' +
+    JSON.stringify(stateExamsOf(runDir, TASK_ID, ['ghost'])))
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// run-169 (f) [M2] the fifth `Run:`: neither guarded sim imports under `exams/`
+// ══════════════════════════════════════════════════════════════════════════
+{
+  // The Proof's fifth `Run:` is
+  //   ! grep -qE "^import .*exams/" <this file> <the review-economy sim>
+  // and this is that command, spelled as the sim so the file says what the
+  // command says. A guarded exam is self-contained AT its guarded path: it
+  // reaches the engine and the sim helpers by their `fleet/tests/`-relative
+  // paths and never reaches into the reserved exam directory, whose contents
+  // belong to whichever run last landed there.
+  const GUARDED = ['test_run_engine_state_exams.mjs', 'test_run_engine_review_economy.mjs']
+  const RUN_5 = /^import .*exams\//
+  for (const rel of GUARDED) {
+    const src = fs.readFileSync(path.join(HERE, rel), 'utf8')
+    const offending = src.split('\n').filter((l) => RUN_5.test(l))
+    assert.deepEqual(offending, [],
+      'run-169 (f) [M2] `fleet/tests/' + rel + '` must carry no import of a path under ' +
+      '`exams/` — the Proof\'s fifth `Run:` reads exactly this. Found: ' +
+      JSON.stringify(offending))
+    assert.ok(src.includes('\'../run-engine.mjs\''),
+      'run-169 (f) [M2] and `fleet/tests/' + rel + '` still reaches the engine by its ' +
+      '`fleet/tests/`-relative path `../run-engine.mjs`')
+  }
 }
 
 console.log('ALL TESTS PASSED')

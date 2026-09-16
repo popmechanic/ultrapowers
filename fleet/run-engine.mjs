@@ -588,7 +588,34 @@ const readJsonOrNull = (p) => {
 // taking the report down: this is evidence, not control flow.
 // `mutant_path` rides along for the reviewer's block; `stateExamsOf` drops it,
 // because the report row's shape is the spec's eight keys exactly.
-const stateExamRowsOf = (runDir, taskId) => {
+//
+// ── whose stems those are (#836) ────────────────────────────────────────────
+// The directory answers "what ran under this task's environment", which is not
+// the same question as "what is this task's exam". The fixture helper writes
+// under `task-$ULTRA_TASK/<stem>-<pass>` for ANY call made with the run's
+// environment, so a helper's own self-tests — which drive the exam machinery
+// over deliberately failing pages, on purpose — land their survivors beside the
+// real exam's rows. `stateExamStemsOf` reads the task's OWN stems off its Proof
+// `Test:` paths: the entries under `tests/state-exams/`, stemmed the way the
+// helper's `examStem` stems them (basename, strip `.test.ts`/`.test.tsx`, else
+// strip the last extension), sorted and de-duplicated. A task whose Proof names
+// none — every sim at BASE, whose Proof names `t1_test.sh` — gets `[]`, and `[]`
+// means "unscoped": every stem in the directory, as before this existed.
+const EXAM_STEM_ROOT = 'tests/state-exams/'
+export const stateExamStemsOf = (proofTests) => {
+  if (!Array.isArray(proofTests)) return []
+  const stems = new Set()
+  for (const p of proofTests) {
+    if (typeof p !== 'string' || !p.startsWith(EXAM_STEM_ROOT)) continue
+    const base = path.basename(p)
+    const stem = /\.test\.tsx?$/.test(base)
+      ? base.replace(/\.test\.tsx?$/, '')
+      : base.replace(/\.[^.]+$/, '')
+    if (stem) stems.add(stem)
+  }
+  return [...stems].sort()
+}
+const stateExamRowsOf = (runDir, taskId, stems) => {
   const dir = path.join(String(runDir || ''), 'state-exams', 'task-' + String(taskId))
   let entries
   try {
@@ -605,7 +632,12 @@ const stateExamRowsOf = (runDir, taskId) => {
     const prev = best.get(stem)
     if (!prev || n > prev.pass) best.set(stem, { pass: n, dir: path.join(dir, e.name) })
   }
-  return [...best.keys()].sort().map((stem) => {
+  // The scope, applied to the stems and nowhere else: the rows that survive it
+  // keep the same order and the same fields they had unscoped. An argument that
+  // is absent, not an array, or empty is not a scope — it is the reading this
+  // function has always returned.
+  const scope = (Array.isArray(stems) && stems.length) ? new Set(stems) : null
+  return [...best.keys()].sort().filter((stem) => !scope || scope.has(stem)).map((stem) => {
     const d = best.get(stem).dir
     const walls = readJsonOrNull(path.join(d, 'walls.json'))
     const mutant = readJsonOrNull(path.join(d, 'mutant.json'))
@@ -637,8 +669,8 @@ const stateExamRowsOf = (runDir, taskId) => {
   })
 }
 // The `Produces:` contract: the report row, eight keys, one element per stem.
-export function stateExamsOf(runDir, taskId) {
-  return stateExamRowsOf(runDir, taskId).map(
+export function stateExamsOf(runDir, taskId, stems) {
+  return stateExamRowsOf(runDir, taskId, stems).map(
     ({ exam, store_ms, render_ms, render, action_ms, browser, mutant_killed, contract }) =>
       ({ exam, store_ms, render_ms, render, action_ms, browser, mutant_killed, contract }))
 }
@@ -3921,7 +3953,13 @@ export async function runEngine({
       // What it loses is the referee's lens. The judgment call is the record:
       // no new event kind, and no hub post, because a reviewer's findings never
       // reach a task issue anyway.
-      const stateExamRows = stateExamRowsOf(runDirAbs, task.id)
+      // Scoped to the task's OWN exams (#836): the stems of its Proof `Test:`
+      // paths under `tests/state-exams/`. All three readers below — the hollow
+      // finding, the reviewer-skip predicate and the `STATE EXAM` block — read
+      // this one list, so none of them can be told about a survivor that is a
+      // helper's self-test rather than this task's exam. A task whose Proof
+      // names no such path scopes to `[]`, which reads the whole directory.
+      const stateExamRows = stateExamRowsOf(runDirAbs, task.id, stateExamStemsOf(proofTests))
       // ── the hollow exam (#836, M2) ───────────────────────────────────────
       // A mutant that LIVED is the driver's own reading that the exam did not
       // measure what it claims to: the wrong state was written under it and it
@@ -5845,8 +5883,16 @@ export async function runEngine({
   // held against the task, `{severity, actor, detail}` per entry, distinct by
   // detail and in the order they were raised. `[]` on every task that has none,
   // which is every task of a run with no state handshake.
+  // Scoped the same way the review round scopes its rows (#836), off the same
+  // field: the task's Proof `Test:` paths under `tests/state-exams/`. The pull
+  // request card's `mutant` cell reads this row, so correcting it here corrects
+  // the card too. A result row with no matching plan task — none exists — reads
+  // unscoped, which is the row it had before this existed.
   const taskRows = taskResults.map((r) => ((r && typeof r === 'object')
-    ? { ...r, stateExams: stateExamsOf(runDirAbs, r.task), findings: findingsOf(r.task) }
+    ? { ...r,
+        stateExams: stateExamsOf(runDirAbs, r.task, stateExamStemsOf(
+          (WAVES.flat().find((t) => t.id === r.task) || {}).proofTests)),
+        findings: findingsOf(r.task) }
     : r))
 
   // ── the hub's last word (#913) ────────────────────────────────────────────
