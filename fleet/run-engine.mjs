@@ -892,6 +892,10 @@ const stripUntrustedPatch = (r, patchPrefix) => {
 // are its own) and the park bookkeeping stays the caller's too — this returns
 // the reason string and its own fresh `transcripts`, and the caller's
 // `blocked()` writes the record.
+// `contendingBlock` is either a string appended to every conflict's brief (the
+// wave loop's shape) or a function of the conflict entry — `{ i, path,
+// hunksFile, epoch }`, the kernel's own `open` row — returning the tail for
+// that one conflict.
 export async function resolveConflicts({
   agent, runCli, roles, common, taskArgs = [], commutesArgs = [],
   open, contendingBlock = '', waveDir, labelPrefix, onEvent,
@@ -913,7 +917,11 @@ export async function resolveConflicts({
           roles.resolver +
             '\nHUNKS FILE: ' + conflict.hunksFile + ' (conflicted path: ' + conflict.path + ')' +
             (rejection ? ('\nPREVIOUS REPLY REJECTED: ' + rejection) : '') +
-            contendingBlock,
+            // One string brief every dispatch of the stop the same way, or one
+            // function the caller asks per conflict: a fold whose block is a
+            // whole contending-task dossier per path hands a function and each
+            // resolver is briefed on its own path alone.
+            (typeof contendingBlock === 'function' ? contendingBlock(conflict) : contendingBlock),
           { label, schema: RESOLVER_SCHEMA })
       } catch (e) {
         // A run-fatal (credential/config) must surface as the engine crash

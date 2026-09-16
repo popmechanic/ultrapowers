@@ -241,18 +241,21 @@ export function sessionIdFor(runId, label) {
 // not a preference). R-o11c proves the substitute achieves the row's intent:
 // project hooks not run, repo CLAUDE.md not loaded, skills off, schema and
 // appended prompt honoured, OAuth works.
-// THE PROMPT IS NOT IN HERE, and that is load-bearing. `--allowedTools`,
-// `--disallowedTools` and `--add-dir` are declared VARIADIC (`<tools...>`), so a
-// prompt appended as a trailing positional is swallowed as one more value of
-// whichever variadic option came last, and the CLI exits 1 with
+// THE PROMPT IS NOT IN HERE, and that is load-bearing — nor is it anywhere
+// else on the command line. `--allowedTools`, `--disallowedTools` and
+// `--add-dir` are declared VARIADIC (`<tools...>`), so a prompt appended as a
+// trailing positional is swallowed as one more value of whichever variadic
+// option came last, and the CLI exits 1 with
 // `Input must be provided either through stdin or as a prompt argument when
 // using --print` — no envelope on stdout, so the driver's own classifier calls
 // it 'no-envelope' and the real cause never surfaces. Observed live 2026-08-28
 // while probing this module, which is precisely what the live arm is for: the
 // unit test's fake `claude` accepted the trailing positional happily.
 //
-// So the prompt goes where every repro in the parity ledger puts it — the value
-// of `-p` — and `runProcess` assembles `['-p', prompt, ...flags]`.
+// That reasoning survives, and the prompt is now out of argv entirely: it goes
+// on the child's stdin, so there is no positional to be swallowed and nothing
+// argv-sized to blow `MAX_ARG_STRLEN` (see `runProcess`). `-p` is left here as
+// the boolean flag it is, and `runProcess` assembles `['-p', ...flags]`.
 export function buildArgs({ opts, role, sessionId, promptFile, addDirs = [], settings, maxTurns, maxBudgetUsd, effort }) {
   const r = ROLES[role]
   const argv = [
@@ -969,7 +972,10 @@ export function createRunWorker(cfg) {
       // The run directory IS the evidence bundle (spec §5), so the exact argv is
       // written before the process starts — a worker that dies at 143 leaves no
       // envelope, and without this there would be nothing to read at all.
-      fs.writeFileSync(path.join(dir, 'cmd'), [cli, '-p', '<prompt>'].concat(argv).join(' ') + '\n\n--- prompt ---\n' + prompt)
+      // The command line is written as it is actually spawned — the prompt is
+      // not on it — and the prompt itself follows under its own marker, since
+      // the evidence bundle is worth nothing without it.
+      fs.writeFileSync(path.join(dir, 'cmd'), [cli, '-p'].concat(argv).join(' ') + '  (prompt on stdin)' + '\n\n--- prompt ---\n' + prompt)
     }
 
     onEvent({ kind: 'worker:start', label: opts.label, role, sessionId, cwd, model: opts.model || null })
@@ -1068,14 +1074,29 @@ export function createRunWorker(cfg) {
 
 // One `claude -p` process.
 //
-// stdin is CLOSED, not inherited: both resume repros printed
-// `Warning: no stdin data received in 3s, proceeding without it` and paid three
-// seconds for it (parity item 10). The prompt goes on argv, not stdin — as the
-// value of `-p`, never as a trailing positional (see buildArgs).
+// stdin is a PIPE, not inherited and not closed: the prompt is written to it
+// and the pipe is ended immediately. Nothing prompt-sized is on the command
+// line — Linux caps a single argv element at `MAX_ARG_STRLEN` = 131,072 bytes
+// whatever `ARG_MAX` says, and run-14 on tinyapp-fixture (2026-09-15) died
+// `spawn E2BIG` on a 193,611-byte resolver brief. `-p`/`--print` is a boolean
+// flag; with no positional prompt the CLI reads the prompt from stdin under its
+// default `--input-format text`.
+//
+// The older `['ignore', …]` here was paid for: both resume repros printed
+// `Warning: no stdin data received in 3s, proceeding without it` and waited
+// three seconds (parity item 10). That was the cost of a pipe with NO WRITER —
+// a pipe ended with the prompt is read at once (laptop probe 2026-09-15 against
+// `claude 2.1.273 (Claude Code)` returned in under two seconds).
+//
+// `child.stdin.on('error', …)` goes on BEFORE the write. A child that exits
+// before consuming its stdin makes the pipe raise `EPIPE`, and an unlistened
+// `error` on a stream is an uncaught exception — that would take down the
+// engine, not one worker. The envelope is already on stdout in that case, so
+// the write failure is nothing to report: swallow it and let `close` settle.
 function runProcess({ cli, argv, cwd, env, prompt, timeoutMs, graceMs = 10 * 1000, spawnFn }) {
   return new Promise((resolve) => {
-    const child = spawnFn(cli, ['-p', prompt].concat(argv), {
-      cwd, env, stdio: ['ignore', 'pipe', 'pipe'],
+    const child = spawnFn(cli, ['-p'].concat(argv), {
+      cwd, env, stdio: ['pipe', 'pipe', 'pipe'],
     })
     let stdout = '', stderr = '', timedOut = false, settled = false
     // setEncoding, NOT `stdout += buffer`. Concatenating Buffers decodes each
@@ -1088,6 +1109,9 @@ function runProcess({ cli, argv, cwd, env, prompt, timeoutMs, graceMs = 10 * 100
     child.stderr.setEncoding('utf8')
     child.stdout.on('data', (d) => { stdout += d })
     child.stderr.on('data', (d) => { stderr += d })
+    // The prompt, whole, then EOF — the listener first (see above).
+    child.stdin.on('error', () => {})
+    child.stdin.end(prompt)
     let killTimer = null
     const timer = setTimeout(() => {
       timedOut = true
