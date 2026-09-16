@@ -1,0 +1,82 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "161cab1954b4227429352086a67c4b077333f01cbc32aa054bcfd093f19f8f20",
+      "verdict": "pass",
+      "reason": "Every clause has a falsifying leg (M1 both the absent-key and explicit-false halves with a throwing review stub plus the exact judgmentCalls regex, M2 the captured prompt line matching BASE's stateExamBlock format, M3 one run per enumerated row, M4 both halves, M5 row-scoped greps and a bullet-ranged sed); nothing at BASE pins the opposite, the reviewVerdict/stateExams rows and the Exam environment bullet exist at BASE while the new strings do not."
+    },
+    "2": {
+      "hash": "5e5d20f8403a0b48364e049828d6c1b3657439aa51b7d33fee9719678681d9ec",
+      "verdict": "pass",
+      "reason": "Round 2: every leg falsifies its clause \u2014 (a) both halves exit 1 at BASE, (b) pins the deleted sentence gone with rule 5's opener and its retained phrase, (c) name-only equality plus a -U0 added-line count of at most 1 per file, (d) the lens sim's sentinel; each deletion fits one replaced line and the 2./3. anchors exist at BASE. Round 1 failed leg (a): `keep that check live` was pinned as a raw grep that only passes after a re-wrap the leg never pinned; now read over rule 2 folded, with its period."
+    },
+    "3": {
+      "hash": "e7e9af62ab13f373cab2aec5339ab96eda7a9c9e13e9a0828db8db050d96b423",
+      "verdict": "pass",
+      "reason": "Leg (a)'s exact row falsifies M1 (a verdict-blind card renders killed), leg (b) carries one half per M2 row and catches a verdict-first card, leg (c)'s sed range is scoped to the CONTRACT card paragraph where skipped-mutant-killed is absent at BASE, the Test path is absent at BASE, and BASE's mutant_cell pins nothing contrary."
+    }
+  },
+  "tally": {
+    "dispatched": 4,
+    "rejected": 1,
+    "rounds": {
+      "1": {
+        "dispatched": 3,
+        "rejected": 1
+      },
+      "2": {
+        "dispatched": 1,
+        "rejected": 0
+      }
+    },
+    "base": "901fc874923210207e041f947407b8ea519c1ab2",
+    "note": "Readers in the foreground, one per task, fed the extractor's --base diet only. The session scratchpad is shared between concurrent authors: gate-1.json and gate-3.json were overwritten by a sibling author after dispatch; the readers' replies name this plan's literals, and the hashes above are from a re-extraction into a private subdirectory that reproduced the originals byte for byte."
+  },
+  "authoring": {
+    "minutes": 32,
+    "probes": 0,
+    "routing": {
+      "branch": "width",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Handshake approved; author #1037 and the reviewer plan now on main?",
+        "options": [
+          "Yes, both now",
+          "Wait for run-17"
+        ],
+        "recommended": "Yes, both now",
+        "picked": "Yes, both now"
+      },
+      {
+        "question": "Reviewer plan execute lane",
+        "options": [
+          "Ultrapowers, launch now",
+          "Ultrapowers, after run-155 merges",
+          "Hold"
+        ],
+        "recommended": "Ultrapowers, launch now",
+        "picked": "Ultrapowers, launch now"
+      },
+      {
+        "question": "Delete the two reviewer sentences now, or keep until a mutant catch?",
+        "options": [
+          "Delete now, as picked",
+          "Keep the sentences, ship only the switch"
+        ],
+        "recommended": "Delete now, as picked",
+        "picked": "Delete now, as picked"
+      },
+      {
+        "question": "Reviewer-skipped on the PR card: existing mutant cell or a new column?",
+        "options": [
+          "Existing cell",
+          "Add a reviewer column"
+        ],
+        "recommended": "Existing cell",
+        "picked": "Existing cell"
+      }
+    ]
+  }
+}
