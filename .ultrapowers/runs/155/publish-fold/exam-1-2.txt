@@ -1,0 +1,5 @@
+ok (1721 ms) — (a) [M1] a killed mutant whose verdict is skipped-mutant-killed renders `killed, reviewer skipped`
+ok (1829 ms) — (b) [M2] the shared default green card still renders `killed`, and says `reviewer skipped` nowhere
+ok (1697 ms) — (b) [M2] a survivor beside a skipped-mutant-killed verdict still renders `SURVIVED`
+ok (7 ms) — (c) [M3] the CONTRACT's Publish card paragraph says what the mutant cell reads on a skipped reviewer
+ALL TESTS PASSED

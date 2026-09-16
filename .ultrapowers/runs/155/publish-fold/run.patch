@@ -1,0 +1,1592 @@
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index 123d7113a9b710cef9a0c5ebf747cf1f0285ccae..170114fe209cf0f7b800ea09601264df5e05f54d 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -192,6 +192,32 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   numbers stay in the vocabulary a reader of an older run's record meets. The integrated `Run:` receives `ULTRA_TASK` and
+   `ULTRA_EXAM_PASS=integrated` and no `ULTRA_RUN_DIR` — the run directory is the driver's, not the
+   fold's; the integrated `Check:` receives only `ULTRA_BASE`; and the suite receives none of the four.
++- **State handshake:** a task that reaches a state its consumers are examined against posts it on
++  its own kata issue, as the single metadata key `state.reached` with
++  `{"expected":"<path under state-exams/expected/>","content":[tables, values]}` — the pair
++  `getContent()` answers, beside the snapshot the task left in its tree. The driver reads that post
++  twice and writes nothing to it. Once for each consumer, before that consumer's exam command first
++  runs: for every producer the run's dependency edges point from, one `getIssue` of the producer's
++  recorded uid (a fresh read — the Setup pass's read predates every worker, so it cannot carry a
++  fact a worker wrote), and a well-formed value's `content` is written as JSON to
++  `state-exams/posted/<producer id>.json` in both the consumer's task clone and its examiner's
++  clone, each clone's `.git/info/exclude` first taking `state-exams/posted/` so a seed never rides
++  the captured patch. A producer carrying no post seeds nothing and is one
++  `handshake:absent {task, producer}` event. Once more at the producer's own pre-review pass, after
++  its `Run:`/`Check:` commands: the file `expected` names is read from the tree the captured patch
++  describes and compared with `content` — equal is one `handshake:settled {task, expected}` event
++  and nothing else; unequal is one `blocking` finding with `actor` `implementer` whose detail is
++  `handshake: <table>/<row>/<cell> got <posted> wanted <file>`, routed to `fix:<id>:0` like any
++  blocking finding, and an `expected` the patch does not carry is that same finding naming the
++  path. Well-formed is exactly an object whose `expected` is a string under `state-exams/expected/`
++  and whose `content` is an array of two elements; anything else seeds nothing and raises the same
++  finding naming the field that is wrong (`content` or `expected`) rather than a cell. Every post
++  the driver reads is one `fact:state.reached {task, expected, sha256}` event, the digest taken over
++  the canonical JSON (keys sorted at every level) of `content`, and a post read at both ends is
++  still one event. A run whose issues carry no post writes no file, appends no `fact:state.reached`
++  and no `handshake:settled`, and dispatches the prompts it dispatched before the handshake existed;
++  a run without `--kata` also makes no `getIssue` for it. The findings a task collected this way
++  ride its `report.json` row as `tasks[].findings`, `[]` when it collected none.
+ - **Launch order (launcher):** validate `--target`/`--base`/plan — a `--base` that is not an ancestor
+   of the target's default branch is refused (the publish fold would have nothing to fold onto), and so
+   is a shallow launch clone, whose history cannot answer that question → read the pool
+@@ -546,6 +572,13 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   `KATA_REF=<project name>#<short_id>` of that task's issue — the `short_id` read from the SAME
+   `getIssue` answer that checked the revision above and kept on the task's row, never a second read.
+   `reconcile:*` names no task, so it carries no `KATA_REF`.
++  The state a task reached (#998): `state.reached` is the one metadata key that carries it, set with
++  `--json-value` so the hub holds JSON and not a string, and its value is exactly two fields —
++  `expected`, the path under `state-exams/expected/` of the file that task's own exam names, and
++  `content`, the `getContent()` pair of tables and values that file holds. The producing task's own
++  implementer is the only writer of it, posting it once from its worker session after that task's
++  exam is green (`fleet/roles/implementer.md`), and the driver is the only reader: no other role
++  posts it, no other key carries it, and a task whose Proof names no state exam posts nothing.
+   The settings file handed to the three write roles carries, beside the unchanged PreToolUse confine
+   hook, a `SessionStart` hook running `kata attention-hook start` and a `SessionEnd` hook running
+   `kata attention-hook end`, so a worker's start and end are stamped on its issue without the worker
+diff --git a/fleet/roles/implementer.md b/fleet/roles/implementer.md
+index 1e093e27bb5c04367185b62034ec5e568dc0a5d3..a36f2dfd45ab0e6c644995642826648c4045413c 100644
+--- a/fleet/roles/implementer.md
++++ b/fleet/roles/implementer.md
+@@ -131,3 +131,26 @@ thread your next session reads.
+ You never run `kata close`: a close carries a verified outcome, and the driver
+ holds that. If `KATA_REF` is unset there is no kata at all — skip every command
+ in this section and change nothing else about how you work.
++
++## The state you reached
++
++A task whose Proof names a state exam finishes holding something no later task
++can see for itself: the state that exam measured. The key `state.reached` on
++your own kata issue is where that state goes, and one command puts it there:
++
++```
++kata meta set $KATA_REF state.reached "{\"expected\":\"<path>\",\"content\":$(cat <path>)}" --json-value
++```
++
++`<path>` is the expected file your exam names, under `state-exams/expected/`.
++The `--json-value` flag is load-bearing — without it kata stores the value as a
++string — and the value it stores carries exactly two fields: `expected`, that
++same path, and `content`, the `getContent()` pair of tables and values the file
++holds. That key is the whole of what you publish; the driver reads it and
++nothing else of yours.
++
++Timing and count are the discipline. The post goes out after your task's own
++exam is green, so the state you publish is a state you proved, and you post it
++once — a second post on the same issue is a reading a later session has to
++untangle. It is only a task whose Proof names a state exam that posts at all:
++a plugin task or a prose task reaches no such state and leaves the key unset.
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index 665b3fd24ee581aa26af5c2afb75fa282ac4df85..efccbbaed0a1392adc8ad655007585b9d8609827 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -35,6 +35,10 @@
+ import fs from 'node:fs'
+ import path from 'node:path'
+ import { fileURLToPath } from 'node:url'
++// The state handshake's fact carries a `sha256` over the post's canonical JSON
++// (#998 ticket 5): the record says WHICH state a task reached, not only that it
++// reached one, and a digest is what makes two readings of one post comparable.
++import { createHash } from 'node:crypto'
+ // The run's event log lives in run-waves.mjs; the engine borrows its ULID
+ // stamp so the driver's own records sort with the worker envelopes rather
+ // than beside them (readers order by id, never by line — run-waves.mjs).
+@@ -553,6 +557,110 @@ export const stateExamBlock = (rows) => {
+     rows.map((r) => '\n- ' + r.exam + ': mutant ' +
+       String(r.mutant_path || '') + ' killed: true').join('')
+ }
++// ── the state handshake (#998 ticket 5, #811 decisions 2 and 7) ─────────────
++// One fact travels between two tasks of a run: the state a producer actually
++// reached. Its implementer posts it on that task's OWN issue, as the single
++// metadata key `state.reached`, whose value is
++// `{"expected": "<path under state-exams/expected/>", "content": [tables,
++// values]}` — the `getContent()` pair of the file `expected` names. kata has no
++// fact kinds, so the shape is refused HERE, by the driver, rather than trusted:
++// a value that is not that shape is never written as a seed and never recorded
++// as a fact.
++//
++// `state-exams/expected/` is where a plan pins the states its exams assert
++// (`skills/ultrawrite/references/greenfield-stack.md`), so a post naming a path
++// anywhere else is naming something that is not an expected state.
++const HANDSHAKE_ROOT = 'state-exams/expected/'
++// The flat key kata stores `kata meta set <ref> state.reached --json-value …`
++// under — the same reading `work.attention` gets above (measured on the hub
++// 2026-09-13: `show --json` answers the dotted key flat). A client that expands
++// dotted keys into a nested object is the fallback, never the reading.
++const handshakeRawOf = (issue) => {
++  const meta = (issue && issue.metadata && typeof issue.metadata === 'object')
++    ? issue.metadata : {}
++  if (meta['state.reached'] !== undefined) return meta['state.reached']
++  const nested = (meta.state && typeof meta.state === 'object') ? meta.state : {}
++  return nested.reached
++}
++// Which half of a post is malformed, or `null` when it is well-formed: an
++// object whose `expected` is a string under `state-exams/expected/` and whose
++// `content` is an array of exactly two elements. `expected` is read first, so a
++// value that is not an object at all is reported as its missing path.
++export const handshakeFault = (raw) => {
++  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return 'expected'
++  if (typeof raw.expected !== 'string' || !raw.expected.startsWith(HANDSHAKE_ROOT)) {
++    return 'expected'
++  }
++  if (!Array.isArray(raw.content) || raw.content.length !== 2) return 'content'
++  return null
++}
++// The `Produces:` contract: a task's issue in, its well-formed post out, `null`
++// for an issue that carries none AND for one whose post is malformed — the
++// caller that has to tell those two apart asks `handshakeRawOf`/`handshakeFault`.
++export const handshakeOf = (issue) => {
++  const raw = handshakeRawOf(issue)
++  if (handshakeFault(raw) !== null) return null
++  return { expected: raw.expected, content: raw.content }
++}
++// `JSON.stringify` with keys sorted at every level: the canonical text the
++// post's `sha256` is taken over, and the equality the comparison below uses.
++// Two posts that differ only in key order are the same state.
++export const canonicalJson = (v) => {
++  if (Array.isArray(v)) return '[' + v.map(canonicalJson).join(',') + ']'
++  if (v && typeof v === 'object') {
++    return '{' + Object.keys(v).sort()
++      .map((k) => JSON.stringify(k) + ':' + canonicalJson(v[k])).join(',') + '}'
++  }
++  return JSON.stringify(v === undefined ? null : v)
++}
++export const handshakeSha = (content) =>
++  createHash('sha256').update(canonicalJson(content)).digest('hex')
++// One cell, as a finding reads it. A cell is a string, a number or a boolean
++// (TinyBase's own vocabulary), so it is spelled bare; a side that has no cell
++// at all is `absent`, which is a difference a mutant makes too.
++const handshakeCellText = (v) => {
++  if (v === undefined) return 'absent'
++  const t = typeof v
++  if (t === 'string' || t === 'number' || t === 'boolean') return String(v)
++  return JSON.stringify(v)
++}
++const objectOf = (v) => ((v && typeof v === 'object' && !Array.isArray(v)) ? v : {})
++const unionKeys = (a, b) => [...new Set([...Object.keys(objectOf(a)), ...Object.keys(objectOf(b))])].sort()
++// The FIRST cell where the post and the file disagree, rendered as
++// `<table>/<row>/<cell> got <posted> wanted <file>` — `got` is what the
++// producer posted, `wanted` is what its own expected file holds. Tables are
++// walked in sorted order at every level, so "first" is a fact about the pair
++// and not about whichever key order a JSON writer happened to use. A pair that
++// agrees on every cell but differs in its second element (the store's VALUES)
++// is named the same way under `values`; a pair that agrees everywhere the walk
++// can see returns `null`, which is the caller's signal that the difference is
++// structural rather than a cell's.
++export const firstDifferingCell = (posted, file) => {
++  const [pTables, pValues] = Array.isArray(posted) ? posted : []
++  const [fTables, fValues] = Array.isArray(file) ? file : []
++  for (const table of unionKeys(pTables, fTables)) {
++    const pRows = objectOf(objectOf(pTables)[table])
++    const fRows = objectOf(objectOf(fTables)[table])
++    for (const row of unionKeys(pRows, fRows)) {
++      const pCells = objectOf(pRows[row])
++      const fCells = objectOf(fRows[row])
++      for (const cell of unionKeys(pCells, fCells)) {
++        if (canonicalJson(pCells[cell]) === canonicalJson(fCells[cell])) continue
++        return table + '/' + row + '/' + cell +
++          ' got ' + handshakeCellText(pCells[cell]) +
++          ' wanted ' + handshakeCellText(fCells[cell])
++      }
++    }
++  }
++  for (const name of unionKeys(pValues, fValues)) {
++    const p = objectOf(pValues)[name]
++    const f = objectOf(fValues)[name]
++    if (canonicalJson(p) === canonicalJson(f)) continue
++    return 'values/' + name + ' got ' + handshakeCellText(p) + ' wanted ' + handshakeCellText(f)
++  }
++  return null
++}
++
+ // ── #887 — the join: which paths two of a wave's tasks both touched ──────────
+ //
+ // Re-running every merged task's `Run:` on the fold asks most tasks a question
+@@ -1321,6 +1429,98 @@ export async function runEngine({
+     mirrorToHub(e, line)
+   }
+ 
++  // ── the state handshake, the driver's two reads (#998 ticket 5) ───────────
++  // The producer's implementer posts the state it reached on its own issue
++  // while it works; the driver reads that post twice. Once for the CONSUMER —
++  // the post becomes a seed file in the clones the consumer's exam runs in —
++  // and once for the PRODUCER, at its own pre-review pass, where the post is
++  // held against the expected file the patch itself carries.
++  //
++  // Neither read can be the Setup read (`kataIssues`): that answer was taken
++  // before any worker ran, so it cannot carry a fact a worker wrote. Both are
++  // fresh, and both go through `kataCall` — a read the hub refuses is one
++  // `kata:write-failed` and a task with no post, never the run's failure.
++  const readStateReached = async (taskId) => {
++    const row = kataOn ? kataRowOf(taskId) : null
++    if (!row) return null
++    await drainKataPosts()
++    const issue = await kataCall('getissue', null, () => kata.getIssue(row.uid))
++    const raw = issue ? handshakeRawOf(issue) : undefined
++    if (raw === undefined) return { raw: undefined, post: null, fault: null }
++    return { raw, post: handshakeOf(issue), fault: handshakeFault(raw) }
++  }
++  // Every fact is an event (spec §3.5), and every post the driver reads is one
++  // `fact:state.reached` — once. A post read at both ends (the producer's pass
++  // and its consumer's seeding) is ONE post and one line: the dedup key is the
++  // producing task and the digest, so a producer that re-posts a different
++  // state appends a second line and a re-read of the same state appends none.
++  const handshakeFacts = new Set()
++  const noteHandshakeFact = (taskId, post) => {
++    const sha256 = handshakeSha(post.content)
++    const key = taskId + '|' + sha256
++    if (handshakeFacts.has(key)) return sha256
++    handshakeFacts.add(key)
++    appendEvent({ kind: 'fact:state.reached', task: taskId, expected: post.expected, sha256 })
++    return sha256
++  }
++  // The pair a consumer could not be seeded from: one line per (consumer,
++  // producer), whatever brings the driver past it a second time.
++  const handshakeAbsences = new Set()
++  const noteHandshakeAbsent = (taskId, producer) => {
++    const key = taskId + '|' + producer
++    if (handshakeAbsences.has(key)) return
++    handshakeAbsences.add(key)
++    appendEvent({ kind: 'handshake:absent', task: taskId, producer })
++  }
++  // The producer's post agreeing with its own expected file, once per state.
++  const handshakeSettlements = new Set()
++  const noteHandshakeSettled = (taskId, post, sha256) => {
++    const key = taskId + '|' + sha256
++    if (handshakeSettlements.has(key)) return
++    handshakeSettlements.add(key)
++    appendEvent({ kind: 'handshake:settled', task: taskId, expected: post.expected })
++  }
++  // ── the driver's own findings, per task ───────────────────────────────────
++  // A finding the DRIVER raised rather than a referee: `{severity, actor,
++  // detail}`, the shape a reviewer's issue has, distinct by detail, in the
++  // order they were raised. They ride the task's report row as `findings`, so a
++  // reader sees what the driver held against a task without reading the fix
++  // round's prompt back out of a transcript. Empty on every task that has none,
++  // which is every task of a run with no handshake.
++  const taskFindings = new Map()
++  const findingsOf = (taskId) => (taskFindings.get(taskId) || []).map((f) => ({ ...f }))
++  const raiseFinding = (taskId, finding) => {
++    const held = taskFindings.get(taskId) || []
++    if (held.some((f) => f.detail === finding.detail)) return
++    held.push(finding)
++    taskFindings.set(taskId, held)
++    appendEvent({ kind: 'handshake:finding', task: taskId,
++                  severity: finding.severity, actor: finding.actor, detail: finding.detail })
++  }
++  // The run's dependency edges as pairs, whichever spelling the run was given:
++  // `args.edges` when the caller supplied the pairs (and re-edges appended to
++  // them), and the `<a> -> <b>` strings of `dependencyEdges` otherwise. Both
++  // name the same graph, and a consumer's producers are the `a` of every edge
++  // pointing at it.
++  const handshakeProducersOf = (id) => {
++    const out = []
++    const seen = new Set()
++    const take = (a, b) => {
++      if (b !== id || a === id || seen.has(a)) return
++      seen.add(a)
++      out.push(a)
++    }
++    for (const [a, b] of EDGES) take(String(a), String(b))
++    if (!out.length) {
++      for (const line of dependencyEdges) {
++        const parts = String(line).split('->')
++        if (parts.length !== 2) continue
++        take(parts[0].trim(), parts[1].trim())
++      }
++    }
++    return out
++  }
++
+   // ── the task's issue, read once (#913, moved to Setup by #383) ─────────────
+   // One `getIssue` per task of the whole plan, taken in Setup before wave 1 is
+   // dispatched: the answer's `revision` must equal the record's (the record and
+@@ -2268,6 +2468,60 @@ export async function runEngine({
+     // (Amendment 10) — no prompt asks anyone to run git or report a sha.
+     const cloneDir = path.join(clonesDir, 'task-' + task.id)
+     const examDir = path.join(clonesDir, 'exam-' + task.id)
++    // ── the seed this task's exam is handed (#998 ticket 5) ─────────────────
++    // What this task CONSUMES FROM, and what each of those producers posted as
++    // the state it reached. Read once per dispatch, from the hub, and written
++    // into every clone an exam command of this task can run in — the graded
++    // clone and the examiner's — before any of them runs one. A producer whose
++    // issue carries no post seeds nothing and is recorded as the absence it is;
++    // a post whose shape the driver refuses (M5) seeds nothing either, and is
++    // answered at that producer's own pre-review pass rather than here.
++    let handshakeSeedsRead = null
++    const handshakeSeeds = async () => {
++      if (handshakeSeedsRead) return handshakeSeedsRead
++      const seeds = []
++      for (const producer of (kataOn ? handshakeProducersOf(task.id) : [])) {
++        const read = await readStateReached(producer)
++        if (!read || read.raw === undefined) {
++          noteHandshakeAbsent(task.id, producer)
++          continue
++        }
++        if (!read.post) continue
++        noteHandshakeFact(producer, read.post)
++        seeds.push([producer, read.post])
++      }
++      handshakeSeedsRead = seeds
++      return seeds
++    }
++    // A seed is run-local state in a working tree the driver also captures a
++    // patch from, so the directory is excluded in the clone's own git config
++    // before anything is written into it: `patchAgainstBase` stages with
++    // `add -A`, and a seed that reached the index would ride the patch into the
++    // fold and out to the target. The exclude file is the one place to say so
++    // that edits nothing the worker can see.
++    const excludeSeeds = (dir) => {
++      try {
++        const gitDir = path.join(dir, '.git')
++        if (!fs.statSync(gitDir).isDirectory()) return
++        const file = path.join(gitDir, 'info', 'exclude')
++        const line = 'state-exams/posted/'
++        let text = ''
++        try { text = fs.readFileSync(file, 'utf8') } catch { /* no file yet */ }
++        if (text.split('\n').includes(line)) return
++        fs.mkdirSync(path.dirname(file), { recursive: true })
++        fs.appendFileSync(file, (text && !text.endsWith('\n') ? '\n' : '') + line + '\n')
++      } catch { /* the seed is still written; the exclude is a courtesy */ }
++    }
++    const seedHandshake = async (dir) => {
++      const seeds = await handshakeSeeds()
++      if (!seeds.length) return
++      excludeSeeds(dir)
++      for (const [producer, post] of seeds) {
++        const f = path.resolve(dir, 'state-exams', 'posted', producer + '.json')
++        fs.mkdirSync(path.dirname(f), { recursive: true })
++        fs.writeFileSync(f, JSON.stringify(post.content))
++      }
++    }
+     // `git hash-object` on the path as it stands in a clone; an absent path is
+     // recorded as null, which is itself a value the drift check compares
+     // (creating a path the examiner declined to write IS an edit).
+@@ -2352,6 +2606,11 @@ export async function runEngine({
+       fs.rmSync(examDir, { recursive: true, force: true })
+       cloneAtBase({ repo: await cloneSourceFor(baseShaForTask), dest: examDir,
+                     base: baseShaForTask })
++      // The seed goes in with the clone, every time one is cut: the examiner's
++      // at-BASE probe is the FIRST exam command this task runs, and the
++      // re-cut a dead examiner buys (#762) must not open its eyes on a tree
++      // that lost it.
++      await seedHandshake(examDir)
+     }
+     const bootstrapExamClone = async () => {
+       if (!bootstrapCmd) return
+@@ -2380,6 +2639,10 @@ export async function runEngine({
+       await bootstrapExamClone()
+       return true
+     })()
++    // …and into the graded clone, before the pair is dispatched: every exam
++    // command that runs there — the pre-review pass's, and the repeat after the
++    // repair round — reads the state its producers reached.
++    await seedHandshake(cloneDir)
+     // The Proof paths whose blob no longer matches what the examiner left.
+     const examDrift = async () => {
+       if (!examBlobs) return []
+@@ -2740,6 +3003,49 @@ export async function runEngine({
+     // A red exam is a red of the same standing as a red `Run:`: the Proof's
+     // `Test:` paths are the task's contract just as its `Run:` commands are.
+     const EXAM_FAIL = (e) => 'the Proof\'s exam failed: ' + e.cmd + ' — exit ' + e.exit
++    // ── the producer's post, against its own expected file (#998 ticket 5) ──
++    // A task that posted the state it reached is held to it at the same pass
++    // that runs its `Run:` commands: the file its patch carries at `expected`
++    // is read out of the graded clone — the tree the captured patch describes —
++    // and compared with what was posted. Agreement is a fact on the record and
++    // nothing else. A disagreement is ONE blocking finding on this task, actor
++    // `implementer`, and it buys the `fix:<id>:0` round every other red of this
++    // pass buys: the producer is the one party that can move either side, and
++    // the differing cell is named so the round knows which one to move. A post
++    // the driver refuses on shape (M5) is the same finding naming the field —
++    // never a cell comparison, and never a fact.
++    const HANDSHAKE = (detail) => 'handshake: ' + detail
++    const handshakeCheck = async () => {
++      if (!kataOn) return null
++      const read = await readStateReached(task.id)
++      if (!read || read.raw === undefined) return null
++      const fail = (detail, stdout = '') => {
++        const finding = { severity: 'blocking', actor: 'implementer', detail: HANDSHAKE(detail) }
++        raiseFinding(task.id, finding)
++        return { line: finding.detail, stdout }
++      }
++      const posted = tail('state.reached: ' + canonicalJson(read.raw), 2000)
++      if (!read.post) {
++        return fail('state.reached ' + (read.fault === 'content'
++          ? 'content is not an array of exactly two elements'
++          : 'expected is not a path under ' + HANDSHAKE_ROOT), posted)
++      }
++      const sha256 = noteHandshakeFact(task.id, read.post)
++      const at = path.resolve(cloneDir, read.post.expected)
++      if (!fs.existsSync(at)) {
++        return fail(read.post.expected + ' is absent from the captured tree', posted)
++      }
++      let onDisk
++      try { onDisk = JSON.parse(fs.readFileSync(at, 'utf8')) } catch {
++        return fail(read.post.expected + ' is not readable JSON', posted)
++      }
++      if (canonicalJson(onDisk) === canonicalJson(read.post.content)) {
++        noteHandshakeSettled(task.id, read.post, sha256)
++        return null
++      }
++      return fail(firstDifferingCell(read.post.content, onDisk) ||
++        (read.post.expected + ' is not the [tables, values] pair that was posted'), posted)
++    }
+     // #713 Task 1: the pass's evidence is KEPT, not discarded. Round 1 reads
+     // the tree the pass measured — no fix stands between them — so executing
+     // again would record the same commands twice and bill the clone for it.
+@@ -2763,6 +3069,10 @@ export async function runEngine({
+         if (c.minor) { noteMinorCheck(c); continue }
+         reds.push({ line: CHECK_FAIL(c), stdout: c.stdout })
+       }
++      // Last, after the commands: the post is a claim about the tree those
++      // commands just read, so it is judged against the tree they left.
++      const handshake = await handshakeCheck()
++      if (handshake) reds.push(handshake)
+       return reds
+     }
+     // The fix round's `exam:` entries, when they bought the review round below
+@@ -4502,8 +4812,12 @@ export async function runEngine({
+   // not finish. `[]` when the task's exam wrote nothing (which is every task
+   // whose exam is not a state exam), so the row a reader knew is unchanged
+   // apart from the new key.
++  // …and its driver-raised findings beside it (#998 ticket 5): what the DRIVER
++  // held against the task, `{severity, actor, detail}` per entry, distinct by
++  // detail and in the order they were raised. `[]` on every task that has none,
++  // which is every task of a run with no state handshake.
+   const taskRows = taskResults.map((r) => ((r && typeof r === 'object')
+-    ? { ...r, stateExams: stateExamsOf(runDirAbs, r.task) }
++    ? { ...r, stateExams: stateExamsOf(runDirAbs, r.task), findings: findingsOf(r.task) }
+     : r))
+ 
+   // ── the hub's last word (#913) ────────────────────────────────────────────
+diff --git a/fleet/tests/exams/run_155/test_run_engine_state_handshake.mjs b/fleet/tests/exams/run_155/test_run_engine_state_handshake.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..3a02aac77eb77bb6eab9ec1e27fbd9e486ad5c02
+--- /dev/null
++++ b/fleet/tests/exams/run_155/test_run_engine_state_handshake.mjs
+@@ -0,0 +1,966 @@
++/**
++ * fleet/tests/exams/run_155/test_run_engine_state_handshake.mjs — the exam for
++ * Task 2: *the driver's two reads — seed the consumer from the post, refuse a
++ * post the expected file contradicts*.
++ *
++ * This file is the Proof's `Test: fleet/tests/test_run_engine_state_handshake.mjs`,
++ * written where the run's `EXAM PATHS:` line sends it —
++ * `fleet/tests/exams/run_155/` — and nothing is left at the path the Proof
++ * named. Every relative path below is written for THIS directory:
++ * `../../../` is the repository's `fleet/`, `../../` is `fleet/tests/`, and
++ * `../../../../` is the checkout root.
++ *
++ * ── what each Machine clause asserts, restated ──────────────────────────────
++ *   M1 — before a consumer task's exam command first runs, for each task the
++ *        consumer consumes from (the run's dependency edges) the driver's
++ *        `getIssue` of that producer's recorded uid yields
++ *        `metadata['state.reached']`; a well-formed value (M5) is written, as
++ *        JSON, to `state-exams/posted/<producer task id>.json` in the
++ *        consumer's task clone AND in its examiner's clone; a producer whose
++ *        issue carries no `state.reached` writes no file and appends one
++ *        `handshake:absent {task, producer}` event.
++ *   M2 — at a producer's pre-review pass, when its issue carries
++ *        `state.reached`, the driver reads the file `expected` names from the
++ *        tree the captured patch describes and compares its parsed JSON with
++ *        `content`: equal appends one `handshake:settled {task, expected}` and
++ *        adds no finding; unequal raises one `blocking` finding on the
++ *        producer, `actor` `implementer`, prefixed `handshake:`, whose detail
++ *        carries the first differing cell as
++ *        `<table>/<row>/<cell> got <posted> wanted <file>`, routed to the
++ *        task's `fix:<id>:0` round exactly as any blocking finding is; an
++ *        `expected` path absent from the captured tree raises the same finding
++ *        naming the path.
++ *   M3 — every post the driver reads under M1 or M2 is appended once to
++ *        `events.jsonl` as `fact:state.reached {task, expected, sha256}`,
++ *        `sha256` over the canonical JSON of `content`; a run with no
++ *        `state.reached` on any issue appends no `fact:state.reached` and no
++ *        `handshake:settled`, writes nothing under `state-exams/posted/`, and
++ *        every worker prompt is byte-identical to the prompt the same run
++ *        produces at BASE.
++ *   M4 — a run started without `--kata` makes no `getIssue` for the handshake,
++ *        appends no `handshake:*` event of any kind, and satisfies M3's
++ *        no-post half.
++ *   M5 — a `state.reached` value is well-formed exactly when it is an object
++ *        whose `expected` is a string beginning `state-exams/expected/` and
++ *        whose `content` is an array of exactly two elements; a malformed
++ *        value writes no seed file under M1 and, at the producer's pre-review
++ *        pass, raises the same `blocking` `handshake:` finding with `actor`
++ *        `implementer` whose detail names the malformed field (`content` or
++ *        `expected`) — never M2's cell comparison, and never a
++ *        `fact:state.reached` event.
++ *
++ * ── the legs, and where each is answered ────────────────────────────────────
++ * Every assertion below names its leg and the clause it comes from, so a
++ * reader can map this file back to the contract.
++ *   (0) [M5, `Produces:`] `handshakeOf(issue)` on the well-formed value and on
++ *       each malformed one the clause names.
++ *   (a) [M1] run A: the two-task plan, the producer's issue carrying
++ *       `state.reached`, the seed read by an exam command in both clones.
++ *   (b) [M1] run B: no `state.reached` anywhere — no seed file, one
++ *       `handshake:absent` naming the pair.
++ *   (c) [M2] run A again: no `handshake:` finding on the producer, exactly one
++ *       `handshake:settled`.
++ *   (d) [M2] run D: one cell of the expected file differs.
++ *   (e) [M2] run E: `expected` names a path the captured tree has not got.
++ *   (f) [M5] run F: `content` is a three-element array.
++ *   (f2) [M5] run F2: `expected` does not begin `state-exams/expected/`.
++ *   (g) [M3] runs A, D and E: one `fact:state.reached` per post read, its
++ *       `sha256` computed independently here.
++ *   (h) [M3] run B's prompts against the same run under the BASE engine.
++ *   (i) [M4] run I: the same plan with no kata record at all.
++ *
++ * ── the rig ─────────────────────────────────────────────────────────────────
++ * One sim shape for every leg: a two-task plan — producer `1`, consumer `2` —
++ * with the one dependency edge `1 -> 2`, which is the edge the compiler emits
++ * from the consumer's `Consumes:` of the producer's symbol. Below the agent
++ * seam the rig is REAL, as in the sibling engine sims: real git repositories,
++ * real `cloneAtBase` clones, the real capture, the real fold kernel through
++ * the real `execSeam`. Only `agent` is stubbed, and the hub is a fake with the
++ * client's method names over an in-memory store — the shape
++ * `fleet/tests/test_worker_kata_env.mjs` builds and
++ * `test_run_engine_kata_landing.mjs` drives, copied here because neither file
++ * is in this task's Files.
++ *
++ * The consumer's Proof path is a shell exam the examiner stub writes into its
++ * own clone; its command records what it can read of
++ * `state-exams/posted/1.json` into a witness directory under `$ULTRA_RUN_DIR`,
++ * at both passes the driver runs it — `base`, in `clones/exam-2`, and `0`, in
++ * `clones/task-2`. That witness is leg (a)'s "measured by an exam command that
++ * reads the file": it makes "before the consumer's exam command first runs" a
++ * fact about the moment the command ran rather than about the tree afterwards.
++ * The exam script always exits 0, so a missing seed is recorded rather than
++ * turned into a red that would change the shape of the run around it.
++ *
++ * ── four readings this file is written on ───────────────────────────────────
++ *   • The post is the producer's IMPLEMENTER's, made during its session (the
++ *     run's global constraint says so, with `--json-value`, on that task's own
++ *     issue). The stub writes it into the fake's store as the `impl:1` session
++ *     returns — so the driver's Setup-time `getIssue` (`openKataTask`, one per
++ *     task before wave 1) cannot be the read M1 and M2 name, and the handshake
++ *     needs a read of its own. That write bumps no revision, exactly as the
++ *     attention-hook's SessionEnd write does not in the landing sim.
++ *   • M3's "every post the driver reads under M1 or M2 is appended once" is
++ *     read as once per POST, not once per read: in run A the same post is read
++ *     twice — once to seed the consumer, once to compare at the producer's
++ *     pre-review pass — and this file asserts EXACTLY ONE `fact:state.reached`.
++ *   • M2's detail names "the first differing cell". Run D's fixtures differ in
++ *     exactly ONE cell, so the cell named is the same under any traversal
++ *     order: this file pins the detail string, not an iteration order the
++ *     clause never fixes. That cell holds a boolean, so `true`/`false` renders
++ *     identically under `String` and under `JSON.stringify` and the detail has
++ *     one spelling.
++ *   • `blocking` and `actor: implementer` are asserted through the routing the
++ *     same clause defines — "routes to the task's `fix:<id>:0` round exactly as
++ *     any blocking finding does". The engine keeps no per-task findings array a
++ *     sim can read, so the finding is read where the driver's own blocking
++ *     findings are read at BASE: the pre-review pass's red list, which is the
++ *     `fix:<id>:0` prompt's `Blocking issues to resolve:` block, the
++ *     `review round 0:` comment the driver posts on that task's issue, and the
++ *     failed row's `notes`. An `actor: plan` finding is the one that would go
++ *     elsewhere — to `deferredVerification` as a `plan-defect`, with no fix
++ *     round — so its absence there is what "actor `implementer`" asserts.
++ *
++ * Leg (h)'s "byte-identical to the prompt the same run produces at BASE" is
++ * measured by importing the BASE engine out of a `git archive` of the checkout
++ * at BASE and running the same plan through it, in the same run-directory PATH
++ * (run B's tree is removed and re-provisioned from the same repository), so the
++ * patch paths the reviewer's prompt carries are identical by construction. Git
++ * author and committer dates are pinned for the process, so the fold commit
++ * each wave adopts — and therefore the BASE sha wave 2 is dispatched against —
++ * is the same sha in both runs. Both engines are handed the same `rolesDir`, a
++ * temporary one written here, so no role file of the checkout (one of which a
++ * sibling task of this run is editing) can move the comparison.
++ *
++ * ── why this is red at BASE, for one reason ─────────────────────────────────
++ * `fleet/run-engine.mjs` exports no `handshakeOf` at BASE, so the named import
++ * below fails to link and the file is red before a single assertion runs: the
++ * implementation does not exist yet. With it present and the rest of the task
++ * unbuilt, the same file is red on leg (a)'s seed.
++ */
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { createHash } from 'node:crypto'
++import { execFileSync } from 'node:child_process'
++import { fileURLToPath } from 'node:url'
++
++// The task's `Produces:` — the one symbol later tasks rely on, and the reason
++// this file cannot link at BASE.
++import { handshakeOf } from '../../../run-engine.mjs'
++import { runEngine as headEngine } from '../../../run-engine.mjs'
++import { execSeam } from '../../../run-main.mjs'
++import { makeCwdFor, withPatchCapture, defaultTaskIdOf } from '../../../run-waves.mjs'
++import { makeRepo, provision, passReview, cleanCritic, doneImpl } from '../../_engine_helpers.mjs'
++import { simEnv } from '../../_helpers.mjs'
++
++const HERE = path.dirname(fileURLToPath(import.meta.url))
++const ROOT = path.resolve(HERE, '..', '..', '..', '..')
++
++// Pinned for the process, before any repository is built: the fold kernel's
++// commits are then a pure function of their content and parents, which is what
++// makes leg (h)'s two runs land on the same wave-2 BASE sha. Nothing else in
++// this file depends on the clock.
++process.env.GIT_AUTHOR_DATE = '2026-01-01T00:00:00 +0000'
++process.env.GIT_COMMITTER_DATE = '2026-01-01T00:00:00 +0000'
++
++const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'engine-state-handshake-')))
++process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
++
++// ── the literals the clauses spell, spelled once ────────────────────────────
++const PRODUCER = '1'
++const CONSUMER = '2'
++const UID = { 1: 'U-1', 2: 'U-2' }
++const RUN_UID = 'RUN0'
++const PROJECT_ID = 7
++const STAMP = 'run-155'
++// M1: where the seed lands in each of the consumer's clones, named for the
++// PRODUCING task as the plan numbers it.
++const SEED_REL = 'state-exams/posted/' + PRODUCER + '.json'
++// M5: the prefix a well-formed `expected` begins with.
++const EXPECTED_DIR = 'state-exams/expected/'
++const EXPECTED_PATH = EXPECTED_DIR + 'prod.json'
++// The `getContent()` pair a post carries: `[tables, values]`. The keys are
++// deliberately NOT in sorted order here, so M3's canonical JSON (keys sorted at
++// every level) is a different string from `JSON.stringify(content)` and leg
++// (g)'s digest can tell them apart.
++const CONTENT = [
++  { todos: { 0: { text: 'buy milk', completed: true }, 1: { text: 'buy bread', completed: false } } },
++  { nextId: 2 },
++]
++// Run D's expected file: run A's content with exactly ONE cell moved —
++// `todos/0/completed`, a boolean, so the detail has one spelling.
++const CONTENT_ONE_CELL_OFF = [
++  { todos: { 0: { text: 'buy milk', completed: false }, 1: { text: 'buy bread', completed: false } } },
++  { nextId: 2 },
++]
++const DIFF_CELL = 'todos/0/completed got true wanted false'
++const FINDING_PREFIX = 'handshake:'
++// The events this task mints.
++const ABSENT_KIND = 'handshake:absent'
++const SETTLED_KIND = 'handshake:settled'
++const FACT_KIND = 'fact:state.reached'
++// The consumer's Proof path — under neither test root, so it lands at itself
++// and the driver's `EXAM PATHS` remap leaves this run's own sim alone.
++const EXAM_PATH = 'exam_check.sh'
++const EXAM_CMD = 'bash ' + EXAM_PATH
++
++// ── canonical JSON and the digest, computed independently of the engine ─────
++// "JSON.stringify with keys sorted at every level" — arrays keep their order.
++const canonical = (v) => {
++  if (Array.isArray(v)) return '[' + v.map(canonical).join(',') + ']'
++  if (v && typeof v === 'object') {
++    return '{' + Object.keys(v).sort()
++      .map((k) => JSON.stringify(k) + ':' + canonical(v[k])).join(',') + '}'
++  }
++  return JSON.stringify(v)
++}
++const sha256Of = (value) => createHash('sha256').update(canonical(value)).digest('hex')
++
++// ── reading a run back ──────────────────────────────────────────────────────
++const eventsOf = (runDir) => {
++  const file = path.join(runDir, 'events.jsonl')
++  if (!fs.existsSync(file)) return []
++  return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
++    .map((l) => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean)
++}
++const kindsOf = (events, kind) => events.filter((e) => e && e.kind === kind)
++// `appendEvent` stamps every line with an `id` and a `ts` of its own; the
++// clause's fields are what a deep-equal is taken over.
++const fieldsOf = (e, keys) => {
++  const out = {}
++  for (const k of keys) out[k] = (e || {})[k]
++  return out
++}
++const walk = (dir, pre = '') => {
++  if (!fs.existsSync(dir)) return []
++  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((ent) => {
++    if (ent.name === '.git') return []
++    return ent.isDirectory()
++      ? walk(path.join(dir, ent.name), pre + ent.name + '/')
++      : [pre + ent.name]
++  })
++}
++// Every file under any `state-exams/posted/` directory anywhere in the run's
++// clones — the whole tree, so "no seed file was written" is answered about the
++// run and not only about the one directory a leg happens to name.
++const postedPathsIn = (clonesDir) => {
++  if (!fs.existsSync(clonesDir)) return []
++  return fs.readdirSync(clonesDir)
++    .flatMap((clone) => walk(path.join(clonesDir, clone))
++      .filter((rel) => rel.startsWith('state-exams/posted/'))
++      .map((rel) => clone + '/' + rel))
++    .sort()
++}
++
++// ── the fake hub ────────────────────────────────────────────────────────────
++// The client's method names over an in-memory store, every call recorded in
++// order. `post` is the producing implementer's own `kata meta set
++// state.reached --json-value` — from OUTSIDE the engine, so it is not in the
++// call log and it does not move the revision the fake answers.
++function makeFakeKata ({ projectId, issues }) {
++  const calls = []
++  const store = new Map()
++  for (const [uid, iss] of Object.entries(issues)) {
++    store.set(uid, { uid, revision: iss.revision, short_id: iss.short_id,
++                     metadata: { ...(iss.metadata || {}) }, owner: null,
++                     status: 'open', labels: [] })
++  }
++  const need = (uid) => {
++    const iss = store.get(uid)
++    if (!iss) throw new Error('fake kata: no issue ' + JSON.stringify(uid))
++    return iss
++  }
++  const record = (method, uid, fields, answer) => {
++    calls.push({ method, uid, ...fields, answer })
++    return answer
++  }
++  const kata = {
++    async getIssue (uid) {
++      const iss = need(uid)
++      return record('getIssue', uid, {}, {
++        uid, revision: iss.revision, short_id: iss.short_id, metadata: iss.metadata,
++        status: iss.status, owner: iss.owner, project_id: projectId,
++      })
++    },
++    async claim (project, uid) {
++      const iss = need(uid)
++      iss.owner = 'engine'; iss.revision += 1
++      return record('claim', uid, { projectId: project },
++        { uid, revision: iss.revision, short_id: iss.short_id })
++    },
++    async patchMetadata (project, uid, patch, revision) {
++      const iss = need(uid)
++      iss.metadata = { ...iss.metadata, ...patch }; iss.revision += 1
++      return record('patchMetadata', uid, { projectId: project, patch, revision },
++        { uid, revision: iss.revision, short_id: iss.short_id })
++    },
++    async comment (project, uid, body) {
++      const iss = need(uid)
++      iss.revision += 1
++      return record('comment', uid, { projectId: project, body }, { uid, revision: iss.revision })
++    },
++    async addLabel (project, uid, label) {
++      const iss = need(uid)
++      iss.labels.push(label); iss.revision += 1
++      return record('addLabel', uid, { projectId: project, label }, { uid, revision: iss.revision })
++    },
++    async close (project, uid, opts) {
++      const iss = need(uid)
++      iss.status = 'closed'; iss.revision += 1
++      return record('close', uid, { projectId: project, opts }, { uid, revision: iss.revision })
++    },
++  }
++  return {
++    kata,
++    calls,
++    of: (m) => calls.filter((c) => c.method === m),
++    commentsOn: (uid) => calls.filter((c) => c.method === 'comment' && c.uid === uid)
++      .map((c) => String(c.body || '')),
++    // The producing implementer's post, mid-session.
++    post: (uid, value) => { need(uid).metadata = { ...need(uid).metadata, 'state.reached': value } },
++  }
++}
++
++// ── the roles, written here ─────────────────────────────────────────────────
++// Both engines of leg (h) read THESE six files, so no role file of the checkout
++// can move a prompt this exam compares.
++const ROLES_DIR = path.join(tmp, 'roles')
++fs.mkdirSync(ROLES_DIR, { recursive: true })
++for (const name of ['implementer', 'reviewer', 'fix', 'resolver', 'reconcile', 'examiner']) {
++  fs.writeFileSync(path.join(ROLES_DIR, name + '.md'), 'ROLE ' + name + '\n')
++}
++
++// ── the consumer's exam, as the examiner stub writes it ─────────────────────
++// It reads the seed and records what it found, in the clone it is running in,
++// at the pass it is running as. Always exit 0: this exam's subject is what the
++// driver put there, not whether the command is happy about it.
++const EXAM_SH = [
++  '#!/usr/bin/env bash',
++  '[ -n "$ULTRA_RUN_DIR" ] || exit 0',
++  'd="$ULTRA_RUN_DIR/witness/$ULTRA_TASK-$ULTRA_EXAM_PASS"',
++  'mkdir -p "$d"',
++  'pwd > "$d/cwd"',
++  'if [ -f ' + SEED_REL + ' ]; then cp ' + SEED_REL + ' "$d/seed.json"; else : > "$d/absent"; fi',
++  'exit 0',
++  '',
++].join('\n')
++
++const mkTask = (id, files, over = {}) => ({
++  id, title: 'task ' + id, files, tier: 'standard', review: 'lean',
++  writes: files, commutes: [], proofTests: [], proofRuns: [],
++  body: 'task ' + id + ' body', ...over,
++})
++
++// The plan every leg runs: the producer, whose Files carry the expected file
++// its post names, and the consumer, whose Proof is the exam above.
++const wavesFor = (expectedPath) => [[
++  mkTask(PRODUCER, ['t1.txt', expectedPath]),
++  mkTask(CONSUMER, ['t2.txt'], { proofTests: [EXAM_PATH], testCmd: EXAM_CMD }),
++]]
++
++const ABSENT = Symbol('the producer writes no expected file')
++
++/**
++ * One run of the plan.
++ *   `post`          the value the producing implementer writes to
++ *                   `state.reached` mid-session, or `null` for a producer that
++ *                   posts nothing.
++ *   `expectedPath`  the path the producer's Files declare and (unless
++ *                   `expectedFile` is ABSENT) writes.
++ *   `expectedFile`  the JSON value written there, or ABSENT.
++ *   `kataOn`        false runs with the client and NO record — `--kata` absent.
++ *   `engine`        the engine under test; leg (h) passes the BASE one.
++ */
++async function driveRun ({ label, repo, runDir, post = null, expectedPath = EXPECTED_PATH,
++                           expectedFile = ABSENT, kataOn = true, engine = headEngine,
++                           promptDir = null }) {
++  fs.rmSync(runDir, { recursive: true, force: true })
++  if (promptDir) fs.mkdirSync(promptDir, { recursive: true })
++  const waves = wavesFor(expectedPath)
++  const taskIds = waves.flat().map((t) => t.id)
++  const { base, clonesDir, patchesDir } = provision({ repo, runDir, taskIds })
++  const patchBase = { current: base }
++  const cwdFor = makeCwdFor({ clonesDir })
++  const fake = makeFakeKata({
++    projectId: PROJECT_ID,
++    issues: {
++      [RUN_UID]: { revision: 1, short_id: 'run0', metadata: {} },
++      [UID[PRODUCER]]: { revision: 1, short_id: 'aa11', metadata: {} },
++      [UID[CONSUMER]]: { revision: 1, short_id: 'bb22', metadata: {} },
++    },
++  })
++  const record = {
++    url: 'https://kata.invalid',
++    project: { id: PROJECT_ID, uid: 'PROJ0', name: 'ultrapowers' },
++    run: { uid: RUN_UID, revision: 1 },
++    tasks: { [PRODUCER]: { uid: UID[PRODUCER], short_id: 'aa11', revision: 1 },
++             [CONSUMER]: { uid: UID[CONSUMER], short_id: 'bb22', revision: 1 } },
++  }
++  const dispatched = []
++  let seq = 0
++  const inner = async (prompt, opts) => {
++    const cwd = cwdFor(opts)
++    const name = String(opts.label)
++    dispatched.push({ label: name, prompt: String(prompt) })
++    if (promptDir) {
++      fs.writeFileSync(path.join(promptDir,
++        String(seq++).padStart(3, '0') + '-' + name.replace(/[^\w]/g, '_') + '.txt'), String(prompt))
++    }
++    const [kind, id] = name.split(':')
++    if (kind === 'impl' || kind === 'fix') {
++      fs.writeFileSync(path.join(cwd, 't' + id + '.txt'), 'from ' + name + '\n')
++      if (id === PRODUCER) {
++        if (expectedFile !== ABSENT) {
++          fs.mkdirSync(path.dirname(path.join(cwd, expectedPath)), { recursive: true })
++          fs.writeFileSync(path.join(cwd, expectedPath), JSON.stringify(expectedFile))
++        }
++        // The producing implementer's own post, on its own issue, mid-session.
++        if (post !== null) fake.post(UID[PRODUCER], post)
++      }
++      return doneImpl(cwd)
++    }
++    if (kind === 'exam') {
++      fs.writeFileSync(path.join(cwd, EXAM_PATH), EXAM_SH)
++      return { status: 'DONE', summary: 'exam written', unsatisfiable: [] }
++    }
++    if (kind === 'review') return passReview()
++    if (name === 'integration') return cleanCritic()
++    throw new Error('unexpected dispatch: ' + name)
++  }
++  const agent = withPatchCapture({
++    agent: inner, clonesDir, base: () => patchBase.current, patchesDir,
++    taskIdOf: defaultTaskIdOf,
++  })
++  const logs = []
++  const report = await engine({
++    args: {
++      waves,
++      edges: [[PRODUCER, CONSUMER]],
++      dependencyEdges: [PRODUCER + ' -> ' + CONSUMER],
++      testCmd: 'bash check.sh',
++      acceptance: { mode: 'suite', reason: 'sim' },
++      stamp: STAMP,
++      integrationBranch: 'ultra/integration-' + STAMP,
++      patchInput: patchesDir,
++      // The worker's raised hand is not this exam's subject: a poll far longer
++      // than the sim keeps the hub's call log to the calls the handshake and
++      // the run's own record make.
++      attentionPollMs: 3600000,
++      ...(kataOn ? { kataRecord: record } : {}),
++    },
++    agent,
++    parallel: (thunks) => Promise.all(thunks.map((t) => t())),
++    exec: execSeam,
++    paths: { repoDir: repo, runDir, clonesDir },
++    rolesDir: ROLES_DIR,
++    log: (l) => logs.push(String(l)),
++    phase: () => {},
++    patchBase,
++    kata: fake.kata,
++  })
++  const witnessDir = path.join(runDir, 'witness')
++  const witness = {}
++  for (const rel of walk(witnessDir)) {
++    witness[rel] = fs.readFileSync(path.join(witnessDir, rel), 'utf8')
++  }
++  return {
++    label, report, fake, clonesDir, runDir, dispatched, logs, witness,
++    events: eventsOf(runDir),
++    rowOf: (id) => report.tasks.find((r) => r && r.task === id),
++    labels: dispatched.map((d) => d.label),
++    promptOf: (name) => dispatched.filter((d) => d.label === name).map((d) => d.prompt),
++  }
++}
++
++// The lines a red list renders as, wherever the driver renders it: the
++// `fix:<id>:0` prompt's blocking block, and the `review round 0:` comment.
++const handshakeLinesIn = (text) => String(text).split('\n')
++  .map((l) => l.trim())
++  .filter((l) => l.startsWith('- ' + FINDING_PREFIX))
++  .map((l) => l.slice(2).trim())
++// The substantive half of a finding: everything after the `handshake:` prefix.
++const detailBody = (line) => String(line).slice(FINDING_PREFIX.length).trim()
++
++// ════════════════════════════════════════════════════════════════════════════
++// (0) [M5] + `Produces:` — handshakeOf, the predicate every other leg rests on
++// ════════════════════════════════════════════════════════════════════════════
++{
++  const well = { expected: EXPECTED_PATH, content: CONTENT }
++  assert.deepEqual(handshakeOf({ metadata: { 'state.reached': well } }),
++    { expected: EXPECTED_PATH, content: CONTENT },
++    '(0) [M5] `handshakeOf(issue)` answers the issue\'s own `state.reached` — ' +
++    '`{expected, content}` — when it is well-formed: an object whose `expected` ' +
++    'is a string beginning `' + EXPECTED_DIR + '` and whose `content` is an ' +
++    'array of exactly two elements')
++
++  // The key is the flat `state.reached` and nothing else carries it.
++  assert.equal(handshakeOf({ metadata: {} }), null,
++    '(0) [M5] an issue whose metadata carries no `state.reached` has no post: null')
++  assert.equal(handshakeOf({}), null,
++    '(0) [M5] an issue with no metadata at all has no post: null')
++  assert.equal(handshakeOf({ metadata: { 'state.reached': null } }), null,
++    '(0) [M5] a null value is not an object: null')
++  assert.equal(handshakeOf({ metadata: { 'state.reached': [EXPECTED_PATH, CONTENT] } }), null,
++    '(0) [M5] an ARRAY is not the object the clause names: null')
++  assert.equal(handshakeOf({ metadata: { 'state.reached': 'state-exams/expected/prod.json' } }), null,
++    '(0) [M5] a bare string is not that object either: null')
++
++  // M5's two malformed halves, one at a time.
++  assert.equal(handshakeOf({ metadata: { 'state.reached': { expected: EXPECTED_PATH, content: [CONTENT[0]] } } }), null,
++    '(0) [M5] `content` of one element is not an array of exactly two: null')
++  assert.equal(handshakeOf({ metadata: { 'state.reached': { expected: EXPECTED_PATH, content: [...CONTENT, {}] } } }), null,
++    '(0) [M5] `content` of three elements is not an array of exactly two: null')
++  assert.equal(handshakeOf({ metadata: { 'state.reached': { expected: EXPECTED_PATH, content: { tables: {}, values: {} } } } }), null,
++    '(0) [M5] `content` that is an object and not an array: null')
++  assert.equal(handshakeOf({ metadata: { 'state.reached': { expected: EXPECTED_PATH } } }), null,
++    '(0) [M5] no `content` at all: null')
++  assert.equal(handshakeOf({ metadata: { 'state.reached': { expected: 'expected/prod.json', content: CONTENT } } }), null,
++    '(0) [M5] an `expected` that does not begin `' + EXPECTED_DIR + '`: null')
++  assert.equal(handshakeOf({ metadata: { 'state.reached': { expected: 'state-exams/seeds/prod.json', content: CONTENT } } }), null,
++    '(0) [M5] and `state-exams/seeds/` is not `' + EXPECTED_DIR + '` either: null')
++  assert.equal(handshakeOf({ metadata: { 'state.reached': { expected: 42, content: CONTENT } } }), null,
++    '(0) [M5] an `expected` that is not a string: null')
++  assert.equal(handshakeOf({ metadata: { 'state.reached': { content: CONTENT } } }), null,
++    '(0) [M5] no `expected` at all: null')
++
++  // Well-formedness is exactly those two conditions: a value carrying more than
++  // the two keys is not malformed, and what it answers is still the pair.
++  const extra = handshakeOf({ metadata: { 'state.reached': { expected: EXPECTED_PATH, content: CONTENT, note: 'run-155' } } })
++  assert.ok(extra && typeof extra === 'object',
++    '(0) [M5] well-formed is EXACTLY the two conditions the clause names, so a ' +
++    'value carrying a third key is well-formed — got ' + JSON.stringify(extra))
++  assert.equal(extra.expected, EXPECTED_PATH,
++    '(0) [M5] and its `expected` is the path the post named')
++  assert.deepEqual(extra.content, CONTENT,
++    '(0) [M5] and its `content` is the pair the post carried')
++  // The two elements are the `getContent()` pair, whatever they hold.
++  const emptyPair = handshakeOf({ metadata: { 'state.reached': { expected: EXPECTED_DIR + 'empty.json', content: [{}, {}] } } })
++  assert.deepEqual(emptyPair, { expected: EXPECTED_DIR + 'empty.json', content: [{}, {}] },
++    '(0) [M5] two empty objects are an array of exactly two elements: well-formed')
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// run A — the producer posts, its expected file agrees
++// legs (a) [M1], (c) [M2], (g) [M3]
++// ════════════════════════════════════════════════════════════════════════════
++const repoA = makeRepo(path.join(tmp, 'repo-a'))
++const A = await driveRun({
++  label: 'A', repo: repoA, runDir: path.join(tmp, 'run-a'),
++  post: { expected: EXPECTED_PATH, content: CONTENT },
++  expectedFile: CONTENT,
++})
++{
++  // ── sim preconditions: the run these legs assert about actually happened ──
++  assert.deepEqual(A.labels.filter((l) => l.startsWith('impl:')).sort(), ['impl:1', 'impl:2'],
++    '(a) [M1] sim precondition: both tasks ran an implementer — the consumer is ' +
++    'dispatched at all, which is what makes the seeding question askable. ' +
++    'Dispatched: ' + JSON.stringify(A.labels))
++  assert.ok(A.labels.indexOf('impl:' + PRODUCER) < A.labels.indexOf('impl:' + CONSUMER),
++    '(a) [M1] sim precondition: the edge `' + PRODUCER + ' -> ' + CONSUMER + '` held — the ' +
++    'producer ran first, so its post exists before the consumer is dispatched. ' +
++    JSON.stringify(A.labels))
++  assert.equal(A.rowOf(PRODUCER).status, 'done',
++    '(c) [M2] sim precondition: the producer ended `done` — its post and its expected ' +
++    'file agree, so nothing blocked it: ' + JSON.stringify(A.rowOf(PRODUCER)))
++  assert.equal(A.rowOf(CONSUMER).status, 'done',
++    '(a) [M1] sim precondition: the consumer ended `done`: ' + JSON.stringify(A.rowOf(CONSUMER)))
++  assert.ok(A.labels.includes('exam:' + CONSUMER),
++    '(a) [M1] sim precondition: the consumer had an examiner, so it has an exam command ' +
++    'at all: ' + JSON.stringify(A.labels))
++
++  // ── (a) [M1] the seed, read by the exam command, in both clones ──────────
++  // The witness the exam wrote at each pass: `base` in the examiner's clone,
++  // `0` in the task clone. Its presence IS "before the exam command first
++  // runs" — the file was there when the command read it.
++  const passes = [
++    ['base', path.join(A.clonesDir, 'exam-' + CONSUMER), 'the examiner\'s clone'],
++    ['0', path.join(A.clonesDir, 'task-' + CONSUMER), 'the consumer\'s task clone'],
++  ]
++  for (const [pass, clone, what] of passes) {
++    const cwd = A.witness[CONSUMER + '-' + pass + '/cwd']
++    assert.ok(cwd !== undefined,
++      '(a) [M1] sim precondition: the consumer\'s exam command ran at pass `' + pass +
++      '`, which is the moment this leg measures. The witness held: ' +
++      JSON.stringify(Object.keys(A.witness)))
++    assert.equal(cwd.trim(), fs.realpathSync(clone),
++      '(a) [M1] and pass `' + pass + '` ran in ' + what + ' — ' + clone +
++      '; got ' + JSON.stringify(cwd.trim()))
++    const seen = A.witness[CONSUMER + '-' + pass + '/seed.json']
++    assert.ok(seen !== undefined,
++      '(a) [M1] ' + what + ' held `' + SEED_REL + '` when the consumer\'s exam command ' +
++      'read it at pass `' + pass + '`: the driver writes the producer\'s posted ' +
++      '`content` there BEFORE that command first runs. The exam found no such file. ' +
++      'Witness: ' + JSON.stringify(Object.keys(A.witness)))
++    assert.deepEqual(JSON.parse(seen), CONTENT,
++      '(a) [M1] and what it read parses to EXACTLY the `content` the producer posted — ' +
++      canonical(CONTENT) + '; got ' + seen)
++  }
++
++  // The same two files, read off the clones after the run: one seed per clone,
++  // named for the producing task, and nothing else under `state-exams/posted/`.
++  assert.deepEqual(postedPathsIn(A.clonesDir),
++    ['exam-' + CONSUMER + '/' + SEED_REL, 'task-' + CONSUMER + '/' + SEED_REL],
++    '(a) [M1] the run\'s clones hold exactly two seeds — `' + SEED_REL + '` in the ' +
++    'consumer\'s task clone and in its examiner\'s clone, named for the PRODUCING ' +
++    'task id as the plan numbers it, and none anywhere else. Got: ' +
++    JSON.stringify(postedPathsIn(A.clonesDir)))
++  for (const clone of ['exam-' + CONSUMER, 'task-' + CONSUMER]) {
++    const onDisk = fs.readFileSync(path.join(A.clonesDir, clone, SEED_REL), 'utf8')
++    assert.deepEqual(JSON.parse(onDisk), CONTENT,
++      '(a) [M1] `' + clone + '/' + SEED_REL + '` is the posted `content`, as JSON: ' + onDisk)
++  }
++
++  // ── (c) [M2] the producer settled: one event, no finding ─────────────────
++  const settled = kindsOf(A.events, SETTLED_KIND)
++  assert.equal(settled.length, 1,
++    '(c) [M2] the producer\'s expected file parses equal to its posted `content`, so the ' +
++    'pre-review pass appends EXACTLY ONE `' + SETTLED_KIND + '` event. Got ' +
++    settled.length + ': ' + JSON.stringify(settled))
++  assert.deepEqual(fieldsOf(settled[0], ['kind', 'task', 'expected']),
++    { kind: SETTLED_KIND, task: PRODUCER, expected: EXPECTED_PATH },
++    '(c) [M2] and it is `' + SETTLED_KIND + ' {task, expected}` for the producing task ' +
++    'and the path its post named. Got: ' + JSON.stringify(settled[0]))
++
++  // "adds no finding": no red reached the producer at all. A blocking finding
++  // would have bought it the `fix:1:0` round, posted a `review round 0:`
++  // comment on its issue and ended it with notes; none of the three happened.
++  assert.ok(!A.labels.includes('fix:' + PRODUCER + ':0'),
++    '(c) [M2] an equal comparison adds no finding, so the producer bought no ' +
++    '`fix:' + PRODUCER + ':0` round: ' + JSON.stringify(A.labels))
++  assert.equal(A.rowOf(PRODUCER).reviewVerdict, 'clean',
++    '(c) [M2] and its row is clean: ' + JSON.stringify(A.rowOf(PRODUCER)))
++  assert.equal(A.rowOf(PRODUCER).notes, '',
++    '(c) [M2] with nothing in its notes: ' + JSON.stringify(A.rowOf(PRODUCER).notes))
++  for (const body of A.fake.commentsOn(UID[PRODUCER])) {
++    assert.ok(!body.includes(FINDING_PREFIX),
++      '(c) [M2] and no `' + FINDING_PREFIX + '` finding was posted on the producer\'s ' +
++      'issue: ' + JSON.stringify(body))
++  }
++  for (const d of A.dispatched) {
++    assert.ok(!d.prompt.includes(FINDING_PREFIX),
++      '(c) [M2] and no worker of the run was handed one either — `' + d.label + '`\'s ' +
++      'prompt names `' + FINDING_PREFIX + '`')
++  }
++
++  // ── (g) [M3] one fact per post, and the digest ──────────────────────────
++  const facts = kindsOf(A.events, FACT_KIND)
++  assert.equal(facts.length, 1,
++    '(g) [M3] the run holds one post, read twice — once to seed the consumer (M1) and ' +
++    'once to compare at the producer\'s pre-review pass (M2) — and every post the ' +
++    'driver reads is appended ONCE: exactly one `' + FACT_KIND + '` event. Got ' +
++    facts.length + ': ' + JSON.stringify(facts))
++  assert.deepEqual(fieldsOf(facts[0], ['kind', 'task', 'expected', 'sha256']),
++    { kind: FACT_KIND, task: PRODUCER, expected: EXPECTED_PATH, sha256: sha256Of(CONTENT) },
++    '(g) [M3] and it is `' + FACT_KIND + ' {task, expected, sha256}` where `sha256` is ' +
++    'over the canonical JSON of `content` — keys sorted at every level, which for this ' +
++    'post is ' + canonical(CONTENT) + ' and NOT `JSON.stringify(content)` (' +
++    JSON.stringify(CONTENT) + '). Got: ' + JSON.stringify(facts[0]))
++  assert.notEqual(canonical(CONTENT), JSON.stringify(CONTENT),
++    '(g) [M3] sim precondition: this fixture\'s keys are not in sorted order, so the ' +
++    'canonical digest and the naive one are different strings and the assertion above ' +
++    'can tell them apart')
++  assert.equal(kindsOf(A.events, ABSENT_KIND).length, 0,
++    '(g) [M1] a producer that posted is not an absent one: no `' + ABSENT_KIND +
++    '` event. Got: ' + JSON.stringify(kindsOf(A.events, ABSENT_KIND)))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// run B — no issue of the run carries `state.reached`
++// legs (b) [M1], (h) [M3]
++// ════════════════════════════════════════════════════════════════════════════
++const repoB = makeRepo(path.join(tmp, 'repo-b'))
++const runDirB = path.join(tmp, 'run-b')
++const promptsHead = path.join(tmp, 'prompts-head')
++const B = await driveRun({
++  label: 'B', repo: repoB, runDir: runDirB, post: null, expectedFile: ABSENT,
++  promptDir: promptsHead,
++})
++{
++  assert.deepEqual(B.labels.filter((l) => l.startsWith('impl:')).sort(), ['impl:1', 'impl:2'],
++    '(b) [M1] sim precondition: the same two-task plan ran both tasks, the consumer ' +
++    'included: ' + JSON.stringify(B.labels))
++
++  // ── (b) [M1] no post: no seed anywhere, one `handshake:absent` ───────────
++  assert.deepEqual(postedPathsIn(B.clonesDir), [],
++    '(b) [M1] the producer\'s issue carries no `state.reached`, so NO file is written ' +
++    'under `state-exams/posted/` in either of the consumer\'s clones — nor anywhere ' +
++    'else in the run\'s clones. Found: ' + JSON.stringify(postedPathsIn(B.clonesDir)))
++  for (const [pass] of [['base'], ['0']]) {
++    assert.ok(B.witness[CONSUMER + '-' + pass + '/absent'] !== undefined,
++      '(b) [M1] and the consumer\'s own exam command found no seed at pass `' + pass +
++      '`: ' + JSON.stringify(Object.keys(B.witness)))
++  }
++  const absent = kindsOf(B.events, ABSENT_KIND)
++  assert.equal(absent.length, 1,
++    '(b) [M1] and EXACTLY ONE `' + ABSENT_KIND + '` event is appended — one per ' +
++    'consumer/producer pair the run could not seed. Got ' + absent.length + ': ' +
++    JSON.stringify(absent))
++  assert.deepEqual(fieldsOf(absent[0], ['kind', 'task', 'producer']),
++    { kind: ABSENT_KIND, task: CONSUMER, producer: PRODUCER },
++    '(b) [M1] naming the pair: `task` is the consumer being seeded (' + CONSUMER +
++    ') and `producer` is the task it consumes from (' + PRODUCER + '). Got: ' +
++    JSON.stringify(absent[0]))
++
++  // ── (h) [M3] the three absences of a run with no post ────────────────────
++  assert.equal(kindsOf(B.events, FACT_KIND).length, 0,
++    '(h) [M3] a run with no `state.reached` on any issue appends no `' + FACT_KIND +
++    '`. Got: ' + JSON.stringify(kindsOf(B.events, FACT_KIND)))
++  assert.equal(kindsOf(B.events, SETTLED_KIND).length, 0,
++    '(h) [M3] and no `' + SETTLED_KIND + '` — its `' + ABSENT_KIND + '` events are ' +
++    'M1\'s. Got: ' + JSON.stringify(kindsOf(B.events, SETTLED_KIND)))
++  assert.deepEqual(postedPathsIn(B.clonesDir), [],
++    '(h) [M3] and it writes nothing under `state-exams/posted/`')
++
++  // ── (h) [M3] and every worker prompt is the one BASE produces ────────────
++  // The BASE engine, out of a `git archive` of the checkout at the BASE this
++  // exam was written against, run over the SAME plan, the SAME repository and
++  // the SAME run-directory path — so the patch file paths the reviewer's
++  // prompt carries are identical by construction rather than by normalisation.
++  const BASE_SHA = '901fc874923210207e041f947407b8ea519c1ab2'
++  const baseTree = path.join(tmp, 'base-tree')
++  fs.mkdirSync(baseTree, { recursive: true })
++  // Both spawns take `simEnv()` rather than this process's environment: the
++  // sweep in `fleet/tests/test_sims_are_hermetic.mjs` reaches
++  // `exams/<slug>/test_*.mjs` (#890, its leg (j)) and holds an exam to the same
++  // hermeticity rule as a curated sim. `git` and `tar` both resolve on the PATH
++  // it builds, and neither reads a key of the parent.
++  const tar = execFileSync('git', ['-C', ROOT, 'archive', BASE_SHA],
++    { maxBuffer: 1 << 30, encoding: 'buffer', env: simEnv() })
++  execFileSync('tar', ['-x', '-C', baseTree], { input: tar, env: simEnv() })
++  const { runEngine: baseEngine } = await import(path.join(baseTree, 'fleet', 'run-engine.mjs'))
++
++  const promptsBase = path.join(tmp, 'prompts-base')
++  const BB = await driveRun({
++    label: 'B-at-base', repo: repoB, runDir: runDirB, post: null, expectedFile: ABSENT,
++    engine: baseEngine, promptDir: promptsBase,
++  })
++  assert.equal(BB.report.baseSha, B.report.baseSha,
++    '(h) [M3] sim precondition: both runs were cut at the same BASE — ' +
++    BB.report.baseSha + ' vs ' + B.report.baseSha)
++  assert.deepEqual(BB.labels, B.labels,
++    '(h) [M3] sim precondition: the same run — the same workers, in the same order, ' +
++    'under both engines. BASE dispatched ' + JSON.stringify(BB.labels) + ', HEAD ' +
++    JSON.stringify(B.labels))
++  const listing = (d) => fs.readdirSync(d).sort()
++  assert.ok(listing(promptsHead).length > 0,
++    '(h) [M3] sim precondition: prompts were recorded at all — ' +
++    JSON.stringify(listing(promptsHead)))
++  assert.deepEqual(listing(promptsHead), listing(promptsBase),
++    '(h) [M3] the same prompt files, one per dispatch, under both engines')
++  for (const file of listing(promptsBase)) {
++    const head = fs.readFileSync(path.join(promptsHead, file))
++    const atBase = fs.readFileSync(path.join(promptsBase, file))
++    assert.ok(head.equals(atBase),
++      '(h) [M3] every worker prompt of a run with no post is BYTE-IDENTICAL to the one ' +
++      'the same run produces under the BASE engine\'s prompt builder: `' + file +
++      '` differs.\n--- at BASE ---\n' + atBase.toString('utf8') +
++      '\n--- with this task ---\n' + head.toString('utf8'))
++  }
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// run D — one cell of the expected file differs from the post
++// leg (d) [M2], and (g) [M3] once more
++// ════════════════════════════════════════════════════════════════════════════
++{
++  const repoD = makeRepo(path.join(tmp, 'repo-d'))
++  const D = await driveRun({
++    label: 'D', repo: repoD, runDir: path.join(tmp, 'run-d'),
++    post: { expected: EXPECTED_PATH, content: CONTENT },
++    expectedFile: CONTENT_ONE_CELL_OFF,
++  })
++  const row = D.rowOf(PRODUCER)
++  assert.ok(row,
++    '(d) [M2] sim precondition: the producer has a row in the report: ' +
++    JSON.stringify(D.report.tasks))
++
++  // ── the finding, where the driver's own blocking findings are read ───────
++  const fixPrompts = D.promptOf('fix:' + PRODUCER + ':0')
++  assert.equal(fixPrompts.length, 1,
++    '(d) [M2] the finding routes to the task\'s `fix:' + PRODUCER + ':0` round exactly ' +
++    'as any blocking finding does: exactly one such round was dispatched. Dispatched: ' +
++    JSON.stringify(D.labels))
++  const inPrompt = handshakeLinesIn(fixPrompts[0])
++  assert.equal(inPrompt.length, 1,
++    '(d) [M2] and the round is handed EXACTLY ONE `' + FINDING_PREFIX + '` finding — ' +
++    'one differing cell is one finding. The prompt\'s blocking block held: ' +
++    JSON.stringify(handshakeLinesIn(fixPrompts[0])) + '\n' + fixPrompts[0])
++  assert.equal(detailBody(inPrompt[0]), DIFF_CELL,
++    '(d) [M2] whose detail is prefixed `' + FINDING_PREFIX + '` and carries the differing ' +
++    'cell as `<table>/<row>/<cell> got <posted> wanted <file>`: `' + DIFF_CELL +
++    '` — the post reads `true` at `todos/0/completed`, the file reads `false`. Got: ' +
++    JSON.stringify(inPrompt[0]))
++
++  // The same one finding on the record the fix worker reads.
++  const rounds = D.fake.commentsOn(UID[PRODUCER]).filter((b) => b.startsWith('review round 0:'))
++  assert.equal(rounds.length, 1,
++    '(d) [M2] one pre-review round is posted on the producer\'s issue, as any blocking ' +
++    'finding\'s round is. Got: ' + JSON.stringify(rounds))
++  assert.deepEqual(handshakeLinesIn(rounds[0]).map(detailBody), [DIFF_CELL],
++    '(d) [M2] and that post carries the one finding, spelled the same way: ' +
++    JSON.stringify(rounds[0]))
++
++  // …and on the row the run reports, which is the red that ended the task.
++  const noteLines = String(row.notes || '').split('; ').filter((l) => l.startsWith(FINDING_PREFIX))
++  assert.deepEqual(noteLines.map(detailBody), [DIFF_CELL],
++    '(d) [M2] the producer ends the run carrying that one finding and no other: ' +
++    JSON.stringify(row))
++
++  // ── `blocking`, and `actor` `implementer` ────────────────────────────────
++  // A `blocking` finding is one that stops the task where a minor one would
++  // not: the pass bought a repair round and, still unequal, the task never
++  // reached a reviewer.
++  assert.equal(row.status, 'failed',
++    '(d) [M2] the finding is `blocking`: the producer is stopped at review rather than ' +
++    'merged with a note. Got: ' + JSON.stringify(row))
++  assert.ok(!D.labels.some((l) => l.startsWith('review:' + PRODUCER + ':')),
++    '(d) [M2] and no referee was asked to read a patch whose own proof the driver had ' +
++    'already refused: ' + JSON.stringify(D.labels))
++  // `actor: implementer` is who the finding is routed TO. An `actor: plan`
++  // finding drives no fix round and travels to the gate as a `plan-defect`
++  // deferral instead; this one did the opposite, in both halves.
++  assert.deepEqual(D.report.deferredVerification.filter((d) => d && d.deliverable === PRODUCER), [],
++    '(d) [M2] `actor` is `implementer`, not `plan`: the finding is the implementer\'s to ' +
++    'clear, so it buys that fix round and reaches the gate as no `plan-defect` deferral. ' +
++    'Got: ' + JSON.stringify(D.report.deferredVerification))
++  assert.notEqual(row.actor, 'plan',
++    '(d) [M2] and the row is not parked for the plan: ' + JSON.stringify(row))
++
++  // ── (g) [M3] the post was read, so it is a fact on the log ──────────────
++  const facts = kindsOf(D.events, FACT_KIND)
++  assert.equal(facts.length, 1,
++    '(g) [M3] the post the pre-review pass read is appended once. Got: ' + JSON.stringify(facts))
++  assert.deepEqual(fieldsOf(facts[0], ['kind', 'task', 'expected', 'sha256']),
++    { kind: FACT_KIND, task: PRODUCER, expected: EXPECTED_PATH, sha256: sha256Of(CONTENT) },
++    '(g) [M3] with the digest of the POSTED content — what the issue carried, not what ' +
++    'the file held. Got: ' + JSON.stringify(facts[0]))
++  assert.equal(kindsOf(D.events, SETTLED_KIND).length, 0,
++    '(d) [M2] an unequal comparison settles nothing: no `' + SETTLED_KIND + '` event. ' +
++    'Got: ' + JSON.stringify(kindsOf(D.events, SETTLED_KIND)))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// run E — `expected` names a path the captured tree has not got
++// leg (e) [M2], and (g) [M3] once more
++// ════════════════════════════════════════════════════════════════════════════
++{
++  const MISSING = EXPECTED_DIR + 'never-written.json'
++  const repoE = makeRepo(path.join(tmp, 'repo-e'))
++  const E = await driveRun({
++    label: 'E', repo: repoE, runDir: path.join(tmp, 'run-e'),
++    post: { expected: MISSING, content: CONTENT },
++    expectedPath: MISSING, expectedFile: ABSENT,
++  })
++  const row = E.rowOf(PRODUCER)
++  const fixPrompts = E.promptOf('fix:' + PRODUCER + ':0')
++  assert.equal(fixPrompts.length, 1,
++    '(e) [M2] an `expected` path absent from the captured tree raises the SAME finding, ' +
++    'so it buys the same one `fix:' + PRODUCER + ':0` round. Dispatched: ' +
++    JSON.stringify(E.labels))
++  const lines = handshakeLinesIn(fixPrompts[0])
++  assert.equal(lines.length, 1,
++    '(e) [M2] exactly one `' + FINDING_PREFIX + '` finding: ' + fixPrompts[0])
++  assert.ok(detailBody(lines[0]).includes(MISSING),
++    '(e) [M2] and it NAMES THE PATH the post asked for — `' + MISSING + '`, which the ' +
++    'producer\'s captured tree has not got. Got: ' + JSON.stringify(lines[0]))
++  assert.ok(!detailBody(lines[0]).includes(' wanted '),
++    '(e) [M2] and it is not a cell comparison: there is no file to compare against. ' +
++    'Got: ' + JSON.stringify(lines[0]))
++  assert.equal(row.status, 'failed',
++    '(e) [M2] the same `blocking` standing: the producer is stopped at review. ' +
++    JSON.stringify(row))
++  assert.deepEqual(E.report.deferredVerification.filter((d) => d && d.deliverable === PRODUCER), [],
++    '(e) [M2] and the same `actor` `implementer` routing — no `plan-defect` deferral: ' +
++    JSON.stringify(E.report.deferredVerification))
++  assert.equal(kindsOf(E.events, SETTLED_KIND).length, 0,
++    '(e) [M2] nothing settled: ' + JSON.stringify(kindsOf(E.events, SETTLED_KIND)))
++  const facts = kindsOf(E.events, FACT_KIND)
++  assert.deepEqual(facts.map((f) => fieldsOf(f, ['kind', 'task', 'expected', 'sha256'])),
++    [{ kind: FACT_KIND, task: PRODUCER, expected: MISSING, sha256: sha256Of(CONTENT) }],
++    '(g) [M3] the post was well-formed and the driver read it, so it is one ' +
++    '`' + FACT_KIND + '` on the log — the file it named being absent is M2\'s finding, ' +
++    'not a reason to forget the post. Got: ' + JSON.stringify(facts))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// runs F and F2 — the two malformed halves [M5]
++// ════════════════════════════════════════════════════════════════════════════
++const malformed = async (leg, label, post, names) => {
++  const repo = makeRepo(path.join(tmp, 'repo-' + label))
++  const R = await driveRun({
++    label, repo, runDir: path.join(tmp, 'run-' + label),
++    post, expectedFile: CONTENT,
++  })
++  const fixPrompts = R.promptOf('fix:' + PRODUCER + ':0')
++  assert.equal(fixPrompts.length, 1,
++    leg + ' [M5] a malformed value raises the same `' + FINDING_PREFIX + '` finding at ' +
++    'the producer\'s pre-review pass, which buys the one `fix:' + PRODUCER + ':0` round ' +
++    'any blocking finding buys. Dispatched: ' + JSON.stringify(R.labels))
++  const lines = handshakeLinesIn(fixPrompts[0])
++  assert.equal(lines.length, 1,
++    leg + ' [M5] exactly one such finding: ' + fixPrompts[0])
++  assert.ok(detailBody(lines[0]).includes(names),
++    leg + ' [M5] whose detail NAMES THE MALFORMED FIELD — `' + names + '`. Got: ' +
++    JSON.stringify(lines[0]))
++  assert.ok(!detailBody(lines[0]).includes(' wanted '),
++    leg + ' [M5] and never M2\'s cell comparison — a malformed post is refused before ' +
++    'any file is compared. Got: ' + JSON.stringify(lines[0]))
++  assert.equal(R.rowOf(PRODUCER).status, 'failed',
++    leg + ' [M5] the same `blocking` standing: ' + JSON.stringify(R.rowOf(PRODUCER)))
++  assert.deepEqual(R.report.deferredVerification.filter((d) => d && d.deliverable === PRODUCER), [],
++    leg + ' [M5] and the same `actor` `implementer` routing — no `plan-defect` deferral: ' +
++    JSON.stringify(R.report.deferredVerification))
++  assert.deepEqual(postedPathsIn(R.clonesDir), [],
++    leg + ' [M5] a malformed value writes NO seed file under M1: nothing under ' +
++    '`state-exams/posted/` anywhere in the run\'s clones. Found: ' +
++    JSON.stringify(postedPathsIn(R.clonesDir)))
++  assert.deepEqual(kindsOf(R.events, FACT_KIND), [],
++    leg + ' [M5] and never a `' + FACT_KIND + '` event: a malformed post is not a fact ' +
++    'the run reached. Got: ' + JSON.stringify(kindsOf(R.events, FACT_KIND)))
++  assert.deepEqual(kindsOf(R.events, SETTLED_KIND), [],
++    leg + ' [M5] and nothing settled: ' + JSON.stringify(kindsOf(R.events, SETTLED_KIND)))
++  return R
++}
++await malformed('(f)', 'f', { expected: EXPECTED_PATH, content: [...CONTENT, { extra: true }] }, 'content')
++await malformed('(f2)', 'f2', { expected: 'expected/prod.json', content: CONTENT }, 'expected')
++
++// ════════════════════════════════════════════════════════════════════════════
++// run I — the same plan, started without `--kata`
++// leg (i) [M4]
++// ════════════════════════════════════════════════════════════════════════════
++{
++  const repoI = makeRepo(path.join(tmp, 'repo-i'))
++  // The hub's client is handed to the engine and its RECORD is not, which is
++  // what a run started without `--kata` is: the engine reads `kataOn` off both
++  // halves. The client is present only so that "makes no `getIssue`" is a
++  // counted zero rather than an absence nothing could have counted.
++  const I = await driveRun({
++    label: 'I', repo: repoI, runDir: path.join(tmp, 'run-i'),
++    post: { expected: EXPECTED_PATH, content: CONTENT },
++    expectedFile: CONTENT, kataOn: false,
++  })
++  assert.deepEqual(I.labels.filter((l) => l.startsWith('impl:')).sort(), ['impl:1', 'impl:2'],
++    '(i) [M4] sim precondition: the same two-task plan ran both tasks: ' +
++    JSON.stringify(I.labels))
++  assert.deepEqual(I.fake.of('getIssue'), [],
++    '(i) [M4] a run with no kata record makes NO `getIssue` for the handshake — nor for ' +
++    'anything else. The fake hub recorded: ' + JSON.stringify(I.fake.calls.map((c) => c.method)))
++  const handshakeEvents = I.events.filter((e) => String(e.kind || '').startsWith('handshake:'))
++  assert.deepEqual(handshakeEvents, [],
++    '(i) [M4] and appends no event whose kind begins `handshake:` — of any kind, the ' +
++    'absent one included. Got: ' + JSON.stringify(handshakeEvents))
++  assert.deepEqual(kindsOf(I.events, FACT_KIND), [],
++    '(i) [M4] and M3\'s no-post half holds: no `' + FACT_KIND + '` event. Got: ' +
++    JSON.stringify(kindsOf(I.events, FACT_KIND)))
++  assert.deepEqual(postedPathsIn(I.clonesDir), [],
++    '(i) [M4] and nothing is written under `state-exams/posted/`: ' +
++    JSON.stringify(postedPathsIn(I.clonesDir)))
++  for (const [pass] of [['base'], ['0']]) {
++    assert.ok(I.witness[CONSUMER + '-' + pass + '/absent'] !== undefined,
++      '(i) [M4] read from the consumer\'s own exam command at pass `' + pass + '`, which ' +
++      'found no seed: ' + JSON.stringify(Object.keys(I.witness)))
++  }
++}
++
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine_reuse.mjs b/fleet/tests/test_run_engine_reuse.mjs
+index 37594b4a75f62c0d1219a8920e9949dfc812ef25..3c5939d6a82e8c88c472d534d5215037392f3403 100644
+--- a/fleet/tests/test_run_engine_reuse.mjs
++++ b/fleet/tests/test_run_engine_reuse.mjs
+@@ -434,26 +434,31 @@ const labelled = (labels, prefix) => labels.filter((l) => l.startsWith(prefix))
+     })
+     const where = ' [' + shape.name + ']'
+ 
+-    // Exactly one read per task — the read that checks the revision and takes
+-    // the fact sheet, and no second one.
+-    const reads = s.fake.of('getIssue')
+-    assert.equal(reads.length, 2,
+-      '(a) [M1] the hub is read exactly once per task; got ' + reads.length + ': ' +
+-      JSON.stringify(reads.map((c) => c.uid)) + where)
+-    for (const uid of ['U-1', 'U-2']) {
+-      assert.equal(reads.filter((c) => c.uid === uid).length, 1,
+-        '(a) [M1] issue ' + uid + ' was read exactly once' + where)
+-    }
+-
+-    // At SETUP: every read is behind the `Wave 1` mark and behind the first
+-    // worker of the run.
+-    const lastRead = lastAt(s.trace, (e) => e.at === 'hub' && e.method === 'getIssue')
++    // The SETUP reads: the run's FIRST read of each task's issue — the one that
++    // checks the revision and takes the fact sheet — is one per task and is
++    // taken before any worker. A read the engine takes later in the run belongs
++    // to another clause (the state handshake takes one per task inside the
++    // wave), so M1 is measured over the reads that precede the first dispatch.
+     const firstDispatch = firstAt(s.trace, (e) => e.at === 'dispatch')
+     const wave1 = firstAt(s.trace, (e) => e.at === 'phase' && e.phase === 'Wave 1')
+     assert.notEqual(firstDispatch, -1, '(a) sim precondition: a worker was dispatched' + where)
+     assert.notEqual(wave1, -1,
+       '(a) sim precondition: the engine announced the `Wave 1` phase; got ' +
+       JSON.stringify(s.phases) + where)
++    const readsAt = s.trace
++      .map((e, i) => ((e.at === 'hub' && e.method === 'getIssue') ? { i, uid: e.uid } : null))
++      .filter(Boolean)
++    const setupReads = readsAt.filter((r) => r.i < firstDispatch)
++    assert.equal(setupReads.length, 2,
++      '(a) [M1] the hub is read exactly once per task at setup; got ' + setupReads.length + ': ' +
++      JSON.stringify(setupReads.map((r) => r.uid)) + where)
++    for (const uid of ['U-1', 'U-2']) {
++      assert.equal(setupReads.filter((r) => r.uid === uid).length, 1,
++        '(a) [M1] issue ' + uid + ' was read exactly once at setup' + where)
++      assert.equal(readsAt.find((r) => r.uid === uid).i < firstDispatch, true,
++        '(a) [M1] and that setup read is issue ' + uid + '\'s first read of the run' + where)
++    }
++    const lastRead = setupReads[setupReads.length - 1].i
+     assert.ok(lastRead < firstDispatch,
+       '(a) [M1] every task\'s issue is read before the first worker is dispatched — the ' +
+       'read moved ahead of wave 1. Trace: ' + JSON.stringify(s.trace.slice(0, 12)) + where)
+@@ -614,10 +619,14 @@ const labelled = (labels, prefix) => labels.filter((l) => l.startsWith(prefix))
+     '(c) [M3] a reused task is never `unfinished`: ' + JSON.stringify(s.report.unfinished))
+ 
+   // Setup still read both issues, exactly once each — the read that FOUND the
+-  // stamp is the same one M1 counts.
+-  assert.equal(s.fake.of('getIssue').length, 2,
++  // stamp is the same one M1 counts. Reads the engine takes later, inside the
++  // wave, answer another clause and are not setup's.
++  const cFirstDispatch = firstAt(s.trace, (e) => e.at === 'dispatch')
++  const cSetupReads = s.trace.slice(0, cFirstDispatch === -1 ? s.trace.length : cFirstDispatch)
++    .filter((e) => e.at === 'hub' && e.method === 'getIssue')
++  assert.equal(cSetupReads.length, 2,
+     '(c) [M1] the reuse is discovered by the setup read itself: exactly one `getIssue` per ' +
+-    'task; got ' + JSON.stringify(s.fake.of('getIssue').map((c) => c.uid)))
++    'task; got ' + JSON.stringify(cSetupReads.map((c) => c.uid)))
+ 
+   // ── (e) [M5] the whole tree: main's move and the parked run's work ─────────
+   assert.equal(blobAt(s.integ, reuseHead, 'third.txt'), THIRD_TXT,
+@@ -677,14 +686,20 @@ const labelled = (labels, prefix) => labels.filter((l) => l.startsWith(prefix))
+     '(c) [M2] naming the reused task: ' + JSON.stringify(evs[0]))
+ 
+   // Both issues are read at setup — every task of EVERY wave, not only wave 1's.
+-  const reads = s.fake.of('getIssue')
++  // Measured over the reads that precede the first worker: a read the engine
++  // takes once the waves are running is another clause's, not setup's.
++  const wave1 = firstAt(s.trace, (e) => e.at === 'phase' && e.phase === 'Wave 1')
++  const firstWorker = firstAt(s.trace, (e) => e.at === 'dispatch')
++  assert.notEqual(firstWorker, -1, '(c) sim precondition: a worker was dispatched')
++  const reads = s.trace.slice(0, firstWorker)
++    .filter((e) => e.at === 'hub' && e.method === 'getIssue')
+   assert.equal(reads.length, 2,
+     '(c) [M1] both waves\' issues are read, once each; got ' +
+     JSON.stringify(reads.map((c) => c.uid)))
+-  const lastRead = lastAt(s.trace, (e) => e.at === 'hub' && e.method === 'getIssue')
+-  const wave1 = firstAt(s.trace, (e) => e.at === 'phase' && e.phase === 'Wave 1')
+-  assert.ok(wave1 !== -1 && lastRead < wave1,
+-    '(c) [M1] including wave 2\'s, before the `Wave 1` mark: ' +
++  const lastRead = lastAt(s.trace.slice(0, firstWorker),
++    (e) => e.at === 'hub' && e.method === 'getIssue')
++  assert.ok(wave1 !== -1 && lastRead < firstWorker,
++    '(c) [M1] including wave 2\'s, before the run\'s first worker: ' +
+     JSON.stringify(s.trace.slice(0, 12)))
+ 
+   // A reused task is folded at setup, not by the run: under the ready set
+diff --git a/fleet/tests/test_run_engine_state_handshake.mjs b/fleet/tests/test_run_engine_state_handshake.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..e4ebea29d3730a41be500bbb1fb4a3f4c7c27de6
+--- /dev/null
++++ b/fleet/tests/test_run_engine_state_handshake.mjs
+@@ -0,0 +1,25 @@
++/**
++ * fleet/tests/test_run_engine_state_handshake.mjs — the Proof path of task 2
++ * (*the driver's two reads — seed the consumer from the post, refuse a post the
++ * expected file contradicts*), pointing at where the measurement actually
++ * lives.
++ *
++ * The exam for this task is not here. A run writes its exams into the reserved
++ * directory `fleet/tests/exams/<slug>/` (#890) — this run's `EXAM PATHS:` line
++ * sent it to `exams/run_155/` — and the driver's handoff then puts the Proof
++ * path back to BASE (`run-engine.mjs`, `for (const [p] of examMoves) await
++ * restoreToBase(cloneDir, p)`), so the branch holds the measurement once, where
++ * the reserved directory says.
++ *
++ * The Proof's own `Run:` line still names THIS path, though, and the driver
++ * runs it verbatim (`examRunCmd` is rewritten through `examMoves`; `proofRuns`
++ * is not). So this file is what stands at the named path: a single static
++ * import of the landed exam, which executes it in this process and prints its
++ * own `ALL TESTS PASSED`. It is a pointer, not a second copy — there is exactly
++ * one set of assertions in the tree, and it is the examiner's.
++ *
++ * An import rather than a child process on purpose: a spawn carrying a
++ * `test_*.mjs` literal is a sibling-sim run, which
++ * `fleet/tests/test_sims_are_hermetic.mjs` names as an offender.
++ */
++import './exams/run_155/test_run_engine_state_handshake.mjs'
+diff --git a/fleet/tests/test_worker_kata_env.mjs b/fleet/tests/test_worker_kata_env.mjs
+index 28c433b7c89e950985ed91fcb0f9af08c1b28abc..4a51db0801b701fd5a4d06b31001499b25453e3a 100644
+--- a/fleet/tests/test_worker_kata_env.mjs
++++ b/fleet/tests/test_worker_kata_env.mjs
+@@ -623,7 +623,12 @@ function kataRig ({ repo, runDir, waves, stub, stamp = 'sim', kata, extraArgs =
+       'U-T2': { revision: 1, short_id: SHORT['U-T2'], metadata: {} },
+     },
+   })
++  // The reads taken before the first worker — setup's. A read the engine takes
++  // later in the run answers another clause (the state handshake takes one per
++  // task inside the wave); what M3 counts is the read the short id comes from.
++  let setupReads = null
+   const stub = async (prompt, opts, cwd) => {
++    if (setupReads === null) setupReads = fake.of('getIssue').slice()
+     const kind = String(opts.label).split(':')[0]
+     if (kind === 'impl') {
+       const id = String(opts.label).split(':')[1]
+@@ -652,9 +657,9 @@ function kataRig ({ repo, runDir, waves, stub, stamp = 'sim', kata, extraArgs =
+   assert.deepEqual(report.waveMerges.flatMap((m) => m.branches).slice().sort(), ['T1', 'T2'],
+     '(c) [M3] so both tasks went through dispatch — ' + JSON.stringify(report.waveMerges))
+ 
+-  const reads = fake.of('getIssue')
++  const reads = setupReads || []
+   assert.equal(reads.length, 2,
+-    '(c) [M3] exactly one getIssue per task through the whole dispatch — no second hub read ' +
++    '(c) [M3] exactly one getIssue per task before the first worker — no second hub read ' +
+     'for the short id; got ' + reads.length + ': ' + JSON.stringify(reads.map((c) => c.uid)))
+   for (const uid of ['U-T1', 'U-T2']) {
+     const forUid = reads.filter((c) => c.uid === uid)
