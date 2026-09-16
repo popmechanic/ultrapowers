@@ -1366,7 +1366,183 @@ const namesInOrder = (hay, needles) => {
     JSON.stringify(verdictRows.map((l) => l.slice(0, 300))))
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// Task 1 of the receipts plan — "a red exam and a resolver miss leave a
+// receipt" (kata popmechanic-ultrapowers#d56q).
+//
+// The Machine clause these legs grade, restated:
+//   M1 — `examReceiptOf({ cmd, exit, stdout, headSha, landings, files })`,
+//        exported from `fleet/run-engine.mjs`, returns `null` when `exit` is `0`
+//        and otherwise `{ paths, evidence }` — `paths` the sorted de-duplicated
+//        union of `landings` and `files`, `evidence.read` `exit <n>` followed by
+//        a colon, a space and the last non-empty line of `stdout`,
+//        `evidence.against` `<cmd> at <headSha>`, each string cut to the
+//        500-character bound — and every `driver:exam-run` event spreads that
+//        object when it is not `null` and adds no key when it is, so a red row
+//        carries `paths` and `evidence` and a green row carries neither.
+//
+// The Proof legs answered here:
+//   (a) [M1] the function itself, with no run at all: the exit-1 shape asserted
+//       by full equality, the exit-0 `null`, and the 500-character bound.
+//   (b) [M1] the engine's own `driver:exam-run` row at `iter: 0` — a red exam
+//       carries the sorted union of the exam's landing path and the task's
+//       `files`, an `evidence.read` beginning `exit 1` and an `evidence.against`
+//       naming the exam command and the task's captured 40-hex `headSha`; the
+//       same task with a green exam carries neither key.
+//
+// The receipt shape this plan's tasks share: `paths` is an array of
+// repo-relative path strings, sorted, de-duplicated, never empty; `evidence` is
+// `{ read, against }`, two strings each at most 500 characters, a longer one cut
+// to 499 characters plus `…`.
+
+// ── leg (a) [M1]: the pure export, pinned without a run ─────────────────────
+// Imported dynamically off the module this file already imports statically, so
+// a tree that does not export it yet fails HERE, on the export's own assertion,
+// rather than at this file's first import line.
+{
+  const engineMod = await import('../run-engine.mjs')
+  const examReceiptOf = engineMod.examReceiptOf
+  assert.equal(typeof examReceiptOf, 'function',
+    'leg (a) [M1]: `fleet/run-engine.mjs` exports `examReceiptOf` — the pure function this ' +
+    'plan\'s other tasks name, so the shape can be pinned without a run: ' +
+    JSON.stringify(Object.keys(engineMod).sort()))
+
+  const SHA = '0123456789abcdef0123456789abcdef01234567'   // 40 hex
+  const CMD = 'bash t.sh'
+
+  // The exit-1 case, by full equality: `paths` the sorted de-duplicated union
+  // (`tests/t.mjs` is in BOTH lists and appears once), `read` the exit code, a
+  // colon, a space and the last NON-EMPTY line of the output (the trailing
+  // newline leaves an empty last line, which is not it), `against` the command
+  // and the head it was run at.
+  const red = examReceiptOf({ cmd: CMD, exit: 1, stdout: 'a\nFAIL x\n', headSha: SHA,
+                              landings: ['tests/t.mjs'], files: ['one.txt', 'tests/t.mjs'] })
+  assert.deepEqual(red,
+    { paths: ['one.txt', 'tests/t.mjs'],
+      evidence: { read: 'exit 1: FAIL x', against: CMD + ' at ' + SHA } },
+    'leg (a) [M1]: a red exam\'s receipt is exactly `{ paths, evidence }` — the sorted ' +
+    'de-duplicated union of `landings` and `files`, `exit 1: FAIL x`, and `' + CMD + ' at ' +
+    '<headSha>`: ' + JSON.stringify(red))
+
+  // The exit-0 case: no receipt at all, and `null` rather than an empty object —
+  // a green row is what spreads it and must gain no key.
+  assert.strictEqual(
+    examReceiptOf({ cmd: CMD, exit: 0, stdout: 'a\nFAIL x\n', headSha: SHA,
+                    landings: ['tests/t.mjs'], files: ['one.txt', 'tests/t.mjs'] }),
+    null,
+    'leg (a) [M1]: `exit: 0` returns `null` — a green exam leaves no receipt, which is what ' +
+    'keeps every existing pin of the green `driver:exam-run` shape true')
+
+  // The bound: a 900-character last line is cut to 499 characters plus `…`.
+  const LONG = 'z'.repeat(900)
+  const cut = examReceiptOf({ cmd: CMD, exit: 1, stdout: 'first\n' + LONG + '\n', headSha: SHA,
+                              landings: ['tests/t.mjs'], files: ['one.txt'] })
+  assert.ok(cut && cut.evidence && typeof cut.evidence.read === 'string',
+    'leg (a) [M1]: a red receipt for the long-line case: ' + JSON.stringify(cut))
+  assert.equal(cut.evidence.read.length, 500,
+    'leg (a) [M1]: a 900-character last line leaves `read` exactly 500 characters long — the ' +
+    'block is bounded however long the exam\'s output line was: ' +
+    JSON.stringify(cut.evidence.read.slice(0, 40) + '…' + cut.evidence.read.slice(-10)))
+  assert.ok(cut.evidence.read.endsWith('…'),
+    'leg (a) [M1]: and ends in `…`, so a reader can tell a cut string from a whole one: ' +
+    JSON.stringify(cut.evidence.read.slice(-10)))
+  assert.equal(cut.evidence.read, ('exit 1: ' + LONG).slice(0, 499) + '…',
+    'leg (a) [M1]: the cut is the plan\'s shared literal — the 500-character bound taken as the ' +
+    'first 499 characters of `exit <n>: <last non-empty line>` plus `…`: ' +
+    JSON.stringify(cut.evidence.read.slice(0, 40)))
+}
+
+// ── leg (b) [M1]: the red `driver:exam-run` row carries the receipt ──────────
+// The exam is red on the driver's pre-review pass (no `repaired.txt` in the
+// implementer's clone) and green on the re-execution the repair round buys, so
+// ONE run produces both rows the leg names: a red `iter: 0` row that must carry
+// the receipt and a green `iter: 0` row that must carry no key at all.
+{
+  const RECEIPT_EXAM = '#!/bin/bash\n' +
+    'echo exam-opened\n' +
+    'echo "FAILED: repaired.txt is missing"\n' +
+    '[ -f repaired.txt ]\n'
+  const EXAM_CMD = 'bash t1_test.sh'
+  const { row, evs } = await scenario({
+    task: entry({ proofTests: ['t1_test.sh'], testCmd: EXAM_CMD }),
+    examScript: RECEIPT_EXAM,
+    onImpl: (cwd) => fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n'),
+    onFix: (cwd) => fs.writeFileSync(path.join(cwd, 'repaired.txt'), 'written-by-the-repair-round\n'),
+  })
+
+  const exams = ofKind(evs, 'driver:exam-run')
+  assert.deepEqual(exams.map((e) => [e.iter, e.exit]), [[0, 1], [0, 0]],
+    'leg (b) [M1]: sim precondition — the driver\'s pre-review pass runs the exam red, the ' +
+    'repair round it buys makes it green, and both executions belong to that pass (`iter: 0`): ' +
+    JSON.stringify(exams.map((e) => [e.iter, e.exit])))
+  const redRow = exams[0]
+
+  // [M1] `paths`: the sorted union of the exam's LANDING path (`t1_test.sh` is
+  // under neither test root, so its landing is itself) and the task's `files`.
+  assert.deepEqual(redRow.paths, ['one.txt', 't1_test.sh'],
+    'leg (b) [M1]: the red row\'s `paths` are the sorted union of the exam\'s landing path and ' +
+    'the task\'s `files` — which files this row was about: ' + JSON.stringify(redRow))
+
+  // [M1] `evidence.read`: `exit <n>`, then the last non-empty line of the tail
+  // the row already carries — read off the row's own `stdout`, so the pin is
+  // the clause's rule and not this script's wording.
+  assert.ok(redRow.evidence && typeof redRow.evidence.read === 'string',
+    'leg (b) [M1]: the red row carries an `evidence` object: ' + JSON.stringify(redRow))
+  assert.ok(String(redRow.evidence.read).startsWith('exit 1'),
+    'leg (b) [M1]: its `read` begins `exit 1` — the exit the exam returned: ' +
+    JSON.stringify(redRow.evidence.read))
+  const lastLine = String(redRow.stdout || '').split('\n').filter((l) => l.trim() !== '').pop()
+  assert.equal(redRow.evidence.read, 'exit 1: ' + lastLine,
+    'leg (b) [M1]: and it is `exit <n>` followed by a colon, a space and the last non-empty ' +
+    'line of the output the row already carries: ' + JSON.stringify(redRow.evidence.read) +
+    ' against ' + JSON.stringify(redRow.stdout))
+
+  // [M1] `evidence.against`: the exam command and the head the driver ran it
+  // at — the task's own captured `headSha`, which the row the run returns
+  // carries too.
+  const against = String(redRow.evidence.against || '')
+  assert.ok(against.includes(EXAM_CMD),
+    'leg (b) [M1]: `against` names the exam command: ' + JSON.stringify(against))
+  const sha = (against.match(/[0-9a-f]{40}/) || [])[0]
+  assert.ok(sha,
+    'leg (b) [M1]: `against` names a 40-hex sha — what the driver read, against what: ' +
+    JSON.stringify(against))
+  assert.equal(against, EXAM_CMD + ' at ' + sha,
+    'leg (b) [M1]: spelled `<cmd> at <headSha>`: ' + JSON.stringify(against))
+  assert.equal(sha, row.headSha,
+    'leg (b) [M1]: and that sha IS the task\'s captured head — the graded tree the exam was run ' +
+    'on, not some other coordinate: ' + JSON.stringify({ against, headSha: row.headSha }))
+
+  // [M1] the green re-execution of the SAME run gains no key.
+  const greenRow = exams[1]
+  assert.equal('paths' in greenRow, false,
+    'leg (b) [M1]: the green re-execution\'s row has no `paths` key: ' + JSON.stringify(greenRow))
+  assert.equal('evidence' in greenRow, false,
+    'leg (b) [M1]: and no `evidence` key: ' + JSON.stringify(greenRow))
+}
+
+// ── leg (b) [M1]: a task whose exam is green throughout carries neither key ──
+{
+  const GREEN_EXAM = '#!/bin/bash\necho exam-line\n[ -f one.txt ]\n'
+  const EXAM_CMD = 'bash t1_test.sh'
+  const { row, evs } = await scenario({
+    task: entry({ proofTests: ['t1_test.sh'], testCmd: EXAM_CMD }),
+    examScript: GREEN_EXAM,
+    onImpl: (cwd) => fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n'),
+  })
+  const exams = ofKind(evs, 'driver:exam-run')
+  assert.deepEqual(exams.map((e) => [e.cmd, e.exit, e.iter]), [[EXAM_CMD, 0, 0]],
+    'leg (b) [M1]: sim precondition — one green exam execution, on the driver\'s own pass: ' +
+    JSON.stringify(exams.map((e) => [e.cmd, e.exit, e.iter])))
+  assert.equal('paths' in exams[0], false,
+    'leg (b) [M1]: a green `driver:exam-run` row has no `paths` key — `examReceiptOf` returned ' +
+    '`null` and the spread added nothing: ' + JSON.stringify(exams[0]))
+  assert.equal('evidence' in exams[0], false,
+    'leg (b) [M1]: and no `evidence` key: ' + JSON.stringify(exams[0]))
+  assert.equal(row.status, 'done', 'leg (b) [M1]: sim precondition: ' + JSON.stringify(row))
+}
+
 // [M5] leg (f): the sentinel below is this sim's — its existing legs, the #632
-// ones, the #713 ones and the #1037 §3 ones. It is printed only if every
-// assertion above held.
+// ones, the #713 ones, the #1037 §3 ones and the receipt legs above. It is
+// printed only if every assertion above held.
 console.log('ALL TESTS PASSED')

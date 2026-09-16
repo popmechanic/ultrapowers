@@ -741,4 +741,137 @@ const BLOCKED_REPLY = { status: 'BLOCKED', hunks: [], notes: 'cannot' }
     'this leg. Row: ' + JSON.stringify(row))
 }
 
+// Task 1 of the receipts plan — "a red exam and a resolver miss leave a
+// receipt" (kata popmechanic-ultrapowers#d56q).
+//
+// The Machine clause these legs grade, restated:
+//   M2 — `resolveConflicts` is called from the wave loop with
+//        `onEvent: appendEvent`, so each resolver dispatch of a wave fold
+//        appends one `resolver:reply` event `{label, conflict, attempt,
+//        status}`; a row whose `status` is not `RESOLVED` also carries `paths`
+//        `[<the conflicted path>]` and `evidence` whose `read` begins with that
+//        status and whose `against` names the conflict's hunks file; a row whose
+//        `status` is `RESOLVED` carries neither key.
+//
+// The Proof legs answered here:
+//   (c) [M2] the BLOCKED-resolver run of this rig: exactly one `resolver:reply`
+//       on the log, `label` `resolve:wave2:1:1`, `status` `BLOCKED`, `paths`
+//       exactly `['a.txt']`, `evidence.read` beginning `BLOCKED`,
+//       `evidence.against` ending in the basename of the conflict's hunks file.
+//   (d) [M2] the RESOLVED run of the same rig: exactly one `resolver:reply`,
+//       `status` `RESOLVED`, with no `paths` key and no `evidence` key.
+//
+// At BASE the wave loop passes no `onEvent`, so `resolveConflicts` emits
+// nothing and both legs fail on the count of the rows themselves.
+//
+// The rig is the overlapping run legs (a), (b) and (d) above drive — A and B
+// both rewriting line 2 of the seeded `a.txt`, `impl:A` held until B has
+// adopted — with one addition: the resolver's own brief is KEPT, because it is
+// where the conflict's hunks file is named (`resolveConflicts` writes
+// `HUNKS FILE: <path>` into every dispatch), and leg (c) reads that basename
+// off the brief rather than guessing at the kernel's layout.
+const receiptRun = async ({ tag, resolver }) => {
+  const seen = { prompt: null }
+  const run = await drive({
+    tag,
+    tasks: [taskOf('A', { files: ['a.txt'], writes: ['a.txt'] }),
+            taskOf('B', { files: ['a.txt'], writes: ['a.txt'] }),
+            taskOf('C')],
+    edges: [['A', 'C']],
+    width: 2,
+    foldAgeMs: 0,
+    makeStub: (runDir) => async (prompt, opts, cwd) => {
+      const [kind, id] = String(opts.label).split(':')
+      if (kind === 'review') return cannedReview(runDir, opts.label)
+      if (kind === 'resolve') {
+        seen.prompt = String(prompt)
+        openWorker(runDir, opts.label)
+        workerEnd(runDir, opts.label)
+        return resolver
+      }
+      if (kind !== 'impl') throw new Error('unexpected dispatch: ' + opts.label)
+      workerStart(runDir, opts.label, cwd)
+      if (id === 'A') {
+        await waitUntil(() => namingTask(adoptionsOf(readEvents(runDir)), 'B') !== undefined)
+        rewriteLine(cwd, 2, 'A2')
+      } else if (id === 'B') {
+        await waitUntil(() => readEvents(runDir).some((e) => isStart(e, 'impl:A')), OVERLAP_MS)
+        rewriteLine(cwd, 2, 'B2')
+      } else {
+        fs.writeFileSync(path.join(cwd, id + '.txt'), 'from ' + id + '\n')
+      }
+      const reply = doneImpl(cwd)
+      workerEnd(runDir, opts.label)
+      return reply
+    },
+  })
+  return { ...run, seen }
+}
+const repliesOf = (log) => log.filter((e) => e.kind === 'resolver:reply')
+
+// ── leg (c) [M2]: the BLOCKED reply's row is a receipt ──────────────────────
+{
+  const run = await receiptRun({ tag: 'receipt-blocked', resolver: BLOCKED_REPLY })
+  assert.deepEqual(run.labels.filter((l) => String(l).startsWith('resolve:')),
+    ['resolve:wave2:1:1'],
+    '(c)/M2: sim precondition — the second epoch narrates one conflict and dispatches one ' +
+    'resolver: ' + JSON.stringify(run.labels))
+
+  const replies = repliesOf(run.log)
+  assert.equal(replies.length, 1,
+    '(c)/M2: exactly ONE `resolver:reply` event on the run\'s own log — the wave loop calls ' +
+    '`resolveConflicts` with `onEvent: appendEvent`, so each resolver dispatch of a wave fold ' +
+    'appends its row; at BASE the wave loop passes no `onEvent` and the log carries none: ' +
+    shownLog(run.log))
+  const reply = replies[0]
+  assert.equal(reply.label, 'resolve:wave2:1:1',
+    '(c)/M2: the row names the dispatch it reports — conflict 1 of epoch 2, first attempt: ' +
+    JSON.stringify(reply))
+  assert.equal(reply.conflict, 1, '(c)/M2: its `conflict`: ' + JSON.stringify(reply))
+  assert.equal(reply.attempt, 1, '(c)/M2: its `attempt`: ' + JSON.stringify(reply))
+  assert.equal(reply.status, 'BLOCKED',
+    '(c)/M2: and the status the resolver answered: ' + JSON.stringify(reply))
+
+  assert.deepEqual(reply.paths, ['a.txt'],
+    '(c)/M2: a row whose status is not `RESOLVED` carries `paths` — exactly the conflicted ' +
+    'path, which file the miss was about: ' + JSON.stringify(reply))
+  assert.ok(reply.evidence && typeof reply.evidence.read === 'string' &&
+            typeof reply.evidence.against === 'string',
+    '(c)/M2: and an `evidence` object of two strings: ' + JSON.stringify(reply))
+  assert.ok(reply.evidence.read.startsWith('BLOCKED'),
+    '(c)/M2: whose `read` begins with that status — what the driver read: ' +
+    JSON.stringify(reply.evidence.read))
+
+  // The hunks file, off the brief the resolver was actually handed.
+  const m = /HUNKS FILE: (\S+)/.exec(String(run.seen.prompt || ''))
+  assert.ok(m,
+    '(c)/M2: sim precondition — the resolver\'s brief names its hunks file: ' +
+    JSON.stringify(String(run.seen.prompt || '').slice(0, 400)))
+  const hunksBase = path.basename(m[1])
+  assert.ok(reply.evidence.against.endsWith(hunksBase),
+    '(c)/M2: and whose `against` ends in the basename of the conflict\'s hunks file (`' +
+    hunksBase + '`) — the thing the reading was made against: ' +
+    JSON.stringify(reply.evidence.against))
+}
+
+// ── leg (d) [M2]: a RESOLVED reply's row is not a receipt ───────────────────
+{
+  const run = await receiptRun({ tag: 'receipt-resolved', resolver: RESOLVED_REPLY })
+  assert.deepEqual(run.labels.filter((l) => String(l).startsWith('resolve:')),
+    ['resolve:wave2:1:1'],
+    '(d)/M2: sim precondition — one resolver dispatch: ' + JSON.stringify(run.labels))
+
+  const replies = repliesOf(run.log)
+  assert.equal(replies.length, 1,
+    '(d)/M2: exactly one `resolver:reply` event for the one dispatch — a resolved conflict is ' +
+    'reported too, it simply carries no receipt: ' + shownLog(run.log))
+  const reply = replies[0]
+  assert.equal(reply.label, 'resolve:wave2:1:1', '(d)/M2: ' + JSON.stringify(reply))
+  assert.equal(reply.status, 'RESOLVED', '(d)/M2: ' + JSON.stringify(reply))
+  assert.equal('paths' in reply, false,
+    '(d)/M2: a `RESOLVED` row carries no `paths` key — a receipt states what the driver could ' +
+    'not settle, and this one settled: ' + JSON.stringify(reply))
+  assert.equal('evidence' in reply, false,
+    '(d)/M2: and no `evidence` key: ' + JSON.stringify(reply))
+}
 console.log('ALL TESTS PASSED')

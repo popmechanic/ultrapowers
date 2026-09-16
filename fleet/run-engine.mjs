@@ -459,6 +459,64 @@ export const examEvidenceBlock = (exam) => {
     'stderr combined, last 4,000 characters.' +
     '\n\n$ ' + exam.cmd + '\nexit ' + exam.exit + '\n' + exam.stdout
 }
+// ── the receipt a red row carries (#810 rules 1 and 4) ──────────────────────
+// A red exam and a resolver miss were the two places the run's record said
+// THAT something failed without saying what it was about or what the driver
+// read. The receipt is the missing half, and its shape is one literal every
+// kind that carries one agrees on: `paths`, repo-relative, sorted and
+// de-duplicated, and `evidence` — `read`, what the driver saw, and `against`,
+// what it read it against. Both strings are bounded, so a record stays
+// legible however long a failing test's last line runs and a whole run's
+// receipts stay under any reader's budget.
+const RECEIPT_CHARS = 500
+const cutToBound = (s) => {
+  const str = String(s == null ? '' : s)
+  return str.length > RECEIPT_CHARS ? (str.slice(0, RECEIPT_CHARS - 1) + '…') : str
+}
+// The one line of the output tail worth carrying: a runner prints its verdict
+// last, and trailing blank lines are the shape of every harness's output.
+const lastNonEmptyLine = (out) => {
+  const lines = String(out == null ? '' : out).split('\n')
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim()
+    if (line) return line
+  }
+  return ''
+}
+// Pure and exported: the proof-runs sim pins this shape without standing a run
+// up, and a later task that reads the receipt off a repaired task's log can
+// name what it waits on. `null` on a green exit is what keeps a green
+// `driver:exam-run` row byte-identical to the one it carried before this
+// existed — the caller spreads the answer, so `null` adds no key at all.
+export const examReceiptOf = ({ cmd, exit, stdout, headSha, landings, files } = {}) => {
+  if (Number(exit) === 0) return null
+  const paths = [...new Set(
+    [...(Array.isArray(landings) ? landings : []), ...(Array.isArray(files) ? files : [])]
+      .map(String).filter(Boolean))].sort()
+  const line = lastNonEmptyLine(stdout)
+  return {
+    paths,
+    evidence: {
+      read: cutToBound('exit ' + exit + (line ? (': ' + line) : '')),
+      against: cutToBound(String(cmd == null ? '' : cmd) + ' at ' +
+                          String(headSha == null ? '' : headSha)),
+    },
+  }
+}
+// The same literal for the resolver's miss: the one path the conflict was
+// about, the status the reply carried and the notes it gave for it, read
+// against the hunks file the resolver was briefed on.
+const resolverReceiptOf = (conflict, status, notes) => {
+  const note = String(notes == null ? '' : notes).trim()
+  return {
+    paths: [String((conflict && conflict.path) || '')],
+    evidence: {
+      read: cutToBound(String(status) + (note ? (': ' + note) : '')),
+      against: cutToBound(String((conflict && conflict.path) || '') + ' at ' +
+                          String((conflict && conflict.hunksFile) || '')),
+    },
+  }
+}
 // #908 — what the fix round SAID about that red. `fleet/roles/fix.md` tells a
 // round that finds a Proof `Test:` file red for a reason other than the missing
 // implementation to report it as a `concerns` entry prefixed `exam:` rather
@@ -1103,9 +1161,18 @@ export async function resolveConflicts({
       transcripts.push({ conflict: conflict.i, attempt, path: conflict.path,
         epoch: conflict.epoch, hunksFile: conflict.hunksFile,
         replyDir, status: res.status, notes: res.notes || '' })
-      // Optional reply counter for a caller that wants the tally without
-      // reading transcripts (the wave loop passes none).
-      if (onEvent) onEvent({ kind: 'resolver:reply', label, conflict: conflict.i, attempt, status: res.status })
+      // The reply, on the record. A caller that wants the tally without
+      // reading transcripts gets it from the count of these rows; a reply that
+      // did NOT resolve also carries the receipt — the conflicted path, the
+      // status and its notes, read against the hunks file the resolver held.
+      // A `RESOLVED` row carries neither key: the run's record says what the
+      // wave was about only where something was left unsettled.
+      if (onEvent) {
+        onEvent({ kind: 'resolver:reply', label, conflict: conflict.i, attempt,
+                  status: res.status,
+                  ...(res.status === 'RESOLVED'
+                    ? {} : resolverReceiptOf(conflict, res.status, res.notes)) })
+      }
       if (res.status !== 'RESOLVED') {
         return park('resolver reported ' + res.status + ' on ' + conflict.path)
       }
@@ -3090,8 +3157,21 @@ export async function runEngine({
       const r = await sh(examRunCmd, cloneDir, examEnv({ base: baseShaForTask, task: task.id,
                                                         runDir: runDirAbs, pass: String(iter) }))
       const stdout = tail(r.stdout + r.stderr)
+      // A red row says what the red was about and what the driver read: the
+      // exam's landing paths beside the task's own files, the last line of the
+      // output tail, and the command at the head of the graded tree. A green
+      // row gets no key at all — `examReceiptOf` answers `null` and the spread
+      // adds nothing, so every existing pin of the green shape still holds.
+      // The landings are computed here rather than read from `examLandings`
+      // below: this runs on the pre-review pass, before that `const` is
+      // initialized.
+      const receipt = examReceiptOf({ cmd: examRunCmd, exit: r.code, stdout,
+                                      headSha: impl.headSha,
+                                      landings: proofTests.map(landingOf),
+                                      files: Array.isArray(task.files) ? task.files : [] })
       appendEvent({ kind: 'driver:exam-run', task: task.id, cmd: examRunCmd, exit: r.code, iter,
-                    stdout, ...(rerun ? { rerun: true, ...(r.code === 0 ? { flaky: true } : {}) } : {}) })
+                    stdout, ...(rerun ? { rerun: true, ...(r.code === 0 ? { flaky: true } : {}) } : {}),
+                    ...(receipt || {}) })
       return { cmd: examRunCmd, exit: r.code, stdout }
     }
     const runChecks = async (iter) => {
@@ -3895,6 +3975,10 @@ export async function runEngine({
       open: outstanding, contendingBlock,
       waveDir: waveDirOf(waveNumber),
       labelPrefix: 'resolve:wave' + waveNumber,
+      // Every resolver dispatch of a wave fold leaves a row: at BASE the wave
+      // loop passed no `onEvent` at all, so a fold that spent two resolvers
+      // showed `resolversDispatched: 2` and nothing about what either said.
+      onEvent: appendEvent,
     })
     transcripts.push(...resolution.transcripts)
     if (resolution.selfChecks) selfChecks = resolution.selfChecks
