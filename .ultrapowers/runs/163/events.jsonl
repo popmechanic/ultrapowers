@@ -31,3 +31,11 @@
 {"kind":"driver:integrated-clean","wave":1,"removed":7,"id":"01M2NMZ9BS0000GXCYDAM07VXZ","ts":1789580518777}
 {"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/roles/","exit":0,"minor":false,"wave":1,"id":"01M2NMZ9C200008C2TD3VZQSRP","ts":1789580518786}
 {"kind":"driver:integrated-check","cmd":"node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"minor":false,"wave":1,"id":"01M2NMZ9NB0000Z6P2351WS2NQ","ts":1789580519083}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2NN2QB90000WFPTZ2ZQSRFB","ts":1789580631401}
+{"kind":"driver:stage","stage":"finalize","id":"01M2NN2QCY0000VWJC06R0KSB0","ts":1789580631454}
+{"kind":"driver:stage","stage":"gate","id":"01M2NN2QEQ0000V3JB04PT4M3M","ts":1789580631511}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M2NN2QJ10000AEVVDGA8X0NG","ts":1789580631617}
+{"kind":"driver:stage","stage":"approve","id":"01M2NN2QJ10001MWSAB6GG18PY","ts":1789580631617}
+{"kind":"driver:approved","stamp":"run-163","integrationBranch":"ultra/integration-run-163","id":"01M2NN2QM00000TG5GZSP9M66G","ts":1789580631680}
+{"kind":"run:open","runId":"run-163","base":"cf289581ebe2fa8dc23a8683c6d4e31c835d2ae2","source":"fleet/publish-fold.mjs","id":"01M2NN2RTJ00007K9AGQ4MYH0G","ts":1789580632914}
+{"kind":"driver:publish-fold","run":"163","attempt":"1","base":"cf289581ebe2fa8dc23a8683c6d4e31c835d2ae2","tip":"ebb515fe8409f3a2708e45c6d8f3af800d8d5ee3","candidate":"2d8b6da89f37806b24e9441df1dc7dc796358d30","reason":"fold parked 1 conflict(s) — no annotated narration for fleet/run-engine.mjs (binary)","pathsJoined":2,"pathsConflicted":1,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"conflict parked","checks":[],"checkRetries":0,"paths":["fleet/run-engine.mjs"],"evidence":{"read":"conflict parked: fold parked 1 conflict(s) — no annotated narration for fleet/run-engine.mjs (binary)","against":"base cf289581ebe2fa8dc23a8683c6d4e31c835d2ae2 tip ebb515fe8409f3a2708e45c6d8f3af800d8d5ee3"},"id":"01M2NN2SYF00003N0VST987QVD","ts":1789580634063}

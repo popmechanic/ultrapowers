@@ -1,0 +1,17 @@
+{
+  "engineHead": "2d8b6da89f37806b24e9441df1dc7dc796358d30",
+  "attempts": {
+    "1": {
+      "tip": "ebb515fe8409f3a2708e45c6d8f3af800d8d5ee3",
+      "candidate": "2d8b6da89f37806b24e9441df1dc7dc796358d30",
+      "disposition": "conflict parked",
+      "reason": "fold parked 1 conflict(s) — no annotated narration for fleet/run-engine.mjs (binary)",
+      "path": "fleet/run-engine.mjs",
+      "pathsJoined": 2,
+      "resolversDispatched": 0,
+      "suite": "none",
+      "checks": [],
+      "checkRetries": 0
+    }
+  }
+}

@@ -1,0 +1,8 @@
+Running as unit: fleet-fold-163-1.service
+publish-fold: attempt 1 — conflict parked — fold parked 1 conflict(s) — no annotated narration for fleet/run-engine.mjs (binary)
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 1.206s
+CPU time consumed: 510ms
+Memory peak: 1.2M
+Memory swap peak: 0B
