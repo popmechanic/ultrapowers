@@ -74,3 +74,11 @@
 {"kind":"driver:integrated-run","task":"3","cmd":"bash -n fleet/sandbox-boot.sh","exit":0,"wave":1,"joined":["fleet/CONTRACT.md"],"with":["1"],"id":"01M2MDDNVN0000YK98YN88SB97","ts":1789539047285}
 {"kind":"driver:integrated-run","task":"3","cmd":"node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"wave":1,"joined":["fleet/CONTRACT.md"],"with":["1"],"id":"01M2MDDP3Y0000C4H5GKQVEDRN","ts":1789539047550}
 {"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/launch.mjs fleet/roles/implementer.md fleet/roles/fix.md fleet/roles/resolver.md fleet/roles/reconcile.md skills/ultrapowers/kernel","exit":0,"minor":false,"wave":1,"id":"01M2MDDP440000520EWZR204T0","ts":1789539047556}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2MDEEX1000018JXBDPX430Z","ts":1789539072929}
+{"kind":"driver:stage","stage":"finalize","id":"01M2MDEEZD00009Y616AF03JAX","ts":1789539073005}
+{"kind":"driver:stage","stage":"gate","id":"01M2MDEF0Y0000WA51EY39G9J7","ts":1789539073054}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M2MDEF4P000019504R6YXWZB","ts":1789539073174}
+{"kind":"driver:stage","stage":"approve","id":"01M2MDEF4P00017TT3Q9Q6VDDT","ts":1789539073174}
+{"kind":"driver:approved","stamp":"run-156","integrationBranch":"ultra/integration-run-156","id":"01M2MDEF6J0000DZ41HEBFYQB7","ts":1789539073234}
+{"kind":"run:open","runId":"run-156","base":"901fc874923210207e041f947407b8ea519c1ab2","source":"fleet/publish-fold.mjs","id":"01M2MDEG2Q0000YDFCD6T85B1Y","ts":1789539074135}
+{"kind":"driver:publish-fold","run":"156","attempt":"1","base":"901fc874923210207e041f947407b8ea519c1ab2","tip":"901fc874923210207e041f947407b8ea519c1ab2","candidate":"c6328d0381fc7cda31fc9d0c8575e5e74165a28b","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M2MDEGE60000BNFXR6GTCFYS","ts":1789539074502}
