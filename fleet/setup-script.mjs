@@ -29,7 +29,7 @@ export const SETUP_SCRIPT_MAX_BYTES = 10240
  *  the lobby refuses it. */
 export const SETUP_SCRIPT_BUDGET_BYTES = 9216
 export const NODE_VERSION = '24.20.0'
-export const BUN_VERSION = '1.4.0'
+export const BUN_VERSION = '1.4.2'
 
 const NODE_TARBALL = `node-v${NODE_VERSION}-linux-x64.tar.xz`
 const NODE_URL = `https://nodejs.org/dist/v${NODE_VERSION}/${NODE_TARBALL}`
