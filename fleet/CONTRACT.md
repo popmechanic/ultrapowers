@@ -354,7 +354,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   1. write `/home/exedev/www/status.json` with `state: "booting"` and serve it (`busybox httpd -f -p 8000
      -h /home/exedev/www` under `systemd-run --user --unit=fleet-status`), so a launch is readable
      before the engine exists;
-  2. install the toolchain: node 24.20.0, bun 1.4.0, kata 0.17.2 (the release tarball from
+  2. install the toolchain: node 24.20.0, bun 1.4.2, kata 0.17.2 (the release tarball from
      `github.com/kenn-io/kata`, verified with `sha256sum -c` against the release's own `SHA256SUMS`
      before it is extracted, installed at `/usr/local/bin/kata` mode 0755 — the hub's own recipe,
      `fleet/kata-hub-setup.sh`), and `python3-pytest` + `python3-pytest-xdist` from apt;
