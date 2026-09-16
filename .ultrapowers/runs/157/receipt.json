@@ -1,0 +1,355 @@
+{
+  "ok": true,
+  "stamp": "run-157",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-157"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "3 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The reuse refusal names the fold's own reason",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "A prior run's attention is cleared at Setup, before any worker starts",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "A blocking finding against the exam buys the examiner one round before the task is called exhausted",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/roles/examiner.md",
+          "fleet/run-engine.mjs",
+          "skills/ultrapowers/references/report-format.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The reuse refusal names the fold's own reason",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_reuse.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_reuse.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_reuse.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_reuse.mjs | grep -q 'ALL TESTS PASSED'",
+            "test \"$(grep -c 'did not produce a head' fleet/run-engine.mjs)\" = 0",
+            "sed -n '/Re-drive reuse (#383)/,/A refusal is never the run.s own failure/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'reason.*fold.s own.*conflict.*materialize.*verdict'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_reuse.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_reuse.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_reuse.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_reuse.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_reuse.mjs": "fleet/tests/test_run_engine_reuse.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_reuse.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/roles/examiner.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_kata_landing.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "skills/ultrapowers/references/report-format.md"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "A prior run's attention is cleared at Setup, before any worker starts",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_kata_landing.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_kata_landing.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_kata_landing.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_kata_landing.mjs | grep -q 'ALL TESTS PASSED'",
+            "sed -n '/The worker.s raised hand/,/re-edge (#979)/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'driver:attention-cleared.*work\\.attention.*ok.*work\\.attention_msg.*closed'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_kata_landing.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_kata_landing.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_kata_landing.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_kata_landing.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_kata_landing.mjs": "fleet/tests/test_run_engine_kata_landing.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_kata_landing.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/roles/examiner.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_run_engine_reuse.mjs",
+              "skills/ultrapowers/references/report-format.md"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        },
+        {
+          "id": "3",
+          "title": "A blocking finding against the exam buys the examiner one round before the task is called exhausted",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/roles/examiner.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_proof_runs.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/roles/examiner.md",
+            "fleet/run-engine.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_proof_runs.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_proof_runs.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_one_of_each.mjs | grep -q 'ALL TESTS PASSED'",
+            "sed -n '1,/^## The issue/p' fleet/roles/examiner.md | tr '\\n' ' ' | grep -q 'EXAM REJECTED.*as the Proof states it.*unsatisfiable'",
+            "sed -n '/Exam environment/,/^- \\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'ULTRA_EXAM_PASS.*exam-rejected.*2'",
+            "grep -q 'tasks\\[\\]\\.examRounds' skills/ultrapowers/references/report-format.md",
+            "sed -n '/tasks\\[\\]\\.reviewVerdict/p' skills/ultrapowers/references/report-format.md | grep -q 'exam-rejected'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_proof_runs.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/roles/examiner.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "skills/ultrapowers/references/report-format.md"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_proof_runs.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_proof_runs.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_proof_runs.mjs": "fleet/tests/test_run_engine_proof_runs.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_proof_runs.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_kata_landing.mjs",
+              "fleet/tests/test_run_engine_reuse.mjs"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "3 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- A run with no kata record (`run-main.mjs` without `--kata`) behaves exactly as at BASE: no hub request, no `driver:attention-cleared` event, no `driver:reuse` event.\n- The engine's judgment prompts stay data files: a new worker input is one labelled block on the existing prompt, spelled in the role file that reads it, never a new role.\n- No shouted imperatives in any role file (`fleet/roles/README.md`).\n- Every new event kind and every new report field is named in `fleet/CONTRACT.md`, which wins over `fleet/RUNBOOK.md` on any literal.",
+    "constraintChecks": [
+      {
+        "cmd": "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-157/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-157/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-157/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-157/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
