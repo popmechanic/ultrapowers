@@ -881,6 +881,52 @@ export const addedExportsOf = (patchFile) => {
   }
   return out
 }
+// ── the stray control byte a captured patch introduces ──────────────────────
+// A `0x00` anywhere in a file is what `is_binary` reads first
+// (`skills/ultrapowers/kernel/repo_weave.py`), and from that byte on git and
+// the fold kernel handle the file as binary: no hunks, no three-way merge, no
+// reviewer able to read the diff. run-162 lost a fold to exactly one such byte
+// in a source file, found long after the round that could have removed it was
+// spent. The bytes are read as a `Buffer` and never as a string, so `offset` is
+// a BYTE offset a reader can seek to.
+//
+// PURE, and exported for that reason: the readers are handed in, so the sim
+// drives the rule directly without standing a run up.
+export const nulOffsetOf = (bytes) => (Buffer.isBuffer(bytes) ? bytes.indexOf(0) : -1)
+// The rows for the paths this patch turned binary. The question is what the
+// PATCH did, so every answer is a comparison against the dispatch head:
+//
+//   - a path that carried no `0x00` at the head and carries one now — the
+//     stray byte, whether or not the plan's `Files` names the path;
+//   - a path that did not EXIST at the head, carries one now, and is not in
+//     `declared` — a new binary file nobody's contract asked for;
+//
+// and nothing else. A path whose base blob already carried a `0x00` was binary
+// before this task touched it; a NEW path the task's `Files` names is a binary
+// deliverable the plan asked for (an image, a fixture) and is no finding;
+// a path absent now (a deletion) and a path with no `0x00` now are neither.
+// `declared` is the only thing that tells the deliberate new binary apart from
+// the accidental one — git's own detection reports them identically.
+export const nulIntroducedBy = async ({ paths, declared, readNow, readBase }) => {
+  const named = new Set((Array.isArray(declared) ? declared : [])
+    .map((p) => String(p == null ? '' : p).trim()).filter(Boolean))
+  const out = []
+  for (const p of (Array.isArray(paths) ? paths : [])) {
+    const now = await readNow(p)
+    if (now == null) continue
+    const offset = nulOffsetOf(now)
+    if (offset < 0) continue
+    const base = await readBase(p)
+    if (base == null) {
+      if (named.has(p)) continue
+      out.push({ path: p, offset })
+      continue
+    }
+    if (nulOffsetOf(base) >= 0) continue
+    out.push({ path: p, offset })
+  }
+  return out
+}
 // The wave's joined set: every path at least TWO of its touch sets carry,
 // sorted. A one-task wave joins nothing to itself and a wave whose tasks are
 // pairwise disjoint joins nothing either — both answer `[]`. Computed from the
@@ -3491,6 +3537,47 @@ export async function runEngine({
       }
       return out
     }
+    // ── the stray control byte (#1063) ──────────────────────────────────────
+    // The collision's sibling red, in the same shape and for the same reason:
+    // a `0x00` byte in a source file is invisible to the worker that wrote it
+    // and to the reviewer reading a rendered diff, and it is the fold — rounds
+    // later, in another tree — that discovers git can no longer read the file
+    // as text. run-162 died of one. The driver holds the bytes and the dispatch
+    // head, so the driver answers it here, on the pass, where the answer still
+    // buys the one repair round.
+    //
+    // The touched set is the patch's, never the tree's: a NUL in a file this
+    // patch did not touch is not this patch's doing. The readers are the graded
+    // clone and the base blob in it; `git show` exiting non-zero is the `null`
+    // a path absent at the head answers with.
+    const NUL_RED = (p, offset) => 'the patch writes a NUL byte into ' + p +
+      ' at byte ' + offset + ' — git and the fold kernel read the file as binary ' +
+      'from here on; write the escape, never the byte'
+    const nulReds = async () => {
+      const rows = await nulIntroducedBy({
+        paths: patchPaths(impl.patch),
+        declared: Array.isArray(task.files) ? task.files : [],
+        readNow: async (p) => {
+          try { return fs.readFileSync(path.resolve(cloneDir, p)) } catch { return null }
+        },
+        readBase: async (p) => {
+          const r = await exec('git', ['show', String(baseShaForTask) + ':' + p], { cwd: cloneDir })
+          return r.code === 0 ? Buffer.from(String(r.stdout || ''), 'utf8') : null
+        },
+      })
+      const out = []
+      for (const row of rows) {
+        const line = NUL_RED(row.path, row.offset)
+        appendEvent({ kind: 'driver:finding', task: task.id, round: 0, severity: 'blocking',
+                      actor: 'implementer', detail: line, paths: [row.path],
+                      evidence: {
+                        read: cutToBound(line),
+                        against: cutToBound('the captured patch at ' + String(impl.headSha || '')),
+                      } })
+        out.push({ line, stdout: '' })
+      }
+      return out
+    }
     const prePass = async () => {
       const reds = []
       preRuns = await runCommands(0)
@@ -3513,6 +3600,10 @@ export async function runEngine({
       // Last of all, and cheap: no command runs for it, so a pass that finds no
       // collision records exactly what it recorded before this existed.
       for (const c of exportCollisions()) reds.push(c)
+      // And last of all, the bytes themselves: one `git show` per touched path
+      // and nothing else, so a pass over a patch that turned nothing binary
+      // records exactly what it recorded before this existed.
+      for (const c of await nulReds()) reds.push(c)
       return reds
     }
     // The fix round's `exam:` entries, when they bought the review round below

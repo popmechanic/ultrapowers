@@ -104,6 +104,16 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     task is not — rename it or drop the export`), and recorded as one `driver:finding` at
     `round` `0`, `severity` `blocking`, `actor` `implementer`, `paths` the export's file — one
     per distinct name-and-path pair, so the collision is answered before any reviewer reads it.
+    The pass reads the same patch's bytes the same way: a patch that introduces a `NUL` (`0x00`)
+    byte into a path that was text or absent at the dispatch head — a path git and the fold
+    kernel read as `binary` from that byte on — is a red of the pass routed to the same
+    `fix:<id>:0` repair round with the line in its blocking-issues block (`the patch writes a NUL
+    byte into <path> at byte <offset> — git and the fold kernel read the file as binary from here
+    on; write the escape, never the byte`), and recorded as one `driver:finding` at `round` `0`,
+    `severity` `blocking`, `actor` `implementer`, `paths` the one path — one red and one row per
+    path, over the paths the capture touched, with a path whose base blob already carried a
+    `0x00` and a new path the task's `Files` declare (a binary deliverable the plan named) both
+    drawing none.
     One more kind records a blocking finding the graded party could not have answered:
     `driver:exam-rejected` `{task, path, detail}` — one per blocking issue of a review round whose
     `detail` names, in backticks, one of the task's Proof `Test:` landing paths (the token equal to
