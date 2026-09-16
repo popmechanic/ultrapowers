@@ -1,0 +1,5 @@
+{"event": "emitted", "wave": 1, "path": "fleet/CONTRACT.md", "stateBlob": "de8be63bd4c27dfc639e1f9ca386e121b870a5db66eef6d87ca600158d6c064b", "visibleSha": "1195a220241ba93d0b2d75444ca7146d8fd355fe"}
+{"event": "emitted", "wave": 1, "path": "fleet/run-engine.mjs", "stateBlob": "78176be348beb2e4d4c3cab1d89fbaa493fe5f100185805584a18749c0ad7e03", "visibleSha": "c19a1f8ae52ce01ee4c699c97f416684e34fe8a6"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/test_run_engine_review_economy.mjs", "stateBlob": "0af0b5b4a7c415c2db74d02a53dc725a2d37a1e40dfb390e42621d36584af28e", "visibleSha": "650b957fb5fa393c6b8e866c689d67c17b04baf9"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/test_run_engine_state_exams.mjs", "stateBlob": "31b957691348e1e37f2794ad4fb73374277413c3495aaca59d6f05a1c959fe3b", "visibleSha": "53141fae59a0dd91eff81e7144619c95b73a437f"}
+{"event": "emitted", "wave": 1, "path": "skills/ultrapowers/references/report-format.md", "stateBlob": "6895a08d59044dc7f0df9de987e56a9194b2d4bf3bb6acc702514c14bd1db667", "visibleSha": "837e030983e6f346974fcc66b70b272bd602d7d1"}

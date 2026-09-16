@@ -27,3 +27,7 @@
 {"kind":"worker:end","label":"review:1:1","role":"reviewer","sessionId":"1ab99ec0-60ed-4088-9c24-62e69456e58c","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"reason":null,"meter":{"input":5483,"output":12857,"cacheRead":584404,"cacheCreation":88978,"costUsd":1.5308219999999997,"models":["claude-opus-5"]},"id":"01M2P9DMB60000G9BC4HQN87NX","ts":1789601960294}
 {"kind":"transcript:slice","label":"review:1:1","sessionId":"1ab99ec0-60ed-4088-9c24-62e69456e58c","bytes":11518,"id":"01M2P9DMBD0000ERP8VV3208K1","ts":1789601960301}
 {"kind":"engine:phase","phase":"Wave 1","id":"01M2P9DMDG0000V35NNN4AWCZN","ts":1789601960368}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["1"],"headSha":"61f2a489200c71bb9a0edc4734dfd25526322e18","why":"end","applied":{"1":"base"},"id":"01M2P9GW3Q00004CZ8Z3QSBCDA","ts":1789602066551}
+{"kind":"driver:integrated-clean","wave":1,"removed":7,"id":"01M2P9GW3S0000NGBNGKF15EFH","ts":1789602066553}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/roles/","exit":0,"minor":false,"wave":1,"id":"01M2P9GW400000BVEPQMP5W73R","ts":1789602066560}
+{"kind":"driver:integrated-check","cmd":"node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"minor":false,"wave":1,"id":"01M2P9GWDN0000CK7TY7SFPT63","ts":1789602066869}
