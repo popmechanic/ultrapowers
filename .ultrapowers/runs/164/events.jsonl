@@ -46,3 +46,7 @@
 {"kind":"worker:end","label":"review:B:1","role":"reviewer","sessionId":"b9a84503-58ae-49e7-b5e7-00df2091e641","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":6400,"output":24591,"cacheRead":1937990,"cacheCreation":92396,"costUsd":2.5397299999999996,"models":["claude-opus-5"]},"id":"01M2NQ6X7900001MR2X9RMHV7P","ts":1789582865641}
 {"kind":"transcript:slice","label":"review:B:1","sessionId":"b9a84503-58ae-49e7-b5e7-00df2091e641","bytes":11961,"id":"01M2NQ6X7M000080RJXZEM49JN","ts":1789582865652}
 {"kind":"engine:phase","phase":"Wave 1","id":"01M2NQ6XA400004GMBG3C6EX0K","ts":1789582865732}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["A","B"],"headSha":"13310e911939f7113875c01df98a5332f62ec04f","why":"end","applied":{"A":"base","B":"base"},"id":"01M2NQ9F350000701NSNYRRNJG","ts":1789582949477}
+{"kind":"driver:integrated-clean","wave":1,"removed":7,"id":"01M2NQ9F390000NZW2T6R1WMKG","ts":1789582949481}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/roles/","exit":0,"minor":false,"wave":1,"id":"01M2NQ9F3F0000FQHRBEGR9YHM","ts":1789582949487}
+{"kind":"driver:integrated-check","cmd":"node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"minor":false,"wave":1,"id":"01M2NQ9FC70000EFCDZPCT120W","ts":1789582949767}
