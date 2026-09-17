@@ -1,0 +1,78 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "a927e06f97508e75fa141f4b231bda87f621b8d6cbeb82854b4d29ae17a04995",
+      "verdict": "pass",
+      "reason": "Leg (a) falsifies M1 (base's git status --porcelain at run-engine.mjs:2790 reports ?? client/, so client/package.json is missed and the exact-two-paths read fails) and leg (b) falsifies M2 by naming node_modules/left-pad/package.json, which a basename-only -uall scan would stage; leg (d)'s node_modules/.*never grep accepts the base's 'never committed' wording for M4's 'never staged', which does not weaken the operator sentence."
+    },
+    "2": {
+      "hash": "80aa0a0389b2ef593a01c3251e82553f75003185781c7c804ab3aaf65bfa459a",
+      "verdict": "pass",
+      "reason": "M1's leg (a) drives a bridge/plain/duplicate mix in non-lexical order and pins the exact joined literal plus the absence of tests/test_fleet_suite.py, which fails the base's untranslated repeat and any sorted or non-deduplicating reading; legs (b) and (c) pin unparsed against an empty join and the unchanged head in both the park detail and the judgment call."
+    },
+    "3": {
+      "hash": "1a70c4145fdea3f7fcf701b38dec65af8da1298a1754e7deecb2ed9c43940694",
+      "verdict": "pass",
+      "reason": "M1's leg (b) asserts zero EXAM CONCERN: lines and no entry text in the recorded review:T1:2 prompt (BASE fails it, since examConcerns is rendered in every round), M2's leg (a) pins exactly one verbatim line after EXAM EVIDENCE: in round 1, and M3's leg (c) pins the exact label sequence, row fields and exactly one exam-concern-upheld event at round 1, all against symbols that exist at base."
+    },
+    "4": {
+      "hash": "9936ce0923e9ab5040200a4fae63e856b212e8bef020df307f75c9314f75ce16",
+      "verdict": "pass",
+      "reason": "Legs (b) and (c) falsify M2/M3 directly (issues.log one line at BASE vs none/one on the planted pages, both skip lines and the final page's pr + disclosures), leg (a) falsifies M1/M4 (the disclosures key is absent from every page at BASE, and the one-line issues.log plus one publish:disclosures event pin exactly-one), and the three Run: greps for M5 match nothing at BASE; the Test path is absent at base as it should be."
+    }
+  },
+  "tally": {
+    "base": "3c61d8d795fddd14a3b60cc140bacf0e09fc23d2",
+    "dispatched": 5,
+    "rejected": 1,
+    "rounds": 2,
+    "per_round": {
+      "1": {
+        "dispatched": 4,
+        "rejected": 1
+      },
+      "2": {
+        "dispatched": 1,
+        "rejected": 0
+      }
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "task": "2",
+      "hash": "eaa906336f0d83f74be5cf1b5589fb76f9fd0f5984d21cf2f6987e8900c954f9",
+      "verdict": "fail",
+      "reason": "M1 pins each path once in first-seen order but leg (a)'s four FAILED lines yield paths already in lexical order, so an implementation that sorts and dedupes passes the leg while violating the clause; the fixture needs a bridge line whose translated path sorts before an earlier-seen one."
+    }
+  ],
+  "authoring": {
+    "minutes": 30,
+    "probes": 0,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Claim and summary",
+        "options": [
+          "One do:/see: sentence over the four sites",
+          "Four Claims, one per site, no plan-level sentence"
+        ],
+        "recommended": "One do:/see: sentence over the four sites",
+        "picked": "One do:/see: sentence over the four sites"
+      },
+      {
+        "question": "Execute how",
+        "options": [
+          "Ultrapowers",
+          "Subagent-Driven",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers"
+      }
+    ]
+  }
+}
