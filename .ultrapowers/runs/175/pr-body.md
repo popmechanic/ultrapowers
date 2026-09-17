@@ -1,0 +1,77 @@
+Four defects a referee wrote up as minor findings merged anyway and sat among a thousand nits on the card. Each one is a small fix with a sim that is red today for exactly the defect the referee named. Runs stop losing new packages, misnaming red tests, failing round two on a stale concern, and filing duplicate tickets.
+
+**Merge-ready**
+
+> do: launch a run that adds a package into a new directory, has a red suite, needs a second review round, and re-enters its boot after publishing; see: the new directory's manifest staged, each red test named once, no stale exam concern in round two, and one disclosures ticket, not two.
+
+| task | claim | exam | probes | mutant | suite |
+|---|---|---|---|---|---|
+| 1 | do: declare a dependency whose add command creates its manifest inside a directory that did not exist at BASE; see: that manifest in the setup commit beside the root one, and nothing under `node_modules/` in it. | red at BASE → green | 2/2 | — | — |
+| 2 | do: launch a run on a repository whose suite is already red, with several sims failing through the pytest bridge; see: the park's sentence name each red sim once, by its own `fleet/tests/<name>.mjs` path, instead of the bridge file's name repeated once per failure. | red at BASE → green | — | — | — |
+| 3 | do: let a task's fix round say its exam is red for any output, have round one's referee uphold that against the exam, and read the prompt round two's referee is handed after the peer rewrote the exam; see: the exam's fresh green run and no `EXAM CONCERN:` line from round one, so a referee reading the role text literally has nothing red to block on. | red at BASE → green | — | — | — |
+| 4 | do: boot a run again after it published and filed its disclosures ticket; see: the boot skip the PR it already recorded and skip the ticket it already recorded, with the ticket's URL on the status page beside the PR's, and a run that never filed one still file exactly one. | red at BASE → green | 3/3 | — | — |
+
+Residuals: 11 from review
+
+Amendments: none
+
+<details><summary>Record</summary>
+
+## fleet run-175 — gate-green
+
+| | |
+|---|---|
+| verdict | `PASS` |
+| target | `popmechanic/ultrapowers` at `766b261576990467742807da256f3a13c19d26a0` |
+| engine | `766b261576990467742807da256f3a13c19d26a0` |
+| plan | `.ultrapowers/plan.md` at `a3f082a87420eb2e9e6fb43bdeca6431c89c0386` |
+| branch | `ultra/integration-run-175` |
+| vm | `fleet-r175-2609170706-5919` |
+
+### Checks
+
+```json
+{"mode": "gate", "stamp": "run-175", "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-175/report.json", "branch": "ultra/integration-run-175", "gateCheck": {"verdict": "PASS", "checks": [{"name": "report-parse", "ok": true, "detail": ""}, {"name": "clean-tree", "ok": true, "detail": ""}, {"name": "wave-merges", "ok": true, "detail": ""}, {"name": "head-match", "ok": true, "detail": ""}, {"name": "git-verified", "ok": true, "detail": ""}, {"name": "ancestry", "ok": true, "detail": ""}, {"name": "deliverables", "ok": true, "detail": ""}], "notes": [], "repo": "/home/exedev/target"}, "gateCheckExit": 0, "suite": {"passed": true, "unattributed": [], "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-175/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [418 items]\n\n........................................................................ [ 17%]\n........................................................................ [ 34%]\n........................................................................ [ 51%]\n........................................................................ [ 68%]\n........................................................................ [ 86%]\n..........................................................               [100%]\n======================= 418 passed in 130.04s (0:02:10) ========================\n"}, "verdict": "PASS"}
+
+```
+
+### Evidence
+
+https://github.com/popmechanic/ultrapowers/tree/ultra/evidence/run-175/.ultrapowers/runs/175/
+
+- approve-receipt.json
+- claude-version.txt
+- engine.log
+- events.jsonl
+- frontier
+- gate-receipt.json
+- kata.jsonl
+- pr-body.md
+- publish-fold
+- receipt.json
+- report.json
+- residuals.jsonl
+- status.json
+- transcripts
+
+### Plan
+
+https://github.com/popmechanic/ultrapowers/blob/ultra/plan/run-175/.ultrapowers/plan.md
+
+### Residuals
+
+- [ ] task 2 reviewer — plan-defect: Proof leg (a), read literally, is unsatisfiable, and the submission silently resolved it rather than declaring the reading. The leg asks for a `check.sh` that "prints, in this order, <the four FAILED lines>, then exits 1" AND that "neither `detail` nor call contains `tests/test_fleet_suite.py` at all". Those two clauses contradict each other: the park's `detail` is `redBaselineHead(output)` (fleet/run-engine.mjs:2913-2915), which renders `failing: <paths> (' + output + ')` where `output` is `failingBlock(stdout+stderr)` (fleet/run-engine.mjs:2935). `failingBlock`'s START pattern is `^(_{3,} .+ _{3,}$|FAILED |FAIL[: ]|not ok |AssertionError)` and its END pattern is `^(_{3,} .+ _{3,}$|={3,} |(not )?ok \d)` (fleet/failing-block.mjs:43,46) — an output consisting of the four bare `FAILED` lines alone has its first START on line 0, no later END line, so the whole block is quoted into `output` and `tests/test_fleet_suite.py` lands in the `detail` no matter how the reading translates the path list. The submission's sim (fleet/tests/test_run_engine_ready_set.mjs, `REDLINES`) instead prints the four lines in the Proof's order inside a real pytest shape — `=== FAILURES ===`, a `___ test_fleet_mjs[…] ___` header, an `E   AssertionError` line, then `=== short test summary info ===` above the four `FAILED` lines — so `failingBlock` cuts the block at the rule line and quotes only the header and the `E` line, while the reading still sees all four `FAILED` lines because it is taken off the raw stdout+stderr. That is the correct resolution and it satisfies every clause of the leg (verified: exam exits 0, and the block is discriminating — at BASE the local `/^FAILED (.+?)::/` reading renders `failing: tests/test_fleet_suite.py, tests/test_other.py, tests/test_fleet_suite.py, tests/test_fleet_suite.py (` and fails the leg). No edit to this tree is called for
+- [ ] task 2 reviewer — recorded so the operator knows the leg's literal wording, not the submission, is what needed the latitude, and that the latitude was taken in an in-file comment rather than an AMENDMENTS entry.
+- [ ] task 2 reviewer — concern: plan-defect: leg (a)'s final clause — "neither `detail` nor call contains `tests/test_fleet_suite.py` at all" — is fixture-dependent, not implementation-dependent. The head ends `… failing: <paths> (' + baseline.output + ')'`, and for a red baseline `baseline.output` is `failingBlock(stdout+stderr)`. `failingBlock`'s START matches `^FAILED ` and its END matches none of `^FAILED `, so a `check.sh` printing ONLY the four bare FAILED lines has its entire output quoted back inside the parens, bridge path and all (verified against fleet/failing-block.mjs directly). Real pytest prints the FAILED short summary BELOW the block — the comment at run-engine.mjs:2896 states exactly this — so on pytest-shaped output the clause holds. If the peer's fixture emits the four bare FAILED lines, that clause is red for any implementation that keeps the quoted block where M3 and the Context say it has always been
+- [ ] task 2 reviewer — the `failing:` list itself, which is what M1 fixes, is correct either way. Implemented as written rather than rewriting the quoted block, which nothing asked for.
+- [ ] task 1 reviewer — `-uall` exposes untracked manifests outside `node_modules` (fleet/run-engine.mjs:2797, filter at :2811). The new scan lists every untracked file by path, but the added exclusion covers only a `node_modules` segment, so an unignored vendored tree under another name (`.venv/`, `vendor/`, `.yarn/`) that ships a `requirements*.txt`, `pyproject.toml` or `package.json` at any depth would now be staged into the setup commit. Concretely: a target repo that does not gitignore `.venv/` declares a Python runtime dep
+- [ ] task 1 reviewer — the install writes `.venv/lib/python3.x/site-packages/<pkg>/requirements.txt`. At BASE `git status --porcelain` reported that whole tree as one line `?? .venv/`, whose basename read is empty, so nothing inside was staged
+- [ ] task 1 reviewer — under `-uall` each such file is reported as its own path, passes `bootstrapManifestChanged`, carries no `node_modules` segment, and is committed into the SETUP HEAD every task clone is anchored to — the same class of leak M2 exists to prevent. Secondary and smaller: on an unignored `node_modules/` of 100k+ files, `-uall` now enumerates a tree the default scan short-circuited at the directory. Both follow from the task text, which names `node_modules` as the sole exclusion (M2) and mandates `-uall` (M1), so no edit inside this task's FILES answers them without contradicting a Machine clause — hence actor `plan`, and advisory only. What would settle it: a follow-up generalising the exclusion at this scan to the vendored-install directory names the bootstrap ladder can produce, with a leg per name in `fleet/tests/test_run_engine_declared_dependencies.mjs`.
+- [ ] task 4 reviewer — Plan-text conflict, recorded not blocked: GLOBAL CONSTRAINT 3's third example says "the page of a run that filed no ticket" is byte-for-byte what it was at BASE, while this task's M1/M4 and Proof leg (a) require the opposite — every `write_status` page, including a run that files none, now carries `"disclosures":null` (leg (a): "a page that has the key `disclosures` with value `null` — at BASE the key is absent from every page"). The diff follows M1/M4 and GLOBAL CONSTRAINT 2, which names the `disclosures` cell as the plan's one new record and assigns it to Task 4, so I read constraint 3's page example as superseded for this cell rather than as a defect in the diff (fleet/sandbox-boot.sh:578 literal, patch line 75). No edit inside this task's FILES could satisfy both readings
+- [ ] task 4 reviewer — the operator, not a fix round, is who settles the wording.
+- [ ] task 4 reviewer — `do_deadman` (fleet/sandbox-boot.sh:3689-3693) re-reads `pr`, `prAuthor` and `merged` off the page before its `write_status parked "deadman"` precisely so "a `parked` page that dropped those three cells would [not] tell the janitor and the operator that a PR which exists does not" — the new `disclosures` cell is not read there, so a hand-parked run that already filed its ticket gets a page whose `disclosures` reads `null` while the ticket is open on GitHub. This is a record-fidelity gap only, not a duplicate-filing one: the task text explicitly excuses it ("`do_deadman` … need not read the cell: a parked page re-enters through GUARD 1 and exits"), and the exam has no deadman leg, so it blocks nothing. If taken, the fix is one line beside the existing three: `DISCLOSURES_URL="$(read_status_field disclosures)"`.
+- [ ] task 4 reviewer — unverified: the page gains a top-level key, and only this task's exam plus the two `Check:` commands were executed. I read the other readers of `www/status.json` for breakage and found none — `test_sandbox_boot_viz.mjs:460,494` pin only `Object.keys(page).slice(-2) === ['error','tasks']` (still true, the cell lands before `branch`), its `STATUS_BULLET` greps are positive matches plus `shNo` on `engine:phase` and a zero-count of `eight states` (unaffected by inserting `"disclosures":"<url or null>"`), no sim compares a whole page for equality, and `_sandbox_boot_helpers.mjs:690`'s planted parked page simply lacks the key, which `read_status_field` answers as ''. Running the rest of the boot sims (`node fleet/tests/test_sandbox_boot_viz.mjs` and the other `test_sandbox_boot_*.mjs`) would settle it outright.
+
+</details>
+
+Closes #1097
