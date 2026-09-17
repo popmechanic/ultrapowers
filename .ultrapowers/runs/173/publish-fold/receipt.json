@@ -1,0 +1,15 @@
+{
+  "engineHead": "731d5ec43f22014124f5feacaac23557ff826075",
+  "attempts": {
+    "1": {
+      "tip": "3c61d8d795fddd14a3b60cc140bacf0e09fc23d2",
+      "candidate": "731d5ec43f22014124f5feacaac23557ff826075",
+      "disposition": "nothing to join",
+      "pathsJoined": 0,
+      "resolversDispatched": 0,
+      "suite": "none",
+      "checks": [],
+      "checkRetries": 0
+    }
+  }
+}

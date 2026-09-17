@@ -1,0 +1,290 @@
+{
+  "integrationBranch": "ultra/integration-run-173",
+  "baseSha": "3c61d8d795fddd14a3b60cc140bacf0e09fc23d2",
+  "setupSha": null,
+  "waves": [
+    [
+      "1",
+      "2",
+      "3"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "44c64e5e14f9210a50fa0c472e12e35c0c10912d",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-173/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the new `## The runtime host` section asserts that on a fleet sandbox \"celld is already at `/usr/local/bin/celld`, put there by the fleet's own setup script and verified by digest\" (skills/ultrawrite/references/greenfield-stack.md:277-279). That is a cross-task claim about sibling task 1's `fleet/setup-script.mjs`, which this patch does not touch and cannot settle. The plan text for task 1 does specify the same path and a `sha256sum -c` digest check before `sudo -n install -m 0755 celld /usr/local/bin/celld`, so the sentence is consistent with the plan as written; what would settle it is the integrated tree \u2014 task 1's rendered setup script actually installing celld 0.5.0 at that exact path. No change is needed in this diff unless task 1 lands a different path.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "landedAt": 1789626819000,
+      "stateExams": [],
+      "findings": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "ec4eb8de0b7cabdf5a33b9e8651346bb352409de",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-173/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "Stale header description left behind by this change. `stampWidth` now writes `# fleet: width=<W> browsers=<C> \u2014 \u2026` (M4), and the module doc-comment paragraph at lines 43\u201350 was updated to match (`vmSizeFor(W, cap, C)`, `browsersFor`), but the earlier paragraph of the same comment \u2014 step 5 of the launch order, line 36 \u2014 still says the setup script carries a `# fleet: width=<W>` header. `fleet/CONTRACT.md`'s launch-order bullet was corrected to `# fleet: width=<W> browsers=<C>` (Proof Run 3, exit 0), so the launcher's own file is now the only place in the tree that describes the old header. Nothing executes this line, so it blocks nothing; it is a one-line reflow.; unverified: the two existing launcher sims \u2014 `fleet/tests/test_launch_compile_facts.mjs` and `fleet/tests/test_launch_duplicate.mjs` \u2014 drive `launch()` end to end over the surface this diff changes (the lifted `sizeFromCompile`, the new `browsers` field on the resolved result, the new `stampWidth` note text), and neither appears in RUN, EXAM or CHECK EVIDENCE; the Proof's Test path and the two Check commands do not cover them. The task's Context says not to edit them, and the diff does not. Reading them settles most of the risk: both pin only `CAPPED = { cpu: '6', memory: '8GB' }` and assert `deepEqual` on sub-fields rather than on the whole result's key set, no test file in the tree matches `stampWidth` or `# fleet: width=`, and their fixture plans name no state exam so `browsersFor` returns 0 and `min(cap, 2 + W)` is unchanged. What would settle it outright: `node fleet/tests/test_launch_compile_facts.mjs` and `node fleet/tests/test_launch_duplicate.mjs`, each expected to print `ALL TESTS PASSED`.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "examRounds": 1,
+      "landedAt": 1789626984559,
+      "stateExams": [],
+      "findings": []
+    },
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "2e785efe291688545a663c3112a2073daf9ac46a",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-173/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "examRounds": 1,
+      "landedAt": 1789627117193,
+      "stateExams": [],
+      "findings": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-173/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [417 items]\n\n........................................................................ [ 17%]\n........................................................................ [ 34%]\n........................................................................ [ 51%]\n........................................................................ [ 69%]\n........................................................................ [ 86%]\n.........................................................                [100%]\n======================= 417 passed in 161.92s (0:02:41) ========================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "sed -n '/^- \\*\\*Setup script (generated by/,/^- \\*\\*Bootstrap/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'celld 0.5.0.*sha256sum -c.*/usr/local/bin/celld'",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/RUNBOOK.md"
+      ],
+      "with": [
+        "2"
+      ]
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q -- 'unit=fleet-engine-<N> --pipe --wait --collect -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288' fleet/CONTRACT.md",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/RUNBOOK.md"
+      ],
+      "with": [
+        "2"
+      ]
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## Traps/,/^## Capacity/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q \"The sandbox's runtime\\..*CELLD_MAX_RSS_MB.*--internal-listen 127.0.0.1:<port>.*SIGTERM\"",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/RUNBOOK.md"
+      ],
+      "with": [
+        "2"
+      ]
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_setup_script.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/RUNBOOK.md"
+      ],
+      "with": [
+        "2"
+      ]
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^\\*\\*2\\. .capacity./,/^\\*\\*3\\. /p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'browsers.*max(6, 2 + 1.25 \u00d7 C).*12GB'",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/RUNBOOK.md"
+      ],
+      "with": [
+        "1"
+      ]
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## capacity/,/^## /p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q 'browsers.*max(6, 2 + 1.25 \u00d7 C).*12GB'",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/RUNBOOK.md"
+      ],
+      "with": [
+        "1"
+      ]
+    },
+    {
+      "task": "2",
+      "cmd": "grep -q 'fleet: width=<W> browsers=<C>' fleet/CONTRACT.md",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/RUNBOOK.md"
+      ],
+      "with": [
+        "1"
+      ]
+    },
+    {
+      "task": "2",
+      "cmd": "grep -q 'min(memory, max(6, 2 + 1.25 \u00d7 C))GB' fleet/CONTRACT.md",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/RUNBOOK.md"
+      ],
+      "with": [
+        "1"
+      ]
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_launch_vm_size.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/RUNBOOK.md"
+      ],
+      "with": [
+        "1"
+      ]
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 382419,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-173/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [415 items]\n\n........................................................................ [ 17%]\n........................................................................ [ 34%]\n........................................................................ [ 52%]\n........................................................................ [ 69%]\n........................................................................ [ 86%]\n.......................................................                  [100%]\n======================= 415 passed in 161.22s (0:02:41) ========================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "731d5ec43f22014124f5feacaac23557ff826075",
+      "branches": [
+        "3",
+        "2",
+        "1"
+      ],
+      "joined": [
+        "fleet/CONTRACT.md",
+        "fleet/RUNBOOK.md"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-173/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-173/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 2.088,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 3,
+    "tasks_planned": 3,
+    "complete": true
+  },
+  "engineCoverage": null,
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: amendment (clause): `fleet/setup-script.mjs`: the render's size refusal now tests `SETUP_SCRIPT_BUDGET_BYTES` (9216) before `SETUP_SCRIPT_MAX_BYTES` (10240) and always names the budget, appending \"(and past the platform's ceiling of 10240)\" when the render is past that too. \u2014 Proof leg (b) asks a render whose `unit` is padded by 9216 bytes to throw \"with a message naming the budget\". At BASE such a pad clears 10240 first, so the message named only the ceiling and the leg as written could not pass. The budget is the tighter bound and the one a human acts on, so it fails first; no sim or caller pinned either message text.",
+    "task 1: amendment (clause): `fleet/sandbox-boot.sh` and `fleet/CONTRACT.md`: the publish fold's `systemd-run` gained `-p LimitNOFILE=524288` beside the engine's, which M3 names alone. \u2014 The contract states the fold runs \"through the same `systemd-run` prefix as the engine's line above, entry for entry\" (the task's Context says that line \"gains the same property\"), so leaving the fold out would have made that sentence false \u2014 and the fold is what runs the suite, which is what exhausts a soft 1024.",
+    "task 1: amendment (clause): `fleet/CONTRACT.md` duty 4: the unit-template directive list now names `LimitNOFILE=524288` with its one-line why. \u2014 M4 names only the setup-script bullet and the engine line, but duty 4 enumerates the template's directives exhaustively; adding the line to `fleet-run@.service` without it would leave the contract's enumeration wrong, against the Claim's \"the contract and the runbook say so\"."
+  ],
+  "amendments": [
+    {
+      "task": "1",
+      "amends": "clause",
+      "what": "`fleet/setup-script.mjs`: the render's size refusal now tests `SETUP_SCRIPT_BUDGET_BYTES` (9216) before `SETUP_SCRIPT_MAX_BYTES` (10240) and always names the budget, appending \"(and past the platform's ceiling of 10240)\" when the render is past that too.",
+      "why": "Proof leg (b) asks a render whose `unit` is padded by 9216 bytes to throw \"with a message naming the budget\". At BASE such a pad clears 10240 first, so the message named only the ceiling and the leg as written could not pass. The budget is the tighter bound and the one a human acts on, so it fails first; no sim or caller pinned either message text."
+    },
+    {
+      "task": "1",
+      "amends": "clause",
+      "what": "`fleet/sandbox-boot.sh` and `fleet/CONTRACT.md`: the publish fold's `systemd-run` gained `-p LimitNOFILE=524288` beside the engine's, which M3 names alone.",
+      "why": "The contract states the fold runs \"through the same `systemd-run` prefix as the engine's line above, entry for entry\" (the task's Context says that line \"gains the same property\"), so leaving the fold out would have made that sentence false \u2014 and the fold is what runs the suite, which is what exhausts a soft 1024."
+    },
+    {
+      "task": "1",
+      "amends": "clause",
+      "what": "`fleet/CONTRACT.md` duty 4: the unit-template directive list now names `LimitNOFILE=524288` with its one-line why.",
+      "why": "M4 names only the setup-script bullet and the engine line, but duty 4 enumerates the template's directives exhaustively; adding the line to `fleet-run@.service` without it would leave the contract's enumeration wrong, against the Claim's \"the contract and the runbook say so\"."
+    }
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

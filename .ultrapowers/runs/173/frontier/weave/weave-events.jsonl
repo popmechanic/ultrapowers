@@ -1,0 +1,10 @@
+{"event": "emitted", "wave": 1, "path": "fleet/CONTRACT.md", "stateBlob": "1c4163613e6c6ac5e486a322bb3e92032d9e899c0d4ef7fd430929ae64276222", "visibleSha": "6f8ca09382aaf50ed474e182eabed2587b500fb1"}
+{"event": "emitted", "wave": 1, "path": "fleet/RUNBOOK.md", "stateBlob": "fc0ab2f6fecb8bd176fd66dfbb7fa8daf32dd2308014b1fab65ef318f27ae66c", "visibleSha": "d91a35829e2ac511b1fb3404b2952ce53f9563a3"}
+{"event": "emitted", "wave": 1, "path": "fleet/fleet-run@.service", "stateBlob": "e410094cda67f824e602ad8093a16411d4b8b28168b1d50b5f84f49c2c5f85eb", "visibleSha": "cc21afa32d0441d96226cdc86c12d3a0837590b0"}
+{"event": "emitted", "wave": 1, "path": "fleet/launch.mjs", "stateBlob": "ddf7c1d11c74af92a2cdce06a8fa65f379854b684d5ea8e65d1091bee0220029", "visibleSha": "8574f01f33c8ec1baffd695719309d7022f69ac6"}
+{"event": "emitted", "wave": 1, "path": "fleet/sandbox-boot.sh", "stateBlob": "317914cadf04cd3242a560ebb270393366699b97317a672cfb483643198d7f9a", "visibleSha": "328f19cfa282399693f453e2d25ee411b97bb2ad"}
+{"event": "emitted", "wave": 1, "path": "fleet/setup-script.mjs", "stateBlob": "3b5cdd4217a5d54782285e94906c5b5b62b95335780fc379e54adedda2b47fc5", "visibleSha": "7c3d580919307001589c3d97b2a2d8643ed5f6f3"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/test_launch_vm_size.mjs", "stateBlob": "25115cb1903204ded6b0b307e1f85694ba6c0c08d5e465a53e0abca4d95a5e88", "visibleSha": "6f00f49f368a2d0833768d83dadcfdb41d25d308"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/test_setup_script.mjs", "stateBlob": "d148931ff313b4ac6d495b626dfb6fa005a9f3dc2e3b2709fe9a7cd14d633673", "visibleSha": "63e41f160cb64bcdb85a04f02e204210deae20c2"}
+{"event": "emitted", "wave": 1, "path": "skills/ultrapowers/references/first-run.md", "stateBlob": "5caa48ad0e04f5a866915ee86f371b4956d67420248db83792ebc949f1faaa7d", "visibleSha": "b8513e2aa2952cd43d2b04bea74f82856586e5d0"}
+{"event": "emitted", "wave": 1, "path": "skills/ultrawrite/references/greenfield-stack.md", "stateBlob": "cc50d1e1903a8b28f980c67242c48248b490c58334d98231a9988de1538cd3e8", "visibleSha": "e4c606bbe3a462cd0ad01ab7b967b18777b18ff8"}
