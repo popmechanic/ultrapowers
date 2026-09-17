@@ -1,0 +1,156 @@
+{
+  "integrationBranch": "ultra/integration-run-178",
+  "baseSha": "6104ae7e472121485d37287a5b10f501090dd838",
+  "setupSha": null,
+  "waves": [
+    [
+      "1",
+      "3"
+    ],
+    [
+      "2"
+    ]
+  ],
+  "dependencyEdges": [
+    "1 -> 2 (interface)"
+  ],
+  "tasks": [
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "failed",
+      "branch": "",
+      "exam": null,
+      "reviewVerdict": "fix-loop-exhausted",
+      "notes": "The Publish bullet now contradicts itself about the `Act on these` rows. The diff excepts them from the bullet's opening rule (`nothing above its folded record is \u2026 a reviewer's sentence \u2014 the errands and the `Act on these` rows excepted`, patch line 39), but leaves the bullet's later, operative restatement of that same rule untouched: at BASE fleet/CONTRACT.md:1013-1015 (\u22481036-1038 after this patch) it still reads `the `- ` lines above it are the `deferred:external` ones and the notes of a task whose report row carries `actor` `plan`, and no other reviewer sentence appears above the record at all.` After this change the `- ` lines above the record also include up to ten `- <name> \u2014 <text> \u2014 attention \u2026` entries, and `<text>` is the reviewer's own finding text, so that sentence is false as written and forbids the very section the clause seven lines above it prescribes. M2 only pinned the exception at line 968 and the Proof's greps stop at `then `Residuals: <n> from review``, so no `Run:` catches it \u2014 but the task's Claim is that the contract now describes the section, and a reader of the same bullet is told a few lines later that no such rows appear. The fix is one clause inside this task's own FILES.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 1,
+      "proofFixes": 0,
+      "landedAt": 1789630515655,
+      "stateExams": [],
+      "findings": []
+    },
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "42ba4dd22abe594686b72808b2149c5e50f6f4c2",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-178/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Observability gap in `residual_jev` (fleet/sandbox-boot.sh): the worklist is built with `residual_read jev >\"$ask\" 2>/dev/null || : >\"$ask\"`, so any failure of the reader (a python traceback, an unreadable report) silently yields an empty worklist \u2014 no request is made, every row is written without a `jev`, and the boot log says nothing. The curl path is careful to log one `jev: <name> \u2014 curl exit <n>` line per failed item (M5), so the contrast is stark: the one failure mode that loses every row's triage at once is the one that leaves no trace. Suggest dropping the `2>/dev/null`, or logging one line on the fallback branch, e.g. `residual_read jev >\"$ask\" 2>/dev/null || { : >\"$ask\"; log 'jev: worklist could not be built'; }`. Nothing in M1\u2013M6 pins the silence, and the change stays inside this task's FILES.; Wall-clock note on the request loop, grounded in the design the task pins rather than in this diff's execution of it: `residual_jev` issues the k requests sequentially, each `--max-time 10`, inside `collect_evidence`, which runs on the publishing/done/fail transitions. The cache means only the first post-engine transition pays, but a classifier that has gone away (connect timeouts rather than refusals) holds that transition for up to k\u00d710s \u2014 ~140s at the replay's ~14 findings per run \u2014 while the script's own comment gives `--max-time 10` the reason that \"a classifier that has gone away must not hold a transition\". No fix lies inside this task's FILES: M2 pins exactly k requests, one per item, so bounding the total would mean skipping items and would need a clause change (an aggregate budget, or a first-failure short-circuit that still caches the remaining items as failed). Recording it so the operator can decide, not asking for an edit here.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "examRounds": 1,
+      "landedAt": 1789630813138,
+      "stateExams": [],
+      "findings": []
+    },
+    {
+      "task": "2",
+      "status": "failed",
+      "reviewVerdict": "agent-error",
+      "notes": "RUN_FATAL: refusing to dispatch impl:2 \u2014 the run already failed at impl:2: API refused with 401 (credential or config) \u2014 the run cannot proceed",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proofFixes": 0,
+      "landedAt": 1789631172458,
+      "stateExams": [],
+      "findings": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-178/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [438 items]\n\n........................................................................ [ 16%]\n........................................................................ [ 32%]\n........................................................................ [ 49%]\n........................................................................ [ 65%]\n........................................................................ [ 82%]\n........................................................................ [ 98%]\n......                                                                   [100%]\n======================= 438 passed in 178.50s (0:02:58) ========================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 426047,
+    "blockingFindings": 1,
+    "blockingPerReviewerMinute": 0.140829532891911
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-178/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [437 items]\n\n........................................................................ [ 16%]\n........................................................................ [ 32%]\n........................................................................ [ 49%]\n........................................................................ [ 65%]\n........................................................................ [ 82%]\n........................................................................ [ 98%]\n.....                                                                    [100%]\n======================= 437 passed in 175.36s (0:02:55) ========================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "b9d26667f55d83f0d4577ab1a3e881d8ccdda43f",
+      "branches": [
+        "1"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-178/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-178/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.967,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 3,
+    "complete": false
+  },
+  "engineCoverage": null,
+  "missingDeliverables": [
+    {
+      "task": "3",
+      "files": [
+        "fleet/CONTRACT.md",
+        "fleet/RUNBOOK.md"
+      ]
+    },
+    {
+      "task": "2",
+      "files": [
+        "fleet/sandbox-boot.sh",
+        "fleet/tests/test_sandbox_boot_residuals.mjs"
+      ]
+    }
+  ],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 2: agent error at mostCapable \u2014 retrying once at mostCapable (same tier): RUN_FATAL: API refused with 401 (credential or config) \u2014 the run cannot proceed (label impl:2)",
+    "task 2: agent error after same-tier retry at mostCapable \u2014 RUN_FATAL: refusing to dispatch impl:2 \u2014 the run already failed at impl:2: API refused with 401 (credential or config) \u2014 the run cannot proceed"
+  ],
+  "amendments": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

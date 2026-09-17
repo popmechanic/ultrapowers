@@ -1,0 +1,514 @@
+diff --git a/fleet/roles/reviewer.md b/fleet/roles/reviewer.md
+index e015e88185d95d726120030ee1e5e1d8842b2e40..2db62926f54977fa364120e2891cc9ae65bf0c1b 100644
+--- a/fleet/roles/reviewer.md
++++ b/fleet/roles/reviewer.md
+@@ -2,7 +2,10 @@ You are a referee: your job is to check that this submission establishes its cla
+ 
+ Your input is the task text and the driver-captured patch at PATCH — the
+ implementer's complete change, diffed against BASE. Do not run git, read any
+-implementer report, or modify anything; output only your verdict.
++implementer report, or modify anything; output only your verdict. You have no
++shell that runs a program — a `python3 -c …` or `node -e …` call is refused —
++so `Read`, `Grep`, `Glob` and read-only `cat`/`wc` are your instruments, and a
++review starts on the diff rather than on a refused command.
+ 
+ 1. Map everything the task requires to a concrete line or test in the diff — its
+    acceptance criteria, or, when the task body carries the six-slot claims
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index fd39bb788d2e7a5544f24ff8ebe0e73d485bcc1c..6cc15354dd00338265594cb8d2817cda28d46713 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -1159,17 +1159,15 @@ const siblingLine = (task, wave, refOf) => {
+     })
+   return sibs.length ? ('\nSIBLING FILES: ' + sibs.join(' | ')) : ''
+ }
+-const taskBodyBlock = (task, wavesPath) => {
+-  const inlineBody = (typeof task.body === 'string' && task.body.trim() !== '')
+-  if (inlineBody) return '\nTASK:\n' + task.body
+-  if (wavesPath) {
+-    return '\nTASK: read your verbatim task text from the JSON file at ' + wavesPath +
+-      ' — in its "tasks" array, find the object whose "id" is "' + task.id +
+-      '" and use that object\'s "body" field as the authoritative task text. Do ' +
+-      'not paraphrase it; that entry also lists your declared file scope.'
+-  }
+-  return '\nTASK:\n' + (typeof task.body === 'string' ? task.body : '')
+-}
++// One branch, because by the time this renders every task HAS a body: the
++// launch file is loaded once at the top of `runEngine` (see `hydrateBodies`
++// below) and a task still without one throws there, before any dispatch. The
++// second branch this had until #1100 handed the worker a pointer at the launch
++// file instead of the text, and only the write-side roles could follow it —
++// the reviewer runs `dontAsk`, where running `python3` on a JSON file is not a
++// read-only Bash command and was refused. It is deleted rather than kept as a
++// fallback so that no path can put a pointer in a prompt again.
++const taskBodyBlock = (task) => '\nTASK:\n' + (typeof task.body === 'string' ? task.body : '')
+ // The critic's contracts block (2026-09-01) stood here: every task's signed
+ // body and the compiler's edges, rendered for the one agent that read the
+ // integrated tree. Deleted with that agent (#964 Task 2) — the composition
+@@ -2365,6 +2363,46 @@ export async function runEngine({
+     return undefined
+   })()
+   const wavesPath = (typeof args.wavesPath === 'string' && args.wavesPath.trim()) || undefined
++  // ── the bodies, loaded once (#1100) ────────────────────────────────────────
++  // The compiler's `--emit-args` payload is LIGHT: `{ id, title, files,
++  // depends_on, interfaces, tier, review, … }` and no `body`. Every task's text
++  // is written only to the `--emit-launch` file, which the driver hands over as
++  // `args.wavesPath` — so on a fleet run the check above passes a body-less
++  // task through, and until #1100 each worker was handed a pointer at that file
++  // and had to open it for itself. The engine opens it instead, here, once for
++  // the whole run: every prompt then carries the text inline, which is the one
++  // form all four roles can read regardless of what their permission mode lets
++  // them run. `wavesPath` itself is unchanged by this — it is still the
++  // resolver's pointer in `waveContendingBlock`, still an `args.json` key, and
++  // still what `makeAddDirsFor` scopes `patches/` with.
++  if (wavesPath) {
++    let launch
++    try {
++      launch = JSON.parse(fs.readFileSync(wavesPath, 'utf8'))
++    } catch {
++      launch = null
++    }
++    const byId = new Map()
++    const rows = (launch && Array.isArray(launch.tasks)) ? launch.tasks : []
++    for (const row of rows) {
++      if (row && typeof row.id === 'string') byId.set(row.id, row)
++    }
++    for (const w of WAVES) for (const t of w) {
++      if (typeof t.body === 'string' && t.body.trim() !== '') continue
++      const row = byId.get(t.id)
++      if (row && typeof row.body === 'string' && row.body.trim() !== '') t.body = row.body
++    }
++  }
++  // A task with no body is malformed the same way one missing from `args.waves`
++  // is, and it fails here for the same reason: a worker handed an empty `TASK:`
++  // block has nothing to implement, and finding that out at dispatch costs a
++  // whole round. This is the body half of the input check above, moved to where
++  // the launch file has been read.
++  for (const w of WAVES) for (const t of w) {
++    if (typeof t.body === 'string' && t.body.trim() !== '') continue
++    throw new Error('run-engine: task ' + t.id + ' has no body: not inline in args.waves ' +
++      'and not in ' + (wavesPath || '(no args.wavesPath given)'))
++  }
+   // Patch input is the ONLY input shape here (Amendment 9): the value is the
+   // driver-owned patches directory, the trust anchor for reply patches.
+   const patchPrefix = (typeof args.patchInput === 'string' && args.patchInput.charAt(0) === '/')
+@@ -3117,7 +3155,7 @@ export async function runEngine({
+     // and TASK blocks. What differs is only what each is measured by — the
+     // examiner's TEST COMMAND, the implementer's PROOFS.
+     const sharedInputs = filesLine(task) + siblingsStr +
+-      globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task, wavesPath)
++      globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task)
+     // The examiner's line is the remapped command; a task with no command of
+     // its own falls back to the run-wide one exactly as it did.
+     const examCmdTask = examRunCmd ? { testCmd: examRunCmd } : task
+@@ -4061,7 +4099,7 @@ export async function runEngine({
+         reds.map((r) => r.line).join('; ') + ') — one repair round before any reviewer read the patch')
+       await postReviewRound(kataRow, 0, reds.map((r) => r.line))
+       impl = await agent(
+-        roles.fix + taskBodyBlock(task, wavesPath) + proofsInputs +
++        roles.fix + taskBodyBlock(task) + proofsInputs +
+           filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) +
+           '\n\nBlocking issues to resolve:\n' +
+           reds.map((r) => '- ' + r.line + '\n  output (last 4,000 characters):\n' + r.stdout).join('\n'),
+@@ -4304,7 +4342,7 @@ export async function runEngine({
+                  tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
+                  ...examEditedField() }
+       }
+-      const reviewPrompt = roles.reviewer + taskBodyBlock(task, wavesPath) +
++      const reviewPrompt = roles.reviewer + taskBodyBlock(task) +
+         '\nPATCH: ' + impl.patch +
+         '\nHEAD: ' + impl.headSha +
+         '\nBASE: ' + baseShaForTask + filesLine(task) + siblingsStr +
+diff --git a/fleet/run-main.mjs b/fleet/run-main.mjs
+index 146fae0bb2104a2afd5edc38f0952c1454e65a2d..5f0f2cda10b01f16544f3366799e55238e9326b6 100644
+--- a/fleet/run-main.mjs
++++ b/fleet/run-main.mjs
+@@ -488,10 +488,12 @@ export function kataRefFor(record, label) {
+ }
+ 
+ // ── --add-dir scope, per role (measured 2026-08-31) ──────────────────────────
+-// A read-only worker's cwd is `<runDir>/clones/integration`, but the two things
+-// its prompt tells it to read — `wavesPath` (launch.json, where compile_plan
+-// puts every task body by design) and `patches/` — live in `<runDir>`, a
+-// PARENT. Under `dontAsk`, read-only Bash is permitted as a class but only IN
++// A read-only worker's cwd is `<runDir>/clones/integration`, but what its
++// prompt tells it to read — `patches/` — lives in `<runDir>`, a PARENT. (Until
++// #1100 `wavesPath` was the other one: the prompt pointed at launch.json and
++// the worker had to open it for the task body. The engine reads that file once
++// now and hands the body inline, so only `patches/` is left; the grant stays
++// for it.) Under `dontAsk`, read-only Bash is permitted as a class but only IN
+ // SCOPE, so those reads were denied: five consecutive runs of `cannotVerify`
+ // entries that became deferred acks and parked the run. `--add-dir` is what
+ // puts a parent in scope, and it reaches Bash, not just the file tools
+diff --git a/fleet/run-worker.mjs b/fleet/run-worker.mjs
+index 24e876d1683ce5a327eb175478c1e9b4dd202e7c..9ebcc3c12d537bc779af88b9166810127f93acff 100644
+--- a/fleet/run-worker.mjs
++++ b/fleet/run-worker.mjs
+@@ -85,10 +85,11 @@ import path from 'node:path'
+ // decision: `addDirsFor` was never supplied to createRunWorker, so the
+ // `--add-dir` push below was dead code. Fixed by composeAgent supplying it.
+ //
+-// Bodies CANNOT be inlined instead: compile_plan's `--emit-args` requires
+-// `--emit-launch` precisely "so wavesPath is always populated" — task bodies
+-// ride the launch file by design and never the prompt. Reading it is the
+-// contract, so the run dir must be in scope.
++// Since #1100 the body half of that is gone: the engine opens the launch file
++// itself, once per run, and hands each worker its task's text inline, so no
++// prompt asks anyone to go and open a JSON file. `patches/` is what the
++// `--add-dir` grant is still for — a reviewer reads reply patches out of
++// `<runDir>`, which is still a parent of its cwd.
+ //
+ // bypassPermissions does NOT path-gate (arm F), so the write-side roles need no
+ // `--add-dir` and are deliberately given none: read reach they do not need is
+diff --git a/fleet/tests/test_run_engine_own_proofs.mjs b/fleet/tests/test_run_engine_own_proofs.mjs
+index 6ee2703518b4eb47bd1d837669f9d98d20bb0a5a..96c8e10c21e31a4a71850fb4644d5ac36571d014 100644
+--- a/fleet/tests/test_run_engine_own_proofs.mjs
++++ b/fleet/tests/test_run_engine_own_proofs.mjs
+@@ -63,6 +63,12 @@
+ // `── Task 3 (2026-09-17) ──` further down. Everything above that marker is
+ // this file as it stood at that task's BASE, unchanged: its leg (a) is the
+ // `TEST COMMAND` half of S4 below, which is why S4 is left where it is.
++//
++// A THIRD task's clauses were added on 2026-09-17 under the next marker down,
++// `── Task 1 (2026-09-17, #1100) ──` — "the engine reads each task's body from
++// the launch file once and hands it inline to every worker" — whose own M1–M5
++// and legs (a)–(e) are restated there. Everything above THAT marker is this
++// file as it stood at that task's BASE, unchanged.
+ import assert from 'node:assert/strict'
+ import fs from 'node:fs'
+ import os from 'node:os'
+@@ -729,4 +735,311 @@ const plantSlice = (runDir, { label, sessionId, cmds }) => {
+     'already holds one')
+ }
+ 
++// ═══ Task 1 (2026-09-17, #1100) ═══════════════════════════════════════════════
++// "The engine reads each task's body from the launch file once and hands it
++// inline to every worker." Claim: do: launch a plan whose task bodies ride the
++// launch file, as every launch does; see: each of a task's four workers — its
++// implementer, its examiner, its fix round and, first among them, its reviewer
++// — is handed `TASK:` followed by the task's own text, and none of those four
++// is told to go and read that text out of a JSON file; the resolver's brief
++// over a conflicted wave is not one of the four and still names the file
++// exactly as it did.
++//
++// The clauses this section carries, and the legs that carry them:
++//
++//   M1 — for a task whose `args.waves` entry carries no `body` and whose text
++//        lives under `tasks[].body` in the JSON file at `args.wavesPath`, each
++//        of the four prompts the engine dispatches for that task — labels
++//        `impl:<id>`, `exam:<id>`, `fix:<id>:0` and `review:<id>:1` — contains
++//        the string `\nTASK:\n` immediately followed by that task's `body`
++//        string from the file, byte for byte. Leg (a).
++//   M2 — no prompt the engine dispatches contains the phrase `read your
++//        verbatim task text from the JSON file`, and `fleet/run-engine.mjs`
++//        contains no line carrying the phrase `read your verbatim task text`.
++//        Leg (b).
++//   M3 — a task whose `body` is inline in its `args.waves` entry, with no
++//        `args.wavesPath` given, is dispatched with the same `\nTASK:\n`
++//        followed by that body in its implementer and reviewer prompts. Leg (c).
++//   M4 — when `args.wavesPath` names a file whose `tasks` array carries no
++//        entry for a task and that task's `args.waves` entry carries no `body`,
++//        `runEngine` rejects before any worker is dispatched, with an error
++//        message naming the task id and the path. Leg (d).
++//   M5 — `waveContendingBlock({ waveTasks, wavesPath, receipts })` renders
++//        exactly as at BASE: the resolver brief sim prints `ALL TESTS PASSED`
++//        on the patched tree. Leg (e).
++//
++// Four readings, recorded here and on the kata issue:
++//
++//   Leg (a)'s "byte for byte". Asserted as `prompt.includes('\nTASK:\n' +
++//   LAUNCH_BODY)` — the clause's own words, a substring of the prompt with the
++//   separator immediately before it — one label at a time, so a failure names
++//   WHICH of the four workers was still handed a pointer. `LAUNCH_BODY` ends in
++//   a newline and the launch file carries a DECOY entry ahead of the task's
++//   own, so neither a trimmed body nor a `tasks[0]` read can satisfy it: M1
++//   says the body string from the file, for that task's id.
++//
++//   Leg (b)'s two halves. The per-prompt half reads the full phrase `read your
++//   verbatim task text from the JSON file` on every prompt of BOTH runs — S13's
++//   four and S14's — because M2 says NO prompt the engine dispatches carries
++//   it, not just the four of the body-less run. The source half transliterates
++//   the Proof's first `Run:` (`test "$(grep -c 'read your verbatim task text'
++//   fleet/run-engine.mjs)" = 0`) as: zero LINES of `fleet/run-engine.mjs`
++//   contain the shorter phrase — `grep -c` counts lines, and a comment line
++//   that quotes the phrase is as much a hit as the code that renders it.
++//
++//   Leg (d)'s "the stub recorded no label at all". M4 says the rejection comes
++//   BEFORE any worker is dispatched, so S15's stub does NOT throw on an
++//   unexpected dispatch: it records its label and returns the benign reply its
++//   kind would. At BASE, where nothing rejects, the failure is then
++//   `assert.rejects` finding no rejection — not a stub error whose own text
++//   happens to contain `T3` and would read as a spurious pass.
++//
++//   Leg (e). The Proof's second `Run:` executes `test_resolver_brief.mjs` in
++//   the driver's own clone; an exam neither runs a sibling sim nor names one,
++//   so this block pins the one half that is its own to check:
++//   `waveContendingBlock` is PURE and exported, so its BASE render is asserted
++//   here by equality against the literal string — the `wavesPath` sentence
++//   included, which is the thing M5 protects. Whether the sim that `Run:` line
++//   invokes is present and green is that command's own answer, given in the
++//   driver's clone; a sim of this tree may not name a sibling sim even to check
++//   that it exists (`test_sims_are_hermetic.mjs`, leg (e) [M4]).
++const PHRASE = 'read your verbatim task text from the JSON file'
++const PHRASE_SHORT = 'read your verbatim task text'
++// The task text as the compiler's `--emit-launch` file carries it: multi-line,
++// with the backticks and quotes a real body has, and a trailing newline.
++const LAUNCH_BODY = '### Task T1: the body rides the prompt\n' +
++  '\n' +
++  '**Claim:** do: launch a plan whose task bodies ride the launch file; see: the worker is ' +
++  'handed the text.\n' +
++  'Machine: M1. The tree holds `one.txt`.\n' +
++  '\n' +
++  '**Proof:**\n' +
++  '- Legs: (a) `one.txt` exists [M1]\n'
++// A different body, under a different id, sitting FIRST in the `tasks` array.
++const DECOY_BODY = '### Task T0: not this one\nMachine: M1. The tree holds `zero.txt`.\n'
++const launchFileAt = (file, tasks) => {
++  fs.writeFileSync(file, JSON.stringify({ tasks }, null, 2))
++  return file
++}
++
++// ── S13: legs (a) and (b) [M1, M2] ───────────────────────────────────────────
++// The S1 shape, with the body moved OFF the wave entry and into a launch file:
++// one task with `proofTests`, a `testCmd` and two `proofRuns` of which the
++// second is red on the implementer's tree and green once the fix round has
++// written its file, so this single run records all four of `impl:T1`,
++// `exam:T1`, `fix:T1:0` and `review:T1:1`. `extraArgs` is how `wavesPath`
++// reaches `runEngine`.
++{
++  const repo = makeRepo(path.join(tmp, 'repo-launch-body'))
++  const runDir = path.join(tmp, 'run-launch-body')
++  const LAUNCH = launchFileAt(path.join(tmp, 'launch-body.json'), [
++    { id: 'T0', title: 'decoy', files: ['zero.txt'], body: DECOY_BODY },
++    { id: 'T1', title: 't1', files: ['one.txt', 'fixed.txt'], body: LAUNCH_BODY },
++  ])
++  const EXAM_CMD = 'bash t1_test.sh'
++  // Red at BASE (the examiner's clone has no `one.txt`), green on the patch.
++  const EXAM = '#!/bin/bash\n[ -f one.txt ]\n'
++  const labels = []
++  const prompts = {}
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    prompts[opts.label] = prompt
++    const kind = opts.label.split(':')[0]
++    if (kind === 'exam') {
++      fs.writeFileSync(path.join(cwd, 't1_test.sh'), EXAM)
++      return { status: 'DONE', summary: 'exam written' }
++    }
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'fix') {
++      fs.writeFileSync(path.join(cwd, 'fixed.txt'), 'repaired\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run } = rig({
++    repo, runDir, stub, stamp: 'op7',
++    // `body: undefined` — the wave entry the compiler's `--emit-args` payload
++    // actually carries: LIGHT, with the text only in the launch file.
++    waves: [[mkTask('T1', ['one.txt', 'fixed.txt'], {
++      body: undefined, proofTests: ['t1_test.sh'], testCmd: EXAM_CMD,
++      proofRuns: ['test -f one.txt', 'test -f fixed.txt'],
++    })]],
++    extraArgs: { wavesPath: LAUNCH },
++  })
++  await run()
++
++  // [M1] leg (a): the four labels are all recorded ...
++  const FOUR = ['impl:T1', 'exam:T1', 'fix:T1:0', 'review:T1:1']
++  for (const label of FOUR) {
++    assert.deepEqual(labels.filter((l) => l === label), [label],
++      'sim precondition: the run dispatched exactly one `' + label + '` — the task\'s four ' +
++      'workers are its implementer, its examiner, its fix round and its reviewer: ' +
++      JSON.stringify(labels))
++  }
++
++  // ... and each of the four prompts carries `\nTASK:\n` immediately followed
++  // by the task's `body` string FROM THE LAUNCH FILE, byte for byte. Asserted
++  // one label at a time, so the failure names the worker still handed a pointer.
++  for (const label of FOUR) {
++    assert.ok(prompts[label].includes('\nTASK:\n' + LAUNCH_BODY),
++      'the `' + label + '` prompt contains `\\nTASK:\\n` immediately followed by T1\'s `body` ' +
++      'from the JSON file at `args.wavesPath`, byte for byte — the engine read that file once ' +
++      'and handed the text inline, and this worker is not told to go and read it')
++  }
++
++  // [M2] leg (b): none of the four is told to go and read the file.
++  for (const label of FOUR) {
++    assert.equal(prompts[label].includes(PHRASE), false,
++      'and the `' + label + '` prompt does not contain `' + PHRASE + '` — no prompt the engine ' +
++      'dispatches carries the pointer sentence, by any path')
++  }
++}
++
++// ── S14: leg (c) [M3], and leg (b) over an inline-body run ───────────────────
++// The shape every engine sim at BASE already drives: `body` inline on the wave
++// entry and no `wavesPath` at all. Nothing about this run changes — which is
++// the point of M3 — and its prompts are read for the pointer phrase too,
++// because M2 says NO prompt the engine dispatches carries it.
++{
++  const repo = makeRepo(path.join(tmp, 'repo-inline-body'))
++  const runDir = path.join(tmp, 'run-inline-body')
++  const labels = []
++  const prompts = {}
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    prompts[opts.label] = prompt
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'two.txt'), 'from T2\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run } = rig({
++    repo, runDir, stub, stamp: 'op8',
++    // `mkTask`'s default `body` is the module's inline `BODY`; no `extraArgs`,
++    // so `args.wavesPath` is absent.
++    waves: [[mkTask('T2', ['two.txt'])]],
++  })
++  await run()
++
++  for (const label of ['impl:T2', 'review:T2:1']) {
++    assert.deepEqual(labels.filter((l) => l === label), [label],
++      'sim precondition: the run dispatched exactly one `' + label + '` — ' +
++      JSON.stringify(labels))
++    // [M3] leg (c)
++    assert.ok(prompts[label].includes('\nTASK:\n' + BODY),
++      'the `' + label + '` prompt of a task whose `body` is inline in its `args.waves` entry, ' +
++      'with no `args.wavesPath` given, still contains `\\nTASK:\\n` followed by that body — the ' +
++      'shape every engine sim at BASE already drives is unchanged')
++  }
++  // [M2] leg (b), over this run's prompts as well.
++  for (const label of Object.keys(prompts)) {
++    assert.equal(prompts[label].includes(PHRASE), false,
++      'and the `' + label + '` prompt of the inline-body run does not contain `' + PHRASE +
++      '` either — no prompt the engine dispatches carries it')
++  }
++}
++
++// ── S15: leg (d) [M4] ────────────────────────────────────────────────────────
++// A launch file whose `tasks` array holds only an entry for `T9`, while the
++// wave's body-less task is `T3`: the body is nowhere, which is malformed
++// input, and `runEngine` is async so the refusal is a REJECTION. The stub
++// records its label and returns the benign reply its kind would rather than
++// throwing, so at a tree where nothing rejects the failure reads as
++// `assert.rejects` finding no rejection rather than as a stub error.
++{
++  const repo = makeRepo(path.join(tmp, 'repo-no-body'))
++  const runDir = path.join(tmp, 'run-no-body')
++  const LAUNCH = launchFileAt(path.join(tmp, 'launch-no-body.json'), [
++    { id: 'T9', title: 'someone else', files: ['nine.txt'], body: DECOY_BODY },
++  ])
++  const labels = []
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl' || kind === 'fix') {
++      fs.writeFileSync(path.join(cwd, 'three.txt'), 'from T3\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    return { status: 'DONE', summary: 'sim stub' }
++  }
++  const { run } = rig({
++    repo, runDir, stub, stamp: 'op9',
++    waves: [[mkTask('T3', ['three.txt'], { body: undefined })]],
++    extraArgs: { wavesPath: LAUNCH },
++  })
++
++  await assert.rejects(run, (err) => {
++    assert.ok(err instanceof Error,
++      'the refusal is a thrown Error, not a resolved report: ' + JSON.stringify(err))
++    assert.ok(err.message.includes('T3'),
++      'and its message names the task whose body is nowhere — `T3` — so the operator knows ' +
++      'which entry of the plan is malformed: ' + err.message)
++    assert.ok(err.message.includes(LAUNCH),
++      'and it names the launch file it looked in — `' + LAUNCH + '` — so the operator knows ' +
++      'where it looked: ' + err.message)
++    return true
++  }, 'a task whose `args.waves` entry carries no `body` and whose id is not in the `tasks` ' +
++     'array of the file at `args.wavesPath` makes `runEngine` reject')
++
++  assert.deepEqual(labels, [],
++    'and it rejected BEFORE any worker was dispatched — the stub recorded no label at all: ' +
++    JSON.stringify(labels))
++}
++
++// ── S16: leg (e) [M5] ────────────────────────────────────────────────────────
++// The resolver's brief over a conflicted wave is NOT one of the four workers,
++// and it still names the file exactly as it did. `waveContendingBlock` is pure
++// and exported, so its BASE render is pinned here by equality — the `wavesPath`
++// sentence included, which is the whole of what M5 protects. That equality is
++// all this block asserts: the sim the Proof's second `Run:` line invokes is a
++// sibling of this one, and a sim of this tree may not name a sibling sim — not
++// to run it, and not to check that it exists (`test_sims_are_hermetic.mjs`, leg
++// (e) [M4]). That half of leg (e) is the `Run:` line's own answer, given in the
++// driver's clone rather than here.
++{
++  const WAVE_TASKS = [
++    { id: 'A', title: 'alpha', files: ['a.txt', 'b.txt'] },
++    { id: 'B', title: 'beta', files: [] },
++  ]
++  const WP = '/tmp/run-op10/launch.json'
++  // The BASE string, byte for byte. With `receipts: []` — a run that recorded
++  // no failure — `factsBlock` contributes nothing, so this is the whole render.
++  const BASE_RENDER = '\nCONTENDING TASKS:' +
++    '\n- task A: alpha [files: a.txt, b.txt]' +
++    '\n- task B: beta' +
++    '\nTheir full verbatim task text lives in the JSON file at ' + WP +
++    ' — read the "tasks" array entry whose "id" matches.'
++  assert.equal(typeof engine.waveContendingBlock, 'function',
++    'sim precondition: `waveContendingBlock` is still exported from fleet/run-engine.mjs')
++  const render = engine.waveContendingBlock({
++    waveTasks: WAVE_TASKS, wavesPath: WP, receipts: [],
++  })
++  assert.equal(render({ path: 'a.txt' }), BASE_RENDER,
++    '`waveContendingBlock({ waveTasks, wavesPath, receipts })` renders EXACTLY as at BASE — ' +
++    'the resolver is not one of the task\'s four workers and is still pointed at the JSON ' +
++    'file by name, in the same sentence')
++}
++
++// ── S17: leg (b), source half [M2] ───────────────────────────────────────────
++// The Proof's first `Run:` transliterated: `grep -c` counts LINES, so a comment
++// line in the engine that quotes the phrase is as much a hit as the code that
++// renders it — which is why the pointer branch is deleted rather than kept as a
++// fallback, and why the engine's comment says what changed without quoting it.
++{
++  const carriers = fs.readFileSync(ENGINE_SRC, 'utf8').split('\n')
++    .filter((l) => l.includes(PHRASE_SHORT))
++  assert.deepEqual(carriers, [],
++    'fleet/run-engine.mjs contains NO line carrying `' + PHRASE_SHORT + '` — the phrase cannot ' +
++    'reach a prompt by any path, in code or in a comment, which is what the Proof\'s first ' +
++    '`Run:` line counts: ' + JSON.stringify(carriers))
++}
++
+ console.log('ALL TESTS PASSED')
+diff --git a/skills/ultrawrite/references/greenfield-stack.md b/skills/ultrawrite/references/greenfield-stack.md
+index e4c606bbe3a462cd0ad01ab7b967b18777b18ff8..23069844c1acdcaa6400a297fa1e32ba4138af9b 100644
+--- a/skills/ultrawrite/references/greenfield-stack.md
++++ b/skills/ultrawrite/references/greenfield-stack.md
+@@ -279,11 +279,13 @@ for — not how the engine runs it.
+   is wherever the operator installed it, so a plan names the binary and never a
+   package manager.
+ - **How an exam starts it.** The start line is
+-  `celld dev <server dir> --no-watch --port <p> --internal-listen 127.0.0.1:<q>`,
+-  and a plan allocates **two ports per task**: `<p>` for the worker and `<q>` for
+-  the internal listener, which otherwise takes `127.0.0.1:0` and collides across
+-  parallel tasks. `--no-watch` is not optional — without it a mid-run tree change
+-  rebuilds under a running exam.
++  `celld dev <server dir> --no-watch --clean --port <p>`, with `<p>` a free
++  loopback port the exam picks. `celld dev` takes no `--internal-listen` (0.5.0
++  answers `unknown argument`, read 2026-09-17): it starts its node with
++  `--internal-listen 127.0.0.1:0` itself, so an instance holds **two ports**,
++  the worker's and one the node picks, ephemeral and never named or tunnelled.
++  `--no-watch` is not optional — without it a mid-run tree change rebuilds under
++  a running exam — and `--clean` starts the copy from empty state.
+ - **Its bundler.** `CELLD_ESBUILD` names `<repo>/node_modules/.bin/esbuild`, and
+   that binary comes from the plan's own Dependencies line, which carries esbuild
+   after its `dev:` word (`dev: esbuild@0.25.x`) — so the sandbox installs no
