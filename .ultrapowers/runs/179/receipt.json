@@ -1,0 +1,252 @@
+{
+  "ok": true,
+  "stamp": "run-179",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-179"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "add-command",
+      "ok": true,
+      "detail": "no dependencies declared \u2014 nothing to add"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The card's `Act on these` section \u2014 the few rows Jev scores as act-now, above the full list, absent when none qualify",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/sandbox-boot.sh"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`residual_rows()` (on main since `4dccc32f`: the ledger rows, `jev` present when the row's request succeeded)"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The contract and the runbook say what the ledger and the card now carry, what TypeSafe is on the fleet, and that the section's rows may stand above the record",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/RUNBOOK.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The card's `Act on these` section \u2014 the few rows Jev scores as act-now, above the full list, absent when none qualify",
+          "files": [
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/test_sandbox_boot_residuals.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`residual_rows()` (on main since `4dccc32f`: the ledger rows, `jev` present when the row's request succeeded)"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/sandbox-boot.sh"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_residuals.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_residuals.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_sandbox_boot_card_cells.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_sandbox_boot_residuals.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_sandbox_boot_residuals.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_sandbox_boot_residuals.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_sandbox_boot_residuals.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_sandbox_boot_residuals.mjs": "fleet/tests/test_sandbox_boot_residuals.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_sandbox_boot_residuals.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/RUNBOOK.md"
+            ],
+            "produces": [],
+            "consumes": [
+              "`residual_rows()` (on main since `4dccc32f`: the ledger rows, `jev` present when the row's request succeeded)"
+            ]
+          }
+        },
+        {
+          "id": "2",
+          "title": "The contract and the runbook say what the ledger and the card now carry, what TypeSafe is on the fleet, and that the section's rows may stand above the record",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^    .residuals\\.jsonl. \u2014 one JSON object per residual/,/^    .kata\\.jsonl. \u2014 /p' fleet/CONTRACT.md | tr '\\n' ' ' | tr -s ' ' | grep -q 'residuals\\.jsonl.*jev.*kind\\.status.*kind\\.subject.*actor.*attention.*claim_false.*confidence.*model.*absent.*failed.*residuals-jev\\.jsonl.*one line per request.*sha256.*answers.*error.*kata\\.jsonl'",
+            "sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | tr -s ' ' | grep -q '| task | claim | exam | probes | mutant | suite |.*Act on these: <q> of <n>.*at most ten.*attention <a>, actor <actor>, <status> / <subject>.*jev\\.attention.*2\\.5.*highest.*no section.*experiment.*#1093.*n=5 runs.*rollback.*deleting the section.*nothing gates on it.*then .Residuals: <n> from review.'",
+            "sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | tr -s ' ' | grep -q \"reviewer's sentence \u2014 the errands and the .Act on these. rows excepted\"",
+            "sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | tr -s ' ' | grep -q 'lines above it are the .deferred:external. ones.*actor. .plan.*up-to-ten .Act on these. rows.*no other reviewer sentence appears above the record'",
+            "test \"$(sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | tr -s ' ' | grep -c 'no other reviewer sentence appears above the record at all')\" = 0",
+            "sed -n '/^\\*\\*TypeSafe\\.\\*\\*/,/^\\*\\*/p' fleet/RUNBOOK.md | tr '\\n' ' ' | tr -s ' ' | grep -q 'http-proxy.*typesafe.*tag:fleet.*https://typesafe.int.exe.xyz/v1/systemone.*301.*POST into a GET.*no .Authorization. header.*edge injects the bearer.*TYPESAFE_API_KEY.*2026-09-16.*http=200 time=0.299s.*never gates.*jev:.*keeps the rule.*written as before.*one request per residual per run'",
+            "test \"$(sed -n '/^\\*\\*TypeSafe\\.\\*\\*/,/^\\*\\*/p' fleet/RUNBOOK.md | grep -c '^- ')\" = 2",
+            "awk '/^\\*\\*The Claude proxy\\.\\*\\*/{a=NR} /^\\*\\*TypeSafe\\.\\*\\*/{b=NR} /^\\*\\*The GitHub edge\\.\\*\\*/{c=NR} END{exit !(a && b && c && a<b && b<c)}' fleet/RUNBOOK.md",
+            "test \"$(sed -n '/^## Traps/,/^## Capacity/p' fleet/RUNBOOK.md | grep -c '^- ')\" = 42"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/RUNBOOK.md"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_sandbox_boot_residuals.mjs"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 Sections"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- No credential anywhere: no `Authorization` header and no bearer in any request the boot makes, no `TYPESAFE_API_KEY` in any file of the tree, in any argv, in any environment the boot exports \u2014 the edge injects the bearer, exactly as it does for `claude-max` and `kata`.\n- Nothing gates on Jev: no `jev` field is read by the gate verdict, the answer line (`**Merged**`, `**Merge-ready**`, `**Held:**`, `**Parked:**`), the draft flag, the merge PUT, `routeToPlan` or any event kind; a run whose every TypeSafe request fails publishes the same pull request, byte for byte, as one whose requests all succeeded \u2014 the `Act on these` section aside.\n- The boot's own `kind` rule (`cannot verify` / `could not verify`), the `Residuals: <n> from review` line, the errand lines, the `Amendments:` lines and the record's `### Residuals` checklist render exactly as they do at BASE; the rule is the rollback, with the card section deleted.\n- The request seam merged as `4dccc32f` \u2014 `residual_read`'s `jev` mode, `residual_jev`, `residuals-jev.jsonl`, `TYPESAFE_URL` \u2014 is not changed: no new request is made at render time, and the request count per run stays one per residual.\n- No new event kind is appended to `events.jsonl`, no new assignment key is read from the VM comment, no new lobby verb, no new npm dependency, and nothing under `fleet/roles/` changes.\n- Findings are about the result \u2014 what the card, the sims and the documents now say \u2014 never about the order the work was done in, the number of commits, or whether a test was written before its code.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/",
+        "minor": false
+      },
+      {
+        "cmd": "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-179/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-179/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-179/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-179/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for addCmd/addDevCmd \u2014 the package-add commands are driver-derived from the same lockfile/manifest beside the bootstrap and stamped in the args file and receipt (only when the plan declares packages); there is no knob for them",
+    "nothing for regenerateCmd \u2014 the lockfile regenerator is derived from the same lockfile/manifest beside the bootstrap (and only when the bootstrap itself was derived) and stamped in the args file and receipt; there is no knob for it",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini",
+  "foldTestCmd": "python3 -m pytest {paths}"
+}
