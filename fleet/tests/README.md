@@ -63,6 +63,13 @@ one sim per question:
   action wall and whether the browser ran.
 - `test_run_engine_state_handshake.mjs` — the state handshake: what a task
   publishes as the state it reached, and what the driver holds against it.
+- `test_run_engine_jev_finding.mjs` — the `jev:finding` row: a reviewer's
+  finding put to Jev, the answers on the record, and nothing on the record when
+  the call did not answer.
+- `test_run_engine_jev_tier.mjs` — the `jev:tier` row at dispatch and at review,
+  the reading recorded beside the tier the driver chose anyway.
+- `test_run_engine_jev_suite_red.mjs` — the `jev:suite-red` row: a red fold's
+  failing paths attributed per task, a reading that adopts nothing.
 
 ## The launcher — `test_launch_*`
 
@@ -110,6 +117,9 @@ one sim per question:
   when there is nothing to say.
 - `test_probe_kata_facts.mjs` — the shape of `probe_kata_facts.mjs`: one line
   per fact, stamped with the hub's version.
+- `test_jev_client.mjs` — the Jev client: one POST at the edge hostname with no
+  `Authorization` header of its own, and `null` after one log line on every
+  lane that is not an answer.
 - `test_sims_are_hermetic.mjs` — the probe below.
 
 ## The rig

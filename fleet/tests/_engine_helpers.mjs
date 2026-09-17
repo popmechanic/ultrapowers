@@ -63,6 +63,20 @@ export function rig({ repo, runDir, waves, edges = [], stub, testCmd = 'bash che
                       // engine with no hub at all — `kataRecord` travels
                       // separately, through `extraArgs`.
                       kata = undefined,
+                      // The Jev client, for a sim that drives one: an injected
+                      // `{ ask }`, never a network — `fleet/jev-client.mjs`'s
+                      // own `fetchImpl` seam is the other half, and between
+                      // them no sim opens a socket. Left out entirely when
+                      // undefined, exactly as `kata` is, so a sim that passes
+                      // none reaches an engine with no Jev at all and makes no
+                      // call.
+                      jev = undefined,
+                      // The run's event log, for a sim that drives the
+                      // engine's subscription: in production this is run-main's
+                      // `makeEventLog`; here it is whatever the sim hands in,
+                      // typically a `{ subscribe }` that captures the engine's
+                      // callback so the sim can push lines through it.
+                      eventLog = undefined,
                       // The exec seam. `execSeam` by default — the sims are
                       // real below it — and overridable so a sim can RECORD
                       // what the driver ran (which git verbs, which suites, in
@@ -120,8 +134,86 @@ export function rig({ repo, runDir, waves, edges = [], stub, testCmd = 'bash che
     phase: (p) => phases.push(String(p)),
     patchBase,
     ...(kata === undefined ? {} : { kata }),
+    ...(jev === undefined ? {} : { jev }),
+    ...(eventLog === undefined ? {} : { eventLog }),
   })
   return { run, base, clonesDir, patchesDir, integ, logs, phases, patchBase }
+}
+
+// The hub, in memory: the client's method names over a `Map` of issues, every
+// call recorded in order. Lifted out of `test_run_engine_state_handshake.mjs`
+// (which keeps its own copy) so any sim that needs a hub on can have one
+// without a network — `kata: fakeHub(...).kata` into the rig and the matching
+// `{ kataRecord }` through `extraArgs`. The fake's issue revisions must equal
+// the record's: a sheet read whose revision disagrees is fatal to the engine.
+//
+// `issues` is `{ [uid]: { revision, short_id, metadata } }`. `commentsOn(uid)`
+// is the comment bodies posted on one issue, in order — read it only after
+// `run()` resolves, since the engine drains its hub chain at the run's end.
+// `post` is a producing implementer's own `kata meta set … --json-value`: from
+// OUTSIDE the engine, so it is not in the call log and does not move the
+// revision the fake answers.
+export function fakeHub ({ projectId, issues }) {
+  const calls = []
+  const store = new Map()
+  for (const [uid, iss] of Object.entries(issues)) {
+    store.set(uid, { uid, revision: iss.revision, short_id: iss.short_id,
+                     metadata: { ...(iss.metadata || {}) }, owner: null,
+                     status: 'open', labels: [] })
+  }
+  const need = (uid) => {
+    const iss = store.get(uid)
+    if (!iss) throw new Error('fake hub: no issue ' + JSON.stringify(uid))
+    return iss
+  }
+  const record = (method, uid, fields, answer) => {
+    calls.push({ method, uid, ...fields, answer })
+    return answer
+  }
+  const kata = {
+    async getIssue (uid) {
+      const iss = need(uid)
+      return record('getIssue', uid, {}, {
+        uid, revision: iss.revision, short_id: iss.short_id, metadata: iss.metadata,
+        status: iss.status, owner: iss.owner, project_id: projectId,
+      })
+    },
+    async claim (project, uid) {
+      const iss = need(uid)
+      iss.owner = 'engine'; iss.revision += 1
+      return record('claim', uid, { projectId: project },
+        { uid, revision: iss.revision, short_id: iss.short_id })
+    },
+    async patchMetadata (project, uid, patch, revision) {
+      const iss = need(uid)
+      iss.metadata = { ...iss.metadata, ...patch }; iss.revision += 1
+      return record('patchMetadata', uid, { projectId: project, patch, revision },
+        { uid, revision: iss.revision, short_id: iss.short_id })
+    },
+    async comment (project, uid, body) {
+      const iss = need(uid)
+      iss.revision += 1
+      return record('comment', uid, { projectId: project, body }, { uid, revision: iss.revision })
+    },
+    async addLabel (project, uid, label) {
+      const iss = need(uid)
+      iss.labels.push(label); iss.revision += 1
+      return record('addLabel', uid, { projectId: project, label }, { uid, revision: iss.revision })
+    },
+    async close (project, uid, opts) {
+      const iss = need(uid)
+      iss.status = 'closed'; iss.revision += 1
+      return record('close', uid, { projectId: project, opts }, { uid, revision: iss.revision })
+    },
+  }
+  return {
+    kata,
+    calls,
+    of: (m) => calls.filter((c) => c.method === m),
+    commentsOn: (uid) => calls.filter((c) => c.method === 'comment' && c.uid === uid)
+      .map((c) => String(c.body || '')),
+    post: (uid, value) => { need(uid).metadata = { ...need(uid).metadata, 'state.reached': value } },
+  }
 }
 
 // Common canned judgments.
