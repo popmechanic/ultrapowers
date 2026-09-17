@@ -1,0 +1,11 @@
+{"kind":"run:open","runId":"run-181","base":"","source":"fleet/run-main.mjs","id":"01M2Q6G8X50000MS11MN6GDKAR","ts":1789632455589}
+{"kind":"driver:stage","stage":"kata","detail":"record /home/exedev/plans/run-181.kata.json → https://kata.int.exe.xyz","id":"01M2Q6G8X80000EDY4XBYC1KXC","ts":1789632455592}
+{"kind":"driver:stage","stage":"tiers","detail":"2 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M2Q6G8X90000HY7BH2FMWB7M","ts":1789632455593}
+{"kind":"driver:stage","stage":"provision","detail":"BASE b16dbdb1e97ab49d6d4a2958907bfd3ec7cd3194; 2 task clone(s) + integration","id":"01M2Q6G9640000FN292BYE469C","ts":1789632455876}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M2Q6G9JX0000CG615P3REYAZ","ts":1789632456285}
+{"kind":"driver:stage","stage":"engine","detail":"waves 2, width bound 2, patch input armed","id":"01M2Q6G9JY0000MVJM7662BBJY","ts":1789632456286}
+{"kind":"engine:phase","phase":"Setup","id":"01M2Q6G9K50000BWDASD0C9P7R","ts":1789632456293}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-181 at b16dbdb1e97ab49d6d4a2958907bfd3ec7cd3194","id":"01M2Q6G9T20000087A055QSHJQ","ts":1789632456514}
+{"kind":"worker:start","label":"impl:2","role":"implementer","sessionId":"79d03bd3-f9f1-4501-ba2b-ae205705dbde","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-181/clones/task-2","model":"opus","id":"01M2Q6GADY00009P8233P6NJV7","ts":1789632457150}
+{"kind":"worker:start","label":"exam:1","role":"examiner","sessionId":"d767b7b1-1622-4e68-acbd-6c55228ca5fd","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-181/clones/exam-1","model":"opus","id":"01M2Q6GAF100003VQNZS2Q2NTA","ts":1789632457185}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"9c0b1d9d-6177-4f94-9f5d-d53f9c74a68b","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-181/clones/task-1","model":"opus","id":"01M2Q6GAF300003CRQYMXFK78J","ts":1789632457187}
