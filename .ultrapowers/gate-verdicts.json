@@ -1,0 +1,120 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "1f9ce961e9f14e622ce8daf70b90bab9f6c6cb5ebc4c742e0490b80deb0965ae",
+      "verdict": "pass",
+      "reason": "Every clause has falsifying legs (M1 a-c incl. the task-body negative, M2 d-f with each example word computed to fail the pinned name/range regexes while the leg-(a) specs pass them, M3 g/h with the fixture carrying no header line, M4 i, M5 j), the sed ranges match the listed headings in both docs, `_plan_header_value` and `--emit-args`/`--check` exist at BASE, the test file is new, and nothing at BASE pins the opposite."
+    },
+    "2": {
+      "hash": "100d50e7c1b9cd88eb248816494aea8c1e20c06e090d795292b4ca633af7bb42",
+      "verdict": "pass",
+      "reason": "Every M1 rung and precedence in legs (a)-(d) matches the bootstrap ladder's own rungs and order at BASE, M2's three branches each get a falsifying leg ((e) writes, (f) byte-identical no-op, (g) fail with rule or `no lockfile or manifest`), M3's ordering and bail are pinned end-to-end by (h)-(j) at the args-file and receipt layer the sentence talks about, and nothing at BASE pins the opposite of any clause."
+    },
+    "3": {
+      "hash": "f8344e1c4f6b69b18063346683a3774d3220a56c9344dbdf13b04535f15072ce",
+      "verdict": "pass",
+      "reason": "Every literal computes as stated (M1's line for those specs is exactly leg (a)/(b)'s, M2's body is leg (c2)'s with package.json+bun.lock accepted and node_modules/marker excluded, the seven Run: lines are seven and each grep is writable under M8), every enumerated and negation clause has a leg that fails if it is false (M5 by the empty dispatched-label list, M7 by leg (j)), and the one BASE contradiction \u2014 report-format's baseSha row \u2014 is reconciled by M8's rewrite that Run: line 6 pins."
+    }
+  },
+  "tally": {
+    "rounds": 7,
+    "dispatched": 9,
+    "rejected": 5,
+    "base": "631af3765dd353f1879dd1a8887b130b395467c3",
+    "per_task": {
+      "1": {
+        "dispatched": 1,
+        "rejected": 0
+      },
+      "2": {
+        "dispatched": 3,
+        "rejected": 2
+      },
+      "3": {
+        "dispatched": 5,
+        "rejected": 3
+      }
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "task": "2",
+      "hash": "b2f62b13165d039b67342c109b9ec493362f81755ad400c9e27247c6695465af",
+      "verdict": "fail",
+      "reason": "M3 enumerated three driver outcomes but only the None branch had a leg; the declaring case was proven only at the pure-function layer, a proxy for the args-file layer the sentence names."
+    },
+    {
+      "round": 1,
+      "task": "3",
+      "hash": "b98dbc384bfcda24fa769e73c74a654562e20f8b1da4217bd2e6472abdda2dbc",
+      "verdict": "fail",
+      "reason": "report-format.md line 89 pins baseSha as the setup reply's head sha and the #275 guard reads it; M3's 'baseSha stays the launch BASE' was not reconciled."
+    },
+    {
+      "round": 2,
+      "task": "2",
+      "hash": "29522580092f3a8ecd84597645c21666ccc345cd731cfa6f453864ebaa1c9d02",
+      "verdict": "fail",
+      "reason": "M3's bail branch (declared packages no rung can add exits non-zero with no receipt.json) had no leg, and the positive outcome was still unit-level only."
+    },
+    {
+      "round": 2,
+      "task": "3",
+      "hash": "83ce165d8bdccd567c1390abc99a8332a0ee409552e81b83fdda21fe1cdc225f",
+      "verdict": "fail",
+      "reason": "M1 gated on addCmd alone and never bound addDevCmd, so leg (a)'s exact line could not be computed from the rule; the baseSha row contradiction was still unreconciled in M8."
+    },
+    {
+      "round": 4,
+      "task": "3",
+      "hash": "fdef0d6d054357e138eee08ba430643a4d59179414dfe88fabcbe23fa033d7c4",
+      "verdict": "fail",
+      "reason": "M5 and leg (g) asserted only that no impl: label was dispatched, where the sentence says no worker is ever dispatched \u2014 an exam: dispatch before the park would pass."
+    },
+    {
+      "round": 5,
+      "task": "3",
+      "hash": "01b55433b8e6beed18934ef1243c61994fdd466829f20deca547e54fe0395674",
+      "verdict": "fail",
+      "reason": "M2 had no rule for an add line that changes nothing (a re-drive whose reuse head already carries the packages), where git refuses an empty commit and the setup head is undefined."
+    },
+    {
+      "round": 7,
+      "task": "3",
+      "hash": "aecd7daedc8277640cf3f29e109603ed3f92f252410cf2c20cbcdd15a1bc97e7",
+      "verdict": "pass",
+      "reason": "Round-6 pass; the pair was re-hashed after the compiler refused an in-clause `M4` cross-reference as out-of-order numbering (a wording edit, no clause changed) and re-read."
+    }
+  ],
+  "authoring": {
+    "minutes": 24,
+    "probes": 11,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Which direction for dependencies?",
+        "options": [
+          "Declare at the plan, install at setup",
+          "Keep fold-time regeneration, add an authoring rule",
+          "Investigate exe VM snapshots first"
+        ],
+        "recommended": "Declare at the plan, install at setup",
+        "picked": "Declare at the plan, install at setup"
+      },
+      {
+        "question": "Confirm the declared-dependencies Claim, and the exemption?",
+        "options": [
+          "Confirm with the exemption, launch",
+          "Confirm without the exemption",
+          "Hold"
+        ],
+        "recommended": "Confirm with the exemption, launch",
+        "picked": "Confirm with the exemption, launch"
+      }
+    ]
+  }
+}
