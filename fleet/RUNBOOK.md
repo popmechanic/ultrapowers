@@ -613,6 +613,13 @@ on the next one, ask her before editing a script.
 
 - macOS has no `timeout`. A wait loop in a shell script gets its deadline
   from a counter, or the script is a `.mjs`.
+- The plugin cache's `compile_plan.py` is not the sandbox's. The installed
+  plugin on the laptop is whatever the last `plugin install` left behind, while
+  the sandbox's preflight runs the engine checkout at `engine=` — main's tip
+  unless `--engine` pins it — so the launcher fetches that copy for its
+  compile, prints `compiler=<sha>` beside the engine line, and
+  refuses when it cannot fetch it rather than falling back to the cache
+  (run-26, 2026-09-17).
 
 **The fold kernel.**
 

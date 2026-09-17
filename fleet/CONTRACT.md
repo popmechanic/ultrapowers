@@ -410,7 +410,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   ride its `report.json` row as `tasks[].findings`, `[]` when it collected none.
 - **Launch order (launcher):** validate `--target`/`--base`/plan — a `--base` that is not an ancestor
   of the target's default branch is refused (the publish fold would have nothing to fold onto), and so
-  is a shallow launch clone, whose history cannot answer that question → read the pool
+  is a shallow launch clone, whose history cannot answer that question → the `--check --base` compile
+  and the `--stamp` compile both run the compiler fetched at `engine=` — `skills/ultrapowers/scripts/compile_plan.py`
+  at that sha, `git show` from the laptop's plugin checkout, else `gh api` from popmechanic/ultrapowers,
+  into a temp directory — and a launch whose compiler cannot be fetched is refused before any push;
+  the launch line carries `compiler=<sha>` → read the pool
   (`ssh exe.dev "billing plan --json"`) and refuse a run larger than it → run the janitor
   (`fleet/janitor.mjs`, the reap) → refuse a plan that is already live on the target (#1036): the
   plan text's git blob sha — the `<plan sha>` of the kata `Idempotency-Key` below — is compared with

@@ -14,7 +14,7 @@ command carrying a backtick is `command carries a backtick` from
 check, here, against this file — `suite-total-pin` and `directory-absence-pin`
 included. Nothing prints them.
 
-## The fourteen rows
+## The fifteen rows
 
 - **A zero-count grep over a source file counts its comments too.** A `Run:` that pins
   `grep -c <symbol> <file>` = 0 goes red the moment the implementer deletes the code and
@@ -130,6 +130,15 @@ included. Nothing prints them.
   ending at run-24. One claim, one prover; regression is the fold's one suite
   run per merge, so a sweep the operator wants is written once in the owning
   task's own `Run:` (a `Check:` line is not read by this rule).
+- **A `Run:`/`Check:` line writes only to stdout.** `tee /dev/stderr` — and any
+  write to `/dev/stderr` or `/dev/tty` — is refused under the sandbox's
+  service shell (`tee: /dev/stderr: Permission denied`), so the proof exits
+  non-zero on plumbing with the claim already proven. The driver captures the
+  command's stdout and stderr already (the last 4,000 characters ride the
+  reviewer's evidence), so a line that wants its output on the record lets the
+  driver keep it and never duplicates it; and a proof line's exit comes from
+  the command that proves the claim, not from plumbing (fixture run-25,
+  popmechanic/tinyapp-fixture, 2026-09-17).
 
 ## Three older lessons of the same kind
 
