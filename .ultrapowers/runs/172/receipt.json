@@ -1,0 +1,285 @@
+{
+  "ok": true,
+  "stamp": "run-172",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-172"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "add-command",
+      "ok": true,
+      "detail": "no dependencies declared \u2014 nothing to add"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The launcher fetches the compiler at the engine sha, runs that copy, prints `compiler=<sha>`, and refuses when it cannot fetch it",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/launch.mjs",
+          "fleet/tests/test_launch_duplicate.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`Refusal` (from `fleet/lobby.mjs`)",
+            "`ENGINE_REPO` (from `fleet/lobby.mjs`, `popmechanic/ultrapowers`)",
+            "`makeExec({ rules, passthrough })` (from `fleet/tests/_lobby_helpers.mjs`)"
+          ],
+          "produces": [
+            "`fetchCompilerAt({ exec, engine, pluginRoot }) -> Promise<{ dir, scriptPath, source }>`",
+            "`verifyPlanCompiles({ exec, repoDir, base, planPath, planText, compilerPath })`",
+            "`compilePlanForRun({ exec, repoDir, planPath, base, stamp, compilerPath })`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The gotchas' fifteenth row \u2014 a proof line writes only to stdout \u2014 with the runbook trap and the count pin moved to fifteen",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/RUNBOOK.md",
+          "skills/ultrawrite/references/authoring-gotchas.md",
+          "tests/test_compile_plan_exam_sweep.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The launcher fetches the compiler at the engine sha, runs that copy, prints `compiler=<sha>`, and refuses when it cannot fetch it",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch_compile_facts.mjs",
+            "fleet/tests/test_launch_duplicate.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`Refusal` (from `fleet/lobby.mjs`)",
+              "`ENGINE_REPO` (from `fleet/lobby.mjs`, `popmechanic/ultrapowers`)",
+              "`makeExec({ rules, passthrough })` (from `fleet/tests/_lobby_helpers.mjs`)"
+            ],
+            "produces": [
+              "`fetchCompilerAt({ exec, engine, pluginRoot }) -> Promise<{ dir, scriptPath, source }>`",
+              "`verifyPlanCompiles({ exec, repoDir, base, planPath, planText, compilerPath })`",
+              "`compilePlanForRun({ exec, repoDir, planPath, base, stamp, compilerPath })`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch_duplicate.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_launch_compile_facts.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_launch_compile_facts.mjs",
+          "proofRuns": [
+            "sed -n '/^- \\*\\*Launch order (launcher):\\*\\*/,/^- \\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'compiler fetched at .engine=.*cannot be fetched is refused before any push.*compiler=<sha>'",
+            "node fleet/tests/test_launch_duplicate.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_launch_compile_facts.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/launch.mjs",
+              "fleet/tests/test_launch_compile_facts.mjs",
+              "fleet/tests/test_launch_duplicate.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_launch_compile_facts.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_launch_compile_facts.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_launch_compile_facts.mjs": "fleet/tests/test_launch_compile_facts.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_launch_compile_facts.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/RUNBOOK.md",
+              "skills/ultrawrite/references/authoring-gotchas.md",
+              "tests/test_compile_plan_exam_sweep.py"
+            ],
+            "produces": [
+              "`fetchCompilerAt({ exec, engine, pluginRoot }) -> Promise<{ dir, scriptPath, source }>`",
+              "`verifyPlanCompiles({ exec, repoDir, base, planPath, planText, compilerPath })`",
+              "`compilePlanForRun({ exec, repoDir, planPath, base, stamp, compilerPath })`"
+            ],
+            "consumes": [
+              "`Refusal` (from `fleet/lobby.mjs`)",
+              "`ENGINE_REPO` (from `fleet/lobby.mjs`, `popmechanic/ultrapowers`)",
+              "`makeExec({ rules, passthrough })` (from `fleet/tests/_lobby_helpers.mjs`)"
+            ]
+          }
+        },
+        {
+          "id": "2",
+          "title": "The gotchas' fifteenth row \u2014 a proof line writes only to stdout \u2014 with the runbook trap and the count pin moved to fifteen",
+          "files": [
+            "fleet/RUNBOOK.md",
+            "skills/ultrawrite/references/authoring-gotchas.md",
+            "tests/test_compile_plan_exam_sweep.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/RUNBOOK.md",
+            "skills/ultrawrite/references/authoring-gotchas.md",
+            "tests/test_compile_plan_exam_sweep.py"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "test \"$(sed -n '/^## The fifteen rows/,/^## Three older/p' skills/ultrawrite/references/authoring-gotchas.md | grep -c '^- \\*\\*')\" = 15",
+            "test \"$(grep -c fourteen skills/ultrawrite/references/authoring-gotchas.md)\" = 0",
+            "sed -n '/^## The fifteen rows/,/^## Three older/p' skills/ultrawrite/references/authoring-gotchas.md | awk '/^- \\*\\*/{buf=\"\"} {buf=buf \" \" $0} END{print buf}' | grep -q 'writes only to stdout.*tee /dev/stderr.*/dev/tty.*service shell.*tee: /dev/stderr: Permission denied.*stdout and stderr.*never duplicates.*proves the claim.*not from plumbing.*run-25.*2026-09-17'",
+            "sed -n '/^## The fifteen rows/,/^## Three older/p' skills/ultrawrite/references/authoring-gotchas.md | awk '/^- \\*\\*/{n++} /^- \\*\\*/ && /writes only to stdout/{at=n} END{exit !(at==15)}'",
+            "sed -n '/^\\*\\*The laptop\\.\\*\\*/,/^\\*\\*/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'plugin cache.*compile_plan.py.*engine=.*compiler=.*refuses when it cannot fetch it.*run-26.*2026-09-17'",
+            "test \"$(sed -n '/^\\*\\*The laptop\\.\\*\\*/,/^\\*\\*/p' fleet/RUNBOOK.md | grep -c '^- ')\" = 2",
+            "test \"$(sed -n '/^## Traps/,/^## Capacity/p' fleet/RUNBOOK.md | grep -c '^- ')\" = 37",
+            "grep -q \"The fifteen rows\" tests/test_compile_plan_exam_sweep.py",
+            "grep -q '= 15' tests/test_compile_plan_exam_sweep.py",
+            "grep -q 'def test_j_the_gotchas_rows_number_exactly_fifteen' tests/test_compile_plan_exam_sweep.py",
+            "test \"$(grep -c fourteen tests/test_compile_plan_exam_sweep.py)\" = 0",
+            "python3 -m pytest -q tests/test_compile_plan_exam_sweep.py -k gotchas | tail -1 | grep -q '2 passed'"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "fleet/RUNBOOK.md",
+              "skills/ultrawrite/references/authoring-gotchas.md",
+              "tests/test_compile_plan_exam_sweep.py"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/launch.mjs",
+              "fleet/tests/test_launch_compile_facts.mjs",
+              "fleet/tests/test_launch_duplicate.mjs"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- A launch whose engine sha is the commit the installed plugin was built from compiles byte-identically to a launch at BASE: the `compile_plan.py` fetched at that sha is byte-for-byte the plugin cache's own file, so the same plan yields the same verdict, the same `BASE fact:`, `STALE fact:` and `AUTHORING fact:` lines and the same stamped payload \u2014 the only new line on the launch is `compiler=<sha>`.\n- The fallback is the bug: no code path of `fleet/launch.mjs` runs the compiler at `<plugin root>/skills/ultrapowers/scripts/compile_plan.py` when the fetch fails \u2014 a failed fetch is a `Refusal`, before any compile, any push and any lobby verb.\n- No new event kind is appended to `events.jsonl`, no new assignment key is added to the VM comment, and nothing under `fleet/roles/` changes.\n- Every proof line of this plan writes only to stdout \u2014 no `tee /dev/stderr`, no `/dev/tty` \u2014 which is the very rule Task 2 writes down.\n- Findings are about the result \u2014 what the tree, the launch line and the sims now do \u2014 never about the order the work was done in, the number of commits, or whether a test was written before its code.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/",
+        "minor": false
+      },
+      {
+        "cmd": "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-172/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-172/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-172/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-172/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for addCmd/addDevCmd \u2014 the package-add commands are driver-derived from the same lockfile/manifest beside the bootstrap and stamped in the args file and receipt (only when the plan declares packages); there is no knob for them",
+    "nothing for regenerateCmd \u2014 the lockfile regenerator is derived from the same lockfile/manifest beside the bootstrap (and only when the bootstrap itself was derived) and stamped in the args file and receipt; there is no knob for it",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini",
+  "foldTestCmd": "python3 -m pytest {paths}"
+}
