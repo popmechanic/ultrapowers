@@ -51,3 +51,6 @@
 {"kind":"driver:suite-runs","task":"1","count":0,"slices":2,"id":"01M2Q3FAHE0000WNY27QZEXB6J","ts":1789629278766}
 {"kind":"worker:start","label":"review:1:1","role":"reviewer","sessionId":"8d8ea60f-ce77-4cc3-8ccf-61f0e684f24f","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-174/clones/integration","model":"opus","id":"01M2Q3FAHM0000FN0HGS1AEV2G","ts":1789629278772}
 {"kind":"driver:attention","task":"1","attention":"needs-human","msg":"session ended without hand-off","actor":"","id":"01M2Q3FS8000001V3N1JY9HHR9","ts":1789629293824}
+{"kind":"worker:end","label":"review:1:1","role":"reviewer","sessionId":"8d8ea60f-ce77-4cc3-8ccf-61f0e684f24f","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"reason":null,"meter":{"input":7331,"output":12985,"cacheRead":1283516,"cacheCreation":49903,"costUsd":1.4845855,"models":["claude-opus-5"]},"id":"01M2Q3MNXZ00008AYY7HX6V1TX","ts":1789629454271}
+{"kind":"transcript:slice","label":"review:1:1","sessionId":"8d8ea60f-ce77-4cc3-8ccf-61f0e684f24f","bytes":11479,"id":"01M2Q3MNY700003A08HQRPE4DR","ts":1789629454279}
+{"kind":"engine:phase","phase":"Wave 1","id":"01M2Q3MP1A0000JC6S9N3A1MH5","ts":1789629454378}
