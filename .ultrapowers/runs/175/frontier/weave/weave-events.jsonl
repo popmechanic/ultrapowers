@@ -1,0 +1,8 @@
+{"event": "emitted", "wave": 1, "path": "fleet/CONTRACT.md", "stateBlob": "717c29ae6d1aa1323a935349d6c1efd55922ed62426478c955d15b9eb6c14286", "visibleSha": "352256f80b2a501a1eac94da1247883e02ec11d6"}
+{"event": "emitted", "wave": 1, "path": "fleet/run-engine.mjs", "stateBlob": "a15750361f65c94ad3c458591b841c02d3f0abb394f66b9dd3351a3767ec3e24", "visibleSha": "fd39bb788d2e7a5544f24ff8ebe0e73d485bcc1c"}
+{"event": "emitted", "wave": 1, "path": "fleet/sandbox-boot.sh", "stateBlob": "730cb5e911f33f667a4befe6e7155042272636538d3927f960bc76d9f650d997", "visibleSha": "f9aecffff7b1048b8aa1af7b29ddf0d3d9bf65ef"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/README.md", "stateBlob": "265c4860d01d07af3e7db13c44abbbe1c255907ef81be7da9545a65497588d8a", "visibleSha": "cba813f53de26aaa686ec10cbc5475e40d235677"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/test_run_engine_declared_dependencies.mjs", "stateBlob": "9e68aa1a7dbabb0fe2c895e6061a6ffa8fd6cfdf811432d5f8eb4c8ca3e884bf", "visibleSha": "0263d6f2165ce80e87d2b4d4469aaab3262d0970"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/test_run_engine_proof_runs.mjs", "stateBlob": "ae6616dcbfb757fc559d04f3506e10f4f3345ccb098a51892b645ee04465086f", "visibleSha": "448c86a36e5cb5a85aaa02699fbf9ae31c0e7f38"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/test_run_engine_ready_set.mjs", "stateBlob": "64c4f47620adf78f8982547942ca7c8b2dece4618e31193145b1b660b3a188a6", "visibleSha": "19d3d6b559690be2ba3ba577181c6e327fb41cbd"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/test_sandbox_boot_publish_record.mjs", "stateBlob": "6ae4bec7d87628b6e473ce1633b1a2b1da9ba2ed2ec299b2def224f05e81fa2f", "visibleSha": "7fd1961e685e302c753f6058849f9cc3b0ba5e41"}
