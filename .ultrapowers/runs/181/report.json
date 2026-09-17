@@ -1,0 +1,133 @@
+{
+  "integrationBranch": "ultra/integration-run-181",
+  "baseSha": "b16dbdb1e97ab49d6d4a2958907bfd3ec7cd3194",
+  "setupSha": null,
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "58ea2bb38908687d19edb7042d0c6c11fa7b21de",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-181/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the two sims the Context names as readers of the Publish bullet \u2014 `fleet/tests/test_sandbox_boot_card_cells.mjs` leg (c) and `fleet/tests/test_sandbox_boot_amendments.mjs` leg (e) \u2014 appear in no RUN/CHECK evidence for this task (the only checks run were the `fleet/roles/` diff and `test_sims_are_hermetic.mjs`). I settled them by reading the readers themselves rather than by execution: leg (c)'s reader folds `/| task | claim | exam | probes | mutant | suite |/,/Residuals: <n> from review/` and greps `mutant.*skipped-mutant-killed.*killed, reviewer skipped` \u2014 the new `Act on these` clause is inserted after `every other row reads \\`killed\\`;` and before `then \\`Residuals: <n> from review\\``, so it only widens the range and leaves the pinned order intact; leg (e) folds the whole Publish bullet and greps `Residuals: <n> from review.*Amendments: <n> from workers.*Amendments: none`, all three of which sit below the insertion, untouched. Running `node fleet/tests/test_sandbox_boot_card_cells.mjs` and `node fleet/tests/test_sandbox_boot_amendments.mjs` on this tree would settle it by execution.; unverified literal in the authority document: the new evidence-listing sentence states `claim_false` and the three `confidence` scores are \"each from 0 to 1\". The task's Context pins only `jev.attention` a score from 0 to 3 and gives `claim_false`/`confidence` as bare `<number>`; nothing in this tree pins the 0\u20131 range (the sibling's fixtures in `fleet/tests/test_sandbox_boot_residuals.mjs` merely happen to use probabilities like 0.05/0.88, and `fleet/sandbox-boot.sh:2430-2434` copies the model's `noul`/`confidence` through unchecked). `fleet/CONTRACT.md` is the authority for every literal, so either drop the range or cite where the TypeSafe reply schema pins it. Blocks nothing \u2014 the M1 exam does not read the range and all nine `Run:` lines are green.; cosmetic wrap in `fleet/CONTRACT.md`: both Publish-bullet edits leave short ragged lines mid-paragraph where the file otherwise fills to ~100 columns \u2014 `body opens with the plan's \\`**Summary:**\\` paragraph` (\u224850 cols, after the `\u2014 the errands and the \\`Act on these\\` rows excepted.` insertion) and `\\`Act on these\\` rows, and no other reviewer` (\u224845 cols, in the rewritten later sentence). Reflowing those two paragraphs would leave the same bytes to the greps \u2014 every `Run:` folds the window with `tr` first \u2014 while matching the surrounding prose.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "landedAt": 1789632785264,
+      "stateExams": [],
+      "findings": []
+    },
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "8fda0be533ed401dce6e1daf48b93f2b1b07a7bc",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-181/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "`act_now` couples the `rows` argv document to the stdin checklist by POSITION \u2014 `scores[n]` for `items[n]` \u2014 and fails open when the two disagree: `jev = scores[n] if n < len(scores) else None` silently drops the tail if ROWS is short, and a ROWS longer or shifted relative to `items` would label a residual with another residual's actor/status/subject rather than erroring. The coupling is sound at BASE (both modes walk the same `items` list in `residual_read` 2448\u20132476, and `flat()` guarantees one checklist line per item), so this is not reachable today and the comment block documents the invariant well. But the one load-bearing assumption of the section is unasserted: a future edit to `residual_read`'s checklist rendering \u2014 an item printed on two lines, a name that does not start the line with `- [ ] ` \u2014 would mislabel rows on the card instead of dropping the section. A one-line fail-closed guard at the top of `act_now` costs nothing and makes the invariant the code's, not the comment's.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "examRounds": 1,
+      "landedAt": 1789633088169,
+      "stateExams": [],
+      "findings": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-181/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [439 items]\n\n........................................................................ [ 16%]\n........................................................................ [ 32%]\n........................................................................ [ 49%]\n........................................................................ [ 65%]\n........................................................................ [ 82%]\n........................................................................ [ 98%]\n.......                                                                  [100%]\n======================= 439 passed in 181.56s (0:03:01) ========================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 301036,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-181/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [439 items]\n\n........................................................................ [ 16%]\n........................................................................ [ 32%]\n........................................................................ [ 49%]\n........................................................................ [ 65%]\n........................................................................ [ 82%]\n........................................................................ [ 98%]\n.......                                                                  [100%]\n======================= 439 passed in 175.58s (0:02:55) ========================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "3a0d592c7bb06648abeb9b7603a257dcaee472bd",
+      "branches": [
+        "2",
+        "1"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-181/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-181/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.266,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "engineCoverage": null,
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 2: amendment (clause): M1 \u2014 the evidence listing states the `jev` object's fields in prose (`kind.status`, `kind.subject`, `actor`, `attention`, `claim_false`, `confidence`, `model`) rather than as a JSON literal, and states the keys-sorted fact on the `residuals.jsonl` key list instead. \u2014 The Context's row shape has `jev`'s keys sorted (actor, attention, claim_false, confidence, kind, model), while M1's proof pins `kind.status` and `kind.subject` before `actor`. A JSON literal cannot be both sorted and in the proof's order, so the sortedness is asserted and the fields are enumerated in the order the exam reads.",
+    "task 1: examiner: (c) [M3] \u2014 the trailing sub-clause \"and the first `Run:` runs the card-cells sim green on the edited script\" \u2014 An exam may not run another exam: fleet/tests/test_sims_are_hermetic.mjs M4 forbids a test_*.mjs from spawning, or even existsSync-ing, another test_*.mjs, and that probe is green at BASE (46 sims, 0 offenders). The reading stays the Proof's own first `Run:` line, which the driver runs on the edited script; the file header says so. Everything else in leg (c) is encoded, and the splice assertion pins every line of the body outside the section \u2014 the task table's last row included \u2014 which is the same seam test_sandbox_boot_card_cells.mjs guards."
+  ],
+  "amendments": [
+    {
+      "task": "2",
+      "amends": "clause",
+      "what": "M1 \u2014 the evidence listing states the `jev` object's fields in prose (`kind.status`, `kind.subject`, `actor`, `attention`, `claim_false`, `confidence`, `model`) rather than as a JSON literal, and states the keys-sorted fact on the `residuals.jsonl` key list instead.",
+      "why": "The Context's row shape has `jev`'s keys sorted (actor, attention, claim_false, confidence, kind, model), while M1's proof pins `kind.status` and `kind.subject` before `actor`. A JSON literal cannot be both sorted and in the proof's order, so the sortedness is asserted and the fields are enumerated in the order the exam reads."
+    }
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

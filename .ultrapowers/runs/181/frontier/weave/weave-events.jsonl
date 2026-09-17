@@ -1,0 +1,4 @@
+{"event": "emitted", "wave": 1, "path": "fleet/CONTRACT.md", "stateBlob": "e0ac572a2cabd3c3e1d5bc7f3ee79ab4d30b8ea6e9482b146deb5ac33b901b4f", "visibleSha": "55ec1ad526a34f389e5889e30f510dbc2eb21e59"}
+{"event": "emitted", "wave": 1, "path": "fleet/RUNBOOK.md", "stateBlob": "84c846ffad3badcd3d967f4cce471b8ada47085cc9b31269b11ea47f30aa8539", "visibleSha": "0a969107b75909ae40eacaa5a1de54fd119c43db"}
+{"event": "emitted", "wave": 1, "path": "fleet/sandbox-boot.sh", "stateBlob": "5336cdcfd7370ad0fc056a32ed817a53a83f7ad93545b1d9061fb87916db0647", "visibleSha": "11f83788ab843ad8407d0a5d2ab1c9deb3163e7d"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/test_sandbox_boot_residuals.mjs", "stateBlob": "248e8bcec84c87330e12f300cf46c157dcde0d26187e111690feddb2d13b1cb2", "visibleSha": "5dd347e83de5703a2487b0c20dc89a4e3e6bcb34"}
