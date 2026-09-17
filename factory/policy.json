@@ -106,13 +106,12 @@
       "rollback": "k = 1 always"
     },
     "referee": {
-      "rule": "the discovery referee is dispatched when review_difficulty >= 2 (`Careful`) or doc_or_prose_only < 0.5",
+      "rule": "the discovery referee is dispatched when review_difficulty >= 2 (`Careful`); doc_or_prose_only is recorded on the row and gates nothing",
       "review_difficulty_rung": 2,
-      "doc_or_prose_only": 0.5,
       "n": 0,
       "window": "none",
       "basis": "judgment",
-      "unread": "#1096's jev:tier rows have no n on any tag yet (run-183 predates #1109)",
+      "unread": "#1096's jev:tier rows have no n on any tag yet (run-183 predates #1109). The 2026-09-17 first draft read `OR doc_or_prose_only < 0.5`, which would have dispatched a referee on every code task and contradicted the spec's rule that no routine task carries one; caught by the engine plan's gate reader the same day",
       "experiment": true,
       "rollback": "the referee dispatched on every task"
     }
