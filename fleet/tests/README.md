@@ -78,9 +78,6 @@ one sim per question:
   fold logs, conflicts index, narration, resolver briefs and replies, the weave
   sidecar's manifest and event log — onto the evidence branch beside the
   receipts, and never the weave's blob store.
-- `test_sandbox_boot_kata_export.mjs` — the `kata.jsonl` on a run's evidence tag
-  holds only that run's issues and events, out of a project holding every run of
-  the repository.
 - `test_sandbox_boot_close_evidence.mjs` — the boot's `done` close of the run
   issue always carries evidence, built from the PR URL and the merged sha.
 - `test_sandbox_boot_amendments.mjs` — the pull request body lists every
