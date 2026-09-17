@@ -51,3 +51,5 @@
 {"kind":"engine:phase","phase":"Wave 1","id":"01M2Q4ZNSE00008974H7Z5Y6P1","ts":1789630863150}
 {"kind":"engine:log","line":"wave 1 candidate suite RED — reconcile attempt 1","id":"01M2Q5502X00003AMRGJMFH5XY","ts":1789631037533}
 {"kind":"worker:start","label":"reconcile:wave1:1","role":"writeSide","sessionId":"ef20505c-f9ec-4434-a09c-c96578976457","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-177/clones/integration","model":"opus","id":"01M2Q5502Z00009ZJPQQ9XQRBN","ts":1789631037535}
+{"kind":"worker:end","label":"reconcile:wave1:1","role":"writeSide","sessionId":"ef20505c-f9ec-4434-a09c-c96578976457","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"reason":null,"meter":{"input":2400,"output":3733,"cacheRead":315004,"cacheCreation":43482,"costUsd":0.6596669999999999,"models":["claude-opus-5"]},"id":"01M2Q5BW3Z0000T0H6VZ7CXTPS","ts":1789631262847}
+{"kind":"transcript:slice","label":"reconcile:wave1:1","sessionId":"ef20505c-f9ec-4434-a09c-c96578976457","bytes":11315,"id":"01M2Q5BW430000HADKSCC1EW97","ts":1789631262851}
