@@ -878,4 +878,174 @@ const maxOpenImpl = (log) => {
   }
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// TASK 2 (#1097) — "The red-BASE line names each red test once, by the path a
+// plan would write" — legs (a), (b) and (c)
+//
+// The Machine clauses under test, restated:
+//   M1 — the red-BASE reading (`baselineFailing`) is the paths
+//        `failingTestPaths(raw)` returns, joined by `, `: a bridge line
+//        `FAILED tests/test_fleet_suite.py::test_fleet_mjs[<name>.mjs]` reads as
+//        `fleet/tests/<name>.mjs`, every other `FAILED <path>::<id>` line as its
+//        own `<path>`, each path once in FIRST-SEEN order — which is not lexical
+//        order, so a reading that sorted is wrong.
+//   M2 — a red baseline whose output carries no `FAILED` line still reads
+//        `failing: unparsed`.
+//   M3 — the sentence's head is unchanged: the `TEST_FAILED` park's `detail` and
+//        the judgment call both begin `baseline: the suite is RED on BASE — the
+//        sensor is blind for this run; failing: ` and carry ` (` after the path
+//        list.
+//
+// Where each Proof leg is answered:
+//   (a) [M1] the four-line red baseline, translated and deduplicated in
+//            first-seen order              — the `rb` scenario below
+//   (b) [M2] the output with no `FAILED` line at all
+//                                          — the existing `e2` run, read back
+//                                            out of RUNS; no new run is driven
+//   (c) [M3] the head both readers share   — both runs, below
+//
+// ── why the `rb` scenario's `check.sh` prints a pytest-shaped block ──────────
+// Leg (a)'s last clause — neither the `detail` nor the judgment call carries
+// `tests/test_fleet_suite.py` AT ALL — is a claim about the whole sentence, and
+// the sentence quotes the suite: `redBaselineHead` renders
+// `… failing: <paths> (<baseline.output>)`, where `baseline.output` is
+// `failingBlock(raw)`. `failingBlock`'s START pattern matches `^FAILED `, so a
+// `check.sh` that printed the four bare `FAILED` lines and nothing else would
+// have all four quoted INSIDE the block, and the bridge file's name would be in
+// the detail however the reading translated the list.
+//
+// So the lines are printed where pytest prints them — under `=== FAILURES ===`,
+// a `___ test_fleet_mjs[…] ___` header and an `E   AssertionError` line, below
+// `=== short test summary info ===`. `failingBlock` ends the block at that rule
+// line (its END pattern is `^={3,} `), which is what the engine's own comment
+// beside `baselineFailing` says: the short summary is BELOW the block a reader
+// quotes. The `FAILED` lines still reach the reading, because the reading is
+// taken off the RAW stdout+stderr and not off `baseline.output`. The Proof's
+// "prints, in this order, <the four lines>, then exits 1" holds: those four
+// lines are printed, in that order, and the suite exits 1.
+// ════════════════════════════════════════════════════════════════════════════
+{
+  // The head both readers share, byte for byte (M3). Written out here rather
+  // than built, so a change to it in the engine fails leg (c) rather than
+  // silently following along.
+  const HEAD = 'baseline: the suite is RED on BASE — the sensor is blind for this run; failing: '
+  // What M1 says this run's four `FAILED` lines read as: translated, each path
+  // once, first-seen order — and then the ` (` M3 puts after the list.
+  const TRANSLATED =
+    'failing: fleet/tests/test_beta.mjs, tests/test_other.py, fleet/tests/test_alpha.mjs ('
+  // What a reading that SORTED the same three paths would render instead. The
+  // order of the scenario's lines is chosen so the two differ.
+  const SORTED =
+    'failing: fleet/tests/test_alpha.mjs, fleet/tests/test_beta.mjs, tests/test_other.py ('
+  // The bridge file, which a reading that translated nothing repeats once per
+  // failure and a correct reading never names.
+  const BRIDGE = 'tests/test_fleet_suite.py'
+
+  // A red suite in pytest's own shape. The four `FAILED` lines are the Proof's,
+  // in the Proof's order — beta, other, alpha, beta again.
+  const REDLINES = [
+    '============================= FAILURES =============================',
+    '____________________ test_fleet_mjs[test_beta.mjs] ____________________',
+    'E   AssertionError: sim: the suite was red before this run opened',
+    '=========================== short test summary info ===========================',
+    'FAILED tests/test_fleet_suite.py::test_fleet_mjs[test_beta.mjs] - AssertionError',
+    'FAILED tests/test_other.py::test_x - AssertionError',
+    'FAILED tests/test_fleet_suite.py::test_fleet_mjs[test_alpha.mjs] - AssertionError',
+    'FAILED tests/test_fleet_suite.py::test_fleet_mjs[test_beta.mjs] - AssertionError',
+    '4 failed, 0 passed in 1.00s',
+  ]
+  const REDCHECK = "#!/bin/bash\ncat <<'PYTEST'\n" + REDLINES.join('\n') + '\nPYTEST\nexit 1\n'
+
+  const run = await drive({
+    tag: 'rb', tasks: [taskOf('A'), taskOf('B')], edges: [], width: 2,
+    // As every scenario above that is not about the fold trigger.
+    foldAgeMs: 0,
+    // REPLACES the rig's `check.sh`, as leg (c)'s and leg (d)'s blocks do.
+    repoFiles: { 'check.sh': REDCHECK },
+    makeStub: (runDir) => async (prompt, opts, cwd) => {
+      const [kind, id] = opts.label.split(':')
+      if (kind === 'review') return cannedReview(runDir, opts.label)
+      if (kind === 'reconcile') return cannedReconcile(runDir, opts.label)
+      if (kind !== 'impl') throw new Error('unexpected dispatch: ' + opts.label)
+      workerStart(runDir, opts.label, cwd)
+      return plainImpl(runDir, opts, cwd, id)
+    },
+  })
+
+  // The `e2` run above, read back rather than re-driven: leg (b)'s subject is
+  // "the existing `e2` run", and it is already on RUNS.
+  const e2 = RUNS.find((r) => r.tag === 'e2') || null
+  assert.ok(e2 !== null,
+    '(b)/M2: sim precondition — the existing `e2` red-baseline run registered itself: ' +
+    JSON.stringify(RUNS.map((r) => r.tag)))
+
+  /** The one `TEST_FAILED` park row of a run, or null. */
+  const parkRows = (r) => (r.report.waveMerges || []).filter((m) => m && m.status === 'TEST_FAILED')
+  /** The red-baseline judgment call, found by its own tail — never by the head
+   *  leg (c) is about to assert, which would make that assertion circular. */
+  const baselineCall = (r) =>
+    (r.report.judgmentCalls || []).find((c) => /the red this run inherited/.test(String(c))) || null
+
+  // ── leg (a) [M1] ──────────────────────────────────────────────────────────
+  const rbParked = parkRows(run)
+  assert.equal(rbParked.length, 1,
+    '(a)/M1: the four-line red baseline parks with exactly one `TEST_FAILED` row: ' +
+    JSON.stringify(run.report.waveMerges))
+  const rbDetail = String(rbParked[0].detail)
+  const rbCall = baselineCall(run)
+  assert.ok(rbCall !== null,
+    '(a)/M1: sim precondition — the red baseline pushes its judgment call: ' +
+    JSON.stringify(run.report.judgmentCalls))
+
+  assert.ok(rbDetail.includes(TRANSLATED),
+    '(a)/M1: the `TEST_FAILED` park\'s `detail` names each red test once, by the path a plan ' +
+    'would write, in first-seen order — it must carry `' + TRANSLATED + '`. A reading that ' +
+    'sorted would carry `' + SORTED + '`; the reading at BASE carries `failing: ' + BRIDGE +
+    ', tests/test_other.py, ' + BRIDGE + ', ' + BRIDGE + ' (`. It carries: ' +
+    JSON.stringify(rbDetail))
+  assert.ok(String(rbCall).includes(TRANSLATED),
+    '(a)/M1: and the judgment call carries the same substring `' + TRANSLATED + '` — the two ' +
+    'readers render one sentence: ' + JSON.stringify(rbCall))
+  assert.equal(rbDetail.includes(SORTED), false,
+    '(a)/M1: the list is in FIRST-SEEN order, not lexical order — the `detail` must not carry ' +
+    '`' + SORTED + '`: ' + JSON.stringify(rbDetail))
+  assert.equal(String(rbCall).includes(SORTED), false,
+    '(a)/M1: nor may the judgment call: ' + JSON.stringify(rbCall))
+  assert.equal(rbDetail.includes(BRIDGE), false,
+    '(a)/M1: and the `detail` does not name `' + BRIDGE + '` at all — every red line of this ' +
+    'suite is a bridged sim, and a bridged line reads as the sim\'s own ' +
+    '`fleet/tests/<name>.mjs` path: ' + JSON.stringify(rbDetail))
+  assert.equal(String(rbCall).includes(BRIDGE), false,
+    '(a)/M1: nor does the judgment call: ' + JSON.stringify(rbCall))
+
+  // ── leg (b) [M2] ──────────────────────────────────────────────────────────
+  const e2Parked = parkRows(e2)
+  assert.equal(e2Parked.length, 1,
+    '(b)/M2: sim precondition — the `e2` run parks with exactly one `TEST_FAILED` row: ' +
+    JSON.stringify(e2.report.waveMerges))
+  const e2Detail = String(e2Parked[0].detail)
+  const e2Call = baselineCall(e2)
+  assert.ok(e2Call !== null,
+    '(b)/M2: sim precondition — the `e2` red baseline pushes its judgment call: ' +
+    JSON.stringify(e2.report.judgmentCalls))
+  assert.ok(e2Detail.includes('failing: unparsed ('),
+    '(b)/M2: `e2`\'s `check.sh` prints nothing, so its red baseline reads `failing: unparsed (` ' +
+    '— a reading that joined an empty list as an empty string would render `failing:  (` and ' +
+    'name nothing at all: ' + JSON.stringify(e2Detail))
+
+  // ── leg (c) [M3] ──────────────────────────────────────────────────────────
+  for (const [tag, detail, call] of [['rb', rbDetail, String(rbCall)],
+                                     ['e2', e2Detail, String(e2Call)]]) {
+    assert.ok(detail.startsWith(HEAD),
+      '(c)/M3: the `TEST_FAILED` park\'s `detail` [run ' + tag + '] begins with the exact head ' +
+      JSON.stringify(HEAD) + ': ' + JSON.stringify(detail.slice(0, HEAD.length + 40)))
+    assert.ok(call.startsWith(HEAD),
+      '(c)/M3: and so does the judgment call [run ' + tag + ']: ' +
+      JSON.stringify(call.slice(0, HEAD.length + 40)))
+  }
+  assert.match(e2Detail, /inherited that red/,
+    '(c)/M3: and `e2`\'s `detail` still reads as the baseline\'s red, not as a fold\'s: ' +
+    JSON.stringify(e2Detail))
+}
+
 console.log('ALL TESTS PASSED')

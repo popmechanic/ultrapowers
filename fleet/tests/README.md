@@ -84,6 +84,8 @@ one sim per question:
   amendment by task, above the folded record.
 - `test_sandbox_boot_card_cells.mjs` — the PR card says which task no reviewer
   read, rendered inside the existing mutant cell rather than a new column.
+- `test_sandbox_boot_publish_record.mjs` — the page records the disclosures
+  ticket beside the PR, so a re-entered boot files no second one.
 - `test_sandbox_boot_viz.mjs` — the refresher serves `events.jsonl` beside the
   page, so the page shows the fleet turning and the record keeps up.
 

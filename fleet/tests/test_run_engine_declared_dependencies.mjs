@@ -965,6 +965,228 @@ for (const [tag, extra, what] of [['j-bare', {}, 'without `dependencies`'],
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// Task 1 of #1097 — "The setup commit stages a manifest the add command
+// created in a new directory": legs (a), (b), (c), (d)
+// ══════════════════════════════════════════════════════════════════════════
+//
+// THE LEG LETTERS BELOW ARE TASK 1's OWN, not this file's. The file already
+// carries an (a)…(l) from #1066, meaning other things entirely, so every
+// assertion in this group is labelled `(#1097 t1 a)`, `(#1097 t1 b)` … and a
+// reader mapping the Proof of #1097 task 1 back to the exam reads only the
+// labels that carry the issue number.
+//
+// The Machine clauses this group is written against, restated:
+//
+//   M1 — at the setup commit the staging scan lists untracked files BY PATH
+//        (`git status --porcelain -uall`), so an untracked file whose directory
+//        did not exist at BASE is reported as its own path and, when its
+//        basename is a bootstrap manifest, is staged and committed: an add line
+//        that appends to the root `package.json` and writes `client/package.json`
+//        into a new `client/` directory makes a setup commit whose
+//        `git show --name-only` names exactly `client/package.json` and
+//        `package.json`.
+//   M2 — a path carrying a `node_modules` segment is NEVER staged whatever its
+//        basename: the same add line also writing
+//        `node_modules/left-pad/package.json` leaves the setup commit naming no
+//        path under `node_modules/`, and `git ls-tree -r --name-only <setup
+//        head>` in the integration clone lists none.
+//   M3 — an add line that modifies the root `package.json` and writes
+//        `bun.lock`, and nothing under any new directory, makes the SAME setup
+//        commit it made at BASE: exactly `bun.lock` and `package.json`, subject
+//        the plan's H1, parent BASE.
+//   M4 — `fleet/CONTRACT.md`'s setup-commit sentence names `git status
+//        --porcelain -uall` and says a path under `node_modules/` is never
+//        staged.
+//
+// WHY THIS GROUP IS RED AT BASE. The scan at the setup commit is `git status
+// --porcelain` at its default `--untracked-files=normal`, which reports a new
+// directory as ONE line, `?? client/`, whose basename read is `client/` — so
+// `bootstrapManifestChanged(['client/'])` refuses it and the manifest inside is
+// never staged. Leg (#1097 t1 a)'s `deepEqual` below is that red: at BASE the
+// setup commit names `package.json` alone. Leg (#1097 t1 b) is the trap the fix
+// opens rather than the fix's own red — a scan that lists untracked files by
+// path and keeps the basename test ALONE stages
+// `node_modules/left-pad/package.json`, whose basename is a manifest — so its
+// two exclusion assertions pass vacuously at BASE (nothing at all is staged out
+// of a directory the scan never looked into) and fail on a half-done
+// implementation, which is what they are for; the third, that
+// `client/package.json` IS in that tree, is leg (a)'s red restated as the
+// contrast that says the exclusion is the `node_modules` segment and not
+// untracked-ness.
+// Leg (#1097 t1 d)'s first read is red at BASE: the contract says `git status
+// --porcelain` and no `-uall`.
+
+// The add script leg (a) and leg (b) drive. It is carried into the sim's
+// repository through the rig's own `nested` knob, so it is a TRACKED file of
+// the integration clone (`bash add-nested.sh …` is runnable there) while
+// `client/` itself is ABSENT at BASE — which is the whole condition under test.
+// It appends each spec to the root `package.json` (a MODIFIED tracked path),
+// creates `client/` and writes `client/package.json` (an untracked path inside
+// a directory that did not exist at BASE), and writes
+// `node_modules/left-pad/package.json` — the install's own vendored tree, whose
+// basename passes the manifest test and which must be staged by nothing. It
+// writes no `bun.lock`, so the commit's paths are exactly the two M1 names.
+const ADD_NESTED_SH = [
+  '#!/bin/bash',
+  'for a in "$@"; do printf "spec %s\\n" "$a" >> package.json; done',
+  'mkdir -p client',
+  "printf '{ \"name\": \"client\", \"private\": true }\\n' > client/package.json",
+  'mkdir -p node_modules/left-pad',
+  "printf '{ \"name\": \"left-pad\", \"version\": \"1.0.0\" }\\n' > node_modules/left-pad/package.json",
+  '',
+].join('\n')
+
+/**
+ * `git show --name-only --format=%s%n%b <sha>` read whole, the way leg (c2)
+ * above reads it: the subject line, the body up to the blank separator, and the
+ * sorted path names after it.
+ */
+const showCommit = (cwd, sha) => {
+  const shown = gitSync(['show', '--name-only', '--format=%s%n%b', sha], cwd)
+  const lines = shown.split('\n')
+  const rest = lines.slice(1)
+  const firstBlank = rest.findIndex((l) => l.trim() === '')
+  const cut = firstBlank === -1 ? rest.length : firstBlank
+  return {
+    shown,
+    subject: lines[0],
+    body: rest.slice(0, cut).join('\n'),
+    names: rest.slice(cut).map((l) => l.trim()).filter(Boolean).sort(),
+  }
+}
+
+// The one runtime spec leg (a) declares, and the add commands built on the
+// script above. `dev` is empty, so the line is the runtime half alone — both
+// add commands are still set, because a run that names only one runs no line at
+// all (the file's own leg (f.2)).
+const NESTED_SPEC = 'left-pad@^1'
+const NESTED = await drive({
+  tag: 'nested-manifest',
+  nested: { 'add-nested.sh': ADD_NESTED_SH },
+  waves: [[taskOf('A')]],
+  write: (cwd) => fs.writeFileSync(path.join(cwd, 'src.mjs'), 'export const a = 2\n'),
+  extra: { dependencies: { runtime: [NESTED_SPEC], dev: [] },
+           addCmd: 'bash add-nested.sh', addDevCmd: 'bash add-nested.sh -d' },
+})
+
+// ── (#1097 t1 a) [M1] the manifest in the directory that did not exist ──────
+{
+  const evs = depEvents(NESTED.evs)
+  assert.equal(evs.length, 1,
+    '(#1097 t1 a) [M1] the scenario whose add script creates `client/` runs its line once and ' +
+    'appends exactly ONE `driver:dependencies` event. Got: ' + JSON.stringify(evs))
+  assert.equal(evs[0].exit, 0,
+    '(#1097 t1 a) [M1] the line exits 0 — the add script appended the spec, created `client/` and ' +
+    'wrote its manifest. Got: ' + JSON.stringify(evs[0].exit))
+  const head = evs[0].headSha
+  assert.ok(head && head !== NESTED.base,
+    '(#1097 t1 a) [M1] the line changed a manifest, so a setup commit was made and the event\'s ' +
+    '`headSha` is that commit — not BASE (' + NESTED.base + ') and not `null`. Got: ' +
+    JSON.stringify(head))
+  const commit = showCommit(NESTED.integ, head)
+  assert.deepEqual(commit.names, ['client/package.json', 'package.json'],
+    '(#1097 t1 a) [M1] `git show --name-only --format=%s%n%b <headSha>` in the integration clone ' +
+    'names, sorted, EXACTLY `client/package.json` and `package.json`: the staging scan lists ' +
+    'untracked files by path (`git status --porcelain -uall`), so the manifest written into the ' +
+    'new `client/` directory is reported as its own path, its basename is a bootstrap manifest, ' +
+    'and it is staged beside the modified root one. At BASE this is `[\'package.json\']` alone — ' +
+    'the default `--untracked-files=normal` reports the new directory as one line, `?? client/`, ' +
+    'whose basename read is `client/`, so `bootstrapManifestChanged` refuses it and the manifest ' +
+    'inside is lost. Got: ' + JSON.stringify(commit.names) + ' from: ' + JSON.stringify(commit.shown))
+  assert.equal(commit.subject, PLAN_H1,
+    '(#1097 t1 a) [M1] and it is the ordinary setup commit — subject the plan\'s H1. Got: ' +
+    JSON.stringify(commit.subject) + ' from: ' + JSON.stringify(commit.shown))
+  assert.equal(gitSync(['rev-parse', head + '^'], NESTED.integ), NESTED.base,
+    '(#1097 t1 a) [M1] cut on BASE, one commit. Got: ' +
+    JSON.stringify(gitSync(['rev-parse', head + '^'], NESTED.integ)))
+  assert.equal(gitSync(['show', head + ':client/package.json'], NESTED.integ),
+    '{ "name": "client", "private": true }',
+    '(#1097 t1 a) [M1] and the committed `client/package.json` is the file the add command wrote, ' +
+    'byte-for-byte. Got: ' +
+    JSON.stringify(gitSync(['show', head + ':client/package.json'], NESTED.integ)))
+}
+
+// ── (#1097 t1 b) [M2] and nothing under `node_modules/`, whatever its name ──
+//
+// The trap `-uall` opens: a real install writes `node_modules/<pkg>/package.json`,
+// whose BASENAME passes the manifest test. The exclusion is this scan's, not
+// `bootstrapManifestChanged`'s — the pre-review manifest scan and the
+// lockfile-regeneration gates read that helper for other purposes, and leg (k)
+// above still requires it to accept a nested `package.json`.
+{
+  const head = depEvents(NESTED.evs)[0].headSha
+  const commit = showCommit(NESTED.integ, head)
+  const vendored = commit.names.filter((p) => p.split('/').includes('node_modules'))
+  assert.deepEqual(vendored, [],
+    '(#1097 t1 b) [M2] the setup commit names NO path carrying a `node_modules` segment — the ' +
+    'add line wrote `node_modules/left-pad/package.json`, whose basename the manifest test ' +
+    'accepts, and a scan that listed untracked files by path and kept the basename test ALONE ' +
+    'would have staged it. Got: ' + JSON.stringify(vendored) + ' from: ' +
+    JSON.stringify(commit.shown))
+  const tracked = gitSync(['ls-tree', '-r', '--name-only', head], NESTED.integ)
+    .split('\n').filter(Boolean)
+  assert.deepEqual(tracked.filter((p) => p.startsWith('node_modules/')), [],
+    '(#1097 t1 b) [M2] and `git ls-tree -r --name-only <headSha>` in the integration clone prints ' +
+    'no line beginning `node_modules/` — the vendored tree is in no tree the run hands on. The ' +
+    'tracked paths are: ' + JSON.stringify(tracked))
+  assert.ok(tracked.includes('client/package.json'),
+    '(#1097 t1 b) [M2] while the manifest in the new directory IS in that tree — the exclusion is ' +
+    'the `node_modules` segment and not untracked-ness. The tracked paths are: ' +
+    JSON.stringify(tracked))
+}
+
+// ── (#1097 t1 c) [M3] the add line that touches no new directory is unmoved ──
+//
+// M3's own reading is the file's existing S1 leg (c2), which stands above
+// byte-for-byte as #1066 wrote it. This is that same run — no second drive —
+// re-read under this task's leg letter, so the group a reader greps for
+// `#1097` carries M3 too: `-uall` changes nothing S1 asserts, `add.sh` writing
+// `node_modules/marker` under a directory it creates and the scan seeing it by
+// path notwithstanding, because `marker` is not a manifest and the path is
+// under `node_modules/` besides.
+{
+  const head = depEvents(S1.evs)[0].headSha
+  const commit = showCommit(S1.integ, head)
+  assert.deepEqual(commit.names, ['bun.lock', 'package.json'],
+    '(#1097 t1 c) [M3] S1\'s add line modifies the root `package.json` and writes `bun.lock`, and ' +
+    'nothing under any new directory, so it makes the same setup commit it made at BASE: exactly ' +
+    'those two paths. Got: ' + JSON.stringify(commit.names) + ' from: ' +
+    JSON.stringify(commit.shown))
+  assert.equal(commit.subject, PLAN_H1,
+    '(#1097 t1 c) [M3] with the plan\'s H1 as its subject. Got: ' + JSON.stringify(commit.subject))
+  assert.equal(gitSync(['rev-parse', head + '^'], S1.integ), S1.base,
+    '(#1097 t1 c) [M3] and BASE as its parent. Got: ' +
+    JSON.stringify(gitSync(['rev-parse', head + '^'], S1.integ)))
+}
+
+// ── (#1097 t1 d) [M4] the contract's setup-commit sentence ──────────────────
+//
+// The Proof's two `Run:` lines, read here the way leg (l) above reads its own:
+//   1. grep -q 'git status --porcelain -uall' fleet/CONTRACT.md
+//   2. sed -n '/git status --porcelain -uall/,/commits them/p' fleet/CONTRACT.md \
+//        | tr '\n' ' ' | grep -q 'node_modules/.*never'
+// The second is `sed`'s range, replicated exactly: from the FIRST line carrying
+// the phrase to the first LATER line carrying `commits them`, inclusive, with
+// newlines folded to spaces.
+{
+  const contract = fs.readFileSync(new URL('../CONTRACT.md', import.meta.url), 'utf8')
+  const cLines = contract.split('\n')
+  const UALL = 'git status --porcelain -uall'
+  const start = cLines.findIndex((l) => l.includes(UALL))
+  assert.ok(start !== -1,
+    '(#1097 t1 d) [M4] `fleet/CONTRACT.md`\'s setup-commit sentence names `' + UALL + '` — the ' +
+    'Proof\'s first `Run:`. At BASE it names `git status --porcelain` at its default ' +
+    '`--untracked-files=normal`, which is the behaviour this task replaces, so nothing matches.')
+  const after = cLines.findIndex((l, i) => i > start && l.includes('commits them'))
+  const window = cLines.slice(start, after === -1 ? cLines.length : after + 1).join(' ')
+  assert.match(window, /node_modules\/[\s\S]*never/,
+    '(#1097 t1 d) [M4] and in the window from that phrase to `commits them` the sentence keeps ' +
+    'its `node_modules/` clause as a STATED exclusion — `node_modules/` followed by `never` — so ' +
+    'the contract says a path under `node_modules/` is never staged whatever its basename (the ' +
+    'Proof\'s second `Run:`). The window reads: ' + JSON.stringify(window))
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // the guard (#1053): this sim stands whole at the path the Proof names
 // ══════════════════════════════════════════════════════════════════════════
 {

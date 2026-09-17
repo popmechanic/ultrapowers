@@ -2787,7 +2787,14 @@ export async function runEngine({
         // `exec` and not `git`: the wrapper trims, and porcelain's first field
         // is two status characters that may BOTH be a space (` M bun.lock`) —
         // a trim eats the leading one and every path after it reads short.
-        const status = await exec('git', ['status', '--porcelain'], { cwd: integ })
+        // `-uall` and not porcelain's default (#1097): at `--untracked-files=
+        // normal` a directory that did not exist at BASE is reported as ONE
+        // line, `?? client/`, whose basename is the empty string — so an add
+        // command that writes `client/package.json` into a new `client/` never
+        // passes the basename test and its manifest is lost. `-uall` lists the
+        // untracked files by path, so that manifest is reported as its own
+        // path and staged beside the root one.
+        const status = await exec('git', ['status', '--porcelain', '-uall'], { cwd: integ })
         const changed = String(status.stdout || '').split('\n').filter(Boolean)
           .map((line) => {
             const p = line.slice(3)
@@ -2795,7 +2802,14 @@ export async function runEngine({
             const raw = arrow >= 0 ? p.slice(arrow + 4) : p
             return (raw.startsWith('"') && raw.endsWith('"')) ? raw.slice(1, -1) : raw
           })
-          .filter((p) => p && bootstrapManifestChanged([p]))
+          // The trap `-uall` opens: a real install writes `node_modules/<pkg>/
+          // package.json`, whose basename IS a manifest, and the default scan
+          // hid it behind the one `?? node_modules/` line. The exclusion lives
+          // here and not in `bootstrapManifestChanged`, which the pre-review
+          // manifest scan and the lockfile-regeneration gates read for other
+          // purposes — a vendored tree is not a thing to commit, at any depth.
+          .filter((p) => p && !p.split('/').includes('node_modules'))
+          .filter((p) => bootstrapManifestChanged([p]))
           .sort()
         if (changed.length) {
           await git(['add', '--', ...changed], integ)
@@ -2898,10 +2912,16 @@ export async function runEngine({
   // suite that printed no `FAILED` line is still a blind sensor, and saying the
   // paths could not be read beats naming nothing at all.
   let baselineFailing = 'unparsed'
+  // #1097 task 2 — read through the one shared `failingTestPaths` rather than a
+  // second local regex: the suite this engine runs is the pytest bridge, whose
+  // red lines all read `FAILED tests/test_fleet_suite.py::test_fleet_mjs[<name>.mjs]`,
+  // so a raw `FAILED (.+?)::` reading named the bridge file once per failing sim
+  // and never the sim. The shared reading translates each bridge line to its own
+  // `fleet/tests/<name>.mjs` and dedupes, keeping first-seen order — which is not
+  // lexical order, and is not to be sorted: the order the suite printed them is
+  // the order the reader is looking for.
   const failingPaths = (raw) => {
-    const paths = String(raw ?? '').split('\n')
-      .map((line) => /^FAILED (.+?)::/.exec(line))
-      .filter(Boolean).map((m) => m[1])
+    const paths = failingTestPaths(raw)
     return paths.length ? paths.join(', ') : 'unparsed'
   }
   // The one sentence a red BASE owes its reader, shared by the judgment call
@@ -4295,7 +4315,16 @@ export async function runEngine({
         // After the exam's own output, never before it (#908): the red bytes
         // are the driver's fact and the concern is the graded party's claim
         // about them.
-        examConcernBlock(examConcerns) +
+        // Round 1 only (#1097): by round 2 `examEvidence` is a fresh
+        // `runExam(2)` of the exam the examiner rewrote, so the claim the fix
+        // round made about the OLD exam is stale — a referee reading
+        // reviewer.md's "a red exam blocks whatever you return" literally
+        // against a now-green EXAM EVIDENCE would return a blocking issue, and
+        // at `iter === 2` any blocking issue is `fix-loop-exhausted`. The
+        // entries themselves are left standing: the skip predicate above and
+        // the refuted-finding loop below read the same `examConcerns` they read
+        // before, and round 1's refutation row is still written exactly once.
+        examConcernBlock(iter === 1 ? examConcerns : []) +
         // After the concerns about the exam, before the constraint checks
         // (#990): the worker's own declaration of where it diverged, the
         // implementer's entries first and the fix round's after them when a

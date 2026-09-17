@@ -2565,7 +2565,139 @@ for (const sim of ['test_run_engine_proof_runs.mjs', 'test_run_engine_state_hand
     'pointer publish would strip. Found: ' + JSON.stringify(pointers))
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// #1097 Task 3 — round two's referee reads no exam concern from round one.
+//
+// Claim: let a task's fix round say its exam is red for any output, have round
+// one's referee uphold that against the exam, and read the prompt round two's
+// referee is handed after the peer rewrote the exam; the exam's fresh green run
+// arrives with no `EXAM CONCERN:` line from round one, so a referee reading
+// `fleet/roles/reviewer.md`'s passage ("a red exam blocks whatever you return")
+// literally has nothing red to block on.
+//
+// Machine clauses under test:
+//   M1 — the review prompt of round 2 (`review:<id>:2`) carries no line
+//        beginning `EXAM CONCERN: `: the fix round's `exam:` entries are
+//        rendered into round 1's prompt and into no later round's.
+//   M2 — round 1's prompt still carries exactly one line `EXAM CONCERN: <entry>`
+//        per entry, after the `EXAM EVIDENCE:` block.
+//   M3 — in the shape that reaches round 2 — an exam red for any output, a fix
+//        round returning `DONE_WITH_CONCERNS` with one `exam:` entry, round 1
+//        blocking with a detail naming the exam's landing path, the second
+//        examiner writing an exam green on the graded tree, round 2 passing —
+//        the dispatch labels are `exam:T1`, `impl:T1`, `fix:T1:0`,
+//        `review:T1:1`, `exam:T1:2`, `review:T1:2` in that order with no other
+//        `fix:` label, the row ends `done`, `clean`, `examRounds` 2, and exactly
+//        one `driver:finding-refuted` carries `verdict` `exam-concern-upheld`,
+//        at `round` 1.
+//
+// The rig is `aRunOne` above rather than `scenario`: its `fix` knob is the
+// `DONE_WITH_CONCERNS` reply this shape needs, its `exam2` knob is the second
+// examiner's rewrite, and it records every dispatch label in order beside the
+// prompt each one was handed. Everything below the agent seam stays real.
+{
+  // The fix round's one `exam:`-prefixed entry — the claim the driver renders as
+  // an `EXAM CONCERN:` line (line 4109's filter keeps only `exam:` ones). Its
+  // text is rendered into a prompt by that block alone, which is what makes
+  // leg (b)'s "not at all" a live check rather than a spelling of leg (b)'s
+  // first half.
+  const C_ENTRY = 'exam: leg (b) of the Proof cannot pass for any output'
+  // Round 1's blocking finding: a backticked `t1_test.sh:<a>-<b>` token, so
+  // `examPathIn` reads the exam's landing path off it and the round the finding
+  // buys is the EXAMINER's rather than a second implementer's.
+  const C_DETAIL = 'the exam at `' + A_LAND + ':2-3` asks for an output no implementation ' +
+    'can produce'
+  // Red whatever the tree holds — the pre-review repair round cannot clear it,
+  // which is what leaves the exam still red with the fix round's concern
+  // standing when round 1 is dispatched. Three lines, so `t1_test.sh:2-3` above
+  // is a real coordinate in it.
+  const C_EXAM_RED_FOR_ANY_OUTPUT = '#!/bin/bash\necho exam-is-red-for-any-output\nexit 1\n'
+  // Every line of the round's prompt that BEGINS `EXAM CONCERN: ` — the
+  // driver's own rendering and nothing else: `fleet/roles/reviewer.md` mentions
+  // `EXAM CONCERN:` at lines 53 and 87, neither at the start of a line.
+  const concernLinesOf = (prompt) =>
+    String(prompt).split('\n').filter((l) => /^EXAM CONCERN: /.test(l))
+
+  const { row, calls, prompts, evs } = await aRunOne({
+    task: aExamTask(),
+    exam: C_EXAM_RED_FOR_ANY_OUTPUT,
+    // The rewritten exam, green on the graded tree: `[ -f one.txt ]`, and the
+    // implementer wrote `one.txt`.
+    exam2: REJ_EXAM,
+    fix: { status: 'DONE_WITH_CONCERNS', concerns: [C_ENTRY] },
+    review: (n) => (n === 1 ? aBlocking({ detail: C_DETAIL, actor: 'examiner' }) : passReview()),
+  })
+  const r1 = prompts['review:T1:1']
+  const r2 = prompts['review:T1:2']
+
+  // ── leg (a) [M2]: round 1 still carries the line, after the evidence ──────
+  assert.equal(typeof r1, 'string',
+    'leg (a) [M2] sim precondition — the `review:T1:1` prompt was recorded: ' +
+    JSON.stringify(calls))
+  assert.deepEqual(concernLinesOf(r1), ['EXAM CONCERN: ' + C_ENTRY],
+    'leg (a) [M2]: round 1\'s prompt carries EXACTLY ONE line beginning `EXAM CONCERN: `, and ' +
+    'it is that prefix followed by the fix round\'s entry VERBATIM — the claim the graded ' +
+    'party made about the red bytes reaches the referee that judges it: ' +
+    JSON.stringify(concernLinesOf(r1)))
+  const c1At = r1.indexOf('EXAM CONCERN: ' + C_ENTRY)
+  const ev1At = r1.indexOf('EXAM EVIDENCE:')
+  assert.notEqual(ev1At, -1,
+    'leg (a) [M2] sim precondition — round 1\'s prompt carries the driver\'s `EXAM EVIDENCE:` ' +
+    'block, which the concern line is ordered against: ' + JSON.stringify(r1.slice(-800)))
+  assert.ok(c1At > ev1At,
+    'leg (a) [M2]: and that line sits AFTER the `EXAM EVIDENCE:` block — the driver\'s own red ' +
+    'output first, the claim about it second. EXAM EVIDENCE: at ' + ev1At +
+    ', EXAM CONCERN: at ' + c1At)
+
+  // ── leg (b) [M1]: round 2 carries no line, and no trace of the entry ──────
+  // At BASE `examConcerns` is still the round-1 array when round 2's prompt is
+  // built, so the stale line rides in under a fresh, green `EXAM EVIDENCE` —
+  // and this leg is red there.
+  assert.equal(typeof r2, 'string',
+    'leg (b) [M1] sim precondition — the `review:T1:2` prompt was recorded: ' +
+    JSON.stringify(calls))
+  assert.deepEqual(concernLinesOf(r2), [],
+    'leg (b) [M1]: round 2\'s prompt carries NO line beginning `EXAM CONCERN: ` — the fix ' +
+    'round\'s entries are rendered into round 1\'s prompt and into no later round\'s. At BASE ' +
+    'the round-1 line is still on it: ' + JSON.stringify(concernLinesOf(r2)))
+  assert.equal(r2.includes(C_ENTRY), false,
+    'leg (b) [M1]: and the entry\'s text is not in that prompt AT ALL — not as a line, not ' +
+    'folded into another block. Found at index ' + r2.indexOf(C_ENTRY))
+  assert.ok(r2.includes('EXAM EVIDENCE'),
+    'leg (b) [M1] sim precondition — round 2 does read an EXAM EVIDENCE block: what the leg ' +
+    'asks for is a prompt with the evidence and without the stale claim, not a prompt with ' +
+    'neither: ' + JSON.stringify(r2.slice(-800)))
+  assert.ok(r2.includes('\n\n$ ' + A_CMD + '\nexit 0\n'),
+    'leg (b) [M1]: and that block is the iter-2 run\'s, GREEN — `$ ' + A_CMD + '` then ' +
+    '`exit 0` — which is the run a round-2 referee reads under the round-1 claim at BASE: ' +
+    JSON.stringify(r2.slice(r2.indexOf('EXAM EVIDENCE'), r2.indexOf('EXAM EVIDENCE') + 600)))
+
+  // ── leg (c) [M3]: the dispatches, the row, and the one refutation ─────────
+  assert.deepEqual(calls,
+    ['exam:T1', 'impl:T1', 'fix:T1:0', 'review:T1:1', 'exam:T1:2', 'review:T1:2'],
+    'leg (c) [M3]: the six dispatches in that order and no other — one pre-review repair ' +
+    'round, and no `fix:` label after it, because the round-1 finding was the EXAM\'s: ' +
+    JSON.stringify(calls))
+  assert.equal(row.status, 'done', 'leg (c) [M3]: the row ends `done`: ' + JSON.stringify(row))
+  assert.equal(row.reviewVerdict, 'clean',
+    'leg (c) [M3]: with `reviewVerdict` `clean`: ' + JSON.stringify(row))
+  assert.equal(row.examRounds, 2,
+    'leg (c) [M3]: and `examRounds` 2 — the exam-rejected round ran: ' + JSON.stringify(row))
+  const c3Upheld = aRefuted(evs).filter((e) => e.verdict === 'exam-concern-upheld')
+  assert.equal(c3Upheld.length, 1,
+    'leg (c) [M3]: EXACTLY ONE `driver:finding-refuted` carries `verdict` ' +
+    '`exam-concern-upheld` — a clearing that dropped the concern before round 1\'s rejection ' +
+    'handling would leave zero: ' + JSON.stringify(aRefuted(evs)))
+  assert.deepEqual(
+    { task: c3Upheld[0].task, round: c3Upheld[0].round, verdict: c3Upheld[0].verdict,
+      detail: c3Upheld[0].detail },
+    { task: 'T1', round: 1, verdict: 'exam-concern-upheld', detail: C_ENTRY },
+    'leg (c) [M3]: at `round` 1, with the fix round\'s entry as its `detail` — round 1 read ' +
+    'the concern and upheld it, and the record says so: ' + JSON.stringify(c3Upheld[0]))
+}
+
 // [M5] leg (f): the sentinel below is this sim's — its existing legs, the #632
-// ones, the #713 ones, the #1037 §3 ones, the receipt legs, the Task 5 legs and
-// the Task A legs above. It is printed only if every assertion above held.
+// ones, the #713 ones, the #1037 §3 ones, the receipt legs, the Task 5 legs, the
+// Task A legs and the #1097 Task 3 legs above. It is printed only if every
+// assertion above held.
 console.log('ALL TESTS PASSED')
