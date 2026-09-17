@@ -125,6 +125,15 @@ ANTHROPIC_PROXY_URL="https://claude-max.int.exe.xyz"
 # `FLEET_BIN_DIR` do — so a sim can pin the address inside its own home — and
 # the literal is the production value.
 KATA_URL="${FLEET_KATA_URL:-https://kata.int.exe.xyz}"
+# TypeSafe's classifier, behind the same exe.dev auth proxy and for the same
+# reason: the client sends NO `Authorization` header of its own — the edge
+# injects the bearer, exactly as it does for `claude-max` and for kata — so no
+# key of TypeSafe's is on this box, in this script, in any argv it builds or in
+# any environment it exports. `FLEET_TYPESAFE_URL` is `FLEET_KATA_URL`'s
+# knob, so a sim can pin the address inside its own home, and the literal is
+# the production value. HTTPS ONLY: the http form of an `int.exe.xyz` host
+# answers a 301, and a followed 301 turns a POST into a GET (run-110).
+TYPESAFE_URL="${FLEET_TYPESAFE_URL:-https://typesafe.int.exe.xyz}"
 # The plan's path inside the plan commit's tree, and the run's directory inside
 # the evidence commit's. Both are `.ultrapowers/`, never `.claude/`.
 PLAN_BLOB_PATH=".ultrapowers/plan.md"
@@ -146,6 +155,15 @@ KATA_EXPORT_FILE="kata.jsonl"
 # one JSON object per residual, written beside the two documents it is read
 # from. The run's residuals leave the box on the record and nowhere else.
 RESIDUALS_FILE="residuals.jsonl"
+# The classifier's answers, beside the ledger they are written into: one line
+# per request this run has EVER made, whether it answered or failed. The cache
+# is what makes the request count one per item per run — `collect_evidence`
+# runs at every transition after the engine ends, and the ledger is a union
+# compared whole line by whole line, so a row whose `jev` appeared between two
+# transitions would be written twice and a row asked again would cost a request
+# per transition. A failed line is never retried for the same reason: the row's
+# triage is lost for the run, which is the experiment's cost and not the run's.
+RESIDUALS_JEV_FILE="residuals-jev.jsonl"
 
 # Poll cadences. The defaults are the contract's; the tests set them to 0 so the
 # whole state machine runs in a second.
@@ -1710,6 +1728,11 @@ collect_evidence() {
   # repair round shrank — stays on the record, and re-reading the same record
   # adds nothing. Built in a sibling file and moved over, so the file is never
   # read as its own pattern list while it is being written.
+  #
+  # ASKED BEFORE IT IS WRITTEN: every item the classifier has not already
+  # answered for this run is asked now, so the row this transition writes
+  # carries its `jev` the first time it is written and never changes after.
+  residual_jev || true
   rows="$(residual_rows || true)"
   if [ -n "$rows" ]; then
     if [ -s "$dest/$RESIDUALS_FILE" ]; then
@@ -2165,23 +2188,32 @@ plan_closes() {
 # Every item is ONE line: a newline inside a detail becomes a space, or the
 # checklist would grow lines no reader could tick.
 #
-# TWO RENDERINGS, ONE READER. The same items go out twice — as the card's
-# `- [ ] <name> — <text>` checklist, which a merge closes with the PR, and as
-# `residuals.jsonl` on the evidence branch, which nothing closes. A second
-# parser of the same two documents would be a second answer to the same
-# question, so the mode is an argument and the walk above it is shared.
-residual_read() { # $1 = `checklist` | `rows`
+# THREE RENDERINGS, ONE READER. The same items go out three ways — as the
+# card's `- [ ] <name> — <text>` checklist, which a merge closes with the PR;
+# as `residuals.jsonl` on the evidence branch, which nothing closes; and as the
+# `jev` worklist `residual_jev` makes its requests from. A second parser of the
+# same two documents would be a second answer to the same question, so the mode
+# is an argument and the walk above it is shared.
+#
+# `checklist` is the card's, and makes no request and reads no answer: the
+# card renders exactly what it rendered before Jev was asked anything.
+residual_read() { # $1 = `checklist` | `rows` | `jev`
   local dest
   dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
   # The em dash is written `—` and the lines go out as UTF-8 bytes: this
   # runs under whatever locale the unit inherited, and a `C` one would other-
   # wise refuse to read the detail it is quoting.
-  python3 -c '
-import json, re, sys
+  #
+  # The program rides a QUOTED HEREDOC and not `-c '...'`: the classifier's
+  # questions below are quoted verbatim from the plan and carry apostrophes,
+  # and a single-quoted argument cannot hold one. Nothing here reads stdin.
+  python3 - "$1" "$dest/gate-receipt.json" "$dest/report.json" "$RUN_ID" "$BASE_SHA" \
+    "$PLAN_FILE" "$dest/$RESIDUALS_JEV_FILE" <<'RESIDUAL_READ'
+import hashlib, json, re, sys
 
 DASH = " — "
 
-MODE, RECEIPT, REPORT, RUN_ID, BASE_SHA = sys.argv[1:6]
+MODE, RECEIPT, REPORT, RUN_ID, BASE_SHA, PLAN, JEV = sys.argv[1:8]
 
 # The evidence a residual points at, when its text names one: the first
 # whitespace-delimited token carrying a `/` that reads as a repo-relative path
@@ -2223,6 +2255,186 @@ def evidence(text):
         return (token[: -(len(at) + 1)], int(at)) if at else (token, None)
     return None, None
 
+# THE QUESTIONS, verbatim and in one place: the five the classifier is asked
+# about every residual, and the whole of what `jev` mode sends. `status` and
+# `subject` are TWO questions and not one — an answer that folded them would
+# say a thing was unverified without saying what about.
+QUESTIONS = {
+    "status": {
+        "type": "choice",
+        "instructions": {
+            "question": "Did the referee settle the requirement finding.text is about, from the diff alone? Classify the finding's status, not its severity.",
+            "context": "The finding was written by a code referee about task. A referee that says it could not check a thing has not settled it.",
+        },
+        "criteria": {
+            "verified": "The referee saw the thing in the diff and judged it: a defect it found, a nit it raised, or a note that a thing is fine",
+            "unverified": "The referee says it could not settle the requirement from the diff alone: the behaviour needs a runtime, a network, a browser, a person, or a system the sandbox lacks",
+            "deferred": "The referee, or the gate, put the item off to a later run or to a person outside this run: an external dependency, a hand check, a follow-up owed",
+        },
+    },
+    "subject": {
+        "type": "choice",
+        "instructions": {
+            "question": "What is finding.text about? Classify the subject, not who must act.",
+            "context": "The finding was written by a code referee about task, whose Claim, Machine clauses and Files are given.",
+        },
+        "criteria": {
+            "plan text": "The task text itself: its Claim, a Machine clause, its Files set, or a sentence that is wrong, self-contradictory, names something that does not exist, or asks for what no implementation can satisfy",
+            "proof leg": "A Proof leg, a Run or Check line, a mutant, or what the exam was asked to establish",
+            "exam file": "The peer exam's own code: what it asserts, what it misses, how it is written",
+            "implementation": "The code as written does the wrong thing, misses a case, or contradicts a Machine clause, and the referee saw it in the diff",
+            "footprint": "The diff touches a path the task did not list in Files, or leaves a listed path untouched, and the finding is about that footprint",
+            "quality": "Duplication, naming, dead code, structure, comments, or readability, with no behavioural consequence named",
+        },
+    },
+    "actor": {
+        "type": "choice",
+        "instructions": {
+            "question": "Who would have to act to resolve finding.text?",
+            "context": "The implementer can only edit paths in task.files. The plan author owns the task text (Claim, Machine clauses, Files, Proof). The examiner owns the exam file.",
+        },
+        "criteria": {
+            "implementer": "An edit inside task.files by the implementer resolves it",
+            "plan": "Only a change to the task text, its Files set, or its Proof resolves it; no edit inside task.files can",
+            "examiner": "Only a change to the exam or a Proof leg resolves it",
+            "nobody": "It is an observation, a deferral, or already resolved; nothing needs doing",
+        },
+    },
+    # Four levels, in this order, so the score runs 0 to 3 and a reader of the
+    # number knows which end is which.
+    "attention": {
+        "type": "score",
+        "instructions": {
+            "question": "If finding.text were one line on a pull request card, how likely is it that a maintainer would act on it?",
+            "focus": "Judge whether the finding names something worth a follow-up, not whether it is well written.",
+        },
+        "criteria": [
+            {"what": "Ignore: praise, a restatement of what the diff does, or a resolved note",
+             "signals": ["records that a thing is fine", "no request or defect named"]},
+            {"what": "Worth a glance: a nit or observation a maintainer may or may not pick up",
+             "signals": ["style", "naming", "duplication", "a hedge"]},
+            {"what": "Act before the next run: a real gap, a deferral that needs a hand check, or a plan text error to fix",
+             "signals": ["a named unverified behaviour", "a plan contradiction", "a missing case"]},
+            {"what": "Act before merge: a defect that makes the claim false or risks the tree",
+             "signals": ["wrong behaviour", "data loss", "a constraint violated"]},
+        ],
+    },
+    "claim_false": {
+        "type": "noul",
+        "instructions": "Taken at face value, does finding.text describe a defect that would make task.claim false as delivered?",
+        "criteria": {
+            "true": "If the finding is right, the claim is not established",
+            "false": "The claim could still hold; the finding is about something else",
+        },
+    },
+}
+
+# The provenance tag a task Claim closes with, and the task heading — the same
+# two `card_head`'s `task_claims` reads, because a second reading of the plan
+# would be a second answer to the same question.
+TAG = re.compile(r"\s*\((?:elicited|derived|quoted from #[0-9]+)\)\s*$", re.I)
+TASK_HEAD = re.compile(r"^### Task ([^:]+):")
+# What the classifier is told about the task, bounded: a Machine line is one
+# line however many clauses it carries, and a plan with a long one must not
+# make the request the longest thing the boot sends.
+MACHINE_MAX = 4000
+
+
+def plan_tasks():
+    """`{id: {"title", "claim", "machine", "files"}}`, in plan order.
+
+    An absent or unreadable plan answers `{}`, and a row whose task is not in
+    it sends `null` — the classifier is told what the plan says or nothing."""
+    out = {}
+    try:
+        with open(PLAN, encoding="utf-8", errors="replace") as fh:
+            lines = fh.read().split("\n")
+    except Exception:
+        return out
+    here = None
+    listing_files = False
+    for line in lines:
+        found = TASK_HEAD.match(line)
+        if found:
+            here = {"title": line.partition(":")[2].strip(),
+                    "claim": "", "machine": "", "files": []}
+            out[found.group(1).strip()] = here
+            listing_files = False
+            continue
+        if here is None:
+            continue
+        text = line.strip()
+        if listing_files:
+            if text.startswith("- "):
+                here["files"].append(text)
+                continue
+            if not text:
+                continue
+            listing_files = False
+        if text.startswith("**Claim:**") and not here["claim"]:
+            here["claim"] = TAG.sub("", text[len("**Claim:**"):].strip()).strip()
+        elif text.startswith("Machine:") and not here["machine"]:
+            here["machine"] = text[len("Machine:"):].strip()[:MACHINE_MAX]
+        elif text.startswith("**Files:**"):
+            listing_files = True
+    return out
+
+
+def key_of(name, text):
+    """The cache key of one item: sha256 of `<name>\\n<text>`.
+
+    Keyed on what the request SAYS and not on where the item sat, so the same
+    finding read twice out of two transitions' reports is one request."""
+    return hashlib.sha256((name + "\n" + text).encode("utf-8")).hexdigest()
+
+
+def cached():
+    """`{key: line}` for every request this run has already made."""
+    out = {}
+    try:
+        with open(JEV, encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    doc = json.loads(line)
+                except Exception:
+                    continue
+                if isinstance(doc, dict) and isinstance(doc.get("key"), str):
+                    out[doc["key"]] = doc
+    except Exception:
+        return out
+    return out
+
+
+def jev_of(doc):
+    """The row's `jev` from its cached reply, or `None`.
+
+    `None` is the ABSENT key and never a null one: a request that failed, or
+    answered a shape this cannot read, leaves the row exactly as BASE wrote
+    it."""
+    if not isinstance(doc, dict):
+        return None
+    answers = doc.get("answers")
+    if not isinstance(answers, dict):
+        return None
+    try:
+        return {
+            "actor": answers["actor"]["choice"],
+            "attention": answers["attention"]["score"],
+            "claim_false": answers["claim_false"]["noul"],
+            "confidence": {
+                "actor": answers["actor"]["confidence"],
+                "status": answers["status"]["confidence"],
+                "subject": answers["subject"]["confidence"],
+            },
+            "kind": {
+                "status": answers["status"]["choice"],
+                "subject": answers["subject"]["choice"],
+            },
+            "model": doc.get("model"),
+        }
+    except Exception:
+        return None
+
 # One tuple per residual: the checklist name, the one-line text, the kind a
 # triager sorts on, and the task it belongs to (`None` for the items no single
 # task owns).
@@ -2259,10 +2471,11 @@ for row in listing(report, "tasks"):
 if MODE == "rows":
     # Keys sorted, so a row is one shape however it was built, and one object
     # per line: the ledger is read by `while read`, not by a JSON parser.
+    answered = cached()
     out = ""
     for name, text, kind, task in items:
         where, at = evidence(text)
-        out += json.dumps({
+        row = {
             "file": where,
             "kind": kind,
             "line": at,
@@ -2270,16 +2483,102 @@ if MODE == "rows":
             "sha": BASE_SHA,
             "task": task,
             "text": text,
-        }, sort_keys=True) + "\n"
+        }
+        got = jev_of(answered.get(key_of(name, text)))
+        if got is not None:
+            row["jev"] = got
+        out += json.dumps(row, sort_keys=True) + "\n"
+elif MODE == "jev":
+    # The worklist: `<key>\t<name>\t<payload>`, one line per item the cache
+    # does not already answer — a line it carries is never asked again,
+    # whether that request succeeded or failed. The payload is `json.dumps`
+    # with `ensure_ascii`, so it holds no tab and no newline of its own and
+    # rides one argv word to `fleet_curl`.
+    answered = cached()
+    out = ""
+    tasks = plan_tasks()
+    for name, text, _, task in items:
+        key = key_of(name, text)
+        if key in answered:
+            continue
+        answered[key] = {}
+        where, at = evidence(text)
+        body = json.dumps({
+            "state": {
+                "task": tasks.get(task) if task is not None else None,
+                "finding": {"text": text, "file": where, "line": at},
+            },
+            "model": "jev-latest",
+            "questions": QUESTIONS,
+        })
+        out += key + "\t" + name + "\t" + body + "\n"
 else:
     out = "".join("- [ ] " + name + DASH + text + "\n" for name, text, _, _ in items)
 sys.stdout.buffer.write(out.encode("utf-8"))
-' "$1" "$dest/gate-receipt.json" "$dest/report.json" "$RUN_ID" "$BASE_SHA"
+RESIDUAL_READ
 }
 
 # The card's checklist, and the record's ledger.
 residual_items() { residual_read checklist; }
 residual_rows() { residual_read rows; }
+
+# EVERY RESIDUAL, ASKED ONCE, THROUGH THE EDGE. One `fleet_curl` POST per item
+# the cache does not already carry — no `Authorization` header and no bearer of
+# any kind, because the exe.dev integration injects it at the edge exactly as
+# it does for `claude-max` and for kata, and `--max-time 10` because the
+# measured reply is 300 ms and a classifier that has gone away must not hold a
+# transition.
+#
+# NOTHING HERE GATES ANYTHING. The answers land in the cache and, through it,
+# beside the boot's own `kind` on the ledger; the card's checklist is rendered
+# from `checklist` mode, which reads none of this. A run whose every request
+# fails publishes the same pull request, byte for byte, as one whose requests
+# all answered — the failures are three words in the boot log and an absent
+# `jev` key.
+#
+# The worklist is written to a file under `$FLEET_HOME` rather than piped: a
+# `while read` at the end of a pipeline runs in a subshell, and the log lines
+# and the appends below belong to the boot. Every step is `|| true`-tolerant,
+# the way the ledger write below it is — the record is evidence, never control
+# flow.
+residual_jev() {
+  local dest ask key name payload reply code line
+  dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
+  ask="$FLEET_HOME/.residuals-jev.ask"
+  residual_read jev >"$ask" 2>/dev/null || : >"$ask"
+  while IFS="$(printf '\t')" read -r key name payload; do
+    [ -n "$key" ] && [ -n "$payload" ] || continue
+    code=0
+    # The answer is wanted on stdout, so it is captured rather than dropped —
+    # the kata close's POST, otherwise, down to the flags.
+    reply="$(fleet_curl -fsS --max-time 10 -X POST -H 'content-type: application/json' \
+      -d "$payload" "$TYPESAFE_URL/v1/systemone" 2>/dev/null)" || code=$?
+    [ "$code" = 0 ] || log "jev: $name — curl exit $code"
+    # The cache line, keys sorted: the reply's `answers`, `model` and `usage`,
+    # or nulls and the `error` that says why there are none.
+    line="$(printf '%s' "$reply" | JEV_KEY="$key" JEV_CODE="$code" python3 -c '
+import json, os, sys
+
+code = os.environ["JEV_CODE"]
+try:
+    doc = json.loads(sys.stdin.read())
+except Exception:
+    doc = {}
+if not isinstance(doc, dict):
+    doc = {}
+sys.stdout.write(json.dumps({
+    "answers": doc.get("answers"),
+    "error": None if code == "0" else "curl exit " + code,
+    "key": os.environ["JEV_KEY"],
+    "model": doc.get("model"),
+    "usage": doc.get("usage"),
+}, sort_keys=True))
+')" || line=""
+    [ -n "$line" ] || continue
+    printf '%s\n' "$line" >>"$dest/$RESIDUALS_JEV_FILE"
+  done <"$ask"
+  rm -f "$ask"
+}
 
 # The receipt as the `### Checks` fence shows it: the document the engine wrote,
 # byte for byte, except that a `gateCheck.acks` array is dropped.
