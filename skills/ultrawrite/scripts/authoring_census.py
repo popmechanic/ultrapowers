@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import math
 import re
 import shlex
 import subprocess
@@ -56,10 +57,21 @@ COLUMNS = (
     "recommended_picked",
     "run_min",
     "amendments",
+    "compelled",
+    "plan_fault",
+    "magnitude",
 )
 
 #: What a column prints when the run's files do not carry it.
 MISSING = "-"
+
+#: The reading at or above which an amendment counts as compelled, or as the
+#: plan's fault — #1095's own threshold, on #1095's own numbers.
+JEV_THRESHOLD = 0.7
+
+#: The four levels a magnitude reads as: cosmetic (0), local (1), substantive
+#: (2), reframed (3).
+JEV_BUCKETS = 4
 
 
 def _load_json(path):
@@ -117,6 +129,65 @@ def _amendments(report):
     return len(amendments)
 
 
+def _number(value):
+    """`value` as a float when it is a JSON number, else None. A boolean is
+    not a number here: `true` is not a reading."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _bucket(magnitude):
+    """Which of the four levels a `magnitude` reads as.
+
+    `min(3, max(0, floor(x + 0.5)))`, spelled out rather than handed to
+    `round`, which is banker's in Python and would read 1.5 as local where
+    #1095 reads it as substantive. A `magnitude` that is not a number buckets
+    as cosmetic: the row was answered, so it counts in `R`, and 0 is the
+    reading that claims least."""
+    number = _number(magnitude)
+    if number is None:
+        return 0
+    return min(JEV_BUCKETS - 1, max(0, int(math.floor(number + 0.5))))
+
+
+def jev_cells(report):
+    """One run's three amendment-reading cells: `((k, R), (p, R), (c0, c1, c2,
+    c3))`, or None when the run carries no amendments list.
+
+    `R` is the rows of `report.amendments` that carry a `jev` object; a row
+    whose `jev` is null, absent, or not an object was never read and is no part
+    of any denominator. `k` and `p` are the read rows whose `compelled` and
+    `plan_fault` reach the threshold, and `c<b>` counts the read rows in each
+    magnitude bucket, so the four sum to `R`.
+
+    None, not zeros, when the report is absent, unreadable, not an object, or
+    carries no list under `amendments` — the same reading `_amendments` makes,
+    and for the same reason: a run that wrote no list read nothing, which is
+    not a reading of none. A list with no `jev` row did write one, and reads
+    `0/0` and `0/0/0/0`."""
+    if not isinstance(report, dict):
+        return None
+    amendments = report.get("amendments")
+    if not isinstance(amendments, list):
+        return None
+    read = [row.get("jev") for row in amendments if isinstance(row, dict)]
+    read = [jev for jev in read if isinstance(jev, dict)]
+    compelled = plan_fault = 0
+    buckets = [0] * JEV_BUCKETS
+    for jev in read:
+        value = _number(jev.get("compelled"))
+        if value is not None and value >= JEV_THRESHOLD:
+            compelled += 1
+        value = _number(jev.get("plan_fault"))
+        if value is not None and value >= JEV_THRESHOLD:
+            plan_fault += 1
+        buckets[_bucket(jev.get("magnitude"))] += 1
+    return (compelled, len(read)), (plan_fault, len(read)), tuple(buckets)
+
+
 def _questions(authoring):
     """The record's questions as a list of objects."""
     questions = authoring.get("questions")
@@ -168,7 +239,9 @@ def census_rows(root):
 
         status = _load_json(directory / STATUS_NAME)
         run_min = _run_minutes(status) if isinstance(status, dict) else None
-        amendments = _amendments(_load_json(directory / REPORT_NAME))
+        report = _load_json(directory / REPORT_NAME)
+        amendments = _amendments(report)
+        jev = jev_cells(report)
 
         rows.append({
             "run": number,
@@ -183,17 +256,23 @@ def census_rows(root):
                 _recommended_picked(questions) if has_authoring else None),
             "run_min": run_min,
             "amendments": amendments,
+            "compelled": jev[0] if jev is not None else None,
+            "plan_fault": jev[1] if jev is not None else None,
+            "magnitude": jev[2] if jev is not None else None,
             "questions_detail": questions,
         })
     return rows
 
 
 def _cell(value):
-    """A column's text: `-` for what the run's files do not carry."""
+    """A column's text: `-` for what the run's files do not carry.
+
+    A tuple prints slash-separated, however long it is — `<k>/<R>` for a
+    ratio, `<c0>/<c1>/<c2>/<c3>` for the four magnitude buckets."""
     if value is None:
         return MISSING
     if isinstance(value, tuple):
-        return "%d/%d" % value
+        return "/".join("%d" % part for part in value)
     return str(value)
 
 
@@ -219,7 +298,10 @@ def _totals_line(rows):
     `risk_override` is over the rows that carry a routing record at all — a
     pre-plan record has no branch and is no part of the denominator — and the
     two `recommended_picked` sums are over every row. `amendments` sums the
-    rows that carry a count; a release where no run wrote one reads 0."""
+    rows that carry a count; a release where no run wrote one reads 0. The
+    three reading fields sum the same way over every row that carries a
+    reading, so a release where none did reads `0/0` and `0/0/0/0` — the empty
+    sums, which is what the release notes' line says when nothing was read."""
     routed = [row for row in rows if row["routing"] is not None]
     risk = [row for row in routed if row["routing"] == "risk"]
     picked = offered = 0
@@ -228,13 +310,27 @@ def _totals_line(rows):
             p, q = row["recommended_picked"]
             picked += p
             offered += q
+    compelled = plan_fault = read = 0
+    buckets = [0] * JEV_BUCKETS
+    for row in rows:
+        if row["compelled"] is not None:
+            k, r = row["compelled"]
+            compelled += k
+            read += r
+        if row["plan_fault"] is not None:
+            plan_fault += row["plan_fault"][0]
+        if row["magnitude"] is not None:
+            for index, count in enumerate(row["magnitude"]):
+                buckets[index] += count
     return ("totals: plans=%d runs=%s risk_override=%d/%d "
             "recommended_picked=%d/%d authoring_min=%d run_min=%d "
-            "amendments=%d"
+            "amendments=%d compelled=%d/%d plan_fault=%d/%d "
+            "magnitude=%d/%d/%d/%d"
             % (len(rows), _window(rows), len(risk), len(routed),
                picked, offered,
                _sum(rows, "authoring_min"), _sum(rows, "run_min"),
-               _sum(rows, "amendments")))
+               _sum(rows, "amendments"),
+               compelled, read, plan_fault, read, *buckets))
 
 
 def render_table(rows):

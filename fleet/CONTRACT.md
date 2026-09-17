@@ -220,9 +220,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `sim`, and no other value), the change itself and the reason for it — one event per entry of a
     worker's reply's `amendments`, appended in the reply's own order and mirrored on the task's
     hub issue like every `driver:` line naming a task. `report.json`'s top-level `amendments` is
-    the same rows in the same order, `[]` when the run collected none. Nothing here gates: an
-    amendment is a note to whoever writes the next plan, so for the same tree `tests.passed`, the
-    gate receipt and the merge decision are what they would have been without it.
+    the same rows in the same order, `[]` when the run collected none. With a reader handed in each row also
+    carries `jev: {compelled, plan_fault, magnitude}`, `null` on a read that did not answer and absent without
+    one. Nothing here gates, the readings included: an amendment is a note to whoever writes the next plan,
+    so for the same tree `tests.passed`, the gate receipt and the merge decision are unchanged.
     One more kind records what a worker ran rather than what it was asked to run:
     `driver:suite-runs` `{task, count, slices}` — one row per task an implementer worked, the
     count of times that task's workers ran the project's whole suite anyway. It is a reported
@@ -878,7 +879,16 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   run's issue otherwise; a worker envelope goes on the issue of the task its label's second
   colon-segment names (`impl:1`, `exam:1`, `fix:1:0`, `review:1:1`) and on the run's issue when
   that segment names no task the record knows (`reconcile:wave1:1`); a phase mark
-  goes on the run's issue. `transcript:*`, `engine:log`, `capture:*`, `kata:*` and `run:*` lines
+  goes on the run's issue. A `jev:*` line is routed by the `driver:*` rule and by nothing of its
+  own — the task's issue when its `task` names one the record knows, the run's issue otherwise — and
+  a `jev:note` line is routed like every other `jev:` row. One whose reading is `plan_defect` at or
+  above 0.7 is, BESIDES that line, one comment
+  `plan-defect: task <id> (<role>) — <sentence>` on the run's issue: the task's own issue already
+  holds the note, and the run's issue is what the next plan's author opens. It is posted
+  once per note — keyed on the note's `commentUid`, so the same note reaching the mirror twice is one
+  comment — and it is a note to the next author that nothing blocks on: no verdict, gate, park,
+  `tests.passed` or merge decision reads it, and a post the hub refuses is one `kata:write-failed`
+  like any other. `transcript:*`, `engine:log`, `capture:*`, `kata:*` and `run:*` lines
   are never posted. The chain is still drained — every pending comment on the hub — before each
   claim, metadata patch and close and before the engine returns. run-main's own `driver:*` lines
   (`driver:stage`, `driver:auth`, `driver:critic-decision`, `driver:ack-decision`,
@@ -904,7 +914,37 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `{task, attention, msg, actor}` on the run's log: `msg` is the metadata's `work.attention_msg`,
   and `actor` is the actor the metadata answer exposes — `''` when it exposes none. An unchanged
   value records nothing, a read the hub refuses records nothing and does not end the run, and a task
-  the record does not name is never polled. And before the fix round's worker is dispatched, the
+  the record does not name is never polled.
+  The note is the attention signal (#1095): for as long as at least one worker of the run is alive
+  the engine also reads the project's own events page — `kata.events(<project id>, <cursor>)`, one
+  timer for the whole project on that same interval, the cursor set at Setup to the hub's tail by
+  walking the page from `0` through each answer's `next_after_id` until a page whose `events` is
+  empty, and thereafter the last `next_after_id` a non-empty poll answered. Each `issue.commented`
+  event on a task issue this run's record names, whose `actor` begins `impl:`, `exam:` or `fix:`, is
+  read exactly once through `readNote` (`fleet/jev-questions.mjs`) with that task's title and its
+  Claim, and appended as one `jev:note` row `{task, role, actor, commentUid, eventId, chars, read,
+  stuck, plan_defect, divergence, note_kind, operator_should_read, sentence}` — `sentence` the
+  note's first 200 characters with every newline flattened to one space. A call that did not answer
+  is the same row with `read: false`, no answer fields and one log line, and it raises nothing. A
+  comment by anyone else — the engine's own mirror `engine:run-<N>` first of all, which is how these
+  very rows land on the issue — an event of any other type, and a comment on an issue no task row
+  names are never sent to Jev at all. A `read: true` row from an `impl` or a `fix` note whose `stuck`
+  reads 0.7 or above, or from an `exam` note whose `stuck` reads 0.7 or above AND whose `note_kind`
+  is `blocker`, raises the hand the worker did not: on a task not already recorded `needs-human`, one
+  `driver:attention` `{task, attention: 'needs-human', msg: 'note: <sentence>', actor, source:
+  'note'}` and one metadata patch of the same two flat keys under the revision a fresh `getIssue`
+  answers — a patch the hub refuses is one `kata:write-failed` and the row stands. The examiner's
+  second criterion is the examiner's job: it writes the exam before the implementer's patch exists,
+  so a suite red at BASE is its resting state, the hand-in that says so reads as a `handin` or a
+  `reading`, and it is never a hand. The SessionEnd hook's stamp is recorded as one
+  `driver:attention-hook` `{task, msg, actor}` per ARRIVAL of a `needs-human` whose
+  `work.attention_msg` is exactly `session ended without hand-off` (a reading unchanged since the
+  last poll appends nothing), and that stamp no longer sets attention at all: no `driver:attention`,
+  no change to the poll's recorded value, and so no change to the status page's attention cell,
+  which projects `driver:attention` alone. Every other reading is the `driver:attention` it always
+  was, carrying `source` `worker` beside the four fields it carried before. The hook keeps writing
+  the stamp and the landing keeps clearing it, so the rollback is this one reading and nothing else.
+  And before the fix round's worker is dispatched, the
   engine posts one comment on the task's issue whose body begins `review round <n>:` — always `0`,
   the pre-review repair round, which is the only round that dispatches a fix worker — followed by
   that round's blocking findings, one per line, the same lines the fix prompt carries; a refused
@@ -1197,6 +1237,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   - issue-links-shape — an issue's links read `links: [{id, type, from: {uid, short_id, …}, to: {…}}]` (v0.17.2, 2026-09-14; #979).
   - archive-actor-required — `DELETE /api/v1/projects/<id>` with no `actor` query parameter is 400 `actor: required query parameter is missing`; the query is validated before any state check (v0.17.2, 2026-09-15; #1023, #1026).
   - purge-ladder — a purge is 412 `confirm_required` without `X-Kata-Confirm: PURGE <name>` and 409 `project_not_archived` before `DELETE /projects/<id>?actor=<name>`, and the archive itself, carrying `?actor=`, refuses `project_has_open_issues` (v0.17.2, 2026-09-14; #978, #993 — the launcher's old bump purge had never once succeeded live).
+  - events-page — `GET /projects/<id>/events?after_id=N&limit=K` answers `{reset_required, events, next_after_id}`, `next_after_id` being the last event's `event_id`: a `limit` of 2 answered 100 events, so the limit is no bound and the cursor is the whole of the walk, and an empty `events` is its end. A comment event is `type` `issue.commented` with `issue_uid`, `actor` (`impl:3@run-170`) and `payload: {comment_uid, author, body, created_at}` (v0.17.2, 2026-09-17; #1095).
   - cli-next-unowned — hand, read by a person and not the probe: #979 read the CLI's `next` as having no `--unowned`, and `kata next --help` on the hub lists one — both readings stand (v0.17.2, 2026-09-15; #979).
   - int-hosts-https — hand, read by a person and not the probe and readable only from a VM: every `*.int.exe.xyz` host is https, http 301s, and a followed 301 turns a POST into a GET (v0.17.2, 2026-09-11; run-110, CLAUDE.md's kata seams).
 - **Laptop config `~/.ultrapowers/fleet.json`** — `cpu`, `memory` and `account`, every one of them

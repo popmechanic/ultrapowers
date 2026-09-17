@@ -78,7 +78,20 @@ import { factsBlock } from './facts-block.mjs'
 // lines it changed an engine sim reached. Taken once, after the last fold, and
 // read by nothing below — see the call site beside `coverage`.
 import { engineCoverage } from './engine-coverage.mjs'
+// The two readers the engine puts to its Jev client, and the Claim they carry
+// (#1095). Functions OVER a client, so importing them opens no socket and
+// reaches no credential: the engine hands them the `jev` it was handed, and a
+// run without one asks nothing. `readNote` is put once per worker note as it
+// lands, the attention signal (see `noteAmendments`'s neighbor below);
+// `readAmendment` is put once per declared amendment and resolves
+// `{compelled, plan_fault, magnitude}` — or `null` for every way a read can
+// fail, which is the whole of its error contract.
+import { readNote, readAmendment, AMENDMENT_QUESTIONS, taskClaimOf } from './jev-questions.mjs'
 
+// The keys `readAmendment` flattens its answers onto, taken from the question
+// set itself so the row's shape and the questions actually asked cannot drift
+// apart, and in the question set's own order.
+const JEV_AMENDMENT_KEYS = Object.freeze(Object.keys(AMENDMENT_QUESTIONS))
 // ── which tests went red (#871 decisions 1 and 4) ────────────────────────────
 // `failingBlock` above answers "what does the failure read like"; this answers
 // "which files failed", because a fold has one more question to ask of a red
@@ -428,6 +441,85 @@ export const attentionReadingOf = (issue) => {
     value: (raw === undefined || raw === null || raw === '') ? 'ok' : String(raw),
     msg: (msg === undefined || msg === null) ? '' : String(msg),
   }
+}
+
+/**
+ * The SessionEnd hook's stamp, verbatim (#1095 proposal 5).
+ *
+ * Each worker session runs kata's `attention-hook` on SessionStart and
+ * SessionEnd (`fleet/run-main.mjs`'s `writeConfineSettings`, untouched by this
+ * change), and the end hook writes `work.attention: needs-human` with exactly
+ * this message. On the record it is not a raised hand and never was: 232 of the
+ * 251 `driver:attention` rows the fleet has written are this stamp, and runs
+ * 134 and 135 ended EVERY clean task `needs-human` on it. So the poll reads it
+ * by this literal and records it as the hook's own row.
+ *
+ * Exported because it is a contract between three parties — the hook that
+ * writes it, the poll that recognises it, and the exam that drives both — and a
+ * second spelling of it anywhere would silently turn the stamp back into a
+ * hand. The ROLLBACK (#1095 proposal 5) is one line: drop the recognition below
+ * and the stamp records as `driver:attention` again, exactly as at BASE.
+ */
+export const HOOK_STAMP_MSG = 'session ended without hand-off'
+
+/** The reading at or above which a note is a raised hand (#1095's issue). */
+export const NOTE_STUCK_THRESHOLD = 0.7
+/**
+ * Does this note raise a hand? (#1095 proposal 1.)
+ *
+ * The reading behind the rule (n=779 notes over 69 runs, both targets, through
+ * run-170, read 2026-09-16): of the 13 tasks with a real hand-raise on the
+ * record the notes read 10 as `stuck >= 0.5`; of the 189 tasks carrying only
+ * the hook's stamp, 9 read as stuck — 3 real hand-raises the stamp's noise had
+ * drowned, and 6 EXAMINER hand-ins whose `red at BASE` reads as stuck.
+ *
+ * So the examiner gets a criterion of its own: an examiner's job is to write
+ * the exam before the implementer's patch exists, so a red suite at BASE is its
+ * resting state and never a raised hand. An examiner note raises a hand only
+ * when it is `stuck >= 0.7` AND the note is a `blocker`; an implementer's and a
+ * fix session's raise on the threshold alone.
+ *
+ * PURE, and exported for that reason: the exam drives the rule's rows directly
+ * without standing a run up. A `stuck` that is not a finite number is no
+ * reading at all, and a role that is none of the three raises nothing.
+ */
+export const attentionFromNote = ({ role, stuck, note_kind: noteKind } = {}) => {
+  if (typeof stuck !== 'number' || !Number.isFinite(stuck)) return false
+  if (stuck < NOTE_STUCK_THRESHOLD) return false
+  if (role === 'impl' || role === 'fix') return true
+  if (role === 'exam') return noteKind === 'blocker'
+  return false
+}
+
+// #1095 — the one `jev:` reading that is worth a sentence of its own on the
+// RUN's issue: a worker who wrote that the task text is at fault. The task's
+// own issue already holds the note verbatim (run-177's routing); the run issue
+// is what the next plan's author opens, and the operator adjudicates from it,
+// so a named plan defect reaches the plan without anyone re-reading 700 notes.
+// The threshold is #1095's read (n=779 notes, runs through 170): of tasks the
+// fleet parked, 47% carried a note reading `plan_defect >= 0.7`; of tasks that
+// merged clean, 10% did, and a hand read says those are real — AUROC 0.68. It
+// is a note to the next author and nothing else: no verdict, no gate, no park
+// reads it, and a refused post is one `kata:write-failed`.
+//
+// The rule is exactly four conditions, and every one of them is checked here
+// rather than at the mirror: kind `jev:note`, `read` LITERALLY `true` (a row
+// the read refused carries none of the five answers), a NUMERIC `plan_defect`
+// at or above 0.7 (a string `'0.9'` is a malformed row, not a defect), and a
+// string `sentence` with something in it. Anything else answers `null`.
+//
+// PURE, and exported for that reason: the sim drives the rule directly without
+// standing a run up.
+export const PLAN_DEFECT_THRESHOLD = 0.7
+export const planDefectComment = (row) => {
+  const e = (row && typeof row === 'object') ? row : {}
+  if (e.kind !== 'jev:note') return null
+  if (e.read !== true) return null
+  if (typeof e.plan_defect !== 'number' || !Number.isFinite(e.plan_defect)) return null
+  if (e.plan_defect < PLAN_DEFECT_THRESHOLD) return null
+  if (typeof e.sentence !== 'string' || e.sentence.trim() === '') return null
+  return 'plan-defect: task ' + String(e.task == null ? '' : e.task) +
+    ' (' + String(e.role == null ? '' : e.role) + ') — ' + e.sentence
 }
 
 // #825 — does this set of changed paths change what the project installs? The
@@ -1976,6 +2068,18 @@ export async function runEngine({
       ? kataTaskRows[id] : null
     return (row && typeof row === 'object') ? row : null
   }
+  // The same record read backwards: which task an ISSUE belongs to (#1095). The
+  // events poll below is handed uids and nothing else — a hub event names the
+  // issue it happened on, never the task id the plan uses — so the map is built
+  // once here, off the record, rather than scanned per event. A uid the record
+  // does not name answers `undefined`, which is exactly "a comment on an issue
+  // no task row names": nothing read, nothing appended, nothing asked.
+  const kataTaskIdByUid = new Map()
+  for (const [id, row] of Object.entries(kataTaskRows)) {
+    if (row && typeof row === 'object' && row.uid != null) {
+      kataTaskIdByUid.set(String(row.uid), String(id))
+    }
+  }
   // A task's issue as a worker spells it: `<project name>#<short_id>`, the same
   // reference `envFor` puts in that task's own `KATA_REF`. It is read off the
   // RECORD and spelled exactly as `kataRefFor` (run-main.mjs) spells it —
@@ -2085,10 +2189,30 @@ export async function runEngine({
     if (kind === 'engine:phase') return kataRunUid
     return null
   }
+  // The `commentUid`s a plan-defect comment has already gone out for. The note
+  // read writes one row per note and the row reaches `mirrorToHub` by two paths
+  // — the engine's own `appendEvent` and the event log's subscription — so the
+  // same note can arrive twice; `commentUid` is what makes the two arrivals one
+  // note, and a second arrival posts nothing. A row carrying no `commentUid` is
+  // nothing this set can join, so it posts (once, for that arrival).
+  const planDefectPosted = new Set()
   const mirrorToHub = (e, line) => {
     if (!kataOn) return
     const uid = kataUidFor(e)
     if (uid) kataPost(uid, line)
+    // Besides its own JSON line on the task's issue: a named plan defect is one
+    // sentence on the RUN's issue, on the same serialized chain, drained with
+    // everything else before the engine returns. It gates nothing — the comment
+    // is a note to the next plan's author — so nothing below reads its answer.
+    if (!kataRunUid) return
+    const body = planDefectComment(e)
+    if (!body) return
+    const key = (e && e.commentUid != null) ? String(e.commentUid) : null
+    if (key !== null) {
+      if (planDefectPosted.has(key)) return
+      planDefectPosted.add(key)
+    }
+    kataPost(kataRunUid, body)
   }
   // The envelopes this engine does not write: subscribed for the run's length,
   // released at the final drain. Only the envelopes and the phase marks are
@@ -2523,6 +2647,16 @@ export async function runEngine({
   // would otherwise stack reads whose answers arrive out of order, and the
   // record would carry a reading the worker had already moved past.
   const attentionBusy = new Set()
+  // Which tasks the poll last read AT the SessionEnd hook's stamp. The stamp is
+  // recorded per ARRIVAL, not per reading: a reading unchanged since the last
+  // poll is the same stamp still sitting there and appends nothing, while a
+  // reading that moved away and came back is a second arrival and a second row.
+  // Absent means "not at the stamp", which is where every task starts.
+  const attentionStamped = new Set()
+  // Tasks whose note-raised hand the hub refused: the record carries it, the
+  // issue does not, and the poll must not read the difference as a worker's
+  // move. Cleared by the first reading that agrees with the record.
+  const attentionUnwritten = new Set()
   const attentionRead = async (taskId, row) => {
     if (attentionBusy.has(taskId)) return
     attentionBusy.add(taskId)
@@ -2531,22 +2665,56 @@ export async function runEngine({
       // that learned nothing — not a failed write, and never the run's end.
       // The revision tracker is left alone for the same reason; the writes that
       // need an `If-Match` carry the revision their own last answer gave them.
+      // What the driver had recorded when this read LEFT. The note reader below
+      // writes the same value from the other side, so a read whose answer
+      // arrives after it — the hub's `ok` from before the note's patch landed —
+      // is a reading the run has already moved past, and recording it would
+      // undo the hand a note raised with a reading older than the hand itself.
+      const before = attentionSeen.has(taskId) ? attentionSeen.get(taskId) : 'ok'
       const issue = await kata.getIssue(row.uid)
       // The flat key is the reading, `ok` the absent default — one shape, read
       // here and at Setup's clear (`attentionReadingOf`).
       const { value, msg } = attentionReadingOf(issue)
       if (!ATTENTION_READINGS.has(value)) return
+      if ((attentionSeen.has(taskId) ? attentionSeen.get(taskId) : 'ok') !== before) return
+      // A hand the note reader raised and the hub REFUSED (its patch was one
+      // `kata:write-failed`): the issue still reads whatever it read before,
+      // and that reading is the driver's own failed write coming back — not a
+      // worker clearing its hand. Recording it would put a clearing nobody
+      // performed on the record every poll from here to the end of the task.
+      if (value === 'needs-human') attentionUnwritten.delete(taskId)
+      else if (attentionUnwritten.has(taskId)) return
+      const actor = attentionActorOf(issue)
+      // ── the hook's stamp is the hook's row (#1095 proposal 5) ─────────────
+      // `needs-human` carrying exactly the SessionEnd hook's message is not a
+      // worker raising a hand: it is a session that ended, which is what every
+      // session that handed its result to the driver does. Recorded as its own
+      // kind so the run still HAS the reading — the hook keeps writing it and
+      // `kataLanded` keeps clearing it, which is the rollback — but the status
+      // page's attention cell reads `driver:attention` only, so the stamp no
+      // longer moves the cell, and the poll's own recorded value is untouched:
+      // a hand raised after the stamp is still a change and still records.
+      if (value === 'needs-human' && msg === HOOK_STAMP_MSG) {
+        if (attentionStamped.has(taskId)) return
+        attentionStamped.add(taskId)
+        appendEvent({ kind: 'driver:attention-hook', task: taskId, msg, actor })
+        return
+      }
+      attentionStamped.delete(taskId)
       const was = attentionSeen.has(taskId) ? attentionSeen.get(taskId) : 'ok'
       if (value === was) return
       attentionSeen.set(taskId, value)
+      // `source` says which of the two mouths this row came from: `worker` for
+      // a metadata reading like this one, `note` for the note read below.
       appendEvent({ kind: 'driver:attention', task: taskId, attention: value,
-        msg, actor: attentionActorOf(issue) })
+        msg, actor, source: 'worker' })
     } catch { /* a read the hub refused: nothing to record, and no run to end */
     } finally {
       attentionBusy.delete(taskId)
     }
   }
   const attentionStart = (taskId, row) => {
+    notesStart()
     const depth = (attentionDepth.get(taskId) || 0) + 1
     attentionDepth.set(taskId, depth)
     if (depth > 1) return
@@ -2555,12 +2723,249 @@ export async function runEngine({
     attentionTimer.set(taskId, timer)
   }
   const attentionStop = (taskId) => {
+    notesStop()
     const depth = (attentionDepth.get(taskId) || 1) - 1
     attentionDepth.set(taskId, depth)
     if (depth > 0) return
     const timer = attentionTimer.get(taskId)
     if (timer !== undefined) clearInterval(timer)
     attentionTimer.delete(taskId)
+  }
+
+  // ── the note IS the attention signal (#1095 proposal 1) ────────────────────
+  // The metadata poll above reads what a worker REMEMBERED to set. The record
+  // says that is mostly nothing: of 251 `driver:attention` rows the fleet has
+  // written, 232 are the SessionEnd hook's stamp and 19 are real hands. What a
+  // worker does write, every time, is its notes — the approach, the progress,
+  // the blocker — as comments on its own issue, and #1095's read of 779 of them
+  // says the blockage is legible there in 10 of the 13 cases the record knows.
+  //
+  // So the engine reads the hub's own events page while any worker of the run
+  // is alive, sends each worker comment it has not read through Task 1's
+  // `readNote`, and appends what came back as one `jev:note` row. A reading
+  // that says the worker cannot proceed raises the hand the worker did not.
+  //
+  // THREE conditions and no fourth: a hub client, a `jev`, and an `events`
+  // function on that client. Any one missing and nothing here makes a single
+  // call — which is what keeps every sim at BASE (`test_run_engine_re_edge`,
+  // `test_run_engine_stale_patch`, `test_run_engine_state_handshake`,
+  // `test_worker_kata_env`) at the call counts it had: none of them passes a
+  // `jev`, and none of their fakes has an `events`.
+  const notesOn = Boolean(kataOn && jev && kata && typeof kata.events === 'function')
+  // The plan's own text, read ONCE and for one reason: `taskClaimOf` needs it
+  // to put each task's Claim in front of Jev beside the note. Read the way
+  // `planTitle` reads the same file — an unreadable plan is `''` claims and
+  // never a failure, because a note read that did not happen is no worse than
+  // a run without a `jev` at all. Lazy, because `planPath` is read further
+  // down and the first note is read long after Setup.
+  let notesPlanText = null
+  const notesPlanTextOf = () => {
+    if (notesPlanText !== null) return notesPlanText
+    notesPlanText = ''
+    if (planPath) {
+      try { notesPlanText = fs.readFileSync(planPath, 'utf8') } catch { /* '' claims */ }
+    }
+    return notesPlanText
+  }
+  const notesTitleOf = (taskId) => {
+    const t = WAVES.flat().find((x) => x && x.id === taskId)
+    return (t && typeof t.title === 'string') ? t.title : undefined
+  }
+  // Which of the three worker roles wrote a comment, read off the hub's actor:
+  // `impl:1@run-170`, `exam:2@run-170`, `fix:1:0@run-170`. Everything else —
+  // the engine's OWN mirror (`engine:run-<N>`, which is how every `jev:note`
+  // row itself lands on the issue and exactly why this list is a whitelist),
+  // `launch`, `sandbox:…`, `review:…` — is not a worker's note and is never
+  // sent to Jev.
+  const NOTE_ROLES = ['impl', 'exam', 'fix']
+  const noteRoleOf = (actor) =>
+    NOTE_ROLES.find((r) => String(actor == null ? '' : actor).startsWith(r + ':')) || null
+  // What an operator reads in the record and in the raised hand's message: the
+  // note's first 200 characters on ONE line. Cut first, then flatten — a
+  // newline becomes one space, so the cut length is the sentence's length.
+  const noteSentenceOf = (body) =>
+    String(body == null ? '' : body).slice(0, 200).replace(/\n/g, ' ')
+  // The hub's cursor: the `next_after_id` of the last non-empty page this run
+  // has seen. Set at Setup to the hub's tail (`notesCursorWalk`), so the notes
+  // of every run before this one are history and are never read.
+  let notesCursor = 0
+  // Events already read, by `event_id`. The cursor alone is the ordinary guard;
+  // this is the one that holds when a hub answers a page it has already
+  // answered, because "read exactly once" is a promise about Jev calls and
+  // about the record, not about what the hub chooses to repeat.
+  const notesReadIds = new Set()
+  const notesCursorWalk = async () => {
+    if (!notesOn) return
+    let after = 0
+    // The walk is bounded: a hub that answered a non-empty page without
+    // advancing its cursor would otherwise spin here forever, and Setup is not
+    // the place to find that out.
+    for (let page = 0; page < 10000; page += 1) {
+      let answer
+      try {
+        answer = await kata.events(kataProjectId, after)
+      } catch {
+        return /* a read the hub refused: the cursor stands where it is */
+      }
+      const rows = (answer && Array.isArray(answer.events)) ? answer.events : []
+      if (rows.length === 0) return
+      const next = answer.next_after_id
+      if (typeof next !== 'number' || !Number.isFinite(next) || next <= after) return
+      after = next
+      notesCursor = next
+    }
+  }
+  /**
+   * One event, read once.
+   *
+   * Every condition is checked before the call, never after: an event that is
+   * not a comment, a comment on an issue no task row names, and a comment by
+   * anyone but a worker of this run append nothing and are never sent to Jev.
+   */
+  const notesReadEvent = async (ev) => {
+    const e = (ev && typeof ev === 'object') ? ev : {}
+    if (String(e.type || '') !== 'issue.commented') return
+    const taskId = (e.issue_uid == null) ? undefined : kataTaskIdByUid.get(String(e.issue_uid))
+    if (taskId === undefined) return
+    const actor = String(e.actor == null ? '' : e.actor)
+    const role = noteRoleOf(actor)
+    if (!role) return
+    const eventId = (e.event_id === undefined) ? null : e.event_id
+    if (eventId !== null) {
+      if (notesReadIds.has(eventId)) return
+      notesReadIds.add(eventId)
+    }
+    const payload = (e.payload && typeof e.payload === 'object') ? e.payload : {}
+    const body = String(payload.body == null ? '' : payload.body)
+    const sentence = noteSentenceOf(body)
+    const row = {
+      kind: 'jev:note',
+      task: taskId,
+      role,
+      actor,
+      commentUid: (payload.comment_uid === undefined) ? null : payload.comment_uid,
+      eventId,
+      chars: body.length,
+    }
+    // The reader's own refusal line, with the task on it. `readNote` logs one
+    // line and one only for a call that did not answer, and the engine's log is
+    // a whole run's — a line that does not say which note went unread is a line
+    // an operator cannot use.
+    const noteLog = (line) => {
+      const s = String(line)
+      log(s.startsWith('jev:')
+        ? 'jev: task ' + taskId + ': ' + s.slice('jev:'.length).trim()
+        : s)
+    }
+    const answer = await readNote(
+      jev, { title: notesTitleOf(taskId), claim: taskClaimOf(notesPlanTextOf(), taskId), role, note: body },
+      noteLog)
+    // NOT `jevRow`: that closure appends the RAW answer objects, and this row
+    // is the readers' flattened numbers plus a `read: false` row for the call
+    // that did not answer — a note the run could not read is still a note the
+    // run saw, and the record says so.
+    if (!answer) {
+      appendEvent({ ...row, read: false, sentence })
+      return
+    }
+    appendEvent({ ...row, read: true,
+      stuck: answer.stuck, plan_defect: answer.plan_defect, divergence: answer.divergence,
+      note_kind: answer.note_kind, operator_should_read: answer.operator_should_read,
+      sentence })
+    if (!attentionFromNote({ role, stuck: answer.stuck, note_kind: answer.note_kind })) return
+    await notesRaiseHand(taskId, actor, sentence)
+  }
+  /**
+   * The hand the worker did not raise.
+   *
+   * One `driver:attention` on the record — `source: 'note'`, so a reader can
+   * tell it from the metadata poll's own rows at a glance — and the same two
+   * flat keys a worker's `kata meta set` would have written, so the hub and the
+   * status page read what the record reads. A task the poll has ALREADY
+   * recorded `needs-human` is a hand already up: a second note raises it no
+   * higher and writes nothing.
+   */
+  const notesRaiseHand = async (taskId, actor, sentence) => {
+    if (attentionSeen.get(taskId) === 'needs-human') return
+    const msg = 'note: ' + sentence
+    attentionSeen.set(taskId, 'needs-human')
+    appendEvent({ kind: 'driver:attention', task: taskId, attention: 'needs-human',
+      msg, actor, source: 'note' })
+    const row = kataRowOf(taskId)
+    if (!row) return
+    await drainKataPosts()
+    // A FRESH read for the revision, and not the tracker's: the worker's own
+    // comments — the note this hand was raised from among them — have moved
+    // this issue past every revision the engine last answered for, so an
+    // `If-Match` built from the tracker is a 412 by construction. Outside
+    // `kataCall` because it is a read: a refused read is a revision we do not
+    // have, not a failed write, and the patch below still goes out under the
+    // best revision the run holds.
+    let revision = kataRevisions.get(row.uid)
+    try {
+      const issue = await kata.getIssue(row.uid)
+      if (issue && typeof issue.revision === 'number') {
+        kataRevisions.set(row.uid, issue.revision)
+        revision = issue.revision
+      }
+    } catch { /* the tracker's revision stands */ }
+    // A patch the hub refuses is one `kata:write-failed` and nothing else: the
+    // `driver:attention` row above stands, the run goes on, and the operator
+    // reads the hand off the record rather than off the hub.
+    const patched = await kataCall('metadata', row.uid,
+      () => kata.patchMetadata(kataProjectId, row.uid,
+        { 'work.attention': 'needs-human', 'work.attention_msg': msg }, revision))
+    // A refused patch leaves the record and the issue disagreeing: the run has
+    // recorded the hand, the hub still reads `ok`. The poll must not read that
+    // difference as a worker lowering the hand, so the task is marked unwritten
+    // until a reading agrees with the record again.
+    if (patched === null) attentionUnwritten.add(taskId)
+  }
+  // One page per tick, serially: the notes of a page are read in the page's own
+  // order, which is the hub's order, so the record's `jev:note` rows and the
+  // calls behind them run in the order the workers wrote them. `notesBusy` is
+  // the same guard the per-task read has — a hub slower than the interval must
+  // not stack pages whose answers arrive out of order.
+  let notesBusy = false
+  const notesPoll = async () => {
+    if (notesBusy) return
+    notesBusy = true
+    try {
+      let answer
+      try {
+        answer = await kata.events(kataProjectId, notesCursor)
+      } catch {
+        return /* a poll that learned nothing; never the run's end */
+      }
+      const rows = (answer && Array.isArray(answer.events)) ? answer.events : []
+      if (rows.length === 0) return
+      const next = answer.next_after_id
+      if (typeof next === 'number' && Number.isFinite(next)) notesCursor = next
+      for (const ev of rows) await notesReadEvent(ev)
+    } finally {
+      notesBusy = false
+    }
+  }
+  // ONE timer for the whole project, not one per task: the events page is
+  // project-wide, and a timer per worker would read the same page N times. It
+  // runs for exactly as long as at least one worker of the run is alive — the
+  // count below is every worker, the per-task depth is per task — so no page is
+  // fetched after the last worker has ended. A note that lands after that is
+  // history, and accepted as such.
+  let notesDepth = 0
+  let notesTimer = null
+  const notesStart = () => {
+    notesDepth += 1
+    if (!notesOn || notesTimer !== null) return
+    const timer = setInterval(() => { notesPoll() }, attentionPollMs)
+    if (typeof timer.unref === 'function') timer.unref()
+    notesTimer = timer
+  }
+  const notesStop = () => {
+    notesDepth -= 1
+    if (notesDepth > 0) return
+    if (notesTimer !== null) clearInterval(notesTimer)
+    notesTimer = null
   }
   // ── the capture anchor of a dispatch ──────────────────────────────────────
   // `withPatchCapture` (run-waves.mjs) captures a worktree dispatch's patch by
@@ -2723,21 +3128,28 @@ export async function runEngine({
     .filter((c) => c && typeof c === 'object' && typeof c.cmd === 'string' && c.cmd.trim() !== '')
     .map((c) => ({ cmd: c.cmd, minor: Boolean(c.minor) }))
   const planPath = (typeof args.planPath === 'string' && args.planPath.trim()) || undefined
-  // The plan's H1, read ONCE here and carried to every wave's materialize as
-  // `--subject` (#633): the fold commit — and so the squash-merge the PR
-  // lands — is titled from the plan rather than from the wave counter. The
-  // title is the text after `# ` on the first line that begins that way,
-  // trimmed; a missing or unreadable plan, or one with no such line, leaves
-  // it undefined and the kernel writes BASE's message unchanged.
-  const planTitle = (() => {
-    if (!planPath) return undefined
-    let text
+  // The plan's own text, read ONCE here, with two readers below it: the H1 that
+  // titles every fold, and `taskClaimOf` at the amendment seam — the compiled
+  // task carries `id` and `title` and no Claim, so a Claim can only come from
+  // here. A missing or unreadable plan reads as no text at all, which leaves
+  // the title undefined and every Claim `''`, exactly as before either reader.
+  const planText = (() => {
+    if (!planPath) return ''
     try {
-      text = fs.readFileSync(planPath, 'utf8')
+      return fs.readFileSync(planPath, 'utf8')
     } catch {
-      return undefined
+      return ''
     }
-    for (const line of text.split('\n')) {
+  })()
+  // The plan's H1, carried to every wave's materialize as `--subject` (#633):
+  // the fold commit — and so the squash-merge the PR lands — is titled from the
+  // plan rather than from the wave counter. The title is the text after `# ` on
+  // the first line that begins that way, trimmed; a missing or unreadable plan,
+  // or one with no such line, leaves it undefined and the kernel writes BASE's
+  // message unchanged.
+  const planTitle = (() => {
+    if (!planText) return undefined
+    for (const line of planText.split('\n')) {
       if (line.startsWith('# ')) return line.slice(2).trim() || undefined
     }
     return undefined
@@ -3005,6 +3417,14 @@ export async function runEngine({
   // count that matters is one read per task, not the wall clock of a handful of
   // GETs. Without a record this loop makes no request at all.
   for (const t of WAVES.flat()) await openKataTask(t)
+
+  // Where the note reader starts looking: the hub's tail, here, before wave 1
+  // and before any worker of this run has written anything. The project's
+  // events page carries every earlier run's notes too, and a reader starting at
+  // `0` would send all of them to Jev and raise this run's hands off another
+  // run's blockages. Without a `jev`, or with a client that has no `events`,
+  // this makes no request at all.
+  await notesCursorWalk()
 
   // ── re-drive reuse (#383) ──────────────────────────────────────────────────
   // A relaunched plan whose earlier run parked left some of its tasks finished:
@@ -3466,16 +3886,54 @@ export async function runEngine({
     // implementer's before that task's first `driver:proof-run` and the fix
     // round's after it — and `appendEvent` mirrors each onto the task's issue
     // with no further code.
-    const noteAmendments = (res) => {
+    //
+    // #1095 proposal 3 — and, when the run was handed a `jev` client, each row
+    // carries that client's three readings of the amendment beside the worker's
+    // own three fields: `jev: {compelled, plan_fault, magnitude}`, or
+    // `jev: null` when the read did not answer. The read happens BEFORE the
+    // event is appended, so the record and the report's row say the same thing;
+    // the entries are read one at a time, so the reply's order is the record's
+    // order whatever the client's latencies are.
+    //
+    // WITHOUT a client the key is never assigned — absent, not `null`. That is
+    // the distinction `hasOwnProperty` reads, and it is why a run with no `jev`
+    // leaves `{task, amends, what, why}` byte for byte as it was before this
+    // seam existed. And the readings gate NOTHING: the row's `jev` is not read
+    // by any status, verdict, judgment line, receipt or merge decision, so a
+    // read that answered and a read that failed leave the same run.
+    const noteAmendments = async (res) => {
       if (!res || !Array.isArray(res.amendments)) return
       for (const a of res.amendments) {
         if (!a || typeof a !== 'object') continue
         const row = { task: task.id, amends: a.amends, what: a.what, why: a.why }
+        if (jev) row.jev = await readAmendmentRow(a)
         amendments.push(row)
         appendEvent({ kind: 'driver:amendment', ...row })
         judgmentCalls.push('task ' + task.id + ': amendment (' + a.amends + '): ' +
           a.what + ' — ' + a.why)
       }
+    }
+    // One amendment, read once, flattened to the three numbers or to `null`.
+    // `readAmendment` is documented never to reject — it catches a throwing
+    // `ask` and logs once — but the whole point of this seam is that Jev cannot
+    // take a run down, so a client that rejected anyway is caught here too and
+    // is one log line and a `null`, never an error out of `runTaskInner`.
+    const readAmendmentRow = async (a) => {
+      let read = null
+      try {
+        read = await readAmendment(jev, {
+          title: task.title,
+          claim: taskClaimOf(planText, task.id),
+          amendment: { amends: a.amends, what: a.what, why: a.why },
+        }, log)
+      } catch (e) {
+        log('jev: readAmendment threw: ' + String((e && e.message) || e).slice(0, 200))
+        return null
+      }
+      if (!read || !JEV_AMENDMENT_KEYS.every((k) => typeof read[k] === 'number')) return null
+      const flat = {}
+      for (const k of JEV_AMENDMENT_KEYS) flat[k] = read[k]
+      return flat
     }
     if (task.review && !isPairReview(task.review) && task.review !== 'lean') {
       judgmentCalls.push('task ' + task.id + ': unknown review="' + task.review +
@@ -3934,7 +4392,7 @@ export async function runEngine({
       }
     }
     noteConcerns(impl)
-    noteAmendments(impl)
+    await noteAmendments(impl)
     // #314 guard, kept one more run (spec §3.1): clones are cut at BASE by
     // construction, so a mismatch here is a check on a thing that cannot
     // happen — which is what a guard on an inexpressible defect looks like.
@@ -4505,7 +4963,7 @@ export async function runEngine({
       if (impl === null) throw new Error('AGENT_NULL: pre-review fix agent returned null (terminal Overloaded or skipped)')
       stripUntrustedPatch(impl, patchPrefix)
       noteConcerns(impl)
-      noteAmendments(impl)
+      await noteAmendments(impl)
       await noteDrift('the fix round')
       if (hasCoordinates(impl)) await kataTouched(kataRow, impl.patch)
       if ((impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') && !hasCoordinates(impl)) {

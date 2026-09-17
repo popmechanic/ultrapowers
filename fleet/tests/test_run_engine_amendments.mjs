@@ -99,6 +99,83 @@
  *   • `events.jsonl` IS READ BY COPY, never by import: split, parse, drop
  *     blanks. An absent file reads as no records, so an engine that appends
  *     none fails the count assertion rather than throwing ENOENT.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * TASK 4 (#1095 proposal 3) — every declared amendment carries Jev's
+ * `compelled`, `plan_fault` and `magnitude` reads.
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ * Everything above this line is the file as it was written at BASE for #990 and
+ * is UNCHANGED: Task 4's clauses say the eight legs (a)–(h) still pass on the
+ * patched tree, so this task EXTENDS the file — its own legs are lettered
+ * (a4)–(d4), its own run helper is its own, and no helper, literal or assertion
+ * above is reshaped by it. The section that carries them is at the bottom of
+ * this file, under the banner naming this task.
+ *
+ * ── the Machine clauses under test (Task 4) ─────────────────────────────────
+ *
+ *   T4-M1 — with a `jev` client, each entry of a worker's reply's `amendments`
+ *           is read through
+ *           `readAmendment(jev, {title, claim, amendment: {amends, what, why}}, log)`
+ *           — `readAmendment`, `AMENDMENT_QUESTIONS` and `taskClaimOf` from
+ *           `fleet/jev-questions.mjs`, and `claim` from
+ *           `taskClaimOf(<the plan file's text>, task.id)` — BEFORE its
+ *           `driver:amendment` event is appended, and both that event and the
+ *           report's `amendments` row carry `jev: {compelled, plan_fault,
+ *           magnitude}` (the three numbers) or `jev: null` when the read
+ *           resolved `null`, in the reply's order as at BASE.
+ *   T4-M2 — without a `jev` client the row is `{task, amends, what, why}` with
+ *           NO `jev` key, byte for byte the BASE shape, and this file's eight
+ *           legs written at BASE pass on the patched tree.
+ *   T4-M3 — a read that resolves `null` or throws changes nothing else: the
+ *           task's `status`, `reviewVerdict`, the `judgmentCalls` line
+ *           `task <id>: amendment (<amends>): <what> — <why>`, `tests.passed`
+ *           and the merge decision are what they are without the read, and the
+ *           engine throws nothing.
+ *   T4-M4 — `fleet/CONTRACT.md`'s amendment paragraph in the evidence bullet
+ *           and `skills/ultrapowers/references/report-format.md`'s `amendments`
+ *           row both say the row carries `jev: {compelled, plan_fault,
+ *           magnitude}` when a reader was handed in, `null` when the read did
+ *           not answer, absent without one, and that the reads gate nothing.
+ *
+ * ── the Proof legs (Task 4), and where each is asked ────────────────────────
+ *
+ *   (a4) [T4-M1] one run through `rig({…, jev: fake})` declaring two
+ *                amendments (`files` then `clause`) whose fake answers once and
+ *                then `null`: the two calls, their `questions` and `state`, the
+ *                two events' `jev` values, `report.amendments`, and each row's
+ *                position before that task's first `driver:proof-run`
+ *   (b4) [T4-M2] the same run with no `jev`: no `jev` key anywhere
+ *   (c4) [T4-M3] the (a4) run and a run whose `ask` THROWS for the second
+ *                entry, both read against (b4)'s report
+ *   (d4) [T4-M4] the Proof's two document `Run:` lines
+ *
+ * ── the readings Task 4's legs are written on ───────────────────────────────
+ *
+ *   • THE ENGINE'S CALL IS READ THROUGH A RECORDING FAKE, not by stubbing
+ *     `fleet/jev-questions.mjs`. `AMENDMENT_QUESTIONS` and `taskClaimOf` are
+ *     IMPORTED here and the fake's arguments are compared against them, so any
+ *     implementation that puts the sitting's questions and the plan's Claim to
+ *     the client — through `readAmendment`, which is what T4-M1 names — passes,
+ *     and one that invents its own questions or reads no plan fails on the
+ *     argument rather than on a mock that was never installed.
+ *
+ *   • `claim` NEEDS A PLAN ON DISK. `taskClaimOf` reads the plan's text, and
+ *     the engine already opens `args.planPath` for its H1, so leg (a4)'s rig
+ *     passes one through `extraArgs` and the fixture carries a SECOND
+ *     `### Task T2:` section: a reader that walked past the first section's end
+ *     would carry the wrong Claim into `state` and fail the deep-equal.
+ *
+ *   • ORDER IS READ TWICE. T4-M1 says "in the reply's order as at BASE", so the
+ *     rows are read both by their index in `events.jsonl` (the divider BASE's
+ *     leg (b) uses) and by their `id` — `appendEvent` stamps `ulid(ts)`, which
+ *     is monotonic within a process, so `id` sorting IS the record's order.
+ *
+ *   • LEG (d4) IS ASKED IN-PROCESS, exactly as BASE's leg (g) asks this file's
+ *     other two document `Run:` lines: a sim may not spawn another proof's
+ *     shell pipeline, so the two commands' range-then-match semantics are
+ *     reproduced here — the same range, the same flattening, the same pattern
+ *     with the BRE's literal `(`, `)`, `{` and `}` escaped for a JS regex.
  */
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -107,6 +184,11 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { IMPLEMENTER_SCHEMA } from '../run-engine.mjs'
 import { rig, makeRepo, passReview, doneImpl } from './_engine_helpers.mjs'
+// Task 4 [T4-M1] — the sitting's question set and the plan's Claim reader, the
+// two things the engine's `readAmendment` call is made of. Imported, never
+// copied: a reworded question is a different question, and this file must fail
+// if the engine put a different one.
+import { AMENDMENT_QUESTIONS, taskClaimOf } from '../jev-questions.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-amendments-'))
 // Removed on exit, red or green (rmSync unlinks a tree's `skills` symlink
@@ -472,6 +554,394 @@ const twoAmendments = await (async () => {
     '(g) [M5] and fleet/roles/fix.md\'s same-judgment-rules sentence names `amendments` for the ' +
     'same three kinds, keeping `plan-defect:` and the sibling-owned-paths sentence, in the order ' +
     'the Proof\'s fourth Run: line greps for them. The paragraph read: ' + JSON.stringify(fix))
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// TASK 4 (#1095 proposal 3) — Jev's three reads beside every declared
+// amendment. Legs (a4)–(d4); nothing above this banner is touched by them.
+// ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── the run every Task 4 leg drives, differing only in its `jev` ────────────
+// The task's own title, and the Claim the plan fixture gives it. `state.task`
+// is built from these two and from nothing else, so both are literals here and
+// the plan below is their only other home.
+const T4_TITLE = 'the one task this run dispatches'
+const T4_CLAIM = "do: declare two amendments; see: Jev's three reads beside each row. (derived)"
+// The plan `args.planPath` names. A SECOND task section follows T1's: a reader
+// that walked past the first section's end would carry `not this one` into
+// `state.task.claim` and fail leg (a4)'s deep-equal rather than pass by luck.
+const T4_PLAN = [
+  '# the amendment reads, driven on one task',
+  '',
+  '### Task T1: ' + T4_TITLE,
+  '',
+  '**Claim:** ' + T4_CLAIM,
+  '',
+  '**Files:**',
+  '- Modify: `one.txt`',
+  '',
+  '### Task T2: a second section, so T1\'s ends before it',
+  '',
+  '**Claim:** not this one',
+  '',
+].join('\n')
+
+// A `jev` client that is a RECORDER, never a network: every `ask` argument is
+// kept in order, and the reply is the next entry of `script` — an `Error` entry
+// is thrown rather than returned, which is how leg (c4) drives a throwing read.
+const fakeJev = (script) => {
+  const calls = []
+  return {
+    calls,
+    ask: async (arg) => {
+      const { state, questions } = arg || {}
+      calls.push({ state, questions })
+      const answer = script[calls.length - 1]
+      if (answer instanceof Error) throw answer
+      return answer
+    },
+  }
+}
+
+// The sitting's own reply shape (the Proof's literal), and the flat row the
+// reader makes of it — `noul` for the two `noul` questions, `score` for the
+// score, and nothing else of the answer objects carried through.
+const T4_ANSWERS = {
+  compelled: { type: 'noul', noul: 0.8 },
+  plan_fault: { type: 'noul', noul: 0.1 },
+  magnitude: { type: 'score', score: 1.6, legend: {}, probabilities: {}, confidence: 0.7 },
+}
+const T4_JEV_ROW = { compelled: 0.8, plan_fault: 0.1, magnitude: 1.6 }
+
+// One wave, one task, one green `Run:`, one implementer reply declaring
+// `files` then `clause`. `jev` is the ONLY thing that varies: passing
+// `undefined` reaches an engine with no client at all (the rig omits the key),
+// which is exactly the comparison legs (b4) and (c4) rest on.
+const runAmendRun = async (jev) => {
+  seq += 1
+  const slug = 'am' + seq
+  const repo = makeRepo(path.join(tmp, 'repo-' + slug))
+  const runDir = path.join(tmp, 'run-' + slug)
+  const planPath = path.join(tmp, 'plan-' + slug + '.md')
+  fs.writeFileSync(planPath, T4_PLAN)
+  const labels = []
+  const { run } = rig({
+    repo,
+    runDir,
+    stamp: slug,
+    waves: [[mkTask('T1', ['one.txt'], { title: T4_TITLE, proofRuns: ["sh -c 'echo green'"] })]],
+    jev,
+    extraArgs: { foldAgeMs: 0, planPath },
+    stub: (prompt, opts, cwd) => {
+      labels.push(opts.label)
+      const kind = opts.label.split(':')[0]
+      if (kind === 'impl') {
+        fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n')
+        return { ...doneImpl(cwd), amendments: [AMEND_FILES, AMEND_CLAUSE] }
+      }
+      if (kind === 'review') return passReview()
+      throw new Error('unexpected dispatch: ' + opts.label)
+    },
+  })
+  const report = await run()
+  return { report, labels, runDir, log: readEvents(runDir) }
+}
+
+// The row as the record carries it WITH a reading: the four BASE fields and the
+// `jev` key, and nothing else — so an implementation that spilled the answer
+// objects, or renamed `plan_fault`, fails on the shape.
+const jevRowOf = (e) => ({ ...rowOf(e), jev: e.jev })
+
+// ══════════════════════════════════════════════════════════════════════════
+// (a4) [T4-M1] the two reads, their arguments, the two events' `jev` values,
+//              the report's rows, and the position of each row
+// ══════════════════════════════════════════════════════════════════════════
+const t4WithJev = await (async () => {
+  // Answered for the FIRST entry, `null` for the second: one run carries both
+  // the read that answered and the read that did not, which is what the leg
+  // and (through `null`) T4-M3 both ask of it.
+  const fake = fakeJev([T4_ANSWERS, null])
+  const out = await runAmendRun(fake)
+  return { ...out, fake }
+})()
+
+{
+  const { report, log, labels, fake } = t4WithJev
+
+  assert.equal(taskClaimOf(T4_PLAN, 'T1'), T4_CLAIM,
+    '(a4) [T4-M1] sim precondition: `taskClaimOf` — the function T4-M1 names, imported from ' +
+    'fleet/jev-questions.mjs — reads exactly ' + JSON.stringify(T4_CLAIM) + ' off this run\'s ' +
+    'plan fixture for task T1, so the `claim` asserted below is the plan\'s own line and not a ' +
+    'literal this file invented: ' + JSON.stringify(taskClaimOf(T4_PLAN, 'T1')))
+  assert.ok(labels.includes('impl:T1'),
+    '(a4) [T4-M1] sim precondition: the implementer was dispatched — ' + JSON.stringify(labels))
+  assert.ok(!labels.some((l) => l.startsWith('fix:')),
+    '(a4) [T4-M1] sim precondition: the green `Run:` bought no repair round, so both amendments ' +
+    'on this run are the implementer\'s — ' + JSON.stringify(labels))
+
+  // ── the calls ────────────────────────────────────────────────────────────
+  assert.equal(fake.calls.length, 2,
+    '(a4) [T4-M1] the client is asked exactly ONCE PER ENTRY of the reply\'s `amendments` — two ' +
+    'entries, two calls, no more and no fewer (not one call carrying both, not a call per ' +
+    'reply). Calls: ' + JSON.stringify(fake.calls.map((c) => c.state)))
+  for (const [i, call] of fake.calls.entries()) {
+    assert.deepEqual(call.questions, AMENDMENT_QUESTIONS,
+      '(a4) [T4-M1] call ' + (i + 1) + '\'s `questions` is deep-equal to `AMENDMENT_QUESTIONS` ' +
+      'as fleet/jev-questions.mjs exports it — the calibration of #1095\'s reading was made ' +
+      'against those exact strings, so a reworded or re-ordered set is a different question and ' +
+      'its numbers mean something else: ' + JSON.stringify(call.questions))
+  }
+  assert.deepEqual(fake.calls[0].state,
+    { task: { title: T4_TITLE, claim: T4_CLAIM }, amendment: { ...AMEND_FILES } },
+    '(a4) [T4-M1] the FIRST call\'s `state` is deep-equal to `{task: {title, claim}, amendment: ' +
+    '{amends, what, why}}` — the compiled task\'s own `title`, the Claim ' +
+    '`taskClaimOf(<the plan file\'s text>, task.id)` reads, and the reply\'s FIRST entry ' +
+    '(`files`) verbatim: ' + JSON.stringify(fake.calls[0].state))
+  assert.deepEqual(fake.calls[1].state,
+    { task: { title: T4_TITLE, claim: T4_CLAIM }, amendment: { ...AMEND_CLAUSE } },
+    '(a4) [T4-M1] and the SECOND call\'s `state` carries the reply\'s second entry (`clause`), ' +
+    'in that order — the reads go in the reply\'s order, not sorted and not batched: ' +
+    JSON.stringify(fake.calls[1].state))
+
+  // ── the events ───────────────────────────────────────────────────────────
+  const ams = amendmentsOf(log, 'T1')
+  assert.equal(ams.length, 2,
+    '(a4) [T4-M1] a reply declaring two amendments still leaves exactly two `driver:amendment` ' +
+    'lines with a client handed in — a read adds a field to a row, it does not add or drop one: ' +
+    JSON.stringify(ams))
+  assert.deepEqual(ams.map(jevRowOf), [
+    { task: 'T1', ...AMEND_FILES, jev: T4_JEV_ROW },
+    { task: 'T1', ...AMEND_CLAUSE, jev: null },
+  ],
+    '(a4) [T4-M1] each `driver:amendment` line carries `task`, `amends`, `what` and `why` as at ' +
+    'BASE AND `jev` — `{compelled, plan_fault, magnitude}`, the reader\'s three flattened ' +
+    'numbers (0.8, 0.1, 1.6 off the sitting\'s `noul`/`noul`/`score` reply), on the entry whose ' +
+    'read answered, and `jev: null` on the entry whose read resolved `null` — in the reply\'s ' +
+    'order: ' + JSON.stringify(ams.map(jevRowOf)))
+  assert.ok(Object.prototype.hasOwnProperty.call(ams[1], 'jev'),
+    '(a4) [T4-M1] and the unanswered entry\'s `jev` key is PRESENT and null, never absent: with ' +
+    'a client handed in the row always says what the read came to, and `null` is what "it did ' +
+    'not answer" reads as: ' + JSON.stringify(ams[1]))
+
+  // ── the report ───────────────────────────────────────────────────────────
+  assert.deepEqual(report.amendments, [
+    { task: 'T1', ...AMEND_FILES, jev: T4_JEV_ROW },
+    { task: 'T1', ...AMEND_CLAUSE, jev: null },
+  ],
+    '(a4) [T4-M1] `report.amendments` deep-equals those same two rows, with the same `jev` ' +
+    'values in the same order — the report and the record say the same thing about the reads, ' +
+    'exactly as they do about the four BASE fields: ' + JSON.stringify(report.amendments))
+
+  // ── the position: the read happens BEFORE the event is appended, so the ──
+  // event still lands where BASE put it.
+  const pr = firstProofRunIndex(log, 'T1')
+  assert.notEqual(pr, -1,
+    '(a4) [T4-M1] sim precondition: the task\'s one green `Run:` command left a ' +
+    '`driver:proof-run` line to read positions against — ' + JSON.stringify(log.map((e) => e.kind)))
+  const prRow = log[pr]
+  assert.equal(typeof prRow.id, 'string',
+    '(a4) [T4-M1] sim precondition: that `driver:proof-run` line carries the log\'s own `id`: ' +
+    JSON.stringify(prRow))
+  for (const e of ams) {
+    assert.equal(typeof e.id, 'string',
+      '(a4) [T4-M1] an amendment line still carries the log\'s own `id`: ' + JSON.stringify(e))
+    assert.ok(String(e.id) < String(prRow.id),
+      '(a4) [T4-M1] and that `id` SORTS BEFORE the id of that task\'s first `driver:proof-run` ' +
+      'line, as at BASE — `appendEvent` stamps a monotonic `ulid(ts)`, so an awaited read that ' +
+      'let the pre-review pass run first would show up here. Amendment id ' +
+      JSON.stringify(e.id) + ', proof-run id ' + JSON.stringify(prRow.id))
+    assert.ok(log.indexOf(e) < pr,
+      '(a4) [T4-M1] and it is appended before that line on the record too — the declaration ' +
+      'belongs to the reply that made it, whatever the read cost. Kinds in order: ' +
+      JSON.stringify(log.map((x) => x.kind)))
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// (b4) [T4-M2] the same run with NO client: the BASE row, byte for byte, with
+//              no `jev` key on the event or on the report row
+// ══════════════════════════════════════════════════════════════════════════
+// The eight legs (a)–(h) written at BASE are the other half of this leg. They
+// are above, unchanged, and they run in this same process before this line —
+// so the `ALL TESTS PASSED` sentinel the Proof's first `Run:` line greps is
+// printed only if they all held, which is what that `Run:` line attests.
+const t4NoJev = await runAmendRun(undefined)
+
+{
+  const { report, log, labels } = t4NoJev
+  assert.ok(labels.includes('impl:T1') && !labels.some((l) => l.startsWith('fix:')),
+    '(b4) [T4-M2] sim precondition: the same dispatches as leg (a4)\'s run — ' +
+    JSON.stringify(labels))
+
+  const ams = amendmentsOf(log, 'T1')
+  assert.equal(ams.length, 2,
+    '(b4) [T4-M2] the same two `driver:amendment` lines: ' + JSON.stringify(ams))
+  for (const e of ams) {
+    assert.equal(Object.prototype.hasOwnProperty.call(e, 'jev'), false,
+      '(b4) [T4-M2] with NO `jev` key at all on the event — not `jev: null`, ABSENT. A run that ' +
+      'was handed no client asked nothing, and a row that says `null` would claim a read that ' +
+      'never happened: ' + JSON.stringify(e))
+  }
+  assert.deepEqual(ams.map(rowOf),
+    [{ task: 'T1', ...AMEND_FILES }, { task: 'T1', ...AMEND_CLAUSE }],
+    '(b4) [T4-M2] and the four BASE fields verbatim, in the reply\'s order: ' +
+    JSON.stringify(ams.map(rowOf)))
+
+  for (const row of report.amendments) {
+    assert.equal(Object.prototype.hasOwnProperty.call(row, 'jev'), false,
+      '(b4) [T4-M2] the report\'s rows carry no `jev` key either: ' + JSON.stringify(row))
+  }
+  assert.deepEqual(report.amendments,
+    [{ task: 'T1', ...AMEND_FILES }, { task: 'T1', ...AMEND_CLAUSE }],
+    '(b4) [T4-M2] `report.amendments` is `{task, amends, what, why}` per row, byte for byte the ' +
+    'BASE shape — a run with no client behaves as BASE did: ' + JSON.stringify(report.amendments))
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// (c4) [T4-M3] a read that resolved `null` and a read that THREW change
+//              nothing else: both runs are read against (b4)'s no-client run
+// ══════════════════════════════════════════════════════════════════════════
+{
+  // The second run of this leg: the first entry answers, the second THROWS.
+  // `readAmendment` catches it and resolves `null`; nothing may reach the
+  // engine's callers, and the run must resolve.
+  const boom = fakeJev([T4_ANSWERS, new Error('boom')])
+  let threw = null
+  let thrown = null
+  try {
+    thrown = await runAmendRun(boom)
+  } catch (e) {
+    threw = e
+  }
+  assert.equal(threw, null,
+    '(c4) [T4-M3] a `jev.ask` that THROWS leaves the run resolving — a failed read is one log ' +
+    'line, never an error out of the engine, never a park. The engine threw: ' +
+    String(threw && threw.stack ? threw.stack : threw))
+  assert.equal(boom.calls.length, 2,
+    '(c4) [T4-M3] sim precondition: the throwing client was still asked once per entry — the ' +
+    'first read is not abandoned by the second\'s throw and the second is not skipped: ' +
+    JSON.stringify(boom.calls.map((c) => c.state)))
+
+  const base = t4NoJev.report
+  assert.equal(base.tasks.length, 1,
+    '(c4) [T4-M3] sim precondition: the no-client run of leg (b4) reported one task, which is ' +
+    'the reading both runs below are held against: ' + JSON.stringify(base.tasks))
+
+  for (const [name, { report, log }] of [
+    ['the read that resolved `null` (leg (a4)\'s run)', t4WithJev],
+    ['the read that THREW', thrown],
+  ]) {
+    const ams = amendmentsOf(log, 'T1')
+    assert.equal(ams.length, 2,
+      '(c4) [T4-M3] ' + name + ': both `driver:amendment` lines are still there: ' +
+      JSON.stringify(ams))
+    assert.equal(ams[1].jev, null,
+      '(c4) [T4-M3] ' + name + ': the second row\'s `jev` is `null` — a read that did not answer ' +
+      'leaves the row saying so, and nothing else of the row moves: ' + JSON.stringify(ams[1]))
+    assert.deepEqual(rowOf(ams[1]), { task: 'T1', ...AMEND_CLAUSE },
+      '(c4) [T4-M3] ' + name + ': and its four BASE fields are what they are without the read: ' +
+      JSON.stringify(ams[1]))
+
+    assert.equal(report.tasks.length, base.tasks.length,
+      '(c4) [T4-M3] ' + name + ': the same number of task rows as the no-client run: ' +
+      JSON.stringify(report.tasks))
+    assert.equal(report.tasks[0].status, base.tasks[0].status,
+      '(c4) [T4-M3] ' + name + ': `report.tasks[0].status` equals the no-client run\'s (' +
+      JSON.stringify(base.tasks[0].status) + ') — Jev answers no fact, so no status turns on ' +
+      'one: ' + JSON.stringify(report.tasks[0].status))
+    assert.equal(report.tasks[0].reviewVerdict, base.tasks[0].reviewVerdict,
+      '(c4) [T4-M3] ' + name + ': and `reviewVerdict` equals the no-client run\'s (' +
+      JSON.stringify(base.tasks[0].reviewVerdict) + '): ' +
+      JSON.stringify(report.tasks[0].reviewVerdict))
+
+    assert.deepEqual(amendmentCallsOf(report), amendmentCallsOf(base),
+      '(c4) [T4-M3] ' + name + ': `report.judgmentCalls` carries the same ' +
+      '`task <id>: amendment (<amends>): <what> — <why>` lines the no-client run pushed — the ' +
+      'line is the worker\'s own words and no read edits it: ' +
+      JSON.stringify(report.judgmentCalls))
+    assert.deepEqual(amendmentCallsOf(report), [CALL('T1', AMEND_FILES), CALL('T1', AMEND_CLAUSE)],
+      '(c4) [T4-M3] ' + name + ': and those two lines are exactly `task T1: amendment ' +
+      '(<amends>): <what> — <why>`, one per entry, in the reply\'s order: ' +
+      JSON.stringify(amendmentCallsOf(report)))
+
+    assert.equal(report.tests.passed, base.tests.passed,
+      '(c4) [T4-M3] ' + name + ': `report.tests.passed` equals the no-client run\'s (' +
+      JSON.stringify(base.tests.passed) + ') — the suite is the suite: ' +
+      JSON.stringify(report.tests.passed))
+
+    // The merge decision, as the leg spells it: how many epochs merged, what
+    // each came to, and which waves were blocked.
+    assert.equal(report.waveMerges.length, base.waveMerges.length,
+      '(c4) [T4-M3] ' + name + ': the same number of `waveMerges` as the no-client run: ' +
+      JSON.stringify(report.waveMerges.map((m) => m && m.status)))
+    for (const [i, m] of report.waveMerges.entries()) {
+      assert.equal(m && m.status, base.waveMerges[i] && base.waveMerges[i].status,
+        '(c4) [T4-M3] ' + name + ': `waveMerges[' + i + '].status` equals the no-client run\'s (' +
+        JSON.stringify(base.waveMerges[i] && base.waveMerges[i].status) + ') — the merge ' +
+        'decision is what it would have been without the read: ' + JSON.stringify(m && m.status))
+    }
+    assert.deepEqual(report.blockedWaves, base.blockedWaves,
+      '(c4) [T4-M3] ' + name + ': and `report.blockedWaves` deep-equals the no-client run\'s: ' +
+      JSON.stringify(report.blockedWaves))
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// (d4) [T4-M4] the two document `Run:` lines
+// ══════════════════════════════════════════════════════════════════════════
+// The Proof's second `Run:` is
+//   sed -n '/^    One more kind records what a worker asked the PLAN for/,/^    One more kind records what a worker ran/p' fleet/CONTRACT.md \
+//     | tr '\n' ' ' | grep -q 'driver:amendment.*task, amends, what, why.*clause.*files.*sim.*hub issue.*amendments.*jev: {compelled, plan_fault, magnitude}.*null.*absent.*gate'
+// and the third is
+//   grep '^| .amendments. |' skills/ultrapowers/references/report-format.md \
+//     | grep -q 'jev: {compelled, plan_fault, magnitude}.*null.*absent.*gate'
+// — asked here in-process for the reason BASE's leg (g) gives for its own two:
+// a sim may not spawn another proof's shell pipeline. The ranges are the same
+// ranges, flattened the same way; the patterns are BREs, in which `(`, `)`,
+// `{` and `}` are literal characters, escaped below and meaning the same thing.
+{
+  const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url))
+  const readDoc = (rel) => fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8').split('\n')
+
+  // ── the CONTRACT paragraph ───────────────────────────────────────────────
+  // `sed -n '/start/,/end/p'`: the first line matching `start`, through the
+  // first line at or after it matching `end`, inclusive — and through the last
+  // line of the file when no later line matches `end`.
+  const CONTRACT = 'fleet/CONTRACT.md'
+  const START = /^ {4}One more kind records what a worker asked the PLAN for/
+  const END = /^ {4}One more kind records what a worker ran/
+  const lines = readDoc(CONTRACT)
+  const start = lines.findIndex((l) => START.test(l))
+  assert.notEqual(start, -1,
+    '(d4) [T4-M4] sim precondition: ' + CONTRACT + ' still has the line the Proof\'s sed range ' +
+    'opens on (' + String(START) + ') — the amendment paragraph of the evidence bullet')
+  let end = lines.findIndex((l, i) => i > start && END.test(l))
+  if (end === -1) end = lines.length - 1
+  const paragraph = lines.slice(start, end + 1).join(' ')
+  assert.match(paragraph,
+    /driver:amendment[\s\S]*task, amends, what, why[\s\S]*clause[\s\S]*files[\s\S]*sim[\s\S]*hub issue[\s\S]*amendments[\s\S]*jev: \{compelled, plan_fault, magnitude\}[\s\S]*null[\s\S]*absent[\s\S]*gate/,
+    '(d4) [T4-M4] ' + CONTRACT + '\'s amendment paragraph says, in the order the Proof\'s `Run:` ' +
+    'line greps for them, everything it said at BASE (`driver:amendment`, the `{task, amends, ' +
+    'what, why}` literal, the three `amends` values, the hub-issue mirror and `report.json`\'s ' +
+    '`amendments`) AND that the row carries `jev: {compelled, plan_fault, magnitude}` when a ' +
+    'reader was handed in, `null` when the read did not answer, is absent without one, and ' +
+    'gates nothing — the reads sit after the BASE sentences, which keep their order. The ' +
+    'paragraph read: ' + JSON.stringify(paragraph))
+
+  // ── the report-format row ────────────────────────────────────────────────
+  const FORMAT = 'skills/ultrapowers/references/report-format.md'
+  const ROW = /^\| .amendments. \|/
+  const rows = readDoc(FORMAT).filter((l) => ROW.test(l))
+  assert.ok(rows.length > 0,
+    '(d4) [T4-M4] sim precondition: ' + FORMAT + ' still has the `amendments` row the Proof\'s ' +
+    'third `Run:` line greps for (' + String(ROW) + ')')
+  assert.ok(
+    rows.some((l) => /jev: \{compelled, plan_fault, magnitude\}[\s\S]*null[\s\S]*absent[\s\S]*gate/.test(l)),
+    '(d4) [T4-M4] and that row says the field carries `jev: {compelled, plan_fault, magnitude}` ' +
+    'when a reader was handed in, `null` when the read did not answer, absent without one, and ' +
+    'that the reads gate nothing — in that order. The row(s) read: ' + JSON.stringify(rows))
 }
 
 // (h) [M2] the Proof's second `Run:` line — the bridge over every sim on the
