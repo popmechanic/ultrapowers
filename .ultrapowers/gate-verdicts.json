@@ -1,0 +1,119 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "24a1e86d4b18c76ddaebe916e134b18d2476e49ee9fe5ecca668b035c3cb186e",
+      "verdict": "pass",
+      "reason": "Each clause is falsified by its cited leg: (a) pins the exact git -C <pluginRoot> show <sha>:... argv, the gh fallback on non-zero and on empty stdout, and the tmpdir path/content/source; (b) pins the tmpdir path as argv[0] of both compiles in a real launch() drive and forbids any plugin-root scripts element, which is exactly what COMPILER_PATH issues at base; (c) pins no python3, no push and mutating() = [] on a double-fetch failure; (d) pins the fetch sha, the by-index ordering before the first python3, result.compiler and exactly-one/none compiler= lines; the M5 sed range opens on the Launch order bullet at CONTRACT line 411; the M6 run line can only exit 0 if the duplicate sim's seam answers a fetch with a non-empty body."
+    },
+    "2": {
+      "hash": "0c33673e561c04d913127f906f6d796f9d56ed74b32d0cef7009e2fa7b759efb",
+      "verdict": "pass",
+      "reason": "M1 by the renamed-heading row count of 15 and the zero fourteen grep; M2 by the awk that isolates only the last row (buffer reset at every - ** lead) and pins the eleven phrases in order, plus the lead-line index test exiting 0 only at row 15; M3 by the laptop-to-next-label window (base 612-617, one row, none of the pinned phrases) holding the seven phrases in order with the row count moving 1 to 2 and Traps 36 to 37; M4 by the four greps plus the -k gotchas run, whose 2 passed against a 15-row file holds only if the renamed count test reads the fifteen-rows range and pins 15."
+    }
+  },
+  "tally": {
+    "base": "573495ac0c1cc98f2ccda336b2b8cae520d9de15",
+    "dispatched": 7,
+    "rejected": 5,
+    "rounds": 4,
+    "per_round": {
+      "1": {
+        "dispatched": 2,
+        "rejected": 2
+      },
+      "2": {
+        "dispatched": 2,
+        "rejected": 2
+      },
+      "3": {
+        "dispatched": 2,
+        "rejected": 1
+      },
+      "4": {
+        "dispatched": 1,
+        "rejected": 0
+      }
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "task": "1",
+      "hash": "8cc0862fbd7e7dad814dd4a7a33638c0602202cc2d43ed8b731d82dfc7733151",
+      "verdict": "fail",
+      "reason": "M2's second half (launch() hands both compiles the fetched scriptPath) had no leg: (b) drove the two functions by hand and (d) only read result.compiler, so a launch that fetched and still ran COMPILER_PATH passed."
+    },
+    {
+      "round": 1,
+      "task": "2",
+      "hash": "d66c9146ec0a867bacef5fce83a94ccb03a22ab0eff3bd9829600208778d203d",
+      "verdict": "fail",
+      "reason": "M3 leg (c)'s sed window closed on a label the reader's excerpt did not show, and M2's leg never pinned the row as the last one nor its date."
+    },
+    {
+      "round": 2,
+      "task": "1",
+      "hash": "cf4934f721792682c66f3bad87365c4936a6c895de7c94209f0495ef88222be9",
+      "verdict": "fail",
+      "reason": "M4 was falsified only for --engine: the default-engine drive never pinned that git show carried the ls-remote sha nor that the fetch preceded the first python3 call."
+    },
+    {
+      "round": 2,
+      "task": "2",
+      "hash": "8c92050a4efa0f9706c38af8fc49c650df2a0128f5b41736ada084c40e291f3b",
+      "verdict": "fail",
+      "reason": "M2's Run grepped the whole rows range, not the last row, and pinned Permission denied without the tee literal, service shell, stdout and stderr or not from plumbing; M3 never pinned the date or refuses."
+    },
+    {
+      "round": 3,
+      "task": "1",
+      "hash": "22cd4bc3d2578564607a2cd61fb298a080802fc7e0c7ffc7a21a8023762497ec",
+      "verdict": "fail",
+      "reason": "No leg pinned the fetch's git argv as -C <pluginRoot> show <engine>:<path>, so a git show in the target checkout's cwd would fall through to gh api on every launch."
+    },
+    {
+      "round": 3,
+      "task": "2",
+      "hash": "0c33673e561c04d913127f906f6d796f9d56ed74b32d0cef7009e2fa7b759efb",
+      "verdict": "pass",
+      "reason": "Every clause falsified by its own leg at the document layer."
+    },
+    {
+      "round": 4,
+      "task": "1",
+      "hash": "24a1e86d4b18c76ddaebe916e134b18d2476e49ee9fe5ecca668b035c3cb186e",
+      "verdict": "pass",
+      "reason": "Leg (a) now pins the git argv deep-equal to ['-C', pluginRoot, 'show', engine + ':skills/ultrapowers/scripts/compile_plan.py']."
+    }
+  ],
+  "authoring": {
+    "minutes": 14,
+    "probes": 6,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Rehearse proof lines before launch, or compile with the sandbox's compiler?",
+        "options": [
+          "Both",
+          "Compiler parity and a gotchas row only",
+          "Neither"
+        ],
+        "recommended": "Both",
+        "picked": "Compiler parity and a gotchas row only"
+      },
+      {
+        "question": "Confirm the compiler-parity plan and launch?",
+        "options": [
+          "Confirm and launch on main",
+          "Confirm, hold the launch",
+          "Edit the Claim"
+        ],
+        "recommended": "Confirm and launch on main",
+        "picked": "Confirm and launch on main"
+      }
+    ]
+  }
+}
