@@ -70,8 +70,6 @@ one sim per question:
 
 - `test_launch_size.mjs` — the VM is sized from the compiled plan's widest wave
   and the dispatch width is the plan's, not a process constant.
-- `test_launch_bump.mjs` — a launch whose push of `ultra/plan-run-<N>` is
-  refused bumps to N+1 and re-files its first payload under the number it got.
 - `test_launch_duplicate.mjs` — the launcher refuses a plan already live on the
   target, names the run, and takes `--again`.
 - `test_launch_compile_facts.mjs` — the launch line carries the compiler's
