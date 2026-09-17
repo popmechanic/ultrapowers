@@ -417,8 +417,14 @@ def test_c_the_run_line_runs_at_base_in_a_worktree_that_is_then_gone(tmp_path):
     # root the compile was handed, and the machine's own.
     assert sorted(tmpdir.glob("ultra-green-*")) == [], sorted(
         tmpdir.glob("ultra-green-*"))
-    assert sorted(machine_root.glob("ultra-green-*")) == before, (
-        "an ultra-green- directory survived under %s" % machine_root)
+    # The machine's own temp root is shared with every other pytest worker, and
+    # a sibling's live worktree appears here between `before` and now — so this
+    # half is read only when this process is the whole suite (#1120). The
+    # handed root above is the assertion that holds either way, and it is the
+    # one that catches a leak the compile is responsible for.
+    if os.environ.get("PYTEST_XDIST_WORKER") is None:
+        assert sorted(machine_root.glob("ultra-green-*")) == before, (
+            "an ultra-green- directory survived under %s" % machine_root)
     # "<repo>/wrote-here.txt does not exist" — --force took the worktree away
     # with what the command wrote into it.
     assert not (repo / "wrote-here.txt").exists(), (
@@ -470,12 +476,18 @@ def test_d_check_at_base_prints_the_same_two_lines(tmp_path):
 # `time.monotonic()`, and afterwards no `sleep 30` process the call started is
 # alive [M5]"
 
-SLEEPER = "sleep 30"
+# The sleeper carries a fraction no other worker is using, so `ps` can tell
+# THIS test's `sleep` from the one a sibling pytest worker is running at the
+# same moment (#1120): a bare `sleep 30` is indistinguishable across workers,
+# and the before/after diff then counts a sibling's sleeper as a leftover.
+# `sleep` takes a fractional argument on macOS and on GNU coreutils alike, and
+# any value over the 1-second limit exercises the same kill path.
+SLEEPER = "sleep 30.%03d" % (os.getpid() % 1000)
 PLAN_E = make_plan(runs=run_bullets(SLEEPER))
 
 
 def sleeper_pids():
-    """Every live process whose command line is exactly `sleep 30`."""
+    """Every live process whose command line is exactly this test's sleeper."""
     p = subprocess.run(["ps", "-eo", "pid=,args="],
                        capture_output=True, text=True)
     pids = set()
