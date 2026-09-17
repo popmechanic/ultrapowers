@@ -119,8 +119,6 @@ one sim per question:
 - `test_facts_block.mjs` — the matcher and the `FACTS:` renderer: which of a
   run's receipts a brief's files pick up, kept short, and rendered as nothing
   when there is nothing to say.
-- `test_janitor.mjs` — the janitor's fallback, driven with `kata: null`: a run
-  read off the target's own evidence when there is no hub to ask.
 - `test_doctor_rows.mjs` — the doctor's `ROW_IDS`, the launcher's config keys
   and the setup script's env file, after the renderer left the laptop side.
 - `test_probe_kata_facts.mjs` — the shape of `probe_kata_facts.mjs`: one line
