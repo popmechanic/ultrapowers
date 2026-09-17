@@ -92,7 +92,7 @@ import path from 'node:path'
 import {
   SCRIPT, ENV, BASE_SHA, DEFAULT_REPORT, RUN_PATH, PLAN_TASK_ID, PLAN_TASK_CLAIM,
   makeHome, bootAsync,
-  argvLines, lines, prPosts, readLog, states, stream, runTests,
+  argvLines, lines, mergePuts, prPosts, readLog, states, stream, runTests,
 } from './_sandbox_boot_helpers.mjs'
 
 const tests = []
@@ -854,6 +854,520 @@ test('(f) [M6] the edited boot script still parses as bash', () => {
   assert.equal(
     r.status, 0,
     `(f) [M6] \`bash -n ${script}\` must be clean\n${r.stdout || ''}${r.stderr || ''}`,
+  )
+})
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * Exam for run-181 task 1 — "The card's `Act on these` section: the few rows
+ * Jev scores as act-now, above the full list, absent when none qualify" (#1093).
+ *
+ * CLAIM. Open the run's pull request; see, above the `Residuals:` line, an
+ * `Act on these` section of at most ten rows — the residuals Jev scored at
+ * attention 2.5 or higher, highest first, each with its actor, status and
+ * subject — and nothing there at all when no row scored that high; below it,
+ * the residual count, the errands, the amendments and the record's checklist
+ * exactly as they were.
+ *
+ * Three machine clauses, read here leg by leg. Every assertion below names the
+ * leg it belongs to and the clause it comes from:
+ *
+ *   M1  with at least one item at `jev.attention` >= `2.5`, the body carries,
+ *       after the table's last `| … |` row and one blank line and before the
+ *       `Residuals:` line, `Act on these: <q> of <n>`, a blank line, then one
+ *       `- <name> — <text> — attention <a>, actor <actor>, <status> / <subject>`
+ *       line per such item, at most ten, attention descending and, at equal
+ *       attention, in checklist order, `<a>` formatted by Python's `"%.1f"`,
+ *       the eleventh and later dropped; then a blank line          → leg (a)
+ *   M2  with no item at or above `2.5` — every item below it, no item carrying
+ *       a `jev` at all, or no item at all — no line of the body begins
+ *       `Act on these`                                             → leg (b)
+ *   M3  splicing the section's lines out — from `Act on these` up to, not
+ *       including, `Residuals:` — leaves a body string-equal to the same run's
+ *       with every request failed; the count line, the amendments and the
+ *       record's checklist are unchanged, both runs make the same number of
+ *       merge PUTs, and the succeeding run makes exactly one request per
+ *       checklist item — the section asked nothing of its own   → leg (c)
+ *
+ * FIVE BOOTS, over ONE new fixture, started beside run-178's four above and
+ * read through this file's own `bootOnce` — its `...env` spread puts a case's
+ * knobs after the three-item `REPORT`/`RECEIPT` those four share, so a case
+ * that names `STUB_REPORT` and `STUB_GATE_RECEIPT` gets its own fixture.
+ *
+ * THE FIXTURE is the one the task's Context pins: the rig's own
+ * `DEFAULT_REPORT` with a FOURTEEN-piece `notes` on its one done task — `p01 …`
+ * through `p14 …`, joined by `; ` — and the rig's default `{"verdict":"PASS"}`
+ * receipt, which carries NO ack. So the checklist is fourteen
+ * `task 1 reviewer` items and nothing else, the report names no `actor` and no
+ * amendment, and the card below the section is `Residuals: 14 from review`,
+ * no errand line, `Amendments: none`.
+ *
+ *   FOURTEEN   a `STUB_TYPESAFE_ANSWERS` file mapping needle `pNN` to the
+ *              score the Context pins for it: `2.9, 2.5, 2.4, 3.0, 2.6, 2.7,
+ *              2.8, 1.0, 2.49, 2.5, 2.5, 2.6, 2.7, 2.8`. Eleven at or above
+ *              `2.5`, ten shown. Legs (a) and (c).
+ *   ONLY_P05   the same file with `p05` at `2.5` and every other piece at
+ *              `1.0` — one qualifying row. Leg (a)'s second half.
+ *   EXIT_7     the same fixture with `STUB_TYPESAFE_EXIT=7`: every request
+ *              refused, so no row carries a `jev` at all. Legs (b) and (c).
+ *   ALL_LOW    the same fixture with every piece scored `2.4` — every row
+ *              carries a `jev`, every one below the threshold. Leg (b).
+ *   RIG        the rig's own report and receipt: no notes, no ack, so no
+ *              checklist item at all and no request made. Leg (b).
+ *
+ * `2.49` AND `2.5` ARE THE THRESHOLD'S OWN PIN. `p09` scores `2.49` and is out;
+ * `p02`, `p10` and `p11` score exactly `2.5` and are in. Nothing else in the
+ * fixture turns on rounding — every shown score is already one decimal — so a
+ * `"%.1f"` that read `2.49` as `2.5` would be caught by p09's text standing
+ * nowhere above the `Residuals:` line.
+ *
+ * THE EXPECTED ORDER IS DERIVED AND THEN CHECKED AGAINST THE LEG'S OWN LIST.
+ * `EXPECTED_ORDER` below sorts the fixture by attention descending, stable in
+ * checklist order, and takes ten; `ACT_SHOWN` is the ten the Proof leg spells
+ * by hand with the `"%.1f"` string it spells for each. The two are asserted
+ * equal before any body is read, so the fixture and the clause cannot drift
+ * apart silently — and the entries themselves are asserted against the
+ * hand-spelled strings, which is what the leg pins.
+ *
+ * WHAT IS NOT READ HERE. Leg (c) closes on the Proof's first `Run:` line —
+ * `test_sandbox_boot_card_cells.mjs` green on the edited script. That is the
+ * driver's to run and not this file's: `fleet/tests/test_sims_are_hermetic.mjs`
+ * M4 forbids a sim from spawning, or even naming for an `existsSync`, another
+ * sim. The section this task adds sits between the table and the `Residuals:`
+ * line, which is exactly the seam that sim pins, so the reading matters — it is
+ * made by the `Run:` line, and the reading this file can make on its own is
+ * leg (c)'s splice, which pins every line of the body outside the section.
+ * ════════════════════════════════════════════════════════════════════════════
+ */
+
+// ── the fourteen-piece fixture ───────────────────────────────────────────────
+
+/**
+ * The fourteen `; `-separated pieces of the done task's notes, each its own
+ * needle and its own short text. The needle is the answers file's key: `pNN`
+ * is a substring of that piece's payload and of no other's, and of nothing the
+ * boot sends beside it — neither the plan's task row nor the five questions'
+ * criteria carry a `p` followed by two digits.
+ */
+const PIECES = [
+  ['p01', 'the log line names no run'],
+  ['p02', 'the retry count is not asserted'],
+  ['p03', 'the helper is copied twice'],
+  ['p04', 'the guard drops a nul byte'],
+  ['p05', 'the timeout is hard coded'],
+  ['p06', 'the branch name is built by hand'],
+  ['p07', 'the receipt is read before the fence'],
+  ['p08', 'the comment says wave two'],
+  ['p09', 'the sort is not stable'],
+  ['p10', 'the fixture leaks a temp dir'],
+  ['p11', 'the knob is read from the environment'],
+  ['p12', 'the table has an extra column'],
+  ['p13', 'the poll sleeps a whole second'],
+  ['p14', 'the flag is spelled two ways'],
+]
+
+/** The checklist text of one piece — `<needle> <text>`, as the notes join it. */
+const pieceText = (needle) => {
+  const found = PIECES.find(([n]) => n === needle)
+  assert.ok(found, `the fixture has no piece ${needle}`)
+  return `${found[0]} ${found[1]}`
+}
+
+/** The scores the Context pins, p01 through p14, in checklist order. */
+const ACT_SCORES = [2.9, 2.5, 2.4, 3.0, 2.6, 2.7, 2.8, 1.0, 2.49, 2.5, 2.5, 2.6, 2.7, 2.8]
+
+/** The card's threshold, as M1 and M2 spell it. */
+const THRESHOLD = 2.5
+
+/** The rig's own report with the fourteen-piece `notes` on its one done task. */
+const REPORT_14 = (() => {
+  const doc = JSON.parse(DEFAULT_REPORT)
+  doc.tasks[0].notes = PIECES.map(([n]) => pieceText(n)).join('; ')
+  return JSON.stringify(doc)
+})()
+
+/** The rig's own default receipt: `PASS`, and no ack, so no errand line. */
+const RECEIPT_PASS = JSON.stringify({ verdict: 'PASS' })
+
+/**
+ * One reply at `score`. Every piece answers the same three choices — the
+ * Context's `unverified` / `implementation` / `implementer` — so an entry's
+ * three trailing fields are pinned by the clause and only its attention and
+ * its text tell the rows apart.
+ */
+const replyAt = (score) => JSON.stringify({
+  model: 'jev-1.13.0',
+  answers: {
+    status: { type: 'choice', choice: 'unverified', confidence: 0.7 },
+    subject: { type: 'choice', choice: 'implementation', confidence: 0.71 },
+    actor: { type: 'choice', choice: 'implementer', confidence: 0.72 },
+    attention: { type: 'score', score, confidence: 0.5 },
+    claim_false: { type: 'noul', noul: 0.1 },
+  },
+  usage: { input_tokens: 17, output_tokens: 18 },
+})
+
+/** The three fields every entry of this fixture carries after its attention. */
+const TAIL = 'actor implementer, unverified / implementation'
+
+/** `- <name> — <text> — attention <a>, actor …, <status> / <subject>` — M1's
+ *  entry line, for the piece `needle` at the `"%.1f"` string `shown`. */
+const entryFor = (needle, shown) =>
+  `- ${REVIEWER_NAME} — ${pieceText(needle)} — attention ${shown}, ${TAIL}`
+
+/**
+ * The ten entries leg (a) spells, in the order it spells them, each with the
+ * `"%.1f"` attention the leg names for it.
+ */
+const ACT_SHOWN = [
+  ['p04', '3.0'], ['p01', '2.9'], ['p07', '2.8'], ['p14', '2.8'],
+  ['p06', '2.7'], ['p13', '2.7'], ['p05', '2.6'], ['p12', '2.6'],
+  ['p02', '2.5'], ['p10', '2.5'],
+]
+
+/** The pieces the leg says stand nowhere above the `Residuals:` line: the one
+ *  qualifying row the cap drops, and the three under the threshold. */
+const ACT_ABSENT = ['p11', 'p03', 'p08', 'p09']
+
+/** M1's own rule applied to the fixture: every piece at or above the
+ *  threshold, attention descending, stable in checklist order, capped at ten. */
+const EXPECTED_ORDER = PIECES
+  .map(([needle], i) => ({ needle, at: ACT_SCORES[i], i }))
+  .filter((r) => r.at >= THRESHOLD)
+  .sort((a, b) => (b.at - a.at) || (a.i - b.i))
+  .slice(0, 10)
+  .map((r) => r.needle)
+
+/** The count line M1 spells for this fixture: `<q> of <n>`. */
+const ACT_QUALIFY = ACT_SCORES.filter((s) => s >= THRESHOLD).length
+const ACT_LINE = `Act on these: ${ACT_QUALIFY} of ${PIECES.length}`
+
+/** The record's `### Residuals` checklist for this fixture, in checklist order. */
+const CHECKLIST_14 = PIECES.map(([n]) => `- [ ] ${REVIEWER_NAME} — ${pieceText(n)}`)
+
+// ── the five boots ───────────────────────────────────────────────────────────
+
+/** A `<needle><TAB><reply JSON>` file under the case's own home, one line per
+ *  piece, in checklist order — the knob the rig merged with `4dccc32f`. */
+const answersFile = (ctx, scoreOf) => {
+  const file = path.join(ctx.home, 'act-answers.tsv')
+  fs.writeFileSync(
+    file,
+    PIECES.map(([needle], i) => `${needle}\t${replyAt(scoreOf(i))}`).join('\n') + '\n',
+  )
+  return { STUB_TYPESAFE_ANSWERS: file }
+}
+
+/** One boot of the fourteen-piece fixture, with `env` and an answers file. */
+const actBoot = (tag, scoreOf, env = {}) => bootOnce(
+  tag,
+  { STUB_REPORT: REPORT_14, STUB_GATE_RECEIPT: RECEIPT_PASS, ...env },
+  scoreOf ? (ctx) => answersFile(ctx, scoreOf) : null,
+)
+
+const fourteen = () => actBoot('fourteen', (i) => ACT_SCORES[i])
+const onlyP05 = () => actBoot('onlyP05', (i) => (PIECES[i][0] === 'p05' ? 2.5 : 1.0))
+const allLow = () => actBoot('allLow', () => 2.4)
+const exit7 = () => actBoot('exit7', null, { STUB_TYPESAFE_EXIT: '7' })
+/** The rig's own green boot: its report, its receipt, its default reply — no
+ *  notes and no ack, so no checklist item at all and no request made. */
+const rigDefault = () => bootOnce('rigDefault', {
+  STUB_REPORT: DEFAULT_REPORT, STUB_GATE_RECEIPT: RECEIPT_PASS,
+})
+
+// Started here, before the first case runs, beside run-178's four above.
+fourteen()
+onlyP05()
+allLow()
+exit7()
+rigDefault()
+
+// ── reading the section out of a body ────────────────────────────────────────
+
+/** The index of the `Residuals: …` count line — the record's `### Residuals`
+ *  heading is another line and never this one. */
+const countAt = (bodyLines, text) => {
+  const at = bodyLines.findIndex((l) => /^Residuals: /.test(l))
+  assert.ok(at >= 0, `the body carries no \`Residuals:\` count line\n${text}`)
+  return at
+}
+
+/**
+ * The index of the TASK table's last `| … |` row — searched above the
+ * `Residuals:` count line, because the record below it opens with a table of
+ * its own and its `| vm | … |` row is the body's last pipe line.
+ */
+const tableEnd = (bodyLines, text) => {
+  let at = -1
+  bodyLines.slice(0, countAt(bodyLines, text)).forEach((line, i) => {
+    if (line.startsWith('|') && line.endsWith('|')) at = i
+  })
+  assert.ok(at >= 0, `the body carries no task table above its \`Residuals:\` line\n${text}`)
+  return at
+}
+
+/** Every line of a body that begins `Act on these`. */
+const actLines = (text) => text.split('\n').filter((l) => l.startsWith('Act on these'))
+
+// ── leg (a) — M1: the head line, the ten entries, the order and the cap ──────
+
+test('(a) [M1] the fixture and the leg agree on which ten rows are shown, and in what order', () => {
+  assert.deepEqual(
+    EXPECTED_ORDER, ACT_SHOWN.map(([needle]) => needle),
+    '(a) [M1] M1\'s rule over this fixture — at or above 2.5, attention descending, ties in '
+    + 'checklist order, capped at ten — must give the ten the Proof leg spells, in that order',
+  )
+  assert.equal(
+    ACT_LINE, 'Act on these: 11 of 14',
+    '(a) [M1] eleven of the fourteen pieces score at or above 2.5, which is the count line the leg spells',
+  )
+  for (const [needle, shown] of ACT_SHOWN) {
+    const at = ACT_SCORES[PIECES.findIndex(([n]) => n === needle)]
+    assert.equal(
+      Number(shown), at,
+      `(a) [M1] the leg's \`"%.1f"\` string for ${needle} must be its fixture score`,
+    )
+  }
+  assert.deepEqual(
+    ACT_ABSENT.filter((n) => EXPECTED_ORDER.includes(n)), [],
+    '(a) [M1] p11 (the eleventh qualifier the cap drops), p03, p08 and p09 are shown nowhere',
+  )
+})
+
+test('(a) [M1] the section stands between the table and the `Residuals:` line, ten entries deep', async () => {
+  const ctx = await fourteen()
+  const text = body(ctx)
+  const ls = text.split('\n')
+  const t = tableEnd(ls, text)
+  assert.ok(
+    ls[t].startsWith(`| ${PLAN_TASK_ID} | `),
+    `(a) [M1] the row the section is read from must be the task table's last row — the plan signs `
+    + `one task, so it is \`| ${PLAN_TASK_ID} | … |\`\n${text}`,
+  )
+
+  assert.equal(
+    ls[t + 1], '',
+    `(a) [M1] the line after the task table's last \`| … |\` row is blank\n${text}`,
+  )
+  assert.equal(
+    ls[t + 2], ACT_LINE,
+    `(a) [M1] and the line after that is exactly \`${ACT_LINE}\` — \`<q>\` the items at or above `
+    + `2.5, \`<n>\` the checklist's item count\n${text}`,
+  )
+  assert.equal(
+    ls[t + 3], '',
+    `(a) [M1] then a blank line, before the entries\n${text}`,
+  )
+
+  const shown = ls.slice(t + 4, t + 4 + ACT_SHOWN.length)
+  assert.deepEqual(
+    shown, ACT_SHOWN.map(([needle, at]) => entryFor(needle, at)),
+    `(a) [M1] then exactly ten lines beginning \`- \`, in order the entries for `
+    + `${ACT_SHOWN.map(([n]) => n).join(', ')}, each `
+    + `\`- <name> — <text> — attention <a>, actor <actor>, <status> / <subject>\`\n${text}`,
+  )
+  assert.equal(
+    ls[t + 4 + ACT_SHOWN.length], '',
+    `(a) [M1] the tenth entry is the last — the eleventh qualifier is dropped, and the line after `
+    + `it is blank\n${text}`,
+  )
+  assert.equal(
+    ls[t + 5 + ACT_SHOWN.length], 'Residuals: 14 from review',
+    `(a) [M1] and then the \`Residuals:\` line, which the section stands above\n${text}`,
+  )
+  assert.deepEqual(
+    actLines(text), [ACT_LINE],
+    `(a) [M1] exactly one line of the body begins \`Act on these\`\n${text}`,
+  )
+})
+
+test('(a) [M1] no row the threshold or the cap excludes stands above the `Residuals:` line', async () => {
+  const ctx = await fourteen()
+  const text = body(ctx)
+  const ls = text.split('\n')
+  const above = ls.slice(0, countAt(ls, text))
+
+  for (const needle of ACT_ABSENT) {
+    const piece = pieceText(needle)
+    assert.deepEqual(
+      above.filter((l) => l.includes(piece)), [],
+      `(a) [M1] ${needle} is ${needle === 'p11' ? 'the eleventh qualifier, dropped by the cap'
+        : 'below the 2.5 threshold'}, so no line of the body before the \`Residuals:\` line may `
+      + `carry its text\n${text}`,
+    )
+  }
+  // And the record below still holds all fourteen: the section is a selection
+  // above the full list, never a filter on it.
+  for (const needle of ACT_ABSENT) {
+    assert.ok(
+      ls.includes(`- [ ] ${REVIEWER_NAME} — ${pieceText(needle)}`),
+      `(a) [M1] ${needle} is still one of the record's fourteen checklist lines\n${text}`,
+    )
+  }
+})
+
+test('(a) [M1] one qualifying row renders a one-entry section', async () => {
+  const ctx = await onlyP05()
+  const text = body(ctx)
+  const ls = text.split('\n')
+  const t = tableEnd(ls, text)
+  assert.ok(
+    ls[t].startsWith(`| ${PLAN_TASK_ID} | `),
+    `(a) [M1] the row the section is read from must be the task table's last row — the plan signs `
+    + `one task, so it is \`| ${PLAN_TASK_ID} | … |\`\n${text}`,
+  )
+
+  assert.equal(
+    ls[t + 1], '',
+    `(a) [M1] the blank line after the table stands here too\n${text}`,
+  )
+  assert.equal(
+    ls[t + 2], 'Act on these: 1 of 14',
+    `(a) [M1] a run whose answers file gives only p05 the score 2.5 and every other piece 1.0 `
+    + `renders \`Act on these: 1 of 14\` — \`<n>\` is the checklist's count and never the `
+    + `qualifiers'\n${text}`,
+  )
+  assert.equal(ls[t + 3], '', `(a) [M1] then a blank line\n${text}`)
+  assert.equal(
+    ls[t + 4], entryFor('p05', '2.5'),
+    `(a) [M1] then p05's entry, at \`attention 2.5\`\n${text}`,
+  )
+  assert.equal(ls[t + 5], '', `(a) [M1] then a blank line — exactly one entry\n${text}`)
+  assert.equal(
+    ls[t + 6], 'Residuals: 14 from review',
+    `(a) [M1] and then the count line, over all fourteen items\n${text}`,
+  )
+})
+
+// ── leg (b) — M2: below the threshold, no jev at all, no item at all ─────────
+
+test('(b) [M2] every piece at 2.4 renders no section, though every row carries a jev', async () => {
+  const ctx = await allLow()
+  const text = body(ctx)
+
+  // The rows DID score — the absence is the threshold's doing and not a boot
+  // that never asked.
+  const scored = ledger(ctx)
+  assert.equal(scored.length, PIECES.length, `(b) [M2] fourteen rows\n${ledgerRaw(ctx)}`)
+  assert.deepEqual(
+    [...new Set(scored.map((r) => r.jev && r.jev.attention))], [2.4],
+    `(b) [M2] every one of them carries a \`jev\` at attention 2.4\n${ledgerRaw(ctx)}`,
+  )
+  assert.deepEqual(
+    actLines(text), [],
+    `(b) [M2] and no line of the body begins \`Act on these\` — every item is below 2.5\n${text}`,
+  )
+  assert.ok(
+    text.split('\n').includes('Residuals: 14 from review'),
+    `(b) [M2] the fourteen are still counted below\n${text}`,
+  )
+})
+
+test('(b) [M2] a boot whose every request failed renders no section', async () => {
+  const ctx = await exit7()
+  const text = body(ctx)
+
+  const rows = ledger(ctx)
+  assert.equal(rows.length, PIECES.length, `(b) [M2] fourteen rows\n${ledgerRaw(ctx)}`)
+  assert.deepEqual(
+    rows.filter((r) => 'jev' in r), [],
+    `(b) [M2] with \`STUB_TYPESAFE_EXIT=7\` no row carries a \`jev\` field at all\n${ledgerRaw(ctx)}`,
+  )
+  assert.deepEqual(
+    actLines(text), [],
+    `(b) [M2] so no line of the body begins \`Act on these\` — a missing \`jev\` is not a high `
+    + `score and not a crash\n${text}`,
+  )
+  assert.ok(
+    text.split('\n').includes('Residuals: 14 from review'),
+    `(b) [M2] and the fourteen are counted exactly as they were\n${text}`,
+  )
+})
+
+test('(b) [M2] the rig\'s default green boot, whose checklist is empty, renders no section', async () => {
+  const ctx = await rigDefault()
+  const text = body(ctx)
+
+  assert.deepEqual(
+    actLines(text), [],
+    `(b) [M2] a run with no checklist item at all carries no \`Act on these\` line\n${text}`,
+  )
+  assert.ok(
+    text.split('\n').includes('Residuals: none'),
+    `(b) [M2] the fixture no longer holds: the rig's default boot must render \`Residuals: none\`, `
+    + `or "no item at all" is not the branch this reads\n${text}`,
+  )
+  assert.deepEqual(
+    payloads(ctx), [],
+    `(b) [M2] and it asks Jev nothing, there being nothing to ask about\n${readLog(ctx, 'typesafe.log')}`,
+  )
+})
+
+// ── leg (c) — M3: the rollback, line for line, and no request of its own ─────
+
+test('(c) [M3] splicing the section out yields the failed run\'s body, byte for byte', async () => {
+  const [good, bad] = await Promise.all([fourteen(), exit7()])
+  const goodBody = body(good)
+  const badBody = body(bad)
+
+  const ls = goodBody.split('\n')
+  const from = ls.findIndex((l) => l.startsWith('Act on these'))
+  const to = countAt(ls, goodBody)
+  assert.ok(
+    from >= 0 && to > from,
+    `(c) [M3] the section must stand above the \`Residuals:\` line, or there is nothing to splice `
+    + `out\n${goodBody}`,
+  )
+  const spliced = [...ls.slice(0, from), ...ls.slice(to)].join('\n')
+
+  assert.equal(
+    spliced, badBody,
+    '(c) [M3] removing the lines from `Act on these` up to, not including, the `Residuals:` line '
+    + 'from the body of a run whose requests succeeded yields a body string-equal to the body of '
+    + 'the same run whose requests all failed — the rule is the rollback, with the card section '
+    + 'deleted',
+  )
+})
+
+test('(c) [M3] both bodies carry the same count, amendments and record checklist', async () => {
+  const [good, bad] = await Promise.all([fourteen(), exit7()])
+
+  for (const [which, text] of [['the succeeding', body(good)], ['the failed', body(bad)]]) {
+    const ls = text.split('\n')
+    assert.ok(
+      ls.includes('Residuals: 14 from review'),
+      `(c) [M3] ${which} card carries \`Residuals: 14 from review\`\n${text}`,
+    )
+    assert.ok(
+      ls.includes('Amendments: none'),
+      `(c) [M3] ${which} card carries \`Amendments: none\`\n${text}`,
+    )
+    const at = ls.indexOf('### Residuals')
+    assert.ok(at >= 0, `(c) [M3] ${which} card carries a \`### Residuals\` section\n${text}`)
+    assert.deepEqual(
+      ls.slice(at + 2, at + 2 + CHECKLIST_14.length), CHECKLIST_14,
+      `(c) [M3] ${which} card's \`### Residuals\` checklist is the fourteen \`- [ ] `
+      + `${REVIEWER_NAME} — \` lines, in checklist order\n${text}`,
+    )
+    assert.equal(
+      ls[at + 2 + CHECKLIST_14.length], '',
+      `(c) [M3] ${which} card's checklist is fourteen lines and no more\n${text}`,
+    )
+  }
+})
+
+test('(c) [M3] the two runs make the same merge PUTs, and the section asks nothing of its own', async () => {
+  const [good, bad] = await Promise.all([fourteen(), exit7()])
+
+  assert.equal(
+    mergePuts(good).length, mergePuts(bad).length,
+    '(c) [M3] a run that rendered a section makes the same number of merge PUTs as one whose '
+    + 'every request failed — nothing gates on `jev`',
+  )
+  assert.equal(
+    payloads(good).length, PIECES.length,
+    `(c) [M3] the succeeding run's \`typesafe.log\` holds exactly one line per checklist item — `
+    + `fourteen, for the whole boot: the section reads \`residual_rows\` off the cache and makes `
+    + `no request at render time\n${readLog(good, 'typesafe.log')}`,
   )
 })
 

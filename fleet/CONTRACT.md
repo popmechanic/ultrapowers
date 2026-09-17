@@ -304,9 +304,20 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `residuals.jsonl` — one JSON object per residual, present when the run had one, and a union
     across transitions — a row an earlier transition recorded stays when a later report no longer
     carries it, and no row is written twice:
-    `{run, task, file, line, kind, text, sha}`, `kind` one of `nit`, `unverified`, `deferred`,
-    `structural`. It is the same items the PR body lists, on the record rather than in a page a
-    merge closes; append-only, and a run that left nothing writes no file.
+    `{run, task, file, line, kind, text, sha, jev}`, keys sorted on the line, `kind` one of `nit`,
+    `unverified`, `deferred`, `structural`, and `jev` the classifier's reading of that row —
+    `kind.status` one of `verified`, `unverified`, `deferred`, `kind.subject` one of `plan text`,
+    `proof leg`, `exam file`, `implementation`, `footprint`, `quality`, `actor` one of
+    `implementer`, `plan`, `examiner`, `nobody`, `attention` a score from 0 to 3, `claim_false` and
+    the three `confidence` scores (`actor`, `status`, `subject`) each from 0 to 1, and `model` the
+    version that answered. The `jev` key is absent — not null — when that row's request failed, and
+    the rule's own `kind` is unchanged by it. It is the same items the PR body lists, on the record
+    rather than in a page a merge closes; append-only, and a run that left nothing writes no file.
+    `residuals-jev.jsonl` — THE CLASSIFIER'S CACHE, beside it, one line per request ever made for
+    the run, `{answers, error, key, model, usage}` with keys sorted, `key` the sha256 hex of the
+    item's name and text joined by a newline; a failure writes `answers` null and `error`
+    `curl exit <n>`, and no key is requested twice, so the file is one line per distinct checklist
+    item and the run repeats no request it already holds.
     `kata.jsonl` — THE HUB'S OWN RECORD of the run, beside the engine's, present when the plan
     commit carried a `.ultrapowers/kata.json`. Two line kinds, one JSON object per line with `kind`
     first and the object's own fields spread after it: `{"kind":"issue", …}` per one of
@@ -987,7 +998,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
 - **Publish:** the sandbox's own act, at the end of the boot script above — there is no grant tool and no
   operator step between the gate and the PR.
   The card is written for a PERSON, and nothing above its folded record is a hash, a JSON fence, a
-  file listing or a reviewer's sentence. The body opens with the plan's `**Summary:**` paragraph
+  file listing or a reviewer's sentence — the errands and the `Act on these` rows excepted. The
+  body opens with the plan's `**Summary:**` paragraph
   verbatim, its label stripped — `_No summary was signed with this plan._` when the plan signed
   none; then the answer line, exactly one of `**Merged** <sha>` (the status page's `merged` cell),
   `**Merge-ready**`, `**Held:** <text>` (the merge note less its `left open: ` prefix) or
@@ -998,6 +1010,13 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   narrated at publish time — the `mutant` cell reads `SURVIVED` when any state exam's mutant lived,
   and where they were all killed a row whose `reviewVerdict` is `skipped-mutant-killed` reads
   `killed, reviewer skipped` and every other row reads `killed`;
+  then one `Act on these: <q> of <n>` line — `q` the residuals the classifier scored at or above
+  `2.5`, `n` all of them — a blank line, and at most ten
+  `- <name> — <text> — attention <a>, actor <actor>, <status> / <subject>` lines, one per row whose
+  `jev.attention` is at least `2.5`, highest attention first and ties in checklist order, `<a>` to
+  one decimal, with no section at all when none qualifies: an `experiment` (#1093) read over
+  `n=5 runs` whose rollback is deleting the section, and nothing gates on it — the answer line, the
+  table, the counts and the record read the same whether it is there or not;
   then `Residuals: <n> from review` — `Residuals: none` at zero — and, as
   `- ` lines, only the items nobody else will do; then, below those errands,
   `Amendments: <n> from workers` and, after a blank line, one
@@ -1028,8 +1047,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `report.json`, each with its evidence sentence — and no section at all when there is none; the
   record closes after it, so the `Closes #<n>` lines are still the body's last lines. The count
   above the record is every one of those items; the `- ` lines above it are the `deferred:external`
-  ones and the notes of a task whose report row carries `actor` `plan`, and no other reviewer
-  sentence appears above the record at all. The same items are also rows of `residuals.jsonl` on the run's record,
+  ones, the notes of a task whose report row carries `actor` `plan`, and the up-to-ten
+  `Act on these` rows, and no other reviewer
+  sentence appears above the record. The same items are also rows of `residuals.jsonl` on the run's record,
   written with the evidence and not at publish — the checklist closes with the PR that carries it,
   the rows do not — and the sandbox files no issue for them, against this target or any other,
   except the one disclosures ticket, which is not read off that checklist at all. Every

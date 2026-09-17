@@ -2783,8 +2783,11 @@ open(sys.argv[2], "w").write(text if text.endswith("\n") else text + "\n")
 # or the status page.
 #
 # The residual checklist arrives on stdin — `residual_read` is the one reader
-# of the residuals and this is its second rendering, not a second parse.
-card_head() { # $1 = outcome, $2 = the residual checklist; stdin is not read
+# of the residuals and this is its second rendering, not a second parse. The
+# `rows` rendering of the SAME walk rides argv beside it, for the one section
+# that reads the classifier: it is JSON and could not be a shell word list, and
+# stdin is already spoken for.
+card_head() { # $1 = outcome, $2 = the residual checklist, $3 = its `rows` rendering
   local dest merged
   dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
   # The page is written from `MERGED_SHA`, and `do_boot` loads that cell back
@@ -2795,7 +2798,7 @@ card_head() { # $1 = outcome, $2 = the residual checklist; stdin is not read
   printf '%s' "$2" | python3 -c '
 import json, re, sys
 
-PLAN, REPORT, OUTCOME, MERGED, ERROR, NOTE = sys.argv[1:7]
+PLAN, REPORT, OUTCOME, MERGED, ERROR, NOTE, ROWS = sys.argv[1:8]
 
 EM = "—"
 DASH = " — "
@@ -2836,6 +2839,72 @@ def flat(value):
     """One line out of one field — the flattening `residual_read` does."""
     text = value if isinstance(value, str) else ""
     return text.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+
+
+# ACT ON THESE — the few residuals the classifier scored high enough that a
+# maintainer would act on them, printed above the full list and never instead
+# of it. AN EXPERIMENT (#1093), read over five runs, and NOTHING GATES ON IT:
+# the answer line, the draft flag and the merge PUT read no `jev` field, and
+# deleting these lines is the whole of the rollback.
+#
+# The scores arrive as `residual_rows` printed them — ONE LINE PER CHECKLIST
+# ITEM, in the order `residual_read` walks them, which is the order the
+# checklist on stdin is in, because the two renderings are two calls of the
+# same walk over the same two documents. So the nth row scores the nth item,
+# and the name and the text are read off the checklist rather than flattened a
+# second time here. A row whose request failed carries no `jev` key at all and
+# is no candidate; the ledger on the evidence branch is never read, since its
+# union across transitions can carry a row this checklist no longer has.
+#
+# `2.5` is the threshold because `attention` runs 0 to 3 over four levels and
+# the top two — act before the next run, act before merge — are the ones worth
+# a line. Ten is the cap, so a run with forty residuals still opens with a list
+# a person reads rather than a second checklist.
+ACT_MIN = 2.5
+ACT_MAX = 10
+
+
+def jev_scores():
+    """One `jev` dict per `rows` line, `None` where the row carries none."""
+    out = []
+    for line in ROWS.split("\n"):
+        if not line.strip():
+            continue
+        try:
+            doc = json.loads(line)
+        except Exception:
+            doc = None
+        got = doc.get("jev") if isinstance(doc, dict) else None
+        out.append(got if isinstance(got, dict) else None)
+    return out
+
+
+def act_now(items):
+    """The section for `items`, or NO LINES AT ALL when none scored high."""
+    scores = jev_scores()
+    picks = []
+    for n, item in enumerate(items):
+        jev = scores[n] if n < len(scores) else None
+        if jev is None:
+            continue
+        at = jev.get("attention")
+        if isinstance(at, bool) or not isinstance(at, (int, float)):
+            continue
+        if at >= ACT_MIN:
+            picks.append((at, item, jev))
+    if not picks:
+        return []
+    # Highest first; the sort is stable, so equal scores keep the order the
+    # walk above put them in, which is the checklist order.
+    picks.sort(key=lambda pick: -pick[0])
+    out = ["", "Act on these: %d of %d" % (len(picks), len(items)), ""]
+    for at, item, jev in picks[:ACT_MAX]:
+        kind = jev.get("kind")
+        kind = kind if isinstance(kind, dict) else {}
+        out.append("- " + item + DASH + "attention %.1f, actor %s, %s / %s"
+                   % (at, flat(jev.get("actor")), flat(kind.get("status")),
+                      flat(kind.get("subject"))))
+    return out
 
 
 LINES = plan_lines()
@@ -2993,12 +3062,18 @@ for task, claim in task_claims():
         if row is not None else [EM, EM, EM, EM]
     out.append("| " + " | ".join(cells) + " |")
 
+# THE CHECKLIST off stdin, every item on one line with its `- [ ] ` stripped
+# and in the order `residual_read` walks them. Both sections read this one list.
+items = [line[len("- [ ] "):] for line in sys.stdin.read().split("\n")
+         if line.startswith("- [ ] ")]
+
+# The scored few, directly under the table and above everything else.
+out += act_now(items)
+
 # THE RESIDUALS, as a count and then as an errand list. Every checklist item is
 # counted; only the ones nobody else will do are printed here — an external
 # deferral the sandbox could not execute, and the notes of a task the plan
 # itself had to answer for. A reviewer nit is in the record, not above it.
-items = [line[len("- [ ] "):] for line in sys.stdin.read().split("\n")
-         if line.startswith("- [ ] ")]
 actors = set(task for task, row in rows.items() if row.get("actor") == "plan")
 out += ["", "Residuals: %d from review" % len(items) if items else "Residuals: none"]
 errands = []
@@ -3024,11 +3099,11 @@ else:
     out += ["", "Amendments: none"]
 out.append("")
 sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
-' "$PLAN_FILE" "$dest/report.json" "$1" "$merged" "$(read_status_field error)" "$MERGE_NOTE"
+' "$PLAN_FILE" "$dest/report.json" "$1" "$merged" "$(read_status_field error)" "$MERGE_NOTE" "$3"
 }
 
 render_card() { # $1 = outcome; prints the body file's path
-  local body dest verdict receipt residuals
+  local body dest verdict receipt residuals rows
   dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
   mkdir -p "$dest"
   body="$dest/pr-body.md"
@@ -3038,10 +3113,15 @@ render_card() { # $1 = outcome; prints the body file's path
   # the card nor a `set -e` script. A run with no residuals gets NO section at
   # all — no heading, no blank line — and its card is the card it always was.
   residuals="$(residual_items || true)"
+  # The same items once more with the classifier on them, for the `Act on
+  # these` section — read off the cache `residual_jev` filled before this
+  # render, so `rows` mode makes no request here and the run still sends
+  # exactly one per residual.
+  rows="$(residual_rows || true)"
   {
     # What a person reads, and then the record they can unfold. A blank line
     # after `<summary>` or GitHub renders the markdown inside it as one blob.
-    card_head "$1" "$residuals"
+    card_head "$1" "$residuals" "$rows"
     printf '<details><summary>Record</summary>\n\n'
     printf '## fleet %s — %s\n\n' "$RUN_ID" "$1"
     printf '| | |\n|---|---|\n'
