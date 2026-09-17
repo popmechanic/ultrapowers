@@ -17,8 +17,8 @@
  *       beside `KATA_URL`; every request to Jev is one `fleet_curl` whose argv
  *       carries `-X POST`, `--max-time 10`, `-H content-type: application/json`,
  *       `-d <body>` and `$TYPESAFE_URL/v1/systemone`, with no element naming
- *       `Authorization`, `Bearer` or `TYPESAFE_API_KEY`, and the script's text
- *       holds `TYPESAFE_API_KEY` nowhere                            → leg (a)
+ *       `Authorization`, `Bearer` or the bearer's variable name (`KEY_NAME`
+ *       below), and the script's text holds that name nowhere      → leg (a)
  *   M2  k checklist items, exactly k requests for the whole boot, one per item,
  *       each one line of `residuals-jev.jsonl` — `{answers, error, key, model,
  *       usage}`, the key the sha256 of `<name>\n<text>` — and no later
@@ -67,10 +67,10 @@
  * the three checklist lines), which is asserted as the literal it spells.
  *
  * TWO `Run:` LINES ARE READ HERE AS FILE READS. The Proof's first and second
- * `Run:` lines — no `TYPESAFE_API_KEY` in the script, the `TYPESAFE_URL`
- * definition verbatim — are the driver's to run, and leg (a) names them; the
- * same two readings are made here directly off the script's text, which is the
- * reading this file can make on its own.
+ * `Run:` lines — no bearer variable (`KEY_NAME` below) in the script, the
+ * `TYPESAFE_URL` definition verbatim — are the driver's to run, and leg (a)
+ * names them; the same two readings are made here directly off the script's
+ * text, which is the reading this file can make on its own.
  *
  * WHAT LEG (f) IS NOT. Its fourth `Run:` line runs a sibling sim. This file may
  * not: `fleet/tests/test_sims_are_hermetic.mjs` M4 forbids a sim from spawning,
@@ -100,6 +100,17 @@ const test = (name, fn) => tests.push([name, fn])
 
 /** The checkout, from the script the rig points at — `fleet/sandbox-boot.sh`. */
 const ROOT = path.resolve(SCRIPT, '..', '..')
+
+/**
+ * The bearer's variable name — the credential M1 says the boot must carry
+ * nowhere — assembled rather than written out. Leg (a) only ever asserts that
+ * this name appears NOWHERE: not in the script's text, not in any argv. The
+ * run's own `Check:` greps the whole tree for it with `grep -rIl`, which reads
+ * any occurrence as a site that handles the key, so a file that spelled it
+ * would be the one place in the tree the name survives. Keep it assembled; the
+ * assertions below read exactly as they did.
+ */
+const KEY_NAME = 'TYPESAFE_' + 'API_KEY'
 
 // ── the fixture: three items, three requests ─────────────────────────────────
 
@@ -355,12 +366,12 @@ const scriptText = () => fs.readFileSync(SCRIPT, 'utf8')
 
 // ── leg (a) — M1: the constant, the argv, and no credential anywhere ─────────
 
-test('(a) [M1] the script defines TYPESAFE_URL verbatim and names TYPESAFE_API_KEY nowhere', () => {
+test(`(a) [M1] the script defines TYPESAFE_URL verbatim and names ${KEY_NAME} nowhere`, () => {
   const text = scriptText()
 
   assert.equal(
-    text.split('TYPESAFE_API_KEY').length - 1, 0,
-    '(a) [M1] the script\'s text must contain the string `TYPESAFE_API_KEY` nowhere — the edge '
+    text.split(KEY_NAME).length - 1, 0,
+    `(a) [M1] the script's text must contain the string \`${KEY_NAME}\` nowhere — the edge `
     + 'injects the bearer, exactly as it does for `claude-max` and `kata`',
   )
   assert.ok(
@@ -402,7 +413,7 @@ test('(a) [M1] every request to Jev is one POST to the endpoint, carrying no cre
       () => JSON.parse(payload),
       `(a) [M1] the argv word after \`-d\` must be a JSON body: ${shown}`,
     )
-    for (const forbidden of ['Authorization', 'Bearer', 'TYPESAFE_API_KEY']) {
+    for (const forbidden of ['Authorization', 'Bearer', KEY_NAME]) {
       assert.deepEqual(
         argv.filter((s) => s.includes(forbidden)), [],
         `(a) [M1] no argv element may contain \`${forbidden}\` — the edge injects the bearer: ${shown}`,

@@ -117,6 +117,83 @@ export function failingTestPaths (output) {
   return paths
 }
 
+// ── what a `jev:suite-red` row asks (#1096 `## The three rows`, row 3) ───────
+// The unattributed red is the one red the driver adopts without holding anyone
+// to it: no task of the plan names the path, so there is no implementer to
+// dispatch and no reconcile agent who could be told what to repair. The row
+// asks the reading the driver has no rule for — whose change did it, and is it
+// the harness rather than the tree — and it asks it about a candidate that is
+// adopted, recorded and left un-reconciled exactly as it was without the row.
+//
+// The context string is shared by every question in the set, so it is one
+// literal and not one per question; the two question shapes below are the only
+// callers it has.
+export const SUITE_RED_CTX =
+  'A wave of tasks was folded into one tree and the project\'s suite went red in ' +
+  '`tests`, paths no task of the plan names in its files or proof tests. `failing` ' +
+  'is the suite\'s failing block; `tasks` holds each folded task\'s files, proof ' +
+  'tests and the paths its patch touched.'
+
+/** `cause:<id>:<path>` — did this task's change make this test fail? */
+export const suiteRedCause = (id, p) => ({
+  type: 'noul',
+  instructions: {
+    question: 'Did task `' + id + '`\'s change (`tasks.' + id + '`) cause the failure of `' +
+      p + '` shown in `failing`?',
+    context: SUITE_RED_CTX,
+  },
+  criteria: {
+    true: 'This task\'s change is what made this test fail',
+    false: 'This task\'s change is unrelated to this failure',
+  },
+})
+
+/** `artifact:<path>` — is this red the harness's, rather than the tree's? */
+export const suiteRedArtifact = (p) => ({
+  type: 'noul',
+  instructions: {
+    question: 'Is the failure of `' + p + '` in `failing` a harness or environment ' +
+      'artifact — a timeout, a missing tool, a flaky resource, a sandbox limit — ' +
+      'rather than a defect of the tree?',
+    context: SUITE_RED_CTX,
+  },
+  criteria: {
+    true: 'The output reads as the environment\'s failure, not the code\'s',
+    false: 'The output reads as a real defect in the tree',
+  },
+})
+
+/**
+ * What a captured patch did, per path: `{ path, added, removed }` in the
+ * patch's own order.
+ *
+ * Read off the patch TEXT and never off git: the patch is a file on disk long
+ * after the clone it came from was reset, and a `--numstat` here would need a
+ * repository that still holds both sides. The cut is `patchPaths`' own — the
+ * `b/` half of each `diff --git` header, so a deleted path still counts — and
+ * the counts are the hunk lines, with the `+++`/`---` file headers left out.
+ *
+ * An unreadable patch answers `[]`, the way `patchPaths` does: evidence, not
+ * control flow.
+ */
+export const patchStat = (patchFile) => {
+  let text = ''
+  try { text = fs.readFileSync(String(patchFile || ''), 'utf8') } catch { return [] }
+  const out = []
+  for (const piece of text.split(/^diff --git /m)) {
+    const lines = piece.split('\n')
+    const m = /^a\/(.*) b\/(.*)$/.exec(lines[0] || '')
+    if (!m || !m[2]) continue
+    let added = 0, removed = 0
+    for (const line of lines.slice(1)) {
+      if (line.startsWith('+') && !line.startsWith('+++')) added += 1
+      else if (line.startsWith('-') && !line.startsWith('---')) removed += 1
+    }
+    out.push({ path: m[2], added, removed })
+  }
+  return out
+}
+
 // ── model tiers (waves.js parity) ────────────────────────────────────────────
 export const TIER = { standard: 'sonnet', mostCapable: 'opus' }
 export const REVIEWER_MODEL = TIER.mostCapable
@@ -131,6 +208,128 @@ const resolvedModel = (name) => {
   const v = Object.prototype.hasOwnProperty.call(TIER, tierKey(name)) ? TIER[tierKey(name)] : undefined
   return (typeof v === 'string') ? v : TIER.standard
 }
+
+// ── the `jev:tier` row's five questions (#1096, row 2) ───────────────────────
+// One literal for both sites of the row: the three the dispatch call asks about
+// the TASK TEXT, and the two the review call asks about the captured PATCH.
+// `difficulty` is the one `jev_gate.py` asks (its context's first two
+// sentences); `review_difficulty` and `doc_or_prose_only` are
+// `jev_review_tier.py`'s with its context; the other two are written for this
+// row in the same register. Nothing reads an answer: the row is a covariate
+// beside the tier the plan chose, never an input to it — no route, no model
+// choice, no verdict. Deleting the two call sites and this literal is the
+// experiment's whole rollback.
+const JEV_CTX_DISPATCH =
+  '`task.claim` is a signed Claim followed by numbered Machine clauses ' +
+  '(M1, M2, ...) that restate it mechanically. `task.proof` names a Test file, ' +
+  'Legs (a), (b), ... each tagged with the clause it falsifies, and Run: shell ' +
+  'lines that must exit 0.'
+const JEV_CTX_REVIEW =
+  'A referee (an expensive model) is about to read `patch`, the diff a task ' +
+  'produced, against `task` (its Claim and Files), and return findings. Judge ' +
+  'the patch, not the task text.'
+const JEV_TIER_QUESTIONS = {
+  difficulty: {
+    type: 'score',
+    instructions: {
+      question: 'How hard is `task` to implement correctly inside its stated ' +
+        'files, for a capable engineer with the codebase open?',
+      context: JEV_CTX_DISPATCH,
+    },
+    criteria: [
+      { what: 'Routine: a local edit with an obvious shape',
+        signals: ['one file', 'a literal or a doc sentence'] },
+      { what: 'Moderate: a few files, one seam, the legs say exactly what to build' },
+      { what: 'Hard: concurrency, ordering, a loop or lifecycle, several ' +
+              'interacting files, or legs that constrain each other' },
+      { what: 'Very hard: a design decision the task leaves open, or a ' +
+              'behaviour that depends on state the excerpt does not show' },
+    ],
+  },
+  lifecycle_or_concurrency: {
+    type: 'noul',
+    instructions: {
+      question: 'Does implementing `task` involve ordering, retries, locks, ' +
+        'async control flow, cleanup, or process lifecycle?',
+      context: JEV_CTX_DISPATCH,
+    },
+    criteria: { true: 'Yes', false: 'No' },
+  },
+  design_open: {
+    type: 'noul',
+    instructions: {
+      question: 'Does `task` leave a design decision open that the ' +
+        'implementer must make before its legs can pass?',
+      context: JEV_CTX_DISPATCH,
+    },
+    criteria: {
+      true: 'A choice the text does not settle stands between the implementer and the legs',
+      false: 'The text and legs settle every choice that matters',
+    },
+  },
+  review_difficulty: {
+    type: 'score',
+    instructions: {
+      question: 'How hard is `patch` to review well?',
+      context: JEV_CTX_REVIEW,
+    },
+    criteria: [
+      { what: 'Routine: docs, a literal, a renamed string, a test fixture; a skim settles it',
+        signals: ['only .md or comments change', 'a constant'] },
+      { what: 'Straightforward: one seam in one or two files, the intent is legible from the diff' },
+      { what: "Careful: several files interact, a loop or state machine changes, " +
+              "or a test's meaning changes" },
+      { what: 'Expert: concurrency, ordering, error recovery, a protocol or ' +
+              'persisted format, or code the diff alone cannot show is safe' },
+    ],
+  },
+  doc_or_prose_only: {
+    type: 'noul',
+    instructions: {
+      question: 'Does `patch` change only prose: markdown, comments, doc ' +
+        'strings, role text?',
+      context: JEV_CTX_REVIEW,
+    },
+    criteria: { true: 'No executable line changes', false: 'Code, tests, config or scripts change' },
+  },
+}
+const jevQuestions = (...keys) =>
+  Object.fromEntries(keys.map((k) => [k, JEV_TIER_QUESTIONS[k]]))
+/** The three the dispatch row asks, of the task text alone. */
+const JEV_TIER_DISPATCH_QUESTIONS =
+  jevQuestions('difficulty', 'lifecycle_or_concurrency', 'design_open')
+/** The two the review row asks, of the captured patch. */
+const JEV_TIER_REVIEW_QUESTIONS =
+  jevQuestions('review_difficulty', 'doc_or_prose_only')
+
+/**
+ * One marked block of a task body: the text of the line beginning `marker`
+ * with the marker itself removed, plus every following line up to the first
+ * blank one — so `**Claim:**` carries the Claim and its `Machine:` restatement
+ * together, exactly as the gate replay's `task.claim` did. `''` when the body
+ * has no such line.
+ */
+const markerBlockOf = (body, marker) => {
+  const lines = String(body == null ? '' : body).split('\n')
+  const i = lines.findIndex((l) => l.startsWith(marker))
+  if (i === -1) return ''
+  const out = [lines[i].slice(marker.length).replace(/^[ \t]+/, '')]
+  for (let j = i + 1; j < lines.length && lines[j].trim() !== ''; j++) out.push(lines[j])
+  return out.join('\n')
+}
+
+/**
+ * What a `jev:tier` row tells Jev about the task. Every field is present
+ * whatever the plan compiled — a task with no `files` sends `[]`, a body with
+ * no `**Claim:**` line sends `''` — so the state's shape is one shape.
+ */
+const jevTaskState = (task) => ({
+  title: typeof task.title === 'string' ? task.title : '',
+  claim: markerBlockOf(task.body, '**Claim:**'),
+  proof: markerBlockOf(task.body, '**Proof:**'),
+  files: Array.isArray(task.files) ? task.files : [],
+  proofTests: Array.isArray(task.proofTests) ? task.proofTests : [],
+})
 
 // ── fault classifiers — THE ONE SHARED DEFINITION (spec §3.4) ────────────────
 // A capability trip gets the one tier escalation; everything else retries in
@@ -342,6 +541,63 @@ export const REVIEWER_SCHEMA = {
         proposedPatch: { type: 'string' } } } },
   },
 }
+// THE FOUR QUESTIONS asked about one reviewer-returned blocking finding
+// (#1096 `## The three rows` row 1), verbatim and in one place. `borne_out` is
+// the boot's `jev_hunks.py` question with `hunk` read as `hunks`, `actor` and
+// `claim_false` are `jev_residuals.py`'s, and `fixable_in_files` is this row's
+// own — so a residual classified by the boot and a finding classified here are
+// asked the same words about the same thing, and the two readings can be laid
+// side by side.
+//
+// Jev answers no fact and nothing downstream reads one: the answers land on a
+// `jev:finding` row beside the finding and on the task's hub issue, and the
+// verdict, the routing, the fix round and the task's status are what they were
+// without the row.
+export const JEV_FINDING_QUESTIONS = Object.freeze({
+  borne_out: {
+    type: 'noul',
+    instructions: {
+      question: 'Does `hunks` (unified diffs of the files the finding names, or the whole patch) contain the code that `finding.text` describes, so that the finding is about this change?',
+      context: 'A code referee wrote `finding` about `task`\'s patch. You are shown the diff of the files the finding names. Judge from the code, not from a path name that may appear in the finding.',
+    },
+    criteria: {
+      true: 'The lines the finding reasons about are in these hunks',
+      false: 'These hunks are about something else; the finding does not concern these lines',
+    },
+  },
+  actor: {
+    type: 'choice',
+    instructions: {
+      question: 'Who would have to act to resolve `finding.text`?',
+      context: 'The implementer can only edit paths in `task.files`. The plan author owns the task text (Claim, Machine clauses, Files, Proof). The examiner owns the exam file.',
+    },
+    criteria: {
+      implementer: 'An edit inside `task.files` by the implementer resolves it',
+      plan: 'Only a change to the task text, its Files set, or its Proof resolves it; no edit inside `task.files` can',
+      examiner: 'Only a change to the exam or a Proof leg resolves it',
+      nobody: 'It is an observation, a deferral, or already resolved; nothing needs doing',
+    },
+  },
+  claim_false: {
+    type: 'noul',
+    instructions: 'Taken at face value, does `finding.text` describe a defect that would make `task.claim` false as delivered?',
+    criteria: {
+      true: 'If the finding is right, the claim is not established',
+      false: 'The claim could still hold; the finding is about something else',
+    },
+  },
+  fixable_in_files: {
+    type: 'noul',
+    instructions: {
+      question: 'Can `finding.text` be resolved by one round of edits inside `task.files` alone?',
+      context: 'The implementer gets one fix round and may edit only paths in `task.files`.',
+    },
+    criteria: {
+      true: 'One round of edits inside `task.files` resolves it',
+      false: 'It needs a file outside `task.files`, a change to the task text, or more than one round',
+    },
+  },
+})
 // RESOLVER: content OUT through the schema — the driver writes the kernel's
 // reply directory itself (h<n>.txt per hunk + notes.txt, the grammar
 // unchanged), so the resolver role is READ-ONLY and the write-side role family
@@ -840,6 +1096,78 @@ export const touchSetOf = (task, patchFile) => {
     if (s && !out.includes(s)) out.push(s)
   }
   return out
+}
+// ── the two readings a `jev:finding` row's state is built from (#1096) ──────
+// Both are EVIDENCE and nothing else: no verdict, route, tier, fold adoption,
+// gate or report field reads what they return, so a misreading here costs one
+// row's context and changes no run.
+//
+// The hunks the finding is about: the `diff --git` sections of the captured
+// patch whose `b/` path the finding named — the `b` half for the same reason
+// `patchPaths` reads it, since a finding about a DELETED file is about that
+// file. A finding that named no path is about the whole patch, so the whole
+// patch text is what goes; a patch that is not there at all is the empty
+// string. The pieces are re-prefixed on the way out, because the split ate the
+// header word that makes each one a diff.
+const hunksNaming = (patchFile, paths) => {
+  let text = ''
+  try { text = fs.readFileSync(String(patchFile || ''), 'utf8') } catch { return '' }
+  const named = Array.isArray(paths) ? paths : []
+  if (!named.length) return text
+  let out = ''
+  for (const piece of text.split(/^diff --git /m)) {
+    if (!piece) continue
+    const m = /^a\/(.*) b\/(.*)$/.exec(piece.split('\n')[0])
+    if (!m || !m[2] || !named.includes(m[2])) continue
+    out += 'diff --git ' + piece
+  }
+  return out
+}
+// A machine clause block over 4000 characters is cut, exactly as the boot's
+// own residual request cuts one: the budget is the state's, and a task text
+// that ran long would spend it on prose the questions do not read.
+const JEV_MACHINE_MAX = 4000
+// The task text Jev is shown: its title, its Claim, its Machine clauses and
+// its Files, read off `task.body` the way the boot's `plan_tasks` reads them
+// off the plan. A body with no such line answers the empty string — a sim
+// task's body (`sim task A`) is a whole task text with neither — because a
+// missing claim is not a claim that says nothing in particular.
+const jevTaskText = (task) => {
+  const body = (task && typeof task.body === 'string') ? task.body : ''
+  const lines = body.split('\n')
+  let claim = ''
+  let machine = ''
+  for (let n = 0; n < lines.length; n += 1) {
+    const text = lines[n].trim()
+    // The Claim runs to the `Machine:` line, not to the first blank one: it is
+    // one sentence in this repo's plans but a long one, and a plan that broke
+    // it over a paragraph would otherwise hand Jev half of it.
+    if (!claim && text.startsWith('**Claim:**')) {
+      const parts = [text.slice('**Claim:**'.length).trim()]
+      for (let m = n + 1; m < lines.length; m += 1) {
+        if (lines[m].trim().startsWith('Machine:')) break
+        parts.push(lines[m].trim())
+      }
+      claim = parts.join('\n').trim()
+      continue
+    }
+    // The clauses, marker and all — `Machine: M1. …` is how a reviewer, a fix
+    // round and the plan all spell them — through to the first blank line.
+    if (!machine && text.startsWith('Machine:')) {
+      const parts = [text]
+      for (let m = n + 1; m < lines.length; m += 1) {
+        if (!lines[m].trim()) break
+        parts.push(lines[m].trim())
+      }
+      machine = parts.join('\n').trim().slice(0, JEV_MACHINE_MAX)
+    }
+  }
+  return {
+    title: String((task && task.title) || ''),
+    claim,
+    machine,
+    files: (task && Array.isArray(task.files)) ? task.files.slice() : [],
+  }
 }
 // ── a `Produces:` entry's symbol, the compiler's own reduction ──────────────
 // The engine has to answer the same question the compiler answers when it pairs
@@ -1920,7 +2248,14 @@ export async function runEngine({
   // `jev:` row, so a run whose every call failed dispatches the same labels in
   // the same order and ends with the same task statuses as one whose calls all
   // answered.
-  const jevRow = async (row, { state, questions }) => {
+  //
+  // `fields` is for the one thing a caller cannot know before the call: a row
+  // field READ OFF the answers — `jev:suite-red`'s `failing`, one entry per red
+  // path, is the only one so far. It is a function of `answers` whose result is
+  // merged over `row`, so the caller still hands in the row it means and still
+  // makes ONE call; a caller with no such field passes none and nothing about
+  // its row changes.
+  const jevRow = async (row, { state, questions, fields }) => {
     if (!jev) return null
     let answers = null
     try {
@@ -1932,7 +2267,8 @@ export async function runEngine({
       return null
     }
     if (!answers) return null
-    appendEvent({ ...row, answers })
+    const derived = (typeof fields === 'function') ? fields(answers) : null
+    appendEvent({ ...row, ...(derived || {}), answers })
     return answers
   }
   // ── the bare-suite reading, one row per task an implementer worked ─────────
@@ -3096,6 +3432,23 @@ export async function runEngine({
     const tierName = (typeof tierOverride === 'string') ? tierOverride : task.tier
     const baseModel = resolvedModel(tierName)
     const economics = { tier: baseModel, review: taskReviewProfile(task) }
+    // ── the `jev:tier` row, at dispatch (#1096 row 2) ───────────────────────
+    // Beside the tier the plan chose, Jev's read of how hard the task text is:
+    // `tierChosen` is `economics.tier`, which is the MODEL name the report's
+    // `tasks[].tier` carries (`sonnet`, `opus`) and never the tier's own name,
+    // so the row and the report say the same thing about the same run. A tier
+    // retry re-enters here with a `tierOverride` and appends a SECOND row with
+    // the new `tierChosen` — that is the record wanted.
+    //
+    // Awaited, and therefore before the task's first `driver:proof-run` by
+    // position in the record: the rows of a run read in file order. Every task
+    // of a wave takes the same await before its own dispatch, so the labels
+    // still go out in the order they went out in without the seam — and a
+    // failed call is `jevRow`'s one log line and no row at all, which is what
+    // keeps a run whose calls all failed identical to one with no `jev`.
+    await jevRow(
+      { kind: 'jev:tier', task: task.id, at: 'dispatch', tierChosen: economics.tier },
+      { state: { task: jevTaskState(task) }, questions: JEV_TIER_DISPATCH_QUESTIONS })
     const concerns = []
     const noteConcerns = (res) => {
       if (res && res.status === 'DONE_WITH_CONCERNS' && Array.isArray(res.concerns)) {
@@ -4437,6 +4790,24 @@ export async function runEngine({
         model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
       })
       const leanOpts = reviewOpts()
+      // ── the `jev:tier` row, at each review dispatch (#1096 row 2, its
+      //    2026-09-16 comment on reviewer tiering) ──────────────────────────
+      // Jev's read of how hard THIS patch is to review, taken before the
+      // referee reads it and covarying with nothing the driver then does:
+      // `REVIEWER_MODEL` is still what `reviewOpts` above put on the dispatch,
+      // and no finding, verdict or fix round reads the answer. `patch` is the
+      // text of the captured patch file, not its path — the client's
+      // `JEV_STATE_MAX_BYTES` budget is measured on that text, and a patch over
+      // it costs one log line and no row (15 of #1096's 290 replayed patches
+      // were over it).
+      let jevPatchText = ''
+      try { jevPatchText = fs.readFileSync(impl.patch, 'utf8') } catch { /* no patch to read */ }
+      const jevTask = jevTaskState(task)
+      await jevRow(
+        { kind: 'jev:tier', task: task.id, at: 'review', round: iter, tierChosen: economics.tier },
+        { state: { task: { title: jevTask.title, claim: jevTask.claim, files: jevTask.files },
+                   patch: jevPatchText },
+          questions: JEV_TIER_REVIEW_QUESTIONS })
       let review = await timedReview(reviewPrompt, leanOpts)
       // The one reviewer is single-dispatch and its death parks the task: one
       // re-dispatch after the backoff (#830).
@@ -4462,6 +4833,33 @@ export async function runEngine({
         seenIssue[key] = true
         return true
       })
+      // ── one `jev:finding` row per reviewer-returned blocking finding ──────
+      // (#1096 `## The three rows` row 1.) Minted HERE and nowhere else: AFTER
+      // the dedup above, so a finding the referee returned twice is one row,
+      // and BEFORE the fallback below, so the issues the DRIVER mints from its
+      // own reading of an exit code — a red `Run:`, a red exam, a red `Check:`,
+      // an unrecognizable verdict — are never asked about. Those are not a
+      // referee's judgment and there is nothing about them to classify.
+      //
+      // Nothing downstream reads a word of this. `jevRow` appends the row when
+      // Jev answered and resolves `null` with no engine `jev`, on a refusal or
+      // on a throw; either way `issues` is the array the dedup left, and the
+      // verdict, the routing, the fix round and the task's status are exactly
+      // what they were without the row. Awaited in issue order, because the
+      // row's place in the record is the order the referee returned them in.
+      for (const i of issues) {
+        if (!i || i.severity !== 'blocking') continue
+        const detail = String(i.detail || '')
+        await jevRow(
+          { kind: 'jev:finding', task: task.id, round: iter,
+            key: (i.severity || '') + '|' + (i.detail || '') },
+          { state: {
+              task: jevTaskText(task),
+              finding: { text: detail, severity: i.severity, actor: i.actor },
+              hunks: hunksNaming(impl.patch, pathsNamedIn(detail)),
+            },
+            questions: JEV_FINDING_QUESTIONS })
+      }
       if (!verdicts.some((v) => v === 'PASS' || v === 'FIX_REQUIRED')) {
         judgmentCalls.push('task ' + task.id + ': reviewer returned no recognizable verdict — ' +
           'treating as FIX_REQUIRED with a blocking issue (never merging on an empty review)')
@@ -5148,6 +5546,50 @@ export async function runEngine({
       }
       log('wave ' + waveNumber + ' candidate suite RED in ' + unattributed.join(', ') +
         ' — no task names it: adopted and recorded, no reconcile dispatched')
+      // ── the reading the driver has no rule for (#1096 row 3) ──────────────
+      // Whose red is it, and is it the harness's? The adoption above has
+      // already happened and nothing below it reads this row: the candidate is
+      // adopted, the judgment lines are pushed and the epoch returns MERGED
+      // whether Jev answers, refuses, or was never handed in at all. What the
+      // row buys is a record of the question, on the run's issue (the row names
+      // no task, so `kataUidFor` puts it there).
+      //
+      // One entry per task this epoch folded — its plan `files` and
+      // `proofTests`, and what its captured patch actually touched — and one
+      // question per (task, red path) pair beside one per red path.
+      const jevTasks = {}
+      for (const r of (Array.isArray(merged) ? merged : [])) {
+        if (!r || typeof r.task !== 'string') continue
+        const t = PLAN.find((x) => x && x.id === r.task) || {}
+        jevTasks[r.task] = {
+          files: Array.isArray(t.files) ? t.files : [],
+          proofTests: Array.isArray(t.proofTests) ? t.proofTests : [],
+          stat: patchStat(r.patch),
+        }
+      }
+      const jevQuestions = {}
+      for (const p of unattributed) {
+        for (const id of Object.keys(jevTasks)) jevQuestions['cause:' + id + ':' + p] = suiteRedCause(id, p)
+        jevQuestions['artifact:' + p] = suiteRedArtifact(p)
+      }
+      // A question the reply did not answer — and an answer carrying no `noul`
+      // — is `null` and not an omission: the row says which readings it got.
+      const noulOf = (a) => (a && typeof a === 'object' && a.noul != null) ? a.noul : null
+      await jevRow({ kind: 'jev:suite-red', epoch: waveNumber }, {
+        state: {
+          failing: failingBlock(suite.stdout + suite.stderr),
+          tests: unattributed,
+          tasks: jevTasks,
+        },
+        questions: jevQuestions,
+        fields: (answers) => ({
+          failing: unattributed.map((p) => {
+            const byTask = {}
+            for (const id of Object.keys(jevTasks)) byTask[id] = noulOf(answers['cause:' + id + ':' + p])
+            return { path: p, byTask, artifact: noulOf(answers['artifact:' + p]) }
+          }),
+        }),
+      })
       return { status: 'MERGED', headSha: candidate,
                suite: { passed: false, unattributed,
                         output: tail(suite.stdout + suite.stderr) } }
