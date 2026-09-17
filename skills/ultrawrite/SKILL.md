@@ -139,6 +139,19 @@ where this plan's Files sets were wrong.
   And one `Run:` names one probe — a command the driver pays once, never a loop over a glob
   of sims (run-87 paid 175 s per boot sim, three passes, for two such lines). A sweep over
   every sim belongs to the one task that owns the sims, as one line, or nowhere.
+  A `Run:` whose command ends in a citation tag of the same shape a leg carries —
+  `- Run: grep -q 'kata 0.17.2' fleet/CONTRACT.md [M2]`, or `[M1, M3]` — is a *prover*,
+  paired with the clause it names: the compiler strips the tag before the driver runs the
+  command, refuses a tag naming a clause the Machine line does not number, and never counts
+  the tag as a citing leg (the legs still cite). A `Run:` with no tag is a *guard* — a
+  `bash -n`, a sim that must stay green. Under `--check --base <sha>` the compiler cuts a
+  clean worktree at BASE and runs every `Run:` there, printing one line per command that
+  exits 0 at BASE: a `GREEN-AT-BASE fact:` line naming the task and the command, ending for
+  a prover `this line cannot falsify its clause` and for a guard `a guard, no leg cites it`.
+  A command still running at 30 s is killed and reported `not run (timeout after 30 s)`; a
+  non-zero exit prints nothing. This release the line is a fact, not a refusal — `PLAN OK`
+  still prints, and the refusal for a prover green at BASE comes after one release's census.
+  A bare `--check` without `--base` runs nothing.
   A `- Guard:` bullet in this slot names **one of this Proof's own `Test:` paths**, and it
   is the one way an exam file reaches the pull request: the peer examiner still writes the
   exam, but the file it names is written at that path and is merged with the task. An exam

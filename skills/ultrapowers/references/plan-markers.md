@@ -225,6 +225,21 @@ A `Run:` bullet is executed by the driver in the task's clone after the
 implementer's patch; each execution is a `driver:proof-run` event, and a
 non-zero exit is a blocking review issue that sends the task to fix.
 
+A `Run:` whose value ends in a citation tag of the same shape a leg carries —
+`[M2]`, or `[M1, M3]` — is a *prover*, paired with the clause that tag names:
+the compiler strips the tag before the driver runs the command, refuses a tag
+naming a clause the Machine line does not number, and never counts the tag as a
+citing leg. A `Run:` with no tag is a *guard* — a `bash -n`, a sim that must
+stay green — and no leg cites it. Under `--check --base <sha>` the compiler cuts
+a clean worktree at BASE, runs every `Run:` there with `ULTRA_BASE` set exactly
+as the driver sets it, and prints one `GREEN-AT-BASE fact:` line per command
+that exits 0 at BASE: a prover's line says it cannot falsify its clause, a
+guard's says no leg cites it. A command still running at 30 s is killed and
+reported `not run (timeout after 30 s)`, a non-zero exit prints nothing, and the
+last line is the reading — total seconds, lines run, lines not run. This release
+the line is a fact, not a refusal: `PLAN OK` still prints and the compile exits
+0. A bare `--check` without `--base` runs nothing.
+
 An exam file the driver receives from the peer examiner is written under the
 reserved directory `tests/exams/<run>/` (a node exam under
 `fleet/tests/exams/<run>/`), which is where an unguarded exam lives for the
