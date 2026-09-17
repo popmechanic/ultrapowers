@@ -68,8 +68,6 @@ one sim per question:
 
 ## The launcher — `test_launch_*`
 
-- `test_launch_size.mjs` — the VM is sized from the compiled plan's widest wave
-  and the dispatch width is the plan's, not a process constant.
 - `test_launch_duplicate.mjs` — the launcher refuses a plan already live on the
   target, names the run, and takes `--again`.
 - `test_launch_compile_facts.mjs` — the launch line carries the compiler's
