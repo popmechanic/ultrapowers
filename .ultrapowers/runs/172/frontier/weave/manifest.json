@@ -1,0 +1,33 @@
+{
+  "wave": 1,
+  "entries": {
+    "fleet/CONTRACT.md": {
+      "stateBlob": "164a2d0768103e1b4ace6264daf8b74b16ad3ec10079fb495964dbc15bf61424",
+      "visibleSha": "d93b9e56b6cbffaa4f06b95f148d18e94061de5a"
+    },
+    "fleet/RUNBOOK.md": {
+      "stateBlob": "87184c7a1404cef6e571f95cc04069406b21126163619e3638872e169695b738",
+      "visibleSha": "4305c19591e89839bb09cbfaf487ccb0db95aabf"
+    },
+    "fleet/launch.mjs": {
+      "stateBlob": "736c501a3b8a72a2889084c58c5e9d608b8620f7d7e9fdff1d972c7fe2ee3606",
+      "visibleSha": "59eb2044604d6f22433c2b5538e360cbf68164d1"
+    },
+    "fleet/tests/test_launch_compile_facts.mjs": {
+      "stateBlob": "a128b58269b98184c68e7da957975dc0fcd867ef9b987d0a2b28e3cd5a710c41",
+      "visibleSha": "4cc1ea7089b031345772c029bcb4d19871657698"
+    },
+    "fleet/tests/test_launch_duplicate.mjs": {
+      "stateBlob": "2bfa77d8fb76c284eeaf640bdb3217d4347a770753cecebfa4d785c289355839",
+      "visibleSha": "784cc3347e7dbb38c7a106de4d3147e09891e227"
+    },
+    "skills/ultrawrite/references/authoring-gotchas.md": {
+      "stateBlob": "33b94d2596bd5bf0e7ae893822b0e85faa6843d4339b085f3991269fc705e85f",
+      "visibleSha": "2a2be183c32a2c410afd965ad18bbd929b86df99"
+    },
+    "tests/test_compile_plan_exam_sweep.py": {
+      "stateBlob": "a4ab9b8aae8d8b59ae7e1369fab7113568347a130a8c60858c7ac0e4239dc4de",
+      "visibleSha": "ce3e4bad90d4c66fb765c221be61c4eb2ee8bcca"
+    }
+  }
+}

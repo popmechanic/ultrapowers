@@ -4,3 +4,13 @@ run-main: kata — record /home/exedev/plans/run-172.kata.json → https://kata.
 run-main: tiers — 2 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)
 run-main: provision — BASE 573495ac0c1cc98f2ccda336b2b8cae520d9de15; 2 task clone(s) + integration
 run-main: engine — waves 2, width bound 2, patch input armed
+run-main: engine-done — report saved
+run-main: finalize
+run-main: gate
+run-main: needs-ack — non-pre-authorized ack(s): deferred:plan-defect — gate receipt is the terminal artifact
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 13min 48.375s
+CPU time consumed: 3min 58.153s
+Memory peak: 404.0K
+Memory swap peak: 0B
