@@ -1,0 +1,37 @@
+{
+  "wave": 1,
+  "entries": {
+    "CLAUDE.md": {
+      "stateBlob": "9210d170cca81e35aa7b26d2ae141dd634c6cca3a9a8ea6a1c96c081a0942a42",
+      "visibleSha": "50a160ed3318f80f231586fce6ff4e7d16ec2fa1"
+    },
+    "fleet/CONTRACT.md": {
+      "stateBlob": "4f86d46fa9699572f30764aa33090cfeb2aa037e7ba1ad36ad103c475ca580cd",
+      "visibleSha": "5d8d10aa8a3f787185b2e64555872aaf6bd8171b"
+    },
+    "fleet/jev-client.mjs": {
+      "stateBlob": "b34d840374d42eb1f9874ad2dc54d20caae7fdf17fcba18579ea10751d86402e",
+      "visibleSha": "3ca3df90051b525ccbe3c33fe1c200faa385b786"
+    },
+    "fleet/run-engine.mjs": {
+      "stateBlob": "ce3bcff352ef97a6cc5e5494f08fadffcf219b302498fc7ab6a2b6e9e2f0de48",
+      "visibleSha": "f6ee8b94a075b5579e37cb90029c77180369dae3"
+    },
+    "fleet/run-main.mjs": {
+      "stateBlob": "f8411e84131f5f793fdb1b52b3d6d54cc0ce3a8279bb7044a236a89c745af296",
+      "visibleSha": "4bc2a9acb1535529b7dd7abd79f99252d2d20d04"
+    },
+    "fleet/sandbox-boot.sh": {
+      "stateBlob": "bc4b3ca93ffed9db898dfe2759953eab28b7d9ebd7711ecb0f5298ee6458e3aa",
+      "visibleSha": "77429aab08d13cd81b1b5b837c0aa97f98a8d146"
+    },
+    "fleet/tests/README.md": {
+      "stateBlob": "e7dfeab06b8554ad4fb4c27c23aaedecda7db07f9f358917db773a9855e0d5e9",
+      "visibleSha": "618172ea23e081044d38a7cdc09ea00ea38df437"
+    },
+    "fleet/tests/_engine_helpers.mjs": {
+      "stateBlob": "ef6d25a35e6c50a5fc915a511cfe95bcd28339d16d8002f1e97451b6e20a7b46",
+      "visibleSha": "8edcad7615481dcb0c5822a73f748ef6323b41a8"
+    }
+  }
+}
