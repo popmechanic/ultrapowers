@@ -1,0 +1,82 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "17bbb72a2096f5d0a114026b2a236b4178850d9acaf876d80a87fa87f27dcf0c",
+      "verdict": "pass",
+      "reason": "Each clause has a falsifying leg at the right layer: (a) asserts the TASK block plus BODY per label for all four labels of a wavesPath run; (b) pins M2's negation both in the captured prompts and by a zero line-count over fleet/run-engine.mjs, where BASE line 1166 carries the phrase; (c) covers the inline shape; (d) checks the rejection names T3 and the path with no label recorded; (e) reruns the resolver brief sim that pins waveContendingBlock's wavesPath sentence."
+    },
+    "2": {
+      "hash": "44ee5f2b37ab15a3c29cd743554af0e832fc6f634203d2738561c7cdbbbb8b59",
+      "verdict": "pass",
+      "reason": "Leg (a)'s sed range prints lines 1 through the first `1. ` line so the ordered eight-phrase grep falsifies M1; leg (b)'s verbatim head -1, zero FACTS count and the amendment-lens sentinel each falsify M2; leg (c) prints the word count for M3; every named path exists at BASE."
+    }
+  },
+  "tally": {
+    "base": "3c61d8d795fddd14a3b60cc140bacf0e09fc23d2",
+    "dispatched": 3,
+    "rejected": 1,
+    "rounds": 2,
+    "per_round": {
+      "1": {
+        "dispatched": 2,
+        "rejected": 1
+      },
+      "2": {
+        "dispatched": 1,
+        "rejected": 0
+      }
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "task": "1",
+      "hash": "5b6596658af6504ec3fd04e39d3812a4e6f24b30ccd7c0e50dcc94a61fb6b47b",
+      "verdict": "fail",
+      "reason": "The Claim said no worker is ever told to read its text from a JSON file, but M5 keeps the resolver's waveContendingBlock sentence that names the file, so the exam passed with the Claim false; the Claim was narrowed to the task's four workers and the resolver named as out of scope."
+    },
+    {
+      "round": 1,
+      "task": "2",
+      "hash": "44ee5f2b37ab15a3c29cd743554af0e832fc6f634203d2738561c7cdbbbb8b59",
+      "verdict": "pass",
+      "reason": "Every clause falsified by its own Run: line at the document layer."
+    },
+    {
+      "round": 2,
+      "task": "1",
+      "hash": "17bbb72a2096f5d0a114026b2a236b4178850d9acaf876d80a87fa87f27dcf0c",
+      "verdict": "pass",
+      "reason": "The narrowed Claim is what legs (a)-(e) establish."
+    }
+  ],
+  "authoring": {
+    "minutes": 22,
+    "probes": 0,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Quote the issue's fix sentence",
+          "Say it as what you will see"
+        ],
+        "recommended": "Quote the issue's fix sentence",
+        "picked": "Quote the issue's fix sentence"
+      },
+      {
+        "question": "Execute how",
+        "options": [
+          "Ultrapowers",
+          "Subagent-Driven",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers"
+      }
+    ]
+  }
+}
