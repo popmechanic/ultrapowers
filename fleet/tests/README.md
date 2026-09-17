@@ -120,6 +120,10 @@ one sim per question:
 - `test_jev_client.mjs` — the Jev client: one POST at the edge hostname with no
   `Authorization` header of its own, and `null` after one log line on every
   lane that is not an answer.
+- `test_jev_questions.mjs` — the sitting's two question sets and the readers
+  over the client: the note's and the amendment's exact questions with the
+  task's own Claim as context, numbers and one word out, and `null` after one
+  log line when the edge does not answer.
 - `test_sims_are_hermetic.mjs` — the probe below.
 
 ## The rig

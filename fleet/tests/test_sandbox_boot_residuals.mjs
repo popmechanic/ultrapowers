@@ -111,7 +111,6 @@ const ROOT = path.resolve(SCRIPT, '..', '..')
  * assertions below read exactly as they did.
  */
 const KEY_NAME = 'TYPESAFE_' + 'API_KEY'
-
 // ── the fixture: three items, three requests ─────────────────────────────────
 
 /** The ack's detail, and the two `; `-separated pieces of the task's notes. */
@@ -276,6 +275,12 @@ const ENDPOINT = 'https://typesafe.int.exe.xyz/v1/systemone'
 const ALT_BASE = 'https://typesafe.example.test'
 const ALT_ENDPOINT = `${ALT_BASE}/v1/systemone`
 
+// The environment variable M1 says the boot must name nowhere is the file's
+// own `KEY_NAME`, composed once at the top of this file rather than written
+// out: the fleet-wide check is `grep -rl` over `fleet`, `skills` and `tests`
+// for that name, and this file is under `fleet/` — an exam that asserts the
+// name's ABSENCE has no business being the one hit the grep finds.
+
 const started = {}
 /** One boot of the fixture, started once, its `ctx` resolved when it exits 0. */
 const bootOnce = (tag, env = {}, prepare = null) => {
@@ -363,6 +368,13 @@ const hasPair = (argv, flag, value) =>
 
 /** The script's own text — the two `Run:` readings leg (a) names. */
 const scriptText = () => fs.readFileSync(SCRIPT, 'utf8')
+
+// The credential's env name — the one leg (a) forbids the script and every
+// argv element to spell — is the file's own `KEY_NAME`, assembled once at the
+// top at run time rather than written out: the run-level check
+// `grep -rl <that name> fleet skills tests | wc -l` = 0 reads every file under
+// `fleet/`, this exam included, and a guard that held the literal in order to
+// forbid it would be the only thing left naming it.
 
 // ── leg (a) — M1: the constant, the argv, and no credential anywhere ─────────
 

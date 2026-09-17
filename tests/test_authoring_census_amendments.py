@@ -7,12 +7,12 @@ read. Leg by leg, in the Proof's own order:
 
   * (a)/[M2] over one root of three runs — `run-9` carrying a `report.json`
     whose `amendments` has three rows, `run-131` carrying a report with no
-    `amendments` key, `run-133` carrying no report at all — the header ends
-    with an `amendments` column after `run_min`, and the three rows' last
-    cells are `3`, `-` and `-` in that order (rows sort by ascending N, so
-    `run-9` is the first of them).
-  * (b)/[M3] that table's last line ends ` amendments=3`, and a root whose
-    reports carry no lists ends ` amendments=0`.
+    `amendments` key, `run-133` carrying no report at all — the header carries
+    an `amendments` column directly after `run_min`, and the three rows'
+    `amendments` cells are `3`, `-` and `-` in that order (rows sort by
+    ascending N, so `run-9` is the first of them).
+  * (b)/[M3] that table's last line carries ` amendments=3`, and a root whose
+    reports carry no lists carries ` amendments=0`.
   * (c)/[M1] `--fetch o/r --runs 131..132` against a fake `gh` that answers the
     plan and status reads for both and a report for 131 only: `run-131/
     report.json` is the decoded bytes of the answer, no `run-132/report.json`
@@ -38,17 +38,20 @@ Three readings this file pins, each from the task's own words:
     reads `-`, never `0`"). A report carrying `[]` reads `0`, not `-`: zero
     amendments is a value the file carries.
   * The totals sum is "over the rows that carry a value", so a root where no
-    row carries one still ends ` amendments=0` — the empty sum, not a `-`.
+    row carries one still reads ` amendments=0` — the empty sum, not a `-`.
   * M3 quotes the totals format string without the ` runs=<lo>..<hi>` field
     the line carries at BASE, and the Context's line numbers match the tree at
     `5a8f1ebd` rather than at this BASE (`5aa9af93`, "a release's census line
     says which runs it read", landed in between and added that field). The
     quoted string is therefore a stale snapshot, not an instruction to drop
     the window. This exam encodes M3's operative words — "the totals line ends
-    ` amendments=<n>`" — as an exact suffix, and checks the rest of the line by
-    equality after stripping a single optional ` runs=<window>` field, which
+    ` amendments=<n>`" — as that field's value, and checks the rest of the line
+    by equality after stripping a single optional ` runs=<window>` field, which
     reproduces M3's quoted format string exactly. It pins neither the window's
-    presence nor its absence, because the task's own text says both.
+    presence nor its absence, because the task's own text says both. For the
+    same reason it reads the field rather than the line's tail: a later plan
+    appends its own fields after ` amendments=<n>`, and the sum is what this
+    exam is about.
 """
 import json
 import os
@@ -169,19 +172,27 @@ REPORT_FETCHED = {
 #: [M2] `COLUMNS` gains `amendments` as its last name, after `run_min`.
 COLUMN_NAMES = ("run", "authoring_min", "probes", "dispatched", "rejected",
                 "routing", "lane", "questions", "recommended_picked",
-                "run_min", "amendments")
+                "run_min", "amendments", "compelled", "plan_fault",
+                "magnitude")
 
 HEADER = tsv(*COLUMN_NAMES)
 
+#: Where the `amendments` cell sits in a row, counted from the end — the three
+#: amendment-reading columns a later plan added close the row after it.
+AMENDMENTS_FROM_END = len(COLUMN_NAMES) - COLUMN_NAMES.index("amendments")
+
 # (a): `run-9`'s record predates the plan — `-` in every authoring column, its
-# tally read — and its report carries three amendment rows.
-ROW_9 = tsv("9", "-", "-", "3", "0", "-", "-", "-", "-", "-", "3")
-# (a): the full row, its report carrying no `amendments` key.
+# tally read — and its report carries three amendment rows, none of them read
+# (no row carries a `jev`), so the readings are the empty ones and not `-`.
+ROW_9 = tsv("9", "-", "-", "3", "0", "-", "-", "-", "-", "-", "3",
+            "0/0", "0/0", "0/0/0/0")
+# (a): the full row, its report carrying no `amendments` key — so no list, and
+# no list is no reading: `-` in all three.
 ROW_131 = tsv("131", "118", "12", "4", "1", "risk", "ultrapowers", "1",
-              "1/1", "16", "-")
+              "1/1", "16", "-", "-", "-", "-")
 # (a): no report at all beside the record.
 ROW_133 = tsv("133", "47", "5", "2", "-", "width", "ultrapowers", "2",
-              "1/1", "-", "-")
+              "1/1", "-", "-", "-", "-", "-")
 
 # ------------------------------------------------------------- the M3 expected
 
@@ -190,7 +201,8 @@ ROW_133 = tsv("133", "47", "5", "2", "-", "width", "ultrapowers", "2",
 #: the one row carrying a `run_min`; 3 is the one row carrying an `amendments`.
 TOTALS_WITHOUT_WINDOW = ("totals: plans=3 risk_override=1/2 "
                          "recommended_picked=2/2 authoring_min=165 "
-                         "run_min=16 amendments=3")
+                         "run_min=16 amendments=3 compelled=0/0 "
+                         "plan_fault=0/0 magnitude=0/0/0/0")
 
 WINDOW_RE = re.compile(r" runs=\S+")
 
@@ -344,23 +356,43 @@ def row_for(stdout, number):
 
 
 def last_cells(stdout):
-    """The last cell of every row between the header and the totals line."""
+    """The `amendments` cell of every row between the header and the totals
+    line — the last one this exam is about, whatever columns close the row
+    after it."""
     body = lines(stdout)[1:-1]
-    return [line.split("\t")[-1] for line in body]
+    return [line.split("\t")[-AMENDMENTS_FROM_END] for line in body]
+
+
+def amendments_cell(row):
+    """One row's `amendments` cell, read the same way."""
+    return row.split("\t")[-AMENDMENTS_FROM_END]
+
+
+def totals_field(line, name):
+    """The value of one ` <name>=<value>` field of the totals line.
+
+    M3's operative words are that the line ends ` amendments=<n>`; a later
+    plan appends its own fields after it, so what this exam pins is the
+    field's value, not its position."""
+    match = re.search(r" %s=(\S+)" % re.escape(name), line)
+    assert match is not None, line
+    return match.group(1)
 
 
 # ------------------------------------------------------------------- leg (a)
 
 def test_a_the_header_ends_with_an_amendments_column_after_run_min(tmp_path):
     """(a)/[M2]: `COLUMNS` gains `amendments` as its last name, after
-    `run_min` — the header line is the eleven names, tab-separated, in that
-    order and no other."""
+    `run_min` — the header line is those names, tab-separated, in that order
+    and no other."""
     root = build_root(tmp_path)
     p = census("--from", str(root))
     assert p.returncode == 0, p.stdout + p.stderr
     header = lines(p.stdout)[0]
     assert header == HEADER, p.stdout
-    assert header.split("\t")[-2:] == ["run_min", "amendments"], header
+    names = header.split("\t")
+    assert "amendments" in names, header
+    assert names[names.index("amendments") - 1] == "run_min", header
 
 
 def test_a_the_three_rows_last_cells_are_three_dash_dash(tmp_path):
@@ -376,8 +408,9 @@ def test_a_the_three_rows_last_cells_are_three_dash_dash(tmp_path):
 
 def test_a_each_whole_row_gains_its_eleventh_cell_and_keeps_the_ten(tmp_path):
     """(a)/[M2]: the rows verbatim — the ten cells this task does not touch,
-    each followed by the new one. `run-9`'s `rejected` is still `0` and not
-    `-`, and `run-133` still carries neither `rejected` nor a `run_min`."""
+    then the new one, then whatever closes the row after it. `run-9`'s
+    `rejected` is still `0` and not `-`, and `run-133` still carries neither
+    `rejected` nor a `run_min`."""
     root = build_root(tmp_path)
     p = census("--from", str(root))
     assert lines(p.stdout)[1:4] == [ROW_9, ROW_131, ROW_133], p.stdout
@@ -410,7 +443,8 @@ def test_a_census_rows_carries_an_amendments_value_per_row(tmp_path):
 
 def test_a_columns_gains_amendments_last_and_keeps_the_ten_before_it(tmp_path):
     """(a)/[M2]: `COLUMNS` itself — the ten BASE names in their order, then
-    `amendments`."""
+    `amendments`, then the three amendment-reading names a later plan hung
+    off it."""
     module = load_module()
     assert tuple(module.COLUMNS) == COLUMN_NAMES, module.COLUMNS
 
@@ -418,14 +452,14 @@ def test_a_columns_gains_amendments_last_and_keeps_the_ten_before_it(tmp_path):
 # ------------------------------------------------------------------- leg (b)
 
 def test_b_the_totals_line_ends_with_the_amendments_sum(tmp_path):
-    """(b)/[M3]: the table's last line ends ` amendments=3` — the sum over the
-    rows that carry a value, which here is `run-9`'s three alone."""
+    """(b)/[M3]: the table's last line carries ` amendments=3` — the sum over
+    the rows that carry a value, which here is `run-9`'s three alone."""
     root = build_root(tmp_path)
     p = census("--from", str(root))
     assert p.returncode == 0, p.stdout + p.stderr
     totals = lines(p.stdout)[-1]
     assert totals.startswith("totals: "), p.stdout
-    assert totals.endswith(" amendments=3"), totals
+    assert totals_field(totals, "amendments") == "3", totals
 
 
 def test_b_the_totals_line_keeps_every_field_it_had_before_the_suffix(
@@ -444,27 +478,28 @@ def test_b_the_totals_line_keeps_every_field_it_had_before_the_suffix(
 
 def test_b_a_root_whose_reports_carry_no_lists_ends_with_zero(tmp_path):
     """(b)/[M3]: no row carries a value, so the sum over the rows that carry
-    one is the empty sum — the line ends ` amendments=0`, not ` amendments=-`
-    and not a missing field."""
+    one is the empty sum — the line carries ` amendments=0`, not
+    ` amendments=-` and not a missing field."""
     root = build_root(tmp_path, name="nokey",
                       reports=("no_key", "no_key", "no_key"))
     p = census("--from", str(root))
     assert p.returncode == 0, p.stdout + p.stderr
     totals = lines(p.stdout)[-1]
-    assert totals.endswith(" amendments=0"), totals
+    assert totals_field(totals, "amendments") == "0", totals
     assert without_window(totals) == (
         "totals: plans=3 risk_override=1/2 recommended_picked=2/2 "
-        "authoring_min=165 run_min=16 amendments=0"), totals
+        "authoring_min=165 run_min=16 amendments=0 compelled=0/0 "
+        "plan_fault=0/0 magnitude=0/0/0/0"), totals
 
 
 def test_b_a_root_whose_reports_carry_empty_lists_also_ends_with_zero(
         tmp_path):
     """(b)/[M3]: three rows each carrying the value zero sum to zero too — the
-    same suffix by the other route."""
+    same field by the other route."""
     root = build_root(tmp_path, name="empty",
                       reports=("empty", "empty", "empty"))
     p = census("--from", str(root))
-    assert lines(p.stdout)[-1].endswith(" amendments=0"), p.stdout
+    assert totals_field(lines(p.stdout)[-1], "amendments") == "0", p.stdout
 
 
 # ------------------------------------------------------------------- leg (c)
@@ -543,16 +578,16 @@ def test_c_both_report_paths_are_requested_as_api_reads_of_the_evidence_tag(
 
 def test_c_the_printed_rows_carry_the_list_length_and_the_dash(tmp_path):
     """(c)/[M1]: the table printed over `<dir>` gives 131 the fetched report's
-    list length as its last cell, and 132 — whose report did not answer — a
-    `-`."""
+    list length in its `amendments` cell, and 132 — whose report did not
+    answer — a `-`."""
     p, _into, _calls, _bare = run_fetch(tmp_path)
     row_131, row_132 = row_for(p.stdout, 131), row_for(p.stdout, 132)
     assert row_131 is not None and row_132 is not None, p.stdout + p.stderr
-    assert row_131.split("\t")[-1] == str(len(REPORT_FETCHED["amendments"])), \
-        row_131
-    assert row_131.split("\t")[-1] == "2", row_131
-    assert row_132.split("\t")[-1] == "-", row_132
-    assert lines(p.stdout)[-1].endswith(" amendments=2"), p.stdout
+    assert amendments_cell(row_131) == \
+        str(len(REPORT_FETCHED["amendments"])), row_131
+    assert amendments_cell(row_131) == "2", row_131
+    assert amendments_cell(row_132) == "-", row_132
+    assert totals_field(lines(p.stdout)[-1], "amendments") == "2", p.stdout
 
 
 def test_c_the_bare_gh_on_path_is_never_resolved(tmp_path):
@@ -592,7 +627,7 @@ def test_d_a_plan_tag_without_a_record_yields_no_row_and_no_directory(
         str(q.relative_to(into)) for q in into.rglob("*"))
     assert (into / "run-200/report.json").read_bytes() == \
         blob(REPORT_FETCHED), p.stdout + p.stderr
-    assert row_for(p.stdout, 200).split("\t")[-1] == "2", p.stdout
+    assert amendments_cell(row_for(p.stdout, 200)) == "2", p.stdout
 
 
 # ------------------------------------------------------------------- leg (e)
