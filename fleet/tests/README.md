@@ -89,8 +89,6 @@ one sim per question:
   issue always carries evidence, built from the PR URL and the merged sha.
 - `test_sandbox_boot_amendments.mjs` — the pull request body lists every
   amendment by task, above the folded record.
-- `test_sandbox_boot_disclosures.mjs` — an edit a task needed but could not make
-  becomes a ticket the run opens beside its PR.
 - `test_sandbox_boot_card_cells.mjs` — the PR card says which task no reviewer
   read, rendered inside the existing mutant cell rather than a new column.
 - `test_sandbox_boot_viz.mjs` — the refresher serves `events.jsonl` beside the
