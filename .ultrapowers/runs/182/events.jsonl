@@ -119,3 +119,11 @@
 {"kind":"driver:integrated-check","cmd":"node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"minor":false,"wave":1,"id":"01M2Q8THFV00003FCDGMRE11KZ","ts":1789634889211}
 {"kind":"driver:integrated-check","cmd":"test \"$(grep -rIl 'TYPESAFE_API' fleet skills tests hooks | wc -l)\" = 0","exit":0,"minor":false,"wave":1,"id":"01M2Q8THG800007MJBGZCVGZXA","ts":1789634889224}
 {"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/jev-client.mjs fleet/sandbox-boot.sh fleet/run-main.mjs","exit":0,"minor":false,"wave":1,"id":"01M2Q8THGG0000N8K0KQFWP5WP","ts":1789634889232}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2Q8VP8C0000Z9YP9ND5V7D6","ts":1789634926860}
+{"kind":"driver:stage","stage":"finalize","id":"01M2Q8VPB80000Q02DNGKMC536","ts":1789634926952}
+{"kind":"driver:stage","stage":"gate","id":"01M2Q8VPD10000B07JFS2BRB2F","ts":1789634927009}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M2Q8VPH90000TRTZ71303ZZT","ts":1789634927145}
+{"kind":"driver:stage","stage":"approve","id":"01M2Q8VPH90001GMM5FZHNY042","ts":1789634927145}
+{"kind":"driver:approved","stamp":"run-182","integrationBranch":"ultra/integration-run-182","id":"01M2Q8VPKN0000T1PPDFCSZ2H8","ts":1789634927221}
+{"kind":"run:open","runId":"run-182","base":"b16dbdb1e97ab49d6d4a2958907bfd3ec7cd3194","source":"fleet/publish-fold.mjs","id":"01M2Q8W16D00000VQ8MMDGPQ8V","ts":1789634938061}
+{"kind":"driver:publish-fold","run":"182","attempt":"1","base":"b16dbdb1e97ab49d6d4a2958907bfd3ec7cd3194","tip":"b19beedef4ed38b0114ed18ff19196d6eb448223","candidate":"1c9dce62c3a7d70746fbac4b09ca95906c7cccb1","pathsJoined":1,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"pass","disposition":"folded","checks":[{"check":"parse","path":"fleet/tests/test_sandbox_boot_residuals.mjs","result":"pass"},{"check":"exam","exam":"fleet/tests/test_sandbox_boot_residuals.mjs","path":"fleet/tests/test_sandbox_boot_residuals.mjs","result":"pass"}],"checkRetries":0,"id":"01M2Q917NB0000D14B5PXGEHQV","ts":1789635108523}

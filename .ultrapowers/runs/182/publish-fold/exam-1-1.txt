@@ -1,0 +1,25 @@
+ok (0 ms) — (a) [M1] the script defines TYPESAFE_URL verbatim and names TYPESAFE_API_KEY nowhere
+ok (3432 ms) — (a) [M1] every request to Jev is one POST to the endpoint, carrying no credential
+ok (0 ms) — (a) [M1] FLEET_TYPESAFE_URL moves every request, and nothing reaches the production host
+ok (3 ms) — (b) [M2] the payload log holds one line per item, though evidence was collected more than once
+ok (1 ms) — (b) [M2] the cache holds one line per request, keyed, with the answers and no error
+ok (8 ms) — (c) [M3] every row carries BASE's own fields and a jev of exactly the six keys
+ok (0 ms) — (c) [M3] the row the answers file names takes that reply, and no other row does
+ok (0 ms) — (d) [M4] each payload is the row's state, the model, and exactly the five questions
+ok (21 ms) — (e) [M5] a failing curl writes one log line per item and leaves every row without a jev
+ok (0 ms) — (e) [M5] the failed run publishes the byte-identical body, and both render BASE's checklist
+ok (1 ms) — (f) [M6] the stub's arm answers on its own name and logs every payload
+ok (1 ms) — (f) [M6] the exit knob emits nothing and the answers file picks the reply
+ok (0 ms) — (f) [M6] the README's sandbox-boot list names this sim
+ok (11 ms) — (f) [M6] the edited boot script still parses as bash
+ok (1 ms) — (a) [M1] the fixture and the leg agree on which ten rows are shown, and in what order
+ok (220 ms) — (a) [M1] the section stands between the table and the `Residuals:` line, ten entries deep
+ok (0 ms) — (a) [M1] no row the threshold or the cap excludes stands above the `Residuals:` line
+ok (66 ms) — (a) [M1] one qualifying row renders a one-entry section
+ok (0 ms) — (b) [M2] every piece at 2.4 renders no section, though every row carries a jev
+ok (0 ms) — (b) [M2] a boot whose every request failed renders no section
+ok (0 ms) — (b) [M2] the rig's default green boot, whose checklist is empty, renders no section
+ok (0 ms) — (c) [M3] splicing the section out yields the failed run's body, byte for byte
+ok (0 ms) — (c) [M3] both bodies carry the same count, amendments and record checklist
+ok (0 ms) — (c) [M3] the two runs make the same merge PUTs, and the section asks nothing of its own
+ALL TESTS PASSED

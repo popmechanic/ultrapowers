@@ -1,0 +1,27 @@
+{
+  "engineHead": "603cec8765ed4e43b48d0831f751fc0141abc4b8",
+  "attempts": {
+    "1": {
+      "tip": "b19beedef4ed38b0114ed18ff19196d6eb448223",
+      "candidate": "1c9dce62c3a7d70746fbac4b09ca95906c7cccb1",
+      "disposition": "folded",
+      "pathsJoined": 1,
+      "resolversDispatched": 0,
+      "suite": "pass",
+      "checks": [
+        {
+          "check": "parse",
+          "path": "fleet/tests/test_sandbox_boot_residuals.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_sandbox_boot_residuals.mjs",
+          "path": "fleet/tests/test_sandbox_boot_residuals.mjs",
+          "result": "pass"
+        }
+      ],
+      "checkRetries": 0
+    }
+  }
+}
