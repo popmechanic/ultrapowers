@@ -1,0 +1,575 @@
+{
+  "ok": true,
+  "stamp": "run-177",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-177"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "5 task(s) in 2 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "add-command",
+      "ok": true,
+      "detail": "no dependencies declared \u2014 nothing to add"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The Jev client and the engine's `jev` seam \u2014 one POST at the edge hostname, `null` on any failure, `jev:` rows routed to the hub like `driver:` rows",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/jev-client.mjs",
+          "fleet/run-engine.mjs",
+          "fleet/run-main.mjs",
+          "fleet/sandbox-boot.sh",
+          "fleet/tests/README.md",
+          "fleet/tests/_engine_helpers.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`httpTransport({ url, fetchImpl })` (from `fleet/kata-client.mjs`, the shape this client mirrors)",
+            "`runMain` (from `fleet/run-main.mjs`, driven in leg (d) the way `fleet/tests/test_worker_kata_env.mjs` drives it)"
+          ],
+          "produces": [
+            "`makeJevClient({ baseUrl, fetchImpl, timeoutMs, log }) -> { ask({ state, questions }) -> Promise<answers|null> }`",
+            "`JEV_STATE_MAX_BYTES`",
+            "`fakeHub({ projectId, issues }) -> { kata, calls, commentsOn }`",
+            "`rig({ repo, runDir, waves, stub, jev, eventLog, kata, extraArgs })`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "A `jev:finding` row beside every reviewer-returned blocking finding",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`makeJevClient({ baseUrl, fetchImpl, timeoutMs, log })`",
+            "`fakeHub({ projectId, issues })`",
+            "`rig({ repo, runDir, waves, stub, jev, eventLog, kata, extraArgs })`"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "A `jev:tier` row beside every task's tier \u2014 at dispatch, and `review_difficulty` over the patch at review dispatch",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`makeJevClient({ baseUrl, fetchImpl, timeoutMs, log })`",
+            "`fakeHub({ projectId, issues })`",
+            "`rig({ repo, runDir, waves, stub, jev, eventLog, kata, extraArgs })`"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "A `jev:suite-red` row in the unattributed-red branch \u2014 whose red is it",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`makeJevClient({ baseUrl, fetchImpl, timeoutMs, log })`",
+            "`fakeHub({ projectId, issues })`",
+            "`rig({ repo, runDir, waves, stub, jev, eventLog, kata, extraArgs })`",
+            "`failingBlock(text)` (from `fleet/failing-block.mjs`, already imported by the engine)"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "5",
+        "title": "The no-metered-API gotcha in `CLAUDE.md` gains two lines saying TypeSafe is reached the same way",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "CLAUDE.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [
+      {
+        "from": "1",
+        "to": "2",
+        "why": "interface"
+      },
+      {
+        "from": "1",
+        "to": "3",
+        "why": "interface"
+      },
+      {
+        "from": "1",
+        "to": "4",
+        "why": "interface"
+      }
+    ],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "5"
+      ],
+      [
+        "2",
+        "3",
+        "4"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The Jev client and the engine's `jev` seam \u2014 one POST at the edge hostname, `null` on any failure, `jev:` rows routed to the hub like `driver:` rows",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/jev-client.mjs",
+            "fleet/run-engine.mjs",
+            "fleet/run-main.mjs",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/README.md",
+            "fleet/tests/_engine_helpers.mjs",
+            "fleet/tests/test_jev_client.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`httpTransport({ url, fetchImpl })` (from `fleet/kata-client.mjs`, the shape this client mirrors)",
+              "`runMain` (from `fleet/run-main.mjs`, driven in leg (d) the way `fleet/tests/test_worker_kata_env.mjs` drives it)"
+            ],
+            "produces": [
+              "`makeJevClient({ baseUrl, fetchImpl, timeoutMs, log }) -> { ask({ state, questions }) -> Promise<answers|null> }`",
+              "`JEV_STATE_MAX_BYTES`",
+              "`fakeHub({ projectId, issues }) -> { kata, calls, commentsOn }`",
+              "`rig({ repo, runDir, waves, stub, jev, eventLog, kata, extraArgs })`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/jev-client.mjs",
+            "fleet/run-engine.mjs",
+            "fleet/run-main.mjs",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/README.md",
+            "fleet/tests/_engine_helpers.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_jev_client.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_jev_client.mjs",
+          "proofRuns": [
+            "grep -q '^TYPESAFE_PROXY_URL=\"https://typesafe.int.exe.xyz\"$' fleet/sandbox-boot.sh",
+            "sed -n '/--unit=fleet-engine-\\$RUN_N/,/node \"\\$ENGINE_REPO_DIR\\/fleet\\/run-main.mjs\"/p' fleet/sandbox-boot.sh | tr '\\n' ' ' | grep -q 'ANTHROPIC_BASE_URL=\\$ANTHROPIC_PROXY_URL\" *\\\\ *\"TYPESAFE_BASE_URL=\\$TYPESAFE_PROXY_URL\"'",
+            "test \"$(sed -n '/--unit=fleet-fold-\\$RUN_N/,/node \"\\$ENGINE_REPO_DIR\\/fleet\\/publish-fold.mjs\"/p' fleet/sandbox-boot.sh | grep -c TYPESAFE)\" = 0",
+            "sed -n '/^  - engine: .systemd-run --user --unit=fleet-engine-<N>/,/^    cwd ./p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'CLAUDE_CODE_OAUTH_TOKEN=placeholder *TYPESAFE_BASE_URL=https://typesafe.int.exe.xyz'",
+            "sed -n '/driver:suite-runs. .{task, count, slices}/,/^    Receipts (2026-09-16)/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'jev:finding.*jev:tier.*jev:suite-red.*POST /v1/systemone.*one log line and no row.*read by nothing'",
+            "sed -n '/^- \\*\\*Integration naming:\\*\\*/,/^- \\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'typesafe.*http-proxy'",
+            "test \"$(grep -c 'test_jev_client.mjs\\|test_run_engine_jev_finding.mjs\\|test_run_engine_jev_tier.mjs\\|test_run_engine_jev_suite_red.mjs' fleet/tests/README.md)\" = 4",
+            "test \"$(grep -c 'typesafe.int.exe.xyz' fleet/CONTRACT.md)\" -ge 1"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_jev_client.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/jev-client.mjs",
+              "fleet/run-engine.mjs",
+              "fleet/run-main.mjs",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/README.md",
+              "fleet/tests/_engine_helpers.mjs",
+              "fleet/tests/test_jev_client.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_jev_client.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_jev_client.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_jev_client.mjs": "fleet/tests/test_jev_client.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_jev_client.mjs"
+            ],
+            "siblingOwned": [
+              "CLAUDE.md"
+            ],
+            "produces": [
+              "`makeJevClient({ baseUrl, fetchImpl, timeoutMs, log }) -> { ask({ state, questions }) -> Promise<answers|null> }`",
+              "`JEV_STATE_MAX_BYTES`",
+              "`fakeHub({ projectId, issues }) -> { kata, calls, commentsOn }`",
+              "`rig({ repo, runDir, waves, stub, jev, eventLog, kata, extraArgs })`"
+            ],
+            "consumes": [
+              "`httpTransport({ url, fetchImpl })` (from `fleet/kata-client.mjs`, the shape this client mirrors)",
+              "`runMain` (from `fleet/run-main.mjs`, driven in leg (d) the way `fleet/tests/test_worker_kata_env.mjs` drives it)"
+            ]
+          }
+        },
+        {
+          "id": "5",
+          "title": "The no-metered-API gotcha in `CLAUDE.md` gains two lines saying TypeSafe is reached the same way",
+          "files": [
+            "CLAUDE.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "CLAUDE.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^- \\*\\*No direct Anthropic API calls in repo code\\.\\*\\*/,/^- \\*\\*/p' CLAUDE.md | tr '\\n' ' ' | grep -q 'billing somewhere else.*TypeSafe.*api.typesafe.ai.*the same way.*typesafe.*http-proxy.*the edge.*the boot and the engine only.*judgments.*prose.*hunks.*never generation.*never a fact'",
+            "test \"$(sed -n '/^- \\*\\*No direct Anthropic API calls in repo code\\.\\*\\*/,/^- \\*\\*/p' CLAUDE.md | grep -c '[0-9]')\" = 0",
+            "test \"$(grep -ci typesafe CLAUDE.md)\" = \"$(sed -n '/^- \\*\\*No direct Anthropic API calls in repo code\\.\\*\\*/,/^- \\*\\*/p' CLAUDE.md | head -n -1 | grep -ci typesafe)\"",
+            "test \"$(grep -ci typesafe CLAUDE.md)\" -ge 1",
+            "test \"$(awk '/^## Conventions & gotchas/{f=1} f && /^- \\*\\*/{n++} END{print n}' CLAUDE.md)\" = 11",
+            "sed -n '/^- \\*\\*No direct Anthropic API calls in repo code\\.\\*\\*/,/^- \\*\\*/p' CLAUDE.md | tr '\\n' ' ' | grep -q 'A distributed plugin must need no API key.*not add the .anthropic. SDK or .ANTHROPIC_API_KEY. to any shipped or dev script.*claude-max.int.exe.xyz.*has to show .oauth_token. \u2014 a run showing .x-api-key. is billing somewhere else'"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "CLAUDE.md"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/jev-client.mjs",
+              "fleet/run-engine.mjs",
+              "fleet/run-main.mjs",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/README.md",
+              "fleet/tests/_engine_helpers.mjs",
+              "fleet/tests/test_jev_client.mjs"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ],
+      [
+        {
+          "id": "2",
+          "title": "A `jev:finding` row beside every reviewer-returned blocking finding",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_jev_finding.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`makeJevClient({ baseUrl, fetchImpl, timeoutMs, log })`",
+              "`fakeHub({ projectId, issues })`",
+              "`rig({ repo, runDir, waves, stub, jev, eventLog, kata, extraArgs })`"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_jev_finding.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_jev_finding.mjs",
+          "proofRuns": [],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_jev_finding.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_jev_finding.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_jev_finding.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_jev_finding.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_jev_finding.mjs": "fleet/tests/test_run_engine_jev_finding.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_jev_finding.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_jev_suite_red.mjs",
+              "fleet/tests/test_run_engine_jev_tier.mjs"
+            ],
+            "produces": [],
+            "consumes": [
+              "`makeJevClient({ baseUrl, fetchImpl, timeoutMs, log })`",
+              "`fakeHub({ projectId, issues })`",
+              "`rig({ repo, runDir, waves, stub, jev, eventLog, kata, extraArgs })`"
+            ]
+          }
+        },
+        {
+          "id": "3",
+          "title": "A `jev:tier` row beside every task's tier \u2014 at dispatch, and `review_difficulty` over the patch at review dispatch",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_jev_tier.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`makeJevClient({ baseUrl, fetchImpl, timeoutMs, log })`",
+              "`fakeHub({ projectId, issues })`",
+              "`rig({ repo, runDir, waves, stub, jev, eventLog, kata, extraArgs })`"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_jev_tier.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_jev_tier.mjs",
+          "proofRuns": [],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_jev_tier.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_jev_tier.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_jev_tier.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_jev_tier.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_jev_tier.mjs": "fleet/tests/test_run_engine_jev_tier.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_jev_tier.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_jev_finding.mjs",
+              "fleet/tests/test_run_engine_jev_suite_red.mjs"
+            ],
+            "produces": [],
+            "consumes": [
+              "`makeJevClient({ baseUrl, fetchImpl, timeoutMs, log })`",
+              "`fakeHub({ projectId, issues })`",
+              "`rig({ repo, runDir, waves, stub, jev, eventLog, kata, extraArgs })`"
+            ]
+          }
+        },
+        {
+          "id": "4",
+          "title": "A `jev:suite-red` row in the unattributed-red branch \u2014 whose red is it",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_jev_suite_red.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`makeJevClient({ baseUrl, fetchImpl, timeoutMs, log })`",
+              "`fakeHub({ projectId, issues })`",
+              "`rig({ repo, runDir, waves, stub, jev, eventLog, kata, extraArgs })`",
+              "`failingBlock(text)` (from `fleet/failing-block.mjs`, already imported by the engine)"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_jev_suite_red.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_jev_suite_red.mjs",
+          "proofRuns": [],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_jev_suite_red.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_jev_suite_red.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_jev_suite_red.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_jev_suite_red.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_jev_suite_red.mjs": "fleet/tests/test_run_engine_jev_suite_red.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_jev_suite_red.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/run-engine.mjs",
+              "fleet/tests/test_run_engine_jev_finding.mjs",
+              "fleet/tests/test_run_engine_jev_tier.mjs"
+            ],
+            "produces": [],
+            "consumes": [
+              "`makeJevClient({ baseUrl, fetchImpl, timeoutMs, log })`",
+              "`fakeHub({ projectId, issues })`",
+              "`rig({ repo, runDir, waves, stub, jev, eventLog, kata, extraArgs })`",
+              "`failingBlock(text)` (from `fleet/failing-block.mjs`, already imported by the engine)"
+            ]
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 parallel tasks",
+      "3 Jevs"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- This is an `experiment` (#1096): every default it touches is its own rollback, which is deleting the three appends. No verdict, route, tier, model choice, fold adoption, gate or report field reads a `jev:` row; for the same canned replies a run with the `jev` seam and a run without it dispatch the same labels in the same order and end with the same task statuses.\n- The credential is never on the box: the client sends no `Authorization` header (the edge injects the bearer), no key is on disk, in `argv` or in any environment the boot sets, and no file under `fleet/`, `skills/`, `tests/` or `hooks/` names a TypeSafe key variable.\n- A failed call is one log line and no row: a non-2xx status, a timeout, a network error or an unparsable body never rejects, never parks and never fails the run.\n- Every `*.int.exe.xyz` hostname is `https://` \u2014 `http` 301s, and a followed 301 turns a POST into a GET (run-110).\n- No doctor row, no setup-script wait and no role-file change: `fleet/doctor.mjs`'s `ROW_IDS` and `fleet/setup-script.mjs`'s integrations wait are untouched, and nothing under `fleet/roles/` changes.\n- Every sim is hermetic: a sim reaches the client only through an injected `fetchImpl` and reaches the hub only through the rig's fake; no sim opens a socket.\n- Findings are about the result \u2014 what the record, the hub and the sims now do \u2014 never about the order the work was done in, the number of commits, or whether a test was written before its code.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/",
+        "minor": false
+      },
+      {
+        "cmd": "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(grep -rIl 'TYPESAFE_API' fleet skills tests hooks | wc -l)\" = 0",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-177/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-177/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-177/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-177/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for addCmd/addDevCmd \u2014 the package-add commands are driver-derived from the same lockfile/manifest beside the bootstrap and stamped in the args file and receipt (only when the plan declares packages); there is no knob for them",
+    "nothing for regenerateCmd \u2014 the lockfile regenerator is derived from the same lockfile/manifest beside the bootstrap (and only when the bootstrap itself was derived) and stamped in the args file and receipt; there is no knob for it",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini",
+  "foldTestCmd": "python3 -m pytest {paths}"
+}

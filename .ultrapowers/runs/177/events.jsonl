@@ -1,0 +1,11 @@
+{"kind":"run:open","runId":"run-177","base":"","source":"fleet/run-main.mjs","id":"01M2Q43P3Q00001E769DSW5A8D","ts":1789629945975}
+{"kind":"driver:stage","stage":"kata","detail":"record /home/exedev/plans/run-177.kata.json → https://kata.int.exe.xyz","id":"01M2Q43P3S0000YSFEBBGNDQVN","ts":1789629945977}
+{"kind":"driver:stage","stage":"tiers","detail":"5 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M2Q43P3T00004XQ89SJV1Q8Z","ts":1789629945978}
+{"kind":"driver:stage","stage":"provision","detail":"BASE 6104ae7e472121485d37287a5b10f501090dd838; 5 task clone(s) + integration","id":"01M2Q43PCT0000Y8H7XP73XKME","ts":1789629946266}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M2Q43Q5Y00009YKWK1MZBB0N","ts":1789629947070}
+{"kind":"driver:stage","stage":"engine","detail":"waves 2/3, width bound 3, patch input armed","id":"01M2Q43Q5Z0000ZA6D0YKSVCT0","ts":1789629947071}
+{"kind":"engine:phase","phase":"Setup","id":"01M2Q43Q6500007FD6SW0Z7KRR","ts":1789629947077}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-177 at 6104ae7e472121485d37287a5b10f501090dd838","id":"01M2Q43QGN0000RDRKAM7979Z1","ts":1789629947413}
+{"kind":"worker:start","label":"impl:5","role":"implementer","sessionId":"cdeaf117-e229-4a88-96e0-d08077aeeb35","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-177/clones/task-5","model":"opus","id":"01M2Q43R5F000065QADAY386CS","ts":1789629948079}
+{"kind":"worker:start","label":"exam:1","role":"examiner","sessionId":"e4034afb-aa5f-4186-bf18-76323beb630d","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-177/clones/exam-1","model":"opus","id":"01M2Q43R5T00004E2JQA6KQPHC","ts":1789629948090}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"1b3fd505-c512-47ec-bf06-012c5bcc8dfb","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-177/clones/task-1","model":"opus","id":"01M2Q43R620000SZQB2CE9T67C","ts":1789629948098}
