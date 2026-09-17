@@ -26,8 +26,6 @@ one sim per question:
 - `test_run_engine_lockfile_regen.mjs` — the capture drops lockfiles and the
   fold regenerates them: the run's lockfile is rebuilt from the merged manifests
   at each fold, and no worker is asked to merge one by hand.
-- `test_run_engine_reuse.mjs` — two exams at one path: the reuse refusal naming
-  the fold's own reason, and a run whose issues are already closed `done`.
 - `test_run_engine_re_edge.mjs` — a task whose proof needs a sibling still in
   flight waits for that sibling and is dispatched again, instead of failing the
   run.
