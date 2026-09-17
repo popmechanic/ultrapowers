@@ -1,0 +1,45 @@
+{
+  "engineHead": "492d41d74e00f87d58c00bae7b8e168c3e758fdc",
+  "attempts": {
+    "1": {
+      "tip": "52b25cd6786ad07c2a4ec9236a8cc17a28b6d297",
+      "candidate": "bc8e85c7eaa1d3a36988f163557a393d3a2366cf",
+      "disposition": "folded",
+      "pathsJoined": 1,
+      "resolversDispatched": 0,
+      "suite": "pass",
+      "checks": [
+        {
+          "check": "parse",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_declared_dependencies.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_ready_set.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_proof_runs.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_own_proofs.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        }
+      ],
+      "checkRetries": 0
+    }
+  }
+}
