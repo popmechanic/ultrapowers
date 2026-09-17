@@ -386,7 +386,7 @@ RUN_GREENFIELD_PARAGRAPH = (
 RUN_GREENFIELD_CHECK = (
     r"sed -n '/^## State exams/,/^## Styling/p' "
     r"skills/ultrawrite/references/greenfield-stack.md | tr '\n' ' ' | "
-    r'''grep -q "Check: ! grep -rlE 'bun test|bun run|Bun\\\\.spawn|spawnSync|execSync' tests/state-exams"''')
+    r'''grep -q "Check: ! grep -rnE 'bun test|bun run|Bun\\\\.spawn|spawnSync|execSync' tests/state-exams | grep -vE"''')
 
 RUN_EXAMINER = (
     r"sed -n '1,/^## The issue/p' fleet/roles/examiner.md | tr '\n' ' ' | "
@@ -441,8 +441,14 @@ def test_g_greenfield_state_exams_carries_the_exact_check_line():
 # its stdout contains `tests/state-exams/b.test.ts` [M3]"
 
 CHECK_COMMAND = (
-    r"! grep -rlE 'bun test|bun run|Bun\.spawn|spawnSync|execSync' "
-    r"tests/state-exams")
+    r"! grep -rnE 'bun test|bun run|Bun\.spawn|spawnSync|execSync' "
+    r"tests/state-exams | grep -vE ':[0-9]+:[[:space:]]*(//|\*|/\*)' | grep .")
+
+# A comment that quotes a runner is not a runner (fixture run-28, 2026-09-17):
+# the examiner's header comment cited the Proof's own `Run:` line.
+COMMENTED_EXAM = ('// the Proof runs bun test tests/state-exams/x.test.ts\n'
+                  ' * and bun run lint:state reads it\n'
+                  'import x from "y"')
 
 CLEAN_EXAM = 'import x from "y"'
 
@@ -468,6 +474,15 @@ def _login_shell(cmd, cwd):
 def test_h_the_check_passes_a_clean_tree(tmp_path):
     """(h)/[M3]: no exam spawns a runner — exit 0, nothing printed."""
     p = _login_shell(CHECK_COMMAND, _exam_tree(tmp_path))
+    assert p.returncode == 0, (p.returncode, p.stdout, p.stderr)
+    assert p.stdout == "", p.stdout
+
+
+def test_h_a_comment_naming_a_runner_is_not_an_offender(tmp_path):
+    """(h)/[M3]: a `//` or `*` line that quotes `bun test` or `bun run` is a
+    comment, not a runner: exit 0, nothing printed (fixture run-28,
+    2026-09-17)."""
+    p = _login_shell(CHECK_COMMAND, _exam_tree(tmp_path, COMMENTED_EXAM))
     assert p.returncode == 0, (p.returncode, p.stdout, p.stderr)
     assert p.stdout == "", p.stdout
 

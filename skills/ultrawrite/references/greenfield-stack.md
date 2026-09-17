@@ -238,11 +238,14 @@ row gives — and the compiler refuses a `Run:` that names two exams at once wit
 `one Run, one exam`. Every TinyApp plan carries this Global Constraint, blocking:
 
 ```
-- Check: ! grep -rlE 'bun test|bun run|Bun\.spawn|spawnSync|execSync' tests/state-exams
+- Check: ! grep -rnE 'bun test|bun run|Bun\.spawn|spawnSync|execSync' tests/state-exams | grep -vE ':[0-9]+:[[:space:]]*(//|\*|/\*)' | grep .
 ```
 
-`grep -rlE` prints each matching file and exits 0 when at least one matches, so
-the leading `!` makes a clean tree exit 0 and silent, and one offender exit 1
+The first `grep` prints every matching line as `path:line:text`, the second
+drops lines that are comments (`//`, `*` or `/*` after leading whitespace: an
+exam's header comment may quote a `Run:` line without running it, fixture
+run-28, 2026-09-17), and the last exits 0 only when something is left; so the
+leading `!` makes a clean tree exit 0 and silent, and one offender exit 1
 with that file's path on stdout.
 
 ## Styling (experiment, 2026-09-16)
