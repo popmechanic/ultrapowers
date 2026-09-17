@@ -1,0 +1,74 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "19f130dccfc755a19c8a4f2ffb4288adb9dae2424c2cf34e9e767221e82cf867",
+      "verdict": "pass",
+      "reason": "M1 is pinned by leg (a) (exactly one `jev:finding` row and one request with the computed key `blocking|…`, the four question keys, and A.txt-only hunks) plus leg (b) for the empty-path fallback, M2 has one leg per row (minor, driver-minted, null answer, no jev), M3's leg (d) compares every named field across the paired runs, and nothing at BASE pins the opposite (the test file is absent and is the task's to create, `run-engine.mjs` is present with the `diff --git` `b/` capture the clause reuses)."
+    },
+    "2": {
+      "hash": "6fc57d9902326baf8318e122cbbfa80b4ef5d755989c04d8b37d60082abf950c",
+      "verdict": "pass",
+      "reason": "Every clause has a leg that would fail if it were false — M1/M2 by the per-task row counts, `tierChosen`, `answers` keys, state shapes, question types, ordering and `commentsOn` in legs (a)/(b), M3 by the 500-run, no-`jev` run and the `most-capable`→`opus` third run in leg (c), M4 by the `(label, model)` sequence and per-task report equality in leg (d) — and at BASE `TIER`/`resolvedModel` pin `sonnet`/`opus` as the clauses assert while the test file is the one the task creates."
+    },
+    "3": {
+      "hash": "7e6b5269fee690717c253ffde7f1576db216ee6137724fb6c6dfae227872f980",
+      "verdict": "pass",
+      "reason": "M1's leg (a) pins the single `jev:suite-red` row, its request's exact question keys/types/state and its hub placement so the row's absence or any misshapen field fails it; M2 has one leg per enumerated no-row case (green, claimed path with `reconcile:wave1:1`, 500→null, no `jev`); M3's leg (c) compares with/without `jev` on status, suite fields, `unattributed red:` lines, reconcile absence and the HEAD tree; the literals (epoch 1, noul 0.7s, stat added 1/2) are consistent, and the sim file is absent at BASE for the task to create while `run-engine.mjs` already routes `jev:` kinds to the run issue rather than pinning the opposite."
+    }
+  },
+  "tally": {
+    "base": "b16dbdb1e97ab49d6d4a2958907bfd3ec7cd3194",
+    "dispatched": 4,
+    "rejected": 1,
+    "rounds": 2,
+    "per_round": {
+      "1": {
+        "dispatched": 3,
+        "rejected": 1
+      },
+      "2": {
+        "dispatched": 1,
+        "rejected": 0
+      }
+    },
+    "note": "Tasks 1 and 3 carry the hashes their verdicts passed on in 2026-09-16-jev-record-only-rows.gate-verdicts.json (as tasks 2 and 4 there, base 3c61d8d7); all three were re-read against this base anyway. Round 1's task-2 rejection read `economics.tier` as a tier name where BASE sets it to `resolvedModel(tierName)`; the clause now says so and passed on re-read."
+  },
+  "history": [
+    {
+      "round": 1,
+      "task": "2",
+      "hash": "c0a8373c1d67645421d967a5909d11747b5bc6c1a91ec1260e11e9b343b76ea8",
+      "verdict": "fail",
+      "reason": "M1 pins `tierChosen` to `economics.tier` while legs (a)/(c) expect `sonnet`/`opus`; the reader took the tier for its name, the excerpt not showing line 3098 where BASE sets it to the model."
+    }
+  ],
+  "authoring": {
+    "minutes": 14,
+    "probes": 0,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Quote the issue; amend the no-metered-API gotcha in two lines",
+          "Quote the issue; touch nothing in CLAUDE.md"
+        ],
+        "recommended": "Quote the issue; amend the no-metered-API gotcha in two lines",
+        "picked": "Quote the issue; amend the no-metered-API gotcha in two lines"
+      },
+      {
+        "question": "Execute how",
+        "options": [
+          "Ultrapowers",
+          "Subagent-Driven",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers"
+      }
+    ]
+  }
+}
