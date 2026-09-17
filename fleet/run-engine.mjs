@@ -1159,17 +1159,15 @@ const siblingLine = (task, wave, refOf) => {
     })
   return sibs.length ? ('\nSIBLING FILES: ' + sibs.join(' | ')) : ''
 }
-const taskBodyBlock = (task, wavesPath) => {
-  const inlineBody = (typeof task.body === 'string' && task.body.trim() !== '')
-  if (inlineBody) return '\nTASK:\n' + task.body
-  if (wavesPath) {
-    return '\nTASK: read your verbatim task text from the JSON file at ' + wavesPath +
-      ' — in its "tasks" array, find the object whose "id" is "' + task.id +
-      '" and use that object\'s "body" field as the authoritative task text. Do ' +
-      'not paraphrase it; that entry also lists your declared file scope.'
-  }
-  return '\nTASK:\n' + (typeof task.body === 'string' ? task.body : '')
-}
+// One branch, because by the time this renders every task HAS a body: the
+// launch file is loaded once at the top of `runEngine` (see `hydrateBodies`
+// below) and a task still without one throws there, before any dispatch. The
+// second branch this had until #1100 handed the worker a pointer at the launch
+// file instead of the text, and only the write-side roles could follow it —
+// the reviewer runs `dontAsk`, where running `python3` on a JSON file is not a
+// read-only Bash command and was refused. It is deleted rather than kept as a
+// fallback so that no path can put a pointer in a prompt again.
+const taskBodyBlock = (task) => '\nTASK:\n' + (typeof task.body === 'string' ? task.body : '')
 // The critic's contracts block (2026-09-01) stood here: every task's signed
 // body and the compiler's edges, rendered for the one agent that read the
 // integrated tree. Deleted with that agent (#964 Task 2) — the composition
@@ -2365,6 +2363,46 @@ export async function runEngine({
     return undefined
   })()
   const wavesPath = (typeof args.wavesPath === 'string' && args.wavesPath.trim()) || undefined
+  // ── the bodies, loaded once (#1100) ────────────────────────────────────────
+  // The compiler's `--emit-args` payload is LIGHT: `{ id, title, files,
+  // depends_on, interfaces, tier, review, … }` and no `body`. Every task's text
+  // is written only to the `--emit-launch` file, which the driver hands over as
+  // `args.wavesPath` — so on a fleet run the check above passes a body-less
+  // task through, and until #1100 each worker was handed a pointer at that file
+  // and had to open it for itself. The engine opens it instead, here, once for
+  // the whole run: every prompt then carries the text inline, which is the one
+  // form all four roles can read regardless of what their permission mode lets
+  // them run. `wavesPath` itself is unchanged by this — it is still the
+  // resolver's pointer in `waveContendingBlock`, still an `args.json` key, and
+  // still what `makeAddDirsFor` scopes `patches/` with.
+  if (wavesPath) {
+    let launch
+    try {
+      launch = JSON.parse(fs.readFileSync(wavesPath, 'utf8'))
+    } catch {
+      launch = null
+    }
+    const byId = new Map()
+    const rows = (launch && Array.isArray(launch.tasks)) ? launch.tasks : []
+    for (const row of rows) {
+      if (row && typeof row.id === 'string') byId.set(row.id, row)
+    }
+    for (const w of WAVES) for (const t of w) {
+      if (typeof t.body === 'string' && t.body.trim() !== '') continue
+      const row = byId.get(t.id)
+      if (row && typeof row.body === 'string' && row.body.trim() !== '') t.body = row.body
+    }
+  }
+  // A task with no body is malformed the same way one missing from `args.waves`
+  // is, and it fails here for the same reason: a worker handed an empty `TASK:`
+  // block has nothing to implement, and finding that out at dispatch costs a
+  // whole round. This is the body half of the input check above, moved to where
+  // the launch file has been read.
+  for (const w of WAVES) for (const t of w) {
+    if (typeof t.body === 'string' && t.body.trim() !== '') continue
+    throw new Error('run-engine: task ' + t.id + ' has no body: not inline in args.waves ' +
+      'and not in ' + (wavesPath || '(no args.wavesPath given)'))
+  }
   // Patch input is the ONLY input shape here (Amendment 9): the value is the
   // driver-owned patches directory, the trust anchor for reply patches.
   const patchPrefix = (typeof args.patchInput === 'string' && args.patchInput.charAt(0) === '/')
@@ -3117,7 +3155,7 @@ export async function runEngine({
     // and TASK blocks. What differs is only what each is measured by — the
     // examiner's TEST COMMAND, the implementer's PROOFS.
     const sharedInputs = filesLine(task) + siblingsStr +
-      globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task, wavesPath)
+      globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task)
     // The examiner's line is the remapped command; a task with no command of
     // its own falls back to the run-wide one exactly as it did.
     const examCmdTask = examRunCmd ? { testCmd: examRunCmd } : task
@@ -4061,7 +4099,7 @@ export async function runEngine({
         reds.map((r) => r.line).join('; ') + ') — one repair round before any reviewer read the patch')
       await postReviewRound(kataRow, 0, reds.map((r) => r.line))
       impl = await agent(
-        roles.fix + taskBodyBlock(task, wavesPath) + proofsInputs +
+        roles.fix + taskBodyBlock(task) + proofsInputs +
           filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) +
           '\n\nBlocking issues to resolve:\n' +
           reds.map((r) => '- ' + r.line + '\n  output (last 4,000 characters):\n' + r.stdout).join('\n'),
@@ -4304,7 +4342,7 @@ export async function runEngine({
                  tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
                  ...examEditedField() }
       }
-      const reviewPrompt = roles.reviewer + taskBodyBlock(task, wavesPath) +
+      const reviewPrompt = roles.reviewer + taskBodyBlock(task) +
         '\nPATCH: ' + impl.patch +
         '\nHEAD: ' + impl.headSha +
         '\nBASE: ' + baseShaForTask + filesLine(task) + siblingsStr +
