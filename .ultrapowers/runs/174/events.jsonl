@@ -1,0 +1,11 @@
+{"kind":"run:open","runId":"run-174","base":"","source":"fleet/run-main.mjs","id":"01M2Q2YPRM0000HCZC8P8YC93G","ts":1789628734228}
+{"kind":"driver:stage","stage":"kata","detail":"record /home/exedev/plans/run-174.kata.json → https://kata.int.exe.xyz","id":"01M2Q2YPRP000055AYRQH0W04B","ts":1789628734230}
+{"kind":"driver:stage","stage":"tiers","detail":"2 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M2Q2YPRP0001Q3HJXYZZMEDP","ts":1789628734230}
+{"kind":"driver:stage","stage":"provision","detail":"BASE 766b261576990467742807da256f3a13c19d26a0; 2 task clone(s) + integration","id":"01M2Q2YQ220000RAANHG6AA0QK","ts":1789628734530}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M2Q2YQDT0000GEEYAM41YBTG","ts":1789628734906}
+{"kind":"driver:stage","stage":"engine","detail":"waves 2, width bound 2, patch input armed","id":"01M2Q2YQDT000110PR7GWJW1SE","ts":1789628734906}
+{"kind":"engine:phase","phase":"Setup","id":"01M2Q2YQE00000KN9MK9RXND3T","ts":1789628734912}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-174 at 766b261576990467742807da256f3a13c19d26a0","id":"01M2Q2YQMV0000ZF28X1ZBXWWP","ts":1789628735131}
+{"kind":"worker:start","label":"impl:2","role":"implementer","sessionId":"44c5d28b-26db-4558-b83b-1d8e627d5af8","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-174/clones/task-2","model":"opus","id":"01M2Q2YR9W00004KR56PRJB7ZD","ts":1789628735804}
+{"kind":"worker:start","label":"exam:1","role":"examiner","sessionId":"5185a117-022d-4d57-8d47-3422055a3f43","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-174/clones/exam-1","model":"opus","id":"01M2Q2YRA50000RQ6A46EW5MK2","ts":1789628735813}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"2ea96535-0964-469e-aa42-f7f5646d629a","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-174/clones/task-1","model":"opus","id":"01M2Q2YRAB0000QJ4EA1EDJ1WX","ts":1789628735819}
