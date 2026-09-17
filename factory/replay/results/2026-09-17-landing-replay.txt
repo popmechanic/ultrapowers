@@ -1,0 +1,47 @@
+scored 1157 of 1157 rows
+
+cost and clock: 2531853 input tokens over 1157 calls = $0.106 at $0.042/Mtok; latency median 320 ms, p95 538 ms
+
+== A. `status` against the reviewer's own `unverified:` prefix ==
+   (the prefix is opus grading itself; 118 rows carry it)
+   confidence >= 0.0   precision  11.6% (118/1019)  recall 100.0% (118/118)  agreement  22.1% (256/1157)
+   confidence >= 0.8   precision  33.8% (115/340)  recall  97.5% (115/118)  agreement  80.3% (929/1157)
+   confidence >= 0.9   precision  54.0% (108/200)  recall  91.5% (108/118)  agreement  91.2% (1055/1157)
+
+== B. `actor = plan` against the reviewer's own `plan-defect:` prefix ==
+   (110 rows carry it; this is the reading that would replace routeToPlan's regex)
+   confidence >= 0.0   precision  13.2% (82/621)  recall  74.5% (82/110)  agreement  51.0% (590/1157)
+   confidence >= 0.8   precision  21.3% (39/183)  recall  35.5% (39/110)  agreement  81.4% (942/1157)
+   confidence >= 0.9   precision  23.2% (22/95)  recall  20.0% (22/110)  agreement  86.1% (996/1157)
+   today's routeToPlan regex   precision 100.0% (30/30)  recall  27.3% (30/110)
+
+== C. `scope_only` against the reviewer's own `outside_files:` prefix ==
+   (98 rows carry it)
+   scope_only >= 0.5   precision  11.2% (59/528)  recall  60.2% (59/98)
+   scope_only >= 0.7   precision  15.5% (32/206)  recall  32.7% (32/98)
+   scope_only >= 0.8   precision  12.7% (7/55)  recall   7.1% (7/98)
+   scope_only >= 0.9   precision   0.0% (0/2)  recall   0.0% (0/98)
+
+== D. false-block rate: every one of these 1157 rows was graded MINOR ==
+   policy: claim_false >= t2  AND  actor = implementer  AND  fixable_in_files >= t3
+           AND  status != unverified  AND  process_only < t4
+   `borne_out >= t1` could not be asked offline, so each rate is an UPPER BOUND.
+
+     t2    t3    t4   would block
+     0.5   0.5   0.5     0.8% (9/1157)
+     0.5   0.7   0.5     0.7% (8/1157)
+     0.7   0.5   0.5     0.3% (3/1157)
+     0.7   0.7   0.5     0.3% (3/1157)
+     0.8   0.5   0.5     0.2% (2/1157)
+     0.8   0.7   0.5     0.2% (2/1157)
+     0.9   0.5   0.5     0.0% (0/1157)
+     0.9   0.7   0.5     0.0% (0/1157)
+
+== E. distributions ==
+   actor    {'plan': 621, 'nobody': 227, 'implementer': 218, 'examiner': 91}
+   status   {'unverified': 1019, 'verified': 107, 'deferred': 31}
+   subject  {'footprint': 322, 'proof_leg': 244, 'implementation': 239, 'quality': 202, 'plan_text': 102, 'exam_file': 48}
+   claim_false      median 0.23  p75 0.41  p90 0.59  >=0.8:   1.4% (16/1157)
+   fixable_in_files median 0.30  p75 0.56  p90 0.78  >=0.8:   9.0% (104/1157)
+   process_only     median 0.55  p75 0.72  p90 0.82  >=0.8:  13.0% (150/1157)
+   scope_only       median 0.47  p75 0.64  p90 0.75  >=0.8:   4.8% (55/1157)

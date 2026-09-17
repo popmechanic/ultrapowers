@@ -1,0 +1,593 @@
+{
+  "version": "questions-v1",
+  "about": "Every Jev question set the factory puts to `POST /v1/systemone`, one file, each set naming its reader and its rollback (map #1131 rule 3). A question is literal: it names no policy word, and nothing here decides anything. Thresholds live in factory/policy.json and are chosen on the record's replays, never tuned live. A Jev `null` routes that decision to the set's stated rollback, never to a guess.",
+  "warning": "A reworded question is a DIFFERENT question and its numbers mean something else. The sets marked `calibrated` below were read over a recorded corpus at these exact strings; editing one silently moves every reading taken against it.",
+  "sets": {
+    "task": {
+      "when": "at dispatch, once per task",
+      "reader": "k (1, or 2 when the task reads hard) and the discovery referee gate",
+      "rollback": "no answer -> k = 1 and the referee dispatched, which is today's unconditional shape",
+      "state": [
+        "task.title",
+        "task.body",
+        "task.claim",
+        "task.files",
+        "task.proof"
+      ],
+      "provenance": "fleet/run-engine.mjs JEV_TIER_QUESTIONS, verbatim (#1096)",
+      "calibrated": false,
+      "questions": {
+        "difficulty": {
+          "type": "score",
+          "instructions": {
+            "question": "How hard is `task` to implement correctly inside its stated files, for a capable engineer with the codebase open?",
+            "context": "`task.claim` is a signed Claim followed by numbered Machine clauses (M1, M2, ...) that restate it mechanically. `task.proof` names a Test file, Legs (a), (b), ... each tagged with the clause it falsifies, and Run: shell lines that must exit 0."
+          },
+          "criteria": [
+            {
+              "what": "Routine: a local edit with an obvious shape",
+              "signals": [
+                "one file",
+                "a literal or a doc sentence"
+              ]
+            },
+            {
+              "what": "Moderate: a few files, one seam, the legs say exactly what to build"
+            },
+            {
+              "what": "Hard: concurrency, ordering, a loop or lifecycle, several interacting files, or legs that constrain each other"
+            },
+            {
+              "what": "Very hard: a design decision the task leaves open, or a behaviour that depends on state the excerpt does not show"
+            }
+          ]
+        },
+        "lifecycle_or_concurrency": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does implementing `task` involve ordering, retries, locks, async control flow, cleanup, or process lifecycle?",
+            "context": "`task.claim` is a signed Claim followed by numbered Machine clauses (M1, M2, ...) that restate it mechanically. `task.proof` names a Test file, Legs (a), (b), ... each tagged with the clause it falsifies, and Run: shell lines that must exit 0."
+          },
+          "criteria": {
+            "true": "Yes",
+            "false": "No"
+          }
+        },
+        "design_open": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `task` leave a design decision open that the implementer must make before its legs can pass?",
+            "context": "`task.claim` is a signed Claim followed by numbered Machine clauses (M1, M2, ...) that restate it mechanically. `task.proof` names a Test file, Legs (a), (b), ... each tagged with the clause it falsifies, and Run: shell lines that must exit 0."
+          },
+          "criteria": {
+            "true": "A choice the text does not settle stands between the implementer and the legs",
+            "false": "The text and legs settle every choice that matters"
+          }
+        },
+        "review_difficulty": {
+          "type": "score",
+          "instructions": {
+            "question": "How hard is `patch` to review well?",
+            "context": "A referee (an expensive model) is about to read `patch`, the diff a task produced, against `task` (its Claim and Files), and return findings. Judge the patch, not the task text."
+          },
+          "criteria": [
+            {
+              "what": "Routine: docs, a literal, a renamed string, a test fixture; a skim settles it",
+              "signals": [
+                "only .md or comments change",
+                "a constant"
+              ]
+            },
+            {
+              "what": "Straightforward: one seam in one or two files, the intent is legible from the diff"
+            },
+            {
+              "what": "Careful: several files interact, a loop or state machine changes, or a test's meaning changes"
+            },
+            {
+              "what": "Expert: concurrency, ordering, error recovery, a protocol or persisted format, or code the diff alone cannot show is safe"
+            }
+          ]
+        },
+        "doc_or_prose_only": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `patch` change only prose: markdown, comments, doc strings, role text?",
+            "context": "A referee (an expensive model) is about to read `patch`, the diff a task produced, against `task` (its Claim and Files), and return findings. Judge the patch, not the task text."
+          },
+          "criteria": {
+            "true": "No executable line changes",
+            "false": "Code, tests, config or scripts change"
+          }
+        }
+      }
+    },
+    "landing": {
+      "when": "on each landing, once per candidate patch, plus once per discovery-referee finding",
+      "reader": "adopt / re-dispatch, and the severity a finding is graded at",
+      "rollback": "no answer -> that task falls back to the graded referee (reviewer-graded.md), the shape #1127 keeps as its rollback",
+      "state": [
+        "task.claim",
+        "task.machine",
+        "task.files",
+        "finding",
+        "hunks",
+        "sibling_facts",
+        "clauses",
+        "patch",
+        "files.fN"
+      ],
+      "provenance": "borne_out, actor, claim_false, fixable_in_files: fleet/run-engine.mjs JEV_FINDING_QUESTIONS, verbatim (#1093). defect_visible, status, subject, process_only, scope_only: #1127. settled_by_fact: #1127's 2026-09-17 amendment. claim_established and the M<i>__f<j> pair: factory/proto/loop.mjs, the 2026-09-17 prototype.",
+      "calibrated": "borne_out, actor, claim_false, fixable_in_files were replayed over 1,157 residuals at these strings",
+      "questions": {
+        "borne_out": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `hunks` (unified diffs of the files the finding names, or the whole patch) contain the code that `finding.text` describes, so that the finding is about this change?",
+            "context": "A code referee wrote `finding` about `task`'s patch. You are shown the diff of the files the finding names. Judge from the code, not from a path name that may appear in the finding."
+          },
+          "criteria": {
+            "true": "The lines the finding reasons about are in these hunks",
+            "false": "These hunks are about something else; the finding does not concern these lines"
+          }
+        },
+        "actor": {
+          "type": "choice",
+          "instructions": {
+            "question": "Who would have to act to resolve `finding.text`?",
+            "context": "The implementer can only edit paths in `task.files`. The plan author owns the task text (Claim, Machine clauses, Files, Proof). The examiner owns the exam file."
+          },
+          "criteria": {
+            "implementer": "An edit inside `task.files` by the implementer resolves it",
+            "plan": "Only a change to the task text, its Files set, or its Proof resolves it; no edit inside `task.files` can",
+            "examiner": "Only a change to the exam or a Proof leg resolves it",
+            "nobody": "It is an observation, a deferral, or already resolved; nothing needs doing"
+          }
+        },
+        "claim_false": {
+          "type": "noul",
+          "instructions": "Taken at face value, does `finding.text` describe a defect that would make `task.claim` false as delivered?",
+          "criteria": {
+            "true": "If the finding is right, the claim is not established",
+            "false": "The claim could still hold; the finding is about something else"
+          }
+        },
+        "fixable_in_files": {
+          "type": "noul",
+          "instructions": {
+            "question": "Can `finding.text` be resolved by one round of edits inside `task.files` alone?",
+            "context": "The implementer gets one fix round and may edit only paths in `task.files`."
+          },
+          "criteria": {
+            "true": "One round of edits inside `task.files` resolves it",
+            "false": "It needs a file outside `task.files`, a change to the task text, or more than one round"
+          }
+        },
+        "defect_visible": {
+          "type": "noul",
+          "instructions": {
+            "question": "Reading `hunks` alone, is the defect `finding.text` describes actually visible in the code?",
+            "context": "A discovery referee wrote `finding` about the patch `task` produced. You are shown `hunks`, unified diffs of the files the finding names, or the whole patch when it names none. Judge from the code, not from a path name that may appear in the finding."
+          },
+          "criteria": {
+            "true": "The code in these hunks has the property the finding says it has",
+            "false": "The hunks do not show it; the finding asserts something the code does not do"
+          }
+        },
+        "status": {
+          "type": "choice",
+          "instructions": {
+            "question": "What is `finding.text`'s own epistemic status about the change?",
+            "context": "A discovery referee wrote `finding` about the patch `task` produced. You are shown `hunks`, unified diffs of the files the finding names, or the whole patch when it names none. Judge from the code, not from a path name that may appear in the finding."
+          },
+          "criteria": {
+            "verified": "It states a defect it has established from the code it was shown",
+            "unverified": "It states that it could not confirm something — a cross-task claim, a file it was not shown, a behaviour the diff cannot settle",
+            "deferred": "It defers the point to a later task, a follow-up, or another reader"
+          }
+        },
+        "subject": {
+          "type": "choice",
+          "instructions": {
+            "question": "What is `finding.text` about?",
+            "context": "A discovery referee wrote `finding` about the patch `task` produced. You are shown `hunks`, unified diffs of the files the finding names, or the whole patch when it names none. Judge from the code, not from a path name that may appear in the finding."
+          },
+          "criteria": {
+            "plan_text": "The task text: a Claim, a Machine clause, a Files set or a literal in it",
+            "proof_leg": "A Proof leg or a Run: line",
+            "exam_file": "The exam file a peer wrote",
+            "implementation": "The code the implementer wrote",
+            "footprint": "Where the change landed: a path outside Files, a deletion, an edit to a sibling's file",
+            "quality": "Style, naming, structure or a comment, with no behaviour at stake"
+          }
+        },
+        "process_only": {
+          "type": "noul",
+          "instructions": {
+            "question": "Is `finding.text` about how the work was produced rather than about the state of the delivered tree?",
+            "context": "A discovery referee wrote `finding` about the patch `task` produced. You are shown `hunks`, unified diffs of the files the finding names, or the whole patch when it names none. Judge from the code, not from a path name that may appear in the finding."
+          },
+          "criteria": {
+            "true": "It faults the process: the order of work, a missing note, an undeclared step, how it was tested",
+            "false": "It faults the result: what the tree now does or does not do"
+          }
+        },
+        "scope_only": {
+          "type": "noul",
+          "instructions": {
+            "question": "Is `finding.text` only about work the task did not ask for?",
+            "context": "A discovery referee wrote `finding` about the patch `task` produced. You are shown `hunks`, unified diffs of the files the finding names, or the whole patch when it names none. Judge from the code, not from a path name that may appear in the finding."
+          },
+          "criteria": {
+            "true": "It asks for something outside the Claim and clauses as signed",
+            "false": "It is about what the task asked for"
+          }
+        },
+        "settled_by_fact": {
+          "type": "choice",
+          "instructions": {
+            "question": "Do `sibling_facts` settle what `finding.text` says it could not verify?",
+            "context": "A discovery referee wrote `finding` about the patch `task` produced. You are shown `hunks`, unified diffs of the files the finding names, or the whole patch when it names none. Judge from the code, not from a path name that may appear in the finding. `sibling_facts` are facts the owning sibling task posted about the paths or symbols this finding names outside `task.files`: its reached-state cells, its added exports, and its declared amendments, as the record holds them."
+          },
+          "criteria": {
+            "verified": "A fact confirms what the finding could not verify: the concern does not hold",
+            "contradicted": "A fact contradicts it: the defect the finding suspected is real",
+            "not_settled": "There are facts about this symbol or path, and none of them settles the question",
+            "no_fact": "No sibling fact covers what the finding names"
+          }
+        },
+        "claim_established": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `patch` (a unified diff) implement every clause in `clauses`, so that the task Claim is established as delivered?",
+            "context": "`clauses` are the task's numbered Machine clauses (M1, M2, ...), which restate its signed Claim mechanically. Each `files.fN` is one file's unified diff from the same patch."
+          },
+          "criteria": {
+            "true": "Every clause has code in the patch that satisfies it",
+            "false": "At least one clause is unmet, wrong, or only a stub"
+          }
+        }
+      },
+      "pairwise": {
+        "key": "M<i>__f<j>",
+        "type": "noul",
+        "over": "every (clauses[i], files.fj) pair",
+        "instructions": {
+          "question": "Does `files.f<j>` (one file's diff) carry the change that establishes clause `clauses[<i>]`?",
+          "context": "`clauses` are the task's numbered Machine clauses (M1, M2, ...), which restate its signed Claim mechanically. Each `files.fN` is one file's unified diff from the same patch."
+        },
+        "criteria": {
+          "true": "A referee checking this clause must read this diff",
+          "false": "This diff is irrelevant to this clause"
+        },
+        "note": "Record-only until it has a label (#1127 reading 4). The 2026-09-16 replay read AUROC 0.68 at precision <= 20% against the reviewer's own (clause, path) pairs, which is not a gating reading."
+      }
+    },
+    "supervisor": {
+      "when": "per live worker, per tick",
+      "reader": "stop / re-dispatch / attention, with hysteresis over two consecutive ticks",
+      "rollback": "no answer -> nothing; a tick that did not read is a tick that did not act, and the hub being dark is never a park (#955)",
+      "state": [
+        "inferred.notes",
+        "inferred.attention",
+        "inferred.blocked_by",
+        "observed.elapsed_vs_median",
+        "observed.diff_stat",
+        "observed.paths_touched",
+        "observed.task_files",
+        "observed.suite_runs",
+        "observed.exam_exit",
+        "observed.prior_tick"
+      ],
+      "provenance": "#1128, drafted at this sitting; no corpus has been read at these strings",
+      "calibrated": false,
+      "code_not_jev": {
+        "outside_files": "touched - task.files != empty",
+        "suite_thrash": "whole-suite runs >= 2 with zero red proofs"
+      },
+      "questions": {
+        "stuck": {
+          "type": "noul",
+          "instructions": {
+            "question": "Given `observed` and `inferred`, is the worker looping or otherwise unable to advance?",
+            "context": "A worker (an implementer, examiner or fix session) is RUNNING on a fleet task right now. `inferred` is the worker's own words: its last notes, its attention cell, the blocked-by edges it filed. `observed` is the driver's own facts about it: elapsed against the role's median on the record, the diff stat of its clone against its anchor, the paths it has touched against `task.files`, whole-suite runs counted so far, exam and proof exits if any, and the previous tick's reading. Prefer `observed` wherever it speaks: a worker that says it is done is not evidence that it is."
+          },
+          "criteria": {
+            "true": "It is repeating work, retrying the same failure, or its diff has stopped growing while it keeps going",
+            "false": "It is advancing: the diff grows, the failures change, the notes describe new ground"
+          }
+        },
+        "off_track": {
+          "type": "noul",
+          "instructions": {
+            "question": "Do the paths touched and the notes describe work the Claim did not ask for?",
+            "context": "A worker (an implementer, examiner or fix session) is RUNNING on a fleet task right now. `inferred` is the worker's own words: its last notes, its attention cell, the blocked-by edges it filed. `observed` is the driver's own facts about it: elapsed against the role's median on the record, the diff stat of its clone against its anchor, the paths it has touched against `task.files`, whole-suite runs counted so far, exam and proof exits if any, and the previous tick's reading. Prefer `observed` wherever it speaks: a worker that says it is done is not evidence that it is."
+          },
+          "criteria": {
+            "true": "It is building something outside the Claim and its clauses",
+            "false": "Everything it has touched serves the Claim as signed"
+          }
+        },
+        "needs_human": {
+          "type": "noul",
+          "instructions": {
+            "question": "Do the notes name a decision only the operator can make?",
+            "context": "A worker (an implementer, examiner or fix session) is RUNNING on a fleet task right now. `inferred` is the worker's own words: its last notes, its attention cell, the blocked-by edges it filed. `observed` is the driver's own facts about it: elapsed against the role's median on the record, the diff stat of its clone against its anchor, the paths it has touched against `task.files`, whole-suite runs counted so far, exam and proof exits if any, and the previous tick's reading. Prefer `observed` wherever it speaks: a worker that says it is done is not evidence that it is."
+          },
+          "criteria": {
+            "true": "It is blocked on a choice no reading of the task text settles",
+            "false": "Nothing it reports needs a person"
+          }
+        },
+        "done_not_exited": {
+          "type": "noul",
+          "instructions": {
+            "question": "Do the notes and the diff describe finished work the worker is still polishing?",
+            "context": "A worker (an implementer, examiner or fix session) is RUNNING on a fleet task right now. `inferred` is the worker's own words: its last notes, its attention cell, the blocked-by edges it filed. `observed` is the driver's own facts about it: elapsed against the role's median on the record, the diff stat of its clone against its anchor, the paths it has touched against `task.files`, whole-suite runs counted so far, exam and proof exits if any, and the previous tick's reading. Prefer `observed` wherever it speaks: a worker that says it is done is not evidence that it is."
+          },
+          "criteria": {
+            "true": "The clauses appear satisfied and it is now tidying, re-reading, or re-running what already passed",
+            "false": "There is work left that the clauses require"
+          }
+        }
+      }
+    },
+    "resolve": {
+      "when": "at a conflict: the union pair before any dispatch, the reply gate after a resolver replies",
+      "reader": "skip the resolver dispatch entirely (union), or accept / re-prompt the reply (gate)",
+      "rollback": "no answer -> dispatch the resolver, and accept its reply on the kernel's grammar check alone, which is today's shape",
+      "state": [
+        "task_side",
+        "frontier_side",
+        "reply.content",
+        "reply.narration"
+      ],
+      "provenance": "#1125 P1 and P2. THAT TICKET IS STAGED FOG and says in terms that no question key there is settled wording; these strings are a first drafting of it, not an adopted set.",
+      "calibrated": false,
+      "unsettled": true,
+      "n_warning": "Ten resolver dispatches have ever been recorded, across runs 36, 44 and 183. That is far under the floor of 5 runs / 20 tasks and may flip no default.",
+      "questions": {
+        "independent_additions": {
+          "type": "noul",
+          "instructions": {
+            "question": "Do the two sides add separate things, such that keeping both in order loses nothing either intended?",
+            "context": "Two sides edit the same region and the kernel could not fold them. `task_side` is the landing task's hunk and `frontier_side` is the docket frontier's. A union keeps both, in that order, byte for byte."
+          },
+          "criteria": {
+            "true": "Each side adds its own thing beside the other; both survive a union intact",
+            "false": "They are alternatives, or one supersedes the other"
+          }
+        },
+        "shared_anchor": {
+          "type": "noul",
+          "instructions": {
+            "question": "Do both sides edit one shared construct — the same list entry, the same function body, the same sentence — rather than adding beside each other?",
+            "context": "Two sides edit the same region and the kernel could not fold them. `task_side` is the landing task's hunk and `frontier_side` is the docket frontier's. A union keeps both, in that order, byte for byte."
+          },
+          "criteria": {
+            "true": "They edit the same construct, so a union would state it twice",
+            "false": "They touch different constructs that happen to be adjacent"
+          }
+        },
+        "ordering_matters": {
+          "type": "noul",
+          "instructions": {
+            "question": "Would the meaning change if the task's lines came before the frontier's rather than after?",
+            "context": "Two sides edit the same region and the kernel could not fold them. `task_side` is the landing task's hunk and `frontier_side` is the docket frontier's. A union keeps both, in that order, byte for byte."
+          },
+          "criteria": {
+            "true": "The order carries meaning here: a sequence, a precedence, a first-match rule, a narrative",
+            "false": "Either order reads the same"
+          }
+        },
+        "carries_both": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `reply` carry every line that both sides had in common?",
+            "context": "A resolver was dispatched over a conflict and returned `reply`: proposed hunk content and a narration. `task_side` and `frontier_side` are the two sides it was given. The kernel checks hunk grammar and the epoch and nothing semantic, so these are the only checks of the three rules the resolver role states in prose."
+          },
+          "criteria": {
+            "true": "Every line common to both sides survives in the proposed content",
+            "false": "A line both sides kept is missing from the reply"
+          }
+        },
+        "drops_side": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `reply` drop one side's change without its narration saying so?",
+            "context": "A resolver was dispatched over a conflict and returned `reply`: proposed hunk content and a narration. `task_side` and `frontier_side` are the two sides it was given. The kernel checks hunk grammar and the epoch and nothing semantic, so these are the only checks of the three rules the resolver role states in prose."
+          },
+          "criteria": {
+            "true": "One side's intent is absent from the content and unmentioned in the narration",
+            "false": "Both sides survive, or a dropped side is named and justified in the narration"
+          }
+        },
+        "invents": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `reply` contain content that appears in neither side and that its narration does not account for?",
+            "context": "A resolver was dispatched over a conflict and returned `reply`: proposed hunk content and a narration. `task_side` and `frontier_side` are the two sides it was given. The kernel checks hunk grammar and the epoch and nothing semantic, so these are the only checks of the three rules the resolver role states in prose."
+          },
+          "criteria": {
+            "true": "There is material in the proposed content with no source in either side and no mention in the narration",
+            "false": "Everything in the content comes from one side, the other, or the narration's stated reasoning"
+          }
+        }
+      }
+    },
+    "note": {
+      "when": "on each note the poll reads",
+      "reader": "attention, the run issue's plan-defect route, and interface.settled",
+      "rollback": "no answer -> the note carries no reading and is mirrored as prose, which is the pre-#1095 shape",
+      "state": [
+        "title",
+        "claim",
+        "role",
+        "note",
+        "candidates"
+      ],
+      "provenance": "stuck, plan_defect, divergence, kind, operator_should_read: fleet/jev-questions.mjs NOTE_QUESTIONS, verbatim (#1095, jev_notes.py). settles_interface and which: #1130.",
+      "calibrated": "the five NOTE_QUESTIONS were calibrated at these exact strings (#1095)",
+      "questions": {
+        "stuck": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `note` say the worker cannot proceed, is blocked, or needs a person to decide something?",
+            "context": "A worker (an implementer, examiner or fix session) on a fleet task posted this note on the task's issue while working. The task's Claim is given."
+          },
+          "criteria": {
+            "true": "It reports a blocker, a question it cannot settle, or asks for a human",
+            "false": "It reports progress, an approach, or a hand-in"
+          }
+        },
+        "plan_defect": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `note` say the task text itself is wrong: a clause, leg, path or literal that is contradictory, absent at base, or impossible to satisfy?",
+            "context": "A worker (an implementer, examiner or fix session) on a fleet task posted this note on the task's issue while working. The task's Claim is given."
+          },
+          "criteria": {
+            "true": "It names a defect in the task text or proof, not in its own work",
+            "false": "It does not fault the task text"
+          }
+        },
+        "divergence": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `note` disclose that the worker did something the task text did not ask for or forbade: an edit outside its Files, a changed clause, a substituted approach?",
+            "context": "A worker (an implementer, examiner or fix session) on a fleet task posted this note on the task's issue while working. The task's Claim is given."
+          },
+          "criteria": {
+            "true": "It discloses a divergence from the task as written",
+            "false": "It stays within the task as written, or says nothing about scope"
+          }
+        },
+        "kind": {
+          "type": "choice",
+          "instructions": {
+            "question": "What kind of note is `note`?",
+            "context": "A worker (an implementer, examiner or fix session) on a fleet task posted this note on the task's issue while working. The task's Claim is given."
+          },
+          "criteria": {
+            "approach": "A plan of attack before or at the start of work",
+            "progress": "A mid-work status with no decision needed",
+            "handin": "A completion report: what landed, its commit, its evidence",
+            "blocker": "A problem that stops the work",
+            "disclosure": "An explanation of a divergence or a judgment call already made",
+            "reading": "An examiner's reading of the legs or the base before writing",
+            "other": "None of these"
+          }
+        },
+        "operator_should_read": {
+          "type": "score",
+          "instructions": {
+            "question": "Should the operator, who never reads code, be shown `note`?",
+            "context": "A worker (an implementer, examiner or fix session) on a fleet task posted this note on the task's issue while working. The task's Claim is given."
+          },
+          "criteria": [
+            {
+              "what": "No: routine narration"
+            },
+            {
+              "what": "Maybe: a judgment call worth knowing after the run"
+            },
+            {
+              "what": "Yes, after the run: a decision or divergence that affects the plan"
+            },
+            {
+              "what": "Yes, now: the worker needs a person"
+            }
+          ]
+        },
+        "settles_interface": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `note` say an export of this task is finished and safe for a sibling to build against?",
+            "context": "A worker posted this hand-in note on its task's issue. `candidates` are the task's own added top-level exports, as the driver read them off the captured patch, plus its plan `Produces:` entries. The candidates come from the code; you only choose among them."
+          },
+          "criteria": {
+            "true": "It declares a named export done and stable, not in progress",
+            "false": "It says nothing of the kind, or says the export may still move"
+          }
+        },
+        "which": {
+          "type": "choice",
+          "instructions": {
+            "question": "Which candidate does `note` say is settled?",
+            "context": "A worker posted this hand-in note on its task's issue. `candidates` are the task's own added top-level exports, as the driver read them off the captured patch, plus its plan `Produces:` entries. The candidates come from the code; you only choose among them."
+          },
+          "criteria": {
+            "_candidates": "one key per entry of `candidates`, plus `none`"
+          },
+          "dynamic": "candidates"
+        }
+      }
+    },
+    "amendment": {
+      "when": "on each driver:amendment row",
+      "reader": "the reviewer's lens, the PR card's list, the release census, and the re-edge of an unclaimed sibling",
+      "rollback": "no answer -> the amendment carries no reading and files no edge; the row itself stands, which is #1095's shape",
+      "state": [
+        "amendment.what",
+        "amendment.why",
+        "amendment.clause_before",
+        "amendment.clause_after",
+        "sibling.claim",
+        "sibling.machine",
+        "sibling.consumes"
+      ],
+      "provenance": "compelled, plan_fault, magnitude: fleet/jev-questions.mjs AMENDMENT_QUESTIONS, verbatim (#1095). changes_consumer: #1129.",
+      "calibrated": "the three AMENDMENT_QUESTIONS were calibrated at these exact strings (#1095)",
+      "code_not_jev": {
+        "files_overlap": "amendment.files intersect sibling.files != empty -> file the blocked-by edge, no Jev (#1129)"
+      },
+      "questions": {
+        "compelled": {
+          "type": "noul",
+          "instructions": "Does `amendment.why` show the change was forced: the task as written could not pass its own proof, contradicted the base, or contradicted a sibling?",
+          "criteria": {
+            "true": "No implementation of the task as written could have merged",
+            "false": "The worker preferred a different shape; the task as written was passable"
+          }
+        },
+        "plan_fault": {
+          "type": "noul",
+          "instructions": "Is the root cause in `amendment` a defect in the task text that its author should have caught, rather than a fact only visible while implementing?",
+          "criteria": {
+            "true": "A careful author reading the base would have written it right",
+            "false": "It only became visible in the tree, or it is a preference"
+          }
+        },
+        "magnitude": {
+          "type": "score",
+          "instructions": "How far does `amendment.what` move the task from what was signed?",
+          "criteria": [
+            {
+              "what": "Cosmetic: a path spelling, a line number, a comment"
+            },
+            {
+              "what": "Local: one clause or one extra file, same intent"
+            },
+            {
+              "what": "Substantive: a clause's meaning, a leg dropped or changed"
+            },
+            {
+              "what": "Reframed: the task now does something else"
+            }
+          ]
+        },
+        "changes_consumer": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `amendment` change what `sibling.machine` assumes about the amending task's output?",
+            "context": "`amendment` is a divergence a worker declared on the task it is implementing. `sibling` is another task in the same run that has NOT been claimed by any worker yet, and that either shares a file with the amending task or `Consumes:` a symbol it `Produces:`."
+          },
+          "criteria": {
+            "true": "A Machine clause of the sibling assumes something this amendment has changed",
+            "false": "The sibling's assumptions survive the amendment unchanged"
+          }
+        }
+      }
+    }
+  }
+}
