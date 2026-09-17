@@ -391,7 +391,14 @@ const simRun = async ({ tag, onImpl1, withJev = true, withEvents = true, wrapPat
   const asks = []
   const jev = {
     ask: async ({ state, questions }) => {
-      asks.push({ state: JSON.parse(JSON.stringify(state)), questions })
+      // Only a NOTE read is this exam's business. Since run-182 (#1096) the same
+      // client is also asked a `jev:tier` question at every dispatch and every
+      // review (a state carrying `task` and, at review, `patch` — never `note`),
+      // so the log this exam counts and reads by index holds the note reads
+      // alone; the tier reads are `test_run_engine_jev_tier.mjs`'s to pin.
+      if (state && typeof state.note === 'string') {
+        asks.push({ state: JSON.parse(JSON.stringify(state)), questions })
+      }
       return answerFor(state && state.note)
     },
   }

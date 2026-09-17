@@ -597,6 +597,12 @@ const fakeJev = (script) => {
     calls,
     ask: async (arg) => {
       const { state, questions } = arg || {}
+      // Only an AMENDMENT read is this exam's business. Since run-182 (#1096)
+      // the same client is also asked a `jev:tier` question at every dispatch
+      // and every review (a state with `task` and, at review, `patch` — never
+      // `amendment`); those reads are `test_run_engine_jev_tier.mjs`'s to pin,
+      // so they consume no scripted answer here and land in no `calls` entry.
+      if (!(state && state.amendment)) return null
       calls.push({ state, questions })
       const answer = script[calls.length - 1]
       if (answer instanceof Error) throw answer
