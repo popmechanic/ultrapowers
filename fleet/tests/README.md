@@ -63,8 +63,6 @@ one sim per question:
   action wall and whether the browser ran.
 - `test_run_engine_state_handshake.mjs` — the state handshake: what a task
   publishes as the state it reached, and what the driver holds against it.
-- `test_run_engine_kata_close.mjs` — the engine stamps an issue with the run and
-  sha that adopted it before it closes it.
 
 ## The launcher — `test_launch_*`
 
