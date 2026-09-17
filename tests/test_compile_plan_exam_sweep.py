@@ -169,6 +169,12 @@ CLEAN_COMMANDS = [
     "bun test tests/state-exams/a.test.ts tests/state-exams/a.test.ts",
     # Names no exam path at all.
     "bun run lint:state",
+    # Inspection, not a sweep (run-26, 2026-09-17): a grep over many exam
+    # paths runs no exam, and neither does a diff fence that mentions the
+    # directory.
+    "! grep -lE 'spawn|exec' tests/state-exams/a.test.ts tests/state-exams/b.test.ts tests/state-exams/c.test.ts",
+    "! git diff --name-status $ULTRA_BASE | grep -vE '^M[[:space:]]+tests/state-exams/[a-z0-9-]+\\.test\\.ts$'",
+    "ls tests/state-exams",
     # `tests/state-examsx/` is a different directory: the token boundary is
     # the path alphabet, so `tests/state-exams` does not match inside it.
     ("bun test tests/state-examsx/a.test.ts "
