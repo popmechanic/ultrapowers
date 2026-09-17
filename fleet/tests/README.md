@@ -65,9 +65,6 @@ one sim per question:
   publishes as the state it reached, and what the driver holds against it.
 - `test_run_engine_kata_close.mjs` — the engine stamps an issue with the run and
   sha that adopted it before it closes it.
-- `test_run_engine_kata_landing.mjs` — a task's issue reads `landed` when the
-  driver takes its result and `adopted` when it is folded, and the hook's
-  `needs-human` is cleared.
 
 ## The launcher — `test_launch_*`
 

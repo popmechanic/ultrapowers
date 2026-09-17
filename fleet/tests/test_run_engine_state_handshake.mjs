@@ -86,7 +86,7 @@
  * the real `execSeam`. Only `agent` is stubbed, and the hub is a fake with the
  * client's method names over an in-memory store — the shape
  * `fleet/tests/test_worker_kata_env.mjs` builds and
- * `test_run_engine_kata_landing.mjs` drives, copied here because neither file
+ * `the kata-landing sim (deleted 2026-09-17, zero catches)` drives, copied here because neither file
  * is in this task's Files.
  *
  * The consumer's Proof path is a shell exam the examiner stub writes into its
