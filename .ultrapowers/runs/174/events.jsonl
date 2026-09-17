@@ -54,3 +54,8 @@
 {"kind":"worker:end","label":"review:1:1","role":"reviewer","sessionId":"8d8ea60f-ce77-4cc3-8ccf-61f0e684f24f","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"reason":null,"meter":{"input":7331,"output":12985,"cacheRead":1283516,"cacheCreation":49903,"costUsd":1.4845855,"models":["claude-opus-5"]},"id":"01M2Q3MNXZ00008AYY7HX6V1TX","ts":1789629454271}
 {"kind":"transcript:slice","label":"review:1:1","sessionId":"8d8ea60f-ce77-4cc3-8ccf-61f0e684f24f","bytes":11479,"id":"01M2Q3MNY700003A08HQRPE4DR","ts":1789629454279}
 {"kind":"engine:phase","phase":"Wave 1","id":"01M2Q3MP1A0000JC6S9N3A1MH5","ts":1789629454378}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["1","2"],"headSha":"492d41d74e00f87d58c00bae7b8e168c3e758fdc","why":"end","applied":{"1":"base","2":"base"},"id":"01M2Q3STP50000T7GRTE74CG11","ts":1789629622981}
+{"kind":"driver:integrated-clean","wave":1,"removed":7,"id":"01M2Q3STP70000H6GDGECTK7FR","ts":1789629622983}
+{"kind":"driver:integrated-check","cmd":"node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"minor":false,"wave":1,"id":"01M2Q3STZ00000PCM14ZZMXP4J","ts":1789629623264}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/roles/implementer.md fleet/roles/examiner.md fleet/roles/fix.md fleet/roles/resolver.md fleet/roles/reconcile.md fleet/roles/README.md","exit":0,"minor":false,"wave":1,"id":"01M2Q3STZ70000XDWFWSTC27PC","ts":1789629623271}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- skills/","exit":0,"minor":false,"wave":1,"id":"01M2Q3STZD0000JATK0W24XR5E","ts":1789629623277}
