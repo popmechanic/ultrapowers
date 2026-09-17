@@ -1240,6 +1240,54 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   - events-page — `GET /projects/<id>/events?after_id=N&limit=K` answers `{reset_required, events, next_after_id}`, `next_after_id` being the last event's `event_id`: a `limit` of 2 answered 100 events, so the limit is no bound and the cursor is the whole of the walk, and an empty `events` is its end. A comment event is `type` `issue.commented` with `issue_uid`, `actor` (`impl:3@run-170`) and `payload: {comment_uid, author, body, created_at}` (v0.17.2, 2026-09-17; #1095).
   - cli-next-unowned — hand, read by a person and not the probe: #979 read the CLI's `next` as having no `--unowned`, and `kata next --help` on the hub lists one — both readings stand (v0.17.2, 2026-09-15; #979).
   - int-hosts-https — hand, read by a person and not the probe and readable only from a VM: every `*.int.exe.xyz` host is https, http 301s, and a followed 301 turns a POST into a GET (v0.17.2, 2026-09-11; run-110, CLAUDE.md's kata seams).
+- **SDK and edge-auth facts (measured 2026-09-17, one hand-stood `--tag fleet` box):** the readings
+  the Agent SDK worker layer rests on, taken on `jev-probe-09172119` (node 24.20.0, SDK 0.3.274,
+  image CLI 2.1.272) under the boot's own engine env, one row per probe. A reading that moves is one
+  edited row; a document or an issue comment cites the row instead of repeating it.
+  - sdk-through-the-edge — `query()` with `settingSources: []` and
+    `outputFormat: {type:'json_schema'}` answers through the edge bearer under
+    `ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz`, `CLAUDE_CODE_OAUTH_TOKEN=placeholder`,
+    `env -u CLAUDE_CONFIG_DIR`: `apiKeySource: none`, structured output honoured, 3.0 s wall, and
+    `system/init.capabilities` advertises `interrupt_receipt_v1`, `interrupt_cancel_queued_v1`,
+    `msg_lifecycle_v1` (2026-09-17; #1131 probe 1).
+  - env-only-auth — the same query answers with `ANTHROPIC_AUTH_TOKEN=placeholder` and NO
+    `CLAUDE_CODE_OAUTH_TOKEN`, and the control with neither variable set fails fast
+    (`Not logged in · Please run /login`, `terminal_reason: api_error`, 0.5 s). Env-only auth is
+    therefore real and not the edge answering regardless, so the four-flag `--bare` substitute in
+    `fleet/run-worker.mjs` `buildArgs` is retirable (2026-09-17; #1131 probe 2, the 2026-08-28
+    `--bare` blocker settled).
+  - setup-token-infers-but-fails-the-bearer-probe — a `claude setup-token` one-year token installed
+    as `claude-max`'s bearer SERVES INFERENCE (same query, structured output, 2.1 s) and passes the
+    boot's first gate (`claude auth status` → `authMethod: oauth_token`, `apiProvider: firstParty`),
+    but `GET /api/oauth/usage` through the proxy is 403 `oauth_scope_insufficient`, required scope
+    `user:profile`, with a `"type":"error"` body — exactly the shape `sandbox-boot.sh`'s
+    `bearer_probe` classifies as a dead credential, so it would PARK EVERY RUN at boot. The token is
+    inference-scoped by construction. Retiring the four-hour refresh and the revocation trap of
+    runs 92/100/103 therefore costs one change to the bearer probe, not zero (2026-09-17; #1131
+    probe 3).
+  - doctor-reads-the-comment-not-the-token — with the setup-token installed, all eight
+    `node fleet/doctor.mjs` rows stayed ok and the accounts row named the drift itself
+    (`edge carries setup-token-probe-2026-09-17; fleet.json names marcus.e-gmail.com`): the doctor
+    reads `--comment account=<name>`, never the bearer (2026-09-17; #1131 probe 3).
+  - refresh-without-force-does-not-rotate — `node fleet/claude-token.mjs refresh --account <name>`
+    with an unexpired record reinstalls the CACHED access token at the edge and mints nothing, so it
+    is the safe way to restore the bearer; only `--force` rotates and revokes. `--account` is
+    required when the keychain account is not `ultrapowers`, or the refresh reports no refresh token
+    (2026-09-17; #1131 probe 3's rollback).
+  - fanout-no-429 — trivial structured haiku queries, all succeeding, no rate limit at any width
+    read: 1 wide 3.0 s; 10 wide 6.2 s wall, per-query median 4.4 s, 10/10, zero 429; 30 wide 13.9 s
+    wall, per-query median 10.7 s, zero 429. Latency stretches roughly linearly past 10, so the
+    bound on width is throughput and not a 429 (n = 41 queries, 2026-09-17; #1131 probe 4).
+  - maxturns-1-loses-to-thinking — three of the 30-wide queries ended `error_max_turns` /
+    `terminal_reason: max_turns` after spending ~370 thinking tokens without emitting the structured
+    answer. `maxTurns: 1` with `outputFormat` is not safe on a thinking model; it is a worker-shape
+    defect and reads as a rate limit if only the failure count is looked at (n = 3 of 30,
+    2026-09-17; #1131 probe 4).
+  - sdk-cost-is-not-a-cost-sensor — `result.total_cost_usd` under the edge proxy reported $0.0468
+    for a haiku turn of 10 input / 165 output with ~20k cache-read and ~2.6k cache-creation tokens,
+    roughly 8× a hand price of the same usage. The token counts in `result.usage` are the readable
+    quantity; the dollar figure is an estimate the subscription path does not make true
+    (2026-09-17; #1131 probe 1).
 - **Laptop config `~/.ultrapowers/fleet.json`** — `cpu`, `memory` and `account`, every one of them
   optional, an unknown key ignored and a missing file meaning the defaults:
 
