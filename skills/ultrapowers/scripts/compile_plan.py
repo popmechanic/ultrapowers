@@ -30,11 +30,15 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
+import signal
 import string
 import subprocess
 import sys
+import tempfile
+import time
 from pathlib import Path
 
 # scripts -> ultrapowers -> skills -> plugin root; identical to ultra_run.py's
@@ -587,6 +591,31 @@ def _claims_run_command(value):
     return m.group(1).strip() if m else command
 
 
+# A Proof `Run:` bullet's citation tag (#1098): the same bracket shape a leg
+# carries (`[M2]`, `[M1, M3]`), anchored at the END of the value after
+# whitespace — a tag mid-command is part of the command. A tagged `Run:` is a
+# PROVER, a line whose exit is the clause's; an untagged one is a GUARD. The
+# tag is grammar, not shell: it is cut off before the command is recorded, so
+# nothing downstream — the backtick rule, the exam-sweep rule, `proofRuns` on
+# the wave entry — ever sees a bracket.
+RUN_CITE_RE = re.compile(r"\s*\[\s*(M\d+(?:\s*,\s*M\d+)*)\s*\]\s*$")
+
+
+def _claims_run_cites(value):
+    """Split a Proof `Run:` value into (command text, sorted clause ids).
+
+    Untagged, the value rides back whole with `[]` — a guard. Tagged, the tag
+    is cut and its ids are returned sorted by number, as a leg's `cites` are;
+    the command half still goes through `_claims_run_command`, so a tagged
+    command that is also wholly backticked unwraps exactly as a bare one."""
+    m = RUN_CITE_RE.search(value)
+    if not m:
+        return value, []
+    cites = sorted({c.strip() for c in m.group(1).split(",")},
+                   key=lambda c: int(c[1:]))
+    return value[:m.start()], cites
+
+
 def command_names_path(command, path):
     """True when `command` names `path` as a WHOLE token.
 
@@ -813,7 +842,7 @@ def clause_citation_violations(task_id, clauses, numbering_error, legs):
     if not clauses:
         return v
     ids = {c["id"] for c in clauses}
-    span = "M1" if len(clauses) == 1 else "M1–M%d" % len(clauses)
+    span = _clause_span(clauses)
     for leg in legs:
         if not leg["cites"]:
             v.append("grammar: Proof leg cites no Machine clause — task %s, leg "
@@ -829,6 +858,36 @@ def clause_citation_violations(task_id, clauses, numbering_error, legs):
         if c["id"] not in cited:
             v.append("grammar: Machine clause %s has no citing Proof leg — task "
                      "%s: %s" % (c["id"], task_id, _short(c["text"])))
+    return v
+
+
+def _clause_span(clauses):
+    """How a refusal names the clauses the Machine line numbers — `M1` alone,
+    else `M1–M<n>`. One spelling, read by both citation refusals."""
+    return "M1" if len(clauses) == 1 else "M1–M%d" % len(clauses)
+
+
+def run_citation_violations(task_id, clauses, proof_runs, proof_run_cites):
+    """The refusals a Proof `Run:` tag draws (#1098); [] when the citation
+    grammar is inactive (no clause marker on the Machine line).
+
+    Only one: a tag naming a clause the Machine line does not number. A tag
+    that names a real clause earns nothing, and — deliberately — satisfies
+    nothing either: `parse_proof_legs` skips `Run:` bullets, so a clause cited
+    only by a tag still draws `Machine clause <Mn> has no citing Proof leg`
+    from `clause_citation_violations`. A tag says which clause a command's
+    exit would falsify; it does not argue the clause."""
+    if not clauses:
+        return []
+    ids = {c["id"] for c in clauses}
+    span = _clause_span(clauses)
+    v = []
+    for command, cites in zip(proof_runs, proof_run_cites):
+        for c in cites:
+            if c not in ids:
+                v.append("grammar: Run: cites an unknown clause — task %s: %s "
+                         "cites %s; the Machine line numbers %s"
+                         % (task_id, _short(command), c, span))
     return v
 
 
@@ -989,6 +1048,10 @@ def parse_claims_body(body, task_id, plan_claim=None):
     # not sorted, and not checked for existence. The same command named twice
     # is two runs, because running it twice is what the Proof asked for.
     proof_runs = []
+    # ... and beside it, parallel and same-length (#1098): the clause ids each
+    # command's citation tag named, sorted, `[]` for an untagged command. It is
+    # what tells a prover (a line whose exit is a clause's) from a guard.
+    proof_run_cites = []
     # The fourth view: the Proof's `Guard:` paths in Proof order (#777). A
     # guard is a path like a `Test:` value and is read by the same reader, but
     # it is deduplicated (first occurrence kept) because naming the same guard
@@ -1009,8 +1072,13 @@ def parse_claims_body(body, task_id, plan_claim=None):
                 if path not in proof_guards:
                     proof_guards.append(path)
         elif r:
-            command = _claims_run_command(r.group(1))
+            # The tag comes off FIRST, so the two rules below read the command
+            # the shell would get — a tagged command with no backtick of its
+            # own is clean, and a tagged exam path counts as the one path it is.
+            value, cites = _claims_run_cites(r.group(1))
+            command = _claims_run_command(value)
             proof_runs.append(command)
+            proof_run_cites.append(cites)
             if "`" in command:
                 violations.append(
                     _backtick_command_violation("Run", command, task_id))
@@ -1031,6 +1099,8 @@ def parse_claims_body(body, task_id, plan_claim=None):
     proof_legs = parse_proof_legs(slots.get("Proof", ""))
     violations.extend(clause_citation_violations(
         task_id, machine_clauses, numbering_error, proof_legs))
+    violations.extend(run_citation_violations(
+        task_id, machine_clauses, proof_runs, proof_run_cites))
 
     return {"claim": claim,
             "authorized_by": slots.get("Authorized-by", ""),
@@ -1043,6 +1113,7 @@ def parse_claims_body(body, task_id, plan_claim=None):
             "proof_tests": sorted(proof_tests),
             "proof_tests_ordered": proof_tests_ordered,
             "proof_runs": proof_runs,
+            "proof_run_cites": proof_run_cites,
             "proof_guards": proof_guards,
             "machine_clauses": machine_clauses,
             "proof_legs": proof_legs,
@@ -2951,6 +3022,114 @@ class BaseTree:
         return None
 
 
+# --------------------------------------------------------------------------- #
+# The rehearsal at BASE — every Proof `Run:` line, run before the run (#1098). #
+# --------------------------------------------------------------------------- #
+
+# How long one `Run:` line may take at BASE before it is killed and reported as
+# never having run. A module-level constant so an exam can name the default
+# without paying thirty seconds for it.
+GREEN_AT_BASE_TIMEOUT_S = 30
+GREEN_FACT = "GREEN-AT-BASE fact:"
+
+
+def _green_worktree_runs(tasks):
+    """Every Proof `Run:` line of the plan, in task order then Proof order, as
+    `(task id, command, cites)`. A task with no parsed claims body has none."""
+    runs = []
+    for t in tasks:
+        claims = t.get("claims") or {}
+        commands = claims.get("proof_runs") or []
+        cites = claims.get("proof_run_cites") or []
+        for i, command in enumerate(commands):
+            runs.append((t["id"], command,
+                         cites[i] if i < len(cites) else []))
+    return runs
+
+
+def _run_at_base(command, worktree, sha, timeout_s):
+    """One command in the worktree at BASE: `(exit code or None, seconds)`.
+
+    The engine's own shape (`fleet/run-engine.mjs`): `bash -lc <command>` with
+    `ULTRA_BASE` ADDED to the inherited environment, never replacing it. Output
+    is discarded — the compiler reads the exit code, and a command's chatter on
+    the compiler's own stdout would sit between the verdict and the facts.
+    `start_new_session` puts the command in its own process group so a timeout
+    kills the WHOLE tree: a `pytest` or `node` grandchild outlives a signal
+    sent to the shell alone, and the killed group is what bounds the call."""
+    started = time.monotonic()
+    proc = subprocess.Popen(["bash", "-lc", command], cwd=worktree,
+                            env={**os.environ, "ULTRA_BASE": sha},
+                            start_new_session=True,
+                            stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL)
+    try:
+        code = proc.wait(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        code = None
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except OSError:  # the group is already gone
+            pass
+        proc.wait()
+    return code, time.monotonic() - started
+
+
+def green_at_base_lines(tasks, base_tree, timeout_s=GREEN_AT_BASE_TIMEOUT_S):
+    """The plan's Proof `Run:` lines, rehearsed at BASE, as fact lines.
+
+    One detached worktree of the plan's repository is cut at BASE's commit
+    under a fresh temporary directory, every command runs there in Proof order,
+    and the worktree is removed whatever the commands did — including what they
+    wrote, which is what `--force` is for. The repository's own working tree is
+    never the one a command runs in.
+
+    A command that exits 0 yields one line, worded by what the plan said it
+    was: a PROVER (a `Run:` carrying a citation tag) cannot falsify the clause
+    it cites, a GUARD is cited by no leg at all. A command that exits non-zero
+    yields nothing — red at BASE is the ordinary case, and this release says so
+    by staying silent about it. A command still running at `timeout_s` is
+    killed and reported as not run.
+
+    The last line is always the reading: the wall seconds, how many commands
+    reached an exit, how many were killed. It is returned even for a plan with
+    no `Run:` line, and for a base that is no commit — the compile that cost
+    nothing says so, rather than saying nothing."""
+    runs = _green_worktree_runs(tasks)
+    sha = base_tree.commit_sha() if base_tree is not None else ""
+    lines, seconds, ran, killed = [], 0.0, 0, 0
+    if sha and runs:
+        tmp = tempfile.mkdtemp(prefix="ultra-green-")
+        worktree = os.path.join(tmp, "tree")
+        try:
+            ok, _ = _git_run(base_tree.repo, "worktree", "add", "--detach",
+                             worktree, sha)
+            for task_id, command, cites in (runs if ok else []):
+                code, elapsed = _run_at_base(command, worktree, sha, timeout_s)
+                seconds += elapsed
+                if code is None:
+                    killed += 1
+                    lines.append("%s task %s: Run: %s — not run (timeout after "
+                                 "%s s)" % (GREEN_FACT, task_id, command,
+                                            timeout_s))
+                    continue
+                ran += 1
+                if code == 0:
+                    lines.append(
+                        "%s task %s: Run: %s — exits 0 at BASE; %s"
+                        % (GREEN_FACT, task_id, command,
+                           "this line cannot falsify its clause" if cites
+                           else "a guard, no leg cites it"))
+        finally:
+            _git_run(base_tree.repo, "worktree", "remove", "--force", worktree)
+            _git_run(base_tree.repo, "worktree", "prune")
+            shutil.rmtree(tmp, ignore_errors=True)
+    lines.append("%s %.1f s over %d lines run, %d not run (timeout)"
+                 % (GREEN_FACT, seconds, ran, killed))
+    return lines
+
+
 # Path referents. A backticked token in a task body may name a repo path, and
 # `skills/ultrawrite/scripts/pin_base_facts.py` resolves those referents
 # against the tree at BASE. It imports the normalizer (`_path_referent`) and
@@ -3124,6 +3303,15 @@ def main(argv=None):
             # verdict whichever way it went and change no exit code.
             for line in evaluate_stale_if(tasks, base_tree)[1]:
                 print(line)
+            # ... and beside THOSE, the plan's own Proof `Run:` lines,
+            # rehearsed in a worktree at BASE (#1098): which of them a run
+            # would find already green, and what the rehearsal cost. Only
+            # behind a `PLAN OK` — a refused plan's commands are not run,
+            # because a plan the grammar rejects is not a plan yet, and the
+            # seconds would buy a reading of a document nobody will dispatch.
+            if rc == 0:
+                for line in green_at_base_lines(tasks, base_tree):
+                    print(line)
             # ... and last, what the sitting that wrote this plan cost (#988).
             # Only with a tree to read, like its neighbours above: a bare
             # `--check` prints its verdict and nothing else.

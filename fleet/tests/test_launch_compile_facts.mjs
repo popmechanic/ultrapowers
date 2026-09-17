@@ -1019,6 +1019,164 @@ await test('(f) [M6] fleet/tests/test_launch_duplicate.mjs\'s seam has a rule fo
   )
 })
 
+/**
+ * ── "The launcher carries the `GREEN-AT-BASE fact:` lines onto the launch
+ * line, and the runbook names them" (task 3) ────────────────────────────────
+ *
+ * The same surface, one kind wider again: under `--check --base` the compiler
+ * now runs each plan's Proof `Run:` lines at BASE and prints a
+ * `GREEN-AT-BASE fact:` line for every one that is green there — after the
+ * `STALE fact:` lines and before the `AUTHORING fact:` line, under a `PLAN OK`
+ * verdict, this release a fact and never a refusal. The launcher's filter
+ * drops those lines today, so the operator on the laptop never sees them; the
+ * change is one more prefix in that filter, and the runbook's per-run
+ * paragraph naming the kind. Nothing new is imported and nothing new is
+ * spawned: these legs use this file's own `fakeExec`, `compile`, `sectionOf`
+ * and `near` helpers, and every leg above stays green because a stdout
+ * carrying no `GREEN-AT-BASE fact:` line resolves exactly as it did.
+ *
+ *   (a) [M1] a fake `exec` answering exit 0 with `PLAN OK`, one `BASE fact:`
+ *       line, one `STALE fact: … unreadable at BASE — …` line, one prover-shaped
+ *       `GREEN-AT-BASE fact:` line, the `GREEN-AT-BASE fact:` summary line, one
+ *       `AUTHORING fact: none recorded` line and one `note:` line makes
+ *       `verifyPlanCompiles` resolve to exactly those five fact lines, in that
+ *       order and with no other line; the same lines answered with the two
+ *       `GREEN-AT-BASE fact:` lines FIRST resolve with them first, because M1
+ *       says stdout order and not a sort by kind; all four line shapes the
+ *       compiler prints are carried, because M1 filters on the prefix and not
+ *       on the shape; and the Proof's second `Run:` line, read in process,
+ *       finds the filter's new prefix in `fleet/launch.mjs`.
+ *   (b) [M2] `renderLaunch` of a result whose `baseFacts` is
+ *       `['BASE fact: x', 'GREEN-AT-BASE fact: y', 'AUTHORING fact: none
+ *       recorded']` yields text carrying the line `GREEN-AT-BASE fact: y`
+ *       exactly once, beside the other two; and a result with no `baseFacts`
+ *       yields text with no `GREEN-AT-BASE fact:` in it at all.
+ *   (c) [M3] the Proof's third and fourth `Run:` lines, read in process: the
+ *       `## Per run` section of `fleet/RUNBOOK.md`, read as the text from that
+ *       heading to `## States` and joined on spaces the way `tr '\n' ' '` joins
+ *       it, matches `BASE fact:.*STALE fact:.*GREEN-AT-BASE fact:.*AUTHORING
+ *       fact:.*launch line`, and the same window matches
+ *       `GREEN-AT-BASE fact:.*fact.*not a refusal`. That the sim itself — legs
+ *       (a) and (b) included — passes is the Proof's FIRST `Run:` line, which
+ *       the driver runs; this exam proves its own claim and spawns no other.
+ */
+
+/**
+ * The compiler's fourth line shape, in the four forms the task pins as
+ * literals, so this fake stdout matches the real one byte for byte: a prover
+ * (whose `Run:` ends in a clause tag), a guard no leg cites, a line that timed
+ * out before it could be run, and the summary printed last.
+ */
+const GREEN_PROVER =
+  'GREEN-AT-BASE fact: task 1: Run: true — exits 0 at BASE; this line cannot falsify its clause'
+const GREEN_GUARD =
+  'GREEN-AT-BASE fact: task 2: Run: true — exits 0 at BASE; a guard, no leg cites it'
+const GREEN_NOT_RUN =
+  'GREEN-AT-BASE fact: task 3: Run: sleep 60 — not run (timeout after 30 s)'
+const GREEN_SUMMARY =
+  'GREEN-AT-BASE fact: 0.4 s over 1 lines run, 0 not run (timeout)'
+
+/** The launcher's own source, read as the Proof's second `Run:` line reads it. */
+const LAUNCH_SRC = path.join(FLEET_DIR, 'launch.mjs')
+
+await test('(a) [M1] task 3: a clean compile resolves to its BASE, STALE, GREEN-AT-BASE and AUTHORING fact lines, and nothing else', async () => {
+  const exec = fakeExec({
+    code: 0,
+    stdout: `PLAN OK\n${BASE_FACT}\n${STALE_ADVISORY}\n${GREEN_PROVER}\n${GREEN_SUMMARY}\n` +
+      `${AUTHORING_NONE}\nnote: 3 tasks in 2 waves\n`
+  })
+  const facts = await compile(exec)
+  assert.deepEqual(
+    facts, [BASE_FACT, STALE_ADVISORY, GREEN_PROVER, GREEN_SUMMARY, AUTHORING_NONE],
+    '(a) [M1] exit 0 with PLAN OK, one BASE fact: line, one STALE fact: advisory, one GREEN-AT-BASE ' +
+    'fact: line, the GREEN-AT-BASE fact: summary, one AUTHORING fact: line and one note: line resolves ' +
+    `to exactly those five fact lines, in stdout order and with no other line, got: ${JSON.stringify(facts)}`
+  )
+})
+
+await test('(a) [M1] task 3: the order is stdout\'s, with the GREEN-AT-BASE lines answered first', async () => {
+  const exec = fakeExec({
+    code: 0,
+    stdout: `PLAN OK\n${GREEN_PROVER}\n${GREEN_SUMMARY}\n${BASE_FACT}\n${STALE_ADVISORY}\n` +
+      `${AUTHORING_NONE}\nnote: 3 tasks in 2 waves\n`
+  })
+  assert.deepEqual(
+    await compile(exec),
+    [GREEN_PROVER, GREEN_SUMMARY, BASE_FACT, STALE_ADVISORY, AUTHORING_NONE],
+    '(a) [M1] the same five lines answered GREEN-AT-BASE-first resolve GREEN-AT-BASE-first: M1 says ' +
+    'stdout order, not a sort by kind'
+  )
+})
+
+await test('(a) [M1] task 3: every GREEN-AT-BASE fact: shape the compiler prints is carried', async () => {
+  const exec = fakeExec({
+    code: 0,
+    stdout: `PLAN OK\n${GREEN_PROVER}\n${GREEN_GUARD}\n${GREEN_NOT_RUN}\n${GREEN_SUMMARY}\n` +
+      'note: 3 tasks in 2 waves\n'
+  })
+  assert.deepEqual(
+    await compile(exec), [GREEN_PROVER, GREEN_GUARD, GREEN_NOT_RUN, GREEN_SUMMARY],
+    '(a) [M1] the prover line, the guard line, the timed-out line and the summary line all resolve: M1 ' +
+    'keeps every stdout line that BEGINS `GREEN-AT-BASE fact:`, whatever follows the prefix'
+  )
+})
+
+await test('(a) [M1] task 3: fleet/launch.mjs\'s fact filter names the GREEN-AT-BASE fact: prefix', () => {
+  // The Proof's second `Run:` line, read in process: the filter of
+  // `verifyPlanCompiles` is where a `GREEN-AT-BASE fact:` line is kept or lost.
+  const source = fs.readFileSync(LAUNCH_SRC, 'utf8')
+  assert.ok(
+    source.includes("startsWith('GREEN-AT-BASE fact:')"),
+    '(a) [M1] fleet/launch.mjs carries startsWith(\'GREEN-AT-BASE fact:\') — the one prefix the filter ' +
+    `of verifyPlanCompiles is missing at BASE, which is why the line is dropped on the laptop, got: ` +
+    `${near(source, "startsWith('BASE fact:')")}`
+  )
+})
+
+await test('(b) [M2] task 3: a result\'s GREEN-AT-BASE fact: entry prints as one line of the launch text, exactly once', () => {
+  const facts = ['BASE fact: x', 'GREEN-AT-BASE fact: y', AUTHORING_NONE]
+  const lines = renderLaunch({ ...RESULT, baseFacts: facts }).split('\n')
+  assert.equal(
+    lines.filter((line) => line === 'GREEN-AT-BASE fact: y').length, 1,
+    `(b) [M2] the rendered text carries the line GREEN-AT-BASE fact: y exactly once, got: ` +
+    `${JSON.stringify(lines)}`
+  )
+  assert.deepEqual(
+    lines.slice(-3), facts,
+    '(b) [M2] and it prints beside the BASE fact: and AUTHORING fact: entries, in the order the ' +
+    `compiler printed them, got: ${JSON.stringify(lines)}`
+  )
+})
+
+await test('(b) [M2] task 3: a result with no baseFacts prints no GREEN-AT-BASE fact: line', () => {
+  const text = renderLaunch({ ...RESULT })
+  assert.ok(
+    !text.includes('GREEN-AT-BASE fact:'),
+    `(b) [M2] no baseFacts entry of that kind, no GREEN-AT-BASE fact: line, got: ${JSON.stringify(text)}`
+  )
+})
+
+await test('(c) [M3] task 3: fleet/RUNBOOK.md §Per run names BASE fact:, STALE fact:, GREEN-AT-BASE fact:, AUTHORING fact:, then the launch line', () => {
+  const section = sectionOf(fs.readFileSync(RUNBOOK, 'utf8'), '## Per run', '## States')
+  assert.ok(section !== null, '(c) [M3] fleet/RUNBOOK.md has a `## Per run` section')
+  assert.match(
+    section, /BASE fact:.*STALE fact:.*GREEN-AT-BASE fact:.*AUTHORING fact:.*launch line/,
+    '(c) [M3] the `## Per run` section, read from that heading to `## States`, names BASE fact:, then ' +
+    'STALE fact:, then GREEN-AT-BASE fact:, then AUTHORING fact:, then the launch line, in that order, ' +
+    `got: ${near(section, 'BASE fact:')}`
+  )
+})
+
+await test('(c) [M3] task 3: that same section says a GREEN-AT-BASE fact: line is a fact, not a refusal', () => {
+  const section = sectionOf(fs.readFileSync(RUNBOOK, 'utf8'), '## Per run', '## States')
+  assert.ok(section !== null, '(c) [M3] fleet/RUNBOOK.md has a `## Per run` section')
+  assert.match(
+    section, /GREEN-AT-BASE fact:.*fact.*not a refusal/,
+    '(c) [M3] the `## Per run` section says a GREEN-AT-BASE fact: line is a fact this release and not a ' +
+    `refusal — the compile still prints PLAN OK and still exits 0, got: ${near(section, 'GREEN-AT-BASE fact:')}`
+  )
+})
+
 // ── The verdict ─────────────────────────────────────────────────────────────
 
 if (failures.length > 0) {

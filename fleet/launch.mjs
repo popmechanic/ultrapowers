@@ -777,12 +777,17 @@ const BASE_FACTS_STAMP = /\*\*BASE facts:\*\*\s*\(generated at ([0-9a-f]{7,40})\
  *     its clauses pin). A non-zero exit is a refusal carrying the compiler's
  *     text verbatim — including a `STALE fact:` line for a Stale-if predicate
  *     that holds at BASE, which is what the operator reads on the laptop; the
- *     `BASE fact:`, `STALE fact:` and `AUTHORING fact:` lines of a clean
- *     compile ride the result so the launch line prints them, in the order the
- *     compiler printed them (a `STALE fact:` there is the advisory kind: a
- *     predicate the compiler could not read at BASE, never a refusal; the
- *     `AUTHORING fact:` line is what the plan's authoring cost, or
- *     `AUTHORING fact: none recorded` when the gate record carries none).
+ *     `BASE fact:`, `STALE fact:`, `GREEN-AT-BASE fact:` and `AUTHORING fact:`
+ *     lines of a clean compile ride the result so the launch line prints them,
+ *     in the order the compiler printed them (a `STALE fact:` there is the
+ *     advisory kind: a predicate the compiler could not read at BASE, never a
+ *     refusal; a `GREEN-AT-BASE fact:` line is a Proof `Run:` line the compiler
+ *     found already green at BASE, plus the one line totalling what those runs
+ *     cost — this release every one of them is a fact and the compile still
+ *     exits 0, so dropping them on the laptop is the only way the operator
+ *     could fail to read them; the `AUTHORING fact:` line is what the plan's
+ *     authoring cost, or `AUTHORING fact: none recorded` when the gate record
+ *     carries none).
  *
  * The compiler runs through the exec seam like every other subprocess, so a sim
  * that answers `python3` decides what the compiler said. `compilerPath` is the
@@ -810,6 +815,7 @@ export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planT
     (line) =>
       line.startsWith('BASE fact:') ||
       line.startsWith('STALE fact:') ||
+      line.startsWith('GREEN-AT-BASE fact:') ||
       line.startsWith('AUTHORING fact:')
   )
 }
@@ -1901,8 +1907,9 @@ const engineLine = (result) =>
  * line at all.
  *
  * `compiler=` sits between the engine line and the fact lines, never among
- * them: the `BASE fact:`, `STALE fact:` and `AUTHORING fact:` entries are the
- * LAST lines of the launch text, which is what an operator reads down to.
+ * them: the `BASE fact:`, `STALE fact:`, `GREEN-AT-BASE fact:` and
+ * `AUTHORING fact:` entries are the LAST lines of the launch text, which is
+ * what an operator reads down to.
  *
  * `account=` is a rendered line and never part of the comment: the comment is
  * the assignment the VM parses, and a key it does not know kills the run at
