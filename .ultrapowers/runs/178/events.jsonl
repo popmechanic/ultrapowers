@@ -46,3 +46,10 @@
 {"kind":"worker:end","label":"review:1:1","role":"reviewer","sessionId":"cbe2adcb-7296-4fa9-9e29-02dc2d4ebf32","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"reason":null,"meter":{"input":6441,"output":15143,"cacheRead":867897,"cacheCreation":82646,"costUsd":1.3892110000000002,"models":["claude-opus-5"]},"id":"01M2Q4Y4Y70000KA089DA8JVM3","ts":1789630813127}
 {"kind":"transcript:slice","label":"review:1:1","sessionId":"cbe2adcb-7296-4fa9-9e29-02dc2d4ebf32","bytes":11440,"id":"01M2Q4Y4YG0000GXEG5RMATESV","ts":1789630813136}
 {"kind":"engine:phase","phase":"Wave 1","id":"01M2Q4Y51A000060NCJ19PXZ67","ts":1789630813226}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["1"],"headSha":"b9d26667f55d83f0d4577ab1a3e881d8ccdda43f","why":"released","released":["2"],"applied":{"1":"base"},"id":"01M2Q53MFD0000CGCH2NBEBYRS","ts":1789630992877}
+{"kind":"driver:integrated-clean","wave":1,"removed":7,"id":"01M2Q53MFH0000AVXVV4BT6VBM","ts":1789630992881}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/roles/","exit":0,"minor":false,"wave":1,"id":"01M2Q53MFT0000HTQV7KTJ58T1","ts":1789630992890}
+{"kind":"driver:integrated-check","cmd":"node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"minor":false,"wave":1,"id":"01M2Q53MSC00009YPX65YH5WKE","ts":1789630993196}
+{"kind":"handshake:absent","task":"2","producer":"1","id":"01M2Q53N500000SW8SP0G94Z7C","ts":1789630993568}
+{"kind":"worker:start","label":"exam:2","role":"examiner","sessionId":"f36372c7-8232-4b32-ac42-824ad7ed3dec","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-178/clones/exam-2","model":"opus","id":"01M2Q53N620000D5W29T6GVYRE","ts":1789630993602}
+{"kind":"worker:start","label":"impl:2","role":"implementer","sessionId":"c95a72e4-ba95-433c-b1c0-0e93c3b947df","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-178/clones/task-2","model":"opus","id":"01M2Q53N640000RC9440DE5DV0","ts":1789630993604}

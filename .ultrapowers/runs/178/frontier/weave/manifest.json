@@ -1,0 +1,21 @@
+{
+  "wave": 1,
+  "entries": {
+    "fleet/sandbox-boot.sh": {
+      "stateBlob": "810bbda54aed5892e62a75826d0e285983a0a12d4d9b47fa92b0c0c333291e8a",
+      "visibleSha": "aaf20c940c19840a4d115de43493028808ede12c"
+    },
+    "fleet/tests/README.md": {
+      "stateBlob": "46ad282878db12d28416c0263b9da65ed4d335d04f1dfeee4c916c06abae094f",
+      "visibleSha": "c5fec422fd7a3bbb92a04bfbcc0be304f9f1f138"
+    },
+    "fleet/tests/_sandbox_boot_helpers.mjs": {
+      "stateBlob": "ba8f93bc6a90457339a2777fbe32b5abe1e71eb097044dcedb1035a13f22e703",
+      "visibleSha": "5afac6083eb2eba9309d4e55a450daadca7fbb2a"
+    },
+    "fleet/tests/test_sandbox_boot_residuals.mjs": {
+      "stateBlob": "38a123b7d3ba43602cff20367c33a38bfbf9aa9a8826bff96c678a892f3eaafc",
+      "visibleSha": "b3664e7e195cd925bff9ec23c119200cc68574ff"
+    }
+  }
+}
