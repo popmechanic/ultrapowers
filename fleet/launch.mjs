@@ -15,7 +15,10 @@
  *      must fit the plan's pool), the target's `ultra/*` refs (the run number
  *      is one past the highest N they carry) and the engine tip, and asks
  *      `help <verb>` for every verb of `fleet/exe-verbs.json` — a drift there
- *      is a line on the launch, never a refusal;
+ *      is a line on the launch, never a refusal. Both of its compiles run
+ *      `compile_plan.py` FETCHED AT `engine=` (`git show` from this checkout,
+ *      else `gh api`, into a temp directory), so the laptop's verdict is the
+ *      sandbox's; a compiler it cannot fetch is a refusal before any push;
  *   3. refreshes the Claude credential the run signs in with, the entry
  *      `--account` names — a refresh failure is a failure before any VM
  *      exists;
@@ -83,6 +86,7 @@ import { fileURLToPath } from 'node:url'
 
 import {
   COMMENT_MAX_BYTES,
+  ENGINE_REPO,
   ENGINE_URL,
   EXE_HOST,
   FLEET_DEFAULTS,
@@ -576,14 +580,100 @@ export async function verifyPlanPins ({ exec, repoDir, base, planText }) {
 }
 
 /**
- * The compiler, relative to this file — the plugin's own copy, the one
- * `skills/ultrapowers/SKILL.md` tells the operator to run by hand before a
- * launch. Running it here is what makes "compile with --check --base first"
- * a fact about every launch rather than a step someone remembers (#865).
+ * The compiler's path inside the engine tree, at every sha — never resolved
+ * against this checkout. The copy a launch runs is the one it fetches at
+ * `engine=`; see `fetchCompilerAt`.
  */
-const COMPILER_PATH = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'ultrapowers', 'scripts', 'compile_plan.py'
-)
+const COMPILER_REL = 'skills/ultrapowers/scripts/compile_plan.py'
+/**
+ * The checkout this file sits in. On the laptop that is the plugin cache
+ * (`~/.claude/plugins/cache/ultrapowers/ultrapowers/<version>/`), whose `.git`
+ * may or may not hold the engine sha — a cache without it is exactly the
+ * `gh api` case below.
+ */
+const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+
+/**
+ * The compiler the launch's two compiles run: `compile_plan.py` AT THE ENGINE
+ * SHA, in a directory of its own.
+ *
+ * The trap this closes (run-26, 2026-09-17): the launcher used to run the
+ * compiler of the plugin build it was invoked from, while the sandbox's
+ * preflight runs the engine checkout cloned at `engine=`. A plan that compiled
+ * `PLAN OK` on the laptop was refused an hour later by a compile rule that had
+ * landed on main after the installed build — the two compilers were different
+ * files. Fetching the engine's own copy makes the laptop's verdict the
+ * sandbox's verdict by construction.
+ *
+ * Two reads, in order, both through the exec seam:
+ *
+ *   1. `git -C <pluginRoot> show <engine>:<COMPILER_REL>` — free, offline, and
+ *      right whenever the checkout has the sha;
+ *   2. `gh api -H 'Accept: application/vnd.github.raw' repos/<ENGINE_REPO>/
+ *      contents/<COMPILER_REL>?ref=<engine>` — the raw media type makes stdout
+ *      the file body.
+ *
+ * A read that exits non-zero OR prints an empty stdout has not answered a
+ * compiler, so the second is tried; when neither answers, this is a `Refusal`
+ * naming the sha — never a fall back to the copy beside this file, because
+ * that copy is the bug.
+ *
+ * One file is enough: `compile_plan.py` imports only the standard library and
+ * nothing from its own directory, and the `PLUGIN_ROOT` it derives from
+ * `__file__` is read only under `--run-dir`, which neither launcher call
+ * passes. A copy under `os.tmpdir()` reads its plan, its gate record and the
+ * `--base` tree exactly as the cache copy does.
+ *
+ * Answers `{ dir, scriptPath, source }`: `dir` is what the caller removes,
+ * `scriptPath` is the file to run, `source` is `git-show` or `gh-api`.
+ */
+export async function fetchCompilerAt ({ exec, engine, pluginRoot }) {
+  const object = `${engine}:${COMPILER_REL}`
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'fleet-compiler-'))
+  try {
+    const tried = []
+    for (const attempt of [
+      { source: 'git-show', read: () => git(exec, pluginRoot, ['show', object]) },
+      {
+        source: 'gh-api',
+        read: () => exec('gh', [
+          'api', '-H', 'Accept: application/vnd.github.raw',
+          `repos/${ENGINE_REPO}/contents/${COMPILER_REL}?ref=${engine}`
+        ])
+      }
+    ]) {
+      const res = await attempt.read()
+      const body = String(res.stdout ?? '')
+      if (res.code === 0 && body !== '') {
+        const scriptPath = path.join(dir, 'compile_plan.py')
+        await fsp.writeFile(scriptPath, body)
+        return { dir, scriptPath, source: attempt.source }
+      }
+      tried.push(`  ${attempt.source}: exit ${res.code}${output(res) === '' ? ' (no output)' : `\n${output(res)}`}`)
+    }
+    throw new Refusal(
+      `launch: could not fetch ${COMPILER_REL} at engine ${engine} — the launch compiles with the ` +
+      'compiler the sandbox will use or it does not launch:\n' + tried.join('\n')
+    )
+  } catch (error) {
+    await fsp.rm(dir, { recursive: true, force: true })
+    throw error
+  }
+}
+
+/**
+ * Neither compile has a compiler of its own to fall back on: a caller that
+ * names none is refused before any subprocess, rather than quietly compiling
+ * with whatever copy happens to sit beside this file.
+ */
+const requireCompilerPath = (compilerPath, which) => {
+  if (typeof compilerPath === 'string' && compilerPath !== '') return
+  throw new Refusal(
+    `launch: compile_plan.py ${which} was asked for without a compilerPath — the compiler fetched at ` +
+    'engine= is the only one a launch runs (fetchCompilerAt)'
+  )
+}
+
 /** The pinning script, as the re-pin command names it. */
 const PIN_SCRIPT_REL = 'skills/ultrawrite/scripts/pin_base_facts.py'
 /** The stamp a generated `**BASE facts:**` block carries: the sha it was read at. */
@@ -611,9 +701,13 @@ const BASE_FACTS_STAMP = /\*\*BASE facts:\*\*\s*\(generated at ([0-9a-f]{7,40})\
  *     `AUTHORING fact: none recorded` when the gate record carries none).
  *
  * The compiler runs through the exec seam like every other subprocess, so a sim
- * that answers `python3` decides what the compiler said.
+ * that answers `python3` decides what the compiler said. `compilerPath` is the
+ * file `fetchCompilerAt` wrote and is required: there is no default, because a
+ * default is how a launch ends up compiling with a compiler the sandbox does
+ * not have.
  */
-export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planText }) {
+export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planText, compilerPath }) {
+  requireCompilerPath(compilerPath, '--check')
   const stamps = [...String(planText).matchAll(BASE_FACTS_STAMP)].map((m) => m[1])
   const stale = [...new Set(stamps.filter((sha) => !base.startsWith(sha)))]
   if (stale.length > 0) {
@@ -622,7 +716,7 @@ export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planT
       `re-pin them first: python3 ${PIN_SCRIPT_REL} --write --base ${base} ${planPath}`
     )
   }
-  const res = await exec('python3', [COMPILER_PATH, '--check', '--base', base, planPath], { cwd: repoDir })
+  const res = await exec('python3', [compilerPath, '--check', '--base', base, planPath], { cwd: repoDir })
   if (res.code !== 0) {
     throw new Refusal(
       `launch: compile_plan.py --check --base ${base} refused ${planPath} (exit ${res.code}):\n${output(res)}`
@@ -647,10 +741,12 @@ export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planT
  * hubless launch never reached it and the verb could not see it.
  *
  * Answers `{ stamp, payload, waves, edges }`; both refusals are the ones that
- * filer carried, word for word.
+ * filer carried, word for word. `compilerPath` is `fetchCompilerAt`'s file and
+ * is required, for the reason `verifyPlanCompiles` gives.
  */
-export async function compilePlanForRun ({ exec, repoDir, planPath, base, stamp }) {
-  const res = await exec('python3', [COMPILER_PATH, planPath, '--stamp', stamp, '--base', base], { cwd: repoDir })
+export async function compilePlanForRun ({ exec, repoDir, planPath, base, stamp, compilerPath }) {
+  requireCompilerPath(compilerPath, `--stamp ${stamp}`)
+  const res = await exec('python3', [compilerPath, planPath, '--stamp', stamp, '--base', base], { cwd: repoDir })
   if (res.code !== 0) {
     throw new Refusal(`launch: compile_plan.py --stamp ${stamp} failed (exit ${res.code}):\n${output(res)}`)
   }
@@ -739,11 +835,26 @@ export async function liveDuplicatesOf ({ exec, repoDir, target, planText, runs 
 /**
  * Everything the launcher does, with the exec seam, the clock, the sleep and
  * the name's random half injected. Answers the launched run's record.
+ *
+ * The body parks the directory it fetched the compiler into on `held`, so the
+ * temp tree is removed however the launch ends — the resolved run, a refusal
+ * halfway down, or a throw from the lobby.
  */
-export async function launch ({
+export async function launch (params) {
+  const held = { compilerDir: null }
+  try {
+    return await launchBody({ ...params, held })
+  } finally {
+    if (held.compilerDir !== null) {
+      await fsp.rm(held.compilerDir, { recursive: true, force: true })
+    }
+  }
+}
+
+async function launchBody ({
   argv, exec = defaultExec, config, now = () => new Date(), sleep = defaultSleep, rand,
   refreshCredential = defaultRefreshCredential, verbsPath = VERBS_PATH,
-  kata, kataEnvPath = defaultKataEnvPath()
+  kata, kataEnvPath = defaultKataEnvPath(), held
 }) {
   const { opts, positional } = parseArgs(argv, { flags: ['json', 'hold', 'again'] })
 
@@ -916,8 +1027,24 @@ export async function launch ({
   // a stale one is found here, with local git reads only, before the first
   // `ls-remote` and long before anything is pushed or any lobby verb issued.
   await verifyPlanPins({ exec, repoDir, base: opts.base, planText })
+
+  // ── The compiler this launch compiles with. The engine sha is settled first
+  //    — `--engine` when the line pinned one, else whatever `main` is at — and
+  //    the compiler is fetched AT IT, because that is the copy the sandbox's
+  //    preflight will run. Both happen here, before the first compile and
+  //    before anything is pushed: a sha that cannot answer a compiler is a
+  //    refusal on the laptop, not an hour of VM time spent reaching one.
+  //    `engineSource` rides along so the launch line can say whether the
+  //    operator chose this engine or the launcher caught it.
+  const engineSource = opts.engine === undefined ? 'main-tip' : 'pinned'
+  const engine = opts.engine ?? await defaultEngineSha(exec)
+  const compiler = await fetchCompilerAt({ exec, engine, pluginRoot: PLUGIN_ROOT })
+  if (held !== undefined) held.compilerDir = compiler.dir
+
   // ... and the plan compiles against that same tree, or nothing is launched.
-  const baseFacts = await verifyPlanCompiles({ exec, repoDir, base: opts.base, planPath, planText })
+  const baseFacts = await verifyPlanCompiles({
+    exec, repoDir, base: opts.base, planPath, planText, compilerPath: compiler.scriptPath
+  })
 
   // ── The base is on the target's default branch, or it is a refusal. The
   //    origin names its own default branch and that branch's tip in one
@@ -1052,10 +1179,6 @@ export async function launch ({
   // target carries *now*, which another launch can take between this read and
   // the push; the push is where it is settled.
   const firstRun = opts.run ? Number(opts.run) : await highestRunOnTarget(exec, repoDir) + 1
-  // Where the sha came from, so the launch line can say whether the operator
-  // chose this engine or the launcher read whatever `main` happened to be at.
-  const engineSource = opts.engine === undefined ? 'main-tip' : 'pinned'
-  const engine = opts.engine ?? await defaultEngineSha(exec)
 
   // ── The stamped compile. One per run number the launch ATTEMPTS, and for a
   //    launch that is not bumped that is exactly one, here, before the `new`
@@ -1069,7 +1192,7 @@ export async function launch ({
   //    launch that has to take the next number compiles again under it rather
   //    than re-filing the first N's sheets — see `pushPlan`.
   const compileFor = (n) => compilePlanForRun({
-    exec, repoDir, planPath, base: opts.base, stamp: `run-${n}`
+    exec, repoDir, planPath, base: opts.base, stamp: `run-${n}`, compilerPath: compiler.scriptPath
   })
   // The box one compiled payload asks for. W is the task count of its widest
   // wave, floored at one — a payload with no waves launches nothing, and a box
@@ -1242,6 +1365,10 @@ export async function launch ({
     base: opts.base,
     engine,
     engineSource,
+    // The sha the compiler was fetched at — the same one `engine=` carries, so
+    // the launch line says outright which `compile_plan.py` decided this plan
+    // was launchable.
+    compiler: engine,
     // The account is the run's, but never the assignment's: `parse_assignment`
     // on the VM refuses a comment key it does not know, and neither
     // `COMMENT_KEYS` nor `buildComment` spells `account`. It lives here and on
@@ -1693,8 +1820,13 @@ const engineLine = (result) =>
  * The lines a launched run prints: its id, its VM, where to watch, what it was
  * told, one line per VM this launch's reap removed, which keychain entry it
  * signed in with, what the verb-drift preflight found — and, when nobody
- * pinned one, which engine it happens to have caught. A launch that reaped
- * nothing prints no reap line at all.
+ * pinned one, which engine it happens to have caught, then the `compiler=<sha>`
+ * the two compiles were run from. A launch that reaped nothing prints no reap
+ * line at all.
+ *
+ * `compiler=` sits between the engine line and the fact lines, never among
+ * them: the `BASE fact:`, `STALE fact:` and `AUTHORING fact:` entries are the
+ * LAST lines of the launch text, which is what an operator reads down to.
  *
  * `account=` is a rendered line and never part of the comment: the comment is
  * the assignment the VM parses, and a key it does not know kills the run at
@@ -1712,6 +1844,7 @@ export const renderLaunch = (result) => [
   result.kata ? `kata=${result.kata.project.name} ${Object.keys(result.kata.tasks).length} tasks` : null,
   result.verbDrift === undefined ? null : `verb-drift: ${result.verbDrift.detail}`,
   engineLine(result),
+  result.compiler === undefined || result.compiler === null ? null : `compiler=${result.compiler}`,
   ...(result.baseFacts ?? [])
 ].filter((line) => line !== null).join('\n')
 

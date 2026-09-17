@@ -28,7 +28,9 @@
  *
  * The rig is `test_launch_size.mjs`'s, copied rather than imported (a sim may
  * not name a sibling sim): a local bare origin stands in for GitHub, every
- * lobby verb and `gh api` is answered by the seam, and the compiler is stubbed.
+ * lobby verb and `gh api` is answered by the seam, and the compiler is stubbed
+ * — both its fetch at `engine=` (`COMPILER_FETCH`) and its every `python3` run
+ * (`compilerRule`).
  */
 
 import assert from 'node:assert/strict'
@@ -80,6 +82,18 @@ const ENGINE_RULE = {
   when: (cmd, argv) =>
     cmd === 'git' && argv.includes('ls-remote') && argv.some((a) => /ultrapowers/.test(String(a))),
   answer: answer(`${ENGINE}\tHEAD\n`)
+}
+/**
+ * The compiler the launcher fetches at `engine=`. At the fake engine sha the
+ * real `git show` in this checkout fails, so the `gh api` contents call is what
+ * answers — and it must answer BEFORE `recordRule`, whose empty page would
+ * otherwise read as a compiler that could not be fetched and refuse the launch.
+ * The body is never run: `compilerRule` answers every `python3`.
+ */
+const COMPILER_FETCH = {
+  when: (cmd, argv) => cmd === 'gh' && argv[0] === 'api' &&
+    argv.some((a) => String(a).includes('contents/skills/ultrapowers/scripts/compile_plan.py')),
+  answer: answer('# compile_plan.py, as the seam hands it back\n')
 }
 const pointAtOrigin = (repo, argv) => {
   const pointed = argv.map((a) => (a === 'origin' || /github\.com/.test(String(a)) ? repo.origin : a))
@@ -136,6 +150,7 @@ const DONE_5_MIN_AGO = page('done', new Date(NOW.getTime() - 5 * 60 * 1000).toIS
 
 const readRules = ({ repo, rows, record }) => [
   ENGINE_RULE,
+  COMPILER_FETCH,
   localRemote(repo),
   compilerRule(ONE_TASK),
   sshRule('help ', HELP_OK),
