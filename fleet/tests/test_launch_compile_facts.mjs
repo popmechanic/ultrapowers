@@ -523,7 +523,7 @@ await test('(a) [M1] a `git show` that answers a body is written under os.tmpdir
       `(a) [M1] and not under ${PLUGIN_SCRIPTS} — that copy is the trap this closes, got ${got.scriptPath}`
     )
     assert.equal(
-      got.scriptPath, path.join(got.dir, 'compile_plan.py'),
+      got.scriptPath, path.join(got.dir, 'skills', 'ultrapowers', 'scripts', 'compile_plan.py'),
       '(a) [M1] the first non-empty stdout is written as <dir>/compile_plan.py'
     )
     assert.equal(

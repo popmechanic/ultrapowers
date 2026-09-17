@@ -645,7 +645,13 @@ export async function fetchCompilerAt ({ exec, engine, pluginRoot }) {
       const res = await attempt.read()
       const body = String(res.stdout ?? '')
       if (res.code === 0 && body !== '') {
-        const scriptPath = path.join(dir, 'compile_plan.py')
+        // At its real depth: `compile_plan.py` resolves its plugin root as
+        // three directories above itself at import time, so a copy written
+        // straight under the temp dir cannot be imported on a shallow `/tmp`
+        // (run-172's deferred plan-defect, 2026-09-17). The temp dir stands
+        // in for the plugin root and the copy sits where the real file does.
+        const scriptPath = path.join(dir, COMPILER_REL)
+        await fsp.mkdir(path.dirname(scriptPath), { recursive: true })
         await fsp.writeFile(scriptPath, body)
         return { dir, scriptPath, source: attempt.source }
       }
