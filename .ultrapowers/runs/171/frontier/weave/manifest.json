@@ -1,0 +1,57 @@
+{
+  "wave": 1,
+  "entries": {
+    "fleet/CONTRACT.md": {
+      "stateBlob": "7d5e280c4ae22cb9eab8ef9bdd037ff6c86ff079c0cac5f2586b7071a17e78a9",
+      "visibleSha": "db517b2e979c3e60d0a612aa7eb81a31f34074e1"
+    },
+    "fleet/roles/examiner.md": {
+      "stateBlob": "fba37c1162471bf9a5dd537578efca12e790af25f0c0610603be0778e2c7906f",
+      "visibleSha": "92323d12eb2915e6a4bec632faa150e784301d50"
+    },
+    "fleet/roles/fix.md": {
+      "stateBlob": "a23eb6d1731f742c22b2a39c6f1a6ffa5f51576180ab8f41b117fde02d3a21cd",
+      "visibleSha": "afbed75803ec5cb33151f99ccc24e35dbf730a0c"
+    },
+    "fleet/roles/implementer.md": {
+      "stateBlob": "39fe05fff04925bf1cc8f8998d03003e3810184dff615f63d06fae5ddacdc814",
+      "visibleSha": "0510aee3bb5b457e900415c362e16b6e1e3cccf2"
+    },
+    "fleet/run-engine.mjs": {
+      "stateBlob": "914b3fe6c1418e7fe5c1d4cbab5910c2f882fa6f9757c40d8ec40158c0a928ea",
+      "visibleSha": "67378efc6d79faf140cb65a64cded4021ecfd08c"
+    },
+    "fleet/tests/test_run_engine_own_proofs.mjs": {
+      "stateBlob": "d7902a2b6195d8df61f51bdbb4fb17d950260c94e4a6d6d5ee4244f3c7f4df3f",
+      "visibleSha": "6ee2703518b4eb47bd1d837669f9d98d20bb0a5a"
+    },
+    "fleet/tests/test_run_engine_reconcile_retry.mjs": {
+      "stateBlob": "e8f1ec432e5a7931c5b57dce32af218f487f16c78e67a5481e1af9b43dffc996",
+      "visibleSha": "62356fd117ca457d81bc2458ee25d500ac79aaff"
+    },
+    "skills/ultrapowers/scripts/compile_plan.py": {
+      "stateBlob": "c18151f596faf83b9d9a4c8e69bfbd6fad74b2407d31622840da8147e0363dbf",
+      "visibleSha": "47ff77c218e83ccbc07f8b8a9a4c04d06440f624"
+    },
+    "skills/ultrapowers/scripts/ultra_run.py": {
+      "stateBlob": "2f6c34e281eb1cd78028173536f157831008fc1f58ddcdc0a90a5b2c8d8a9899",
+      "visibleSha": "634a9a3e32dbaff43ddd86cc1b9f5b81b116c87e"
+    },
+    "skills/ultrawrite/references/authoring-gotchas.md": {
+      "stateBlob": "6dd93d515ab5ebc4fbd80c88d5c1c7b70612b05228063fb738d405295067e142",
+      "visibleSha": "5006097d2af2e0dccbfa4d22d64fb24ff321c010"
+    },
+    "skills/ultrawrite/references/greenfield-stack.md": {
+      "stateBlob": "4f3f5dc3c63efab45bb5d76a9e6c1c69453605f878c8baeaf01281d35cc0cd6a",
+      "visibleSha": "e060527329e77643608c134ae0e1ae72f52babaf"
+    },
+    "tests/test_compile_plan_exam_sweep.py": {
+      "stateBlob": "d7c4273dca05b720c82c177693416a38c177d4e682a289c4d1487b655a9314c9",
+      "visibleSha": "45bf4211d7d9c4c4921ef23627b055eeaac86621"
+    },
+    "tests/test_ultra_run_fold_test_cmd.py": {
+      "stateBlob": "b9c6d0ba624a6c8247fd148d26495d80e144001f31073465fa3f0fd6d47e1a17",
+      "visibleSha": "cb2a34d069fc0b6033e3311f575a03e5771fbf49"
+    }
+  }
+}
