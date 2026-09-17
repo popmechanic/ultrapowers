@@ -55,13 +55,13 @@
 // own. Jev is reached through the REAL `makeJevClient` over an injected
 // `fetchImpl`, and the hub through the rig's `fakeHub`, so no socket is opened.
 //
-// The repository's suite is `check.sh`: silent and green while `A.txt` is
+// The repository's suite is `check.sh`: silent and green while `fA.txt` is
 // absent, and once task A's implementer has written it, one line —
 // `FAILED tests/test_other.py::test_x` — and a non-zero exit. `failingTestPaths`
 // reads only `FAILED <path>::<id>` lines, so that candidate's failing list is
 // `['tests/test_other.py']`: a path NO task of the plan names in its `files` or
 // its `proofTests`, which is the unattributed-red branch. A second task B in
-// the same wave writes `B.txt`, so the fold's `merged` holds two results and
+// the same wave writes `fB.txt`, so the fold's `merged` holds two results and
 // the row's `byTask` has two keys.
 //
 // TWO READINGS THIS FILE SETTLES, because a later session would otherwise have
@@ -71,17 +71,17 @@
 //    `state.tasks.B.proofTests` at `['tests/test_b.py']`, which the task must
 //    therefore DECLARE. A task declaring proof tests AND a `testCmd` dispatches
 //    an examiner, whose exam would land in B's clone and show up as a second
-//    `stat` entry — and leg (a) pins B's `stat` at the single `B.txt` entry for
-//    "an implementer that wrote two lines to `B.txt`". `examTestCmd` is the
+//    `stat` entry — and leg (a) pins B's `stat` at the single `fB.txt` entry for
+//    "an implementer that wrote two lines to `fB.txt`". `examTestCmd` is the
 //    engine's own condition for that dispatch (`proofTests.length &&
 //    examTestCmd`), so B declares its proof test and no command of its own: the
 //    plan entry the row reads is exactly the one the leg spells, and the patch
 //    the `stat` is read from is exactly the implementer's two lines.
 //
 // 2. WHAT "AN IMPLEMENTER THAT WRITES NOTHING" IS IN S2. The suite's colour is
-//    decided by `A.txt` alone, so the green candidate of leg (b) is the same
+//    decided by `fA.txt` alone, so the green candidate of leg (b) is the same
 //    two-task plan with A's implementer writing nothing at all. B still writes
-//    `B.txt`, so the wave folds a real change and a real candidate suite runs
+//    `fB.txt`, so the wave folds a real change and a real candidate suite runs
 //    on it — green. A wave that folded nothing would leave "the candidate's
 //    suite is green" unexercised, which is the condition M2 names.
 //
@@ -103,12 +103,12 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-jev-suite-red-'))
 process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
 
 // ── the fixture: the loud suite ─────────────────────────────────────────────
-// Green at BASE; once `A.txt` exists it names a failing path no task lists and
+// Green at BASE; once `fA.txt` exists it names a failing path no task lists and
 // exits non-zero. `test_run_engine_reconcile_retry.mjs` builds the SILENT red
 // (an output naming no path, which takes the reconcile route); this is the loud
 // one, which takes the branch under test.
 const CHECK_SH = '#!/bin/bash\n' +
-  'if [ -f A.txt ]; then echo \'FAILED tests/test_other.py::test_x\'; exit 1; fi; exit 0\n'
+  'if [ -f fA.txt ]; then echo \'FAILED tests/test_other.py::test_x\'; exit 1; fi; exit 0\n'
 
 /** The one unattributed path this suite names. */
 const RED_PATH = 'tests/test_other.py'
@@ -119,20 +119,20 @@ const NOUL = 0.7
 
 /** A wave's task, the shape the rig's sims spell. */
 const taskOf = (id, extra = {}) => ({
-  id, title: 'task ' + id, files: [id + '.txt'], tier: 'standard', review: 'lean',
-  writes: [id + '.txt'], commutes: [], testCmd: 'bash check.sh', proofTests: [], proofRuns: [],
+  id, title: 'task ' + id, files: ['f' + id + '.txt'], tier: 'standard', review: 'lean',
+  writes: ['f' + id + '.txt'], commutes: [], testCmd: 'bash check.sh', proofTests: [], proofRuns: [],
   body: 'sim task ' + id, ...extra,
 })
 
-/** Task B, in every scenario: `B.txt`, one proof test the suite never names —
+/** Task B, in every scenario: `fB.txt`, one proof test the suite never names —
  *  so the red stays unattributed — and no `testCmd`, so no examiner is
  *  dispatched and the captured patch is the implementer's two lines alone. */
 const TASK_B = () => taskOf('B', { proofTests: ['tests/test_b.py'], testCmd: null })
-/** Task A as the loud-red scenarios declare it: it names `A.txt` and nothing else. */
+/** Task A as the loud-red scenarios declare it: it names `fA.txt` and nothing else. */
 const TASK_A = () => taskOf('A')
 /** Task A as the CLAIMED scenario declares it: the red path is in its `files`,
  *  so the fold takes the reconcile route instead. */
-const TASK_A_CLAIMING = () => taskOf('A', { files: ['A.txt', RED_PATH] })
+const TASK_A_CLAIMING = () => taskOf('A', { files: ['fA.txt', RED_PATH] })
 
 // ── the hub, for the scenarios that drive one ───────────────────────────────
 const PROJECT_ID = 7
@@ -169,7 +169,7 @@ const parsed = (line) => { try { return JSON.parse(line) } catch { return null }
  * One scenario: one engine run over the two-task plan.
  *
  *   waves      the plan
- *   writeA     whether `impl:A` writes `A.txt` — the suite's colour
+ *   writeA     whether `impl:A` writes `fA.txt` — the suite's colour
  *   jevMode    'ok' (a recording `fetchImpl` answering 200 with a noul for
  *              every question id it was sent), '500' (the same recorder
  *              answering status 500), or 'none' (no `jev` handed in at all)
@@ -209,11 +209,11 @@ const drive = async ({ tag, waves, writeA = true, jevMode = 'ok', withHub = fals
       const label = String(opts.label)
       labels.push(label)
       if (label === 'impl:A') {
-        if (writeA) fs.writeFileSync(path.join(cwd, 'A.txt'), 'one\n')
+        if (writeA) fs.writeFileSync(path.join(cwd, 'fA.txt'), 'one\n')
         return doneImpl(cwd)
       }
       if (label === 'impl:B') {
-        fs.writeFileSync(path.join(cwd, 'B.txt'), 'one\ntwo\n')
+        fs.writeFileSync(path.join(cwd, 'fB.txt'), 'one\ntwo\n')
         return doneImpl(cwd)
       }
       if (label === 'integration') return cleanCritic()
@@ -379,16 +379,16 @@ assert.deepEqual(Object.keys(STATE.tasks || {}).slice().sort(), ['A', 'B'],
   '(a) [M1] whose `state.tasks` has one entry per result in `merged` — this wave folded A and ' +
   'B; got ' + JSON.stringify(Object.keys(STATE.tasks || {})))
 assert.deepEqual((STATE.tasks || {}).A,
-  { files: ['A.txt'], proofTests: [], stat: [{ path: 'A.txt', added: 1, removed: 0 }] },
+  { files: ['fA.txt'], proofTests: [], stat: [{ path: 'fA.txt', added: 1, removed: 0 }] },
   '(a) [M1] whose `state.tasks.A` is the task\'s `files` and `proofTests` off the plan and the ' +
   '`{ path, added, removed }` list read from its captured patch text — one line written to ' +
-  '`A.txt`; got ' + JSON.stringify((STATE.tasks || {}).A))
+  '`fA.txt`; got ' + JSON.stringify((STATE.tasks || {}).A))
 assert.deepEqual((STATE.tasks || {}).B,
-  { files: ['B.txt'], proofTests: ['tests/test_b.py'],
-    stat: [{ path: 'B.txt', added: 2, removed: 0 }] },
+  { files: ['fB.txt'], proofTests: ['tests/test_b.py'],
+    stat: [{ path: 'fB.txt', added: 2, removed: 0 }] },
   '(a) [M1] and whose `state.tasks.B` carries B\'s declared `proofTests` (a path the suite ' +
   'never names, so the red stays unattributed) and the two lines its implementer wrote to ' +
-  '`B.txt`; got ' + JSON.stringify((STATE.tasks || {}).B))
+  '`fB.txt`; got ' + JSON.stringify((STATE.tasks || {}).B))
 
 // ── where the line lands ───────────────────────────────────────────────────
 const ROW_LINE = S1.rawRows[0]
@@ -423,7 +423,7 @@ assert.equal(S2.redRequests.length, 0,
   JSON.stringify(S2.redRequests.map((r) => Object.keys((r.body || {}).questions || {}))))
 
 assert.ok(S3.labels.includes('reconcile:wave1:1'),
-  '(b) [M2] a run whose task `A` lists `files: [\'A.txt\', \'' + RED_PATH + '\']` — the red ' +
+  '(b) [M2] a run whose task `A` lists `files: [\'fA.txt\', \'' + RED_PATH + '\']` — the red ' +
   'path CLAIMED — dispatches a `reconcile:wave1:1` worker: the reconcile route, not the ' +
   'unattributed one; got ' + JSON.stringify(S3.labels))
 assert.deepEqual(S3.rows, [],

@@ -48,8 +48,8 @@
 // the real capture, the real fold kernel through the real exec seam. Only the
 // judgments are canned, so every dispatch counted below is the driver's own.
 //
-// One task, whose implementer writes `A.txt`. The repository's suite is
-// `[ ! -f A.txt ] || [ -f FIX ]`: green at BASE, RED on the folded candidate,
+// One task, whose implementer writes `alpha.txt`. The repository's suite is
+// `[ ! -f alpha.txt ] || [ -f FIX ]`: green at BASE, RED on the folded candidate,
 // and green again once a `FIX` file exists. It prints nothing when it fails, so
 // the failing output names no path, the unattributed-red route is not taken,
 // and the candidate goes down the reconcile route — exactly one reconcile round
@@ -118,10 +118,10 @@ process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
 // The suite: green at BASE, red once the implementer's file exists, green again
 // once the reconciler's `FIX` exists. Silent on failure, so its output names no
 // path and the fold takes the reconcile route rather than the unattributed one.
-const CHECK_SH = '#!/bin/bash\n[ ! -f A.txt ] || [ -f FIX ]\n'
+const CHECK_SH = '#!/bin/bash\n[ ! -f alpha.txt ] || [ -f FIX ]\n'
 
 const TASK = {
-  id: 'A', title: 'task A', files: ['A.txt'], writes: ['A.txt'], commutes: [],
+  id: 'A', title: 'task A', files: ['alpha.txt'], writes: ['alpha.txt'], commutes: [],
   tier: 'standard', review: 'lean', testCmd: 'bash check.sh',
   proofTests: [], proofRuns: [], body: 'sim task A',
 }
@@ -155,7 +155,7 @@ async function drive({ tag, reconcile }) {
     labels.push(opts.label)
     const kind = String(opts.label).split(':')[0]
     if (kind === 'impl') {
-      fs.writeFileSync(path.join(cwd, 'A.txt'), 'from A\n')
+      fs.writeFileSync(path.join(cwd, 'alpha.txt'), 'from A\n')
       return doneImpl(cwd)
     }
     if (kind === 'review') return passReview()
@@ -485,7 +485,7 @@ const reconcileEntries = (calls) => calls.filter((c) => /reconcile/.test(String(
 //    seam as `bash -lc <prefix + command>`, the prefix being `shOf`'s
 //    toolchain `PATH` assignment written INTO the string. So a recorded suite
 //    is asserted with `endsWith`. It still separates the two commands under
-//    test: `bash check.sh` is not a suffix of `bash check.sh A.txt`.
+//    test: `bash check.sh` is not a suffix of `bash check.sh alpha.txt`.
 //
 // 2. "THAT STRING IS THE CANDIDATE SUITE OF WAVE 1" (leg i) is read off the
 //    cwd, not the text: the fold runs its suite in the integration clone, and
@@ -495,7 +495,7 @@ const reconcileEntries = (calls) => calls.filter((c) => /reconcile/.test(String(
 //    suite and for a reconciled one is the candidate suite then the re-run.
 //
 // 3. `bash check.sh` IGNORES ITS ARGUMENTS. The repo's suite is the rig's own
-//    (`[ ! -f BROKEN ]`, green) or this file's `CHECK_SH` (red once `A.txt`
+//    (`[ ! -f BROKEN ]`, green) or this file's `CHECK_SH` (red once `alpha.txt`
 //    exists, green once `FIX` does). Neither reads `$@`, so appending paths
 //    changes no verdict and only the command STRING is under test.
 //
@@ -519,28 +519,28 @@ assert.equal(typeof foldSuiteCommand, 'function',
   'The module exports: ' + JSON.stringify(Object.keys(engine).filter((k) => /fold/i.test(k))))
 
 {
-  // The Proof's own call, verbatim: `B.txt` before `A.txt` in the input, a
-  // `notes.md` the pattern rejects, and `A.txt` twice.
+  // The Proof's own call, verbatim: `beta.txt` before `alpha.txt` in the input, a
+  // `notes.md` the pattern rejects, and `alpha.txt` twice.
   assert.equal(
     foldSuiteCommand({ template: 'bash check.sh {paths}', pattern: '\\.txt$',
                        testCmd: 'bash check.sh',
-                       paths: ['B.txt', 'A.txt', 'notes.md', 'A.txt'],
+                       paths: ['beta.txt', 'alpha.txt', 'notes.md', 'alpha.txt'],
                        exists: () => true }),
-    'bash check.sh A.txt B.txt',
+    'bash check.sh alpha.txt beta.txt',
     '(g) [M3] the one `{paths}` token becomes the space-joined, SORTED, DE-DUPLICATED subset ' +
-    'of `paths` matching `pattern` — `A.txt` ahead of `B.txt` whatever the input order, `A.txt` ' +
+    'of `paths` matching `pattern` — `alpha.txt` ahead of `beta.txt` whatever the input order, `alpha.txt` ' +
     'once though it was given twice, and no `notes.md`')
 
-  // The same call with `exists` false for `B.txt`: a declared file no patch
+  // The same call with `exists` false for `beta.txt`: a declared file no patch
   // wrote, or a Proof spelling the run moved, is not in the tree the fold
   // just read out and so is not in the argv.
   assert.equal(
     foldSuiteCommand({ template: 'bash check.sh {paths}', pattern: '\\.txt$',
                        testCmd: 'bash check.sh',
-                       paths: ['B.txt', 'A.txt', 'notes.md', 'A.txt'],
-                       exists: (p) => p !== 'B.txt' }),
-    'bash check.sh A.txt',
-    '(g) [M3] and a path `exists` answers false for is dropped: `B.txt` is not in the tree, so ' +
+                       paths: ['beta.txt', 'alpha.txt', 'notes.md', 'alpha.txt'],
+                       exists: (p) => p !== 'beta.txt' }),
+    'bash check.sh alpha.txt',
+    '(g) [M3] and a path `exists` answers false for is dropped: `beta.txt` is not in the tree, so ' +
     'it is not in the command')
 }
 
@@ -552,13 +552,13 @@ assert.equal(typeof foldSuiteCommand, 'function',
        paths: ['notes.md'], exists: () => true }],
     ['a `template` carrying NO `{paths}` token',
      { template: 'bash check.sh', pattern: '\\.txt$', testCmd: 'bash check.sh',
-       paths: ['A.txt'], exists: () => true }],
+       paths: ['alpha.txt'], exists: () => true }],
     ['a `template` carrying TWO `{paths}` tokens — exactly one, or none of it',
      { template: 'x {paths} {paths}', pattern: '\\.txt$', testCmd: 'bash check.sh',
-       paths: ['A.txt'], exists: () => true }],
+       paths: ['alpha.txt'], exists: () => true }],
     ['a `pattern` that is not a string',
      { template: 'bash check.sh {paths}', pattern: null, testCmd: 'bash check.sh',
-       paths: ['A.txt'], exists: () => true }],
+       paths: ['alpha.txt'], exists: () => true }],
   ]
   for (const [why, input] of cases) {
     assert.equal(foldSuiteCommand(input), 'bash check.sh',
@@ -645,7 +645,7 @@ const testCommandLines = (prompt) => String(prompt).split('\n')
 {
   const run = await driveFold({
     tag: 'i',
-    tasks: [taskOf('A', { files: ['A.txt'], writes: ['A.txt'] })],
+    tasks: [taskOf('A', { files: ['alpha.txt'], writes: ['alpha.txt'] })],
     extraArgs: FOLD_ARGS,
   })
   assert.equal(run.threw, null,
@@ -654,10 +654,10 @@ const testCommandLines = (prompt) => String(prompt).split('\n')
     '(i) sim precondition — one epoch, green candidate: ' +
     JSON.stringify((run.report || {}).waveMerges) + ' | ' + JSON.stringify(run.judgmentCalls))
 
-  const scoped = run.shell.filter((c) => c.command.endsWith('bash check.sh A.txt'))
+  const scoped = run.shell.filter((c) => c.command.endsWith('bash check.sh alpha.txt'))
   assert.equal(scoped.length, 1,
     '(i) [M4] EXACTLY ONE recorded `bash -lc` string ends with the scoped command ' +
-    '`bash check.sh A.txt` — the `{paths}` token filled from the epoch\'s union. Recorded: ' +
+    '`bash check.sh alpha.txt` — the `{paths}` token filled from the epoch\'s union. Recorded: ' +
     JSON.stringify(run.shell.map((c) => c.command.split('\n').pop())))
   assert.equal(scoped[0].cwd, run.integ,
     '(i) [M4] and it ran in the integration clone — it is the CANDIDATE SUITE of wave 1, not ' +
@@ -665,13 +665,13 @@ const testCommandLines = (prompt) => String(prompt).split('\n')
   assert.equal(run.foldShell.length, 1,
     '(i) [M4] the green fold runs exactly one suite in the integration clone: ' +
     JSON.stringify(run.foldShell.map((c) => c.split('\n').pop())))
-  assert.ok(run.foldShell[0].endsWith('bash check.sh A.txt'),
+  assert.ok(run.foldShell[0].endsWith('bash check.sh alpha.txt'),
     '(i) [M4] and that one IS the scoped command (the `shOf` PATH prefix rides inside the ' +
     'string, so this is a suffix test): ' + JSON.stringify(run.foldShell[0]))
 
-  assert.deepEqual(run.foldSuiteLines, ['wave 1 fold suite: bash check.sh A.txt'],
+  assert.deepEqual(run.foldSuiteLines, ['wave 1 fold suite: bash check.sh alpha.txt'],
     '(i) [M4] and `logs` carries exactly one line, equal to `wave 1 fold suite: bash check.sh ' +
-    'A.txt` — logged before the suite runs, because the command is not `testCmd`. All logs: ' +
+    'alpha.txt` — logged before the suite runs, because the command is not `testCmd`. All logs: ' +
     JSON.stringify(run.logs))
 }
 
@@ -680,11 +680,11 @@ const testCommandLines = (prompt) => String(prompt).split('\n')
   const run = await driveFold({
     tag: 'j',
     tasks: [
-      taskOf('T1', { files: ['A.txt'], writes: ['A.txt'] }),
+      taskOf('T1', { files: ['alpha.txt'], writes: ['alpha.txt'] }),
       // `notes.md` is written and fails the pattern; `ghost.txt` is named as a
       // Proof `Test:` and never written, so it is in the union and fails
       // `exists` in the integration clone after the read-tree.
-      taskOf('T2', { files: ['B.txt', 'notes.md'], writes: ['B.txt', 'notes.md'],
+      taskOf('T2', { files: ['beta.txt', 'notes.md'], writes: ['beta.txt', 'notes.md'],
                      proofTests: ['ghost.txt'] }),
     ],
     extraArgs: FOLD_ARGS,
@@ -699,9 +699,9 @@ const testCommandLines = (prompt) => String(prompt).split('\n')
     '(j) sim precondition — one candidate suite in the integration clone: ' +
     JSON.stringify(run.foldShell.map((c) => c.split('\n').pop())))
   const suite = run.foldShell[0]
-  assert.ok(suite.endsWith('bash check.sh A.txt B.txt'),
+  assert.ok(suite.endsWith('bash check.sh alpha.txt beta.txt'),
     '(j) [M4] the candidate suite is `foldSuiteCommand` over the UNION of both tasks\' touch ' +
-    'sets and `proofTests` — `A.txt` from T1 and `B.txt` from T2, sorted: ' +
+    'sets and `proofTests` — `alpha.txt` from T1 and `beta.txt` from T2, sorted: ' +
     JSON.stringify(suite.split('\n').pop()))
   assert.ok(!suite.includes('notes.md'),
     '(j) [M4] `notes.md` was written by T2 and is in the union, and the pattern rejects it: ' +
@@ -710,7 +710,7 @@ const testCommandLines = (prompt) => String(prompt).split('\n')
     '(j) [M4] `ghost.txt` is T2\'s `proofTests` entry, so it is in the union — and no patch ' +
     'wrote it, so `exists` in the integration clone drops it: ' +
     JSON.stringify(suite.split('\n').pop()))
-  assert.deepEqual(run.foldSuiteLines, ['wave 1 fold suite: bash check.sh A.txt B.txt'],
+  assert.deepEqual(run.foldSuiteLines, ['wave 1 fold suite: bash check.sh alpha.txt beta.txt'],
     '(j) [M4] and the one log line names that same command: ' + JSON.stringify(run.logs))
 }
 
@@ -719,7 +719,7 @@ const testCommandLines = (prompt) => String(prompt).split('\n')
   const run = await driveFold({
     tag: 'k',
     checkSh: CHECK_SH,
-    tasks: [taskOf('A', { files: ['A.txt'], writes: ['A.txt'] })],
+    tasks: [taskOf('A', { files: ['alpha.txt'], writes: ['alpha.txt'] })],
     extraArgs: FOLD_ARGS,
     reconcile: (n, cwd) => fixAndReport(cwd),
   })
@@ -732,7 +732,7 @@ const testCommandLines = (prompt) => String(prompt).split('\n')
     '(k) sim precondition — the `FIXED` was committed and the epoch adopted: ' +
     JSON.stringify((run.report || {}).waveMerges) + ' | ' + JSON.stringify(run.judgmentCalls))
 
-  assert.deepEqual(testCommandLines(run.prompts[0]), ['TEST COMMAND: bash check.sh A.txt'],
+  assert.deepEqual(testCommandLines(run.prompts[0]), ['TEST COMMAND: bash check.sh alpha.txt'],
     '(k) [M4] the reconcile prompt carries ONE `TEST COMMAND:` line and it is the scoped ' +
     'command — the reconcile worker is told the suite it is being asked to fix, not the ' +
     'run-wide one. Lines found: ' + JSON.stringify(testCommandLines(run.prompts[0])))
@@ -740,10 +740,10 @@ const testCommandLines = (prompt) => String(prompt).split('\n')
   assert.equal(run.foldShell.length, 2,
     '(k) [M4] the fold ran two suites in the integration clone: the candidate\'s, then the ' +
     're-run after the `FIXED`: ' + JSON.stringify(run.foldShell.map((c) => c.split('\n').pop())))
-  assert.ok(run.foldShell[0].endsWith('bash check.sh A.txt'),
+  assert.ok(run.foldShell[0].endsWith('bash check.sh alpha.txt'),
     '(k) [M4] the candidate suite is the scoped command: ' +
     JSON.stringify(run.foldShell[0].split('\n').pop()))
-  assert.ok(run.foldShell[1].endsWith('bash check.sh A.txt'),
+  assert.ok(run.foldShell[1].endsWith('bash check.sh alpha.txt'),
     '(k) [M4] and the re-run after the stub\'s `FIXED` is a SECOND recorded string ending in ' +
     'the same scoped command — one `foldCmd`, computed once, serving all three sites: ' +
     JSON.stringify(run.foldShell[1].split('\n').pop()))
@@ -753,7 +753,7 @@ const testCommandLines = (prompt) => String(prompt).split('\n')
 {
   const run = await driveFold({
     tag: 'l',
-    tasks: [taskOf('A', { files: ['A.txt'], writes: ['A.txt'] })],
+    tasks: [taskOf('A', { files: ['alpha.txt'], writes: ['alpha.txt'] })],
     extraArgs: { foldTestCmd: 'bash check.sh {paths}', foldTestPattern: '\\.nomatch$' },
   })
   assert.equal(run.threw, null,
@@ -778,7 +778,7 @@ const testCommandLines = (prompt) => String(prompt).split('\n')
   const run = await driveFold({
     tag: 'm',
     checkSh: CHECK_SH,
-    tasks: [taskOf('A', { files: ['A.txt'], writes: ['A.txt'] })],
+    tasks: [taskOf('A', { files: ['alpha.txt'], writes: ['alpha.txt'] })],
     reconcile: (n, cwd) => fixAndReport(cwd),
   })
   assert.equal(run.threw, null,

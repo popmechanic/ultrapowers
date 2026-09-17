@@ -36,10 +36,10 @@
  *       `jev` and a hub on: exactly one `jev:finding` row, its `task`, `round`,
  *       `key` and four answer keys; exactly one recorded request, its four
  *       questions and their types and criteria keys, its `state.finding.text`,
- *       `state.task.files` and the `A.txt`-only `state.hunks`; and the row's
+ *       `state.task.files` and the `alpha.txt`-only `state.hunks`; and the row's
  *       events.jsonl line, verbatim, among the comments on A's issue.
  *   (b) [M1] a second run whose detail names no path: `state.hunks` carries the
- *       whole patch — both `A.txt` and `B.txt`. (Its task body carries neither
+ *       whole patch — both `alpha.txt` and `beta.txt`. (Its task body carries neither
  *       a `**Claim:**` nor a `Machine:` line, which is M1's empty-string case.)
  *   (c) [M2] leg (a)'s run has no `minor|` row and made no second call; the
  *       driver-minted run leaves zero rows and zero requests; a `fetchImpl`
@@ -100,15 +100,15 @@ process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
 // One `**Claim:**` line with no continuation, so `claim` is that line's text
 // with the marker removed and nothing else; a `Machine:` block of two lines
 // ended by a blank line, with a sentinel past it that `machine` may not carry.
-const CLAIM_A = 'do: run the plan; see: `A.txt` still holds line2. (derived)'
-const MACHINE_1 = 'M1. `A.txt` holds the line `line2`.'
-const MACHINE_2 = 'M2. Nothing outside `A.txt` is read.'
+const CLAIM_A = 'do: run the plan; see: `alpha.txt` still holds line2. (derived)'
+const MACHINE_1 = 'M1. `alpha.txt` holds the line `line2`.'
+const MACHINE_2 = 'M2. Nothing outside `alpha.txt` is read.'
 const PAST_THE_BLANK = 'NOT-MACHINE: past the blank line that ends the Machine block.'
 const BODY_A = [
   '### Task A: keep line2',
   '',
   '**Files:**',
-  '- Modify: `A.txt`',
+  '- Modify: `alpha.txt`',
   '',
   '**Claim:** ' + CLAIM_A,
   'Machine: ' + MACHINE_1,
@@ -117,11 +117,11 @@ const BODY_A = [
   PAST_THE_BLANK,
   '',
   '**Proof:**',
-  '- Legs: (a) `A.txt` holds line2 [M1]',
+  '- Legs: (a) `alpha.txt` holds line2 [M1]',
 ].join('\n')
 
 const TITLE_A = 'keep line2'
-const DETAIL_A = 'the change to `A.txt` drops line2'
+const DETAIL_A = 'the change to `alpha.txt` drops line2'
 const KEY_A = 'blocking|' + DETAIL_A
 const DETAIL_NO_PATH = 'the change is incomplete'
 const ANSWER_KEYS = ['actor', 'borne_out', 'claim_false', 'fixable_in_files']
@@ -249,11 +249,11 @@ async function scenario ({ task, reply, onLabel = () => {}, jevOn = true, status
     const answer = onLabel(label, cwd)
     if (answer !== undefined) return answer
     if (label.startsWith('impl:') || label.startsWith('fix:')) {
-      // The patch two files wide: the detail of leg (a) names `A.txt` only, so
-      // `B.txt` is the header `state.hunks` must not carry there and must carry
+      // The patch two files wide: the detail of leg (a) names `alpha.txt` only, so
+      // `beta.txt` is the header `state.hunks` must not carry there and must carry
       // in leg (b).
-      fs.writeFileSync(path.join(cwd, 'A.txt'), 'line1\nline3\n')
-      fs.writeFileSync(path.join(cwd, 'B.txt'), 'b\n')
+      fs.writeFileSync(path.join(cwd, 'alpha.txt'), 'line1\nline3\n')
+      fs.writeFileSync(path.join(cwd, 'beta.txt'), 'b\n')
       return doneImpl(cwd)
     }
     if (label.startsWith('review:')) return reply(label)
@@ -290,8 +290,8 @@ async function scenario ({ task, reply, onLabel = () => {}, jevOn = true, status
 // The task of legs (a), (c) and (d): one file, a body with a Claim and a
 // Machine block, no `Run:` proof of its own.
 const taskA = (over = {}) => ({
-  id: 'A', title: TITLE_A, files: ['A.txt'], tier: 'standard', review: 'peer',
-  writes: ['A.txt'], commutes: [], proofTests: [], proofRuns: [], body: BODY_A, ...over,
+  id: 'A', title: TITLE_A, files: ['alpha.txt'], tier: 'standard', review: 'peer',
+  writes: ['alpha.txt'], commutes: [], proofTests: [], proofRuns: [], body: BODY_A, ...over,
 })
 // The round-1 reply leg (a) names: exactly one `blocking` issue and one
 // `minor`. Round 2 answers PASS for the round the Proof expects to be bought.
@@ -378,7 +378,7 @@ assert.equal(state.finding.severity, 'blocking',
   '(a) [M1] `state.finding.severity` is the issue\'s own severity: ' + JSON.stringify(state.finding))
 assert.equal(state.finding.actor, 'implementer',
   '(a) [M1] `state.finding.actor` is the actor the reviewer named: ' + JSON.stringify(state.finding))
-assert.deepEqual(state.task.files, ['A.txt'],
+assert.deepEqual(state.task.files, ['alpha.txt'],
   '(a) [M1] `state.task.files` deep-equals the task\'s own Files: ' + JSON.stringify(state.task.files))
 assert.equal(state.task.title, TITLE_A,
   '(a) [M1] `state.task.title` is the task\'s title: ' + JSON.stringify(state.task.title))
@@ -396,12 +396,12 @@ assert.ok(!String(state.task.machine).includes(PAST_THE_BLANK),
   '(a) [M1] and nothing from past that blank line: ' + JSON.stringify(state.task.machine))
 
 // ── the hunks: the sections the detail's paths name, and no others ──────────
-assert.ok(String(state.hunks).includes('diff --git a/A.txt b/A.txt'),
-  '(a) [M1] `state.hunks` carries the captured patch\'s `A.txt` section — the one path the ' +
+assert.ok(String(state.hunks).includes('diff --git a/alpha.txt b/alpha.txt'),
+  '(a) [M1] `state.hunks` carries the captured patch\'s `alpha.txt` section — the one path the ' +
   'detail names: ' + JSON.stringify(String(state.hunks).slice(0, 400)))
-assert.deepEqual(headerPathsIn(state.hunks), ['A.txt'],
+assert.deepEqual(headerPathsIn(state.hunks), ['alpha.txt'],
   '(a) [M1] and NO `diff --git` header for any other path: the implementer stub also wrote ' +
-  '`B.txt`, which the detail does not name. Headers sent: ' +
+  '`beta.txt`, which the detail does not name. Headers sent: ' +
   JSON.stringify(headerPathsIn(state.hunks)))
 
 // ── the same line, verbatim, on the task's hub issue ────────────────────────
@@ -435,12 +435,12 @@ assert.equal(B.findingRequests.length, 1,
   '(b) [M1] the second run recorded one `jev:finding` request: ' +
   JSON.stringify(B.findingRequests.map((r) => r.url)))
 const stateB = B.findingRequests[0].body.state
-assert.ok(String(stateB.hunks).includes('diff --git a/A.txt b/A.txt'),
-  '(b) [M1] a detail naming no path sends the WHOLE patch — the `A.txt` section: ' +
+assert.ok(String(stateB.hunks).includes('diff --git a/alpha.txt b/alpha.txt'),
+  '(b) [M1] a detail naming no path sends the WHOLE patch — the `alpha.txt` section: ' +
   JSON.stringify(String(stateB.hunks).slice(0, 400)))
-assert.ok(String(stateB.hunks).includes('diff --git a/B.txt b/B.txt'),
-  '(b) [M1] and the `B.txt` section beside it: ' + JSON.stringify(String(stateB.hunks).slice(0, 400)))
-assert.deepEqual(headerPathsIn(stateB.hunks), ['A.txt', 'B.txt'],
+assert.ok(String(stateB.hunks).includes('diff --git a/beta.txt b/beta.txt'),
+  '(b) [M1] and the `beta.txt` section beside it: ' + JSON.stringify(String(stateB.hunks).slice(0, 400)))
+assert.deepEqual(headerPathsIn(stateB.hunks), ['alpha.txt', 'beta.txt'],
   '(b) [M1] which is the whole captured patch and nothing else: ' +
   JSON.stringify(headerPathsIn(stateB.hunks)))
 assert.equal(stateB.finding.text, DETAIL_NO_PATH,
@@ -479,8 +479,8 @@ const D = await scenario({
   reply: () => passReview(),
   onLabel: (label, cwd) => {
     if (label === 'impl:A') {
-      fs.writeFileSync(path.join(cwd, 'A.txt'), 'line1\nline3\n')
-      fs.writeFileSync(path.join(cwd, 'B.txt'), 'b\n')
+      fs.writeFileSync(path.join(cwd, 'alpha.txt'), 'line1\nline3\n')
+      fs.writeFileSync(path.join(cwd, 'beta.txt'), 'b\n')
       return doneImpl(cwd)
     }
     if (label === 'fix:A:0') return doneImpl(cwd)

@@ -585,7 +585,11 @@ def _assert_window_since(line, tree, tag, runs, leg):
     assert match.group("runs") == str(runs), (
         f"{leg} [M2] {runs} `catch-count` row(s) fall inside it, got "
         f"{match.group('runs')!r}")
-    wanted = datetime.fromisoformat(_creatordate(tree, tag))
+    # The tag's own instant, read with the tool's own parse: `creatordate`
+    # ends in `Z`, which `datetime.fromisoformat` rejects before Python
+    # 3.11 — and the laptop's python3 is older than the sandbox's, which is
+    # how this leg went red on one machine and green on the other.
+    wanted = catch_report._when(_creatordate(tree, tag))
     got = catch_report._when(match.group("instant"))
     assert got is not None and got == wanted, (
         f"{leg} [M2] and that tag's own instant ({wanted.isoformat()}), got "
