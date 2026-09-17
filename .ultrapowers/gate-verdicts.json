@@ -1,0 +1,55 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "ccf36e1f685cd457ab8c111000b444a811dff9ae57627e308ec99c01cf7b5a69",
+      "verdict": "pass",
+      "reason": "M1's leg (a) pins the exact eleven-of-fourteen count, the ten-row cap, tie order (p07 before p14 at 2.8) and the inclusive 2.5 boundary via the one-entry second boot; M2's leg (b) covers the 2.4-everywhere, no-jev and empty cases; M3's leg (c) splices the section out and demands string-equality with the failed boot's body plus a fourteen-line typesafe.log, with no base file pinning the opposite (the base sim's default answers score 0.8, below the threshold)."
+    },
+    "2": {
+      "hash": "a8c0725f4dae3087f04cb4aee86cbec9055d392e859acc8c42ffe4d0fcbf3303",
+      "verdict": "pass",
+      "reason": "Every clause is pinned inside a sed window whose start anchor exists at BASE (residuals.jsonl line 287 and its kata.jsonl closer at 293 for M1, the Traps to Capacity span for M4's 42-count) or is the label the edit itself creates, and each ordered grep is red at BASE; decisively M3, whose fourth leg demands up-to-ten Act on these rows between the plan-actor notes and the closing phrase while the fifth demands zero of the unqualified at-all sentence BASE carries once, so a hollow or missing rewrite fails one of the pair."
+    }
+  },
+  "tally": {
+    "base": "4dccc32f35abbac01ee69581851f148cf5c5e963",
+    "dispatched": 2,
+    "rejected": 0,
+    "rounds": 1,
+    "per_round": {
+      "1": {
+        "dispatched": 2,
+        "rejected": 0
+      }
+    }
+  },
+  "authoring": {
+    "minutes": 22,
+    "probes": 1,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Quote the card sentence",
+          "Say it as what you will see"
+        ],
+        "recommended": "Quote the card sentence",
+        "picked": "Quote the card sentence"
+      },
+      {
+        "question": "Execute how",
+        "options": [
+          "Ultrapowers",
+          "Subagent-Driven",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers"
+      }
+    ]
+  }
+}
