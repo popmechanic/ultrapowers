@@ -1,0 +1,230 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "f4bead9d7e923063bd56aaefb7dae430473cb140a64c05ae0f9c215cfd40c64c",
+      "verdict": "pass",
+      "reason": "(a) deep-equals M1's keys, types, 20000 and the eight questions' literals; (b) exercises M2's found/missing-line/missing-section/Machine-follows cases; (c) pins M3's exact ask argument (25000 cut to 20000), single call, the three null paths and the one jev: log line for both readers; (d) covers M4's null/undefined-without-log and the absent imports/process.env/fetch( in the source; (e)'s Run: anchors on ## The singletons (BASE line 109) and matches only after this task's README edit."
+    },
+    "2": {
+      "hash": "9d474e6780b5a0e66bb01123869738ea08e15ad7545fcd9f6ed974e41b78fcfa",
+      "verdict": "pass",
+      "reason": "Every clause M1\u2013M6 has a leg that fails if false (M3's enumerated rows each have a unit case; M1/M2/M4/M5's negations name a present non-worker/other-type/unknown-uid event, a null answer, an unchanged stamp and a missing jev/events); the literals compute (53-character implementer body, 120+1+120+1+58 = 300-character examiner body whose first 200 characters cross one newline, 0.7/0.69 straddle the threshold, revision one less than the patch answer); BASE pins the hook-stamp shape only in run-engine.mjs which the task edits; both Run: anchors are in CONTRACT.md, which the task owns."
+    },
+    "3": {
+      "hash": "29e2703723f20dd45532bd61797a8226ff8fb184b51b4c73ad8c31ce06d0dfd2",
+      "verdict": "pass",
+      "reason": "M1's body literal and single run-uid comment (a), M2's three null rows plus the absent-JSON-on-run-uid and present-on-task-uid checks (b), M3's exact counts of 1 then 2 per commentUid (c), M5's one kata:write-failed {what: comment, uid: run.uid} with unchanged status/verdict (e); 0.7 posts and 0.69 does not; the Run: sed range opens on BASE line 859 inside the Kata record bullet and the grep's ordered literals match the paragraph M4 prescribes."
+    },
+    "4": {
+      "hash": "9e6715cea698930a5d39d458e4345a7fb441ca600dbf8d422f087b90c0979433",
+      "verdict": "pass",
+      "reason": "(a) pins the two reads' order, questions, state and the jev numbers/null on both the events and the report rows [M1]; (b) the absent key and the BASE legs via the sentinel Run: [M2]; (c) status, verdict, judgmentCalls, tests.passed and the merge decision equal to the no-jev run for both the null and the thrown read [M3]; the two document greps are satisfiable in order (CONTRACT anchors at 217/226 exist at BASE) [M4]."
+    },
+    "5": {
+      "hash": "bdf157e6c9f821ec231d34b2e323f14ba35db1d3a50be8ad437170db972ba61a",
+      "verdict": "pass",
+      "reason": "M1 by the header-equals-COLUMNS check, M2 by the five-run table plus the spelled jev_cells fixture which computes exactly to ((1,2),(1,2),(0,0,1,1)) under the 0.7 thresholds and bucket formula, M3 by the totals suffix and the empty-root 0/0 case, and M4 by the byte-for-byte register check plus four Run: lines whose 19 counts match the 19 headings in each BASE sibling."
+    }
+  },
+  "tally": {
+    "base": "b16dbdb1e97ab49d6d4a2958907bfd3ec7cd3194",
+    "dispatched": 17,
+    "rejected": 8,
+    "rounds": 7,
+    "per_round": {
+      "1": {
+        "dispatched": 5,
+        "rejected": 2
+      },
+      "2": {
+        "dispatched": 2,
+        "rejected": 1
+      },
+      "3": {
+        "dispatched": 1,
+        "rejected": 0
+      },
+      "4": {
+        "dispatched": 4,
+        "rejected": 3
+      },
+      "5": {
+        "dispatched": 3,
+        "rejected": 2
+      },
+      "6": {
+        "dispatched": 2,
+        "rejected": 2
+      },
+      "7": {
+        "dispatched": 2,
+        "rejected": 0
+      }
+    },
+    "note": "rounds 1-3 at base 3c61d8d7 before run-177 merged (task 5's verdict from round 2 stands, its Claim/Proof unchanged); rounds 4-7 at base b16dbdb1 after the plan was re-aimed to consume run-177's client"
+  },
+  "history": [
+    {
+      "round": 1,
+      "task": "1",
+      "hash": "9ded9dd69939ca1c9b9aa9d0c16e566730564c825f9311a9024cedee6e9d4d65",
+      "verdict": "fail",
+      "reason": "M6's second Run: hinged on a status.json anchor the excerpt did not show and proved only 'between', not 'directly after'; M5's rig forwarding had no leg that fails if the forwarding is missing."
+    },
+    {
+      "round": 1,
+      "task": "2",
+      "hash": "70becc61017555b6ad0c89a8c3606c5bcc96bb22223fdef1f19a0dab9a7ca044",
+      "verdict": "pass",
+      "reason": "as recorded"
+    },
+    {
+      "round": 1,
+      "task": "3",
+      "hash": "16d8fe697796feb0e68a9436f0916565bac6954d9c61c00011be9ed04b635c1a",
+      "verdict": "pass",
+      "reason": "as recorded"
+    },
+    {
+      "round": 1,
+      "task": "4",
+      "hash": "a6c2dca26aaec6089a9cb01d7b5ca3cc13e852b98187d8a368032682dea57865",
+      "verdict": "pass",
+      "reason": "as recorded"
+    },
+    {
+      "round": 1,
+      "task": "5",
+      "hash": "f9b439ecfde4ce723f8007437d4d906e8d1621b54ca0820a74e5351901e52cb9",
+      "verdict": "fail",
+      "reason": "M4 pinned the amendments sibling at 22 def test_ functions where BASE has 19 (a bare grep counted docstring mentions); M2's 'not an object' jev had no leg."
+    },
+    {
+      "round": 2,
+      "task": "1",
+      "hash": "566672de38919b9450059aa18c37df3ff807355be6a2247bed6caf5c6daf0e81",
+      "verdict": "fail",
+      "reason": "M5's runEngine destructuring of jev had no leg that fails if run-engine.mjs is left untouched; M1's 'verbatim' was only sampled by one question."
+    },
+    {
+      "round": 2,
+      "task": "5",
+      "hash": "bdf157e6c9f821ec231d34b2e323f14ba35db1d3a50be8ad437170db972ba61a",
+      "verdict": "pass",
+      "reason": "as recorded"
+    },
+    {
+      "round": 3,
+      "task": "1",
+      "hash": "9429589dda4bfb3690bb1273d5488d9915bdd70111da72f7934d66322cf489fc",
+      "verdict": "pass",
+      "reason": "as recorded"
+    },
+    {
+      "round": 4,
+      "task": "1",
+      "hash": "f4bead9d7e923063bd56aaefb7dae430473cb140a64c05ae0f9c215cfd40c64c",
+      "verdict": "pass",
+      "reason": "as recorded"
+    },
+    {
+      "round": 4,
+      "task": "2",
+      "hash": "59344f21464ddd402ce548c4ce0ed69f900d7b125629713ebdafe9bbd307582e",
+      "verdict": "fail",
+      "reason": "M3's refused-patch clause had no leg; M1's 200-character sentence rule was exercised only with a 55-character single-line body."
+    },
+    {
+      "round": 4,
+      "task": "3",
+      "hash": "b345bc1c23fe376b44dc628d65d411fadd580e730bcbd0c12dd21ac5eb394d27",
+      "verdict": "fail",
+      "reason": "'nothing blocked by it' had no engine-layer clause: no leg drove a refused plan-defect comment; M1 named two routes and the leg exercised one."
+    },
+    {
+      "round": 4,
+      "task": "4",
+      "hash": "c7179bf0843b53812e50845d6a4f8c749e9677729047e462f0132f2ae3163a31",
+      "verdict": "fail",
+      "reason": "M3's merge decision was never compared between the thrown-read run and the no-jev run."
+    },
+    {
+      "round": 5,
+      "task": "2",
+      "hash": "a1e968194b18270acd13d778be2454aeea274ef675228dc559d6d0b238dd4af9",
+      "verdict": "fail",
+      "reason": "No fix: event went through the poll's actor filter; the quoted bodies were miscounted (53 not 55; 302 not 300)."
+    },
+    {
+      "round": 5,
+      "task": "3",
+      "hash": "29e2703723f20dd45532bd61797a8226ff8fb184b51b4c73ad8c31ce06d0dfd2",
+      "verdict": "pass",
+      "reason": "as recorded"
+    },
+    {
+      "round": 5,
+      "task": "4",
+      "hash": "cae2fbb026f7b50b553ae5cb084648fedaae8b396eb62fb42e2dfb0108954765",
+      "verdict": "fail",
+      "reason": "M3's null-resolving read was never compared against the no-jev run's fields; only the throw was."
+    },
+    {
+      "round": 6,
+      "task": "2",
+      "hash": "ed5bf1d918d4b3168495829e1805bfa9c5eb15091f73f50e9623e871ce26075e",
+      "verdict": "fail",
+      "reason": "M4's needs-human-with-another-message row had no leg; only stuck was driven."
+    },
+    {
+      "round": 6,
+      "task": "4",
+      "hash": "32c078dd51a2ffcbc6bfbdcade8822216928ff0a2f6021c845586fe68bc0e7a2",
+      "verdict": "fail",
+      "reason": "readAmendment/AMENDMENT_QUESTIONS named no file the reader could see (the sibling's module) and M2's 'unchanged' had no leg."
+    },
+    {
+      "round": 7,
+      "task": "2",
+      "hash": "9d474e6780b5a0e66bb01123869738ea08e15ad7545fcd9f6ed974e41b78fcfa",
+      "verdict": "pass",
+      "reason": "as recorded"
+    },
+    {
+      "round": 7,
+      "task": "4",
+      "hash": "9e6715cea698930a5d39d458e4345a7fb441ca600dbf8d422f087b90c0979433",
+      "verdict": "pass",
+      "reason": "as recorded"
+    }
+  ],
+  "authoring": {
+    "minutes": 145,
+    "probes": 2,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Say it as what you will see",
+          "Quote the issue's first proposal line"
+        ],
+        "recommended": "Say it as what you will see",
+        "picked": "Say it as what you will see"
+      },
+      {
+        "question": "Execute how",
+        "options": [
+          "Ultrapowers",
+          "Subagent-Driven",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers"
+      }
+    ]
+  }
+}
