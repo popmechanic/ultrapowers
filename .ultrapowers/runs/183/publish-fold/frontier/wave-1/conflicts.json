@@ -1,0 +1,12 @@
+[
+  {
+    "i": 1,
+    "path": "fleet/tests/test_sandbox_boot_residuals.mjs",
+    "kind": "lines",
+    "dispatchable": true,
+    "reason": "",
+    "epoch": 2,
+    "hunksFile": "/home/exedev/target/.claude/ultrapowers/run-run-183/publish-fold/frontier/wave-1/conflict-1.hunks.txt",
+    "hunkCount": 3
+  }
+]

@@ -1,0 +1,3097 @@
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index 5d8d10aa8a3f787185b2e64555872aaf6bd8171b..55ec1ad526a34f389e5889e30f510dbc2eb21e59 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -304,9 +304,20 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+     `residuals.jsonl` — one JSON object per residual, present when the run had one, and a union
+     across transitions — a row an earlier transition recorded stays when a later report no longer
+     carries it, and no row is written twice:
+-    `{run, task, file, line, kind, text, sha}`, `kind` one of `nit`, `unverified`, `deferred`,
+-    `structural`. It is the same items the PR body lists, on the record rather than in a page a
+-    merge closes; append-only, and a run that left nothing writes no file.
++    `{run, task, file, line, kind, text, sha, jev}`, keys sorted on the line, `kind` one of `nit`,
++    `unverified`, `deferred`, `structural`, and `jev` the classifier's reading of that row —
++    `kind.status` one of `verified`, `unverified`, `deferred`, `kind.subject` one of `plan text`,
++    `proof leg`, `exam file`, `implementation`, `footprint`, `quality`, `actor` one of
++    `implementer`, `plan`, `examiner`, `nobody`, `attention` a score from 0 to 3, `claim_false` and
++    the three `confidence` scores (`actor`, `status`, `subject`) each from 0 to 1, and `model` the
++    version that answered. The `jev` key is absent — not null — when that row's request failed, and
++    the rule's own `kind` is unchanged by it. It is the same items the PR body lists, on the record
++    rather than in a page a merge closes; append-only, and a run that left nothing writes no file.
++    `residuals-jev.jsonl` — THE CLASSIFIER'S CACHE, beside it, one line per request ever made for
++    the run, `{answers, error, key, model, usage}` with keys sorted, `key` the sha256 hex of the
++    item's name and text joined by a newline; a failure writes `answers` null and `error`
++    `curl exit <n>`, and no key is requested twice, so the file is one line per distinct checklist
++    item and the run repeats no request it already holds.
+     `kata.jsonl` — THE HUB'S OWN RECORD of the run, beside the engine's, present when the plan
+     commit carried a `.ultrapowers/kata.json`. Two line kinds, one JSON object per line with `kind`
+     first and the object's own fields spread after it: `{"kind":"issue", …}` per one of
+@@ -987,7 +998,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+ - **Publish:** the sandbox's own act, at the end of the boot script above — there is no grant tool and no
+   operator step between the gate and the PR.
+   The card is written for a PERSON, and nothing above its folded record is a hash, a JSON fence, a
+-  file listing or a reviewer's sentence. The body opens with the plan's `**Summary:**` paragraph
++  file listing or a reviewer's sentence — the errands and the `Act on these` rows excepted. The
++  body opens with the plan's `**Summary:**` paragraph
+   verbatim, its label stripped — `_No summary was signed with this plan._` when the plan signed
+   none; then the answer line, exactly one of `**Merged** <sha>` (the status page's `merged` cell),
+   `**Merge-ready**`, `**Held:** <text>` (the merge note less its `left open: ` prefix) or
+@@ -998,6 +1010,13 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   narrated at publish time — the `mutant` cell reads `SURVIVED` when any state exam's mutant lived,
+   and where they were all killed a row whose `reviewVerdict` is `skipped-mutant-killed` reads
+   `killed, reviewer skipped` and every other row reads `killed`;
++  then one `Act on these: <q> of <n>` line — `q` the residuals the classifier scored at or above
++  `2.5`, `n` all of them — a blank line, and at most ten
++  `- <name> — <text> — attention <a>, actor <actor>, <status> / <subject>` lines, one per row whose
++  `jev.attention` is at least `2.5`, highest attention first and ties in checklist order, `<a>` to
++  one decimal, with no section at all when none qualifies: an `experiment` (#1093) read over
++  `n=5 runs` whose rollback is deleting the section, and nothing gates on it — the answer line, the
++  table, the counts and the record read the same whether it is there or not;
+   then `Residuals: <n> from review` — `Residuals: none` at zero — and, as
+   `- ` lines, only the items nobody else will do; then, below those errands,
+   `Amendments: <n> from workers` and, after a blank line, one
+@@ -1028,8 +1047,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   `report.json`, each with its evidence sentence — and no section at all when there is none; the
+   record closes after it, so the `Closes #<n>` lines are still the body's last lines. The count
+   above the record is every one of those items; the `- ` lines above it are the `deferred:external`
+-  ones and the notes of a task whose report row carries `actor` `plan`, and no other reviewer
+-  sentence appears above the record at all. The same items are also rows of `residuals.jsonl` on the run's record,
++  ones, the notes of a task whose report row carries `actor` `plan`, and the up-to-ten
++  `Act on these` rows, and no other reviewer
++  sentence appears above the record. The same items are also rows of `residuals.jsonl` on the run's record,
+   written with the evidence and not at publish — the checklist closes with the PR that carries it,
+   the rows do not — and the sandbox files no issue for them, against this target or any other,
+   except the one disclosures ticket, which is not read off that checklist at all. Every
+diff --git a/fleet/RUNBOOK.md b/fleet/RUNBOOK.md
+index e72ce5a0ce51493f97585192457147ac4600b0dc..0a969107b75909ae40eacaa5a1de54fd119c43db 100644
+--- a/fleet/RUNBOOK.md
++++ b/fleet/RUNBOOK.md
+@@ -505,6 +505,18 @@ on the next one, ask her before editing a script.
+   by the gateway (403 "integration not found or not attached"). Peer traffic
+   is its own integration kind.
+ 
++**TypeSafe.**
++
++- The classifier is an exe.dev `http-proxy` integration named `typesafe` attached to the fleet
++  policy `tag:fleet`, the same shape as `claude-max` and `kata`, and a VM reaches it at
++  `https://typesafe.int.exe.xyz/v1/systemone` — `https` only, because the http form answers `301`
++  and a followed 301 turns the POST into a GET and the body is lost (run-110's seam). The client
++  sends no `Authorization` header: the edge injects the bearer, so no `TYPESAFE_API_KEY` is on any
++  VM's disk or in any argv (measured 2026-09-16, probe `http=200 time=0.299s`).
++- Jev never gates. A failed request is one `jev:` log line and nothing else — the row keeps the
++  rule's `kind`, the card is written as before, and the run makes one request per residual per run
++  whether it succeeded or failed (2026-09-16).
++
+ **The GitHub edge.**
+ 
+ - Branch protection `strict=true` enforces nothing without at least one required status
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index 8e2ccaafc06656c21f74c445f448ab80d90e871e..cb909a918285fbacc5a5ba044c929ec24cd7b701 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -117,6 +117,83 @@ export function failingTestPaths (output) {
+   return paths
+ }
+ 
++// ── what a `jev:suite-red` row asks (#1096 `## The three rows`, row 3) ───────
++// The unattributed red is the one red the driver adopts without holding anyone
++// to it: no task of the plan names the path, so there is no implementer to
++// dispatch and no reconcile agent who could be told what to repair. The row
++// asks the reading the driver has no rule for — whose change did it, and is it
++// the harness rather than the tree — and it asks it about a candidate that is
++// adopted, recorded and left un-reconciled exactly as it was without the row.
++//
++// The context string is shared by every question in the set, so it is one
++// literal and not one per question; the two question shapes below are the only
++// callers it has.
++export const SUITE_RED_CTX =
++  'A wave of tasks was folded into one tree and the project\'s suite went red in ' +
++  '`tests`, paths no task of the plan names in its files or proof tests. `failing` ' +
++  'is the suite\'s failing block; `tasks` holds each folded task\'s files, proof ' +
++  'tests and the paths its patch touched.'
++
++/** `cause:<id>:<path>` — did this task's change make this test fail? */
++export const suiteRedCause = (id, p) => ({
++  type: 'noul',
++  instructions: {
++    question: 'Did task `' + id + '`\'s change (`tasks.' + id + '`) cause the failure of `' +
++      p + '` shown in `failing`?',
++    context: SUITE_RED_CTX,
++  },
++  criteria: {
++    true: 'This task\'s change is what made this test fail',
++    false: 'This task\'s change is unrelated to this failure',
++  },
++})
++
++/** `artifact:<path>` — is this red the harness's, rather than the tree's? */
++export const suiteRedArtifact = (p) => ({
++  type: 'noul',
++  instructions: {
++    question: 'Is the failure of `' + p + '` in `failing` a harness or environment ' +
++      'artifact — a timeout, a missing tool, a flaky resource, a sandbox limit — ' +
++      'rather than a defect of the tree?',
++    context: SUITE_RED_CTX,
++  },
++  criteria: {
++    true: 'The output reads as the environment\'s failure, not the code\'s',
++    false: 'The output reads as a real defect in the tree',
++  },
++})
++
++/**
++ * What a captured patch did, per path: `{ path, added, removed }` in the
++ * patch's own order.
++ *
++ * Read off the patch TEXT and never off git: the patch is a file on disk long
++ * after the clone it came from was reset, and a `--numstat` here would need a
++ * repository that still holds both sides. The cut is `patchPaths`' own — the
++ * `b/` half of each `diff --git` header, so a deleted path still counts — and
++ * the counts are the hunk lines, with the `+++`/`---` file headers left out.
++ *
++ * An unreadable patch answers `[]`, the way `patchPaths` does: evidence, not
++ * control flow.
++ */
++export const patchStat = (patchFile) => {
++  let text = ''
++  try { text = fs.readFileSync(String(patchFile || ''), 'utf8') } catch { return [] }
++  const out = []
++  for (const piece of text.split(/^diff --git /m)) {
++    const lines = piece.split('\n')
++    const m = /^a\/(.*) b\/(.*)$/.exec(lines[0] || '')
++    if (!m || !m[2]) continue
++    let added = 0, removed = 0
++    for (const line of lines.slice(1)) {
++      if (line.startsWith('+') && !line.startsWith('+++')) added += 1
++      else if (line.startsWith('-') && !line.startsWith('---')) removed += 1
++    }
++    out.push({ path: m[2], added, removed })
++  }
++  return out
++}
++
+ // ── model tiers (waves.js parity) ────────────────────────────────────────────
+ export const TIER = { standard: 'sonnet', mostCapable: 'opus' }
+ export const REVIEWER_MODEL = TIER.mostCapable
+@@ -132,6 +209,128 @@ const resolvedModel = (name) => {
+   return (typeof v === 'string') ? v : TIER.standard
+ }
+ 
++// ── the `jev:tier` row's five questions (#1096, row 2) ───────────────────────
++// One literal for both sites of the row: the three the dispatch call asks about
++// the TASK TEXT, and the two the review call asks about the captured PATCH.
++// `difficulty` is the one `jev_gate.py` asks (its context's first two
++// sentences); `review_difficulty` and `doc_or_prose_only` are
++// `jev_review_tier.py`'s with its context; the other two are written for this
++// row in the same register. Nothing reads an answer: the row is a covariate
++// beside the tier the plan chose, never an input to it — no route, no model
++// choice, no verdict. Deleting the two call sites and this literal is the
++// experiment's whole rollback.
++const JEV_CTX_DISPATCH =
++  '`task.claim` is a signed Claim followed by numbered Machine clauses ' +
++  '(M1, M2, ...) that restate it mechanically. `task.proof` names a Test file, ' +
++  'Legs (a), (b), ... each tagged with the clause it falsifies, and Run: shell ' +
++  'lines that must exit 0.'
++const JEV_CTX_REVIEW =
++  'A referee (an expensive model) is about to read `patch`, the diff a task ' +
++  'produced, against `task` (its Claim and Files), and return findings. Judge ' +
++  'the patch, not the task text.'
++const JEV_TIER_QUESTIONS = {
++  difficulty: {
++    type: 'score',
++    instructions: {
++      question: 'How hard is `task` to implement correctly inside its stated ' +
++        'files, for a capable engineer with the codebase open?',
++      context: JEV_CTX_DISPATCH,
++    },
++    criteria: [
++      { what: 'Routine: a local edit with an obvious shape',
++        signals: ['one file', 'a literal or a doc sentence'] },
++      { what: 'Moderate: a few files, one seam, the legs say exactly what to build' },
++      { what: 'Hard: concurrency, ordering, a loop or lifecycle, several ' +
++              'interacting files, or legs that constrain each other' },
++      { what: 'Very hard: a design decision the task leaves open, or a ' +
++              'behaviour that depends on state the excerpt does not show' },
++    ],
++  },
++  lifecycle_or_concurrency: {
++    type: 'noul',
++    instructions: {
++      question: 'Does implementing `task` involve ordering, retries, locks, ' +
++        'async control flow, cleanup, or process lifecycle?',
++      context: JEV_CTX_DISPATCH,
++    },
++    criteria: { true: 'Yes', false: 'No' },
++  },
++  design_open: {
++    type: 'noul',
++    instructions: {
++      question: 'Does `task` leave a design decision open that the ' +
++        'implementer must make before its legs can pass?',
++      context: JEV_CTX_DISPATCH,
++    },
++    criteria: {
++      true: 'A choice the text does not settle stands between the implementer and the legs',
++      false: 'The text and legs settle every choice that matters',
++    },
++  },
++  review_difficulty: {
++    type: 'score',
++    instructions: {
++      question: 'How hard is `patch` to review well?',
++      context: JEV_CTX_REVIEW,
++    },
++    criteria: [
++      { what: 'Routine: docs, a literal, a renamed string, a test fixture; a skim settles it',
++        signals: ['only .md or comments change', 'a constant'] },
++      { what: 'Straightforward: one seam in one or two files, the intent is legible from the diff' },
++      { what: "Careful: several files interact, a loop or state machine changes, " +
++              "or a test's meaning changes" },
++      { what: 'Expert: concurrency, ordering, error recovery, a protocol or ' +
++              'persisted format, or code the diff alone cannot show is safe' },
++    ],
++  },
++  doc_or_prose_only: {
++    type: 'noul',
++    instructions: {
++      question: 'Does `patch` change only prose: markdown, comments, doc ' +
++        'strings, role text?',
++      context: JEV_CTX_REVIEW,
++    },
++    criteria: { true: 'No executable line changes', false: 'Code, tests, config or scripts change' },
++  },
++}
++const jevQuestions = (...keys) =>
++  Object.fromEntries(keys.map((k) => [k, JEV_TIER_QUESTIONS[k]]))
++/** The three the dispatch row asks, of the task text alone. */
++const JEV_TIER_DISPATCH_QUESTIONS =
++  jevQuestions('difficulty', 'lifecycle_or_concurrency', 'design_open')
++/** The two the review row asks, of the captured patch. */
++const JEV_TIER_REVIEW_QUESTIONS =
++  jevQuestions('review_difficulty', 'doc_or_prose_only')
++
++/**
++ * One marked block of a task body: the text of the line beginning `marker`
++ * with the marker itself removed, plus every following line up to the first
++ * blank one — so `**Claim:**` carries the Claim and its `Machine:` restatement
++ * together, exactly as the gate replay's `task.claim` did. `''` when the body
++ * has no such line.
++ */
++const markerBlockOf = (body, marker) => {
++  const lines = String(body == null ? '' : body).split('\n')
++  const i = lines.findIndex((l) => l.startsWith(marker))
++  if (i === -1) return ''
++  const out = [lines[i].slice(marker.length).replace(/^[ \t]+/, '')]
++  for (let j = i + 1; j < lines.length && lines[j].trim() !== ''; j++) out.push(lines[j])
++  return out.join('\n')
++}
++
++/**
++ * What a `jev:tier` row tells Jev about the task. Every field is present
++ * whatever the plan compiled — a task with no `files` sends `[]`, a body with
++ * no `**Claim:**` line sends `''` — so the state's shape is one shape.
++ */
++const jevTaskState = (task) => ({
++  title: typeof task.title === 'string' ? task.title : '',
++  claim: markerBlockOf(task.body, '**Claim:**'),
++  proof: markerBlockOf(task.body, '**Proof:**'),
++  files: Array.isArray(task.files) ? task.files : [],
++  proofTests: Array.isArray(task.proofTests) ? task.proofTests : [],
++})
++
+ // ── fault classifiers — THE ONE SHARED DEFINITION (spec §3.4) ────────────────
+ // A capability trip gets the one tier escalation; everything else retries in
+ // place; AGENT_NULL is the engine-minted infra marker and parks for its one
+@@ -342,6 +541,63 @@ export const REVIEWER_SCHEMA = {
+         proposedPatch: { type: 'string' } } } },
+   },
+ }
++// THE FOUR QUESTIONS asked about one reviewer-returned blocking finding
++// (#1096 `## The three rows` row 1), verbatim and in one place. `borne_out` is
++// the boot's `jev_hunks.py` question with `hunk` read as `hunks`, `actor` and
++// `claim_false` are `jev_residuals.py`'s, and `fixable_in_files` is this row's
++// own — so a residual classified by the boot and a finding classified here are
++// asked the same words about the same thing, and the two readings can be laid
++// side by side.
++//
++// Jev answers no fact and nothing downstream reads one: the answers land on a
++// `jev:finding` row beside the finding and on the task's hub issue, and the
++// verdict, the routing, the fix round and the task's status are what they were
++// without the row.
++export const JEV_FINDING_QUESTIONS = Object.freeze({
++  borne_out: {
++    type: 'noul',
++    instructions: {
++      question: 'Does `hunks` (unified diffs of the files the finding names, or the whole patch) contain the code that `finding.text` describes, so that the finding is about this change?',
++      context: 'A code referee wrote `finding` about `task`\'s patch. You are shown the diff of the files the finding names. Judge from the code, not from a path name that may appear in the finding.',
++    },
++    criteria: {
++      true: 'The lines the finding reasons about are in these hunks',
++      false: 'These hunks are about something else; the finding does not concern these lines',
++    },
++  },
++  actor: {
++    type: 'choice',
++    instructions: {
++      question: 'Who would have to act to resolve `finding.text`?',
++      context: 'The implementer can only edit paths in `task.files`. The plan author owns the task text (Claim, Machine clauses, Files, Proof). The examiner owns the exam file.',
++    },
++    criteria: {
++      implementer: 'An edit inside `task.files` by the implementer resolves it',
++      plan: 'Only a change to the task text, its Files set, or its Proof resolves it; no edit inside `task.files` can',
++      examiner: 'Only a change to the exam or a Proof leg resolves it',
++      nobody: 'It is an observation, a deferral, or already resolved; nothing needs doing',
++    },
++  },
++  claim_false: {
++    type: 'noul',
++    instructions: 'Taken at face value, does `finding.text` describe a defect that would make `task.claim` false as delivered?',
++    criteria: {
++      true: 'If the finding is right, the claim is not established',
++      false: 'The claim could still hold; the finding is about something else',
++    },
++  },
++  fixable_in_files: {
++    type: 'noul',
++    instructions: {
++      question: 'Can `finding.text` be resolved by one round of edits inside `task.files` alone?',
++      context: 'The implementer gets one fix round and may edit only paths in `task.files`.',
++    },
++    criteria: {
++      true: 'One round of edits inside `task.files` resolves it',
++      false: 'It needs a file outside `task.files`, a change to the task text, or more than one round',
++    },
++  },
++})
+ // RESOLVER: content OUT through the schema — the driver writes the kernel's
+ // reply directory itself (h<n>.txt per hunk + notes.txt, the grammar
+ // unchanged), so the resolver role is READ-ONLY and the write-side role family
+@@ -841,6 +1097,78 @@ export const touchSetOf = (task, patchFile) => {
+   }
+   return out
+ }
++// ── the two readings a `jev:finding` row's state is built from (#1096) ──────
++// Both are EVIDENCE and nothing else: no verdict, route, tier, fold adoption,
++// gate or report field reads what they return, so a misreading here costs one
++// row's context and changes no run.
++//
++// The hunks the finding is about: the `diff --git` sections of the captured
++// patch whose `b/` path the finding named — the `b` half for the same reason
++// `patchPaths` reads it, since a finding about a DELETED file is about that
++// file. A finding that named no path is about the whole patch, so the whole
++// patch text is what goes; a patch that is not there at all is the empty
++// string. The pieces are re-prefixed on the way out, because the split ate the
++// header word that makes each one a diff.
++const hunksNaming = (patchFile, paths) => {
++  let text = ''
++  try { text = fs.readFileSync(String(patchFile || ''), 'utf8') } catch { return '' }
++  const named = Array.isArray(paths) ? paths : []
++  if (!named.length) return text
++  let out = ''
++  for (const piece of text.split(/^diff --git /m)) {
++    if (!piece) continue
++    const m = /^a\/(.*) b\/(.*)$/.exec(piece.split('\n')[0])
++    if (!m || !m[2] || !named.includes(m[2])) continue
++    out += 'diff --git ' + piece
++  }
++  return out
++}
++// A machine clause block over 4000 characters is cut, exactly as the boot's
++// own residual request cuts one: the budget is the state's, and a task text
++// that ran long would spend it on prose the questions do not read.
++const JEV_MACHINE_MAX = 4000
++// The task text Jev is shown: its title, its Claim, its Machine clauses and
++// its Files, read off `task.body` the way the boot's `plan_tasks` reads them
++// off the plan. A body with no such line answers the empty string — a sim
++// task's body (`sim task A`) is a whole task text with neither — because a
++// missing claim is not a claim that says nothing in particular.
++const jevTaskText = (task) => {
++  const body = (task && typeof task.body === 'string') ? task.body : ''
++  const lines = body.split('\n')
++  let claim = ''
++  let machine = ''
++  for (let n = 0; n < lines.length; n += 1) {
++    const text = lines[n].trim()
++    // The Claim runs to the `Machine:` line, not to the first blank one: it is
++    // one sentence in this repo's plans but a long one, and a plan that broke
++    // it over a paragraph would otherwise hand Jev half of it.
++    if (!claim && text.startsWith('**Claim:**')) {
++      const parts = [text.slice('**Claim:**'.length).trim()]
++      for (let m = n + 1; m < lines.length; m += 1) {
++        if (lines[m].trim().startsWith('Machine:')) break
++        parts.push(lines[m].trim())
++      }
++      claim = parts.join('\n').trim()
++      continue
++    }
++    // The clauses, marker and all — `Machine: M1. …` is how a reviewer, a fix
++    // round and the plan all spell them — through to the first blank line.
++    if (!machine && text.startsWith('Machine:')) {
++      const parts = [text]
++      for (let m = n + 1; m < lines.length; m += 1) {
++        if (!lines[m].trim()) break
++        parts.push(lines[m].trim())
++      }
++      machine = parts.join('\n').trim().slice(0, JEV_MACHINE_MAX)
++    }
++  }
++  return {
++    title: String((task && task.title) || ''),
++    claim,
++    machine,
++    files: (task && Array.isArray(task.files)) ? task.files.slice() : [],
++  }
++}
+ // ── a `Produces:` entry's symbol, the compiler's own reduction ──────────────
+ // The engine has to answer the same question the compiler answers when it pairs
+ // an interface edge — WHICH symbol does this entry name? — and the two must
+@@ -1920,7 +2248,14 @@ export async function runEngine({
+   // `jev:` row, so a run whose every call failed dispatches the same labels in
+   // the same order and ends with the same task statuses as one whose calls all
+   // answered.
+-  const jevRow = async (row, { state, questions }) => {
++  //
++  // `fields` is for the one thing a caller cannot know before the call: a row
++  // field READ OFF the answers — `jev:suite-red`'s `failing`, one entry per red
++  // path, is the only one so far. It is a function of `answers` whose result is
++  // merged over `row`, so the caller still hands in the row it means and still
++  // makes ONE call; a caller with no such field passes none and nothing about
++  // its row changes.
++  const jevRow = async (row, { state, questions, fields }) => {
+     if (!jev) return null
+     let answers = null
+     try {
+@@ -1932,7 +2267,8 @@ export async function runEngine({
+       return null
+     }
+     if (!answers) return null
+-    appendEvent({ ...row, answers })
++    const derived = (typeof fields === 'function') ? fields(answers) : null
++    appendEvent({ ...row, ...(derived || {}), answers })
+     return answers
+   }
+   // ── the bare-suite reading, one row per task an implementer worked ─────────
+@@ -3096,6 +3432,23 @@ export async function runEngine({
+     const tierName = (typeof tierOverride === 'string') ? tierOverride : task.tier
+     const baseModel = resolvedModel(tierName)
+     const economics = { tier: baseModel, review: taskReviewProfile(task) }
++    // ── the `jev:tier` row, at dispatch (#1096 row 2) ───────────────────────
++    // Beside the tier the plan chose, Jev's read of how hard the task text is:
++    // `tierChosen` is `economics.tier`, which is the MODEL name the report's
++    // `tasks[].tier` carries (`sonnet`, `opus`) and never the tier's own name,
++    // so the row and the report say the same thing about the same run. A tier
++    // retry re-enters here with a `tierOverride` and appends a SECOND row with
++    // the new `tierChosen` — that is the record wanted.
++    //
++    // Awaited, and therefore before the task's first `driver:proof-run` by
++    // position in the record: the rows of a run read in file order. Every task
++    // of a wave takes the same await before its own dispatch, so the labels
++    // still go out in the order they went out in without the seam — and a
++    // failed call is `jevRow`'s one log line and no row at all, which is what
++    // keeps a run whose calls all failed identical to one with no `jev`.
++    await jevRow(
++      { kind: 'jev:tier', task: task.id, at: 'dispatch', tierChosen: economics.tier },
++      { state: { task: jevTaskState(task) }, questions: JEV_TIER_DISPATCH_QUESTIONS })
+     const concerns = []
+     const noteConcerns = (res) => {
+       if (res && res.status === 'DONE_WITH_CONCERNS' && Array.isArray(res.concerns)) {
+@@ -4437,6 +4790,24 @@ export async function runEngine({
+         model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
+       })
+       const leanOpts = reviewOpts()
++      // ── the `jev:tier` row, at each review dispatch (#1096 row 2, its
++      //    2026-09-16 comment on reviewer tiering) ──────────────────────────
++      // Jev's read of how hard THIS patch is to review, taken before the
++      // referee reads it and covarying with nothing the driver then does:
++      // `REVIEWER_MODEL` is still what `reviewOpts` above put on the dispatch,
++      // and no finding, verdict or fix round reads the answer. `patch` is the
++      // text of the captured patch file, not its path — the client's
++      // `JEV_STATE_MAX_BYTES` budget is measured on that text, and a patch over
++      // it costs one log line and no row (15 of #1096's 290 replayed patches
++      // were over it).
++      let jevPatchText = ''
++      try { jevPatchText = fs.readFileSync(impl.patch, 'utf8') } catch { /* no patch to read */ }
++      const jevTask = jevTaskState(task)
++      await jevRow(
++        { kind: 'jev:tier', task: task.id, at: 'review', round: iter, tierChosen: economics.tier },
++        { state: { task: { title: jevTask.title, claim: jevTask.claim, files: jevTask.files },
++                   patch: jevPatchText },
++          questions: JEV_TIER_REVIEW_QUESTIONS })
+       let review = await timedReview(reviewPrompt, leanOpts)
+       // The one reviewer is single-dispatch and its death parks the task: one
+       // re-dispatch after the backoff (#830).
+@@ -4462,6 +4833,33 @@ export async function runEngine({
+         seenIssue[key] = true
+         return true
+       })
++      // ── one `jev:finding` row per reviewer-returned blocking finding ──────
++      // (#1096 `## The three rows` row 1.) Minted HERE and nowhere else: AFTER
++      // the dedup above, so a finding the referee returned twice is one row,
++      // and BEFORE the fallback below, so the issues the DRIVER mints from its
++      // own reading of an exit code — a red `Run:`, a red exam, a red `Check:`,
++      // an unrecognizable verdict — are never asked about. Those are not a
++      // referee's judgment and there is nothing about them to classify.
++      //
++      // Nothing downstream reads a word of this. `jevRow` appends the row when
++      // Jev answered and resolves `null` with no engine `jev`, on a refusal or
++      // on a throw; either way `issues` is the array the dedup left, and the
++      // verdict, the routing, the fix round and the task's status are exactly
++      // what they were without the row. Awaited in issue order, because the
++      // row's place in the record is the order the referee returned them in.
++      for (const i of issues) {
++        if (!i || i.severity !== 'blocking') continue
++        const detail = String(i.detail || '')
++        await jevRow(
++          { kind: 'jev:finding', task: task.id, round: iter,
++            key: (i.severity || '') + '|' + (i.detail || '') },
++          { state: {
++              task: jevTaskText(task),
++              finding: { text: detail, severity: i.severity, actor: i.actor },
++              hunks: hunksNaming(impl.patch, pathsNamedIn(detail)),
++            },
++            questions: JEV_FINDING_QUESTIONS })
++      }
+       if (!verdicts.some((v) => v === 'PASS' || v === 'FIX_REQUIRED')) {
+         judgmentCalls.push('task ' + task.id + ': reviewer returned no recognizable verdict — ' +
+           'treating as FIX_REQUIRED with a blocking issue (never merging on an empty review)')
+@@ -5148,6 +5546,50 @@ export async function runEngine({
+       }
+       log('wave ' + waveNumber + ' candidate suite RED in ' + unattributed.join(', ') +
+         ' — no task names it: adopted and recorded, no reconcile dispatched')
++      // ── the reading the driver has no rule for (#1096 row 3) ──────────────
++      // Whose red is it, and is it the harness's? The adoption above has
++      // already happened and nothing below it reads this row: the candidate is
++      // adopted, the judgment lines are pushed and the epoch returns MERGED
++      // whether Jev answers, refuses, or was never handed in at all. What the
++      // row buys is a record of the question, on the run's issue (the row names
++      // no task, so `kataUidFor` puts it there).
++      //
++      // One entry per task this epoch folded — its plan `files` and
++      // `proofTests`, and what its captured patch actually touched — and one
++      // question per (task, red path) pair beside one per red path.
++      const jevTasks = {}
++      for (const r of (Array.isArray(merged) ? merged : [])) {
++        if (!r || typeof r.task !== 'string') continue
++        const t = PLAN.find((x) => x && x.id === r.task) || {}
++        jevTasks[r.task] = {
++          files: Array.isArray(t.files) ? t.files : [],
++          proofTests: Array.isArray(t.proofTests) ? t.proofTests : [],
++          stat: patchStat(r.patch),
++        }
++      }
++      const jevQuestions = {}
++      for (const p of unattributed) {
++        for (const id of Object.keys(jevTasks)) jevQuestions['cause:' + id + ':' + p] = suiteRedCause(id, p)
++        jevQuestions['artifact:' + p] = suiteRedArtifact(p)
++      }
++      // A question the reply did not answer — and an answer carrying no `noul`
++      // — is `null` and not an omission: the row says which readings it got.
++      const noulOf = (a) => (a && typeof a === 'object' && a.noul != null) ? a.noul : null
++      await jevRow({ kind: 'jev:suite-red', epoch: waveNumber }, {
++        state: {
++          failing: failingBlock(suite.stdout + suite.stderr),
++          tests: unattributed,
++          tasks: jevTasks,
++        },
++        questions: jevQuestions,
++        fields: (answers) => ({
++          failing: unattributed.map((p) => {
++            const byTask = {}
++            for (const id of Object.keys(jevTasks)) byTask[id] = noulOf(answers['cause:' + id + ':' + p])
++            return { path: p, byTask, artifact: noulOf(answers['artifact:' + p]) }
++          }),
++        }),
++      })
+       return { status: 'MERGED', headSha: candidate,
+                suite: { passed: false, unattributed,
+                         output: tail(suite.stdout + suite.stderr) } }
+diff --git a/fleet/sandbox-boot.sh b/fleet/sandbox-boot.sh
+index 99507dd0064a129b67f4bce29e02e54caceaf222..11f83788ab843ad8407d0a5d2ab1c9deb3163e7d 100755
+--- a/fleet/sandbox-boot.sh
++++ b/fleet/sandbox-boot.sh
+@@ -2783,8 +2783,11 @@ open(sys.argv[2], "w").write(text if text.endswith("\n") else text + "\n")
+ # or the status page.
+ #
+ # The residual checklist arrives on stdin — `residual_read` is the one reader
+-# of the residuals and this is its second rendering, not a second parse.
+-card_head() { # $1 = outcome, $2 = the residual checklist; stdin is not read
++# of the residuals and this is its second rendering, not a second parse. The
++# `rows` rendering of the SAME walk rides argv beside it, for the one section
++# that reads the classifier: it is JSON and could not be a shell word list, and
++# stdin is already spoken for.
++card_head() { # $1 = outcome, $2 = the residual checklist, $3 = its `rows` rendering
+   local dest merged
+   dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
+   # The page is written from `MERGED_SHA`, and `do_boot` loads that cell back
+@@ -2795,7 +2798,7 @@ card_head() { # $1 = outcome, $2 = the residual checklist; stdin is not read
+   printf '%s' "$2" | python3 -c '
+ import json, re, sys
+ 
+-PLAN, REPORT, OUTCOME, MERGED, ERROR, NOTE = sys.argv[1:7]
++PLAN, REPORT, OUTCOME, MERGED, ERROR, NOTE, ROWS = sys.argv[1:8]
+ 
+ EM = "—"
+ DASH = " — "
+@@ -2838,6 +2841,72 @@ def flat(value):
+     return text.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+ 
+ 
++# ACT ON THESE — the few residuals the classifier scored high enough that a
++# maintainer would act on them, printed above the full list and never instead
++# of it. AN EXPERIMENT (#1093), read over five runs, and NOTHING GATES ON IT:
++# the answer line, the draft flag and the merge PUT read no `jev` field, and
++# deleting these lines is the whole of the rollback.
++#
++# The scores arrive as `residual_rows` printed them — ONE LINE PER CHECKLIST
++# ITEM, in the order `residual_read` walks them, which is the order the
++# checklist on stdin is in, because the two renderings are two calls of the
++# same walk over the same two documents. So the nth row scores the nth item,
++# and the name and the text are read off the checklist rather than flattened a
++# second time here. A row whose request failed carries no `jev` key at all and
++# is no candidate; the ledger on the evidence branch is never read, since its
++# union across transitions can carry a row this checklist no longer has.
++#
++# `2.5` is the threshold because `attention` runs 0 to 3 over four levels and
++# the top two — act before the next run, act before merge — are the ones worth
++# a line. Ten is the cap, so a run with forty residuals still opens with a list
++# a person reads rather than a second checklist.
++ACT_MIN = 2.5
++ACT_MAX = 10
++
++
++def jev_scores():
++    """One `jev` dict per `rows` line, `None` where the row carries none."""
++    out = []
++    for line in ROWS.split("\n"):
++        if not line.strip():
++            continue
++        try:
++            doc = json.loads(line)
++        except Exception:
++            doc = None
++        got = doc.get("jev") if isinstance(doc, dict) else None
++        out.append(got if isinstance(got, dict) else None)
++    return out
++
++
++def act_now(items):
++    """The section for `items`, or NO LINES AT ALL when none scored high."""
++    scores = jev_scores()
++    picks = []
++    for n, item in enumerate(items):
++        jev = scores[n] if n < len(scores) else None
++        if jev is None:
++            continue
++        at = jev.get("attention")
++        if isinstance(at, bool) or not isinstance(at, (int, float)):
++            continue
++        if at >= ACT_MIN:
++            picks.append((at, item, jev))
++    if not picks:
++        return []
++    # Highest first; the sort is stable, so equal scores keep the order the
++    # walk above put them in, which is the checklist order.
++    picks.sort(key=lambda pick: -pick[0])
++    out = ["", "Act on these: %d of %d" % (len(picks), len(items)), ""]
++    for at, item, jev in picks[:ACT_MAX]:
++        kind = jev.get("kind")
++        kind = kind if isinstance(kind, dict) else {}
++        out.append("- " + item + DASH + "attention %.1f, actor %s, %s / %s"
++                   % (at, flat(jev.get("actor")), flat(kind.get("status")),
++                      flat(kind.get("subject"))))
++    return out
++
++
+ LINES = plan_lines()
+ # The header is everything above the first task heading, the same bound
+ # `plan_closes` reads its one `**Closes:**` line within.
+@@ -2993,12 +3062,18 @@ for task, claim in task_claims():
+         if row is not None else [EM, EM, EM, EM]
+     out.append("| " + " | ".join(cells) + " |")
+ 
++# THE CHECKLIST off stdin, every item on one line with its `- [ ] ` stripped
++# and in the order `residual_read` walks them. Both sections read this one list.
++items = [line[len("- [ ] "):] for line in sys.stdin.read().split("\n")
++         if line.startswith("- [ ] ")]
++
++# The scored few, directly under the table and above everything else.
++out += act_now(items)
++
+ # THE RESIDUALS, as a count and then as an errand list. Every checklist item is
+ # counted; only the ones nobody else will do are printed here — an external
+ # deferral the sandbox could not execute, and the notes of a task the plan
+ # itself had to answer for. A reviewer nit is in the record, not above it.
+-items = [line[len("- [ ] "):] for line in sys.stdin.read().split("\n")
+-         if line.startswith("- [ ] ")]
+ actors = set(task for task, row in rows.items() if row.get("actor") == "plan")
+ out += ["", "Residuals: %d from review" % len(items) if items else "Residuals: none"]
+ errands = []
+@@ -3024,11 +3099,11 @@ else:
+     out += ["", "Amendments: none"]
+ out.append("")
+ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
+-' "$PLAN_FILE" "$dest/report.json" "$1" "$merged" "$(read_status_field error)" "$MERGE_NOTE"
++' "$PLAN_FILE" "$dest/report.json" "$1" "$merged" "$(read_status_field error)" "$MERGE_NOTE" "$3"
+ }
+ 
+ render_card() { # $1 = outcome; prints the body file's path
+-  local body dest verdict receipt residuals
++  local body dest verdict receipt residuals rows
+   dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
+   mkdir -p "$dest"
+   body="$dest/pr-body.md"
+@@ -3038,10 +3113,15 @@ render_card() { # $1 = outcome; prints the body file's path
+   # the card nor a `set -e` script. A run with no residuals gets NO section at
+   # all — no heading, no blank line — and its card is the card it always was.
+   residuals="$(residual_items || true)"
++  # The same items once more with the classifier on them, for the `Act on
++  # these` section — read off the cache `residual_jev` filled before this
++  # render, so `rows` mode makes no request here and the run still sends
++  # exactly one per residual.
++  rows="$(residual_rows || true)"
+   {
+     # What a person reads, and then the record they can unfold. A blank line
+     # after `<summary>` or GitHub renders the markdown inside it as one blob.
+-    card_head "$1" "$residuals"
++    card_head "$1" "$residuals" "$rows"
+     printf '<details><summary>Record</summary>\n\n'
+     printf '## fleet %s — %s\n\n' "$RUN_ID" "$1"
+     printf '| | |\n|---|---|\n'
+diff --git a/fleet/tests/test_run_engine_jev_finding.mjs b/fleet/tests/test_run_engine_jev_finding.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..406d6e73bacfdebb41d002ba51579902d28bd3d9
+--- /dev/null
++++ b/fleet/tests/test_run_engine_jev_finding.mjs
+@@ -0,0 +1,568 @@
++/**
++ * fleet/tests/test_run_engine_jev_finding.mjs — the exam for Task 1 of #1096:
++ * *a `jev:finding` row beside every reviewer-returned blocking finding*.
++ *
++ * The Proof named no `EXAM PATHS:` landing of its own, so this file sits where
++ * the Proof's `Test:` slot names it and every relative path below is written
++ * for `fleet/tests/`: `./_engine_helpers.mjs` is the shared rig,
++ * `../jev-client.mjs` is the real client the sims drive.
++ *
++ * ── what each Machine clause asserts, restated ──────────────────────────────
++ *   M1 — in a review round, after the `seenIssue` dedup and before the
++ *        no-recognizable-verdict fallback, each reviewer-returned `blocking`
++ *        issue calls `jevRow` once with
++ *        `row` `{ kind: 'jev:finding', task: task.id, round: iter,
++ *                 key: (severity || '') + '|' + (detail || '') }`
++ *        and state `{ task: { title, claim, machine, files },
++ *                     finding: { text: detail, severity, actor }, hunks }`,
++ *        `hunks` being the `diff --git` sections of the captured patch whose
++ *        `b/` path is in `pathsNamedIn(detail)` (the whole patch when that list
++ *        is empty), and the four questions of the shared literal keyed
++ *        `borne_out`, `actor`, `claim_false`, `fixable_in_files`; an answer
++ *        appends one `{kind, task, round, key, answers}` row to `events.jsonl`,
++ *        in the round's issue order, and posts it on the task's hub issue when
++ *        a hub is on.
++ *   M2 — no row for a `minor` issue, for a blocking issue the DRIVER minted
++ *        itself (a red `Run:`, a red exam, a red `Check:`), when `ask` resolves
++ *        `null`, or when the engine was handed no `jev`.
++ *   M3 — for the same canned replies, a run with `jev` and a run without it
++ *        dispatch the same worker labels in the same order and end with the
++ *        same `reviewVerdict`, `fixIterations` and `status` per task, the same
++ *        `driver:finding` rows (by `task`, `round`, `detail`) and the same
++ *        `judgmentCalls` lines.
++ *
++ * ── the legs, and where each is answered ────────────────────────────────────
++ *   (a) [M1] the fix-round run (one `blocking` + one `minor` in round 1) with
++ *       `jev` and a hub on: exactly one `jev:finding` row, its `task`, `round`,
++ *       `key` and four answer keys; exactly one recorded request, its four
++ *       questions and their types and criteria keys, its `state.finding.text`,
++ *       `state.task.files` and the `A.txt`-only `state.hunks`; and the row's
++ *       events.jsonl line, verbatim, among the comments on A's issue.
++ *   (b) [M1] a second run whose detail names no path: `state.hunks` carries the
++ *       whole patch — both `A.txt` and `B.txt`. (Its task body carries neither
++ *       a `**Claim:**` nor a `Machine:` line, which is M1's empty-string case.)
++ *   (c) [M2] leg (a)'s run has no `minor|` row and made no second call; the
++ *       driver-minted run leaves zero rows and zero requests; a `fetchImpl`
++ *       answering 500 leaves zero rows and moves nothing; and leg (a)'s
++ *       scenario with no `jev` at all leaves zero rows.
++ *   (d) [M3] leg (a)'s scenario run twice, with `jev` and without: the same
++ *       dispatched labels in the same order, the same per-task triple, the same
++ *       `driver:finding` rows and the same `judgmentCalls`.
++ *
++ * ── two readings of the Proof, settled against the engine at BASE ───────────
++ * Both were run at b16dbdb1 before this file was written; both are filed as
++ * `unsatisfiable` entries on the task's issue, and neither touches what M1 and
++ * M2 assert.
++ *
++ *  1. Legs (a) and (d) name a `fix:A:1` round and an `A` that ends
++ *     `done`/`fixed`/`fixIterations 1`. Since #964 Task 2 the review loop
++ *     dispatches NO fix worker from a reviewer's blocking finding
++ *     (`fleet/run-engine.mjs`, the `fix-loop-exhausted` exit): the leg-(a)
++ *     scenario dispatches exactly `impl:A` then `review:A:1` and ends
++ *     `failed`/`fix-loop-exhausted`/`0`, and `review:A:2` is never asked for.
++ *     The round-1 `jev:finding` row is minted on that path all the same, so
++ *     legs (a), (b) and (c) are untouched by this. Leg (d)'s M3 SAMENESS is
++ *     encoded in full below; its parenthesised literals are pinned to what the
++ *     engine actually produces for that scenario, because the Global
++ *     Constraints forbid this task's row from moving any verdict, route or
++ *     status — an exam pinning `fixed`/`1`/`done` could not be passed by a
++ *     correct implementation.
++ *  2. Leg (c)'s driver-minted run cannot both end `done` and carry a
++ *     `driver:finding` row whose detail begins `the Proof's Run: command
++ *     failed`. With `proofRuns: ['test -f FIXED']`, an implementer that writes
++ *     no `FIXED` and a `fix:A:0` that writes nothing, the pre-review pass is
++ *     red twice and the task parks at `proof-red` before any reviewer is
++ *     dispatched — `fix:A:1` is never dispatched and no review round mints
++ *     anything. The scenario the leg names is kept exactly as it names it; what
++ *     is asserted on it is M2's own claim (zero rows, zero requests) plus the
++ *     driver's red-`Run:` reading where the engine records it.
++ *
++ * ── the rig ─────────────────────────────────────────────────────────────────
++ * The shared engine rig: real git repositories, real clones, the real capture
++ * and the real fold kernel below the agent seam; only the judgments are canned.
++ * Jev is the REAL client (`fleet/jev-client.mjs`) over an injected `fetchImpl`
++ * that records each request's parsed body, and the hub is `fakeHub` over an
++ * in-memory store — so no sim opens a socket and every request's `state` and
++ * `questions` are read off the record rather than off the engine.
++ */
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { rig, makeRepo, passReview, cleanCritic, doneImpl, fakeHub } from './_engine_helpers.mjs'
++import { makeJevClient } from '../jev-client.mjs'
++
++const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-jev-finding-'))
++// Removed on exit, red or green.
++process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
++
++// ── the task text the sims grade ────────────────────────────────────────────
++// One `**Claim:**` line with no continuation, so `claim` is that line's text
++// with the marker removed and nothing else; a `Machine:` block of two lines
++// ended by a blank line, with a sentinel past it that `machine` may not carry.
++const CLAIM_A = 'do: run the plan; see: `A.txt` still holds line2. (derived)'
++const MACHINE_1 = 'M1. `A.txt` holds the line `line2`.'
++const MACHINE_2 = 'M2. Nothing outside `A.txt` is read.'
++const PAST_THE_BLANK = 'NOT-MACHINE: past the blank line that ends the Machine block.'
++const BODY_A = [
++  '### Task A: keep line2',
++  '',
++  '**Files:**',
++  '- Modify: `A.txt`',
++  '',
++  '**Claim:** ' + CLAIM_A,
++  'Machine: ' + MACHINE_1,
++  MACHINE_2,
++  '',
++  PAST_THE_BLANK,
++  '',
++  '**Proof:**',
++  '- Legs: (a) `A.txt` holds line2 [M1]',
++].join('\n')
++
++const TITLE_A = 'keep line2'
++const DETAIL_A = 'the change to `A.txt` drops line2'
++const KEY_A = 'blocking|' + DETAIL_A
++const DETAIL_NO_PATH = 'the change is incomplete'
++const ANSWER_KEYS = ['actor', 'borne_out', 'claim_false', 'fixable_in_files']
++
++// ── the four questions, verbatim (M1) ───────────────────────────────────────
++// The shared literal the clause names: the first is `jev_hunks.py`'s
++// `borne_out` with `hunk` read as `hunks`, the next two `jev_residuals.py`'s,
++// the fourth new. Transcribed from the task text and compared whole.
++const QUESTIONS = {
++  borne_out: {
++    type: 'noul',
++    instructions: {
++      question: 'Does `hunks` (unified diffs of the files the finding names, or the whole patch)' +
++        ' contain the code that `finding.text` describes, so that the finding is about this change?',
++      context: 'A code referee wrote `finding` about `task`\'s patch. You are shown the diff of' +
++        ' the files the finding names. Judge from the code, not from a path name that may appear' +
++        ' in the finding.',
++    },
++    criteria: {
++      true: 'The lines the finding reasons about are in these hunks',
++      false: 'These hunks are about something else; the finding does not concern these lines',
++    },
++  },
++  actor: {
++    type: 'choice',
++    instructions: {
++      question: 'Who would have to act to resolve `finding.text`?',
++      context: 'The implementer can only edit paths in `task.files`. The plan author owns the' +
++        ' task text (Claim, Machine clauses, Files, Proof). The examiner owns the exam file.',
++    },
++    criteria: {
++      implementer: 'An edit inside `task.files` by the implementer resolves it',
++      plan: 'Only a change to the task text, its Files set, or its Proof resolves it; no edit' +
++        ' inside `task.files` can',
++      examiner: 'Only a change to the exam or a Proof leg resolves it',
++      nobody: 'It is an observation, a deferral, or already resolved; nothing needs doing',
++    },
++  },
++  claim_false: {
++    type: 'noul',
++    instructions: 'Taken at face value, does `finding.text` describe a defect that would make' +
++      ' `task.claim` false as delivered?',
++    criteria: {
++      true: 'If the finding is right, the claim is not established',
++      false: 'The claim could still hold; the finding is about something else',
++    },
++  },
++  fixable_in_files: {
++    type: 'noul',
++    instructions: {
++      question: 'Can `finding.text` be resolved by one round of edits inside `task.files` alone?',
++      context: 'The implementer gets one fix round and may edit only paths in `task.files`.',
++    },
++    criteria: {
++      true: 'One round of edits inside `task.files` resolves it',
++      false: 'It needs a file outside `task.files`, a change to the task text, or more than one round',
++    },
++  },
++}
++
++// ── reading the record ──────────────────────────────────────────────────────
++const linesOf = (runDir) => {
++  const file = path.join(runDir, 'events.jsonl')
++  if (!fs.existsSync(file)) return []
++  return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
++}
++const eventsOf = (runDir) => linesOf(runDir)
++  .map((l) => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean)
++const ofKind = (events, kind) => events.filter((e) => e && e.kind === kind)
++// The `b/` path of every `diff --git` header in a blob of patch text.
++const headerPathsIn = (text) => {
++  const out = []
++  for (const m of String(text == null ? '' : text).matchAll(/^diff --git a\/(\S+) b\/(\S+)$/gm)) {
++    out.push(m[2])
++  }
++  return out.sort()
++}
++// The five fields M1 names on the row, with `appendEvent`'s own `id`/`ts` off.
++const rowShape = (row) => {
++  const out = { ...row }
++  delete out.id
++  delete out.ts
++  return out
++}
++
++// ── one sim ─────────────────────────────────────────────────────────────────
++// `jevOn` false hands the engine no client at all (M2's fourth case); `status`
++// is what the fake edge answers. Every request's parsed body is recorded, so
++// the assertions read the wire rather than the engine.
++let seq = 0
++async function scenario ({ task, reply, onLabel = () => {}, jevOn = true, status = 200 }) {
++  seq += 1
++  const stamp = 'jf' + seq
++  const repo = makeRepo(path.join(tmp, 'repo-' + stamp))
++  const runDir = path.join(tmp, 'run-' + stamp)
++  const requests = []
++  const fetchImpl = async (url, opts) => {
++    const body = JSON.parse(String((opts || {}).body || 'null'))
++    requests.push({ url: String(url), headers: (opts || {}).headers, body })
++    if (status !== 200) return { status, text: async () => 'the edge said no' }
++    const answers = {}
++    for (const [id, q] of Object.entries((body && body.questions) || {})) {
++      answers[id] = (q && q.type === 'choice')
++        ? { type: 'choice', choice: 'implementer', probabilities: { implementer: 1 }, confidence: 1 }
++        : { type: 'noul', noul: 0.5 }
++    }
++    return { status: 200, text: async () => JSON.stringify({ answers }) }
++  }
++  const UID = 'UID-' + stamp
++  const RUN_UID = 'RUN-' + stamp
++  const PROJECT_ID = 'proj-' + stamp
++  const hub = fakeHub({ projectId: PROJECT_ID,
++    issues: { [UID]: { revision: 1, short_id: 'aa11' },
++              [RUN_UID]: { revision: 1, short_id: 'rr11' } } })
++  const kataRecord = {
++    url: 'https://kata.invalid',
++    project: { id: PROJECT_ID, uid: 'PROJ-' + stamp, name: 'ultrapowers' },
++    run: { uid: RUN_UID, revision: 1 },
++    tasks: { [task.id]: { uid: UID, short_id: 'aa11', revision: 1 } },
++  }
++  const labels = []
++  const stub = (prompt, opts, cwd) => {
++    const label = String(opts.label)
++    labels.push(label)
++    const answer = onLabel(label, cwd)
++    if (answer !== undefined) return answer
++    if (label.startsWith('impl:') || label.startsWith('fix:')) {
++      // The patch two files wide: the detail of leg (a) names `A.txt` only, so
++      // `B.txt` is the header `state.hunks` must not carry there and must carry
++      // in leg (b).
++      fs.writeFileSync(path.join(cwd, 'A.txt'), 'line1\nline3\n')
++      fs.writeFileSync(path.join(cwd, 'B.txt'), 'b\n')
++      return doneImpl(cwd)
++    }
++    if (label.startsWith('review:')) return reply(label)
++    if (label === 'integration') return cleanCritic()
++    throw new Error('unexpected dispatch: ' + label)
++  }
++  const { run } = rig({
++    repo, runDir, waves: [[task]], stub, stamp,
++    kata: hub.kata,
++    ...(jevOn ? { jev: makeJevClient({ baseUrl: 'https://jev.invalid', fetchImpl }) } : {}),
++    // The worker's raised hand is not this exam's subject: a poll far longer
++    // than the sim keeps the hub's call log to the run's own record.
++    extraArgs: { kataRecord, attentionPollMs: 3600000 },
++  })
++  const report = await run()
++  const events = eventsOf(runDir)
++  return {
++    report, events, requests, hub, labels, runDir, uid: UID,
++    // `requests` is EVERY call the engine's one Jev client made. The
++    // `jev:tier` row rides that same client (#1096 row 2) — one call at
++    // dispatch and one at each review dispatch — so a wire-level count of
++    // this row's calls reads `findingRequests`: a `jev:finding` call is the
++    // one whose `state` carries the `finding` it was raised for, which no
++    // `jev:tier` state has. The per-kind counts below (`rows`) already read
++    // the row kind; this is the same reading taken on the wire.
++    findingRequests: requests.filter((r) => ((r.body || {}).state || {}).finding),
++    lines: linesOf(runDir),
++    rows: ofKind(events, 'jev:finding'),
++    findings: ofKind(events, 'driver:finding'),
++    rowOf: (id) => report.tasks.find((r) => r && r.task === id),
++  }
++}
++
++// The task of legs (a), (c) and (d): one file, a body with a Claim and a
++// Machine block, no `Run:` proof of its own.
++const taskA = (over = {}) => ({
++  id: 'A', title: TITLE_A, files: ['A.txt'], tier: 'standard', review: 'peer',
++  writes: ['A.txt'], commutes: [], proofTests: [], proofRuns: [], body: BODY_A, ...over,
++})
++// The round-1 reply leg (a) names: exactly one `blocking` issue and one
++// `minor`. Round 2 answers PASS for the round the Proof expects to be bought.
++const fixRoundReply = (detail) => (label) => (label.endsWith(':1')
++  ? { verdict: 'FIX_REQUIRED',
++      issues: [{ severity: 'blocking', detail, actor: 'implementer' },
++               { severity: 'minor', detail: 'style' }] }
++  : passReview())
++
++// ════════════════════════════════════════════════════════════════════════════
++// (a) [M1] — the row, the request, and the line on the hub issue
++// ════════════════════════════════════════════════════════════════════════════
++const A = await scenario({ task: taskA(), reply: fixRoundReply(DETAIL_A) })
++
++assert.equal(A.rows.length, 1,
++  '(a) [M1] the fix-round run with `jev` and a hub on must leave EXACTLY ONE ' +
++  '`jev:finding` row in events.jsonl — the round\'s one reviewer-returned blocking ' +
++  'issue. Rows: ' + JSON.stringify(A.rows.map(rowShape)) +
++  '; every kind the run recorded: ' + JSON.stringify(A.events.map((e) => e.kind)))
++
++const row = A.rows[0]
++assert.equal(row.task, 'A',
++  '(a) [M1] the row\'s `task` is the task the finding was raised against: ' + JSON.stringify(rowShape(row)))
++assert.equal(row.round, 1,
++  '(a) [M1] the row\'s `round` is the review round `iter`, 1: ' + JSON.stringify(rowShape(row)))
++assert.equal(row.key, KEY_A,
++  '(a) [M1] the row\'s `key` is `(severity || \'\') + \'|\' + (detail || \'\')`, the same dedup ' +
++  'key the round counts reviewer-returned blocking issues by: ' + JSON.stringify(rowShape(row)))
++assert.deepEqual(Object.keys(row.answers || {}).sort(), ANSWER_KEYS,
++  '(a) [M1] the row\'s `answers` carry exactly the four question keys: ' +
++  JSON.stringify(row.answers))
++assert.deepEqual(Object.keys(rowShape(row)).sort(), ['answers', 'key', 'kind', 'round', 'task'],
++  '(a) [M1] and the row is `{kind, task, round, key, answers}` and nothing more (beside ' +
++  '`appendEvent`\'s own `id`/`ts`): ' + JSON.stringify(rowShape(row)))
++// Jev's own answers, round-tripped: the row carries what the edge returned.
++assert.equal((row.answers.actor || {}).choice, 'implementer',
++  '(a) [M1] the row\'s `answers` are the edge\'s own reply, not the driver\'s: ' +
++  JSON.stringify(row.answers))
++assert.equal((row.answers.borne_out || {}).noul, 0.5,
++  '(a) [M1] including each noul the fake edge answered: ' + JSON.stringify(row.answers))
++
++// Beside the driver's own finding — the row the record already carried.
++assert.deepEqual(A.findings.map((f) => [f.task, f.round, f.detail]), [['A', 1, DETAIL_A]],
++  '(a) [M1] the `jev:finding` row sits BESIDE the driver\'s own `driver:finding` row for ' +
++  'the same finding, which is unchanged: ' + JSON.stringify(A.findings.map(rowShape)))
++
++// ── the request, read off the wire ──────────────────────────────────────────
++assert.equal(A.findingRequests.length, 1,
++  '(a) [M1] the fake `fetchImpl` recorded EXACTLY ONE `jev:finding` request — one call per ' +
++  'reviewer-returned blocking issue, and the round had one: ' +
++  JSON.stringify(A.findingRequests.map((r) => r.url)))
++const req = A.findingRequests[0]
++assert.deepEqual(Object.keys(req.body.questions || {}).sort(), ANSWER_KEYS,
++  '(a) [M1] the request\'s `questions` carry exactly `borne_out`, `actor`, `claim_false` ' +
++  'and `fixable_in_files`: ' + JSON.stringify(Object.keys(req.body.questions || {})))
++assert.equal(req.body.questions.borne_out.type, 'noul',
++  '(a) [M1] `borne_out` is a noul: ' + JSON.stringify(req.body.questions.borne_out))
++assert.equal(req.body.questions.actor.type, 'choice',
++  '(a) [M1] `actor` is a choice: ' + JSON.stringify(req.body.questions.actor))
++assert.deepEqual(Object.keys(req.body.questions.actor.criteria || {}),
++  ['implementer', 'plan', 'examiner', 'nobody'],
++  '(a) [M1] whose criteria are `implementer`, `plan`, `examiner`, `nobody`: ' +
++  JSON.stringify(req.body.questions.actor.criteria))
++assert.equal(req.body.questions.claim_false.type, 'noul',
++  '(a) [M1] `claim_false` is a noul: ' + JSON.stringify(req.body.questions.claim_false))
++assert.equal(req.body.questions.fixable_in_files.type, 'noul',
++  '(a) [M1] `fixable_in_files` is a noul: ' + JSON.stringify(req.body.questions.fixable_in_files))
++// M1's word is "verbatim": the four questions ARE the shared literal.
++assert.deepEqual(req.body.questions, QUESTIONS,
++  '(a) [M1] and the four questions are the shared literal VERBATIM — the clause pins their ' +
++  'text, not only their shape. Sent: ' + JSON.stringify(req.body.questions, null, 1))
++
++// ── the state, read off the wire ────────────────────────────────────────────
++const state = req.body.state
++assert.deepEqual(Object.keys(state || {}).sort(), ['finding', 'hunks', 'task'],
++  '(a) [M1] the state is `{ task, finding, hunks }`: ' + JSON.stringify(Object.keys(state || {})))
++assert.deepEqual(Object.keys(state.task || {}).sort(), ['claim', 'files', 'machine', 'title'],
++  '(a) [M1] whose `task` is `{ title, claim, machine, files }`: ' + JSON.stringify(state.task))
++assert.deepEqual(Object.keys(state.finding || {}).sort(), ['actor', 'severity', 'text'],
++  '(a) [M1] and whose `finding` is `{ text, severity, actor }`: ' + JSON.stringify(state.finding))
++assert.equal(state.finding.text, DETAIL_A,
++  '(a) [M1] `state.finding.text` equals the reviewer\'s detail: ' + JSON.stringify(state.finding))
++assert.equal(state.finding.severity, 'blocking',
++  '(a) [M1] `state.finding.severity` is the issue\'s own severity: ' + JSON.stringify(state.finding))
++assert.equal(state.finding.actor, 'implementer',
++  '(a) [M1] `state.finding.actor` is the actor the reviewer named: ' + JSON.stringify(state.finding))
++assert.deepEqual(state.task.files, ['A.txt'],
++  '(a) [M1] `state.task.files` deep-equals the task\'s own Files: ' + JSON.stringify(state.task.files))
++assert.equal(state.task.title, TITLE_A,
++  '(a) [M1] `state.task.title` is the task\'s title: ' + JSON.stringify(state.task.title))
++assert.equal(state.task.claim, CLAIM_A,
++  '(a) [M1] `state.task.claim` is the `**Claim:**` line with the marker removed and nothing ' +
++  'else — this body has no continuation line before `Machine:`: ' + JSON.stringify(state.task.claim))
++// `machine` is the `Machine:` block up to the first blank line: both clause
++// lines, and nothing from past that blank line.
++assert.ok(String(state.task.machine).includes(MACHINE_1),
++  '(a) [M1] `state.task.machine` carries the `Machine:` line: ' + JSON.stringify(state.task.machine))
++assert.ok(String(state.task.machine).includes(MACHINE_2),
++  '(a) [M1] and the clause line following it, up to the first blank line: ' +
++  JSON.stringify(state.task.machine))
++assert.ok(!String(state.task.machine).includes(PAST_THE_BLANK),
++  '(a) [M1] and nothing from past that blank line: ' + JSON.stringify(state.task.machine))
++
++// ── the hunks: the sections the detail's paths name, and no others ──────────
++assert.ok(String(state.hunks).includes('diff --git a/A.txt b/A.txt'),
++  '(a) [M1] `state.hunks` carries the captured patch\'s `A.txt` section — the one path the ' +
++  'detail names: ' + JSON.stringify(String(state.hunks).slice(0, 400)))
++assert.deepEqual(headerPathsIn(state.hunks), ['A.txt'],
++  '(a) [M1] and NO `diff --git` header for any other path: the implementer stub also wrote ' +
++  '`B.txt`, which the detail does not name. Headers sent: ' +
++  JSON.stringify(headerPathsIn(state.hunks)))
++
++// ── the same line, verbatim, on the task's hub issue ────────────────────────
++const rowLine = A.lines.find((l) => {
++  try { return JSON.parse(l).kind === 'jev:finding' } catch { return false }
++})
++assert.ok(typeof rowLine === 'string' && rowLine.length > 0,
++  '(a) [M1] the row has a line of its own in events.jsonl')
++assert.ok(A.hub.commentsOn(A.uid).includes(rowLine),
++  '(a) [M1] the row\'s line, VERBATIM as it stands in events.jsonl, is among the comments on ' +
++  'A\'s hub issue — a `jev:` kind carrying a task the record knows routes to that task\'s ' +
++  'issue. Line: ' + rowLine + '\nComments: ' +
++  JSON.stringify(A.hub.commentsOn(A.uid), null, 1))
++
++// The Global Constraint the wire can answer: the call carries no key of its
++// own — the edge injects the bearer, and no site sends an `Authorization`.
++assert.deepEqual(Object.keys(req.headers || {}), ['content-type'],
++  '(a) the request carries content-type and no `Authorization` header of its own: ' +
++  JSON.stringify(req.headers))
++
++// ════════════════════════════════════════════════════════════════════════════
++// (b) [M1] — a detail that names no path sends the whole patch
++// ════════════════════════════════════════════════════════════════════════════
++// This run's body is a sim body with neither a `**Claim:**` nor a `Machine:`
++// line, which is M1's other reading: both fields are the empty string.
++const B = await scenario({
++  task: taskA({ body: 'sim task A' }),
++  reply: fixRoundReply(DETAIL_NO_PATH),
++})
++assert.equal(B.findingRequests.length, 1,
++  '(b) [M1] the second run recorded one `jev:finding` request: ' +
++  JSON.stringify(B.findingRequests.map((r) => r.url)))
++const stateB = B.findingRequests[0].body.state
++assert.ok(String(stateB.hunks).includes('diff --git a/A.txt b/A.txt'),
++  '(b) [M1] a detail naming no path sends the WHOLE patch — the `A.txt` section: ' +
++  JSON.stringify(String(stateB.hunks).slice(0, 400)))
++assert.ok(String(stateB.hunks).includes('diff --git a/B.txt b/B.txt'),
++  '(b) [M1] and the `B.txt` section beside it: ' + JSON.stringify(String(stateB.hunks).slice(0, 400)))
++assert.deepEqual(headerPathsIn(stateB.hunks), ['A.txt', 'B.txt'],
++  '(b) [M1] which is the whole captured patch and nothing else: ' +
++  JSON.stringify(headerPathsIn(stateB.hunks)))
++assert.equal(stateB.finding.text, DETAIL_NO_PATH,
++  '(b) [M1] the state is about that finding: ' + JSON.stringify(stateB.finding))
++assert.equal(stateB.task.claim, '',
++  '(b) [M1] a body with no `**Claim:**` line makes `claim` the empty string: ' +
++  JSON.stringify(stateB.task.claim))
++assert.equal(stateB.task.machine, '',
++  '(b) [M1] and a body with no `Machine:` line makes `machine` the empty string: ' +
++  JSON.stringify(stateB.task.machine))
++
++// ════════════════════════════════════════════════════════════════════════════
++// (c) [M2] — the four rows that are never appended
++// ════════════════════════════════════════════════════════════════════════════
++// (i) the `minor` issue of leg (a)'s own round.
++assert.equal(A.rows.length, 1,
++  '(c) [M2] leg (a)\'s round carried a `minor` issue (`style`) beside the blocking one, and ' +
++  'the `jev:finding` rows still number exactly one: ' + JSON.stringify(A.rows.map(rowShape)))
++assert.deepEqual(A.rows.filter((r) => String(r.key || '').startsWith('minor|')), [],
++  '(c) [M2] none of them has a `key` beginning `minor|`: ' + JSON.stringify(A.rows.map(rowShape)))
++assert.equal(A.findingRequests.length, 1,
++  '(c) [M2] and the fake `fetchImpl` recorded exactly one `jev:finding` request — the minor ' +
++  'issue bought no call at all: ' + JSON.stringify(A.findingRequests.map((r) =>
++    r.body && r.body.state && r.body.state.finding)))
++assert.deepEqual(A.findingRequests.filter((r) =>
++  r.body.state.finding.severity === 'minor'), [],
++  '(c) [M2] none of whose `state.finding.severity` is `minor`: ' +
++  JSON.stringify(A.findingRequests.map((r) => ((r.body || {}).state || {}).finding)))
++
++// (ii) the blocking issue the DRIVER minted itself: a red `Run:`.
++// The scenario the leg names: `proofRuns: ['test -f FIXED']`, an implementer
++// that writes no `FIXED`, a `fix:A:0` that writes nothing, a `fix:A:1` that
++// writes it, and a reviewer answering PASS with no issues in every round.
++const D = await scenario({
++  task: taskA({ title: 'write FIXED', proofRuns: ['test -f FIXED'] }),
++  reply: () => passReview(),
++  onLabel: (label, cwd) => {
++    if (label === 'impl:A') {
++      fs.writeFileSync(path.join(cwd, 'A.txt'), 'line1\nline3\n')
++      fs.writeFileSync(path.join(cwd, 'B.txt'), 'b\n')
++      return doneImpl(cwd)
++    }
++    if (label === 'fix:A:0') return doneImpl(cwd)
++    if (label === 'fix:A:1') {
++      fs.writeFileSync(path.join(cwd, 'FIXED'), 'x\n')
++      return doneImpl(cwd)
++    }
++    return undefined
++  },
++})
++assert.deepEqual(D.rows, [],
++  '(c) [M2] the driver-minted run leaves ZERO `jev:finding` rows — a red `Run:` is the ' +
++  'driver\'s own finding and buys no call: ' + JSON.stringify(D.rows.map(rowShape)))
++assert.equal(D.findingRequests.length, 0,
++  '(c) [M2] and its fake `fetchImpl` recorded zero `jev:finding` requests: ' +
++  JSON.stringify(D.requests.map((r) => ((r.body || {}).state || {}).finding)))
++// The leg names a `driver:finding` row and a `done` task here; at BASE the
++// still-red repair round parks the task before any reviewer, so the driver's
++// red-`Run:` reading is on the record as the row this run ends on. Filed
++// `unsatisfiable` — what M2 claims is the two assertions above.
++const rowD = D.rowOf('A')
++assert.ok(String(rowD.notes || '').startsWith('the Proof\'s Run: command failed'),
++  '(c) [M2] the driver\'s own red-`Run:` reading is on the record: ' + JSON.stringify(rowD))
++assert.equal(rowD.reviewVerdict, 'proof-red',
++  '(c) [M2] as the verdict this scenario ends on at BASE — the leg\'s `done` and its ' +
++  '`driver:finding` row are filed unsatisfiable: ' + JSON.stringify(rowD))
++
++// (iii) a call that resolves `null`: the edge answered 500.
++const R = await scenario({ task: taskA(), reply: fixRoundReply(DETAIL_A), status: 500 })
++assert.deepEqual(R.rows, [],
++  '(c) [M2] a run whose `fetchImpl` answers status 500 leaves ZERO `jev:finding` rows — a ' +
++  'refused call is one log line and no row: ' + JSON.stringify(R.rows.map(rowShape)))
++assert.equal(R.findingRequests.length, 1,
++  '(c) [M2] though the call WAS made: the round asked once and the answer was `null`: ' +
++  JSON.stringify(R.findingRequests.map((r) => r.url)))
++const tripleOf = (r) => ({ status: r.status, reviewVerdict: r.reviewVerdict,
++                           fixIterations: r.fixIterations })
++assert.deepEqual(tripleOf(R.rowOf('A')), tripleOf(A.rowOf('A')),
++  '(c) [M2] and the task ends exactly where the answered run ended — a refused call moves ' +
++  'no status, verdict or round count: ' + JSON.stringify(tripleOf(R.rowOf('A'))) + ' vs ' +
++  JSON.stringify(tripleOf(A.rowOf('A'))))
++
++// (iv) an engine handed no `jev` at all.
++const N = await scenario({ task: taskA(), reply: fixRoundReply(DETAIL_A), jevOn: false })
++assert.deepEqual(N.rows, [],
++  '(c) [M2] leg (a)\'s scenario run with NO `jev` leaves zero `jev:finding` rows: ' +
++  JSON.stringify(N.rows.map(rowShape)))
++
++// ════════════════════════════════════════════════════════════════════════════
++// (d) [M3] — the same run, with the seam and without it
++// ════════════════════════════════════════════════════════════════════════════
++assert.deepEqual(N.labels, A.labels,
++  '(d) [M3] the same canned replies dispatch the same worker labels in the same order with ' +
++  '`jev` and without it. without: ' + JSON.stringify(N.labels) +
++  '; with: ' + JSON.stringify(A.labels))
++assert.deepEqual(tripleOf(N.rowOf('A')), tripleOf(A.rowOf('A')),
++  '(d) [M3] and end with the same `reviewVerdict`, `fixIterations` and `status` for A. ' +
++  'without: ' + JSON.stringify(tripleOf(N.rowOf('A'))) +
++  '; with: ' + JSON.stringify(tripleOf(A.rowOf('A'))))
++assert.deepEqual(N.findings.map((f) => [f.task, f.round, f.detail]),
++  A.findings.map((f) => [f.task, f.round, f.detail]),
++  '(d) [M3] the same `driver:finding` rows by `task`, `round` and `detail`. without: ' +
++  JSON.stringify(N.findings.map((f) => [f.task, f.round, f.detail])) + '; with: ' +
++  JSON.stringify(A.findings.map((f) => [f.task, f.round, f.detail])))
++assert.deepEqual(N.report.judgmentCalls, A.report.judgmentCalls,
++  '(d) [M3] and the same `judgmentCalls` array. without: ' +
++  JSON.stringify(N.report.judgmentCalls) + '; with: ' + JSON.stringify(A.report.judgmentCalls))
++// The leg names `fixed`, `1` and `done` for A. The engine dispatches no fix
++// worker from a reviewer's blocking finding since #964 Task 2, and this task's
++// row may move no verdict, route or status (Global Constraints), so what is
++// pinned here is the scenario's outcome as the engine produces it — the leg's
++// three literals are filed `unsatisfiable`.
++assert.deepEqual(tripleOf(A.rowOf('A')),
++  { status: 'failed', reviewVerdict: 'fix-loop-exhausted', fixIterations: 0 },
++  '(d) [M3] and that outcome is the one the engine produced before this row existed — a ' +
++  'reviewer-returned blocking finding ends the task at the `fix-loop-exhausted` exit. ' +
++  'The Proof leg named `done`/`fixed`/1, which no engine since #964 Task 2 produces for ' +
++  'this scenario; filed unsatisfiable. Got: ' + JSON.stringify(tripleOf(A.rowOf('A'))))
++
++console.log('ok — fleet/tests/test_run_engine_jev_finding.mjs: ' +
++  'the `jev:finding` row beside a reviewer-returned blocking finding (M1), the four rows ' +
++  'never appended (M2), and the seam that moves nothing (M3)')
++// The sentinel the bridge and the suite's `Run:` line read, printed only if
++// every assertion above held.
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine_jev_suite_red.mjs b/fleet/tests/test_run_engine_jev_suite_red.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..90f4e2140d16d5c8754810b097a7a8e3e725adc2
+--- /dev/null
++++ b/fleet/tests/test_run_engine_jev_suite_red.mjs
+@@ -0,0 +1,494 @@
++// fleet/tests/test_run_engine_jev_suite_red.mjs — the exam for "a `jev:suite-red`
++// row in the unattributed-red branch — whose red is it".
++//
++// Claim: run a plan whose fold turns a test red that no task of the plan names;
++// see, on the record and on the run's hub issue, one `jev:suite-red` row for
++// that fold naming each red path with Jev's read of which task's change caused
++// it and whether it is an artifact of the harness — while the candidate is
++// adopted, recorded and left un-reconciled exactly as it was without the row.
++//
++// The Machine clauses under test, restated:
++//   M1 — in `foldWave`'s unattributed-red branch (`failing` non-empty and every
++//        failing path unclaimed), before the candidate is adopted, the driver
++//        calls `jevRow` ONCE with `row` `{ kind: 'jev:suite-red', epoch:
++//        waveNumber }`, state `{ failing: failingBlock(suite.stdout +
++//        suite.stderr), tests: unattributed, tasks: { <id>: { files,
++//        proofTests, stat } } }` — one `tasks` entry per result in `merged`,
++//        `files`/`proofTests` off the plan, `stat` the `{ path, added, removed }`
++//        list read from that task's captured patch text — and questions keyed
++//        `cause:<id>:<path>` for every (task, unattributed path) pair and
++//        `artifact:<path>` for every unattributed path, each the shared
++//        literal's noul. On an answer the appended row is `{ kind:
++//        'jev:suite-red', epoch, failing: [{ path, byTask: { <id>: <noul> },
++//        artifact: <noul> }] }`, one entry per unattributed path in `failing`
++//        order, posted on the run's hub issue when a hub is on.
++//   M2 — NO `jev:suite-red` row is appended when the candidate's suite is
++//        green, when at least one failing path is claimed by a task of the plan
++//        (the reconcile route), when `ask` resolves `null`, or when the engine
++//        was handed no `jev`.
++//   M3 — for the same canned replies, a run with `jev` and a run without it end
++//        the epoch `MERGED` with `suite.passed` `false` and the same
++//        `suite.unattributed`, push the same `unattributed red:` judgment
++//        lines, dispatch no `reconcile:` worker, and leave the integration
++//        clone's HEAD at the same tree.
++//
++// The Proof legs, and where each is answered:
++//   (a) [M1] the loud-red two-task run with `jev` and a hub on: exactly one
++//            `jev:suite-red` row, `epoch` 1, `failing` deep-equal to the one
++//            entry; exactly one recorded request, its three question keys, each
++//            of `type` `noul`; `state.tests`, `state.failing`, the two
++//            `state.tasks` entries; the row's line verbatim on the run's issue
++//            and on no task's                                    — scenario S1
++//   (b) [M2] a green candidate, a claimed red path (the reconcile route), a
++//            `fetchImpl` answering 500, and a run handed no `jev`: zero rows
++//            each                                   — scenarios S2, S3, S4, S5
++//   (c) [M3] S1 against S5 — the same loud-red scenario with `jev` and without:
++//            the same epoch status, `suite.passed`, `suite.unattributed`, the
++//            same `unattributed red:` judgment lines, no `reconcile:` dispatch
++//            in either, and the same file set at the integration clone's HEAD
++//                                                           — scenarios S1, S5
++//
++// ── how this sim provokes the unattributed red ──────────────────────────────
++// Everything below the agent seam is real: real git repos, real clones at BASE,
++// the real capture, the real fold kernel through the real exec seam. Only the
++// judgments are canned, so every dispatch and every fold below is the driver's
++// own. Jev is reached through the REAL `makeJevClient` over an injected
++// `fetchImpl`, and the hub through the rig's `fakeHub`, so no socket is opened.
++//
++// The repository's suite is `check.sh`: silent and green while `A.txt` is
++// absent, and once task A's implementer has written it, one line —
++// `FAILED tests/test_other.py::test_x` — and a non-zero exit. `failingTestPaths`
++// reads only `FAILED <path>::<id>` lines, so that candidate's failing list is
++// `['tests/test_other.py']`: a path NO task of the plan names in its `files` or
++// its `proofTests`, which is the unattributed-red branch. A second task B in
++// the same wave writes `B.txt`, so the fold's `merged` holds two results and
++// the row's `byTask` has two keys.
++//
++// TWO READINGS THIS FILE SETTLES, because a later session would otherwise have
++// to reconstruct them:
++//
++// 1. WHY TASK B CARRIES `proofTests` AND NO `testCmd`. Leg (a) pins
++//    `state.tasks.B.proofTests` at `['tests/test_b.py']`, which the task must
++//    therefore DECLARE. A task declaring proof tests AND a `testCmd` dispatches
++//    an examiner, whose exam would land in B's clone and show up as a second
++//    `stat` entry — and leg (a) pins B's `stat` at the single `B.txt` entry for
++//    "an implementer that wrote two lines to `B.txt`". `examTestCmd` is the
++//    engine's own condition for that dispatch (`proofTests.length &&
++//    examTestCmd`), so B declares its proof test and no command of its own: the
++//    plan entry the row reads is exactly the one the leg spells, and the patch
++//    the `stat` is read from is exactly the implementer's two lines.
++//
++// 2. WHAT "AN IMPLEMENTER THAT WRITES NOTHING" IS IN S2. The suite's colour is
++//    decided by `A.txt` alone, so the green candidate of leg (b) is the same
++//    two-task plan with A's implementer writing nothing at all. B still writes
++//    `B.txt`, so the wave folds a real change and a real candidate suite runs
++//    on it — green. A wave that folded nothing would leave "the candidate's
++//    suite is green" unexercised, which is the condition M2 names.
++//
++// WHY THIS IS RED AT BASE. At BASE the unattributed-red branch adopts, records
++// and returns without asking Jev anything: no `jev:suite-red` row is appended
++// anywhere and the sim's `fetchImpl` is never called. Leg (a) — the falsifier —
++// asks S1 for exactly one such row and reports the zero it finds.
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import {
++  makeRepo, rig, fakeHub, passReview, cleanCritic, doneImpl, gitSync,
++} from './_engine_helpers.mjs'
++import { makeJevClient } from '../jev-client.mjs'
++import { failingBlock } from '../failing-block.mjs'
++
++const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-jev-suite-red-'))
++process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
++
++// ── the fixture: the loud suite ─────────────────────────────────────────────
++// Green at BASE; once `A.txt` exists it names a failing path no task lists and
++// exits non-zero. `test_run_engine_reconcile_retry.mjs` builds the SILENT red
++// (an output naming no path, which takes the reconcile route); this is the loud
++// one, which takes the branch under test.
++const CHECK_SH = '#!/bin/bash\n' +
++  'if [ -f A.txt ]; then echo \'FAILED tests/test_other.py::test_x\'; exit 1; fi; exit 0\n'
++
++/** The one unattributed path this suite names. */
++const RED_PATH = 'tests/test_other.py'
++/** The line the suite prints when it fails. */
++const FAILED_LINE = 'FAILED ' + RED_PATH + '::test_x'
++/** The noul every canned answer carries. */
++const NOUL = 0.7
++
++/** A wave's task, the shape the rig's sims spell. */
++const taskOf = (id, extra = {}) => ({
++  id, title: 'task ' + id, files: [id + '.txt'], tier: 'standard', review: 'lean',
++  writes: [id + '.txt'], commutes: [], testCmd: 'bash check.sh', proofTests: [], proofRuns: [],
++  body: 'sim task ' + id, ...extra,
++})
++
++/** Task B, in every scenario: `B.txt`, one proof test the suite never names —
++ *  so the red stays unattributed — and no `testCmd`, so no examiner is
++ *  dispatched and the captured patch is the implementer's two lines alone. */
++const TASK_B = () => taskOf('B', { proofTests: ['tests/test_b.py'], testCmd: null })
++/** Task A as the loud-red scenarios declare it: it names `A.txt` and nothing else. */
++const TASK_A = () => taskOf('A')
++/** Task A as the CLAIMED scenario declares it: the red path is in its `files`,
++ *  so the fold takes the reconcile route instead. */
++const TASK_A_CLAIMING = () => taskOf('A', { files: ['A.txt', RED_PATH] })
++
++// ── the hub, for the scenarios that drive one ───────────────────────────────
++const PROJECT_ID = 7
++const RUN_UID = 'RUN0'
++const UID_A = 'U-A'
++const UID_B = 'U-B'
++const ISSUES = () => ({
++  [RUN_UID]: { revision: 1, short_id: 'run0', metadata: {} },
++  [UID_A]: { revision: 1, short_id: 'aa11', metadata: {} },
++  [UID_B]: { revision: 1, short_id: 'bb22', metadata: {} },
++})
++/** The record, spelled as the launcher writes it; its issue revisions are the
++ *  fake's, because a sheet read whose revision disagrees is fatal. */
++const RECORD = () => ({
++  url: 'https://kata.invalid',
++  project: { id: PROJECT_ID, uid: 'PROJ0', name: 'ultrapowers' },
++  run: { uid: RUN_UID, revision: 1 },
++  tasks: {
++    A: { uid: UID_A, short_id: 'aa11', revision: 1 },
++    B: { uid: UID_B, short_id: 'bb22', revision: 1 },
++  },
++})
++
++/** The run's record, read back off disk. An absent file reads as no events, so
++ *  an engine that wrote none fails an assertion rather than throwing ENOENT. */
++const rawLinesIn = (runDir) => {
++  const file = path.join(runDir, 'events.jsonl')
++  if (!fs.existsSync(file)) return []
++  return fs.readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l.startsWith('{'))
++}
++const parsed = (line) => { try { return JSON.parse(line) } catch { return null } }
++
++/**
++ * One scenario: one engine run over the two-task plan.
++ *
++ *   waves      the plan
++ *   writeA     whether `impl:A` writes `A.txt` — the suite's colour
++ *   jevMode    'ok' (a recording `fetchImpl` answering 200 with a noul for
++ *              every question id it was sent), '500' (the same recorder
++ *              answering status 500), or 'none' (no `jev` handed in at all)
++ *   withHub    a `fakeHub` and the matching record, or neither
++ *
++ * Returns everything the legs read: the report, the dispatched labels, the
++ * recorded requests, the `jev:suite-red` rows (raw lines and parsed), the hub,
++ * and the integration clone.
++ */
++const drive = async ({ tag, waves, writeA = true, jevMode = 'ok', withHub = false }) => {
++  const requests = []
++  const fetchImpl = async (url, init) => {
++    const body = JSON.parse(String((init && init.body) || 'null'))
++    requests.push({ url, init, body })
++    if (jevMode === '500') return { status: 500, text: async () => 'upstream said no' }
++    const answers = {}
++    for (const id of Object.keys((body && body.questions) || {})) {
++      answers[id] = { type: 'noul', noul: NOUL }
++    }
++    return { status: 200, text: async () => JSON.stringify({ answers }) }
++  }
++  const jevLogs = []
++  const hub = withHub ? fakeHub({ projectId: PROJECT_ID, issues: ISSUES() }) : null
++  const repo = makeRepo(path.join(tmp, 'repo-' + tag), { 'check.sh': CHECK_SH })
++  const runDir = path.join(tmp, 'run-' + tag)
++  const labels = []
++  const { run, integ } = rig({
++    repo, runDir, waves, stamp: 'jevred-' + tag,
++    ...(hub ? { kata: hub.kata } : {}),
++    ...(jevMode === 'none' ? {} : {
++      jev: makeJevClient({
++        baseUrl: 'https://typesafe.invalid', fetchImpl, log: (l) => jevLogs.push(String(l)),
++      }),
++    }),
++    extraArgs: { ...(hub ? { kataRecord: RECORD(), attentionPollMs: 3600000 } : {}) },
++    stub: (prompt, opts, cwd) => {
++      const label = String(opts.label)
++      labels.push(label)
++      if (label === 'impl:A') {
++        if (writeA) fs.writeFileSync(path.join(cwd, 'A.txt'), 'one\n')
++        return doneImpl(cwd)
++      }
++      if (label === 'impl:B') {
++        fs.writeFileSync(path.join(cwd, 'B.txt'), 'one\ntwo\n')
++        return doneImpl(cwd)
++      }
++      if (label === 'integration') return cleanCritic()
++      if (label.startsWith('review:')) return passReview()
++      if (label.startsWith('fix:')) return doneImpl(cwd)
++      // The reconcile route's own dispatch, for the CLAIMED scenario: a reply
++      // that repairs nothing, so the epoch ends where BASE ends it.
++      if (label.startsWith('reconcile:')) return { status: 'BLOCKED', summary: 'sim: no repair' }
++      return { status: 'BLOCKED', summary: 'sim: unexpected dispatch ' + label }
++    },
++  })
++  let report = null
++  let threw = null
++  try { report = await run() } catch (error) { threw = error }
++  const rawRows = rawLinesIn(runDir)
++    .filter((l) => { const e = parsed(l); return Boolean(e) && e.kind === 'jev:suite-red' })
++  return {
++    tag, report, threw, labels, requests, jevLogs, hub, integ, runDir,
++    // `requests` is EVERY call the engine's one Jev client made. The
++    // `jev:tier` row rides that same client (#1096 row 2) — one call at
++    // dispatch and one at each review dispatch — so a wire-level count of
++    // this row's calls reads `redRequests`: a `jev:suite-red` call is the one
++    // whose `state` carries the suite's `failing` block, which no `jev:tier`
++    // state has. The row counts below already read the row kind; this is the
++    // same reading taken on the wire.
++    redRequests: requests.filter((r) => ((r.body || {}).state || {}).failing !== undefined),
++    rawRows, rows: rawRows.map(parsed),
++    merge: ((report || {}).waveMerges || [])[0] || null,
++    judgments: ((report || {}).judgmentCalls || []).map(String),
++  }
++}
++
++/** The tree at a clone's HEAD, as a file list. */
++const treeAt = (dir) => gitSync(['ls-tree', '-r', '--name-only', 'HEAD'], dir).split('\n').filter(Boolean)
++
++// ── the shared literal, spelled as the Machine spells it ────────────────────
++const CTX_S = 'A wave of tasks was folded into one tree and the project\'s suite went red in ' +
++  '`tests`, paths no task of the plan names in its files or proof tests. `failing` is the ' +
++  'suite\'s failing block; `tasks` holds each folded task\'s files, proof tests and the paths ' +
++  'its patch touched.'
++const causeQuestion = (id, p) => ({
++  type: 'noul',
++  instructions: {
++    question: 'Did task `' + id + '`\'s change (`tasks.' + id + '`) cause the failure of `' +
++      p + '` shown in `failing`?',
++    context: CTX_S,
++  },
++  criteria: {
++    true: 'This task\'s change is what made this test fail',
++    false: 'This task\'s change is unrelated to this failure',
++  },
++})
++const artifactQuestion = (p) => ({
++  type: 'noul',
++  instructions: {
++    question: 'Is the failure of `' + p + '` in `failing` a harness or environment artifact — ' +
++      'a timeout, a missing tool, a flaky resource, a sandbox limit — rather than a defect of ' +
++      'the tree?',
++    context: CTX_S,
++  },
++  criteria: {
++    true: 'The output reads as the environment\'s failure, not the code\'s',
++    false: 'The output reads as a real defect in the tree',
++  },
++})
++
++// ══════════════════════════════════════════════════════════════════════════
++// the five scenarios
++// ══════════════════════════════════════════════════════════════════════════
++
++// S1 — the loud red, `jev` on, a hub on. Leg (a); the `jev` half of leg (c).
++const S1 = await drive({ tag: 's1', waves: [[TASK_A(), TASK_B()]], withHub: true })
++// S5 — the same loud-red scenario, hub on, and NO `jev`. Leg (b)'s fourth case;
++// the without-`jev` half of leg (c).
++const S5 = await drive({ tag: 's5', waves: [[TASK_A(), TASK_B()]], withHub: true, jevMode: 'none' })
++// S2 — A's implementer writes nothing: the candidate's suite is green.
++const S2 = await drive({ tag: 's2', waves: [[TASK_A(), TASK_B()]], writeA: false })
++// S3 — task A names the red path in its `files`: the reconcile route.
++const S3 = await drive({ tag: 's3', waves: [[TASK_A_CLAIMING(), TASK_B()]] })
++// S4 — the loud red with a `fetchImpl` answering 500: `ask` resolves `null`.
++const S4 = await drive({ tag: 's4', waves: [[TASK_A(), TASK_B()]], jevMode: '500' })
++
++for (const s of [S1, S5, S2, S3, S4]) {
++  assert.equal(s.threw, null,
++    'sim precondition (' + s.tag + '): the run resolves. It threw: ' +
++    String(s.threw && (s.threw.stack || s.threw.message || s.threw)))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (a) [M1] the row, the call, and where the line lands
++// ══════════════════════════════════════════════════════════════════════════
++
++assert.ok(S1.merge && S1.merge.suite && Array.isArray(S1.merge.suite.unattributed),
++  '(a) [M1] sim precondition: the loud-red fold took the UNATTRIBUTED-red branch — the epoch ' +
++  'carries a `suite.unattributed`. Labels: ' + JSON.stringify(S1.labels) + ' | epoch: ' +
++  JSON.stringify(S1.merge))
++assert.deepEqual(S1.merge.suite.unattributed, [RED_PATH],
++  '(a) [M1] sim precondition: with `' + RED_PATH + '` the one unattributed path; got ' +
++  JSON.stringify(S1.merge.suite.unattributed))
++
++assert.equal(S1.rows.length, 1,
++  '(a) [M1] the loud-red two-task run with `jev` and a hub on leaves EXACTLY ONE ' +
++  '`jev:suite-red` row on the record — `jevRow` is called once, in the unattributed-red ' +
++  'branch, before the candidate is adopted. Rows found: ' + JSON.stringify(S1.rows) +
++  ' | jev log lines: ' + JSON.stringify(S1.jevLogs) + ' | labels: ' + JSON.stringify(S1.labels))
++
++const ROW = S1.rows[0]
++assert.equal(ROW.epoch, 1,
++  '(a) [M1] whose `epoch` is the wave number, `1`; got ' + JSON.stringify(ROW.epoch) +
++  ' in row ' + JSON.stringify(ROW))
++assert.deepEqual(ROW.failing, [{ path: RED_PATH, byTask: { A: NOUL, B: NOUL }, artifact: NOUL }],
++  '(a) [M1] and whose `failing` is one entry per unattributed path, in `failing` order, each ' +
++  '`{ path, byTask: { <id>: <noul> }, artifact: <noul> }` read off the answers — for this ' +
++  'run, the one red path with a `byTask` noul per folded task and the artifact noul; got ' +
++  JSON.stringify(ROW.failing))
++
++// ── the one call ───────────────────────────────────────────────────────────
++assert.equal(S1.redRequests.length, 1,
++  '(a) [M1] the fake `fetchImpl` recorded EXACTLY ONE `jev:suite-red` request — one `jevRow` ' +
++  'call for the fold, and no second call from anywhere; got ' + S1.redRequests.length + ': ' +
++  JSON.stringify(S1.redRequests.map((r) => Object.keys((r.body || {}).questions || {}))))
++
++const SENT = S1.redRequests[0].body || {}
++const QUESTIONS = SENT.questions || {}
++const STATE = SENT.state || {}
++const CAUSE_A = 'cause:A:' + RED_PATH
++const CAUSE_B = 'cause:B:' + RED_PATH
++const ARTIFACT = 'artifact:' + RED_PATH
++
++assert.deepEqual(Object.keys(QUESTIONS).slice().sort(), [ARTIFACT, CAUSE_A, CAUSE_B].slice().sort(),
++  '(a) [M1] whose `questions` has exactly the keys `' + CAUSE_A + '`, `' + CAUSE_B + '` and `' +
++  ARTIFACT + '` — one `cause:<id>:<path>` per (task, unattributed path) pair and one ' +
++  '`artifact:<path>` per unattributed path; got ' + JSON.stringify(Object.keys(QUESTIONS)))
++for (const key of [CAUSE_A, CAUSE_B, ARTIFACT]) {
++  assert.equal((QUESTIONS[key] || {}).type, 'noul',
++    '(a) [M1] each of `type` `noul` — `' + key + '` is not; got ' +
++    JSON.stringify(QUESTIONS[key]))
++}
++// The shared literal itself, which M1 spells out: the question the driver asks
++// is the task's own words, not a paraphrase of them.
++assert.deepEqual(QUESTIONS[CAUSE_A], causeQuestion('A', RED_PATH),
++  '(a) [M1] `' + CAUSE_A + '` is the shared literal\'s noul, verbatim as the Machine spells ' +
++  'it; got ' + JSON.stringify(QUESTIONS[CAUSE_A]))
++assert.deepEqual(QUESTIONS[CAUSE_B], causeQuestion('B', RED_PATH),
++  '(a) [M1] and so is `' + CAUSE_B + '`; got ' + JSON.stringify(QUESTIONS[CAUSE_B]))
++assert.deepEqual(QUESTIONS[ARTIFACT], artifactQuestion(RED_PATH),
++  '(a) [M1] and `' + ARTIFACT + '` is the artifact literal, verbatim; got ' +
++  JSON.stringify(QUESTIONS[ARTIFACT]))
++
++// ── the state ──────────────────────────────────────────────────────────────
++assert.deepEqual(STATE.tests, [RED_PATH],
++  '(a) [M1] whose `state.tests` is `unattributed` — the paths no task of the plan names; got ' +
++  JSON.stringify(STATE.tests))
++assert.ok(typeof STATE.failing === 'string' && STATE.failing.includes(FAILED_LINE),
++  '(a) [M1] whose `state.failing` contains `' + FAILED_LINE + '`; got ' +
++  JSON.stringify(STATE.failing))
++assert.equal(STATE.failing, failingBlock(S1.merge.suite.output),
++  '(a) [M1] and IS `failingBlock(suite.stdout + suite.stderr)` — the same block the reconcile ' +
++  'prompt gets — measured against the suite output the epoch recorded; got ' +
++  JSON.stringify(STATE.failing) + ' against ' +
++  JSON.stringify(failingBlock(S1.merge.suite.output)))
++assert.deepEqual(Object.keys(STATE.tasks || {}).slice().sort(), ['A', 'B'],
++  '(a) [M1] whose `state.tasks` has one entry per result in `merged` — this wave folded A and ' +
++  'B; got ' + JSON.stringify(Object.keys(STATE.tasks || {})))
++assert.deepEqual((STATE.tasks || {}).A,
++  { files: ['A.txt'], proofTests: [], stat: [{ path: 'A.txt', added: 1, removed: 0 }] },
++  '(a) [M1] whose `state.tasks.A` is the task\'s `files` and `proofTests` off the plan and the ' +
++  '`{ path, added, removed }` list read from its captured patch text — one line written to ' +
++  '`A.txt`; got ' + JSON.stringify((STATE.tasks || {}).A))
++assert.deepEqual((STATE.tasks || {}).B,
++  { files: ['B.txt'], proofTests: ['tests/test_b.py'],
++    stat: [{ path: 'B.txt', added: 2, removed: 0 }] },
++  '(a) [M1] and whose `state.tasks.B` carries B\'s declared `proofTests` (a path the suite ' +
++  'never names, so the red stays unattributed) and the two lines its implementer wrote to ' +
++  '`B.txt`; got ' + JSON.stringify((STATE.tasks || {}).B))
++
++// ── where the line lands ───────────────────────────────────────────────────
++const ROW_LINE = S1.rawRows[0]
++const onRun = S1.hub.commentsOn(RUN_UID)
++assert.ok(onRun.includes(ROW_LINE),
++  '(a) [M1] the row\'s line is posted VERBATIM on the run\'s hub issue (' + RUN_UID + ') — the ' +
++  'row names no task, so the `driver:` rule routes it to the run. Comments there: ' +
++  JSON.stringify(onRun) + ' | the line: ' + JSON.stringify(ROW_LINE))
++for (const [id, uid] of [['A', UID_A], ['B', UID_B]]) {
++  const onTask = S1.hub.commentsOn(uid)
++  assert.equal(onTask.includes(ROW_LINE), false,
++    '(a) [M1] and on NO task issue — task ' + id + '\'s (' + uid + ') carries it. Comments ' +
++    'there: ' + JSON.stringify(onTask))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (b) [M2] the four foldings that append no row
++// ══════════════════════════════════════════════════════════════════════════
++
++assert.equal(S2.merge && S2.merge.status, 'MERGED',
++  '(b) [M2] sim precondition: the run whose implementer writes nothing adopts a GREEN ' +
++  'candidate — the epoch merged with no `suite.unattributed`; got ' + JSON.stringify(S2.merge))
++assert.equal(Boolean(S2.merge && S2.merge.suite), false,
++  '(b) [M2] sim precondition: and that epoch records no unattributed suite at all; got ' +
++  JSON.stringify(S2.merge))
++assert.deepEqual(S2.rows, [],
++  '(b) [M2] a run whose implementer writes nothing (the candidate\'s suite is green) leaves ' +
++  'ZERO `jev:suite-red` rows; got ' + JSON.stringify(S2.rows))
++assert.equal(S2.redRequests.length, 0,
++  '(b) [M2] and zero recorded `jev:suite-red` requests — a green fold asks Jev nothing about ' +
++  'the suite; got ' + S2.redRequests.length + ': ' +
++  JSON.stringify(S2.redRequests.map((r) => Object.keys((r.body || {}).questions || {}))))
++
++assert.ok(S3.labels.includes('reconcile:wave1:1'),
++  '(b) [M2] a run whose task `A` lists `files: [\'A.txt\', \'' + RED_PATH + '\']` — the red ' +
++  'path CLAIMED — dispatches a `reconcile:wave1:1` worker: the reconcile route, not the ' +
++  'unattributed one; got ' + JSON.stringify(S3.labels))
++assert.deepEqual(S3.rows, [],
++  '(b) [M2] and leaves zero `jev:suite-red` rows — the row is the unattributed branch\'s ' +
++  'alone; got ' + JSON.stringify(S3.rows))
++assert.equal(S3.redRequests.length, 0,
++  '(b) [M2] and zero recorded `jev:suite-red` requests; got ' + S3.redRequests.length + ': ' +
++  JSON.stringify(S3.redRequests.map((r) => Object.keys((r.body || {}).questions || {}))))
++
++assert.deepEqual(S4.rows, [],
++  '(b) [M2] a loud-red run whose `fetchImpl` answers status 500 — `ask` resolves `null` — ' +
++  'leaves zero `jev:suite-red` rows; got ' + JSON.stringify(S4.rows) + ' | jev log lines: ' +
++  JSON.stringify(S4.jevLogs))
++assert.equal(S4.merge && S4.merge.status, 'MERGED',
++  '(b) [M2] and the epoch is `MERGED` regardless — a refused call costs the row and nothing ' +
++  'else; got ' + JSON.stringify(S4.merge))
++
++assert.deepEqual(S5.rows, [],
++  '(b) [M2] and the loud-red run handed NO `jev` leaves zero `jev:suite-red` rows; got ' +
++  JSON.stringify(S5.rows))
++
++// ══════════════════════════════════════════════════════════════════════════
++// (c) [M3] with `jev` and without: the same fold, the same tree
++// ══════════════════════════════════════════════════════════════════════════
++
++assert.ok(S5.merge && S5.merge.suite && Array.isArray(S5.merge.suite.unattributed),
++  '(c) [M3] sim precondition: the without-`jev` run took the same unattributed-red branch; ' +
++  'got ' + JSON.stringify(S5.merge))
++assert.equal(S1.merge.status, 'MERGED',
++  '(c) [M3] the run with `jev` ends the epoch `MERGED`; got ' + JSON.stringify(S1.merge.status))
++assert.equal(S5.merge.status, S1.merge.status,
++  '(c) [M3] and the run without it ends the epoch at the same status; got ' +
++  JSON.stringify(S5.merge.status) + ' against ' + JSON.stringify(S1.merge.status))
++assert.equal(S1.merge.suite.passed, false,
++  '(c) [M3] with `suite.passed` `false`; got ' + JSON.stringify(S1.merge.suite.passed))
++assert.equal(S5.merge.suite.passed, S1.merge.suite.passed,
++  '(c) [M3] in both; got ' + JSON.stringify(S5.merge.suite.passed) + ' against ' +
++  JSON.stringify(S1.merge.suite.passed))
++assert.deepEqual(S5.merge.suite.unattributed, S1.merge.suite.unattributed,
++  '(c) [M3] and the same `suite.unattributed`; got ' +
++  JSON.stringify(S5.merge.suite.unattributed) + ' against ' +
++  JSON.stringify(S1.merge.suite.unattributed))
++
++const redJudgments = (s) => s.judgments.filter((c) => c.startsWith('unattributed red:'))
++assert.deepEqual(redJudgments(S1),
++  ['unattributed red: ' + RED_PATH + ' went red on wave 1\'s fold; no task names it'],
++  '(c) [M3] the run with `jev` pushes BASE\'s own `unattributed red:` judgment line, one per ' +
++  'path, unchanged; got ' + JSON.stringify(redJudgments(S1)))
++assert.deepEqual(redJudgments(S5), redJudgments(S1),
++  '(c) [M3] and the run without it pushes the same lines; got ' +
++  JSON.stringify(redJudgments(S5)) + ' against ' + JSON.stringify(redJudgments(S1)))
++
++for (const s of [S1, S5]) {
++  assert.deepEqual(s.labels.filter((l) => l.startsWith('reconcile:')), [],
++    '(c) [M3] neither run dispatches a `reconcile:` worker — the unattributed red is adopted ' +
++    'and recorded, never reconciled. The ' + (s === S1 ? 'with-`jev`' : 'without-`jev`') +
++    ' run dispatched: ' + JSON.stringify(s.labels))
++}
++
++assert.deepEqual(treeAt(S5.integ), treeAt(S1.integ),
++  '(c) [M3] and the integration clone\'s HEAD carries the same files in both runs — the row ' +
++  'is beside the fold, never in it; got ' + JSON.stringify(treeAt(S5.integ)) + ' against ' +
++  JSON.stringify(treeAt(S1.integ)))
++
++console.log('ok - jev:suite-red: the row, the four silences, and the fold that does not change')
++// The sentinel the bridge and the suite's `Run:` line read, printed only if
++// every assertion above held.
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine_jev_tier.mjs b/fleet/tests/test_run_engine_jev_tier.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..ffce031110c9dfead4a63e44fa0bd5b8b1ba1bc4
+--- /dev/null
++++ b/fleet/tests/test_run_engine_jev_tier.mjs
+@@ -0,0 +1,657 @@
++/**
++ * fleet/tests/test_run_engine_jev_tier.mjs — the exam for Task 2 of run-182:
++ * *a `jev:tier` row beside every task's tier — at dispatch, and
++ * `review_difficulty` over the patch at review dispatch*.
++ *
++ * This file is the Proof's `Test:` path and the run left it where the Proof
++ * named it, so every relative import below is written for `fleet/tests/`.
++ *
++ * ── what each Machine clause asserts, restated ──────────────────────────────
++ *   M1 — on each entry into `runTaskInner`, directly after `economics` is set,
++ *        the driver calls `jevRow` once with `row`
++ *        `{kind: 'jev:tier', task: task.id, at: 'dispatch', tierChosen:
++ *        economics.tier}` — `economics.tier` being the MODEL name (`sonnet`
++ *        for a `standard` task, `opus` for `most-capable`) and never the
++ *        tier's own name — state `{task: {title, claim, proof, files,
++ *        proofTests}}` and the three dispatch questions of the shared literal
++ *        keyed `difficulty`, `lifecycle_or_concurrency`, `design_open`; on an
++ *        answer ONE `{kind, task, at, tierChosen, answers}` row is appended,
++ *        posted on the task's hub issue when a hub is on.
++ *   M2 — in each review round, BEFORE the reviewer is dispatched, the driver
++ *        calls `jevRow` once with `row` `{kind: 'jev:tier', task: task.id,
++ *        at: 'review', round: iter, tierChosen: economics.tier}`, state
++ *        `{task: {title, claim, files}, patch}` where `patch` is the TEXT of
++ *        the captured patch file, and the two review questions of the shared
++ *        literal keyed `review_difficulty`, `doc_or_prose_only`; on an answer
++ *        one such row is appended, posted the same way.
++ *   M3 — no `jev:tier` row is appended when `ask` resolves `null` or when the
++ *        engine was handed no `jev`.
++ *   M4 — for the same canned replies, a run with `jev` and a run without it
++ *        dispatch the same worker labels in the same order with the same
++ *        `model` option on every `impl:` and `review:` dispatch, and end with
++ *        the same `tier`, `reviewVerdict` and `status` per task on the report.
++ *
++ * ── the legs, and where each is answered ────────────────────────────────────
++ * Every assertion below names its leg and the clause it comes from, so a
++ * reader can map this file back to the contract.
++ *   (a) [M1] run A — the two-task run with `jev` and a hub on: exactly two
++ *       `jev:tier` rows with `at` `dispatch`, one per task, each `tierChosen`
++ *       `sonnet` and `answers` carrying exactly `difficulty`,
++ *       `lifecycle_or_concurrency`, `design_open`; each such row precedes, by
++ *       position in `events.jsonl`, that task's first `driver:proof-run` or,
++ *       absent one, that task's first `at: 'review'` row; the recorded
++ *       dispatch requests number two and carry the three questions and the
++ *       state the clause spells; and each row's line, verbatim, is among
++ *       `commentsOn(<that task's uid>)`.
++ *   (b) [M2] run A again — exactly two `at: 'review'` rows, `round` `1`,
++ *       `tierChosen` `sonnet`, `answers` exactly `review_difficulty` and
++ *       `doc_or_prose_only`; two recorded review requests with the two
++ *       questions, the `{patch, task}` state, and a `patch` carrying
++ *       `diff --git a/<that task's file> b/<that task's file>`; each row's
++ *       line among that task's comments.
++ *   (c) [M3] run B — every request answered `500`: zero `jev:tier` rows, both
++ *       tasks `done`. Run C — no `jev` at all: zero `jev:tier` rows. Run D —
++ *       one `standard` task and one `most-capable` task: `sonnet` against
++ *       `opus` on the two dispatch rows.
++ *   (d) [M4] run A against run C — the same scenario with `jev` and without:
++ *       the same sequence of dispatched `(label, opts.model)` pairs, and per
++ *       task the same `tier`, `reviewVerdict` and `status` on the report.
++ *
++ * ── the rig ─────────────────────────────────────────────────────────────────
++ * The shared engine rig (`rig`, `fakeHub`, `makeRepo` from
++ * `_engine_helpers.mjs`), so everything below the agent seam is real: real git
++ * repositories, real `cloneAtBase` clones, the real capture, the real fold
++ * kernel through the real `execSeam`. The Jev client is the REAL
++ * `makeJevClient` over an injected `fetchImpl` that records each request's
++ * parsed body and answers `200` with one entry per question id it received —
++ * so what the engine sent is read off the record, and no sim opens a socket.
++ * The hub is `fakeHub`'s in-memory store plus the matching `kataRecord`
++ * through `extraArgs`, its issue revisions equal to the record's.
++ *
++ * ── two readings this file is written on ────────────────────────────────────
++ *   • THE PLAN'S SHAPE. The two tasks are one wave with the one dependency
++ *     edge `A -> B`, not two concurrent tasks. Leg (d) pins "the same sequence
++ *     of dispatched `(label, opts.model)` pairs" between a jev-on and a
++ *     jev-off run; the engine flattens `waves` into one ready-set plan and the
++ *     rig's `parallel` is `Promise.all`, so two CONCURRENT tasks interleave
++ *     their dispatches differently once a task awaits `jev.ask` — and leg (d)
++ *     would be red for a reason that is not the implementation. The edge makes
++ *     the dispatch order a fact of the plan. Nothing in the task text fixes
++ *     the wave layout: it asks for "a two-task plan (`A` and `B`)" yielding
++ *     "two dispatch rows and two review rows", which this is.
++ *   • THE QUESTION LITERALS. M1 and M2 name "the three dispatch questions of
++ *     the shared literal" and "the two review questions of the shared
++ *     literal", and the task spells all five verbatim. So beyond the legs'
++ *     `type` and four-criteria-levels checks, each question object the engine
++ *     sent is deep-equalled against the literal transcribed below. That is the
++ *     clause's own words, not one implementation's shape.
++ *   • Leg (a)'s ordering clause has two arms. This plan carries no `proofRuns`
++ *     and no `proofTests`, so no `driver:proof-run` row exists and the live
++ *     arm is "that task's first `jev:tier` row with `at` `review`" — asserted
++ *     as such, with the `driver:proof-run` arm read first exactly as the leg
++ *     words it.
++ *
++ * ── why this is red at BASE, for one reason ─────────────────────────────────
++ * `fleet/run-engine.mjs` at BASE calls `jevRow` from no site at all: the seam
++ * exists (#1107) and nothing rides it. So run A's `events.jsonl` holds zero
++ * `jev:tier` rows where leg (a) wants two, and the fake `fetchImpl` records
++ * zero requests where it wants two. Every import below resolves at BASE and
++ * every fixture is built here, so the failure is the absent implementation and
++ * nothing else.
++ */
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++
++import { makeJevClient } from '../jev-client.mjs'
++import { rig, makeRepo, fakeHub, passReview, doneImpl } from './_engine_helpers.mjs'
++
++const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'engine-jev-tier-')))
++process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
++
++// ── the literals the clauses spell, spelled once ────────────────────────────
++const KIND = 'jev:tier'
++const PROJECT_ID = 11
++const RUN_UID = 'RUN0'
++const UID = { A: 'U-A', B: 'U-B' }
++// The model names `TIER` carries — what `economics.tier` is, and what M1's
++// `tierChosen` therefore has to be. Never `standard`/`most-capable`.
++const SONNET = 'sonnet'
++const OPUS = 'opus'
++// One file per task, written by that task's own implementer, and the line the
++// captured patch of that task must carry (leg (b)).
++const FILE_OF = { A: 'tA.txt', B: 'tB.txt' }
++const diffLineFor = (id) => 'diff --git a/' + FILE_OF[id] + ' b/' + FILE_OF[id]
++
++// Task A's body: a `**Claim:**` line followed by a `Machine: M1.` line and,
++// after the blank line, a `**Proof:**` line — so `claim` carries the Claim
++// sentence and its `Machine:` restatement together and `proof` carries the
++// Proof line's text. Task B's body carries neither marker, so both are ''.
++const A_CLAIM_SENTENCE = 'do: dispatch task A; see: one jev:tier row beside its tier.'
++const A_MACHINE_LINE = 'Machine: M1. the row is appended at dispatch.'
++const A_PROOF_TEXT = 'Test: fleet/tests/sim_a.mjs — leg (a) the row is on the record.'
++const A_BODY = [
++  '**Claim:** ' + A_CLAIM_SENTENCE,
++  A_MACHINE_LINE,
++  '',
++  '**Proof:** ' + A_PROOF_TEXT,
++  '',
++].join('\n')
++const B_BODY = 'sim task B'
++
++// ── the five questions, verbatim (M1, M2: "the shared literal") ─────────────
++const CTX_D = '`task.claim` is a signed Claim followed by numbered Machine ' +
++  'clauses (M1, M2, ...) that restate it mechanically. `task.proof` names a ' +
++  'Test file, Legs (a), (b), ... each tagged with the clause it falsifies, ' +
++  'and Run: shell lines that must exit 0.'
++const CTX_R = 'A referee (an expensive model) is about to read `patch`, the ' +
++  'diff a task produced, against `task` (its Claim and Files), and return ' +
++  'findings. Judge the patch, not the task text.'
++
++const DISPATCH_QUESTIONS = {
++  difficulty: {
++    type: 'score',
++    instructions: {
++      question: 'How hard is `task` to implement correctly inside its stated files, ' +
++        'for a capable engineer with the codebase open?',
++      context: CTX_D,
++    },
++    criteria: [
++      { what: 'Routine: a local edit with an obvious shape',
++        signals: ['one file', 'a literal or a doc sentence'] },
++      { what: 'Moderate: a few files, one seam, the legs say exactly what to build' },
++      { what: 'Hard: concurrency, ordering, a loop or lifecycle, several interacting files, ' +
++        'or legs that constrain each other' },
++      { what: 'Very hard: a design decision the task leaves open, or a behaviour that ' +
++        'depends on state the excerpt does not show' },
++    ],
++  },
++  lifecycle_or_concurrency: {
++    type: 'noul',
++    instructions: {
++      question: 'Does implementing `task` involve ordering, retries, locks, async control ' +
++        'flow, cleanup, or process lifecycle?',
++      context: CTX_D,
++    },
++    criteria: { true: 'Yes', false: 'No' },
++  },
++  design_open: {
++    type: 'noul',
++    instructions: {
++      question: 'Does `task` leave a design decision open that the implementer must make ' +
++        'before its legs can pass?',
++      context: CTX_D,
++    },
++    criteria: {
++      true: 'A choice the text does not settle stands between the implementer and the legs',
++      false: 'The text and legs settle every choice that matters',
++    },
++  },
++}
++
++const REVIEW_QUESTIONS = {
++  review_difficulty: {
++    type: 'score',
++    instructions: { question: 'How hard is `patch` to review well?', context: CTX_R },
++    criteria: [
++      { what: 'Routine: docs, a literal, a renamed string, a test fixture; a skim settles it',
++        signals: ['only .md or comments change', 'a constant'] },
++      { what: 'Straightforward: one seam in one or two files, the intent is legible from the diff' },
++      { what: 'Careful: several files interact, a loop or state machine changes, or a ' +
++        "test's meaning changes" },
++      { what: 'Expert: concurrency, ordering, error recovery, a protocol or persisted format, ' +
++        'or code the diff alone cannot show is safe' },
++    ],
++  },
++  doc_or_prose_only: {
++    type: 'noul',
++    instructions: {
++      question: 'Does `patch` change only prose: markdown, comments, doc strings, role text?',
++      context: CTX_R,
++    },
++    criteria: { true: 'No executable line changes', false: 'Code, tests, config or scripts change' },
++  },
++}
++
++const DISPATCH_KEYS = Object.keys(DISPATCH_QUESTIONS).sort()          // design_open, difficulty, lifecycle_or_concurrency
++const REVIEW_KEYS = Object.keys(REVIEW_QUESTIONS).sort()             // doc_or_prose_only, review_difficulty
++// The keys `appendEvent` leaves on a row of its own, beside the clause's.
++const STAMP_KEYS = ['id', 'ts']
++const DISPATCH_ROW_KEYS = ['answers', 'at', 'kind', 'task', 'tierChosen'].concat(STAMP_KEYS).sort()
++const REVIEW_ROW_KEYS = ['answers', 'at', 'kind', 'round', 'task', 'tierChosen'].concat(STAMP_KEYS).sort()
++
++// ── reading a run back ──────────────────────────────────────────────────────
++const linesOf = (runDir) => {
++  const file = path.join(runDir, 'events.jsonl')
++  if (!fs.existsSync(file)) return []
++  return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
++}
++const parseLine = (l) => { try { return JSON.parse(l) } catch { return null } }
++const fieldsOf = (e, keys) => {
++  const out = {}
++  for (const k of keys) out[k] = (e || {})[k]
++  return out
++}
++
++// ── the Jev client, real, over a recording fetch ────────────────────────────
++// One entry per question id received, shaped by that question's own `type` —
++// so `answers` keys equal `questions` keys and nothing the engine did not ask
++// for comes back. `mode` 'answers' replies 200; 'error' replies 500 on every
++// request, which is the client's refusal lane and therefore `ask` → `null`.
++const scoreAnswer = () =>
++  ({ type: 'score', score: 1.2, legend: {}, probabilities: {}, confidence: 0.8 })
++const noulAnswer = () => ({ type: 'noul', noul: 0.5 })
++
++function recordingJev ({ mode = 'answers' } = {}) {
++  const requests = []
++  const logs = []
++  const fetchImpl = async (url, options) => {
++    const body = JSON.parse(String((options || {}).body || '{}'))
++    requests.push({ url: String(url), state: body.state, questions: body.questions, model: body.model })
++    if (mode === 'error') {
++      return { status: 500, text: async () => 'upstream said no' }
++    }
++    const answers = {}
++    for (const [id, q] of Object.entries(body.questions || {})) {
++      answers[id] = (q && q.type === 'score') ? scoreAnswer() : noulAnswer()
++    }
++    return { status: 200, text: async () => JSON.stringify({ model: 'jev-1.13.0', answers }) }
++  }
++  const client = makeJevClient({
++    baseUrl: 'https://typesafe.invalid', fetchImpl, log: (l) => logs.push(String(l)),
++  })
++  return { client, requests, logs }
++}
++
++// ── one run of the plan ─────────────────────────────────────────────────────
++// `jevMode` — 'answers' | 'error' | 'off'. `tierB` — task B's plan tier.
++const mkTask = (id, over = {}) => ({
++  id,
++  title: 'sim task ' + id + ' title',
++  files: [FILE_OF[id]],
++  tier: 'standard',
++  review: 'peer',
++  writes: [FILE_OF[id]],
++  commutes: [],
++  proofTests: [],
++  proofRuns: [],
++  body: id === 'A' ? A_BODY : B_BODY,
++  ...over,
++})
++
++async function driveRun ({ label, jevMode = 'answers', tierB = 'standard' }) {
++  const repo = makeRepo(path.join(tmp, 'repo-' + label))
++  const runDir = path.join(tmp, 'run-' + label)
++  const jev = jevMode === 'off' ? null : recordingJev({ mode: jevMode })
++  const hub = fakeHub({
++    projectId: PROJECT_ID,
++    issues: {
++      [RUN_UID]: { revision: 1, short_id: 'run0', metadata: {} },
++      [UID.A]: { revision: 1, short_id: 'aa11', metadata: {} },
++      [UID.B]: { revision: 1, short_id: 'bb22', metadata: {} },
++    },
++  })
++  const kataRecord = {
++    url: 'https://kata.invalid',
++    project: { id: PROJECT_ID, uid: 'PROJ0', name: 'ultrapowers' },
++    run: { uid: RUN_UID, revision: 1 },
++    tasks: { A: { uid: UID.A, short_id: 'aa11', revision: 1 },
++             B: { uid: UID.B, short_id: 'bb22', revision: 1 } },
++  }
++  const dispatched = []
++  const stub = (prompt, opts, cwd) => {
++    dispatched.push({ label: String(opts.label), model: opts.model })
++    const [kind, id] = String(opts.label).split(':')
++    if (kind === 'impl' || kind === 'fix') {
++      fs.writeFileSync(path.join(cwd, FILE_OF[id]), 'written by ' + opts.label + '\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const tasks = [mkTask('A'), mkTask('B', { tier: tierB })]
++  const { run } = rig({
++    repo,
++    runDir,
++    waves: [tasks],
++    // The one edge: it serialises A before B, so the dispatch order leg (d)
++    // compares is a fact of the plan and not of microtask interleaving.
++    edges: [['A', 'B']],
++    stub,
++    stamp: 'jt-' + label,
++    kata: hub.kata,
++    ...(jev ? { jev: jev.client } : {}),
++    extraArgs: {
++      kataRecord,
++      // The worker's raised hand is not this exam's subject: a poll far longer
++      // than the sim keeps the hub's log to the calls this run actually makes.
++      attentionPollMs: 3600000,
++    },
++  })
++  const report = await run()
++  const lines = linesOf(runDir)
++  const events = lines.map(parseLine)
++  const jevIdx = []
++  for (let i = 0; i < events.length; i++) if (events[i] && events[i].kind === KIND) jevIdx.push(i)
++  return {
++    label, report, hub, runDir, lines, events, dispatched,
++    requests: jev ? jev.requests : [],
++    clientLogs: jev ? jev.logs : [],
++    // A `jev:tier` row with the line it was written as and its position.
++    rows: jevIdx.map((i) => ({ row: events[i], line: lines[i], index: i })),
++    rowsAt: (at) => jevIdx.map((i) => ({ row: events[i], line: lines[i], index: i }))
++      .filter((r) => r.row.at === at),
++    firstIndexOf: (pred) => events.findIndex((e) => Boolean(e) && pred(e)),
++    pairs: dispatched.map((d) => [d.label, d.model]),
++    rowOf: (id) => report.tasks.find((r) => r && r.task === id),
++    requestsWith: (key) => (jev ? jev.requests : [])
++      .filter((r) => r.questions && Object.prototype.hasOwnProperty.call(r.questions, key)),
++  }
++}
++
++// The four runs this file reads. Run A answers, run B refuses, run C has no
++// client at all, run D mixes the two tiers.
++const A = await driveRun({ label: 'a', jevMode: 'answers' })
++const B = await driveRun({ label: 'b', jevMode: 'error' })
++const C = await driveRun({ label: 'c', jevMode: 'off' })
++const D = await driveRun({ label: 'd', jevMode: 'answers', tierB: 'most-capable' })
++
++const dbg = (run) => ' — run ' + run.label + ' rows: ' +
++  JSON.stringify(run.rows.map((r) => fieldsOf(r.row, ['kind', 'task', 'at', 'round', 'tierChosen']))) +
++  '; requests: ' + run.requests.length +
++  '; client logs: ' + JSON.stringify(run.clientLogs)
++
++// ════════════════════════════════════════════════════════════════════════════
++// (a) [M1] the dispatch row, its state, its questions, its place and its
++//     comment
++// ════════════════════════════════════════════════════════════════════════════
++{
++  const rows = A.rowsAt('dispatch')
++  assert.equal(rows.length, 2,
++    '(a) [M1] the two-task run with `jev` and a hub on must leave in `events.jsonl` ' +
++    'exactly two `' + KIND + '` rows with `at` `dispatch` — one per task' + dbg(A))
++
++  for (const id of ['A', 'B']) {
++    const mine = rows.filter((r) => r.row.task === id)
++    assert.equal(mine.length, 1,
++      '(a) [M1] exactly one `at: "dispatch"` row names task ' + id + dbg(A))
++    const { row } = mine[0]
++
++    assert.deepEqual(fieldsOf(row, ['kind', 'task', 'at', 'tierChosen']),
++      { kind: KIND, task: id, at: 'dispatch', tierChosen: SONNET },
++      '(a) [M1] task ' + id + "'s dispatch row is `{kind: '" + KIND + "', task: '" + id +
++      "', at: 'dispatch', tierChosen: '" + SONNET + "'}` — `tierChosen` is `economics.tier`, " +
++      "the MODEL name a `standard` task resolves to, never the tier's own name: " +
++      JSON.stringify(row))
++
++    assert.deepEqual(Object.keys(row).sort(), DISPATCH_ROW_KEYS,
++      '(a) [M1] and ONE such row is appended and nothing else rides on it — its keys are the ' +
++      "clause's four plus `answers`, over `appendEvent`'s own `id` and `ts`: " +
++      JSON.stringify(Object.keys(row).sort()))
++
++    assert.deepEqual(Object.keys(row.answers || {}).sort(), DISPATCH_KEYS,
++      '(a) [M1] its `answers` carry exactly the keys `difficulty`, ' +
++      '`lifecycle_or_concurrency`, `design_open`: ' + JSON.stringify(row.answers))
++  }
++
++  // ── the row's place in the file ───────────────────────────────────────────
++  // The leg's two arms, read in the order it words them: that task's first
++  // `driver:proof-run`, or — this plan naming no `Run:` line, so there is
++  // none — that task's first `at: 'review'` row.
++  for (const id of ['A', 'B']) {
++    const mine = rows.filter((r) => r.row.task === id)[0]
++    const proofRun = A.firstIndexOf((e) => e.kind === 'driver:proof-run' && e.task === id)
++    const firstReview = A.firstIndexOf((e) => e.kind === KIND && e.task === id && e.at === 'review')
++    const bound = proofRun !== -1 ? proofRun : firstReview
++    assert.notEqual(bound, -1,
++      '(a) [M1] task ' + id + ' must leave either a `driver:proof-run` row or a `' + KIND +
++      '` row with `at` `review` for its dispatch row to precede' + dbg(A))
++    assert.ok(mine.index < bound,
++      '(a) [M1] task ' + id + "'s dispatch row must precede, by position in `events.jsonl`, " +
++      'that task\'s first `driver:proof-run` (index ' + proofRun + ') or, absent one, that ' +
++      "task's first `" + KIND + '` row with `at` `review` (index ' + firstReview + ') — the ' +
++      'dispatch row is at index ' + mine.index)
++  }
++
++  // ── what the engine actually sent ─────────────────────────────────────────
++  const reqs = A.requestsWith('difficulty')
++  assert.equal(reqs.length, 2,
++    "(a) [M1] the fake `fetchImpl`'s recorded dispatch requests — those whose `questions` " +
++    'carry `difficulty` — number two, one per task' + dbg(A))
++
++  for (const req of reqs) {
++    const q = req.questions
++    assert.equal(q.difficulty.type, 'score',
++      '(a) [M1] `questions.difficulty.type` is `score`: ' + JSON.stringify(q.difficulty.type))
++    assert.equal((q.difficulty.criteria || []).length, 4,
++      '(a) [M1] and `difficulty` carries four `criteria` levels: ' +
++      JSON.stringify(q.difficulty.criteria))
++    assert.equal(q.lifecycle_or_concurrency.type, 'noul',
++      '(a) [M1] `questions.lifecycle_or_concurrency.type` is `noul`: ' +
++      JSON.stringify(q.lifecycle_or_concurrency.type))
++    assert.equal(q.design_open.type, 'noul',
++      '(a) [M1] `questions.design_open.type` is `noul`: ' + JSON.stringify(q.design_open.type))
++
++    // M1's "the three dispatch questions of the SHARED LITERAL", which the task
++    // spells verbatim — so the three are equal to it, and there is no fourth.
++    assert.deepEqual(q, DISPATCH_QUESTIONS,
++      '(a) [M1] the dispatch call sends the three questions of the shared literal, verbatim ' +
++      'as the task spells them, and no other: ' + JSON.stringify(q))
++
++    assert.deepEqual(Object.keys(req.state), ['task'],
++      "(a) [M1] `Object.keys(state)` is `['task']`: " + JSON.stringify(Object.keys(req.state)))
++    assert.deepEqual(Object.keys(req.state.task).sort(),
++      ['claim', 'files', 'proof', 'proofTests', 'title'],
++      "(a) [M1] `Object.keys(state.task)` sorted is `['claim', 'files', 'proof', " +
++      "'proofTests', 'title']`: " + JSON.stringify(Object.keys(req.state.task).sort()))
++  }
++
++  // Which request belongs to which task is read off `state.task.title`, which
++  // the same clause pins — so the per-task halves below are not an assumption
++  // about the order the two calls were made in.
++  for (const id of ['A', 'B']) {
++    const plan = mkTask(id)
++    const mine = reqs.filter((r) => r.state.task.title === plan.title)
++    assert.equal(mine.length, 1,
++      '(a) [M1] exactly one dispatch request carries `state.task.title` equal to task ' + id +
++      "'s title " + JSON.stringify(plan.title) + ': ' +
++      JSON.stringify(reqs.map((r) => r.state.task.title)))
++    const st = mine[0].state.task
++    assert.deepEqual(st.files, plan.files,
++      '(a) [M1] `state.task.files` deep-equals task ' + id + "'s files: " + JSON.stringify(st.files))
++    assert.deepEqual(st.proofTests, plan.proofTests,
++      '(a) [M1] `state.task.proofTests` deep-equals task ' + id + "'s `proofTests`: " +
++      JSON.stringify(st.proofTests))
++  }
++
++  // Task A's body carries the three markers; task B's carries none.
++  const aState = reqs.filter((r) => r.state.task.title === mkTask('A').title)[0].state.task
++  assert.ok(String(aState.claim).includes(A_CLAIM_SENTENCE),
++    '(a) [M1] a task whose body carries a `**Claim:**` line followed by a `Machine: M1.` line ' +
++    'sends a `state.task.claim` containing the Claim sentence ' +
++    JSON.stringify(A_CLAIM_SENTENCE) + ': ' + JSON.stringify(aState.claim))
++  assert.ok(String(aState.claim).includes('M1.'),
++    '(a) [M1] and containing `M1.` — the Claim and its `Machine:` restatement travel together: ' +
++    JSON.stringify(aState.claim))
++  assert.ok(String(aState.proof).includes(A_PROOF_TEXT),
++    "(a) [M1] and a `state.task.proof` containing the Proof line's text " +
++    JSON.stringify(A_PROOF_TEXT) + ': ' + JSON.stringify(aState.proof))
++
++  const bState = reqs.filter((r) => r.state.task.title === mkTask('B').title)[0].state.task
++  assert.equal(bState.claim, '',
++    '(a) [M1] a task whose body is ' + JSON.stringify(B_BODY) + ' sends `claim` as the empty ' +
++    'string: ' + JSON.stringify(bState.claim))
++  assert.equal(bState.proof, '',
++    '(a) [M1] and `proof` as the empty string: ' + JSON.stringify(bState.proof))
++
++  // ── the hub ───────────────────────────────────────────────────────────────
++  for (const id of ['A', 'B']) {
++    const mine = rows.filter((r) => r.row.task === id)[0]
++    assert.ok(A.hub.commentsOn(UID[id]).includes(mine.line),
++      "(a) [M1] each dispatch row's line, verbatim, is among `commentsOn(" +
++      JSON.stringify(UID[id]) + ')` — the row is posted on that task\'s hub issue when a hub ' +
++      'is on.\nthe line: ' + mine.line + '\nthe comments: ' +
++      JSON.stringify(A.hub.commentsOn(UID[id]), null, 2))
++  }
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// (b) [M2] the review row, its state (including the patch TEXT), its
++//     questions and its comment
++// ════════════════════════════════════════════════════════════════════════════
++{
++  const rows = A.rowsAt('review')
++  assert.equal(rows.length, 2,
++    '(b) [M2] the same run leaves exactly two `' + KIND + '` rows with `at` `review`, one per ' +
++    'task' + dbg(A))
++
++  for (const id of ['A', 'B']) {
++    const mine = rows.filter((r) => r.row.task === id)
++    assert.equal(mine.length, 1,
++      '(b) [M2] exactly one `at: "review"` row names task ' + id + dbg(A))
++    const { row } = mine[0]
++
++    assert.deepEqual(fieldsOf(row, ['kind', 'task', 'at', 'round', 'tierChosen']),
++      { kind: KIND, task: id, at: 'review', round: 1, tierChosen: SONNET },
++      '(b) [M2] task ' + id + "'s review row is `{kind: '" + KIND + "', task: '" + id +
++      "', at: 'review', round: iter, tierChosen: economics.tier}` — one review round ran, so " +
++      '`round` is `1` and `tierChosen` is `' + SONNET + '`: ' + JSON.stringify(row))
++
++    assert.deepEqual(Object.keys(row).sort(), REVIEW_ROW_KEYS,
++      '(b) [M2] and one such row is appended, carrying the clause\'s five fields and ' +
++      '`answers` over `appendEvent`\'s own `id` and `ts`: ' + JSON.stringify(Object.keys(row).sort()))
++
++    assert.deepEqual(Object.keys(row.answers || {}).sort(), REVIEW_KEYS,
++      '(b) [M2] its `answers` carry exactly `review_difficulty` and `doc_or_prose_only`: ' +
++      JSON.stringify(row.answers))
++  }
++
++  const reqs = A.requestsWith('review_difficulty')
++  assert.equal(reqs.length, 2,
++    '(b) [M2] the recorded review requests — those whose `questions` carry ' +
++    '`review_difficulty` — number two, one per task' + dbg(A))
++
++  for (const req of reqs) {
++    const q = req.questions
++    assert.equal(q.review_difficulty.type, 'score',
++      '(b) [M2] `questions.review_difficulty.type` is `score`: ' +
++      JSON.stringify(q.review_difficulty.type))
++    assert.equal((q.review_difficulty.criteria || []).length, 4,
++      '(b) [M2] and `review_difficulty` carries four `criteria` levels: ' +
++      JSON.stringify(q.review_difficulty.criteria))
++    assert.equal(q.doc_or_prose_only.type, 'noul',
++      '(b) [M2] `questions.doc_or_prose_only.type` is `noul`: ' +
++      JSON.stringify(q.doc_or_prose_only.type))
++
++    // M2's "the two review questions of the shared literal", verbatim.
++    assert.deepEqual(q, REVIEW_QUESTIONS,
++      '(b) [M2] the review call sends the two questions of the shared literal, verbatim as the ' +
++      'task spells them, and no other: ' + JSON.stringify(q))
++
++    assert.deepEqual(Object.keys(req.state).sort(), ['patch', 'task'],
++      "(b) [M2] `Object.keys(state)` sorted is `['patch', 'task']`: " +
++      JSON.stringify(Object.keys(req.state).sort()))
++    assert.deepEqual(Object.keys(req.state.task).sort(), ['claim', 'files', 'title'],
++      "(b) [M2] `Object.keys(state.task)` sorted is `['claim', 'files', 'title']` — the review " +
++      "state carries the task's Claim and Files, not its Proof: " +
++      JSON.stringify(Object.keys(req.state.task).sort()))
++  }
++
++  for (const id of ['A', 'B']) {
++    const plan = mkTask(id)
++    const mine = reqs.filter((r) => r.state.task.title === plan.title)
++    assert.equal(mine.length, 1,
++      '(b) [M2] exactly one review request carries `state.task.title` equal to task ' + id +
++      "'s title " + JSON.stringify(plan.title) + ': ' +
++      JSON.stringify(reqs.map((r) => r.state.task.title)))
++    const st = mine[0].state
++    assert.deepEqual(st.task.files, plan.files,
++      '(b) [M2] `state.task.files` deep-equals task ' + id + "'s files: " +
++      JSON.stringify(st.task.files))
++    assert.ok(String(st.patch).includes(diffLineFor(id)),
++      '(b) [M2] `state.patch` is the TEXT of the captured patch file and so carries ' +
++      JSON.stringify(diffLineFor(id)) + ' — not the patch file\'s PATH: ' +
++      JSON.stringify(String(st.patch).slice(0, 400)))
++  }
++
++  // `claim` as in leg (a): A's carries the Claim sentence and `M1.`, B's is ''.
++  const aClaim = reqs.filter((r) => r.state.task.title === mkTask('A').title)[0].state.task.claim
++  assert.ok(String(aClaim).includes(A_CLAIM_SENTENCE) && String(aClaim).includes('M1.'),
++    "(b) [M2] `state.task.claim` as in leg (a) — task A's carries the Claim sentence and " +
++    '`M1.`: ' + JSON.stringify(aClaim))
++  const bClaim = reqs.filter((r) => r.state.task.title === mkTask('B').title)[0].state.task.claim
++  assert.equal(bClaim, '',
++    "(b) [M2] and task B's body carries no `**Claim:**` line, so its `claim` is the empty " +
++    'string: ' + JSON.stringify(bClaim))
++
++  for (const id of ['A', 'B']) {
++    const mine = rows.filter((r) => r.row.task === id)[0]
++    assert.ok(A.hub.commentsOn(UID[id]).includes(mine.line),
++      "(b) [M2] each review row's line is among `commentsOn(" + JSON.stringify(UID[id]) +
++      ')`.\nthe line: ' + mine.line + '\nthe comments: ' +
++      JSON.stringify(A.hub.commentsOn(UID[id]), null, 2))
++  }
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// (c) [M3] no row when `ask` resolves null, none when there is no `jev` — and
++//     the tier the row names is the model name
++// ════════════════════════════════════════════════════════════════════════════
++{
++  assert.deepEqual(B.rows.map((r) => r.row), [],
++    '(c) [M3] a run whose `fetchImpl` answers status 500 for every request leaves ZERO `' +
++    KIND + '` rows: `ask` resolves `null` and `jevRow` appends nothing' + dbg(B))
++  assert.deepEqual(B.report.tasks.map((t) => [t.task, t.status]).sort(),
++    [['A', 'done'], ['B', 'done']],
++    '(c) [M3] and both tasks are `done` — a refused call costs the run nothing: ' +
++    JSON.stringify(B.report.tasks.map((t) => fieldsOf(t, ['task', 'status', 'reviewVerdict']))))
++
++  assert.deepEqual(C.rows.map((r) => r.row), [],
++    '(c) [M3] a run with no `jev` leaves zero `' + KIND + '` rows' + dbg(C))
++
++  // One task of each tier in a third run: `tierChosen` is the MODEL name.
++  const dRows = D.rowsAt('dispatch')
++  assert.equal(dRows.length, 2,
++    '(c) [M3] the third run — one `standard` task and one `most-capable` task — leaves two ' +
++    '`at: "dispatch"` rows' + dbg(D))
++  const dTier = (id) => (dRows.filter((r) => r.row.task === id)[0] || { row: {} }).row.tierChosen
++  assert.equal(dTier('A'), SONNET,
++    '(c) [M3] a task with a `standard` tier records `tierChosen` `' + SONNET + '`: ' +
++    JSON.stringify(dTier('A')))
++  assert.equal(dTier('B'), OPUS,
++    '(c) [M3] where a task with tier `most-capable` records `' + OPUS + '`: ' +
++    JSON.stringify(dTier('B')))
++}
++
++// ════════════════════════════════════════════════════════════════════════════
++// (d) [M4] with `jev` and without: the same dispatches, the same report rows
++// ════════════════════════════════════════════════════════════════════════════
++{
++  assert.deepEqual(A.pairs, C.pairs,
++    "(d) [M4] leg (a)'s scenario run with `jev` and without yields the same sequence of " +
++    'dispatched `(label, opts.model)` pairs — the rows read no verdict, route, tier or model ' +
++    'choice.\nwith jev:    ' + JSON.stringify(A.pairs) +
++    '\nwithout jev: ' + JSON.stringify(C.pairs))
++
++  // Named here so the leg is answered about the dispatches it is about: every
++  // `impl:` carries the implementer's model and every `review:` the reviewer's.
++  assert.deepEqual(A.pairs.filter(([l]) => l.startsWith('impl:') || l.startsWith('review:')),
++    C.pairs.filter(([l]) => l.startsWith('impl:') || l.startsWith('review:')),
++    '(d) [M4] and the same `model` option on every `impl:` and `review:` dispatch.\n' +
++    'with jev:    ' + JSON.stringify(A.pairs.filter(([l]) => l.startsWith('impl:') || l.startsWith('review:'))) +
++    '\nwithout jev: ' + JSON.stringify(C.pairs.filter(([l]) => l.startsWith('impl:') || l.startsWith('review:'))))
++
++  const shape = (run) => ['A', 'B'].map((id) =>
++    fieldsOf(run.rowOf(id) || {}, ['task', 'tier', 'reviewVerdict', 'status']))
++  assert.deepEqual(shape(A), shape(C),
++    '(d) [M4] and, per task, the same `tier`, `reviewVerdict` and `status` on the report.\n' +
++    'with jev:    ' + JSON.stringify(shape(A)) +
++    '\nwithout jev: ' + JSON.stringify(shape(C)))
++}
++
++console.log('ok - jev:tier: the dispatch row, the review row, the four silences, ' +
++  'and the seam that moves no dispatch')
++// The sentinel the bridge and the suite's `Run:` line read, printed only if
++// every assertion above held.
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_sandbox_boot_residuals.mjs b/fleet/tests/test_sandbox_boot_residuals.mjs
+index b3664e7e195cd925bff9ec23c119200cc68574ff..e88617c9760ab5a091ffddba8ce845e419650d50 100644
+--- a/fleet/tests/test_sandbox_boot_residuals.mjs
++++ b/fleet/tests/test_sandbox_boot_residuals.mjs
+@@ -17,8 +17,8 @@
+  *       beside `KATA_URL`; every request to Jev is one `fleet_curl` whose argv
+  *       carries `-X POST`, `--max-time 10`, `-H content-type: application/json`,
+  *       `-d <body>` and `$TYPESAFE_URL/v1/systemone`, with no element naming
+- *       `Authorization`, `Bearer` or `TYPESAFE_API_KEY`, and the script's text
+- *       holds `TYPESAFE_API_KEY` nowhere                            → leg (a)
++ *       `Authorization`, `Bearer` or the bearer's variable name (`KEY_NAME`
++ *       below), and the script's text holds that name nowhere      → leg (a)
+  *   M2  k checklist items, exactly k requests for the whole boot, one per item,
+  *       each one line of `residuals-jev.jsonl` — `{answers, error, key, model,
+  *       usage}`, the key the sha256 of `<name>\n<text>` — and no later
+@@ -67,10 +67,10 @@
+  * the three checklist lines), which is asserted as the literal it spells.
+  *
+  * TWO `Run:` LINES ARE READ HERE AS FILE READS. The Proof's first and second
+- * `Run:` lines — no `TYPESAFE_API_KEY` in the script, the `TYPESAFE_URL`
+- * definition verbatim — are the driver's to run, and leg (a) names them; the
+- * same two readings are made here directly off the script's text, which is the
+- * reading this file can make on its own.
++ * `Run:` lines — no bearer variable (`KEY_NAME` below) in the script, the
++ * `TYPESAFE_URL` definition verbatim — are the driver's to run, and leg (a)
++ * names them; the same two readings are made here directly off the script's
++ * text, which is the reading this file can make on its own.
+  *
+  * WHAT LEG (f) IS NOT. Its fourth `Run:` line runs a sibling sim. This file may
+  * not: `fleet/tests/test_sims_are_hermetic.mjs` M4 forbids a sim from spawning,
+@@ -92,7 +92,7 @@ import path from 'node:path'
+ import {
+   SCRIPT, ENV, BASE_SHA, DEFAULT_REPORT, RUN_PATH, PLAN_TASK_ID, PLAN_TASK_CLAIM,
+   makeHome, bootAsync,
+-  argvLines, lines, prPosts, readLog, states, stream, runTests,
++  argvLines, lines, mergePuts, prPosts, readLog, states, stream, runTests,
+ } from './_sandbox_boot_helpers.mjs'
+ 
+ const tests = []
+@@ -101,6 +101,17 @@ const test = (name, fn) => tests.push([name, fn])
+ /** The checkout, from the script the rig points at — `fleet/sandbox-boot.sh`. */
+ const ROOT = path.resolve(SCRIPT, '..', '..')
+ 
++/**
++ * The bearer's variable name — the credential M1 says the boot must carry
++ * nowhere — assembled rather than written out. Leg (a) only ever asserts that
++ * this name appears NOWHERE: not in the script's text, not in any argv. The
++ * run's own `Check:` greps the whole tree for it with `grep -rIl`, which reads
++ * any occurrence as a site that handles the key, so a file that spelled it
++ * would be the one place in the tree the name survives. Keep it assembled; the
++ * assertions below read exactly as they did.
++ */
++const KEY_NAME = 'TYPESAFE_' + 'API_KEY'
++
+ // ── the fixture: three items, three requests ─────────────────────────────────
+ 
+ /** The ack's detail, and the two `; `-separated pieces of the task's notes. */
+@@ -355,12 +366,12 @@ const scriptText = () => fs.readFileSync(SCRIPT, 'utf8')
+ 
+ // ── leg (a) — M1: the constant, the argv, and no credential anywhere ─────────
+ 
+-test('(a) [M1] the script defines TYPESAFE_URL verbatim and names TYPESAFE_API_KEY nowhere', () => {
++test(`(a) [M1] the script defines TYPESAFE_URL verbatim and names ${KEY_NAME} nowhere`, () => {
+   const text = scriptText()
+ 
+   assert.equal(
+-    text.split('TYPESAFE_API_KEY').length - 1, 0,
+-    '(a) [M1] the script\'s text must contain the string `TYPESAFE_API_KEY` nowhere — the edge '
++    text.split(KEY_NAME).length - 1, 0,
++    `(a) [M1] the script's text must contain the string \`${KEY_NAME}\` nowhere — the edge `
+     + 'injects the bearer, exactly as it does for `claude-max` and `kata`',
+   )
+   assert.ok(
+@@ -402,7 +413,7 @@ test('(a) [M1] every request to Jev is one POST to the endpoint, carrying no cre
+       () => JSON.parse(payload),
+       `(a) [M1] the argv word after \`-d\` must be a JSON body: ${shown}`,
+     )
+-    for (const forbidden of ['Authorization', 'Bearer', 'TYPESAFE_API_KEY']) {
++    for (const forbidden of ['Authorization', 'Bearer', KEY_NAME]) {
+       assert.deepEqual(
+         argv.filter((s) => s.includes(forbidden)), [],
+         `(a) [M1] no argv element may contain \`${forbidden}\` — the edge injects the bearer: ${shown}`,
+@@ -857,4 +868,518 @@ test('(f) [M6] the edited boot script still parses as bash', () => {
+   )
+ })
+ 
++/* ════════════════════════════════════════════════════════════════════════════
++ * Exam for run-181 task 1 — "The card's `Act on these` section: the few rows
++ * Jev scores as act-now, above the full list, absent when none qualify" (#1093).
++ *
++ * CLAIM. Open the run's pull request; see, above the `Residuals:` line, an
++ * `Act on these` section of at most ten rows — the residuals Jev scored at
++ * attention 2.5 or higher, highest first, each with its actor, status and
++ * subject — and nothing there at all when no row scored that high; below it,
++ * the residual count, the errands, the amendments and the record's checklist
++ * exactly as they were.
++ *
++ * Three machine clauses, read here leg by leg. Every assertion below names the
++ * leg it belongs to and the clause it comes from:
++ *
++ *   M1  with at least one item at `jev.attention` >= `2.5`, the body carries,
++ *       after the table's last `| … |` row and one blank line and before the
++ *       `Residuals:` line, `Act on these: <q> of <n>`, a blank line, then one
++ *       `- <name> — <text> — attention <a>, actor <actor>, <status> / <subject>`
++ *       line per such item, at most ten, attention descending and, at equal
++ *       attention, in checklist order, `<a>` formatted by Python's `"%.1f"`,
++ *       the eleventh and later dropped; then a blank line          → leg (a)
++ *   M2  with no item at or above `2.5` — every item below it, no item carrying
++ *       a `jev` at all, or no item at all — no line of the body begins
++ *       `Act on these`                                             → leg (b)
++ *   M3  splicing the section's lines out — from `Act on these` up to, not
++ *       including, `Residuals:` — leaves a body string-equal to the same run's
++ *       with every request failed; the count line, the amendments and the
++ *       record's checklist are unchanged, both runs make the same number of
++ *       merge PUTs, and the succeeding run makes exactly one request per
++ *       checklist item — the section asked nothing of its own   → leg (c)
++ *
++ * FIVE BOOTS, over ONE new fixture, started beside run-178's four above and
++ * read through this file's own `bootOnce` — its `...env` spread puts a case's
++ * knobs after the three-item `REPORT`/`RECEIPT` those four share, so a case
++ * that names `STUB_REPORT` and `STUB_GATE_RECEIPT` gets its own fixture.
++ *
++ * THE FIXTURE is the one the task's Context pins: the rig's own
++ * `DEFAULT_REPORT` with a FOURTEEN-piece `notes` on its one done task — `p01 …`
++ * through `p14 …`, joined by `; ` — and the rig's default `{"verdict":"PASS"}`
++ * receipt, which carries NO ack. So the checklist is fourteen
++ * `task 1 reviewer` items and nothing else, the report names no `actor` and no
++ * amendment, and the card below the section is `Residuals: 14 from review`,
++ * no errand line, `Amendments: none`.
++ *
++ *   FOURTEEN   a `STUB_TYPESAFE_ANSWERS` file mapping needle `pNN` to the
++ *              score the Context pins for it: `2.9, 2.5, 2.4, 3.0, 2.6, 2.7,
++ *              2.8, 1.0, 2.49, 2.5, 2.5, 2.6, 2.7, 2.8`. Eleven at or above
++ *              `2.5`, ten shown. Legs (a) and (c).
++ *   ONLY_P05   the same file with `p05` at `2.5` and every other piece at
++ *              `1.0` — one qualifying row. Leg (a)'s second half.
++ *   EXIT_7     the same fixture with `STUB_TYPESAFE_EXIT=7`: every request
++ *              refused, so no row carries a `jev` at all. Legs (b) and (c).
++ *   ALL_LOW    the same fixture with every piece scored `2.4` — every row
++ *              carries a `jev`, every one below the threshold. Leg (b).
++ *   RIG        the rig's own report and receipt: no notes, no ack, so no
++ *              checklist item at all and no request made. Leg (b).
++ *
++ * `2.49` AND `2.5` ARE THE THRESHOLD'S OWN PIN. `p09` scores `2.49` and is out;
++ * `p02`, `p10` and `p11` score exactly `2.5` and are in. Nothing else in the
++ * fixture turns on rounding — every shown score is already one decimal — so a
++ * `"%.1f"` that read `2.49` as `2.5` would be caught by p09's text standing
++ * nowhere above the `Residuals:` line.
++ *
++ * THE EXPECTED ORDER IS DERIVED AND THEN CHECKED AGAINST THE LEG'S OWN LIST.
++ * `EXPECTED_ORDER` below sorts the fixture by attention descending, stable in
++ * checklist order, and takes ten; `ACT_SHOWN` is the ten the Proof leg spells
++ * by hand with the `"%.1f"` string it spells for each. The two are asserted
++ * equal before any body is read, so the fixture and the clause cannot drift
++ * apart silently — and the entries themselves are asserted against the
++ * hand-spelled strings, which is what the leg pins.
++ *
++ * WHAT IS NOT READ HERE. Leg (c) closes on the Proof's first `Run:` line —
++ * `test_sandbox_boot_card_cells.mjs` green on the edited script. That is the
++ * driver's to run and not this file's: `fleet/tests/test_sims_are_hermetic.mjs`
++ * M4 forbids a sim from spawning, or even naming for an `existsSync`, another
++ * sim. The section this task adds sits between the table and the `Residuals:`
++ * line, which is exactly the seam that sim pins, so the reading matters — it is
++ * made by the `Run:` line, and the reading this file can make on its own is
++ * leg (c)'s splice, which pins every line of the body outside the section.
++ * ════════════════════════════════════════════════════════════════════════════
++ */
++
++// ── the fourteen-piece fixture ───────────────────────────────────────────────
++
++/**
++ * The fourteen `; `-separated pieces of the done task's notes, each its own
++ * needle and its own short text. The needle is the answers file's key: `pNN`
++ * is a substring of that piece's payload and of no other's, and of nothing the
++ * boot sends beside it — neither the plan's task row nor the five questions'
++ * criteria carry a `p` followed by two digits.
++ */
++const PIECES = [
++  ['p01', 'the log line names no run'],
++  ['p02', 'the retry count is not asserted'],
++  ['p03', 'the helper is copied twice'],
++  ['p04', 'the guard drops a nul byte'],
++  ['p05', 'the timeout is hard coded'],
++  ['p06', 'the branch name is built by hand'],
++  ['p07', 'the receipt is read before the fence'],
++  ['p08', 'the comment says wave two'],
++  ['p09', 'the sort is not stable'],
++  ['p10', 'the fixture leaks a temp dir'],
++  ['p11', 'the knob is read from the environment'],
++  ['p12', 'the table has an extra column'],
++  ['p13', 'the poll sleeps a whole second'],
++  ['p14', 'the flag is spelled two ways'],
++]
++
++/** The checklist text of one piece — `<needle> <text>`, as the notes join it. */
++const pieceText = (needle) => {
++  const found = PIECES.find(([n]) => n === needle)
++  assert.ok(found, `the fixture has no piece ${needle}`)
++  return `${found[0]} ${found[1]}`
++}
++
++/** The scores the Context pins, p01 through p14, in checklist order. */
++const ACT_SCORES = [2.9, 2.5, 2.4, 3.0, 2.6, 2.7, 2.8, 1.0, 2.49, 2.5, 2.5, 2.6, 2.7, 2.8]
++
++/** The card's threshold, as M1 and M2 spell it. */
++const THRESHOLD = 2.5
++
++/** The rig's own report with the fourteen-piece `notes` on its one done task. */
++const REPORT_14 = (() => {
++  const doc = JSON.parse(DEFAULT_REPORT)
++  doc.tasks[0].notes = PIECES.map(([n]) => pieceText(n)).join('; ')
++  return JSON.stringify(doc)
++})()
++
++/** The rig's own default receipt: `PASS`, and no ack, so no errand line. */
++const RECEIPT_PASS = JSON.stringify({ verdict: 'PASS' })
++
++/**
++ * One reply at `score`. Every piece answers the same three choices — the
++ * Context's `unverified` / `implementation` / `implementer` — so an entry's
++ * three trailing fields are pinned by the clause and only its attention and
++ * its text tell the rows apart.
++ */
++const replyAt = (score) => JSON.stringify({
++  model: 'jev-1.13.0',
++  answers: {
++    status: { type: 'choice', choice: 'unverified', confidence: 0.7 },
++    subject: { type: 'choice', choice: 'implementation', confidence: 0.71 },
++    actor: { type: 'choice', choice: 'implementer', confidence: 0.72 },
++    attention: { type: 'score', score, confidence: 0.5 },
++    claim_false: { type: 'noul', noul: 0.1 },
++  },
++  usage: { input_tokens: 17, output_tokens: 18 },
++})
++
++/** The three fields every entry of this fixture carries after its attention. */
++const TAIL = 'actor implementer, unverified / implementation'
++
++/** `- <name> — <text> — attention <a>, actor …, <status> / <subject>` — M1's
++ *  entry line, for the piece `needle` at the `"%.1f"` string `shown`. */
++const entryFor = (needle, shown) =>
++  `- ${REVIEWER_NAME} — ${pieceText(needle)} — attention ${shown}, ${TAIL}`
++
++/**
++ * The ten entries leg (a) spells, in the order it spells them, each with the
++ * `"%.1f"` attention the leg names for it.
++ */
++const ACT_SHOWN = [
++  ['p04', '3.0'], ['p01', '2.9'], ['p07', '2.8'], ['p14', '2.8'],
++  ['p06', '2.7'], ['p13', '2.7'], ['p05', '2.6'], ['p12', '2.6'],
++  ['p02', '2.5'], ['p10', '2.5'],
++]
++
++/** The pieces the leg says stand nowhere above the `Residuals:` line: the one
++ *  qualifying row the cap drops, and the three under the threshold. */
++const ACT_ABSENT = ['p11', 'p03', 'p08', 'p09']
++
++/** M1's own rule applied to the fixture: every piece at or above the
++ *  threshold, attention descending, stable in checklist order, capped at ten. */
++const EXPECTED_ORDER = PIECES
++  .map(([needle], i) => ({ needle, at: ACT_SCORES[i], i }))
++  .filter((r) => r.at >= THRESHOLD)
++  .sort((a, b) => (b.at - a.at) || (a.i - b.i))
++  .slice(0, 10)
++  .map((r) => r.needle)
++
++/** The count line M1 spells for this fixture: `<q> of <n>`. */
++const ACT_QUALIFY = ACT_SCORES.filter((s) => s >= THRESHOLD).length
++const ACT_LINE = `Act on these: ${ACT_QUALIFY} of ${PIECES.length}`
++
++/** The record's `### Residuals` checklist for this fixture, in checklist order. */
++const CHECKLIST_14 = PIECES.map(([n]) => `- [ ] ${REVIEWER_NAME} — ${pieceText(n)}`)
++
++// ── the five boots ───────────────────────────────────────────────────────────
++
++/** A `<needle><TAB><reply JSON>` file under the case's own home, one line per
++ *  piece, in checklist order — the knob the rig merged with `4dccc32f`. */
++const answersFile = (ctx, scoreOf) => {
++  const file = path.join(ctx.home, 'act-answers.tsv')
++  fs.writeFileSync(
++    file,
++    PIECES.map(([needle], i) => `${needle}\t${replyAt(scoreOf(i))}`).join('\n') + '\n',
++  )
++  return { STUB_TYPESAFE_ANSWERS: file }
++}
++
++/** One boot of the fourteen-piece fixture, with `env` and an answers file. */
++const actBoot = (tag, scoreOf, env = {}) => bootOnce(
++  tag,
++  { STUB_REPORT: REPORT_14, STUB_GATE_RECEIPT: RECEIPT_PASS, ...env },
++  scoreOf ? (ctx) => answersFile(ctx, scoreOf) : null,
++)
++
++const fourteen = () => actBoot('fourteen', (i) => ACT_SCORES[i])
++const onlyP05 = () => actBoot('onlyP05', (i) => (PIECES[i][0] === 'p05' ? 2.5 : 1.0))
++const allLow = () => actBoot('allLow', () => 2.4)
++const exit7 = () => actBoot('exit7', null, { STUB_TYPESAFE_EXIT: '7' })
++/** The rig's own green boot: its report, its receipt, its default reply — no
++ *  notes and no ack, so no checklist item at all and no request made. */
++const rigDefault = () => bootOnce('rigDefault', {
++  STUB_REPORT: DEFAULT_REPORT, STUB_GATE_RECEIPT: RECEIPT_PASS,
++})
++
++// Started here, before the first case runs, beside run-178's four above.
++fourteen()
++onlyP05()
++allLow()
++exit7()
++rigDefault()
++
++// ── reading the section out of a body ────────────────────────────────────────
++
++/** The index of the `Residuals: …` count line — the record's `### Residuals`
++ *  heading is another line and never this one. */
++const countAt = (bodyLines, text) => {
++  const at = bodyLines.findIndex((l) => /^Residuals: /.test(l))
++  assert.ok(at >= 0, `the body carries no \`Residuals:\` count line\n${text}`)
++  return at
++}
++
++/**
++ * The index of the TASK table's last `| … |` row — searched above the
++ * `Residuals:` count line, because the record below it opens with a table of
++ * its own and its `| vm | … |` row is the body's last pipe line.
++ */
++const tableEnd = (bodyLines, text) => {
++  let at = -1
++  bodyLines.slice(0, countAt(bodyLines, text)).forEach((line, i) => {
++    if (line.startsWith('|') && line.endsWith('|')) at = i
++  })
++  assert.ok(at >= 0, `the body carries no task table above its \`Residuals:\` line\n${text}`)
++  return at
++}
++
++/** Every line of a body that begins `Act on these`. */
++const actLines = (text) => text.split('\n').filter((l) => l.startsWith('Act on these'))
++
++// ── leg (a) — M1: the head line, the ten entries, the order and the cap ──────
++
++test('(a) [M1] the fixture and the leg agree on which ten rows are shown, and in what order', () => {
++  assert.deepEqual(
++    EXPECTED_ORDER, ACT_SHOWN.map(([needle]) => needle),
++    '(a) [M1] M1\'s rule over this fixture — at or above 2.5, attention descending, ties in '
++    + 'checklist order, capped at ten — must give the ten the Proof leg spells, in that order',
++  )
++  assert.equal(
++    ACT_LINE, 'Act on these: 11 of 14',
++    '(a) [M1] eleven of the fourteen pieces score at or above 2.5, which is the count line the leg spells',
++  )
++  for (const [needle, shown] of ACT_SHOWN) {
++    const at = ACT_SCORES[PIECES.findIndex(([n]) => n === needle)]
++    assert.equal(
++      Number(shown), at,
++      `(a) [M1] the leg's \`"%.1f"\` string for ${needle} must be its fixture score`,
++    )
++  }
++  assert.deepEqual(
++    ACT_ABSENT.filter((n) => EXPECTED_ORDER.includes(n)), [],
++    '(a) [M1] p11 (the eleventh qualifier the cap drops), p03, p08 and p09 are shown nowhere',
++  )
++})
++
++test('(a) [M1] the section stands between the table and the `Residuals:` line, ten entries deep', async () => {
++  const ctx = await fourteen()
++  const text = body(ctx)
++  const ls = text.split('\n')
++  const t = tableEnd(ls, text)
++  assert.ok(
++    ls[t].startsWith(`| ${PLAN_TASK_ID} | `),
++    `(a) [M1] the row the section is read from must be the task table's last row — the plan signs `
++    + `one task, so it is \`| ${PLAN_TASK_ID} | … |\`\n${text}`,
++  )
++
++  assert.equal(
++    ls[t + 1], '',
++    `(a) [M1] the line after the task table's last \`| … |\` row is blank\n${text}`,
++  )
++  assert.equal(
++    ls[t + 2], ACT_LINE,
++    `(a) [M1] and the line after that is exactly \`${ACT_LINE}\` — \`<q>\` the items at or above `
++    + `2.5, \`<n>\` the checklist's item count\n${text}`,
++  )
++  assert.equal(
++    ls[t + 3], '',
++    `(a) [M1] then a blank line, before the entries\n${text}`,
++  )
++
++  const shown = ls.slice(t + 4, t + 4 + ACT_SHOWN.length)
++  assert.deepEqual(
++    shown, ACT_SHOWN.map(([needle, at]) => entryFor(needle, at)),
++    `(a) [M1] then exactly ten lines beginning \`- \`, in order the entries for `
++    + `${ACT_SHOWN.map(([n]) => n).join(', ')}, each `
++    + `\`- <name> — <text> — attention <a>, actor <actor>, <status> / <subject>\`\n${text}`,
++  )
++  assert.equal(
++    ls[t + 4 + ACT_SHOWN.length], '',
++    `(a) [M1] the tenth entry is the last — the eleventh qualifier is dropped, and the line after `
++    + `it is blank\n${text}`,
++  )
++  assert.equal(
++    ls[t + 5 + ACT_SHOWN.length], 'Residuals: 14 from review',
++    `(a) [M1] and then the \`Residuals:\` line, which the section stands above\n${text}`,
++  )
++  assert.deepEqual(
++    actLines(text), [ACT_LINE],
++    `(a) [M1] exactly one line of the body begins \`Act on these\`\n${text}`,
++  )
++})
++
++test('(a) [M1] no row the threshold or the cap excludes stands above the `Residuals:` line', async () => {
++  const ctx = await fourteen()
++  const text = body(ctx)
++  const ls = text.split('\n')
++  const above = ls.slice(0, countAt(ls, text))
++
++  for (const needle of ACT_ABSENT) {
++    const piece = pieceText(needle)
++    assert.deepEqual(
++      above.filter((l) => l.includes(piece)), [],
++      `(a) [M1] ${needle} is ${needle === 'p11' ? 'the eleventh qualifier, dropped by the cap'
++        : 'below the 2.5 threshold'}, so no line of the body before the \`Residuals:\` line may `
++      + `carry its text\n${text}`,
++    )
++  }
++  // And the record below still holds all fourteen: the section is a selection
++  // above the full list, never a filter on it.
++  for (const needle of ACT_ABSENT) {
++    assert.ok(
++      ls.includes(`- [ ] ${REVIEWER_NAME} — ${pieceText(needle)}`),
++      `(a) [M1] ${needle} is still one of the record's fourteen checklist lines\n${text}`,
++    )
++  }
++})
++
++test('(a) [M1] one qualifying row renders a one-entry section', async () => {
++  const ctx = await onlyP05()
++  const text = body(ctx)
++  const ls = text.split('\n')
++  const t = tableEnd(ls, text)
++  assert.ok(
++    ls[t].startsWith(`| ${PLAN_TASK_ID} | `),
++    `(a) [M1] the row the section is read from must be the task table's last row — the plan signs `
++    + `one task, so it is \`| ${PLAN_TASK_ID} | … |\`\n${text}`,
++  )
++
++  assert.equal(
++    ls[t + 1], '',
++    `(a) [M1] the blank line after the table stands here too\n${text}`,
++  )
++  assert.equal(
++    ls[t + 2], 'Act on these: 1 of 14',
++    `(a) [M1] a run whose answers file gives only p05 the score 2.5 and every other piece 1.0 `
++    + `renders \`Act on these: 1 of 14\` — \`<n>\` is the checklist's count and never the `
++    + `qualifiers'\n${text}`,
++  )
++  assert.equal(ls[t + 3], '', `(a) [M1] then a blank line\n${text}`)
++  assert.equal(
++    ls[t + 4], entryFor('p05', '2.5'),
++    `(a) [M1] then p05's entry, at \`attention 2.5\`\n${text}`,
++  )
++  assert.equal(ls[t + 5], '', `(a) [M1] then a blank line — exactly one entry\n${text}`)
++  assert.equal(
++    ls[t + 6], 'Residuals: 14 from review',
++    `(a) [M1] and then the count line, over all fourteen items\n${text}`,
++  )
++})
++
++// ── leg (b) — M2: below the threshold, no jev at all, no item at all ─────────
++
++test('(b) [M2] every piece at 2.4 renders no section, though every row carries a jev', async () => {
++  const ctx = await allLow()
++  const text = body(ctx)
++
++  // The rows DID score — the absence is the threshold's doing and not a boot
++  // that never asked.
++  const scored = ledger(ctx)
++  assert.equal(scored.length, PIECES.length, `(b) [M2] fourteen rows\n${ledgerRaw(ctx)}`)
++  assert.deepEqual(
++    [...new Set(scored.map((r) => r.jev && r.jev.attention))], [2.4],
++    `(b) [M2] every one of them carries a \`jev\` at attention 2.4\n${ledgerRaw(ctx)}`,
++  )
++  assert.deepEqual(
++    actLines(text), [],
++    `(b) [M2] and no line of the body begins \`Act on these\` — every item is below 2.5\n${text}`,
++  )
++  assert.ok(
++    text.split('\n').includes('Residuals: 14 from review'),
++    `(b) [M2] the fourteen are still counted below\n${text}`,
++  )
++})
++
++test('(b) [M2] a boot whose every request failed renders no section', async () => {
++  const ctx = await exit7()
++  const text = body(ctx)
++
++  const rows = ledger(ctx)
++  assert.equal(rows.length, PIECES.length, `(b) [M2] fourteen rows\n${ledgerRaw(ctx)}`)
++  assert.deepEqual(
++    rows.filter((r) => 'jev' in r), [],
++    `(b) [M2] with \`STUB_TYPESAFE_EXIT=7\` no row carries a \`jev\` field at all\n${ledgerRaw(ctx)}`,
++  )
++  assert.deepEqual(
++    actLines(text), [],
++    `(b) [M2] so no line of the body begins \`Act on these\` — a missing \`jev\` is not a high `
++    + `score and not a crash\n${text}`,
++  )
++  assert.ok(
++    text.split('\n').includes('Residuals: 14 from review'),
++    `(b) [M2] and the fourteen are counted exactly as they were\n${text}`,
++  )
++})
++
++test('(b) [M2] the rig\'s default green boot, whose checklist is empty, renders no section', async () => {
++  const ctx = await rigDefault()
++  const text = body(ctx)
++
++  assert.deepEqual(
++    actLines(text), [],
++    `(b) [M2] a run with no checklist item at all carries no \`Act on these\` line\n${text}`,
++  )
++  assert.ok(
++    text.split('\n').includes('Residuals: none'),
++    `(b) [M2] the fixture no longer holds: the rig's default boot must render \`Residuals: none\`, `
++    + `or "no item at all" is not the branch this reads\n${text}`,
++  )
++  assert.deepEqual(
++    payloads(ctx), [],
++    `(b) [M2] and it asks Jev nothing, there being nothing to ask about\n${readLog(ctx, 'typesafe.log')}`,
++  )
++})
++
++// ── leg (c) — M3: the rollback, line for line, and no request of its own ─────
++
++test('(c) [M3] splicing the section out yields the failed run\'s body, byte for byte', async () => {
++  const [good, bad] = await Promise.all([fourteen(), exit7()])
++  const goodBody = body(good)
++  const badBody = body(bad)
++
++  const ls = goodBody.split('\n')
++  const from = ls.findIndex((l) => l.startsWith('Act on these'))
++  const to = countAt(ls, goodBody)
++  assert.ok(
++    from >= 0 && to > from,
++    `(c) [M3] the section must stand above the \`Residuals:\` line, or there is nothing to splice `
++    + `out\n${goodBody}`,
++  )
++  const spliced = [...ls.slice(0, from), ...ls.slice(to)].join('\n')
++
++  assert.equal(
++    spliced, badBody,
++    '(c) [M3] removing the lines from `Act on these` up to, not including, the `Residuals:` line '
++    + 'from the body of a run whose requests succeeded yields a body string-equal to the body of '
++    + 'the same run whose requests all failed — the rule is the rollback, with the card section '
++    + 'deleted',
++  )
++})
++
++test('(c) [M3] both bodies carry the same count, amendments and record checklist', async () => {
++  const [good, bad] = await Promise.all([fourteen(), exit7()])
++
++  for (const [which, text] of [['the succeeding', body(good)], ['the failed', body(bad)]]) {
++    const ls = text.split('\n')
++    assert.ok(
++      ls.includes('Residuals: 14 from review'),
++      `(c) [M3] ${which} card carries \`Residuals: 14 from review\`\n${text}`,
++    )
++    assert.ok(
++      ls.includes('Amendments: none'),
++      `(c) [M3] ${which} card carries \`Amendments: none\`\n${text}`,
++    )
++    const at = ls.indexOf('### Residuals')
++    assert.ok(at >= 0, `(c) [M3] ${which} card carries a \`### Residuals\` section\n${text}`)
++    assert.deepEqual(
++      ls.slice(at + 2, at + 2 + CHECKLIST_14.length), CHECKLIST_14,
++      `(c) [M3] ${which} card's \`### Residuals\` checklist is the fourteen \`- [ ] `
++      + `${REVIEWER_NAME} — \` lines, in checklist order\n${text}`,
++    )
++    assert.equal(
++      ls[at + 2 + CHECKLIST_14.length], '',
++      `(c) [M3] ${which} card's checklist is fourteen lines and no more\n${text}`,
++    )
++  }
++})
++
++test('(c) [M3] the two runs make the same merge PUTs, and the section asks nothing of its own', async () => {
++  const [good, bad] = await Promise.all([fourteen(), exit7()])
++
++  assert.equal(
++    mergePuts(good).length, mergePuts(bad).length,
++    '(c) [M3] a run that rendered a section makes the same number of merge PUTs as one whose '
++    + 'every request failed — nothing gates on `jev`',
++  )
++  assert.equal(
++    payloads(good).length, PIECES.length,
++    `(c) [M3] the succeeding run's \`typesafe.log\` holds exactly one line per checklist item — `
++    + `fourteen, for the whole boot: the section reads \`residual_rows\` off the cache and makes `
++    + `no request at render time\n${readLog(good, 'typesafe.log')}`,
++  )
++})
++
+ runTests(tests)

@@ -1,0 +1,39 @@
+{
+  "engineHead": "46686e6143578c9cc7185ce088e7992495af56d4",
+  "attempts": {
+    "1": {
+      "tip": "ce741ec9950a772996b3c5c00dc0f3edd7a25ace",
+      "candidate": "0016cbf2e8d46be6b95e81b0bb26b701c8349ea5",
+      "disposition": "suite red",
+      "reason": "fleet/tests/test_run_engine_worker_notes.mjs red on fleet/CONTRACT.md",
+      "pathsJoined": 3,
+      "resolversDispatched": 1,
+      "suite": "none",
+      "checks": [
+        {
+          "check": "parse",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "parse",
+          "path": "fleet/tests/test_sandbox_boot_residuals.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_hub_mirror.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_worker_notes.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "fail"
+        }
+      ],
+      "checkRetries": 0
+    }
+  }
+}

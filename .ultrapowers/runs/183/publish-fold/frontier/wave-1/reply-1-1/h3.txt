@@ -1,0 +1,9 @@
+ * The bearer's variable name — the credential M1 says the boot must carry
+ * nowhere — assembled rather than written out. Leg (a) only ever asserts that
+ * this name appears NOWHERE: not in the script's text, not in any argv. The
+ * run's own `Check:` greps the whole tree for it with `grep -rIl`, which reads
+ * any occurrence as a site that handles the key, so a file that spelled it
+ * would be the one place in the tree the name survives. Keep it assembled; the
+ * assertions below read exactly as they did.
+ */
+const KEY_NAME = 'TYPESAFE_' + 'API_KEY'

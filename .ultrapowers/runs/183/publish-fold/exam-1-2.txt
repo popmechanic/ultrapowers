@@ -1,0 +1,19 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: (a) [M1] the fake `jev.ask` is called EXACTLY THREE TIMES — once for each of the three comments by an `impl:`, `exam:` or `fix:` actor on an issue a task row names. The comment by `engine:run-sim`, the one by `review:1:1@run-sim`, the `issue.metadata_updated` event, the comment on an issue no task row names, and the worker comment among the 100 events the Setup walk read are never sent to Jev; and each note is read exactly once across every poll of the run. The states asked: [{"task":{"title":"task 1","claim":"","proof":"","files":["1.txt"],"proofTests":[]}},{"task":{"title":"task 2","claim":"","proof":"","files":["2.txt"],"proofTests":[]}},{"task":{"title":"task 1","claim":"do: watch a run whose implementer writes that it is stuck; see: that task reads needs-human within a poll. (derived)"},"note":"I cannot proceed: the leg names a file absent at base","role":"impl"},{"task":{"title":"task 2","claim":"do: read an examiner's hand-in; see: no hand raised by a red suite at BASE."},"note":"the base has no such export and the leg cannot be written the leg reads as written the leg reads as written the leg read\nI am writing the exam against the clause and will say so on the issue the leg reads as written the leg reads as written \nred at BASE is an examiner resting state the leg reads as ","role":"exam"},{"task":{"title":"task 1","claim":"do: watch a run whose implementer writes that it is stuck; see: that task reads needs-human within a poll. (derived)"},"note":"retrying the leg","role":"fix"},{"task":{"title":"task 2","claim":"","files":["2.txt"]},"patch":"diff --git a/2.txt b/2.txt\nnew file mode 100644\nindex 0000000000000000000000000000000000000000..9cd618652c80a608344e28058a860b9e5165aec3\n--- /dev/null\n+++ b/2.txt\n@@ -0,0 +1 @@\n+from impl:2\n"},{"task":{"title":"task 1","claim":"","files":["1.txt"]},"patch":"diff --git a/1.txt b/1.txt\nnew file mode 100644\nindex 0000000000000000000000000000000000000000..0556769be71d987d5d1d94d7e16b961468d03401\n--- /dev/null\n+++ b/1.txt\n@@ -0,0 +1 @@\n+from impl:1\n"}]
+
+7 !== 3
+
+    at file:///home/exedev/target/.claude/ultrapowers/run-run-183/clones/integration/fleet/tests/test_run_engine_worker_notes.mjs:509:8
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 7,
+  expected: 3,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.20.0

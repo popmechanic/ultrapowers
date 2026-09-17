@@ -1,0 +1,8 @@
+Running as unit: fleet-fold-183-1.service; invocation ID: b37cb1c4cc4a4bea9aec3d70786d2a8f
+publish-fold: attempt 1 — suite red — fleet/tests/test_run_engine_worker_notes.mjs red on fleet/CONTRACT.md
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 1min 37.058s
+CPU time consumed: 8.963s
+Memory peak: 292.0K
+Memory swap peak: 0B

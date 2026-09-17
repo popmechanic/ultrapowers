@@ -1,0 +1,257 @@
+HUNK h1 lines 20-26
+--- context (read-only)
+  /**
+   * Exam for run-178 task 1 — "The boot asks Jev about every residual row, once,
+   * through the edge, and writes the answers beside its own kind" (#1093).
+   *
+   * CLAIM. Open a finished run's evidence tag and read `residuals.jsonl`: every
+   * row still carries the boot's own `kind`, and beside it a `jev` object with
+   * the classifier's status and subject, its actor, its attention score and its
+   * claim-falsity — or no `jev` at all on a row whose request failed, with one
+   * boot-log line saying so and the pull request exactly as it would have been.
+   *
+   * Six machine clauses, read here leg by leg and nowhere else. Every assertion
+   * names the leg it belongs to and the clause it comes from, so a reader can map
+   * this file back to the contract:
+   *
+   *   M1  `fleet/sandbox-boot.sh` defines
+   *       `TYPESAFE_URL="${FLEET_TYPESAFE_URL:-https://typesafe.int.exe.xyz}"`
+   *       beside `KATA_URL`; every request to Jev is one `fleet_curl` whose argv
+   *       carries `-X POST`, `--max-time 10`, `-H content-type: application/json`,
+   *       `-d <body>` and `$TYPESAFE_URL/v1/systemone`, with no element naming
+--- conflict
+<<<<<<< begin added frontier
+ *       `Authorization`, `Bearer` or the bearer's variable name (`KEY_NAME`
+ *       below), and the script's text holds that name nowhere      → leg (a)
+======= begin added run-183
+ *       `Authorization`, `Bearer` or the key's env-var name (`KEY_NAME`
+ *       below), and the script's text holds that name nowhere       → leg (a)
+>>>>>>> end conflict
+--- context (read-only)
+   *   M2  k checklist items, exactly k requests for the whole boot, one per item,
+   *       each one line of `residuals-jev.jsonl` — `{answers, error, key, model,
+   *       usage}`, the key the sha256 of `<name>\n<text>` — and no later
+   *       transition re-asks a key the file already carries               → leg (b)
+   *   M3  every row whose request succeeded carries, beside the rule's `kind`, a
+   *       `jev` of exactly `actor`, `attention`, `claim_false`, `confidence`,
+   *       `kind`, `model`, read off that row's own reply; `file`, `kind`, `line`,
+   *       `run`, `sha`, `task`, `text` are what BASE writes                → leg (c)
+   *   M4  the request body: `state.task` off the plan (or `null`), `state.finding`
+   *       the row, `model` `jev-latest`, and a `questions` map of exactly the five
+   *       ids with exactly the criteria each one names                    → leg (d)
+   *   M5  a failing `fleet_curl` writes exactly one `jev: <name> — curl exit <n>`
+   *       line, leaves that row with NO `jev` key, and the boot publishes a body
+   *       byte-identical to the succeeding run's                          → leg (e)
+   *   M6  the rig's curl stub gains the `/v1/systemone` arm with its payload log,
+   *       its answers file, its single-reply knob and its exit knob; the README
+   *       names this sim; the edited script still parses                  → leg (f)
+   *
+   * FOUR BOOTS, NO MORE, over ONE fixture. A boot is ~40 forks of stub shell, so
+   * every leg that needs one shares these four; each is started once, eagerly, and
+   * awaited by everyone who reads it — the shape `test_sandbox_boot_amendments.mjs`
+   * uses for its two. The fixture is the one the task's Context pins: the rig's
+   * own `DEFAULT_REPORT` with a two-piece `notes` on its done task row, and a
+   * `PASS` receipt carrying one `deferred:external` ack — THREE checklist items,
+   * therefore three requests:
+   *
+   *   SUCCEEDED  the stub answers every request with its default reply. Legs (a),
+   *              (b), (c), (d), (e)'s comparison half and (f) read it.
+   *   ALT_URL    the same boot with `FLEET_TYPESAFE_URL` pointing elsewhere, so
+   *              the stub's `*)` fallthrough answers UNKNOWN and the argv log is
+   *              the only thing the leg reads. Leg (a)'s second half.
+   *   CHOSEN     `STUB_TYPESAFE_ANSWERS` maps the needle `rename fold_now` to one
+   *              reply and `STUB_TYPESAFE_ANSWER` answers the other two, so one
+   *              boot exercises both knobs AND their precedence. Leg (c)'s second
+   *              half, and leg (f)'s reading of the arm.
+   *   FAILED     `STUB_TYPESAFE_EXIT=7`. Leg (e).
+   *
+   * THE RECEIPT SAYS `PASS`. `do_boot` greens a run on `verdict = PASS`; a receipt
+   * spelling anything else parks it and its card opens `**Parked:**`. The ack
+   * rides on the rig's own default receipt plus the one `gateCheck.acks` entry.
+
+HUNK h2 lines 75-86
+--- context (read-only)
+   *   M4  the request body: `state.task` off the plan (or `null`), `state.finding`
+   *       the row, `model` `jev-latest`, and a `questions` map of exactly the five
+   *       ids with exactly the criteria each one names                    → leg (d)
+   *   M5  a failing `fleet_curl` writes exactly one `jev: <name> — curl exit <n>`
+   *       line, leaves that row with NO `jev` key, and the boot publishes a body
+   *       byte-identical to the succeeding run's                          → leg (e)
+   *   M6  the rig's curl stub gains the `/v1/systemone` arm with its payload log,
+   *       its answers file, its single-reply knob and its exit knob; the README
+   *       names this sim; the edited script still parses                  → leg (f)
+   *
+   * FOUR BOOTS, NO MORE, over ONE fixture. A boot is ~40 forks of stub shell, so
+   * every leg that needs one shares these four; each is started once, eagerly, and
+   * awaited by everyone who reads it — the shape `test_sandbox_boot_amendments.mjs`
+   * uses for its two. The fixture is the one the task's Context pins: the rig's
+   * own `DEFAULT_REPORT` with a two-piece `notes` on its done task row, and a
+   * `PASS` receipt carrying one `deferred:external` ack — THREE checklist items,
+   * therefore three requests:
+   *
+   *   SUCCEEDED  the stub answers every request with its default reply. Legs (a),
+   *              (b), (c), (d), (e)'s comparison half and (f) read it.
+   *   ALT_URL    the same boot with `FLEET_TYPESAFE_URL` pointing elsewhere, so
+   *              the stub's `*)` fallthrough answers UNKNOWN and the argv log is
+   *              the only thing the leg reads. Leg (a)'s second half.
+   *   CHOSEN     `STUB_TYPESAFE_ANSWERS` maps the needle `rename fold_now` to one
+   *              reply and `STUB_TYPESAFE_ANSWER` answers the other two, so one
+   *              boot exercises both knobs AND their precedence. Leg (c)'s second
+   *              half, and leg (f)'s reading of the arm.
+   *   FAILED     `STUB_TYPESAFE_EXIT=7`. Leg (e).
+   *
+   * THE RECEIPT SAYS `PASS`. `do_boot` greens a run on `verdict = PASS`; a receipt
+   * spelling anything else parks it and its card opens `**Parked:**`. The ack
+   * rides on the rig's own default receipt plus the one `gateCheck.acks` entry.
+   *
+   * THE EXPECTATIONS ARE THE CLAUSE APPLIED TO THE FIXTURE. `jevOf(reply)` below
+   * is M3's own rule, so a row's expected `jev` is derived from the reply the stub
+   * was told to give and is not a second hand-written copy of it — except where
+   * the Proof leg spells a literal (`jev.kind`, `0.8`, `0.05`, the sha256 key,
+   * the three checklist lines), which is asserted as the literal it spells.
+   *
+   * TWO `Run:` LINES ARE READ HERE AS FILE READS. The Proof's first and second
+--- conflict
+<<<<<<< begin added frontier
+ * `Run:` lines — no bearer variable (`KEY_NAME` below) in the script, the
+ * `TYPESAFE_URL` definition verbatim — are the driver's to run, and leg (a)
+ * names them; the same two readings are made here directly off the script's
+ * text, which is the reading this file can make on its own.
+======= begin added run-183
+ * `Run:` lines — no key env-var name in the script, the `TYPESAFE_URL`
+======= begin deleted frontier
+ * definition verbatim — are the driver's to run, and leg (a) names them; the
+ * same two readings are made here directly off the script's text, which is the
+ * reading this file can make on its own.
+>>>>>>> end conflict
+--- context (read-only)
+   *
+   * WHAT LEG (f) IS NOT. Its fourth `Run:` line runs a sibling sim. This file may
+   * not: `fleet/tests/test_sims_are_hermetic.mjs` M4 forbids a sim from spawning,
+   * or even checking the existence of, another sim, and a sim that broke that
+   * probe would cost the run more than the leg buys. So no sibling sim is named
+   * here at all. What is left is the reading this exam can make on its own: the
+   * arm exercised end to end by legs (b), (c) and (e) — payload log, answers file,
+   * single-reply knob, exit knob — the `CALL curl typesafe` line the arm's `say`
+   * writes, the README index line read with `fs`, and `bash -n` over the script
+   * every boot sim sources.
+   */
+  
+  import assert from 'node:assert/strict'
+  import { spawnSync } from 'node:child_process'
+  import { createHash } from 'node:crypto'
+  import fs from 'node:fs'
+  import path from 'node:path'
+  
+  import {
+    SCRIPT, ENV, BASE_SHA, DEFAULT_REPORT, RUN_PATH, PLAN_TASK_ID, PLAN_TASK_CLAIM,
+    makeHome, bootAsync,
+    argvLines, lines, mergePuts, prPosts, readLog, states, stream, runTests,
+  } from './_sandbox_boot_helpers.mjs'
+  
+  const tests = []
+  const test = (name, fn) => tests.push([name, fn])
+  
+  /** The checkout, from the script the rig points at — `fleet/sandbox-boot.sh`. */
+  const ROOT = path.resolve(SCRIPT, '..', '..')
+  
+  /**
+
+HUNK h3 lines 118-140
+--- context (read-only)
+   *
+   * WHAT LEG (f) IS NOT. Its fourth `Run:` line runs a sibling sim. This file may
+   * not: `fleet/tests/test_sims_are_hermetic.mjs` M4 forbids a sim from spawning,
+   * or even checking the existence of, another sim, and a sim that broke that
+   * probe would cost the run more than the leg buys. So no sibling sim is named
+   * here at all. What is left is the reading this exam can make on its own: the
+   * arm exercised end to end by legs (b), (c) and (e) — payload log, answers file,
+   * single-reply knob, exit knob — the `CALL curl typesafe` line the arm's `say`
+   * writes, the README index line read with `fs`, and `bash -n` over the script
+   * every boot sim sources.
+   */
+  
+  import assert from 'node:assert/strict'
+  import { spawnSync } from 'node:child_process'
+  import { createHash } from 'node:crypto'
+  import fs from 'node:fs'
+  import path from 'node:path'
+  
+  import {
+    SCRIPT, ENV, BASE_SHA, DEFAULT_REPORT, RUN_PATH, PLAN_TASK_ID, PLAN_TASK_CLAIM,
+    makeHome, bootAsync,
+    argvLines, lines, mergePuts, prPosts, readLog, states, stream, runTests,
+  } from './_sandbox_boot_helpers.mjs'
+  
+  const tests = []
+  const test = (name, fn) => tests.push([name, fn])
+  
+  /** The checkout, from the script the rig points at — `fleet/sandbox-boot.sh`. */
+  const ROOT = path.resolve(SCRIPT, '..', '..')
+  
+  /**
+--- conflict
+<<<<<<< begin added frontier
+ * The bearer's variable name — the credential M1 says the boot must carry
+ * nowhere — assembled rather than written out. Leg (a) only ever asserts that
+ * this name appears NOWHERE: not in the script's text, not in any argv. The
+ * run's own `Check:` greps the whole tree for it with `grep -rIl`, which reads
+ * any occurrence as a site that handles the key, so a file that spelled it
+ * would be the one place in the tree the name survives. Keep it assembled; the
+ * assertions below read exactly as they did.
+ */
+const KEY_NAME = 'TYPESAFE_' + 'API_KEY'
+======= begin added run-183
+ * The credential's variable name, joined so this file's own text never spells
+ * it. The fleet-wide rule is that nothing under `fleet/` names it — the bearer
+ * is injected at the exe.dev edge, exactly as for `claude-max` and `kata` — and
+ * that rule is enforced by a `grep -rl` over the tree, which cannot tell an
+ * assertion that FORBIDS the string from a use of it. Leg (a) below is that
+ * assertion; building the name here keeps the tree honest to the rule while
+ * every reading stays exactly what it was.
+ */
+const KEY_NAME = ['TYPESAFE', 'API', 'KEY'].join('_')
+======= begin added both
+
+>>>>>>> end conflict
+--- context (read-only)
+  // ── the fixture: three items, three requests ─────────────────────────────────
+  
+  /** The ack's detail, and the two `; `-separated pieces of the task's notes. */
+  const ACK_DETAIL = 'the deploy waits on a credential'
+  const UNVERIFIED_TEXT = 'could not verify the port is free at runtime'
+  const NIT_TEXT = 'rename fold_now to fold'
+  
+  const ACK_NAME = 'deferred:external'
+  const REVIEWER_NAME = `task ${PLAN_TASK_ID} reviewer`
+  
+  /**
+   * The three items in `residual_read`'s own order — the acks first, then the
+   * merged tasks' notes — each with the name it is checklisted under, the kind
+   * BASE's rule gives it and the task it belongs to.
+   */
+  const ITEMS = [
+    { name: ACK_NAME, text: ACK_DETAIL, kind: 'deferred', task: null },
+    { name: REVIEWER_NAME, text: UNVERIFIED_TEXT, kind: 'unverified', task: PLAN_TASK_ID },
+    { name: REVIEWER_NAME, text: NIT_TEXT, kind: 'nit', task: PLAN_TASK_ID },
+  ]
+  
+  /** The rig's own report, with the two-piece `notes` on its one done task. */
+  const REPORT = (() => {
+    const doc = JSON.parse(DEFAULT_REPORT)
+    doc.tasks[0].notes = `${UNVERIFIED_TEXT}; ${NIT_TEXT}`
+    return JSON.stringify(doc)
+  })()
+  
+  /** The rig's own `PASS` receipt, plus the one ack the checklist is read from. */
+  const RECEIPT = JSON.stringify({
+    verdict: 'PASS',
+    gateCheck: { acks: [{ type: ACK_NAME, detail: ACK_DETAIL }] },
+  })
+  
+  /**
+   * The key M2 spells: the sha256 hex of `<name>\n<text>`. The Context works one
+   * of the three out by hand, and leg (b) names it — `KEY_WORKED` below is that
+   * value, asserted against this function so the fixture and the clause agree
+   * before any row is read.
+   */
