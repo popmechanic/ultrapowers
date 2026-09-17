@@ -505,6 +505,18 @@ on the next one, ask her before editing a script.
   by the gateway (403 "integration not found or not attached"). Peer traffic
   is its own integration kind.
 
+**TypeSafe.**
+
+- The classifier is an exe.dev `http-proxy` integration named `typesafe` attached to the fleet
+  policy `tag:fleet`, the same shape as `claude-max` and `kata`, and a VM reaches it at
+  `https://typesafe.int.exe.xyz/v1/systemone` — `https` only, because the http form answers `301`
+  and a followed 301 turns the POST into a GET and the body is lost (run-110's seam). The client
+  sends no `Authorization` header: the edge injects the bearer, so no `TYPESAFE_API_KEY` is on any
+  VM's disk or in any argv (measured 2026-09-16, probe `http=200 time=0.299s`).
+- Jev never gates. A failed request is one `jev:` log line and nothing else — the row keeps the
+  rule's `kind`, the card is written as before, and the run makes one request per residual per run
+  whether it succeeded or failed (2026-09-16).
+
 **The GitHub edge.**
 
 - Branch protection `strict=true` enforces nothing without at least one required status
