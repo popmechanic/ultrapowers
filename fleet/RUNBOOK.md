@@ -640,6 +640,17 @@ on the next one, ask her before editing a script.
 
 - macOS has no `timeout`. A wait loop in a shell script gets its deadline
   from a counter, or the script is a `.mjs`.
+- **The laptop's suite is not the fleet's, and five of its reds are the Mac.**
+  `python3 -m pytest` on macOS 27 / arm64 reads **455 passed, 5 failed** on a
+  tree whose gate on Linux reads **457 passed, 0 failed** (run-183, 2026-09-17).
+  The five are `tests/test_catch_report.py::test_ratchet_leg_d_zero_over_one`
+  and `::test_ratchet_leg_e_zero_over_two`, and the bridged sims
+  `test_run_engine_jev_finding.mjs`, `test_run_engine_jev_suite_red.mjs` and
+  `test_run_engine_reconcile_retry.mjs`. Both jev sims were run directly on a
+  fleet VM the same day and PASS there. So a laptop red is read against this
+  list before it is believed, and the sensor that decides a tree is the run's
+  own gate, never this machine. A red outside the list is the one worth
+  chasing; one on it says only that the box is a Mac.
 - The plugin cache's `compile_plan.py` is not the sandbox's. The installed
   plugin on the laptop is whatever the last `plugin install` left behind, while
   the sandbox's preflight runs the engine checkout at `engine=` — main's tip
