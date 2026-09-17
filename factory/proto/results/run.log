@@ -1,0 +1,145 @@
+######## line
+
+== line run 1  base c4c06a5b
+  exam:3: 13s $0.13 turns=4 success
+  exam:2: 13s $0.13 turns=5 success
+  exam:1: 14s $0.14 turns=5 success
+  impl:3: 8s $0.05 turns=4 success
+  review:3: 5s $0.27 turns=2 success
+  impl:1: 13s $0.05 turns=4 success
+  review:1: 7s $0.07 turns=2 success
+  impl:2: 24s $0.11 turns=16 success
+  review:2: 59s $0.26 turns=9 success
+  adopted task 1 -> e35b8acf  exam=0 claim=0.94 k=1
+  adopted task 3 -> dd1c1d65  exam=0 claim=0.94 k=1
+  adopted task 2 -> 02538352  exam=0 claim=0.93 k=1
+  DONE line run 1: wall 99s cost $1.22 suite exit 0 jev calls 6
+
+== line run 2  base 32401985
+  exam:3: 13s $0.05 turns=4 success
+  exam:1: 18s $0.06 turns=8 success
+  exam:2: 18s $0.07 turns=9 success
+  impl:3: 13s $0.05 turns=4 success
+  review:3: 5s $0.06 turns=2 success
+  impl:1: 16s $0.05 turns=4 success
+  impl:2: 18s $0.08 turns=11 success
+  review:1: 23s $0.17 turns=6 success
+  review:2: 45s $0.23 turns=7 success
+  adopted task 1 -> 59f715dd  exam=0 claim=0.95 k=1
+  adopted task 3 -> 227cd94f  exam=0 claim=0.95 k=1
+  adopted task 2 -> 09ea3a47  exam=0 claim=0.93 k=1
+  DONE line run 2: wall 83s cost $0.82 suite exit 0 jev calls 6
+
+== line run 3  base 05a58976
+  exam:1: 8s $0.04 turns=3 success
+  exam:3: 9s $0.05 turns=4 success
+  exam:2: 13s $0.05 turns=5 success
+  impl:1: 10s $0.07 turns=6 success
+  impl:3: 10s $0.05 turns=4 success
+  review:3: 4s $0.06 turns=2 success
+  review:1: 13s $0.13 turns=4 success
+  impl:2: 39s $0.12 turns=16 success
+  review:2: 52s $0.24 turns=7 success
+  adopted task 1 -> 2be279fa  exam=0 claim=0.95 k=1
+  adopted task 3 -> f938e89d  exam=0 claim=0.94 k=1
+  adopted task 2 -> 60f2f1f7  exam=0 claim=0.95 k=1
+  DONE line run 3: wall 107s cost $0.81 suite exit 0 jev calls 6
+
+line: wall 99/83/107s  cost $1.22/0.82/0.81  suite 0/0/0  -> /private/tmp/claude-501/-Users-marcusestes-Websites-ultrapowers/698e8be3-a607-4bf7-863b-229c85353a70/scratchpad/jev-factory-proto/results-line.json
+######## judge
+
+== judge run 1  base d3769abf
+  exam:3: 8s $0.05 turns=5 success
+  exam:2: 11s $0.05 turns=5 success
+  impl:3: 12s $0.05 turns=3 success
+  exam:1: 25s $0.05 turns=5 success
+  impl:1: 11s $0.05 turns=3 success
+  impl:2: 93s $0.26 turns=27 success
+  adopted task 1 -> 5da57517  exam=0 claim=0.94 k=1
+  adopted task 3 -> 2d5e5520  exam=0 claim=0.95 k=1
+  adopted task 2 -> 2a98312b  exam=0 claim=0.93 k=1
+  DONE judge run 1: wall 106s cost $0.51 suite exit 0 jev calls 6
+
+== judge run 2  base 3ead4298
+  exam:2: 10s $0.04 turns=3 success
+  exam:3: 11s $0.05 turns=4 success
+  exam:1: 16s $0.05 turns=5 success
+  impl:3: 7s $0.05 turns=3 success
+  impl:1: 13s $0.05 turns=5 success
+  impl:2: 38s $0.12 turns=15 success
+  adopted task 1 -> 341b7dc9  exam=0 claim=0.95 k=1
+  adopted task 3 -> 294f5fbf  exam=0 claim=0.95 k=1
+  adopted task 2 -> 9580932f  exam=0 claim=0.94 k=1
+  DONE judge run 2: wall 50s cost $0.36 suite exit 0 jev calls 6
+
+== judge run 3  base 38ece008
+  exam:3: 11s $0.05 turns=5 success
+  exam:2: 12s $0.05 turns=4 success
+  exam:1: 16s $0.06 turns=7 success
+  impl:1: 8s $0.05 turns=4 success
+  impl:3: 18s $0.05 turns=3 success
+  impl:2: 18s $0.09 turns=12 success
+  adopted task 1 -> 33624d03  exam=0 claim=0.95 k=1
+  adopted task 3 -> 81018b74  exam=0 claim=0.95 k=1
+  adopted task 2 -> 192b6786  exam=0 claim=0.94 k=1
+  DONE judge run 3: wall 32s cost $0.36 suite exit 0 jev calls 6
+
+judge: wall 106/50/32s  cost $0.51/0.36/0.36  suite 0/0/0  -> /private/tmp/claude-501/-Users-marcusestes-Websites-ultrapowers/698e8be3-a607-4bf7-863b-229c85353a70/scratchpad/jev-factory-proto/results-judge.json
+######## search
+
+== search run 1  base 4fbeca01
+  exam:3: 9s $0.06 turns=5 success
+  exam:2: 13s $0.04 turns=3 success
+  exam:1: 14s $0.05 turns=5 success
+  impl0:3: 8s $0.05 turns=3 success
+  impl1:3: 13s $0.05 turns=4 success
+  search task 3: scores 11.86 vs 11.88 -> impl1
+  impl1:1: 9s $0.06 turns=5 success
+  impl0:1: 15s $0.05 turns=4 success
+  search task 1: scores 11.91 vs 11.91 -> impl0
+  impl1:2: 18s $0.09 turns=11 success
+  impl0:2: 21s $0.09 turns=12 success
+  search task 2: scores 11.87 vs 11.87 -> impl0
+  adopted task 1 -> 9c1a8ccf  exam=0 claim=0.94 k=2
+  adopted task 3 -> e7212de3  exam=0 claim=0.95 k=2
+  adopted task 2 -> 51436a97  exam=0 claim=0.93 k=2
+  DONE search run 1: wall 36s cost $0.54 suite exit 0 jev calls 9
+
+== search run 2  base 3acf6f68
+  exam:3: 7s $0.05 turns=4 success
+  exam:1: 8s $0.05 turns=4 success
+  exam:2: 12s $0.05 turns=4 success
+  impl1:3: 8s $0.05 turns=3 success
+  impl1:1: 9s $0.05 turns=4 success
+  impl0:1: 10s $0.06 turns=5 success
+  search task 1: scores 11.92 vs 11.92 -> impl1
+  impl0:3: 13s $0.05 turns=3 success
+  search task 3: scores 11.86 vs 11.87 -> impl1
+  impl0:2: 27s $0.12 turns=16 success
+  impl1:2: 35s $0.10 turns=12 success
+  search task 2: scores 11.89 vs 11.86 -> impl0
+  adopted task 1 -> 71b89e5f  exam=0 claim=0.95 k=2
+  adopted task 3 -> 67cddd3c  exam=0 claim=0.95 k=2
+  adopted task 2 -> 7b910f1c  exam=0 claim=0.95 k=2
+  DONE search run 2: wall 50s cost $0.58 suite exit 0 jev calls 9
+
+== search run 3  base a7460d8c
+  exam:1: 9s $0.05 turns=4 success
+  exam:3: 12s $0.05 turns=4 success
+  exam:2: 14s $0.08 turns=7 success
+  impl0:1: 13s $0.05 turns=4 success
+  impl1:1: 14s $0.05 turns=5 success
+  search task 1: scores 11.92 vs 11.92 -> impl0
+  impl1:3: 13s $0.05 turns=4 success
+  impl0:3: 13s $0.05 turns=4 success
+  search task 3: scores 11.88 vs 11.88 -> impl1
+  impl1:2: 25s $0.10 turns=14 success
+  impl0:2: 159s $0.11 turns=15 success
+  search task 2: scores 11.88 vs 11.87 -> impl0
+  adopted task 1 -> aca996be  exam=0 claim=0.95 k=2
+  adopted task 3 -> 8621a03c  exam=0 claim=0.95 k=2
+  adopted task 2 -> c8dd4e34  exam=0 claim=0.93 k=2
+  DONE search run 3: wall 175s cost $0.60 suite exit 0 jev calls 9
+
+search: wall 36/50/175s  cost $0.54/0.58/0.60  suite 0/0/0  -> /private/tmp/claude-501/-Users-marcusestes-Websites-ultrapowers/698e8be3-a607-4bf7-863b-229c85353a70/scratchpad/jev-factory-proto/results-search.json
+EXIT 0

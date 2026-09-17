@@ -1,0 +1,193 @@
+{
+  "version": "policy-v1",
+  "about": "Every threshold the factory's judge reads, one file. A threshold is chosen on the record's replays and never tuned live; each carries the n and the window it was read over, or says in terms that it was not read. No default flips under n = 5 runs / 20 tasks: a threshold read under that floor is an `experiment` with its `rollback` named. A Jev `null` at any site routes to that set's rollback in questions.json.",
+  "chosen": "2026-09-17, on Fable, from the 2026-09-17 landing replay and a hand read of 62 rows (the stratified fifty plus the twelve the policy would promote)",
+  "landing": {
+    "severity": {
+      "rule": "blocking <=> borne_out >= t1 AND claim_false >= t2 AND actor = implementer AND fixable_in_files >= t3 AND process_only < t4 AND NOT (status = unverified AND status.confidence >= t_status); plan-routed <=> actor = plan at confidence >= t5 AND fixable_in_files < t5_fixable, else today's routeToPlan regex decides; minor otherwise, carrying status and subject for the card",
+      "t1_borne_out": {
+        "value": 0.8,
+        "n": 0,
+        "window": "none",
+        "basis": "judgment",
+        "unread": "needs `hunks`; no tag carries a pre-fix patch (#1127 reading 3). Set high on judgment: the conjunction is already conservative without it, so a high t1 costs recall, not safety. Adjacent evidence only: #1093's pairwise finding-vs-hunk read, a DIFFERENT question string, AUROC 0.88 at n = 402. THE FIRST THING THE LIVE n = 5 READING MEASURES.",
+        "rollback": 0.0
+      },
+      "t2_claim_false": {
+        "value": 0.7,
+        "n": 1157,
+        "window": "1,157 reviewer residuals over 84 runs (evidence + evidence-tinyapp tags through run-183), built 2026-09-16, replayed 2026-09-17",
+        "basis": "hand read of every row promoted",
+        "detail": "at 0.7 the policy promotes 11 of 1,157 graded-minor residuals; a hand read finds 10 right (real defects in FILES: run-104/2, run-115/6, run-146/3, run-166/2, run-166/1, run-170/3, run-88/824, run-90/4; trivial-but-correct run-126/4, run-149/1) and 1 wrong (run-115/1, a worker's `concern:` disclosure of a budget bump — a note, which the factory routes to the note set and never to landing). At 0.8 it promotes 5 and loses five of the real defects. False-block rate at 0.7: 1/1,157 = 0.09%, upper bound (t1 unread)",
+        "rollback": 0.9,
+        "rollback_note": "0.9 promotes nothing on the corpus: the gate goes inert"
+      },
+      "t3_fixable_in_files": {
+        "value": 0.7,
+        "n": 1157,
+        "window": "1,157 reviewer residuals over 84 runs (evidence + evidence-tinyapp tags through run-183), built 2026-09-16, replayed 2026-09-17",
+        "basis": "hand read of the promoted set",
+        "detail": "the one plan defect the policy would have promoted at 0.6 (run-127/3, fix = 0.60, a width the constraint forbade conveying) falls out at 0.7; nothing right is lost between 0.6 and 0.7",
+        "rollback": 0.9
+      },
+      "t4_process_only": {
+        "value": 0.7,
+        "n": 1157,
+        "window": "1,157 reviewer residuals over 84 runs (evidence + evidence-tinyapp tags through run-183), built 2026-09-16, replayed 2026-09-17",
+        "basis": "hand read of the promoted set",
+        "detail": "0.5 would also drop the one false block (proc = 0.50) but drops run-166/1 with it (proc = 0.62, a real defect: a substring grep over a shared log, which the question read as `how the work was produced`). The exam is the first value, so the real defect is kept and the false block accepted",
+        "rollback": 0.5
+      },
+      "t_status_unverified": {
+        "value": 0.9,
+        "n": 1157,
+        "window": "1,157 reviewer residuals over 84 runs (evidence + evidence-tinyapp tags through run-183), built 2026-09-16, replayed 2026-09-17",
+        "basis": "label agreement + hand read of 20 rows (strata 2 and 5)",
+        "detail": "Jev answers `unverified` on 1,019 of 1,157 rows (88%): it is a prior, not a skill, so an unconditional `status != unverified` conjunct would demote nearly everything — four real defects in the fifty were suppressed at confidence 0.31–0.63. Against the reviewer's own `unverified:` prefix: conf >= 0.9 gives precision 54%, recall 92%, agreement 91%; hand read of ten no-prefix rows at >= 0.91: 8 right, 2 were verified out-of-FILES observations (`cannot act here` read as `cannot verify`). The promoted set is insensitive to this value across 0.8–0.95",
+        "rollback": 0.0,
+        "rollback_note": "0.0 = any unverified demotes, #1127 as filed"
+      },
+      "t5_actor_plan": {
+        "value": 0.8,
+        "n": 1157,
+        "window": "1,157 reviewer residuals over 84 runs (evidence + evidence-tinyapp tags through run-183), built 2026-09-16, replayed 2026-09-17",
+        "basis": "label recall + hand read of ten no-prefix rows",
+        "detail": "against the `plan-defect:` prefix at conf >= 0.8: precision 21%, recall 36%. The regex it was to replace reads precision 100% / recall 27% — but its precision is DEFINITIONAL (route_to_plan opens `startswith('plan-defect:')`, so it is a subset of the label), and recall is the only fair axis. Hand read of ten rows Jev routed at >= 0.8 with no prefix: 6 right (the label missed them), 3 were `[structural false-green]` gate rows with no task at all (absent from the live landing path), 1 was an implementer case that fixable_in_files = 0.88 contradicted — hence the guard below. NOT YET EARNED as the regex's replacement; the regex stays the floor",
+        "rollback": 1.01,
+        "rollback_note": "1.01 = never routes on Jev; the regex alone, #1127's rollback"
+      },
+      "t5_fixable_guard": {
+        "value": 0.5,
+        "n": 1157,
+        "window": "1,157 reviewer residuals over 84 runs (evidence + evidence-tinyapp tags through run-183), built 2026-09-16, replayed 2026-09-17",
+        "basis": "the question's own criterion",
+        "detail": "`plan` is defined as `no edit inside task.files can` resolve it, so a plan route with fixable_in_files >= 0.5 contradicts the answer that produced it. Excludes the one wrong route in the ten read (fix = 0.88); every right route read <= 0.27"
+      },
+      "t6_settled_by_fact": {
+        "value": 0.9,
+        "n": 0,
+        "window": "none",
+        "basis": "judgment",
+        "unread": "needs `sibling_facts`; the corpus predates them (#1127's 2026-09-17 amendment). A `contradicted` verdict PROMOTES a finding to blockable, so it is set high on judgment. First live reading: coverage — of the 118 + 61 unverified cross-task rows, how many carry a sibling fact on the tag at all",
+        "rollback": 1.01,
+        "rollback_note": "1.01 = never promotes; unverified stays minor"
+      }
+    },
+    "adopt": {
+      "rule": "exam exit 0 first; then claim_established; then mean of max_j M<i>__f<j> per clause",
+      "basis": {
+        "n": 9,
+        "window": "the 2026-09-17 laptop prototype, fixture plan, 9 runs, every candidate pair tied within 0.02",
+        "basis": "prototype only — a fixture reading, flips nothing",
+        "experiment": true,
+        "rollback": "k = 1, no ranking"
+      }
+    },
+    "card": {
+      "subject_footprint_min_conf": {
+        "value": 0.8,
+        "n": 1157,
+        "window": "1,157 reviewer residuals over 84 runs (evidence + evidence-tinyapp tags through run-183), built 2026-09-16, replayed 2026-09-17",
+        "basis": "label agreement",
+        "detail": "against the `outside_files:` prefix: precision 45%, recall 66% at conf >= 0.8 (28% / 92% unthresholded). Informational — the card's `Act on these` — gates nothing. `scope_only` does NOT track that prefix (precision <= 16% at every threshold) and a hand read of ten says why: a required out-of-FILES edit is footprint, not unrequested work; Jev was right ten of ten"
+      }
+    }
+  },
+  "task": {
+    "k": {
+      "rule": "k = 2 when difficulty >= 2 (the `Hard` rung, 0-indexed) OR design_open >= 0.8; else 1",
+      "difficulty_rung": 2,
+      "design_open": 0.8,
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "unread": "no corpus has been read at these strings; the prototype forced k. The first real plan with a hard task is the reading",
+      "experiment": true,
+      "rollback": "k = 1 always"
+    },
+    "referee": {
+      "rule": "the discovery referee is dispatched when review_difficulty >= 2 (`Careful`) or doc_or_prose_only < 0.5",
+      "review_difficulty_rung": 2,
+      "doc_or_prose_only": 0.5,
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "unread": "#1096's jev:tier rows have no n on any tag yet (run-183 predates #1109)",
+      "experiment": true,
+      "rollback": "the referee dispatched on every task"
+    }
+  },
+  "supervisor": {
+    "stuck": 0.8,
+    "off_track": 0.8,
+    "needs_human": 0.8,
+    "done_not_exited": 0.8,
+    "hysteresis_ticks": 2,
+    "mode": "record-only",
+    "n": 0,
+    "window": "none",
+    "basis": "judgment",
+    "unread": "#1128 as filed: record-only for the first five runs, rows appended and no stop issued. The flip condition is pre-registered there: the would-have-stopped set dominated by tasks that ended badly or late",
+    "rollback": "--supervisor off; the note poll and attentionFromNote are untouched"
+  },
+  "resolve": {
+    "union": {
+      "independent_additions": 0.9,
+      "shared_anchor_max": 0.2,
+      "ordering_matters_max": 0.2,
+      "mode": "record-only"
+    },
+    "reply_gate": {
+      "carries_both": 0.8,
+      "drops_side_max": 0.3,
+      "invents_max": 0.3,
+      "mode": "record-only"
+    },
+    "n": 0,
+    "window": "none",
+    "basis": "judgment",
+    "unread": "#1125 is staged fog and its keys are unsettled wording; ten resolver dispatches exist on the whole record (runs 36, 44, 183). Two vetoes and one positive term because a union silently corrupts the case it gets wrong",
+    "rollback": "dispatch the resolver; accept its reply on the kernel's grammar check alone"
+  },
+  "note": {
+    "stuck": {
+      "value": 0.7,
+      "n": 779,
+      "window": "notes over 69 runs, both targets, through run-170, read 2026-09-16",
+      "basis": "fleet/run-engine.mjs NOTE_STUCK_THRESHOLD, carried verbatim (#1095)",
+      "detail": "of 13 real hand-raises the notes read 10 as stuck >= 0.5; an examiner's note raises a hand only when stuck >= 0.7 AND kind = blocker (a red suite at BASE is its resting state); an implementer's or fix session's on the threshold alone",
+      "examiner_needs_kind": "blocker"
+    },
+    "plan_defect": {
+      "value": 0.7,
+      "n": 779,
+      "window": "notes over 69 runs, through run-170, read 2026-09-16",
+      "basis": "fleet/run-engine.mjs PLAN_DEFECT_THRESHOLD, carried verbatim (#1095)",
+      "detail": "of parked tasks 47% carried plan_defect >= 0.7; of clean merges 10%; AUROC 0.68"
+    },
+    "settles_interface": {
+      "value": 0.8,
+      "which_min_conf": 0.8,
+      "mode": "record-only",
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "unread": "#1130 as filed: below 0.8 no tuple; the first reading is coverage — how many hand-in notes name an added export at all",
+      "rollback": "no interface.settled cell is minted"
+    }
+  },
+  "amendment": {
+    "changes_consumer": {
+      "value": 0.8,
+      "mode": "record-only",
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "unread": "#1129 as filed: jev:amendment-edge rows, no edge written, until the record's 80 amendments are read for how many would have edged a sibling that later collided",
+      "rollback": "no edge is filed; the amendment row and its three readings stand"
+    },
+    "files_overlap": {
+      "rule": "code, not Jev: amendment.files ∩ sibling.files ≠ ∅ files the blocked-by edge (#1129)"
+    }
+  }
+}

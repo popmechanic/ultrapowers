@@ -1,0 +1,119 @@
+[
+ {
+  "arm": "search",
+  "run": 1,
+  "wall": 35.89,
+  "cost": 0.5413038,
+  "suiteExit": 0,
+  "rows": [
+   {
+    "task": "1",
+    "k": 2,
+    "examExit": 0,
+    "claim": 0.94,
+    "refereeBlocking": 0,
+    "fixRound": false
+   },
+   {
+    "task": "3",
+    "k": 2,
+    "examExit": 0,
+    "claim": 0.95,
+    "refereeBlocking": 0,
+    "fixRound": false
+   },
+   {
+    "task": "2",
+    "k": 2,
+    "examExit": 0,
+    "claim": 0.93,
+    "refereeBlocking": 0,
+    "fixRound": false
+   }
+  ],
+  "denials": [],
+  "jev": {
+   "calls": 9,
+   "tokens": 11384,
+   "ms": 2503
+  }
+ },
+ {
+  "arm": "search",
+  "run": 2,
+  "wall": 49.522,
+  "cost": 0.5780386,
+  "suiteExit": 0,
+  "rows": [
+   {
+    "task": "1",
+    "k": 2,
+    "examExit": 0,
+    "claim": 0.95,
+    "refereeBlocking": 0,
+    "fixRound": false
+   },
+   {
+    "task": "3",
+    "k": 2,
+    "examExit": 0,
+    "claim": 0.95,
+    "refereeBlocking": 0,
+    "fixRound": false
+   },
+   {
+    "task": "2",
+    "k": 2,
+    "examExit": 0,
+    "claim": 0.95,
+    "refereeBlocking": 0,
+    "fixRound": false
+   }
+  ],
+  "denials": [],
+  "jev": {
+   "calls": 9,
+   "tokens": 11946,
+   "ms": 2338
+  }
+ },
+ {
+  "arm": "search",
+  "run": 3,
+  "wall": 174.778,
+  "cost": 0.6021048,
+  "suiteExit": 0,
+  "rows": [
+   {
+    "task": "1",
+    "k": 2,
+    "examExit": 0,
+    "claim": 0.95,
+    "refereeBlocking": 0,
+    "fixRound": false
+   },
+   {
+    "task": "3",
+    "k": 2,
+    "examExit": 0,
+    "claim": 0.95,
+    "refereeBlocking": 0,
+    "fixRound": false
+   },
+   {
+    "task": "2",
+    "k": 2,
+    "examExit": 0,
+    "claim": 0.93,
+    "refereeBlocking": 0,
+    "fixRound": false
+   }
+  ],
+  "denials": [],
+  "jev": {
+   "calls": 9,
+   "tokens": 11580,
+   "ms": 2739
+  }
+ }
+]
