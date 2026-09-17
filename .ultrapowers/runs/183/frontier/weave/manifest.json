@@ -1,0 +1,49 @@
+{
+  "wave": 1,
+  "entries": {
+    "fleet/CONTRACT.md": {
+      "stateBlob": "bca87fe29d8098f6a5666730f2189c9de73563caf5b563d4f3f9eb8c2d5c5612",
+      "visibleSha": "55e7a9709fcce529d2cb1199bc50270767a3b469"
+    },
+    "fleet/jev-questions.mjs": {
+      "stateBlob": "aa23e7fe58c9834276431b760d6ce6b97cecfa89ba9deab00273457435a18c1f",
+      "visibleSha": "3a548a1a3e0953a777c847eb270d8a5a9b511659"
+    },
+    "fleet/run-engine.mjs": {
+      "stateBlob": "ef9ca589c502f403114abf63fcc57fbbc92309062d97ddaab168392b4a2c7b1b",
+      "visibleSha": "1ee299377478aa5deca422e5ec5141be35f99882"
+    },
+    "fleet/tests/README.md": {
+      "stateBlob": "4b3806903d354f4b724a5e0509d8386e72112ba9e462596793211b2593475b1f",
+      "visibleSha": "c827ee665f89405e25e2901bb02603be298eb4c7"
+    },
+    "fleet/tests/test_jev_questions.mjs": {
+      "stateBlob": "4e53d392797c12fd8978f1885c957c6f1e8cf76a9c7ee4725a303dc53cf0f3bb",
+      "visibleSha": "3ccde44565053a700189c7258b0b905b5d4b0466"
+    },
+    "fleet/tests/test_run_engine_hub_mirror.mjs": {
+      "stateBlob": "0422e4c1d62002bde4de5d4b7af756e399735e4efbbf9296830c065bdf51347a",
+      "visibleSha": "28100d89a045dc1ac21bfe99722d38549048c07b"
+    },
+    "fleet/tests/test_sandbox_boot_residuals.mjs": {
+      "stateBlob": "da42e631438659510cbc196b841928eb31dedb5dcdfb7a6e18cf3383ee222c57",
+      "visibleSha": "52b62501aa751304fdf01770e3c09c38af15d359"
+    },
+    "skills/ultrawrite/scripts/authoring_census.py": {
+      "stateBlob": "082eaba1da022ec71b90a3c2bbd62e9de91493e7fbb8b00819c44853110470c3",
+      "visibleSha": "95378c275302fec67d7d47da500008ae747a90a2"
+    },
+    "tests/test_authoring_census.py": {
+      "stateBlob": "46435eba6b4697112f76fe5826eaa56ed2831282bb2573627edf0453164abb4f",
+      "visibleSha": "85cf9dc3618e61d6b8e8b5a70b059ebcdb66f0b8"
+    },
+    "tests/test_authoring_census_amendments.py": {
+      "stateBlob": "8f7249900521df4c3ca7a935d3931f2c881019b47356a7b5e05ce49d39f2a9b9",
+      "visibleSha": "c1b07d41ee16137890a869c4eea9ab0a3740920b"
+    },
+    "tests/test_authoring_census_jev.py": {
+      "stateBlob": "0c0b51ffe4a4b9bf503b10e83e5878c40f75ae7b0d487ad89a130dda1b63ec7c",
+      "visibleSha": "3554c5b9a4cd688f28596fe5f957a8cbcefac6c8"
+    }
+  }
+}

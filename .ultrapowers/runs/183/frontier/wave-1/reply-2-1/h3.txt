@@ -1,0 +1,2 @@
+
+test(`(a) [M1] the script defines TYPESAFE_URL verbatim and names ${KEY_NAME} nowhere`, () => {

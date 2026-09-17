@@ -1,0 +1,2 @@
+ *       `Authorization`, `Bearer` or the key's env-var name (`KEY_NAME`
+ *       below), and the script's text holds that name nowhere       → leg (a)
