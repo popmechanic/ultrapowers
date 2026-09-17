@@ -106,3 +106,6 @@
 {"kind":"transcript:slice","label":"resolve:wave1:1:1","sessionId":"be571df6-3d82-4af4-8db0-187ba4ed72e0","bytes":11477,"id":"01M2Q7R7XE0000Y3YM8RABG13N","ts":1789633765294}
 {"kind":"resolver:reply","label":"resolve:wave1:1:1","conflict":1,"attempt":1,"status":"RESOLVED","id":"01M2Q7R7XG0000HBCNTKZJ9GHS","ts":1789633765296}
 {"kind":"worker:start","label":"resolve:wave1:2:1","role":"resolver","sessionId":"d4d37054-8f2d-49e3-b4e0-cb12c48f7a8a","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-182/clones/integration","model":null,"id":"01M2Q7R8DE0000Z75ETGYF2J6D","ts":1789633765806}
+{"kind":"worker:end","label":"resolve:wave1:2:1","role":"resolver","sessionId":"d4d37054-8f2d-49e3-b4e0-cb12c48f7a8a","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"reason":null,"meter":{"input":2161,"output":19837,"cacheRead":259583,"cacheCreation":31391,"costUsd":0.38017259999999997,"models":["claude-sonnet-5"]},"id":"01M2Q7YK6S000083EW1X2NTJMZ","ts":1789633973465}
+{"kind":"transcript:slice","label":"resolve:wave1:2:1","sessionId":"d4d37054-8f2d-49e3-b4e0-cb12c48f7a8a","bytes":7827,"id":"01M2Q7YK7000007D2977JGQZQ6","ts":1789633973472}
+{"kind":"resolver:reply","label":"resolve:wave1:2:1","conflict":2,"attempt":1,"status":"RESOLVED","id":"01M2Q7YK7200005FB1HJ100KXY","ts":1789633973474}

@@ -1,0 +1,2 @@
+ *       `Authorization`, `Bearer` or the bearer's variable name (`KEY_NAME`
+ *       below), and the script's text holds that name nowhere      → leg (a)

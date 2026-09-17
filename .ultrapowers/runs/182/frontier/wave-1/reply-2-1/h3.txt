@@ -1,0 +1,7 @@
+ * The bearer's variable name, assembled rather than written out. Leg (a) only
+ * ever asserts that this name appears NOWHERE — not in the script's text, not
+ * in any argv — and the run's own `Check:` greps the whole tree for it, so a
+ * file that spelled it would be the one place in the tree the name survives.
+ * Keep it assembled; the assertions below read exactly as they did.
+ */
+const KEY_NAME = 'TYPESAFE_' + 'API_KEY'
