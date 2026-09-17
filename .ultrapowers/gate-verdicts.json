@@ -1,0 +1,73 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "d8da1adb98a3bd010f0740e92233f300af325fe48e0870e3ecd2ac6da8d26684",
+      "verdict": "pass",
+      "reason": "Every clause has a falsifying leg: (a) pins the exact proof_runs/proof_run_cites shapes for M1, (b) the exact refusal string and the tag-is-not-a-leg negative for M2, (c) BASE checkout, ULTRA_BASE, foreign cwd, worktree removal and untouched repo for M3, (d) the two exact lines in order plus the absent false line for M4, (e) the exact timeout line, the <4 s bound and no surviving sleep for M5, (f) all three reading shapes including the no-Run plan for M6, and (g) the ordering plus the three negatives with a filesystem side-effect for M7; the literals are mutually consistent and nothing at BASE pins the opposite."
+    },
+    "2": {
+      "hash": "20b37f2edd39d3db735f50da25610e9b1ba26b3c286df04ee4b763f1e9d91dc0",
+      "verdict": "pass",
+      "reason": "Each Run: window is pinned by start/end lines that exist at BASE (134/142 and the Proof grammar heading) and lacks prover/GREEN-AT-BASE fact: at BASE, M1 and M2 are ordered-phrase clauses proved by ordered greps, and M3's four retained phrases are each present at BASE (lines 136, 139, 225, 232) and each has its own grep."
+    },
+    "3": {
+      "hash": "c704e2f83026a4b2968ede51246bd5d99ec8d8a98a8a03edb03d7d94f96d0cf4",
+      "verdict": "pass",
+      "reason": "Leg (a) feeds a note: line and both orderings so M1's no-other-line and stdout-order halves are falsified, the startsWith grep and both RUNBOOK sed-window greps fail at BASE so the exam cannot pass without the work, leg (b) covers M2's presence-exactly-once and absence cases, and the ordered five-name regex plus the not-a-refusal regex pin M3 within the Per run window."
+    }
+  },
+  "tally": {
+    "base": "3c61d8d795fddd14a3b60cc140bacf0e09fc23d2",
+    "dispatched": 4,
+    "rejected": 1,
+    "rounds": 2,
+    "per_round": {
+      "1": {
+        "dispatched": 3,
+        "rejected": 1
+      },
+      "2": {
+        "dispatched": 1,
+        "rejected": 0
+      }
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "task": "2",
+      "hash": "d868adc69b080cb6689896c8abf3be966aac11c7bf9ca418292be0cd49875f30",
+      "verdict": "fail",
+      "reason": "M3 leg (c) grepped SKILL.md for one Run, one exam, a phrase the skill does not carry at BASE, so the preservation check could only pass if the worker inserted it."
+    }
+  ],
+  "authoring": {
+    "minutes": 38,
+    "probes": 0,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Quote the issue's desired state",
+          "Quote it, but refuse now instead of after a census"
+        ],
+        "recommended": "Quote the issue's desired state",
+        "picked": "Quote the issue's desired state"
+      },
+      {
+        "question": "Execute how",
+        "options": [
+          "Ultrapowers",
+          "Subagent-Driven",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers"
+      }
+    ]
+  }
+}
