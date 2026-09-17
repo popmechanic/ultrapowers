@@ -1,0 +1,102 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "a5fb6afcdf773633235568d3c060b45874fc8657f7777dfac07c9204a6e6abff",
+      "verdict": "pass",
+      "reason": "every clause has a falsifying leg incl. all four gated tools per row and the once-only interrupt; pass on round 2"
+    },
+    "2": {
+      "hash": "08b15c6b1b266ae96bf58c80ea20be80d8592ae400360ba9e8059ee6f5c6499b",
+      "verdict": "pass",
+      "reason": "seven thresholds each boundary-crossed alone, both disjuncts of k, every reader x three null lanes, question sets deep-equal per reader; pass on round 7"
+    },
+    "3": {
+      "hash": "266c4e6b80667d61718c3f1a43a78919502cec195b5b7062e6e9e74814cbb36e",
+      "verdict": "pass",
+      "reason": "legs (a)-(e) falsify M1-M5 incl. both disjuncts of settled and sibling_fact; pass on round 1"
+    },
+    "4": {
+      "hash": "f2f828a946dd2e0de629d3078dfe94758960df05fbe7f2718d7b7c4a822557cf",
+      "verdict": "pass",
+      "reason": "every M2 sentence and the five reply-shape tokens rowed, seven forbidden words per file, git negation; pass on round 2"
+    },
+    "5": {
+      "hash": "3b7423a9f05e682186c502cc4777f51fe6bbafc836ca6655509a12496c701628",
+      "verdict": "pass",
+      "reason": "ordering, exam-copy, computed scores 10.7/11.4 and 10.7/1.4, concurrency hold, row keys, buildDeps both ways, node exit read off a file; pass on round 7"
+    }
+  },
+  "tally": {
+    "base": "76fdc03575e0d561594239917f339a433204637d",
+    "dispatched": 19,
+    "rejected": 14,
+    "passed": 5,
+    "rounds": {
+      "1": 2,
+      "2": 7,
+      "3": 1,
+      "4": 2,
+      "5": 7
+    },
+    "read": "2026-09-17, readers general-purpose foreground, one per task per round"
+  },
+  "authoring": {
+    "minutes": 95,
+    "probes": 0,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Where do the factory inputs reach the build (base)",
+        "options": [
+          "Land the inert files on main first",
+          "First task creates the two files from Context",
+          "Build the engine on the laptop, not the fleet"
+        ],
+        "recommended": "Land the inert files on main first",
+        "picked": "Land the inert files on main first"
+      },
+      {
+        "question": "Claim and summary",
+        "options": [
+          "A: the fixture drives through",
+          "B: the same, engine in the first wave too",
+          "C: engine only, the other four later"
+        ],
+        "recommended": "A: the fixture drives through",
+        "picked": "A: the fixture drives through"
+      },
+      {
+        "question": "File the two comments and merge #1135",
+        "options": [
+          "File both comments and merge #1135",
+          "Merge #1135 only",
+          "Neither yet"
+        ],
+        "recommended": "File both comments and merge #1135",
+        "picked": "File both comments and merge #1135"
+      },
+      {
+        "question": "Execute",
+        "options": [
+          "Ultrapowers",
+          "Subagent-driven",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers"
+      },
+      {
+        "question": "Merge #1136 before launch",
+        "options": [
+          "Merge, re-pin base, then launch",
+          "Launch at 87037f10, merge later"
+        ],
+        "recommended": "Merge, re-pin base, then launch",
+        "picked": "Merge, re-pin base, then launch"
+      }
+    ]
+  }
+}

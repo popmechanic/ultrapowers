@@ -1,0 +1,39 @@
+{
+  "url": "https://kata.int.exe.xyz",
+  "project": {
+    "id": 31,
+    "uid": "01M2HBYF26YQWA0S07E1J3NSGF",
+    "name": "popmechanic-ultrapowers"
+  },
+  "run": {
+    "uid": "01M2RT9Y39TPFS9NVXN72ZTX66",
+    "revision": 1
+  },
+  "tasks": {
+    "1": {
+      "uid": "01M2RT9YXMQC27RAFCPNXB81FW",
+      "short_id": "81fw",
+      "revision": 2
+    },
+    "2": {
+      "uid": "01M2RTA2MB3CEHBWN6X5A58PMG",
+      "short_id": "8pmg",
+      "revision": 2
+    },
+    "3": {
+      "uid": "01M2RTA69M9MEZRYS52KPTYVX4",
+      "short_id": "yvx4",
+      "revision": 2
+    },
+    "4": {
+      "uid": "01M2RTA9WAQQP32GG21AAY6H9M",
+      "short_id": "6h9m",
+      "revision": 2
+    },
+    "5": {
+      "uid": "01M2RTADS05XPAJK4C83GBQ4MQ",
+      "short_id": "q4mq",
+      "revision": 2
+    }
+  }
+}
