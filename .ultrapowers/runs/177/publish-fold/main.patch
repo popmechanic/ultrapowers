@@ -1,0 +1,1868 @@
+diff --git a/fleet/roles/reviewer.md b/fleet/roles/reviewer.md
+index e015e88185d95d726120030ee1e5e1d8842b2e40..2db62926f54977fa364120e2891cc9ae65bf0c1b 100644
+--- a/fleet/roles/reviewer.md
++++ b/fleet/roles/reviewer.md
+@@ -2,7 +2,10 @@ You are a referee: your job is to check that this submission establishes its cla
+ 
+ Your input is the task text and the driver-captured patch at PATCH — the
+ implementer's complete change, diffed against BASE. Do not run git, read any
+-implementer report, or modify anything; output only your verdict.
++implementer report, or modify anything; output only your verdict. You have no
++shell that runs a program — a `python3 -c …` or `node -e …` call is refused —
++so `Read`, `Grep`, `Glob` and read-only `cat`/`wc` are your instruments, and a
++review starts on the diff rather than on a refused command.
+ 
+ 1. Map everything the task requires to a concrete line or test in the diff — its
+    acceptance criteria, or, when the task body carries the six-slot claims
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index fd39bb788d2e7a5544f24ff8ebe0e73d485bcc1c..6cc15354dd00338265594cb8d2817cda28d46713 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -1159,17 +1159,15 @@ const siblingLine = (task, wave, refOf) => {
+     })
+   return sibs.length ? ('\nSIBLING FILES: ' + sibs.join(' | ')) : ''
+ }
+-const taskBodyBlock = (task, wavesPath) => {
+-  const inlineBody = (typeof task.body === 'string' && task.body.trim() !== '')
+-  if (inlineBody) return '\nTASK:\n' + task.body
+-  if (wavesPath) {
+-    return '\nTASK: read your verbatim task text from the JSON file at ' + wavesPath +
+-      ' — in its "tasks" array, find the object whose "id" is "' + task.id +
+-      '" and use that object\'s "body" field as the authoritative task text. Do ' +
+-      'not paraphrase it; that entry also lists your declared file scope.'
+-  }
+-  return '\nTASK:\n' + (typeof task.body === 'string' ? task.body : '')
+-}
++// One branch, because by the time this renders every task HAS a body: the
++// launch file is loaded once at the top of `runEngine` (see `hydrateBodies`
++// below) and a task still without one throws there, before any dispatch. The
++// second branch this had until #1100 handed the worker a pointer at the launch
++// file instead of the text, and only the write-side roles could follow it —
++// the reviewer runs `dontAsk`, where running `python3` on a JSON file is not a
++// read-only Bash command and was refused. It is deleted rather than kept as a
++// fallback so that no path can put a pointer in a prompt again.
++const taskBodyBlock = (task) => '\nTASK:\n' + (typeof task.body === 'string' ? task.body : '')
+ // The critic's contracts block (2026-09-01) stood here: every task's signed
+ // body and the compiler's edges, rendered for the one agent that read the
+ // integrated tree. Deleted with that agent (#964 Task 2) — the composition
+@@ -2365,6 +2363,46 @@ export async function runEngine({
+     return undefined
+   })()
+   const wavesPath = (typeof args.wavesPath === 'string' && args.wavesPath.trim()) || undefined
++  // ── the bodies, loaded once (#1100) ────────────────────────────────────────
++  // The compiler's `--emit-args` payload is LIGHT: `{ id, title, files,
++  // depends_on, interfaces, tier, review, … }` and no `body`. Every task's text
++  // is written only to the `--emit-launch` file, which the driver hands over as
++  // `args.wavesPath` — so on a fleet run the check above passes a body-less
++  // task through, and until #1100 each worker was handed a pointer at that file
++  // and had to open it for itself. The engine opens it instead, here, once for
++  // the whole run: every prompt then carries the text inline, which is the one
++  // form all four roles can read regardless of what their permission mode lets
++  // them run. `wavesPath` itself is unchanged by this — it is still the
++  // resolver's pointer in `waveContendingBlock`, still an `args.json` key, and
++  // still what `makeAddDirsFor` scopes `patches/` with.
++  if (wavesPath) {
++    let launch
++    try {
++      launch = JSON.parse(fs.readFileSync(wavesPath, 'utf8'))
++    } catch {
++      launch = null
++    }
++    const byId = new Map()
++    const rows = (launch && Array.isArray(launch.tasks)) ? launch.tasks : []
++    for (const row of rows) {
++      if (row && typeof row.id === 'string') byId.set(row.id, row)
++    }
++    for (const w of WAVES) for (const t of w) {
++      if (typeof t.body === 'string' && t.body.trim() !== '') continue
++      const row = byId.get(t.id)
++      if (row && typeof row.body === 'string' && row.body.trim() !== '') t.body = row.body
++    }
++  }
++  // A task with no body is malformed the same way one missing from `args.waves`
++  // is, and it fails here for the same reason: a worker handed an empty `TASK:`
++  // block has nothing to implement, and finding that out at dispatch costs a
++  // whole round. This is the body half of the input check above, moved to where
++  // the launch file has been read.
++  for (const w of WAVES) for (const t of w) {
++    if (typeof t.body === 'string' && t.body.trim() !== '') continue
++    throw new Error('run-engine: task ' + t.id + ' has no body: not inline in args.waves ' +
++      'and not in ' + (wavesPath || '(no args.wavesPath given)'))
++  }
+   // Patch input is the ONLY input shape here (Amendment 9): the value is the
+   // driver-owned patches directory, the trust anchor for reply patches.
+   const patchPrefix = (typeof args.patchInput === 'string' && args.patchInput.charAt(0) === '/')
+@@ -3117,7 +3155,7 @@ export async function runEngine({
+     // and TASK blocks. What differs is only what each is measured by — the
+     // examiner's TEST COMMAND, the implementer's PROOFS.
+     const sharedInputs = filesLine(task) + siblingsStr +
+-      globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task, wavesPath)
++      globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task)
+     // The examiner's line is the remapped command; a task with no command of
+     // its own falls back to the run-wide one exactly as it did.
+     const examCmdTask = examRunCmd ? { testCmd: examRunCmd } : task
+@@ -4061,7 +4099,7 @@ export async function runEngine({
+         reds.map((r) => r.line).join('; ') + ') — one repair round before any reviewer read the patch')
+       await postReviewRound(kataRow, 0, reds.map((r) => r.line))
+       impl = await agent(
+-        roles.fix + taskBodyBlock(task, wavesPath) + proofsInputs +
++        roles.fix + taskBodyBlock(task) + proofsInputs +
+           filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) +
+           '\n\nBlocking issues to resolve:\n' +
+           reds.map((r) => '- ' + r.line + '\n  output (last 4,000 characters):\n' + r.stdout).join('\n'),
+@@ -4304,7 +4342,7 @@ export async function runEngine({
+                  tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
+                  ...examEditedField() }
+       }
+-      const reviewPrompt = roles.reviewer + taskBodyBlock(task, wavesPath) +
++      const reviewPrompt = roles.reviewer + taskBodyBlock(task) +
+         '\nPATCH: ' + impl.patch +
+         '\nHEAD: ' + impl.headSha +
+         '\nBASE: ' + baseShaForTask + filesLine(task) + siblingsStr +
+diff --git a/fleet/run-main.mjs b/fleet/run-main.mjs
+index 146fae0bb2104a2afd5edc38f0952c1454e65a2d..5f0f2cda10b01f16544f3366799e55238e9326b6 100644
+--- a/fleet/run-main.mjs
++++ b/fleet/run-main.mjs
+@@ -488,10 +488,12 @@ export function kataRefFor(record, label) {
+ }
+ 
+ // ── --add-dir scope, per role (measured 2026-08-31) ──────────────────────────
+-// A read-only worker's cwd is `<runDir>/clones/integration`, but the two things
+-// its prompt tells it to read — `wavesPath` (launch.json, where compile_plan
+-// puts every task body by design) and `patches/` — live in `<runDir>`, a
+-// PARENT. Under `dontAsk`, read-only Bash is permitted as a class but only IN
++// A read-only worker's cwd is `<runDir>/clones/integration`, but what its
++// prompt tells it to read — `patches/` — lives in `<runDir>`, a PARENT. (Until
++// #1100 `wavesPath` was the other one: the prompt pointed at launch.json and
++// the worker had to open it for the task body. The engine reads that file once
++// now and hands the body inline, so only `patches/` is left; the grant stays
++// for it.) Under `dontAsk`, read-only Bash is permitted as a class but only IN
+ // SCOPE, so those reads were denied: five consecutive runs of `cannotVerify`
+ // entries that became deferred acks and parked the run. `--add-dir` is what
+ // puts a parent in scope, and it reaches Bash, not just the file tools
+diff --git a/fleet/run-worker.mjs b/fleet/run-worker.mjs
+index 24e876d1683ce5a327eb175478c1e9b4dd202e7c..9ebcc3c12d537bc779af88b9166810127f93acff 100644
+--- a/fleet/run-worker.mjs
++++ b/fleet/run-worker.mjs
+@@ -85,10 +85,11 @@ import path from 'node:path'
+ // decision: `addDirsFor` was never supplied to createRunWorker, so the
+ // `--add-dir` push below was dead code. Fixed by composeAgent supplying it.
+ //
+-// Bodies CANNOT be inlined instead: compile_plan's `--emit-args` requires
+-// `--emit-launch` precisely "so wavesPath is always populated" — task bodies
+-// ride the launch file by design and never the prompt. Reading it is the
+-// contract, so the run dir must be in scope.
++// Since #1100 the body half of that is gone: the engine opens the launch file
++// itself, once per run, and hands each worker its task's text inline, so no
++// prompt asks anyone to go and open a JSON file. `patches/` is what the
++// `--add-dir` grant is still for — a reviewer reads reply patches out of
++// `<runDir>`, which is still a parent of its cwd.
+ //
+ // bypassPermissions does NOT path-gate (arm F), so the write-side roles need no
+ // `--add-dir` and are deliberately given none: read reach they do not need is
+diff --git a/fleet/sandbox-boot.sh b/fleet/sandbox-boot.sh
+index f9aecffff7b1048b8aa1af7b29ddf0d3d9bf65ef..aaf20c940c19840a4d115de43493028808ede12c 100755
+--- a/fleet/sandbox-boot.sh
++++ b/fleet/sandbox-boot.sh
+@@ -125,6 +125,15 @@ ANTHROPIC_PROXY_URL="https://claude-max.int.exe.xyz"
+ # `FLEET_BIN_DIR` do — so a sim can pin the address inside its own home — and
+ # the literal is the production value.
+ KATA_URL="${FLEET_KATA_URL:-https://kata.int.exe.xyz}"
++# TypeSafe's classifier, behind the same exe.dev auth proxy and for the same
++# reason: the client sends NO `Authorization` header of its own — the edge
++# injects the bearer, exactly as it does for `claude-max` and for kata — so no
++# key of TypeSafe's is on this box, in this script, in any argv it builds or in
++# any environment it exports. `FLEET_TYPESAFE_URL` is `FLEET_KATA_URL`'s
++# knob, so a sim can pin the address inside its own home, and the literal is
++# the production value. HTTPS ONLY: the http form of an `int.exe.xyz` host
++# answers a 301, and a followed 301 turns a POST into a GET (run-110).
++TYPESAFE_URL="${FLEET_TYPESAFE_URL:-https://typesafe.int.exe.xyz}"
+ # The plan's path inside the plan commit's tree, and the run's directory inside
+ # the evidence commit's. Both are `.ultrapowers/`, never `.claude/`.
+ PLAN_BLOB_PATH=".ultrapowers/plan.md"
+@@ -146,6 +155,15 @@ KATA_EXPORT_FILE="kata.jsonl"
+ # one JSON object per residual, written beside the two documents it is read
+ # from. The run's residuals leave the box on the record and nowhere else.
+ RESIDUALS_FILE="residuals.jsonl"
++# The classifier's answers, beside the ledger they are written into: one line
++# per request this run has EVER made, whether it answered or failed. The cache
++# is what makes the request count one per item per run — `collect_evidence`
++# runs at every transition after the engine ends, and the ledger is a union
++# compared whole line by whole line, so a row whose `jev` appeared between two
++# transitions would be written twice and a row asked again would cost a request
++# per transition. A failed line is never retried for the same reason: the row's
++# triage is lost for the run, which is the experiment's cost and not the run's.
++RESIDUALS_JEV_FILE="residuals-jev.jsonl"
+ 
+ # Poll cadences. The defaults are the contract's; the tests set them to 0 so the
+ # whole state machine runs in a second.
+@@ -1710,6 +1728,11 @@ collect_evidence() {
+   # repair round shrank — stays on the record, and re-reading the same record
+   # adds nothing. Built in a sibling file and moved over, so the file is never
+   # read as its own pattern list while it is being written.
++  #
++  # ASKED BEFORE IT IS WRITTEN: every item the classifier has not already
++  # answered for this run is asked now, so the row this transition writes
++  # carries its `jev` the first time it is written and never changes after.
++  residual_jev || true
+   rows="$(residual_rows || true)"
+   if [ -n "$rows" ]; then
+     if [ -s "$dest/$RESIDUALS_FILE" ]; then
+@@ -2165,23 +2188,32 @@ plan_closes() {
+ # Every item is ONE line: a newline inside a detail becomes a space, or the
+ # checklist would grow lines no reader could tick.
+ #
+-# TWO RENDERINGS, ONE READER. The same items go out twice — as the card's
+-# `- [ ] <name> — <text>` checklist, which a merge closes with the PR, and as
+-# `residuals.jsonl` on the evidence branch, which nothing closes. A second
+-# parser of the same two documents would be a second answer to the same
+-# question, so the mode is an argument and the walk above it is shared.
+-residual_read() { # $1 = `checklist` | `rows`
++# THREE RENDERINGS, ONE READER. The same items go out three ways — as the
++# card's `- [ ] <name> — <text>` checklist, which a merge closes with the PR;
++# as `residuals.jsonl` on the evidence branch, which nothing closes; and as the
++# `jev` worklist `residual_jev` makes its requests from. A second parser of the
++# same two documents would be a second answer to the same question, so the mode
++# is an argument and the walk above it is shared.
++#
++# `checklist` is the card's, and makes no request and reads no answer: the
++# card renders exactly what it rendered before Jev was asked anything.
++residual_read() { # $1 = `checklist` | `rows` | `jev`
+   local dest
+   dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
+   # The em dash is written `—` and the lines go out as UTF-8 bytes: this
+   # runs under whatever locale the unit inherited, and a `C` one would other-
+   # wise refuse to read the detail it is quoting.
+-  python3 -c '
+-import json, re, sys
++  #
++  # The program rides a QUOTED HEREDOC and not `-c '...'`: the classifier's
++  # questions below are quoted verbatim from the plan and carry apostrophes,
++  # and a single-quoted argument cannot hold one. Nothing here reads stdin.
++  python3 - "$1" "$dest/gate-receipt.json" "$dest/report.json" "$RUN_ID" "$BASE_SHA" \
++    "$PLAN_FILE" "$dest/$RESIDUALS_JEV_FILE" <<'RESIDUAL_READ'
++import hashlib, json, re, sys
+ 
+ DASH = " — "
+ 
+-MODE, RECEIPT, REPORT, RUN_ID, BASE_SHA = sys.argv[1:6]
++MODE, RECEIPT, REPORT, RUN_ID, BASE_SHA, PLAN, JEV = sys.argv[1:8]
+ 
+ # The evidence a residual points at, when its text names one: the first
+ # whitespace-delimited token carrying a `/` that reads as a repo-relative path
+@@ -2223,6 +2255,186 @@ def evidence(text):
+         return (token[: -(len(at) + 1)], int(at)) if at else (token, None)
+     return None, None
+ 
++# THE QUESTIONS, verbatim and in one place: the five the classifier is asked
++# about every residual, and the whole of what `jev` mode sends. `status` and
++# `subject` are TWO questions and not one — an answer that folded them would
++# say a thing was unverified without saying what about.
++QUESTIONS = {
++    "status": {
++        "type": "choice",
++        "instructions": {
++            "question": "Did the referee settle the requirement finding.text is about, from the diff alone? Classify the finding's status, not its severity.",
++            "context": "The finding was written by a code referee about task. A referee that says it could not check a thing has not settled it.",
++        },
++        "criteria": {
++            "verified": "The referee saw the thing in the diff and judged it: a defect it found, a nit it raised, or a note that a thing is fine",
++            "unverified": "The referee says it could not settle the requirement from the diff alone: the behaviour needs a runtime, a network, a browser, a person, or a system the sandbox lacks",
++            "deferred": "The referee, or the gate, put the item off to a later run or to a person outside this run: an external dependency, a hand check, a follow-up owed",
++        },
++    },
++    "subject": {
++        "type": "choice",
++        "instructions": {
++            "question": "What is finding.text about? Classify the subject, not who must act.",
++            "context": "The finding was written by a code referee about task, whose Claim, Machine clauses and Files are given.",
++        },
++        "criteria": {
++            "plan text": "The task text itself: its Claim, a Machine clause, its Files set, or a sentence that is wrong, self-contradictory, names something that does not exist, or asks for what no implementation can satisfy",
++            "proof leg": "A Proof leg, a Run or Check line, a mutant, or what the exam was asked to establish",
++            "exam file": "The peer exam's own code: what it asserts, what it misses, how it is written",
++            "implementation": "The code as written does the wrong thing, misses a case, or contradicts a Machine clause, and the referee saw it in the diff",
++            "footprint": "The diff touches a path the task did not list in Files, or leaves a listed path untouched, and the finding is about that footprint",
++            "quality": "Duplication, naming, dead code, structure, comments, or readability, with no behavioural consequence named",
++        },
++    },
++    "actor": {
++        "type": "choice",
++        "instructions": {
++            "question": "Who would have to act to resolve finding.text?",
++            "context": "The implementer can only edit paths in task.files. The plan author owns the task text (Claim, Machine clauses, Files, Proof). The examiner owns the exam file.",
++        },
++        "criteria": {
++            "implementer": "An edit inside task.files by the implementer resolves it",
++            "plan": "Only a change to the task text, its Files set, or its Proof resolves it; no edit inside task.files can",
++            "examiner": "Only a change to the exam or a Proof leg resolves it",
++            "nobody": "It is an observation, a deferral, or already resolved; nothing needs doing",
++        },
++    },
++    # Four levels, in this order, so the score runs 0 to 3 and a reader of the
++    # number knows which end is which.
++    "attention": {
++        "type": "score",
++        "instructions": {
++            "question": "If finding.text were one line on a pull request card, how likely is it that a maintainer would act on it?",
++            "focus": "Judge whether the finding names something worth a follow-up, not whether it is well written.",
++        },
++        "criteria": [
++            {"what": "Ignore: praise, a restatement of what the diff does, or a resolved note",
++             "signals": ["records that a thing is fine", "no request or defect named"]},
++            {"what": "Worth a glance: a nit or observation a maintainer may or may not pick up",
++             "signals": ["style", "naming", "duplication", "a hedge"]},
++            {"what": "Act before the next run: a real gap, a deferral that needs a hand check, or a plan text error to fix",
++             "signals": ["a named unverified behaviour", "a plan contradiction", "a missing case"]},
++            {"what": "Act before merge: a defect that makes the claim false or risks the tree",
++             "signals": ["wrong behaviour", "data loss", "a constraint violated"]},
++        ],
++    },
++    "claim_false": {
++        "type": "noul",
++        "instructions": "Taken at face value, does finding.text describe a defect that would make task.claim false as delivered?",
++        "criteria": {
++            "true": "If the finding is right, the claim is not established",
++            "false": "The claim could still hold; the finding is about something else",
++        },
++    },
++}
++
++# The provenance tag a task Claim closes with, and the task heading — the same
++# two `card_head`'s `task_claims` reads, because a second reading of the plan
++# would be a second answer to the same question.
++TAG = re.compile(r"\s*\((?:elicited|derived|quoted from #[0-9]+)\)\s*$", re.I)
++TASK_HEAD = re.compile(r"^### Task ([^:]+):")
++# What the classifier is told about the task, bounded: a Machine line is one
++# line however many clauses it carries, and a plan with a long one must not
++# make the request the longest thing the boot sends.
++MACHINE_MAX = 4000
++
++
++def plan_tasks():
++    """`{id: {"title", "claim", "machine", "files"}}`, in plan order.
++
++    An absent or unreadable plan answers `{}`, and a row whose task is not in
++    it sends `null` — the classifier is told what the plan says or nothing."""
++    out = {}
++    try:
++        with open(PLAN, encoding="utf-8", errors="replace") as fh:
++            lines = fh.read().split("\n")
++    except Exception:
++        return out
++    here = None
++    listing_files = False
++    for line in lines:
++        found = TASK_HEAD.match(line)
++        if found:
++            here = {"title": line.partition(":")[2].strip(),
++                    "claim": "", "machine": "", "files": []}
++            out[found.group(1).strip()] = here
++            listing_files = False
++            continue
++        if here is None:
++            continue
++        text = line.strip()
++        if listing_files:
++            if text.startswith("- "):
++                here["files"].append(text)
++                continue
++            if not text:
++                continue
++            listing_files = False
++        if text.startswith("**Claim:**") and not here["claim"]:
++            here["claim"] = TAG.sub("", text[len("**Claim:**"):].strip()).strip()
++        elif text.startswith("Machine:") and not here["machine"]:
++            here["machine"] = text[len("Machine:"):].strip()[:MACHINE_MAX]
++        elif text.startswith("**Files:**"):
++            listing_files = True
++    return out
++
++
++def key_of(name, text):
++    """The cache key of one item: sha256 of `<name>\\n<text>`.
++
++    Keyed on what the request SAYS and not on where the item sat, so the same
++    finding read twice out of two transitions' reports is one request."""
++    return hashlib.sha256((name + "\n" + text).encode("utf-8")).hexdigest()
++
++
++def cached():
++    """`{key: line}` for every request this run has already made."""
++    out = {}
++    try:
++        with open(JEV, encoding="utf-8") as fh:
++            for line in fh:
++                try:
++                    doc = json.loads(line)
++                except Exception:
++                    continue
++                if isinstance(doc, dict) and isinstance(doc.get("key"), str):
++                    out[doc["key"]] = doc
++    except Exception:
++        return out
++    return out
++
++
++def jev_of(doc):
++    """The row's `jev` from its cached reply, or `None`.
++
++    `None` is the ABSENT key and never a null one: a request that failed, or
++    answered a shape this cannot read, leaves the row exactly as BASE wrote
++    it."""
++    if not isinstance(doc, dict):
++        return None
++    answers = doc.get("answers")
++    if not isinstance(answers, dict):
++        return None
++    try:
++        return {
++            "actor": answers["actor"]["choice"],
++            "attention": answers["attention"]["score"],
++            "claim_false": answers["claim_false"]["noul"],
++            "confidence": {
++                "actor": answers["actor"]["confidence"],
++                "status": answers["status"]["confidence"],
++                "subject": answers["subject"]["confidence"],
++            },
++            "kind": {
++                "status": answers["status"]["choice"],
++                "subject": answers["subject"]["choice"],
++            },
++            "model": doc.get("model"),
++        }
++    except Exception:
++        return None
++
+ # One tuple per residual: the checklist name, the one-line text, the kind a
+ # triager sorts on, and the task it belongs to (`None` for the items no single
+ # task owns).
+@@ -2259,10 +2471,11 @@ for row in listing(report, "tasks"):
+ if MODE == "rows":
+     # Keys sorted, so a row is one shape however it was built, and one object
+     # per line: the ledger is read by `while read`, not by a JSON parser.
++    answered = cached()
+     out = ""
+     for name, text, kind, task in items:
+         where, at = evidence(text)
+-        out += json.dumps({
++        row = {
+             "file": where,
+             "kind": kind,
+             "line": at,
+@@ -2270,17 +2483,103 @@ if MODE == "rows":
+             "sha": BASE_SHA,
+             "task": task,
+             "text": text,
+-        }, sort_keys=True) + "\n"
++        }
++        got = jev_of(answered.get(key_of(name, text)))
++        if got is not None:
++            row["jev"] = got
++        out += json.dumps(row, sort_keys=True) + "\n"
++elif MODE == "jev":
++    # The worklist: `<key>\t<name>\t<payload>`, one line per item the cache
++    # does not already answer — a line it carries is never asked again,
++    # whether that request succeeded or failed. The payload is `json.dumps`
++    # with `ensure_ascii`, so it holds no tab and no newline of its own and
++    # rides one argv word to `fleet_curl`.
++    answered = cached()
++    out = ""
++    tasks = plan_tasks()
++    for name, text, _, task in items:
++        key = key_of(name, text)
++        if key in answered:
++            continue
++        answered[key] = {}
++        where, at = evidence(text)
++        body = json.dumps({
++            "state": {
++                "task": tasks.get(task) if task is not None else None,
++                "finding": {"text": text, "file": where, "line": at},
++            },
++            "model": "jev-latest",
++            "questions": QUESTIONS,
++        })
++        out += key + "\t" + name + "\t" + body + "\n"
+ else:
+     out = "".join("- [ ] " + name + DASH + text + "\n" for name, text, _, _ in items)
+ sys.stdout.buffer.write(out.encode("utf-8"))
+-' "$1" "$dest/gate-receipt.json" "$dest/report.json" "$RUN_ID" "$BASE_SHA"
++RESIDUAL_READ
+ }
+ 
+ # The card's checklist, and the record's ledger.
+ residual_items() { residual_read checklist; }
+ residual_rows() { residual_read rows; }
+ 
++# EVERY RESIDUAL, ASKED ONCE, THROUGH THE EDGE. One `fleet_curl` POST per item
++# the cache does not already carry — no `Authorization` header and no bearer of
++# any kind, because the exe.dev integration injects it at the edge exactly as
++# it does for `claude-max` and for kata, and `--max-time 10` because the
++# measured reply is 300 ms and a classifier that has gone away must not hold a
++# transition.
++#
++# NOTHING HERE GATES ANYTHING. The answers land in the cache and, through it,
++# beside the boot's own `kind` on the ledger; the card's checklist is rendered
++# from `checklist` mode, which reads none of this. A run whose every request
++# fails publishes the same pull request, byte for byte, as one whose requests
++# all answered — the failures are three words in the boot log and an absent
++# `jev` key.
++#
++# The worklist is written to a file under `$FLEET_HOME` rather than piped: a
++# `while read` at the end of a pipeline runs in a subshell, and the log lines
++# and the appends below belong to the boot. Every step is `|| true`-tolerant,
++# the way the ledger write below it is — the record is evidence, never control
++# flow.
++residual_jev() {
++  local dest ask key name payload reply code line
++  dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
++  ask="$FLEET_HOME/.residuals-jev.ask"
++  residual_read jev >"$ask" 2>/dev/null || : >"$ask"
++  while IFS="$(printf '\t')" read -r key name payload; do
++    [ -n "$key" ] && [ -n "$payload" ] || continue
++    code=0
++    # The answer is wanted on stdout, so it is captured rather than dropped —
++    # the kata close's POST, otherwise, down to the flags.
++    reply="$(fleet_curl -fsS --max-time 10 -X POST -H 'content-type: application/json' \
++      -d "$payload" "$TYPESAFE_URL/v1/systemone" 2>/dev/null)" || code=$?
++    [ "$code" = 0 ] || log "jev: $name — curl exit $code"
++    # The cache line, keys sorted: the reply's `answers`, `model` and `usage`,
++    # or nulls and the `error` that says why there are none.
++    line="$(printf '%s' "$reply" | JEV_KEY="$key" JEV_CODE="$code" python3 -c '
++import json, os, sys
++
++code = os.environ["JEV_CODE"]
++try:
++    doc = json.loads(sys.stdin.read())
++except Exception:
++    doc = {}
++if not isinstance(doc, dict):
++    doc = {}
++sys.stdout.write(json.dumps({
++    "answers": doc.get("answers"),
++    "error": None if code == "0" else "curl exit " + code,
++    "key": os.environ["JEV_KEY"],
++    "model": doc.get("model"),
++    "usage": doc.get("usage"),
++}, sort_keys=True))
++')" || line=""
++    [ -n "$line" ] || continue
++    printf '%s\n' "$line" >>"$dest/$RESIDUALS_JEV_FILE"
++  done <"$ask"
++  rm -f "$ask"
++}
++
+ # The receipt as the `### Checks` fence shows it: the document the engine wrote,
+ # byte for byte, except that a `gateCheck.acks` array is dropped.
+ #
+diff --git a/fleet/tests/README.md b/fleet/tests/README.md
+index cba813f53de26aaa686ec10cbc5475e40d235677..c5fec422fd7a3bbb92a04bfbcc0be304f9f1f138 100644
+--- a/fleet/tests/README.md
++++ b/fleet/tests/README.md
+@@ -82,6 +82,9 @@ one sim per question:
+   issue always carries evidence, built from the PR URL and the merged sha.
+ - `test_sandbox_boot_amendments.mjs` — the pull request body lists every
+   amendment by task, above the folded record.
++- `test_sandbox_boot_residuals.mjs` — the boot asks TypeSafe's classifier about
++  every residual row, once, through the edge and with no credential of its own,
++  and writes the answers beside its own `kind` on the ledger.
+ - `test_sandbox_boot_card_cells.mjs` — the PR card says which task no reviewer
+   read, rendered inside the existing mutant cell rather than a new column.
+ - `test_sandbox_boot_publish_record.mjs` — the page records the disclosures
+diff --git a/fleet/tests/_sandbox_boot_helpers.mjs b/fleet/tests/_sandbox_boot_helpers.mjs
+index c4f375e2a874ee778901fa59dfdf2263a1d3ec0b..5afac6083eb2eba9309d4e55a450daadca7fbb2a 100644
+--- a/fleet/tests/_sandbox_boot_helpers.mjs
++++ b/fleet/tests/_sandbox_boot_helpers.mjs
+@@ -203,6 +203,30 @@ export const ASSIGNMENT =
+   `run=7 plan=${PLAN_SHA} target=${TARGET} base=${BASE_SHA} engine=${ENGINE_SHA} ` +
+   'tier=mostCapable'
+ 
++/**
++ * What the TypeSafe arm answers when no case gives it a reply of its own: all
++ * five questions answered, in the shape the reference documents — two `choice`
++ * answers with their `probabilities` and `confidence`, one `score` with its
++ * `legend`, one `noul`.
++ *
++ * `attention` is `0.8` deliberately: under the card's 2.5 threshold, so the
++ * green boot every sim memoizes grows a `jev` on its rows and no `Act on
++ * these` section on its card.
++ */
++export const TYPESAFE_REPLY = '{"model":"jev-1.13.0","answers":{'
++  + '"status":{"type":"choice","choice":"verified","probabilities":'
++  + '{"verified":0.9,"unverified":0.06,"deferred":0.04},"confidence":0.88},'
++  + '"subject":{"type":"choice","choice":"quality","probabilities":'
++  + '{"plan text":0.02,"proof leg":0.02,"exam file":0.02,"implementation":0.04,'
++  + '"footprint":0.02,"quality":0.88},"confidence":0.86},'
++  + '"actor":{"type":"choice","choice":"nobody","probabilities":'
++  + '{"implementer":0.05,"plan":0.03,"examiner":0.02,"nobody":0.9},"confidence":0.88},'
++  + '"attention":{"type":"score","score":0.8,"legend":'
++  + '{"0":"ignore","1":"glance","2":"before next run","3":"before merge"},'
++  + '"probabilities":{"0":0.4,"1":0.45,"2":0.1,"3":0.05},"confidence":0.5},'
++  + '"claim_false":{"type":"noul","noul":0.05}},'
++  + '"usage":{"input_tokens":290,"output_tokens":21}}'
++
+ // ── stub bin dir ─────────────────────────────────────────────────────────────
+ 
+ export const STUBS = {
+@@ -402,6 +426,42 @@ case "$url" in
+         emit "{\\"events\\":[],\\"next_after_id\\":$after,\\"reset_required\\":false}" ;;
+     esac
+     exit \${STUB_KATA_EVENTS_EXIT:-0} ;;
++  *typesafe.int.exe.xyz/v1/systemone)
++    # THE CLASSIFIER, asked once per residual. The payload lands in
++    # typesafe.log, one line per POST, so a leg can read the state and the
++    # questions the boot sent without unpicking the argv log.
++    #
++    # THREE KNOBS, in the order they are consulted. STUB_TYPESAFE_EXIT is the
++    # curl exit a classifier that is not there answers with — it emits NOTHING,
++    # the way a curl that never connected does. STUB_TYPESAFE_ANSWERS is a file
++    # of \`<needle><TAB><reply JSON>\` lines, and the reply is the FIRST line
++    # whose needle is a substring of this payload, which is how a case gives
++    # fourteen rows fourteen different answers off one stub.
++    # STUB_TYPESAFE_ANSWER is one reply for every row. With none of them set the
++    # arm answers the default below: \`verified\`/\`quality\`/\`nobody\` at
++    # attention 0.8 — under the card's threshold, so a sim that does not ask for
++    # a card section never renders one.
++    #
++    # The tab is read with \`IFS\` off a \`printf\`: this stub is \`#!/bin/sh\`,
++    # where a bash \`$'\\t'\` is four literal characters.
++    say "curl typesafe"; printf '%s\\n' "$payload" >>"$FLEET_HOME/typesafe.log"
++    if [ -n "\${STUB_TYPESAFE_EXIT:-}" ] && [ "\${STUB_TYPESAFE_EXIT}" != 0 ]; then
++      exit \${STUB_TYPESAFE_EXIT}
++    fi
++    reply=""
++    if [ -n "\${STUB_TYPESAFE_ANSWERS:-}" ] && [ -f "$STUB_TYPESAFE_ANSWERS" ]; then
++      tab=$(printf '\\t')
++      while IFS="$tab" read -r needle answer; do
++        [ -n "$needle" ] || continue
++        case "$payload" in
++          *"$needle"*) reply="$answer"; break ;;
++        esac
++      done <"$STUB_TYPESAFE_ANSWERS"
++    fi
++    [ -n "$reply" ] || reply="\${STUB_TYPESAFE_ANSWER:-}"
++    [ -n "$reply" ] || reply='${TYPESAFE_REPLY}'
++    emit "$reply"
++    exit \${STUB_TYPESAFE_EXIT:-0} ;;
+   *) say "curl UNKNOWN $url"; exit 22 ;;
+ esac
+ `,
+diff --git a/fleet/tests/test_run_engine_own_proofs.mjs b/fleet/tests/test_run_engine_own_proofs.mjs
+index 6ee2703518b4eb47bd1d837669f9d98d20bb0a5a..96c8e10c21e31a4a71850fb4644d5ac36571d014 100644
+--- a/fleet/tests/test_run_engine_own_proofs.mjs
++++ b/fleet/tests/test_run_engine_own_proofs.mjs
+@@ -63,6 +63,12 @@
+ // `── Task 3 (2026-09-17) ──` further down. Everything above that marker is
+ // this file as it stood at that task's BASE, unchanged: its leg (a) is the
+ // `TEST COMMAND` half of S4 below, which is why S4 is left where it is.
++//
++// A THIRD task's clauses were added on 2026-09-17 under the next marker down,
++// `── Task 1 (2026-09-17, #1100) ──` — "the engine reads each task's body from
++// the launch file once and hands it inline to every worker" — whose own M1–M5
++// and legs (a)–(e) are restated there. Everything above THAT marker is this
++// file as it stood at that task's BASE, unchanged.
+ import assert from 'node:assert/strict'
+ import fs from 'node:fs'
+ import os from 'node:os'
+@@ -729,4 +735,311 @@ const plantSlice = (runDir, { label, sessionId, cmds }) => {
+     'already holds one')
+ }
+ 
++// ═══ Task 1 (2026-09-17, #1100) ═══════════════════════════════════════════════
++// "The engine reads each task's body from the launch file once and hands it
++// inline to every worker." Claim: do: launch a plan whose task bodies ride the
++// launch file, as every launch does; see: each of a task's four workers — its
++// implementer, its examiner, its fix round and, first among them, its reviewer
++// — is handed `TASK:` followed by the task's own text, and none of those four
++// is told to go and read that text out of a JSON file; the resolver's brief
++// over a conflicted wave is not one of the four and still names the file
++// exactly as it did.
++//
++// The clauses this section carries, and the legs that carry them:
++//
++//   M1 — for a task whose `args.waves` entry carries no `body` and whose text
++//        lives under `tasks[].body` in the JSON file at `args.wavesPath`, each
++//        of the four prompts the engine dispatches for that task — labels
++//        `impl:<id>`, `exam:<id>`, `fix:<id>:0` and `review:<id>:1` — contains
++//        the string `\nTASK:\n` immediately followed by that task's `body`
++//        string from the file, byte for byte. Leg (a).
++//   M2 — no prompt the engine dispatches contains the phrase `read your
++//        verbatim task text from the JSON file`, and `fleet/run-engine.mjs`
++//        contains no line carrying the phrase `read your verbatim task text`.
++//        Leg (b).
++//   M3 — a task whose `body` is inline in its `args.waves` entry, with no
++//        `args.wavesPath` given, is dispatched with the same `\nTASK:\n`
++//        followed by that body in its implementer and reviewer prompts. Leg (c).
++//   M4 — when `args.wavesPath` names a file whose `tasks` array carries no
++//        entry for a task and that task's `args.waves` entry carries no `body`,
++//        `runEngine` rejects before any worker is dispatched, with an error
++//        message naming the task id and the path. Leg (d).
++//   M5 — `waveContendingBlock({ waveTasks, wavesPath, receipts })` renders
++//        exactly as at BASE: the resolver brief sim prints `ALL TESTS PASSED`
++//        on the patched tree. Leg (e).
++//
++// Four readings, recorded here and on the kata issue:
++//
++//   Leg (a)'s "byte for byte". Asserted as `prompt.includes('\nTASK:\n' +
++//   LAUNCH_BODY)` — the clause's own words, a substring of the prompt with the
++//   separator immediately before it — one label at a time, so a failure names
++//   WHICH of the four workers was still handed a pointer. `LAUNCH_BODY` ends in
++//   a newline and the launch file carries a DECOY entry ahead of the task's
++//   own, so neither a trimmed body nor a `tasks[0]` read can satisfy it: M1
++//   says the body string from the file, for that task's id.
++//
++//   Leg (b)'s two halves. The per-prompt half reads the full phrase `read your
++//   verbatim task text from the JSON file` on every prompt of BOTH runs — S13's
++//   four and S14's — because M2 says NO prompt the engine dispatches carries
++//   it, not just the four of the body-less run. The source half transliterates
++//   the Proof's first `Run:` (`test "$(grep -c 'read your verbatim task text'
++//   fleet/run-engine.mjs)" = 0`) as: zero LINES of `fleet/run-engine.mjs`
++//   contain the shorter phrase — `grep -c` counts lines, and a comment line
++//   that quotes the phrase is as much a hit as the code that renders it.
++//
++//   Leg (d)'s "the stub recorded no label at all". M4 says the rejection comes
++//   BEFORE any worker is dispatched, so S15's stub does NOT throw on an
++//   unexpected dispatch: it records its label and returns the benign reply its
++//   kind would. At BASE, where nothing rejects, the failure is then
++//   `assert.rejects` finding no rejection — not a stub error whose own text
++//   happens to contain `T3` and would read as a spurious pass.
++//
++//   Leg (e). The Proof's second `Run:` executes `test_resolver_brief.mjs` in
++//   the driver's own clone; an exam neither runs a sibling sim nor names one,
++//   so this block pins the one half that is its own to check:
++//   `waveContendingBlock` is PURE and exported, so its BASE render is asserted
++//   here by equality against the literal string — the `wavesPath` sentence
++//   included, which is the thing M5 protects. Whether the sim that `Run:` line
++//   invokes is present and green is that command's own answer, given in the
++//   driver's clone; a sim of this tree may not name a sibling sim even to check
++//   that it exists (`test_sims_are_hermetic.mjs`, leg (e) [M4]).
++const PHRASE = 'read your verbatim task text from the JSON file'
++const PHRASE_SHORT = 'read your verbatim task text'
++// The task text as the compiler's `--emit-launch` file carries it: multi-line,
++// with the backticks and quotes a real body has, and a trailing newline.
++const LAUNCH_BODY = '### Task T1: the body rides the prompt\n' +
++  '\n' +
++  '**Claim:** do: launch a plan whose task bodies ride the launch file; see: the worker is ' +
++  'handed the text.\n' +
++  'Machine: M1. The tree holds `one.txt`.\n' +
++  '\n' +
++  '**Proof:**\n' +
++  '- Legs: (a) `one.txt` exists [M1]\n'
++// A different body, under a different id, sitting FIRST in the `tasks` array.
++const DECOY_BODY = '### Task T0: not this one\nMachine: M1. The tree holds `zero.txt`.\n'
++const launchFileAt = (file, tasks) => {
++  fs.writeFileSync(file, JSON.stringify({ tasks }, null, 2))
++  return file
++}
++
++// ── S13: legs (a) and (b) [M1, M2] ───────────────────────────────────────────
++// The S1 shape, with the body moved OFF the wave entry and into a launch file:
++// one task with `proofTests`, a `testCmd` and two `proofRuns` of which the
++// second is red on the implementer's tree and green once the fix round has
++// written its file, so this single run records all four of `impl:T1`,
++// `exam:T1`, `fix:T1:0` and `review:T1:1`. `extraArgs` is how `wavesPath`
++// reaches `runEngine`.
++{
++  const repo = makeRepo(path.join(tmp, 'repo-launch-body'))
++  const runDir = path.join(tmp, 'run-launch-body')
++  const LAUNCH = launchFileAt(path.join(tmp, 'launch-body.json'), [
++    { id: 'T0', title: 'decoy', files: ['zero.txt'], body: DECOY_BODY },
++    { id: 'T1', title: 't1', files: ['one.txt', 'fixed.txt'], body: LAUNCH_BODY },
++  ])
++  const EXAM_CMD = 'bash t1_test.sh'
++  // Red at BASE (the examiner's clone has no `one.txt`), green on the patch.
++  const EXAM = '#!/bin/bash\n[ -f one.txt ]\n'
++  const labels = []
++  const prompts = {}
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    prompts[opts.label] = prompt
++    const kind = opts.label.split(':')[0]
++    if (kind === 'exam') {
++      fs.writeFileSync(path.join(cwd, 't1_test.sh'), EXAM)
++      return { status: 'DONE', summary: 'exam written' }
++    }
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'fix') {
++      fs.writeFileSync(path.join(cwd, 'fixed.txt'), 'repaired\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run } = rig({
++    repo, runDir, stub, stamp: 'op7',
++    // `body: undefined` — the wave entry the compiler's `--emit-args` payload
++    // actually carries: LIGHT, with the text only in the launch file.
++    waves: [[mkTask('T1', ['one.txt', 'fixed.txt'], {
++      body: undefined, proofTests: ['t1_test.sh'], testCmd: EXAM_CMD,
++      proofRuns: ['test -f one.txt', 'test -f fixed.txt'],
++    })]],
++    extraArgs: { wavesPath: LAUNCH },
++  })
++  await run()
++
++  // [M1] leg (a): the four labels are all recorded ...
++  const FOUR = ['impl:T1', 'exam:T1', 'fix:T1:0', 'review:T1:1']
++  for (const label of FOUR) {
++    assert.deepEqual(labels.filter((l) => l === label), [label],
++      'sim precondition: the run dispatched exactly one `' + label + '` — the task\'s four ' +
++      'workers are its implementer, its examiner, its fix round and its reviewer: ' +
++      JSON.stringify(labels))
++  }
++
++  // ... and each of the four prompts carries `\nTASK:\n` immediately followed
++  // by the task's `body` string FROM THE LAUNCH FILE, byte for byte. Asserted
++  // one label at a time, so the failure names the worker still handed a pointer.
++  for (const label of FOUR) {
++    assert.ok(prompts[label].includes('\nTASK:\n' + LAUNCH_BODY),
++      'the `' + label + '` prompt contains `\\nTASK:\\n` immediately followed by T1\'s `body` ' +
++      'from the JSON file at `args.wavesPath`, byte for byte — the engine read that file once ' +
++      'and handed the text inline, and this worker is not told to go and read it')
++  }
++
++  // [M2] leg (b): none of the four is told to go and read the file.
++  for (const label of FOUR) {
++    assert.equal(prompts[label].includes(PHRASE), false,
++      'and the `' + label + '` prompt does not contain `' + PHRASE + '` — no prompt the engine ' +
++      'dispatches carries the pointer sentence, by any path')
++  }
++}
++
++// ── S14: leg (c) [M3], and leg (b) over an inline-body run ───────────────────
++// The shape every engine sim at BASE already drives: `body` inline on the wave
++// entry and no `wavesPath` at all. Nothing about this run changes — which is
++// the point of M3 — and its prompts are read for the pointer phrase too,
++// because M2 says NO prompt the engine dispatches carries it.
++{
++  const repo = makeRepo(path.join(tmp, 'repo-inline-body'))
++  const runDir = path.join(tmp, 'run-inline-body')
++  const labels = []
++  const prompts = {}
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    prompts[opts.label] = prompt
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'two.txt'), 'from T2\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run } = rig({
++    repo, runDir, stub, stamp: 'op8',
++    // `mkTask`'s default `body` is the module's inline `BODY`; no `extraArgs`,
++    // so `args.wavesPath` is absent.
++    waves: [[mkTask('T2', ['two.txt'])]],
++  })
++  await run()
++
++  for (const label of ['impl:T2', 'review:T2:1']) {
++    assert.deepEqual(labels.filter((l) => l === label), [label],
++      'sim precondition: the run dispatched exactly one `' + label + '` — ' +
++      JSON.stringify(labels))
++    // [M3] leg (c)
++    assert.ok(prompts[label].includes('\nTASK:\n' + BODY),
++      'the `' + label + '` prompt of a task whose `body` is inline in its `args.waves` entry, ' +
++      'with no `args.wavesPath` given, still contains `\\nTASK:\\n` followed by that body — the ' +
++      'shape every engine sim at BASE already drives is unchanged')
++  }
++  // [M2] leg (b), over this run's prompts as well.
++  for (const label of Object.keys(prompts)) {
++    assert.equal(prompts[label].includes(PHRASE), false,
++      'and the `' + label + '` prompt of the inline-body run does not contain `' + PHRASE +
++      '` either — no prompt the engine dispatches carries it')
++  }
++}
++
++// ── S15: leg (d) [M4] ────────────────────────────────────────────────────────
++// A launch file whose `tasks` array holds only an entry for `T9`, while the
++// wave's body-less task is `T3`: the body is nowhere, which is malformed
++// input, and `runEngine` is async so the refusal is a REJECTION. The stub
++// records its label and returns the benign reply its kind would rather than
++// throwing, so at a tree where nothing rejects the failure reads as
++// `assert.rejects` finding no rejection rather than as a stub error.
++{
++  const repo = makeRepo(path.join(tmp, 'repo-no-body'))
++  const runDir = path.join(tmp, 'run-no-body')
++  const LAUNCH = launchFileAt(path.join(tmp, 'launch-no-body.json'), [
++    { id: 'T9', title: 'someone else', files: ['nine.txt'], body: DECOY_BODY },
++  ])
++  const labels = []
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl' || kind === 'fix') {
++      fs.writeFileSync(path.join(cwd, 'three.txt'), 'from T3\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    return { status: 'DONE', summary: 'sim stub' }
++  }
++  const { run } = rig({
++    repo, runDir, stub, stamp: 'op9',
++    waves: [[mkTask('T3', ['three.txt'], { body: undefined })]],
++    extraArgs: { wavesPath: LAUNCH },
++  })
++
++  await assert.rejects(run, (err) => {
++    assert.ok(err instanceof Error,
++      'the refusal is a thrown Error, not a resolved report: ' + JSON.stringify(err))
++    assert.ok(err.message.includes('T3'),
++      'and its message names the task whose body is nowhere — `T3` — so the operator knows ' +
++      'which entry of the plan is malformed: ' + err.message)
++    assert.ok(err.message.includes(LAUNCH),
++      'and it names the launch file it looked in — `' + LAUNCH + '` — so the operator knows ' +
++      'where it looked: ' + err.message)
++    return true
++  }, 'a task whose `args.waves` entry carries no `body` and whose id is not in the `tasks` ' +
++     'array of the file at `args.wavesPath` makes `runEngine` reject')
++
++  assert.deepEqual(labels, [],
++    'and it rejected BEFORE any worker was dispatched — the stub recorded no label at all: ' +
++    JSON.stringify(labels))
++}
++
++// ── S16: leg (e) [M5] ────────────────────────────────────────────────────────
++// The resolver's brief over a conflicted wave is NOT one of the four workers,
++// and it still names the file exactly as it did. `waveContendingBlock` is pure
++// and exported, so its BASE render is pinned here by equality — the `wavesPath`
++// sentence included, which is the whole of what M5 protects. That equality is
++// all this block asserts: the sim the Proof's second `Run:` line invokes is a
++// sibling of this one, and a sim of this tree may not name a sibling sim — not
++// to run it, and not to check that it exists (`test_sims_are_hermetic.mjs`, leg
++// (e) [M4]). That half of leg (e) is the `Run:` line's own answer, given in the
++// driver's clone rather than here.
++{
++  const WAVE_TASKS = [
++    { id: 'A', title: 'alpha', files: ['a.txt', 'b.txt'] },
++    { id: 'B', title: 'beta', files: [] },
++  ]
++  const WP = '/tmp/run-op10/launch.json'
++  // The BASE string, byte for byte. With `receipts: []` — a run that recorded
++  // no failure — `factsBlock` contributes nothing, so this is the whole render.
++  const BASE_RENDER = '\nCONTENDING TASKS:' +
++    '\n- task A: alpha [files: a.txt, b.txt]' +
++    '\n- task B: beta' +
++    '\nTheir full verbatim task text lives in the JSON file at ' + WP +
++    ' — read the "tasks" array entry whose "id" matches.'
++  assert.equal(typeof engine.waveContendingBlock, 'function',
++    'sim precondition: `waveContendingBlock` is still exported from fleet/run-engine.mjs')
++  const render = engine.waveContendingBlock({
++    waveTasks: WAVE_TASKS, wavesPath: WP, receipts: [],
++  })
++  assert.equal(render({ path: 'a.txt' }), BASE_RENDER,
++    '`waveContendingBlock({ waveTasks, wavesPath, receipts })` renders EXACTLY as at BASE — ' +
++    'the resolver is not one of the task\'s four workers and is still pointed at the JSON ' +
++    'file by name, in the same sentence')
++}
++
++// ── S17: leg (b), source half [M2] ───────────────────────────────────────────
++// The Proof's first `Run:` transliterated: `grep -c` counts LINES, so a comment
++// line in the engine that quotes the phrase is as much a hit as the code that
++// renders it — which is why the pointer branch is deleted rather than kept as a
++// fallback, and why the engine's comment says what changed without quoting it.
++{
++  const carriers = fs.readFileSync(ENGINE_SRC, 'utf8').split('\n')
++    .filter((l) => l.includes(PHRASE_SHORT))
++  assert.deepEqual(carriers, [],
++    'fleet/run-engine.mjs contains NO line carrying `' + PHRASE_SHORT + '` — the phrase cannot ' +
++    'reach a prompt by any path, in code or in a comment, which is what the Proof\'s first ' +
++    '`Run:` line counts: ' + JSON.stringify(carriers))
++}
++
+ console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_sandbox_boot_residuals.mjs b/fleet/tests/test_sandbox_boot_residuals.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..b3664e7e195cd925bff9ec23c119200cc68574ff
+--- /dev/null
++++ b/fleet/tests/test_sandbox_boot_residuals.mjs
+@@ -0,0 +1,860 @@
++/**
++ * Exam for run-178 task 1 — "The boot asks Jev about every residual row, once,
++ * through the edge, and writes the answers beside its own kind" (#1093).
++ *
++ * CLAIM. Open a finished run's evidence tag and read `residuals.jsonl`: every
++ * row still carries the boot's own `kind`, and beside it a `jev` object with
++ * the classifier's status and subject, its actor, its attention score and its
++ * claim-falsity — or no `jev` at all on a row whose request failed, with one
++ * boot-log line saying so and the pull request exactly as it would have been.
++ *
++ * Six machine clauses, read here leg by leg and nowhere else. Every assertion
++ * names the leg it belongs to and the clause it comes from, so a reader can map
++ * this file back to the contract:
++ *
++ *   M1  `fleet/sandbox-boot.sh` defines
++ *       `TYPESAFE_URL="${FLEET_TYPESAFE_URL:-https://typesafe.int.exe.xyz}"`
++ *       beside `KATA_URL`; every request to Jev is one `fleet_curl` whose argv
++ *       carries `-X POST`, `--max-time 10`, `-H content-type: application/json`,
++ *       `-d <body>` and `$TYPESAFE_URL/v1/systemone`, with no element naming
++ *       `Authorization`, `Bearer` or `TYPESAFE_API_KEY`, and the script's text
++ *       holds `TYPESAFE_API_KEY` nowhere                            → leg (a)
++ *   M2  k checklist items, exactly k requests for the whole boot, one per item,
++ *       each one line of `residuals-jev.jsonl` — `{answers, error, key, model,
++ *       usage}`, the key the sha256 of `<name>\n<text>` — and no later
++ *       transition re-asks a key the file already carries               → leg (b)
++ *   M3  every row whose request succeeded carries, beside the rule's `kind`, a
++ *       `jev` of exactly `actor`, `attention`, `claim_false`, `confidence`,
++ *       `kind`, `model`, read off that row's own reply; `file`, `kind`, `line`,
++ *       `run`, `sha`, `task`, `text` are what BASE writes                → leg (c)
++ *   M4  the request body: `state.task` off the plan (or `null`), `state.finding`
++ *       the row, `model` `jev-latest`, and a `questions` map of exactly the five
++ *       ids with exactly the criteria each one names                    → leg (d)
++ *   M5  a failing `fleet_curl` writes exactly one `jev: <name> — curl exit <n>`
++ *       line, leaves that row with NO `jev` key, and the boot publishes a body
++ *       byte-identical to the succeeding run's                          → leg (e)
++ *   M6  the rig's curl stub gains the `/v1/systemone` arm with its payload log,
++ *       its answers file, its single-reply knob and its exit knob; the README
++ *       names this sim; the edited script still parses                  → leg (f)
++ *
++ * FOUR BOOTS, NO MORE, over ONE fixture. A boot is ~40 forks of stub shell, so
++ * every leg that needs one shares these four; each is started once, eagerly, and
++ * awaited by everyone who reads it — the shape `test_sandbox_boot_amendments.mjs`
++ * uses for its two. The fixture is the one the task's Context pins: the rig's
++ * own `DEFAULT_REPORT` with a two-piece `notes` on its done task row, and a
++ * `PASS` receipt carrying one `deferred:external` ack — THREE checklist items,
++ * therefore three requests:
++ *
++ *   SUCCEEDED  the stub answers every request with its default reply. Legs (a),
++ *              (b), (c), (d), (e)'s comparison half and (f) read it.
++ *   ALT_URL    the same boot with `FLEET_TYPESAFE_URL` pointing elsewhere, so
++ *              the stub's `*)` fallthrough answers UNKNOWN and the argv log is
++ *              the only thing the leg reads. Leg (a)'s second half.
++ *   CHOSEN     `STUB_TYPESAFE_ANSWERS` maps the needle `rename fold_now` to one
++ *              reply and `STUB_TYPESAFE_ANSWER` answers the other two, so one
++ *              boot exercises both knobs AND their precedence. Leg (c)'s second
++ *              half, and leg (f)'s reading of the arm.
++ *   FAILED     `STUB_TYPESAFE_EXIT=7`. Leg (e).
++ *
++ * THE RECEIPT SAYS `PASS`. `do_boot` greens a run on `verdict = PASS`; a receipt
++ * spelling anything else parks it and its card opens `**Parked:**`. The ack
++ * rides on the rig's own default receipt plus the one `gateCheck.acks` entry.
++ *
++ * THE EXPECTATIONS ARE THE CLAUSE APPLIED TO THE FIXTURE. `jevOf(reply)` below
++ * is M3's own rule, so a row's expected `jev` is derived from the reply the stub
++ * was told to give and is not a second hand-written copy of it — except where
++ * the Proof leg spells a literal (`jev.kind`, `0.8`, `0.05`, the sha256 key,
++ * the three checklist lines), which is asserted as the literal it spells.
++ *
++ * TWO `Run:` LINES ARE READ HERE AS FILE READS. The Proof's first and second
++ * `Run:` lines — no `TYPESAFE_API_KEY` in the script, the `TYPESAFE_URL`
++ * definition verbatim — are the driver's to run, and leg (a) names them; the
++ * same two readings are made here directly off the script's text, which is the
++ * reading this file can make on its own.
++ *
++ * WHAT LEG (f) IS NOT. Its fourth `Run:` line runs a sibling sim. This file may
++ * not: `fleet/tests/test_sims_are_hermetic.mjs` M4 forbids a sim from spawning,
++ * or even checking the existence of, another sim, and a sim that broke that
++ * probe would cost the run more than the leg buys. So no sibling sim is named
++ * here at all. What is left is the reading this exam can make on its own: the
++ * arm exercised end to end by legs (b), (c) and (e) — payload log, answers file,
++ * single-reply knob, exit knob — the `CALL curl typesafe` line the arm's `say`
++ * writes, the README index line read with `fs`, and `bash -n` over the script
++ * every boot sim sources.
++ */
++
++import assert from 'node:assert/strict'
++import { spawnSync } from 'node:child_process'
++import { createHash } from 'node:crypto'
++import fs from 'node:fs'
++import path from 'node:path'
++
++import {
++  SCRIPT, ENV, BASE_SHA, DEFAULT_REPORT, RUN_PATH, PLAN_TASK_ID, PLAN_TASK_CLAIM,
++  makeHome, bootAsync,
++  argvLines, lines, prPosts, readLog, states, stream, runTests,
++} from './_sandbox_boot_helpers.mjs'
++
++const tests = []
++const test = (name, fn) => tests.push([name, fn])
++
++/** The checkout, from the script the rig points at — `fleet/sandbox-boot.sh`. */
++const ROOT = path.resolve(SCRIPT, '..', '..')
++
++// ── the fixture: three items, three requests ─────────────────────────────────
++
++/** The ack's detail, and the two `; `-separated pieces of the task's notes. */
++const ACK_DETAIL = 'the deploy waits on a credential'
++const UNVERIFIED_TEXT = 'could not verify the port is free at runtime'
++const NIT_TEXT = 'rename fold_now to fold'
++
++const ACK_NAME = 'deferred:external'
++const REVIEWER_NAME = `task ${PLAN_TASK_ID} reviewer`
++
++/**
++ * The three items in `residual_read`'s own order — the acks first, then the
++ * merged tasks' notes — each with the name it is checklisted under, the kind
++ * BASE's rule gives it and the task it belongs to.
++ */
++const ITEMS = [
++  { name: ACK_NAME, text: ACK_DETAIL, kind: 'deferred', task: null },
++  { name: REVIEWER_NAME, text: UNVERIFIED_TEXT, kind: 'unverified', task: PLAN_TASK_ID },
++  { name: REVIEWER_NAME, text: NIT_TEXT, kind: 'nit', task: PLAN_TASK_ID },
++]
++
++/** The rig's own report, with the two-piece `notes` on its one done task. */
++const REPORT = (() => {
++  const doc = JSON.parse(DEFAULT_REPORT)
++  doc.tasks[0].notes = `${UNVERIFIED_TEXT}; ${NIT_TEXT}`
++  return JSON.stringify(doc)
++})()
++
++/** The rig's own `PASS` receipt, plus the one ack the checklist is read from. */
++const RECEIPT = JSON.stringify({
++  verdict: 'PASS',
++  gateCheck: { acks: [{ type: ACK_NAME, detail: ACK_DETAIL }] },
++})
++
++/**
++ * The key M2 spells: the sha256 hex of `<name>\n<text>`. The Context works one
++ * of the three out by hand, and leg (b) names it — `KEY_WORKED` below is that
++ * value, asserted against this function so the fixture and the clause agree
++ * before any row is read.
++ */
++const keyOf = (name, text) =>
++  createHash('sha256').update(`${name}\n${text}`).digest('hex')
++const KEY_WORKED = '981ad12d197c7f27ba0ec87124970d094be7be7a195ea5cb02cbb658b33c9f7e'
++
++// ── the replies the stub is told to give ─────────────────────────────────────
++
++/**
++ * THE DEFAULT REPLY the arm emits when no knob names another — the Context's,
++ * verbatim, attention `0.8`, below the card's `2.5` threshold, so no sim that
++ * does not ask for one ever sees a card section.
++ */
++const DEFAULT_REPLY = {
++  model: 'jev-1.13.0',
++  answers: {
++    status: {
++      type: 'choice',
++      choice: 'verified',
++      probabilities: { verified: 0.9, unverified: 0.06, deferred: 0.04 },
++      confidence: 0.88,
++    },
++    subject: {
++      type: 'choice',
++      choice: 'quality',
++      probabilities: {
++        'plan text': 0.02,
++        'proof leg': 0.02,
++        'exam file': 0.02,
++        implementation: 0.04,
++        footprint: 0.02,
++        quality: 0.88,
++      },
++      confidence: 0.86,
++    },
++    actor: {
++      type: 'choice',
++      choice: 'nobody',
++      probabilities: { implementer: 0.05, plan: 0.03, examiner: 0.02, nobody: 0.9 },
++      confidence: 0.88,
++    },
++    attention: {
++      type: 'score',
++      score: 0.8,
++      legend: { 0: 'ignore', 1: 'glance', 2: 'before next run', 3: 'before merge' },
++      probabilities: { 0: 0.4, 1: 0.45, 2: 0.1, 3: 0.05 },
++      confidence: 0.5,
++    },
++    claim_false: { type: 'noul', noul: 0.05 },
++  },
++  usage: { input_tokens: 290, output_tokens: 21 },
++}
++
++/**
++ * The reply the answers file maps the needle `rename fold_now` to: leg (c)'s
++ * `unverified` / `proof leg` / `examiner` / `2.9`. Every field differs from the
++ * default's, its model included, so a row that took the wrong reply — or that
++ * took one reply for every row — fails rather than passing by coincidence.
++ */
++const ALT_REPLY = {
++  model: 'jev-1.14.0',
++  answers: {
++    status: { type: 'choice', choice: 'unverified', confidence: 0.71 },
++    subject: { type: 'choice', choice: 'proof leg', confidence: 0.72 },
++    actor: { type: 'choice', choice: 'examiner', confidence: 0.73 },
++    attention: { type: 'score', score: 2.9, confidence: 0.6 },
++    claim_false: { type: 'noul', noul: 0.44 },
++  },
++  usage: { input_tokens: 11, output_tokens: 12 },
++}
++
++/**
++ * The single-reply knob's answer, third and distinct again. It rides on the
++ * SAME boot as the answers file, which is what makes the precedence M6 spells —
++ * the file first, `STUB_TYPESAFE_ANSWER` second — readable in one run: the
++ * needle's row must take ALT and the other two must take this.
++ */
++const SINGLE_REPLY = {
++  model: 'jev-1.15.0',
++  answers: {
++    status: { type: 'choice', choice: 'deferred', confidence: 0.61 },
++    subject: { type: 'choice', choice: 'footprint', confidence: 0.62 },
++    actor: { type: 'choice', choice: 'plan', confidence: 0.63 },
++    attention: { type: 'score', score: 1.5, confidence: 0.64 },
++    claim_false: { type: 'noul', noul: 0.22 },
++  },
++  usage: { input_tokens: 13, output_tokens: 14 },
++}
++
++/** The needle the answers file keys ALT_REPLY on — a substring of one payload. */
++const NEEDLE = 'rename fold_now'
++
++/**
++ * M3's own rule, applied to a reply: the `jev` object a row whose request
++ * answered with `reply` must carry. The expectation is the clause, not a second
++ * copy of it.
++ */
++const jevOf = (reply) => ({
++  actor: reply.answers.actor.choice,
++  attention: reply.answers.attention.score,
++  claim_false: reply.answers.claim_false.noul,
++  confidence: {
++    actor: reply.answers.actor.confidence,
++    status: reply.answers.status.confidence,
++    subject: reply.answers.subject.confidence,
++  },
++  kind: { status: reply.answers.status.choice, subject: reply.answers.subject.choice },
++  model: reply.model,
++})
++
++/** M3's key list, in the order M3 gives it. */
++const JEV_KEYS = ['actor', 'attention', 'claim_false', 'confidence', 'kind', 'model']
++/** The row's keys, in the order `sort_keys=True` puts them with `jev` present. */
++const ROW_KEYS = ['file', 'jev', 'kind', 'line', 'run', 'sha', 'task', 'text']
++/** M2's cache-line keys, in the order M2 gives them. */
++const CACHE_KEYS = ['answers', 'error', 'key', 'model', 'usage']
++/** M4's five question ids. */
++const QUESTION_IDS = ['status', 'subject', 'actor', 'attention', 'claim_false']
++
++// ── the four boots ───────────────────────────────────────────────────────────
++
++/** The production endpoint M1 pins, and the one the knob redirects to. */
++const ENDPOINT = 'https://typesafe.int.exe.xyz/v1/systemone'
++const ALT_BASE = 'https://typesafe.example.test'
++const ALT_ENDPOINT = `${ALT_BASE}/v1/systemone`
++
++const started = {}
++/** One boot of the fixture, started once, its `ctx` resolved when it exits 0. */
++const bootOnce = (tag, env = {}, prepare = null) => {
++  if (!started[tag]) {
++    const ctx = makeHome()
++    const extra = prepare ? prepare(ctx) : {}
++    started[tag] = bootAsync(ctx, ['boot'], {
++      STUB_REPORT: REPORT,
++      STUB_GATE_RECEIPT: RECEIPT,
++      ...env,
++      ...extra,
++    }).then((r) => {
++      assert.equal(r.status, 0, `the ${tag} run did not finish\n${r.stdout}${r.stderr}`)
++      return ctx
++    })
++  }
++  return started[tag]
++}
++
++const succeeded = () => bootOnce('succeeded')
++const altUrl = () => bootOnce('altUrl', { FLEET_TYPESAFE_URL: ALT_BASE })
++const failed = () => bootOnce('failed', { STUB_TYPESAFE_EXIT: '7' })
++const chosen = () => bootOnce('chosen', { STUB_TYPESAFE_ANSWER: JSON.stringify(SINGLE_REPLY) }, (ctx) => {
++  // `<needle><TAB><reply JSON>`, one line, written under the case's own home.
++  const file = path.join(ctx.home, 'typesafe-answers.tsv')
++  fs.writeFileSync(file, `${NEEDLE}\t${JSON.stringify(ALT_REPLY)}\n`)
++  return { STUB_TYPESAFE_ANSWERS: file }
++})
++
++// Every boot is started here, before the first case runs, so the four run
++// beside each other rather than one after another.
++succeeded()
++altUrl()
++chosen()
++failed()
++
++// ── reading what a boot left ─────────────────────────────────────────────────
++
++/** Every curl argv of the run whose URL ends `/v1/systemone`. */
++const jevArgv = (ctx) =>
++  argvLines(ctx, 'curl').filter((a) => a.some((s) => s.endsWith('/v1/systemone')))
++
++/** The payloads the stub logged, in the order it was called. */
++const payloads = (ctx) => lines(readLog(ctx, 'typesafe.log'))
++
++/** The evidence branch's residual ledger for this run, raw and parsed. */
++const ledgerRaw = (ctx) => {
++  const file = path.join(ctx.home, 'evidence', RUN_PATH, 'residuals.jsonl')
++  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : ''
++}
++const ledger = (ctx) => lines(ledgerRaw(ctx)).map((l) => JSON.parse(l))
++
++/** The per-request cache beside it, raw and parsed. */
++const cacheRaw = (ctx) => {
++  const file = path.join(ctx.home, 'evidence', RUN_PATH, 'residuals-jev.jsonl')
++  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : ''
++}
++const cache = (ctx) => lines(cacheRaw(ctx)).map((l) => JSON.parse(l))
++
++/** The one row of a ledger whose `text` is `text`. */
++const rowFor = (ctx, text) => {
++  const rows = ledger(ctx).filter((r) => r.text === text)
++  assert.equal(rows.length, 1, `the ledger must hold exactly one row for ${JSON.stringify(text)}\n${ledgerRaw(ctx)}`)
++  return rows[0]
++}
++
++/** The one PR body this run POSTed, whole. */
++const body = (ctx) => {
++  const posts = prPosts(ctx)
++  assert.equal(posts.length, 1, `the run opened ${posts.length} PRs, not one`)
++  return String(posts[0].body)
++}
++
++/** The element of `argv` directly after the first `flag`, or undefined. */
++const after = (argv, flag) => {
++  const i = argv.indexOf(flag)
++  return i < 0 ? undefined : argv[i + 1]
++}
++
++/** Whether `flag` stands anywhere in `argv` with `value` directly after it —
++ *  "carries `-H` then `content-type: application/json`", which is what M1 asks
++ *  and which a second `-H` of another name does not disturb. */
++const hasPair = (argv, flag, value) =>
++  argv.some((s, i) => s === flag && argv[i + 1] === value)
++
++/** The script's own text — the two `Run:` readings leg (a) names. */
++const scriptText = () => fs.readFileSync(SCRIPT, 'utf8')
++
++// ── leg (a) — M1: the constant, the argv, and no credential anywhere ─────────
++
++test('(a) [M1] the script defines TYPESAFE_URL verbatim and names TYPESAFE_API_KEY nowhere', () => {
++  const text = scriptText()
++
++  assert.equal(
++    text.split('TYPESAFE_API_KEY').length - 1, 0,
++    '(a) [M1] the script\'s text must contain the string `TYPESAFE_API_KEY` nowhere — the edge '
++    + 'injects the bearer, exactly as it does for `claude-max` and `kata`',
++  )
++  assert.ok(
++    text.includes('TYPESAFE_URL="${FLEET_TYPESAFE_URL:-https://typesafe.int.exe.xyz}"'),
++    '(a) [M1] the script must define `TYPESAFE_URL="${FLEET_TYPESAFE_URL:-https://typesafe.int.exe.xyz}"` '
++    + 'verbatim, beside `KATA_URL`',
++  )
++  assert.ok(
++    text.includes('KATA_URL="${FLEET_KATA_URL:-https://kata.int.exe.xyz}"'),
++    '(a) [M1] the fixture no longer holds: `KATA_URL` is not defined the way this leg reads it beside',
++  )
++})
++
++test('(a) [M1] every request to Jev is one POST to the endpoint, carrying no credential', async () => {
++  const ctx = await succeeded()
++  const calls = jevArgv(ctx)
++
++  assert.equal(
++    calls.length, ITEMS.length,
++    `(a) [M1] a run whose checklist holds ${ITEMS.length} items must make ${ITEMS.length} requests `
++    + `whose URL ends \`/v1/systemone\`, not ${calls.length}\n${calls.map((a) => a.join(' ')).join('\n')}`,
++  )
++
++  for (const argv of calls) {
++    const shown = argv.join(' ')
++    assert.ok(
++      argv.includes(ENDPOINT),
++      `(a) [M1] the URL must be exactly \`${ENDPOINT}\` — https, and the one path: ${shown}`,
++    )
++    assert.ok(hasPair(argv, '-X', 'POST'), `(a) [M1] \`-X\` then \`POST\`: ${shown}`)
++    assert.ok(hasPair(argv, '--max-time', '10'), `(a) [M1] \`--max-time\` then \`10\`: ${shown}`)
++    assert.ok(
++      hasPair(argv, '-H', 'content-type: application/json'),
++      `(a) [M1] \`-H\` then \`content-type: application/json\`: ${shown}`,
++    )
++    const payload = after(argv, '-d')
++    assert.ok(payload !== undefined, `(a) [M1] \`-d\` then the JSON body, inline and never \`@-\`: ${shown}`)
++    assert.doesNotThrow(
++      () => JSON.parse(payload),
++      `(a) [M1] the argv word after \`-d\` must be a JSON body: ${shown}`,
++    )
++    for (const forbidden of ['Authorization', 'Bearer', 'TYPESAFE_API_KEY']) {
++      assert.deepEqual(
++        argv.filter((s) => s.includes(forbidden)), [],
++        `(a) [M1] no argv element may contain \`${forbidden}\` — the edge injects the bearer: ${shown}`,
++      )
++    }
++  }
++})
++
++test('(a) [M1] FLEET_TYPESAFE_URL moves every request, and nothing reaches the production host', async () => {
++  const ctx = await altUrl()
++  const calls = jevArgv(ctx)
++
++  assert.equal(
++    calls.length, ITEMS.length,
++    `(a) [M1] the redirected run must still make ${ITEMS.length} requests, one per item, `
++    + `not ${calls.length}`,
++  )
++  for (const argv of calls) {
++    assert.ok(
++      argv.includes(ALT_ENDPOINT),
++      `(a) [M1] with \`FLEET_TYPESAFE_URL=${ALT_BASE}\` the URL must be \`${ALT_ENDPOINT}\`: ${argv.join(' ')}`,
++    )
++  }
++  assert.deepEqual(
++    argvLines(ctx, 'curl').filter((a) => a.some((s) => s.includes('typesafe.int.exe.xyz'))), [],
++    '(a) [M1] with the knob set, no request may reach `typesafe.int.exe.xyz` at all — the literal is '
++    + 'the default and not a second address the boot also tries',
++  )
++})
++
++// ── leg (b) — M2: one request per item, cached, never re-asked ───────────────
++
++test('(b) [M2] the payload log holds one line per item, though evidence was collected more than once', async () => {
++  const ctx = await succeeded()
++
++  assert.equal(
++    payloads(ctx).length, ITEMS.length,
++    `(b) [M2] \`typesafe.log\` must hold exactly ${ITEMS.length} lines — one per checklist item for `
++    + `the WHOLE boot\n${readLog(ctx, 'typesafe.log')}`,
++  )
++
++  // The transitions that would each have re-asked, had the cache not held them.
++  const seen = states(ctx)
++  for (const state of ['publishing', 'done']) {
++    assert.ok(
++      seen.includes(state),
++      `(b) [M2] the boot must have passed through \`${state}\` — the leg is about a SECOND `
++      + `transition asking nothing: ${JSON.stringify(seen)}`,
++    )
++  }
++  const collections = stream(ctx).filter((l) => l.startsWith('evidence: ') && l.includes('report.json'))
++  assert.ok(
++    collections.length >= 2,
++    `(b) [M2] \`collect_evidence\` must have run at least twice after the report existed, or the `
++    + `count above proves nothing about a re-ask:\n${collections.join('\n')}`,
++  )
++})
++
++test('(b) [M2] the cache holds one line per request, keyed, with the answers and no error', async () => {
++  const ctx = await succeeded()
++  const rows = cache(ctx)
++
++  assert.equal(
++    rows.length, ITEMS.length,
++    `(b) [M2] \`residuals-jev.jsonl\` must hold exactly ${ITEMS.length} lines\n${cacheRaw(ctx)}`,
++  )
++
++  assert.equal(
++    keyOf(REVIEWER_NAME, UNVERIFIED_TEXT), KEY_WORKED,
++    '(b) [M2] the fixture no longer agrees with the key the plan works out by hand',
++  )
++
++  for (const row of rows) {
++    assert.deepEqual(
++      Object.keys(row), CACHE_KEYS,
++      `(b) [M2] a cache line's keys must be exactly ${JSON.stringify(CACHE_KEYS)}, in that order: `
++      + `${JSON.stringify(row)}`,
++    )
++    assert.equal(row.error, null, `(b) [M2] a request that answered has \`error\` null: ${JSON.stringify(row)}`)
++    assert.deepEqual(
++      row.answers, DEFAULT_REPLY.answers,
++      `(b) [M2] \`answers\` is the reply's \`answers\`, whole: ${JSON.stringify(row)}`,
++    )
++    assert.equal(row.model, DEFAULT_REPLY.model, `(b) [M2] \`model\` is the reply's: ${JSON.stringify(row)}`)
++    assert.deepEqual(
++      row.usage, DEFAULT_REPLY.usage,
++      `(b) [M2] \`usage\` is the reply's: ${JSON.stringify(row)}`,
++    )
++  }
++
++  // One key per item, every one of them the sha256 M2 spells, and none twice.
++  const keys = rows.map((r) => r.key)
++  assert.deepEqual(
++    [...keys].sort(), ITEMS.map((i) => keyOf(i.name, i.text)).sort(),
++    `(b) [M2] the keys must be the sha256 hex of \`<name>\\n<text>\` for the three items\n${cacheRaw(ctx)}`,
++  )
++  assert.equal(
++    new Set(keys).size, keys.length,
++    `(b) [M2] no key may appear twice — a second transition re-asked one\n${cacheRaw(ctx)}`,
++  )
++  assert.ok(
++    keys.includes(KEY_WORKED),
++    `(b) [M2] the \`${UNVERIFIED_TEXT}\` item's line must carry key \`${KEY_WORKED}\`\n${cacheRaw(ctx)}`,
++  )
++})
++
++// ── leg (c) — M3: the row, its kind, and the jev beside it ──────────────────
++
++test('(c) [M3] every row carries BASE\'s own fields and a jev of exactly the six keys', async () => {
++  const ctx = await succeeded()
++  const rows = ledger(ctx)
++
++  assert.equal(
++    rows.length, ITEMS.length,
++    `(c) [M3] the ledger must hold exactly ${ITEMS.length} rows\n${ledgerRaw(ctx)}`,
++  )
++
++  for (const row of rows) {
++    assert.deepEqual(
++      Object.keys(row), ROW_KEYS,
++      `(c) [M3] a row's keys must be exactly ${JSON.stringify(ROW_KEYS)}, in that order: `
++      + `${JSON.stringify(row)}`,
++    )
++    assert.deepEqual(
++      Object.keys(row.jev), JEV_KEYS,
++      `(c) [M3] a \`jev\`'s keys must be exactly ${JSON.stringify(JEV_KEYS)}, in that order: `
++      + `${JSON.stringify(row.jev)}`,
++    )
++
++    // The literals the leg spells, one by one, and then the object whole.
++    assert.deepEqual(
++      row.jev.kind, { status: 'verified', subject: 'quality' },
++      `(c) [M3] \`jev.kind\` is the reply's two \`choice\` answers: ${JSON.stringify(row.jev)}`,
++    )
++    assert.equal(row.jev.actor, 'nobody', `(c) [M3] \`jev.actor\` is the actor answer's choice: ${JSON.stringify(row.jev)}`)
++    assert.equal(row.jev.attention, 0.8, `(c) [M3] \`jev.attention\` is the reply's \`score\`: ${JSON.stringify(row.jev)}`)
++    assert.equal(row.jev.claim_false, 0.05, `(c) [M3] \`jev.claim_false\` is the reply's \`noul\`: ${JSON.stringify(row.jev)}`)
++    assert.deepEqual(
++      row.jev.confidence, { actor: 0.88, status: 0.88, subject: 0.86 },
++      `(c) [M3] \`jev.confidence\` is the three choice answers' confidences: ${JSON.stringify(row.jev)}`,
++    )
++    assert.equal(row.jev.model, 'jev-1.13.0', `(c) [M3] \`jev.model\` is the reply's model: ${JSON.stringify(row.jev)}`)
++    assert.deepEqual(
++      row.jev, jevOf(DEFAULT_REPLY),
++      `(c) [M3] the whole \`jev\` is the reply read through M3's rule: ${JSON.stringify(row.jev)}`,
++    )
++
++    // BASE's own fields, unchanged by any of this.
++    assert.equal(row.file, null, `(c) [M3] no fixture text names a path, so \`file\` is null: ${JSON.stringify(row)}`)
++    assert.equal(row.line, null, `(c) [M3] and \`line\` with it: ${JSON.stringify(row)}`)
++    assert.equal(row.run, 'run-7', `(c) [M3] \`run\` is the run id BASE writes: ${JSON.stringify(row)}`)
++    assert.equal(row.sha, BASE_SHA, `(c) [M3] \`sha\` is the base sha BASE writes: ${JSON.stringify(row)}`)
++  }
++
++  // The rule's own `kind` on each of the three, and the task each belongs to.
++  for (const item of ITEMS) {
++    const row = rowFor(ctx, item.text)
++    assert.equal(
++      row.kind, item.kind,
++      `(c) [M3] \`kind\` is still BASE's — \`unverified\` for a text containing \`could not verify\`, `
++      + `\`nit\` otherwise: ${JSON.stringify(row)}`,
++    )
++    assert.equal(
++      row.task, item.task,
++      `(c) [M3] \`task\` is what BASE writes — the id for a reviewer piece, null for an ack: `
++      + `${JSON.stringify(row)}`,
++    )
++  }
++})
++
++test('(c) [M3] the row the answers file names takes that reply, and no other row does', async () => {
++  const ctx = await chosen()
++  const rows = ledger(ctx)
++
++  assert.equal(rows.length, ITEMS.length, `(c) [M3] three rows here too\n${ledgerRaw(ctx)}`)
++
++  const needled = rowFor(ctx, NIT_TEXT)
++  assert.ok(NIT_TEXT.includes(NEEDLE), '(c) [M3] the fixture\'s needle is no longer a substring of that text')
++  assert.deepEqual(
++    needled.jev, jevOf(ALT_REPLY),
++    `(c) [M3] the row whose payload carries \`${NEEDLE}\` must carry THAT reply's answers — `
++    + `status \`unverified\`, subject \`proof leg\`, actor \`examiner\`, attention \`2.9\`: `
++    + `${JSON.stringify(needled.jev)}`,
++  )
++  // Its own `kind` is untouched by what Jev said about it.
++  assert.equal(
++    needled.kind, 'nit',
++    `(c) [M3] the rule's \`kind\` is the boot's own and never the classifier's: ${JSON.stringify(needled)}`,
++  )
++
++  // And no other row's. The other two answered with the single-reply knob, so
++  // "not the needle's" is proven by what they ARE, not merely by inequality.
++  for (const text of [ACK_DETAIL, UNVERIFIED_TEXT]) {
++    const row = rowFor(ctx, text)
++    assert.deepEqual(
++      row.jev, jevOf(SINGLE_REPLY),
++      `(c) [M3] a row whose payload does not carry the needle takes the single-reply answer, not the `
++      + `needle's: ${JSON.stringify(row.jev)}`,
++    )
++  }
++})
++
++// ── leg (d) — M4: the body, the state, and the five questions ────────────────
++
++test('(d) [M4] each payload is the row\'s state, the model, and exactly the five questions', async () => {
++  const ctx = await succeeded()
++  const raw = payloads(ctx)
++
++  assert.equal(raw.length, ITEMS.length, `(d) [M4] one payload per item\n${raw.join('\n')}`)
++  const bodies = raw.map((l) => JSON.parse(l))
++
++  // One payload per item, matched on the finding it carries.
++  assert.deepEqual(
++    bodies.map((b) => b.state.finding.text).sort(),
++    ITEMS.map((i) => i.text).sort(),
++    `(d) [M4] \`state.finding.text\` is the row's text, one payload per row\n${raw.join('\n')}`,
++  )
++
++  for (const doc of bodies) {
++    const shown = JSON.stringify(doc)
++    assert.equal(doc.model, 'jev-latest', `(d) [M4] \`model\` is \`jev-latest\`: ${shown}`)
++    assert.equal(doc.state.finding.file, null, `(d) [M4] \`state.finding.file\` is the row's file: ${shown}`)
++    assert.equal(doc.state.finding.line, null, `(d) [M4] \`state.finding.line\` is the row's line: ${shown}`)
++
++    const q = doc.questions
++    assert.deepEqual(
++      Object.keys(q).sort(), [...QUESTION_IDS].sort(),
++      `(d) [M4] \`questions\` must have exactly the five ids ${JSON.stringify(QUESTION_IDS)} — a `
++      + `payload that folded status and subject into one question fails here: ${shown}`,
++    )
++
++    assert.equal(q.status.type, 'choice', `(d) [M4] \`status\` is a \`choice\`: ${shown}`)
++    assert.deepEqual(
++      Object.keys(q.status.criteria).sort(), ['deferred', 'unverified', 'verified'],
++      `(d) [M4] \`status\`'s criteria keys are exactly verified, unverified, deferred: ${shown}`,
++    )
++
++    assert.equal(q.subject.type, 'choice', `(d) [M4] \`subject\` is a \`choice\`: ${shown}`)
++    assert.deepEqual(
++      Object.keys(q.subject.criteria).sort(),
++      ['exam file', 'footprint', 'implementation', 'plan text', 'proof leg', 'quality'],
++      `(d) [M4] \`subject\`'s criteria keys are exactly the six subjects: ${shown}`,
++    )
++
++    assert.equal(q.actor.type, 'choice', `(d) [M4] \`actor\` is a \`choice\`: ${shown}`)
++    assert.deepEqual(
++      Object.keys(q.actor.criteria).sort(), ['examiner', 'implementer', 'nobody', 'plan'],
++      `(d) [M4] \`actor\`'s criteria keys are exactly implementer, plan, examiner, nobody: ${shown}`,
++    )
++
++    assert.equal(q.attention.type, 'score', `(d) [M4] \`attention\` is a \`score\`: ${shown}`)
++    assert.ok(
++      Array.isArray(q.attention.criteria) && q.attention.criteria.length === 4,
++      `(d) [M4] \`attention\`'s criteria is an ordered array of exactly four levels: ${shown}`,
++    )
++
++    assert.equal(q.claim_false.type, 'noul', `(d) [M4] \`claim_false\` is a \`noul\`: ${shown}`)
++  }
++
++  // THE STATE'S `task`: the plan's own row for a reviewer piece, null for the
++  // ack, which no single task owns.
++  const ackBody = bodies.find((b) => b.state.finding.text === ACK_DETAIL)
++  assert.equal(
++    ackBody.state.task, null,
++    `(d) [M4] a row no single task owns sends \`state.task\` null: ${JSON.stringify(ackBody)}`,
++  )
++
++  for (const text of [UNVERIFIED_TEXT, NIT_TEXT]) {
++    const doc = bodies.find((b) => b.state.finding.text === text)
++    const task = doc.state.task
++    const shown = JSON.stringify(doc)
++    assert.ok(task && typeof task === 'object', `(d) [M4] a reviewer piece sends its task's row: ${shown}`)
++    assert.deepEqual(
++      Object.keys(task).sort(), ['claim', 'files', 'machine', 'title'],
++      `(d) [M4] \`state.task\` is \`{title, claim, machine, files}\` read off the plan: ${shown}`,
++    )
++    assert.equal(
++      task.title, 'The smoke target grows a file',
++      `(d) [M4] \`title\` is the heading text after \`Task <id>: \`: ${shown}`,
++    )
++    assert.equal(
++      task.claim, PLAN_TASK_CLAIM,
++      `(d) [M4] \`claim\` is the \`**Claim:**\` sentence with its provenance tag stripped: ${shown}`,
++    )
++    assert.ok(
++      typeof task.machine === 'string' && task.machine.startsWith('M1.'),
++      `(d) [M4] \`machine\` is the task's \`Machine:\` line: ${shown}`,
++    )
++  }
++})
++
++// ── leg (e) — M5: a failed request costs the row its jev and nothing else ────
++
++test('(e) [M5] a failing curl writes one log line per item and leaves every row without a jev', async () => {
++  const [ctx, ok] = await Promise.all([failed(), succeeded()])
++
++  const failures = stream(ctx).filter((l) => /^jev: .* — curl exit 7$/.test(l))
++  assert.deepEqual(
++    [...failures].sort(),
++    ITEMS.map((i) => `jev: ${i.name} — curl exit 7`).sort(),
++    `(e) [M5] exactly one \`jev: <name> — curl exit <n>\` line per failed item — two naming `
++    + `\`${REVIEWER_NAME}\` and one naming \`${ACK_NAME}\`:\n${failures.join('\n')}`,
++  )
++
++  const rows = ledger(ctx)
++  assert.equal(rows.length, ITEMS.length, `(e) [M5] the ledger still holds three rows\n${ledgerRaw(ctx)}`)
++  for (const row of rows) {
++    assert.ok(
++      !('jev' in row),
++      `(e) [M5] a row whose request failed carries NO \`jev\` key — not a null one: ${JSON.stringify(row)}`,
++    )
++    assert.deepEqual(
++      Object.keys(row), ROW_KEYS.filter((k) => k !== 'jev'),
++      `(e) [M5] and is otherwise the row BASE writes: ${JSON.stringify(row)}`,
++    )
++  }
++
++  const cached = cache(ctx)
++  assert.equal(
++    cached.length, ITEMS.length,
++    `(e) [M5] the failed requests are cached too — that is what stops the next transition `
++    + `re-asking\n${cacheRaw(ctx)}`,
++  )
++  for (const row of cached) {
++    assert.deepEqual(Object.keys(row), CACHE_KEYS, `(e) [M5] the same five keys: ${JSON.stringify(row)}`)
++    assert.equal(row.answers, null, `(e) [M5] \`answers\` null: ${JSON.stringify(row)}`)
++    assert.equal(row.error, 'curl exit 7', `(e) [M5] \`error\` is \`curl exit <n>\`: ${JSON.stringify(row)}`)
++    assert.equal(row.model, null, `(e) [M5] \`model\` null: ${JSON.stringify(row)}`)
++    assert.equal(row.usage, null, `(e) [M5] \`usage\` null — there was no reply: ${JSON.stringify(row)}`)
++  }
++
++  // The line belongs to a request that FAILED, and to no other: the run whose
++  // requests all answered writes none of it.
++  assert.deepEqual(
++    stream(ok).filter((l) => /^jev: .* — curl exit /.test(l)), [],
++    '(e) [M5] a run whose requests all answered writes no `curl exit` line at all — the line is '
++    + 'the failure\'s, one per failed item',
++  )
++})
++
++test('(e) [M5] the failed run publishes the byte-identical body, and both render BASE\'s checklist', async () => {
++  const [bad, good] = await Promise.all([failed(), succeeded()])
++
++  const badBody = body(bad)
++  const goodBody = body(good)
++  assert.equal(
++    badBody, goodBody,
++    '(e) [M5] a run whose every TypeSafe request failed must publish the same pull request body, '
++    + 'byte for byte, as one whose requests all succeeded',
++  )
++
++  // And that body is BASE's rendering: the count, the errand, the section.
++  const expected = [
++    `- [ ] ${ACK_NAME} — ${ACK_DETAIL}`,
++    `- [ ] ${REVIEWER_NAME} — ${UNVERIFIED_TEXT}`,
++    `- [ ] ${REVIEWER_NAME} — ${NIT_TEXT}`,
++  ]
++  for (const [which, text] of [['the failed', badBody], ['the succeeding', goodBody]]) {
++    const bodyLines = text.split('\n')
++    assert.ok(
++      bodyLines.includes('Residuals: 3 from review'),
++      `(e) [M5] ${which} card must carry \`Residuals: 3 from review\`\n${text}`,
++    )
++    assert.ok(
++      bodyLines.includes(`- ${ACK_NAME} — ${ACK_DETAIL}`),
++      `(e) [M5] ${which} card must carry the ack's errand line\n${text}`,
++    )
++    const at = bodyLines.indexOf('### Residuals')
++    assert.ok(at >= 0, `(e) [M5] ${which} card must carry a \`### Residuals\` section\n${text}`)
++    assert.deepEqual(
++      bodyLines.slice(at + 2, at + 2 + expected.length), expected,
++      `(e) [M5] ${which} card's \`### Residuals\` section is BASE's three checklist lines, in that `
++      + `order\n${text}`,
++    )
++  }
++})
++
++// ── leg (f) — M6: the rig's arm, the index line, and the script still a script ──
++
++test('(f) [M6] the stub\'s arm answers on its own name and logs every payload', async () => {
++  const ctx = await succeeded()
++
++  assert.equal(
++    stream(ctx).filter((l) => l === 'CALL curl typesafe').length, ITEMS.length,
++    `(f) [M6] the arm says \`curl typesafe\` once per request — the \`say\` line the ordering `
++    + `assertions read:\n${stream(ctx).filter((l) => l.startsWith('CALL curl')).join('\n')}`,
++  )
++  assert.deepEqual(
++    stream(ctx).filter((l) => l.startsWith('CALL curl UNKNOWN') && l.includes('typesafe')), [],
++    '(f) [M6] no request to the endpoint may reach the `*)` fallthrough — the arm sits before it',
++  )
++  assert.equal(
++    payloads(ctx).length, ITEMS.length,
++    '(f) [M6] and appends the `-d` payload as one line to `typesafe.log`',
++  )
++})
++
++test('(f) [M6] the exit knob emits nothing and the answers file picks the reply', async () => {
++  const [bad, picked] = await Promise.all([failed(), chosen()])
++
++  // The exit knob: the requests were made, and none of them answered.
++  assert.equal(
++    payloads(bad).length, ITEMS.length,
++    '(f) [M6] `STUB_TYPESAFE_EXIT` still logs the payload — the request was made and refused',
++  )
++  assert.deepEqual(
++    ledger(bad).filter((r) => 'jev' in r), [],
++    '(f) [M6] and emits nothing, so no row could have taken an answer from it',
++  )
++
++  // The answers file and the single-reply knob, and the precedence between
++  // them: the first line whose needle is a substring of the payload wins, and
++  // `STUB_TYPESAFE_ANSWER` answers every payload no line matched.
++  const models = ledger(picked).map((r) => r.jev.model).sort()
++  assert.deepEqual(
++    models, [ALT_REPLY.model, SINGLE_REPLY.model, SINGLE_REPLY.model].sort(),
++    `(f) [M6] one row takes the answers file's reply and the other two take `
++    + `\`STUB_TYPESAFE_ANSWER\`'s\n${ledgerRaw(picked)}`,
++  )
++  assert.ok(
++    !models.includes(DEFAULT_REPLY.model),
++    `(f) [M6] and the default reply answers no payload when a knob is set\n${ledgerRaw(picked)}`,
++  )
++})
++
++test('(f) [M6] the README\'s sandbox-boot list names this sim', () => {
++  // READ, never grepped through a child: a spawn whose call text carries a
++  // `test_*.mjs` literal is what `test_sims_are_hermetic.mjs` M4 names as a sim
++  // running a sibling. The section is the one the Proof's fifth `Run:` slices —
++  // `## The sandbox boot` up to the next `## `.
++  const readme = fs.readFileSync(path.join(ROOT, 'fleet', 'tests', 'README.md'), 'utf8').split('\n')
++  const from = readme.findIndex((l) => l.startsWith('## The sandbox boot'))
++  assert.ok(from >= 0, '(f) [M6] `fleet/tests/README.md` must carry a `## The sandbox boot` section')
++  let to = readme.findIndex((l, i) => i > from && l.startsWith('## '))
++  if (to < 0) to = readme.length
++  const section = readme.slice(from, to).join('\n')
++  assert.ok(
++    section.includes('test_sandbox_boot_residuals.mjs'),
++    `(f) [M6] that section must name this sim, so the index and the directory agree:\n${section}`,
++  )
++})
++
++test('(f) [M6] the edited boot script still parses as bash', () => {
++  // The one reading of the edited script this exam can make on its own, and the
++  // one every other boot sim rests on. Lines spliced into a `python3` program
++  // with an unbalanced quote fail here before they fail there.
++  const script = path.relative(ROOT, SCRIPT)
++  const r = spawnSync('bash', ['-n', script], { cwd: ROOT, encoding: 'utf8', timeout: 60000, env: ENV })
++  assert.equal(
++    r.status, 0,
++    `(f) [M6] \`bash -n ${script}\` must be clean\n${r.stdout || ''}${r.stderr || ''}`,
++  )
++})
++
++runTests(tests)
+diff --git a/skills/ultrawrite/references/greenfield-stack.md b/skills/ultrawrite/references/greenfield-stack.md
+index e4c606bbe3a462cd0ad01ab7b967b18777b18ff8..23069844c1acdcaa6400a297fa1e32ba4138af9b 100644
+--- a/skills/ultrawrite/references/greenfield-stack.md
++++ b/skills/ultrawrite/references/greenfield-stack.md
+@@ -279,11 +279,13 @@ for — not how the engine runs it.
+   is wherever the operator installed it, so a plan names the binary and never a
+   package manager.
+ - **How an exam starts it.** The start line is
+-  `celld dev <server dir> --no-watch --port <p> --internal-listen 127.0.0.1:<q>`,
+-  and a plan allocates **two ports per task**: `<p>` for the worker and `<q>` for
+-  the internal listener, which otherwise takes `127.0.0.1:0` and collides across
+-  parallel tasks. `--no-watch` is not optional — without it a mid-run tree change
+-  rebuilds under a running exam.
++  `celld dev <server dir> --no-watch --clean --port <p>`, with `<p>` a free
++  loopback port the exam picks. `celld dev` takes no `--internal-listen` (0.5.0
++  answers `unknown argument`, read 2026-09-17): it starts its node with
++  `--internal-listen 127.0.0.1:0` itself, so an instance holds **two ports**,
++  the worker's and one the node picks, ephemeral and never named or tunnelled.
++  `--no-watch` is not optional — without it a mid-run tree change rebuilds under
++  a running exam — and `--clean` starts the copy from empty state.
+ - **Its bundler.** `CELLD_ESBUILD` names `<repo>/node_modules/.bin/esbuild`, and
+   that binary comes from the plan's own Dependencies line, which carries esbuild
+   after its `dev:` word (`dev: esbuild@0.25.x`) — so the sandbox installs no

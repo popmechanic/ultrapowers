@@ -1,0 +1,61 @@
+{
+  "mode": "gate",
+  "stamp": "run-177",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-177/report.json",
+  "branch": "ultra/integration-run-177",
+  "gateCheck": {
+    "verdict": "BLOCKED",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": false,
+        "detail": "failed/blocked tasks left declared deliverables unproduced: [{\"task\": \"2\", \"files\": [\"fleet/run-engine.mjs\", \"fleet/tests/test_run_engine_jev_finding.mjs\"]}, {\"task\": \"4\", \"files\": [\"fleet/run-engine.mjs\", \"fleet/tests/test_run_engine_jev_suite_red.mjs\"]}, {\"task\": \"3\", \"files\": [\"fleet/run-engine.mjs\", \"fleet/tests/test_run_engine_jev_tier.mjs\"]}]"
+      }
+    ],
+    "acks": [
+      {
+        "type": "coverage",
+        "detail": "green suite but 2/5 tasks merged \u2014 a passing suite over an incomplete merge is a false-green"
+      }
+    ],
+    "notes": [],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 1,
+  "suite": {
+    "passed": true,
+    "unattributed": [],
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-177/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [438 items]\n\n........................................................................ [ 16%]\n........................................................................ [ 32%]\n........................................................................ [ 49%]\n........................................................................ [ 65%]\n........................................................................ [ 82%]\n........................................................................ [ 98%]\n......                                                                   [100%]\n======================= 438 passed in 172.96s (0:02:52) ========================\n"
+  },
+  "verdict": "BLOCKED"
+}

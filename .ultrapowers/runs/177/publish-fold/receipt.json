@@ -1,0 +1,61 @@
+{
+  "engineHead": "aea450a22886bd0c8f50f40fbba3a7865605e3f7",
+  "attempts": {
+    "1": {
+      "tip": "4dccc32f35abbac01ee69581851f148cf5c5e963",
+      "candidate": "f5bb16d0ca8a203c98cedec699c88b54169c473b",
+      "disposition": "folded",
+      "pathsJoined": 4,
+      "resolversDispatched": 0,
+      "suite": "pass",
+      "checks": [
+        {
+          "check": "parse",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "parse",
+          "path": "fleet/run-main.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "parse",
+          "path": "fleet/sandbox-boot.sh",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_own_proofs.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_jev_client.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_jev_finding.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "skipped"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_jev_tier.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "skipped"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_jev_suite_red.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "skipped"
+        }
+      ],
+      "checkRetries": 0
+    }
+  }
+}

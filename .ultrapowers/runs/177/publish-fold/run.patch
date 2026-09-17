@@ -1,0 +1,1274 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+index eb5b1a6617d2a6c38359971e37326ef8a6d22cb8..50a160ed3318f80f231586fce6ff4e7d16ec2fa1 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -268,6 +268,8 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
+   subscription reaches the sandbox as an edge-injected bearer: `ANTHROPIC_BASE_URL` points at
+   `claude-max.int.exe.xyz`, `CLAUDE_CODE_OAUTH_TOKEN` is a placeholder, and `claude auth status`
+   has to show `oauth_token` — a run showing `x-api-key` is billing somewhere else.
++  TypeSafe (`api.typesafe.ai`) is reached the same way, as the `typesafe` http-proxy at the edge — by
++  the boot and the engine only, for judgments over prose and the hunks they name, never generation and never a fact.
+ - **The installed plugin lags the repo.** Editing files here does not change the running plugin until
+   `/plugin` re-resolves the new version (interactive terminal only) **and** a new session starts. Skill
+   text reloads in-session; hook/manifest changes need a new session.
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index 352256f80b2a501a1eac94da1247883e02ec11d6..5d8d10aa8a3f787185b2e64555872aaf6bd8171b 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -238,6 +238,23 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+     many of those files existed, `count` the sum over them, both `0` when no row or no file does.
+     The row is appended once per task — after the implementer has returned, after the pre-review
+     fix round when the pass bought one, and before any reviewer is dispatched.
++    Jev (2026-09-16, the `jev:` seam, #1096 — an experiment whose rollback is deleting the three
++    appends): three more kinds record what Jev was asked and what it answered, and gate nothing.
++    `jev:finding` `{task, round, key, answers}` — one per finding a reviewer raised;
++    `jev:tier` `{task, at, tierChosen, answers}` with `at` one of `dispatch`, `review` and, on the
++    review row, `round`; and `jev:suite-red` `{epoch, failing: [{path, byTask: {<id>: <noul>},
++    artifact: <noul>}]}` — one per fold whose suite came back red. Each is ONE
++    `POST /v1/systemone` at `https://typesafe.int.exe.xyz` through the `typesafe` http-proxy,
++    carrying `{state, model: "jev-latest", questions}` and NO `Authorization` header of its own
++    (the edge injects the bearer; no key is on the box, on disk, in `argv` or in the boot's
++    environment). A call the edge does not answer — a non-2xx, a timeout, a dead socket, an
++    unparsable body, or a state over the 120000-byte budget, for which no call is made at all —
++    is one log line and no row: it never rejects, never parks and never fails the run, and the
++    row is simply absent. A row that IS appended rides to the hub by the `driver:` rule
++    (`kataUidFor`): the task's issue when the row names a task the record knows, the run's issue
++    otherwise. They are read by nothing — no verdict, route, tier, model choice, fold adoption,
++    gate or report field reads one, so for the same canned replies a run with this seam and a run
++    without it dispatch the same labels in the same order and end with the same task statuses.
+     Receipts (2026-09-16): a receipt is `paths` and `evidence` — `paths` an array of repo-relative
+     path strings, sorted, de-duplicated, never empty; `evidence` is `{ read, against }`, two
+     strings of at most 500 characters each, a longer one cut to 499 characters plus `…`. Seven
+@@ -606,7 +623,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   - status server: `systemd-run --user --unit=fleet-status -p Restart=on-failure -- busybox httpd -f -p 8000 -h /home/exedev/www`
+     (skip when the unit is already active). exe.dev proxies port 8000 at `https://<vm>.exe.xyz/`.
+   - engine: `systemd-run --user --unit=fleet-engine-<N> --pipe --wait --collect -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288 --
+-    env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz CLAUDE_CODE_OAUTH_TOKEN=placeholder
++    env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz CLAUDE_CODE_OAUTH_TOKEN=placeholder TYPESAFE_BASE_URL=https://typesafe.int.exe.xyz
+     ULTRAPOWERS_FLEET_RUN=run-N node <engine>/fleet/run-main.mjs /home/exedev/plans/run-N.md run-N --repo /home/exedev/target [--kata /home/exedev/plans/run-N.kata.json] [--tier …]`,
+     cwd `/home/exedev/target`, stdout+stderr teed to `/home/exedev/www/engine.log`; the exit code is the
+     service's (`--wait`).
+@@ -1050,8 +1067,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   (preflight above); two targets' objects on one VM name two repos, which the edge routes apart.
+   The pre-2026-09-11 rule that **no GitHub object rides** `tag:fleet` was superseded by that
+   migration: with `attach` refused there is no per-VM grant left to ride, so every object reaches a
+-  fleet VM by its own `tag:fleet` policy — including the hub's `kata` **http-proxy**, which is
+-  created with `--policy 'tag:fleet'` like the rest. What the `- **Publish:**` rule still forbids is
++  fleet VM by its own `tag:fleet` policy — including the hub's `kata` **http-proxy** and Jev's
++  `typesafe` **http-proxy** (`https://typesafe.int.exe.xyz`, the engine's `TYPESAFE_BASE_URL`),
++  both created with `--policy 'tag:fleet'` like the rest. What the `- **Publish:**` rule still forbids is
+   the *attachment*: no GitHub integration is attached to the tag, because nothing is attached at all.
+ - **Doctor (`fleet/doctor.mjs`) — eight rows, this order, `ROW_IDS`:**
+   | id | what it reads | green when |
+diff --git a/fleet/jev-client.mjs b/fleet/jev-client.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..3ca3df90051b525ccbe3c33fe1c200faa385b786
+--- /dev/null
++++ b/fleet/jev-client.mjs
+@@ -0,0 +1,108 @@
++// fleet/jev-client.mjs — the Jev client: one POST, no key, `null` on anything
++// that is not an answer.
++//
++// Jev is an exe.dev `http-proxy` integration named `typesafe` on the fleet
++// policy `tag:fleet`, the same shape as `claude-max` and `kata`. From a fleet
++// VM the endpoint is `https://typesafe.int.exe.xyz/v1/systemone`, HTTPS only.
++// The request carries NO `Authorization` header of its own: the edge injects
++// the bearer, which is the whole reason a sandbox holding no TypeSafe
++// credential at all can still be answered — and the reason no key is on disk,
++// in `argv` or in any environment the boot sets.
++//
++// The shape is `httpTransport`'s (`fleet/kata-client.mjs`): `fetchImpl`
++// injected with `globalThis.fetch` as the default, `res.text()` and then a
++// parse — so a sim's fake reply needs only `status` and `text()`, and no sim
++// opens a socket.
++//
++// `ask` never throws and never retries. A 401, a 422 (a malformed question), a
++// 429, a 529, a timeout, a dead socket, a body that is not JSON: each is one
++// log line and a `null`, and the caller's row is simply absent. Jev answers no
++// fact, so nothing downstream is entitled to an answer.
++
++/** The one path. */
++export const JEV_PATH = '/v1/systemone'
++
++/** The model alias; the reply names the concrete version it used. */
++export const JEV_MODEL = 'jev-latest'
++
++/** One call's whole budget of wall clock. */
++export const JEV_TIMEOUT_MS = 10000
++
++/** The ceiling on a call's `state`, measured on that state's own JSON and
++ *  checked BEFORE any request: ~32k tokens of context is the budget #1096
++ *  names, and a state over it is a caller's bug, not the edge's. A state that
++ *  exceeds it costs one log line and no call at all. */
++export const JEV_STATE_MAX_BYTES = 120000
++
++/** A JSON document, or `null` when the answer carried none — an error body is
++ *  frequently not JSON at all, and a parse that threw would turn the edge's
++ *  `422` into this process's exception. */
++const parseJson = (text) => {
++  const s = String(text == null ? '' : text)
++  if (!s.trim()) return null
++  try { return JSON.parse(s) } catch { return null }
++}
++
++const isObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v)
++
++/**
++ * The client: `{ ask }` over one origin.
++ *
++ * `ask({ state, questions })` resolves the reply's `answers` object, or `null`.
++ * `log` is called exactly once, with a string beginning `jev:`, on each lane
++ * that resolves `null` — and not at all on the lane that answers.
++ */
++export const makeJevClient = ({
++  baseUrl,
++  fetchImpl = globalThis.fetch,
++  timeoutMs = JEV_TIMEOUT_MS,
++  log = () => {},
++} = {}) => {
++  const origin = String(baseUrl == null ? '' : baseUrl).replace(/\/+$/, '')
++  // One line, one `null`: the single exit every failure lane takes, so no lane
++  // can log twice and none can log nothing.
++  const refuse = (detail) => {
++    try { log('jev: ' + detail) } catch { /* evidence, not control flow */ }
++    return null
++  }
++  return {
++    async ask ({ state, questions } = {}) {
++      // The budget is on the state alone, and it is read before the socket:
++      // an over-budget call is one the edge never sees.
++      let body
++      try {
++        const stateBytes = JSON.stringify(state).length
++        if (stateBytes > JEV_STATE_MAX_BYTES) {
++          return refuse('state ' + stateBytes + ' bytes over the ' +
++            JEV_STATE_MAX_BYTES + '-byte budget; no call made')
++        }
++        body = JSON.stringify({ state, model: JEV_MODEL, questions })
++      } catch (e) {
++        return refuse('state not serializable: ' + String((e && e.message) || e).slice(0, 200))
++      }
++      let status, text
++      try {
++        const res = await fetchImpl(origin + JEV_PATH, {
++          method: 'POST',
++          headers: { 'content-type': 'application/json' },
++          body,
++          // Whatever the error name a rejection carries — `AbortError` from
++          // this signal included — it is the network lane below.
++          signal: AbortSignal.timeout(timeoutMs),
++        })
++        status = res && res.status
++        text = await res.text()
++      } catch (e) {
++        return refuse('call failed: ' + String((e && e.message) || e).slice(0, 200))
++      }
++      if (!(typeof status === 'number' && status >= 200 && status <= 299)) {
++        return refuse('status ' + String(status))
++      }
++      const json = parseJson(text)
++      if (!isObject(json) || !isObject(json.answers)) {
++        return refuse('unreadable reply')
++      }
++      return json.answers
++    },
++  }
++}
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index fd39bb788d2e7a5544f24ff8ebe0e73d485bcc1c..f6ee8b94a075b5579e37cb90029c77180369dae3 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -1579,6 +1579,13 @@ export async function runEngine({
+   // and writes the run's record back there; absent, the engine makes no request
+   // and behaves exactly as it does without a hub.
+   kata,
++  // The Jev client (optional): `fleet/jev-client.mjs`'s `makeJevClient`, built
++  // by run-main from `TYPESAFE_BASE_URL` alone — set by the sandbox boot and
++  // unset on the laptop and in every sim, so no client is built and no call is
++  // made anywhere but a fleet VM. Present, it is what `jevRow` below asks; the
++  // rows it produces gate nothing (#1096), so an engine handed none behaves
++  // exactly as it does with one whose every answer is `null`.
++  jev,
+   // The run's event log (optional): run-main's `makeEventLog`, the sink the
+   // workers' envelopes and the phase marks are appended through — lines this
+   // engine never writes itself. With a hub on, the engine subscribes to it and
+@@ -1595,6 +1602,14 @@ export async function runEngine({
+   // against the original BASE and re-fold wave 1's work into every patch.
+   patchBase,
+ }) {
++  // Before a clone, a dispatch or a hub read: a `jev` that is not a client is
++  // a wiring mistake at the call site, and the one thing it must not do is
++  // silently answer nothing for a whole run. An ABSENT `jev` is the ordinary
++  // case and says nothing at all.
++  if (jev !== undefined && typeof (jev && jev.ask) !== 'function') {
++    throw new Error('jev: client has no ask() — expected makeJevClient()\'s { ask }, got ' +
++      (jev === null ? 'null' : typeof jev))
++  }
+   const roles = loadRoles(rolesDir)
+   const sh = shOf(exec, args.toolchainBin)
+   const git = gitOf(exec)
+@@ -1729,7 +1744,11 @@ export async function runEngine({
+   const MIRRORED_ENVELOPES = new Set(['worker:start', 'worker:end'])
+   const kataUidFor = (e) => {
+     const kind = String((e && e.kind) || '')
+-    if (kind.startsWith('driver:')) {
++    // `jev:` rows route by the `driver:` rule and by nothing of their own: a
++    // reading the driver took about a task belongs on that task's issue,
++    // exactly where the driver's own narration of it goes, and a reading about
++    // the run (`jev:suite-red`) belongs on the run's.
++    if (kind.startsWith('driver:') || kind.startsWith('jev:')) {
+       const row = (typeof e.task === 'string') ? kataRowOf(e.task) : null
+       return row ? row.uid : kataRunUid
+     }
+@@ -1893,6 +1912,31 @@ export async function runEngine({
+     // knows, and on the run's issue otherwise (`kataUidFor`).
+     mirrorToHub(e, line)
+   }
++  // ── the Jev seam, one closure for every row kind that rides it ─────────────
++  // Ask Jev one question set and, when it answered, append `row` with those
++  // answers on it. There is exactly one way this fails and it is the same way
++  // every time: no client, a refusal, or a throw the client somehow let out —
++  // all of them resolve `null` and append NOTHING, so the row is simply absent
++  // from the record. That absence is the whole contract (#1096): no verdict,
++  // route, tier, model choice, fold adoption, gate or report field reads a
++  // `jev:` row, so a run whose every call failed dispatches the same labels in
++  // the same order and ends with the same task statuses as one whose calls all
++  // answered.
++  const jevRow = async (row, { state, questions }) => {
++    if (!jev) return null
++    let answers = null
++    try {
++      answers = await jev.ask({ state, questions })
++    } catch (e) {
++      // `ask` is documented never to reject; a client that did anyway is still
++      // one log line and no row.
++      log('jev: ask threw: ' + String((e && e.message) || e).slice(0, 200))
++      return null
++    }
++    if (!answers) return null
++    appendEvent({ ...row, answers })
++    return answers
++  }
+   // ── the bare-suite reading, one row per task an implementer worked ─────────
+   // The engine holds no copy of a worker's transcript: `run-worker.mjs` writes
+   // the reduced slice to `<runDir>/transcripts/<sessionId>.jsonl` and announces
+diff --git a/fleet/run-main.mjs b/fleet/run-main.mjs
+index 146fae0bb2104a2afd5edc38f0952c1454e65a2d..4bc2a9acb1535529b7dd7abd79f99252d2d20d04 100644
+--- a/fleet/run-main.mjs
++++ b/fleet/run-main.mjs
+@@ -51,6 +51,7 @@ import {
+ import { runEngine } from './run-engine.mjs'
+ import { createRunWorker } from './run-worker.mjs'
+ import { makeKataClient, httpTransport } from './kata-client.mjs'
++import { makeJevClient } from './jev-client.mjs'
+ 
+ // ONE VARIABLE BECAME TWO (#575, spec §1). `ENGINE_DIR` is THIS module's own
+ // repository, resolved from its own location: the kernel scripts, the role
+@@ -662,6 +663,9 @@ async function runMainInner(parsed, deps, hub) {
+       transport: httpTransport({ url: record.url }),
+       actor: 'engine:' + id,
+     }),
++    // The Jev client, from the edge hostname alone: no record, no token, no
++    // file. A sim hands in a fake and no request leaves the box.
++    jevClientFor = (baseUrl) => makeJevClient({ baseUrl, log }),
+   } = deps
+   const { planPath, runId, tier, implementerEffort, testCmd, bootstrapCmd, cli,
+           kata: kataPath } = parsed
+@@ -788,6 +792,16 @@ async function runMainInner(parsed, deps, hub) {
+     stage('kata', 'record ' + kataPath + ' → ' + String(kataRecord.url))
+   }
+ 
++  // The Jev client, built from ONE thing: the edge hostname the sandbox boot
++  // puts in the engine unit's environment. There is no record to read, no file
++  // to find and no key to carry — the `typesafe` http-proxy injects the bearer
++  // at the edge. On the laptop and in every sim `TYPESAFE_BASE_URL` is unset,
++  // so no client is built, the engine is handed no `jev` key at all, and no
++  // call is made anywhere.
++  const jev = (typeof env.TYPESAFE_BASE_URL === 'string' && env.TYPESAFE_BASE_URL)
++    ? jevClientFor(env.TYPESAFE_BASE_URL)
++    : null
++
+   // 2. Fill tiers, write back, validate.
+   const filled = fillTiers(argsObj, tier)
+   fs.writeFileSync(argsFilePath, JSON.stringify(argsObj, null, 2))
+@@ -935,6 +949,7 @@ async function runMainInner(parsed, deps, hub) {
+       // the record is which project and which issue each task is.
+       args: { ...launchArgs, width: widthOf(launchArgs), ...(kata ? { kataRecord } : {}) },
+       ...(kata ? { kata } : {}),
++      ...(jev ? { jev } : {}),
+       agent,
+       parallel: boundedParallel(widthOf(launchArgs)),
+       exec,
+diff --git a/fleet/sandbox-boot.sh b/fleet/sandbox-boot.sh
+index f9aecffff7b1048b8aa1af7b29ddf0d3d9bf65ef..77429aab08d13cd81b1b5b837c0aa97f98a8d146 100755
+--- a/fleet/sandbox-boot.sh
++++ b/fleet/sandbox-boot.sh
+@@ -117,6 +117,12 @@ REFLECTION_URL="https://reflection.int.exe.xyz"
+ NOTIFY_URL="https://notify.int.exe.xyz/"
+ GITHUB_INT_HOST="github.int.exe.xyz"
+ ANTHROPIC_PROXY_URL="https://claude-max.int.exe.xyz"
++# Jev, behind the same exe.dev auth proxy: the `typesafe` http-proxy on
++# `tag:fleet`, created like `claude-max` and `kata`. The request carries no
++# bearer of its own — the edge injects it — so this hostname is the whole of
++# what the box holds, and HTTPS is not optional: `http` 301s, and a followed
++# 301 turns a POST into a GET (run-110).
++TYPESAFE_PROXY_URL="https://typesafe.int.exe.xyz"
+ # The kata daemon, behind the hub's exe.dev auth proxy. The request carries no
+ # bearer of its own: the edge injects the peer key, which is the whole reason a
+ # sandbox that holds no kata token at all can still be answered, and the daemon
+@@ -1200,6 +1206,7 @@ run_engine() {
+     -p "WorkingDirectory=$TARGET_DIR" -- \
+     env -u CLAUDE_CONFIG_DIR \
+       "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
++      "TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL" \
+       "CLAUDE_CODE_OAUTH_TOKEN=placeholder" \
+       "ULTRAPOWERS_FLEET_RUN=$RUN_ID" \
+       node "$ENGINE_REPO_DIR/fleet/run-main.mjs" \
+diff --git a/fleet/tests/README.md b/fleet/tests/README.md
+index cba813f53de26aaa686ec10cbc5475e40d235677..618172ea23e081044d38a7cdc09ea00ea38df437 100644
+--- a/fleet/tests/README.md
++++ b/fleet/tests/README.md
+@@ -63,6 +63,13 @@ one sim per question:
+   action wall and whether the browser ran.
+ - `test_run_engine_state_handshake.mjs` — the state handshake: what a task
+   publishes as the state it reached, and what the driver holds against it.
++- `test_run_engine_jev_finding.mjs` — the `jev:finding` row: a reviewer's
++  finding put to Jev, the answers on the record, and nothing on the record when
++  the call did not answer.
++- `test_run_engine_jev_tier.mjs` — the `jev:tier` row at dispatch and at review,
++  the reading recorded beside the tier the driver chose anyway.
++- `test_run_engine_jev_suite_red.mjs` — the `jev:suite-red` row: a red fold's
++  failing paths attributed per task, a reading that adopts nothing.
+ 
+ ## The launcher — `test_launch_*`
+ 
+@@ -107,6 +114,9 @@ one sim per question:
+   when there is nothing to say.
+ - `test_probe_kata_facts.mjs` — the shape of `probe_kata_facts.mjs`: one line
+   per fact, stamped with the hub's version.
++- `test_jev_client.mjs` — the Jev client: one POST at the edge hostname with no
++  `Authorization` header of its own, and `null` after one log line on every
++  lane that is not an answer.
+ - `test_sims_are_hermetic.mjs` — the probe below.
+ 
+ ## The rig
+diff --git a/fleet/tests/_engine_helpers.mjs b/fleet/tests/_engine_helpers.mjs
+index 21661d2db86efd3d9229b10652dd39f9a3afa0e0..8edcad7615481dcb0c5822a73f748ef6323b41a8 100644
+--- a/fleet/tests/_engine_helpers.mjs
++++ b/fleet/tests/_engine_helpers.mjs
+@@ -63,6 +63,20 @@ export function rig({ repo, runDir, waves, edges = [], stub, testCmd = 'bash che
+                       // engine with no hub at all — `kataRecord` travels
+                       // separately, through `extraArgs`.
+                       kata = undefined,
++                      // The Jev client, for a sim that drives one: an injected
++                      // `{ ask }`, never a network — `fleet/jev-client.mjs`'s
++                      // own `fetchImpl` seam is the other half, and between
++                      // them no sim opens a socket. Left out entirely when
++                      // undefined, exactly as `kata` is, so a sim that passes
++                      // none reaches an engine with no Jev at all and makes no
++                      // call.
++                      jev = undefined,
++                      // The run's event log, for a sim that drives the
++                      // engine's subscription: in production this is run-main's
++                      // `makeEventLog`; here it is whatever the sim hands in,
++                      // typically a `{ subscribe }` that captures the engine's
++                      // callback so the sim can push lines through it.
++                      eventLog = undefined,
+                       // The exec seam. `execSeam` by default — the sims are
+                       // real below it — and overridable so a sim can RECORD
+                       // what the driver ran (which git verbs, which suites, in
+@@ -120,10 +134,88 @@ export function rig({ repo, runDir, waves, edges = [], stub, testCmd = 'bash che
+     phase: (p) => phases.push(String(p)),
+     patchBase,
+     ...(kata === undefined ? {} : { kata }),
++    ...(jev === undefined ? {} : { jev }),
++    ...(eventLog === undefined ? {} : { eventLog }),
+   })
+   return { run, base, clonesDir, patchesDir, integ, logs, phases, patchBase }
+ }
+ 
++// The hub, in memory: the client's method names over a `Map` of issues, every
++// call recorded in order. Lifted out of `test_run_engine_state_handshake.mjs`
++// (which keeps its own copy) so any sim that needs a hub on can have one
++// without a network — `kata: fakeHub(...).kata` into the rig and the matching
++// `{ kataRecord }` through `extraArgs`. The fake's issue revisions must equal
++// the record's: a sheet read whose revision disagrees is fatal to the engine.
++//
++// `issues` is `{ [uid]: { revision, short_id, metadata } }`. `commentsOn(uid)`
++// is the comment bodies posted on one issue, in order — read it only after
++// `run()` resolves, since the engine drains its hub chain at the run's end.
++// `post` is a producing implementer's own `kata meta set … --json-value`: from
++// OUTSIDE the engine, so it is not in the call log and does not move the
++// revision the fake answers.
++export function fakeHub ({ projectId, issues }) {
++  const calls = []
++  const store = new Map()
++  for (const [uid, iss] of Object.entries(issues)) {
++    store.set(uid, { uid, revision: iss.revision, short_id: iss.short_id,
++                     metadata: { ...(iss.metadata || {}) }, owner: null,
++                     status: 'open', labels: [] })
++  }
++  const need = (uid) => {
++    const iss = store.get(uid)
++    if (!iss) throw new Error('fake hub: no issue ' + JSON.stringify(uid))
++    return iss
++  }
++  const record = (method, uid, fields, answer) => {
++    calls.push({ method, uid, ...fields, answer })
++    return answer
++  }
++  const kata = {
++    async getIssue (uid) {
++      const iss = need(uid)
++      return record('getIssue', uid, {}, {
++        uid, revision: iss.revision, short_id: iss.short_id, metadata: iss.metadata,
++        status: iss.status, owner: iss.owner, project_id: projectId,
++      })
++    },
++    async claim (project, uid) {
++      const iss = need(uid)
++      iss.owner = 'engine'; iss.revision += 1
++      return record('claim', uid, { projectId: project },
++        { uid, revision: iss.revision, short_id: iss.short_id })
++    },
++    async patchMetadata (project, uid, patch, revision) {
++      const iss = need(uid)
++      iss.metadata = { ...iss.metadata, ...patch }; iss.revision += 1
++      return record('patchMetadata', uid, { projectId: project, patch, revision },
++        { uid, revision: iss.revision, short_id: iss.short_id })
++    },
++    async comment (project, uid, body) {
++      const iss = need(uid)
++      iss.revision += 1
++      return record('comment', uid, { projectId: project, body }, { uid, revision: iss.revision })
++    },
++    async addLabel (project, uid, label) {
++      const iss = need(uid)
++      iss.labels.push(label); iss.revision += 1
++      return record('addLabel', uid, { projectId: project, label }, { uid, revision: iss.revision })
++    },
++    async close (project, uid, opts) {
++      const iss = need(uid)
++      iss.status = 'closed'; iss.revision += 1
++      return record('close', uid, { projectId: project, opts }, { uid, revision: iss.revision })
++    },
++  }
++  return {
++    kata,
++    calls,
++    of: (m) => calls.filter((c) => c.method === m),
++    commentsOn: (uid) => calls.filter((c) => c.method === 'comment' && c.uid === uid)
++      .map((c) => String(c.body || '')),
++    post: (uid, value) => { need(uid).metadata = { ...need(uid).metadata, 'state.reached': value } },
++  }
++}
++
+ // Common canned judgments.
+ export const passReview = () => ({ verdict: 'PASS', issues: [] })
+ export const cleanCritic = () => ({ findings: [], deferredVerification: [] })
+diff --git a/fleet/tests/test_jev_client.mjs b/fleet/tests/test_jev_client.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..9d59c6e7cea77cd6ced545b7383b54dacbfa5a69
+--- /dev/null
++++ b/fleet/tests/test_jev_client.mjs
+@@ -0,0 +1,800 @@
++/**
++ * fleet/tests/test_jev_client.mjs — the exam for Task 1: *the Jev client and
++ * the engine's `jev` seam* — one POST at the edge hostname, `null` on any
++ * failure, `jev:` rows routed to the hub like `driver:` rows.
++ *
++ * This file is the Proof's `Test:`, written whole at the path the Proof names.
++ * Every relative import is written for THIS directory: `../` is the
++ * repository's `fleet/`, `./` is `fleet/tests/`.
++ *
++ * The Machine clauses under test, restated so a reader can map every assertion
++ * back to the contract:
++ *
++ *   M1 — `fleet/jev-client.mjs` exports `JEV_PATH` = `/v1/systemone`,
++ *        `JEV_MODEL` = `jev-latest`, `JEV_TIMEOUT_MS` = `10000`,
++ *        `JEV_STATE_MAX_BYTES` = `120000`, and `makeJevClient({ baseUrl,
++ *        fetchImpl = globalThis.fetch, timeoutMs = JEV_TIMEOUT_MS, log = () =>
++ *        {} })` returning `{ ask }`. `ask({ state, questions })` calls
++ *        `fetchImpl` EXACTLY ONCE, first argument the `baseUrl` stripped of
++ *        trailing slashes plus `/v1/systemone`, second argument an init whose
++ *        `method` is `POST`, whose `headers` carry a key lowercasing to
++ *        `content-type` with value `application/json` and NO key lowercasing
++ *        to `authorization`, whose `body` parses to an object with exactly the
++ *        keys `state`, `model`, `questions` and `model` `jev-latest`, and
++ *        whose `signal` is an `AbortSignal`; and it resolves to the reply's
++ *        `answers` object when the status is 200–299 and the body parses as
++ *        JSON carrying an `answers` object.
++ *   M2 — `ask` resolves `null`, NEVER rejects, and calls `log` exactly once
++ *        with a string beginning `jev:` for each of: a status outside 200–299;
++ *        a `fetchImpl` that rejects (an `AbortError` included); a body that is
++ *        not JSON or carries no `answers` object; and a `state` whose
++ *        `JSON.stringify` length exceeds `JEV_STATE_MAX_BYTES`, for which
++ *        `fetchImpl` is not called at all.
++ *   M3 — `runEngine` accepts an optional top-level `jev` beside `kata`, and
++ *        rejects BEFORE any dispatch with an `Error` whose message begins
++ *        `jev:` when `jev` is present and `jev.ask` is not a function; and
++ *        `kataUidFor` routes a `jev:`-prefixed kind by the `driver:` rule — a
++ *        line the `eventLog` subscription receives is posted verbatim on the
++ *        issue of the task its `task` field names when the record knows that
++ *        task, on the run's issue otherwise, while an `engine:log` line is
++ *        posted on no issue, as at BASE.
++ *   M4 — `runMainInner` takes a `jevClientFor` dep defaulting to `(baseUrl) =>
++ *        makeJevClient({ baseUrl, log })` and hands `runEngineFn` a `jev` key
++ *        equal to `jevClientFor(env.TYPESAFE_BASE_URL)` exactly when
++ *        `env.TYPESAFE_BASE_URL` is a non-empty string, and no `jev` key at
++ *        all otherwise.
++ *   M5 — `fleet/sandbox-boot.sh` declares `TYPESAFE_PROXY_URL` beside
++ *        `ANTHROPIC_PROXY_URL`; the engine unit's `env` list carries
++ *        `"TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL"` directly after
++ *        `"ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL"`; the publish-fold unit's
++ *        `env` list carries no `TYPESAFE` entry.
++ *   M6 — `fleet/CONTRACT.md`'s engine unit line carries
++ *        `TYPESAFE_BASE_URL=https://typesafe.int.exe.xyz` after
++ *        `CLAUDE_CODE_OAUTH_TOKEN=placeholder`; the paragraph after
++ *        `driver:suite-runs` names the three kinds, `POST /v1/systemone`, the
++ *        one-log-line-and-no-row rule and that nothing reads them; the
++ *        `Integration naming` bullet names the `typesafe` http-proxy; and
++ *        `fleet/tests/README.md` gains one line each for the four sims.
++ *   M7 — `_engine_helpers.mjs`'s `rig` takes optional `jev` and `eventLog` and
++ *        passes each to `runEngine` as a top-level key exactly when given, as
++ *        it passes `kata`; and it exports `fakeHub({ projectId, issues })`
++ *        returning `{ kata, calls, commentsOn }`.
++ *
++ * The legs, in the order they run here:
++ *
++ *   (a) [M1] the four constants and the one green call.
++ *   (b) [M2] the five failures, plus a `fetchImpl` that throws synchronously.
++ *   (g) [M7] `fakeHub`'s three keys and its client's six methods — asserted
++ *       where the hub is first built, because leg (c) cannot be driven without
++ *       it; the rig's `jev` passthrough half of (g) follows leg (c).
++ *   (c) [M3] the hub-on rig run: the four lines through the engine's own
++ *       `eventLog` subscription, and where each one landed.
++ *   (g) [M7] the rig's `jev` passthrough: a live client runs a plan to `done`,
++ *       a `jev` with no `ask` rejects before any dispatch, no `jev` at all runs
++ *       the same plan to `done`, and `eventLog.subscribe` was called once.
++ *   (d) [M4] `runMain` driven four times, one per sub-case of the clause.
++ *   (e) [M5] the boot's three `Run:` lines.
++ *   (f) [M6] the contract's and the README's five `Run:` lines.
++ *
++ * The eight `Run:` lines of legs (e) and (f) are the driver's to execute; they
++ * are cheap to read and are read HERE too, in process — a `sed -n '/a/,/b/p' |
++ * tr '\n' ' ' | grep` emulation, translated pattern for pattern (parentheses
++ * and braces escaped where the shell's BRE has them literal). Nothing is
++ * spawned for them: `test_sims_are_hermetic.mjs` names a spawn whose call text
++ * carries a `test_*.mjs` literal a sibling run, and the README `Run:` line
++ * greps for four of those names.
++ *
++ * Nothing here opens a socket. The client is reached only through an injected
++ * `fetchImpl` whose reply carries the two members `httpTransport` reads —
++ * `status` and `text()` — and the hub only through the rig's own fake. Below
++ * the agent seam the rig is the real thing: real git repositories, real clones
++ * at BASE, the real capture, the real fold kernel through the real `execSeam`.
++ */
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { execFileSync } from 'node:child_process'
++import { fileURLToPath } from 'node:url'
++
++import { runMain } from '../run-main.mjs'
++import { simEnv } from './_helpers.mjs'
++import { ENV, makeRepo, rig, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
++// The same module by namespace, for the symbol this task ADDS to it: a named
++// import of an export BASE does not have is a link-time error that takes every
++// other leg down with it.
++import * as engineHelpers from './_engine_helpers.mjs'
++
++const HERE = path.dirname(fileURLToPath(import.meta.url))
++const ROOT = path.resolve(HERE, '..', '..')
++const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'jev-client-')))
++process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
++
++/** The deliverable, imported dynamically: a tree without it reports the ABSENT
++ *  MODULE as an assertion of leg (a) rather than dying at load with no leg
++ *  named at all. */
++let jev = null
++let jevImportError = null
++try {
++  jev = await import('../jev-client.mjs')
++} catch (error) {
++  jevImportError = error
++}
++assert.ok(jevImportError === null,
++  '(a) [M1] `fleet/jev-client.mjs` is importable — the module this task creates. Got: ' +
++  String(jevImportError && (jevImportError.message || jevImportError)))
++assert.equal(typeof jev.makeJevClient, 'function',
++  '(a) [M1] it exports `makeJevClient({ baseUrl, fetchImpl, timeoutMs, log })`; got ' +
++  JSON.stringify(typeof jev.makeJevClient))
++
++// ══════════════════════════════════════════════════════════════════════════
++// (a) [M1] the four constants, and the one call a green answer makes
++// ══════════════════════════════════════════════════════════════════════════
++
++assert.equal(jev.JEV_PATH, '/v1/systemone',
++  '(a) [M1] `JEV_PATH` is `/v1/systemone` — the edge\'s one endpoint; got ' +
++  JSON.stringify(jev.JEV_PATH))
++assert.equal(jev.JEV_MODEL, 'jev-latest',
++  '(a) [M1] `JEV_MODEL` is `jev-latest`; got ' + JSON.stringify(jev.JEV_MODEL))
++assert.equal(jev.JEV_TIMEOUT_MS, 10000,
++  '(a) [M1] `JEV_TIMEOUT_MS` is 10000; got ' + JSON.stringify(jev.JEV_TIMEOUT_MS))
++assert.equal(jev.JEV_STATE_MAX_BYTES, 120000,
++  '(a) [M1] `JEV_STATE_MAX_BYTES` is 120000 — the state budget, on the state\'s own ' +
++  'JSON; got ' + JSON.stringify(jev.JEV_STATE_MAX_BYTES))
++
++/** The reply shape a sim hands back: what `httpTransport` reads of a response,
++ *  and nothing else — `status` and `text()`. */
++const reply = (status, body) => ({ status, text: async () => String(body) })
++
++/** A `fetchImpl` that records every call's two arguments and answers with
++ *  `answer(argv)` — which may return a promise, reject, or throw outright. */
++const recordingFetch = (answer) => {
++  const calls = []
++  return { calls, fetchImpl: (...argv) => { calls.push(argv); return answer(argv) } }
++}
++
++/** `[name, value]` pairs of a headers container, whatever the shape: M1 says
++ *  "a key that lowercases to `content-type`", so the exam reads a plain
++ *  object, a `Map`, a pair array and a `Headers` alike rather than pinning
++ *  one of them. */
++const headerEntries = (headers) => {
++  if (!headers) return []
++  if (typeof headers.entries === 'function') return [...headers.entries()]
++  if (Array.isArray(headers)) return headers.map((pair) => [pair[0], pair[1]])
++  return Object.entries(headers)
++}
++const headerValue = (headers, name) => {
++  const hit = headerEntries(headers).find(([k]) => String(k).toLowerCase() === name)
++  return hit === undefined ? null : String(hit[1])
++}
++const headerNames = (headers) => headerEntries(headers).map(([k]) => String(k).toLowerCase())
++
++const GREEN_BODY = '{"model":"jev-1.13.0","answers":{"q":{"type":"noul","noul":0.9}},' +
++  '"usage":{"input_tokens":1,"output_tokens":1}}'
++const QUESTIONS = { q: { type: 'noul', instructions: 'x' } }
++const STATE = { s: 1 }
++const WANT_URL = 'https://jev.invalid/v1/systemone'
++
++{
++  const { calls, fetchImpl } = recordingFetch(async () => reply(200, GREEN_BODY))
++  const logs = []
++  const client = jev.makeJevClient({ baseUrl: 'https://jev.invalid/', fetchImpl,
++    log: (l) => logs.push(l) })
++  assert.equal(typeof client.ask, 'function',
++    '(a) [M1] `makeJevClient(...)` returns `{ ask }`; got ' + JSON.stringify(Object.keys(client)))
++
++  const answers = await client.ask({ state: STATE, questions: QUESTIONS })
++  assert.deepEqual(answers, { q: { type: 'noul', noul: 0.9 } },
++    '(a) [M1] a 200 whose body carries an `answers` object resolves to THAT object — ' +
++    'the reply\'s `answers`, not the reply; got ' + JSON.stringify(answers))
++
++  assert.equal(calls.length, 1,
++    '(a) [M1] `ask` calls `fetchImpl` exactly once — one POST, no retry; got ' + calls.length)
++  const [url, init] = calls[0]
++  assert.equal(url, WANT_URL,
++    '(a) [M1] the first argument is the baseUrl stripped of trailing slashes plus ' +
++    '`/v1/systemone` — `' + WANT_URL + '`; got ' + JSON.stringify(url))
++  assert.ok(init && typeof init === 'object',
++    '(a) [M1] the second argument is the request init; got ' + JSON.stringify(init))
++  assert.equal(init.method, 'POST',
++    '(a) [M1] its `method` is `POST`; got ' + JSON.stringify(init.method))
++  assert.equal(headerValue(init.headers, 'content-type'), 'application/json',
++    '(a) [M1] its headers carry a key lowercasing to `content-type` with value ' +
++    '`application/json`; got ' + JSON.stringify(headerEntries(init.headers)))
++  assert.equal(headerNames(init.headers).includes('authorization'), false,
++    '(a) [M1] and NO key lowercasing to `authorization` — the edge injects the bearer, ' +
++    'the box never holds it; got ' + JSON.stringify(headerNames(init.headers)))
++  let sent = null
++  try { sent = JSON.parse(String(init.body)) } catch { sent = null }
++  assert.ok(sent && typeof sent === 'object' && !Array.isArray(sent),
++    '(a) [M1] its `body` parses to an object; got ' + JSON.stringify(init.body))
++  assert.deepEqual(Object.keys(sent).sort(), ['model', 'questions', 'state'],
++    '(a) [M1] with exactly the keys `state`, `model`, `questions`, in any order; got ' +
++    JSON.stringify(Object.keys(sent)))
++  assert.equal(sent.model, 'jev-latest',
++    '(a) [M1] whose `model` is `jev-latest`; got ' + JSON.stringify(sent.model))
++  assert.deepEqual(sent.state, STATE,
++    '(a) [M1] whose `state` is the state it was handed; got ' + JSON.stringify(sent.state))
++  assert.deepEqual(sent.questions, QUESTIONS,
++    '(a) [M1] and whose `questions` are the questions it was handed; got ' +
++    JSON.stringify(sent.questions))
++  assert.ok(init.signal instanceof AbortSignal,
++    '(a) [M1] its `signal` is an `AbortSignal` — the timeout, on the call itself; got ' +
++    Object.prototype.toString.call(init.signal))
++  assert.deepEqual(logs, [],
++    '(a) [M1] an answered call is no log line at all; got ' + JSON.stringify(logs))
++}
++
++{
++  // The same URL from a baseUrl with no trailing slash: "stripped of trailing
++  // slashes" is the rule, not "one slash removed".
++  const { calls, fetchImpl } = recordingFetch(async () => reply(200, GREEN_BODY))
++  await jev.makeJevClient({ baseUrl: 'https://jev.invalid', fetchImpl })
++    .ask({ state: STATE, questions: QUESTIONS })
++  assert.equal(calls.length === 1 ? calls[0][0] : null, WANT_URL,
++    '(a) [M1] a baseUrl with no trailing slash reaches the same URL — `' + WANT_URL +
++    '`; got ' + JSON.stringify(calls.map((c) => c[0])))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (b) [M2] every failure is `null` and ONE log line — and never a rejection
++// ══════════════════════════════════════════════════════════════════════════
++
++/** One `ask` against one canned answer, with its own log sink. Never rethrows:
++ *  whether `ask` rejected is itself an assertion below. */
++const askWith = async ({ answer, state = STATE }) => {
++  const logs = []
++  const { calls, fetchImpl } = recordingFetch(answer)
++  const client = jev.makeJevClient({ baseUrl: 'https://jev.invalid', fetchImpl,
++    log: (l) => logs.push(l) })
++  let value = 'UNSET'
++  let threw = null
++  try { value = await client.ask({ state, questions: QUESTIONS }) } catch (error) { threw = error }
++  return { value, threw, logs, calls }
++}
++
++const abortError = () => {
++  const error = new Error('The operation was aborted')
++  error.name = 'AbortError'
++  return error
++}
++
++const FAILURES = [
++  { tag: 'a status outside 200–299 (500, with a JSON body)',
++    answer: async () => reply(500, '{"error":"boom"}') },
++  { tag: 'a `fetchImpl` that rejects with an `AbortError` — the timeout lane',
++    answer: async () => { throw abortError() } },
++  { tag: 'a 200 whose body is not JSON', answer: async () => reply(200, 'not json') },
++  { tag: 'a 200 whose body carries no `answers` object',
++    answer: async () => reply(200, '{"model":"x","usage":{}}') },
++]
++
++for (const failure of FAILURES) {
++  const { value, threw, logs, calls } = await askWith({ answer: failure.answer })
++  assert.equal(threw, null,
++    '(b) [M2] ' + failure.tag + ': `ask` never rejects. It threw: ' +
++    String(threw && (threw.stack || threw.message || threw)))
++  assert.equal(value, null,
++    '(b) [M2] ' + failure.tag + ': `ask` resolves `null`; got ' + JSON.stringify(value))
++  assert.equal(logs.length, 1,
++    '(b) [M2] ' + failure.tag + ': exactly one log line — a failed call is one log line ' +
++    'and no row. Got ' + JSON.stringify(logs))
++  assert.equal(typeof logs[0], 'string',
++    '(b) [M2] ' + failure.tag + ': that line is a string; got ' + JSON.stringify(logs[0]))
++  assert.ok(String(logs[0]).startsWith('jev:'),
++    '(b) [M2] ' + failure.tag + ': and it begins `jev:`; got ' + JSON.stringify(logs[0]))
++  assert.equal(calls.length, 1,
++    '(b) [M2] ' + failure.tag + ': one call was made and never retried; got ' + calls.length)
++}
++
++{
++  // The budget, checked on the state's own JSON BEFORE any call.
++  const overBudget = 'x'.repeat(120001)
++  const { value, threw, logs, calls } = await askWith({
++    answer: async () => reply(200, GREEN_BODY), state: overBudget,
++  })
++  assert.equal(threw, null,
++    '(b) [M2] an over-budget state: `ask` never rejects. It threw: ' +
++    String(threw && (threw.stack || threw.message || threw)))
++  assert.equal(value, null,
++    '(b) [M2] an over-budget state (`JSON.stringify` longer than `JEV_STATE_MAX_BYTES`) ' +
++    'resolves `null`; got ' + JSON.stringify(value))
++  assert.equal(logs.length, 1,
++    '(b) [M2] with exactly one log line; got ' + JSON.stringify(logs))
++  assert.ok(String(logs[0]).startsWith('jev:'),
++    '(b) [M2] beginning `jev:`; got ' + JSON.stringify(logs[0]))
++  assert.equal(calls.length, 0,
++    '(b) [M2] and `fetchImpl` was not called AT ALL — the budget is checked before the ' +
++    'call; got ' + calls.length + ' call(s)')
++}
++
++{
++  // A seam that throws synchronously is the same lane: `ask` resolves `null`.
++  const { value, threw } = await askWith({ answer: () => { throw new Error('sync boom') } })
++  assert.equal(threw, null,
++    '(b) [M2] a `fetchImpl` that throws SYNCHRONOUSLY: `ask` still never rejects. It threw: ' +
++    String(threw && (threw.stack || threw.message || threw)))
++  assert.equal(value, null,
++    '(b) [M2] a `fetchImpl` that throws synchronously also resolves `null`; got ' +
++    JSON.stringify(value))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// the rig's hub, lifted (leg (g) [M7], asserted where leg (c) first needs it)
++// ══════════════════════════════════════════════════════════════════════════
++
++assert.equal(typeof engineHelpers.fakeHub, 'function',
++  '(g) [M7] `fleet/tests/_engine_helpers.mjs` exports `fakeHub({ projectId, issues })` — ' +
++  'the in-memory hub client of `test_run_engine_state_handshake.mjs`, lifted into the rig; ' +
++  'got ' + JSON.stringify(typeof engineHelpers.fakeHub))
++
++const PROJECT_ID = 7
++const RUN_UID = 'RUN0'
++const UID_A = 'U-A'
++const ISSUES = () => ({
++  [RUN_UID]: { revision: 1, short_id: 'run0', metadata: {} },
++  [UID_A]: { revision: 1, short_id: 'aa11', metadata: {} },
++})
++/** The record, spelled as the launcher writes it; its issue revisions are the
++ *  fake's, because a sheet read whose revision disagrees is fatal. */
++const RECORD = () => ({
++  url: 'https://kata.invalid',
++  project: { id: PROJECT_ID, uid: 'PROJ0', name: 'ultrapowers' },
++  run: { uid: RUN_UID, revision: 1 },
++  tasks: { A: { uid: UID_A, short_id: 'aa11', revision: 1 } },
++})
++
++const hub = engineHelpers.fakeHub({ projectId: PROJECT_ID, issues: ISSUES() })
++assert.ok(hub && typeof hub === 'object',
++  '(g) [M7] `fakeHub(...)` answers an object; got ' + JSON.stringify(hub))
++assert.ok(hub.kata && typeof hub.kata === 'object',
++  '(g) [M7] carrying `kata`, the client the engine is handed; got ' + JSON.stringify(hub.kata))
++assert.ok(Array.isArray(hub.calls),
++  '(g) [M7] carrying `calls`, every call in order; got ' + JSON.stringify(typeof hub.calls))
++assert.equal(typeof hub.commentsOn, 'function',
++  '(g) [M7] and `commentsOn(uid)`, the comment bodies on one issue; got ' +
++  JSON.stringify(typeof hub.commentsOn))
++for (const method of ['getIssue', 'claim', 'patchMetadata', 'comment', 'addLabel', 'close']) {
++  assert.equal(typeof hub.kata[method], 'function',
++    '(g) [M7] `fakeHub(...).kata` carries the client\'s six methods — `' + method +
++    '` among them; got ' + JSON.stringify(Object.keys(hub.kata)))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (c) [M3] `jev:` lines route like `driver:` lines; `engine:log` routes nowhere
++// ══════════════════════════════════════════════════════════════════════════
++
++/** A wave's task, the shape the rig's sims spell. */
++const taskOf = (id) => ({
++  id, title: 'task ' + id, files: [id + '.txt'], tier: 'standard', review: 'lean',
++  writes: [id + '.txt'], commutes: [], testCmd: 'bash check.sh', proofTests: [], proofRuns: [],
++  body: 'sim task ' + id,
++})
++
++/** The run's own record, read back off disk. */
++const eventsIn = (runDir) => {
++  let text = ''
++  try { text = fs.readFileSync(path.join(runDir, 'events.jsonl'), 'utf8') } catch { return [] }
++  return text.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('{'))
++    .map((l) => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean)
++}
++
++const LINES = { A: 'LINE-A', R: 'LINE-R', Z: 'LINE-Z', L: 'LINE-L' }
++const cRunDir = path.join(tmp, 'run-c')
++/** The engine's own subscription callback, captured from the rig's `eventLog`. */
++const subscribed = []
++const cLabels = []
++/** How many callbacks the `impl:A` stub found when it ran — read AFTER the run
++ *  rather than asserted inside the stub, so a tree where the rig passes no
++ *  `eventLog` at all fails on this leg's own assertion and not as a dispatch
++ *  that threw somewhere inside the engine. */
++let subscribedAtDispatch = null
++{
++  const repo = makeRepo(path.join(tmp, 'repo-c'))
++  const eventLog = {
++    subscribe: (cb) => { subscribed.push(cb); return () => {} },
++    onEvent: () => {}, log: () => {}, phase: () => {},
++  }
++  const { run } = rig({
++    repo, runDir: cRunDir, waves: [[taskOf('A')]], stamp: 'jev-c',
++    kata: hub.kata,
++    eventLog,
++    extraArgs: { kataRecord: RECORD(), attentionPollMs: 3600000 },
++    stub: (prompt, opts, cwd) => {
++      const label = String(opts.label)
++      cLabels.push(label)
++      if (label === 'impl:A') {
++        fs.writeFileSync(path.join(cwd, 'A.txt'), 'from ' + label + '\n')
++        subscribedAtDispatch = subscribed.length
++        // The four lines, off the log the engine subscribed to — this task has
++        // no row producer of its own, so the subscription IS the seam under test.
++        if (subscribed.length === 1) {
++          subscribed[0]({ kind: 'jev:finding', task: 'A' }, LINES.A)
++          subscribed[0]({ kind: 'jev:suite-red' }, LINES.R)
++          subscribed[0]({ kind: 'jev:tier', task: 'ZZ' }, LINES.Z)
++          subscribed[0]({ kind: 'engine:log' }, LINES.L)
++        }
++        return doneImpl(cwd)
++      }
++      if (label === 'integration') return cleanCritic()
++      if (label.startsWith('review:')) return passReview()
++      if (label.startsWith('fix:')) return doneImpl(cwd)
++      return { status: 'BLOCKED', summary: 'sim: unexpected dispatch ' + label }
++    },
++  })
++  const report = await run()
++  const rowA = report.tasks.find((t) => t && t.task === 'A')
++  assert.equal(rowA && rowA.status, 'done',
++    '(c) [M3] sim precondition: the hub-on run took task A to `done` — the routing is ' +
++    'read off a run that finished. Labels dispatched: ' + JSON.stringify(cLabels) +
++    '. Got ' + JSON.stringify(report.tasks))
++  assert.equal(subscribedAtDispatch, 1,
++    '(c) [M3] with a hub on, the engine had subscribed to the `eventLog` the rig passed ' +
++    'through — exactly one subscription, in place before `impl:A` was dispatched; got ' +
++    JSON.stringify(subscribedAtDispatch))
++
++  // The comments are drained at the run's end, so they are read only here.
++  const onTask = hub.commentsOn(UID_A)
++  const onRun = hub.commentsOn(RUN_UID)
++  assert.ok(onTask.includes(LINES.A),
++    '(c) [M3] a `jev:finding` naming task A is posted VERBATIM on task A\'s issue (' +
++    UID_A + ') — the `driver:` rule, reached by the `jev:` prefix. Comments there: ' +
++    JSON.stringify(onTask))
++  assert.equal(onTask.includes(LINES.R), false,
++    '(c) [M3] and the run-wide `jev:suite-red` line is NOT on task A\'s issue. Comments ' +
++    'there: ' + JSON.stringify(onTask))
++  assert.ok(onRun.includes(LINES.R),
++    '(c) [M3] a `jev:suite-red` line, naming no task, is posted on the run\'s issue (' +
++    RUN_UID + '). Comments there: ' + JSON.stringify(onRun))
++  assert.ok(onRun.includes(LINES.Z),
++    '(c) [M3] and so is a `jev:tier` line naming a task the record does not know (`ZZ`). ' +
++    'Comments there: ' + JSON.stringify(onRun))
++  assert.equal(onRun.includes(LINES.A),
++    false,
++    '(c) [M3] task A\'s own line is not ALSO on the run\'s issue — one line, one issue. ' +
++    'Comments there: ' + JSON.stringify(onRun))
++  const strayed = hub.calls.filter((c) => c && c.method === 'comment' &&
++    String(c.body || '').includes(LINES.L))
++  assert.deepEqual(strayed, [],
++    '(c) [M3] an `engine:log` line is posted on NO issue, as at BASE; got ' +
++    JSON.stringify(strayed))
++
++  const jevRows = eventsIn(cRunDir).filter((e) => String(e.kind || '').startsWith('jev:'))
++  assert.deepEqual(jevRows, [],
++    '(c) [M3] and the run\'s `events.jsonl` carries no row whose kind begins `jev:` — ' +
++    'this task appends none; the three row tasks do. Got ' + JSON.stringify(jevRows))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (g) [M7] the rig's `jev` and `eventLog` passthroughs
++// ══════════════════════════════════════════════════════════════════════════
++
++assert.equal(subscribed.length, 1,
++  '(g) [M7] in leg (c) the sim\'s `eventLog.subscribe` was called exactly once — which ' +
++  'only the rig\'s `eventLog` passthrough could have carried to the engine; got ' +
++  subscribed.length)
++
++/** The one-task plan of leg (g), run with whatever `jev` the case hands in. */
++const plainRun = async ({ tag, jevArg }) => {
++  const repo = makeRepo(path.join(tmp, 'repo-' + tag))
++  const runDir = path.join(tmp, 'run-' + tag)
++  const labels = []
++  const { run } = rig({
++    repo, runDir, waves: [[taskOf('A')]], stamp: 'jev-' + tag,
++    ...(jevArg === undefined ? {} : { jev: jevArg }),
++    stub: (prompt, opts, cwd) => {
++      const label = String(opts.label)
++      labels.push(label)
++      if (label.startsWith('impl:')) {
++        fs.writeFileSync(path.join(cwd, 'A.txt'), 'from ' + label + '\n')
++        return doneImpl(cwd)
++      }
++      if (label === 'integration') return cleanCritic()
++      if (label.startsWith('review:')) return passReview()
++      if (label.startsWith('fix:')) return doneImpl(cwd)
++      return { status: 'BLOCKED', summary: 'sim: unexpected dispatch ' + label }
++    },
++  })
++  let report = null
++  let threw = null
++  try { report = await run() } catch (error) { threw = error }
++  return { report, threw, labels }
++}
++
++{
++  const live = await plainRun({ tag: 'g-live', jevArg: { ask: async () => null } })
++  assert.equal(live.threw, null,
++    '(g) [M7] a rig handed a live `jev` runs — it threw: ' +
++    String(live.threw && (live.threw.stack || live.threw.message || live.threw)))
++  const row = live.report.tasks.find((t) => t && t.task === 'A')
++  assert.equal(row && row.status, 'done',
++    '(g) [M7] `rig({ …, jev: { ask } })` runs a one-task plan to `done`; got ' +
++    JSON.stringify(live.report.tasks))
++}
++
++{
++  const broken = await plainRun({ tag: 'g-broken', jevArg: {} })
++  assert.ok(broken.threw instanceof Error,
++    '(g) [M7] `rig({ …, jev: {} }).run()` REJECTS — a `jev` whose `ask` is not a ' +
++    'function is refused, and the rejection is one only the rig\'s `jev` passthrough ' +
++    'could have carried to the engine. It resolved instead: ' +
++    JSON.stringify(broken.report && broken.report.tasks))
++  assert.ok(String(broken.threw.message).startsWith('jev:'),
++    '(g) [M7] with an `Error` whose message begins `jev:`; got ' +
++    JSON.stringify(String(broken.threw.message)))
++  assert.deepEqual(broken.labels, [],
++    '(g) [M7] and it rejects BEFORE any dispatch — no stub was reached; got ' +
++    JSON.stringify(broken.labels))
++}
++
++{
++  const none = await plainRun({ tag: 'g-none', jevArg: undefined })
++  assert.equal(none.threw, null,
++    '(g) [M7] a rig handed NO `jev` runs as it does at BASE — it threw: ' +
++    String(none.threw && (none.threw.stack || none.threw.message || none.threw)))
++  const row = none.report.tasks.find((t) => t && t.task === 'A')
++  assert.equal(row && row.status, 'done',
++    '(g) [M7] `rig` with no `jev` runs the same one-task plan to `done` — the key is ' +
++    'passed exactly when given, as `kata` is; got ' + JSON.stringify(none.report.tasks))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// (d) [M4] the `jev` key run-main hands the engine, and when it hands none
++// ══════════════════════════════════════════════════════════════════════════
++//
++// The flow of `fleet/tests/test_worker_kata_env.mjs`: a stub `exec` playing the
++// python scripts, a stub `runEngineFn` that records what it was handed, a
++// faked `kataClientFor`, and a `makeAgent` that spawns nothing. The engine is
++// stubbed, so the client the default builds is never called.
++
++const RUN_ID = 'run-177'
++const RUNMAIN_WAVES = () => [[
++  { id: '3', title: 't3', files: ['a.txt'], tier: null, review: 'lean',
++    writes: ['a.txt'], commutes: [] },
++]]
++
++const mkdir = (p) => { fs.mkdirSync(p, { recursive: true }); return p }
++
++async function runMainFlow ({ name, env, jevClientFor }) {
++  const target = mkdir(path.join(tmp, 'rm-' + name))
++  const git = (argv, cwd) => execFileSync('git', argv,
++    { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
++  git(['init', '-q', '-b', 'fleet-base'], target)
++  git(['config', 'user.email', 't@example.com'], target)
++  git(['config', 'user.name', 't'], target)
++  fs.writeFileSync(path.join(target, 'a.txt'), 'base\n')
++  git(['add', '-A'], target)
++  git(['commit', '-q', '-m', 'base'], target)
++
++  const planPath = path.join(target, 'plan.md')
++  fs.writeFileSync(planPath, '# plan\n')
++  const runDir = path.join(target, '.claude/ultrapowers', name)
++  const argsFile = path.join(runDir, 'args.json')
++  const exec = async (cmd, argv, opts = {}) => {
++    if (cmd === 'git') {
++      try {
++        return { code: 0, stdout: execFileSync('git', argv,
++          { cwd: opts.cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }),
++          stderr: '' }
++      } catch (e) {
++        return { code: 1, stdout: '', stderr: String((e && (e.stderr || e.message)) || e) }
++      }
++    }
++    if (cmd === 'claude' && argv[0] === 'auth') {
++      return { code: 0, stdout: JSON.stringify({ authMethod: 'oauth', subscriptionType: 'max' }),
++               stderr: '' }
++    }
++    const script = path.basename(argv[0])
++    if (script === 'ultra_run.py' && argv.includes('--validate-knobs')) {
++      return { code: 0, stdout: '{"ok": true}', stderr: '' }
++    }
++    if (script === 'ultra_run.py') {
++      mkdir(runDir)
++      fs.writeFileSync(argsFile, JSON.stringify({
++        waves: RUNMAIN_WAVES(), wavesPath: path.join(runDir, 'launch.json'),
++        edges: [], acceptance: { mode: 'suite' }, waveLabels: ['w1'],
++        globalConstraints: '', planPath: argv[1],
++        pluginRoot: target, runDir, testCmd: 'true',
++      }, null, 2))
++      const receipt = { ok: true, baseBranch: 'fleet-base', argsFile, testCmd: 'true' }
++      fs.writeFileSync(path.join(runDir, 'receipt.json'), JSON.stringify(receipt))
++      return { code: 0, stdout: JSON.stringify(receipt), stderr: '' }
++    }
++    if (script === 'finalize_report.py') return { code: 0, stdout: '', stderr: '' }
++    if (script === 'ultra_gate.py' && argv.includes('--approve')) {
++      return { code: 0, stdout: JSON.stringify({ mode: 'suite', stamp: RUN_ID }), stderr: '' }
++    }
++    if (script === 'ultra_gate.py') {
++      fs.writeFileSync(path.join(runDir, 'gate-receipt.json'), JSON.stringify({
++        verdict: 'PASS', gateCheck: { verdict: 'PASS', checks: [], acks: [] }, gateCheckExit: 0,
++      }))
++      return { code: 0, stdout: '', stderr: '' }
++    }
++    throw new Error('exec stub: unexpected ' + cmd + ' ' + argv.join(' '))
++  }
++  let received = null
++  await runMain(
++    { planPath, runId: RUN_ID, repoDir: target, tier: 'mostCapable', overlap: null,
++      testCmd: null, bootstrapCmd: null, cli: 'claude' },
++    {
++      exec,
++      log: () => {},
++      env,
++      kataClientFor: () => ({
++        async getIssue () { throw new Error('run-main sim: the engine is stubbed') },
++        async comment () { return { revision: 1 } },
++      }),
++      ...(jevClientFor === undefined ? {} : { jevClientFor }),
++      runEngineFn: async (deps) => {
++        received = deps
++        return { integrationBranch: 'ultra/integration-' + RUN_ID, waveMerges: [], tasks: [] }
++      },
++      makeAgent: (opts) => ({ agent: async () => null, patchInput: opts.patchesDir }),
++    },
++  )
++  assert.ok(received,
++    '(d) [M4] sim precondition (' + name + '): the flow reached the engine call — ' +
++    '`runEngineFn` recorded its deps')
++  return received
++}
++
++{
++  const depsInjected = await runMainFlow({
++    name: 'jev-injected',
++    env: { ...simEnv(), TYPESAFE_BASE_URL: 'https://jev.invalid' },
++    jevClientFor: (u) => ({ ask: async () => null, url: u }),
++  })
++  assert.ok(depsInjected.jev && typeof depsInjected.jev === 'object',
++    '(d) [M4] with `TYPESAFE_BASE_URL` set, run-main hands the engine a `jev` key; got ' +
++    JSON.stringify(depsInjected.jev))
++  assert.equal(depsInjected.jev.url, 'https://jev.invalid',
++    '(d) [M4] equal to `jevClientFor(env.TYPESAFE_BASE_URL)` — the dep was called with ' +
++    'that base url and nothing else; got ' + JSON.stringify(depsInjected.jev.url))
++}
++
++{
++  const depsDefault = await runMainFlow({
++    name: 'jev-default',
++    env: { ...simEnv(), TYPESAFE_BASE_URL: 'https://jev.invalid' },
++  })
++  assert.ok(depsDefault.jev && typeof depsDefault.jev === 'object',
++    '(d) [M4] with NO `jevClientFor` dep the DEFAULT built one — `(baseUrl) => ' +
++    'makeJevClient({ baseUrl, log })`; got ' + JSON.stringify(depsDefault.jev))
++  assert.equal(typeof depsDefault.jev.ask, 'function',
++    '(d) [M4] and what it built is the real client: `deps.jev.ask` is a function. The ' +
++    'stub engine never calls it, so no request leaves this sim. Got ' +
++    JSON.stringify(typeof depsDefault.jev.ask))
++}
++
++{
++  const depsUnset = await runMainFlow({ name: 'jev-unset', env: { ...simEnv() } })
++  assert.equal('jev' in depsUnset, false,
++    '(d) [M4] with no `TYPESAFE_BASE_URL` in the environment there is no `jev` key AT ' +
++    'ALL — on the laptop and in every sim, no client is built and no call is made. Got ' +
++    JSON.stringify(Object.keys(depsUnset)))
++}
++
++{
++  const depsEmpty = await runMainFlow({
++    name: 'jev-empty', env: { ...simEnv(), TYPESAFE_BASE_URL: '' },
++  })
++  assert.equal('jev' in depsEmpty, false,
++    '(d) [M4] and an EMPTY `TYPESAFE_BASE_URL` is not a non-empty string: no `jev` key ' +
++    'either. Got ' + JSON.stringify(Object.keys(depsEmpty)))
++}
++
++// ══════════════════════════════════════════════════════════════════════════
++// the `Run:` lines of legs (e) and (f), read in process
++// ══════════════════════════════════════════════════════════════════════════
++
++const readAt = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8')
++
++/** `sed -n '/start/,/end/p'` over a file's lines: from the first line matching
++ *  `start` through the first LATER line matching `end` (to the end of the file
++ *  when there is none), returned as `[]` when `start` never matched. */
++const sedRange = (text, start, end) => {
++  const lines = String(text).split('\n')
++  const from = lines.findIndex((l) => start.test(l))
++  if (from === -1) return []
++  for (let i = from + 1; i < lines.length; i += 1) {
++    if (end.test(lines[i])) return lines.slice(from, i + 1)
++  }
++  return lines.slice(from)
++}
++/** …piped through `tr '\n' ' '`: the range as one line. */
++const joined = (lines) => lines.join(' ')
++/** `grep -c PATTERN`: how many LINES match. */
++const countLines = (text, re) => String(text).split('\n').filter((l) => re.test(l)).length
++
++// ── (e) [M5] the boot ───────────────────────────────────────────────────────
++
++const boot = readAt('fleet/sandbox-boot.sh')
++
++// Run: grep -q '^TYPESAFE_PROXY_URL="https://typesafe.int.exe.xyz"$' fleet/sandbox-boot.sh
++assert.ok(countLines(boot, /^TYPESAFE_PROXY_URL="https:\/\/typesafe\.int\.exe\.xyz"$/) >= 1,
++  '(e) [M5] `fleet/sandbox-boot.sh` declares `TYPESAFE_PROXY_URL="https://typesafe.int.exe.xyz"` ' +
++  'on a line of its own, beside `ANTHROPIC_PROXY_URL` — https only, because a followed 301 ' +
++  'turns a POST into a GET. (Proof `Run:` line 1)')
++
++// Run: sed -n '/--unit=fleet-engine-$RUN_N/,/node "$ENGINE_REPO_DIR\/fleet\/run-main.mjs"/p' …
++const engineUnit = sedRange(boot,
++  new RegExp(String.raw`--unit=fleet-engine-\$RUN_N`),
++  new RegExp(String.raw`node "\$ENGINE_REPO_DIR/fleet/run-main\.mjs"`))
++assert.ok(engineUnit.length > 0,
++  '(e) [M5] sim precondition: the engine unit\'s `systemd-run` call is still in the boot — ' +
++  'the range the Proof\'s second `Run:` line reads')
++assert.ok(new RegExp(String.raw`ANTHROPIC_BASE_URL=\$ANTHROPIC_PROXY_URL" *\\ *"TYPESAFE_BASE_URL=\$TYPESAFE_PROXY_URL"`)
++  .test(joined(engineUnit)),
++  '(e) [M5] the engine unit\'s `env` list carries `"TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL"` ' +
++  'DIRECTLY AFTER `"ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL"`. (Proof `Run:` line 2) The ' +
++  'range read: ' + JSON.stringify(joined(engineUnit)))
++
++// Run: test "$(sed -n '/--unit=fleet-fold-$RUN_N/,/node "…publish-fold.mjs"/p' … | grep -c TYPESAFE)" = 0
++const foldUnit = sedRange(boot,
++  new RegExp(String.raw`--unit=fleet-fold-\$RUN_N`),
++  new RegExp(String.raw`node "\$ENGINE_REPO_DIR/fleet/publish-fold\.mjs"`))
++assert.ok(foldUnit.length > 0,
++  '(e) [M5] sim precondition: the publish-fold unit\'s call is still in the boot — the ' +
++  'range the Proof\'s third `Run:` line reads')
++assert.equal(foldUnit.filter((l) => /TYPESAFE/.test(l)).length, 0,
++  '(e) [M5] and the publish-fold unit\'s `env` list carries NO `TYPESAFE` entry — the fold ' +
++  'runs no engine. (Proof `Run:` line 3) The range read: ' + JSON.stringify(joined(foldUnit)))
++
++// ── (f) [M6] the contract and the index ─────────────────────────────────────
++
++const contract = readAt('fleet/CONTRACT.md')
++
++// Run: sed -n '/^  - engine: .systemd-run --user --unit=fleet-engine-<N>/,/^    cwd ./p' … | grep -q …
++const contractEngine = sedRange(contract,
++  /^ {2}- engine: .systemd-run --user --unit=fleet-engine-<N>/,
++  /^ {4}cwd ./)
++assert.ok(contractEngine.length > 0,
++  '(f) [M6] sim precondition: `fleet/CONTRACT.md`\'s engine unit bullet is still there — ' +
++  'the range the Proof\'s fourth `Run:` line reads')
++assert.ok(/CLAUDE_CODE_OAUTH_TOKEN=placeholder *TYPESAFE_BASE_URL=https:\/\/typesafe.int.exe.xyz/
++  .test(joined(contractEngine)),
++  '(f) [M6] the contract\'s engine unit line carries ' +
++  '`TYPESAFE_BASE_URL=https://typesafe.int.exe.xyz` after ' +
++  '`CLAUDE_CODE_OAUTH_TOKEN=placeholder`. (Proof `Run:` line 4) The range read: ' +
++  JSON.stringify(joined(contractEngine)))
++
++// Run: sed -n '/driver:suite-runs. .{task, count, slices}/,/^    Receipts (2026-09-16)/p' … | grep -q …
++const threeKinds = sedRange(contract,
++  /driver:suite-runs. .\{task, count, slices\}/,
++  /^ {4}Receipts \(2026-09-16\)/)
++assert.ok(threeKinds.length > 0,
++  '(f) [M6] sim precondition: the `driver:suite-runs` paragraph is still there — the range ' +
++  'the Proof\'s fifth `Run:` line reads')
++assert.ok(/jev:finding.*jev:tier.*jev:suite-red.*POST \/v1\/systemone.*one log line and no row.*read by nothing/
++  .test(joined(threeKinds)),
++  '(f) [M6] the paragraph after `driver:suite-runs` names `jev:finding`, `jev:tier` and ' +
++  '`jev:suite-red`, `POST /v1/systemone`, that a failed call is one log line and no row, ' +
++  'and that they are read by nothing — in that order. (Proof `Run:` line 5) The range ' +
++  'read: ' + JSON.stringify(joined(threeKinds)))
++
++// Run: sed -n '/^- \*\*Integration naming:\*\*/,/^- \*\*/p' fleet/CONTRACT.md | grep -q 'typesafe.*http-proxy'
++const naming = sedRange(contract, /^- \*\*Integration naming:\*\*/, /^- \*\*/)
++assert.ok(naming.length > 0,
++  '(f) [M6] sim precondition: the `Integration naming` bullet is still there — the range ' +
++  'the Proof\'s sixth `Run:` line reads')
++assert.ok(/typesafe.*http-proxy/.test(joined(naming)),
++  '(f) [M6] the `Integration naming` bullet names the `typesafe` **http-proxy**, created on ' +
++  '`tag:fleet` like the rest. (Proof `Run:` line 6) The bullet read: ' +
++  JSON.stringify(joined(naming)))
++
++// Run: test "$(grep -c 'test_jev_client.mjs\|test_run_engine_jev_finding.mjs\|…' fleet/tests/README.md)" = 4
++const readme = readAt('fleet/tests/README.md')
++const indexed = countLines(readme,
++  /test_jev_client\.mjs|test_run_engine_jev_finding\.mjs|test_run_engine_jev_tier\.mjs|test_run_engine_jev_suite_red\.mjs/)
++assert.equal(indexed, 4,
++  '(f) [M6] `fleet/tests/README.md` gains one line each for `test_jev_client.mjs`, ' +
++  '`test_run_engine_jev_finding.mjs`, `test_run_engine_jev_tier.mjs` and ' +
++  '`test_run_engine_jev_suite_red.mjs` — four lines naming them. (Proof `Run:` line 7) ' +
++  'Got ' + indexed)
++
++// Run: test "$(grep -c 'typesafe.int.exe.xyz' fleet/CONTRACT.md)" -ge 1
++assert.ok(countLines(contract, /typesafe\.int\.exe\.xyz/) >= 1,
++  '(f) [M6] and the sandbox hostname `typesafe.int.exe.xyz` is present in the contract at ' +
++  'least once. (Proof `Run:` line 8)')
++
++console.log('ALL TESTS PASSED')
