@@ -9,3 +9,4 @@
 {"event": "emitted", "wave": 1, "path": "tests/test_authoring_census.py", "stateBlob": "46435eba6b4697112f76fe5826eaa56ed2831282bb2573627edf0453164abb4f", "visibleSha": "85cf9dc3618e61d6b8e8b5a70b059ebcdb66f0b8"}
 {"event": "emitted", "wave": 1, "path": "tests/test_authoring_census_amendments.py", "stateBlob": "8f7249900521df4c3ca7a935d3931f2c881019b47356a7b5e05ce49d39f2a9b9", "visibleSha": "c1b07d41ee16137890a869c4eea9ab0a3740920b"}
 {"event": "emitted", "wave": 1, "path": "tests/test_authoring_census_jev.py", "stateBlob": "0c0b51ffe4a4b9bf503b10e83e5878c40f75ae7b0d487ad89a130dda1b63ec7c", "visibleSha": "3554c5b9a4cd688f28596fe5f957a8cbcefac6c8"}
+{"event": "shadow-skipped", "wave": 2, "reason": "wave completed via resolve"}

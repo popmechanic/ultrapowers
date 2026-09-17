@@ -1,0 +1,14 @@
+// The two readers the engine puts to its Jev client, and the Claim they carry
+// (#1095). Functions OVER a client, so importing them opens no socket and
+// reaches no credential: the engine hands them the `jev` it was handed, and a
+// run without one asks nothing. `readNote` is put once per worker note as it
+// lands, the attention signal (see `noteAmendments`'s neighbor below);
+// `readAmendment` is put once per declared amendment and resolves
+// `{compelled, plan_fault, magnitude}` — or `null` for every way a read can
+// fail, which is the whole of its error contract.
+import { readNote, readAmendment, AMENDMENT_QUESTIONS, taskClaimOf } from './jev-questions.mjs'
+
+// The keys `readAmendment` flattens its answers onto, taken from the question
+// set itself so the row's shape and the questions actually asked cannot drift
+// apart, and in the question set's own order.
+const JEV_AMENDMENT_KEYS = Object.freeze(Object.keys(AMENDMENT_QUESTIONS))
