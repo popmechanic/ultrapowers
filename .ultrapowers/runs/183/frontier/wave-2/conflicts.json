@@ -1,0 +1,12 @@
+[
+  {
+    "i": 1,
+    "path": "fleet/run-engine.mjs",
+    "kind": "lines",
+    "dispatchable": true,
+    "reason": "",
+    "epoch": 2,
+    "hunksFile": "/home/exedev/target/.claude/ultrapowers/run-run-183/frontier/wave-2/conflict-1.hunks.txt",
+    "hunkCount": 1
+  }
+]

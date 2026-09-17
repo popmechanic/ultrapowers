@@ -1,0 +1,107 @@
+HUNK h1 lines 81-103
+--- context (read-only)
+  import { createHash } from 'node:crypto'
+  // The run's event log lives in run-waves.mjs; the engine borrows its ULID
+  // stamp so the driver's own records sort with the worker envelopes rather
+  // than beside them (readers order by id, never by line — run-waves.mjs).
+  // `cloneAtBase` and `patchAgainstBase` come from there too: the examiner's
+  // clone is cut at dispatch time (only the engine knows which tasks have an
+  // exam), and the implementer's capture is retaken after the handoff.
+  import { ulid, cloneAtBase, patchAgainstBase, isLockfilePath } from './run-waves.mjs'
+  // Which head a dispatch's capture is diffed against travels with the dispatch
+  // and not in a variable the whole run shares — see `captureAnchors` below: the
+  // ready set keeps two dispatches in flight against different heads, and async
+  // context is what lets one seam answer both of them correctly.
+  import { AsyncLocalStorage } from 'node:async_hooks'
+  // A red suite's output is quoted, not tailed (#763 part 2): every reader below
+  // who is handed a failing suite's text — a judgment call, the reconcile
+  // agent's brief, a blocked wave's detail — gets the failing
+  // test's own block, so the assertion that named the failing leg survives however
+  // long the trailing summary runs. `tail` stays for everything that is not a red
+  // suite: git and fold stderr, bootstrap failures, and the Run:/Check:/exam
+  // evidence records. The record itself is untouched — the whole output is still
+  // on disk beside the excerpt.
+  import { failingBlock } from './failing-block.mjs'
+  // Where a peer's exam lands (#777). The Proof names the path the exam is
+  // written FOR; the reserved directory under the matching test root is where the
+  // run writes it TO, so the integration branch keeps the run's measurements out
+  // of the project's own test paths. One module, because the engine, the
+  // examiner's prompt and `fleet/strip-exams.sh` all have to agree on the slug.
+  import { examSlug, reservedExamPath } from './exam-paths.mjs'
+  // What this run already observed about the files of a brief (the operator's
+  // brief of 2026-09-16). `factsBlock` is a pure query over rows the caller
+  // hands it — the engine hands its own in-memory `receipts`, the rows
+  // `appendEvent` appended this run, so the block a judge reads is scoped to
+  // this run's own process by construction. The module reads no file for us and
+  // imports nothing from here; the publish fold runs the same query in its own
+  // process over its own log.
+  import { factsBlock } from './facts-block.mjs'
+  // The reading a run that changed the engine leaves behind (#992): which of the
+  // lines it changed an engine sim reached. Taken once, after the last fold, and
+  // read by nothing below — see the call site beside `coverage`.
+  import { engineCoverage } from './engine-coverage.mjs'
+--- conflict
+<<<<<<< begin added frontier
+// The sitting's amendment reader (#1095 proposal 3). `readAmendment` puts
+// `AMENDMENT_QUESTIONS` to the run's optional `jev` client once per declared
+// amendment and resolves `{compelled, plan_fault, magnitude}` — or `null` for
+// every way a read can fail, which is the whole of its error contract — and
+// `taskClaimOf` reads the task's own `**Claim:**` line off the plan file the
+// run was launched with, since the compiled task carries no Claim of its own.
+// The reads ride BESIDE the amendment row and gate nothing: see `noteAmendments`.
+import { readAmendment, AMENDMENT_QUESTIONS, taskClaimOf } from './jev-questions.mjs'
+
+// The keys `readAmendment` flattens its answers onto, taken from the question
+// set itself so the row's shape and the questions actually asked cannot drift
+// apart, and in the question set's own order.
+const JEV_AMENDMENT_KEYS = Object.freeze(Object.keys(AMENDMENT_QUESTIONS))
+======= begin added 2
+// The two readers the engine puts to its Jev client, and the Claim they carry
+// (#1095). Functions OVER a client, so importing them opens no socket and
+// reaches no credential: the engine hands them the `jev` it was handed, and a
+// run without one asks nothing.
+import { readNote, taskClaimOf } from './jev-questions.mjs'
+======= begin added both
+
+>>>>>>> end conflict
+--- context (read-only)
+  // ── which tests went red (#871 decisions 1 and 4) ────────────────────────────
+  // `failingBlock` above answers "what does the failure read like"; this answers
+  // "which files failed", because a fold has one more question to ask of a red
+  // candidate: did any task of this epoch name the path that went red?
+  // The source is pytest's short summary — one `FAILED <path>::<id>` line per
+  // failure — and the one shape that lies about its path is the fleet bridge:
+  // every node sim runs as `tests/test_fleet_suite.py::test_fleet_mjs[<id>]`,
+  // whose `<id>` is the sim's name under `fleet/tests/` (`test_x.mjs`, or
+  // `exams/<slug>/test_x.mjs` for a run's own exam — `tests/test_fleet_suite.py`
+  // itself names no task's file). So a bridged line is translated back to the
+  // path a plan would have written, and every other line is taken as it reads.
+  const FAILED_LINE = /^FAILED\s+(\S+?)::(\S*)/
+  const BRIDGE_FILE = 'tests/test_fleet_suite.py'
+  const BRIDGE_ID = /\[([^\]]+\.mjs)\]/
+  
+  /**
+   * The test paths a suite output reports as failing, in order, deduplicated.
+   *
+   *   output  a suite's stdout+stderr, whatever shape printed it
+   *
+   * Returns `[]` for an output carrying no `FAILED <path>::<id>` line — a bare
+   * non-zero exit, an install that died before pytest ran, a green run.
+   */
+  export function failingTestPaths (output) {
+    const paths = []
+    for (const raw of String(output ?? '').split('\n')) {
+      const m = FAILED_LINE.exec(raw.trim())
+      if (!m) continue
+      let p = m[1]
+      if (p === BRIDGE_FILE) {
+        const id = BRIDGE_ID.exec(m[2])
+        if (id) p = 'fleet/tests/' + id[1]
+      }
+      if (!paths.includes(p)) paths.push(p)
+    }
+    return paths
+  }
+  
+  // ── model tiers (waves.js parity) ────────────────────────────────────────────
+  export const TIER = { standard: 'sonnet', mostCapable: 'opus' }
