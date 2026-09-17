@@ -41,6 +41,47 @@
       ],
       "checkRetries": 0,
       "pushedHead": "bc8e85c7eaa1d3a36988f163557a393d3a2366cf"
+    },
+    "2": {
+      "tip": "6104ae7e472121485d37287a5b10f501090dd838",
+      "candidate": "07292f9eb5d6d5676dab532811e225913eb33191",
+      "disposition": "folded",
+      "pathsJoined": 1,
+      "resolversDispatched": 0,
+      "suite": "pass",
+      "checks": [
+        {
+          "check": "parse",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_declared_dependencies.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_ready_set.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_proof_runs.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_own_proofs.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        }
+      ],
+      "checkRetries": 0,
+      "pushedHead": "07292f9eb5d6d5676dab532811e225913eb33191"
     }
   }
 }

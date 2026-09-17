@@ -1,0 +1,8 @@
+Running as unit: fleet-fold-174-2.service
+publish-fold: attempt 2 — folded
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 3min 48.882s
+CPU time consumed: 4min 17.002s
+Memory peak: 1.2M
+Memory swap peak: 0B
