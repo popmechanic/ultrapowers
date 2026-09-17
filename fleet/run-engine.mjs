@@ -2194,6 +2194,20 @@ export async function runEngine({
   // re-capture writes over the file the fold reads, so it must drop what the
   // wrapper's capture dropped or the lockfile rides back in behind it.
   const dropLockfiles = regenerateCmd !== undefined
+  // #1066 — the packages the plan's `Dependencies:` line declared and the two
+  // commands that install them, written by the launcher beside `bootstrapCmd`
+  // and read exactly as they are. Absent — a plan with no such line — the run
+  // installs, dispatches and folds byte for byte as at BASE.
+  const declaredSpecs = (key) => {
+    const d = args.dependencies
+    if (!d || typeof d !== 'object' || Array.isArray(d)) return []
+    return (Array.isArray(d[key]) ? d[key] : [])
+      .map((s) => String(s == null ? '' : s).trim()).filter(Boolean)
+  }
+  const depRuntime = declaredSpecs('runtime')
+  const depDev = declaredSpecs('dev')
+  const addCmd = (typeof args.addCmd === 'string' && args.addCmd.trim()) || undefined
+  const addDevCmd = (typeof args.addDevCmd === 'string' && args.addDevCmd.trim()) || undefined
   const reviewProfile = isPairReview(args.reviewProfile) ? args.reviewProfile : 'lean'
   const globalConstraints = (typeof args.globalConstraints === 'string' && args.globalConstraints.trim()) || ''
   // The executable half of the Global Constraints: `{ cmd, minor }` entries the
@@ -2594,6 +2608,98 @@ export async function runEngine({
     }
   }
 
+  // ── the declared packages, installed once (#1066) ──────────────────────────
+  // The plan's `Dependencies:` line names what the work needs; nobody's patch
+  // installs it. The driver runs ONE line here, in the integration clone, and
+  // commits the manifest and lockfile it wrote as ONE commit — and that commit
+  // is the head every clone is cut at and every diff is read against, so the
+  // packages are in the tree before the first implementer opens it and no two
+  // tasks ever race the same manifest.
+  //
+  // After the re-drive reuse block and before the baseline clone: the reuse
+  // head is the tree this install has to land ON when there is one, and the
+  // baseline has to be cut at the tree the waves will actually build on.
+  //
+  // `null` on every run that made no setup commit — a plan with no declared
+  // line, an install that changed no manifest (a re-drive whose reuse head
+  // already carries the packages), a failed one — which is exactly the value
+  // `report.setupSha` carries.
+  let setupHead = null
+  // The install's own exit, held for the park below: the park's rows have to be
+  // pushed where `waveMerges`, `parkedOnBaseline` and the lanes live, which is
+  // a thousand lines down, and no worker may be dispatched in between.
+  let setupInstallRed = null
+  if (depRuntime.length || depDev.length) {
+    if (!addCmd || !addDevCmd) {
+      // The launcher writes the two commands together, so one without the other
+      // is a plan the driver cannot act on. It is a judgment call and not a
+      // park: the specs are a declaration, and a run that can still do its work
+      // without them is not one to stop.
+      judgmentCalls.push('setup: dependencies declared but no add command — ' +
+        (depRuntime.concat(depDev)).join(' ') +
+        ' was declared and `addCmd`/`addDevCmd` are not both set, so nothing was ' +
+        'installed and the run continues on BASE')
+      log('setup: dependencies declared but no add command')
+    } else {
+      // One shell word per spec, single-quoted, so a spec carrying `^`, `@` or a
+      // space reaches the package manager as the plan spelled it.
+      const shellWord = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'"
+      const halves = []
+      if (depRuntime.length) halves.push(addCmd + ' ' + depRuntime.map(shellWord).join(' '))
+      if (depDev.length) halves.push(addDevCmd + ' ' + depDev.map(shellWord).join(' '))
+      // ONE line and not two runs: a package manager that writes a lockfile does
+      // it once for the whole install, and `&&` is what makes the dev half wait
+      // on the runtime half's exit rather than race it.
+      const addLine = halves.join(' && ')
+      const r = await sh(addLine, integ)
+      let headSha = null
+      if (r.code === 0) {
+        // By BASENAME, never `git add -A`: the `node_modules/` the add command
+        // just wrote is not a manifest, and a run that committed it would put a
+        // vendored tree into the pull request. `bootstrapManifestChanged` is the
+        // one basename rule this engine has (#825) and this is the same reading.
+        // `exec` and not `git`: the wrapper trims, and porcelain's first field
+        // is two status characters that may BOTH be a space (` M bun.lock`) —
+        // a trim eats the leading one and every path after it reads short.
+        const status = await exec('git', ['status', '--porcelain'], { cwd: integ })
+        const changed = String(status.stdout || '').split('\n').filter(Boolean)
+          .map((line) => {
+            const p = line.slice(3)
+            const arrow = p.indexOf(' -> ')
+            const raw = arrow >= 0 ? p.slice(arrow + 4) : p
+            return (raw.startsWith('"') && raw.endsWith('"')) ? raw.slice(1, -1) : raw
+          })
+          .filter((p) => p && bootstrapManifestChanged([p]))
+          .sort()
+        if (changed.length) {
+          await git(['add', '--', ...changed], integ)
+          const body = ['setup: dependencies', ...depRuntime].join(' ') +
+            (depDev.length ? ' dev: ' + depDev.join(' ') : '')
+          await git(['commit', '-q', '-m', planTitle || 'setup: dependencies', '-m', body], integ)
+          setupHead = await git(['rev-parse', 'HEAD'], integ)
+          headSha = setupHead
+          log('setup: dependencies installed and committed at ' + setupHead)
+        } else {
+          // The packages were already in the manifest — a re-drive whose reuse
+          // head carries them. Nothing changed, so there is nothing to commit
+          // and no new head: the run continues from where it already was.
+          headSha = reuseHead || baseSha
+          log('setup: dependencies already present — no setup commit')
+        }
+      } else {
+        // The clone is left exactly on the head it was on: the install's
+        // half-written manifest and its `node_modules/` are both undone, so the
+        // park below restores a tree a reader can trust.
+        await exec('git', ['checkout', '--', '.'], { cwd: integ })
+        await exec('git', ['clean', '-fd'], { cwd: integ })
+        setupInstallRed = { exit: r.code, output: tail(r.stdout + r.stderr, 2000) }
+        log('setup: the dependency install failed (exit ' + r.code + ')')
+      }
+      appendEvent({ kind: 'driver:dependencies', specs: depRuntime.slice(), dev: depDev.slice(),
+                    cmd: addLine, exit: r.code, headSha })
+    }
+  }
+
   // The baseline's own clone (#862). The suite on BASE runs HERE and nowhere
   // else: read-treeing BASE into the integration clone — #712's shape — put the
   // baseline in the same worktree the wave's candidate lives in, so it could
@@ -2609,9 +2715,12 @@ export async function runEngine({
   // commit exists only in the integration clone's object database until the run
   // pushes, so it is fetched from there — the same move the wave loop's
   // re-anchor makes for a task clone.
-  if (reuseHead) {
+  // A setup commit sits on top of the reuse head when there is one, so it is the
+  // later of the two that the waves build on and the baseline has to measure.
+  const setupBaselineHead = setupHead || reuseHead
+  if (setupBaselineHead) {
     await git(['fetch', '--quiet', '--no-tags', integ, integrationBranch], baselineDir)
-    await git(['checkout', '--quiet', '--detach', reuseHead], baselineDir)
+    await git(['checkout', '--quiet', '--detach', setupBaselineHead], baselineDir)
   }
   if (bootstrapCmd) {
     // Every fresh clone needs its dependencies before a suite can run there —
@@ -2681,7 +2790,7 @@ export async function runEngine({
   const settleBaseline = (passed, output, raw) => {
     baseline = { passed, output }
     baselineWallMs = Date.now() - baselineStartedAt
-    log('baseline: ' + (passed ? 'green' : 'RED') + ' on ' + (reuseHead || baseSha))
+    log('baseline: ' + (passed ? 'green' : 'RED') + ' on ' + (setupHead || reuseHead || baseSha))
     if (!passed) {
       baselineFailing = failingPaths(raw)
       judgmentCalls.push(redBaselineHead(output) +
@@ -3649,6 +3758,39 @@ export async function runEngine({
       }
       return out
     }
+    // ── the manifest nobody asked for (#1066) ───────────────────────────────
+    // The third red of the same species, and a PLAN-LEVEL rule: it fires on
+    // every run, declared `Dependencies:` line or not. A package a task adds in
+    // its own clone is a package the next task's clone does not have and the
+    // fold has to merge two manifests to get — which is the race the setup
+    // install exists to end. So the answer is given here, on the pass, where it
+    // still buys the one repair round and costs the run nothing else.
+    //
+    // The exemption is the task's DECLARED Files and nothing else: a manifest
+    // the plan put in a task's Files is a signed, non-dependency edit — a
+    // `scripts` entry, a config field — and the fold-time regenerator is the
+    // fallback that serves it. The touched set is the patch's, by the same
+    // basename rule the bootstrap and the regenerator read (#825), so
+    // `client/package.json` is a manifest at any depth and `package.json.bak`
+    // is not one anywhere.
+    const MANIFEST_RED = (p) => 'the patch edits ' + p + ' — dependencies are declared on ' +
+      'the plan\'s Dependencies: line and installed at setup, never by a task'
+    const manifestReds = () => {
+      const declared = new Set(Array.isArray(task.files) ? task.files : [])
+      const out = []
+      for (const p of patchPaths(impl.patch)) {
+        if (!bootstrapManifestChanged([p]) || declared.has(p)) continue
+        const line = MANIFEST_RED(p)
+        appendEvent({ kind: 'driver:finding', task: task.id, round: 0, severity: 'blocking',
+                      actor: 'implementer', detail: line, paths: [p],
+                      evidence: {
+                        read: cutToBound(line),
+                        against: cutToBound('the captured patch at ' + String(impl.headSha || '')),
+                      } })
+        out.push({ line, stdout: '' })
+      }
+      return out
+    }
     const prePass = async () => {
       const reds = []
       preRuns = await runCommands(0)
@@ -3675,6 +3817,10 @@ export async function runEngine({
       // and nothing else, so a pass over a patch that turned nothing binary
       // records exactly what it recorded before this existed.
       for (const c of await nulReds()) reds.push(c)
+      // And after the bytes, the manifests: a set lookup per touched path and no
+      // command at all, so a pass over a patch that edited none records exactly
+      // what it recorded before this existed.
+      for (const c of manifestReds()) reds.push(c)
       return reds
     }
     // The fix round's `exam:` entries, when they bought the review round below
@@ -4886,9 +5032,15 @@ export async function runEngine({
   const predecessorsOf = (id) => EDGES.filter(([, b]) => b === id).map(([a]) => a)
   const resultFor = (id) => taskResults.find((r) => r && r.task === id)
 
-  // The head every dispatch is anchored at and every fold builds on: the reuse
-  // head when Setup folded one (#383) and BASE otherwise.
-  let adoptedHead = reuseHead || baseSha
+  // The head every dispatch is anchored at and every fold builds on: the setup
+  // commit when Setup made one (#1066), the reuse head when Setup folded one
+  // (#383) and BASE otherwise.
+  let adoptedHead = setupHead || reuseHead || baseSha
+  // And the base every capture outside a dispatch is diffed against — the
+  // reconcile round's. Inside a dispatch the lane's own anchor wins
+  // (`captureAnchors`); this is the shared value that anchor falls back to, and
+  // a setup commit moves it exactly as a fold's adoption does.
+  if (setupHead && patchBase) patchBase.current = setupHead
   // Adopted = the work is IN that head. A reused task's work is in the reuse
   // head before the first epoch, so it is adopted from the start and anything an
   // edge points from it is ready.
@@ -5047,6 +5199,32 @@ export async function runEngine({
       unfinished.push(id + ': never dispatched — the suite was already RED on BASE')
     }
   }
+
+  // ── the install that failed (#1066) ────────────────────────────────────────
+  // `parkOnRedBaseline`'s shape with `why: 'setup'`. The tree the run would have
+  // dispatched into is missing the packages the plan declared, so every task
+  // would be red on a module the run itself failed to install — a wave of
+  // implementers sent at that is a wave of agents told to repair the driver's
+  // own failure. The clone was restored where the install failed, in Setup, so
+  // what is left here is the record: one blocked epoch, one row per task, and
+  // no dispatch of any label.
+  const parkAtSetup = () => {
+    if (parkedOnBaseline) return
+    parkedOnBaseline = true
+    const epoch = epochCount + 1
+    const detail = 'setup: the dependency install failed (exit ' + setupInstallRed.exit +
+      ') — the packages the plan declared are not in the tree, so no worker was ' +
+      'dispatched: ' + tail(setupInstallRed.output, 600)
+    const held = PLAN.map((t) => t.id)
+    waveMerges.push({ wave: epoch, status: 'TEST_FAILED', detail, branches: [] })
+    appendEvent({ kind: 'driver:wave-blocked', wave: epoch, tasks: held, detail, why: 'setup' })
+    blockedWaves.push({ wave: epoch, detail })
+    log('epoch ' + epoch + ' parked: the dependency install failed at setup')
+    for (const id of held) {
+      unfinished.push(id + ': never dispatched — the dependency install failed at setup')
+    }
+  }
+  if (setupInstallRed) parkAtSetup()
 
   // ── the re-edge (#979) ─────────────────────────────────────────────────────
   // A worker whose proof turns out to need a sibling still in flight files
@@ -5432,17 +5610,19 @@ export async function runEngine({
           ? t.proofRuns.filter((c) => typeof c === 'string' && c.trim() !== '')
           : []
         for (const cmd of cmds) {
-          // ULTRA_BASE here is `baseSha`, the sha the integration clone was
-          // provisioned at — NOT `adoptedHead`, which the adopt above has
-          // already advanced to this epoch's head. A diff against the adopted
-          // head is a tautology; the question the integrated pass asks is what
-          // the run as a whole changed.
+          // ULTRA_BASE here is the sha the run's work starts above — the setup
+          // commit when Setup made one (#1066), the sha the integration clone
+          // was provisioned at otherwise — and NOT `adoptedHead`, which the
+          // adopt above has already advanced to this epoch's head. A diff
+          // against the adopted head is a tautology; the question the integrated
+          // pass asks is what the run as a whole changed, and the declared
+          // packages are not any task's change.
           // …and the pass is `integrated` with no `ULTRA_RUN_DIR` at all: a
           // state exam re-executed on the fold is being asked whether it still
           // passes there, not asked for a second record — the helper writes
           // nothing without a run directory, so the absence IS the instruction.
           const r = await sh(cmd, integ,
-            examEnv({ base: baseSha, task: t.id, pass: 'integrated' }))
+            examEnv({ base: setupHead || baseSha, task: t.id, pass: 'integrated' }))
           // Every record names the join that bought it: the shared paths, and
           // the tasks on the other side of them. A reader of a red line needs
           // the PAIR, not only the command.
@@ -5473,7 +5653,7 @@ export async function runEngine({
       // so it is told the run base and none of the three variables that would
       // name a task, a record directory or a pass.
       for (const c of constraintChecks) {
-        const r = await sh(c.cmd, integ, baseEnv(baseSha))
+        const r = await sh(c.cmd, integ, baseEnv(setupHead || baseSha))
         integratedChecks.push({ cmd: c.cmd, exit: r.code, stdout: tail(r.stdout + r.stderr),
                                 minor: c.minor })
         appendEvent({ kind: 'driver:integrated-check', cmd: c.cmd, exit: r.code,
@@ -5711,7 +5891,11 @@ export async function runEngine({
   // owed, because a red BASE is the reading of everything this run did.
   await baselineSettled
   if (baselineIsRed()) await parkOnRedBaseline()
-  else {
+  // A run that already parked has said why about every task it held, once: the
+  // loop below would name each of them a second time (#1066). At BASE this
+  // guard never fires — the only park before this line is the red baseline's,
+  // and that is the branch above.
+  else if (!parkedOnBaseline) {
     // Every task that never became ready, with the reason (M3).
     for (const t of PLAN) {
       if (reusedIds.has(t.id) || resultFor(t.id)) continue
@@ -5931,6 +6115,12 @@ export async function runEngine({
   return {
     integrationBranch,
     baseSha,
+    // The setup commit the declared packages were installed as (#1066), or
+    // `null` on every run that made none. `baseSha` above stays the launch BASE
+    // on purpose — the publish fold reads the run's result as BASE..head, so
+    // the pull request carries this commit's manifest and lockfile — and this
+    // is where a reader finds the sha the run's own work sits above.
+    setupSha: setupHead,
     waves: WAVES.map((w) => w.map((t) => t.id)),
     dependencyEdges,
     tasks: taskRows,
