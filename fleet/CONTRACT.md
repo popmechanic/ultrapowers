@@ -457,16 +457,20 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     --cpu <cpu> --memory <memory> --setup-script /dev/stdin --json"
   ```
 
-  with the generated setup script on the verb's stdin, under a `# fleet: width=<W>` header line the
-  launcher stamps on it — W is not an assignment key (`COMMENT_KEYS` spells nine and
+  with the generated setup script on the verb's stdin, under a `# fleet: width=<W> browsers=<C>`
+  header line the
+  launcher stamps on it — neither W nor C is an assignment key (`COMMENT_KEYS` spells nine and
   `parse_assignment` fails the boot on a tenth), so that header is a record, and the box arrives at
   the same W itself: `fleet/run-main.mjs` takes the widest wave of its own compile (`args.json`,
   which carries `waves` and no `width`) as the engine's dispatch bound, and falls back to 12 only
   when that compile answers no waves. `<cpu>` and `<memory>` are the PLAN's size,
   not the fleet's: the launcher compiles the plan once before this verb (`compile_plan.py <plan>
   --stamp run-<N> --base <sha>`, the one payload the sizing and the kata filing both read), takes
-  W — the task count of the widest `launch_waves` entry — and asks for `min(cpu, 2 + ceil(W / 3))`
-  and `min(memory, 2 + W)GB`, where the `cpu`/`memory` pair of `~/.ultrapowers/fleet.json` (or
+  W — the task count of the widest `launch_waves` entry — and C, the browsers that wave may hold
+  open at once (the tasks in it whose Proof names a `tests/state-exams/` path, one Chromium each),
+  and asks for `min(cpu, 2 + ceil(W / 3))` vCPU and
+  `min(memory, 2 + W)GB` for a plan with no state exam, `min(memory, max(6, 2 + 1.25 × C))GB`
+  otherwise, where the `cpu`/`memory` pair of `~/.ultrapowers/fleet.json` (or
   `FLEET_DEFAULTS`) is the CEILING; `--cpu` or `--memory` on the launch line wins outright, and
   either number is refused when `billing plan --json` cannot seat it. The verb carries NO `--integration`: exe.dev
   refuses it since 2026-09-11 (`new --integration cannot safely rewrite a singular attachment
@@ -494,12 +498,19 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   2. install the toolchain: node 24.20.0, bun 1.4.2, kata 0.17.2 (the release tarball from
      `github.com/kenn-io/kata`, verified with `sha256sum -c` against the release's own `SHA256SUMS`
      before it is extracted, installed at `/usr/local/bin/kata` mode 0755 — the hub's own recipe,
-     `fleet/kata-hub-setup.sh`), and `python3-pytest` + `python3-pytest-xdist` from apt;
+     `fleet/kata-hub-setup.sh`), celld 0.5.0 (the one `.gz` asset from
+     `github.com/denoland/celld`, verified with `sha256sum -c` against the digest the plugin records
+     beside bun's version — `CELLD_SHA256` in `fleet/setup-script.mjs`, since the release carries no
+     sums file and `gh attestation verify` needs a token the sandbox does not hold — then decompressed
+     and installed at `/usr/local/bin/celld` mode 0755, never through the vendor's installer script
+     and never under `/usr/local/lib/fleet`), and `python3-pytest` + `python3-pytest-xdist` from apt;
   3. install the bootstrap at `/usr/local/lib/fleet/bootstrap.sh`, mode 0555, owned by root — outside
      `/home/exedev` and unwritable by the run;
   4. install the user unit TEMPLATE `~/.config/systemd/user/fleet-run@.service`
      (`Description=ultrapowers run %i`, `After=network-online.target`, `Type=exec`,
-     `RemainAfterExit=yes`, `RuntimeMaxSec=6h`, `ExecStart=/usr/local/lib/fleet/bootstrap.sh %i`, no
+     `RemainAfterExit=yes`, `RuntimeMaxSec=6h`, `LimitNOFILE=524288` — a shell under the unit
+     otherwise inherits soft 1024, which is what bites Chromium, bun and pytest, while the image's
+     hard limit for a service is 524288 — `ExecStart=/usr/local/lib/fleet/bootstrap.sh %i`, no
      `[Install]`, no `KillMode`, no `Restart`);
   5. write `~/.claude/settings.json`, exactly
      `{"env":{"CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS":"0"},"permissions":{"defaultMode":"bypassPermissions"}}`,
@@ -594,7 +605,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     would have.
   - status server: `systemd-run --user --unit=fleet-status -p Restart=on-failure -- busybox httpd -f -p 8000 -h /home/exedev/www`
     (skip when the unit is already active). exe.dev proxies port 8000 at `https://<vm>.exe.xyz/`.
-  - engine: `systemd-run --user --unit=fleet-engine-<N> --pipe --wait --collect -p MemoryMax=40G -p MemorySwapMax=0 --
+  - engine: `systemd-run --user --unit=fleet-engine-<N> --pipe --wait --collect -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288 --
     env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz CLAUDE_CODE_OAUTH_TOKEN=placeholder
     ULTRAPOWERS_FLEET_RUN=run-N node <engine>/fleet/run-main.mjs /home/exedev/plans/run-N.md run-N --repo /home/exedev/target [--kata /home/exedev/plans/run-N.kata.json] [--tier …]`,
     cwd `/home/exedev/target`, stdout+stderr teed to `/home/exedev/www/engine.log`; the exit code is the
@@ -660,7 +671,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `publish fold`, after the engine's unit is inactive and before `publishing`, as its own transient
     unit through the same `systemd-run` prefix as the engine's line above, entry for entry:
     `systemd-run --user --unit=fleet-fold-<N>-<attempt> --pipe --wait --collect -p MemoryMax=40G
-    -p MemorySwapMax=0 -- env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz
+    -p MemorySwapMax=0 -p LimitNOFILE=524288 -- env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz
     CLAUDE_CODE_OAUTH_TOKEN=placeholder ULTRAPOWERS_FLEET_RUN=run-N node
     <engine>/fleet/publish-fold.mjs --repo /home/exedev/target --base <base> --branch
     ultra/integration-run-N --run N --run-dir <run dir> --evidence-dir

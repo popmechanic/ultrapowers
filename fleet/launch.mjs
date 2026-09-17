@@ -44,10 +44,11 @@
  * the plan under the run number it is pushing — once, before the verb, unless
  * the push is bumped and it compiles again under the number it got — takes W,
  * the task count of the widest wave of the compile whose number won, and asks
- * for `vmSizeFor(W, cap)`, where `cap` is the `cpu`/`memory` pair
- * `~/.ultrapowers/fleet.json` names (or `FLEET_DEFAULTS`) read as a CEILING. A
- * one-task plan gets a small box and a ten-task plan a bigger one; `--cpu` or
- * `--memory` on the launch line wins outright.
+ * for `vmSizeFor(W, cap, C)`, where `cap` is the `cpu`/`memory` pair
+ * `~/.ultrapowers/fleet.json` names (or `FLEET_DEFAULTS`) read as a CEILING and
+ * C is the number of browsers that compile may hold open at once
+ * (`browsersFor`). A one-task plan gets a small box and a ten-task plan a
+ * bigger one; `--cpu` or `--memory` on the launch line wins outright.
  *
  * Nothing schedules the janitor, so the launcher runs it: one `janitor()` pass
  * before the run number is read, whose reaped VMs the result carries as
@@ -338,39 +339,116 @@ const isPositiveInt = (value) => isRunNumber(value)
  */
 const isMemorySize = (value) => /^[1-9][0-9]*GB$/.test(String(value))
 
+/** Where a state exam's `Test:` path lives — the one kind of proof that opens a browser. */
+const STATE_EXAM_DIR = 'tests/state-exams/'
+
+/**
+ * C, the number of browsers a compiled plan may hold open at once: the largest
+ * number of tasks in any one wave whose Proof names a state exam. Pure, and
+ * total — `compiled` is the launcher's compiled object, whose `waves` is the
+ * compiler's `launch_waves`, an array of arrays of task objects each carrying
+ * `proofTests` (the task's Proof `Test:` paths). An entry that is not an object
+ * with a `proofTests` array — an id string, as `payload.waves` spells the same
+ * waves — counts as no exam, and an object with no `waves` array gives `0`.
+ *
+ * Why the widest wave and not the plan's task count: the engine dispatches one
+ * wave at a time, each state exam's render move opens one Chromium, and a
+ * Chromium with a real page on it is 0.7–1 GB (#1087, fixture run-24's box). So
+ * the browsers alive at the worst moment are the exam-carrying tasks of one
+ * wave, which for a TinyApp plan — where every `peer` task names a state exam —
+ * is simply its width.
+ */
+export function browsersFor (compiled) {
+  const waves = compiled?.waves
+  if (!Array.isArray(waves)) return 0
+  let widest = 0
+  for (const wave of waves) {
+    if (!Array.isArray(wave)) continue
+    let open = 0
+    for (const task of wave) {
+      const tests = task?.proofTests
+      if (!Array.isArray(tests)) continue
+      if (tests.some((path) => String(path ?? '').includes(STATE_EXAM_DIR))) open += 1
+    }
+    widest = Math.max(widest, open)
+  }
+  return widest
+}
+
 /**
  * The box one plan needs, clamped by the fleet's ceiling. Pure: `widestWave` is
- * W, the task count of the compiled plan's widest wave, and `cap` is the
- * `cpu`/`memory` pair the laptop's `fleet.json` names (or `FLEET_DEFAULTS`).
+ * W, the task count of the compiled plan's widest wave, `cap` is the
+ * `cpu`/`memory` pair the laptop's `fleet.json` names (or `FLEET_DEFAULTS`),
+ * and `browsers` is C, the browsers that plan may hold open at once
+ * (`browsersFor`).
  *
- *   cpu    = min(cap.cpu,   2 + ceil(W / 3))
- *   memory = min(cap.memory, 2 + W) GB
+ *   cpu    = min(cap.cpu,    2 + ceil(W / 3))
+ *   memory = min(cap.memory, 2 + W) GB                        when C is 0
+ *   memory = min(cap.memory, max(6, ceil(2 + 1.25 × C))) GB   when C is 1 or more
  *
- * The two constants are the run's own floor: an engine, a fold and a publish
- * live on the box whatever the plan is, and every implementer beyond the first
- * costs about a gigabyte and a third of a core (RUNBOOK §Capacity). So a
- * one-task plan gets `--cpu 3 --memory 3GB` and a ten-task plan `--cpu 6
- * --memory 8GB` under the caps 6 and 8GB — the ceiling is what a run may ask
- * for, never the size every run gets.
+ * The two constants of the width formula are the run's own floor: an engine, a
+ * fold and a publish live on the box whatever the plan is, and every
+ * implementer beyond the first costs about a gigabyte and a third of a core
+ * (RUNBOOK §Capacity). So a one-task plan gets `--cpu 3 --memory 3GB` and a
+ * ten-task plan `--cpu 6 --memory 8GB` under the caps 6 and 8GB — the ceiling
+ * is what a run may ask for, never the size every run gets.
+ *
+ * Memory leaves that formula when the plan has state exams, because then the
+ * tight dimension is not the implementers but the browsers: 6 GB floor, 1.25 GB
+ * per browser on top of the same 2 GB base (#1087; #1094 operator decision 10,
+ * 2026-09-17, 6 GB for a two-task TinyApp run). CPU keeps the width formula
+ * under every C — the fixture box read about 1 % steal and 50 % idle, so cores
+ * were never what ran out. A plan with no state exam keeps `2 + W` outright:
+ * pool RAM is the shared constraint, and a floor charged to runs that open no
+ * browser would spend it on nothing.
  *
  * `memory` comes back spelled `<int>GB`, the spelling the lobby's `--memory`
  * takes verbatim; `cpu` is a decimal string for the same reason.
  */
-export function vmSizeFor (widestWave, cap = FLEET_DEFAULTS) {
+export function vmSizeFor (widestWave, cap = FLEET_DEFAULTS, browsers = 0) {
   const w = Math.max(0, Math.floor(Number(widestWave) || 0))
+  const c = Math.max(0, Math.floor(Number(browsers) || 0))
   const capCpu = Number(cap?.cpu ?? FLEET_DEFAULTS.cpu)
   const capGb = cap?.memoryGb ?? parseMemoryGb(cap?.memory ?? FLEET_DEFAULTS.memory)
+  const wantGb = c < 1 ? 2 + w : Math.max(6, Math.ceil(2 + 1.25 * c))
   return {
     cpu: String(Math.min(capCpu, 2 + Math.ceil(w / 3))),
-    memory: `${Math.min(Number(capGb), 2 + w)}GB`
+    memory: `${Math.min(Number(capGb), wantGb)}GB`
+  }
+}
+
+/**
+ * The box one compiled payload asks for, and the two numbers it was read from.
+ * Pure: `compiled` is what `compilePlanForRun` returns, `cpuCap`/`memoryCap`
+ * are the fleet's ceiling, and `cpu`/`memory` are the launch line's overrides —
+ * a named number wins outright whatever the plan is, and what it wins is the
+ * cap value, which is where the launch line's own number already sits.
+ *
+ * W is floored at one: a payload with no waves launches nothing, and a box
+ * below the one-task size would be a smaller answer than the smallest real
+ * plan's.
+ */
+export function sizeFromCompile (compiled, { cpuCap, memoryCap, cpu, memory } = {}) {
+  const waves = Array.isArray(compiled?.waves) ? compiled.waves : []
+  const w = Math.max(1, waves.reduce(
+    (widest, wave) => Math.max(widest, Array.isArray(wave) ? wave.length : 0), 0
+  ))
+  const browsers = browsersFor(compiled)
+  const sized = vmSizeFor(w, { cpu: cpuCap, memory: memoryCap }, browsers)
+  return {
+    width: w,
+    cpu: cpu === undefined ? sized.cpu : cpuCap,
+    memory: memory === undefined ? sized.memory : memoryCap,
+    browsers
   }
 }
 
 /**
  * The launcher's own header on the setup script the `new` verb carries on
- * stdin: W, the widest wave of the plan this box was cut for, and the size it
- * was cut to. Pure — the script comes back with one comment line inserted under
- * its shebang, nothing else moved.
+ * stdin: W, the widest wave of the plan this box was cut for, C, the browsers
+ * that wave may hold open at once, and the size it was cut to. Pure — the
+ * script comes back with one comment line inserted under its shebang, nothing
+ * else moved.
  *
  * Why the script and not the assignment: the comment's keys are enumerated
  * twice, by `COMMENT_KEYS` in `fleet/lobby.mjs` and by `parse_assignment` in
@@ -383,8 +461,8 @@ export function vmSizeFor (widestWave, cap = FLEET_DEFAULTS) {
  * wave of the box's own compile (`args.json`), one plan compiled twice off the
  * same base, and falls back to 12 only when that compile answers no waves.
  */
-export function stampWidth (script, { width, cpu, memory }) {
-  const note = `# fleet: width=${width} — the compiled plan's widest wave, which this box was cut to: --cpu ${cpu} --memory ${memory}.`
+export function stampWidth (script, { width, browsers, cpu, memory }) {
+  const note = `# fleet: width=${width} browsers=${browsers} — the compiled plan's widest wave and the browsers it may hold open at once, which this box was cut to: --cpu ${cpu} --memory ${memory}.`
   const text = String(script ?? '')
   const firstLine = text.indexOf('\n')
   return firstLine < 0
@@ -1200,24 +1278,11 @@ async function launchBody ({
   const compileFor = (n) => compilePlanForRun({
     exec, repoDir, planPath, base: opts.base, stamp: `run-${n}`, compilerPath: compiler.scriptPath
   })
-  // The box one compiled payload asks for. W is the task count of its widest
-  // wave, floored at one — a payload with no waves launches nothing, and a box
-  // below the one-task size would be a smaller answer than the smallest real
-  // plan's — and the size is the formula clamped by the ceiling, unless the
-  // launch line named a number outright, which wins whatever the plan is.
-  const sizeFromCompile = (payload) => {
-    const width = Math.max(1, payload.waves.reduce(
-      (widest, wave) => Math.max(widest, Array.isArray(wave) ? wave.length : 0), 0
-    ))
-    const sized = vmSizeFor(width, { cpu: cpuCap, memory: memoryCap })
-    return {
-      width,
-      cpu: opts.cpu === undefined ? sized.cpu : cpuCap,
-      memory: opts.memory === undefined ? sized.memory : memoryCap
-    }
-  }
+  // The box one compiled payload asks for: `sizeFromCompile` above, the pure
+  // export, reading the compiled object's own waves for W and for C, the
+  // browsers it may hold open at once.
   const firstCompiled = await compileFor(firstRun)
-  const firstSize = sizeFromCompile(firstCompiled)
+  const firstSize = sizeFromCompile(firstCompiled, { cpuCap, memoryCap, cpu: opts.cpu, memory: opts.memory })
   const memoryGb = parseMemoryGb(firstSize.memory)
 
   // One run must fit the plan's pool. Allocation is over-committable and
@@ -1307,13 +1372,13 @@ async function launchBody ({
   // The size and the width the verb carries are read off the compile for the
   // number the push got — the first one when nothing bumped, the recompile
   // when something did.
-  const { width, cpu, memory } = sizeFromCompile(plan.compiled)
+  const { width, browsers, cpu, memory } = sizeFromCompile(plan.compiled, { cpuCap, memoryCap, cpu: opts.cpu, memory: opts.memory })
 
   // ── The one mutating lobby verb. ──────────────────────────────────────────
   const comment = buildComment({ ...fields, run: String(run), plan: planSha, engine })
   const script = stampWidth(
     renderSetupScript({ run: String(run), ...readFleetFiles() }),
-    { width, cpu, memory }
+    { width, browsers, cpu, memory }
   )
   // No `--integration` on the verb: the run's credentials — `claude-max` and the
   // target's object — reach the box by the
@@ -1388,6 +1453,11 @@ async function launchBody ({
     github: githubName,
     cpu,
     memory,
+    // C, the browsers this plan may hold open at once — the exam-carrying tasks
+    // of its widest wave (`browsersFor`), and what `memory` was sized by when
+    // it is one or more. Like `width` it rides the setup script's header, not
+    // the assignment.
+    browsers,
     // W, the widest wave of the compiled plan: what `cpu` and `memory` were
     // sized to, and the width the run's engine would dispatch at. It is not an
     // assignment key — `COMMENT_KEYS` in `fleet/lobby.mjs` spells nine and
