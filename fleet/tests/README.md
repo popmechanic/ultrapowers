@@ -79,9 +79,6 @@ one sim per question:
   refused bumps to N+1 and re-files its first payload under the number it got.
 - `test_launch_duplicate.mjs` — the launcher refuses a plan already live on the
   target, names the run, and takes `--again`.
-- `test_launch_kata_seed.mjs` — a launch files a run into the target's one
-  project as an idempotent seed with its edges, and a bump refiles rather than
-  purges.
 - `test_launch_compile_facts.mjs` — the launch line carries the compiler's
   `Stale-if` fact lines: an advisory beside the base facts on a clean compile,
   and the compiler's own refusal line otherwise.
