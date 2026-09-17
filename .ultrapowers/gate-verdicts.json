@@ -1,0 +1,60 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "f3c9faed0dd8f6cb4f8c40d95d5c1e0dcbb11f850ce4008f1ca1ae7e08a7d015",
+      "verdict": "pass",
+      "reason": "Every clause has a leg a wrong implementation fails: M2's leg (b) pins exactly three typesafe.log lines across the publishing and done transitions so a boot that re-asks at each collect_evidence fails, and M5's leg (e) string-compares the exit-7 boot's PR body to the succeeding boot's and names the three checklist lines in order; every named symbol exists at base and the new sim, TYPESAFE_URL, typesafe.log and residuals-jev.jsonl are the task's own creations."
+    },
+    "2": {
+      "hash": "9e44f407e07803770c03a5935542afcd7d8e9d9e118da00e3851f834c0039cba",
+      "verdict": "pass",
+      "reason": "M1's leg (a) pins the computed Act on these: 11 of 14 with ten listed and p11 dropped, the tie pairs in checklist order, the 2.49 formatting trap excluded on the raw threshold and the exact-2.5 boundary via the p05-only boot; M2's leg (b) names all three absent cases; M3's leg (c) does the splice string-equality and the PUT count; the one absent file is the Test line the task itself writes."
+    },
+    "3": {
+      "hash": "754d5af2376dca0cf8ff9f588a930a070223f4be2d9877495c8c5fa6ae2753fb",
+      "verdict": "pass",
+      "reason": "M1's sed window anchors (residuals.jsonl line 287, kata.jsonl line 293) exist at base with the row keys and cache pinned in order, M2 pins the new section between the table header and the Residuals: sentence plus the exact exception phrase, and M3's label order, exactly-2-row count and the 40 to 42 Traps count together refuse a missing, misplaced or padded edit."
+    }
+  },
+  "tally": {
+    "base": "3c61d8d795fddd14a3b60cc140bacf0e09fc23d2",
+    "dispatched": 3,
+    "rejected": 0,
+    "rounds": 1,
+    "per_round": {
+      "1": {
+        "dispatched": 3,
+        "rejected": 0
+      }
+    }
+  },
+  "authoring": {
+    "minutes": 30,
+    "probes": 1,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Quote the card sentence",
+          "Say it as what you will see"
+        ],
+        "recommended": "Quote the card sentence",
+        "picked": "Quote the card sentence"
+      },
+      {
+        "question": "Execute how",
+        "options": [
+          "Ultrapowers",
+          "Subagent-Driven",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers"
+      }
+    ]
+  }
+}
