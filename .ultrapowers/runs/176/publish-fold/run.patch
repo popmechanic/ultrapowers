@@ -1,0 +1,1250 @@
+diff --git a/fleet/RUNBOOK.md b/fleet/RUNBOOK.md
+index d91a35829e2ac511b1fb3404b2952ce53f9563a3..e72ce5a0ce51493f97585192457147ac4600b0dc 100644
+--- a/fleet/RUNBOOK.md
++++ b/fleet/RUNBOOK.md
+@@ -231,7 +231,7 @@ never by `integrations attach`.
+ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>
+ ```
+ 
+-The launcher compiles the plan against `--base` itself (`compile_plan.py --check --base`, after the hash pins and before any lobby verb) and refuses on anything but `PLAN OK`; the `BASE fact:` lines, the `STALE fact:` lines and the `AUTHORING fact:` line of a clean compile are printed on the launch line after the engine line, in the order the compiler printed them. A `STALE fact:` line on a clean compile is an advisory — a Stale-if predicate the compiler could not read at `--base` (`STALE fact: task <id>: <entry> unreadable at BASE — <reason>`); a predicate that holds is a refusal instead, and the compiler's own `STALE fact: task <id>: <entry> holds at BASE` line comes back verbatim in it. The `AUTHORING fact:` line is what the plan cost to author — `AUTHORING fact: <minutes> min to PLAN OK, <probes> hub probes, <dispatched> gate dispatches, <rejected> rejected, routing <branch>-><lane>, <n> questions, <p>/<q> recommended picked`, `AUTHORING fact: none recorded` when the gate record carries no `authoring` key, and, for a record the compiler refused, one `AUTHORING fact: refused — <key>: <rule>` line per violation (the compile is then a refusal and those lines come back verbatim inside it) — so the cost of the plan is read beside the run it launched, without opening the record.
++The launcher compiles the plan against `--base` itself (`compile_plan.py --check --base`, after the hash pins and before any lobby verb) and refuses on anything but `PLAN OK`; the `BASE fact:` lines, the `STALE fact:` lines, the `GREEN-AT-BASE fact:` lines and the `AUTHORING fact:` line of a clean compile are printed on the launch line after the engine line, in the order the compiler printed them. A `STALE fact:` line on a clean compile is an advisory — a Stale-if predicate the compiler could not read at `--base` (`STALE fact: task <id>: <entry> unreadable at BASE — <reason>`); a predicate that holds is a refusal instead, and the compiler's own `STALE fact: task <id>: <entry> holds at BASE` line comes back verbatim in it. A `GREEN-AT-BASE fact:` line is a fact this release and not a refusal — the compile still prints `PLAN OK` and exits 0 however many of them there are — and it says a Proof `Run:` line was already green on the tree at `--base`, before any worker touched it: `GREEN-AT-BASE fact: task <id>: Run: <command> — exits 0 at BASE; this line cannot falsify its clause` for a prover, `… — exits 0 at BASE; a guard, no leg cites it` for a guard, `… — not run (timeout after 30 s)` for a line the compiler gave up on, and last one `GREEN-AT-BASE fact: <S> s over <R> lines run, <T> not run (timeout)` totalling what the reads cost. Only Proof `Run:` lines are run at `--base`, never a `Check:` line, and only under `--base`: a bare `--check` prints none of this. The `AUTHORING fact:` line is what the plan cost to author — `AUTHORING fact: <minutes> min to PLAN OK, <probes> hub probes, <dispatched> gate dispatches, <rejected> rejected, routing <branch>-><lane>, <n> questions, <p>/<q> recommended picked`, `AUTHORING fact: none recorded` when the gate record carries no `authoring` key, and, for a record the compiler refused, one `AUTHORING fact: refused — <key>: <rule>` line per violation (the compile is then a refusal and those lines come back verbatim inside it) — so the cost of the plan is read beside the run it launched, without opening the record.
+ 
+ The launcher, in this order: validates the plan, the target and the base;
+ reads the pool; computes N from the target's `ultra/*-run-*` branches and its
+diff --git a/fleet/launch.mjs b/fleet/launch.mjs
+index 8574f01f33c8ec1baffd695719309d7022f69ac6..212ab27717e7788adafa75366fabb97afdec520f 100644
+--- a/fleet/launch.mjs
++++ b/fleet/launch.mjs
+@@ -777,12 +777,17 @@ const BASE_FACTS_STAMP = /\*\*BASE facts:\*\*\s*\(generated at ([0-9a-f]{7,40})\
+  *     its clauses pin). A non-zero exit is a refusal carrying the compiler's
+  *     text verbatim — including a `STALE fact:` line for a Stale-if predicate
+  *     that holds at BASE, which is what the operator reads on the laptop; the
+- *     `BASE fact:`, `STALE fact:` and `AUTHORING fact:` lines of a clean
+- *     compile ride the result so the launch line prints them, in the order the
+- *     compiler printed them (a `STALE fact:` there is the advisory kind: a
+- *     predicate the compiler could not read at BASE, never a refusal; the
+- *     `AUTHORING fact:` line is what the plan's authoring cost, or
+- *     `AUTHORING fact: none recorded` when the gate record carries none).
++ *     `BASE fact:`, `STALE fact:`, `GREEN-AT-BASE fact:` and `AUTHORING fact:`
++ *     lines of a clean compile ride the result so the launch line prints them,
++ *     in the order the compiler printed them (a `STALE fact:` there is the
++ *     advisory kind: a predicate the compiler could not read at BASE, never a
++ *     refusal; a `GREEN-AT-BASE fact:` line is a Proof `Run:` line the compiler
++ *     found already green at BASE, plus the one line totalling what those runs
++ *     cost — this release every one of them is a fact and the compile still
++ *     exits 0, so dropping them on the laptop is the only way the operator
++ *     could fail to read them; the `AUTHORING fact:` line is what the plan's
++ *     authoring cost, or `AUTHORING fact: none recorded` when the gate record
++ *     carries none).
+  *
+  * The compiler runs through the exec seam like every other subprocess, so a sim
+  * that answers `python3` decides what the compiler said. `compilerPath` is the
+@@ -810,6 +815,7 @@ export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planT
+     (line) =>
+       line.startsWith('BASE fact:') ||
+       line.startsWith('STALE fact:') ||
++      line.startsWith('GREEN-AT-BASE fact:') ||
+       line.startsWith('AUTHORING fact:')
+   )
+ }
+@@ -1901,8 +1907,9 @@ const engineLine = (result) =>
+  * line at all.
+  *
+  * `compiler=` sits between the engine line and the fact lines, never among
+- * them: the `BASE fact:`, `STALE fact:` and `AUTHORING fact:` entries are the
+- * LAST lines of the launch text, which is what an operator reads down to.
++ * them: the `BASE fact:`, `STALE fact:`, `GREEN-AT-BASE fact:` and
++ * `AUTHORING fact:` entries are the LAST lines of the launch text, which is
++ * what an operator reads down to.
+  *
+  * `account=` is a rendered line and never part of the comment: the comment is
+  * the assignment the VM parses, and a key it does not know kills the run at
+diff --git a/fleet/tests/test_launch_compile_facts.mjs b/fleet/tests/test_launch_compile_facts.mjs
+index fef59f9f1983f9c6801ce3dcd8f91cd3e9901604..743ee0b2967ecb2a95bc16dfb069c5c663fc3e00 100644
+--- a/fleet/tests/test_launch_compile_facts.mjs
++++ b/fleet/tests/test_launch_compile_facts.mjs
+@@ -1019,6 +1019,164 @@ await test('(f) [M6] fleet/tests/test_launch_duplicate.mjs\'s seam has a rule fo
+   )
+ })
+ 
++/**
++ * ── "The launcher carries the `GREEN-AT-BASE fact:` lines onto the launch
++ * line, and the runbook names them" (task 3) ────────────────────────────────
++ *
++ * The same surface, one kind wider again: under `--check --base` the compiler
++ * now runs each plan's Proof `Run:` lines at BASE and prints a
++ * `GREEN-AT-BASE fact:` line for every one that is green there — after the
++ * `STALE fact:` lines and before the `AUTHORING fact:` line, under a `PLAN OK`
++ * verdict, this release a fact and never a refusal. The launcher's filter
++ * drops those lines today, so the operator on the laptop never sees them; the
++ * change is one more prefix in that filter, and the runbook's per-run
++ * paragraph naming the kind. Nothing new is imported and nothing new is
++ * spawned: these legs use this file's own `fakeExec`, `compile`, `sectionOf`
++ * and `near` helpers, and every leg above stays green because a stdout
++ * carrying no `GREEN-AT-BASE fact:` line resolves exactly as it did.
++ *
++ *   (a) [M1] a fake `exec` answering exit 0 with `PLAN OK`, one `BASE fact:`
++ *       line, one `STALE fact: … unreadable at BASE — …` line, one prover-shaped
++ *       `GREEN-AT-BASE fact:` line, the `GREEN-AT-BASE fact:` summary line, one
++ *       `AUTHORING fact: none recorded` line and one `note:` line makes
++ *       `verifyPlanCompiles` resolve to exactly those five fact lines, in that
++ *       order and with no other line; the same lines answered with the two
++ *       `GREEN-AT-BASE fact:` lines FIRST resolve with them first, because M1
++ *       says stdout order and not a sort by kind; all four line shapes the
++ *       compiler prints are carried, because M1 filters on the prefix and not
++ *       on the shape; and the Proof's second `Run:` line, read in process,
++ *       finds the filter's new prefix in `fleet/launch.mjs`.
++ *   (b) [M2] `renderLaunch` of a result whose `baseFacts` is
++ *       `['BASE fact: x', 'GREEN-AT-BASE fact: y', 'AUTHORING fact: none
++ *       recorded']` yields text carrying the line `GREEN-AT-BASE fact: y`
++ *       exactly once, beside the other two; and a result with no `baseFacts`
++ *       yields text with no `GREEN-AT-BASE fact:` in it at all.
++ *   (c) [M3] the Proof's third and fourth `Run:` lines, read in process: the
++ *       `## Per run` section of `fleet/RUNBOOK.md`, read as the text from that
++ *       heading to `## States` and joined on spaces the way `tr '\n' ' '` joins
++ *       it, matches `BASE fact:.*STALE fact:.*GREEN-AT-BASE fact:.*AUTHORING
++ *       fact:.*launch line`, and the same window matches
++ *       `GREEN-AT-BASE fact:.*fact.*not a refusal`. That the sim itself — legs
++ *       (a) and (b) included — passes is the Proof's FIRST `Run:` line, which
++ *       the driver runs; this exam proves its own claim and spawns no other.
++ */
++
++/**
++ * The compiler's fourth line shape, in the four forms the task pins as
++ * literals, so this fake stdout matches the real one byte for byte: a prover
++ * (whose `Run:` ends in a clause tag), a guard no leg cites, a line that timed
++ * out before it could be run, and the summary printed last.
++ */
++const GREEN_PROVER =
++  'GREEN-AT-BASE fact: task 1: Run: true — exits 0 at BASE; this line cannot falsify its clause'
++const GREEN_GUARD =
++  'GREEN-AT-BASE fact: task 2: Run: true — exits 0 at BASE; a guard, no leg cites it'
++const GREEN_NOT_RUN =
++  'GREEN-AT-BASE fact: task 3: Run: sleep 60 — not run (timeout after 30 s)'
++const GREEN_SUMMARY =
++  'GREEN-AT-BASE fact: 0.4 s over 1 lines run, 0 not run (timeout)'
++
++/** The launcher's own source, read as the Proof's second `Run:` line reads it. */
++const LAUNCH_SRC = path.join(FLEET_DIR, 'launch.mjs')
++
++await test('(a) [M1] task 3: a clean compile resolves to its BASE, STALE, GREEN-AT-BASE and AUTHORING fact lines, and nothing else', async () => {
++  const exec = fakeExec({
++    code: 0,
++    stdout: `PLAN OK\n${BASE_FACT}\n${STALE_ADVISORY}\n${GREEN_PROVER}\n${GREEN_SUMMARY}\n` +
++      `${AUTHORING_NONE}\nnote: 3 tasks in 2 waves\n`
++  })
++  const facts = await compile(exec)
++  assert.deepEqual(
++    facts, [BASE_FACT, STALE_ADVISORY, GREEN_PROVER, GREEN_SUMMARY, AUTHORING_NONE],
++    '(a) [M1] exit 0 with PLAN OK, one BASE fact: line, one STALE fact: advisory, one GREEN-AT-BASE ' +
++    'fact: line, the GREEN-AT-BASE fact: summary, one AUTHORING fact: line and one note: line resolves ' +
++    `to exactly those five fact lines, in stdout order and with no other line, got: ${JSON.stringify(facts)}`
++  )
++})
++
++await test('(a) [M1] task 3: the order is stdout\'s, with the GREEN-AT-BASE lines answered first', async () => {
++  const exec = fakeExec({
++    code: 0,
++    stdout: `PLAN OK\n${GREEN_PROVER}\n${GREEN_SUMMARY}\n${BASE_FACT}\n${STALE_ADVISORY}\n` +
++      `${AUTHORING_NONE}\nnote: 3 tasks in 2 waves\n`
++  })
++  assert.deepEqual(
++    await compile(exec),
++    [GREEN_PROVER, GREEN_SUMMARY, BASE_FACT, STALE_ADVISORY, AUTHORING_NONE],
++    '(a) [M1] the same five lines answered GREEN-AT-BASE-first resolve GREEN-AT-BASE-first: M1 says ' +
++    'stdout order, not a sort by kind'
++  )
++})
++
++await test('(a) [M1] task 3: every GREEN-AT-BASE fact: shape the compiler prints is carried', async () => {
++  const exec = fakeExec({
++    code: 0,
++    stdout: `PLAN OK\n${GREEN_PROVER}\n${GREEN_GUARD}\n${GREEN_NOT_RUN}\n${GREEN_SUMMARY}\n` +
++      'note: 3 tasks in 2 waves\n'
++  })
++  assert.deepEqual(
++    await compile(exec), [GREEN_PROVER, GREEN_GUARD, GREEN_NOT_RUN, GREEN_SUMMARY],
++    '(a) [M1] the prover line, the guard line, the timed-out line and the summary line all resolve: M1 ' +
++    'keeps every stdout line that BEGINS `GREEN-AT-BASE fact:`, whatever follows the prefix'
++  )
++})
++
++await test('(a) [M1] task 3: fleet/launch.mjs\'s fact filter names the GREEN-AT-BASE fact: prefix', () => {
++  // The Proof's second `Run:` line, read in process: the filter of
++  // `verifyPlanCompiles` is where a `GREEN-AT-BASE fact:` line is kept or lost.
++  const source = fs.readFileSync(LAUNCH_SRC, 'utf8')
++  assert.ok(
++    source.includes("startsWith('GREEN-AT-BASE fact:')"),
++    '(a) [M1] fleet/launch.mjs carries startsWith(\'GREEN-AT-BASE fact:\') — the one prefix the filter ' +
++    `of verifyPlanCompiles is missing at BASE, which is why the line is dropped on the laptop, got: ` +
++    `${near(source, "startsWith('BASE fact:')")}`
++  )
++})
++
++await test('(b) [M2] task 3: a result\'s GREEN-AT-BASE fact: entry prints as one line of the launch text, exactly once', () => {
++  const facts = ['BASE fact: x', 'GREEN-AT-BASE fact: y', AUTHORING_NONE]
++  const lines = renderLaunch({ ...RESULT, baseFacts: facts }).split('\n')
++  assert.equal(
++    lines.filter((line) => line === 'GREEN-AT-BASE fact: y').length, 1,
++    `(b) [M2] the rendered text carries the line GREEN-AT-BASE fact: y exactly once, got: ` +
++    `${JSON.stringify(lines)}`
++  )
++  assert.deepEqual(
++    lines.slice(-3), facts,
++    '(b) [M2] and it prints beside the BASE fact: and AUTHORING fact: entries, in the order the ' +
++    `compiler printed them, got: ${JSON.stringify(lines)}`
++  )
++})
++
++await test('(b) [M2] task 3: a result with no baseFacts prints no GREEN-AT-BASE fact: line', () => {
++  const text = renderLaunch({ ...RESULT })
++  assert.ok(
++    !text.includes('GREEN-AT-BASE fact:'),
++    `(b) [M2] no baseFacts entry of that kind, no GREEN-AT-BASE fact: line, got: ${JSON.stringify(text)}`
++  )
++})
++
++await test('(c) [M3] task 3: fleet/RUNBOOK.md §Per run names BASE fact:, STALE fact:, GREEN-AT-BASE fact:, AUTHORING fact:, then the launch line', () => {
++  const section = sectionOf(fs.readFileSync(RUNBOOK, 'utf8'), '## Per run', '## States')
++  assert.ok(section !== null, '(c) [M3] fleet/RUNBOOK.md has a `## Per run` section')
++  assert.match(
++    section, /BASE fact:.*STALE fact:.*GREEN-AT-BASE fact:.*AUTHORING fact:.*launch line/,
++    '(c) [M3] the `## Per run` section, read from that heading to `## States`, names BASE fact:, then ' +
++    'STALE fact:, then GREEN-AT-BASE fact:, then AUTHORING fact:, then the launch line, in that order, ' +
++    `got: ${near(section, 'BASE fact:')}`
++  )
++})
++
++await test('(c) [M3] task 3: that same section says a GREEN-AT-BASE fact: line is a fact, not a refusal', () => {
++  const section = sectionOf(fs.readFileSync(RUNBOOK, 'utf8'), '## Per run', '## States')
++  assert.ok(section !== null, '(c) [M3] fleet/RUNBOOK.md has a `## Per run` section')
++  assert.match(
++    section, /GREEN-AT-BASE fact:.*fact.*not a refusal/,
++    '(c) [M3] the `## Per run` section says a GREEN-AT-BASE fact: line is a fact this release and not a ' +
++    `refusal — the compile still prints PLAN OK and still exits 0, got: ${near(section, 'GREEN-AT-BASE fact:')}`
++  )
++})
++
+ // ── The verdict ─────────────────────────────────────────────────────────────
+ 
+ if (failures.length > 0) {
+diff --git a/skills/ultrapowers/references/plan-markers.md b/skills/ultrapowers/references/plan-markers.md
+index 52bb43909359485468e868b3e17597f4b24656b7..f050f55bbc1941cbd56474b6fc4155d02d0e0ec1 100644
+--- a/skills/ultrapowers/references/plan-markers.md
++++ b/skills/ultrapowers/references/plan-markers.md
+@@ -225,6 +225,21 @@ A `Run:` bullet is executed by the driver in the task's clone after the
+ implementer's patch; each execution is a `driver:proof-run` event, and a
+ non-zero exit is a blocking review issue that sends the task to fix.
+ 
++A `Run:` whose value ends in a citation tag of the same shape a leg carries —
++`[M2]`, or `[M1, M3]` — is a *prover*, paired with the clause that tag names:
++the compiler strips the tag before the driver runs the command, refuses a tag
++naming a clause the Machine line does not number, and never counts the tag as a
++citing leg. A `Run:` with no tag is a *guard* — a `bash -n`, a sim that must
++stay green — and no leg cites it. Under `--check --base <sha>` the compiler cuts
++a clean worktree at BASE, runs every `Run:` there with `ULTRA_BASE` set exactly
++as the driver sets it, and prints one `GREEN-AT-BASE fact:` line per command
++that exits 0 at BASE: a prover's line says it cannot falsify its clause, a
++guard's says no leg cites it. A command still running at 30 s is killed and
++reported `not run (timeout after 30 s)`, a non-zero exit prints nothing, and the
++last line is the reading — total seconds, lines run, lines not run. This release
++the line is a fact, not a refusal: `PLAN OK` still prints and the compile exits
++0. A bare `--check` without `--base` runs nothing.
++
+ An exam file the driver receives from the peer examiner is written under the
+ reserved directory `tests/exams/<run>/` (a node exam under
+ `fleet/tests/exams/<run>/`), which is where an unguarded exam lives for the
+diff --git a/skills/ultrapowers/scripts/compile_plan.py b/skills/ultrapowers/scripts/compile_plan.py
+index 2cb51b4a8d7378c0b6a46a240db2df2ae5a48300..06caa0aa5d883a9db17fe730cbaeafe08a3b8e74 100644
+--- a/skills/ultrapowers/scripts/compile_plan.py
++++ b/skills/ultrapowers/scripts/compile_plan.py
+@@ -30,11 +30,15 @@ from __future__ import annotations
+ import argparse
+ import hashlib
+ import json
++import os
+ import re
+ import shutil
++import signal
+ import string
+ import subprocess
+ import sys
++import tempfile
++import time
+ from pathlib import Path
+ 
+ # scripts -> ultrapowers -> skills -> plugin root; identical to ultra_run.py's
+@@ -587,6 +591,31 @@ def _claims_run_command(value):
+     return m.group(1).strip() if m else command
+ 
+ 
++# A Proof `Run:` bullet's citation tag (#1098): the same bracket shape a leg
++# carries (`[M2]`, `[M1, M3]`), anchored at the END of the value after
++# whitespace — a tag mid-command is part of the command. A tagged `Run:` is a
++# PROVER, a line whose exit is the clause's; an untagged one is a GUARD. The
++# tag is grammar, not shell: it is cut off before the command is recorded, so
++# nothing downstream — the backtick rule, the exam-sweep rule, `proofRuns` on
++# the wave entry — ever sees a bracket.
++RUN_CITE_RE = re.compile(r"\s*\[\s*(M\d+(?:\s*,\s*M\d+)*)\s*\]\s*$")
++
++
++def _claims_run_cites(value):
++    """Split a Proof `Run:` value into (command text, sorted clause ids).
++
++    Untagged, the value rides back whole with `[]` — a guard. Tagged, the tag
++    is cut and its ids are returned sorted by number, as a leg's `cites` are;
++    the command half still goes through `_claims_run_command`, so a tagged
++    command that is also wholly backticked unwraps exactly as a bare one."""
++    m = RUN_CITE_RE.search(value)
++    if not m:
++        return value, []
++    cites = sorted({c.strip() for c in m.group(1).split(",")},
++                   key=lambda c: int(c[1:]))
++    return value[:m.start()], cites
++
++
+ def command_names_path(command, path):
+     """True when `command` names `path` as a WHOLE token.
+ 
+@@ -813,7 +842,7 @@ def clause_citation_violations(task_id, clauses, numbering_error, legs):
+     if not clauses:
+         return v
+     ids = {c["id"] for c in clauses}
+-    span = "M1" if len(clauses) == 1 else "M1–M%d" % len(clauses)
++    span = _clause_span(clauses)
+     for leg in legs:
+         if not leg["cites"]:
+             v.append("grammar: Proof leg cites no Machine clause — task %s, leg "
+@@ -832,6 +861,36 @@ def clause_citation_violations(task_id, clauses, numbering_error, legs):
+     return v
+ 
+ 
++def _clause_span(clauses):
++    """How a refusal names the clauses the Machine line numbers — `M1` alone,
++    else `M1–M<n>`. One spelling, read by both citation refusals."""
++    return "M1" if len(clauses) == 1 else "M1–M%d" % len(clauses)
++
++
++def run_citation_violations(task_id, clauses, proof_runs, proof_run_cites):
++    """The refusals a Proof `Run:` tag draws (#1098); [] when the citation
++    grammar is inactive (no clause marker on the Machine line).
++
++    Only one: a tag naming a clause the Machine line does not number. A tag
++    that names a real clause earns nothing, and — deliberately — satisfies
++    nothing either: `parse_proof_legs` skips `Run:` bullets, so a clause cited
++    only by a tag still draws `Machine clause <Mn> has no citing Proof leg`
++    from `clause_citation_violations`. A tag says which clause a command's
++    exit would falsify; it does not argue the clause."""
++    if not clauses:
++        return []
++    ids = {c["id"] for c in clauses}
++    span = _clause_span(clauses)
++    v = []
++    for command, cites in zip(proof_runs, proof_run_cites):
++        for c in cites:
++            if c not in ids:
++                v.append("grammar: Run: cites an unknown clause — task %s: %s "
++                         "cites %s; the Machine line numbers %s"
++                         % (task_id, _short(command), c, span))
++    return v
++
++
+ def parse_claims_body(body, task_id, plan_claim=None):
+     """Parse one claims-v1 task body into its six slots.
+ 
+@@ -989,6 +1048,10 @@ def parse_claims_body(body, task_id, plan_claim=None):
+     # not sorted, and not checked for existence. The same command named twice
+     # is two runs, because running it twice is what the Proof asked for.
+     proof_runs = []
++    # ... and beside it, parallel and same-length (#1098): the clause ids each
++    # command's citation tag named, sorted, `[]` for an untagged command. It is
++    # what tells a prover (a line whose exit is a clause's) from a guard.
++    proof_run_cites = []
+     # The fourth view: the Proof's `Guard:` paths in Proof order (#777). A
+     # guard is a path like a `Test:` value and is read by the same reader, but
+     # it is deduplicated (first occurrence kept) because naming the same guard
+@@ -1009,8 +1072,13 @@ def parse_claims_body(body, task_id, plan_claim=None):
+                 if path not in proof_guards:
+                     proof_guards.append(path)
+         elif r:
+-            command = _claims_run_command(r.group(1))
++            # The tag comes off FIRST, so the two rules below read the command
++            # the shell would get — a tagged command with no backtick of its
++            # own is clean, and a tagged exam path counts as the one path it is.
++            value, cites = _claims_run_cites(r.group(1))
++            command = _claims_run_command(value)
+             proof_runs.append(command)
++            proof_run_cites.append(cites)
+             if "`" in command:
+                 violations.append(
+                     _backtick_command_violation("Run", command, task_id))
+@@ -1031,6 +1099,8 @@ def parse_claims_body(body, task_id, plan_claim=None):
+     proof_legs = parse_proof_legs(slots.get("Proof", ""))
+     violations.extend(clause_citation_violations(
+         task_id, machine_clauses, numbering_error, proof_legs))
++    violations.extend(run_citation_violations(
++        task_id, machine_clauses, proof_runs, proof_run_cites))
+ 
+     return {"claim": claim,
+             "authorized_by": slots.get("Authorized-by", ""),
+@@ -1043,6 +1113,7 @@ def parse_claims_body(body, task_id, plan_claim=None):
+             "proof_tests": sorted(proof_tests),
+             "proof_tests_ordered": proof_tests_ordered,
+             "proof_runs": proof_runs,
++            "proof_run_cites": proof_run_cites,
+             "proof_guards": proof_guards,
+             "machine_clauses": machine_clauses,
+             "proof_legs": proof_legs,
+@@ -2951,6 +3022,114 @@ class BaseTree:
+         return None
+ 
+ 
++# --------------------------------------------------------------------------- #
++# The rehearsal at BASE — every Proof `Run:` line, run before the run (#1098). #
++# --------------------------------------------------------------------------- #
++
++# How long one `Run:` line may take at BASE before it is killed and reported as
++# never having run. A module-level constant so an exam can name the default
++# without paying thirty seconds for it.
++GREEN_AT_BASE_TIMEOUT_S = 30
++GREEN_FACT = "GREEN-AT-BASE fact:"
++
++
++def _green_worktree_runs(tasks):
++    """Every Proof `Run:` line of the plan, in task order then Proof order, as
++    `(task id, command, cites)`. A task with no parsed claims body has none."""
++    runs = []
++    for t in tasks:
++        claims = t.get("claims") or {}
++        commands = claims.get("proof_runs") or []
++        cites = claims.get("proof_run_cites") or []
++        for i, command in enumerate(commands):
++            runs.append((t["id"], command,
++                         cites[i] if i < len(cites) else []))
++    return runs
++
++
++def _run_at_base(command, worktree, sha, timeout_s):
++    """One command in the worktree at BASE: `(exit code or None, seconds)`.
++
++    The engine's own shape (`fleet/run-engine.mjs`): `bash -lc <command>` with
++    `ULTRA_BASE` ADDED to the inherited environment, never replacing it. Output
++    is discarded — the compiler reads the exit code, and a command's chatter on
++    the compiler's own stdout would sit between the verdict and the facts.
++    `start_new_session` puts the command in its own process group so a timeout
++    kills the WHOLE tree: a `pytest` or `node` grandchild outlives a signal
++    sent to the shell alone, and the killed group is what bounds the call."""
++    started = time.monotonic()
++    proc = subprocess.Popen(["bash", "-lc", command], cwd=worktree,
++                            env={**os.environ, "ULTRA_BASE": sha},
++                            start_new_session=True,
++                            stdin=subprocess.DEVNULL,
++                            stdout=subprocess.DEVNULL,
++                            stderr=subprocess.DEVNULL)
++    try:
++        code = proc.wait(timeout=timeout_s)
++    except subprocess.TimeoutExpired:
++        code = None
++        try:
++            os.killpg(proc.pid, signal.SIGKILL)
++        except OSError:  # the group is already gone
++            pass
++        proc.wait()
++    return code, time.monotonic() - started
++
++
++def green_at_base_lines(tasks, base_tree, timeout_s=GREEN_AT_BASE_TIMEOUT_S):
++    """The plan's Proof `Run:` lines, rehearsed at BASE, as fact lines.
++
++    One detached worktree of the plan's repository is cut at BASE's commit
++    under a fresh temporary directory, every command runs there in Proof order,
++    and the worktree is removed whatever the commands did — including what they
++    wrote, which is what `--force` is for. The repository's own working tree is
++    never the one a command runs in.
++
++    A command that exits 0 yields one line, worded by what the plan said it
++    was: a PROVER (a `Run:` carrying a citation tag) cannot falsify the clause
++    it cites, a GUARD is cited by no leg at all. A command that exits non-zero
++    yields nothing — red at BASE is the ordinary case, and this release says so
++    by staying silent about it. A command still running at `timeout_s` is
++    killed and reported as not run.
++
++    The last line is always the reading: the wall seconds, how many commands
++    reached an exit, how many were killed. It is returned even for a plan with
++    no `Run:` line, and for a base that is no commit — the compile that cost
++    nothing says so, rather than saying nothing."""
++    runs = _green_worktree_runs(tasks)
++    sha = base_tree.commit_sha() if base_tree is not None else ""
++    lines, seconds, ran, killed = [], 0.0, 0, 0
++    if sha and runs:
++        tmp = tempfile.mkdtemp(prefix="ultra-green-")
++        worktree = os.path.join(tmp, "tree")
++        try:
++            ok, _ = _git_run(base_tree.repo, "worktree", "add", "--detach",
++                             worktree, sha)
++            for task_id, command, cites in (runs if ok else []):
++                code, elapsed = _run_at_base(command, worktree, sha, timeout_s)
++                seconds += elapsed
++                if code is None:
++                    killed += 1
++                    lines.append("%s task %s: Run: %s — not run (timeout after "
++                                 "%s s)" % (GREEN_FACT, task_id, command,
++                                            timeout_s))
++                    continue
++                ran += 1
++                if code == 0:
++                    lines.append(
++                        "%s task %s: Run: %s — exits 0 at BASE; %s"
++                        % (GREEN_FACT, task_id, command,
++                           "this line cannot falsify its clause" if cites
++                           else "a guard, no leg cites it"))
++        finally:
++            _git_run(base_tree.repo, "worktree", "remove", "--force", worktree)
++            _git_run(base_tree.repo, "worktree", "prune")
++            shutil.rmtree(tmp, ignore_errors=True)
++    lines.append("%s %.1f s over %d lines run, %d not run (timeout)"
++                 % (GREEN_FACT, seconds, ran, killed))
++    return lines
++
++
+ # Path referents. A backticked token in a task body may name a repo path, and
+ # `skills/ultrawrite/scripts/pin_base_facts.py` resolves those referents
+ # against the tree at BASE. It imports the normalizer (`_path_referent`) and
+@@ -3124,6 +3303,15 @@ def main(argv=None):
+             # verdict whichever way it went and change no exit code.
+             for line in evaluate_stale_if(tasks, base_tree)[1]:
+                 print(line)
++            # ... and beside THOSE, the plan's own Proof `Run:` lines,
++            # rehearsed in a worktree at BASE (#1098): which of them a run
++            # would find already green, and what the rehearsal cost. Only
++            # behind a `PLAN OK` — a refused plan's commands are not run,
++            # because a plan the grammar rejects is not a plan yet, and the
++            # seconds would buy a reading of a document nobody will dispatch.
++            if rc == 0:
++                for line in green_at_base_lines(tasks, base_tree):
++                    print(line)
+             # ... and last, what the sitting that wrote this plan cost (#988).
+             # Only with a tree to read, like its neighbours above: a bare
+             # `--check` prints its verdict and nothing else.
+diff --git a/skills/ultrawrite/SKILL.md b/skills/ultrawrite/SKILL.md
+index 9655179ff6a6371cf67442f3d212f66aec3a2d22..47fd7e2222fe3caf5f0762c509bf144c10fabf72 100644
+--- a/skills/ultrawrite/SKILL.md
++++ b/skills/ultrawrite/SKILL.md
+@@ -139,6 +139,19 @@ where this plan's Files sets were wrong.
+   And one `Run:` names one probe — a command the driver pays once, never a loop over a glob
+   of sims (run-87 paid 175 s per boot sim, three passes, for two such lines). A sweep over
+   every sim belongs to the one task that owns the sims, as one line, or nowhere.
++  A `Run:` whose command ends in a citation tag of the same shape a leg carries —
++  `- Run: grep -q 'kata 0.17.2' fleet/CONTRACT.md [M2]`, or `[M1, M3]` — is a *prover*,
++  paired with the clause it names: the compiler strips the tag before the driver runs the
++  command, refuses a tag naming a clause the Machine line does not number, and never counts
++  the tag as a citing leg (the legs still cite). A `Run:` with no tag is a *guard* — a
++  `bash -n`, a sim that must stay green. Under `--check --base <sha>` the compiler cuts a
++  clean worktree at BASE and runs every `Run:` there, printing one line per command that
++  exits 0 at BASE: a `GREEN-AT-BASE fact:` line naming the task and the command, ending for
++  a prover `this line cannot falsify its clause` and for a guard `a guard, no leg cites it`.
++  A command still running at 30 s is killed and reported `not run (timeout after 30 s)`; a
++  non-zero exit prints nothing. This release the line is a fact, not a refusal — `PLAN OK`
++  still prints, and the refusal for a prover green at BASE comes after one release's census.
++  A bare `--check` without `--base` runs nothing.
+   A `- Guard:` bullet in this slot names **one of this Proof's own `Test:` paths**, and it
+   is the one way an exam file reaches the pull request: the peer examiner still writes the
+   exam, but the file it names is written at that path and is merged with the task. An exam
+diff --git a/tests/test_compile_plan_green_at_base.py b/tests/test_compile_plan_green_at_base.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..3fbbfe9b9fd25e13703eaebd6f1e53a732d547db
+--- /dev/null
++++ b/tests/test_compile_plan_green_at_base.py
+@@ -0,0 +1,692 @@
++"""GREEN-AT-BASE: the compiler rehearses every Proof `Run:` at BASE (#1098).
++
++A `Run:` line that already passes at BASE proves nothing about the task —
++whatever the implementer writes, that line was green before they started. So
++`compile_plan.py --check --base <sha>` now cuts a detached worktree at BASE,
++runs every Proof `Run:` there, and prints one `GREEN-AT-BASE fact:` line per
++command that exits 0, plus one reading line saying what the rehearsal cost.
++This release the lines are a fact and never a refusal: the verdict stays
++`PLAN OK` and the exit stays 0.
++
++The seven Machine clauses, restated, and where each is graded here:
++
++  * M1 — a Proof `Run:` bullet whose value ends in a citation tag (`[M2]`,
++    `[M1, M3]`) is a PROVER: `parse_task` records the command WITHOUT the tag
++    in `proof_runs` and the tag's clause ids, sorted, in a parallel
++    `proof_run_cites` list; an untagged `Run:` is a GUARD, recorded there as
++    `[]`. Graded by leg (a), which calls `parse_task` directly and compares
++    both lists by equality.
++  * M2 — a tag naming a clause the Machine line does not number is refused at
++    `--check` with
++
++        grammar: Run: cites an unknown clause — task <id>: <command cut to 80 characters> cites <Mn>; the Machine line numbers <span>
++
++    and a tag never counts as a citing leg: a clause cited only by a `Run:`
++    tag still draws `Machine clause <Mn> has no citing Proof leg`. Graded by
++    leg (b), both halves, as whole-line strings off a real `--check`.
++  * M3 — `green_at_base_lines(tasks, base_tree, timeout_s=GREEN_AT_BASE_TIMEOUT_S)`
++    cuts ONE detached worktree of the plan's repository at BASE's commit under
++    a fresh temporary directory, runs every task's `Run:` commands there in
++    Proof order through `bash -lc` with `ULTRA_BASE` set to the 40-hex commit
++    and the worktree as working directory, and removes the worktree afterwards
++    whatever the commands did. Graded by leg (c) — the command itself asserts
++    where it ran, and the exam asserts what is left behind — and by leg (h)'s
++    first two `Run:` lines.
++  * M4 — the three outcome lines, verbatim: a prover that exits 0, a guard
++    that exits 0, and nothing at all for a command that exits non-zero. Graded
++    by leg (d), by equality, from the function and from the `--check --base`
++    stdout alike.
++  * M5 — a command still running at `timeout_s` seconds (`GREEN_AT_BASE_TIMEOUT_S
++    = 30` by default) is killed with its whole process group, yields the
++    `not run (timeout after <timeout_s> s)` line, and the call returns within
++    3 seconds of the limit. Graded by leg (e), which passes `timeout_s=1` so
++    the suite never waits 30 seconds, and by leg (h)'s first `Run:` line.
++  * M6 — the last line the function returns is the reading,
++    `GREEN-AT-BASE fact: <S> s over <R> lines run, <T> not run (timeout)`,
++    returned even for a plan with no `Run:` line at all. Graded by leg (f),
++    all three shapes.
++  * M7 — `--check --base <base>` whose verdict is `PLAN OK` prints every line
++    of M4–M6 after the `BASE fact:`/`STALE fact:` lines and before the
++    `AUTHORING fact:` line, still prints `PLAN OK` first and still exits 0; a
++    bare `--check`, a plain compile with or without `--base`, and a
++    `--check --base` whose verdict is a refusal run no command and print no
++    `GREEN-AT-BASE fact:` line. Graded by leg (g), whose witness is a `Run:`
++    line that touches a file outside the worktree.
++
++Leg (h) is the Proof's three `Run:` lines. Its first two — the constant at 30
++and the function's signature — are graded here as source reads, byte for byte
++with the greps the Proof spells. Its third is `python3 -m pytest -q
++tests/test_compile_plan_green_at_base.py`, which is THIS file: an exam never
++runs an exam, least of all itself, so the driver runs that line and nothing
++here does.
++
++The shape is `tests/test_compile_plan_edges.py` and
++`tests/test_compile_plan_exam_sweep.py`: the direct legs import `compile_plan`
++from `skills/ultrapowers/scripts` and call the function; the `--check` legs
++write a real claims-v1 plan inside a one-commit git repository under
++`tmp_path`, sign its gate-verdict record with the gate's own extractor, run the
++compiler as a subprocess, and read the exit code and the two output channels.
++"""
++import json
++import os
++import pathlib
++import re
++import shutil
++import subprocess
++import sys
++import tempfile
++import time
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
++
++sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
++import compile_plan  # noqa: E402
++
++sys.path.insert(0, str(ROOT / "skills/ultrawrite/scripts"))
++from extract_gate_input import gate_input, verdicts_path  # noqa: E402
++
++
++# --------------------------------------------------------------------------- #
++# The lines M4, M5 and M6 pin, as format strings. Every assertion below builds  #
++# its expectation from these, so a line is compared whole and not by fragment.  #
++# --------------------------------------------------------------------------- #
++
++FACT = "GREEN-AT-BASE fact: "
++
++PROVER_LINE = (FACT + "task %s: Run: %s — exits 0 at BASE; "
++               "this line cannot falsify its clause")
++GUARD_LINE = (FACT + "task %s: Run: %s — exits 0 at BASE; "
++              "a guard, no leg cites it")
++TIMEOUT_LINE = FACT + "task %s: Run: %s — not run (timeout after %s s)"
++READING_LINE = FACT + "%s s over %s lines run, %s not run (timeout)"
++# M6's `<S>`, as leg (f) words it: one or more digits, a point, one digit.
++READING_RE = re.compile(
++    r"^GREEN-AT-BASE fact: ([0-9]+\.[0-9]) s over (\d+) lines run, "
++    r"(\d+) not run \(timeout\)$")
++
++# M2's refusal, with the span `clause_citation_violations` already prints.
++UNKNOWN_CLAUSE_LINE = ("grammar: Run: cites an unknown clause — task %s: %s "
++                       "cites %s; the Machine line numbers %s")
++NO_CITING_LEG = "Machine clause %s has no citing Proof leg"
++
++
++# --------------------------------------------------------------------------- #
++# The plan. One task, id 1, parameterized on the three things these legs vary:  #
++# the Machine clauses, the Proof `Run:` lines, and the prose legs. Everything   #
++# else is the fixed claims-v1 grammar the compiler requires.                    #
++# --------------------------------------------------------------------------- #
++
++HEAD = """# Green probe
++
++**Grammar:** claims-v1
++
++**Acceptance:** waived — exam fixture; this plan is compiled, never executed
++
++**Claim:** An operator gets a reading of which proofs already pass at BASE. (elicited)
++"""
++
++TASK = """
++### Task 1: The prover
++
++**Type:** implementation
++
++**Files:**
++- Modify: `src/prover.ts`
++- Test: `tests/test_prover.py`
++
++**Claim:** An operator running the prover sees it pass. (derived)
++Machine: {machine}
++
++**Authorized-by:** #1098
++
++**Interfaces:**
++- Consumes: nothing
++- Produces: nothing
++
++**Context:** The prover is a standalone module with no registry to update.
++
++**Proof:**
++- Test: `tests/test_prover.py`
++{runs}{legs}
++
++**Stale-if:**
++- {stale}
++"""
++
++ONE_CLAUSE = "M1. The prover exits 0."
++TWO_CLAUSES = "M1. The prover exits 0. M2. The prover prints nothing."
++
++LEG_M1 = "- (a) The suite asserts the prover exits 0. [M1]"
++LEGS_M1_M2 = ("- (a) The suite asserts the prover exits 0. [M1]\n"
++              "- (b) The suite asserts the prover prints nothing. [M2]")
++# A prose leg citing a ninth clause the Machine line does not number: the
++# refusal leg (g)'s last witness needs, drawn by the leg grammar that already
++# exists at BASE.
++LEGS_M1_AND_M9 = ("- (a) The suite asserts the prover exits 0. [M1]\n"
++                  "- (b) The suite asserts the ninth thing. [M9]")
++
++# The file the one-commit repository holds, and an entry the Stale-if machine
++# cannot decide — `sha-matches:` with no `@` pins no id — so every
++# `--check --base` fixture below prints one `STALE fact:` advisory. That
++# advisory is what leg (g)'s ordering is measured against.
++AT_BASE = "at-base.txt"
++STALE_ADVISORY = "sha-matches: `%s`" % AT_BASE
++
++
++def make_plan(machine=ONE_CLAUSE, runs="", legs=LEG_M1,
++              stale=STALE_ADVISORY):
++    return HEAD + TASK.format(machine=machine, runs=runs, legs=legs,
++                              stale=stale)
++
++
++def run_bullets(*commands):
++    """The Proof `Run:` bullets for `commands`, in Proof order."""
++    return "".join("- Run: %s\n" % c for c in commands)
++
++
++# --------------------------------------------------------------------------- #
++# The repository, the plan on disk, and the two ways the compiler is invoked.   #
++# --------------------------------------------------------------------------- #
++
++def _git(repo, *args):
++    p = subprocess.run(["git", "-C", str(repo), *args],
++                       capture_output=True, text=True)
++    assert p.returncode == 0, " ".join(args) + "\n" + p.stdout + p.stderr
++    return p.stdout
++
++
++def base_repo(tmp_path):
++    """A one-commit git repository whose commit holds `at-base.txt` and
++    nothing else, returned as (repo path, HEAD sha). The plan is written
++    inside it, so a 40-hex `--base` names a commit of the plan's own
++    repository — which is the repository M3's worktree is cut from."""
++    repo = tmp_path / "repo"
++    repo.mkdir()
++    _git(repo, "init", "-q", ".")
++    _git(repo, "config", "user.email", "exam@example.invalid")
++    _git(repo, "config", "user.name", "exam")
++    (repo / AT_BASE).write_text("at base\n")
++    _git(repo, "add", AT_BASE)
++    _git(repo, "commit", "-qm", "at base")
++    head = _git(repo, "rev-parse", "HEAD").strip()
++    assert re.fullmatch(r"[0-9a-f]{40}", head), head
++    return repo, head
++
++
++def write_plan(dirpath, name, text):
++    """The plan plus the gate-verdict artifact claims-v1 compiles against
++    (spec §4.5), hashed by the gate's own extractor so a fixture edit re-signs
++    itself rather than going stale against a hand-copied digest."""
++    plan = pathlib.Path(dirpath) / name
++    plan.write_text(text)
++    entry = gate_input(plan, "1")
++    verdicts_path(plan).write_text(json.dumps(
++        {"tasks": {"1": {"hash": entry["hash"], "verdict": "pass",
++                         "reason": "fixture"}},
++         "tally": {"dispatched": 1, "rejected": 0}}))
++    return plan
++
++
++def compile_at(repo, name, text, *flags, env=None):
++    plan = write_plan(repo, name, text)
++    return subprocess.run([sys.executable, str(COMPILER), str(plan), *flags],
++                          capture_output=True, text=True,
++                          env=None if env is None else dict(os.environ, **env))
++
++
++def check_at(repo, name, text, *flags, env=None):
++    return compile_at(repo, name, text, "--check", *flags, env=env)
++
++
++def tasks_of(text):
++    """The task dicts `main()` hands `green_at_base_lines`, built the way the
++    `--check` branch builds them."""
++    claim = compile_plan.parse_plan_claim(text)
++    return [compile_plan.parse_task(t, raise_on_marker_error=False,
++                                    plan_claim=claim)
++            for t in compile_plan.split_tasks(text)]
++
++
++def base_tree_for(plan):
++    """The `BaseTree` a 40-hex `--base` names for this plan — the same reader
++    the `--check` branch builds from the flag."""
++    repo = plan.parent
++    head = _git(repo, "rev-parse", "HEAD").strip()
++    return compile_plan.BaseTree.from_flag(head, plan), head
++
++
++def green_lines(repo, name, text, **kw):
++    """`green_at_base_lines` on a real plan, reached through the module so a
++    BASE tree fails here with `module 'compile_plan' has no attribute
++    'green_at_base_lines'` — the absent implementation, not a bad import."""
++    plan = write_plan(repo, name, text)
++    base_tree, _head = base_tree_for(plan)
++    return compile_plan.green_at_base_lines(tasks_of(text), base_tree, **kw)
++
++
++def fact_lines(stdout):
++    """Every `GREEN-AT-BASE fact:` line, in the order printed."""
++    return [line for line in stdout.splitlines() if line.startswith(FACT)]
++
++
++def command_facts(lines):
++    """The per-command lines of M4/M5 — every fact line but M6's reading, which
++    names no `Run:`."""
++    return [line for line in lines if line.startswith(FACT) and "Run:" in line]
++
++
++# =========================================================================== #
++# (a)/[M1] — the tag is parsed off the command and recorded beside it          #
++# =========================================================================== #
++# "(a) `parse_task` on a task whose Proof carries `- Run: true [M1]`,
++# `- Run: false [M1, M2]` and `- Run: true` records `proof_runs` as exactly
++# `[\"true\", \"false\", \"true\"]` — no bracket in any command — and
++# `proof_run_cites` as exactly `[[\"M1\"], [\"M1\", \"M2\"], []]` [M1]"
++
++RUNS_A = run_bullets("true [M1]", "false [M1, M2]", "true")
++PLAN_A = make_plan(machine=TWO_CLAUSES, runs=RUNS_A, legs=LEGS_M1_M2)
++
++
++def parsed_task(text):
++    tasks = tasks_of(text)
++    assert len(tasks) == 1, tasks
++    return tasks[0]["claims"]
++
++
++def test_a_proof_runs_carry_the_command_without_its_tag():
++    """(a)/[M1]: the three commands, tag stripped, in Proof order — and no
++    bracket left in any of them."""
++    claims = parsed_task(PLAN_A)
++    assert claims["proof_runs"] == ["true", "false", "true"], (
++        claims["proof_runs"])
++    for command in claims["proof_runs"]:
++        assert "[" not in command and "]" not in command, command
++
++
++def test_a_proof_run_cites_is_the_parallel_list_of_clause_ids():
++    """(a)/[M1]: the tag's clause ids, sorted, in a list parallel to
++    `proof_runs` — and `[]` for the untagged guard."""
++    claims = parsed_task(PLAN_A)
++    assert claims.get("proof_run_cites") == [["M1"], ["M1", "M2"], []], (
++        claims.get("proof_run_cites"))
++    assert len(claims.get("proof_run_cites", [])) == len(claims["proof_runs"])
++
++
++# =========================================================================== #
++# (b)/[M2] — an unknown clause is refused, and a tag cites nothing             #
++# =========================================================================== #
++# "(b) `--check` on a plan whose Machine line numbers M1 and M2 and whose Proof
++# carries `- Run: true` tagged with the ninth clause, M9 in the bracket shape,
++# exits 2 with the line `grammar: Run: cites an unknown clause — task 1: true
++# cites M9; the Machine line numbers M1–M2` on stdout, and `--check` on a plan
++# whose leg (a) cites `[M1]` alone while `- Run: true [M2]` is the only
++# citation of M2 exits 2 carrying `Machine clause M2 has no citing Proof leg`
++# — the tag satisfied nothing [M2]"
++
++PLAN_B_UNKNOWN = make_plan(machine=TWO_CLAUSES,
++                           runs=run_bullets("true [M9]"),
++                           legs=LEGS_M1_M2)
++PLAN_B_TAG_IS_NO_LEG = make_plan(machine=TWO_CLAUSES,
++                                 runs=run_bullets("true [M2]"),
++                                 legs=LEG_M1)
++
++
++def test_b_a_tag_naming_an_unnumbered_clause_is_refused(tmp_path):
++    """(b)/[M2]: exit 2, and the refusal on stdout as the whole line the
++    clause pins — the command cut to 80 characters (`true`), the tag's id, and
++    the span `clause_citation_violations` already prints."""
++    p = check_at(tmp_path, "b1.md", PLAN_B_UNKNOWN)
++    out = p.stdout + p.stderr
++    assert p.returncode == 2, out
++    assert "PLAN OK" not in out, out
++    expected = UNKNOWN_CLAUSE_LINE % ("1", "true", "M9", "M1–M2")
++    assert expected in p.stdout.splitlines(), (
++        "stdout carried no such line.\nexpected: %s\nstdout:\n%s\nstderr:\n%s"
++        % (expected, p.stdout, p.stderr))
++
++
++def test_b_a_tag_never_counts_as_a_citing_leg(tmp_path):
++    """(b)/[M2]: M2 is cited by the `Run:` tag and by no leg — so the plan
++    still draws `Machine clause M2 has no citing Proof leg` and exits 2. The
++    tag satisfied nothing."""
++    p = check_at(tmp_path, "b2.md", PLAN_B_TAG_IS_NO_LEG)
++    out = p.stdout + p.stderr
++    assert p.returncode == 2, out
++    assert "PLAN OK" not in out, out
++    wanted = NO_CITING_LEG % "M2"
++    carrying = [line for line in out.splitlines() if wanted in line]
++    assert carrying, (
++        "no line carried %r.\nstdout:\n%s\nstderr:\n%s"
++        % (wanted, p.stdout, p.stderr))
++
++
++# =========================================================================== #
++# (c)/[M3] — one detached worktree at BASE, and nothing left of it             #
++# =========================================================================== #
++# "(c) in a one-commit repository whose commit holds `at-base.txt`, a plan
++# whose `Run:` is `test -f at-base.txt && test \"$ULTRA_BASE\" = <head> && test
++# \"$(git rev-parse HEAD)\" = <head> && test \"$PWD\" != <repo> && touch
++# wrote-here.txt` yields that command's prover line under `--check --base
++# <head>`, and afterwards `git -C <repo> worktree list --porcelain` names
++# exactly one worktree (the repository itself), no directory named
++# `ultra-green-` survives under the temp root, and `<repo>/wrote-here.txt` does
++# not exist — the command ran at BASE, elsewhere than the checkout, and its
++# worktree was removed with what it wrote [M3]"
++
++def witness_command(repo, head):
++    """The leg's command, with `<head>` and `<repo>` substituted."""
++    return ('test -f %s && test "$ULTRA_BASE" = %s && '
++            'test "$(git rev-parse HEAD)" = %s && test "$PWD" != "%s" && '
++            'touch wrote-here.txt' % (AT_BASE, head, head, repo))
++
++
++def worktree_paths(repo):
++    """Every worktree `git` knows of for `repo`, by path."""
++    out = _git(repo, "worktree", "list", "--porcelain")
++    return [line.split(" ", 1)[1] for line in out.splitlines()
++            if line.startswith("worktree ")]
++
++
++def test_c_the_run_line_runs_at_base_in_a_worktree_that_is_then_gone(tmp_path):
++    """(c)/[M3]: the command's own tests say where it ran — BASE's file
++    present, `ULTRA_BASE` and the worktree HEAD both the 40-hex commit, the
++    working directory not the repository — and the exam says what is left of
++    the worktree afterwards: nothing."""
++    repo, head = base_repo(tmp_path)
++    command = witness_command(repo, head)
++    tmpdir = tmp_path / "tmproot"
++    tmpdir.mkdir()
++    machine_root = pathlib.Path(tempfile.gettempdir())
++    before = sorted(machine_root.glob("ultra-green-*"))
++    p = check_at(repo, "c.md",
++                 make_plan(runs=run_bullets("%s [M1]" % command)),
++                 "--base", head, env={"TMPDIR": str(tmpdir)})
++    out = p.stdout + p.stderr
++    expected = PROVER_LINE % ("1", command)
++    assert expected in p.stdout.splitlines(), (
++        "stdout carried no prover line for the witness command.\n"
++        "expected: %s\nstdout:\n%s\nstderr:\n%s"
++        % (expected, p.stdout, p.stderr))
++    assert p.returncode == 0, out
++    # "git -C <repo> worktree list --porcelain names exactly one worktree"
++    paths = worktree_paths(repo)
++    assert len(paths) == 1, paths
++    assert pathlib.Path(paths[0]).resolve() == repo.resolve(), (paths, repo)
++    # "no directory named ultra-green- survives under the temp root" — the
++    # root the compile was handed, and the machine's own.
++    assert sorted(tmpdir.glob("ultra-green-*")) == [], sorted(
++        tmpdir.glob("ultra-green-*"))
++    assert sorted(machine_root.glob("ultra-green-*")) == before, (
++        "an ultra-green- directory survived under %s" % machine_root)
++    # "<repo>/wrote-here.txt does not exist" — --force took the worktree away
++    # with what the command wrote into it.
++    assert not (repo / "wrote-here.txt").exists(), (
++        "the command's file landed in the repository's own working tree")
++
++
++# =========================================================================== #
++# (d)/[M4] — prover line, guard line, and nothing for a red command            #
++# =========================================================================== #
++# "(d) one plan carrying `- Run: true [M1]`, `- Run: true` and `- Run: false`
++# yields, from `green_at_base_lines` and from the `--check --base` stdout
++# alike, exactly `GREEN-AT-BASE fact: task 1: Run: true — exits 0 at BASE; this
++# line cannot falsify its clause` and `GREEN-AT-BASE fact: task 1: Run: true —
++# exits 0 at BASE; a guard, no leg cites it` in that order and no line naming
++# `false` [M4]"
++
++RUNS_D = run_bullets("true [M1]", "true", "false")
++PLAN_D = make_plan(runs=RUNS_D)
++EXPECTED_D = [PROVER_LINE % ("1", "true"), GUARD_LINE % ("1", "true")]
++
++
++def test_d_the_function_prints_the_prover_and_the_guard_and_nothing_else(
++        tmp_path):
++    """(d)/[M4]: the two lines, in that order, by equality — and no line
++    naming the command that exited non-zero."""
++    repo, _head = base_repo(tmp_path)
++    lines = green_lines(repo, "d1.md", PLAN_D)
++    assert command_facts(lines) == EXPECTED_D, lines
++    assert not [line for line in lines if "Run: false" in line], lines
++
++
++def test_d_check_at_base_prints_the_same_two_lines(tmp_path):
++    """(d)/[M4]: "from the `--check --base` stdout alike" — the same two
++    lines, in the same order, on the compiler's own stdout."""
++    repo, head = base_repo(tmp_path)
++    p = check_at(repo, "d2.md", PLAN_D, "--base", head)
++    assert p.returncode == 0, p.stdout + p.stderr
++    assert command_facts(p.stdout.splitlines()) == EXPECTED_D, p.stdout
++    assert not [line for line in fact_lines(p.stdout)
++                if "Run: false" in line], p.stdout
++
++
++# =========================================================================== #
++# (e)/[M5] — the timeout line, the bound, and the killed process group         #
++# =========================================================================== #
++# "(e) `green_at_base_lines` with `timeout_s=1` on a task whose `Run:` is
++# `sleep 30` returns `GREEN-AT-BASE fact: task 1: Run: sleep 30 — not run
++# (timeout after 1 s)`, the call returns in under 4 seconds by
++# `time.monotonic()`, and afterwards no `sleep 30` process the call started is
++# alive [M5]"
++
++SLEEPER = "sleep 30"
++PLAN_E = make_plan(runs=run_bullets(SLEEPER))
++
++
++def sleeper_pids():
++    """Every live process whose command line is exactly `sleep 30`."""
++    p = subprocess.run(["ps", "-eo", "pid=,args="],
++                       capture_output=True, text=True)
++    pids = set()
++    for line in p.stdout.splitlines():
++        pid, _, args = line.strip().partition(" ")
++        if args.strip() == SLEEPER:
++            pids.add(pid)
++    return pids
++
++
++def test_e_a_command_past_the_limit_is_killed_and_reported(tmp_path):
++    """(e)/[M5]: the exact line, the 3-second bound over a 1-second limit, and
++    no `sleep 30` this call started left alive — `killpg`, not `kill`."""
++    assert shutil.which("ps"), "the exam needs a real `ps` to see the sleeper"
++    repo, _head = base_repo(tmp_path)
++    before = sleeper_pids()
++    started = time.monotonic()
++    lines = green_lines(repo, "e.md", PLAN_E, timeout_s=1)
++    elapsed = time.monotonic() - started
++    assert command_facts(lines) == [TIMEOUT_LINE % ("1", SLEEPER, 1)], lines
++    assert elapsed < 4, elapsed
++    leftover = sleeper_pids() - before
++    for _ in range(20):
++        if not leftover:
++            break
++        time.sleep(0.1)
++        leftover = sleeper_pids() - before
++    assert not leftover, (
++        "a `sleep 30` this call started outlived it: %s" % sorted(leftover))
++
++
++# =========================================================================== #
++# (f)/[M6] — the reading line, in all three shapes                             #
++# =========================================================================== #
++# "(f) the same call's last line is `GREEN-AT-BASE fact: <S> s over 0 lines
++# run, 1 not run (timeout)` with `<S>` matching `[0-9]+\\.[0-9]`, the leg (d)
++# call's last line is `GREEN-AT-BASE fact: <S> s over 3 lines run, 0 not run
++# (timeout)`, and a task with no `Run:` line returns exactly one line,
++# `GREEN-AT-BASE fact: 0.0 s over 0 lines run, 0 not run (timeout)` [M6]"
++
++PLAN_F_NO_RUNS = make_plan()
++
++
++def assert_reading(line, ran, timed_out):
++    m = READING_RE.match(line)
++    assert m, "not M6's reading line: %r" % line
++    assert (m.group(2), m.group(3)) == (str(ran), str(timed_out)), line
++    return m.group(1)
++
++
++def test_f_the_timeout_calls_reading_counts_it_as_not_run(tmp_path):
++    """(f)/[M6]: leg (e)'s call — 0 lines run, 1 not run, `<S>` to one
++    decimal."""
++    repo, _head = base_repo(tmp_path)
++    lines = green_lines(repo, "f1.md", PLAN_E, timeout_s=1)
++    assert lines, "green_at_base_lines returned nothing"
++    assert_reading(lines[-1], 0, 1)
++
++
++def test_f_the_three_command_calls_reading_counts_every_one(tmp_path):
++    """(f)/[M6]: leg (d)'s call — three commands reached an exit inside the
++    limit, whatever that exit was, and none was killed."""
++    repo, _head = base_repo(tmp_path)
++    lines = green_lines(repo, "f2.md", PLAN_D)
++    assert lines, "green_at_base_lines returned nothing"
++    assert_reading(lines[-1], 3, 0)
++
++
++def test_f_a_plan_with_no_run_line_still_gets_the_reading(tmp_path):
++    """(f)/[M6]: exactly one line, the zero reading, verbatim."""
++    repo, _head = base_repo(tmp_path)
++    lines = green_lines(repo, "f3.md", PLAN_F_NO_RUNS)
++    assert lines == [READING_LINE % ("0.0", 0, 0)], lines
++
++
++# =========================================================================== #
++# (g)/[M7] — where the lines sit, and when nothing runs at all                 #
++# =========================================================================== #
++# "(g) under `--check --base <head>` on the leg (d) plan stdout begins `PLAN
++# OK`, the exit is 0, every `GREEN-AT-BASE fact:` line sits after the last
++# `BASE fact:`/`STALE fact:` line and before the `AUTHORING fact:` line, and
++# with `- Run: touch <tmp>/ran` in the Proof the file `<tmp>/ran` exists after
++# `--check --base <head>` but not after a bare `--check`, not after a plain
++# compile with `--base <head>`, and not after `--check --base <head>` on a plan
++# the grammar refuses (a leg citing a ninth clause the Machine line does not
++# number), none of which prints a `GREEN-AT-BASE fact:` line [M7]"
++
++def test_g_the_verdict_still_comes_first_and_the_exit_is_still_zero(tmp_path):
++    """(g)/[M7]: a fact is not a refusal — `PLAN OK` is still the first line
++    of stdout and the exit is still 0, with the rehearsal's lines below it."""
++    repo, head = base_repo(tmp_path)
++    p = check_at(repo, "g1.md", PLAN_D, "--base", head)
++    assert p.returncode == 0, p.stdout + p.stderr
++    assert p.stdout.splitlines()[:1] == ["PLAN OK"], p.stdout
++
++
++def test_g_the_lines_sit_between_the_stale_facts_and_the_authoring_fact(
++        tmp_path):
++    """(g)/[M7]: after the last `BASE fact:`/`STALE fact:` line and before the
++    `AUTHORING fact:` line. The fixture's undecidable `sha-matches:` entry
++    guarantees there is a `STALE fact:` line to sit after."""
++    repo, head = base_repo(tmp_path)
++    p = check_at(repo, "g2.md", PLAN_D, "--base", head)
++    assert p.returncode == 0, p.stdout + p.stderr
++    lines = p.stdout.splitlines()
++    green = [i for i, line in enumerate(lines) if line.startswith(FACT)]
++    assert green, p.stdout
++    above = [i for i, line in enumerate(lines)
++             if line.startswith("BASE fact:") or line.startswith("STALE fact:")]
++    assert above, (
++        "the fixture printed no BASE/STALE fact line to order against:\n%s"
++        % p.stdout)
++    below = [i for i, line in enumerate(lines)
++             if line.startswith("AUTHORING fact:")]
++    assert below, p.stdout
++    assert max(above) < min(green), p.stdout
++    assert max(green) < min(below), p.stdout
++
++
++TOUCH_LEGS = LEGS_M1_AND_M9
++
++
++def touch_plan(marker, legs=LEG_M1, machine=ONE_CLAUSE):
++    return make_plan(machine=machine,
++                     runs=run_bullets("touch %s" % marker), legs=legs)
++
++
++def test_g_check_at_base_runs_the_run_line(tmp_path):
++    """(g)/[M7]: the witness — `--check --base <head>` really does run the
++    command, so the file it touches outside the worktree is there afterwards,
++    and the guard line is printed."""
++    repo, head = base_repo(tmp_path)
++    marker = tmp_path / "ran"
++    p = check_at(repo, "g3.md", touch_plan(marker), "--base", head)
++    assert p.returncode == 0, p.stdout + p.stderr
++    assert marker.exists(), (
++        "`--check --base` ran no command.\nstdout:\n%s\nstderr:\n%s"
++        % (p.stdout, p.stderr))
++    assert (GUARD_LINE % ("1", "touch %s" % marker)) in p.stdout.splitlines(), (
++        p.stdout)
++
++
++def test_g_a_bare_check_runs_nothing_and_says_nothing(tmp_path):
++    """(g)/[M7]: running a plan's commands is what `--base` asks for, never
++    what a grammar check does."""
++    repo, _head = base_repo(tmp_path)
++    marker = tmp_path / "ran"
++    p = check_at(repo, "g4.md", touch_plan(marker))
++    assert p.returncode == 0, p.stdout + p.stderr
++    assert not marker.exists(), "a bare --check ran the Run: line"
++    assert fact_lines(p.stdout) == [], p.stdout
++    assert FACT not in p.stdout + p.stderr, p.stdout + p.stderr
++
++
++def test_g_a_plain_compile_with_base_runs_nothing_and_says_nothing(tmp_path):
++    """(g)/[M7]: a plain compile emits the launch payload; it rehearses
++    nothing, with a `--base` or without one."""
++    repo, head = base_repo(tmp_path)
++    marker = tmp_path / "ran"
++    p = compile_at(repo, "g5.md", touch_plan(marker), "--base", head)
++    assert p.returncode == 0, p.stdout + p.stderr
++    assert not marker.exists(), "a plain compile ran the Run: line"
++    assert FACT not in p.stdout, p.stdout
++    assert FACT not in p.stderr, p.stderr
++
++
++def test_g_a_refused_check_at_base_runs_nothing_and_says_nothing(tmp_path):
++    """(g)/[M7]: a verdict that is a refusal rehearses nothing — the plan the
++    engine will not run is not a plan worth timing."""
++    repo, head = base_repo(tmp_path)
++    marker = tmp_path / "ran"
++    p = check_at(repo, "g6.md",
++                 touch_plan(marker, legs=TOUCH_LEGS, machine=ONE_CLAUSE),
++                 "--base", head)
++    out = p.stdout + p.stderr
++    assert p.returncode == 2, out
++    assert "PLAN OK" not in out, out
++    assert not marker.exists(), "a refused --check --base ran the Run: line"
++    assert FACT not in out, out
++
++
++# =========================================================================== #
++# (h)/[M3, M5] — the Proof's own `Run:` lines                                  #
++# =========================================================================== #
++# "(h) the first and second `Run:` lines find the constant at 30 and the
++# function's signature, and the third reports the exam passing [M3, M5]"
++#
++# The first two are source reads, written with the grep patterns the Proof
++# spells. The third, `python3 -m pytest -q
++# tests/test_compile_plan_green_at_base.py`, is this file: an exam never runs
++# an exam, and it cannot run itself, so the driver runs that line.
++
++SOURCE = COMPILER.read_text()
++
++
++def test_h_the_default_timeout_is_a_module_constant_of_thirty():
++    """(h)/[M5]: the Proof's first `Run:` line — `^GREEN_AT_BASE_TIMEOUT_S =
++    30$` — so a leg can name the default without paying 30 seconds for it."""
++    assert re.search(r"^GREEN_AT_BASE_TIMEOUT_S = 30$", SOURCE, re.M), (
++        "compile_plan.py carries no `GREEN_AT_BASE_TIMEOUT_S = 30` line")
++    assert getattr(compile_plan, "GREEN_AT_BASE_TIMEOUT_S", None) == 30, (
++        getattr(compile_plan, "GREEN_AT_BASE_TIMEOUT_S", None))
++
++
++def test_h_the_function_has_the_signature_the_interface_names():
++    """(h)/[M3]: the Proof's second `Run:` line — the signature the task
++    PRODUCES, spelled as the plan spells it."""
++    assert re.search(
++        r"^def green_at_base_lines\(tasks, base_tree, "
++        r"timeout_s=GREEN_AT_BASE_TIMEOUT_S\)", SOURCE, re.M), (
++        "compile_plan.py carries no `green_at_base_lines(tasks, base_tree, "
++        "timeout_s=GREEN_AT_BASE_TIMEOUT_S)` definition")
++    assert callable(getattr(compile_plan, "green_at_base_lines", None)), (
++        "compile_plan has no module-level green_at_base_lines")

@@ -1,0 +1,1054 @@
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index 6f8ca09382aaf50ed474e182eabed2587b500fb1..352256f80b2a501a1eac94da1247883e02ec11d6 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -709,7 +709,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+     meaningless through the edge — the aggregate host proxies `/repos/<owner>/<repo>/…` only, and
+     `/user` answers 403 from the edge itself — so nothing asks them.
+   - re-entry is idempotent: a page already `done`/`parked`/`failed` with the engine marker present exits 0;
+-    a recorded `pr` is never opened twice; clones present are not re-cloned; `.ultrapowers/runs/<N>/` is
++    a recorded `pr` is never opened twice and a recorded disclosures ticket is never filed twice (the
++    page's `disclosures` cell is that ticket's record, read beside `pr` before the first write);
++    clones present are not re-cloned; `.ultrapowers/runs/<N>/` is
+     never checked out over. A failure at ANY step commits and pushes a `failed` page before exiting
+     (pre-clone included).
+   - merge: after a gate-green publish the script merges on ITS OWN EVIDENCE and asks the target for
+@@ -797,8 +799,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   `addDevCmd` runs ONE shell line in the integration clone — `<addCmd> '<spec>' …` over the
+   runtime specs joined by ` && ` to `<addDevCmd> '<spec>' …` over the dev specs, each spec one
+   single-quoted word, and one half alone when the other group is empty. On exit 0 the driver
+-  stages every path `git status --porcelain` reports whose basename is a bootstrap manifest — and
+-  no other path, so the `node_modules/` the install wrote is never committed — and commits them
++  stages every path `git status --porcelain -uall` reports whose basename is a bootstrap manifest —
++  and no other path, and never a path carrying a `node_modules/` segment whatever its basename, so
++  the vendored tree the install wrote is never committed while a manifest the add command created
++  in a directory that did not exist at BASE (`client/package.json`) is — and commits them
+   under the plan's H1 (`setup: dependencies` when the plan has none) with body `setup:
+   dependencies <runtime specs>` and ` dev: <dev specs>` when there are dev specs. That commit is
+   the SETUP HEAD: `adoptedHead` starts there, every task clone is anchored there before its first
+@@ -929,7 +933,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   `work.state` (`parked` or `failed`), `work.attention` (`needs-human`) and `work.attention_msg`
+   (the page's error head) — the three flat keys the boot-script bullet above spells — and the
+   operator resolves it and closes it by hand. Only a run that ended `done` is closed, by the boot.
+-- **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"wave":"<n or null>","state":"queued|waiting|examining|implementing|proving|reviewing|fixing|folded|failed","role":"<worker label or null>","lastProof":"{cmd, exit, ts} or null","park":"<detail or null>","attention":"{value, msg, ts} or null","blockedBy":"[<task ids>] or null"}}}`
++- **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","disclosures":"<url or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"wave":"<n or null>","state":"queued|waiting|examining|implementing|proving|reviewing|fixing|folded|failed","role":"<worker label or null>","lastProof":"{cmd, exit, ts} or null","park":"<detail or null>","attention":"{value, msg, ts} or null","blockedBy":"[<task ids>] or null"}}}`
+   — the SAME bytes are served at `/status.json` and committed to
+   `.ultrapowers/runs/<N>/status.json` on `ultra/evidence-run-<N>` at every transition **and, while
+   the engine runs, on the first refresher poll that has seen either `FLEET_COMMIT_EVENTS` new lines
+@@ -1019,6 +1023,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   `body` the PR URL, a blank line and one `- [ ] task <id> — <text>` box per entry in report order,
+   and NO `labels` key. A run with no such entry, and a run that opened no PR, files nothing; a POST
+   that is refused is one log line and the merge goes on unchanged.
++  The ticket's URL is the page's `disclosures` cell once that POST answers 2xx — `null` before it,
++  on a refusal and on a run that files none — which is what makes the filing idempotent across a
++  re-entry the way `pr` makes the PR idempotent.
+   The publish record is three event kinds — four with the ticket's `publish:disclosures`
+   (`url`, `items`), appended once its POST answers 2xx — appended to the run's `events.jsonl`
+   beside the engine's own and carrying the same `id`/`ts` stamp, in the order the steps run:
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index 67378efc6d79faf140cb65a64cded4021ecfd08c..fd39bb788d2e7a5544f24ff8ebe0e73d485bcc1c 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -2787,7 +2787,14 @@ export async function runEngine({
+         // `exec` and not `git`: the wrapper trims, and porcelain's first field
+         // is two status characters that may BOTH be a space (` M bun.lock`) —
+         // a trim eats the leading one and every path after it reads short.
+-        const status = await exec('git', ['status', '--porcelain'], { cwd: integ })
++        // `-uall` and not porcelain's default (#1097): at `--untracked-files=
++        // normal` a directory that did not exist at BASE is reported as ONE
++        // line, `?? client/`, whose basename is the empty string — so an add
++        // command that writes `client/package.json` into a new `client/` never
++        // passes the basename test and its manifest is lost. `-uall` lists the
++        // untracked files by path, so that manifest is reported as its own
++        // path and staged beside the root one.
++        const status = await exec('git', ['status', '--porcelain', '-uall'], { cwd: integ })
+         const changed = String(status.stdout || '').split('\n').filter(Boolean)
+           .map((line) => {
+             const p = line.slice(3)
+@@ -2795,7 +2802,14 @@ export async function runEngine({
+             const raw = arrow >= 0 ? p.slice(arrow + 4) : p
+             return (raw.startsWith('"') && raw.endsWith('"')) ? raw.slice(1, -1) : raw
+           })
+-          .filter((p) => p && bootstrapManifestChanged([p]))
++          // The trap `-uall` opens: a real install writes `node_modules/<pkg>/
++          // package.json`, whose basename IS a manifest, and the default scan
++          // hid it behind the one `?? node_modules/` line. The exclusion lives
++          // here and not in `bootstrapManifestChanged`, which the pre-review
++          // manifest scan and the lockfile-regeneration gates read for other
++          // purposes — a vendored tree is not a thing to commit, at any depth.
++          .filter((p) => p && !p.split('/').includes('node_modules'))
++          .filter((p) => bootstrapManifestChanged([p]))
+           .sort()
+         if (changed.length) {
+           await git(['add', '--', ...changed], integ)
+@@ -2898,10 +2912,16 @@ export async function runEngine({
+   // suite that printed no `FAILED` line is still a blind sensor, and saying the
+   // paths could not be read beats naming nothing at all.
+   let baselineFailing = 'unparsed'
++  // #1097 task 2 — read through the one shared `failingTestPaths` rather than a
++  // second local regex: the suite this engine runs is the pytest bridge, whose
++  // red lines all read `FAILED tests/test_fleet_suite.py::test_fleet_mjs[<name>.mjs]`,
++  // so a raw `FAILED (.+?)::` reading named the bridge file once per failing sim
++  // and never the sim. The shared reading translates each bridge line to its own
++  // `fleet/tests/<name>.mjs` and dedupes, keeping first-seen order — which is not
++  // lexical order, and is not to be sorted: the order the suite printed them is
++  // the order the reader is looking for.
+   const failingPaths = (raw) => {
+-    const paths = String(raw ?? '').split('\n')
+-      .map((line) => /^FAILED (.+?)::/.exec(line))
+-      .filter(Boolean).map((m) => m[1])
++    const paths = failingTestPaths(raw)
+     return paths.length ? paths.join(', ') : 'unparsed'
+   }
+   // The one sentence a red BASE owes its reader, shared by the judgment call
+@@ -4295,7 +4315,16 @@ export async function runEngine({
+         // After the exam's own output, never before it (#908): the red bytes
+         // are the driver's fact and the concern is the graded party's claim
+         // about them.
+-        examConcernBlock(examConcerns) +
++        // Round 1 only (#1097): by round 2 `examEvidence` is a fresh
++        // `runExam(2)` of the exam the examiner rewrote, so the claim the fix
++        // round made about the OLD exam is stale — a referee reading
++        // reviewer.md's "a red exam blocks whatever you return" literally
++        // against a now-green EXAM EVIDENCE would return a blocking issue, and
++        // at `iter === 2` any blocking issue is `fix-loop-exhausted`. The
++        // entries themselves are left standing: the skip predicate above and
++        // the refuted-finding loop below read the same `examConcerns` they read
++        // before, and round 1's refutation row is still written exactly once.
++        examConcernBlock(iter === 1 ? examConcerns : []) +
+         // After the concerns about the exam, before the constraint checks
+         // (#990): the worker's own declaration of where it diverged, the
+         // implementer's entries first and the fix round's after them when a
+diff --git a/fleet/sandbox-boot.sh b/fleet/sandbox-boot.sh
+index 328f19cfa282399693f453e2d25ee411b97bb2ad..f9aecffff7b1048b8aa1af7b29ddf0d3d9bf65ef 100755
+--- a/fleet/sandbox-boot.sh
++++ b/fleet/sandbox-boot.sh
+@@ -227,6 +227,11 @@ BRANCH_HEAD=""
+ # The squash commit the PR merged as, once the sandbox has merged it. Empty is
+ # `null` on the page: a PR still open, or one deliberately left open.
+ MERGED_SHA=""
++# The disclosures ticket's URL, once its POST answered 2xx. The PR's own record
++# in miniature and for the same reason: filing an issue is not idempotent by
++# construction, so the page is what makes it idempotent — a re-entry reads this
++# cell before `file_disclosures` runs and files no second ticket.
++DISCLOSURES_URL=""
+ # What the `done` phase says about the merge — `merged <sha>`, or
+ # `left open: <reason>`. Set by `merge_pr`, read by `do_boot`.
+ MERGE_NOTE=""
+@@ -557,13 +562,17 @@ write_status() { # $1 = state, $2 = phase (optional, defaults to the current one
+   if [ "$#" -ge 2 ]; then PHASE="$2"; fi
+   mkdir -p "$WWW_DIR"
+   [ -n "$STARTED_AT" ] || STARTED_AT="$(now_iso)"
+-  local pr_cell="null" author_cell="null" merged_cell="null" err_cell="null" tmp
++  local pr_cell="null" author_cell="null" merged_cell="null" disclosures_cell="null" err_cell="null" tmp
+   [ -n "$PR_URL" ] && pr_cell="\"$(json_escape "$PR_URL")\""
+   [ -n "$PR_AUTHOR" ] && author_cell="\"$(json_escape "$PR_AUTHOR")\""
+   # `merged` is a cell on EVERY page, null until the sandbox has merged: a
+   # reader of the evidence branch can tell a PR that went in from one left open
+   # without opening GitHub.
+   [ -n "$MERGED_SHA" ] && merged_cell="\"$(json_escape "$MERGED_SHA")\""
++  # `disclosures` sits beside the PR it was filed behind: the ticket's URL once
++  # its POST answered 2xx, null before that and on a run that files none. On
++  # every page, because that is what a re-entry reads to know it already filed.
++  [ -n "$DISCLOSURES_URL" ] && disclosures_cell="\"$(json_escape "$DISCLOSURES_URL")\""
+   [ -n "$ERROR" ] && err_cell="\"$(json_escape "$ERROR")\""
+   # THE LAST CELL ON THE PAGE, always, and never anywhere else: `json_field`
+   # answers the FIRST `"name": "value"` match in the file, so a task cell's own
+@@ -575,7 +584,7 @@ write_status() { # $1 = state, $2 = phase (optional, defaults to the current one
+   [ -n "$tasks_cell" ] || tasks_cell="{}"
+   tmp="$STATUS_FILE.tmp.$$"
+   cat >"$tmp" <<EOF
+-{"run":"$(json_escape "$RUN_N")","state":"$(json_escape "$STATE")","phase":"$(json_escape "$PHASE")","pr":$pr_cell,"prAuthor":$author_cell,"merged":$merged_cell,"branch":"$(json_escape "$BRANCH")","vm":"$(json_escape "$VM_NAME")","startedAt":"$STARTED_AT","updatedAt":"$(now_iso)","error":$err_cell,"tasks":$tasks_cell}
++{"run":"$(json_escape "$RUN_N")","state":"$(json_escape "$STATE")","phase":"$(json_escape "$PHASE")","pr":$pr_cell,"prAuthor":$author_cell,"merged":$merged_cell,"disclosures":$disclosures_cell,"branch":"$(json_escape "$BRANCH")","vm":"$(json_escape "$VM_NAME")","startedAt":"$STARTED_AT","updatedAt":"$(now_iso)","error":$err_cell,"tasks":$tasks_cell}
+ EOF
+   mv "$tmp" "$STATUS_FILE"
+   log "status: state=$STATE phase=$PHASE"
+@@ -3023,6 +3032,16 @@ file_disclosures() {
+   local items count heading title body payload answer code reply url
+   # A run that opened no PR files no ticket: the body's first line is the PR.
+   [ -n "$PR_URL" ] || return 0
++  # RE-ENTRY, the ticket's own guard — GUARD 2's twin, and needed for the same
++  # reason. On a re-entry `PR_URL` is set from the page rather than by
++  # `publish`, so the precondition above is satisfied on exactly the boot that
++  # already filed; without this the second boot of a run posts a SECOND issue
++  # with the same title and the same boxes. The page's `disclosures` cell is
++  # the proof that this run filed, so a cell that carries a URL ends the step.
++  if [ -n "$DISCLOSURES_URL" ]; then
++    log "disclosures: $DISCLOSURES_URL already recorded — not filing a second ticket"
++    return 0
++  fi
+   items="$(disclosure_items || true)"
+   # Nothing disclosed is no issue — and no REST call to make one with.
+   [ -n "$items" ] || return 0
+@@ -3050,8 +3069,11 @@ file_disclosures() {
+     return 0
+   }
+   log "disclosures: $url ($count)"
+-  # The filing's own record, beside the PR's: the ticket and how many boxes it
+-  # carries. No cell on the status page — the log line and this event are it.
++  # The filing's own record, beside the PR's: the ticket, how many boxes it
++  # carries, and the cell the next boot of this run reads to know it is done.
++  # The cell is set here and nowhere else — after the 2xx, so a refused POST
++  # leaves it null and the next boot files the ticket this one could not.
++  DISCLOSURES_URL="$url"
+   append_event publish:disclosures "url=s:$url" "items=i:$count"
+   return 0
+ }
+@@ -3399,6 +3421,9 @@ do_boot() {
+   PR_URL="$(read_status_field pr)"
+   PR_AUTHOR="$(read_status_field prAuthor)"
+   MERGED_SHA="$(read_status_field merged)"
++  # Read beside `pr` and for the same reason: the disclosures ticket is the
++  # other step of the publish that a second POST would duplicate.
++  DISCLOSURES_URL="$(read_status_field disclosures)"
+   VM_NAME="$(read_status_field vm)"
+   start_status_server
+   # RE-ENTRY, GUARD 1. A page that already reached a terminal state with the
+diff --git a/fleet/tests/README.md b/fleet/tests/README.md
+index 47a5572b233235fa13f1e1129f20b1b000856f0a..cba813f53de26aaa686ec10cbc5475e40d235677 100644
+--- a/fleet/tests/README.md
++++ b/fleet/tests/README.md
+@@ -84,6 +84,8 @@ one sim per question:
+   amendment by task, above the folded record.
+ - `test_sandbox_boot_card_cells.mjs` — the PR card says which task no reviewer
+   read, rendered inside the existing mutant cell rather than a new column.
++- `test_sandbox_boot_publish_record.mjs` — the page records the disclosures
++  ticket beside the PR, so a re-entered boot files no second one.
+ - `test_sandbox_boot_viz.mjs` — the refresher serves `events.jsonl` beside the
+   page, so the page shows the fleet turning and the record keeps up.
+ 
+diff --git a/fleet/tests/test_run_engine_declared_dependencies.mjs b/fleet/tests/test_run_engine_declared_dependencies.mjs
+index 5c89bb3e3f3e63dfd49d64c7e344546a3ed17ced..0263d6f2165ce80e87d2b4d4469aaab3262d0970 100644
+--- a/fleet/tests/test_run_engine_declared_dependencies.mjs
++++ b/fleet/tests/test_run_engine_declared_dependencies.mjs
+@@ -964,6 +964,228 @@ for (const [tag, extra, what] of [['j-bare', {}, 'without `dependencies`'],
+     JSON.stringify(rLines.find((l) => /^\| .baseSha. \|/.test(l))))
+ }
+ 
++// ══════════════════════════════════════════════════════════════════════════
++// Task 1 of #1097 — "The setup commit stages a manifest the add command
++// created in a new directory": legs (a), (b), (c), (d)
++// ══════════════════════════════════════════════════════════════════════════
++//
++// THE LEG LETTERS BELOW ARE TASK 1's OWN, not this file's. The file already
++// carries an (a)…(l) from #1066, meaning other things entirely, so every
++// assertion in this group is labelled `(#1097 t1 a)`, `(#1097 t1 b)` … and a
++// reader mapping the Proof of #1097 task 1 back to the exam reads only the
++// labels that carry the issue number.
++//
++// The Machine clauses this group is written against, restated:
++//
++//   M1 — at the setup commit the staging scan lists untracked files BY PATH
++//        (`git status --porcelain -uall`), so an untracked file whose directory
++//        did not exist at BASE is reported as its own path and, when its
++//        basename is a bootstrap manifest, is staged and committed: an add line
++//        that appends to the root `package.json` and writes `client/package.json`
++//        into a new `client/` directory makes a setup commit whose
++//        `git show --name-only` names exactly `client/package.json` and
++//        `package.json`.
++//   M2 — a path carrying a `node_modules` segment is NEVER staged whatever its
++//        basename: the same add line also writing
++//        `node_modules/left-pad/package.json` leaves the setup commit naming no
++//        path under `node_modules/`, and `git ls-tree -r --name-only <setup
++//        head>` in the integration clone lists none.
++//   M3 — an add line that modifies the root `package.json` and writes
++//        `bun.lock`, and nothing under any new directory, makes the SAME setup
++//        commit it made at BASE: exactly `bun.lock` and `package.json`, subject
++//        the plan's H1, parent BASE.
++//   M4 — `fleet/CONTRACT.md`'s setup-commit sentence names `git status
++//        --porcelain -uall` and says a path under `node_modules/` is never
++//        staged.
++//
++// WHY THIS GROUP IS RED AT BASE. The scan at the setup commit is `git status
++// --porcelain` at its default `--untracked-files=normal`, which reports a new
++// directory as ONE line, `?? client/`, whose basename read is `client/` — so
++// `bootstrapManifestChanged(['client/'])` refuses it and the manifest inside is
++// never staged. Leg (#1097 t1 a)'s `deepEqual` below is that red: at BASE the
++// setup commit names `package.json` alone. Leg (#1097 t1 b) is the trap the fix
++// opens rather than the fix's own red — a scan that lists untracked files by
++// path and keeps the basename test ALONE stages
++// `node_modules/left-pad/package.json`, whose basename is a manifest — so its
++// two exclusion assertions pass vacuously at BASE (nothing at all is staged out
++// of a directory the scan never looked into) and fail on a half-done
++// implementation, which is what they are for; the third, that
++// `client/package.json` IS in that tree, is leg (a)'s red restated as the
++// contrast that says the exclusion is the `node_modules` segment and not
++// untracked-ness.
++// Leg (#1097 t1 d)'s first read is red at BASE: the contract says `git status
++// --porcelain` and no `-uall`.
++
++// The add script leg (a) and leg (b) drive. It is carried into the sim's
++// repository through the rig's own `nested` knob, so it is a TRACKED file of
++// the integration clone (`bash add-nested.sh …` is runnable there) while
++// `client/` itself is ABSENT at BASE — which is the whole condition under test.
++// It appends each spec to the root `package.json` (a MODIFIED tracked path),
++// creates `client/` and writes `client/package.json` (an untracked path inside
++// a directory that did not exist at BASE), and writes
++// `node_modules/left-pad/package.json` — the install's own vendored tree, whose
++// basename passes the manifest test and which must be staged by nothing. It
++// writes no `bun.lock`, so the commit's paths are exactly the two M1 names.
++const ADD_NESTED_SH = [
++  '#!/bin/bash',
++  'for a in "$@"; do printf "spec %s\\n" "$a" >> package.json; done',
++  'mkdir -p client',
++  "printf '{ \"name\": \"client\", \"private\": true }\\n' > client/package.json",
++  'mkdir -p node_modules/left-pad',
++  "printf '{ \"name\": \"left-pad\", \"version\": \"1.0.0\" }\\n' > node_modules/left-pad/package.json",
++  '',
++].join('\n')
++
++/**
++ * `git show --name-only --format=%s%n%b <sha>` read whole, the way leg (c2)
++ * above reads it: the subject line, the body up to the blank separator, and the
++ * sorted path names after it.
++ */
++const showCommit = (cwd, sha) => {
++  const shown = gitSync(['show', '--name-only', '--format=%s%n%b', sha], cwd)
++  const lines = shown.split('\n')
++  const rest = lines.slice(1)
++  const firstBlank = rest.findIndex((l) => l.trim() === '')
++  const cut = firstBlank === -1 ? rest.length : firstBlank
++  return {
++    shown,
++    subject: lines[0],
++    body: rest.slice(0, cut).join('\n'),
++    names: rest.slice(cut).map((l) => l.trim()).filter(Boolean).sort(),
++  }
++}
++
++// The one runtime spec leg (a) declares, and the add commands built on the
++// script above. `dev` is empty, so the line is the runtime half alone — both
++// add commands are still set, because a run that names only one runs no line at
++// all (the file's own leg (f.2)).
++const NESTED_SPEC = 'left-pad@^1'
++const NESTED = await drive({
++  tag: 'nested-manifest',
++  nested: { 'add-nested.sh': ADD_NESTED_SH },
++  waves: [[taskOf('A')]],
++  write: (cwd) => fs.writeFileSync(path.join(cwd, 'src.mjs'), 'export const a = 2\n'),
++  extra: { dependencies: { runtime: [NESTED_SPEC], dev: [] },
++           addCmd: 'bash add-nested.sh', addDevCmd: 'bash add-nested.sh -d' },
++})
++
++// ── (#1097 t1 a) [M1] the manifest in the directory that did not exist ──────
++{
++  const evs = depEvents(NESTED.evs)
++  assert.equal(evs.length, 1,
++    '(#1097 t1 a) [M1] the scenario whose add script creates `client/` runs its line once and ' +
++    'appends exactly ONE `driver:dependencies` event. Got: ' + JSON.stringify(evs))
++  assert.equal(evs[0].exit, 0,
++    '(#1097 t1 a) [M1] the line exits 0 — the add script appended the spec, created `client/` and ' +
++    'wrote its manifest. Got: ' + JSON.stringify(evs[0].exit))
++  const head = evs[0].headSha
++  assert.ok(head && head !== NESTED.base,
++    '(#1097 t1 a) [M1] the line changed a manifest, so a setup commit was made and the event\'s ' +
++    '`headSha` is that commit — not BASE (' + NESTED.base + ') and not `null`. Got: ' +
++    JSON.stringify(head))
++  const commit = showCommit(NESTED.integ, head)
++  assert.deepEqual(commit.names, ['client/package.json', 'package.json'],
++    '(#1097 t1 a) [M1] `git show --name-only --format=%s%n%b <headSha>` in the integration clone ' +
++    'names, sorted, EXACTLY `client/package.json` and `package.json`: the staging scan lists ' +
++    'untracked files by path (`git status --porcelain -uall`), so the manifest written into the ' +
++    'new `client/` directory is reported as its own path, its basename is a bootstrap manifest, ' +
++    'and it is staged beside the modified root one. At BASE this is `[\'package.json\']` alone — ' +
++    'the default `--untracked-files=normal` reports the new directory as one line, `?? client/`, ' +
++    'whose basename read is `client/`, so `bootstrapManifestChanged` refuses it and the manifest ' +
++    'inside is lost. Got: ' + JSON.stringify(commit.names) + ' from: ' + JSON.stringify(commit.shown))
++  assert.equal(commit.subject, PLAN_H1,
++    '(#1097 t1 a) [M1] and it is the ordinary setup commit — subject the plan\'s H1. Got: ' +
++    JSON.stringify(commit.subject) + ' from: ' + JSON.stringify(commit.shown))
++  assert.equal(gitSync(['rev-parse', head + '^'], NESTED.integ), NESTED.base,
++    '(#1097 t1 a) [M1] cut on BASE, one commit. Got: ' +
++    JSON.stringify(gitSync(['rev-parse', head + '^'], NESTED.integ)))
++  assert.equal(gitSync(['show', head + ':client/package.json'], NESTED.integ),
++    '{ "name": "client", "private": true }',
++    '(#1097 t1 a) [M1] and the committed `client/package.json` is the file the add command wrote, ' +
++    'byte-for-byte. Got: ' +
++    JSON.stringify(gitSync(['show', head + ':client/package.json'], NESTED.integ)))
++}
++
++// ── (#1097 t1 b) [M2] and nothing under `node_modules/`, whatever its name ──
++//
++// The trap `-uall` opens: a real install writes `node_modules/<pkg>/package.json`,
++// whose BASENAME passes the manifest test. The exclusion is this scan's, not
++// `bootstrapManifestChanged`'s — the pre-review manifest scan and the
++// lockfile-regeneration gates read that helper for other purposes, and leg (k)
++// above still requires it to accept a nested `package.json`.
++{
++  const head = depEvents(NESTED.evs)[0].headSha
++  const commit = showCommit(NESTED.integ, head)
++  const vendored = commit.names.filter((p) => p.split('/').includes('node_modules'))
++  assert.deepEqual(vendored, [],
++    '(#1097 t1 b) [M2] the setup commit names NO path carrying a `node_modules` segment — the ' +
++    'add line wrote `node_modules/left-pad/package.json`, whose basename the manifest test ' +
++    'accepts, and a scan that listed untracked files by path and kept the basename test ALONE ' +
++    'would have staged it. Got: ' + JSON.stringify(vendored) + ' from: ' +
++    JSON.stringify(commit.shown))
++  const tracked = gitSync(['ls-tree', '-r', '--name-only', head], NESTED.integ)
++    .split('\n').filter(Boolean)
++  assert.deepEqual(tracked.filter((p) => p.startsWith('node_modules/')), [],
++    '(#1097 t1 b) [M2] and `git ls-tree -r --name-only <headSha>` in the integration clone prints ' +
++    'no line beginning `node_modules/` — the vendored tree is in no tree the run hands on. The ' +
++    'tracked paths are: ' + JSON.stringify(tracked))
++  assert.ok(tracked.includes('client/package.json'),
++    '(#1097 t1 b) [M2] while the manifest in the new directory IS in that tree — the exclusion is ' +
++    'the `node_modules` segment and not untracked-ness. The tracked paths are: ' +
++    JSON.stringify(tracked))
++}
++
++// ── (#1097 t1 c) [M3] the add line that touches no new directory is unmoved ──
++//
++// M3's own reading is the file's existing S1 leg (c2), which stands above
++// byte-for-byte as #1066 wrote it. This is that same run — no second drive —
++// re-read under this task's leg letter, so the group a reader greps for
++// `#1097` carries M3 too: `-uall` changes nothing S1 asserts, `add.sh` writing
++// `node_modules/marker` under a directory it creates and the scan seeing it by
++// path notwithstanding, because `marker` is not a manifest and the path is
++// under `node_modules/` besides.
++{
++  const head = depEvents(S1.evs)[0].headSha
++  const commit = showCommit(S1.integ, head)
++  assert.deepEqual(commit.names, ['bun.lock', 'package.json'],
++    '(#1097 t1 c) [M3] S1\'s add line modifies the root `package.json` and writes `bun.lock`, and ' +
++    'nothing under any new directory, so it makes the same setup commit it made at BASE: exactly ' +
++    'those two paths. Got: ' + JSON.stringify(commit.names) + ' from: ' +
++    JSON.stringify(commit.shown))
++  assert.equal(commit.subject, PLAN_H1,
++    '(#1097 t1 c) [M3] with the plan\'s H1 as its subject. Got: ' + JSON.stringify(commit.subject))
++  assert.equal(gitSync(['rev-parse', head + '^'], S1.integ), S1.base,
++    '(#1097 t1 c) [M3] and BASE as its parent. Got: ' +
++    JSON.stringify(gitSync(['rev-parse', head + '^'], S1.integ)))
++}
++
++// ── (#1097 t1 d) [M4] the contract's setup-commit sentence ──────────────────
++//
++// The Proof's two `Run:` lines, read here the way leg (l) above reads its own:
++//   1. grep -q 'git status --porcelain -uall' fleet/CONTRACT.md
++//   2. sed -n '/git status --porcelain -uall/,/commits them/p' fleet/CONTRACT.md \
++//        | tr '\n' ' ' | grep -q 'node_modules/.*never'
++// The second is `sed`'s range, replicated exactly: from the FIRST line carrying
++// the phrase to the first LATER line carrying `commits them`, inclusive, with
++// newlines folded to spaces.
++{
++  const contract = fs.readFileSync(new URL('../CONTRACT.md', import.meta.url), 'utf8')
++  const cLines = contract.split('\n')
++  const UALL = 'git status --porcelain -uall'
++  const start = cLines.findIndex((l) => l.includes(UALL))
++  assert.ok(start !== -1,
++    '(#1097 t1 d) [M4] `fleet/CONTRACT.md`\'s setup-commit sentence names `' + UALL + '` — the ' +
++    'Proof\'s first `Run:`. At BASE it names `git status --porcelain` at its default ' +
++    '`--untracked-files=normal`, which is the behaviour this task replaces, so nothing matches.')
++  const after = cLines.findIndex((l, i) => i > start && l.includes('commits them'))
++  const window = cLines.slice(start, after === -1 ? cLines.length : after + 1).join(' ')
++  assert.match(window, /node_modules\/[\s\S]*never/,
++    '(#1097 t1 d) [M4] and in the window from that phrase to `commits them` the sentence keeps ' +
++    'its `node_modules/` clause as a STATED exclusion — `node_modules/` followed by `never` — so ' +
++    'the contract says a path under `node_modules/` is never staged whatever its basename (the ' +
++    'Proof\'s second `Run:`). The window reads: ' + JSON.stringify(window))
++}
++
+ // ══════════════════════════════════════════════════════════════════════════
+ // the guard (#1053): this sim stands whole at the path the Proof names
+ // ══════════════════════════════════════════════════════════════════════════
+diff --git a/fleet/tests/test_run_engine_proof_runs.mjs b/fleet/tests/test_run_engine_proof_runs.mjs
+index 93191bf8de9c3e258c100e771fcefad65156e7fd..448c86a36e5cb5a85aaa02699fbf9ae31c0e7f38 100644
+--- a/fleet/tests/test_run_engine_proof_runs.mjs
++++ b/fleet/tests/test_run_engine_proof_runs.mjs
+@@ -2565,7 +2565,139 @@ for (const sim of ['test_run_engine_proof_runs.mjs', 'test_run_engine_state_hand
+     'pointer publish would strip. Found: ' + JSON.stringify(pointers))
+ }
+ 
++// ════════════════════════════════════════════════════════════════════════════
++// #1097 Task 3 — round two's referee reads no exam concern from round one.
++//
++// Claim: let a task's fix round say its exam is red for any output, have round
++// one's referee uphold that against the exam, and read the prompt round two's
++// referee is handed after the peer rewrote the exam; the exam's fresh green run
++// arrives with no `EXAM CONCERN:` line from round one, so a referee reading
++// `fleet/roles/reviewer.md`'s passage ("a red exam blocks whatever you return")
++// literally has nothing red to block on.
++//
++// Machine clauses under test:
++//   M1 — the review prompt of round 2 (`review:<id>:2`) carries no line
++//        beginning `EXAM CONCERN: `: the fix round's `exam:` entries are
++//        rendered into round 1's prompt and into no later round's.
++//   M2 — round 1's prompt still carries exactly one line `EXAM CONCERN: <entry>`
++//        per entry, after the `EXAM EVIDENCE:` block.
++//   M3 — in the shape that reaches round 2 — an exam red for any output, a fix
++//        round returning `DONE_WITH_CONCERNS` with one `exam:` entry, round 1
++//        blocking with a detail naming the exam's landing path, the second
++//        examiner writing an exam green on the graded tree, round 2 passing —
++//        the dispatch labels are `exam:T1`, `impl:T1`, `fix:T1:0`,
++//        `review:T1:1`, `exam:T1:2`, `review:T1:2` in that order with no other
++//        `fix:` label, the row ends `done`, `clean`, `examRounds` 2, and exactly
++//        one `driver:finding-refuted` carries `verdict` `exam-concern-upheld`,
++//        at `round` 1.
++//
++// The rig is `aRunOne` above rather than `scenario`: its `fix` knob is the
++// `DONE_WITH_CONCERNS` reply this shape needs, its `exam2` knob is the second
++// examiner's rewrite, and it records every dispatch label in order beside the
++// prompt each one was handed. Everything below the agent seam stays real.
++{
++  // The fix round's one `exam:`-prefixed entry — the claim the driver renders as
++  // an `EXAM CONCERN:` line (line 4109's filter keeps only `exam:` ones). Its
++  // text is rendered into a prompt by that block alone, which is what makes
++  // leg (b)'s "not at all" a live check rather than a spelling of leg (b)'s
++  // first half.
++  const C_ENTRY = 'exam: leg (b) of the Proof cannot pass for any output'
++  // Round 1's blocking finding: a backticked `t1_test.sh:<a>-<b>` token, so
++  // `examPathIn` reads the exam's landing path off it and the round the finding
++  // buys is the EXAMINER's rather than a second implementer's.
++  const C_DETAIL = 'the exam at `' + A_LAND + ':2-3` asks for an output no implementation ' +
++    'can produce'
++  // Red whatever the tree holds — the pre-review repair round cannot clear it,
++  // which is what leaves the exam still red with the fix round's concern
++  // standing when round 1 is dispatched. Three lines, so `t1_test.sh:2-3` above
++  // is a real coordinate in it.
++  const C_EXAM_RED_FOR_ANY_OUTPUT = '#!/bin/bash\necho exam-is-red-for-any-output\nexit 1\n'
++  // Every line of the round's prompt that BEGINS `EXAM CONCERN: ` — the
++  // driver's own rendering and nothing else: `fleet/roles/reviewer.md` mentions
++  // `EXAM CONCERN:` at lines 53 and 87, neither at the start of a line.
++  const concernLinesOf = (prompt) =>
++    String(prompt).split('\n').filter((l) => /^EXAM CONCERN: /.test(l))
++
++  const { row, calls, prompts, evs } = await aRunOne({
++    task: aExamTask(),
++    exam: C_EXAM_RED_FOR_ANY_OUTPUT,
++    // The rewritten exam, green on the graded tree: `[ -f one.txt ]`, and the
++    // implementer wrote `one.txt`.
++    exam2: REJ_EXAM,
++    fix: { status: 'DONE_WITH_CONCERNS', concerns: [C_ENTRY] },
++    review: (n) => (n === 1 ? aBlocking({ detail: C_DETAIL, actor: 'examiner' }) : passReview()),
++  })
++  const r1 = prompts['review:T1:1']
++  const r2 = prompts['review:T1:2']
++
++  // ── leg (a) [M2]: round 1 still carries the line, after the evidence ──────
++  assert.equal(typeof r1, 'string',
++    'leg (a) [M2] sim precondition — the `review:T1:1` prompt was recorded: ' +
++    JSON.stringify(calls))
++  assert.deepEqual(concernLinesOf(r1), ['EXAM CONCERN: ' + C_ENTRY],
++    'leg (a) [M2]: round 1\'s prompt carries EXACTLY ONE line beginning `EXAM CONCERN: `, and ' +
++    'it is that prefix followed by the fix round\'s entry VERBATIM — the claim the graded ' +
++    'party made about the red bytes reaches the referee that judges it: ' +
++    JSON.stringify(concernLinesOf(r1)))
++  const c1At = r1.indexOf('EXAM CONCERN: ' + C_ENTRY)
++  const ev1At = r1.indexOf('EXAM EVIDENCE:')
++  assert.notEqual(ev1At, -1,
++    'leg (a) [M2] sim precondition — round 1\'s prompt carries the driver\'s `EXAM EVIDENCE:` ' +
++    'block, which the concern line is ordered against: ' + JSON.stringify(r1.slice(-800)))
++  assert.ok(c1At > ev1At,
++    'leg (a) [M2]: and that line sits AFTER the `EXAM EVIDENCE:` block — the driver\'s own red ' +
++    'output first, the claim about it second. EXAM EVIDENCE: at ' + ev1At +
++    ', EXAM CONCERN: at ' + c1At)
++
++  // ── leg (b) [M1]: round 2 carries no line, and no trace of the entry ──────
++  // At BASE `examConcerns` is still the round-1 array when round 2's prompt is
++  // built, so the stale line rides in under a fresh, green `EXAM EVIDENCE` —
++  // and this leg is red there.
++  assert.equal(typeof r2, 'string',
++    'leg (b) [M1] sim precondition — the `review:T1:2` prompt was recorded: ' +
++    JSON.stringify(calls))
++  assert.deepEqual(concernLinesOf(r2), [],
++    'leg (b) [M1]: round 2\'s prompt carries NO line beginning `EXAM CONCERN: ` — the fix ' +
++    'round\'s entries are rendered into round 1\'s prompt and into no later round\'s. At BASE ' +
++    'the round-1 line is still on it: ' + JSON.stringify(concernLinesOf(r2)))
++  assert.equal(r2.includes(C_ENTRY), false,
++    'leg (b) [M1]: and the entry\'s text is not in that prompt AT ALL — not as a line, not ' +
++    'folded into another block. Found at index ' + r2.indexOf(C_ENTRY))
++  assert.ok(r2.includes('EXAM EVIDENCE'),
++    'leg (b) [M1] sim precondition — round 2 does read an EXAM EVIDENCE block: what the leg ' +
++    'asks for is a prompt with the evidence and without the stale claim, not a prompt with ' +
++    'neither: ' + JSON.stringify(r2.slice(-800)))
++  assert.ok(r2.includes('\n\n$ ' + A_CMD + '\nexit 0\n'),
++    'leg (b) [M1]: and that block is the iter-2 run\'s, GREEN — `$ ' + A_CMD + '` then ' +
++    '`exit 0` — which is the run a round-2 referee reads under the round-1 claim at BASE: ' +
++    JSON.stringify(r2.slice(r2.indexOf('EXAM EVIDENCE'), r2.indexOf('EXAM EVIDENCE') + 600)))
++
++  // ── leg (c) [M3]: the dispatches, the row, and the one refutation ─────────
++  assert.deepEqual(calls,
++    ['exam:T1', 'impl:T1', 'fix:T1:0', 'review:T1:1', 'exam:T1:2', 'review:T1:2'],
++    'leg (c) [M3]: the six dispatches in that order and no other — one pre-review repair ' +
++    'round, and no `fix:` label after it, because the round-1 finding was the EXAM\'s: ' +
++    JSON.stringify(calls))
++  assert.equal(row.status, 'done', 'leg (c) [M3]: the row ends `done`: ' + JSON.stringify(row))
++  assert.equal(row.reviewVerdict, 'clean',
++    'leg (c) [M3]: with `reviewVerdict` `clean`: ' + JSON.stringify(row))
++  assert.equal(row.examRounds, 2,
++    'leg (c) [M3]: and `examRounds` 2 — the exam-rejected round ran: ' + JSON.stringify(row))
++  const c3Upheld = aRefuted(evs).filter((e) => e.verdict === 'exam-concern-upheld')
++  assert.equal(c3Upheld.length, 1,
++    'leg (c) [M3]: EXACTLY ONE `driver:finding-refuted` carries `verdict` ' +
++    '`exam-concern-upheld` — a clearing that dropped the concern before round 1\'s rejection ' +
++    'handling would leave zero: ' + JSON.stringify(aRefuted(evs)))
++  assert.deepEqual(
++    { task: c3Upheld[0].task, round: c3Upheld[0].round, verdict: c3Upheld[0].verdict,
++      detail: c3Upheld[0].detail },
++    { task: 'T1', round: 1, verdict: 'exam-concern-upheld', detail: C_ENTRY },
++    'leg (c) [M3]: at `round` 1, with the fix round\'s entry as its `detail` — round 1 read ' +
++    'the concern and upheld it, and the record says so: ' + JSON.stringify(c3Upheld[0]))
++}
++
+ // [M5] leg (f): the sentinel below is this sim's — its existing legs, the #632
+-// ones, the #713 ones, the #1037 §3 ones, the receipt legs, the Task 5 legs and
+-// the Task A legs above. It is printed only if every assertion above held.
++// ones, the #713 ones, the #1037 §3 ones, the receipt legs, the Task 5 legs, the
++// Task A legs and the #1097 Task 3 legs above. It is printed only if every
++// assertion above held.
+ console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine_ready_set.mjs b/fleet/tests/test_run_engine_ready_set.mjs
+index 2e7df73bb675333ea235d15dfb3f8b9c60ddc077..19d3d6b559690be2ba3ba577181c6e327fb41cbd 100644
+--- a/fleet/tests/test_run_engine_ready_set.mjs
++++ b/fleet/tests/test_run_engine_ready_set.mjs
+@@ -878,4 +878,174 @@ const maxOpenImpl = (log) => {
+   }
+ }
+ 
++// ════════════════════════════════════════════════════════════════════════════
++// TASK 2 (#1097) — "The red-BASE line names each red test once, by the path a
++// plan would write" — legs (a), (b) and (c)
++//
++// The Machine clauses under test, restated:
++//   M1 — the red-BASE reading (`baselineFailing`) is the paths
++//        `failingTestPaths(raw)` returns, joined by `, `: a bridge line
++//        `FAILED tests/test_fleet_suite.py::test_fleet_mjs[<name>.mjs]` reads as
++//        `fleet/tests/<name>.mjs`, every other `FAILED <path>::<id>` line as its
++//        own `<path>`, each path once in FIRST-SEEN order — which is not lexical
++//        order, so a reading that sorted is wrong.
++//   M2 — a red baseline whose output carries no `FAILED` line still reads
++//        `failing: unparsed`.
++//   M3 — the sentence's head is unchanged: the `TEST_FAILED` park's `detail` and
++//        the judgment call both begin `baseline: the suite is RED on BASE — the
++//        sensor is blind for this run; failing: ` and carry ` (` after the path
++//        list.
++//
++// Where each Proof leg is answered:
++//   (a) [M1] the four-line red baseline, translated and deduplicated in
++//            first-seen order              — the `rb` scenario below
++//   (b) [M2] the output with no `FAILED` line at all
++//                                          — the existing `e2` run, read back
++//                                            out of RUNS; no new run is driven
++//   (c) [M3] the head both readers share   — both runs, below
++//
++// ── why the `rb` scenario's `check.sh` prints a pytest-shaped block ──────────
++// Leg (a)'s last clause — neither the `detail` nor the judgment call carries
++// `tests/test_fleet_suite.py` AT ALL — is a claim about the whole sentence, and
++// the sentence quotes the suite: `redBaselineHead` renders
++// `… failing: <paths> (<baseline.output>)`, where `baseline.output` is
++// `failingBlock(raw)`. `failingBlock`'s START pattern matches `^FAILED `, so a
++// `check.sh` that printed the four bare `FAILED` lines and nothing else would
++// have all four quoted INSIDE the block, and the bridge file's name would be in
++// the detail however the reading translated the list.
++//
++// So the lines are printed where pytest prints them — under `=== FAILURES ===`,
++// a `___ test_fleet_mjs[…] ___` header and an `E   AssertionError` line, below
++// `=== short test summary info ===`. `failingBlock` ends the block at that rule
++// line (its END pattern is `^={3,} `), which is what the engine's own comment
++// beside `baselineFailing` says: the short summary is BELOW the block a reader
++// quotes. The `FAILED` lines still reach the reading, because the reading is
++// taken off the RAW stdout+stderr and not off `baseline.output`. The Proof's
++// "prints, in this order, <the four lines>, then exits 1" holds: those four
++// lines are printed, in that order, and the suite exits 1.
++// ════════════════════════════════════════════════════════════════════════════
++{
++  // The head both readers share, byte for byte (M3). Written out here rather
++  // than built, so a change to it in the engine fails leg (c) rather than
++  // silently following along.
++  const HEAD = 'baseline: the suite is RED on BASE — the sensor is blind for this run; failing: '
++  // What M1 says this run's four `FAILED` lines read as: translated, each path
++  // once, first-seen order — and then the ` (` M3 puts after the list.
++  const TRANSLATED =
++    'failing: fleet/tests/test_beta.mjs, tests/test_other.py, fleet/tests/test_alpha.mjs ('
++  // What a reading that SORTED the same three paths would render instead. The
++  // order of the scenario's lines is chosen so the two differ.
++  const SORTED =
++    'failing: fleet/tests/test_alpha.mjs, fleet/tests/test_beta.mjs, tests/test_other.py ('
++  // The bridge file, which a reading that translated nothing repeats once per
++  // failure and a correct reading never names.
++  const BRIDGE = 'tests/test_fleet_suite.py'
++
++  // A red suite in pytest's own shape. The four `FAILED` lines are the Proof's,
++  // in the Proof's order — beta, other, alpha, beta again.
++  const REDLINES = [
++    '============================= FAILURES =============================',
++    '____________________ test_fleet_mjs[test_beta.mjs] ____________________',
++    'E   AssertionError: sim: the suite was red before this run opened',
++    '=========================== short test summary info ===========================',
++    'FAILED tests/test_fleet_suite.py::test_fleet_mjs[test_beta.mjs] - AssertionError',
++    'FAILED tests/test_other.py::test_x - AssertionError',
++    'FAILED tests/test_fleet_suite.py::test_fleet_mjs[test_alpha.mjs] - AssertionError',
++    'FAILED tests/test_fleet_suite.py::test_fleet_mjs[test_beta.mjs] - AssertionError',
++    '4 failed, 0 passed in 1.00s',
++  ]
++  const REDCHECK = "#!/bin/bash\ncat <<'PYTEST'\n" + REDLINES.join('\n') + '\nPYTEST\nexit 1\n'
++
++  const run = await drive({
++    tag: 'rb', tasks: [taskOf('A'), taskOf('B')], edges: [], width: 2,
++    // As every scenario above that is not about the fold trigger.
++    foldAgeMs: 0,
++    // REPLACES the rig's `check.sh`, as leg (c)'s and leg (d)'s blocks do.
++    repoFiles: { 'check.sh': REDCHECK },
++    makeStub: (runDir) => async (prompt, opts, cwd) => {
++      const [kind, id] = opts.label.split(':')
++      if (kind === 'review') return cannedReview(runDir, opts.label)
++      if (kind === 'reconcile') return cannedReconcile(runDir, opts.label)
++      if (kind !== 'impl') throw new Error('unexpected dispatch: ' + opts.label)
++      workerStart(runDir, opts.label, cwd)
++      return plainImpl(runDir, opts, cwd, id)
++    },
++  })
++
++  // The `e2` run above, read back rather than re-driven: leg (b)'s subject is
++  // "the existing `e2` run", and it is already on RUNS.
++  const e2 = RUNS.find((r) => r.tag === 'e2') || null
++  assert.ok(e2 !== null,
++    '(b)/M2: sim precondition — the existing `e2` red-baseline run registered itself: ' +
++    JSON.stringify(RUNS.map((r) => r.tag)))
++
++  /** The one `TEST_FAILED` park row of a run, or null. */
++  const parkRows = (r) => (r.report.waveMerges || []).filter((m) => m && m.status === 'TEST_FAILED')
++  /** The red-baseline judgment call, found by its own tail — never by the head
++   *  leg (c) is about to assert, which would make that assertion circular. */
++  const baselineCall = (r) =>
++    (r.report.judgmentCalls || []).find((c) => /the red this run inherited/.test(String(c))) || null
++
++  // ── leg (a) [M1] ──────────────────────────────────────────────────────────
++  const rbParked = parkRows(run)
++  assert.equal(rbParked.length, 1,
++    '(a)/M1: the four-line red baseline parks with exactly one `TEST_FAILED` row: ' +
++    JSON.stringify(run.report.waveMerges))
++  const rbDetail = String(rbParked[0].detail)
++  const rbCall = baselineCall(run)
++  assert.ok(rbCall !== null,
++    '(a)/M1: sim precondition — the red baseline pushes its judgment call: ' +
++    JSON.stringify(run.report.judgmentCalls))
++
++  assert.ok(rbDetail.includes(TRANSLATED),
++    '(a)/M1: the `TEST_FAILED` park\'s `detail` names each red test once, by the path a plan ' +
++    'would write, in first-seen order — it must carry `' + TRANSLATED + '`. A reading that ' +
++    'sorted would carry `' + SORTED + '`; the reading at BASE carries `failing: ' + BRIDGE +
++    ', tests/test_other.py, ' + BRIDGE + ', ' + BRIDGE + ' (`. It carries: ' +
++    JSON.stringify(rbDetail))
++  assert.ok(String(rbCall).includes(TRANSLATED),
++    '(a)/M1: and the judgment call carries the same substring `' + TRANSLATED + '` — the two ' +
++    'readers render one sentence: ' + JSON.stringify(rbCall))
++  assert.equal(rbDetail.includes(SORTED), false,
++    '(a)/M1: the list is in FIRST-SEEN order, not lexical order — the `detail` must not carry ' +
++    '`' + SORTED + '`: ' + JSON.stringify(rbDetail))
++  assert.equal(String(rbCall).includes(SORTED), false,
++    '(a)/M1: nor may the judgment call: ' + JSON.stringify(rbCall))
++  assert.equal(rbDetail.includes(BRIDGE), false,
++    '(a)/M1: and the `detail` does not name `' + BRIDGE + '` at all — every red line of this ' +
++    'suite is a bridged sim, and a bridged line reads as the sim\'s own ' +
++    '`fleet/tests/<name>.mjs` path: ' + JSON.stringify(rbDetail))
++  assert.equal(String(rbCall).includes(BRIDGE), false,
++    '(a)/M1: nor does the judgment call: ' + JSON.stringify(rbCall))
++
++  // ── leg (b) [M2] ──────────────────────────────────────────────────────────
++  const e2Parked = parkRows(e2)
++  assert.equal(e2Parked.length, 1,
++    '(b)/M2: sim precondition — the `e2` run parks with exactly one `TEST_FAILED` row: ' +
++    JSON.stringify(e2.report.waveMerges))
++  const e2Detail = String(e2Parked[0].detail)
++  const e2Call = baselineCall(e2)
++  assert.ok(e2Call !== null,
++    '(b)/M2: sim precondition — the `e2` red baseline pushes its judgment call: ' +
++    JSON.stringify(e2.report.judgmentCalls))
++  assert.ok(e2Detail.includes('failing: unparsed ('),
++    '(b)/M2: `e2`\'s `check.sh` prints nothing, so its red baseline reads `failing: unparsed (` ' +
++    '— a reading that joined an empty list as an empty string would render `failing:  (` and ' +
++    'name nothing at all: ' + JSON.stringify(e2Detail))
++
++  // ── leg (c) [M3] ──────────────────────────────────────────────────────────
++  for (const [tag, detail, call] of [['rb', rbDetail, String(rbCall)],
++                                     ['e2', e2Detail, String(e2Call)]]) {
++    assert.ok(detail.startsWith(HEAD),
++      '(c)/M3: the `TEST_FAILED` park\'s `detail` [run ' + tag + '] begins with the exact head ' +
++      JSON.stringify(HEAD) + ': ' + JSON.stringify(detail.slice(0, HEAD.length + 40)))
++    assert.ok(call.startsWith(HEAD),
++      '(c)/M3: and so does the judgment call [run ' + tag + ']: ' +
++      JSON.stringify(call.slice(0, HEAD.length + 40)))
++  }
++  assert.match(e2Detail, /inherited that red/,
++    '(c)/M3: and `e2`\'s `detail` still reads as the baseline\'s red, not as a fold\'s: ' +
++    JSON.stringify(e2Detail))
++}
++
+ console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_sandbox_boot_publish_record.mjs b/fleet/tests/test_sandbox_boot_publish_record.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..7fd1961e685e302c753f6058849f9cc3b0ba5e41
+--- /dev/null
++++ b/fleet/tests/test_sandbox_boot_publish_record.mjs
+@@ -0,0 +1,271 @@
++// fleet/tests/test_sandbox_boot_publish_record.mjs — task 4 of #1097, "a
++// re-entered boot files no second disclosures ticket".
++//
++// The PR is idempotent by its own record: GUARD 2 reads `pr` off the status
++// page and refuses to open a second one. The disclosures ticket had no such
++// record — `file_disclosures`'s only precondition was `[ -n "$PR_URL" ]`, and
++// on a re-entry `PR_URL` comes off the page, so the exact case GUARD 2 exists
++// for filed a SECOND issue with the same title and the same boxes. This sim
++// reads the record the ticket now keeps: a `disclosures` cell on the page,
++// written after `merged` by every `write_status`, and a guard that reads it.
++//
++// Four boots, each started once and shared by every leg that reads it — a boot
++// is about forty forks of stub shell, so this is the `once(label, start)` shape
++// `test_sandbox_boot_close_evidence.mjs` uses:
++//
++//   DISCLOSING   a fresh green boot whose report carries one not-taken
++//                judgment call: one POST, one event, the cell         [M4] [M1]
++//   QUIET        a fresh green boot under the rig's default report: no POST at
++//                all, and the cell present and `null`                 [M4] [M1]
++//   RECORDED     a boot whose page was planted with `pr` AND `disclosures`
++//                before it started: no second PR, no second ticket    [M2]
++//   PR_ONLY      the same plant with `disclosures` null: no second PR, and
++//                exactly one ticket                                   [M3]
++//
++// and one leg over the two documents the contract change lands in       [M5].
++//
++// The pages are planted by writing `<home>/www/status.json` before the boot,
++// which the boot reads because `do_boot` reads the page before its first write.
++// Only `./_sandbox_boot_helpers.mjs` is imported — never a sibling sim.
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import path from 'node:path'
++import { fileURLToPath } from 'node:url'
++
++import {
++  DEFAULT_REPORT, FOLLOWUP_URL, INTEGRATION_BRANCH, PR_AUTHOR, PR_URL, VM_NAME,
++  bootAsync, eventsOfKind, lines, makeHome, readLog, statusOf, stream,
++  runTests,
++} from './_sandbox_boot_helpers.mjs'
++
++const tests = []
++const test = (name, fn) => tests.push([name, fn])
++
++const HERE = path.dirname(fileURLToPath(import.meta.url))
++const CONTRACT = path.join(HERE, '..', 'CONTRACT.md')
++const README = path.join(HERE, 'README.md')
++const SIM = 'test_sandbox_boot_publish_record.mjs'
++
++// ── the report that owes a disclosure ────────────────────────────────────────
++
++/** The one edit the run was owed and did not take — `disclosure_items` matches
++ *  `task <id>: out-of-FILES (not taken): <text>` and nothing else. */
++const NOT_TAKEN = 'task 1: out-of-FILES (not taken): fleet/tests/README.md: the index line this task did not take'
++/** The rig's default report with that call spliced in after `"stamp":"run-7"`. */
++const STAMP = '{"stamp":"run-7"'
++assert.ok(DEFAULT_REPORT.startsWith(STAMP), `the rig's default report still opens with ${STAMP}`)
++const DISCLOSING_REPORT =
++  STAMP + `,"judgmentCalls":[${JSON.stringify(NOT_TAKEN)}]` + DEFAULT_REPORT.slice(STAMP.length)
++assert.deepEqual(
++  JSON.parse(DISCLOSING_REPORT).judgmentCalls, [NOT_TAKEN],
++  'the spliced report parses and carries exactly the one not-taken call',
++)
++
++// ── the planted page ─────────────────────────────────────────────────────────
++
++/**
++ * The page a previous attempt of this run left behind: state `publishing` (not
++ * terminal, so GUARD 1 lets the boot through), the PR recorded, and the
++ * `disclosures` cell where the contract puts it — directly after `merged`,
++ * because `json_field` answers the FIRST match in the file.
++ */
++const plant = (ctx, disclosuresCell) => {
++  const page = '{"run":"7","state":"publishing","phase":"gate-green — pushing ' + INTEGRATION_BRANCH + '"'
++    + `,"pr":${JSON.stringify(PR_URL)},"prAuthor":${JSON.stringify(PR_AUTHOR)},"merged":null`
++    + `,"disclosures":${disclosuresCell}`
++    + `,"branch":${JSON.stringify(INTEGRATION_BRANCH)},"vm":${JSON.stringify(VM_NAME)}`
++    + ',"startedAt":"2026-09-06T00:00:00Z","updatedAt":"2026-09-06T00:10:00Z","error":null,"tasks":{}}'
++  JSON.parse(page)
++  fs.mkdirSync(path.join(ctx.home, 'www'), { recursive: true })
++  fs.writeFileSync(path.join(ctx.home, 'www', 'status.json'), page + '\n')
++  return ctx
++}
++
++// ── the four boots, each started once ────────────────────────────────────────
++
++const started = new Map()
++const once = (label, start) => {
++  if (!started.has(label)) started.set(label, start())
++  return started.get(label)
++}
++
++const bootOnce = (label, env, prepare = (ctx) => ctx) => once(label, async () => {
++  const ctx = prepare(makeHome())
++  const r = await bootAsync(ctx, ['boot'], env)
++  assert.equal(r.status, 0, `${label}: the boot did not finish 0\n${r.stdout}${r.stderr}`)
++  return ctx
++})
++
++/** A fresh green boot whose report owes one disclosure. */
++const disclosing = () => bootOnce('disclosing', { STUB_REPORT: DISCLOSING_REPORT })
++/** A fresh green boot under the rig's default report, which owes none. */
++const quiet = () => bootOnce('quiet', {})
++/** A re-entry whose page already records the PR and the ticket. */
++const recorded = () => bootOnce('recorded', { STUB_REPORT: DISCLOSING_REPORT },
++  (ctx) => plant(ctx, JSON.stringify(FOLLOWUP_URL)))
++/** A re-entry whose page records the PR and no ticket. */
++const prOnly = () => bootOnce('pr-only', { STUB_REPORT: DISCLOSING_REPORT },
++  (ctx) => plant(ctx, 'null'))
++
++// ── readers ──────────────────────────────────────────────────────────────────
++
++const issuePosts = (ctx) => lines(readLog(ctx, 'issues.log'))
++const prPostLines = (ctx) => lines(readLog(ctx, 'pr.log'))
++/** The stub's own line for one `POST …/issues`, counted off the boot log. */
++const issueCalls = (ctx) => stream(ctx).filter((l) => l.includes('curl issue create')).length
++const pageBytes = (ctx) => fs.readFileSync(path.join(ctx.home, 'www', 'status.json'), 'utf8')
++/** Every page the run COMMITTED, one snapshot per commit, in commit order. */
++const committedPages = (ctx) => lines(readLog(ctx, 'commits.log'))
++/** `"merged":<cell>,"disclosures":<cell>,"branch":` — the cell in the one
++ *  position M1 and the contract's literal give it. */
++const CELL = '(?:null|"(?:[^"\\\\]|\\\\.)*")'
++const AFTER_MERGED = new RegExp(`"merged":${CELL},"disclosures":${CELL},"branch":`)
++
++// ── (a) a fresh boot files one ticket and records it, or files none [M4] [M1] ─
++
++test('(a) [M4] a fresh green boot with one not-taken call files exactly one ticket', async () => {
++  const ctx = await disclosing()
++  assert.equal(issuePosts(ctx).length, 1,
++    `(a) [M4] exactly one line in issues.log — got ${JSON.stringify(issuePosts(ctx))}`)
++  assert.equal(issueCalls(ctx), 1,
++    `(a) [M4] exactly one POST …/issues on the boot log — got ${issueCalls(ctx)}`)
++})
++
++test('(a) [M4] that boot appends exactly one publish:disclosures event', async () => {
++  const ctx = await disclosing()
++  const evs = eventsOfKind(ctx, 'publish:disclosures')
++  assert.equal(evs.length, 1,
++    `(a) [M4] one publish:disclosures event in the run's events.jsonl — got ${evs.length}`)
++  assert.equal(evs[0].url, FOLLOWUP_URL,
++    `(a) [M4] the event's url is what GitHub answered — got ${JSON.stringify(evs[0].url)}`)
++})
++
++test('(a) [M4] [M1] its page ends with disclosures equal to the URL GitHub answered', async () => {
++  const s = statusOf(await disclosing())
++  assert.equal(s.disclosures, FOLLOWUP_URL,
++    `(a) [M4] the disclosures cell is the answered URL — got ${JSON.stringify(s.disclosures)}`)
++})
++
++test('(a) [M4] [M1] a fresh green boot under the default report files nothing and carries disclosures null', async () => {
++  const ctx = await quiet()
++  assert.equal(readLog(ctx, 'issues.log'), '',
++    `(a) [M4] no issues.log at all — got ${JSON.stringify(readLog(ctx, 'issues.log'))}`)
++  assert.equal(issueCalls(ctx), 0, `(a) [M4] no POST …/issues — got ${issueCalls(ctx)}`)
++  const s = statusOf(ctx)
++  assert.ok('disclosures' in s,
++    `(a) [M1] the page has the key disclosures — got keys ${JSON.stringify(Object.keys(s))}`)
++  assert.equal(s.disclosures, null,
++    `(a) [M1] a run that files none carries disclosures null — got ${JSON.stringify(s.disclosures)}`)
++})
++
++test('(a) [M1] the cell sits directly after merged on every page every write_status wrote', async () => {
++  for (const [label, get] of [['disclosing', disclosing], ['quiet', quiet]]) {
++    const ctx = await get()
++    assert.match(pageBytes(ctx), AFTER_MERGED,
++      `(a) [M1] ${label}: the final page renders "merged":…,"disclosures":…,"branch": — read ${pageBytes(ctx).trim()}`)
++    const pages = committedPages(ctx)
++    assert.ok(pages.length >= 1, `(a) [M1] ${label}: the run committed at least one page`)
++    pages.forEach((page, i) => {
++      assert.match(page, AFTER_MERGED,
++        `(a) [M1] ${label}: committed page ${i + 1} carries the disclosures cell after merged — read ${page}`)
++    })
++  }
++})
++
++// ── (b) a page that records both opens nothing and files nothing [M2] ────────
++
++test('(b) [M2] a boot whose page records the ticket makes no POST …/issues', async () => {
++  const ctx = await recorded()
++  assert.equal(readLog(ctx, 'issues.log').trim(), '',
++    `(b) [M2] no issues.log line — got ${JSON.stringify(readLog(ctx, 'issues.log'))}`)
++  assert.equal(issueCalls(ctx), 0,
++    `(b) [M2] no POST …/issues on the boot log — got ${issueCalls(ctx)}`)
++  assert.equal(readLog(ctx, 'pr.log').trim(), '',
++    `(b) [M2] no pr.log line either — got ${JSON.stringify(readLog(ctx, 'pr.log'))}`)
++})
++
++test('(b) [M2] it logs both already-recorded lines, verbatim', async () => {
++  const log = stream(await recorded())
++  const pr = `publish: ${PR_URL} already recorded — not opening a second PR`
++  const ticket = `disclosures: ${FOLLOWUP_URL} already recorded — not filing a second ticket`
++  assert.ok(log.includes(pr),
++    `(b) [M2] the boot log carries \`${pr}\`\n${log.join('\n')}`)
++  assert.ok(log.includes(ticket),
++    `(b) [M2] the boot log carries \`${ticket}\`\n${log.join('\n')}`)
++})
++
++test('(b) [M2] its final page still carries the PR and that ticket URL', async () => {
++  const ctx = await recorded()
++  const s = statusOf(ctx)
++  assert.equal(s.pr, PR_URL, `(b) [M2] pr is the recorded PR — got ${JSON.stringify(s.pr)}`)
++  assert.equal(s.disclosures, FOLLOWUP_URL,
++    `(b) [M2] the cell is left carrying that URL — got ${JSON.stringify(s.disclosures)}`)
++  assert.match(pageBytes(ctx), AFTER_MERGED,
++    `(b) [M1] the re-entry's page renders the cell after merged — read ${pageBytes(ctx).trim()}`)
++})
++
++// ── (c) a page with a PR and no ticket files exactly one [M3] ────────────────
++
++test('(c) [M3] a boot whose page records the PR and no ticket opens no second PR', async () => {
++  const ctx = await prOnly()
++  assert.equal(readLog(ctx, 'pr.log').trim(), '',
++    `(c) [M3] no pr.log line — got ${JSON.stringify(readLog(ctx, 'pr.log'))}`)
++  assert.equal(prPostLines(ctx).length, 0, '(c) [M3] no POST …/pulls at all')
++})
++
++test('(c) [M3] it files exactly one ticket and records it on the page', async () => {
++  const ctx = await prOnly()
++  assert.equal(issuePosts(ctx).length, 1,
++    `(c) [M3] exactly one line in issues.log — got ${JSON.stringify(issuePosts(ctx))}`)
++  assert.equal(issueCalls(ctx), 1,
++    `(c) [M3] exactly one POST …/issues on the boot log — got ${issueCalls(ctx)}`)
++  const s = statusOf(ctx)
++  assert.equal(s.pr, PR_URL, `(c) [M3] pr is the recorded PR — got ${JSON.stringify(s.pr)}`)
++  assert.equal(s.disclosures, FOLLOWUP_URL,
++    `(c) [M3] the final page carries the answered URL — got ${JSON.stringify(s.disclosures)}`)
++})
++
++// ── (d) the two documents [M5] ──────────────────────────────────────────────
++
++test("(d) [M5] the contract's status.json literal carries disclosures directly after merged", () => {
++  const text = fs.readFileSync(CONTRACT, 'utf8')
++  const all = text.split('\n')
++  const from = all.findIndex((l) => l.startsWith('- **status.json:**'))
++  const to = all.findIndex((l) => l.startsWith('- **Publish:**'))
++  assert.ok(from >= 0 && to > from, `(d) [M5] the contract still has a **status.json:** bullet above **Publish:**`)
++  const bullet = all.slice(from, to + 1).join(' ')
++  assert.ok(bullet.includes('"merged":"<40-hex or null>","disclosures":"<url or null>","branch"'),
++    '(d) [M5] the literal reads …"merged":"<40-hex or null>","disclosures":"<url or null>","branch"…\n'
++    + `read: ${bullet.slice(0, 1200)}`)
++})
++
++test("(d) [M5] the contract's re-entry bullet says a recorded ticket is never filed twice", () => {
++  const text = fs.readFileSync(CONTRACT, 'utf8')
++  const SENTENCE = 'disclosures ticket is never filed twice'
++  assert.ok(text.includes(SENTENCE), `(d) [M5] the contract carries \`${SENTENCE}\``)
++  const all = text.split('\n')
++  const at = all.findIndex((l) => l.includes('a recorded `pr` is never opened twice'))
++  assert.ok(at >= 0, '(d) [M5] the re-entry bullet still says a recorded `pr` is never opened twice')
++  const indent = all[at].slice(0, all[at].length - all[at].trimStart().length)
++  let head = at
++  while (head > 0 && !all[head].startsWith(`${indent}- `)) head -= 1
++  let tail = at + 1
++  while (tail < all.length && !all[tail].startsWith(`${indent}- `) && all[tail].trim() !== '') tail += 1
++  const bullet = all.slice(head, tail).join('\n')
++  assert.ok(bullet.includes(SENTENCE),
++    `(d) [M5] the re-entry bullet itself says it — read:\n${bullet}`)
++})
++
++test('(d) [M5] fleet/tests/README.md indexes the new sim', () => {
++  const text = fs.readFileSync(README, 'utf8')
++  assert.ok(text.includes(SIM), `(d) [M5] the README names ${SIM}`)
++  const all = text.split('\n')
++  const from = all.findIndex((l) => l.startsWith('## The sandbox boot'))
++  assert.ok(from >= 0, '(d) [M5] the README still has a sandbox boot section')
++  let to = from + 1
++  while (to < all.length && !all[to].startsWith('## ')) to += 1
++  assert.ok(all.slice(from, to).some((l) => l.includes(SIM)),
++    `(d) [M5] the sim is indexed in the sandbox boot section — read:\n${all.slice(from, to).join('\n')}`)
++})
++
++runTests(tests)

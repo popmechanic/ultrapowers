@@ -1,0 +1,56 @@
+{
+  "mode": "gate",
+  "stamp": "run-176",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-176/report.json",
+  "branch": "ultra/integration-run-176",
+  "gateCheck": {
+    "verdict": "PASS",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [],
+    "notes": [],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 0,
+  "suite": {
+    "passed": true,
+    "unattributed": [],
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-176/clones/integration\nconfigfile: pytest.ini\nplugins: xdist-3.4.0\ncollected 19 items\n\ntests/test_compile_plan_green_at_base.py ...................             [100%]\n\n============================== 19 passed in 3.20s ==============================\n"
+  },
+  "verdict": "PASS"
+}

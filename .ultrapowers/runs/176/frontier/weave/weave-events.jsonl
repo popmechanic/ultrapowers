@@ -1,0 +1,7 @@
+{"event": "emitted", "wave": 1, "path": "fleet/RUNBOOK.md", "stateBlob": "2954f6b8aeff37cb0e9b326ab31e425e0dfa844682cd301abc81745c2be4d58d", "visibleSha": "e72ce5a0ce51493f97585192457147ac4600b0dc"}
+{"event": "emitted", "wave": 1, "path": "fleet/launch.mjs", "stateBlob": "5b17a19b897704fa217461f3b86cdc9fa2b10af34269855e0e5d046d4319fa9e", "visibleSha": "212ab27717e7788adafa75366fabb97afdec520f"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/test_launch_compile_facts.mjs", "stateBlob": "fb5268808ecc4f98b96245bece5daed309555126584d0b6749cfd012186806d7", "visibleSha": "743ee0b2967ecb2a95bc16dfb069c5c663fc3e00"}
+{"event": "emitted", "wave": 1, "path": "skills/ultrapowers/references/plan-markers.md", "stateBlob": "e0b777a9a12f92299780ea0647acfda845d5e6d57940ae8a8c76d698401a57c2", "visibleSha": "f050f55bbc1941cbd56474b6fc4155d02d0e0ec1"}
+{"event": "emitted", "wave": 1, "path": "skills/ultrapowers/scripts/compile_plan.py", "stateBlob": "59dcac2b9fd9e9a41a4d8c7133e2759ecc1014f684c664c4a8c305b2ae54de91", "visibleSha": "06caa0aa5d883a9db17fe730cbaeafe08a3b8e74"}
+{"event": "emitted", "wave": 1, "path": "skills/ultrawrite/SKILL.md", "stateBlob": "0dc5da819f7cc946324cf10af86103c33d628e3f3665d4c08be23b44065d7afd", "visibleSha": "47fd7e2222fe3caf5f0762c509bf144c10fabf72"}
+{"event": "emitted", "wave": 1, "path": "tests/test_compile_plan_green_at_base.py", "stateBlob": "bafeac9c568e62d9232a7d6ac434e3d7cd5e59fe84f747cc71c17de41903f0bb", "visibleSha": "3fbbfe9b9fd25e13703eaebd6f1e53a732d547db"}
