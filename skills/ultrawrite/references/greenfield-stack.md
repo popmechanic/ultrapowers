@@ -16,10 +16,19 @@ what the driver measures, so it stays where it is).
 
 - **testCmd:** bunx tsc --noEmit && bun test
 - **bootstrapCmd:** bun install
+- **Dependencies:** tinybase react react-dom dev: @types/bun typescript
 
-Write both exactly as above. Bare `tsc` requires a global TypeScript install;
-`bunx tsc` resolves the project's own devDependency — which is what keeps a
-fresh clone's bootstrap to a single `bun install` with nothing but Bun present.
+Write the first two exactly as above. Bare `tsc` requires a global TypeScript
+install; `bunx tsc` resolves the project's own devDependency — which is what
+keeps a fresh clone's bootstrap to a single `bun install` with nothing but Bun
+present.
+
+The third row is the plan's own: a TinyApp plan names every package it needs on
+that one header line, the specs before the single `dev:` word installed for the
+app and the ones after it installed as development-only. A package is declared
+there and nowhere else — no task adds one by editing `package.json`,
+`bunfig.toml` or `bun.lock`, and a manifest on a task's Files list is edited for
+a script or a config field, never for a dependency.
 
 ## Why it earns the restriction
 

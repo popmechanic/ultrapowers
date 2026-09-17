@@ -4,8 +4,9 @@
 One invocation runs every deterministic pre-launch stage in order, fail-closed:
 fleet-run (the sandbox env contract), git-repo check, worktree-capability
 probe, plan compile, test-command derivation, bootstrap-command derivation
-(the lockfile-implied install, run-66), dirty baseline, and baseBranch from
-the launched checkout.
+(the lockfile-implied install, run-66), add-command derivation (the same
+ladder's add verbs, stamped only when the plan declares packages), dirty
+baseline, and baseBranch from the launched checkout.
 
 The receipt (stdout + .claude/ultrapowers/run-<stamp>/receipt.json) is the
 contract: the engine (fleet/run-main.mjs) reads it instead of re-deriving the
@@ -182,6 +183,91 @@ def derive_regenerate_cmd(root):
     return None, None
 
 
+def derive_add_cmds(root):
+    """The commands that add a package to this target's manifest — runtime and
+    development — or (None, reason). File presence only, never runs anything,
+    on the bootstrap ladder's own rungs and precedence (pnpm before bun before
+    npm; `uv.lock` before `pyproject.toml`).
+
+    A plan that declares `**Dependencies:**` needs the manager's ADD verb, not
+    its install verb: the install rung is frozen by construction and can only
+    reproduce a lockfile, never extend it. So this is a third reading of the
+    same ladder, returning a PAIR — `(add, add_dev)` — because the engine
+    chooses between them per group, and both are stamped together.
+
+    The rungs that derive no add command still name why: a bare `package.json`
+    could be added to, but the tree names no runner to do it with, and
+    `requirements.txt` has no add verb at all (pip writes nothing back). Both
+    return `(None, rule)`; no manifest at all returns `(None, None)`. There is
+    no PEP 668 probe here — the requirements rung derives nothing either way,
+    so nothing is left to run."""
+    root = Path(root)
+    if (root / "package.json").is_file():
+        if (root / "pnpm-lock.yaml").is_file():
+            return ("pnpm add", "pnpm add -D"), "pnpm-lockfile"
+        if (root / "bun.lock").is_file() or (root / "bun.lockb").is_file():
+            return ("bun add", "bun add -d"), "bun-lockfile"
+        if (root / "package-lock.json").is_file():
+            return ("npm install --save", "npm install --save-dev"), "npm-lockfile"
+        return None, "package-json"
+    if (root / "uv.lock").is_file():
+        return ("uv add", "uv add --dev"), "uv-lock"
+    pyproject = root / "pyproject.toml"
+    if pyproject.is_file() and "[tool.uv" in pyproject.read_text(errors="ignore"):
+        return ("uv add", "uv add --dev"), "pyproject-uv"
+    if (root / "requirements.txt").is_file():
+        return None, "requirements-txt"
+    return None, None
+
+
+def add_command_stage(args_file, receipt, stage, root):
+    """Record the `add-command` stage and, when the plan declares packages,
+    stamp `addCmd`/`addDevCmd` into the args file and the receipt. Returns
+    False only in the refusal below — the driver bails on that.
+
+    The decision is the compiled args file's `dependencies` key and nothing
+    else: the compiler writes it iff the plan header carried a
+    `**Dependencies:**` line, so a plan with no line leaves this stage a
+    no-op that writes not one byte — the args file and the receipt come out
+    of it exactly as they went in. That is what keeps an undeclared plan
+    byte-for-byte what it was before this stage existed.
+
+    When a group does name a spec, a tree that derives no add command is a
+    launch that cannot do what the plan says, so the stage fails closed and
+    names the rung it got as far as — better here, for pennies, than in a
+    clone mid-wave.
+
+    There is no `--add-cmd` knob: an operator who overrides the bootstrap
+    still gets the derived add command, because the add command is about the
+    manifest, not about the install."""
+    args_file = Path(args_file)
+    args_obj = json.loads(args_file.read_text())
+    deps = args_obj.get("dependencies") or {}
+    specs = list(deps.get("runtime") or []) + list(deps.get("dev") or [])
+    if not specs:
+        return stage("add-command", True,
+                     success="no dependencies declared — nothing to add")
+
+    pair, rule = derive_add_cmds(root)
+    if not pair:
+        stage("add-command", False,
+              failure="%d declared package(s) but no add command derives from "
+                      "this tree: %s" % (len(specs),
+                                         rule or "no lockfile or manifest"))
+        return False
+
+    add_cmd, add_dev_cmd = pair
+    src = "detected:" + rule
+    args_obj["addCmd"] = add_cmd
+    args_obj["addDevCmd"] = add_dev_cmd
+    args_file.write_text(json.dumps(args_obj, indent=2))
+    receipt["addCmd"] = add_cmd
+    receipt["addDevCmd"] = add_dev_cmd
+    receipt["addCmdSource"] = src
+    return stage("add-command", True,
+                 success="%s / %s (%s)" % (add_cmd, add_dev_cmd, src))
+
+
 LLM_DERIVES = [
     "waves[][].tier on the args-file wave entries (slots pre-emitted as null; "
     "the engine reads knobs ONLY from these inline entries — never a "
@@ -193,6 +279,10 @@ LLM_DERIVES = [
     "nothing for bootstrapCmd — driver-derived from the target's lockfile/"
     "manifest (or the --bootstrap-cmd knob) and stamped in the args file and "
     "receipt, so validation, the engine and the gate share one value",
+    "nothing for addCmd/addDevCmd — the package-add commands are driver-"
+    "derived from the same lockfile/manifest beside the bootstrap and stamped "
+    "in the args file and receipt (only when the plan declares packages); "
+    "there is no knob for them",
     "nothing for regenerateCmd — the lockfile regenerator is derived from the "
     "same lockfile/manifest beside the bootstrap (and only when the bootstrap "
     "itself was derived) and stamped in the args file and receipt; there is "
@@ -658,6 +748,12 @@ def main(argv=None):
     if regen_cmd:
         args_obj["regenerateCmd"] = regen_cmd
     args_file.write_text(json.dumps(args_obj, indent=2))
+
+    # The add command rides the compiled args file, not the knobs: it is
+    # stamped iff the plan declared packages, and refuses the launch when it
+    # declared some the target's tree can add none of.
+    if not add_command_stage(args_file, receipt, stage, root):
+        return bail()
 
     r = write_dirty_baseline(root)
     dirt_lines = len([l for l in (root / ".claude/ultrapowers/DIRTY_SNAPSHOT")

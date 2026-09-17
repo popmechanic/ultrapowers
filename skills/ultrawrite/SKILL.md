@@ -39,6 +39,19 @@ command from the paths alone, and it knows only pytest, `node fleet/tests/test_*
 `bun test`; a `**Review:** peer` task whose Proof names some other shape is refused at
 `--check` until one of the two is true.
 
+Beside it, an optional `**Dependencies:**` line declares every package the run installs:
+one line, space-separated specs, each `name` or `name@range`, with the single word `dev:`
+marking where the development-only group begins — `**Dependencies:** tailwindcss@^4
+@tailwindcss/vite dev: eslint @shadcn/lint` declares two packages for the app and two for
+development. The range alphabet is closed to what a shell may be handed as one quoted
+word: `^4`, `~1.2`, `4.x` and `==1.0` are specs, `>=1.2` is refused at `--check` with a
+sentence naming the offending word, and so is a second `dev:` or a line naming no package
+at all. A package is declared here and never discovered later: no task of the plan adds
+one by editing `package.json`, `pyproject.toml` or a lockfile. A manifest on a task's
+Files list is edited for a script or a config field, not for a dependency — the driver
+reds a manifest edit outside a task's Files, so a package that is not on this line is a
+package the run never gets.
+
 An optional `**Closes:**` line names the tickets the plan closes. It sits directly under
 `**Goal:**` — the next line — and is one line: `**Closes:** #660 #668`, the numbers
 space-separated, each an issue of the target repository (a bare `#N` means the target to

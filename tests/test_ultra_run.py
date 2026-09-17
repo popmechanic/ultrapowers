@@ -110,8 +110,8 @@ def test_happy_path_receipt(tmp_path):
     # install, so there is no contract left to check.)
     assert [s["stage"] for s in receipt["stages"]] == [
         "fleet-run", "git-repo", "worktree-probe",
-        "compile", "test-command", "bootstrap-command", "dirty-baseline",
-        "base-branch"]
+        "compile", "test-command", "bootstrap-command", "add-command",
+        "dirty-baseline", "base-branch"]
     assert receipt["stages"][0]["detail"] == "fleet run run-test"
     run_dir = repo / ".claude/ultrapowers/run-t1"
     assert (run_dir / "receipt.json").is_file()

@@ -455,6 +455,99 @@ def exam_command_violations(md_text):
     return []
 
 
+# The plan-declared dependencies: the packages a run needs are DECLARED by the
+# operator on one header line beside `**Tech Stack:**` and `**Exam command:**`,
+# never discovered by a task editing a manifest. One line, space-separated
+# package specs, the single word `dev:` marking where the development-only
+# group begins:
+#
+#     **Dependencies:** tailwindcss@^4 @tailwindcss/vite dev: eslint @shadcn/lint
+#
+# Like the exam command, the label is read case-insensitively in both bold
+# spellings and the value may wrap (`_plan_header_value` joins it on spaces).
+DEPENDENCIES_LABEL_RE = re.compile(
+    r"^\*\*\s*dependencies\s*(?::\s*\*\*|\*\*\s*:)\s*(.*)$", re.I)
+# The one group marker; every word after it is development-only.
+DEPENDENCIES_DEV_MARKER = "dev:"
+
+# What a spec may be spelled with. A spec is `name` or `name@range`, where the
+# name carries an optional `@scope/`. Both classes are CLOSED on purpose: the
+# engine hands each spec to `bash -lc` as one single-quoted word, so no quote,
+# space, `;`, `|`, `$`, `<`, `>`, `*` or backtick may appear in one — which
+# refuses a range like `>=1.2` and admits `^4`, `~1.2`, `4.x`, `==1.0`.
+DEPENDENCY_NAME_RE = re.compile(r"^(@[A-Za-z0-9_.-]+/)?[A-Za-z0-9_.-]+$")
+DEPENDENCY_RANGE_RE = re.compile(r"^[A-Za-z0-9_.^~=+-]+$")
+
+
+def _dependencies_label(stripped):
+    m = DEPENDENCIES_LABEL_RE.match(stripped)
+    return m.group(1) if m else None
+
+
+def parse_dependencies(md_text):
+    """The plan's declared packages as `{"runtime": [...], "dev": [...]}`, or
+    None when the header carries no `**Dependencies:**` line — in which case
+    nothing downstream sees the key at all and the run installs exactly what it
+    installed before.
+
+    The words before the first `dev:` word are the runtime group, in order; the
+    words after it are the development group, in order; either list is [] when
+    its group is empty. A second `dev:` word is a refusal (below), not a second
+    split: it stays a word of the development group here so the violation
+    names it rather than silently re-partitioning the line."""
+    value = _plan_header_value(md_text, _dependencies_label)
+    if value is None:
+        return None
+    words = value.split()
+    if DEPENDENCIES_DEV_MARKER in words:
+        cut = words.index(DEPENDENCIES_DEV_MARKER)
+        return {"runtime": words[:cut],
+                "dev": [w for w in words[cut + 1:]
+                        if w != DEPENDENCIES_DEV_MARKER]}
+    return {"runtime": words, "dev": []}
+
+
+def dependencies_violations(md_text):
+    """The declared line's own refusals, in the order a reader meets them: each
+    word that is not a package spec, then a second `dev:` word, then a line
+    that names no package at all. Empty for an absent line and for a
+    well-formed one — a plan without the line is refused nothing."""
+    value = _plan_header_value(md_text, _dependencies_label)
+    if value is None:
+        return []
+    words = value.split()
+    violations = [
+        "dependencies: %s is not a package spec — a spec is `name` or "
+        "`name@range`, and the engine quotes it as one word for the shell, so "
+        "no space, quote or shell operator may appear in it" % word
+        for word in words
+        if word != DEPENDENCIES_DEV_MARKER and not _is_package_spec(word)]
+    if words.count(DEPENDENCIES_DEV_MARKER) > 1:
+        violations.append(
+            "dependencies: a second `dev:` word — the line carries one `dev:` "
+            "marker, and every word after it is development-only")
+    groups = parse_dependencies(md_text)
+    if not groups["runtime"] and not groups["dev"]:
+        violations.append(
+            "dependencies: the line names no package — a declared line "
+            "declares at least one, before the group marker or after it")
+    return violations
+
+
+def _is_package_spec(word):
+    """Whether one word of the declared line is `name` or `name@range`.
+
+    The split is on the LAST `@`, and a leading `@` is a scope rather than a
+    range separator: `@scope/pkg@^1` is the scoped name `@scope/pkg` at range
+    `^1`, and `@scope/pkg` is that name at no range."""
+    name, sep, spec_range = word.rpartition("@")
+    if not sep or not name:
+        name, spec_range = word, None
+    if not DEPENDENCY_NAME_RE.match(name):
+        return False
+    return spec_range is None or bool(DEPENDENCY_RANGE_RE.match(spec_range))
+
+
 def _claims_slot_name(raw):
     """Canonical slot name for a matched label (`stale if` -> `Stale-if`)."""
     key = re.sub(r"[\s-]+", "-", raw.strip().lower())
@@ -1868,6 +1961,9 @@ def collect_violations(plan_path, base_tree=None):
     # the shell that would run it is the plan's, not any one task's.
     violations.extend(exam_command_violations(plan_text))
     violations.extend(exam_shape_violations(plan_text, tasks))
+    # ... and the declared packages beside it, plan-level for the same reason:
+    # the environment the line describes is the run's, not any one task's.
+    violations.extend(dependencies_violations(plan_text))
     for t in tasks:
         violations.extend(t.get("marker_violations", []))
     # A **Commutes:** after the header block is discarded by the runtime
@@ -2931,6 +3027,13 @@ def main(argv=None):
                  if args.base is not None else None)
     if args.check:
         violations = collect_violations(args.plan, base_tree)
+        # The declared-dependencies refusals ride the error channel as well as
+        # the verdict list: a spec the engine would hand to a shell is refused
+        # on stderr here exactly as a plain compile refuses it, so a caller
+        # that reads only the compiler's errors still gets the offending word.
+        dependency_refusals = dependencies_violations(args.plan.read_text())
+        if dependency_refusals:
+            print("\n".join(dependency_refusals), file=sys.stderr)
         if violations:
             print("\n\n".join(violations))
             print()
@@ -3047,6 +3150,7 @@ def main(argv=None):
     grammar_violations = (grammar_violations
                           + constraint_check_violations(plan_text)
                           + exam_command_violations(plan_text)
+                          + dependencies_violations(plan_text)
                           + exam_shape_violations(plan_text, tasks))
     if grammar_violations:
         print("compile_plan: claims-v1 grammar violation(s) — refusing to "
@@ -3208,6 +3312,14 @@ def main(argv=None):
         "constraintChecks": constraint_checks,
     }
 
+    # The plan's declared packages, the one shared literal every consumer of
+    # this compile reads. ABSENT — not null — from both payloads when the
+    # header carries no line, so a plan without one compiles byte-for-byte as
+    # it did before the line existed.
+    dependencies = parse_dependencies(plan_text)
+    if dependencies is not None:
+        result["dependencies"] = dependencies
+
     if emit_launch is not None:
         # The launch file carries the FULL, verbatim, fence-aware task bodies
         # (split_tasks already extracted them fence-aware). Each waves.js task
@@ -3258,6 +3370,10 @@ def main(argv=None):
             # carries none — every other key is unchanged.
             "planClaim": plan_claim,
         }
+        # The same object the stdout result carries, under the same key and on
+        # the same condition — the sandbox reads it back off this file.
+        if dependencies is not None:
+            args_payload["dependencies"] = dependencies
         if args.run_dir is not None:
             args_payload["pluginRoot"] = str(PLUGIN_ROOT)
             args_payload["runDir"] = str(args.run_dir.resolve())

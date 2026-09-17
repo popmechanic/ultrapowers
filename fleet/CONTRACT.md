@@ -99,6 +99,14 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     bootstrap, the suite, the adopt, the weave and the epoch's own `headSha`. A regenerator that
     exits non-zero rewrites nothing, stands in place of the suite exactly as a failed bootstrap
     does (`exit` its own, `paths` empty), and the epoch takes the route a red bootstrap takes.
+    And `driver:dependencies` `{specs, dev, cmd, exit, headSha}` — the runtime specs the plan's
+    `Dependencies:` line declared, the dev specs, the one shell line the driver ran in the
+    integration clone verbatim, its exit code, and the head the run continues from after it: the
+    setup commit when one was made, `reuseHead || baseSha` when the line changed no manifest, and
+    `null` on a non-zero exit. Appended once, at Setup, by a run that ran the line and by no
+    other — a run whose args carry no `dependencies`, and one that declares specs without both
+    `addCmd` and `addDevCmd` (which pushes the judgment call `setup: dependencies declared but no
+    add command` and runs on as at BASE), append none.
     And `driver:reconcile-retry` `{wave, attempt, class}` — the epoch, the 1-based reconcile
     attempt that produced no reply, and the class it died of: the `workerVerdict.class` the worker
     attached to its non-fatal throw, and `null` when the reply was simply `null`. A reconcile
@@ -162,6 +170,17 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     path, over the paths the capture touched, with a path whose base blob already carried a
     `0x00` and a new path the task's `Files` declare (a binary deliverable the plan named) both
     drawing none.
+    The pass reads the same patch's paths one last way: a path whose basename is a bootstrap
+    manifest (`bootstrapManifestChanged`'s own set, at any depth — `client/package.json` is one,
+    `package.json.bak` is not) and that the task's `Files` do not list is a red of the pass routed
+    to the same `fix:<id>:0` repair round with the line in its blocking-issues block (`the patch
+    edits <path> — dependencies are declared on the plan's Dependencies: line and installed at
+    setup, never by a task`), and recorded as one `driver:finding` at `round` `0`, `severity`
+    `blocking`, `actor` `implementer`, `paths` the one path — one red and one row per path. A
+    manifest the task's own `Files` name is a signed, non-dependency edit (a `scripts` entry, a
+    config field) and draws none. The rule is plan-level and fires on every run, a plan with a
+    `Dependencies:` line and a plan without: packages are installed once at Setup, in the
+    integration clone, never in a worker's.
     One more kind records a blocking finding the graded party could not have answered:
     `driver:exam-rejected` `{task, path, detail}` — one per blocking issue of a review round whose
     `detail` names, in backticks, one of the task's Proof `Test:` landing paths (the token equal to
@@ -726,6 +745,27 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   refusal the kernel printed, or the missing `fold` verdict. That one sentence is what the event's
   `reason` carries, what the `reuse fold of <tag>: …` judgment call carries after its colon, and
   what the `reuse refused: <reason>` log line carries. A refusal is never the run's own failure.
+  The declared packages (#1066): after that reuse pass and before the baseline clone is cut, a run
+  whose args carry a `dependencies` object with at least one spec and both `addCmd` and
+  `addDevCmd` runs ONE shell line in the integration clone — `<addCmd> '<spec>' …` over the
+  runtime specs joined by ` && ` to `<addDevCmd> '<spec>' …` over the dev specs, each spec one
+  single-quoted word, and one half alone when the other group is empty. On exit 0 the driver
+  stages every path `git status --porcelain` reports whose basename is a bootstrap manifest — and
+  no other path, so the `node_modules/` the install wrote is never committed — and commits them
+  under the plan's H1 (`setup: dependencies` when the plan has none) with body `setup:
+  dependencies <runtime specs>` and ` dev: <dev specs>` when there are dev specs. That commit is
+  the SETUP HEAD: `adoptedHead` starts there, every task clone is anchored there before its first
+  dispatch, the baseline clone is checked out there, every patch is diffed against it, and it is
+  the run's `$ULTRA_BASE` in the per-task and the integrated pass alike. `report.baseSha` stays
+  the launch BASE — the publish fold reads the run as `BASE..head`, so the pull request carries
+  the setup commit's manifest and lockfile — and `report.setupSha` is the setup head, `null` on
+  every run that made no setup commit. A line that exits 0 and changes no manifest makes no
+  commit and leaves `setupSha` `null`; a line that exits non-zero restores the clone
+  (`git checkout -- .`, `git clean -fd`) and parks the run before any worker of any label is
+  dispatched — one `waveMerges` row `{wave: 1, status: 'TEST_FAILED'}`, one `driver:wave-blocked`
+  carrying `why: 'setup'` and every task id, a `detail` beginning `setup: the dependency install
+  failed (exit <code>)` quoting the installer's own output, `report.tasks` `[]`, and every task
+  named in `unfinished` as `<id>: never dispatched — the dependency install failed at setup`.
   Every worker of a run with a record is an actor on the hub, and knows which issue it is working:
   its process env carries `KATA_SERVER` (the record's url, `https://kata.int.exe.xyz`),
   `KATA_AUTH_TOKEN=edge-injects-the-bearer`
