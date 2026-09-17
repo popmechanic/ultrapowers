@@ -107,7 +107,7 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   a plugin release.
 - `fleet/tests/` — the surviving sims, every `test_*.mjs` there (16 on 2026-09-14: the engine
   sims `test_run_engine_*.mjs`, the launcher sims `test_launch_*.mjs`, the boot sims
-  `test_sandbox_boot_*.mjs`, `test_janitor.mjs`, `test_worker_kata_env.mjs` and
+  `test_sandbox_boot_*.mjs`, `test_worker_kata_env.mjs` and
   `test_sims_are_hermetic.mjs`, which forbids a sim naming a sibling sim), plus the live
   `probe_*.mjs` (see `PROBES.md`) which are run by hand, not by the suite. They reach pytest
   through the bridge, `tests/test_fleet_suite.py`; the list is not enumerated here because it
