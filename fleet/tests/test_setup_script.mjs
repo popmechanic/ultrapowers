@@ -42,7 +42,7 @@
  *        celld's memory thresholds read root cgroup paths an exe VM does not
  *        have, so `CELLD_MAX_RSS_MB` is set per instance, that `celld dev` binds
  *        a second, internal listener so a task passes
- *        `--internal-listen 127.0.0.1:<port>`, and that teardown is SIGTERM then
+ *        the second listener at `127.0.0.1:0`, and that teardown is SIGTERM then
  *        a wait for the port because a hard kill holds it.
  *
  * The Proof legs, in the Proof's own order, and where each is answered below:
@@ -77,7 +77,7 @@
  *            after `-p MemorySwapMax=0`; and the runbook's Traps section, from
  *            `## Traps` to `## Capacity`, carries the `The sandbox's runtime.`
  *            label followed by `CELLD_MAX_RSS_MB`,
- *            `--internal-listen 127.0.0.1:<port>` and `SIGTERM` in that order
+ *            `127.0.0.1:0` and `SIGTERM` in that order
  *
  * Two readings worth writing down, because a later session would otherwise have
  * to reconstruct them:
@@ -276,7 +276,7 @@ const LIMIT_LINE = 'LimitNOFILE=524288'
   const runbook = readFleet('RUNBOOK.md')
   const traps = section(runbook, /^## Traps/, /^## Capacity/)
   assert.ok(
-    /The sandbox's runtime\..*CELLD_MAX_RSS_MB.*--internal-listen 127\.0\.0\.1:<port>.*SIGTERM/.test(traps),
+    /The sandbox's runtime\..*CELLD_MAX_RSS_MB.*127\.0\.0\.1:0.*SIGTERM/.test(traps),
     "(d) [M4] the runbook's Traps section carries `The sandbox's runtime.` and then, in order, `CELLD_MAX_RSS_MB`, `--internal-listen 127.0.0.1:<port>` and `SIGTERM`"
   )
 }
