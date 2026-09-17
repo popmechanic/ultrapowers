@@ -10,3 +10,8 @@
 {"event": "emitted", "wave": 1, "path": "tests/test_authoring_census_amendments.py", "stateBlob": "8f7249900521df4c3ca7a935d3931f2c881019b47356a7b5e05ce49d39f2a9b9", "visibleSha": "c1b07d41ee16137890a869c4eea9ab0a3740920b"}
 {"event": "emitted", "wave": 1, "path": "tests/test_authoring_census_jev.py", "stateBlob": "0c0b51ffe4a4b9bf503b10e83e5878c40f75ae7b0d487ad89a130dda1b63ec7c", "visibleSha": "3554c5b9a4cd688f28596fe5f957a8cbcefac6c8"}
 {"event": "shadow-skipped", "wave": 2, "reason": "wave completed via resolve"}
+{"event": "emitted", "wave": 2, "path": "fleet/CONTRACT.md", "stateBlob": "97720ebe31508630170c8900cf9d50afce50a614a2cdaf0e291202c4377578b9", "visibleSha": "9077443110d055888356826e09148de127ae51fa"}
+{"event": "emitted", "wave": 2, "path": "fleet/run-engine.mjs", "stateBlob": "5b96c4ef8e6080ee4427c6d38e39cf845823b446b90f85ecf0c80a5be0d60359", "visibleSha": "c39c8caf0a304d3b070bcbd30513b8ec1ab080ae"}
+{"event": "emitted", "wave": 2, "path": "fleet/tests/test_run_engine_amendments.mjs", "stateBlob": "0191afb4865be3db80929c2c28db796c1732ae530efaec28a8406455f4dfb6c3", "visibleSha": "4dbc702d63fb5df315f8b49424643714ec31ef1d"}
+{"event": "superseded", "wave": 2, "path": "fleet/tests/test_run_engine_worker_notes.mjs", "reason": "adopt head blob differs from the folded weave"}
+{"event": "emitted", "wave": 2, "path": "skills/ultrapowers/references/report-format.md", "stateBlob": "7239ac1ec9c360024e18a5c41ff7127b28c491d6a4805c0ef6c74434af52a051", "visibleSha": "f5210463dd3b6143b28059d753eeb3ec41e803f7"}
