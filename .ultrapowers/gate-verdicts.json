@@ -1,0 +1,129 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "a47ac82266d4764c651f2392806e13dd0a3278984c2feced22d6227e627c0df4",
+   "verdict": "pass",
+   "reason": "Every clause has a falsifying leg: the ordered stanza bounded by the kata and fleet-files lines, the budget with a padded negative render, the unit line and the engine window with a removed-line negative, and three doc greps whose literals are absent at BASE."
+  },
+  "2": {
+   "hash": "b39ee29a4c923d734f3743dcfd9989418be1b31b2c3f6900ba96defdc0ad1b43",
+   "verdict": "pass",
+   "reason": "Every number recomputes (cpu 3/6; 4GB, 12GB; 6/7/12/12 GB; 8GB under cap 8GB; {2,2,'3','6GB'} and {1,0,'3','3GB'}), both override branches are pinned, the source pins kill the BASE closure, and each sed window has both markers at BASE."
+  },
+  "3": {
+   "hash": "c181daa7237cc55277ce3589ef5af9839f28a881d167d0f812f9c70212df2b17",
+   "verdict": "pass",
+   "reason": "Six operative phrases order-pinned over a window whose markers exist at BASE, the #764 sentence pinned gone by a count-0 that reads 1 at BASE, the new section pinned into place and its literals order-pinned in M2's sequence, and all three knob rows anchored byte for byte."
+  }
+ },
+ "tally": {
+  "base": "3c61d8d795fddd14a3b60cc140bacf0e09fc23d2",
+  "dispatched": 7,
+  "rejected": 4,
+  "rounds": 3,
+  "per_round": {
+   "1": {
+    "dispatched": 3,
+    "rejected": 2
+   },
+   "2": {
+    "dispatched": 2,
+    "rejected": 2
+   },
+   "3": {
+    "dispatched": 2,
+    "rejected": 0
+   }
+  }
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "1",
+   "hash": "a47ac82266d4764c651f2392806e13dd0a3278984c2feced22d6227e627c0df4",
+   "verdict": "pass",
+   "reason": "as recorded"
+  },
+  {
+   "round": 1,
+   "task": "2",
+   "hash": "bbcfd0192214d1d676ffb6af9728f46f5d36acd7d91617cb17cdba464f75f662",
+   "verdict": "fail",
+   "reason": "M5's runbook window end marker not evidenced; M3's launch() clause had no leg on the real call site (launcher's waves is launch_waves); CONTRACT line 469 pins min(memory, 2 + W)GB with no clause owning it."
+  },
+  {
+   "round": 1,
+   "task": "3",
+   "hash": "d96465aee9c7d3ecba9ea9b477811286ddad3b3ce1e52f436fff61b4771e796c",
+   "verdict": "fail",
+   "reason": "M2's sed window included its end line, so the Styling heading's date satisfied the date pin; the five verbs and the two walls were not pinned."
+  },
+  {
+   "round": 2,
+   "task": "2",
+   "hash": "1b83aa450f4df08a0aafe21c9201e08453bfe3c70169c2232463d5974a861171",
+   "verdict": "fail",
+   "reason": "The runbook window's markers were not in the reader's BASE excerpt; fixed by naming the marker phrases as literals in M5."
+  },
+  {
+   "round": 2,
+   "task": "3",
+   "hash": "ce28d5edbd2b12d7f65f95319ff506ecacd25cfe92bb64b2f5c134dc31d903fa",
+   "verdict": "fail",
+   "reason": "M3's 'two knobs unchanged' pinned testCmd only; bootstrapCmd grep added."
+  },
+  {
+   "round": 3,
+   "task": "2",
+   "hash": "b39ee29a4c923d734f3743dcfd9989418be1b31b2c3f6900ba96defdc0ad1b43",
+   "verdict": "pass",
+   "reason": "as recorded"
+  },
+  {
+   "round": 3,
+   "task": "3",
+   "hash": "c181daa7237cc55277ce3589ef5af9839f28a881d167d0f812f9c70212df2b17",
+   "verdict": "pass",
+   "reason": "as recorded"
+  }
+ ],
+ "authoring": {
+  "minutes": 50,
+  "probes": 0,
+  "routing": {
+   "branch": "width",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Adopt both as written",
+     "Adopt with my edits"
+    ],
+    "recommended": "Adopt both as written",
+    "picked": "Adopt both as written"
+   },
+   {
+    "question": "Does the 6 GB floor apply to every run or only runs with state exams",
+    "options": [
+     "Only runs with state exams; plain runs keep 2 GB + tasks",
+     "Every run, 6 GB minimum"
+    ],
+    "recommended": "Only runs with state exams; plain runs keep 2 GB + tasks",
+    "picked": "Only runs with state exams; plain runs keep 2 GB + tasks"
+   },
+   {
+    "question": "Execution handoff",
+    "options": [
+     "Ultrapowers, launch now",
+     "Ultrapowers, but hold the launch",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers, launch now",
+    "picked": "Ultrapowers, launch now"
+   }
+  ]
+ }
+}
