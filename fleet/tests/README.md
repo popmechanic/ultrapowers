@@ -74,8 +74,6 @@ one sim per question:
 
 ## The sandbox boot — `test_sandbox_boot_*`
 
-- `test_sandbox_boot_engine_env.mjs` — the boot starts a run's engine with no
-  renderer address and reads no address file.
 - `test_sandbox_boot_fold_record.mjs` — the boot copies the run's fold record —
   fold logs, conflicts index, narration, resolver briefs and replies, the weave
   sidecar's manifest and event log — onto the evidence branch beside the
