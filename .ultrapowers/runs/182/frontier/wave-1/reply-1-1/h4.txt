@@ -1,0 +1,2 @@
+    text.split(KEY_NAME).length - 1, 0,
+    `(a) [M1] the script's text must contain the string \`${KEY_NAME}\` nowhere — the edge `

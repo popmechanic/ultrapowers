@@ -8,5 +8,15 @@
     "epoch": 2,
     "hunksFile": "/home/exedev/target/.claude/ultrapowers/run-run-182/frontier/wave-1/conflict-1.hunks.txt",
     "hunkCount": 5
+  },
+  {
+    "i": 2,
+    "path": "fleet/tests/test_sandbox_boot_residuals.mjs",
+    "kind": "lines",
+    "dispatchable": true,
+    "reason": "",
+    "epoch": 4,
+    "hunksFile": "/home/exedev/target/.claude/ultrapowers/run-run-182/frontier/wave-1/conflict-2.hunks.txt",
+    "hunkCount": 4
   }
 ]

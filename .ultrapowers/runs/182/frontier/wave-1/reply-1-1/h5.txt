@@ -1,0 +1,1 @@
+    for (const forbidden of ['Authorization', 'Bearer', KEY_NAME]) {

@@ -1,0 +1,2 @@
+ *       `Authorization`, `Bearer` or the API key's name, and the script's text
+ *       holds that name nowhere (`KEY_NAME` below)                  → leg (a)
