@@ -113,3 +113,9 @@
 {"kind":"worker:start","label":"reconcile:wave1:1","role":"writeSide","sessionId":"f8344ddb-00cb-4ad9-8aac-11edaa693163","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-182/clones/integration","model":"opus","id":"01M2Q83MH60001V05SHZ0Y5581","ts":1789634138662}
 {"kind":"worker:end","label":"reconcile:wave1:1","role":"writeSide","sessionId":"f8344ddb-00cb-4ad9-8aac-11edaa693163","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"reason":null,"meter":{"input":2892,"output":20269,"cacheRead":1827079,"cacheCreation":79073,"costUsd":2.2254545,"models":["claude-opus-5"]},"id":"01M2Q8NJQ000002SACNT4MH71J","ts":1789634726624}
 {"kind":"transcript:slice","label":"reconcile:wave1:1","sessionId":"f8344ddb-00cb-4ad9-8aac-11edaa693163","bytes":11216,"id":"01M2Q8NJQB0000X4JVS9NA0YAM","ts":1789634726635}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["1","2","3"],"headSha":"603cec8765ed4e43b48d0831f751fc0141abc4b8","why":"end","applied":{"1":"base","2":"base","3":"base"},"id":"01M2Q8TH5T0000QWFNSXRGFP4H","ts":1789634888890}
+{"kind":"driver:integrated-clean","wave":1,"removed":7,"id":"01M2Q8TH5Z0000A1TPHK73ZFVJ","ts":1789634888895}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/roles/","exit":0,"minor":false,"wave":1,"id":"01M2Q8TH660000KBJCQCD55W81","ts":1789634888902}
+{"kind":"driver:integrated-check","cmd":"node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"minor":false,"wave":1,"id":"01M2Q8THFV00003FCDGMRE11KZ","ts":1789634889211}
+{"kind":"driver:integrated-check","cmd":"test \"$(grep -rIl 'TYPESAFE_API' fleet skills tests hooks | wc -l)\" = 0","exit":0,"minor":false,"wave":1,"id":"01M2Q8THG800007MJBGZCVGZXA","ts":1789634889224}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/jev-client.mjs fleet/sandbox-boot.sh fleet/run-main.mjs","exit":0,"minor":false,"wave":1,"id":"01M2Q8THGG0000N8K0KQFWP5WP","ts":1789634889232}
