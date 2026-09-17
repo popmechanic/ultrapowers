@@ -1,0 +1,346 @@
+{
+  "ok": true,
+  "stamp": "run-176",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-176"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "3 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "add-command",
+      "ok": true,
+      "detail": "no dependencies declared \u2014 nothing to add"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The compiler runs every Proof `Run:` in a worktree at BASE and prints one `GREEN-AT-BASE fact:` line per line that exits 0",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/scripts/compile_plan.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing"
+          ],
+          "produces": [
+            "`green_at_base_lines(tasks, base_tree, timeout_s=GREEN_AT_BASE_TIMEOUT_S) -> list[str]`",
+            "`GREEN_AT_BASE_TIMEOUT_S`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The authoring references teach the tag \u2014 a tagged `Run:` is a prover, an untagged one a guard, and the compiler says which are green at BASE",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/references/plan-markers.md",
+          "skills/ultrawrite/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The launcher carries the `GREEN-AT-BASE fact:` lines onto the launch line, and the runbook names them",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/RUNBOOK.md",
+          "fleet/launch.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The compiler runs every Proof `Run:` in a worktree at BASE and prints one `GREEN-AT-BASE fact:` line per line that exits 0",
+          "files": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "tests/test_compile_plan_green_at_base.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing"
+            ],
+            "produces": [
+              "`green_at_base_lines(tasks, base_tree, timeout_s=GREEN_AT_BASE_TIMEOUT_S) -> list[str]`",
+              "`GREEN_AT_BASE_TIMEOUT_S`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrapowers/scripts/compile_plan.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_compile_plan_green_at_base.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_compile_plan_green_at_base.py",
+          "proofRuns": [
+            "grep -q '^GREEN_AT_BASE_TIMEOUT_S = 30$' skills/ultrapowers/scripts/compile_plan.py",
+            "grep -q '^def green_at_base_lines(tasks, base_tree, timeout_s=GREEN_AT_BASE_TIMEOUT_S)' skills/ultrapowers/scripts/compile_plan.py",
+            "python3 -m pytest -q tests/test_compile_plan_green_at_base.py | tail -1 | grep -qE '^[0-9]+ passed in'"
+          ],
+          "proofGuards": [
+            "tests/test_compile_plan_green_at_base.py"
+          ],
+          "factsheet": {
+            "files": [
+              "skills/ultrapowers/scripts/compile_plan.py",
+              "tests/test_compile_plan_green_at_base.py"
+            ],
+            "deletes": [],
+            "guards": [
+              "tests/test_compile_plan_green_at_base.py"
+            ],
+            "proofTests": [
+              "tests/test_compile_plan_green_at_base.py"
+            ],
+            "landing": {
+              "tests/test_compile_plan_green_at_base.py": "tests/test_compile_plan_green_at_base.py"
+            },
+            "driverOwned": [
+              "tests/test_compile_plan_green_at_base.py"
+            ],
+            "siblingOwned": [
+              "fleet/RUNBOOK.md",
+              "fleet/launch.mjs",
+              "fleet/tests/test_launch_compile_facts.mjs",
+              "skills/ultrapowers/references/plan-markers.md",
+              "skills/ultrawrite/SKILL.md"
+            ],
+            "produces": [
+              "`green_at_base_lines(tasks, base_tree, timeout_s=GREEN_AT_BASE_TIMEOUT_S) -> list[str]`",
+              "`GREEN_AT_BASE_TIMEOUT_S`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "The authoring references teach the tag \u2014 a tagged `Run:` is a prover, an untagged one a guard, and the compiler says which are green at BASE",
+          "files": [
+            "skills/ultrapowers/references/plan-markers.md",
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrapowers/references/plan-markers.md",
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/bullet names a command the driver executes/,/bullet in this slot names/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'tag.*prover.*guard.*exits 0 at BASE.*GREEN-AT-BASE fact:.*cannot falsify its clause.*30 s.*fact, not a refusal'",
+            "sed -n '/^## Proof grammar/,$p' skills/ultrapowers/references/plan-markers.md | tr '\\n' ' ' | grep -q '\\[M.*prover.*guard.*GREEN-AT-BASE fact:.*exits 0 at BASE'",
+            "grep -q 'sends the task to the fix loop' skills/ultrawrite/SKILL.md",
+            "grep -q 'never a loop over a glob' skills/ultrawrite/SKILL.md",
+            "grep -q 'driver:proof-run' skills/ultrapowers/references/plan-markers.md",
+            "grep -q 'ultra/evidence/run-<N>' skills/ultrapowers/references/plan-markers.md"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "skills/ultrapowers/references/plan-markers.md",
+              "skills/ultrawrite/SKILL.md"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [
+              "fleet/RUNBOOK.md",
+              "fleet/launch.mjs",
+              "fleet/tests/test_launch_compile_facts.mjs",
+              "skills/ultrapowers/scripts/compile_plan.py",
+              "tests/test_compile_plan_green_at_base.py"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        },
+        {
+          "id": "3",
+          "title": "The launcher carries the `GREEN-AT-BASE fact:` lines onto the launch line, and the runbook names them",
+          "files": [
+            "fleet/RUNBOOK.md",
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch_compile_facts.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/RUNBOOK.md",
+            "fleet/launch.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_launch_compile_facts.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_launch_compile_facts.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_launch_compile_facts.mjs | grep -q 'ALL TESTS PASSED'",
+            "grep -q \"startsWith('GREEN-AT-BASE fact:')\" fleet/launch.mjs",
+            "sed -n '/^## Per run/,/^## States/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'BASE fact:.*STALE fact:.*GREEN-AT-BASE fact:.*AUTHORING fact:.*launch line'",
+            "sed -n '/^## Per run/,/^## States/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'GREEN-AT-BASE fact:.*fact.*not a refusal'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_launch_compile_facts.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/RUNBOOK.md",
+              "fleet/launch.mjs",
+              "fleet/tests/test_launch_compile_facts.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_launch_compile_facts.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_launch_compile_facts.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_launch_compile_facts.mjs": "fleet/tests/test_launch_compile_facts.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_launch_compile_facts.mjs"
+            ],
+            "siblingOwned": [
+              "skills/ultrapowers/references/plan-markers.md",
+              "skills/ultrapowers/scripts/compile_plan.py",
+              "skills/ultrawrite/SKILL.md",
+              "tests/test_compile_plan_green_at_base.py"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "3 Greens"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- This release a `GREEN-AT-BASE fact:` line is a fact, never a refusal: a compile whose only new output is such lines still prints `PLAN OK` and exits 0, and a plan whose `Run:` lines are all red at BASE compiles byte-identically to BASE's compiler apart from the one reading line.\n- A bare `--check` without `--base`, and a plain compile with or without `--base`, run no `Run:` command and print no `GREEN-AT-BASE fact:` line \u2014 running a plan's commands is what `--base` asks for, never what a grammar check does.\n- Nothing under `fleet/roles/` changes, no new event kind is appended to `events.jsonl`, no new assignment key is added to the VM comment, and no `Check:` line of any plan is executed at BASE \u2014 only Proof `Run:` lines are.\n- No direct Anthropic API call and no `anthropic` SDK enters any script.\n- Findings are about the result \u2014 what the compiler prints, what the launch line carries, what the references say \u2014 never about the order the work was done in, the number of commits, or whether a test was written before its code.",
+    "constraintChecks": [
+      {
+        "cmd": "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+        "minor": false
+      },
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-176/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-176/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-176/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-176/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for addCmd/addDevCmd \u2014 the package-add commands are driver-derived from the same lockfile/manifest beside the bootstrap and stamped in the args file and receipt (only when the plan declares packages); there is no knob for them",
+    "nothing for regenerateCmd \u2014 the lockfile regenerator is derived from the same lockfile/manifest beside the bootstrap (and only when the bootstrap itself was derived) and stamped in the args file and receipt; there is no knob for it",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini",
+  "foldTestCmd": "python3 -m pytest {paths}"
+}
