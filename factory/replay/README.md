@@ -73,5 +73,64 @@ readings part company — 10 each:
 | `plan_prefix_jev_disagrees` | 28 |
 | `would_block_graded_minor` | 25 |
 
-Each row carries a `hand_read: null` for the verdict. `unverified_prefix_jev_disagrees`
+Each row carries its `hand_read` (2026-09-17, Fable). `unverified_prefix_jev_disagrees`
 is empty — Jev agreed with all 118.
+
+## What the hand read said, and the thresholds it chose (2026-09-17, Fable)
+
+62 rows read: the stratified fifty, plus every one of the twelve rows the policy
+would promote at its widest setting — because those twelve *are* the false-block
+risk, and the fifty happened to hold only four of them. Verdicts are in
+`results/handread_50.jsonl`; the thresholds and their bases are in
+`factory/policy.json`, each with its `n` and `window` or an `unread` that says why.
+
+Where Jev was right: 29 of the fifty outright, and ten of ten on the
+`outside_files` stratum — the reviewer's prefix measures *footprint* (where the
+edit landed), `scope_only` asks about *unrequested work*, and a required,
+disclosed out-of-FILES edit is the first and not the second. `subject =
+footprint` is the honest proxy for that prefix (precision 45%, recall 66% at
+conf ≥ 0.8) and it gates nothing.
+
+Where Jev was wrong, three shapes, each of which moved a threshold:
+
+1. **`unverified` is a prior.** Jev says it on 88% of rows. Read as an unconditional
+   demotion it would have suppressed four real defects in the fifty (#40, #43,
+   #44, #49) at confidence 0.31–0.63. So only a *confident* unverified demotes:
+   `t_status = 0.9`, where the label reads precision 54% / recall 92% and a hand
+   read of ten no-prefix rows at ≥ 0.91 found eight right. The promoted set is
+   insensitive to this value across 0.8–0.95.
+2. **`cannot act here` reads as `cannot verify`** (#13, #15) — two verified
+   observations about paths outside FILES came back `unverified`. Conservative
+   in effect; costs recall. A wording candidate for the next replay, not this one.
+3. **`examiner` fires on the word** (#36, #39): a finding that *mentions* a leg or
+   an exam gets actor `examiner` at 0.44–0.59. 91 rows say examiner, median
+   confidence 0.45, six at ≥ 0.8. The blocking rule already needs `implementer`,
+   so this costs nothing there; a plan route it would have caught is missed.
+
+**The promoted twelve** (`t₂ = 0.7, t₃ = 0.6, t₄ = 0.7, t_status = 0.9`): ten right —
+eight unambiguous defects in FILES (a missing probe-arm case; `from_tag`'s silent
+zero; a second issue filed on re-entry; an uncaught `UnicodeDecodeError`; a
+substring grep over a shared log; `--untracked-files=normal` losing a manifest; a
+deleted judgment call still taught at `report-format.md:112`; `failingPaths` not
+deduplicated) and two trivial-but-correct doc rows. Two wrong: run-127/3, a plan
+defect Jev mis-actored at `fixable = 0.60`, which `t₃ = 0.7` removes; and
+run-115/1, a worker's `concern:` disclosure of a budget bump — a note, which the
+factory routes to the `note` set and never to `landing`. At `t₂ = 0.8` the policy
+keeps four of the right ones and loses five real defects, so **`t₂ = 0.7`**: the
+exam is the first value, and one accepted false block in 1,157 (0.09%, upper
+bound) buys five caught defects.
+
+**Plan routing is not yet earned as the regex's replacement.** `actor = plan` at
+≥ 0.8 reads precision 21% / recall 36% against a label whose own recall is
+unknown (six of ten no-prefix routes were right on the hand read — the label had
+missed them). `t₅ = 0.8` with the regex kept as the floor below it, exactly as
+#1127 filed, plus one guard the question's own criterion supplies: a `plan` route
+with `fixable_in_files ≥ 0.5` contradicts the answer that produced it (#6, fix
+0.88, was the one wrong route read).
+
+**Unread, and said so in the file:** `t₁` (`borne_out`, 0.8) and `t₆`
+(`settled_by_fact`, 0.9), both set high on judgment because each *promotes*, with
+`n: 0` and the live reading that measures them first named. Every other set's
+thresholds are `record-only` as their tickets filed them, or carried verbatim
+from the engine (`note.stuck` 0.7, `note.plan_defect` 0.7, n = 779 notes).
+
