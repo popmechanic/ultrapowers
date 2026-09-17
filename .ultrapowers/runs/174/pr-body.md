@@ -1,6 +1,6 @@
 Every review on the record opened by asking the reviewer to fetch its own task text from a JSON file, which it tried to do with a program the sandbox refuses, wasting one to three turns per review. This plan hands the reviewer its task text directly, the way the implementer already gets it, and tells the reviewer in one sentence which instruments it has. Reviews start on the code instead of on a denial, saving about a tenth of a dollar and half a minute per review across every run.
 
-**Merge-ready**
+**Merged** 357bf484e6fa4e2b913a154bc3898f442a13eda2
 
 > Hand the reviewer its task body inline — the `inlineBody` branch — as the implementer already gets it.
 
@@ -34,6 +34,13 @@ Amendments: 1 from workers
 {"mode": "gate", "stamp": "run-174", "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-174/report.json", "branch": "ultra/integration-run-174", "gateCheck": {"verdict": "PASS", "checks": [{"name": "report-parse", "ok": true, "detail": ""}, {"name": "clean-tree", "ok": true, "detail": ""}, {"name": "wave-merges", "ok": true, "detail": ""}, {"name": "head-match", "ok": true, "detail": ""}, {"name": "git-verified", "ok": true, "detail": ""}, {"name": "ancestry", "ok": true, "detail": ""}, {"name": "deliverables", "ok": true, "detail": ""}], "notes": [], "repo": "/home/exedev/target"}, "gateCheckExit": 0, "suite": {"passed": true, "unattributed": [], "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-174/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [417 items]\n\n........................................................................ [ 17%]\n........................................................................ [ 34%]\n........................................................................ [ 51%]\n........................................................................ [ 69%]\n........................................................................ [ 86%]\n.........................................................                [100%]\n======================= 417 passed in 166.93s (0:02:46) ========================\n"}, "verdict": "PASS"}
 
 ```
+
+## Publish fold
+
+- attempt 1: folded
+- attempt 2: folded
+
+https://github.com/popmechanic/ultrapowers/tree/ultra/evidence/run-174/.ultrapowers/runs/174/publish-fold/receipt.json
 
 ### Evidence
 
