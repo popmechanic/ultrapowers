@@ -1,0 +1,94 @@
+{
+  "integrationBranch": "ultra/integration-run-179",
+  "baseSha": "b16dbdb1e97ab49d6d4a2958907bfd3ec7cd3194",
+  "setupSha": null,
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "2",
+      "status": "failed",
+      "reviewVerdict": "agent-error",
+      "notes": "AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proofFixes": 0,
+      "landedAt": 1789632006838,
+      "stateExams": [],
+      "findings": []
+    },
+    {
+      "task": "1",
+      "status": "failed",
+      "reviewVerdict": "agent-error",
+      "notes": "AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proofFixes": 0,
+      "landedAt": 1789632009634,
+      "stateExams": [],
+      "findings": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": false,
+    "output": "not run \u2014 no wave merged",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [],
+  "reviewEconomy": {
+    "reviewerMs": 0,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-179/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [439 items]\n\n........................................................................ [ 16%]\n........................................................................ [ 32%]\n........................................................................ [ 49%]\n........................................................................ [ 65%]\n........................................................................ [ 82%]\n........................................................................ [ 98%]\n.......                                                                  [100%]\n======================= 439 passed in 182.23s (0:03:02) ========================\n"
+  },
+  "waveMerges": [],
+  "frontier": [],
+  "coverage": {
+    "tasks_merged": 0,
+    "tasks_planned": 2,
+    "complete": false
+  },
+  "engineCoverage": null,
+  "missingDeliverables": [
+    {
+      "task": "2",
+      "files": [
+        "fleet/CONTRACT.md",
+        "fleet/RUNBOOK.md"
+      ]
+    },
+    {
+      "task": "1",
+      "files": [
+        "fleet/sandbox-boot.sh",
+        "fleet/tests/test_sandbox_boot_residuals.mjs"
+      ]
+    }
+  ],
+  "gitVerified": false,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 2: infra-death (AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)) \u2014 parked for one retry when a slot frees (no immediate retry into the live storm)",
+    "task 1: infra-death (AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)) \u2014 parked for one retry when a slot frees (no immediate retry into the live storm)",
+    "task 2: slot-free retry after infra-death failed \u2014 AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)",
+    "task 1: slot-free retry after infra-death failed \u2014 AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)"
+  ],
+  "amendments": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

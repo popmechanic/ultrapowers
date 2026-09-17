@@ -28,3 +28,8 @@
 {"kind":"transcript:slice","label":"impl:1","sessionId":"3d766850-a3a8-4d3d-a3af-62fba68f2b4d","bytes":2642,"id":"01M2Q62MEN00001GFGF7Q9WXR5","ts":1789632008661}
 {"kind":"worker:end","label":"exam:1","role":"examiner","sessionId":"e53dbba0-0b8e-4704-ae4e-2c5d4d6e09c2","exitCode":1,"timedOut":false,"outcome":"null","class":"infra","status":429,"reason":null,"meter":{"input":0,"output":0,"cacheRead":0,"cacheCreation":0,"costUsd":0,"models":[]},"id":"01M2Q62ND100006T3QRMSAAHJB","ts":1789632009633}
 {"kind":"transcript:slice","label":"exam:1","sessionId":"e53dbba0-0b8e-4704-ae4e-2c5d4d6e09c2","bytes":2635,"id":"01M2Q62ND10001RQHEVF23323R","ts":1789632009633}
+{"kind":"engine:log","line":"baseline: green on b16dbdb1e97ab49d6d4a2958907bfd3ec7cd3194","id":"01M2Q67ZRD00009SKVJD4XKP4T","ts":1789632184077}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2Q6800W0000CPAA3JYVTEPC","ts":1789632184348}
+{"kind":"driver:stage","stage":"finalize","id":"01M2Q6801C0000YER8NXMGVEA1","ts":1789632184364}
+{"kind":"driver:stage","stage":"gate","id":"01M2Q680390000J5E7FWWF9R48","ts":1789632184425}
+{"kind":"driver:fail","verdict":"gate-blocked","detail":"ultra_gate exited 1 — gate receipt is the terminal artifact","id":"01M2Q6806A0000KWD0ENR4VP77","ts":1789632184522}
