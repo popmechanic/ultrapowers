@@ -238,6 +238,23 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     many of those files existed, `count` the sum over them, both `0` when no row or no file does.
     The row is appended once per task — after the implementer has returned, after the pre-review
     fix round when the pass bought one, and before any reviewer is dispatched.
+    Jev (2026-09-16, the `jev:` seam, #1096 — an experiment whose rollback is deleting the three
+    appends): three more kinds record what Jev was asked and what it answered, and gate nothing.
+    `jev:finding` `{task, round, key, answers}` — one per finding a reviewer raised;
+    `jev:tier` `{task, at, tierChosen, answers}` with `at` one of `dispatch`, `review` and, on the
+    review row, `round`; and `jev:suite-red` `{epoch, failing: [{path, byTask: {<id>: <noul>},
+    artifact: <noul>}]}` — one per fold whose suite came back red. Each is ONE
+    `POST /v1/systemone` at `https://typesafe.int.exe.xyz` through the `typesafe` http-proxy,
+    carrying `{state, model: "jev-latest", questions}` and NO `Authorization` header of its own
+    (the edge injects the bearer; no key is on the box, on disk, in `argv` or in the boot's
+    environment). A call the edge does not answer — a non-2xx, a timeout, a dead socket, an
+    unparsable body, or a state over the 120000-byte budget, for which no call is made at all —
+    is one log line and no row: it never rejects, never parks and never fails the run, and the
+    row is simply absent. A row that IS appended rides to the hub by the `driver:` rule
+    (`kataUidFor`): the task's issue when the row names a task the record knows, the run's issue
+    otherwise. They are read by nothing — no verdict, route, tier, model choice, fold adoption,
+    gate or report field reads one, so for the same canned replies a run with this seam and a run
+    without it dispatch the same labels in the same order and end with the same task statuses.
     Receipts (2026-09-16): a receipt is `paths` and `evidence` — `paths` an array of repo-relative
     path strings, sorted, de-duplicated, never empty; `evidence` is `{ read, against }`, two
     strings of at most 500 characters each, a longer one cut to 499 characters plus `…`. Seven
@@ -606,7 +623,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   - status server: `systemd-run --user --unit=fleet-status -p Restart=on-failure -- busybox httpd -f -p 8000 -h /home/exedev/www`
     (skip when the unit is already active). exe.dev proxies port 8000 at `https://<vm>.exe.xyz/`.
   - engine: `systemd-run --user --unit=fleet-engine-<N> --pipe --wait --collect -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288 --
-    env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz CLAUDE_CODE_OAUTH_TOKEN=placeholder
+    env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz CLAUDE_CODE_OAUTH_TOKEN=placeholder TYPESAFE_BASE_URL=https://typesafe.int.exe.xyz
     ULTRAPOWERS_FLEET_RUN=run-N node <engine>/fleet/run-main.mjs /home/exedev/plans/run-N.md run-N --repo /home/exedev/target [--kata /home/exedev/plans/run-N.kata.json] [--tier …]`,
     cwd `/home/exedev/target`, stdout+stderr teed to `/home/exedev/www/engine.log`; the exit code is the
     service's (`--wait`).
@@ -1050,8 +1067,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   (preflight above); two targets' objects on one VM name two repos, which the edge routes apart.
   The pre-2026-09-11 rule that **no GitHub object rides** `tag:fleet` was superseded by that
   migration: with `attach` refused there is no per-VM grant left to ride, so every object reaches a
-  fleet VM by its own `tag:fleet` policy — including the hub's `kata` **http-proxy**, which is
-  created with `--policy 'tag:fleet'` like the rest. What the `- **Publish:**` rule still forbids is
+  fleet VM by its own `tag:fleet` policy — including the hub's `kata` **http-proxy** and Jev's
+  `typesafe` **http-proxy** (`https://typesafe.int.exe.xyz`, the engine's `TYPESAFE_BASE_URL`),
+  both created with `--policy 'tag:fleet'` like the rest. What the `- **Publish:**` rule still forbids is
   the *attachment*: no GitHub integration is attached to the tag, because nothing is attached at all.
 - **Doctor (`fleet/doctor.mjs`) — eight rows, this order, `ROW_IDS`:**
   | id | what it reads | green when |

@@ -268,6 +268,8 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   subscription reaches the sandbox as an edge-injected bearer: `ANTHROPIC_BASE_URL` points at
   `claude-max.int.exe.xyz`, `CLAUDE_CODE_OAUTH_TOKEN` is a placeholder, and `claude auth status`
   has to show `oauth_token` — a run showing `x-api-key` is billing somewhere else.
+  TypeSafe (`api.typesafe.ai`) is reached the same way, as the `typesafe` http-proxy at the edge — by
+  the boot and the engine only, for judgments over prose and the hunks they name, never generation and never a fact.
 - **The installed plugin lags the repo.** Editing files here does not change the running plugin until
   `/plugin` re-resolves the new version (interactive terminal only) **and** a new session starts. Skill
   text reloads in-session; hook/manifest changes need a new session.

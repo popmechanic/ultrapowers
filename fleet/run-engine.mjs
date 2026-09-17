@@ -1577,6 +1577,13 @@ export async function runEngine({
   // and writes the run's record back there; absent, the engine makes no request
   // and behaves exactly as it does without a hub.
   kata,
+  // The Jev client (optional): `fleet/jev-client.mjs`'s `makeJevClient`, built
+  // by run-main from `TYPESAFE_BASE_URL` alone — set by the sandbox boot and
+  // unset on the laptop and in every sim, so no client is built and no call is
+  // made anywhere but a fleet VM. Present, it is what `jevRow` below asks; the
+  // rows it produces gate nothing (#1096), so an engine handed none behaves
+  // exactly as it does with one whose every answer is `null`.
+  jev,
   // The run's event log (optional): run-main's `makeEventLog`, the sink the
   // workers' envelopes and the phase marks are appended through — lines this
   // engine never writes itself. With a hub on, the engine subscribes to it and
@@ -1593,6 +1600,14 @@ export async function runEngine({
   // against the original BASE and re-fold wave 1's work into every patch.
   patchBase,
 }) {
+  // Before a clone, a dispatch or a hub read: a `jev` that is not a client is
+  // a wiring mistake at the call site, and the one thing it must not do is
+  // silently answer nothing for a whole run. An ABSENT `jev` is the ordinary
+  // case and says nothing at all.
+  if (jev !== undefined && typeof (jev && jev.ask) !== 'function') {
+    throw new Error('jev: client has no ask() — expected makeJevClient()\'s { ask }, got ' +
+      (jev === null ? 'null' : typeof jev))
+  }
   const roles = loadRoles(rolesDir)
   const sh = shOf(exec, args.toolchainBin)
   const git = gitOf(exec)
@@ -1727,7 +1742,11 @@ export async function runEngine({
   const MIRRORED_ENVELOPES = new Set(['worker:start', 'worker:end'])
   const kataUidFor = (e) => {
     const kind = String((e && e.kind) || '')
-    if (kind.startsWith('driver:')) {
+    // `jev:` rows route by the `driver:` rule and by nothing of their own: a
+    // reading the driver took about a task belongs on that task's issue,
+    // exactly where the driver's own narration of it goes, and a reading about
+    // the run (`jev:suite-red`) belongs on the run's.
+    if (kind.startsWith('driver:') || kind.startsWith('jev:')) {
       const row = (typeof e.task === 'string') ? kataRowOf(e.task) : null
       return row ? row.uid : kataRunUid
     }
@@ -1890,6 +1909,31 @@ export async function runEngine({
     // the run, on the task's issue when the event names a task the record
     // knows, and on the run's issue otherwise (`kataUidFor`).
     mirrorToHub(e, line)
+  }
+  // ── the Jev seam, one closure for every row kind that rides it ─────────────
+  // Ask Jev one question set and, when it answered, append `row` with those
+  // answers on it. There is exactly one way this fails and it is the same way
+  // every time: no client, a refusal, or a throw the client somehow let out —
+  // all of them resolve `null` and append NOTHING, so the row is simply absent
+  // from the record. That absence is the whole contract (#1096): no verdict,
+  // route, tier, model choice, fold adoption, gate or report field reads a
+  // `jev:` row, so a run whose every call failed dispatches the same labels in
+  // the same order and ends with the same task statuses as one whose calls all
+  // answered.
+  const jevRow = async (row, { state, questions }) => {
+    if (!jev) return null
+    let answers = null
+    try {
+      answers = await jev.ask({ state, questions })
+    } catch (e) {
+      // `ask` is documented never to reject; a client that did anyway is still
+      // one log line and no row.
+      log('jev: ask threw: ' + String((e && e.message) || e).slice(0, 200))
+      return null
+    }
+    if (!answers) return null
+    appendEvent({ ...row, answers })
+    return answers
   }
   // ── the bare-suite reading, one row per task an implementer worked ─────────
   // The engine holds no copy of a worker's transcript: `run-worker.mjs` writes

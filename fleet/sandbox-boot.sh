@@ -117,6 +117,12 @@ REFLECTION_URL="https://reflection.int.exe.xyz"
 NOTIFY_URL="https://notify.int.exe.xyz/"
 GITHUB_INT_HOST="github.int.exe.xyz"
 ANTHROPIC_PROXY_URL="https://claude-max.int.exe.xyz"
+# Jev, behind the same exe.dev auth proxy: the `typesafe` http-proxy on
+# `tag:fleet`, created like `claude-max` and `kata`. The request carries no
+# bearer of its own — the edge injects it — so this hostname is the whole of
+# what the box holds, and HTTPS is not optional: `http` 301s, and a followed
+# 301 turns a POST into a GET (run-110).
+TYPESAFE_PROXY_URL="https://typesafe.int.exe.xyz"
 # The kata daemon, behind the hub's exe.dev auth proxy. The request carries no
 # bearer of its own: the edge injects the peer key, which is the whole reason a
 # sandbox that holds no kata token at all can still be answered, and the daemon
@@ -1218,6 +1224,7 @@ run_engine() {
     -p "WorkingDirectory=$TARGET_DIR" -- \
     env -u CLAUDE_CONFIG_DIR \
       "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
+      "TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL" \
       "CLAUDE_CODE_OAUTH_TOKEN=placeholder" \
       "ULTRAPOWERS_FLEET_RUN=$RUN_ID" \
       node "$ENGINE_REPO_DIR/fleet/run-main.mjs" \

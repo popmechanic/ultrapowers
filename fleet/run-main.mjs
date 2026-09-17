@@ -51,6 +51,7 @@ import {
 import { runEngine } from './run-engine.mjs'
 import { createRunWorker } from './run-worker.mjs'
 import { makeKataClient, httpTransport } from './kata-client.mjs'
+import { makeJevClient } from './jev-client.mjs'
 
 // ONE VARIABLE BECAME TWO (#575, spec §1). `ENGINE_DIR` is THIS module's own
 // repository, resolved from its own location: the kernel scripts, the role
@@ -664,6 +665,9 @@ async function runMainInner(parsed, deps, hub) {
       transport: httpTransport({ url: record.url }),
       actor: 'engine:' + id,
     }),
+    // The Jev client, from the edge hostname alone: no record, no token, no
+    // file. A sim hands in a fake and no request leaves the box.
+    jevClientFor = (baseUrl) => makeJevClient({ baseUrl, log }),
   } = deps
   const { planPath, runId, tier, implementerEffort, testCmd, bootstrapCmd, cli,
           kata: kataPath } = parsed
@@ -789,6 +793,16 @@ async function runMainInner(parsed, deps, hub) {
     }
     stage('kata', 'record ' + kataPath + ' → ' + String(kataRecord.url))
   }
+
+  // The Jev client, built from ONE thing: the edge hostname the sandbox boot
+  // puts in the engine unit's environment. There is no record to read, no file
+  // to find and no key to carry — the `typesafe` http-proxy injects the bearer
+  // at the edge. On the laptop and in every sim `TYPESAFE_BASE_URL` is unset,
+  // so no client is built, the engine is handed no `jev` key at all, and no
+  // call is made anywhere.
+  const jev = (typeof env.TYPESAFE_BASE_URL === 'string' && env.TYPESAFE_BASE_URL)
+    ? jevClientFor(env.TYPESAFE_BASE_URL)
+    : null
 
   // 2. Fill tiers, write back, validate.
   const filled = fillTiers(argsObj, tier)
@@ -937,6 +951,7 @@ async function runMainInner(parsed, deps, hub) {
       // the record is which project and which issue each task is.
       args: { ...launchArgs, width: widthOf(launchArgs), ...(kata ? { kataRecord } : {}) },
       ...(kata ? { kata } : {}),
+      ...(jev ? { jev } : {}),
       agent,
       parallel: boundedParallel(widthOf(launchArgs)),
       exec,
