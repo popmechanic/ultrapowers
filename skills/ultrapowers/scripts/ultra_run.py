@@ -92,6 +92,29 @@ def detect_test_cmd(root):
     return None, None
 
 
+def derive_fold_test_cmd(rule):
+    """The SCOPED runner a wave fold uses, derived from the same rule
+    `detect_test_cmd` returned. A wave fold judges the wave, so it runs the
+    wave's own exams: `(template, pattern)` where the template carries exactly
+    one `{paths}` token the engine substitutes and the pattern is a JavaScript
+    `RegExp` source the engine matches against repo-relative paths. The pattern
+    is what keeps the argv honest — the pytest one keeps `.mjs` sims and
+    fixtures out of a pytest argv, the Bun one keeps seeds and source out of
+    `bun test`.
+
+    Only the two runners that take a file list derive one. The typecheck half
+    of a Bun target's `bun run test` is deliberately NOT here: the engine runs
+    this command and nothing else at the fold, so a target that wants its
+    typecheck at every fold writes `- Check: bunx tsc --noEmit` in its Global
+    Constraints. Every other rule — and no rule at all — folds as at BASE, so
+    `(None, None)` leaves both keys off the args file entirely."""
+    if rule in ("pytest-ini", "pyproject-pytest"):
+        return "python3 -m pytest {paths}", r"(^|/)test_[^/]+\.py$"
+    if rule in ("package-json-bun", "bun-lockfile"):
+        return "bun test {paths}", r"\.test\.tsx?$"
+    return None, None
+
+
 def _pip_externally_managed():
     """PEP 668: whether the `python3` on PATH (the one a derived `python3 -m
     pip` would run) refuses installs outside a venv. Probed from a neutral cwd
@@ -707,9 +730,16 @@ def main(argv=None):
                           "or omit the flag for detection")
             return bail()
         test_cmd, test_src = knob, "knob"
+        # A knob is the operator's whole answer: the run-wide suite is theirs,
+        # and so is the fold's. Deriving a scoped runner from a command nobody
+        # detected would fold against a template the operator never wrote.
+        fold_cmd, fold_pattern = None, None
     else:
         test_cmd, rule = detect_test_cmd(root)
         test_src = ("detected:" + rule) if test_cmd else None
+        # Read here and not below: `rule` is rebound by the bootstrap branch.
+        fold_cmd, fold_pattern = derive_fold_test_cmd(rule) if test_cmd \
+            else (None, None)
     if not stage("test-command", bool(test_cmd),
                  success=("%s (%s)" % (test_cmd, test_src)) if test_cmd else "",
                  failure="no test command detected — pass --test-cmd <run-wide "
@@ -747,6 +777,14 @@ def main(argv=None):
         args_obj["bootstrapCmd"] = bootstrap_cmd
     if regen_cmd:
         args_obj["regenerateCmd"] = regen_cmd
+    # The wave fold's own suite (cut 2 of 2026-09-17): the target's runner over
+    # the files the wave touched or named as its exams. Both keys or neither —
+    # an args file with a template and no pattern would fold everything the
+    # engine could not filter. Absent, not `null`, so a target that derives
+    # none writes exactly the args file BASE writes.
+    if fold_cmd and fold_pattern:
+        args_obj["foldTestCmd"] = fold_cmd
+        args_obj["foldTestPattern"] = fold_pattern
     args_file.write_text(json.dumps(args_obj, indent=2))
 
     # The add command rides the compiled args file, not the knobs: it is
@@ -791,6 +829,8 @@ def main(argv=None):
     if regen_cmd:
         receipt["regenerateCmd"] = regen_cmd
         receipt["regenerateCmdSource"] = regen_src
+    if fold_cmd and fold_pattern:
+        receipt["foldTestCmd"] = fold_cmd
     (run_dir / "receipt.json").write_text(json.dumps(receipt, indent=2))
     print(json.dumps(receipt, indent=2))
     return 0

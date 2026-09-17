@@ -632,6 +632,46 @@ def _backtick_command_violation(kind, command, task_id=None):
             % (kind, where, command[:80], BACKTICK_COMMAND_NOTE))
 
 
+# One claim, one prover: an exam proves its own claim and never spawns a test
+# runner over its neighbours, because regression is the fold's one suite run
+# per merge (19 of 29 fixture exam files spawned runners; the fold suite grew
+# from 2.4 to 19 minutes). A Proof `Run:` that names two exams at once — or the
+# bare `tests/state-exams` directory, which names all of them — is that sweep
+# written into the plan, so the compiler refuses it where an author can still
+# split it. The boundary is `command_names_path`'s alphabet, so a path inside
+# quotes, a pipeline or a `$(...)` counts and `tests/state-examsx/a` does not;
+# `tests/state-exams/a.test.ts.bak` is its own path, not `a.test.ts`.
+STATE_EXAM_PATH_RE = re.compile(
+    r"(?<![\w./-])tests/state-exams(?:/[\w./-]*)?(?![\w./-])")
+# The two spellings of the directory itself — a sweep over every exam there is.
+STATE_EXAM_DIR_TOKENS = ("tests/state-exams", "tests/state-exams/")
+# The refusal's own lead-in, named once: `_exam_sweep_run_violation` builds the
+# line with it and `--check` finds the line by it, so the wording an author
+# reads and the wording the error channel carries cannot drift apart.
+EXAM_SWEEP_REFUSAL = "grammar: Run: one Run, one exam"
+
+
+def _exam_sweep_run_violation(command, task_id):
+    """The `grammar:` line a Proof `Run:` sweeping `tests/state-exams/` draws.
+
+    `None` unless the command names, as whole tokens, either two or more
+    distinct paths under `tests/state-exams/` or the bare directory. A single
+    exam path is the shape this rule exists to leave alone, and `Check:` lines
+    are not read by it at all — a sweep the operator wants is written once in
+    the owning task's own `Run:`. The command is quoted to its first 80
+    characters, as the backtick refusal quotes it."""
+    seen = []
+    for match in STATE_EXAM_PATH_RE.findall(command):
+        if match not in seen:
+            seen.append(match)
+    bare = any(token in STATE_EXAM_DIR_TOKENS for token in seen)
+    files = [token for token in seen if token not in STATE_EXAM_DIR_TOKENS]
+    if not bare and len(files) < 2:
+        return None
+    return ("%s — task %s: %s names %d paths under tests/state-exams/"
+            % (EXAM_SWEEP_REFUSAL, task_id, command[:80], len(seen)))
+
+
 # --- Clause-to-leg citation (#554) -------------------------------------------
 # run-51's proof gate rejected 11 of 24 pairs, every one for a gap a parser can
 # see: a Machine clause no leg examined, a universal or negation no leg could
@@ -961,6 +1001,9 @@ def parse_claims_body(body, task_id, plan_claim=None):
             if "`" in command:
                 violations.append(
                     _backtick_command_violation("Run", command, task_id))
+            sweep = _exam_sweep_run_violation(command, task_id)
+            if sweep is not None:
+                violations.append(sweep)
     for path in sorted(proof_tests & impl_paths):
         violations.append(
             "grammar: Proof test paths must be disjoint from implementation "
@@ -3034,6 +3077,16 @@ def main(argv=None):
         dependency_refusals = dependencies_violations(args.plan.read_text())
         if dependency_refusals:
             print("\n".join(dependency_refusals), file=sys.stderr)
+        # The exam-sweep refusal rides the error channel too, for the same
+        # reason: a `Run:` naming two exams at once is a sweep the fold's one
+        # suite run already covers, and a caller that reads only the compiler's
+        # errors still gets the offending command. The verdict list on stdout
+        # is unchanged — this is an echo, not a move.
+        sweep_refusals = [line for violation in violations
+                          for line in violation.splitlines()
+                          if line.startswith(EXAM_SWEEP_REFUSAL)]
+        if sweep_refusals:
+            print("\n".join(sweep_refusals), file=sys.stderr)
         if violations:
             print("\n\n".join(violations))
             print()

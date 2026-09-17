@@ -15,7 +15,11 @@ each finding is right (or, if one is genuinely wrong, say so in your summary
 with the evidence rather than churning the code), make the fixes, run the
 commands the `PROOFS:` block lists until they pass, and commit. Those are the
 commands the driver re-runs on what you return; a block that says it lists none
-means the exam in your tree is the measurement.
+means the exam in your tree is the measurement. Those commands are what you
+run, and never the project's whole suite — a bare `bun test`, `bun run test`,
+`npm test`, `pnpm test`, `pytest` or `python3 -m pytest` with no path is not
+yours to run — because the fold runs the suite once per merge, and a green
+suite in your tree proves nothing that merge will not prove again.
 
 An issue may carry a `PROPOSED PATCH` from the referee: apply it when it is right; when it is not, say why in your summary.
 It is a suggestion the referee could write out, not a verdict on how to fix it.
