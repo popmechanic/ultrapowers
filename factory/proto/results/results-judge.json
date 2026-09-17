@@ -1,0 +1,121 @@
+[
+ {
+  "arm": "judge",
+  "run": 1,
+  "wall": 106.205,
+  "cost": 0.5069496,
+  "suiteExit": 0,
+  "rows": [
+   {
+    "task": "1",
+    "k": 1,
+    "examExit": 0,
+    "claim": 0.94,
+    "refereeBlocking": 0,
+    "fixRound": false
+   },
+   {
+    "task": "3",
+    "k": 1,
+    "examExit": 0,
+    "claim": 0.95,
+    "refereeBlocking": 0,
+    "fixRound": false
+   },
+   {
+    "task": "2",
+    "k": 1,
+    "examExit": 0,
+    "claim": 0.93,
+    "refereeBlocking": 0,
+    "fixRound": false
+   }
+  ],
+  "denials": [
+   "impl:2 widgetkit/widget.py"
+  ],
+  "jev": {
+   "calls": 6,
+   "tokens": 6832,
+   "ms": 1716
+  }
+ },
+ {
+  "arm": "judge",
+  "run": 2,
+  "wall": 50.004,
+  "cost": 0.3635224,
+  "suiteExit": 0,
+  "rows": [
+   {
+    "task": "1",
+    "k": 1,
+    "examExit": 0,
+    "claim": 0.95,
+    "refereeBlocking": 0,
+    "fixRound": false
+   },
+   {
+    "task": "3",
+    "k": 1,
+    "examExit": 0,
+    "claim": 0.95,
+    "refereeBlocking": 0,
+    "fixRound": false
+   },
+   {
+    "task": "2",
+    "k": 1,
+    "examExit": 0,
+    "claim": 0.94,
+    "refereeBlocking": 0,
+    "fixRound": false
+   }
+  ],
+  "denials": [],
+  "jev": {
+   "calls": 6,
+   "tokens": 7150,
+   "ms": 1559
+  }
+ },
+ {
+  "arm": "judge",
+  "run": 3,
+  "wall": 32.42,
+  "cost": 0.35669480000000003,
+  "suiteExit": 0,
+  "rows": [
+   {
+    "task": "1",
+    "k": 1,
+    "examExit": 0,
+    "claim": 0.95,
+    "refereeBlocking": 0,
+    "fixRound": false
+   },
+   {
+    "task": "3",
+    "k": 1,
+    "examExit": 0,
+    "claim": 0.95,
+    "refereeBlocking": 0,
+    "fixRound": false
+   },
+   {
+    "task": "2",
+    "k": 1,
+    "examExit": 0,
+    "claim": 0.94,
+    "refereeBlocking": 0,
+    "fixRound": false
+   }
+  ],
+  "denials": [],
+  "jev": {
+   "calls": 6,
+   "tokens": 6868,
+   "ms": 2071
+  }
+ }
+]
