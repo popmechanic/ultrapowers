@@ -227,6 +227,11 @@ BRANCH_HEAD=""
 # The squash commit the PR merged as, once the sandbox has merged it. Empty is
 # `null` on the page: a PR still open, or one deliberately left open.
 MERGED_SHA=""
+# The disclosures ticket's URL, once its POST answered 2xx. The PR's own record
+# in miniature and for the same reason: filing an issue is not idempotent by
+# construction, so the page is what makes it idempotent — a re-entry reads this
+# cell before `file_disclosures` runs and files no second ticket.
+DISCLOSURES_URL=""
 # What the `done` phase says about the merge — `merged <sha>`, or
 # `left open: <reason>`. Set by `merge_pr`, read by `do_boot`.
 MERGE_NOTE=""
@@ -557,13 +562,17 @@ write_status() { # $1 = state, $2 = phase (optional, defaults to the current one
   if [ "$#" -ge 2 ]; then PHASE="$2"; fi
   mkdir -p "$WWW_DIR"
   [ -n "$STARTED_AT" ] || STARTED_AT="$(now_iso)"
-  local pr_cell="null" author_cell="null" merged_cell="null" err_cell="null" tmp
+  local pr_cell="null" author_cell="null" merged_cell="null" disclosures_cell="null" err_cell="null" tmp
   [ -n "$PR_URL" ] && pr_cell="\"$(json_escape "$PR_URL")\""
   [ -n "$PR_AUTHOR" ] && author_cell="\"$(json_escape "$PR_AUTHOR")\""
   # `merged` is a cell on EVERY page, null until the sandbox has merged: a
   # reader of the evidence branch can tell a PR that went in from one left open
   # without opening GitHub.
   [ -n "$MERGED_SHA" ] && merged_cell="\"$(json_escape "$MERGED_SHA")\""
+  # `disclosures` sits beside the PR it was filed behind: the ticket's URL once
+  # its POST answered 2xx, null before that and on a run that files none. On
+  # every page, because that is what a re-entry reads to know it already filed.
+  [ -n "$DISCLOSURES_URL" ] && disclosures_cell="\"$(json_escape "$DISCLOSURES_URL")\""
   [ -n "$ERROR" ] && err_cell="\"$(json_escape "$ERROR")\""
   # THE LAST CELL ON THE PAGE, always, and never anywhere else: `json_field`
   # answers the FIRST `"name": "value"` match in the file, so a task cell's own
@@ -575,7 +584,7 @@ write_status() { # $1 = state, $2 = phase (optional, defaults to the current one
   [ -n "$tasks_cell" ] || tasks_cell="{}"
   tmp="$STATUS_FILE.tmp.$$"
   cat >"$tmp" <<EOF
-{"run":"$(json_escape "$RUN_N")","state":"$(json_escape "$STATE")","phase":"$(json_escape "$PHASE")","pr":$pr_cell,"prAuthor":$author_cell,"merged":$merged_cell,"branch":"$(json_escape "$BRANCH")","vm":"$(json_escape "$VM_NAME")","startedAt":"$STARTED_AT","updatedAt":"$(now_iso)","error":$err_cell,"tasks":$tasks_cell}
+{"run":"$(json_escape "$RUN_N")","state":"$(json_escape "$STATE")","phase":"$(json_escape "$PHASE")","pr":$pr_cell,"prAuthor":$author_cell,"merged":$merged_cell,"disclosures":$disclosures_cell,"branch":"$(json_escape "$BRANCH")","vm":"$(json_escape "$VM_NAME")","startedAt":"$STARTED_AT","updatedAt":"$(now_iso)","error":$err_cell,"tasks":$tasks_cell}
 EOF
   mv "$tmp" "$STATUS_FILE"
   log "status: state=$STATE phase=$PHASE"
@@ -3023,6 +3032,16 @@ file_disclosures() {
   local items count heading title body payload answer code reply url
   # A run that opened no PR files no ticket: the body's first line is the PR.
   [ -n "$PR_URL" ] || return 0
+  # RE-ENTRY, the ticket's own guard — GUARD 2's twin, and needed for the same
+  # reason. On a re-entry `PR_URL` is set from the page rather than by
+  # `publish`, so the precondition above is satisfied on exactly the boot that
+  # already filed; without this the second boot of a run posts a SECOND issue
+  # with the same title and the same boxes. The page's `disclosures` cell is
+  # the proof that this run filed, so a cell that carries a URL ends the step.
+  if [ -n "$DISCLOSURES_URL" ]; then
+    log "disclosures: $DISCLOSURES_URL already recorded — not filing a second ticket"
+    return 0
+  fi
   items="$(disclosure_items || true)"
   # Nothing disclosed is no issue — and no REST call to make one with.
   [ -n "$items" ] || return 0
@@ -3050,8 +3069,11 @@ file_disclosures() {
     return 0
   }
   log "disclosures: $url ($count)"
-  # The filing's own record, beside the PR's: the ticket and how many boxes it
-  # carries. No cell on the status page — the log line and this event are it.
+  # The filing's own record, beside the PR's: the ticket, how many boxes it
+  # carries, and the cell the next boot of this run reads to know it is done.
+  # The cell is set here and nowhere else — after the 2xx, so a refused POST
+  # leaves it null and the next boot files the ticket this one could not.
+  DISCLOSURES_URL="$url"
   append_event publish:disclosures "url=s:$url" "items=i:$count"
   return 0
 }
@@ -3399,6 +3421,9 @@ do_boot() {
   PR_URL="$(read_status_field pr)"
   PR_AUTHOR="$(read_status_field prAuthor)"
   MERGED_SHA="$(read_status_field merged)"
+  # Read beside `pr` and for the same reason: the disclosures ticket is the
+  # other step of the publish that a second POST would duplicate.
+  DISCLOSURES_URL="$(read_status_field disclosures)"
   VM_NAME="$(read_status_field vm)"
   start_status_server
   # RE-ENTRY, GUARD 1. A page that already reached a terminal state with the

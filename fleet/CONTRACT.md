@@ -709,7 +709,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     meaningless through the edge — the aggregate host proxies `/repos/<owner>/<repo>/…` only, and
     `/user` answers 403 from the edge itself — so nothing asks them.
   - re-entry is idempotent: a page already `done`/`parked`/`failed` with the engine marker present exits 0;
-    a recorded `pr` is never opened twice; clones present are not re-cloned; `.ultrapowers/runs/<N>/` is
+    a recorded `pr` is never opened twice and a recorded disclosures ticket is never filed twice (the
+    page's `disclosures` cell is that ticket's record, read beside `pr` before the first write);
+    clones present are not re-cloned; `.ultrapowers/runs/<N>/` is
     never checked out over. A failure at ANY step commits and pushes a `failed` page before exiting
     (pre-clone included).
   - merge: after a gate-green publish the script merges on ITS OWN EVIDENCE and asks the target for
@@ -797,8 +799,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `addDevCmd` runs ONE shell line in the integration clone — `<addCmd> '<spec>' …` over the
   runtime specs joined by ` && ` to `<addDevCmd> '<spec>' …` over the dev specs, each spec one
   single-quoted word, and one half alone when the other group is empty. On exit 0 the driver
-  stages every path `git status --porcelain` reports whose basename is a bootstrap manifest — and
-  no other path, so the `node_modules/` the install wrote is never committed — and commits them
+  stages every path `git status --porcelain -uall` reports whose basename is a bootstrap manifest —
+  and no other path, and never a path carrying a `node_modules/` segment whatever its basename, so
+  the vendored tree the install wrote is never committed while a manifest the add command created
+  in a directory that did not exist at BASE (`client/package.json`) is — and commits them
   under the plan's H1 (`setup: dependencies` when the plan has none) with body `setup:
   dependencies <runtime specs>` and ` dev: <dev specs>` when there are dev specs. That commit is
   the SETUP HEAD: `adoptedHead` starts there, every task clone is anchored there before its first
@@ -929,7 +933,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `work.state` (`parked` or `failed`), `work.attention` (`needs-human`) and `work.attention_msg`
   (the page's error head) — the three flat keys the boot-script bullet above spells — and the
   operator resolves it and closes it by hand. Only a run that ended `done` is closed, by the boot.
-- **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"wave":"<n or null>","state":"queued|waiting|examining|implementing|proving|reviewing|fixing|folded|failed","role":"<worker label or null>","lastProof":"{cmd, exit, ts} or null","park":"<detail or null>","attention":"{value, msg, ts} or null","blockedBy":"[<task ids>] or null"}}}`
+- **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","disclosures":"<url or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"wave":"<n or null>","state":"queued|waiting|examining|implementing|proving|reviewing|fixing|folded|failed","role":"<worker label or null>","lastProof":"{cmd, exit, ts} or null","park":"<detail or null>","attention":"{value, msg, ts} or null","blockedBy":"[<task ids>] or null"}}}`
   — the SAME bytes are served at `/status.json` and committed to
   `.ultrapowers/runs/<N>/status.json` on `ultra/evidence-run-<N>` at every transition **and, while
   the engine runs, on the first refresher poll that has seen either `FLEET_COMMIT_EVENTS` new lines
@@ -1019,6 +1023,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `body` the PR URL, a blank line and one `- [ ] task <id> — <text>` box per entry in report order,
   and NO `labels` key. A run with no such entry, and a run that opened no PR, files nothing; a POST
   that is refused is one log line and the merge goes on unchanged.
+  The ticket's URL is the page's `disclosures` cell once that POST answers 2xx — `null` before it,
+  on a refusal and on a run that files none — which is what makes the filing idempotent across a
+  re-entry the way `pr` makes the PR idempotent.
   The publish record is three event kinds — four with the ticket's `publish:disclosures`
   (`url`, `items`), appended once its POST answers 2xx — appended to the run's `events.jsonl`
   beside the engine's own and carrying the same `id`/`ts` stamp, in the order the steps run:
