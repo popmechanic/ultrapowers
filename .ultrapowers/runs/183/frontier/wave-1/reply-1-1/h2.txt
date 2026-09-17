@@ -1,0 +1,4 @@
+ * `Run:` lines — no key env-var name in the script, the `TYPESAFE_URL`
+ * definition verbatim — are the driver's to run, and leg (a) names them; the
+ * same two readings are made here directly off the script's text, which is the
+ * reading this file can make on its own.
