@@ -1,0 +1,11 @@
+{"kind":"run:open","runId":"run-178","base":"","source":"fleet/run-main.mjs","id":"01M2Q45VXD0000D61DXR2V6NED","ts":1789630017453}
+{"kind":"driver:stage","stage":"kata","detail":"record /home/exedev/plans/run-178.kata.json → https://kata.int.exe.xyz","id":"01M2Q45VXE00009171QPCFABM4","ts":1789630017454}
+{"kind":"driver:stage","stage":"tiers","detail":"3 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M2Q45VXF0000YQERXTXCG7HX","ts":1789630017455}
+{"kind":"driver:stage","stage":"provision","detail":"BASE 6104ae7e472121485d37287a5b10f501090dd838; 3 task clone(s) + integration","id":"01M2Q45W6N0000PBRHQYNYH7BZ","ts":1789630017749}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M2Q45WMJ0000AH37A27GJDDT","ts":1789630018194}
+{"kind":"driver:stage","stage":"engine","detail":"waves 2/1, width bound 2, patch input armed","id":"01M2Q45WMJ0001SP6FMFFTKVWY","ts":1789630018194}
+{"kind":"engine:phase","phase":"Setup","id":"01M2Q45WMR0000C5BP103TXZ39","ts":1789630018200}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-178 at 6104ae7e472121485d37287a5b10f501090dd838","id":"01M2Q45WX30000AZY7RA7EB5NP","ts":1789630018467}
+{"kind":"worker:start","label":"impl:3","role":"implementer","sessionId":"27c4148b-5992-4d92-952f-a1d4021ca80d","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-178/clones/task-3","model":"opus","id":"01M2Q45XHF0000B9WP3JNB96A3","ts":1789630019119}
+{"kind":"worker:start","label":"exam:1","role":"examiner","sessionId":"62f00bfd-2f53-4eec-906d-14ce3f5f7769","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-178/clones/exam-1","model":"opus","id":"01M2Q45XJE0000JE6GEYRVXYAB","ts":1789630019150}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"a184974e-2567-4e2f-a51d-06fae7e1078d","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-178/clones/task-1","model":"opus","id":"01M2Q45XJJ0000MRDHBDET231C","ts":1789630019154}
