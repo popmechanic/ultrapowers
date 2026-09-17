@@ -1,0 +1,141 @@
+{
+  "integrationBranch": "ultra/integration-run-172",
+  "baseSha": "573495ac0c1cc98f2ccda336b2b8cae520d9de15",
+  "setupSha": null,
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "eb6c3cf002577cb6e2d7b5a4ce464257b7bb27ab",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-172/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the new `fleet/RUNBOOK.md` trap row (RUNBOOK.md:616-622) asserts runtime behavior this patch does not touch \u2014 that the launcher \"fetches that copy for its compile, prints `compiler=<sha>` beside the engine line, and refuses when it cannot fetch it rather than falling back to the cache\". That behavior lives in `fleet/launch.mjs`, a SIBLING FILES path owned by task 1 (popmechanic-ultrapowers#63m7). M3 is a prose pin and the diff settles it in full \u2014 the phrases appear in the required order and the row counts are 2 and 37 per the driver's own runs \u2014 so nothing here blocks. What would settle the documentation's accuracy is task 1's merged `fleet/launch.mjs`: a launch that prints `compiler=<sha>` on success and emits a `Refusal` (no cache fallback) on fetch failure. If task 1 lands with different behavior, this row becomes a stale trap and must be re-worded. No action is available inside this task's FILES.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "landedAt": 1789619726450,
+      "stateExams": [],
+      "findings": []
+    },
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "2dbde973d5ff5f4f1df3c3750426c46f8a4fc7b4",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-172/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Stale comment left by the declared amendment: `fleet/tests/test_launch_compile_facts.mjs`'s `compilerRule` docstring says \"the launch removes the fetched directory after the stamped compile, so the only moment the bytes the `python3` argv names can be read is while the call is being answered.\" The amendment moved that removal to a `finally` in the `launch()` wrapper, so the directory now survives until the launch returns and the stated reason no longer holds (reading argv[0] at call time is still the right, stricter thing to do \u2014 only the justification is wrong). Reword it to say the fetched tree is removed when the launch ends, and that reading argv[0] as the call is answered pins the bytes the compile actually ran.; plan-defect: plan-defect: the fetched compiler is written two levels under `os.tmpdir()` (`<tmp>/fleet-compiler-XXXX/compile_plan.py`), and at that depth `compile_plan.py` cannot even be imported. `skills/ultrapowers/scripts/compile_plan.py:42` runs `PLUGIN_ROOT = Path(__file__).resolve().parents[3]` at MODULE level, not under `--run-dir` \u2014 only its single *use* (line 3444) is guarded by `--run-dir`. For `/tmp/fleet-compiler-abc/compile_plan.py` the resolved path has exactly three parents (`/tmp/fleet-compiler-abc`, `/tmp`, `/`), so `parents[3]` raises `IndexError: tuple index out of range` before `main()` ever runs. The task Context asserted the opposite (\"its `PLUGIN_ROOT` \u2026 is read only under `--run-dir` \u2026 so a copy in a temp directory reads its plan \u2026 exactly as the cache copy does\") and `fleet/launch.mjs`'s new `fetchCompilerAt` docstring transcribes that reasoning faithfully \u2014 hence `plan-defect:`, but the fix lies inside this task's own FILES (`fleet/launch.mjs`), so it is blocking and the implementer can carry it. The exam cannot catch this because every `python3` is answered by a stub (`compilerRule`), and EXAM/RUN evidence being green says nothing about it.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "examRounds": 1,
+      "landedAt": 1789620347081,
+      "stateExams": [],
+      "findings": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-172/clones/integration\nconfigfile: pytest.ini\nplugins: xdist-3.4.0\ncollected 17 items\n\ntests/test_compile_plan_exam_sweep.py .................                  [100%]\n\n============================== 17 passed in 0.28s ==============================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 335431,
+    "blockingFindings": 1,
+    "blockingPerReviewerMinute": 0.17887434375475134
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-172/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [414 items]\n\n........................................................................ [ 17%]\n........................................................................ [ 34%]\n........................................................................ [ 52%]\n........................................................................ [ 69%]\n........................................................................ [ 86%]\n......................................................                   [100%]\n======================= 414 passed in 162.65s (0:02:42) ========================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "7549be74cbccb6e6b3ef1c37254eba6e209e6101",
+      "branches": [
+        "2",
+        "1"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-172/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-172/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.114,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "engineCoverage": null,
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "1",
+      "reason": "plan-defect",
+      "why": "plan-defect: the fetched compiler is written two levels under `os.tmpdir()` (`<tmp>/fleet-compiler-XXXX/compile_plan.py`), and at that depth `compile_plan.py` cannot even be imported. `skills/ultrapowers/scripts/compile_plan.py:42` runs `PLUGIN_ROOT = Path(__file__).resolve().parents[3]` at MODULE level, not under `--run-dir` \u2014 only its single *use* (line 3444) is guarded by `--run-dir`. For `/tmp/fleet-compiler-abc/compile_plan.py` the resolved path has exactly three parents (`/tmp/fleet-compiler-abc`, `/tmp`, `/`), so `parents[3]` raises `IndexError: tuple index out of range` before `main()` ever runs. The task Context asserted the opposite (\"its `PLUGIN_ROOT` \u2026 is read only under `--run-dir` \u2026 so a copy in a temp directory reads its plan \u2026 exactly as the cache copy does\") and `fleet/launch.mjs`'s new `fetchCompilerAt` docstring transcribes that reasoning faithfully \u2014 hence `plan-defect:`, but the fix lies inside this task's own FILES (`fleet/launch.mjs`), so it is blocking and the implementer can carry it. The exam cannot catch this because every `python3` is answered by a stub (`compilerRule`), and EXAM/RUN evidence being green says nothing about it."
+    }
+  ],
+  "judgmentCalls": [
+    "task 1: amendment (clause): Context: \"The temp directory is made with `fsp.mkdtemp(...)`; remove it on refusal, and after the stamped compile on success.\" The refusal half is as written (`fetchCompilerAt` rm's its own dir before rethrowing). The success half is done at the end of the launch instead of immediately after the stamped compile: `launch()` is now a thin exported wrapper around a `launchBody()` that parks `compiler.dir` on a `held` object, and the wrapper removes it in a `finally`. \u2014 A bumped push calls `compileFor(n)` again for N+1, so removing the directory after the first stamped compile would delete the compiler out from under the second one. The wrapper also covers every refusal and lobby throw between the fetch and the return, which a single removal point after the stamped compile does not, and it avoided reindenting ~400 lines of `launch()` inside a try/finally.",
+    "task 1: examiner: (f) the duplicate-sim `Run:` line below exits 0 [M6] \u2014 Encoding it in the exam would mean running `node fleet/tests/test_launch_duplicate.mjs`, and an exam proves its own claim through imports and calls and never spawns another exam (one-Run-one-exam, 573495ac). That half of the leg is proven by the Proof's own `Run:` line, which the driver runs. The exam-side witness inspects that sim and runs nothing: it asserts the file names `compile_plan.py` or `show` \u2014 what a rule answering the fetch of M1 keys on \u2014 which is red at BASE (it names neither) and green under either rule shape the Context suggests.",
+    "task 1: plan-defect names `os.tmpdir()` outside FILES \u2014 routed to the plan",
+    "task 1: plan-defect deferred to the gate \u2014 plan-defect: the fetched compiler is written two levels under `os.tmpdir()` (`<tmp>/fleet-compiler-XXXX/compile_plan.py`), and at that depth `compile_plan.py` cannot even be imported. `skills/ultrapowers/scripts/compile_plan.py:42` runs `PLUGIN_ROOT = Path(__file__).resolve().parents[3]` at MODULE level, not under `--run-dir` \u2014 only its single *use* (line 3444) is guarded by `--run-dir`. For `/tmp/fleet-compiler-abc/compile_plan.py` the resolved path has exactly three parents (`/tmp/fleet-compiler-abc`, `/tmp`, `/`), so `parents[3]` raises `IndexError: tuple index out of range` before `main()` ever runs. The task Context asserted the opposite (\"its `PLUGIN_ROOT` \u2026 is read only under `--run-dir` \u2026 so a copy in a temp directory reads its plan \u2026 exactly as the cache copy does\") and `fleet/launch.mjs`'s new `fetchCompilerAt` docstring transcribes that reasoning faithfully \u2014 hence `plan-defect:`, but the fix lies inside this task's own FILES (`fleet/launch.mjs`), so it is blocking and the implementer can carry it. The exam cannot catch this because every `python3` is answered by a stub (`compilerRule`), and EXAM/RUN evidence being green says nothing about it."
+  ],
+  "amendments": [
+    {
+      "task": "1",
+      "amends": "clause",
+      "what": "Context: \"The temp directory is made with `fsp.mkdtemp(...)`; remove it on refusal, and after the stamped compile on success.\" The refusal half is as written (`fetchCompilerAt` rm's its own dir before rethrowing). The success half is done at the end of the launch instead of immediately after the stamped compile: `launch()` is now a thin exported wrapper around a `launchBody()` that parks `compiler.dir` on a `held` object, and the wrapper removes it in a `finally`.",
+      "why": "A bumped push calls `compileFor(n)` again for N+1, so removing the directory after the first stamped compile would delete the compiler out from under the second one. The wrapper also covers every refusal and lobby throw between the fetch and the return, which a single removal point after the stamped compile does not, and it avoided reindenting ~400 lines of `launch()` inside a try/finally."
+    }
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
