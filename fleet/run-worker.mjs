@@ -85,10 +85,11 @@ import path from 'node:path'
 // decision: `addDirsFor` was never supplied to createRunWorker, so the
 // `--add-dir` push below was dead code. Fixed by composeAgent supplying it.
 //
-// Bodies CANNOT be inlined instead: compile_plan's `--emit-args` requires
-// `--emit-launch` precisely "so wavesPath is always populated" — task bodies
-// ride the launch file by design and never the prompt. Reading it is the
-// contract, so the run dir must be in scope.
+// Since #1100 the body half of that is gone: the engine opens the launch file
+// itself, once per run, and hands each worker its task's text inline, so no
+// prompt asks anyone to go and open a JSON file. `patches/` is what the
+// `--add-dir` grant is still for — a reviewer reads reply patches out of
+// `<runDir>`, which is still a parent of its cwd.
 //
 // bypassPermissions does NOT path-gate (arm F), so the write-side roles need no
 // `--add-dir` and are deliberately given none: read reach they do not need is

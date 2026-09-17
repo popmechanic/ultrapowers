@@ -488,10 +488,12 @@ export function kataRefFor(record, label) {
 }
 
 // ── --add-dir scope, per role (measured 2026-08-31) ──────────────────────────
-// A read-only worker's cwd is `<runDir>/clones/integration`, but the two things
-// its prompt tells it to read — `wavesPath` (launch.json, where compile_plan
-// puts every task body by design) and `patches/` — live in `<runDir>`, a
-// PARENT. Under `dontAsk`, read-only Bash is permitted as a class but only IN
+// A read-only worker's cwd is `<runDir>/clones/integration`, but what its
+// prompt tells it to read — `patches/` — lives in `<runDir>`, a PARENT. (Until
+// #1100 `wavesPath` was the other one: the prompt pointed at launch.json and
+// the worker had to open it for the task body. The engine reads that file once
+// now and hands the body inline, so only `patches/` is left; the grant stays
+// for it.) Under `dontAsk`, read-only Bash is permitted as a class but only IN
 // SCOPE, so those reads were denied: five consecutive runs of `cannotVerify`
 // entries that became deferred acks and parked the run. `--add-dir` is what
 // puts a parent in scope, and it reaches Bash, not just the file tools
