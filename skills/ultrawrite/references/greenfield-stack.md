@@ -279,11 +279,13 @@ for — not how the engine runs it.
   is wherever the operator installed it, so a plan names the binary and never a
   package manager.
 - **How an exam starts it.** The start line is
-  `celld dev <server dir> --no-watch --port <p> --internal-listen 127.0.0.1:<q>`,
-  and a plan allocates **two ports per task**: `<p>` for the worker and `<q>` for
-  the internal listener, which otherwise takes `127.0.0.1:0` and collides across
-  parallel tasks. `--no-watch` is not optional — without it a mid-run tree change
-  rebuilds under a running exam.
+  `celld dev <server dir> --no-watch --clean --port <p>`, with `<p>` a free
+  loopback port the exam picks. `celld dev` takes no `--internal-listen` (0.5.0
+  answers `unknown argument`, read 2026-09-17): it starts its node with
+  `--internal-listen 127.0.0.1:0` itself, so an instance holds **two ports**,
+  the worker's and one the node picks, ephemeral and never named or tunnelled.
+  `--no-watch` is not optional — without it a mid-run tree change rebuilds under
+  a running exam — and `--clean` starts the copy from empty state.
 - **Its bundler.** `CELLD_ESBUILD` names `<repo>/node_modules/.bin/esbuild`, and
   that binary comes from the plan's own Dependencies line, which carries esbuild
   after its `dev:` word (`dev: esbuild@0.25.x`) — so the sandbox installs no
