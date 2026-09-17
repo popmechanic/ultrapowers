@@ -9,11 +9,12 @@ last sitting got from one agent's memory.
 A few of these rules the compiler still refuses outright, and the bullet names
 the refusal so the reading to learn is the compiler's output: a `Run:`/`Check:`
 command carrying a backtick is `command carries a backtick` from
-`compile_plan.py --check`. Every other species below is the author's own to
+`compile_plan.py --check`, and a Proof `Run:` sweeping `tests/state-exams/` is
+`one Run, one exam` from the same check. Every other species below is the author's own to
 check, here, against this file — `suite-total-pin` and `directory-absence-pin`
 included. Nothing prints them.
 
-## The thirteen rows
+## The fourteen rows
 
 - **A zero-count grep over a source file counts its comments too.** A `Run:` that pins
   `grep -c <symbol> <file>` = 0 goes red the moment the implementer deletes the code and
@@ -120,6 +121,15 @@ included. Nothing prints them.
   pin on a sibling file belongs in a `Run:` line of the plan, and
   never in the merged exam (run-13 and run-12, popmechanic/tinyapp-fixture,
   2026-09-15; #1019).
+- **A `Run:` that names two exams at once is a sweep, and the compiler refuses
+  it.** A Proof `Run:` naming two or more paths under `tests/state-exams/` — or
+  the bare `tests/state-exams` directory, which names all of them — is
+  `one Run, one exam` from `compile_plan.py --check`. The reading behind it: 19
+  of 29 fixture exam files spawned a runner over their neighbours, one leg took
+  573 s, and the fold suite grew from 2.4 to 19 minutes over four fixture runs
+  ending at run-24. One claim, one prover; regression is the fold's one suite
+  run per merge, so a sweep the operator wants is written once in the owning
+  task's own `Run:` (a `Check:` line is not read by this rule).
 
 ## Three older lessons of the same kind
 

@@ -29,6 +29,11 @@ Work red → green → refactor:
    write no test file of your own unless the task's Files name one. Run them,
    and stop when they pass; a block that says it lists none means the exam at
    handoff is the only measurement, so read the task text for what it asks.
+   Those commands are what you run, and never the project's whole suite — a
+   bare `bun test`, `bun run test`, `npm test`, `pnpm test`, `pytest` or
+   `python3 -m pytest` with no path is not yours to run — because
+   the fold runs the suite once per merge, and a green suite in your tree
+   proves nothing that merge will not prove again.
 3. Implement the minimum that satisfies them, refactor for clarity, and run the
    proofs clean one final time.
 4. Commit your work.

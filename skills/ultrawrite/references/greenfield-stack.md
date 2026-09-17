@@ -224,6 +224,27 @@ comment).
 *A date field is a text input.* The exam's `type` is CDP `Input.insertText`,
 which does not reach `<input type="date">` (run-12's authoring, measured).
 
+*An exam never spawns a test runner.* An exam proves one claim — one claim, one
+prover, at the layer where the claim can be false — so it reaches for the state
+through imports and calls and never for a runner: no `bun test` over another
+file or a package, no `bun run lint:state|lint:ui|typecheck|history`, no
+`Bun.spawn`, `spawnSync` or `execSync`. Regression is the fold's one suite run
+per merge, and a verification must not re-run other verifications. Measured: 19
+of 29 fixture exam files spawned runners, one leg took 573 s, and the fold suite
+grew from 2.4 to 19 minutes over n=4 fixture runs ending at run-24, where a
+plain exam runs in 1.4 s. A comment carrying one of the five literals is an
+offender too — the check is a `grep`, for the reason the gotchas' zero-count-grep
+row gives — and the compiler refuses a `Run:` that names two exams at once with
+`one Run, one exam`. Every TinyApp plan carries this Global Constraint, blocking:
+
+```
+- Check: ! grep -rlE 'bun test|bun run|Bun\.spawn|spawnSync|execSync' tests/state-exams
+```
+
+`grep -rlE` prints each matching file and exits 0 when at least one matches, so
+the leading `!` makes a clean tree exit 0 and silent, and one offender exit 1
+with that file's path on stdout.
+
 ## Styling (experiment, 2026-09-16)
 
 A TinyApp's styling is **Tailwind v4 + shadcn/ui installed by its CLI + `@shadcn/lint`**,

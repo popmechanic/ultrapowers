@@ -978,6 +978,37 @@ export const joinedPathsOf = (touchSets) => {
   }
   return [...counts.entries()].filter(([, n]) => n >= 2).map(([p]) => p).sort()
 }
+// ── the fold's own suite: the wave's exams, not the repository's ─────────────
+// A wave fold judges the wave, so it runs what the wave touched. `template` is
+// the launcher's `foldTestCmd` — a runner carrying exactly one `{paths}` token
+// — and `pattern` its `foldTestPattern`, a `RegExp` source over repo-relative
+// paths that keeps what the runner cannot take out of the argv (`.mjs` sims out
+// of pytest, seeds and source out of `bun test`). `exists` is the tree's own
+// answer, so a path the plan spelled but no patch wrote — and an exam the run
+// moved to its reserved landing — falls out rather than reddening the fold on a
+// missing file.
+//
+// Every way of NOT having a scoped command answers `testCmd`, the whole suite:
+// no template, no pattern, a template with no token or with two, a pattern no
+// `RegExp` accepts, and — the ordinary case — a wave that touched nothing the
+// pattern matches. Scoping is an optimization the fold can always decline; it
+// is never a reason to judge a wave by less than the repository's own suite.
+export const foldSuiteCommand = ({ template, pattern, testCmd, paths, exists } = {}) => {
+  if (typeof template !== 'string' || typeof pattern !== 'string') return testCmd
+  const parts = template.split('{paths}')
+  if (parts.length !== 2) return testCmd
+  let re
+  try { re = new RegExp(pattern) } catch { return testCmd }
+  const picked = []
+  for (const p of (Array.isArray(paths) ? paths : [])) {
+    const s = String(p == null ? '' : p).trim()
+    if (!s || picked.includes(s) || !re.test(s)) continue
+    if (typeof exists === 'function' && !exists(s)) continue
+    picked.push(s)
+  }
+  if (picked.length === 0) return testCmd
+  return parts[0] + picked.sort().join(' ') + parts[1]
+}
 // ── a receipt's two keys ─────────────────────────────────────────────────────
 // A RECEIPT is a row carrying both `paths` and `evidence`: the files something
 // was observed on, and the reading that observed them. The shape is one literal
@@ -1144,6 +1175,62 @@ const taskBodyBlock = (task, wavesPath) => {
 // integrated tree. Deleted with that agent (#964 Task 2) — the composition
 // question it was meant to answer is the per-task referee's, against the same
 // bodies, before anything merges.
+// ── the bare-suite sensor ────────────────────────────────────────────────────
+// `implementer.md` and `fix.md` both say to run the task's own `PROOFS:` block
+// and never the project's whole suite, because the fold runs the suite once per
+// merge. This counts what a worker ran anyway, off the reduced transcript slice
+// `run-worker.mjs` writes to `<runDir>/transcripts/<sessionId>.jsonl` — a Bash
+// tool_use block keeps its `input.command`, which is the whole of what is read.
+// It is a READING. Nothing downstream branches on it.
+//
+// A runner is a token prefix, so `python3 -m pytest` is three tokens and the
+// `-m` inside it is part of the runner rather than a flag after it. What
+// follows the prefix decides: only tokens beginning `-` leave the run bare, so
+// `npm test -- --watch` counts and `bun test tests/x.test.ts` does not — the
+// second one named a path, which is the thing a worker is asked to do.
+const BARE_SUITE_RUNNERS = [
+  ['bun', 'test'],
+  ['bun', 'run', 'test'],
+  ['npm', 'test'],
+  ['pnpm', 'test'],
+  ['pytest'],
+  ['python3', '-m', 'pytest'],
+]
+// `&&`, `||`, `;` and `|` all separate; splitting on single `|` as well means
+// `||` yields an empty middle segment, which no runner matches. Nothing else is
+// a separator, so a redirection like `2>&1` stays inside its segment and is
+// read as the trailing non-flag token it is.
+const SUITE_SEGMENT_SPLIT = /&&|\|\||;|\|/
+const isBareSuiteSegment = (segment) => {
+  const tokens = String(segment).trim().split(/\s+/).filter(Boolean)
+  return BARE_SUITE_RUNNERS.some((runner) =>
+    tokens.length >= runner.length &&
+    runner.every((word, i) => tokens[i] === word) &&
+    tokens.slice(runner.length).every((t) => t.startsWith('-')))
+}
+export const bareSuiteRunCount = (sliceJsonl) => {
+  let count = 0
+  for (const line of String(sliceJsonl == null ? '' : sliceJsonl).split('\n')) {
+    const s = line.trim()
+    if (!s) continue
+    let rec
+    try { rec = JSON.parse(s) } catch { continue /* not a record line */ }
+    // The reduced slice writes `type` on every record and every block; a
+    // hand-built line that left one off is read as the shape it can only be,
+    // so the count is about the command and not about the bookkeeping.
+    if (!rec || typeof rec !== 'object') continue
+    if (rec.type !== undefined && rec.type !== 'assistant') continue
+    const content = rec.message && Array.isArray(rec.message.content) ? rec.message.content : []
+    for (const block of content) {
+      if (!block || typeof block !== 'object') continue
+      if (block.type !== undefined && block.type !== 'tool_use') continue
+      if (block.name !== 'Bash') continue
+      const cmd = block.input && typeof block.input.command === 'string' ? block.input.command : ''
+      if (cmd && cmd.split(SUITE_SEGMENT_SPLIT).some(isBareSuiteSegment)) count += 1
+    }
+  }
+  return count
+}
 // ── small exec adapters ──────────────────────────────────────────────────────
 // Shell strings (testCmd, bootstrapCmd) run through `bash -lc`; git always
 // runs argv-form. Both resolve, never reject — callers branch on code.
@@ -1806,6 +1893,39 @@ export async function runEngine({
     // knows, and on the run's issue otherwise (`kataUidFor`).
     mirrorToHub(e, line)
   }
+  // ── the bare-suite reading, one row per task an implementer worked ─────────
+  // The engine holds no copy of a worker's transcript: `run-worker.mjs` writes
+  // the reduced slice to `<runDir>/transcripts/<sessionId>.jsonl` and announces
+  // it with a `transcript:slice` row through run-main's event log, which is the
+  // same `events.jsonl` `appendEvent` above writes. So the record is what is
+  // read back, and the labels are the engine's own: `impl:<id>` for the
+  // implementer's session and `fix:<id>:…` for its repair rounds (only round 0
+  // exists at the call site — the review loop's rounds come after it).
+  //
+  // A slice row whose file is not there is not read and is not counted, which
+  // is why `slices` says how many files were actually opened. Both fields are
+  // `0` when there was no row at all. The row GATES NOTHING: no status, no
+  // review, no verdict reads it.
+  const noteSuiteRuns = (taskId) => {
+    let text = ''
+    try { text = fs.readFileSync(path.join(runDir, 'events.jsonl'), 'utf8') } catch { /* no record yet */ }
+    let count = 0, slices = 0
+    for (const line of text.split('\n')) {
+      const s = line.trim()
+      if (!s || s[0] !== '{') continue
+      let e
+      try { e = JSON.parse(s) } catch { continue /* not an event line */ }
+      if (!e || e.kind !== 'transcript:slice' || typeof e.label !== 'string') continue
+      if (e.label !== 'impl:' + taskId && !e.label.startsWith('fix:' + taskId + ':')) continue
+      let slice
+      try {
+        slice = fs.readFileSync(path.join(runDir, 'transcripts', String(e.sessionId) + '.jsonl'), 'utf8')
+      } catch { continue /* announced, never written */ }
+      slices += 1
+      count += bareSuiteRunCount(slice)
+    }
+    appendEvent({ kind: 'driver:suite-runs', task: taskId, count, slices })
+  }
   // The block one brief carries, and the record that it carried one. A
   // non-empty block leaves one `driver:facts` row — a record row and not a
   // receipt (no `paths`, no `evidence`, not a receipt kind, never rendered
@@ -2189,6 +2309,12 @@ export async function runEngine({
   // manifests, written by the launcher beside `bootstrapCmd` and read exactly
   // as it is. Absent, the run captures, folds and installs as at BASE.
   const regenerateCmd = (typeof args.regenerateCmd === 'string' && args.regenerateCmd.trim()) || undefined
+  // The wave fold's scoped runner and the path filter that fills it, written by
+  // the launcher beside `testCmd` and read exactly as they are. Either one
+  // missing folds on `testCmd`, byte-for-byte as at BASE; publish and the gate
+  // read `testCmd` either way.
+  const foldTestCmd = (typeof args.foldTestCmd === 'string' && args.foldTestCmd.trim()) || undefined
+  const foldTestPattern = (typeof args.foldTestPattern === 'string' && args.foldTestPattern.trim()) || undefined
   // The same gate the capture is armed by in run-main: a run that can rebuild
   // a lockfile carries none through a patch. The engine's own exam-handoff
   // re-capture writes over the file the fold reads, so it must drop what the
@@ -3994,6 +4120,12 @@ export async function runEngine({
       }
     }
 
+    // One row, here: the implementer has returned, the pre-review fix round has
+    // run when the pass bought one, and no reviewer has been dispatched yet.
+    // Every exit above this line ended the task without a reviewer, so the path
+    // that reaches a referee is the path that carries the reading.
+    noteSuiteRuns(task.id)
+
     // The round's own minor findings, de-duplicated, for the row's notes. They
     // were also carried from round 1 into round 2 (2026-09-01, run-47 read) so
     // the second reviewer would not re-find what the first had recorded; with
@@ -4829,11 +4961,35 @@ export async function runEngine({
         }
       }
     }
+    // ── the wave's exams as this fold's suite (cut 2 of 2026-09-17) ──────────
+    // The union the fold is judged on: every epoch task's touch set — its
+    // declared `files` then its captured patch's paths — and the `proofTests`
+    // spellings its Proof named, because an exam reaches the tree at its
+    // LANDING path and the Proof's own spelling may be a path the run moved.
+    // `foldSuiteCommand` drops what this tree does not hold, so both readings
+    // can be offered and only the real files reach the argv. Computed ONCE,
+    // here — after the read-tree, the regenerator and the bootstrap, so
+    // `existsSync` reads the candidate the suite is about to run on — and used
+    // at all three sites below: the candidate suite, the reconcile prompt's
+    // `TEST COMMAND:` line, and the re-run after a `FIXED`.
+    const foldPaths = []
+    for (const t of (Array.isArray(waveTasks) ? waveTasks : [])) {
+      const row = (Array.isArray(merged) ? merged : []).find((r) => r && r.task === t.id) || {}
+      for (const p of touchSetOf(t, row.patch)) foldPaths.push(p)
+      for (const p of (Array.isArray(t && t.proofTests) ? t.proofTests : [])) foldPaths.push(p)
+    }
+    const foldCmd = foldSuiteCommand({
+      template: foldTestCmd, pattern: foldTestPattern, testCmd, paths: foldPaths,
+      exists: (p) => fs.existsSync(path.join(integ, p)),
+    })
+    // Named on the log only when it IS a narrowing: a fold that matched nothing
+    // ran the whole suite and has nothing to disclose that BASE would not.
+    if (foldCmd !== testCmd) log('wave ' + waveNumber + ' fold suite: ' + foldCmd)
     // A failed bootstrap stands IN PLACE of the suite run — `suite` carries the
     // install's stdout/stderr, so every downstream reader (the reconcile
     // prompt, the TEST_FAILED detail) quotes the install and none of them
     // quotes a suite that never ran on this candidate.
-    let suite = bootstrapRed || await sh(testCmd, integ)
+    let suite = bootstrapRed || await sh(foldCmd, integ)
     if (suite.code === 0) {
       await git(['reset', '--hard', candidate], integ)
       await emitWeave(candidate)
@@ -4887,7 +5043,7 @@ export async function runEngine({
     }
     for (let attempt = 1; attempt <= 2 && suite.code !== 0; attempt++) {
       log('wave ' + waveNumber + ' candidate suite RED — reconcile attempt ' + attempt)
-      const prompt = roles.reconcile + '\nTEST COMMAND: ' + testCmd +
+      const prompt = roles.reconcile + '\nTEST COMMAND: ' + foldCmd +
         '\n\nFailing output:\n' + failingBlock(suite.stdout + suite.stderr)
       const label = 'reconcile:wave' + waveNumber + ':' + attempt
       // One dispatch, as an expression: the reply, or the CLASS of the no-reply
@@ -4960,7 +5116,7 @@ export async function runEngine({
       const reconcileLine = 'wave ' + waveNumber + ' reconcile (attempt ' + attempt + ')'
       await git(['commit', '-q',
         ...(planTitle ? ['-m', planTitle] : []), '-m', reconcileLine], integ)
-      suite = await sh(testCmd, integ)
+      suite = await sh(foldCmd, integ)
     }
     if (suite.code === 0) {
       const headSha = await git(['rev-parse', 'HEAD'], integ)

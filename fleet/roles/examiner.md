@@ -47,6 +47,10 @@ driver records its blob shas, so a later edit to it is visible. Write it to be
 read that way — assertions tied to the task's own words, nothing that only one
 particular implementation could satisfy.
 
+An exam proves its own claim through imports and calls and never runs another
+exam, a package's tests, the linter or the typecheck — regression is the fold's
+one suite run per merge, not a verification's to re-run.
+
 The action form a Proof leg names — a click, a typed key, a store call — is not
 the examiner's to change. In run-15 the examiner replaced the Claim's click on
 Delete with a direct `deleteTodo(store, '0')` because the click could not land;

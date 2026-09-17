@@ -70,6 +70,23 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     the run's argument when it is a non-negative number and otherwise the larger of 60000 and the
     wall the baseline suite took (the age clause is off until the baseline settles);
     `foldAgeMs: 0` folds at every landing, siblings in flight or not.
+    A fold judges the wave, so it may run the wave's own exams rather than the repository's:
+    `foldTestCmd` is the target's scoped runner carrying exactly one `{paths}` token and
+    `foldTestPattern` a JavaScript `RegExp` source over repo-relative paths, both written by the
+    launcher beside `testCmd` and read exactly as they are. The fold takes the union of every
+    epoch task's touch set — its declared `files` then its captured patch's paths — and the
+    `proofTests` spellings its Proof named, keeps the entries matching `foldTestPattern` that the
+    integration clone holds after the candidate's read-tree, and substitutes them, sorted,
+    de-duplicated and space-joined, for the `{paths}` token. That one command is the candidate
+    suite, the `TEST COMMAND:` line the reconcile round carries, and the suite re-run after a
+    `FIXED`, and the driver logs `wave <n> fold suite: <command>` once before it runs. An empty
+    subset — nothing matched the pattern, or nothing that matched is on the tree — is no command
+    at all: the fold runs the whole suite and logs no `fold suite:` line, exactly as a run
+    carrying no `foldTestCmd` does at every fold. The narrowing is the wave fold's and nothing
+    else's: the publish fold and the gate run `testCmd`, the whole suite, so nothing ships on a
+    scoped green. A typecheck a target wants at every fold is therefore written as a Global
+    Constraints `- Check:` line and not folded into the command, because the engine runs
+    `foldTestCmd` and nothing else at the fold.
     So `driver:wave-adopted` `{wave, tasks, headSha, why, released?, applied}` — the 1-based epoch
     in fold order, the ids it merged in plan order, and `applied`, one key per id saying how that
     task LANDED: `base` when its patch was captured against this very head, `rebased` when it was
@@ -206,6 +223,21 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     the same rows in the same order, `[]` when the run collected none. Nothing here gates: an
     amendment is a note to whoever writes the next plan, so for the same tree `tests.passed`, the
     gate receipt and the merge decision are what they would have been without it.
+    One more kind records what a worker ran rather than what it was asked to run:
+    `driver:suite-runs` `{task, count, slices}` — one row per task an implementer worked, the
+    count of times that task's workers ran the project's whole suite anyway. It is a reported
+    sensor and gates nothing: no status, no review and no verdict reads it, and the same tree
+    merges exactly as it would without the row. A bare suite run is a `Bash` `tool_use` block of
+    an `assistant` record of a worker's reduced transcript slice whose `input.command`, split on
+    `&&`, `||`, `;` and `|` with each segment trimmed, has at least one segment that is exactly
+    `bun test`, `bun run test`, `npm test`, `pnpm test`, `pytest` or `python3 -m pytest`, or one
+    of those followed only by tokens beginning `-`; a segment followed by any token not beginning
+    `-` is not one, and a line that is not JSON, or a record with no such block, counts nothing.
+    What is read is the run's own `transcript:slice` rows whose `label` is `impl:<id>` or begins
+    `fix:<id>:`, and for each the file `<runDir>/transcripts/<sessionId>.jsonl`: `slices` is how
+    many of those files existed, `count` the sum over them, both `0` when no row or no file does.
+    The row is appended once per task — after the implementer has returned, after the pre-review
+    fix round when the pass bought one, and before any reviewer is dispatched.
     Receipts (2026-09-16): a receipt is `paths` and `evidence` — `paths` an array of repo-relative
     path strings, sorted, de-duplicated, never empty; `evidence` is `{ read, against }`, two
     strings of at most 500 characters each, a longer one cut to 499 characters plus `…`. Seven
