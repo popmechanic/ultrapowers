@@ -649,17 +649,30 @@ STATE_EXAM_DIR_TOKENS = ("tests/state-exams", "tests/state-exams/")
 # line with it and `--check` finds the line by it, so the wording an author
 # reads and the wording the error channel carries cannot drift apart.
 EXAM_SWEEP_REFUSAL = "grammar: Run: one Run, one exam"
+# A sweep is a test RUNNER over the exams. A `grep`, `sed`, `git diff` or `ls`
+# that names exam paths inspects them and runs nothing — run-26 (2026-09-17)
+# was refused at preflight for a grep over the very files its task cleaned and
+# for a `git diff` fence, so the rule reads the command for a runner token
+# first and leaves every other command alone.
+EXAM_RUNNER_RE = re.compile(
+    r"(?:^|[;&|(]\s*)(?:set -o pipefail;\s*)?"
+    r"(?:bun test|bunx? (?:vitest|jest)|npx (?:vitest|jest)|vitest|jest|"
+    r"python3? -m pytest|pytest|node)(?![\w-])")
 
 
 def _exam_sweep_run_violation(command, task_id):
     """The `grammar:` line a Proof `Run:` sweeping `tests/state-exams/` draws.
 
-    `None` unless the command names, as whole tokens, either two or more
-    distinct paths under `tests/state-exams/` or the bare directory. A single
+    `None` unless the command invokes a test runner (`bun test`, `vitest`,
+    `jest`, `pytest`, `node`) AND names, as whole tokens, either two or more
+    distinct paths under `tests/state-exams/` or the bare directory — a grep
+    or a `git diff` that names exam paths runs nothing. A single
     exam path is the shape this rule exists to leave alone, and `Check:` lines
     are not read by it at all — a sweep the operator wants is written once in
     the owning task's own `Run:`. The command is quoted to its first 80
     characters, as the backtick refusal quotes it."""
+    if not EXAM_RUNNER_RE.search(command):
+        return None
     seen = []
     for match in STATE_EXAM_PATH_RE.findall(command):
         if match not in seen:
