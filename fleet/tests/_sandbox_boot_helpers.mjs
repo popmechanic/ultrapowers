@@ -203,6 +203,30 @@ export const ASSIGNMENT =
   `run=7 plan=${PLAN_SHA} target=${TARGET} base=${BASE_SHA} engine=${ENGINE_SHA} ` +
   'tier=mostCapable'
 
+/**
+ * What the TypeSafe arm answers when no case gives it a reply of its own: all
+ * five questions answered, in the shape the reference documents — two `choice`
+ * answers with their `probabilities` and `confidence`, one `score` with its
+ * `legend`, one `noul`.
+ *
+ * `attention` is `0.8` deliberately: under the card's 2.5 threshold, so the
+ * green boot every sim memoizes grows a `jev` on its rows and no `Act on
+ * these` section on its card.
+ */
+export const TYPESAFE_REPLY = '{"model":"jev-1.13.0","answers":{'
+  + '"status":{"type":"choice","choice":"verified","probabilities":'
+  + '{"verified":0.9,"unverified":0.06,"deferred":0.04},"confidence":0.88},'
+  + '"subject":{"type":"choice","choice":"quality","probabilities":'
+  + '{"plan text":0.02,"proof leg":0.02,"exam file":0.02,"implementation":0.04,'
+  + '"footprint":0.02,"quality":0.88},"confidence":0.86},'
+  + '"actor":{"type":"choice","choice":"nobody","probabilities":'
+  + '{"implementer":0.05,"plan":0.03,"examiner":0.02,"nobody":0.9},"confidence":0.88},'
+  + '"attention":{"type":"score","score":0.8,"legend":'
+  + '{"0":"ignore","1":"glance","2":"before next run","3":"before merge"},'
+  + '"probabilities":{"0":0.4,"1":0.45,"2":0.1,"3":0.05},"confidence":0.5},'
+  + '"claim_false":{"type":"noul","noul":0.05}},'
+  + '"usage":{"input_tokens":290,"output_tokens":21}}'
+
 // ── stub bin dir ─────────────────────────────────────────────────────────────
 
 export const STUBS = {
@@ -402,6 +426,42 @@ case "$url" in
         emit "{\\"events\\":[],\\"next_after_id\\":$after,\\"reset_required\\":false}" ;;
     esac
     exit \${STUB_KATA_EVENTS_EXIT:-0} ;;
+  *typesafe.int.exe.xyz/v1/systemone)
+    # THE CLASSIFIER, asked once per residual. The payload lands in
+    # typesafe.log, one line per POST, so a leg can read the state and the
+    # questions the boot sent without unpicking the argv log.
+    #
+    # THREE KNOBS, in the order they are consulted. STUB_TYPESAFE_EXIT is the
+    # curl exit a classifier that is not there answers with — it emits NOTHING,
+    # the way a curl that never connected does. STUB_TYPESAFE_ANSWERS is a file
+    # of \`<needle><TAB><reply JSON>\` lines, and the reply is the FIRST line
+    # whose needle is a substring of this payload, which is how a case gives
+    # fourteen rows fourteen different answers off one stub.
+    # STUB_TYPESAFE_ANSWER is one reply for every row. With none of them set the
+    # arm answers the default below: \`verified\`/\`quality\`/\`nobody\` at
+    # attention 0.8 — under the card's threshold, so a sim that does not ask for
+    # a card section never renders one.
+    #
+    # The tab is read with \`IFS\` off a \`printf\`: this stub is \`#!/bin/sh\`,
+    # where a bash \`$'\\t'\` is four literal characters.
+    say "curl typesafe"; printf '%s\\n' "$payload" >>"$FLEET_HOME/typesafe.log"
+    if [ -n "\${STUB_TYPESAFE_EXIT:-}" ] && [ "\${STUB_TYPESAFE_EXIT}" != 0 ]; then
+      exit \${STUB_TYPESAFE_EXIT}
+    fi
+    reply=""
+    if [ -n "\${STUB_TYPESAFE_ANSWERS:-}" ] && [ -f "$STUB_TYPESAFE_ANSWERS" ]; then
+      tab=$(printf '\\t')
+      while IFS="$tab" read -r needle answer; do
+        [ -n "$needle" ] || continue
+        case "$payload" in
+          *"$needle"*) reply="$answer"; break ;;
+        esac
+      done <"$STUB_TYPESAFE_ANSWERS"
+    fi
+    [ -n "$reply" ] || reply="\${STUB_TYPESAFE_ANSWER:-}"
+    [ -n "$reply" ] || reply='${TYPESAFE_REPLY}'
+    emit "$reply"
+    exit \${STUB_TYPESAFE_EXIT:-0} ;;
   *) say "curl UNKNOWN $url"; exit 22 ;;
 esac
 `,

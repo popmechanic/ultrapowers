@@ -82,6 +82,9 @@ one sim per question:
   issue always carries evidence, built from the PR URL and the merged sha.
 - `test_sandbox_boot_amendments.mjs` — the pull request body lists every
   amendment by task, above the folded record.
+- `test_sandbox_boot_residuals.mjs` — the boot asks TypeSafe's classifier about
+  every residual row, once, through the edge and with no credential of its own,
+  and writes the answers beside its own `kind` on the ledger.
 - `test_sandbox_boot_card_cells.mjs` — the PR card says which task no reviewer
   read, rendered inside the existing mutant cell rather than a new column.
 - `test_sandbox_boot_publish_record.mjs` — the page records the disclosures
