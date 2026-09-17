@@ -28,3 +28,4 @@
 {"kind":"engine:log","line":"baseline: green on 6104ae7e472121485d37287a5b10f501090dd838","id":"01M2Q48YQQ0000ERAREEENTT9W","ts":1789630118647}
 {"kind":"worker:end","label":"impl:1","role":"implementer","sessionId":"1b3fd505-c512-47ec-bf06-012c5bcc8dfb","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"reason":null,"meter":{"input":6445,"output":38759,"cacheRead":5449769,"cacheCreation":90833,"costUsd":4.321218250000001,"models":["claude-opus-5"]},"id":"01M2Q4HNGZ0000YGWA5VPTX9N8","ts":1789630404127}
 {"kind":"transcript:slice","label":"impl:1","sessionId":"1b3fd505-c512-47ec-bf06-012c5bcc8dfb","bytes":11520,"id":"01M2Q4HNHE0000X8SHZ2HJGXV5","ts":1789630404142}
+{"kind":"driver:attention","task":"1","attention":"needs-human","msg":"session ended without hand-off","actor":"","id":"01M2Q4HYDF00008M16C7GY071B","ts":1789630413231}
