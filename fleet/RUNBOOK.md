@@ -647,6 +647,18 @@ on the next one, ask her before editing a script.
   compile, prints `compiler=<sha>` beside the engine line, and
   refuses when it cannot fetch it rather than falling back to the cache
   (run-26, 2026-09-17).
+- **The launcher renders its own setup script, and nothing fetches that one.**
+  `fleet/launch.mjs` reads `fleet/setup-script.mjs` from the checkout it was
+  invoked out of, so a toolchain change reaches a VM only when the launcher is
+  run from a checkout at main — `node <checkout>/fleet/launch.mjs …` — or after
+  the laptop's plugin is re-resolved and a new session starts. The engine is
+  fetched at `engine=` and the compiler at that same sha, which makes the
+  mismatch quiet: the box runs a post-change engine on a pre-change toolchain.
+  Fixture run-31 lost a wave to it — celld had merged, the cache had not, and
+  `/usr/local/bin/celld` was absent on a box whose engine sha was newer than
+  the merge (2026-09-17). Read the rendered script before a launch that depends
+  on a new tool: `node -e "import('./fleet/setup-script.mjs')…"`, or grep the
+  VM's `~/fleet-setup.log` for the tool's `status booting` line.
 
 **The sandbox's runtime.** (celld 0.5.0, measured on fleet-counsel, 2026-09-17,
 an exe VM with 2 vCPU / 4 GB)
@@ -660,9 +672,12 @@ an exe VM with 2 vCPU / 4 GB)
   one worker's runtime rather than the whole box.
 - `celld dev` is two processes (a supervisor about 22 MB, node 41 MB idle to
   82 MB under probe load) and binds a second, INTERNAL listener on
-  `127.0.0.1:0` beside the worker port. A task that needs that port known
-  passes `--internal-listen 127.0.0.1:<port>`; left unpinned it is whatever the
-  kernel handed out, and nothing on the box can tell you which.
+  `127.0.0.1:0` beside the worker port, so an instance holds two loopback
+  ports and a task budgets for both. Only the worker's is named, by `--port`:
+  `celld dev` takes no `--internal-listen` and answers `unknown argument` to
+  it (0.5.0, read 2026-09-17) — that flag belongs to a `celld` node, which
+  `celld dev` spawns for itself at `127.0.0.1:0`. The internal port is
+  whatever the kernel handed out; never publish or tunnel it.
 - Teardown is `SIGTERM` and then a wait for the port, never a hard kill:
   SIGTERM drains in about 1.0 s, while a `SIGKILL` leaves the node child
   draining with the port still held, so the next `--port` dies on
