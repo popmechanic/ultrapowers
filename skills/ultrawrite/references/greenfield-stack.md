@@ -77,8 +77,27 @@ https://tinybase.org/skills/build-with-tinybase/SKILL.md before scaffolding; the
 generator's `--list-options` is the authority for current values. An app whose
 store is local-only is a Bun + TypeScript + TinyBase target, not a TinyApp. Write the
 word `TinyApp` for that shape and nothing else; the borrowed term "vibes app"
-is not this project's vocabulary. The runtime that hosts a TinyApp's Durable
-Object inside a sandbox is #764's question, not this page's.
+is not this project's vocabulary.
+
+A TinyApp's server is **one root Durable Object per app instance** — `AppRoot`,
+reached as `env.APP.getByName('<instance>')` — and it is the only object the
+outside world addresses. Each store is a **module object** of its own: a
+`WsServerDurableObject` whose `createPersister()` is
+`createDurableObjectSqlStoragePersister(store, this.ctx.storage.sql, { mode: 'fragmented' })`,
+named `<instance>/<module>[@label]` — the optional `@label` names a fork of that
+module — and reached only through the root, which maps `/sync/<module>` to
+`env.MODULES.getByName('<instance>/<module>')` and serves the exam surface beside
+it. The parcelling follows the plan's: one task owns one module, so two tasks
+never write one store, and the client's `WsSynchronizer` dials `/sync/<module>`
+for the module it reads.
+
+A Durable Object **Facet** is not that shape, and does not become it until celld
+carries a facet's WebSocket: on celld 0.5.0 the 101 a facet accepts does not
+cross back to its root — the `webSocket` is null and the upgrade headers are
+absent, on macOS and on Linux alike — while a named Durable Object's socket
+works in the same fleet (denoland/celld#210, 2026-09-17). A plan that wants
+facets keeps them behind a flag, and only for verbs that are not sockets. How an
+exam starts, budgets and stops that server is `## The runtime host`, below.
 
 ## State exams
 
@@ -247,6 +266,53 @@ exam's header comment may quote a `Run:` line without running it, fixture
 run-28, 2026-09-17), and the last exits 0 only when something is left; so the
 leading `!` makes a clean tree exit 0 and silent, and one offender exit 1
 with that file's path on stdout.
+
+## The runtime host
+
+A TinyApp's server runs on **celld**, and a plan that names a state exam names
+the host with it. What follows is what a plan writes down about that host — the
+start line, the budget, the teardown and the one thing an exam must never reach
+for — not how the engine runs it.
+
+- **Where it is.** On a fleet sandbox celld is already at `/usr/local/bin/celld`,
+  put there by the fleet's own setup script and verified by digest; on a laptop it
+  is wherever the operator installed it, so a plan names the binary and never a
+  package manager.
+- **How an exam starts it.** The start line is
+  `celld dev <server dir> --no-watch --port <p> --internal-listen 127.0.0.1:<q>`,
+  and a plan allocates **two ports per task**: `<p>` for the worker and `<q>` for
+  the internal listener, which otherwise takes `127.0.0.1:0` and collides across
+  parallel tasks. `--no-watch` is not optional — without it a mid-run tree change
+  rebuilds under a running exam.
+- **Its bundler.** `CELLD_ESBUILD` names `<repo>/node_modules/.bin/esbuild`, and
+  that binary comes from the plan's own Dependencies line, which carries esbuild
+  after its `dev:` word (`dev: esbuild@0.25.x`) — so the sandbox installs no
+  esbuild of its own and the version an exam bundles with is the one the plan
+  pinned.
+- **Its memory budget.** `CELLD_MAX_RSS_MB` is set per instance, because celld's
+  own thresholds read root cgroup paths an exe VM does not have and fall back to
+  `MemTotal` and celld's own RSS — a reading that is not the VM's real share, so
+  the plan states the number rather than letting celld guess it.
+- **Its exam surface.** The exam-mode surface is enabled by `TINYAPP_EXAM=1` in
+  `.dev.vars`, and only under it does the root serve `content`, `rows`, `fork`,
+  `reload` and `discard` — `/exam/content?f=`, `/exam/rows?f=`, `/exam/fork?from=&to=`,
+  `/exam/reload?f=` and `/exam/discard?f=`, each a call through to the module
+  object. A build without that flag serves `/sync/<module>` and nothing else.
+- **Its config.** The config file is `wrangler.jsonc`, since celld rejects
+  `wrangler.toml`; a scaffold that writes the TOML form is converted before the
+  first exam runs.
+- **How an exam stops it.** Teardown is a `SIGTERM` to the supervisor and then a
+  wait for the port to clear — it drains in about a second — because a hard kill
+  leaves the port held and the next task starts on `Address already in use`.
+- **What it must never reach for.** The probe runs with **no bucket** and no
+  network: no R2 or KV binding, no fetch off the box, nothing but `lo` up (it
+  passes inside `unshare -n`), so a green exam is a claim about the store and not
+  about the operator's account.
+- **The walls, so a plan can size a task.** Measured on a laptop: `celld dev
+  --clean` is ready in about 1 s, and a fork by read and seed is 12–16 ms
+  (popmechanic/tinyapp-fixture branch `facets-on-celld`, `3b1afca`, 2026-09-17;
+  connect 18–23 ms, sync 21 ms, converge 0 ms at n=3, and the earlier facet probe's
+  fork plus seed at n=20, 2026-09-16).
 
 ## Styling (experiment, 2026-09-16)
 

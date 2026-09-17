@@ -1183,8 +1183,12 @@ run_engine() {
   # this script's stdout would make the run look unfinished to a reader.
   phase_refresher >/dev/null 2>>"$BOOT_LOG" &
   refresher=$!
+  # LimitNOFILE: the engine and every worker under it would otherwise inherit
+  # soft RLIMIT_NOFILE 1024 — what bites Chromium, bun and pytest — while the
+  # image's hard limit for a service is 524288. Same value as the run unit's.
   fleet_systemd_run --user "--unit=fleet-engine-$RUN_N" --pipe --wait --collect \
-    -p MemoryMax=40G -p MemorySwapMax=0 -p "WorkingDirectory=$TARGET_DIR" -- \
+    -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288 \
+    -p "WorkingDirectory=$TARGET_DIR" -- \
     env -u CLAUDE_CONFIG_DIR \
       "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
       "CLAUDE_CODE_OAUTH_TOKEN=placeholder" \
@@ -1995,8 +1999,11 @@ publish_fold() { # $1 = attempt
   FOLD_ATTEMPTS="$attempt"
 
   set +e
+  # The engine's prefix, entry for entry — LimitNOFILE included, since the fold
+  # runs the suite and a suite is what exhausts a soft 1024.
   fleet_systemd_run --user "--unit=fleet-fold-$RUN_N-$attempt" --pipe --wait --collect \
-    -p MemoryMax=40G -p MemorySwapMax=0 -p "WorkingDirectory=$TARGET_DIR" -- \
+    -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288 \
+    -p "WorkingDirectory=$TARGET_DIR" -- \
     env -u CLAUDE_CONFIG_DIR \
       "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
       "CLAUDE_CODE_OAUTH_TOKEN=placeholder" \

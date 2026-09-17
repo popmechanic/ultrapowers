@@ -92,6 +92,21 @@ one-task plan gets `--cpu 3 --memory 3GB` and a ten-task plan `--cpu 6 --memory
 line overrides the formula outright, and either way the number is still checked
 against `billing plan --json` before a VM exists.
 
+Memory leaves that formula when the plan has state exams. Then the run is sized
+by the **browsers** its widest wave may hold open at once — C, the number of
+tasks in one wave whose Proof names a `tests/state-exams/` path, since each
+state exam's render move opens one Chromium — and it asks for `max(6, 2 + 1.25 ×
+C)` GB, still clamped by the ceiling. A Chromium with a real page on it is
+0.7–1 GB, so a two-task TinyApp run wants 6 GB where `2 + W` would have bought
+it 4, and an eight-task one wants 12. CPU is unchanged by C: the fixture box
+that prompted this read about 1 % steal and 50 % idle, so cores were never what
+ran out. A plan with **no** state exam keeps `2 + W` — pool RAM is the shared
+constraint (§Capacity: read the meter, never sum the allocation), and a floor
+charged to runs that open no browser would spend it on nothing. For a fleet that
+runs TinyApp plans the recommended `memory` ceiling in `fleet.json` is `12GB`,
+which is what an eight-browser wave asks for and the most this formula ever
+wants.
+
 The `capacity` doctor row is a report of those two facts and of nothing else:
 the pool the account has, beside the `cpu` and `memory` ceiling a run is bounded
 by. It divides one by the other nowhere, because allocated vCPU is
@@ -620,6 +635,26 @@ on the next one, ask her before editing a script.
   compile, prints `compiler=<sha>` beside the engine line, and
   refuses when it cannot fetch it rather than falling back to the cache
   (run-26, 2026-09-17).
+
+**The sandbox's runtime.** (celld 0.5.0, measured on fleet-counsel, 2026-09-17,
+an exe VM with 2 vCPU / 4 GB)
+
+- celld's memory thresholds read root cgroup paths an exe VM does not have:
+  `/sys/fs/cgroup/memory.max`, `/sys/fs/cgroup/memory.current` and the v1 path,
+  none of which exist in the initial cgroup namespace, so it falls back to
+  `/proc/meminfo` and its own RSS and its 80 % shed and 95 % cap never fire
+  against a sibling process. A `systemd-run` scope does not change what it
+  reads. Set `CELLD_MAX_RSS_MB` per instance instead — the only knob that binds
+  one worker's runtime rather than the whole box.
+- `celld dev` is two processes (a supervisor about 22 MB, node 41 MB idle to
+  82 MB under probe load) and binds a second, INTERNAL listener on
+  `127.0.0.1:0` beside the worker port. A task that needs that port known
+  passes `--internal-listen 127.0.0.1:<port>`; left unpinned it is whatever the
+  kernel handed out, and nothing on the box can tell you which.
+- Teardown is `SIGTERM` and then a wait for the port, never a hard kill:
+  SIGTERM drains in about 1.0 s, while a `SIGKILL` leaves the node child
+  draining with the port still held, so the next `--port` dies on
+  `Address already in use`.
 
 **The fold kernel.**
 
