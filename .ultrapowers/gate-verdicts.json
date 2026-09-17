@@ -1,0 +1,146 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "39d76277c48beee1e4196b3e91d1f6cd14fc4b1c794debe511b33590d21307ab",
+      "verdict": "pass",
+      "reason": "Every clause has a leg that fails if it is false \u2014 M1/M2 by the fake-fetch assertions in (a)/(b) (the over-budget case computes to 120003 > 120000 with zero calls), M3 by the driven subscription routing and the `jev: {}` rejection in (c)/(g), M4 by the four `'jev' in deps` cases in (d), M5/M6 by sed ranges whose anchors (`fleet-engine-$RUN_N`, `fleet-fold-$RUN_N`, `driver:suite-runs`, `Integration naming`) exist at BASE and whose `tr`-joined patterns match only the adjacency the clauses pin, and M7 by the passthrough-only observables in (g) \u2014 with nothing at BASE pinning the opposite and `fleet/jev-client.mjs`/`test_jev_client.mjs` being the task's own creations."
+    },
+    "2": {
+      "hash": "19f130dccfc755a19c8a4f2ffb4288adb9dae2424c2cf34e9e767221e82cf867",
+      "verdict": "pass",
+      "reason": "M1's leg (a) fails if the row, its key, the four typed questions, the path-filtered hunks or the hub comment are wrong and leg (b) pins the empty-path fallback; M2 has one leg per enumerated row (minor, driver-minted, null answer via 500, no jev) each asserting zero rows/requests; M3's leg (d) compares labels, verdict `fixed`, `fixIterations` 1, `status` `done`, `driver:finding` rows and `judgmentCalls` across the paired runs \u2014 every literal is computed from the clauses' own rules, the test is task-created and `fleet/run-engine.mjs` at BASE pins nothing contrary."
+    },
+    "3": {
+      "hash": "c0a8373c1d67645421d967a5909d11747b5bc6c1a91ec1260e11e9b343b76ea8",
+      "verdict": "pass",
+      "reason": "Every clause has a falsifying leg \u2014 M1/M2 by leg (a)/(b)'s exact row counts, key sets, state shapes and hub-comment membership, M3 by leg (c)'s zero-row runs under a 500 `ask` and under no `jev` plus the standard\u2192`sonnet`/most-capable\u2192`opus` pair consistent with BASE's `TIER` literal, and M4 by leg (d)'s equal `(label, opts.model)` sequence and per-task report fields \u2014 with the new sim file absent at BASE and created by the task."
+    },
+    "4": {
+      "hash": "7e6b5269fee690717c253ffde7f1576db216ee6137724fb6c6dfae227872f980",
+      "verdict": "pass",
+      "reason": "Every clause has a leg that fails if it is false \u2014 (a) pins M1's single row, the request's exact question keys/types and per-task state; (b) covers each of M2's four negations (green, claimed-with-reconcile, null answer via 500, no jev) with zero rows; (c) pins M3's MERGED/passed=false/unattributed/no-reconcile parity across the with- and without-jev runs (its tree check compares file names, a weaker witness than the tree hash but not a wrong layer), and the base shows `waveMerges`, `judgmentCalls` and `reconcile:wave1:1` present while the sim file is one the task creates."
+    },
+    "5": {
+      "hash": "d94b64fb21058a48b61ab1c7ed06ff288ea5e66557fb01961f1f9cc74adb70f0",
+      "verdict": "pass",
+      "reason": "Every clause has a failing leg \u2014 leg (a)'s ordered grep anchored after `billing somewhere else` pins M1's eleven phrases in order inside the sed range (BASE lines 265\u2013271, which holds zero digit lines so leg (b)'s `= 0` is satisfiable, and zero `typesafe` mentions at BASE so the `-ge 1` leg forces the addition while the file-count-equals-range-count leg with the next bullet's lead dropped catches any mention elsewhere), and leg (c) computes to the eleven `- **` bullets the section holds at BASE and finds the BASE sentences' anchor fragments in order."
+    }
+  },
+  "tally": {
+    "base": "3c61d8d795fddd14a3b60cc140bacf0e09fc23d2",
+    "dispatched": 12,
+    "rejected": 4,
+    "misfed": 3,
+    "rounds": 3,
+    "per_round": {
+      "1": {
+        "dispatched": 5,
+        "rejected": 4
+      },
+      "2": {
+        "dispatched": 4,
+        "rejected": 0,
+        "misfed": 3
+      },
+      "3": {
+        "dispatched": 3,
+        "rejected": 0
+      }
+    },
+    "note": "Round 2's readers for tasks 2, 3 and 4 read a sibling author's diet: the shared session scratchpad's `gate-<t>.json` names collided across the four concurrent authors. Those three verdicts were discarded and re-read in round 3 from `jev1096-gate-<t>.json`."
+  },
+  "history": [
+    {
+      "round": 1,
+      "task": "1",
+      "hash": "8ff5176ccb00600025d088646390b10d0de07c1266c608e34f3142b36afbcc8e",
+      "verdict": "fail",
+      "reason": "M4's production path is unpinned \u2014 leg (d) supplies a fake `jevClientFor` in all three cases, so a `runMainInner` whose default is missing passes; and M7's `jev` passthrough in `rig` has no falsifying leg."
+    },
+    {
+      "round": 1,
+      "task": "2",
+      "hash": "72b6140762e32e98cd79e740136f7e15062a3993789d24f32454b34b3d2a3a38",
+      "verdict": "fail",
+      "reason": "M2's no-row-for-a-minor-issue has no falsifying leg \u2014 leg (a)'s canned reply was never stated to carry a minor issue, so leg (c) passed vacuously."
+    },
+    {
+      "round": 1,
+      "task": "3",
+      "hash": "cac13fbad3fcde042c0f71f906f1f8bd22d27af5526af383aaa25c20d626af4d",
+      "verdict": "fail",
+      "reason": "M1/M2 pin the state's keys but legs (a)/(b) asserted only `files` and `patch`, so a state missing `title`, `claim`, `proof` or `proofTests` passed."
+    },
+    {
+      "round": 1,
+      "task": "4",
+      "hash": "06a2c3e4b30825167e84fc24b5146def4c6f33065a83c89526bad1e93257b965",
+      "verdict": "fail",
+      "reason": "M1 pins one `tasks` entry per merged result but leg (a) deep-equalled only `state.tasks.A`, so a state carrying `A` alone passed."
+    },
+    {
+      "round": 1,
+      "task": "5",
+      "hash": "d94b64fb21058a48b61ab1c7ed06ff288ea5e66557fb01961f1f9cc74adb70f0",
+      "verdict": "pass",
+      "reason": "Every clause has a failing leg at the document layer."
+    },
+    {
+      "round": 2,
+      "task": "1",
+      "hash": "39d76277c48beee1e4196b3e91d1f6cd14fc4b1c794debe511b33590d21307ab",
+      "verdict": "pass",
+      "reason": "Leg (d) now drives runMain with no `jevClientFor` and pins `deps.jev.ask`; leg (g) pins the `jev: {}` rejection only the passthrough can carry."
+    },
+    {
+      "round": 3,
+      "task": "2",
+      "hash": "19f130dccfc755a19c8a4f2ffb4288adb9dae2424c2cf34e9e767221e82cf867",
+      "verdict": "pass",
+      "reason": "Leg (a) states the minor `style` issue and leg (c) pins one request, none with a minor severity."
+    },
+    {
+      "round": 3,
+      "task": "3",
+      "hash": "c0a8373c1d67645421d967a5909d11747b5bc6c1a91ec1260e11e9b343b76ea8",
+      "verdict": "pass",
+      "reason": "Legs (a)/(b) pin the exact key sets of `state` and `state.task` and the claim/proof extracts."
+    },
+    {
+      "round": 3,
+      "task": "4",
+      "hash": "7e6b5269fee690717c253ffde7f1576db216ee6137724fb6c6dfae227872f980",
+      "verdict": "pass",
+      "reason": "Leg (a) pins `Object.keys(state.tasks)` as `['A', 'B']` and B's entry."
+    }
+  ],
+  "authoring": {
+    "minutes": 40,
+    "probes": 1,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Quote the issue; amend the no-metered-API gotcha in two lines",
+          "Quote the issue; touch nothing in CLAUDE.md"
+        ],
+        "recommended": "Quote the issue; amend the no-metered-API gotcha in two lines",
+        "picked": "Quote the issue; amend the no-metered-API gotcha in two lines"
+      },
+      {
+        "question": "Execute how",
+        "options": [
+          "Ultrapowers",
+          "Subagent-Driven",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers"
+      }
+    ]
+  }
+}
