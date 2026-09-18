@@ -46,6 +46,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { cloneAtBase } from '../fleet/run-waves.mjs'
 import { makeJevClient } from '../fleet/jev-client.mjs'
+import { runAll, bootstrapFor } from './commands.mjs'
 import { runWorker } from './worker.mjs'
 import { makeJudge } from './judge.mjs'
 import { literalsOf, hunksCarrying } from './hunks.mjs'
@@ -349,6 +350,20 @@ export function clausesOf (body) {
   return numbered.length ? numbered : line.split(/;\s*/).map((s) => s.trim()).filter(Boolean)
 }
 
+/** M3: a task's own list of exam commands, the way `runAll` wants them —
+ *  the parser's own `testCmds` when it printed one (even an empty array:
+ *  a task the parser marked as having nothing to run), else `[task.testCmd]`
+ *  when `testCmd` is a non-empty string, else `[]`. */
+export function testCmdsOf (task) {
+  if (Array.isArray((task || {}).testCmds)) return task.testCmds
+  return (task && task.testCmd) ? [String(task.testCmd)] : []
+}
+
+/** The timeout every command `runAll` runs gets, wherever no more specific
+ *  policy field applies (`policy.fold.reverify.timeout_seconds` and
+ *  `policy.select.timeout_seconds` are the two that do). */
+const DEFAULT_TIMEOUT_SECONDS = 300
+
 /** One patch, split into its per-file diffs, keyed by path. */
 export function splitDiff (text) {
   const pattern = /^diff --git a\/(\S+) b\/\S+\n([\s\S]*?)(?=^diff --git |(?![\s\S]))/gm
@@ -644,6 +659,12 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   if (!compiled || !Array.isArray(compiled.launch_waves)) {
     throw new Error('plan_parse.py did not answer a plan: ' + String(compiledOut.stderr || '').slice(0, 400))
   }
+  // M4: the plan's own bootstrap command, when the parser printed one —
+  // `bootstrapFor`'s `planCmd`. `null` when it did not, so every clone's own
+  // tracked files (a lockfile) decide instead.
+  const bootstrapCmd = typeof compiled.bootstrapCmd === 'string' && compiled.bootstrapCmd !== ''
+    ? compiled.bootstrapCmd
+    : null
 
   const planText = fs.readFileSync(planPath, 'utf8')
   const waves = compiled.launch_waves.map((wave) => wave.map((t) => {
@@ -892,7 +913,6 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   // would ride the patch into the adopted tree. `makeCloner` is shared with
   // `runRefold`, below, so both entries make a clone the same way.
   const cloneAt = makeCloner({ target, runDir, git })
-
   // Amendment (undeclared by M1-M6, needed only to reach them under M3):
   // `exclude` drops the task's own Proof/Test files back out of the index
   // before the diff is cut, so a candidate's patch — the one thing this file
@@ -998,9 +1018,12 @@ export async function runEngine (rawArgs = {}, deps = {}) {
    * and the judge's reading of that patch against the task's clauses.
    */
   const measure = async ({ task, dir, index, anchor }) => {
-    const [cmd, ...argv] = String(task.testCmd || '').trim().split(/\s+/)
-    const examRun = cmd ? sh(cmd, argv, dir) : { status: 0 }
-    const examExit = exitOf(examRun)
+    // M3: every one of the task's own testCmds runs, in order, through
+    // `runAll` — falling back to `[task.testCmd]` when the parser printed no
+    // `testCmds` — so a second command's non-zero exit is the exam's exit,
+    // not a first command's exit code with the rest silently never run.
+    const examRun = runAll({ cmds: testCmdsOf(task), cwd: dir, sh, timeoutSeconds: DEFAULT_TIMEOUT_SECONDS })
+    const examExit = examRun.exit
     // The exam files RIDE the patch. Three things stand on that: the fold check runs a task's exam on
     // the folded tree, a guarded exam reaches the pull request only this way, and the boot copies the
     // unguarded ones to the evidence record from the tree before it strips them. run-195: with them
@@ -1025,7 +1048,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       index,
       patch,
       examExit,
-      examTail: String((examRun && examRun.stdout) || '').slice(-1500),
+      examTail: examRun.out.slice(-1500),
       claim: reading && typeof reading.claim === 'number' ? reading.claim : null,
       coverage: (reading && Array.isArray(reading.coverage)) ? reading.coverage : [],
     }
@@ -1078,18 +1101,19 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const mcpServersFor = async (taskId, cwd, label) => {
     if (!tools) return null
     const task = tasks.find((t) => t.id === taskId)
-    const testCmd = task && task.testCmd
-    const runExam = testCmd
+    // M3: run_exam runs the same set `measure` does — the task's own
+    // testCmds, in order, through `runAll` — so a second command's non-zero
+    // exit is what this tool resolves too, not just the first command's.
+    const cmds = testCmdsOf(task)
+    const runExam = cmds.length
       ? async () => {
-        const [cmd, ...argv] = String(testCmd).trim().split(/\s+/)
-        const r = sh(cmd, argv, cwd)
-        const exit = exitOf(r)
-        const tail = outOf(r).slice(-1500)
+        const r = runAll({ cmds, cwd, sh, timeoutSeconds: DEFAULT_TIMEOUT_SECONDS })
+        const tail = r.out.slice(-1500)
         appendEvent({
-          kind: 'worker:test-run', task: taskId, label, cmd: testCmd, exit,
-          red: exit !== 0, via: 'run_exam',
+          kind: 'worker:test-run', task: taskId, label, cmd: cmds.join(' && '), exit: r.exit,
+          red: r.exit !== 0, via: 'run_exam',
         })
-        return { exit, tail }
+        return { exit: r.exit, tail }
       }
       : undefined
     try {
@@ -1217,6 +1241,15 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const k = Number.isInteger(reading.k) && reading.k > 0 ? reading.k : 1
     const wantsReferee = reading.referee === true
 
+    // M4: everything past here makes at least one clone (the exam clone, an
+    // implementer clone, or — inside `runSelection`, below — the lazy base
+    // clone), and any one of them can throw a `bootstrapRed`-carrying error
+    // when that clone's own dependency install goes red. That is this task's
+    // own park, not an exception that should escape `land()` and crash the
+    // whole run: caught below, it answers the same `dead`-carrying shape a
+    // worker that ended with no patch already does, for the exact same
+    // caller (the main loop) to turn into a `parked` task the usual way.
+    try {
     // M3: the exam this task's implementers build on — the one already
     // running at minute zero when the policy speculates, or dispatched only
     // now, at this task's own anchor, when it does not (M6).
@@ -1449,6 +1482,12 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     }
 
     return { task, k, anchor, best, wall_ms: Date.now() - t0 }
+    } catch (err) {
+      if (!(err && err.bootstrapRed)) throw err
+      const { clone, exit, tail } = err.bootstrapRed
+      const reason = 'bootstrap failed in ' + clone + ': exit ' + exit + (tail ? '\n' + tail : '')
+      return { task, k, anchor, dead: reason, wall_ms: Date.now() - t0 }
+    }
   }
 
   /**
@@ -1517,7 +1556,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const touched = Object.keys(splitDiff(patchText))
     if (!touched.length) return
     const cap = Number.isInteger(reverifyPolicy.max_run) ? reverifyPolicy.max_run : 6
-    const timeoutSeconds = reverifyPolicy.timeout_seconds ?? 300
+    const timeoutSeconds = reverifyPolicy.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS
 
     const exams = examsTouched({ folded: task.id, touched, adopted, tasks, cap })
     if (!exams.length) return
