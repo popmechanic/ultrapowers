@@ -263,11 +263,19 @@ nothing.
 ## Authoring a queue
 
 A sitting's queue of well-defined issues drains by partitioning it by files into
-disjoint bundles: two plans that would touch one file go in one bundle, since same-file
-edits fold inside one run and never across two PRs. Dispatch one author subagent per
-bundle — each loads this skill, pins its own BASE facts, dispatches its own fresh gate
-readers per task, and compiles to `PLAN OK`. The issue's desired-state sentence is the
-plan's Claim, quoted rather than drafted, exactly as the elicitation path above has it.
+disjoint bundles, and it must partition by `Create:` paths as well as by files: two
+plans that would touch one file go in one bundle, since same-file edits fold inside
+one run and never across two PRs, and two plans that would create one path go in
+one bundle, or the second declares `Consumes:` on the first and launches after it
+(the 2026-09-17 drain serialized #1095 and #1096 by hand after both listed `Create:
+fleet/jev-client.mjs`). Dispatch one author subagent per bundle — each loads this
+skill, pins its own BASE facts, dispatches its own fresh gate readers per task,
+writing each diet to `<issue>-gate-<t>.json` so the filename carries the plan's
+own issue prefix and two authors' readers never collide on the scratchpad (six
+authors once collided on bare `gate-<t>.json` names, and author-1096's round-2
+readers read a sibling's diet for tasks 2–4, discarding three verdicts), and
+compiles to `PLAN OK`. The issue's desired-state sentence is the plan's Claim,
+quoted rather than drafted, exactly as the elicitation path above has it.
 Grill an issue only when its ticket carries the `wayfinder:grilling` label; an undecided
 choice found mid-authoring comes back as a question, not as a guess.
 
