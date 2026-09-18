@@ -668,3 +668,22 @@
 {"ts":"2026-09-18T22:23:51.020Z","kind":"worker:test-run","task":"3","label":"impl:3:0","cmd":"node fleet/tests/test_factory_proofs.mjs","exit":1,"red":true,"via":"run_exam"}
 {"ts":"2026-09-18T22:23:53.215Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"node fleet/tests/test_factory_proofs.mjs 2>&1 | tail -100"}
 {"ts":"2026-09-18T22:23:53.534Z","kind":"worker:test-run","task":"3","label":"impl:3:0","cmd":"node fleet/tests/test_factory_proofs.mjs 2>&1 | tail -100","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:24:05.434Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Edit","target":"/home/exedev/run/impl-5-0/factory/boot.sh"}
+{"ts":"2026-09-18T22:24:06.998Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"compiled\" /home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:24:07.261Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"grep -n \"^publish()\\|^close_run()\\|^record_tags()\\|^boot()\" /home/exedev/run/impl-5-0/factory/boot.sh"}
+{"ts":"2026-09-18T22:24:09.095Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Read","target":"/home/exedev/run/impl-5-0/factory/boot.sh"}
+{"ts":"2026-09-18T22:24:11.635Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"sed -n '1530,1545p' factory/engine.mjs"}
+{"ts":"2026-09-18T22:24:15.143Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:24:16.331Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Edit","target":"/home/exedev/run/impl-5-0/factory/boot.sh"}
+{"ts":"2026-09-18T22:24:16.501Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"node fleet/tests/test_factory_proofs.mjs 2>&1 | grep -A5 DEBUG | head -40"}
+{"ts":"2026-09-18T22:24:16.815Z","kind":"worker:test-run","task":"3","label":"impl:3:0","cmd":"node fleet/tests/test_factory_proofs.mjs 2>&1 | grep -A5 DEBUG | head -40","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:24:18.120Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"bash -n factory/boot.sh && echo \"syntax OK\""}
+{"ts":"2026-09-18T22:24:18.926Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"node fleet/tests/test_factory_proofs.mjs 2>&1 | head -60"}
+{"ts":"2026-09-18T22:24:19.110Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-18T22:24:39.839Z","kind":"worker:test-run","task":"5","label":"impl:5:0","cmd":"node fleet/tests/test_factory_boot_merge.mjs","exit":0,"red":false,"via":"run_exam"}
+{"ts":"2026-09-18T22:24:39.839Z","kind":"worker:test-run","task":"3","label":"impl:3:0","cmd":"node fleet/tests/test_factory_proofs.mjs 2>&1 | head -60","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:24:39.840Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"node fleet/tests/test_factory_proofs.mjs > /tmp/out.log 2>&1; grep -c DEBUG /tmp/out.log; wc -l /tmp/out.log"}
+{"ts":"2026-09-18T22:24:40.163Z","kind":"worker:test-run","task":"3","label":"impl:3:0","cmd":"node fleet/tests/test_factory_proofs.mjs > /tmp/out.log 2>&1; grep -c DEBUG /tmp/out.log; wc -l /tmp/out.log","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:24:42.085Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"git diff --stat factory/boot.sh"}
+{"ts":"2026-09-18T22:24:45.174Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Read","target":"/home/exedev/run/impl-5-0/factory/boot.sh"}
+{"ts":"2026-09-18T22:24:47.232Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"mcp__factory__run_exam"}
