@@ -703,3 +703,18 @@
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Write","target":"/home/exedev/run/impl-4-0/factory/dispatch.mjs"}
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"node -e \"\nimport('./factory/dispatch.mjs').then(({waitsFor}) => {\n  console.log(JSON.stringify(waitsFor({ taskId: '3', hardPreds: ['1'], chainPreds: ['2', '1'], policy: {} })));\n  console.log(JSON.str"}
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"waitsOn\" /home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"sed -i \\\n  -e '680s/waitsOn(task)/predsFor(task)/' \\\n  -e '1218s/waitsOn(t)/predsFor(t)/' \\\n  -e '1281s/waitsOn(t)/predsFor(t)/' \\\n  factory/engine.mjs\ngrep -n \"waitsOn\\|predsFor\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"examDir\\|coveredBlock\\|taskCovering\\|mcpServers\" /home/exedev/run/impl-4-0/factory/engine.mjs | sed -n '1,60p'"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Edit","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Edit","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n \"^  const read\\|^  const land\\|^  const launch\\|^  const settleReadiness\\|^  await settleReadiness\\|^  const foldIn\\|^  const resolve\\|^  if (done.size\\|^  return {\" /home/exedev/run/impl-4-1/"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"const postLanding\\|const measure\\|const scoreOf\\|const hunksFor\" /home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
