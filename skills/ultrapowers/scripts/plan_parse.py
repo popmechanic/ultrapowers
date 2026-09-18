@@ -3,9 +3,9 @@
 
 Usage: python3 plan_parse.py <plan.md>
 
-Prints exactly one JSON object on stdout with keys `tasks`, `dag_edges` and
-`launch_waves`, and exits 0 -- reading no file but the plan itself, whether
-or not a `<stem>.gate-verdicts.json` sits beside it.
+Prints exactly one JSON object on stdout with keys `tasks`, `dag_edges`,
+`launch_waves` and `pairs`, and exits 0 -- reading no file but the plan
+itself, whether or not a `<stem>.gate-verdicts.json` sits beside it.
 
 This is a grammar parser, not the old semantic compiler
 (`skills/ultrapowers/scripts/compile_plan.py`): it refuses (exit 2, one
@@ -385,11 +385,7 @@ def _build_edges(impl):
                 add(a, b, "write-after-create")
 
     # Tier 2: interface.
-    produced_tokens = {
-        t["id"]: {tok for p in t["produces_text"]
-                  for tok in [_interface_token(p)] if tok}
-        for t in impl
-    }
+    produced_tokens = _produced_tokens_map(impl)
     for b in ids:
         b_consumes = {tok for c in by_id[b]["consumes_text"]
                       for tok in [_interface_token(c)] if tok}
@@ -427,6 +423,72 @@ def _build_edges(impl):
                 add(a, b, "proof-run")
 
     return edges
+
+
+def _produced_tokens_map(impl):
+    return {
+        t["id"]: {tok for p in t["produces_text"]
+                  for tok in [_interface_token(p)] if tok}
+        for t in impl
+    }
+
+
+def _consumed_tokens_ordered(task):
+    return [tok for c in task["consumes_text"]
+            for tok in [_interface_token(c)] if tok]
+
+
+def _pair_interface_match(t1, t2, produced):
+    """t1 is the earlier-in-document task of the pair, t2 the later one.
+    Returns {"symbol", "producer", "consumer"} or None."""
+    t1_produces = produced.get(t1["id"], set())
+    t2_produces = produced.get(t2["id"], set())
+    t1_consumes_ordered = _consumed_tokens_ordered(t1)
+    t2_consumes_ordered = _consumed_tokens_ordered(t2)
+
+    forward = t1_produces & set(t2_consumes_ordered)   # t1 produces, t2 consumes
+    backward = t2_produces & set(t1_consumes_ordered)  # t2 produces, t1 consumes
+
+    if forward:
+        producer, consumer, consumer_order, matches = t1, t2, t2_consumes_ordered, forward
+    elif backward:
+        producer, consumer, consumer_order, matches = t2, t1, t1_consumes_ordered, backward
+    else:
+        return None
+
+    symbol = next(tok for tok in consumer_order if tok in matches)
+    return {"symbol": symbol, "producer": producer["id"], "consumer": consumer["id"]}
+
+
+def _build_pairs(impl):
+    """M1 (pairs task): one entry per unordered pair of implementation tasks
+    whose `files` intersect or whose interface tokens match, in document
+    order of `a` then of `b`."""
+    produced = _produced_tokens_map(impl)
+    pairs = []
+    n = len(impl)
+    for i in range(n):
+        for j in range(i + 1, n):
+            t1, t2 = impl[i], impl[j]
+            shared = sorted(set(t1["files"]) & set(t2["files"]))
+            match = _pair_interface_match(t1, t2, produced)
+            why = []
+            if shared:
+                why.append("files")
+            if match:
+                why.append("interface")
+            if not why:
+                continue
+            pairs.append({
+                "a": t1["id"],
+                "b": t2["id"],
+                "why": why,
+                "paths": shared,
+                "symbol": match["symbol"] if match else None,
+                "producer": match["producer"] if match else None,
+                "consumer": match["consumer"] if match else None,
+            })
+    return pairs
 
 
 # --------------------------------------------------------------------------- #
@@ -534,6 +596,7 @@ def parse_plan_text(text):
 
     edges = _build_edges(impl)
     waves_ids = _kahn_layers(ids, edges)
+    pairs = _build_pairs(impl)
 
     def public_view(t):
         return {
@@ -556,6 +619,7 @@ def parse_plan_text(text):
         "tasks": tasks_out,
         "dag_edges": dag_edges,
         "launch_waves": launch_waves,
+        "pairs": pairs,
     }
 
 

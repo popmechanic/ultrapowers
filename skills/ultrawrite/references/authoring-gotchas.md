@@ -90,7 +90,13 @@ included. Nothing prints them.
   text folds, so listing the file costs nothing. A file the author could not
   foresee is no longer that death: it is a declared amendment the reviewer
   judges on its merits and never reverts, the rule since #990 — so the listing
-  is foresight, not a fence (run-2, 2026-09-04).
+  is foresight, not a fence (run-2, 2026-09-04). That foresight never becomes
+  an authored ordering: the engine reads every overlapping or consuming pair
+  itself, so a chain added only to keep two same-file edits apart is a defect,
+  not caution — on run-193 the author chained the engine task behind the
+  hunk-picker task to keep two import inserts out of the resolver, and the
+  consumer waited on a producer it needed nothing from, about nine minutes of
+  clock lost (n=1 run, 2026-09-18).
 - **Never a process or authorship sentence in the plan-level Claim.** "Every
   task's exam was written by a peer before the implementer started" parked an
   otherwise clean run as `deferred:external`: the critic reads the tree, and no

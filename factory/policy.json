@@ -143,7 +143,7 @@
       "independent_additions": 0.9,
       "shared_anchor_max": 0.2,
       "ordering_matters_max": 0.2,
-      "mode": "record-only"
+      "mode": "live"
     },
     "reply_gate": {
       "carries_both": 0.8,
@@ -234,5 +234,42 @@
     "basis": "judgment",
     "experiment": true,
     "rollback": "enabled = false"
+  },
+  "pairs": {
+    "mode": "live",
+    "t_changes_consumer": {
+      "value": 0.8,
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "experiment": true,
+      "rollback": 1.01
+    },
+    "n": 0,
+    "window": "none",
+    "basis": "judgment",
+    "experiment": true,
+    "rollback": "mode = off"
+  },
+  "speculate": {
+    "exam_at_zero": true,
+    "on_candidate": true,
+    "n": 0,
+    "window": "none",
+    "basis": "judgment",
+    "experiment": true,
+    "rollback": "exam_at_zero = false, on_candidate = false"
+  },
+  "fold": {
+    "reverify": {
+      "enabled": true,
+      "max_run": 6,
+      "timeout_seconds": 300,
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "experiment": true,
+      "rollback": "enabled = false"
+    }
   }
 }

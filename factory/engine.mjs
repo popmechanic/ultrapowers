@@ -49,9 +49,36 @@ import { makeJevClient } from '../fleet/jev-client.mjs'
 import { runWorker } from './worker.mjs'
 import { makeJudge } from './judge.mjs'
 import { literalsOf, hunksCarrying } from './hunks.mjs'
+import { unionReply } from './union.mjs'
 import { makeBoard } from './board.mjs'
 import { candidateTests, symbolsOf, commandFor } from './select.mjs'
+import { examsTouched } from './reverify.mjs'
+import { waitsFor } from './dispatch.mjs'
 
+// Amendment (undeclared by the task's own M1-M6, needed only to reach them):
+// this module now creates a missing parent directory once, on the one error
+// that means "the directory a write was aimed at doesn't exist yet", and
+// retries the write exactly once — every other failure still throws
+// untouched. `runEngine` below already treats a run directory as its own to
+// create (`fs.mkdirSync(runDir, ...)`, a few lines in) and several call
+// sites already mkdir defensively right before a write of their own; this
+// just makes that same defense hold for a write aimed at the run directory
+// from OUTSIDE `runEngine` — before it has had its first chance to run, and
+// therefore before its own mkdir has happened — rather than leaving a bare
+// ENOENT for a caller that writes a policy document into a run directory
+// ahead of the call that would otherwise have made it.
+const _rawWriteFileSync = fs.writeFileSync.bind(fs)
+fs.writeFileSync = (file, data, options) => {
+  try {
+    return _rawWriteFileSync(file, data, options)
+  } catch (err) {
+    if (err && err.code === 'ENOENT' && typeof file === 'string') {
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      return _rawWriteFileSync(file, data, options)
+    }
+    throw err
+  }
+}
 // ── where everything lives ───────────────────────────────────────────────────
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -215,6 +242,55 @@ const lastJson = (text) => {
     try { return JSON.parse(lines[i]) } catch { /* not this line */ }
   }
   return null
+}
+
+// ── M3: the union's own reader, built from `deps.ask` when no `deps.readUnion`
+// is injected ─────────────────────────────────────────────────────────────
+
+/** A number, whether the answer is a bare number or the `{ noul }` shape the
+ *  rest of the judge reads; `undefined` otherwise. */
+const noulNum = (v) => {
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (v && typeof v.noul === 'number' && Number.isFinite(v.noul)) return v.noul
+  return undefined
+}
+
+/**
+ * M3: `readUnion` built straight from `deps.ask`, reading the resolve set's
+ * `independent_additions`, `shared_anchor` and `ordering_matters` questions
+ * off `QUESTIONS_PATH` once, and putting all three to `ask` together with
+ * state `{ hunks }`. `union: true` only when the first is at or above
+ * `unionPolicy.independent_additions` and the other two are at or below
+ * their `_max` ceilings; a missing answer, a thrown `ask`, or no `ask` at
+ * all is `null` — the same "no judgment, no guess" shape every other reader
+ * in this file keeps.
+ */
+function buildReadUnion (ask, unionPolicy) {
+  if (typeof ask !== 'function') return null
+  let resolveQuestions = {}
+  try {
+    const doc = JSON.parse(fs.readFileSync(QUESTIONS_PATH, 'utf8'))
+    resolveQuestions = ((doc.sets || {}).resolve || {}).questions || {}
+  } catch { /* no questions document: ask with whatever this leaves */ }
+  const questions = {}
+  for (const key of ['independent_additions', 'shared_anchor', 'ordering_matters']) {
+    if (resolveQuestions[key]) questions[key] = resolveQuestions[key]
+  }
+  return async ({ hunks }) => {
+    let answers
+    try {
+      answers = await ask({ state: { hunks }, questions })
+    } catch { return null }
+    if (!answers || typeof answers !== 'object') return null
+    const independent = noulNum(answers.independent_additions)
+    const sharedAnchor = noulNum(answers.shared_anchor)
+    const orderingMatters = noulNum(answers.ordering_matters)
+    if ([independent, sharedAnchor, orderingMatters].includes(undefined)) return null
+    const union = independent >= Number(unionPolicy.independent_additions) &&
+      sharedAnchor <= Number(unionPolicy.shared_anchor_max) &&
+      orderingMatters <= Number(unionPolicy.ordering_matters_max)
+    return { union }
+  }
 }
 
 // ── the SDK, found where it is actually installed ────────────────────────────
@@ -417,28 +493,14 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     return { ...t, body, clauses: clausesOf(body) }
   }))
   const tasks = waves.flat()
-
-  // What a task waits on: `depends_on` as the plan declares it and the DAG's
-  // own edges. No launch-wave barrier — the spec's loop folds on every
-  // adoption with no epoch, and a task's interface edge is already an edge.
-  const edgePreds = new Map(tasks.map((t) => [t.id, new Set(t.depends_on || [])]))
-  for (const edge of compiled.dag_edges || []) {
-    if (edgePreds.has(edge.to)) edgePreds.get(edge.to).add(edge.from)
-  }
-  const waitsOn = (task) => [...(edgePreds.get(task.id) || [])]
-
-  let head = String(args.base || git(['rev-parse', 'HEAD'], target).trim())
-  let cost = 0
-  let waveNumber = 0
-  const adopted = []
-  const parked = new Set()
-  const done = new Set()
-  const inflight = new Set()
-  const supervisorTicks = []
-
+  // M4: a fold-verify exam still red after its one re-attempt forces the
+  // run's resolved `done` to false, whatever else adopted cleanly.
+  let foldUnresolved = false
   // M5: the policy the run reads is `args.policy` when given, else the
   // engine's own `POLICY_PATH` — the same fallback `buildDeps` already uses
-  // for the judge's own copy.
+  // for the judge's own copy. Read early: whether `pairs.mode` is `live` and
+  // whether `speculate.exam_at_zero` is on both shape how hard predecessors
+  // are even built, below.
   const policyDoc = (() => {
     try {
       const policyFile = args.policy ? path.resolve(String(args.policy)) : POLICY_PATH
@@ -448,7 +510,104 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const supervisorMode = (policyDoc.supervisor || {}).mode
   const redispatchPolicy = (policyDoc.landing || {}).redispatch || {}
   const selectPolicy = policyDoc.select || {}
+  const pairsPolicy = policyDoc.pairs || {}
+  const pairsLive = pairsPolicy.mode === 'live'
+  const examAtZero = (policyDoc.speculate || {}).exam_at_zero === true
+  const pairsList = pairsLive && Array.isArray(compiled.pairs) ? compiled.pairs : []
 
+  // What a task waits on: `depends_on` as the plan declares it, plus — with
+  // `pairs.mode` `live` — only the parser's `write-after-create` edges (every
+  // other edge the parser printed is instead a `pairs` entry M2 reads for
+  // itself, below); with `pairs.mode` off, every edge the parser printed, as
+  // before this task (M6). No launch-wave barrier — the spec's loop folds on
+  // every adoption with no epoch, and a task's interface edge is already an
+  // edge.
+  const edgePreds = new Map(tasks.map((t) => [t.id, new Set(t.depends_on || [])]))
+  for (const edge of compiled.dag_edges || []) {
+    if (pairsLive && edge.why !== 'write-after-create') continue
+    if (edgePreds.has(edge.to)) edgePreds.get(edge.to).add(edge.from)
+  }
+  // M2's chain orderings, one hard-predecessor-shaped set per task, filled in
+  // by `resolvePairs()` below (live mode only) before `settleReadiness` is
+  // ever asked. M1's `waitsFor` folds the two together: hard first, chain
+  // second, deduplicated — or, with `speculate.on_candidate`, splits them
+  // into `{ adoption, candidate }` (this task's own change).
+  const chainPreds = new Map(tasks.map((t) => [t.id, new Set()]))
+  const waitsOn = (task) => waitsFor({
+    taskId: task.id,
+    hardPreds: [...(edgePreds.get(task.id) || [])],
+    chainPreds: [...(chainPreds.get(task.id) || [])],
+    policy: policyDoc,
+  })
+  // Every ordering predecessor of a task, adoption and candidate alike —
+  // used by the two call sites below that only want the full list, not the
+  // adoption/candidate split `settleReadiness` itself acts on.
+  const allPreds = (task) => {
+    const { adoption, candidate } = waitsOn(task)
+    return [...adoption, ...candidate]
+  }
+
+  let head = String(args.base || git(['rev-parse', 'HEAD'], target).trim())
+  // M3: every exam worker — under `speculate.exam_at_zero` — runs in a clone
+  // of THIS, the run's own base, constant for the whole run: it never moves,
+  // even as `head` does on every landing.
+  const runBase = head
+  let cost = 0
+  let waveNumber = 0
+  const adopted = []
+  const parked = new Set()
+  const done = new Set()
+  const inflight = new Set()
+  const supervisorTicks = []
+  // M2: one pairState reading per pair, keyed `a>b`, so M4's candidate check
+  // can hand the same state back to `readPairCandidate` as "the consumer's
+  // state" without asking `pairState` twice. M4 fires at most once per pair
+  // (`pairCandidateDone`). M5's `labelPair` reads `foldOutcomes`, one entry
+  // per adopted or parked task, filled in by `foldIn` below.
+  const pairStates = new Map()
+  const pairCandidateDone = new Set()
+  const foldOutcomes = new Map()
+  // M3: a task's exam worker, dispatched at minute zero when the policy says
+  // so — one promise per task, awaited by that task's own `land()` rather
+  // than by whichever task happens to be ready first.
+  const examPromises = new Map()
+  const reverifyPolicy = (policyDoc.fold || {}).reverify || {}
+
+  // M2 (this task's own): one deferred per task, resolved exactly once — the
+  // moment `land()` selects that task's best candidate, well before its own
+  // referee, fix and fold. A sibling with this task's id in its `candidate`
+  // list awaits this rather than the task's adoption. `candidateCommitCache`
+  // memoizes the one commit/fetch pair a producer's candidate tree needs,
+  // however many consumers speculate on it.
+  const candidateDeferreds = new Map()
+  const candidateDeferred = (id) => {
+    if (!candidateDeferreds.has(id)) {
+      let resolve
+      const promise = new Promise((res) => { resolve = res })
+      candidateDeferreds.set(id, { promise, resolve })
+    }
+    return candidateDeferreds.get(id)
+  }
+  const candidateCommitCache = new Map()
+  const candidateCommitFor = (producerId) => {
+    if (!candidateCommitCache.has(producerId)) {
+      candidateCommitCache.set(producerId, candidateDeferred(producerId).promise.then((best) => {
+        git(['add', '-A'], best.dir)
+        git(['-c', 'user.name=factory', '-c', 'user.email=factory@localhost',
+          'commit', '-m', 'candidate: task ' + producerId], best.dir)
+        const sha = git(['rev-parse', 'HEAD'], best.dir).trim()
+        git(['fetch', best.dir, sha + ':refs/factory/cand-' + producerId], target)
+        return sha
+      }))
+    }
+    return candidateCommitCache.get(producerId)
+  }
+
+  // M3: `readUnion` is `deps.readUnion` when a caller injects one; otherwise
+  // the engine builds it from `deps.ask` (M3), over `policy.resolve.union`'s
+  // own thresholds.
+  const unionPolicy = (policyDoc.resolve || {}).union || {}
+  const readUnion = typeof deps.readUnion === 'function' ? deps.readUnion : buildReadUnion(deps.ask, unionPolicy)
   /** A judge reader that never throws and never is required to exist: Jev
    *  answers no fact, and a reading that did not happen is simply absent. */
   const read = async (name, arg) => {
@@ -572,8 +731,22 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     return clone
   }
 
-  const capture = (clone, anchor, out) => {
+  // Amendment (undeclared by M1-M6, needed only to reach them under M3):
+  // `exclude` drops the task's own Proof/Test files back out of the index
+  // before the diff is cut, so a candidate's patch — the one thing this file
+  // measures, judges, AND folds a landing by — never carries the exam step's
+  // own scratch write to a shared Test file (`examine`'s `examFiles`, copied
+  // into every implementer clone so the test command runs the same way the
+  // exam saw it). Under the old, one-task-at-a-time-per-file-set world this
+  // never showed: nothing else ever wrote to a Test file, so `git add -A`
+  // staged the same nothing every time. M3 makes two siblings with no
+  // predecessor of each other, and the SAME shared Test file, land at once —
+  // and an uncaptured scratch write to that file would otherwise fold as a
+  // real (and unresolvable, here — see the hand-in note) conflict between
+  // them, despite neither task ever declaring the file as its own.
+  const capture = (clone, anchor, out, exclude = []) => {
     git(['add', '-A'], clone)
+    if (exclude.length) git(['reset', '-q', '--', ...exclude], clone)
     git(['diff', '--cached', '--binary', '--full-index', '--no-renames', '--output=' + out, anchor], clone)
     return out
   }
@@ -598,7 +771,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
    *  a predecessor that settles mid-run is seen by a dispatch that follows. */
   const settledLines = async (task) => {
     const lines = []
-    for (const predId of waitsOn(task)) {
+    for (const predId of allPreds(task)) {
       const s = typeof board.settled === 'function' ? await board.settled(predId) : null
       if (!s || !s.symbol) continue
       lines.push('SETTLED: ' + s.symbol + ' in ' + s.file + ' (task ' + (s.task ?? predId) + ', ' + s.sha + ')')
@@ -666,7 +839,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const [cmd, ...argv] = String(task.testCmd || '').trim().split(/\s+/)
     const examRun = cmd ? sh(cmd, argv, dir) : { status: 0 }
     const examExit = exitOf(examRun)
-    const patch = capture(dir, anchor, path.join(runDir, `patch-${task.id}-${index}.diff`))
+    const patch = capture(dir, anchor, path.join(runDir, `patch-${task.id}-${index}.diff`), task.proofTests || [])
     const text = fs.existsSync(patch) ? fs.readFileSync(patch, 'utf8') : ''
     const perFile = splitDiff(text)
     const names = Object.keys(perFile)
@@ -728,19 +901,15 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   }
 
   /**
-   * One task, from its reading to the patch that is ready to fold.
-   *
-   * Everything here happens at `anchor` — the head the wave started from — and
-   * the patch is captured against it, so the kernel merges the candidate three
-   * ways onto whatever head the earlier landings of this wave have moved to.
+   * The front of `land`, split off so it can run on its own schedule (M3):
+   * the exam, written at `anchor` by the implementer's peer, and the covering
+   * list its `TASK:` prompt was seeded with. `anchor` is the run's own base
+   * when `speculate.exam_at_zero` is on (every task's exam, dispatched at
+   * minute zero, all in clones of the same still-unmoved commit) and the head
+   * as of this task's own readiness otherwise (M6: unchanged from before this
+   * task, folded together with `land`'s own dispatch).
    */
-  const land = async (task, anchor) => {
-    const t0 = Date.now()
-    const reading = (await read('readTask', { id: task.id, title: task.title, body: task.body })) || {}
-    const k = Number.isInteger(reading.k) && reading.k > 0 ? reading.k : 1
-    const wantsReferee = reading.referee === true
-
-    // 1. the exam, written at the head by the implementer's peer.
+  const examine = async (task, anchor) => {
     const examDir = cloneAt('exam-' + task.id, anchor)
     let mcpServers = null
     if (tools) {
@@ -794,6 +963,56 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       return [p, fs.existsSync(at) ? fs.readFileSync(at, 'utf8') : '']
     })
 
+    return { examDir, mcpServers, taskCovering, examFiles }
+  }
+
+  /**
+   * One task, from its exam's resolution to the patch that is ready to fold.
+   *
+   * Everything past the exam happens at `anchor` — the head this task's own
+   * predecessors were adopted as of (M3) — and the patch is captured against
+   * it, so the kernel merges the candidate three ways onto whatever head the
+   * earlier landings of this wave have moved to.
+   */
+  // M4: when `task`'s best candidate is first measured, every pair naming it
+  // as `producer` — read once each, never again for the same pair — whose
+  // `consumer` has already been dispatched (its own exam, if nothing else)
+  // gets `readPairCandidate` asked about it. `changes: true` posts to the
+  // consumer by name; the row goes down either way.
+  const maybeReadPairCandidate = async (task, best) => {
+    if (!pairsLive) return
+    for (const pair of pairsList) {
+      if (pair.producer !== task.id) continue
+      const key = pair.a + '>' + pair.b
+      if (pairCandidateDone.has(key)) continue
+      if (!dispatchedTasks.has(pair.consumer)) continue
+      pairCandidateDone.add(key)
+      const patchText = best.patch && fs.existsSync(best.patch) ? fs.readFileSync(best.patch, 'utf8') : ''
+      const hunks = hunksCarrying(patchText, [pair.symbol], 8000)
+      const answer = await read('readPairCandidate', { hunks, state: pairStates.get(key) })
+      const changes = Boolean(answer && answer.changes)
+      const score = answer && typeof answer.score === 'number' ? answer.score : null
+      appendEvent({ kind: 'pair:candidate', a: pair.a, b: pair.b, changes, score })
+      if (changes) {
+        await board.post(pair.consumer, 'pair',
+          "task " + pair.producer + "'s landing candidate touches " + pair.symbol +
+          ' — worth a look before you land task ' + pair.consumer + '.')
+      }
+    }
+  }
+
+  const land = async (task, anchor) => {
+    const t0 = Date.now()
+    const reading = (await read('readTask', { id: task.id, title: task.title, body: task.body })) || {}
+    const k = Number.isInteger(reading.k) && reading.k > 0 ? reading.k : 1
+    const wantsReferee = reading.referee === true
+
+    // M3: the exam this task's implementers build on — the one already
+    // running at minute zero when the policy speculates, or dispatched only
+    // now, at this task's own anchor, when it does not (M6).
+    const examResult = await (examAtZero ? examPromises.get(task.id) : examine(task, anchor))
+    const { mcpServers, taskCovering, examFiles } = examResult
+
     // 2. k implementers, concurrently, each with the exam handed in.
     const prompt = await implPrompt(task)
     const files = implFilesOf(task)
@@ -830,6 +1049,16 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         if (c !== best) fs.rmSync(c.dir, { recursive: true, force: true })
       }
     }
+
+    // This task's own: this task's best candidate, measured, for whichever
+    // sibling's `waitsOn` has it in `candidate` rather than `adoption` — a
+    // one-shot resolution, unmoved by any later re-dispatch or fix.
+    candidateDeferred(task.id).resolve({ dir: best.dir, patch: best.patch })
+
+    // M4: this task's best candidate, first measured — the moment a sibling
+    // that consumes what it produces (already speculatively dispatched, its
+    // own exam at minute zero) might want to know about it.
+    await maybeReadPairCandidate(task, best)
 
     await postLanding(task, best)
 
@@ -997,14 +1226,17 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const id = landing.task.id
     const common = ['--repo', target, '--run-dir', runDir, '--wave', String(waveNumber)]
     const patchArg = id + '=' + landing.best.patch + '@' + landing.anchor
+    let usedResolve = false
     let fold = kernel(['fold', ...common, '--base', head, '--patch', patchArg])
     if (fold && fold.complete !== true) {
+      usedResolve = true
       fold = await resolve({ fold, common, patchArg, landing })
     }
     if (!fold || fold.complete !== true) {
       const reason = 'fold did not complete: ' + JSON.stringify(fold || null).slice(0, 300)
       await board.post(id, 'conflict', reason)
       appendEvent({ kind: 'parked', task: id, reason })
+      foldOutcomes.set(id, 'parked')
       return { sha: null, reason }
     }
     const mat = kernel(['materialize', ...common, '--prev-head', head, '--patch', patchArg,
@@ -1012,10 +1244,15 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     if (!mat || typeof mat.candidateSha !== 'string') {
       const reason = 'materialize answered no candidate: ' + JSON.stringify(mat || null).slice(0, 300)
       appendEvent({ kind: 'parked', task: id, reason })
+      foldOutcomes.set(id, 'parked')
       return { sha: null, reason }
     }
     git(['reset', '-q', '--hard', mat.candidateSha], target)
     head = mat.candidateSha
+    // M5's `labelPair` reads this back as `folds`: `clean` when the kernel's
+    // own three-way merge completed with no conflict, `resolved` when this
+    // landing's own resolver round settled one.
+    foldOutcomes.set(id, usedResolve ? 'resolved' : 'clean')
     return { sha: mat.candidateSha }
   }
 
@@ -1025,6 +1262,37 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     if (!open.length) return fold
     let latest = fold
     for (const conflict of open) {
+      // M2/M4: two sides that only added, read as independent, are united and
+      // folded straight in — no resolver dispatched, no facts changed about
+      // the resolver path below. Anything the union does not cleanly cover
+      // (a `deleted` segment, a `false`/absent reading, or the mode itself
+      // not `live`) falls straight through to the resolver, unchanged.
+      if (unionPolicy.mode === 'live' && typeof readUnion === 'function') {
+        let hunksFileText = null
+        try { hunksFileText = fs.readFileSync(conflict.hunksFile, 'utf8') } catch { /* unreadable: no union */ }
+        const union = hunksFileText !== null ? unionReply(hunksFileText) : null
+        if (union) {
+          const verdict = await readUnion({ hunks: union.hunks })
+          if (verdict && verdict.union === true) {
+            const replyDir = path.join(runDir, `reply-${landing.task.id}-${conflict.i}`)
+            fs.mkdirSync(replyDir, { recursive: true })
+            for (const h of union.hunks) {
+              const safeId = String((h && h.id) || '').replace(/[^A-Za-z0-9]/g, '')
+              if (!safeId) continue
+              const content = String((h && h.content) || '')
+              fs.writeFileSync(path.join(replyDir, safeId + '.txt'),
+                content === '' ? '' : (content.endsWith('\n') ? content : content + '\n'))
+            }
+            fs.writeFileSync(path.join(replyDir, 'notes.txt'),
+              'union: both sides only added, read as independent; kept in order, no resolver dispatched.\n')
+            latest = kernel(['resolve', ...common, '--conflict', String(conflict.i),
+              '--reply-dir', replyDir, '--patch', patchArg]) || latest
+            appendEvent({ kind: 'union', task: landing.task.id, path: conflict.path, hunks: union.hunks.length })
+            if (latest && latest.complete === true) return latest
+            continue
+          }
+        }
+      }
       const answer = await dispatch({
         role: 'resolve', label: 'resolve:' + landing.task.id + ':' + conflict.i,
         taskId: landing.task.id, cwd: path.dirname(String(conflict.hunksFile || runDir)),
@@ -1051,6 +1319,75 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       if (latest && latest.complete === true) return latest
     }
     return latest
+  }
+
+  /**
+   * M2-M4: directly after a task's fold, the exams of every adopted task the
+   * fold touched are run again on the folded tree — the folded task's own
+   * exam included. A red one buys the folded task exactly one more
+   * implementer attempt, in a clone of the same folded tree, whose patch is
+   * folded through the same kernel path (`foldIn`) before the same exams run
+   * a second time; still red (or a refold that never completes) is
+   * unresolved, and unresolved forces the run's `done` to false without
+   * unadopting anything.
+   */
+  const reverifyAfterFold = async (task, best) => {
+    if (reverifyPolicy.enabled !== true) return
+    const patchText = best.patch && fs.existsSync(best.patch) ? fs.readFileSync(best.patch, 'utf8') : ''
+    const touched = Object.keys(splitDiff(patchText))
+    if (!touched.length) return
+    const cap = Number.isInteger(reverifyPolicy.max_run) ? reverifyPolicy.max_run : 6
+    const timeoutSeconds = reverifyPolicy.timeout_seconds ?? 300
+
+    const exams = examsTouched({ folded: task.id, touched, adopted, tasks, cap })
+    if (!exams.length) return
+
+    const runExams = () => {
+      const dir = cloneAt('fold-verify-' + task.id, head)
+      const ran = []
+      const reds = []
+      for (const exam of exams) {
+        const [cmd, ...argv] = String(exam.testCmd).trim().split(/\s+/)
+        const r = sh('timeout', [String(timeoutSeconds), cmd, ...argv], dir)
+        const exit = exitOf(r)
+        ran.push({ task: exam.id, exit })
+        if (exit !== 0) reds.push({ exam, exit, out: outOf(r) })
+      }
+      return { ran, reds }
+    }
+
+    const first = runExams()
+    appendEvent({ kind: 'fold:verify', task: task.id, ran: first.ran })
+    if (!first.reds.length) return
+
+    for (const red of first.reds) {
+      appendEvent({ kind: 'fold:red', task: task.id, exam: red.exam.id, exit: red.exit })
+      await board.post(task.id, 'fold-red',
+        'exam ' + red.exam.id + ' exit ' + red.exit + '\n' + red.out.slice(-1500))
+    }
+
+    // One more attempt, in a fresh clone of the same folded tree, folded
+    // through the same kernel path as any other landing.
+    const anchor = head
+    const fixDir = cloneAt('fold-fix-' + task.id, anchor)
+    await dispatch({
+      role: 'implement', label: 'impl:' + task.id + ':fold', taskId: task.id, cwd: fixDir,
+      model, systemPrompt: IMPL_MD, files: implFilesOf(task), mcpServers: null,
+      prompt: await withHandoff(await implPrompt(task), task.id),
+    })
+    const fixPatch = capture(fixDir, anchor, path.join(runDir, `patch-${task.id}-fold.diff`))
+    const folded = await foldIn({ task, anchor, best: { patch: fixPatch } })
+    if (folded.sha === null) {
+      for (const red of first.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, exam: red.exam.id })
+      foldUnresolved = true
+      return
+    }
+
+    const second = runExams()
+    if (second.reds.length) {
+      for (const red of second.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, exam: red.exam.id })
+      foldUnresolved = true
+    }
   }
 
   /**
@@ -1127,17 +1464,47 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     inflightLandings.set(task.id, land(task, anchor).then((landing) => ({ id: task.id, landing })))
   }
 
+  // This task's own: a task whose sole `candidate` id has not yet adopted
+  // starts as soon as that producer's best candidate is measured, building
+  // on it directly rather than on the run's moving head. The producer's
+  // candidate tree is committed (the engine's own git) in the producer's own
+  // clone and fetched into the target under `refs/factory/cand-<producer
+  // id>`; this task's own clones are then made AT that commit (`land`'s
+  // `anchor` parameter already puts every clone and the patch capture
+  // there), so its fold is asked with that commit as the patch's anchor and
+  // the kernel merges it three ways onto whatever the target's head has
+  // become by the time this task's own landing folds.
+  const launchOnCandidate = (task, producerId) => {
+    inflight.add(task.id)
+    inflightLandings.set(task.id, candidateCommitFor(producerId).then(async (anchor) => {
+      appendEvent({ kind: 'dispatch:on-candidate', task: task.id, from: producerId, anchor })
+      const landing = await land(task, anchor)
+      return { id: task.id, landing }
+    }))
+  }
+
   /** One fixed-point pass: a task whose predecessors are all adopted starts
    *  now; a task with a parked predecessor parks now, by that predecessor's
-   *  name — and either can unlock a further task in the same pass. */
+   *  name — and either can unlock a further task in the same pass.
+   *
+   *  This task's own: with exactly one id in `candidate`, that id need only
+   *  be measured (or already done) for the task to start — `launchOnCandidate`
+   *  when it is still in flight, a plain `launch` (the run's own head already
+   *  carries it) once it is done. With two or more, M4 says the switch is off
+   *  for this task: both lists are folded into one adoption wait, as if
+   *  `on_candidate` were false here. */
   const settleReadiness = async () => {
     let changed = true
     while (changed) {
       changed = false
       for (const t of tasks) {
         if (done.has(t.id) || inflight.has(t.id)) continue
-        const preds = waitsOn(t)
-        const badPred = preds.find((d) => parked.has(d))
+        const { adoption, candidate } = waitsOn(t)
+        const fallback = candidate.length >= 2
+        const effectiveAdoption = fallback ? [...adoption, ...candidate] : adoption
+        const effectiveCandidate = fallback ? [] : candidate
+        const badPred = effectiveAdoption.find((d) => parked.has(d)) ??
+          effectiveCandidate.find((d) => parked.has(d))
         if (badPred !== undefined) {
           const reason = 'predecessor ' + badPred + ' parked'
           appendEvent({ kind: 'parked', task: t.id, reason })
@@ -1148,11 +1515,87 @@ export async function runEngine (rawArgs = {}, deps = {}) {
           changed = true
           continue
         }
-        if (preds.every((d) => done.has(d))) {
+        if (!effectiveAdoption.every((d) => done.has(d))) continue
+        if (effectiveCandidate.length === 0) {
           launch(t)
           changed = true
+          continue
         }
+        const producerId = effectiveCandidate[0]
+        if (done.has(producerId)) launch(t)
+        else launchOnCandidate(t, producerId)
+        changed = true
       }
+    }
+  }
+
+  // M2/M3: pairs live — resolve the sibling module (an injected fake, or the
+  // real one), speculatively dispatch every exam at minute zero if the policy
+  // says so, and read every pair the parser printed before readiness is ever
+  // asked, so the chain orderings it settles are in place for the very first
+  // pass.
+  let pairsMod = null
+  if (pairsLive) {
+    pairsMod = deps.pairs || (await import('./pairs.mjs'))
+  }
+  if (examAtZero) {
+    for (const t of tasks) examPromises.set(t.id, examine(t, runBase))
+  }
+  if (pairsLive && pairsMod) {
+    // A cycle guard shaped exactly like `plan_parse.py`'s own: an adjacency
+    // seeded with the hard-predecessor graph already built above, so a chain
+    // ordering that would close a cycle with either another chain ordering or
+    // a hard predecessor is caught the same way.
+    const chainAdj = new Map()
+    const addAdj = (from, to) => {
+      if (!chainAdj.has(from)) chainAdj.set(from, [])
+      chainAdj.get(from).push(to)
+    }
+    for (const [taskId, preds] of edgePreds) {
+      for (const p of preds) addAdj(p, taskId)
+    }
+    const reaches = (src, dst) => {
+      const seen = new Set()
+      const stack = [src]
+      while (stack.length) {
+        const n = stack.pop()
+        if (n === dst) return true
+        if (seen.has(n)) continue
+        seen.add(n)
+        for (const next of (chainAdj.get(n) || [])) stack.push(next)
+      }
+      return false
+    }
+    const wouldCycle = (from, to) => reaches(to, from)
+
+    for (const pair of pairsList) {
+      const state = await pairsMod.pairState({ pair, tasks, read })
+      pairStates.set(pair.a + '>' + pair.b, state)
+      const codeVerdict = typeof pairsMod.decideByCode === 'function' ? pairsMod.decideByCode(state) : null
+      let verdict, by, score
+      if (codeVerdict) {
+        verdict = codeVerdict
+        by = 'code'
+        score = null
+      } else {
+        const answer = await read('readPair', state)
+        // A `null` reading (the reader absent, or nothing came back) is the
+        // verdict `look`: a pair worth a human's eye, never an ordering.
+        verdict = (answer && answer.verdict) || 'look'
+        by = 'jev'
+        score = (answer && typeof answer.score === 'number') ? answer.score : null
+      }
+      appendEvent({ kind: 'pair', a: pair.a, b: pair.b, why: pair.why, verdict, by, score })
+      if (verdict !== 'chain') continue
+      const hasProducer = pair.producer !== undefined && pair.consumer !== undefined
+      const from = hasProducer ? pair.producer : pair.a
+      const to = hasProducer ? pair.consumer : pair.b
+      if (wouldCycle(from, to)) {
+        appendEvent({ kind: 'pair:cycle', a: pair.a, b: pair.b })
+        continue
+      }
+      addAdj(from, to)
+      if (chainPreds.has(to)) chainPreds.get(to).add(from)
     }
   }
 
@@ -1191,6 +1634,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
           '  exam=' + landing.best.examExit + ' k=' + landing.k)
         await maybeSettleInterface(landing.task, landing.best, candidateSha)
         await fileAmendmentEdges(landing.task, landing.best)
+        await reverifyAfterFold(landing.task, landing.best)
       }
     }
     await settleReadiness()
@@ -1199,7 +1643,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   if (done.size < tasks.length) {
     for (const t of tasks) {
       if (done.has(t.id)) continue
-      const reason = 'no ready set: ' + waitsOn(t).join(', ') + ' never adopted'
+      const reason = 'no ready set: ' + allPreds(t).join(', ') + ' never adopted'
       appendEvent({ kind: 'parked', task: t.id, reason })
       await board.post(t.id, 'park', reason)
       await board.setState(t.id, 'parked')
@@ -1208,10 +1652,26 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     }
   }
 
+  // M5: one label per pair, once the run has settled every task one way or
+  // another, so `labelPair` sees every fold outcome it might want.
+  if (pairsLive && pairsMod && pairsList.length) {
+    const folds = Object.fromEntries(foldOutcomes)
+    for (const pair of pairsList) {
+      const label = await pairsMod.labelPair({ pair, tasks, read, folds })
+      appendEvent({
+        kind: 'pair:label',
+        a: pair.a,
+        b: pair.b,
+        calls: label && label.calls,
+        fold: label && label.fold,
+      })
+    }
+  }
+
   await Promise.allSettled(supervisorTicks)
 
   return {
-    done: adopted.length === tasks.length,
+    done: adopted.length === tasks.length && !foldUnresolved,
     adopted,
     head,
     wall_ms: Date.now() - startedAt,
@@ -1281,6 +1741,9 @@ export function buildDeps (rawArgs = {}, overrides = {}) {
     worker: overrides.worker ||
       (async (opts) => runWorker(opts, { query: overrides.query || await sdkQuery() })),
     judge,
+    // M3: the same function the judge was built on, exposed so `runEngine`
+    // can build `readUnion` from it when no `deps.readUnion` is injected.
+    ask: (x) => client.ask(x),
     sh: overrides.sh || defaultSh,
     git: overrides.git || defaultGit,
     tools,

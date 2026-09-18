@@ -659,6 +659,95 @@
           "dynamic": "candidates"
         }
       }
+    },
+    "pair": {
+      "when": "when two tasks in the same batch share a file (readPair, before either lands) and again once one of them has a real patch (readPairCandidate, over that patch's hunks)",
+      "reader": "readPair: whether the pair needs nothing, a look, or a strict order, and which shared name each edits. readPairCandidate: whether a real patch changes what its consumer's task text assumed",
+      "rollback": "no answer, or the needed answer missing -> readPair resolves verdict `look` (never `fold`), where `null`; readPairCandidate resolves `null`",
+      "state": [
+        "producer",
+        "consumer",
+        "shared",
+        "shape",
+        "hunks"
+      ],
+      "provenance": "drafted for map #1131 (\"a Score whose three levels are the three actions, so no threshold constant is fitted\"), this task",
+      "calibrated": false,
+      "questions": {
+        "verdict": {
+          "type": "score",
+          "instructions": {
+            "question": "Given `producer`, `consumer`, `shared` and `shape`, does this pair need nothing, a look, or a strict build order?",
+            "context": "`producer` and `consumer` are two tasks in the same batch, each with its own `claim`, `machine`, `interfaces`, `files` and `context`; `consumer` also carries `legs`. `shared` lists every file the two tasks' `files` hold in common, each with the `outline` of top-level names already at that path and how many times each task's text mentions the path. `shape` is `{ symbol, stated_in_consumer }`: the one shared name the driver already suspects, and whether `consumer`'s own text already states its shape without needing `producer`'s code."
+          },
+          "criteria": [
+            {
+              "what": "The two tasks add or change different constructs in `shared`, or touch no shared file at all, and either could land first"
+            },
+            {
+              "what": "The two tasks touch the same construct in `shared`, or `producer`'s or `consumer`'s text does not say where one of them edits"
+            },
+            {
+              "what": "`consumer`'s exam or implementation has to run code `producer` builds, so `consumer` cannot be finished until `producer`'s code exists"
+            }
+          ]
+        },
+        "where_producer": {
+          "type": "choice",
+          "instructions": {
+            "question": "Which name in `shared`'s outlines does `producer` add or change?",
+            "context": "`shared` lists every file the two tasks' `files` hold in common, each with the `outline` of top-level names already at that path. Pick the one name `producer`'s own text says it adds or edits there, or the option that fits when it is not one of those names."
+          },
+          "criteria": {
+            "_shared": "one key per name in every entry of `shared`'s `outline`, plus `imports`, `new top-level code` and `cannot tell`"
+          },
+          "dynamic": "shared"
+        },
+        "where_consumer": {
+          "type": "choice",
+          "instructions": {
+            "question": "Which name in `shared`'s outlines does `consumer` add or change?",
+            "context": "`shared` lists every file the two tasks' `files` hold in common, each with the `outline` of top-level names already at that path. Pick the one name `consumer`'s own text says it adds or edits there, or the option that fits when it is not one of those names."
+          },
+          "criteria": {
+            "_shared": "one key per name in every entry of `shared`'s `outline`, plus `imports`, `new top-level code` and `cannot tell`"
+          },
+          "dynamic": "shared"
+        },
+        "ordering_matters": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `consumer` have to land after `producer`, given `shared` and `shape`?",
+            "context": "`shape` is `{ symbol, stated_in_consumer }`: the one shared name the driver already suspects, and whether `consumer`'s own text already states its shape without needing `producer`'s code. `shared` lists every file the two tasks' `files` hold in common with its `outline` of top-level names."
+          },
+          "criteria": {
+            "true": "`consumer` needs a name or a behaviour only `producer`'s code supplies",
+            "false": "`consumer`'s own text already gives what it needs, or the two tasks do not depend on each other"
+          }
+        },
+        "needs_behaviour": {
+          "type": "noul",
+          "instructions": {
+            "question": "Do `consumer.legs` call or import a name `producer.interfaces` `produces`, rather than only restating a shape `consumer`'s own text already gives?",
+            "context": "`consumer.legs` are the consumer task's Proof legs. `producer.interfaces.produces` names the exports the producer task's own text commits to. `shape.stated_in_consumer` already says whether the consumer's text states the shared shape on its own."
+          },
+          "criteria": {
+            "true": "A leg calls or imports one of `producer.interfaces`' `produces` names to do its work",
+            "false": "The legs restate a shape `consumer`'s own text already gives, without calling or importing what `producer` produces"
+          }
+        },
+        "changes_consumer": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `hunks` change a name, a signature or a format that `consumer.machine` or `consumer.context` relies on?",
+            "context": "`hunks` is the producer task's real diff, once it has one. `consumer.machine` is the consumer task's numbered Machine clauses; `consumer.context` is its Context prose. Both were written against the producer's task text, before `hunks` existed."
+          },
+          "criteria": {
+            "true": "`hunks` changes a name, a call signature or a data format `consumer.machine` or `consumer.context` states or assumes",
+            "false": "`hunks` leaves every name, signature and format `consumer.machine` or `consumer.context` relies on exactly as the consumer's text assumed"
+          }
+        }
+      }
     }
   }
 }
