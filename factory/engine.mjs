@@ -1223,17 +1223,34 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     }
     let caught = await runSelection(best)
 
-    // 3.5. M4: a short landing — a red exam, a lowest-covered clause under
+    // 3.5. M2-M5: a short landing — a red exam, a lowest-covered clause under
     //      the redispatch floor, or at least one catch — gets exactly one
     //      more implementer in the same clone, with the hand-off, and a
-    //      fresh measurement (and a fresh run-set reading) is kept.
+    //      fresh measurement (and a fresh run-set reading) is kept. A green
+    //      exam on a task that has one settles it: coverage alone never
+    //      makes that landing short (M2). Absent a testCmd, the clauses a
+    //      Run: leg alone proves (task.runOnlyClauses) never enter the
+    //      coverage reading -- Jev's reading for those is not evidence
+    //      either way (M3).
     const redispatchFloor = Number(redispatchPolicy.coverage_floor)
-    const lowCoverage = best.coverage.length
-      ? Math.min(...best.coverage.map((v) => Number(v) || 0))
+    const hasTestCmd = !!task.testCmd
+    const greenExam = hasTestCmd && best.examExit === 0
+    const runOnlyClauses = Array.isArray(task.runOnlyClauses) ? task.runOnlyClauses : []
+    const excluded = hasTestCmd ? [] : runOnlyClauses.slice().sort((a, b) => a - b)
+    const coverageForFloor = excluded.length
+      ? best.coverage.filter((_, i) => !excluded.includes(i + 1))
+      : best.coverage
+    const lowCoverage = coverageForFloor.length
+      ? Math.min(...coverageForFloor.map((v) => Number(v) || 0))
       : null
-    const short = best.examExit !== 0 ||
-      (lowCoverage !== null && Number.isFinite(redispatchFloor) && lowCoverage < redispatchFloor) ||
-      caught
+    const floorFired = !greenExam && lowCoverage !== null &&
+      Number.isFinite(redispatchFloor) && lowCoverage < redispatchFloor
+    const short = best.examExit !== 0 || floorFired || caught
+    appendEvent({
+      kind: 'floor', task: task.id,
+      exam: hasTestCmd ? best.examExit : null,
+      lowest: lowCoverage, excluded, fired: floorFired,
+    })
     if (short && redispatchPolicy.enabled === true) {
       await board.post(task.id, 'redispatch',
         'exam exit ' + best.examExit + ', lowest coverage ' + lowCoverage)

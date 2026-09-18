@@ -66,6 +66,9 @@ IFACE_BULLET = re.compile(r'^-\s*(Consumes|Produces)\s*:\s*(.+)$', re.I)
 PROOF_TEST_BULLET = re.compile(r'^-\s*Test\s*:\s*(.+)$', re.I)
 PROOF_RUN_BULLET = re.compile(r'^-\s*Run\s*:\s*(.+)$', re.I)
 PROOF_GUARD_BULLET = re.compile(r'^-\s*Guard\s*:\s*(.+)$', re.I)
+PROOF_LEGS_BULLET = re.compile(r'^-\s*Legs\s*:\s*(.+)$', re.I)
+LEG_MARKER_RE = re.compile(r'\([a-z]\)')
+LEG_CITATION_RE = re.compile(r'\[M(\d+)\]')
 TYPE_LINE = re.compile(r'^\*\*Type:\*\*\s*(.+?)\s*$', re.I)
 EXAM_CMD_LINE = re.compile(r'^\*\*Exam command:\*\*\s*(.+?)\s*$', re.I)
 BACKTICK_PATH_RE = re.compile(r'`([^`]+)`')
@@ -218,10 +221,13 @@ def _parse_task_body(body_lines):
             produces_text.append(value)
 
     # Proof slot.
+    proof_slot_lines = slot_lines("proof")
     proof_tests = []
     proof_runs = []
     proof_guards = []
-    for line, fenced in slot_lines("proof"):
+    legs_start = None
+    legs_first_text = None
+    for i, (line, fenced) in enumerate(proof_slot_lines):
         if fenced:
             continue
         s = line.strip()
@@ -244,6 +250,39 @@ def _parse_task_body(body_lines):
             if bm:
                 val = bm.group(1)
             proof_runs.append(val)
+            continue
+        m = PROOF_LEGS_BULLET.match(s)
+        if m and legs_start is None:
+            legs_start = i
+            legs_first_text = m.group(1)
+
+    # The Legs text runs from the `- Legs:` bullet to the end of the Proof
+    # slot -- every unfenced line after it (however it wraps) is part of it.
+    run_only_clauses = []
+    if legs_start is not None:
+        parts = [legs_first_text]
+        for line, fenced in proof_slot_lines[legs_start + 1:]:
+            if fenced:
+                continue
+            parts.append(line.strip())
+        legs_text = " ".join(p for p in parts if p)
+
+        legs = []
+        markers = list(LEG_MARKER_RE.finditer(legs_text))
+        for k, mk in enumerate(markers):
+            start = mk.start()
+            end = markers[k + 1].start() if k + 1 < len(markers) else len(legs_text)
+            legs.append(legs_text[start:end])
+
+        cited = {}
+        for leg in legs:
+            has_run = "Run:" in leg
+            for n in LEG_CITATION_RE.findall(leg):
+                cited.setdefault(int(n), []).append(has_run)
+        run_only_clauses = sorted(n for n, runs in cited.items() if all(runs))
+        legs_has_citation = bool(cited)
+    else:
+        legs_has_citation = False
 
     return {
         "type": ttype,
@@ -256,6 +295,8 @@ def _parse_task_body(body_lines):
         "proof_tests": proof_tests,
         "proof_runs": proof_runs,
         "proof_guards": proof_guards,
+        "run_only_clauses": run_only_clauses,
+        "legs_has_citation": legs_has_citation,
     }
 
 
@@ -588,6 +629,8 @@ def parse_plan_text(text):
                 "produces": parsed["produces_text"],
             },
             "proofGuards": parsed["proof_guards"],
+            "runOnlyClauses": parsed["run_only_clauses"],
+            "legsHasCitation": parsed["legs_has_citation"],
         }
         all_tasks.append(task)
 
@@ -598,8 +641,14 @@ def parse_plan_text(text):
     waves_ids = _kahn_layers(ids, edges)
     pairs = _build_pairs(impl)
 
+    # `runOnlyClauses` only appears on task objects at all once some task's
+    # Legs text actually cites a `[M<n>]` clause somewhere in the plan --
+    # plans that use `- Legs:` purely as narrative prose (no bracket
+    # citations) print exactly the fields they always did.
+    plan_has_run_only = any(t["legsHasCitation"] for t in impl)
+
     def public_view(t):
-        return {
+        view = {
             "id": t["id"],
             "title": t["title"],
             "files": t["files"],
@@ -609,6 +658,9 @@ def parse_plan_text(text):
             "interfaces": t["interfaces"],
             "proofGuards": t["proofGuards"],
         }
+        if plan_has_run_only:
+            view["runOnlyClauses"] = t["runOnlyClauses"]
+        return view
 
     by_id = {t["id"]: t for t in impl}
     tasks_out = [public_view(t) for t in impl]
