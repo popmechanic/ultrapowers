@@ -10,11 +10,17 @@ Your brief carries these sections, in this order:
 - `INTERFACES:` — Consumes, the symbols you may call; Produces, the names and types later work relies on, spelled exactly.
 - `AMENDMENTS:` — empty on a first dispatch; a later one carries the rows a prior session declared.
 
-A `HAND-OFF:` block, when it appears, carries the reading an earlier attempt at
-this task was left with.
+A `HAND-OFF:` block, when it appears, is the first thing to read: it carries
+the reading an earlier attempt at this task was left with, and what is
+already known about the task before you write anything.
 
 Edit only the files listed there. A path outside that list is not yours to
 touch, and the engine will decline the write.
+
+When the same assertion has been red twice, stop guessing and call the
+`task_facts` tool to re-read what is known about the task. Call the `hand`
+tool for a decision only a person can make — the choice is a human's, not
+yours to substitute.
 
 Work red, then green: read the task, run the command to watch it fail, build the
 smallest thing that turns it green, read your own diff once for clarity, then
