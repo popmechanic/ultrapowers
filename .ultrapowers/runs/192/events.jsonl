@@ -24,3 +24,5 @@
 {"kind":"landing","task":"5","k":1,"examExit":0,"claim":0.9,"coverage":[0.98,0.97,0.19],"candidateSha":"aa8fffa67416c5612829b04ce4799a5a328fa4b0","wall_ms":268106}
 {"kind":"landing","task":"6","k":1,"examExit":0,"claim":0.78,"coverage":[0.97,0.97,0.4],"candidateSha":"c2c363ae5d89d8fd29cdbc37dfef9903ae98b298","wall_ms":89934}
 {"kind":"supervisor","task":"7","label":"exam:7","answers":{"stuck":{"type":"noul","noul":0.46},"off_track":{"type":"noul","noul":0.4},"needs_human":{"type":"noul","noul":0.26},"done_not_exited":{"type":"noul","noul":0.15}}}
+{"kind":"supervisor","task":"7","label":"impl:7:1","answers":{"stuck":{"type":"noul","noul":0.16},"off_track":{"type":"noul","noul":0.26},"needs_human":{"type":"noul","noul":0.1},"done_not_exited":{"type":"noul","noul":0.09}}}
+{"kind":"supervisor","task":"7","label":"impl:7:0","answers":{"stuck":{"type":"noul","noul":0.48},"off_track":{"type":"noul","noul":0.38},"needs_human":{"type":"noul","noul":0.23},"done_not_exited":{"type":"noul","noul":0.13}}}
