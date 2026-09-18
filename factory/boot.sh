@@ -16,8 +16,7 @@ GITHUB_INT_HOST="${GITHUB_INT_HOST:-github.int.exe.xyz}"
 PLAN_BLOB_PATH=".ultrapowers/plan.md"
 FLEET_COMMIT_SECONDS="${FLEET_COMMIT_SECONDS:-60}"
 # `systemd-run --user` needs a bus address: the run unit inherits one, ssh does not.
-XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"; DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
 export XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS
 TARGET_DIR="$FLEET_HOME/target"; EVIDENCE_DIR="$FLEET_HOME/evidence"
 RUN_DIR="$FLEET_HOME/run"; ENGINE_LOG="$FLEET_HOME/engine.log"
@@ -91,6 +90,7 @@ prepare() {
   [ "$landed" = "$PLAN_SHA" ] || fail "plan: $PLAN_BRANCH is at '${landed:-<nothing>}', not the plan=$PLAN_SHA this run was assigned"
   mkdir -p "$FLEET_HOME/plans"; fleet_git -C "$TARGET_DIR" show "$PLAN_SHA:$PLAN_BLOB_PATH" >"$PLAN_FILE" || fail "plan: $PLAN_SHA carries no $PLAN_BLOB_PATH"
   log "plan: $PLAN_BRANCH at $PLAN_SHA -> $PLAN_FILE"
+  v="${PLAN_FILE%.md}.gate-verdicts.json"; fleet_git -C "$TARGET_DIR" show "$PLAN_SHA:.ultrapowers/gate-verdicts.json" >"$v" 2>/dev/null || { rm -f "$v"; log "plan: no gate-verdicts.json at $PLAN_SHA (run-188 died without it)"; }
   [ -e "$EVIDENCE_DIR/.git" ] && { EVIDENCE_READY=1; return 0; }
   if fleet_git -C "$TARGET_DIR" fetch origin "refs/heads/$EVIDENCE_BRANCH" 2>/dev/null; then at=FETCH_HEAD; else at="$PLAN_SHA"; fi
   fleet_git -C "$TARGET_DIR" worktree add --detach "$EVIDENCE_DIR" "$at" || fail "evidence: worktree add $EVIDENCE_DIR at $at"
