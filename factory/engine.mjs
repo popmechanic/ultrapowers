@@ -1630,13 +1630,13 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const runExamsAndChecks = async ({ dir, exams, foldedTaskId, timeoutSeconds, includeChecks = true }) => {
     const ran = []
     const reds = []
-    for (const exam of exams) {
-      const [cmd, ...argv] = String(exam.testCmd).trim().split(/\s+/)
-      const r = sh('timeout', [String(timeoutSeconds), cmd, ...argv], dir)
-      const exit = exitOf(r)
-      ran.push({ task: exam.id, exit })
-      if (exit !== 0) reds.push({ kind: 'exam', id: exam.id, exit, out: outOf(r) })
-    }
+    // Every part of every exam's command, through the one runner the measure and the re-fold use:
+    // the fold check had kept its own whitespace split through two same-file folds (run-196), so a
+    // joined command's second program never ran here — the defect #1163 names, caught on the folded
+    // tree by the commands task's own exam.
+    const examRun = runTaskExams({ tasks: exams, dir, sh, timeoutSeconds })
+    ran.push(...examRun.ran)
+    for (const red of examRun.reds) reds.push({ kind: 'exam', id: red.task.id, exit: red.exit, out: red.out })
     const checks = includeChecks && proofsEnabled && Array.isArray(compiled.checks) ? compiled.checks : []
     if (checks.length) {
       const results = await runLines({
@@ -1719,7 +1719,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       fixDir = cloneAt('fold-fix-' + task.id, anchor)
     } catch (err) {
       if (!(err && err.bootstrapRed)) throw err
-      for (const red of first.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, exam: red.task.id })
+      for (const red of first.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, ...redEventFields(red) })
       foldUnresolved = true
       return
     }
