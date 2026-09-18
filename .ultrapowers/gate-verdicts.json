@@ -1,0 +1,111 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "4aa98c2c43ce0bee97fbf0ca9677772be7d05e5be1fe41d50c245a4f447ef1f2",
+   "verdict": "pass",
+   "reason": "Round 2: every pinned literal (needle order, whole-word vs substring, hit order, sort, caps, symbolsOf, commandFor argvs) computes under M1-M4; round 1 failed correctly on leg (b) omitting the stem `catalog` from hits."
+  },
+  "2": {
+   "hash": "05ada1177c5e8a849bfba661f05ce7d4b5f859a92db0d00bdfac8d094a0fe77a",
+   "verdict": "pass",
+   "reason": "covered [a,null] at 0.8, selected [p4,p1,p3] at 0.5/max_run 3 and [p4] at 0.92 all compute; null paths and the nine reader keys have legs."
+  },
+  "3": {
+   "hash": "749891b4fa141ef5c1c80f5721fe32d995f7d4400cefcaaf77a17c9d68037a44",
+   "verdict": "pass",
+   "reason": "literalsOf floor and dedupe compute; leg (b) fixes hunk order, single header and the omitted line; leg (c) fails on the BASE head-slice."
+  },
+  "4": {
+   "hash": "243a4f7fa68c107d66614983d41f98a04158e481daa57ae0c7e38d4f3e600f63",
+   "verdict": "pass",
+   "reason": "proofGuards per task, the --unguarded listing and the three usage refusals each have a leg; the only BASE pin is the exam file's own TASK_FIELDS, which the exam updates."
+  },
+  "5": {
+   "hash": "5cc7bc0473ea35d96c45dbd0122a4c804627b778274662496cbb2fcd6aff6ee7",
+   "verdict": "pass",
+   "reason": "argv, copied bytes, rm-commit-push order, the evidence add before the publishing commit, and the no-op path each have a leg; literals agree with boot.sh at BASE."
+  },
+  "6": {
+   "hash": "681b547f30873584ff62130638164d3603b17dea01153fa6644b7110763bc787",
+   "verdict": "pass",
+   "reason": "Each Run exits non-zero when its fact is false; both sed ranges name headings present at BASE; the row count stays 16."
+  },
+  "7": {
+   "hash": "a27c89490ec8bef3262fe142ed41f3416ea10edbd515a059450b1ce936ea89f8",
+   "verdict": "pass",
+   "reason": "Run-set order and cap, the COVERED block, catch vs red-at-base, exactly two impl dispatches, and the switch-off facts each have a leg and compute."
+  }
+ },
+ "tally": {
+  "dispatched": 8,
+  "rejected": 1,
+  "rounds": {
+   "1": {
+    "dispatched": 7,
+    "rejected": 1
+   },
+   "2": {
+    "dispatched": 1,
+    "rejected": 0
+   }
+  },
+  "base": "96210cf002141564aabed31f36bc1c72b78d66f0",
+  "gate_question": "facts-only (skills/ultrawrite/SKILL.md \u00a7The proof gate, since #1146) \u2014 second plan read under it; the one rejection was a miscomputed literal (task 1 leg b), not a request for legs."
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "1",
+   "verdict": "fail",
+   "reason": "leg (b) pinned hits [src/catalog.py]; under M2 the stem `catalog` also matches as a whole word between `/` and `.`, so the literal is [src/catalog.py, catalog]."
+  }
+ ],
+ "authoring": {
+  "minutes": 80,
+  "probes": 1,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Draft A \u2014 live",
+     "Draft B \u2014 examiner record-only"
+    ],
+    "recommended": "Draft A \u2014 live",
+    "picked": "Draft A \u2014 live"
+   },
+   {
+    "question": "On a catch",
+    "options": [
+     "Counts as a short landing",
+     "Record only",
+     "Park the task"
+    ],
+    "recommended": "Counts as a short landing",
+    "picked": "Counts as a short landing"
+   },
+   {
+    "question": "Exam strip",
+    "options": [
+     "Strip rides in the plan",
+     "Hand PR first, then launch"
+    ],
+    "recommended": "Strip rides in the plan",
+    "picked": "Strip rides in the plan"
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers on the fleet",
+     "Subagent-driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers on the fleet",
+    "picked": "Ultrapowers on the fleet"
+   }
+  ]
+ }
+}
