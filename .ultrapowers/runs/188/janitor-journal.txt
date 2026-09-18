@@ -1,0 +1,46 @@
+Sep 18 04:15:25 fleet-r188-2609180415-5209 bootstrap.sh[998]: 2026-09-18T04:15:25Z bootstrap: comment: run=188 plan=c2d6605fa9343be4aecc568a2b1ab122489a585f target=popmechanic/ultrapowers base=b465ffc204658aeb28085d8191d901ec24094564 engine=b465ffc204658aeb28085d8191d901ec24094564 (unit run=188)
+Sep 18 04:15:25 fleet-r188-2609180415-5209 bootstrap.sh[1011]: 2026-09-18T04:15:25Z bootstrap: cloning engine at b465ffc204658aeb28085d8191d901ec24094564
+Sep 18 04:15:27 fleet-r188-2609180415-5209 bootstrap.sh[1028]: 2026-09-18T04:15:27Z bootstrap: exec /home/exedev/engines/b465ffc204658aeb28085d8191d901ec24094564/factory/boot.sh boot
+Sep 18 04:15:27 fleet-r188-2609180415-5209 bootstrap.sh[986]: 2026-09-18T04:15:27Z assignment: run-188 target=popmechanic/ultrapowers base=b465ffc204658aeb28085d8191d901ec24094564 engine=b465ffc204658aeb28085d8191d901ec24094564
+Sep 18 04:15:28 fleet-r188-2609180415-5209 bootstrap.sh[1042]: Cloning into '/home/exedev/target'...
+Sep 18 04:15:30 fleet-r188-2609180415-5209 bootstrap.sh[1052]: Note: switching to 'b465ffc204658aeb28085d8191d901ec24094564'.
+Sep 18 04:15:30 fleet-r188-2609180415-5209 bootstrap.sh[1052]: You are in 'detached HEAD' state. You can look around, make experimental
+Sep 18 04:15:30 fleet-r188-2609180415-5209 bootstrap.sh[1052]: changes and commit them, and you can discard any commits you make in this
+Sep 18 04:15:30 fleet-r188-2609180415-5209 bootstrap.sh[1052]: state without impacting any branches by switching back to a branch.
+Sep 18 04:15:30 fleet-r188-2609180415-5209 bootstrap.sh[1052]: If you want to create a new branch to retain commits you create, you may
+Sep 18 04:15:30 fleet-r188-2609180415-5209 bootstrap.sh[1052]: do so (now or later) by using -c with the switch command. Example:
+Sep 18 04:15:30 fleet-r188-2609180415-5209 bootstrap.sh[1052]:   git switch -c <new-branch-name>
+Sep 18 04:15:30 fleet-r188-2609180415-5209 bootstrap.sh[1052]: Or undo this operation with:
+Sep 18 04:15:30 fleet-r188-2609180415-5209 bootstrap.sh[1052]:   git switch -
+Sep 18 04:15:30 fleet-r188-2609180415-5209 bootstrap.sh[1052]: Turn off this advice by setting config variable advice.detachedHead to false
+Sep 18 04:15:30 fleet-r188-2609180415-5209 bootstrap.sh[1052]: HEAD is now at b465ffc2 The Jev factory's boot: a sandbox runs the factory engine when the launch names it, and the engine writes its own record
+Sep 18 04:15:30 fleet-r188-2609180415-5209 bootstrap.sh[1053]: From https://github.int.exe.xyz/popmechanic/ultrapowers
+Sep 18 04:15:30 fleet-r188-2609180415-5209 bootstrap.sh[1053]:  * branch              ultra/plan-run-188 -> FETCH_HEAD
+Sep 18 04:15:30 fleet-r188-2609180415-5209 bootstrap.sh[986]: 2026-09-18T04:15:30Z plan: ultra/plan-run-188 at c2d6605fa9343be4aecc568a2b1ab122489a585f -> /home/exedev/plans/run-188.md
+Sep 18 04:15:31 fleet-r188-2609180415-5209 bootstrap.sh[1069]: Preparing worktree (detached HEAD c2d6605f)
+Sep 18 04:15:31 fleet-r188-2609180415-5209 bootstrap.sh[986]: 2026-09-18T04:15:31Z evidence: worktree at c2d6605fa9343be4aecc568a2b1ab122489a585f
+Sep 18 04:15:31 fleet-r188-2609180415-5209 bootstrap.sh[986]: 2026-09-18T04:15:31Z status: state=running phase=the engine is starting
+Sep 18 04:15:31 fleet-r188-2609180415-5209 bootstrap.sh[1104]: [detached HEAD be37eacb] run-188: running
+Sep 18 04:15:31 fleet-r188-2609180415-5209 bootstrap.sh[1104]:  1 file changed, 1 insertion(+)
+Sep 18 04:15:31 fleet-r188-2609180415-5209 bootstrap.sh[1104]:  create mode 100644 .ultrapowers/runs/188/status.json
+Sep 18 04:15:32 fleet-r188-2609180415-5209 bootstrap.sh[1110]: remote:
+Sep 18 04:15:32 fleet-r188-2609180415-5209 bootstrap.sh[1110]: remote: Create a pull request for 'ultra/evidence-run-188' on GitHub by visiting:
+Sep 18 04:15:32 fleet-r188-2609180415-5209 bootstrap.sh[1110]: remote:      https://github.com/popmechanic/ultrapowers/pull/new/ultra/evidence-run-188
+Sep 18 04:15:32 fleet-r188-2609180415-5209 bootstrap.sh[1110]: remote:
+Sep 18 04:15:32 fleet-r188-2609180415-5209 bootstrap.sh[1106]: To https://github.int.exe.xyz/popmechanic/ultrapowers.git
+Sep 18 04:15:32 fleet-r188-2609180415-5209 bootstrap.sh[1106]:  * [new branch]        HEAD -> ultra/evidence-run-188
+Sep 18 04:15:38 fleet-r188-2609180415-5209 bootstrap.sh[1115]: added 103 packages in 6s
+Sep 18 04:15:38 fleet-r188-2609180415-5209 bootstrap.sh[1115]: npm notice
+Sep 18 04:15:38 fleet-r188-2609180415-5209 bootstrap.sh[1115]: npm notice New major version of npm available! 11.19.0 -> 12.0.2
+Sep 18 04:15:38 fleet-r188-2609180415-5209 bootstrap.sh[1115]: npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.2
+Sep 18 04:15:38 fleet-r188-2609180415-5209 bootstrap.sh[1115]: npm notice To update run: npm install -g npm@12.0.2
+Sep 18 04:15:38 fleet-r188-2609180415-5209 bootstrap.sh[1115]: npm notice
+Sep 18 04:15:39 fleet-r188-2609180415-5209 bootstrap.sh[986]: 2026-09-18T04:15:39Z claude auth status: {   "loggedIn": true,   "authMethod": "oauth_token",   "apiProvider": "firstParty",   "analyticsDisabled": false,   "projectsDirectory": "/home/exedev/.claude/projects",   "configDirectory": "/home/exedev/.claude" }
+Sep 18 04:15:40 fleet-r188-2609180415-5209 bootstrap.sh[986]: 2026-09-18T04:15:40Z bearer probe: alive
+Sep 18 04:16:41 fleet-r188-2609180415-5209 bootstrap.sh[1178]: To https://github.int.exe.xyz/popmechanic/ultrapowers.git
+Sep 18 04:16:41 fleet-r188-2609180415-5209 bootstrap.sh[1178]:    be37eacb..5e883e31  HEAD -> ultra/evidence-run-188
+Sep 18 04:16:41 fleet-r188-2609180415-5209 bootstrap.sh[986]: 2026-09-18T04:16:41Z engine: exited 1 (output in /home/exedev/engine.log)
+Sep 18 04:16:41 fleet-r188-2609180415-5209 bootstrap.sh[986]: 2026-09-18T04:16:41Z FAILED: engine exit 1
+Sep 18 04:16:42 fleet-r188-2609180415-5209 bootstrap.sh[986]: 2026-09-18T04:16:42Z status: state=failed phase=the engine is starting
+Sep 18 04:16:43 fleet-r188-2609180415-5209 bootstrap.sh[1234]: To https://github.int.exe.xyz/popmechanic/ultrapowers.git
+Sep 18 04:16:43 fleet-r188-2609180415-5209 bootstrap.sh[1234]:    5e883e31..4c4a3cd4  HEAD -> ultra/evidence-run-188
