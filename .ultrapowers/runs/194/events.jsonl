@@ -699,3 +699,7 @@
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"why\\|write-after-create\\|interface\\|proof-run\\|dag_edges\\|def parse_plan_text\\|launch_waves\\|depends_on\" /home/exedev/run/impl-4-0/skills/ultrapowers/scripts/plan_parse.py | head -60"}
 {"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n \"'look'\\|\\\"look\\\"\" /home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs"}
 {"kind":"worker:test-run","task":"4","label":"impl:4:1","cmd":"grep -n \"'look'\\|\\\"look\\\"\" /home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Write","target":"/home/exedev/run/impl-4-0/factory/dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"node -e \"\nimport('./factory/dispatch.mjs').then(({waitsFor}) => {\n  console.log(JSON.stringify(waitsFor({ taskId: '3', hardPreds: ['1'], chainPreds: ['2', '1'], policy: {} })));\n  console.log(JSON.str"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
