@@ -917,3 +917,12 @@
 {"ts":"2026-09-18T22:47:21.602Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"timeout 90 node /tmp/debug_c1.mjs 2>&1 | tail -60"}
 {"ts":"2026-09-18T22:47:24.920Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"timeout 120 node fleet/tests/test_factory_proofs.mjs 2>&1 | tail -80"}
 {"ts":"2026-09-18T22:47:26.167Z","kind":"worker:test-run","task":"3","label":"impl:3:redispatch","cmd":"timeout 120 node fleet/tests/test_factory_proofs.mjs 2>&1 | tail -80","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:48:20.334Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:48:24.897Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:48:26.629Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:48:29.081Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:48:31.017Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:48:34.749Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:48:35.934Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"timeout 120 node fleet/tests/test_factory_proofs.mjs 2>&1 | tail -80"}
+{"ts":"2026-09-18T22:48:37.866Z","kind":"worker:test-run","task":"3","label":"impl:3:redispatch","cmd":"timeout 120 node fleet/tests/test_factory_proofs.mjs 2>&1 | tail -80","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:48:39.902Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"mcp__factory__run_exam"}
