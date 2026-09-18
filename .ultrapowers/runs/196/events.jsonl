@@ -842,3 +842,27 @@
 {"ts":"2026-09-18T22:38:15.712Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"git diff --stat"}
 {"ts":"2026-09-18T22:38:17.695Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"DEBUG\" /home/exedev/run/impl-3-0/factory/engine.mjs /home/exedev/run/impl-3-0/factory/proofs.mjs /home/exedev/run/impl-3-0/factory/policy.json"}
 {"ts":"2026-09-18T22:38:20.255Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"mcp__factory__hand"}
+{"ts":"2026-09-18T22:38:26.302Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"fastFold\\|fast_fold\\|directFold\\|no.conflict\\|skip.*kernel\\|bypassKernel\" /home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:38:30.211Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"node --check /home/exedev/run/impl-3-0/factory/engine.mjs && node --check /home/exedev/run/impl-3-0/factory/proofs.mjs && python3 -c \"import json; json.load(open('/home/exedev/run/impl-3-0/factory/pol"}
+{"ts":"2026-09-18T22:38:37.813Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"mcp__factory__note"}
+{"ts":"2026-09-18T22:38:45.830Z","kind":"dispatch:end","task":"3","label":"impl:3:0","role":"implement","wall_ms":1223150,"cost_usd":4.051043,"error":null}
+{"ts":"2026-09-18T22:38:46.830Z","kind":"select:landing","task":"3","candidates":["tests/test_compile_plan_green_at_base.py","tests/test_plan_parse.py","fleet/tests/test_jev_client.mjs","fleet/tests/test_launch_duplicate.mjs","fleet/tests/test_setup_script.mjs","fleet/tests/test_sims_are_hermetic.mjs","fleet/tests/test_worker_kata_env.mjs","tests/test_compile_plan_dependencies.py"],"selected":[],"ran":[]}
+{"ts":"2026-09-18T22:38:46.830Z","kind":"floor","task":"3","exam":1,"lowest":0.87,"excluded":[],"fired":false}
+{"ts":"2026-09-18T22:38:55.304Z","kind":"dispatch:start","task":"3","label":"impl:3:redispatch","role":"implement"}
+{"ts":"2026-09-18T22:38:57.470Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"ls && echo --- && ls factory && echo --- && ls fleet/tests | head -50"}
+{"ts":"2026-09-18T22:38:59.140Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"cat factory/proofs.mjs; echo ---TESTFILE---; cat fleet/tests/test_factory_proofs.mjs"}
+{"ts":"2026-09-18T22:38:59.186Z","kind":"worker:test-run","task":"3","label":"impl:3:redispatch","cmd":"cat factory/proofs.mjs; echo ---TESTFILE---; cat fleet/tests/test_factory_proofs.mjs","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:39:00.455Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"cat factory/policy.json"}
+{"ts":"2026-09-18T22:39:01.970Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"wc -l factory/engine.mjs"}
+{"ts":"2026-09-18T22:39:03.278Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"grep -n \"proofRuns\\|runLines\\|deps.compiled\\|compiled\\b\\|POLICY_PATH\\|export async function runEngine\\|function runEngine\\|checks\\b\" factory/engine.mjs | head -100"}
+{"ts":"2026-09-18T22:39:04.347Z","kind":"supervisor","task":"3","label":"impl:3:redispatch","answers":{"stuck":{"type":"noul","noul":0.21},"off_track":{"type":"noul","noul":0.25},"needs_human":{"type":"noul","noul":0.13},"done_not_exited":{"type":"noul","noul":0.16}}}
+{"ts":"2026-09-18T22:39:04.715Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-18T22:39:05.016Z","kind":"worker:test-run","task":"3","label":"impl:3:redispatch","cmd":"node fleet/tests/test_factory_proofs.mjs","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-18T22:39:07.653Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"node fleet/tests/test_factory_proofs.mjs 2>&1 | tail -100"}
+{"ts":"2026-09-18T22:39:07.908Z","kind":"worker:test-run","task":"3","label":"impl:3:redispatch","cmd":"node fleet/tests/test_factory_proofs.mjs 2>&1 | tail -100","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:39:08.820Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"mcp__factory__task_facts"}
+{"ts":"2026-09-18T22:39:10.721Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:39:14.059Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"grep -n \"reverifyAfterFold\\|examsTouched\\|foldIn\\b\\|adopted\\.push\\|adopted =\\|function examsTouched\" factory/engine.mjs"}
+{"ts":"2026-09-18T22:39:15.305Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"cat factory/reverify.mjs 2>/dev/null | head -80"}
+{"ts":"2026-09-18T22:39:19.750Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"grep -n \"proofsEnabled\\|proofTimeoutSeconds\\|policy.proofs\\|reverifyPolicy\" factory/engine.mjs"}
+{"ts":"2026-09-18T22:39:22.432Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
