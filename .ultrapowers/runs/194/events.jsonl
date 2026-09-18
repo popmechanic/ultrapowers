@@ -634,3 +634,13 @@
 {"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"function exitOf\\|function outOf\\|const exitOf\\|const outOf\" -A 6 factory/engine.mjs"}
 {"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"edgePreds\\|waitsOn\\|dag_edges\\|hardPreds\\|chainPreds\\|settleReadiness\\|'adopted'\\|inflightLandings\" factory/engine.mjs | head -60"}
 {"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"StructuredOutput"}
+{"kind":"referee","task":"5","findings":8,"blocking":0,"grades":["plan","minor","minor","minor","plan","minor","minor","minor"]}
+{"kind":"worker:tool","task":"5","label":"resolve:5:1","tool":"Read","target":"/home/exedev/run/frontier/wave-6/conflict-1.hunks.txt"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"cat > /tmp/exam-sanity/check2.mjs << 'EOF'\nimport fs from 'node:fs'\nimport os from 'node:os'\nimport path from 'node:path'\nimport { execFileSync } from 'node:child_process'\n\nconst REPO_ROOT = '/home/ex"}
+{"kind":"worker:tool","task":"5","label":"resolve:5:1","tool":"StructuredOutput"}
+{"kind":"landing","task":"5","k":1,"examExit":0,"claim":0.6,"coverage":[0.97,0.94,0.93,0.95,0.75],"candidateSha":"ea2eeb113dd91f043daa8decc29e23741884e06d","wall_ms":1797591}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"maybeSettleInterface\\|fileAmendmentEdges\" -A 25 factory/engine.mjs | sed -n '1,60p'"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"COMPILER\\|spawnSync('python3'\\|plan_parse\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"function normalizeArgs\" -A 25 factory/engine.mjs"}
