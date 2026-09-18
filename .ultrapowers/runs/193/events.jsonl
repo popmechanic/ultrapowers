@@ -482,3 +482,4 @@
 {"kind":"worker:test-run","task":"7","label":"fix:7","cmd":"node fleet/tests/test_factory_engine_select.mjs > /tmp/out.log 2>&1; echo \"exit=$?\"; tail -5 /tmp/out.log","red":false}
 {"kind":"worker:tool","task":"7","label":"fix:7","tool":"Bash","target":"echo done"}
 {"kind":"landing","task":"7","k":1,"examExit":0,"claim":0.48,"coverage":[0.83,0.77,0.81,0.75,0.89,0.72],"candidateSha":"9ff4638e7e58ac2ad629ee26fa0af359b0163700","wall_ms":2063062}
+{"kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1154","number":1154,"draft":false}
