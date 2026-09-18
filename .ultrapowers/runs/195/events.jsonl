@@ -1006,3 +1006,14 @@
 {"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"NODE_PATH=/home/exedev/run/exam-4/fleet/node_modules node -e \"\nimport('./factory/tools.mjs').then(async ({ factoryTools }) => {\n  const server = factoryTools({ runExam: async () => ({ exit: 1, tail: '"}
 {"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"grep -n \"tools\\b\" fleet/tests/*.mjs | grep -v node_modules | head -40"}
 {"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"grep -rln \"mcpServers\\|factoryTools\\|tools:\" fleet/tests/*.mjs 2>/dev/null"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"grep -n \"^export function runEngine\\|^export async function runEngine\\|export.*runEngine\" factory/engine.mjs; echo ---; grep -n \"run-engine.mjs\\|require.*engine.mjs\\|from '.*engine.mjs'\" fleet/*.mjs f"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Read","target":"/home/exedev/run/fold-fix-4/fleet/tests/test_factory_exam_skip.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"grep -n \"typeof deps.tools\\|const tools = typeof\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"cat > /tmp/verify_run_exam_engine.mjs << 'EOF'\nimport assert from 'node:assert/strict'\nimport fs from 'node:fs'\nimport os from 'node:os'\nimport path from 'node:path'\nimport { spawnSync, execFileSync }"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"cd /tmp && python3 - << 'EOF'\nimport re\ncontent = open('verify_run_exam_engine.mjs').read()\ncontent = content.replace(\n\"\"\"const before = events.length\nconst answer = await task2Call.runExam()\nassert.e"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"grep -rn \"onMessage\" fleet/tests/*.mjs 2>/dev/null | grep -v node_modules | head -30"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"grep -n \"onMessage\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"StructuredOutput"}
+{"kind":"referee","task":"2","findings":5,"blocking":0,"grades":["minor","minor","minor","minor","minor"]}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"cat > /tmp/verify_bash_row.mjs << 'EOF'\nimport assert from 'node:assert/strict'\nimport fs from 'node:fs'\nimport os from 'node:os'\nimport path from 'node:path'\nimport { spawnSync, execFileSync } from '"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"grep -q 'run_exam' factory/roles/exam.md && echo \"exam.md OK\"\ngrep -q 'run_exam' factory/roles/implement.md && echo \"implement.md OK\""}
