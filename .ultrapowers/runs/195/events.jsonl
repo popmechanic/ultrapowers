@@ -1102,3 +1102,4 @@
 {"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Bash","target":"find /home/exedev/run/fold-fix-6/fleet/tests -iname \"*factory*\" 2>/dev/null; find /home/exedev/run/fold-fix-6/fleet/tests -iname \"_helpers.mjs\""}
 {"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Read","target":"/home/exedev/run/fold-fix-6/fleet/tests/test_factory_exam_skip.mjs"}
 {"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Bash","target":"grep -rl \"factory/boot.sh\" /home/exedev/run/fold-fix-6/fleet/tests 2>/dev/null; grep -rl \"factory/boot.sh\" /home/exedev/run/fold-fix-6 --include=*.mjs 2>/dev/null"}
+{"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Bash","target":"set -e\nWORK=/tmp/boot_close_scratch\nrm -rf \"$WORK\"\nmkdir -p \"$WORK/stubs\" \"$WORK/home\"\ncat > \"$WORK/stubs/curl\" <<'EOF'\n#!/bin/bash\n{\n  printf 'curl'\n  for a in \"$@\"; do printf ' %q' \"$a\"; done\n  prin"}
