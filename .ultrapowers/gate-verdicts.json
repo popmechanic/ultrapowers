@@ -1,0 +1,97 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "b5e7b0e0d95a123cd5584a7ac3195ed900ae25b62a7868e9490becc51019a991",
+      "verdict": "pass",
+      "reason": "Five phrases in order, the diet literal with prefix, and the three base diffs that fail when ULTRA_BASE is unset (round 2)."
+    },
+    "2": {
+      "hash": "85e370dd555ac48f73e3d544857ea8233736d9253daee314fcf4b2bd2d236b59",
+      "verdict": "pass",
+      "reason": "Each clause has its own falsifying leg; the base shows fifteen as the state the task changes (round 1)."
+    }
+  },
+  "tally": {
+    "dispatched": 3,
+    "rejected": 1,
+    "rounds": {
+      "1": {
+        "dispatched": 2,
+        "rejected": 1
+      },
+      "2": {
+        "dispatched": 1,
+        "rejected": 0
+      }
+    },
+    "base": "5afa13febfed6f4bf751f47567422204fc96932a"
+  },
+  "history": [
+    {
+      "round": 1,
+      "task": "1",
+      "verdict": "fail",
+      "reason": "M3's base legs passed vacuously when ULTRA_BASE was unset."
+    },
+    {
+      "round": 1,
+      "task": "2",
+      "verdict": "pass"
+    },
+    {
+      "round": 2,
+      "task": "1",
+      "verdict": "pass"
+    }
+  ],
+  "authoring": {
+    "minutes": 25,
+    "probes": 0,
+    "routing": {
+      "branch": "inline",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "What to author while run-187 runs",
+        "options": [
+          "Author the first factory run's plan from #1092 now",
+          "Only the record: the #1131 comment and the handoff",
+          "Wait for the merge",
+          "Other"
+        ],
+        "recommended": "Author the first factory run's plan from #1092 now",
+        "picked": "Other"
+      },
+      {
+        "question": "#1092 is out; what instead",
+        "options": [
+          "#1116, the three authoring-queue rules",
+          "Reshape #1092 for the factory worker now",
+          "Nothing; author after run-187 merges",
+          "Other"
+        ],
+        "recommended": "#1116, the three authoring-queue rules",
+        "picked": "Other"
+      },
+      {
+        "question": "Author the first factory run's plan now",
+        "options": [
+          "Yes, #1116 now",
+          "Wait for run-187 first"
+        ],
+        "recommended": "Yes, #1116 now",
+        "picked": "Yes, #1116 now"
+      },
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Confirm as drafted",
+          "Narrow to rules 1 and 2 only"
+        ],
+        "recommended": "Confirm as drafted",
+        "picked": "Confirm as drafted"
+      }
+    ]
+  }
+}
