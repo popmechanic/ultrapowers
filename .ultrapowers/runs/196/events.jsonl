@@ -191,3 +191,19 @@
 {"ts":"2026-09-18T21:52:48.682Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -n \"checks.append\\|MINOR_SUFFIX_RE\\|def _parse_checks\\|continue$\" skills/ultrapowers/scripts/plan_parse.py | sed -n 1,20p; echo ===; grep -n \"bm = re.match\\|proof_runs.append\\|val = m.group(1).st"}
 {"ts":"2026-09-18T21:52:55.780Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"python3 --version && node --version"}
 {"ts":"2026-09-18T21:53:00.723Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"cd /tmp && mkdir -p refold_probe && cat > refold_probe/plan.md << 'EOF'\n# Refold exam fixture plan\n\n**Grammar:** claims-v1\n\n**Goal:** minimal fixture.\n\n**Acceptance:** suite\n\n### Task T1: a minimal ta"}
+{"ts":"2026-09-18T21:53:29.420Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -n \"export function cloneAtBase\\|export function makeCwdFor\\|export function withPatchCapture\\|export function defaultTaskIdOf\" -A 25 /home/exedev/run/exam-3/fleet/run-waves.mjs | head -150"}
+{"ts":"2026-09-18T21:53:29.420Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"StructuredOutput"}
+{"ts":"2026-09-18T21:53:29.599Z","kind":"dispatch:end","task":"1","label":"referee:1","role":"referee","wall_ms":276652,"cost_usd":1.6772814999999999,"error":null}
+{"ts":"2026-09-18T21:53:31.146Z","kind":"referee","task":"1","findings":8,"blocking":1,"grades":["blocking","minor","minor","minor","minor","minor","minor","minor"]}
+{"ts":"2026-09-18T21:53:33.971Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"export function makeBoard\" -A 40 /home/exedev/run/exam-4/factory/board.mjs | head -60"}
+{"ts":"2026-09-18T21:53:34.450Z","kind":"dispatch:start","task":"1","label":"fix:1","role":"implement"}
+{"ts":"2026-09-18T21:53:36.646Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"sed -n '1,80p' /home/exedev/run/exam-4/factory/board.mjs"}
+{"ts":"2026-09-18T21:53:37.750Z","kind":"worker:tool","task":"1","label":"fix:1","tool":"Read","target":"/home/exedev/run/impl-1-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"ts":"2026-09-18T21:53:41.356Z","kind":"worker:tool","task":"1","label":"fix:1","tool":"Read","target":"/home/exedev/run/impl-1-0/tests/test_plan_parse.py"}
+{"ts":"2026-09-18T21:53:44.119Z","kind":"worker:tool","task":"1","label":"fix:1","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-18T21:53:45.250Z","kind":"worker:test-run","task":"1","label":"fix:1","cmd":"python3 -m pytest -q tests/test_plan_parse.py","exit":0,"red":false,"via":"run_exam"}
+{"ts":"2026-09-18T21:53:50.539Z","kind":"worker:tool","task":"1","label":"fix:1","tool":"mcp__factory__note"}
+{"ts":"2026-09-18T21:53:54.650Z","kind":"dispatch:end","task":"1","label":"fix:1","role":"implement","wall_ms":20200,"cost_usd":0.213609,"error":null}
+{"ts":"2026-09-18T21:53:57.124Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/reverify.mjs"}
+{"ts":"2026-09-18T21:53:58.801Z","kind":"landing","task":"1","k":1,"examExit":0,"claim":0.83,"coverage":[0.96,0.96,0.9],"candidateSha":"7a851a2af5e87e808a84024012009ea9a283912f","wall_ms":606565}
+{"ts":"2026-09-18T21:54:04.109Z","kind":"fold:verify","task":"1","ran":[{"task":"1","exit":0}]}
