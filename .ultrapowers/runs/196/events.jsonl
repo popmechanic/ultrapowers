@@ -341,3 +341,22 @@
 {"ts":"2026-09-18T22:08:27.501Z","kind":"dispatch:end","task":"4","label":"impl:4:0","role":"implement","wall_ms":431051,"cost_usd":1.9153960000000003,"error":null}
 {"ts":"2026-09-18T22:08:28.840Z","kind":"select:landing","task":"4","candidates":["tests/test_plan_parse.py","fleet/tests/test_jev_client.mjs","fleet/tests/test_launch_duplicate.mjs","fleet/tests/test_setup_script.mjs","fleet/tests/test_sims_are_hermetic.mjs","fleet/tests/test_worker_kata_env.mjs","tests/test_compile_plan_dependencies.py","tests/test_compile_plan_green_at_base.py"],"selected":[],"ran":[]}
 {"ts":"2026-09-18T22:08:28.840Z","kind":"floor","task":"4","exam":0,"lowest":0.41,"excluded":[],"fired":false}
+{"ts":"2026-09-18T22:08:33.139Z","kind":"dispatch:start","task":"4","label":"referee:4","role":"referee"}
+{"ts":"2026-09-18T22:08:36.696Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"ls && wc -l /home/exedev/run/patch-4-0.diff factory/engine.mjs fleet/tests/test_factory_refold.mjs 2>&1"}
+{"ts":"2026-09-18T22:08:36.791Z","kind":"worker:test-run","task":"4","label":"referee:4","cmd":"ls && wc -l /home/exedev/run/patch-4-0.diff factory/engine.mjs fleet/tests/test_factory_refold.mjs 2>&1","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:08:37.194Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"cd /home/exedev/run && head -60 patch-4-0.diff"}
+{"ts":"2026-09-18T22:08:37.861Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"python3 - <<'PYEOF'\nwith open('/tmp/test_trim.mjs') as f:\n    content = f.read()\nstart = content.index(\"  // ── Leg (d) part 1\")\nend = content.index(\"  // ── Leg (d) part 3\")\ncontent = content[:start]"}
+{"ts":"2026-09-18T22:08:38.947Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"cd /home/exedev/run && sed -n '60,420p' patch-4-0.diff"}
+{"ts":"2026-09-18T22:08:40.635Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"cd /home/exedev/run && sed -n '420,848p' patch-4-0.diff"}
+{"ts":"2026-09-18T22:08:48.771Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"rm -f factory/commands.mjs fleet/tests/_tmp_test_trim.mjs fleet/tests/_tmp_test_trim2.mjs /tmp/test_trim.mjs /tmp/test_trim2.mjs /tmp/commands_stub.mjs\nls factory/ | grep commands || echo \"commands.mj"}
+{"ts":"2026-09-18T22:08:51.631Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-18T22:08:51.687Z","kind":"worker:test-run","task":"2","label":"exam:2","cmd":"node fleet/tests/test_factory_commands.mjs","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-18T22:08:58.679Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"refold\\|examsDir\\|exams-dir\\|onto\" factory/engine.mjs | head -80"}
+{"ts":"2026-09-18T22:08:59.290Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"export function parseArgv\" -A 60 factory/engine.mjs"}
+{"ts":"2026-09-18T22:09:01.415Z","kind":"supervisor","task":"4","label":"referee:4","answers":{"stuck":{"type":"noul","noul":0.18},"off_track":{"type":"noul","noul":0.24},"needs_human":{"type":"noul","noul":0.13},"done_not_exited":{"type":"noul","noul":0.07}}}
+{"ts":"2026-09-18T22:09:01.969Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"testCmd\" factory/engine.mjs"}
+{"ts":"2026-09-18T22:09:02.715Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -rn \"test_cmd\\|testCmd\" factory/*.py factory/*.mjs 2>/dev/null | head -30; ls factory"}
+{"ts":"2026-09-18T22:09:05.737Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"COMPILER\\s*=\\|KERNEL\\s*=\\|REPO\\s*=\\|POLICY_PATH\\s*=\" factory/engine.mjs; grep -rn \"testCmd\" fleet/*.py factory/proto/*.py 2>/dev/null | head"}
+{"ts":"2026-09-18T22:09:06.393Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -rn \"testCmd\" --include=*.py -l . | head; grep -rn \"\\\"testCmd\\\"\\|'testCmd'\" --include=*.py . | head"}
+{"ts":"2026-09-18T22:09:20.871Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"mcp__factory__note"}
+{"ts":"2026-09-18T22:09:28.728Z","kind":"dispatch:end","task":"2","label":"exam:2","role":"exam","wall_ms":1537590,"cost_usd":3.6928378,"error":null}
