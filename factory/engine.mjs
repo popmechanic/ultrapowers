@@ -68,8 +68,6 @@ export const DEFAULT_MODEL = 'claude-sonnet-5'
 export const DEFAULT_REFEREE_MODEL = 'claude-opus-5'
 
 /** One dispatch's ceiling. Not a judgment: a stop, so a wedged worker ends. */
-const MAX_TURNS = 40
-const MAX_BUDGET_USD = 1.5
 
 /** How many assistant turns a dispatch runs before the supervisor reads it
  *  once. A cadence, not a threshold — nothing is compared against it. */
@@ -398,8 +396,14 @@ export async function runEngine (rawArgs = {}, deps = {}) {
 
   /** One dispatch. Every worker call in this file goes through here, so the
    *  budget, the config dir, the supervisor and the cost tally are one shape. */
+  // A worker's end, whatever kind — a thrown SDK error, a rejected iterator — is
+  // the candidate's measurement and never an exception that escapes the loop: the
+  // answer carries `error`, the clone is measured as it stands, and a candidate
+  // that produced nothing parks its task with that error as the reason.
   const dispatch = async (opts) => {
-    const answer = await worker({
+    let answer
+    try {
+      answer = await worker({
       cwd: opts.cwd,
       prompt: opts.prompt,
       systemPrompt: opts.systemPrompt,
@@ -407,14 +411,17 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       files: opts.files,
       schema: opts.schema ?? null,
       mcpServers: opts.mcpServers ?? null,
-      maxTurns: MAX_TURNS,
-      maxBudgetUsd: MAX_BUDGET_USD,
       onMessage: onMessageFor(opts.label, opts.taskId),
       readOnly: Boolean(opts.readOnly),
       role: opts.role,
       label: opts.label,
       task: opts.taskId,
     })
+    } catch (e) {
+      const error = String((e && e.message) || e).slice(0, 500)
+      log('worker ' + opts.label + ' ended: ' + error)
+      answer = { result: null, denials: [], error }
+    }
     const result = answer && answer.result
     cost += (result && Number(result.total_cost_usd)) || 0
     const denials = (answer && answer.denials) || []
@@ -580,11 +587,12 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         fs.mkdirSync(path.dirname(path.join(dir, p)), { recursive: true })
         fs.writeFileSync(path.join(dir, p), content)
       }
-      await dispatch({
+      const answer = await dispatch({
         role: 'implement', label: 'impl:' + task.id + ':' + index, taskId: task.id, cwd: dir,
         model, systemPrompt: IMPL_MD, files, prompt, mcpServers,
       })
-      return measure({ task, dir, index, anchor })
+      const measured = await measure({ task, dir, index, anchor })
+      return { ...measured, error: (answer && answer.error) || null }
     }))
 
     // 3. select. The scores ride the row in candidate order, so the chosen one
@@ -597,6 +605,13 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       for (const c of candidates) {
         if (c !== best) fs.rmSync(c.dir, { recursive: true, force: true })
       }
+    }
+
+    // A worker that ended with an error and left no patch has nothing to fold:
+    // the task parks on the worker's own words, and the run goes on.
+    const bytes = best.patch && fs.existsSync(best.patch) ? fs.statSync(best.patch).size : 0
+    if (best.error && bytes === 0) {
+      return { task, k, anchor, best, dead: 'worker ended without a patch: ' + best.error, wall_ms: Date.now() - t0 }
     }
 
     // 4. the discovery referee, exactly when the judge's task reading asks for
@@ -730,6 +745,11 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       const id = landing.task.id
       inflight.delete(id)
       done.add(id)
+      if (landing.dead) {
+        appendEvent({ kind: 'parked', task: id, reason: landing.dead })
+        parked.add(id)
+        continue
+      }
       const candidateSha = await foldIn(landing)
       if (candidateSha === null) { parked.add(id); continue }
       adopted.push(id)
