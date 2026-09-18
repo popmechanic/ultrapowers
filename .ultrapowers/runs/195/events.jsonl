@@ -243,3 +243,51 @@
 {"kind":"worker:tool","task":"2","label":"exam:2","tool":"mcp__factory__task_facts"}
 {"kind":"worker:tool","task":"3","label":"exam:3","tool":"mcp__factory__note"}
 {"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"Machine:\" /home/exedev/run/claude-config/projects/-home-exedev-run-exam-2/8dceee67-eec6-4b96-8c5a-3c3f26cad304.jsonl | head -5"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"mcp__factory__hand"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Edit","target":"/home/exedev/run/exam-6/fleet/tests/test_factory_boot_close.mjs"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"python3 -c \"\nimport json\nwith open('/home/exedev/run/claude-config/projects/-home-exedev-run-exam-2/8dceee67-eec6-4b96-8c5a-3c3f26cad304.jsonl') as f:\n    for line in f:\n        obj = json.loads(line)"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Edit","target":"/home/exedev/run/exam-6/fleet/tests/test_factory_boot_close.mjs"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"wc -l /home/exedev/run/exam-1/factory/engine.mjs; grep -n \"^export \" /home/exedev/run/exam-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"sed -n '1,400p' factory/engine.mjs | grep -n \"appendEvent\\|function dispatch\\|dispatch:start\\|dispatch:end\\|worker-error\\|total_cost_usd\" "}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"wc -l factory/engine.mjs; grep -n \"appendEvent\\|dispatch\\|worker-error\\|total_cost_usd\\|kind:\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"node fleet/tests/test_factory_boot_close.mjs 2>&1 | tail -100"}
+{"kind":"worker:test-run","task":"6","label":"exam:6","cmd":"node fleet/tests/test_factory_boot_close.mjs 2>&1 | tail -100","red":false}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"cp fleet/tests/test_factory_boot_close.mjs /tmp/smoke_test.mjs && python3 - <<'EOF'\nimport re\np = \"/tmp/smoke_test.mjs\"\ns = open(p).read()\n# Truncate everything from the M1 body-assertion block onward"}
+{"kind":"worker:test-run","task":"6","label":"exam:6","cmd":"cp fleet/tests/test_factory_boot_close.mjs /tmp/smoke_test.mjs && python3 - <<'EOF'\nimport re\np = \"/tmp/smoke_test.mjs\"\ns = open(p).read()\n# Truncate everything from the M1 body-assertion block onward and replace with a stub finish,\n# but still exercise legs b/c logic manually below in a temp harness instead.\nEOF\necho done","red":false}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"node fleet/tests/test_factory_rows.mjs 2>&1 | tail -60"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n \"const examine\\|const land =\\|const buildTools\\|function buildTools\\|const tools =\\|examine(task\\|examine =\\|async function examine\\|const dispatchWorker\\|role: 'exam'\\|role: 'implement'\\|exam"}
+{"kind":"supervisor","task":"3","label":"impl:3:0","answers":{"stuck":{"type":"noul","noul":0.3},"off_track":{"type":"noul","noul":0.27},"needs_human":{"type":"noul","noul":0.12},"done_not_exited":{"type":"noul","noul":0.16}}}
+{"kind":"worker:test-run","task":"3","label":"impl:3:0","cmd":"node fleet/tests/test_factory_rows.mjs 2>&1 | tail -60","red":false}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"git diff -- factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"node fleet/tests/test_factory_rows.mjs 2>&1 | tail -20"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Read","target":"/tmp/smoke_test.mjs"}
+{"kind":"worker:test-run","task":"3","label":"impl:3:0","cmd":"node fleet/tests/test_factory_rows.mjs 2>&1 | tail -20","red":false}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"mcp__factory__settled"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"mcp__factory__note"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"cp factory/boot.sh /tmp/boot_impl.sh\npython3 - <<'PY'\nimport re\np = \"/tmp/boot_impl.sh\"\ns = open(p).read()\n\nclose_fn = '''\nkata_close_run() { # $1 = the engine's exit code (0 == done)\n  [ \"$1\" = 0 ] |"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Edit","target":"/home/exedev/run/exam-2/tests/test_plan_parse.py"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"cat /home/exedev/run/patch-3-0.diff"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"ls /home/exedev/run/impl-3-0; echo ---; ls /home/exedev/run/impl-3-0/factory /home/exedev/run/impl-3-0/fleet/tests 2>/dev/null"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -n \"^import\\|^export\" /home/exedev/run/exam-5/fleet/tests/_engine_helpers.mjs | head"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Edit","target":"/home/exedev/run/exam-2/tests/test_plan_parse.py"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n \"kind: 'landing'\\|const postLanding\\|const launch =\\|const settleReadiness\\|adopted.push\\|while (inflightLandings\\|inflightLandings\\|kind: 'exam:skipped'\\|const implFilesOf\" /home/exedev/run/e"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"bash -n /tmp/boot_impl.sh && echo \"syntax OK\""}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"sed \"s#BOOT_SH = path.join(HERE, '..', '..', 'factory', 'boot.sh')#BOOT_SH = '/tmp/boot_impl.sh'#\" fleet/tests/test_factory_boot_close.mjs > /tmp/test_against_impl.mjs\nnode /tmp/test_against_impl.mjs "}
+{"kind":"worker:test-run","task":"6","label":"exam:6","cmd":"sed \"s#BOOT_SH = path.join(HERE, '..', '..', 'factory', 'boot.sh')#BOOT_SH = '/tmp/boot_impl.sh'#\" fleet/tests/test_factory_boot_close.mjs > /tmp/test_against_impl.mjs\nnode /tmp/test_against_impl.mjs 2>&1 | tail -150","red":false}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"sed -n 440,480p factory/engine.mjs; echo '=== dispatch ==='; sed -n 660,740p factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -n \"ts\\s*:\" factory/engine.mjs | head -50; echo '=== appendEvent calls ==='; grep -n \"appendEvent(\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"sed \"s#BOOT_SH = path.join(HERE, '..', '..', 'factory', 'boot.sh')#BOOT_SH = '/tmp/boot_impl.sh'#\" fleet/tests/test_factory_boot_close.mjs > fleet/tests/_tmp_test_against_impl.mjs\nnode fleet/tests/_tm"}
+{"kind":"worker:test-run","task":"6","label":"exam:6","cmd":"sed \"s#BOOT_SH = path.join(HERE, '..', '..', 'factory', 'boot.sh')#BOOT_SH = '/tmp/boot_impl.sh'#\" fleet/tests/test_factory_boot_close.mjs > fleet/tests/_tmp_test_against_impl.mjs\nnode fleet/tests/_tmp_test_against_impl.mjs 2>&1 | tail -150","red":false}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/factory/engine.mjs"}
