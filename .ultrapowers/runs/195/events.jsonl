@@ -384,3 +384,37 @@
 {"kind":"worker:test-run","task":"1","label":"exam:1","cmd":"timeout 90 node fleet/tests/test_factory_exam_skip.mjs; echo \"EXIT: $?\"","red":false}
 {"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"node fleet/tests/test_factory_rows.mjs 2>&1 | tail -60"}
 {"kind":"worker:test-run","task":"3","label":"impl:3:fold","cmd":"node fleet/tests/test_factory_rows.mjs 2>&1 | tail -60","red":false}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"ls /home/exedev/run/fold-fix-3/fleet/tests/ | grep -i factory; ls /home/exedev/run/fold-fix-3/fleet/tests/ | head -50"}
+{"kind":"supervisor","task":"3","label":"impl:3:fold","answers":{"stuck":{"type":"noul","noul":0.48},"off_track":{"type":"noul","noul":0.37},"needs_human":{"type":"noul","noul":0.23},"done_not_exited":{"type":"noul","noul":0.13}}}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"cp /home/exedev/run/exam-1/fleet/tests/test_factory_exam_skip.mjs /tmp/scratch_exam.mjs\npython3 - <<'EOF'\nimport re\np = '/tmp/scratch_exam.mjs'\ns = open(p).read()\n# wrap each assert.* call already the"}
+{"kind":"worker:test-run","task":"1","label":"exam:1","cmd":"cp /home/exedev/run/exam-1/fleet/tests/test_factory_exam_skip.mjs /tmp/scratch_exam.mjs\npython3 - <<'EOF'\nimport re\np = '/tmp/scratch_exam.mjs'\ns = open(p).read()\n# wrap each assert.* call already there is fine; instead let's just make asserts non-fatal by catching per-block.\n# simplest: replace `import assert from 'node:assert/strict'` usage - create a soft assert wrapper.\ns = s.replace(\n  \"import assert from 'node:assert/strict'\\n\",\n  \"import strictAssert from 'node:assert/strict'\\nconst assert = { equal:(...a)=>{try{strictAssert.equal(...a)}catch(e){console.log('FAIL:',e.message)}}, deepEqual:(...a)=>{try{strictAssert.deepEqual(...a)}catch(e){console.log('FAIL:',e.message)}}, notEqual:(...a)=>{try{strictAssert.notEqual(...a)}catch(e){console.log('FAIL:',e.message)}}, ok:(...a)=>{try{strictAssert.ok(...a)}catch(e){console.log('FAIL:',e.message)}} }\\n\"\n)\nopen(p,'w').write(s)\nEOF\nsed -i \"s#'\\.\\./\\.\\./factory/engine.mjs'#'/home/exedev/run/exam-1/factory/engine.mjs'#; s#'\\./_engine_helpers.mjs'#'/home/exedev/run/exam-1/fleet/tests/_engine_helpers.mjs'#; s#'\\./_helpers.mjs'#'/home/exedev/run/exam-1/fleet/tests/_helpers.mjs'#\" /tmp/scratch_exam.mjs\ntimeout 90 node /tmp/scratch_exam.mjs; echo \"EXIT: $?\"","red":false}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"sh(\" /home/exedev/run/exam-4/factory/engine.mjs | grep -v \"this\\.\\|push\\|ash\\b\" "}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"sed -i \"s#const REPO = path.resolve(HERE, '..', '..')#const REPO = '/home/exedev/run/exam-1'#\" /tmp/scratch_exam.mjs\ntimeout 90 node /tmp/scratch_exam.mjs; echo \"EXIT: $?\""}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"find /home/exedev/run/fold-fix-3 -iname \"*factory_rows*\" 2>/dev/null; find /home/exedev/run/fold-fix-3 -iname \"*.jsonl\" 2>/dev/null | head; ls /home/exedev/run/fold-fix-3"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"rm -f /tmp/scratch_exam.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"timeout 90 node fleet/tests/test_factory_exam_skip.mjs 2>&1 | head -20; echo \"EXIT: $?\""}
+{"kind":"worker:test-run","task":"1","label":"exam:1","cmd":"timeout 90 node fleet/tests/test_factory_exam_skip.mjs 2>&1 | head -20; echo \"EXIT: $?\"","red":false}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"mcp__factory__task_facts"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-3/fleet/tests/_engine_helpers.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -rl \"factory/engine\" /home/exedev/run/fold-fix-3/fleet/tests/ /home/exedev/run/fold-fix-3/factory 2>/dev/null"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"find /home/exedev/run/fold-fix-3/factory -iname \"*test*\" 2>/dev/null; ls /home/exedev/run/fold-fix-3/factory; find /home/exedev/run/fold-fix-3 -path \"*/tests/*\" -iname \"*engine*\" 2>/dev/null"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"mcp__factory__note"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/tools.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__note"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"mcp__factory__task_facts"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"ls fleet/tests | grep -i factory_boot && node --check fleet/tests/test_factory_boot_close.mjs && echo \"syntax OK\""}
+{"kind":"worker:test-run","task":"6","label":"exam:6","cmd":"ls fleet/tests | grep -i factory_boot && node --check fleet/tests/test_factory_boot_close.mjs && echo \"syntax OK\"","red":false}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"cd /home/exedev/run/exam-4/fleet && node -e \"\nimport('@anthropic-ai/claude-agent-sdk').then(async (sdk) => {\n  const { tool } = sdk;\n  const z = (await import('zod')).z;\n  const t = tool('foo', 'desc'"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__note"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"mcp__factory__note"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"kind: 'landing'\\|landing',\" /home/exedev/run/fold-fix-3/factory/engine.mjs | head -20"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__task_facts"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-3/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"mcp__factory__hand"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__note"}
