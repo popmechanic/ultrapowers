@@ -509,3 +509,19 @@
 {"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"sed -n 45,120p fleet/jev-client.mjs; echo ===JUDGE; sed -n 60,95p factory/judge.mjs"}
 {"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"node -e \"\nimport('/home/exedev/run/impl-6-0/factory/engine.mjs').then(m=>{\nconst d=m.buildDeps({plan:'x',target:'.',runDir:'.'},{});\nconsole.log('deps keys:', Object.keys(d));\nconsole.log('has ask:', "}
 {"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"grep -n \"noul\\|const num\\|answers\\[\" factory/judge.mjs | head -30; echo ===; sed -n 96,135p factory/judge.mjs"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"timeout 600 node fleet/tests/test_factory_union.mjs; echo \"EXIT=$?\""}
+{"kind":"worker:test-run","task":"6","label":"referee:6","cmd":"timeout 600 node fleet/tests/test_factory_union.mjs; echo \"EXIT=$?\"","red":false}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"grep -rn \"runEngine(\" --include=*.mjs --include=*.py --include=*.sh factory fleet skills 2>/dev/null | grep -v \"fleet/tests\\|fleet/run-engine\\|fleet/run-main\" | head -20; echo ===; grep -rn \"buildDeps"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"ls factory/ && echo --- && cat factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"ls skills/ultrapowers/kernel/ 2>/dev/null; find . -name \"hunks.py\" -not -path \"*/node_modules/*\" | head"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Read","target":"/home/exedev/run/impl-5-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"grep -n \"begin\\|end conflict\\|HUNK\\|context (read-only)\\|def derive\\|union\" skills/ultrapowers/kernel/hunks.py | head -60"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"sed -n 95,200p skills/ultrapowers/kernel/hunks.py"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"cat /home/exedev/run/impl-5-0/fleet/tests/_engine_helpers.mjs"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"ls /home/exedev/run/impl-5-0/fleet/tests/ | grep -i factory"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"cat /home/exedev/run/impl-5-0/fleet/tests/test_factory_reverify.mjs 2>/dev/null | head -100; echo \"---LEN---\"; wc -l /home/exedev/run/impl-5-0/fleet/tests/test_factory_reverify.mjs 2>/dev/null"}
+{"kind":"worker:test-run","task":"5","label":"impl:5:0","cmd":"cat /home/exedev/run/impl-5-0/fleet/tests/test_factory_reverify.mjs 2>/dev/null | head -100; echo \"---LEN---\"; wc -l /home/exedev/run/impl-5-0/fleet/tests/test_factory_reverify.mjs 2>/dev/null","red":false}
+{"kind":"supervisor","task":"5","label":"impl:5:0","answers":{"stuck":{"type":"noul","noul":0.2},"off_track":{"type":"noul","noul":0.23},"needs_human":{"type":"noul","noul":0.12},"done_not_exited":{"type":"noul","noul":0.1}}}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Read","target":"/home/exedev/run/impl-5-0/fleet/tests/test_factory_reverify.mjs"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"sed -n 200,225p skills/ultrapowers/kernel/hunks.py; echo ===SEG; sed -n 35,95p skills/ultrapowers/kernel/hunks.py"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Read","target":"/home/exedev/run/impl-6-0/factory/engine.mjs"}
