@@ -963,3 +963,14 @@
 {"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
 {"kind":"supervisor","task":"8","label":"impl:8:0","answers":{"stuck":{"type":"noul","noul":0.21},"off_track":{"type":"noul","noul":0.26},"needs_human":{"type":"noul","noul":0.13},"done_not_exited":{"type":"noul","noul":0.12}}}
 {"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Bash","target":"grep -n \"cloneAtBase\\|export function cloneAtBase\" -A 25 /home/exedev/run/impl-8-0/fleet/run-waves.mjs | head -60"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Bash","target":"grep -n \"waitsOn\\|const chainPreds\\|settleReadiness\\|const inflightLandings\\|const launch = \\|land(task, anchor)\\|candidatePromise\\|const land = async\" /home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Write","target":"/home/exedev/run/impl-8-0/factory/dispatch.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Bash","target":"node -e \"\nimport('./factory/dispatch.mjs').then(({waitsFor}) => {\n  console.log(waitsFor({ taskId: '3', hardPreds: ['1'], chainPreds: ['2', '1'], policy: { speculate: { on_candidate: true } } }))\n  co"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Edit","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Bash","target":"grep -n \"waitsOn(task)\\|waitsOn(t)\" /home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Edit","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Edit","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
