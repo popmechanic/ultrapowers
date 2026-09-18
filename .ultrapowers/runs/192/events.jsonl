@@ -26,3 +26,5 @@
 {"kind":"supervisor","task":"7","label":"exam:7","answers":{"stuck":{"type":"noul","noul":0.46},"off_track":{"type":"noul","noul":0.4},"needs_human":{"type":"noul","noul":0.26},"done_not_exited":{"type":"noul","noul":0.15}}}
 {"kind":"supervisor","task":"7","label":"impl:7:1","answers":{"stuck":{"type":"noul","noul":0.16},"off_track":{"type":"noul","noul":0.26},"needs_human":{"type":"noul","noul":0.1},"done_not_exited":{"type":"noul","noul":0.09}}}
 {"kind":"supervisor","task":"7","label":"impl:7:0","answers":{"stuck":{"type":"noul","noul":0.48},"off_track":{"type":"noul","noul":0.38},"needs_human":{"type":"noul","noul":0.23},"done_not_exited":{"type":"noul","noul":0.13}}}
+{"kind":"select","task":"7","scores":[11.245,11.2583333333],"chosen":"/home/exedev/run/impl-7-1"}
+{"kind":"supervisor","task":"7","label":"referee:7","answers":{"stuck":{"type":"noul","noul":0.19},"off_track":{"type":"noul","noul":0.28},"needs_human":{"type":"noul","noul":0.13},"done_not_exited":{"type":"noul","noul":0.08}}}
