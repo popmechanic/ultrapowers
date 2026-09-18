@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ultralearn catch report — which tests have never caught anything, over how
+"""The catch report — which tests have never caught anything, over how
 many runs that actually touched what they exercise.
 
 The ledger's `catch-count` rows are the record: one row per harvested run,
@@ -28,18 +28,39 @@ globbed away. Paths are repository-relative exactly as the record spells them.
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from merge_ledger import _read_jsonl  # noqa: E402  (one ledger reader, shared)
 from _outcome import swallow  # noqa: E402
 
-# The ledger holds the findings rows `merge_ledger.py` writes (no `kind`) in
-# the same file. Only this kind is the catch record; everything else is another
-# reader's business and contributes nothing here.
+
+def _read_jsonl(path):
+    """Every JSON object of a `.jsonl` file, in order; a missing file reads as
+    no rows and a malformed line is skipped with a note, so the rest still
+    reads. The one ledger reader, kept here since the ledger writer went."""
+    path = Path(path)
+    if not path.exists():
+        return []
+    out = []
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if line:
+            try:
+                out.append(json.loads(line))
+            except json.JSONDecodeError as exc:
+                swallow("malformed ledger line skipped; the rest of the "
+                        "ledger still reads", exc)
+                continue
+    return out
+
+
+# The ledger may hold rows of other kinds (older readers wrote findings rows
+# with no `kind`). Only this kind is the catch record; everything else
+# contributes nothing here.
 CATCH_KIND = "catch-count"
 
 # This repository's two suites: `pytest.ini` collects `tests/`, and
@@ -452,7 +473,7 @@ def main(argv=None):
         description="Which tests have never caught anything, over how many "
                     "runs that touched what they exercise.")
     parser.add_argument("--ledger", required=True, metavar="PATH",
-                        help="the ultralearn ledger to read (a missing file "
+                        help="the catch ledger to read (a missing file "
                              "reads as no rows)")
     parser.add_argument("--tree", default=".", metavar="DIR",
                         help="the tree whose tests to list (default: .)")

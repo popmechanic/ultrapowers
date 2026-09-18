@@ -18,5 +18,5 @@ The tests never read this directory: `tests/conftest.py`'s `fixture_corpus` call
 `corpuslib.make_fixture_corpus` into a pytest tmp dir, once per session. The two readings
 cited by path — `2026-08-20-phase2-migration.md` from `CLAUDE.md` and
 `2026-08-19-t15-resolver-token-share.md` from
-`skills/ultralearn/references/reading-lenses.md` — are on the laptop, and
+the retired ultralearn skill's reading lenses — are on the laptop, and
 `git log -- evals/frontier/corpus evals/frontier/results` still reads their history.

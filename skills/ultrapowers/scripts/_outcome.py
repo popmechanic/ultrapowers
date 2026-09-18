@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ultralearn outcome vocabulary — the three ways a lookup ends, named once.
+"""The outcome vocabulary — the three ways a lookup ends, named once.
 
 "I could not look" and "I looked and there was nothing" are different facts;
 spelled as two empty lists they read identically downstream. This module is the
