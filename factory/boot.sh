@@ -231,7 +231,7 @@ board_status_ready() { # $1 = the raw `federation status --json` document
 # release that does not verify, a wait that runs out — is one `board:` log line and
 # BOARD_BOUND stays empty, which is `run_engine`'s whole signal.
 board_up() {
-  local blob project_name project_id work start_ts now_ts out
+  local blob project_name project_id work start_ts now_ts out local_id
   BOARD_UNIT="fleet-kata-$RUN_N"
   blob="$(fleet_git -C "$TARGET_DIR" show "$PLAN_SHA:$KATA_BLOB_PATH" 2>/dev/null || true)"
   [ -n "$blob" ] || { log "board: no $KATA_BLOB_PATH at $PLAN_SHA — the run proceeds without a spoke"; return 0; }
@@ -278,7 +278,11 @@ EOF
   start_ts="$(date +%s)"
   while :; do
     out="$(fleet_kata federation status --json 2>/dev/null || true)"
-    if board_status_ready "$out"; then BOARD_BOUND=1; log "kata federation status: $project_name is bound"; return 0; fi
+    if board_status_ready "$out"; then
+      # The spoke numbers its own projects: the engine writes to the LOCAL id the status names, never the hub's
+      # (run-195: every comment answered `404 project_not_found` on the hub's 31 where the spoke's was 2).
+      local_id="$(printf '%s' "$out" | json_int project_id)"; [ -n "$local_id" ] && BOARD_PROJECT_ID="$local_id"
+      BOARD_BOUND=1; log "kata federation status: $project_name is bound as local project $BOARD_PROJECT_ID"; return 0; fi
     now_ts="$(date +%s)"
     if [ "$((now_ts - start_ts))" -ge "$FLEET_KATA_WAIT_SECONDS" ]; then
       log "board: $project_name did not bind within ${FLEET_KATA_WAIT_SECONDS}s — federation status said: $out"
@@ -309,7 +313,7 @@ engine_deps() {
 # and the child's variables ride in its own argv. While it runs, the boot relays events every FLEET_COMMIT_SECONDS.
 run_engine() {
   local pid board_args=()
-  [ -n "$BOARD_BOUND" ] && board_args=(--kata-url "$KATA_URL" --kata-project "$BOARD_PROJECT_ID" --kata-json "$BOARD_KATA_JSON")
+  [ -n "$BOARD_BOUND" ] && board_args=(--kata-url "$KATA_URL" --kata-project "$BOARD_PROJECT_ID" --kata-json "$BOARD_KATA_JSON" --kata-actor "engine:$RUN_ID")
   mkdir -p "$RUN_DIR"; rm -f "$DONE_MARKER"
   ( set +e
     fleet_systemd_run --user "--unit=fleet-engine-$RUN_N" --pipe --wait --collect \
