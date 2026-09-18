@@ -182,6 +182,19 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   (131–140); the fold rule (`#1006`, one replay) stays an `experiment` until five, its rollback
   `foldAgeMs=0` — a fold at every landing; and one reviewer (`#974`) was flipped on `n=71` runs and
   stands.
+- **Verification is mechanical and fast (operator, 2026-09-18).** An exam computes facts — an
+  exit code, an argv, a byte-exact string, a count, an ordering, agreement with an oracle — and
+  everything of the form "the code says X" is Jev's, read against the hunk at landing. One case per
+  behaviour, never per variant. Regression protection follows the same shape: code supplies the
+  candidate tests a patch touches, Jev selects, the engine runs those few; nothing runs the whole
+  collection as a matter of course. A plan that answers a gate rejection by adding legs is answering
+  the wrong question — narrow the clause. Reason: the gate's old question ("is the sentence
+  *necessarily* true") can only be bought by enumeration; on the 2026-09-18 feedback-board plan it
+  rejected seven of nine tasks, each asking for more legs, where the facts-only question passed the
+  same seven in one round (n=1 plan — an `experiment`, its rollback the old sentence in
+  `skills/ultrawrite/SKILL.md` §The proof gate). A size budget is a design note the pull request
+  reports, never a clause a task proves; and publish is shell, not a seam (run-186 was killed on a
+  fake-choreographed publish stage inside the engine).
 - **The plan is a submission, not a contract (operator, 2026-09-15, #990).** A worker that changes a
   clause, a Files set or a sim outside its own Files has not broken the plan — it declares an
   amendment, in the open: a `driver:amendment` row on the evidence branch, an entry in the

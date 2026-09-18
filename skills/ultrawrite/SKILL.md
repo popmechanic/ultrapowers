@@ -126,11 +126,14 @@ where this plan's Files sets were wrong.
   where code fences are legal. Its `Test:` paths must be **disjoint** from this task's
   `Create:`/`Modify:` paths: the exam is a distinct artifact. Its legs — `(a) … (b) …` —
   **each cite the clause they establish, `[M2]`**; the compiler refuses a clause no leg
-  cites, a leg citing nothing, or a citation of a clause that does not exist. A universal
-  or negation clause (`every`, `no`, `byte-identical`) wants a leg that names what fails
-  or is absent; an enumerated clause (`for each of node, pytest`) wants one leg per row —
-  check both yourself, since nothing flags them: that is the species run-51's gate rejected
-  11 of 24 pairs for.
+  cites, a leg citing nothing, or a citation of a clause that does not exist. **An exam
+  computes facts and nothing else**: an exit code, a recorded argv, a byte-exact string, a
+  count, an ordering of events, agreement with an oracle. A clause, or the part of one, that
+  only says what the code says or how it is shaped is Jev's to read against the hunk at
+  landing and needs no leg of its own beyond the citation. One case per behaviour, never one
+  per variant, synonym or error flavour: an enumerated clause is still one behaviour. A
+  universal or negation clause about a computable fact (`no file is written`, `exits 2`)
+  still wants the one leg that names what fails or is absent.
   A `Run:` bullet names a command the driver executes in the task's clone after the
   implementer's patch lands; its exit code and output are evidence the reviewer reads
   against the legs, and a non-zero exit sends the task to the fix loop. A task whose
@@ -287,10 +290,31 @@ how many runs could be live at once — a queue authored in parallel is what lif
 
 ## The proof gate — before any compile
 
-One fresh-context subagent per task, asked one question: *if this exam passes, is the
-sentence necessarily true, at the right layer? And is every concrete literal a Machine
-clause pins satisfiable under the clauses' own rules — compute it.* Layer mismatch means
-no compile until the task is revised. The second half is there because on walk run-10 a
+One fresh-context subagent per task, asked the facts-only question, word for word:
+
+> A clause that states a COMPUTABLE FACT the Claim depends on — an exit code, a recorded
+> argv, a byte-exact string, a count, an ordering of events — needs at least one leg that
+> would fail if that fact were false. A clause, or part of one, that only says what the code
+> says or how it is shaped is judged at run time by a model reading the diff against the
+> clause; it needs no leg of its own. One representative case per behaviour is enough: do
+> NOT ask for a leg per enumerated variant, per synonym, or per error flavour. A path absent
+> at BASE may be created by this task or an earlier sibling; that is not a failure. Fail
+> ONLY when: a computable fact the Claim's sentence depends on has no leg that could catch
+> it being false; or a literal a clause pins is unsatisfiable under the clauses' own rules
+> (compute it); or a leg contradicts its clause; or the `base` excerpts show a file already
+> pinning the opposite.
+
+The question it replaced — *if this exam passes, is the sentence necessarily true* — can
+only be satisfied by enumeration, so its readers asked for a leg per variant: on the
+2026-09-18 feedback-board plan it rejected seven of nine tasks, every rejection a request
+for more legs, where this question passed the same seven in one round and still holds what
+the gate is for (n=1 plan, 16 dispatches, 2026-09-18 — an `experiment`; its rollback is
+that sentence). What the gate has actually caught is contradiction, unsatisfiability and
+vacuity — a proof line that passed with its variable unset, a cycle clause its own edge rule
+made impossible, a leg pinning a sha where its clause pinned `HEAD:` — and each would have
+cost a fleet run. **An author who answers a rejection by adding legs is answering the wrong
+question: narrow the clause first.** A mismatch means no compile until the task is revised.
+The literal-computing half is there because on walk run-10 a
 Claim pinned `4` vowels in `Ada Lovelace` — `6` under its own M1 and M2 — and the reader
 passed the legs on shape without ever computing the number, where a reader asked exactly
 this computed six on the re-read and passed the corrected plan.
@@ -559,8 +583,8 @@ author's own to check — nothing prints it.
   `Run:`.
 - Every exam file is named for its behaviour surface, and a task that extends one groups
   its legs under a comment naming the task.
-- Every Machine clause is numbered and cited by a leg; every universal or negation clause
-  has a leg that names what fails or is absent; every enumerated row has its own leg.
+- Every Machine clause is numbered and cited by a leg; every computable fact a clause states
+  has the one leg that would catch it false, and no behaviour has a leg per variant.
 - Every cross-task edge is derivable — Interfaces symbols match a sibling's `Produces:`,
   or the Files blocks overlap. Nothing rides on prose.
 - The rationale line states each wave's width; every chain longer than one names the
