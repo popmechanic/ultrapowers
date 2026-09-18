@@ -60,6 +60,9 @@ now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 # is an answer rather than an error. Both take the field in $1, the document on stdin.
 json_field() { { grep -o "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" || true; } | head -n 1 | sed 's/.*:[[:space:]]*"\(.*\)"$/\1/'; }
 json_int()   { { grep -o "\"$1\"[[:space:]]*:[[:space:]]*-\?[0-9]\+" || true; } | head -n 1 | sed 's/.*[:[:space:]]//'; }
+# `run.uid` alone, never `project.uid` — the two share a field name, so the run
+# object is sliced out of the document first and read within it. $1 = the file.
+json_run_uid() { { grep -o '"run"[[:space:]]*:[[:space:]]*{[^}]*}' "$1" 2>/dev/null || true; } | head -n 1 | json_field uid; }
 # Backslash, quote, tab, and newline as `\n` and never as nothing — `error` carries a reply body.
 json_escape() {
   printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' |
@@ -394,6 +397,7 @@ publish() { # $1 = the engine's exit code
   if [ "$1" = 0 ]; then state=done; else state=parked; fi
   write_status "$state" "the pull request is open"; evidence_commit "$RUN_ID: $state"
   record_tags
+  close_run "$state"
 }
 # What a run leaves behind is the two tags; the branches are only where it worked. A tag that does not verify is not a
 # failed run — the record still exists on the branches, which is why they are deleted only once the listing agrees.
@@ -412,6 +416,33 @@ record_tags() {
     return 0; fi
   fleet_git -C "$TARGET_DIR" push origin --delete "refs/heads/$PLAN_BRANCH" "refs/heads/$EVIDENCE_BRANCH" || { log "record: the tags are on origin but the delete was rejected — both branches kept"; return 0; }
   log "record: $pt at $PLAN_SHA and $et at $head — both branches deleted"
+}
+# The run issue's close: one POST, after the pull request is open, sent only when
+# the run ends done and the plan commit left a kata.json this boot can still read
+# a project.id and run.uid out of — a parked or failed run stays open for a
+# person, and a hub that refuses the close (or cannot be reached at all) costs the
+# run nothing beyond one board: log line (CLAUDE.md: hub writes are never the
+# run's failure) — the run's own state and exit code were decided already, and
+# stay decided. No `authorization` header: the admin host is where the exe.dev
+# edge injects the hub's bearer, and this holds no credential of its own.
+close_run() { # $1 = the run's final state (done|parked)
+  local kata_json project_id run_uid message payload url answer rc=0 code reply
+  [ "$1" = done ] || return 0
+  kata_json="$FLEET_HOME/plans/$RUN_ID.kata.json"
+  [ -f "$kata_json" ] || return 0
+  project_id="$(json_int id <"$kata_json")"
+  run_uid="$(json_run_uid "$kata_json")"
+  if [ -z "$project_id" ] || [ -z "$run_uid" ]; then return 0; fi
+  message="$RUN_ID done: $(plan_title) — $PR_URL"
+  payload="{\"actor\":\"sandbox:$RUN_ID\",\"reason\":\"done\",\"message\":\"$(json_escape "$message")\",\"evidence\":[{\"type\":\"pr\",\"url\":\"$(json_escape "$PR_URL")\"}],\"retry_protocol\":\"close-v1\"}"
+  url="$KATA_ADMIN_URL/api/v1/projects/$project_id/issues/$run_uid/actions/close"
+  answer="$(fleet_curl -sS -X POST "$url" -H 'content-type: application/json' -H "Idempotency-Key: $RUN_ID:run:close" -d "$payload" -w '\n%{http_code}' 2>/dev/null)" || rc=$?
+  code="$(printf '%s' "$answer" | tail -n 1)"
+  if [ "$rc" -eq 0 ]; then
+    case "$code" in 2[0-9][0-9]) return 0 ;; esac
+  fi
+  reply="$(printf '%s' "$answer" | sed '$d')"
+  log "board: closing the run issue failed (exit $rc, http ${code:-<none>}) — $(printf '%s' "$reply" | tr '\n' ' ' | cut -c1-500)"
 }
 boot() {
   local comment code head; comment="$(read_assignment)"
