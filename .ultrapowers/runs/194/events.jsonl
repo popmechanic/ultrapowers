@@ -818,3 +818,14 @@
 {"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Edit","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
 {"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"DISPATCH_DEBUG=1 node fleet/tests/test_factory_dispatch.mjs 2>&1 | grep -A2 \"DEBUG waitsOn 1\\b\\|DEBUG waitsOn 2\\b\\|DEBUG waitsOn 3\\b\\|DEBUG after\" "}
 {"kind":"worker:test-run","task":"4","label":"impl:4:1","cmd":"DISPATCH_DEBUG=1 node fleet/tests/test_factory_dispatch.mjs 2>&1 | grep -A2 \"DEBUG waitsOn 1\\b\\|DEBUG waitsOn 2\\b\\|DEBUG waitsOn 3\\b\\|DEBUG after\" ","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Edit","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"capture(\" /home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"DISPATCH_DEBUG=1 node fleet/tests/test_factory_dispatch.mjs 2>&1 | grep -i \"DEBUG landing.dead\\|DEBUG folded.reason\""}
+{"kind":"worker:test-run","task":"4","label":"impl:4:1","cmd":"DISPATCH_DEBUG=1 node fleet/tests/test_factory_dispatch.mjs 2>&1 | grep -i \"DEBUG landing.dead\\|DEBUG folded.reason\"","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"cd /tmp && rm -rf gittest && mkdir gittest && cd gittest && git init -q -b main && git config user.email a@b.c && git config user.name a\nprintf 'line1\\n' > check.sh\nprintf 'other\\n' > out.txt\ngit add "}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"node -e \"\nconst { execFileSync } = require('child_process');\nconst fs = require('fs');\nconst dir = '/tmp/gittest2';\nfs.rmSync(dir, { recursive: true, force: true });\nfs.mkdirSync(dir);\nconst env = { ."}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
