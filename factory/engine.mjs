@@ -530,14 +530,22 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   // M2's chain orderings, one hard-predecessor-shaped set per task, filled in
   // by `resolvePairs()` below (live mode only) before `settleReadiness` is
   // ever asked. M1's `waitsFor` folds the two together: hard first, chain
-  // second, deduplicated.
+  // second, deduplicated — or, with `speculate.on_candidate`, splits them
+  // into `{ adoption, candidate }` (this task's own change).
   const chainPreds = new Map(tasks.map((t) => [t.id, new Set()]))
   const waitsOn = (task) => waitsFor({
     taskId: task.id,
     hardPreds: [...(edgePreds.get(task.id) || [])],
     chainPreds: [...(chainPreds.get(task.id) || [])],
     policy: policyDoc,
-  }).adoption
+  })
+  // Every ordering predecessor of a task, adoption and candidate alike —
+  // used by the two call sites below that only want the full list, not the
+  // adoption/candidate split `settleReadiness` itself acts on.
+  const allPreds = (task) => {
+    const { adoption, candidate } = waitsOn(task)
+    return [...adoption, ...candidate]
+  }
 
   let head = String(args.base || git(['rev-parse', 'HEAD'], target).trim())
   // M3: every exam worker — under `speculate.exam_at_zero` — runs in a clone
@@ -564,6 +572,36 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   // than by whichever task happens to be ready first.
   const examPromises = new Map()
   const reverifyPolicy = (policyDoc.fold || {}).reverify || {}
+
+  // M2 (this task's own): one deferred per task, resolved exactly once — the
+  // moment `land()` selects that task's best candidate, well before its own
+  // referee, fix and fold. A sibling with this task's id in its `candidate`
+  // list awaits this rather than the task's adoption. `candidateCommitCache`
+  // memoizes the one commit/fetch pair a producer's candidate tree needs,
+  // however many consumers speculate on it.
+  const candidateDeferreds = new Map()
+  const candidateDeferred = (id) => {
+    if (!candidateDeferreds.has(id)) {
+      let resolve
+      const promise = new Promise((res) => { resolve = res })
+      candidateDeferreds.set(id, { promise, resolve })
+    }
+    return candidateDeferreds.get(id)
+  }
+  const candidateCommitCache = new Map()
+  const candidateCommitFor = (producerId) => {
+    if (!candidateCommitCache.has(producerId)) {
+      candidateCommitCache.set(producerId, candidateDeferred(producerId).promise.then((best) => {
+        git(['add', '-A'], best.dir)
+        git(['-c', 'user.name=factory', '-c', 'user.email=factory@localhost',
+          'commit', '-m', 'candidate: task ' + producerId], best.dir)
+        const sha = git(['rev-parse', 'HEAD'], best.dir).trim()
+        git(['fetch', best.dir, sha + ':refs/factory/cand-' + producerId], target)
+        return sha
+      }))
+    }
+    return candidateCommitCache.get(producerId)
+  }
 
   // M3: `readUnion` is `deps.readUnion` when a caller injects one; otherwise
   // the engine builds it from `deps.ask` (M3), over `policy.resolve.union`'s
@@ -733,7 +771,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
    *  a predecessor that settles mid-run is seen by a dispatch that follows. */
   const settledLines = async (task) => {
     const lines = []
-    for (const predId of waitsOn(task)) {
+    for (const predId of allPreds(task)) {
       const s = typeof board.settled === 'function' ? await board.settled(predId) : null
       if (!s || !s.symbol) continue
       lines.push('SETTLED: ' + s.symbol + ' in ' + s.file + ' (task ' + (s.task ?? predId) + ', ' + s.sha + ')')
@@ -1011,6 +1049,11 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         if (c !== best) fs.rmSync(c.dir, { recursive: true, force: true })
       }
     }
+
+    // This task's own: this task's best candidate, measured, for whichever
+    // sibling's `waitsOn` has it in `candidate` rather than `adoption` — a
+    // one-shot resolution, unmoved by any later re-dispatch or fix.
+    candidateDeferred(task.id).resolve({ dir: best.dir, patch: best.patch })
 
     // M4: this task's best candidate, first measured — the moment a sibling
     // that consumes what it produces (already speculatively dispatched, its
@@ -1421,17 +1464,47 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     inflightLandings.set(task.id, land(task, anchor).then((landing) => ({ id: task.id, landing })))
   }
 
+  // This task's own: a task whose sole `candidate` id has not yet adopted
+  // starts as soon as that producer's best candidate is measured, building
+  // on it directly rather than on the run's moving head. The producer's
+  // candidate tree is committed (the engine's own git) in the producer's own
+  // clone and fetched into the target under `refs/factory/cand-<producer
+  // id>`; this task's own clones are then made AT that commit (`land`'s
+  // `anchor` parameter already puts every clone and the patch capture
+  // there), so its fold is asked with that commit as the patch's anchor and
+  // the kernel merges it three ways onto whatever the target's head has
+  // become by the time this task's own landing folds.
+  const launchOnCandidate = (task, producerId) => {
+    inflight.add(task.id)
+    inflightLandings.set(task.id, candidateCommitFor(producerId).then(async (anchor) => {
+      appendEvent({ kind: 'dispatch:on-candidate', task: task.id, from: producerId, anchor })
+      const landing = await land(task, anchor)
+      return { id: task.id, landing }
+    }))
+  }
+
   /** One fixed-point pass: a task whose predecessors are all adopted starts
    *  now; a task with a parked predecessor parks now, by that predecessor's
-   *  name — and either can unlock a further task in the same pass. */
+   *  name — and either can unlock a further task in the same pass.
+   *
+   *  This task's own: with exactly one id in `candidate`, that id need only
+   *  be measured (or already done) for the task to start — `launchOnCandidate`
+   *  when it is still in flight, a plain `launch` (the run's own head already
+   *  carries it) once it is done. With two or more, M4 says the switch is off
+   *  for this task: both lists are folded into one adoption wait, as if
+   *  `on_candidate` were false here. */
   const settleReadiness = async () => {
     let changed = true
     while (changed) {
       changed = false
       for (const t of tasks) {
         if (done.has(t.id) || inflight.has(t.id)) continue
-        const preds = waitsOn(t)
-        const badPred = preds.find((d) => parked.has(d))
+        const { adoption, candidate } = waitsOn(t)
+        const fallback = candidate.length >= 2
+        const effectiveAdoption = fallback ? [...adoption, ...candidate] : adoption
+        const effectiveCandidate = fallback ? [] : candidate
+        const badPred = effectiveAdoption.find((d) => parked.has(d)) ??
+          effectiveCandidate.find((d) => parked.has(d))
         if (badPred !== undefined) {
           const reason = 'predecessor ' + badPred + ' parked'
           appendEvent({ kind: 'parked', task: t.id, reason })
@@ -1442,10 +1515,16 @@ export async function runEngine (rawArgs = {}, deps = {}) {
           changed = true
           continue
         }
-        if (preds.every((d) => done.has(d))) {
+        if (!effectiveAdoption.every((d) => done.has(d))) continue
+        if (effectiveCandidate.length === 0) {
           launch(t)
           changed = true
+          continue
         }
+        const producerId = effectiveCandidate[0]
+        if (done.has(producerId)) launch(t)
+        else launchOnCandidate(t, producerId)
+        changed = true
       }
     }
   }
@@ -1564,7 +1643,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   if (done.size < tasks.length) {
     for (const t of tasks) {
       if (done.has(t.id)) continue
-      const reason = 'no ready set: ' + waitsOn(t).join(', ') + ' never adopted'
+      const reason = 'no ready set: ' + allPreds(t).join(', ') + ' never adopted'
       appendEvent({ kind: 'parked', task: t.id, reason })
       await board.post(t.id, 'park', reason)
       await board.setState(t.id, 'parked')
