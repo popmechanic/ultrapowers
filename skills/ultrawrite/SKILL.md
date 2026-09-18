@@ -296,7 +296,10 @@ One fresh-context subagent per task, asked the facts-only question, word for wor
 > argv, a byte-exact string, a count, an ordering of events — needs at least one leg that
 > would fail if that fact were false. A clause, or part of one, that only says what the code
 > says or how it is shaped is judged at run time by a model reading the diff against the
-> clause; it needs no leg of its own. One representative case per behaviour is enough: do
+> clause; it needs no leg of its own. A clause stating a negation or an absence — that
+> something is gone, unchanged, or exactly so many — is always a COMPUTABLE FACT and
+> always needs a leg, because the run-time reader sees only the diff and the diff shows
+> nothing for what is not there. One representative case per behaviour is enough: do
 > NOT ask for a leg per enumerated variant, per synonym, or per error flavour. A path absent
 > at BASE may be created by this task or an earlier sibling; that is not a failure. Fail
 > ONLY when: a computable fact the Claim's sentence depends on has no leg that could catch
