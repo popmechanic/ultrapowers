@@ -1014,3 +1014,6 @@
 {"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"timeout 900 node fleet/tests/test_factory_dispatch.mjs > /tmp/sib.log 2>&1; echo \"exit=$?\"; tail -5 /tmp/sib.log"}
 {"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"grep -rn \"POLICY_PATH\" factory/*.mjs | head -5; echo ---; grep -rn \"speculate\" --include=*.json --include=*.mjs --include=*.md . | grep -v node_modules | grep -v \"fleet/tests\" | grep -v \"factory/engin"}
 {"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"sed -n 248,268p factory/policy.json"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"grep -n \"defaultGit\" -A 14 factory/engine.mjs | head -30"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"node --input-type=module -e \"$(cat <<'EOF'\nimport fs from 'node:fs'\nimport os from 'node:os'\nimport path from 'node:path'\nimport { spawnSync } from 'node:child_process'\nconst REPO = '/home/exedev/run/"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"node --input-type=module -e \"$(cat <<'EOF'\nimport fs from 'node:fs'\nimport os from 'node:os'\nimport path from 'node:path'\nimport { spawnSync } from 'node:child_process'\nconst REPO = '/home/exedev/run/"}
