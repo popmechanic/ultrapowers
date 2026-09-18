@@ -223,3 +223,11 @@
 {"ts":"2026-09-18T21:59:21.914Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"^import\\|cloneAtBase\" /home/exedev/run/exam-4/factory/engine.mjs | head -30"}
 {"ts":"2026-09-18T21:59:27.957Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
 {"ts":"2026-09-18T21:59:32.294Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"ls /home/exedev/run/exam-4/factory/roles/ 2>&1; echo ---; ls /home/exedev/run/exam-4/factory/*.mjs 2>&1"}
+{"ts":"2026-09-18T22:00:30.645Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Write","target":"/home/exedev/run/exam-4/fleet/tests/test_factory_refold.mjs"}
+{"ts":"2026-09-18T22:00:33.214Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-18T22:00:33.285Z","kind":"worker:test-run","task":"4","label":"exam:4","cmd":"node fleet/tests/test_factory_refold.mjs","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-18T22:00:39.465Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"node fleet/tests/test_factory_refold.mjs 2>&1 | head -60"}
+{"ts":"2026-09-18T22:00:39.548Z","kind":"worker:test-run","task":"4","label":"exam:4","cmd":"node fleet/tests/test_factory_refold.mjs 2>&1 | head -60","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:01:01.617Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"mcp__factory__note"}
+{"ts":"2026-09-18T22:01:07.578Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"python3 -c \"import json\" ; git --version; node --version"}
+{"ts":"2026-09-18T22:01:11.979Z","kind":"dispatch:end","task":"4","label":"exam:4","role":"exam","wall_ms":1040822,"cost_usd":2.9255032,"error":null}
