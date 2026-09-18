@@ -119,3 +119,19 @@
 {"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Bash","target":"grep -n \"rule 2\\|rule 3\\|rule 4\\|Parallelization rationale\\|rationale\" /home/exedev/run/impl-7-0/skills/ultrawrite/SKILL.md /home/exedev/run/impl-7-0/skills/ultrawrite/references/authoring-gotchas.md"}
 {"kind":"supervisor","task":"7","label":"impl:7:0","answers":{"stuck":{"type":"noul","noul":0.48},"off_track":{"type":"noul","noul":0.4},"needs_human":{"type":"noul","noul":0.23},"done_not_exited":{"type":"noul","noul":0.13}}}
 {"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Read","target":"/home/exedev/run/impl-7-0/skills/ultrawrite/SKILL.md"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -rln \"producer.*consumer\\|pairState\\|decideByCode\\|readPairCandidate\\|labelPair\\|hunksCarrying\" /home/exedev/run/exam-4 --include=*.md --include=*.mjs --include=*.py 2>/dev/null | grep -v node_mo"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"1131\\|every task starts at once\\|pairs\\.mode\\|exam_at_zero\\|pair:cycle\\|pair:label\\|pair:candidate\" /home/exedev/run/exam-4/fleet/CONTRACT.md"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"ls /home/exedev/run/exam-4/factory/\necho \"---\"\ncat /home/exedev/run/exam-4/factory/select.mjs | head -40"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Bash","target":"grep -n \"Create:\" /home/exedev/run/impl-7-0/skills/ultrawrite/SKILL.md | head -30"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Read","target":"/home/exedev/run/exam-6/factory/judge.mjs"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Bash","target":"grep -n \"rule 1\\|rule 5\\|Decomposition judgment\\|§Decomposition\" /home/exedev/run/impl-7-0/skills/ultrawrite/SKILL.md"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Edit","target":"/home/exedev/run/impl-7-0/skills/ultrawrite/SKILL.md"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n \"obj\\.keys\\|obj_with\\.keys\\|obj_without\\.keys\\|keys())\" /home/exedev/run/exam-1/tests/test_plan_parse.py"}
+{"kind":"worker:test-run","task":"1","label":"exam:1","cmd":"grep -n \"obj\\.keys\\|obj_with\\.keys\\|obj_without\\.keys\\|keys())\" /home/exedev/run/exam-1/tests/test_plan_parse.py","red":false}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Edit","target":"/home/exedev/run/impl-7-0/skills/ultrawrite/SKILL.md"}
+{"kind":"supervisor","task":"1","label":"exam:1","answers":{"stuck":{"type":"noul","noul":0.2},"off_track":{"type":"noul","noul":0.31},"needs_human":{"type":"noul","noul":0.12},"done_not_exited":{"type":"noul","noul":0.14}}}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Edit","target":"/home/exedev/run/impl-7-0/skills/ultrawrite/SKILL.md"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Edit","target":"/home/exedev/run/impl-7-0/skills/ultrawrite/SKILL.md"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Edit","target":"/home/exedev/run/exam-1/tests/test_plan_parse.py"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Bash","target":"grep -n \"^## \\|Every file a task can foresee touching\" /home/exedev/run/impl-7-0/skills/ultrawrite/references/authoring-gotchas.md"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Read","target":"/home/exedev/run/impl-7-0/skills/ultrawrite/references/authoring-gotchas.md"}
