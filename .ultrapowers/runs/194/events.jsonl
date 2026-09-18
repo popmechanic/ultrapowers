@@ -741,3 +741,22 @@
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"node fleet/tests/test_factory_dispatch.mjs 2>&1 | tail -150"}
 {"kind":"worker:test-run","task":"4","label":"impl:4:0","cmd":"node fleet/tests/test_factory_dispatch.mjs 2>&1 | tail -150","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"mkdirSync\\|runDir\" /home/exedev/run/impl-4-0/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:test-run","task":"4","label":"impl:4:0","cmd":"grep -n \"mkdirSync\\|runDir\" /home/exedev/run/impl-4-0/fleet/tests/test_factory_dispatch.mjs","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"node -e \"\nconst fs = require('fs');\nconst os = require('os');\nconst path = require('path');\nconst runRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-exam-run-'));\nconsole.log('runRoot exists:',"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Write","target":"/home/exedev/run/impl-4-1/factory/dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n \"supervisorTicks\\|^  return {\\|late-parking\\|done.size < tasks.length\\|foldOutcomes\" /home/exedev/run/impl-4-1/factory/engine.mjs | tail -60"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Edit","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"node fleet/tests/test_factory_dispatch.mjs 2>&1 | tail -100"}
+{"kind":"worker:test-run","task":"4","label":"impl:4:1","cmd":"node fleet/tests/test_factory_dispatch.mjs 2>&1 | tail -100","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n \"writePolicy\\|rundir\\|mkdirSync\" /home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs | head -40"}
+{"kind":"worker:test-run","task":"4","label":"impl:4:1","cmd":"grep -n \"writePolicy\\|rundir\\|mkdirSync\" /home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs | head -40","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n \"runDir\" /home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:test-run","task":"4","label":"impl:4:1","cmd":"grep -n \"runDir\" /home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs","red":false}
