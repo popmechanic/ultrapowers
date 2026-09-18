@@ -466,3 +466,14 @@
 {"kind":"worker:test-run","task":"7","label":"referee:7","cmd":"/usr/bin/time -f \"%e s\" node fleet/tests/test_factory_engine_select.mjs > /dev/null 2> /tmp/t.txt; tail -2 /tmp/t.txt; du -sh /tmp/select-exam-* 2>/dev/null | tail -3; ls -d /tmp/select-exam-* 2>/dev/null | wc -l","red":false}
 {"kind":"worker:tool","task":"7","label":"referee:7","tool":"Bash","target":"sed -n 100,175p tests/test_fleet_suite.py; echo ===; grep -n \"mkdtemp\\|rmSync\\|finally\" fleet/tests/test_factory_hunks.mjs | head"}
 {"kind":"worker:tool","task":"7","label":"referee:7","tool":"Bash","target":"timeout 600 python3 -m pytest tests/test_fleet_suite.py -k \"factory_engine_select or factory_hunks\" -q 2>&1 | tail -5"}
+{"kind":"worker:tool","task":"7","label":"referee:7","tool":"StructuredOutput"}
+{"kind":"referee","task":"7","findings":8,"blocking":1,"grades":["minor","blocking","minor","minor","minor","minor","minor","minor"]}
+{"kind":"worker:tool","task":"7","label":"fix:7","tool":"Bash","target":"ls && echo --- && ls factory && echo --- && ls fleet/tests | grep -i select"}
+{"kind":"worker:tool","task":"7","label":"fix:7","tool":"Read","target":"/home/exedev/run/impl-7-0/fleet/tests/test_factory_engine_select.mjs"}
+{"kind":"worker:tool","task":"7","label":"fix:7","tool":"Read","target":"/home/exedev/run/impl-7-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"7","label":"fix:7","tool":"Bash","target":"node fleet/tests/test_factory_engine_select.mjs 2>&1 | tail -80"}
+{"kind":"worker:test-run","task":"7","label":"fix:7","cmd":"node fleet/tests/test_factory_engine_select.mjs 2>&1 | tail -80","red":false}
+{"kind":"worker:tool","task":"7","label":"fix:7","tool":"Bash","target":"grep -n 'COVERED:' /home/exedev/run/impl-7-0/factory/roles/exam.md"}
+{"kind":"supervisor","task":"7","label":"fix:7","answers":{"stuck":{"type":"noul","noul":0.19},"off_track":{"type":"noul","noul":0.28},"needs_human":{"type":"noul","noul":0.11},"done_not_exited":{"type":"noul","noul":0.56}}}
+{"kind":"worker:tool","task":"7","label":"fix:7","tool":"Read","target":"/home/exedev/run/impl-7-0/factory/roles/exam.md"}
+{"kind":"worker:tool","task":"7","label":"fix:7","tool":"Bash","target":"git status --short && echo --- && git log --oneline -5"}
