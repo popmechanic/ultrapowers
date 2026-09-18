@@ -918,3 +918,8 @@
 {"kind":"worker:tool","task":"4","label":"referee:4","tool":"StructuredOutput"}
 {"kind":"referee","task":"4","findings":10,"blocking":0,"grades":["minor","minor","minor","minor","minor","minor","minor","minor","minor","minor"]}
 {"kind":"worker:tool","task":"4","label":"resolve:4:1","tool":"Read","target":"/home/exedev/run/frontier/wave-7/conflict-1.hunks.txt"}
+{"kind":"worker:tool","task":"4","label":"resolve:4:1","tool":"StructuredOutput"}
+{"kind":"worker:tool","task":"4","label":"resolve:4:1","tool":"StructuredOutput"}
+{"kind":"landing","task":"4","k":2,"examExit":0,"claim":0.7,"coverage":[0.97,0.94,0.94,0.94,0.94,0.81],"candidateSha":"72ed0b021781fafd3fbb260b3029c8f6c5ac7c78","wall_ms":4057660}
+{"kind":"select:exam","task":"8","candidates":["fleet/tests/test_factory_dispatch.mjs","fleet/tests/test_factory_reverify.mjs","fleet/tests/test_factory_union.mjs","fleet/tests/test_publish_fold.mjs","fleet/tests/test_run_engine_fold_policy.mjs","fleet/tests/test_run_engine_ready_set.mjs","fleet/tests/test_run_engine_stale_patch.mjs","fleet/tests/test_factory_pairs.mjs"],"covered":[null,null,null,null]}
+{"kind":"worker:tool","task":"8","label":"exam:8","tool":"Bash","target":"find /home/exedev/run/exam-8 -type f -name \"*.mjs\" | grep -v node_modules | sort"}
