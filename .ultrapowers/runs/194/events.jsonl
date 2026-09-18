@@ -692,3 +692,4 @@
 {"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -rl \"factory/engine.mjs\" /home/exedev/run/impl-4-1/fleet/tests/*.mjs"}
 {"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"sed -n '1,60p' /home/exedev/run/impl-4-1/factory/select.mjs"}
 {"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"ls /home/exedev/run/impl-4-1/factory/ | grep -i pair"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"clean\\|resolved\\|union\\|parked\\|complete\" /home/exedev/run/impl-4-0/skills/ultrapowers/kernel/fold_wave.py | head -80"}
