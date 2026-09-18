@@ -1,0 +1,63 @@
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"find . -path ./node_modules -prune -o -name \"*.mjs\" -print | grep -E \"judge|helpers\" "}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"find /home/exedev/run/exam-1 -type f -name \"*.mjs\" | grep -i test | head -50"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"find . -path ./node_modules -prune -o -type f -print | grep -E 'factory/|fleet/tests/' | sort"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"ls factory fleet/tests 2>/dev/null"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"find /home/exedev/run/exam-5 -maxdepth 3 | head -100"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"find . -name \"plan_parse.py\" -o -name \"test_plan_parse.py\" | grep -v node_modules"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/fleet/tests/test_launch_duplicate.mjs"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Read","target":"/home/exedev/run/exam-3/factory/engine.mjs"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/judge.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/fleet/tests/_helpers.mjs"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/questions.json"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Read","target":"/home/exedev/run/exam-3/fleet/tests/_engine_helpers.mjs"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/policy.json"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Read","target":"/home/exedev/run/exam-3/fleet/tests/_helpers.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/tests/test_plan_parse.py"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -rl \"makeJudge\" fleet/tests/ factory/ 2>/dev/null"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"find . -iname \"*exam*\" -not -path \"*/node_modules/*\" | head -50"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"git status && git log --oneline -10"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/fleet/tests/_helpers.mjs"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"ls fleet/*.mjs | sort; echo ---; grep -l \"_engine_helpers\" fleet/tests/*.mjs"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"cat factory/roles/exam.md"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"ls skills/ultrawrite; echo ---; sed -n '1,50p' skills/ultrawrite/SKILL.md"}
+{"kind":"supervisor","task":"2","label":"exam:2","answers":{"stuck":{"type":"noul","noul":0.46},"off_track":{"type":"noul","noul":0.4},"needs_human":{"type":"noul","noul":0.25},"done_not_exited":{"type":"noul","noul":0.14}}}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -rl \"judge.mjs\" fleet/tests/ | head -20"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/fleet/tests/test_jev_questions.mjs"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -n \"import\" fleet/tests/test_run_engine_jev_finding.mjs | head -20; echo ---; grep -rn \"from '../../factory/engine.mjs'\\|from '\\.\\./engine.mjs'\\|factory/engine\" fleet/tests/*.mjs | head -30"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"git log --oneline -15 -- skills/ultrawrite 2>&1 | head -30"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Read","target":"/home/exedev/run/exam-5/factory/boot.sh"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"sed -n '1,80p' tests/test_compile_plan_exam_sweep.py"}
+{"kind":"supervisor","task":"3","label":"exam:3","answers":{"stuck":{"type":"noul","noul":0.46},"off_track":{"type":"noul","noul":0.4},"needs_human":{"type":"noul","noul":0.26},"done_not_exited":{"type":"noul","noul":0.13}}}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"ls /home/exedev/run/exam-5/fleet/tests/ | grep -i boot"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -rn \"questionsPath\\|policyPath\" fleet/ factory/ 2>/dev/null"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -rln \"factory/engine\" fleet/tests/ factory/ 2>/dev/null; echo \"---\"; grep -rln \"runEngine\" fleet/tests/*.mjs 2>/dev/null | xargs grep -l \"from '\\.\\./\\.\\./factory/engine\" 2>/dev/null; echo \"---sea"}
+{"kind":"supervisor","task":"6","label":"exam:6","answers":{"stuck":{"type":"noul","noul":0.48},"off_track":{"type":"noul","noul":0.41},"needs_human":{"type":"noul","noul":0.25},"done_not_exited":{"type":"noul","noul":0.14}}}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"makeJudge\\|questionsPath\\|policyPath\\|mkdtemp\" fleet/tests/test_run_engine_jev_finding.mjs fleet/tests/test_run_engine_jev_tier.mjs fleet/tests/test_run_engine_jev_suite_red.mjs 2>/dev/null |"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"grep -n \"def test_leg_j\\|def test_leg_i\\|def test_leg_h\\|def test_leg_g\\|authoring-gotchas\\|examiner.md\\|greenfield-stack\" tests/test_compile_plan_exam_sweep.py"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Read","target":"/home/exedev/run/exam-6/tests/test_compile_plan_exam_sweep.py"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"ls /home/exedev/run/exam-5/fleet/tests/ | grep -i factory; echo ---; cat /home/exedev/run/exam-5/fleet/tests/_helpers.mjs 2>/dev/null | head -200"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Read","target":"/home/exedev/run/exam-6/tests/test_compile_plan_exam_sweep.py"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"ls tests/ | sort"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"grep -n \"The proof gate\" -A 40 skills/ultrawrite/SKILL.md | head -60"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Read","target":"/home/exedev/run/exam-5/fleet/tests/test_sandbox_boot_publish_record.mjs"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"ls fleet/tests/test_factory_*.mjs 2>/dev/null; echo \"---\"; grep -rln \"from '\\.\\./\\.\\./factory/engine\" fleet/tests/ 2>/dev/null; echo \"---engine sibling tasks---\"; git -C . log --oneline -5 2>/dev/null"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"ls fleet/tests/test_factory_*.mjs 2>/dev/null; echo done"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"grep -n \"## The sixteen rows\\|## Three older lessons\\|recurring rejection species\" skills/ultrawrite/references/authoring-gotchas.md"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"sed -n '1,400p' skills/ultrawrite/references/authoring-gotchas.md | grep -n \"^- \\*\\*\" "}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"git log --oneline -15 -- factory/ fleet/tests/ 2>&1 | head -50"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Read","target":"/home/exedev/run/exam-6/skills/ultrawrite/references/authoring-gotchas.md"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"git log --oneline -15 2>&1 | head -50"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -rl \"FLEET_ASSIGNMENT\" /home/exedev/run/exam-5 --include=*.mjs; echo ---; grep -rl \"factory/boot.sh\" /home/exedev/run/exam-5 --include=*.mjs"}
+{"kind":"supervisor","task":"5","label":"exam:5","answers":{"stuck":{"type":"noul","noul":0.46},"off_track":{"type":"noul","noul":0.4},"needs_human":{"type":"noul","noul":0.25},"done_not_exited":{"type":"noul","noul":0.14}}}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"grep -rn \"run-192\" --include=\"*.py\" --include=\"*.md\" --include=\"*.mjs\" . 2>/dev/null | grep -v \"/.git/\""}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"grep -rln \"def _shell\\|subprocess.run(\\[\\\"bash\\\"\" tests/*.py | xargs grep -L \"compile_plan\" "}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -n \"FLEET_ASSIGNMENT\\|BOOT_SCRIPT\\|boot.sh\" /home/exedev/run/exam-5/fleet/tests/_sandbox_boot_helpers.mjs | head -30; echo ---; grep -n \"FLEET_ASSIGNMENT\" /home/exedev/run/exam-5/fleet/sandbox-bo"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -rln \"engine.mjs\" fleet/ factory/ 2>/dev/null | sort"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"sed -n '1,60p' tests/conftest.py; echo ---; sed -n '1,40p' skills/ultrapowers/scripts/validate_skill.py"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -n \"^import\" fleet/tests/test_run_engine_state_exams.mjs"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"sed -n '38,60p' skills/ultrapowers/scripts/validate_skill.py"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"ls /home/exedev/run/exam-5/fleet/tests/ | sort; echo ---; cat /home/exedev/run/exam-5/fleet/tests/README.md 2>/dev/null | head -80"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"find . -iname \"*.md\" -path \"*fixtures*\" 2>/dev/null | grep -iv node_modules; echo ---; find . -iname \"plan*.md\" 2>/dev/null | grep -v node_modules; echo ---; cat factory/questions.json | head -60"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"proofGuards\\|proofTests\\|TASK_FIELDS\\|def public_view\\|Guard\" /home/exedev/run/exam-4/skills/ultrapowers/scripts/compile_plan.py | head -50"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"sed -n '1030,1090p;2550,2620p;3510,3560p' /home/exedev/run/exam-4/skills/ultrapowers/scripts/compile_plan.py"}
