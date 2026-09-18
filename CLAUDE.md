@@ -126,13 +126,14 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   syncs through `kata-sync.int.exe.xyz`, which passes the spoke's own bearer through untouched
   (measured on run-194, 2026-09-18), and the credential helper administers through
   `kata.int.exe.xyz`, where the edge injects the hub's. The record is rows in `events.jsonl`.
-- `fleet/tests/` — the surviving sims, every `test_*.mjs` there (16 on 2026-09-14: the engine
-  sims `test_run_engine_*.mjs`, the launcher sims `test_launch_*.mjs`, the boot sims
-  `test_sandbox_boot_*.mjs`, `test_worker_kata_env.mjs` and
-  `test_sims_are_hermetic.mjs`, which forbids a sim naming a sibling sim), plus the live
-  `probe_*.mjs` (see `PROBES.md`) which are run by hand, not by the suite. They reach pytest
-  through the bridge, `tests/test_fleet_suite.py`; the list is not enumerated here because it
-  drifted twice in one week — `ls fleet/tests/test_*.mjs` is the list.
+- `fleet/tests/` — what cut one of the mow left (2026-09-18): the launcher sims
+  `test_launch_*.mjs`, `test_setup_script.mjs`, `test_worker_kata_env.mjs`, the Jev client's two,
+  `test_probe_kata_facts.mjs` and `test_sims_are_hermetic.mjs`, which forbids a sim naming a
+  sibling sim — plus the rig (`_helpers.mjs` and the per-family helpers, which the factory's
+  exams build on) and the live `probe_*.mjs` (see `PROBES.md`), run by hand. The 47 sims of the
+  old engine, boot, worker and publish fold are gone (32,805 lines); the code they examined goes
+  at cut two. They reach pytest through the bridge, `tests/test_fleet_suite.py`;
+  `ls fleet/tests/test_*.mjs` is the list.
 
 ## Doctrine
 
@@ -281,8 +282,8 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   evidence on `FLEET_COMMIT_EVENTS` lines or `FLEET_COMMIT_SECONDS` seconds, never on a tick with
   no new line — that cadence is the contract the live model of the fleet, map #876 *Viz*, reads.
   The page itself is its own repo on its own VM, not plugin machinery; what binds here is the
-  cadence, pinned by `test_sandbox_boot_viz.mjs` against `fleet/CONTRACT.md` and
-  `fleet/RUNBOOK.md`'s **Watch.** list.
+  cadence, written in `fleet/CONTRACT.md` and `fleet/RUNBOOK.md`'s **Watch.** list (its sim,
+  `test_sandbox_boot_viz.mjs`, left with the old boot's other sims at cut one).
 - **Never force-rotate the Claude token while a run is live.** A refresh grant revokes the old
   access token at once, and every in-flight run dies on its next API call with
   `401 OAuth access token has been revoked` before the edge carries the new one (run-103 was
