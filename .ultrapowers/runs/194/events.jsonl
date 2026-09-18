@@ -794,3 +794,10 @@
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"cd /tmp/scratch_verify && python3 - <<'EOF'\nwith open('test_factory_dispatch.mjs') as f:\n    content = f.read()\ncontent = content.replace(\n    \"async function main () {\\n  legA()\\n  await legMainRun()"}
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"cd /tmp/scratch_verify && python3 - <<'EOF'\nwith open('test_factory_dispatch.mjs') as f:\n    content = f.read()\ncontent = content.replace(\n    \"  const base = gitSync(['rev-parse', 'HEAD'], target)\\n "}
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"cat /tmp/dispatch-exam-run-ypP4Tb/rundir/events.jsonl | python3 -m json.tool --json-lines 2>/dev/null || cat /tmp/dispatch-exam-run-ypP4Tb/rundir/events.jsonl"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n \"runDir\\|args\\.runDir\\|paths\\.runDir\\|mkdirSync\" /home/exedev/run/impl-4-1/factory/engine.mjs | head -60"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"node -e \"\nconst fs = require('fs');\nconst os = require('os');\nconst path = require('path');\nconst root = fs.mkdtempSync(path.join(os.tmpdir(),'chk-'));\nconst rundir = path.join(root,'rundir');\ntry {\n "}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"const measure\\s*=\\|const cloneAt\\s*=\\|const runBase\\b\" /home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
