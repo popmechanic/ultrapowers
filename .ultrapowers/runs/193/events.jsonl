@@ -335,3 +335,16 @@
 {"kind":"worker:tool","task":"7","label":"exam:7","tool":"Read","target":"/home/exedev/run/exam-7/factory/board.mjs"}
 {"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -n \"set -\" factory/boot.sh | head -20 && echo \"---RUN_ID/PLAN_FILE/ENGINE_REPO_DIR---\" && grep -n \"RUN_ID=\\|PLAN_FILE=\\|ENGINE_REPO_DIR=\\|EVIDENCE_DIR=\\|EVIDENCE_REL=\\|TARGET_DIR=\" factory/boot.s"}
 {"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -n \"strip_exams\\|^publish()\\|ensure_git_identity\\|evidence_commit\\|fleet_python3\" factory/boot.sh"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"sed -n '340,400p' factory/boot.sh"}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Bash","target":"sed -n '1,400p' /home/exedev/run/exam-7/skills/ultrapowers/scripts/plan_parse.py | grep -n \"files\\|proofTests\\|testCmd\\|Proof\\|Test:\" | head -100"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"ls skills/ultrapowers/scripts/ 2>&1 | head -30; echo \"---\"; grep -rn \"unguarded\" skills/ultrapowers/scripts/plan_parse.py 2>/dev/null | head -20; echo \"---log---\"; sed -n '55,75p' factory/boot.sh"}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Read","target":"/home/exedev/run/exam-7/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"supervisor","task":"5","label":"referee:5","answers":{"stuck":{"type":"noul","noul":0.18},"off_track":{"type":"noul","noul":0.24},"needs_human":{"type":"noul","noul":0.12},"done_not_exited":{"type":"noul","noul":0.07}}}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -n \"argv\\|add_argument\\|sys.exit\\|def main\\|usage\" skills/ultrapowers/scripts/plan_parse.py | head -40"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"node fleet/tests/test_factory_boot_exams.mjs 2>&1 | tail -25"}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Bash","target":"grep -n '\"files\"\\|\"proofTests\"\\|proofTests\\|testCmd\\|proof_tests\\|\"id\"\\|task\\[' /home/exedev/run/exam-7/skills/ultrapowers/scripts/plan_parse.py | sed -n '1,80p'"}
+{"kind":"worker:test-run","task":"5","label":"referee:5","cmd":"node fleet/tests/test_factory_boot_exams.mjs 2>&1 | tail -25","red":false}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Read","target":"/home/exedev/run/exam-7/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -n \"export function simEnv\\|export const simEnv\" -A 25 fleet/tests/_helpers.mjs | head -50"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -rn \"test_factory_boot\\|fleet/tests/\" --include=*.md --include=*.json --include=*.mjs --include=*.sh --include=*.py -l . 2>/dev/null | grep -v node_modules | head -20; echo \"=== manifest? ===\"; l"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"echo \"=== fleet/strip-exams.sh ===\"; cat fleet/strip-exams.sh; echo; echo \"=== fleet/exam-paths.mjs ===\"; sed -n '1,60p' fleet/exam-paths.mjs"}
