@@ -915,3 +915,6 @@
 {"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -rn \"unhandledRejection\\|process.on\" factory/engine.mjs fleet/tests/test_factory_dispatch.mjs | head"}
 {"kind":"worker:test-run","task":"4","label":"referee:4","cmd":"grep -rn \"unhandledRejection\\|process.on\" factory/engine.mjs fleet/tests/test_factory_dispatch.mjs | head","red":false}
 {"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"_rawWriteFileSync\\|fs.writeFileSync = \\|const capture = \\|foldOutcomes.set\\|examPromises.set\\|const runBase\" factory/engine.mjs; echo ---; grep -n \"readPair\\b\\|verdict = \\|pairsLive = \\|examA"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"StructuredOutput"}
+{"kind":"referee","task":"4","findings":10,"blocking":0,"grades":["minor","minor","minor","minor","minor","minor","minor","minor","minor","minor"]}
+{"kind":"worker:tool","task":"4","label":"resolve:4:1","tool":"Read","target":"/home/exedev/run/frontier/wave-7/conflict-1.hunks.txt"}
