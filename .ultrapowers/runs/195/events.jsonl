@@ -136,3 +136,19 @@
 {"kind":"worker:tool","task":"3","label":"exam:3","tool":"Read","target":"/home/exedev/run/exam-3/factory/policy.json"}
 {"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/board.mjs"}
 {"kind":"worker:tool","task":"5","label":"exam:5","tool":"Read","target":"/home/exedev/run/exam-5/factory/engine.mjs"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -rn \"Legs:\" /home/exedev/run/exam-2/tests/fixtures/plans/*.md /home/exedev/run/exam-2/evals/fixtures/claims/*.md 2>/dev/null | head -20"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -rl \"factory/engine\\|factory\\.engine\\|from .*factory.*engine\" /home/exedev/run/exam-4/tests/*.py 2>/dev/null | head\necho ---\nfind /home/exedev/run/exam-4 -iname \"fold_wave.py\"\necho ---\ngrep -rn \""}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/roles/exam.md"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/roles/implement.md"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"sed -n '1,60p' /home/exedev/run/exam-5/skills/ultrapowers/kernel/fold_wave.py | head -80"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -rn \"from '\\.\\./\\.\\./factory\" /home/exedev/run/exam-4/fleet/tests/*.mjs | head -5\necho ---\ngrep -rln \"factory/\" /home/exedev/run/exam-4/fleet/tests/*.mjs | head -10"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"ls factory/tools.mjs factory/engine.mjs fleet/tests/_helpers.mjs && node -e \"console.log(require('path').relative('fleet/tests','factory/tools.mjs'))\""}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/fleet/tests/_helpers.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/fleet/tests/test_facts_block.mjs"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -n \"proof_tests\\|proofTests\\|\\\"files\\\"\\|'files'\\|launch_waves\\|testCmd\\|interfaces\" /home/exedev/run/exam-3/skills/ultrapowers/scripts/plan_parse.py | sed -n '1,80p'"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Read","target":"/home/exedev/run/exam-3/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"proofGuards\\|runOnlyClauses\" /home/exedev/run/exam-2/skills/ultrapowers/scripts/compile_plan.py"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"sed -n '1,50p' /home/exedev/run/exam-1/skills/ultrapowers/kernel/fold_wave.py; echo ...; grep -n \"def main\\|add_argument\\|subparsers\\|argv\\[1\\]\\|sys.argv\" /home/exedev/run/exam-1/skills/ultrapowers/ke"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -rl \"fold_wave\" /home/exedev/run/exam-1 --include=\"*.mjs\" --include=\"*.py\" | grep -v node_modules"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/fleet/tests/_readiness_helpers.mjs"}
