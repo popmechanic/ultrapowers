@@ -433,3 +433,11 @@
 {"kind":"worker:test-run","task":"7","label":"impl:7:0","cmd":"grep -q 'COVERED:' factory/roles/exam.md && echo \"grep OK\"\nnode fleet/tests/test_factory_engine_select.mjs > /tmp/out.log 2>&1; tail -5 /tmp/out.log","red":false}
 {"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Bash","target":"for f in fleet/tests/test_run_engine_*.mjs fleet/tests/test_factory_*.mjs; do\n  echo \"== $f ==\"\n  timeout 60 node \"$f\" > /tmp/res.log 2>&1\n  code=$?\n  if [ $code -ne 0 ]; then echo \"FAIL ($code)\"; tai"}
 {"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"TaskOutput"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Bash","target":"grep -rn \"examPrompt\" /home/exedev/run/impl-7-0/ --include=*.mjs | grep -v node_modules"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Bash","target":"node fleet/tests/test_factory_engine_select.mjs 2>&1 | tail -15"}
+{"kind":"worker:test-run","task":"7","label":"impl:7:0","cmd":"node fleet/tests/test_factory_engine_select.mjs 2>&1 | tail -15","red":false}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Bash","target":"git diff --stat"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Read","target":"/home/exedev/run/impl-7-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"7","label":"referee:7","tool":"Bash","target":"ls && wc -l /home/exedev/run/patch-7-0.diff factory/engine.mjs factory/roles/exam.md fleet/tests/test_factory_engine_select.mjs"}
+{"kind":"worker:test-run","task":"7","label":"referee:7","cmd":"ls && wc -l /home/exedev/run/patch-7-0.diff factory/engine.mjs factory/roles/exam.md fleet/tests/test_factory_engine_select.mjs","red":false}
+{"kind":"worker:tool","task":"7","label":"referee:7","tool":"Read","target":"/home/exedev/run/patch-7-0.diff"}
