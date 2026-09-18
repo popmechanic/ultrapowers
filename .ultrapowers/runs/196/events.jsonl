@@ -548,3 +548,25 @@
 {"ts":"2026-09-18T22:16:41.095Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Read","target":"/home/exedev/run/impl-2-1/factory/commands.mjs"}
 {"ts":"2026-09-18T22:16:41.212Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Read","target":"/tmp/fake-boot/factory/boot.sh"}
 {"ts":"2026-09-18T22:16:44.267Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -n '^diff --git\\|^@@' /home/exedev/run/patch-2-1.diff"}
+{"ts":"2026-09-18T22:16:45.264Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Edit","target":"/tmp/fake-boot/factory/boot.sh"}
+{"ts":"2026-09-18T22:16:45.540Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -n 'cloneAt\\|bootstrapFor\\|runAll\\|testCmds\\|bootstrapCmd\\|bootstrap' factory/engine.mjs"}
+{"ts":"2026-09-18T22:16:48.011Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Read","target":"/home/exedev/run/exam-3/factory/engine.mjs"}
+{"ts":"2026-09-18T22:16:48.280Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Read","target":"/home/exedev/run/impl-2-1/factory/engine.mjs"}
+{"ts":"2026-09-18T22:16:49.028Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Read","target":"/home/exedev/run/impl-2-1/factory/engine.mjs"}
+{"ts":"2026-09-18T22:16:52.779Z","kind":"supervisor","task":"2","label":"referee:2","answers":{"stuck":{"type":"noul","noul":0.19},"off_track":{"type":"noul","noul":0.24},"needs_human":{"type":"noul","noul":0.12},"done_not_exited":{"type":"noul","noul":0.06}}}
+{"ts":"2026-09-18T22:16:53.474Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n '89,364p' /home/exedev/run/patch-2-1.diff"}
+{"ts":"2026-09-18T22:16:54.741Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"cd /tmp/fake-boot && python3 - <<'PYEOF'\nimport re\n\nwith open('factory/boot.sh') as f:\n    s = f.read()\n\n# 1. wrappers + globals\ns = s.replace(\n    'BOARD_BOUND=\"\"; BOARD_UNIT=\"\"; BOARD_PROJECT_ID=\"\";"}
+{"ts":"2026-09-18T22:16:55.517Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -n \"reverifyAfterFold(\" /home/exedev/run/exam-3/factory/engine.mjs"}
+{"ts":"2026-09-18T22:17:01.352Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Read","target":"/home/exedev/run/exam-3/factory/engine.mjs"}
+{"ts":"2026-09-18T22:17:04.542Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -n 'const git\\|git(\\[' factory/engine.mjs | head -40; echo ---; grep -n 'git' fleet/tests/_engine_helpers.mjs | head -40"}
+{"ts":"2026-09-18T22:17:05.664Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n 1030,1060p factory/engine.mjs; echo '=== land start ==='; grep -n 'const land = \\|const examine\\|const runSelection\\|speculat' factory/engine.mjs | head -30"}
+{"ts":"2026-09-18T22:17:11.136Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n 1143,1185p factory/engine.mjs; echo '=== 1720-1775 ==='; sed -n 1720,1775p factory/engine.mjs"}
+{"ts":"2026-09-18T22:17:22.635Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"cd /tmp/fake-boot && python3 - <<'PYEOF'\nwith open('factory/boot.sh') as f:\n    s = f.read()\n\nold_publish = '''publish() { # $1 = the engine's exit code\n  local base title draft body payload answer co"}
+{"ts":"2026-09-18T22:17:26.528Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -n \"function bodyOf\" -A 15 /home/exedev/run/exam-3/factory/engine.mjs"}
+{"ts":"2026-09-18T22:17:32.672Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"cd /tmp/fake-boot && python3 - <<'PYEOF'\nwith open('factory/boot.sh') as f:\n    s = f.read()\n\nold = '''    local waited=0 mergeable=null\n    while [ \"$waited\" -lt \"$wait_s\" ]; do\n      local m; m=\"$(f"}
+{"ts":"2026-09-18T22:17:36.765Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Edit","target":"/home/exedev/run/exam-3/fleet/tests/test_factory_proofs.mjs"}
+{"ts":"2026-09-18T22:17:37.145Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Read","target":"/home/exedev/run/impl-2-1/fleet/tests/test_factory_commands.mjs"}
+{"ts":"2026-09-18T22:17:38.319Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"cd /tmp/fake-boot && python3 - <<'PYEOF'\nwith open('factory/boot.sh') as f:\n    s = f.read()\n\nold = '''  message=\"$RUN_ID done: $(plan_title) — $PR_URL\"\n  payload=\"{\\\\\"actor\\\\\":\\\\\"sandbox:$RUN_ID\\\\\",\\"}
+{"ts":"2026-09-18T22:17:39.026Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-18T22:17:39.105Z","kind":"worker:test-run","task":"3","label":"exam:3","cmd":"node fleet/tests/test_factory_proofs.mjs","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-18T22:17:40.171Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"cd /tmp/fake-boot && BOOT_SCRIPT_OVERRIDE=/tmp/fake-boot/factory/boot.sh node tests/test.mjs 2>&1 | tail -80"}
