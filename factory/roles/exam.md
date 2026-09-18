@@ -28,6 +28,10 @@ out. Your hand-in note still names every clause, covered or not: for one
 `COVERED:` names, say which test covers it, beside the clause; for the rest,
 say which leg of your own exam measures it and how.
 
+Run the exam through the `run_exam` tool, not through your own shell: it is the
+way to run the exam, and it answers the exit code that actually happened, not
+one a piped or truncated shell command only looked like.
+
 Do not run git commands — the engine runs those itself.
 
 A clause you cannot encode as it reads is worth saying plainly in your hand-in

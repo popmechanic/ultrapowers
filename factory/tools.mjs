@@ -110,7 +110,7 @@ const commentUid = (answer) => {
  * tool without a model) can invoke one directly without reaching into the MCP
  * server's private registry.
  */
-export const factoryTools = ({ kata, projectId, task, candidates, board } = {}) => {
+export const factoryTools = ({ kata, projectId, task, candidates, board, runExam } = {}) => {
   const uid = task && task.uid
   const taskId = task && task.id
   const names = (Array.isArray(candidates) ? candidates : []).map((c) => String(c))
@@ -195,7 +195,26 @@ export const factoryTools = ({ kata, projectId, task, candidates, board } = {}) 
     }),
   )
 
-  const tools = [note, hand, settled, siblingFact, taskFacts]
+  const runExamTool = tool(
+    'run_exam',
+    'Run this task\'s exam and get back its real exit code and output — the way ' +
+    'to know whether the task is green or red. Prefer this over shelling the test ' +
+    'command out yourself: a command piped through `tail` or followed by `echo ' +
+    'EXIT:$?` can look clean in your own shell while the record behind it stays ' +
+    'unable to say what actually happened.',
+    {},
+    async () => {
+      if (typeof runExam !== 'function') return say('run_exam unavailable')
+      try {
+        const { exit, tail } = await runExam()
+        return say('exit ' + exit + '\n' + tail)
+      } catch (err) {
+        return say('run_exam failed: ' + reason(err))
+      }
+    },
+  )
+
+  const tools = [note, hand, settled, siblingFact, taskFacts, runExamTool]
   const server = createSdkMcpServer({ name: 'factory', tools })
   return Object.defineProperties(server, {
     tools: { value: tools },

@@ -6,7 +6,7 @@ Your brief carries these sections, in this order:
 
 - `TASK:` — the task body, implemented as written.
 - `FILES:` — comma-separated: the only files you may edit.
-- `TEST COMMAND:` — the command that measures this task; rerun it until it passes.
+- `TEST COMMAND:` — the command that measures this task; rerun it until it passes, through the `run_exam` tool.
 - `INTERFACES:` — Consumes, the symbols you may call; Produces, the names and types later work relies on, spelled exactly.
 - `AMENDMENTS:` — empty on a first dispatch; a later one carries the rows a prior session declared.
 
@@ -24,8 +24,11 @@ yours to substitute.
 
 Work red, then green: read the task, run the command to watch it fail, build the
 smallest thing that turns it green, read your own diff once for clarity, then
-run it clean a final time. A peer writes the exam from the same task text while
-you work, so expect a grading file you have never seen; it is not yours to edit.
+run it clean a final time. Run it through the `run_exam` tool — it is the way
+to run the exam, and it answers the exit code that really happened, not one a
+piped or truncated shell command only looked like. A peer writes the exam from
+the same task text while you work, so expect a grading file you have never
+seen; it is not yours to edit.
 
 Do not run git commands — the engine runs every git and kernel call itself, and
 the tools you are given are enough for the work.
