@@ -448,3 +448,18 @@
 {"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Bash","target":"node fleet/tests/test_factory_union.mjs 2>&1 | head -50"}
 {"kind":"worker:test-run","task":"6","label":"impl:6:0","cmd":"node fleet/tests/test_factory_union.mjs 2>&1 | head -50","red":false}
 {"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"python3 - << 'PYEOF'\np = '/tmp/proto/factory/engine.mjs'\ns = open(p).read()\nold = \"  return {\\n    done: adopted.length === tasks.length,\"\nnew = \"  return {\\n    done: adopted.length === tasks.length "}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"mkdir -p /tmp/proto/fleet/tests\ncp /home/exedev/run/exam-5/fleet/tests/_helpers.mjs /tmp/proto/fleet/tests/_helpers.mjs\nls /tmp/proto"}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Write","target":"/home/exedev/run/impl-6-0/factory/union.mjs"}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Edit","target":"/home/exedev/run/impl-6-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"rsync -a --exclude node_modules /home/exedev/run/exam-5/factory/ /tmp/proto/factory_full/\nrsync -a --exclude node_modules /home/exedev/run/exam-5/fleet/ /tmp/proto/fleet_full/\nls /tmp/proto/factory_fu"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"rm -rf /tmp/proto2 && mkdir -p /tmp/proto2\ncp -r /tmp/proto/factory_full /tmp/proto2/factory\ncp -r /tmp/proto/fleet_full /tmp/proto2/fleet\ncp /tmp/proto/factory/engine.mjs /tmp/proto2/factory/engine.m"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -n \"REPO\\s*=\\|const KERNEL\\|const COMPILER\" /home/exedev/run/exam-5/factory/engine.mjs | head"}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Edit","target":"/home/exedev/run/impl-6-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Edit","target":"/home/exedev/run/impl-6-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"du -sh /home/exedev/run/exam-5/skills/ultrapowers 2>/dev/null\nrsync -a /home/exedev/run/exam-5/skills/ /tmp/proto2/skills/\nnode --input-type=module -e \"\nconst { fileURLToPath } = await import('node:ur"}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Edit","target":"/home/exedev/run/impl-6-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Bash","target":"node fleet/tests/test_factory_union.mjs 2>&1 | tail -80"}
+{"kind":"worker:test-run","task":"6","label":"impl:6:0","cmd":"node fleet/tests/test_factory_union.mjs 2>&1 | tail -80","red":false}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Bash","target":"for f in fleet/tests/test_run_engine_*.mjs fleet/tests/test_factory_union.mjs; do\n  out=$(node \"$f\" 2>&1)\n  status=$?\n  if [ $status -ne 0 ]; then\n    echo \"=== FAIL: $f ===\"\n    echo \"$out\" | tail -3"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"HERE=/home/exedev/run/exam-5\ncat > /tmp/proto2/harness.mjs << 'EOF'\nimport assert from 'node:assert/strict'\nimport fs from 'node:fs'\nimport os from 'node:os'\nimport path from 'node:path'\nimport { exec"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"cd /tmp/proto2 && node harness.mjs 2>&1 | tail -100"}
