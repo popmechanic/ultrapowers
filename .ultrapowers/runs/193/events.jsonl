@@ -367,3 +367,8 @@
 {"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -n \"process.env\" fleet/tests/test_factory_boot_exams.mjs; echo \"(none above = ok)\"; echo \"=== KEPT_KEYS ===\"; grep -n \"KEPT_KEYS\" -A8 fleet/tests/_helpers.mjs | head -20"}
 {"kind":"worker:test-run","task":"5","label":"referee:5","cmd":"grep -n \"process.env\" fleet/tests/test_factory_boot_exams.mjs; echo \"(none above = ok)\"; echo \"=== KEPT_KEYS ===\"; grep -n \"KEPT_KEYS\" -A8 fleet/tests/_helpers.mjs | head -20","red":false}
 {"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"bash -n factory/boot.sh && echo \"syntax ok\"; echo \"=== does strip_exams log on happy path? ===\"; grep -c 'log \"exams:' factory/boot.sh"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -n \"fleet_python3 wrapper\\|assert.match\" fleet/tests/test_factory_boot_exams.mjs; echo \"---\"; grep -n \"\" factory/boot.sh | sed -n '355,375p' | head -25"}
+{"kind":"worker:test-run","task":"5","label":"referee:5","cmd":"grep -n \"fleet_python3 wrapper\\|assert.match\" fleet/tests/test_factory_boot_exams.mjs; echo \"---\"; grep -n \"\" factory/boot.sh | sed -n '355,375p' | head -25","red":false}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"StructuredOutput"}
+{"kind":"referee","task":"5","findings":8,"blocking":0,"grades":["minor","minor","plan","minor","minor","minor","minor","minor"]}
+{"kind":"landing","task":"5","k":1,"examExit":0,"claim":0.74,"coverage":[0.97,0.96,0.95],"candidateSha":"1391ec593e94aea8629a2ee430bbdf73beef1bea","wall_ms":1359100}
