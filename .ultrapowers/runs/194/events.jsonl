@@ -945,3 +945,13 @@
 {"kind":"worker:test-run","task":"8","label":"exam:8","cmd":"timeout 60 node fleet/tests/test_factory_dispatch_candidate.mjs; echo \"EXIT: $?\"","red":false}
 {"kind":"worker:tool","task":"8","label":"exam:8","tool":"Bash","target":"time timeout 60 node fleet/tests/test_factory_dispatch_candidate.mjs >/tmp/out.log 2>&1; tail -30 /tmp/out.log"}
 {"kind":"worker:test-run","task":"8","label":"exam:8","cmd":"time timeout 60 node fleet/tests/test_factory_dispatch_candidate.mjs >/tmp/out.log 2>&1; tail -30 /tmp/out.log","red":false}
+{"kind":"worker:tool","task":"8","label":"exam:8","tool":"Bash","target":"node --check fleet/tests/test_factory_dispatch_candidate.mjs && echo \"SYNTAX OK\""}
+{"kind":"worker:test-run","task":"8","label":"exam:8","cmd":"node --check fleet/tests/test_factory_dispatch_candidate.mjs && echo \"SYNTAX OK\"","red":false}
+{"kind":"worker:tool","task":"8","label":"exam:8","tool":"Read","target":"/home/exedev/run/exam-8/fleet/tests/test_factory_dispatch_candidate.mjs"}
+{"kind":"worker:tool","task":"8","label":"exam:8","tool":"Edit","target":"/home/exedev/run/exam-8/fleet/tests/test_factory_dispatch_candidate.mjs"}
+{"kind":"worker:tool","task":"8","label":"exam:8","tool":"Edit","target":"/home/exedev/run/exam-8/fleet/tests/test_factory_dispatch_candidate.mjs"}
+{"kind":"worker:tool","task":"8","label":"exam:8","tool":"Edit","target":"/home/exedev/run/exam-8/fleet/tests/test_factory_dispatch_candidate.mjs"}
+{"kind":"worker:tool","task":"8","label":"exam:8","tool":"Edit","target":"/home/exedev/run/exam-8/fleet/tests/test_factory_dispatch_candidate.mjs"}
+{"kind":"worker:tool","task":"8","label":"exam:8","tool":"Bash","target":"node --check fleet/tests/test_factory_dispatch_candidate.mjs && echo OK\ntime timeout 60 node fleet/tests/test_factory_dispatch_candidate.mjs 2>&1 | tail -15"}
+{"kind":"worker:test-run","task":"8","label":"exam:8","cmd":"node --check fleet/tests/test_factory_dispatch_candidate.mjs && echo OK\ntime timeout 60 node fleet/tests/test_factory_dispatch_candidate.mjs 2>&1 | tail -15","red":false}
+{"kind":"worker:tool","task":"8","label":"exam:8","tool":"Bash","target":"true"}
