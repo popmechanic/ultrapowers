@@ -586,3 +586,13 @@
 {"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"sed -n '60,85p' fleet/tests/test_run_engine_fold_policy.mjs; echo === ; grep -n \"_engine_helpers\\|^import\" fleet/tests/test_run_engine_fold_policy.mjs | head -20; echo ===README; grep -n -i 'helper' f"}
 {"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -n '^export function\\|^export const' fleet/tests/_engine_helpers.mjs"}
 {"kind":"worker:tool","task":"6","label":"fix:6","tool":"Bash","target":"sleep 5; cat /tmp/claude-1000/-home-exedev-run-impl-6-0/638872c3-8eab-4f02-afea-d6dfdf50ab34/tasks/bth4ozjee.output 2>/dev/null | tail -100"}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Bash","target":"sleep 30; cat /tmp/claude-1000/-home-exedev-run-impl-6-0/638872c3-8eab-4f02-afea-d6dfdf50ab34/tasks/bth4ozjee.output 2>/dev/null | tail -60"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -n 'POLICY_PATH' factory/engine.mjs | head -3; echo ===; grep -rn 'reverify' --include=*.json --include=*.yaml --include=*.yml --include=*.md . 2>/dev/null | grep -v node_modules | head -20"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"ls factory/policy.json && python3 -c \"\nimport json;d=json.load(open('factory/policy.json'));print(json.dumps(d.get('fold'),indent=1));print(list(d.keys()))\""}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"TaskStop"}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Bash","target":"node fleet/tests/test_factory_union.mjs"}
+{"kind":"worker:test-run","task":"6","label":"fix:6","cmd":"node fleet/tests/test_factory_union.mjs","red":false}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -n \"outOf(\\|stderr\" factory/engine.mjs | sed -n '1,60p'"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"python3 -c \"\nimport json;d=json.load(open('factory/policy.json'));print(json.dumps(d.get('select'),indent=1))\""}
+{"kind":"landing","task":"6","k":1,"examExit":0,"claim":0.73,"coverage":[0.97,0.94,0.96,0.91],"candidateSha":"dcfc25e722d1584380eed61bfc6a8aad701d82a9","wall_ms":1596965}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Read","target":"/home/exedev/run/impl-5-0/factory/engine.mjs"}
