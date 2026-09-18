@@ -893,3 +893,17 @@
 {"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"look\\|verdict\" fleet/tests/test_factory_dispatch.mjs"}
 {"kind":"worker:test-run","task":"4","label":"referee:4","cmd":"grep -n \"look\\|verdict\" fleet/tests/test_factory_dispatch.mjs","red":false}
 {"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '1240,1266p' factory/engine.mjs; echo ---; sed -n '905,960p' factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -rn \"union\" skills/ultrapowers/kernel/fold_wave.py factory/*.mjs docs 2>/dev/null | head -20"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -rn \"pairs\\b\" skills/ultrapowers/scripts/plan_parse.py | head; echo \"---\"; grep -rn \"write-after-create\\|'why'\" skills/ultrapowers/scripts/plan_parse.py | head"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '1155,1185p' skills/ultrapowers/kernel/fold_wave.py"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"pairs\\|speculate\" factory/policy.json; echo \"exit=$?\"; ls factory/pairs.mjs 2>&1"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"timeout 600 node fleet/tests/test_sims_are_hermetic.mjs 2>&1 | tail -20"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"process\\.env\" fleet/tests/test_sims_are_hermetic.mjs | head -20"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -rn \"process.env\" fleet/tests/*.mjs | grep -v test_sims_are_hermetic | head -20; echo \"---\"; grep -n \"hermetic\\|process.env\\|simEnv\" CLAUDE.md | head -30"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -ln \"process\\.env\" fleet/tests/test_*.mjs"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"hermetic\\|never process.env\\|simEnv\\|sim must\" CLAUDE.md | head -20; echo ===; sed -n '100,120p' CLAUDE.md; echo ===; sed -n '250,262p' CLAUDE.md"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"start=$(date +%s); timeout 900 node fleet/tests/test_factory_dispatch.mjs >/tmp/dt.log 2>&1; echo \"exit=$? elapsed=$(( $(date +%s) - start ))s\"; tail -1 /tmp/dt.log"}
+{"kind":"worker:test-run","task":"4","label":"referee:4","cmd":"start=$(date +%s); timeout 900 node fleet/tests/test_factory_dispatch.mjs >/tmp/dt.log 2>&1; echo \"exit=$? elapsed=$(( $(date +%s) - start ))s\"; tail -1 /tmp/dt.log","red":false}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '1,80p' tests/test_fleet_suite.py"}
