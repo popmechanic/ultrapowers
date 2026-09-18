@@ -670,3 +670,25 @@
 {"kind":"worker:test-run","task":"4","label":"exam:4","cmd":"node --check fleet/tests/test_factory_dispatch.mjs && node fleet/tests/test_factory_dispatch.mjs 2>&1 | tail -5","red":false}
 {"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"find . -path ./node_modules -prune -o -type f -name \"*.mjs\" -print | grep -E \"factory|fleet\" | sort"}
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"find . -path ./node_modules -prune -o -type f \\( -name \"*.mjs\" -o -name \"*.py\" -o -name \"*.md\" \\) -print | grep -v node_modules | sort"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/fleet/tests/_engine_helpers.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/fleet/tests/_engine_helpers.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/hunks.mjs"}
+{"kind":"supervisor","task":"4","label":"impl:4:0","answers":{"stuck":{"type":"noul","noul":0.21},"off_track":{"type":"noul","noul":0.21},"needs_human":{"type":"noul","noul":0.13},"done_not_exited":{"type":"noul","noul":0.08}}}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/hunks.mjs"}
+{"kind":"supervisor","task":"4","label":"impl:4:1","answers":{"stuck":{"type":"noul","noul":0.47},"off_track":{"type":"noul","noul":0.41},"needs_human":{"type":"noul","noul":0.25},"done_not_exited":{"type":"noul","noul":0.17}}}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/board.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/board.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"export function cloneAtBase\\|export const cloneAtBase\" -A 30 /home/exedev/run/impl-4-0/fleet/run-waves.mjs | head -60"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n \"export function cloneAtBase\\|export const cloneAtBase\" -A 30 /home/exedev/run/impl-4-1/fleet/run-waves.mjs | head -50"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n \"pairs\\|dag_edges\\|write-after-create\\|producer\\|consumer\\|def parse_plan_text\" /home/exedev/run/impl-4-1/skills/ultrapowers/scripts/plan_parse.py | head -80"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"cat /home/exedev/run/impl-4-1/factory/policy.json 2>/dev/null | head -100"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n '\"pairs\"\\|\"speculate\"\\|\"select\"\\|\"supervisor\"' /home/exedev/run/impl-4-1/factory/policy.json"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -rln \"exam:\" /home/exedev/run/impl-4-1/fleet/tests/test_run_engine_*.mjs | xargs grep -n \"exam:\" | head -60"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -rl \"factory/engine.mjs\" /home/exedev/run/impl-4-1/fleet/tests/*.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"sed -n '1,60p' /home/exedev/run/impl-4-1/factory/select.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"ls /home/exedev/run/impl-4-1/factory/ | grep -i pair"}
