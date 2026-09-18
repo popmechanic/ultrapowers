@@ -1,3 +1,6 @@
 {"kind":"supervisor","task":"1","label":"exam:1","answers":{"stuck":{"type":"noul","noul":0.2},"off_track":{"type":"noul","noul":0.33},"needs_human":{"type":"noul","noul":0.13},"done_not_exited":{"type":"noul","noul":0.22}}}
 {"kind":"supervisor","task":"1","label":"impl:1:0","answers":{"stuck":{"type":"noul","noul":0.46},"off_track":{"type":"noul","noul":0.36},"needs_human":{"type":"noul","noul":0.2},"done_not_exited":{"type":"noul","noul":0.13}}}
 {"kind":"supervisor","task":"1","label":"referee:1","answers":{"stuck":{"type":"noul","noul":0.18},"off_track":{"type":"noul","noul":0.25},"needs_human":{"type":"noul","noul":0.12},"done_not_exited":{"type":"noul","noul":0.07}}}
+{"kind":"referee","task":"1","findings":8,"blocking":0,"grades":["minor","minor","minor","minor","minor","minor","minor","minor"]}
+{"kind":"landing","task":"1","k":1,"examExit":0,"claim":0.41,"coverage":[0.93,0.92,0.93,0.93,0.91,0.72],"candidateSha":"a48db9dfafaf20971125a4d1fcd4bc13a11d8fbf","wall_ms":2115314}
+{"kind":"supervisor","task":"2","label":"impl:2:0","answers":{"stuck":{"type":"noul","noul":0.3},"off_track":{"type":"noul","noul":0.36},"needs_human":{"type":"noul","noul":0.13},"done_not_exited":{"type":"noul","noul":0.17}}}
