@@ -860,3 +860,11 @@
 {"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"git diff --stat 2>&1 | tail -20; echo \"---status---\"; git status --short 2>&1 | head -20"}
 {"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
 {"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"node fleet/tests/test_factory_dispatch.mjs; echo \"EXIT: $?\""}
+{"kind":"worker:test-run","task":"4","label":"impl:4:1","cmd":"node fleet/tests/test_factory_dispatch.mjs; echo \"EXIT: $?\"","red":false}
+{"kind":"select","task":"4","scores":[1.5166666667,11.6233333333],"chosen":"/home/exedev/run/impl-4-1"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"ls && wc -l /home/exedev/run/patch-4-1.diff"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"ls factory fleet/tests 2>/dev/null"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Read","target":"/home/exedev/run/patch-4-1.diff"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Read","target":"/home/exedev/run/patch-4-1.diff"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"dispatchedTasks\\|proofTests\\|union\\|examFiles\\|settleReadiness\\|const done\\|done.add\\|adopted.push\" factory/engine.mjs | head -60"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '40,80p' factory/engine.mjs"}
