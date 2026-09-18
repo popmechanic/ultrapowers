@@ -209,3 +209,13 @@
 {"ts":"2026-09-18T21:54:04.109Z","kind":"fold:verify","task":"1","ran":[{"task":"1","exit":0}]}
 {"ts":"2026-09-18T21:55:20.001Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"const launch\\|function launch\\|launchOnCandidate\\|inflightLandings\" /home/exedev/run/exam-4/factory/engine.mjs | head -30"}
 {"ts":"2026-09-18T21:57:26.668Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Read","target":"/home/exedev/run/exam-3/fleet/tests/test_worker_kata_env.mjs"}
+{"ts":"2026-09-18T21:58:14.594Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"ts":"2026-09-18T21:58:19.938Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"ts":"2026-09-18T21:58:31.466Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"^function \\|^const kernel\\|^  const kernel\\|KERNEL =\\|function cloneAt\\|function capture\\|function dispatch\\|function appendEvent\\|function mcpServersFor\\|unionPolicy\\|redispatchPolicy\\|selec"}
+{"ts":"2026-09-18T21:58:36.389Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"ts":"2026-09-18T21:58:42.787Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"function outOf\\|function exitOf\\|function lastJson\\|const outOf\\|const exitOf\\|const lastJson\\|sh(\" /home/exedev/run/exam-4/factory/engine.mjs | head -40"}
+{"ts":"2026-09-18T21:58:45.905Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"ts":"2026-09-18T21:58:50.562Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"ts":"2026-09-18T21:58:55.753Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"git --version; python3 --version; node --version; which git python3 node bash"}
+{"ts":"2026-09-18T21:58:59.070Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"^export async function runEngine\\|deps.worker\\|deps.judge\\|deps.sh\\|deps.git\\|deps.board\\|deps.tools\\|deps.ask\\|deps.log\\|deps.readUnion\\|const worker =\\|const judge =\\|const sh =\\|const git "}
+{"ts":"2026-09-18T21:59:03.279Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
