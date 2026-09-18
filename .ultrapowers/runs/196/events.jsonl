@@ -428,3 +428,11 @@
 {"ts":"2026-09-18T22:12:08.532Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '315,340p' factory/boot.sh"}
 {"ts":"2026-09-18T22:12:10.154Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"inflightLandings\\|Promise.race\\|settled\\b\" factory/engine.mjs | sed -n '1,40p'"}
 {"ts":"2026-09-18T22:12:16.677Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:12:50.942Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:12:54.844Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"const examine\\|examDir\\|cloneAt(\" factory/engine.mjs"}
+{"ts":"2026-09-18T22:12:59.775Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"StructuredOutput"}
+{"ts":"2026-09-18T22:12:59.903Z","kind":"dispatch:end","task":"4","label":"referee:4","role":"referee","wall_ms":266764,"cost_usd":1.8825855,"error":null}
+{"ts":"2026-09-18T22:13:01.867Z","kind":"referee","task":"4","findings":8,"blocking":0,"grades":["minor","minor","minor","minor","minor","minor","minor","minor"]}
+{"ts":"2026-09-18T22:13:02.256Z","kind":"landing","task":"4","k":1,"examExit":0,"claim":0.28,"coverage":[0.71,0.66,0.57,0.41],"candidateSha":"5d6f8140e700f4a761bb95334b1c0968102df4de","wall_ms":1750128}
+{"ts":"2026-09-18T22:13:09.616Z","kind":"fold:verify","task":"4","ran":[{"task":"4","exit":0}]}
+{"ts":"2026-09-18T22:13:33.479Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Write","target":"/home/exedev/run/impl-2-1/factory/commands.mjs"}
