@@ -1,0 +1,99 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "eaf26dcf5efd14f23bf334506caeb63b84cf95897440dd6fbd335092e71a553a",
+   "verdict": "pass",
+   "reason": "each of M1's three absences and its exactly-one skipped row has a leg; the exam-then-implementer ordering for an examined task agrees with the base engine."
+  },
+  "2": {
+   "hash": "34280d8d5aa966dbbca809e3a06c7b701f8dc87503563b1a131773773e3ba25d",
+   "verdict": "pass",
+   "reason": "runOnlyClauses [1,3] computes from the three-leg example; the floor decisions compute (0.9 kept, 0.2 excluded or not) and a red exam still re-attempts."
+  },
+  "3": {
+   "hash": "4f17ddbce8030b3c254f2779879039a5c8dfbab170368a97be0737cc3cb1150a",
+   "verdict": "pass",
+   "reason": "Round 2 after scoping leg (b) to resolved workers: legs (b) and (c) agree with M2 and M3 for a worker that resolves and one that rejects."
+  },
+  "4": {
+   "hash": "3f70d368d85ee10a372e6c829d2b1d9f528b202f14baa8caaa9cecf71a8b5395",
+   "verdict": "pass",
+   "reason": "the six tool names, the exit text, the per-dispatch runExam in its own cwd, red for exit 1 and 0, and the null row for a Bash-seen run each have a leg."
+  },
+  "5": {
+   "hash": "34a079ad3278ef60ee4f98ecabce106492d28ac8f20d954ba1c202ba7bcf582f",
+   "verdict": "pass",
+   "reason": "every excerpt literal computes (7\u201313; 7\u201315 merged; 1\u20136, \u2026, 15\u201320; 20 of 20 and 20 of 25 characters); 30 \u00d7 3,000 exceeds 60,000 so the trim leg is reachable."
+  },
+  "6": {
+   "hash": "6e5cece4e936660ebf75682d925081babe246c26ddffb9e1d7770bf01c2a09d1",
+   "verdict": "pass",
+   "reason": "URL, idempotency key, body fields and a 40+ character message compute; each no-close condition and the refused close have a drive."
+  }
+ },
+ "tally": {
+  "dispatched": 7,
+  "rejected": 0,
+  "rounds": {
+   "1": {
+    "dispatched": 6,
+    "rejected": 0
+   },
+   "2": {
+    "dispatched": 1,
+    "rejected": 0
+   }
+  },
+  "base": "7c42d8956db09b8ea9727809beeb7b61b8332884",
+  "gate_question": "facts-only with the negation sentence (fourth plan read under it). Zero rejections; two authoring defects were caught by the author BEFORE dispatch \u2014 an exam that could not see a sibling's parser field in its own clone (tasks merged), and a trim leg unreachable under the default cap (fixture changed) \u2014 and one reader note narrowed a leg without failing it."
+ },
+ "history": [],
+ "authoring": {
+  "minutes": 75,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Sign as drafted",
+     "Drop the hub close from this plan"
+    ],
+    "recommended": "Sign as drafted",
+    "picked": "Sign as drafted"
+   },
+   {
+    "question": "Floor rule",
+    "options": [
+     "A green exam settles it",
+     "Only exclude command-proven clauses"
+    ],
+    "recommended": "A green exam settles it",
+    "picked": "A green exam settles it"
+   },
+   {
+    "question": "Selection fix",
+    "options": [
+     "Sixth task in the cleanup plan",
+     "Hand PR now",
+     "Its own ticket, later"
+    ],
+    "recommended": "Sixth task in the cleanup plan",
+    "picked": "Sixth task in the cleanup plan"
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers on the fleet",
+     "Launch with the switches off",
+     "Hold"
+    ],
+    "recommended": "Ultrapowers on the fleet",
+    "picked": "Ultrapowers on the fleet"
+   }
+  ]
+ }
+}
