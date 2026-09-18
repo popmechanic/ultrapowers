@@ -1,0 +1,50 @@
+Sep 18 04:52:03 fleet-r190-2609180451-3e93 bootstrap.sh[1025]: 2026-09-18T04:52:03Z bootstrap: exec /home/exedev/engines/e81e4f1c8f4fa97fd3596ac2006e9632d442ad85/factory/boot.sh boot
+Sep 18 04:52:03 fleet-r190-2609180451-3e93 bootstrap.sh[984]: 2026-09-18T04:52:03Z assignment: run-190 target=popmechanic/ultrapowers base=e81e4f1c8f4fa97fd3596ac2006e9632d442ad85 engine=e81e4f1c8f4fa97fd3596ac2006e9632d442ad85
+Sep 18 04:52:03 fleet-r190-2609180451-3e93 bootstrap.sh[1039]: Cloning into '/home/exedev/target'...
+Sep 18 04:52:06 fleet-r190-2609180451-3e93 bootstrap.sh[1049]: Note: switching to 'e81e4f1c8f4fa97fd3596ac2006e9632d442ad85'.
+Sep 18 04:52:06 fleet-r190-2609180451-3e93 bootstrap.sh[1049]: You are in 'detached HEAD' state. You can look around, make experimental
+Sep 18 04:52:06 fleet-r190-2609180451-3e93 bootstrap.sh[1049]: changes and commit them, and you can discard any commits you make in this
+Sep 18 04:52:06 fleet-r190-2609180451-3e93 bootstrap.sh[1049]: state without impacting any branches by switching back to a branch.
+Sep 18 04:52:06 fleet-r190-2609180451-3e93 bootstrap.sh[1049]: If you want to create a new branch to retain commits you create, you may
+Sep 18 04:52:06 fleet-r190-2609180451-3e93 bootstrap.sh[1049]: do so (now or later) by using -c with the switch command. Example:
+Sep 18 04:52:06 fleet-r190-2609180451-3e93 bootstrap.sh[1049]:   git switch -c <new-branch-name>
+Sep 18 04:52:06 fleet-r190-2609180451-3e93 bootstrap.sh[1049]: Or undo this operation with:
+Sep 18 04:52:06 fleet-r190-2609180451-3e93 bootstrap.sh[1049]:   git switch -
+Sep 18 04:52:06 fleet-r190-2609180451-3e93 bootstrap.sh[1049]: Turn off this advice by setting config variable advice.detachedHead to false
+Sep 18 04:52:06 fleet-r190-2609180451-3e93 bootstrap.sh[1049]: HEAD is now at e81e4f1c factory/boot.sh: the gate-verdicts record is written beside the plan — run-188 died in 139 ms without it (#1142)
+Sep 18 04:52:06 fleet-r190-2609180451-3e93 bootstrap.sh[1050]: From https://github.int.exe.xyz/popmechanic/ultrapowers
+Sep 18 04:52:06 fleet-r190-2609180451-3e93 bootstrap.sh[1050]:  * branch              ultra/plan-run-190 -> FETCH_HEAD
+Sep 18 04:52:06 fleet-r190-2609180451-3e93 bootstrap.sh[984]: 2026-09-18T04:52:06Z plan: ultra/plan-run-190 at 097e2820bc35b3cee355117bbf3f3ba09368e772 -> /home/exedev/plans/run-190.md
+Sep 18 04:52:07 fleet-r190-2609180451-3e93 bootstrap.sh[1068]: Preparing worktree (detached HEAD 097e2820)
+Sep 18 04:52:07 fleet-r190-2609180451-3e93 bootstrap.sh[1070]: HEAD is now at 097e2820 ultrapowers plan run-190
+Sep 18 04:52:07 fleet-r190-2609180451-3e93 bootstrap.sh[984]: 2026-09-18T04:52:07Z evidence: worktree at 097e2820bc35b3cee355117bbf3f3ba09368e772
+Sep 18 04:52:07 fleet-r190-2609180451-3e93 bootstrap.sh[984]: 2026-09-18T04:52:07Z status: state=running phase=the engine is starting
+Sep 18 04:52:07 fleet-r190-2609180451-3e93 bootstrap.sh[1103]: [detached HEAD e16786b0] run-190: running
+Sep 18 04:52:07 fleet-r190-2609180451-3e93 bootstrap.sh[1103]:  1 file changed, 1 insertion(+)
+Sep 18 04:52:07 fleet-r190-2609180451-3e93 bootstrap.sh[1103]:  create mode 100644 .ultrapowers/runs/190/status.json
+Sep 18 04:52:08 fleet-r190-2609180451-3e93 bootstrap.sh[1109]: remote:
+Sep 18 04:52:08 fleet-r190-2609180451-3e93 bootstrap.sh[1109]: remote: Create a pull request for 'ultra/evidence-run-190' on GitHub by visiting:
+Sep 18 04:52:08 fleet-r190-2609180451-3e93 bootstrap.sh[1109]: remote:      https://github.com/popmechanic/ultrapowers/pull/new/ultra/evidence-run-190
+Sep 18 04:52:08 fleet-r190-2609180451-3e93 bootstrap.sh[1109]: remote:
+Sep 18 04:52:08 fleet-r190-2609180451-3e93 bootstrap.sh[1105]: To https://github.int.exe.xyz/popmechanic/ultrapowers.git
+Sep 18 04:52:08 fleet-r190-2609180451-3e93 bootstrap.sh[1105]:  * [new branch]        HEAD -> ultra/evidence-run-190
+Sep 18 04:52:15 fleet-r190-2609180451-3e93 bootstrap.sh[1114]: added 103 packages in 6s
+Sep 18 04:52:15 fleet-r190-2609180451-3e93 bootstrap.sh[1114]: npm notice
+Sep 18 04:52:15 fleet-r190-2609180451-3e93 bootstrap.sh[1114]: npm notice New major version of npm available! 11.19.0 -> 12.0.2
+Sep 18 04:52:15 fleet-r190-2609180451-3e93 bootstrap.sh[1114]: npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.2
+Sep 18 04:52:15 fleet-r190-2609180451-3e93 bootstrap.sh[1114]: npm notice To update run: npm install -g npm@12.0.2
+Sep 18 04:52:15 fleet-r190-2609180451-3e93 bootstrap.sh[1114]: npm notice
+Sep 18 04:52:15 fleet-r190-2609180451-3e93 bootstrap.sh[984]: 2026-09-18T04:52:15Z claude auth status: {   "loggedIn": true,   "authMethod": "oauth_token",   "apiProvider": "firstParty",   "analyticsDisabled": false,   "projectsDirectory": "/home/exedev/.claude/projects",   "configDirectory": "/home/exedev/.claude" }
+Sep 18 04:52:16 fleet-r190-2609180451-3e93 bootstrap.sh[984]: 2026-09-18T04:52:16Z bearer probe: alive
+Sep 18 04:53:19 fleet-r190-2609180451-3e93 bootstrap.sh[1298]: To https://github.int.exe.xyz/popmechanic/ultrapowers.git
+Sep 18 04:53:19 fleet-r190-2609180451-3e93 bootstrap.sh[1298]:    e16786b0..cf3e9100  HEAD -> ultra/evidence-run-190
+Sep 18 05:02:21 fleet-r190-2609180451-3e93 bootstrap.sh[1507]: To https://github.int.exe.xyz/popmechanic/ultrapowers.git
+Sep 18 05:02:21 fleet-r190-2609180451-3e93 bootstrap.sh[1507]:    cf3e9100..80cb7050  HEAD -> ultra/evidence-run-190
+Sep 18 05:08:21 fleet-r190-2609180451-3e93 bootstrap.sh[984]: 2026-09-18T05:08:21Z engine: exited 1 (output in /home/exedev/engine.log)
+Sep 18 05:08:21 fleet-r190-2609180451-3e93 bootstrap.sh[984]: 2026-09-18T05:08:21Z FAILED: engine exit 1
+Sep 18 05:08:21 fleet-r190-2609180451-3e93 bootstrap.sh[984]: 2026-09-18T05:08:21Z status: state=failed phase=the engine is starting
+Sep 18 05:08:21 fleet-r190-2609180451-3e93 bootstrap.sh[1696]: [detached HEAD a9b49c3a] run-190: failed
+Sep 18 05:08:21 fleet-r190-2609180451-3e93 bootstrap.sh[1696]:  2 files changed, 20 insertions(+), 1 deletion(-)
+Sep 18 05:08:21 fleet-r190-2609180451-3e93 bootstrap.sh[1696]:  create mode 100644 .ultrapowers/runs/190/engine.log
+Sep 18 05:08:23 fleet-r190-2609180451-3e93 bootstrap.sh[1698]: To https://github.int.exe.xyz/popmechanic/ultrapowers.git
+Sep 18 05:08:23 fleet-r190-2609180451-3e93 bootstrap.sh[1698]:    80cb7050..a9b49c3a  HEAD -> ultra/evidence-run-190
