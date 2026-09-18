@@ -868,3 +868,17 @@
 {"kind":"worker:tool","task":"4","label":"referee:4","tool":"Read","target":"/home/exedev/run/patch-4-1.diff"}
 {"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"dispatchedTasks\\|proofTests\\|union\\|examFiles\\|settleReadiness\\|const done\\|done.add\\|adopted.push\" factory/engine.mjs | head -60"}
 {"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '40,80p' factory/engine.mjs"}
+{"kind":"supervisor","task":"4","label":"referee:4","answers":{"stuck":{"type":"noul","noul":0.18},"off_track":{"type":"noul","noul":0.24},"needs_human":{"type":"noul","noul":0.12},"done_not_exited":{"type":"noul","noul":0.09}}}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"cd /tmp && rm -rf mpx && mkdir mpx && printf 'import fs from \"node:fs\"\\nfs.writeFileSync = () => { throw new Error(\"patched-by-A\") }\\n' > mpx/a.mjs && printf 'import fs from \"node:fs\"\\nimport \"./a.mjs"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -rn \"writeFileSync\" --include=*.mjs --include=*.js factory fleet | grep -v \"test_factory_dispatch\" | wc -l && grep -n \"setupRun\\|writePolicy(runDir\" fleet/tests/test_factory_dispatch.mjs | head -"}
+{"kind":"worker:test-run","task":"4","label":"referee:4","cmd":"grep -rn \"writeFileSync\" --include=*.mjs --include=*.js factory fleet | grep -v \"test_factory_dispatch\" | wc -l && grep -n \"setupRun\\|writePolicy(runDir\" fleet/tests/test_factory_dispatch.mjs | head -20","red":false}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Read","target":"/home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Read","target":"/home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"cd /tmp && node -e '\nconst fs=require(\"fs\"),os=require(\"os\"),p=require(\"path\");\nconst root=fs.mkdtempSync(p.join(os.tmpdir(),\"probe-\"));\nconst runDir=p.join(root,\"rundir\");\ntry{ fs.writeFileSync(p.joi"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"node -e '\nimport(\"./factory/engine.mjs\").then(async ()=>{\nconst fs=(await import(\"node:fs\")).default, os=(await import(\"node:os\")).default, p=(await import(\"node:path\")).default;\nconst root=fs.mkdtemp"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '630,680p' factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"union\\|'resolve'\\|status ===\\|BLOCKED\" factory/engine.mjs | head -40"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -rn \"proofTests\\|check.sh\\|exam-marker\\|examFiles\" fleet/tests/_engine_helpers.mjs | head -30"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -rln \"runEngine\" fleet/tests/*.mjs | head -40"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"timeout 600 node fleet/tests/test_run_engine_own_proofs.mjs 2>&1 | tail -20"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"for t in test_run_engine_proof_runs test_run_engine_ready_set test_run_engine_declared_dependencies test_run_engine_re_edge test_run_engine_fold_policy; do printf \"%s: \" $t; timeout 600 node fleet/tes"}
