@@ -471,3 +471,13 @@
 {"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"python3 - << 'PYEOF'\np = '/tmp/proto2/harness.mjs'\ns = open(p).read()\nold_start = s.index(\"const PLAN_TEXT = `\")\nold_end = s.index(\"`\\n\", old_start) + 2\nold_block = s[old_start:old_end]\nnew_block = ''"}
 {"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"test -f /home/exedev/run/exam-5/fleet/tests/test_factory_reverify.mjs && echo EXISTS || echo ABSENT\ntest -f /home/exedev/run/exam-5/factory/reverify.mjs && echo REVERIFY_EXISTS || echo REVERIFY_ABSENT"}
 {"kind":"worker:test-run","task":"5","label":"exam:5","cmd":"test -f /home/exedev/run/exam-5/fleet/tests/test_factory_reverify.mjs && echo EXISTS || echo ABSENT\ntest -f /home/exedev/run/exam-5/factory/reverify.mjs && echo REVERIFY_EXISTS || echo REVERIFY_ABSENT","red":false}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"which python3; python3 --version; which git; which bash; node --version"}
+{"kind":"worker:test-run","task":"6","label":"impl:6:0","cmd":"for f in fleet/tests/test_run_engine_*.mjs fleet/tests/test_factory_union.mjs; do\n  out=$(node \"$f\" 2>&1)\n  status=$?\n  if [ $status -ne 0 ]; then\n    echo \"=== FAIL: $f ===\"\n    echo \"$out\" | tail -30\n  else\n    echo \"ok: $f\"\n  fi\ndone","red":false}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Bash","target":"grep -l \"factory/engine\" fleet/tests/test_run_engine_*.mjs 2>/dev/null; echo \"---\"; head -20 fleet/tests/test_run_engine_fold_policy.mjs 2>/dev/null"}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"TaskStop"}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Bash","target":"grep -rl \"factory/engine\" fleet/tests/*.mjs"}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Bash","target":"node fleet/tests/test_factory_union.mjs 2>&1 | tail -5"}
+{"kind":"worker:test-run","task":"6","label":"impl:6:0","cmd":"node fleet/tests/test_factory_union.mjs 2>&1 | tail -5","red":false}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"wc -l /home/exedev/run/patch-6-0.diff && ls"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Read","target":"/home/exedev/run/patch-6-0.diff"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Write","target":"/home/exedev/run/exam-5/fleet/tests/test_factory_reverify.mjs"}
