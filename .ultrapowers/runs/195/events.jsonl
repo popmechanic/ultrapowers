@@ -352,3 +352,35 @@
 {"kind":"worker:tool","task":"5","label":"exam:5","tool":"mcp__factory__task_facts"}
 {"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"find /home/exedev/run/exam-1 -iname \"*engine*\" -path \"*test*\" -not -path \"*/node_modules/*\"; echo ---; find /home/exedev/run/exam-1/factory -iname \"test_*\"; echo ---; find /home/exedev/run/exam-1 -ina"}
 {"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -rn \"excerptFor\\|select:trimmed\\|readGuards\\|readCovering\" --include=*.md -l . 2>/dev/null; echo ---; grep -rln \"120,000\\|120000\\|60,000\\|run-194\" . 2>/dev/null | grep -v node_modules"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -rl \"factory/engine.mjs\" /home/exedev/run/exam-1 --include=\"*.mjs\" --include=\"*.md\" | grep -v node_modules"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -n \"120,000\\|120000\\|60,000\\|60000\\|3,000\\|3000\\|6,000\\|6000\" fleet/jev-client.mjs fleet/CONTRACT.md 2>/dev/null"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"sed -n '1,40p' fleet/CONTRACT.md | head -5; echo ...; sed -n '55,90p' fleet/CONTRACT.md; echo ---237---; sed -n '220,250p' fleet/CONTRACT.md"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n \"add_argument\\|add_parser\\|def cmd_fold\\|def cmd_materialize\\|def cmd_resolve\" /home/exedev/run/exam-1/skills/ultrapowers/kernel/fold_wave.py | head -60"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"sed -n '1,50p' factory/select.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"sed -n '50,140p' factory/select.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"ls /home/exedev/run/exam-1/fleet/tests/ | grep -c test_; cat /home/exedev/run/exam-1/fleet/tests/_helpers.mjs | head -1"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -n \"readCandidateFile\\|readExamFile\\|foundCovering\\|guardTests\\|coveringTests\\|readGuards\\|readCovering\\|select\\.\\|max_candidates\\|policy\\.\" factory/engine.mjs | head -80"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"sed -n '900,945p' factory/engine.mjs; echo ---; sed -n '1060,1130p' factory/engine.mjs; echo ---policy---; grep -n \"selectPolicy\\|\\\"select\\\"\\|'select'\" factory/engine.mjs factory/policy.json"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"sed -n '200,225p' factory/policy.json; echo ---read/judge---; grep -n \"const read = \\|function read\\|appendEvent\\|candidatesOf\\|args.policy\\|policyDoc\\s*=\" factory/engine.mjs | head -30"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"sed -n '369,420p' factory/engine.mjs; echo ---read---; sed -n '605,640p' factory/engine.mjs; echo ---events path/runDir---; grep -n \"eventsPath\\s*=\\|runDir\\b\" factory/engine.mjs | head -10"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"cat /tmp/proto/try.mjs 2>/dev/null | head -100"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -n \"role:\\s*'\" factory/engine.mjs | sort -u -t\"'\" -k2"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"sed -n '1000,1050p' factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -n \"const dispatch = \\|const measure = \\|async function dispatch\\|async function measure\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"sed -n '686,730p' factory/engine.mjs; echo ---measure---; sed -n '838,860p' factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"StructuredOutput"}
+{"kind":"referee","task":"3","findings":11,"blocking":0,"grades":["minor","minor","minor","minor","minor","minor","plan","minor","minor","minor","minor"]}
+{"kind":"landing","task":"3","k":1,"examExit":0,"claim":0.87,"coverage":[0.96,0.97,0.83],"candidateSha":"5ce5eb6dac0af7bd2ed434ec2486bc8236c2fe32","wall_ms":902824}
+{"kind":"fold:verify","task":"3","ran":[{"task":"3","exit":1}]}
+{"kind":"fold:red","task":"3","exam":"3","exit":1}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"cat /tmp/proto/try2.mjs 2>/dev/null"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"cat -n /home/exedev/run/fold-fix-3/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"ls /home/exedev/run/exam-5/fleet/tests/ | grep -i test_run_engine | head -5; echo ---; sed -n '1,60p' /home/exedev/run/exam-5/fleet/tests/test_facts_block.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"sed -n '60,140p' /home/exedev/run/exam-5/fleet/tests/test_facts_block.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"appendEvent\\|function dispatch\\|async function dispatch\\|const dispatch\" /home/exedev/run/fold-fix-3/factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-3/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Write","target":"/home/exedev/run/exam-1/fleet/tests/test_factory_exam_skip.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"timeout 90 node fleet/tests/test_factory_exam_skip.mjs; echo \"EXIT: $?\""}
+{"kind":"worker:test-run","task":"1","label":"exam:1","cmd":"timeout 90 node fleet/tests/test_factory_exam_skip.mjs; echo \"EXIT: $?\"","red":false}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"node fleet/tests/test_factory_rows.mjs 2>&1 | tail -60"}
+{"kind":"worker:test-run","task":"3","label":"impl:3:fold","cmd":"node fleet/tests/test_factory_rows.mjs 2>&1 | tail -60","red":false}
