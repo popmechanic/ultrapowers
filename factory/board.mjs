@@ -41,6 +41,27 @@ const EMPTY = { post: null, factsFor: '', setState: null, states: {}, settled: n
  * config still being built) every method resolves its empty value without
  * ever calling `log`: there is nothing to have failed.
  */
+/**
+ * A metadata write, with the revision Kata demands. `patchMetadata` sends
+ * `If-Match: "rev-<n>"` and Kata answers `400 If-Match revision is not a valid
+ * integer` without one (run-196: every `setState` and every worker's `hand` and
+ * `settled` was refused that way), so the revision is read first; a stale one
+ * (412) is read again once. Shared by the board, the worker's tools and the
+ * engine's one direct write, so the three cannot drift.
+ */
+export const patchWithRevision = async (kata, projectId, uid, patch) => {
+  for (let attempt = 0; ; attempt += 1) {
+    const issue = await kata.getIssue(uid)
+    const revision = (issue && (issue.revision ?? (issue.issue || {}).revision))
+    try {
+      return await kata.patchMetadata(projectId, uid, patch, revision)
+    } catch (error) {
+      const stale = error && (error.status === 412 || /\b412\b/.test(String(error.message || '')))
+      if (!stale || attempt >= 1) throw error
+    }
+  }
+}
+
 export const makeBoard = ({ kata, projectId, tasks, log } = {}) => {
   const noise = (label, taskId, error) => {
     if (typeof log !== 'function') return
@@ -99,7 +120,7 @@ export const makeBoard = ({ kata, projectId, tasks, log } = {}) => {
     try {
       const uid = uidFor(taskId)
       if (uid === undefined) throw new Error('no such task ' + taskId)
-      return await kata.patchMetadata(projectId, uid, { 'factory.state': state })
+      return await patchWithRevision(kata, projectId, uid, { 'factory.state': state })
     } catch (error) {
       noise('setState', taskId, error)
       return EMPTY.setState

@@ -22,6 +22,7 @@
 //   a transient 5xx, which is the one thing the record cannot afford.
 
 import { createRequire } from 'node:module'
+import { patchWithRevision } from './board.mjs'
 import { pathToFileURL } from 'node:url'
 
 const reason = (err) => (err && err.message) || String(err)
@@ -132,7 +133,7 @@ export const factoryTools = ({ kata, projectId, task, candidates, board, runExam
     'the task, a credential that is not there.',
     { reason: z.string().describe('one line saying what you are blocked on') },
     answering(async ({ reason: why }) => {
-      await kata.patchMetadata(projectId, uid, {
+      await patchWithRevision(kata, projectId, uid, {
         'work.attention': 'needs-human',
         'work.attention_msg': why,
       })
@@ -157,7 +158,7 @@ export const factoryTools = ({ kata, projectId, task, candidates, board, runExam
       // Flat and dotted, and the value a JSON STRING: kata stores metadata keys
       // that way (CONTRACT.md's `metadata-dotted-flat`), so a nested object here
       // would land as keys no reader of the record knows to look for.
-      await kata.patchMetadata(projectId, uid, {
+      await patchWithRevision(kata, projectId, uid, {
         'interface.settled': JSON.stringify({ symbol, file, task: taskId }),
       })
       return say('settled: ' + symbol + ' in ' + file)

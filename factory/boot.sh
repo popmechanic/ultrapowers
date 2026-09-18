@@ -241,6 +241,16 @@ board_status_ready() { # $1 = the raw `federation status --json` document
 # anywhere). Anything that does not land — no kata.json on the plan commit, a
 # release that does not verify, a wait that runs out — is one `board:` log line and
 # BOARD_BOUND stays empty, which is `run_engine`'s whole signal.
+# The run's first task issue, answered by the spoke: the sign that the first pull has landed. A kata.json
+# that names no task reads as present — there is nothing to wait for.
+board_issue_present() {
+  local uid
+  uid="$(fleet_python3 -c 'import json,sys
+tasks = (json.load(open(sys.argv[1])).get("tasks") or {})
+print(next(iter(tasks.values()), {}).get("uid", ""))' "$BOARD_KATA_JSON" 2>/dev/null || true)"
+  [ -n "$uid" ] || return 0
+  fleet_curl -fsS -o /dev/null --max-time 5 "$KATA_URL/api/v1/issues/$uid" 2>/dev/null
+}
 board_up() {
   local blob project_name project_id work start_ts now_ts out local_id
   BOARD_UNIT="fleet-kata-$RUN_N"
@@ -293,10 +303,15 @@ EOF
       # The spoke numbers its own projects: the engine writes to the LOCAL id the status names, never the hub's
       # (run-195: every comment answered `404 project_not_found` on the hub's 31 where the spoke's was 2).
       local_id="$(printf '%s' "$out" | json_int project_id)"; [ -n "$local_id" ] && BOARD_PROJECT_ID="$local_id"
-      BOARD_BOUND=1; log "kata federation status: $project_name is bound as local project $BOARD_PROJECT_ID"; return 0; fi
+      # Bound is not yet pulled: the spoke's first pull lands some seconds after the binding, and an engine
+      # started in that gap reads `404 issue_not_found` for its own tasks (run-196, every task at minute zero).
+      # So the wait also covers the run's first task issue arriving on the spoke.
+      if board_issue_present; then
+        BOARD_BOUND=1; log "kata federation status: $project_name is bound as local project $BOARD_PROJECT_ID, and the run's issues have arrived"; return 0; fi
+    fi
     now_ts="$(date +%s)"
     if [ "$((now_ts - start_ts))" -ge "$FLEET_KATA_WAIT_SECONDS" ]; then
-      log "board: $project_name did not bind within ${FLEET_KATA_WAIT_SECONDS}s — federation status said: $out"
+      log "board: $project_name was not bound with the run's issues pulled within ${FLEET_KATA_WAIT_SECONDS}s — federation status said: $out"
       return 0
     fi
     sleep 1
