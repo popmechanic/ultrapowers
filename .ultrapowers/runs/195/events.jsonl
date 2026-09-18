@@ -545,3 +545,51 @@
 {"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"ls /home/exedev/run/exam-5/fleet/tests/_smoke* 2>/dev/null; rm -rf /tmp/proto /tmp/scratch_smoke.mjs /tmp/scratch_smoke2.mjs /tmp/smoke_drives.mjs\nwc -l /home/exedev/run/exam-5/fleet/tests/test_factor"}
 {"kind":"worker:test-run","task":"5","label":"exam:5","cmd":"ls /home/exedev/run/exam-5/fleet/tests/_smoke* 2>/dev/null; rm -rf /tmp/proto /tmp/scratch_smoke.mjs /tmp/scratch_smoke2.mjs /tmp/smoke_drives.mjs\nwc -l /home/exedev/run/exam-5/fleet/tests/test_factory_select_excerpt.mjs\nnode --check /home/exedev/run/exam-5/fleet/tests/test_factory_select_excerpt.mjs && echo SYNTAX_OK","red":false}
 {"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -rn \"Legs:\" tests/fixtures/plans/*.md evals/fixtures/claims/*.md 2>/dev/null | head -20"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Write","target":"/home/exedev/run/exam-4/fleet/tests/test_factory_run_exam.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"cd /home/exedev/run/exam-4 && node fleet/tests/test_factory_run_exam.mjs"}
+{"kind":"worker:test-run","task":"4","label":"exam:4","cmd":"cd /home/exedev/run/exam-4 && node fleet/tests/test_factory_run_exam.mjs","red":true}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"mcp__factory__note"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"cd /home/exedev/run/exam-4 && cp factory/tools.mjs /tmp/tools.mjs.bak && cp factory/engine.mjs /tmp/engine.mjs.bak"}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Edit","target":"/home/exedev/run/impl-6-0/factory/boot.sh"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/tools.mjs"}
+{"kind":"supervisor","task":"6","label":"impl:6:0","answers":{"stuck":{"type":"noul","noul":0.2},"off_track":{"type":"noul","noul":0.26},"needs_human":{"type":"noul","noul":0.1},"done_not_exited":{"type":"noul","noul":0.11}}}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Edit","target":"/home/exedev/run/exam-4/factory/tools.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"settleReadiness\\|const dispatchTask\\|inflightLandings\\.set\\|land(\" /home/exedev/run/fold-fix-3/factory/engine.mjs | head -30"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"mcp__factory__note"}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"rm -rf /tmp/impl-check && mkdir -p /tmp/impl-check && cp -a /home/exedev/run/exam-4/. /tmp/impl-check/ 2>&1 | tail -5; ls /tmp/impl-check | head"}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Edit","target":"/home/exedev/run/impl-6-0/factory/boot.sh"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-3/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/tmp/impl-check/factory/tools.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Edit","target":"/tmp/impl-check/factory/tools.mjs"}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Edit","target":"/home/exedev/run/impl-6-0/factory/boot.sh"}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Bash","target":"bash -n /home/exedev/run/impl-6-0/factory/boot.sh && echo SYNTAX_OK"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"cd /tmp/impl-check && python3 - <<'PYEOF'\nimport re\np = 'factory/tools.mjs'\ns = open(p).read()\ns = s.replace(\n  \"export const factoryTools = ({ kata, projectId, task, candidates, board } = {}) => {\",\n"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"cat /home/exedev/run/impl-5-0/factory/select.mjs"}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Bash","target":"node fleet/tests/test_factory_boot_close.mjs 2>&1 | tail -80"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"ls /home/exedev/run/impl-5-0/fleet/tests/ | grep -i select; echo ---; ls /home/exedev/run/impl-5-0/fleet/tests/ | grep -i excerpt; echo ---; grep -n \"hunksCarrying\" -r /home/exedev/run/impl-5-0/factor"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"cat -n /home/exedev/run/impl-5-0/fleet/tests/test_factory_select_excerpt.mjs"}
+{"kind":"worker:test-run","task":"5","label":"impl:5:0","cmd":"cat -n /home/exedev/run/impl-5-0/fleet/tests/test_factory_select_excerpt.mjs","red":false}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"sed -n '1,60p' /home/exedev/run/fold-fix-3/factory/board.mjs"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"sed -n '1,400p' /home/exedev/run/claude-config/projects/-home-exedev-run-impl-5-0/d549acc7-bc5d-4450-84ea-4c68ad5d0177/tool-results/b7a3iw4k9.txt"}
+{"kind":"worker:test-run","task":"6","label":"impl:6:0","cmd":"node fleet/tests/test_factory_boot_close.mjs 2>&1 | tail -80","red":false}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"mkdir -p /tmp/plantest && cat > /tmp/plantest/plan.md << 'EOF'\n# Two workers, one boom\n\n**Grammar:** claims-v1\n\n### Task A: Task A lands cleanly\n\n**Type:** implementation\n\n**Files:**\n- Modify: `a.txt`"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"sed -n '400,900p' /home/exedev/run/claude-config/projects/-home-exedev-run-impl-5-0/d549acc7-bc5d-4450-84ea-4c68ad5d0177/tool-results/b7a3iw4k9.txt"}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Bash","target":"for f in fleet/tests/test_sandbox_boot_*.mjs; do echo \"== $f ==\"; node \"$f\" 2>&1 | tail -20; echo; done"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"grep -n \"readGuards\\|readCovering\\|candidateTests\\|import.*select\\|runSelection\\|function examine\\|appendEvent\" /home/exedev/run/impl-5-0/factory/engine.mjs | head -80"}
+{"kind":"supervisor","task":"5","label":"impl:5:0","answers":{"stuck":{"type":"noul","noul":0.19},"off_track":{"type":"noul","noul":0.28},"needs_human":{"type":"noul","noul":0.1},"done_not_exited":{"type":"noul","noul":0.1}}}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"cd /tmp/impl-check && python3 - <<'PYEOF'\np = 'factory/engine.mjs'\ns = open(p).read()\n\n# M3: onMessageFor bash-glimpse row\nold_row = \"          appendEvent({ kind: 'worker:test-run', task: taskId, lab"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"REPO\\s*=\\|const HERE\" /home/exedev/run/fold-fix-3/factory/engine.mjs | head -5"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Read","target":"/home/exedev/run/impl-5-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Read","target":"/home/exedev/run/impl-5-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"cd /tmp/impl-check && node -e \"\nprocess.chdir('/tmp/impl-check');\n\" 2>&1\ncd /tmp/impl-check/fleet && ls node_modules >/dev/null 2>&1 || npm install --no-audit --no-fund >/tmp/npm.log 2>&1\ncd /tmp/impl"}
+{"kind":"worker:test-run","task":"4","label":"exam:4","cmd":"cd /tmp/impl-check && node -e \"\nprocess.chdir('/tmp/impl-check');\n\" 2>&1\ncd /tmp/impl-check/fleet && ls node_modules >/dev/null 2>&1 || npm install --no-audit --no-fund >/tmp/npm.log 2>&1\ncd /tmp/impl-check && node fleet/tests/test_factory_run_exam.mjs","red":false}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Read","target":"/home/exedev/run/impl-5-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"cd /tmp/impl-check && python3 - <<'PYEOF'\np = 'factory/engine.mjs'\ns = open(p).read()\nnew_row = \"          appendEvent({ kind: 'worker:test-run', task: taskId, label, cmd, exit: null, red: null, via: "}
+{"kind":"worker:test-run","task":"4","label":"exam:4","cmd":"cd /tmp/impl-check && python3 - <<'PYEOF'\np = 'factory/engine.mjs'\ns = open(p).read()\nnew_row = \"          appendEvent({ kind: 'worker:test-run', task: taskId, label, cmd, exit: null, red: null, via: 'bash' })\"\nold_row = \"          appendEvent({ kind: 'worker:test-run', task: taskId, label, cmd, red: Boolean(b.is_error) })\"\nassert new_row in s\ns = s.replace(new_row, old_row, 1)\nopen(p, 'w').write(s)\nPYEOF\ncd /tmp/impl-check && node fleet/tests/test_factory_run_exam.mjs\necho \"EXIT: $?\"","red":false}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -40"}
+{"kind":"worker:test-run","task":"2","label":"impl:2:0","cmd":"python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -40","red":false}
