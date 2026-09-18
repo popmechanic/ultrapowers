@@ -641,12 +641,6 @@ def parse_plan_text(text):
     waves_ids = _kahn_layers(ids, edges)
     pairs = _build_pairs(impl)
 
-    # `runOnlyClauses` only appears on task objects at all once some task's
-    # Legs text actually cites a `[M<n>]` clause somewhere in the plan --
-    # plans that use `- Legs:` purely as narrative prose (no bracket
-    # citations) print exactly the fields they always did.
-    plan_has_run_only = any(t["legsHasCitation"] for t in impl)
-
     def public_view(t):
         view = {
             "id": t["id"],
@@ -657,9 +651,8 @@ def parse_plan_text(text):
             "testCmd": t["testCmd"],
             "interfaces": t["interfaces"],
             "proofGuards": t["proofGuards"],
+            "runOnlyClauses": t["runOnlyClauses"],
         }
-        if plan_has_run_only:
-            view["runOnlyClauses"] = t["runOnlyClauses"]
         return view
 
     by_id = {t["id"]: t for t in impl}
