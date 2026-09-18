@@ -42,8 +42,13 @@ RECORD_FIXTURES = [
 RECORDLESS_FIXTURES = sorted(
     (ROOT / "tests/fixtures/plans/2026-09-07").glob("*.md"))
 
-TASK_FIELDS = {"id", "title", "files", "depends_on", "proofTests",
-               "testCmd", "interfaces", "proofGuards"}
+# The eight fields the old compiler's wave entries also carry: the oracle set
+# the M6 agreement tests compare over.
+ORACLE_FIELDS = {"id", "title", "files", "depends_on", "proofTests",
+                 "testCmd", "interfaces", "proofGuards"}
+# Every field a task object prints: the oracle's eight plus the parser's own
+# `runOnlyClauses` (run-195), which the old compiler never emitted.
+TASK_FIELDS = ORACLE_FIELDS | {"runOnlyClauses"}
 
 
 # --------------------------------------------------------------------------- #
@@ -111,7 +116,7 @@ def make_plan(tasks, exam_command=None, title="Exam fixture plan"):
 
 def task_block(task_id, title, *, ttype="implementation",
                creates=(), modifies=(), deletes=(), tests=(),
-               consumes=(), produces=(), run_cmds=(), guards=()):
+               consumes=(), produces=(), run_cmds=(), guards=(), legs=None):
     lines = [f"### Task {task_id}: {title}", ""]
     if ttype is not None:
         lines += [f"**Type:** {ttype}", ""]
@@ -135,6 +140,8 @@ def task_block(task_id, title, *, ttype="implementation",
     proof_lines = ([f"- Test: `{p}`" for p in tests]
                    + [f"- Run: {c}" for c in run_cmds]
                    + [f"- Guard: `{p}`" for p in guards])
+    if legs is not None:
+        proof_lines.append(f"- Legs: {legs}")
     if not proof_lines:
         proof_lines = [f"- Guard: `unused/{task_id}-guard.marker`"]
     lines += ["**Proof:**"] + proof_lines + [""]
@@ -492,10 +499,10 @@ def test_m6_agrees_with_old_compiler_on_record_bearing_fixtures(plan_path):
     compiler_fields = {}
     for wave in compiler_obj["launch_waves"]:
         for t in wave:
-            compiler_fields[t["id"]] = {k: t[k] for k in TASK_FIELDS}
+            compiler_fields[t["id"]] = {k: t[k] for k in ORACLE_FIELDS}
 
     for t in parser_obj["tasks"]:
-        assert t == compiler_fields[t["id"]]  # [M6]
+        assert {k: t[k] for k in ORACLE_FIELDS} == compiler_fields[t["id"]]  # [M6]
 
     parser_pairs = {(e["from"], e["to"]) for e in parser_obj["dag_edges"]}
     compiler_pairs = {(e["from"], e["to"]) for e in compiler_obj["dag_edges"]}
@@ -874,3 +881,90 @@ def test_pairs_m3_unguarded_flag_output_unchanged(tmp_path):
     # Exactly the one unguarded path, one per line, nothing else -- the same
     # as before "pairs" existed. [pairs-M3]
     assert proc.stdout == "tests/test_b.py\n"
+
+
+# --------------------------------------------------------------------------- #
+# Task: "A green exam settles it -- the re-attempt floor reads only what Jev #
+# can see".                                                                   #
+#                                                                             #
+# This task's own Machine clauses are M1-M5, colliding by number with the    #
+# grammar-parser's M1-M6 tags already used above -- its legs are tagged      #
+# floor-M1..floor-M5 to stay unambiguous, mirroring guard-M*/pairs-M*.       #
+#                                                                             #
+# floor-M1 -- every task object gains `runOnlyClauses`: the ascending clause #
+#             numbers `n` such that every `- Legs:` leg citing `[M<n>]`      #
+#             contains the text `Run:` (a leg is the text from one          #
+#             `(<letter>)` marker to the next); `[]` when no such clause;    #
+#             present the same way in `tasks` and in `launch_waves`; the     #
+#             earlier field set, the top-level key set and `--unguarded`     #
+#             are unchanged.                                                 #
+# floor-M2..floor-M5 -- the engine's re-attempt floor decision and its       #
+#             `floor` event; proved in fleet/tests/test_factory_floor.mjs,   #
+#             not in this file.                                             #
+# --------------------------------------------------------------------------- #
+
+TASK_FIELDS_WITH_RUN_ONLY = TASK_FIELDS | {"runOnlyClauses"}
+
+
+def test_floor_m1_run_only_clauses_field(tmp_path):
+    # Leg (a) containing `Run:` and citing only [M1]; leg (b) citing only
+    # [M2] and never saying `Run:`; leg (c) containing `Run:` and citing
+    # both [M2] and [M3]. Clause 1 is cited only by a Run:-bearing leg (a)
+    # -> included. Clause 2 is cited by leg (b), which is not a Run: leg
+    # -> excluded even though leg (c) also cites it and does say Run:.
+    # Clause 3 is cited only by leg (c), which does say Run: -> included.
+    # Expected runOnlyClauses: [1, 3].
+    legs_text = ("(a) `Run: python3 check_one.py` prints the count [M1]; "
+                 "(b) f() equals 3, read straight from the diff [M2]; "
+                 "(c) `Run: python3 check_two.py` prints the count again "
+                 "[M2][M3]")
+    tasks = [
+        task_block("1", "Legged task", creates=["floor1/impl.py"],
+                   tests=["tests/floor_legged.py"], legs=legs_text),
+        task_block("2", "No legs task", creates=["floor1/other.py"],
+                   tests=["tests/floor_nolegs.py"]),
+    ]
+    obj = build_and_run(tmp_path, tasks)
+
+    by_id = {t["id"]: t for t in obj["tasks"]}
+    assert by_id["1"]["runOnlyClauses"] == [1, 3]  # [floor-M1]
+    # A task with no `- Legs:` line at all prints `[]`. [floor-M1]
+    assert by_id["2"]["runOnlyClauses"] == []
+
+    # ...and the same values in `launch_waves` alike. [floor-M1]
+    wave_by_id = {t["id"]: t for wave in obj["launch_waves"] for t in wave}
+    assert wave_by_id["1"]["runOnlyClauses"] == [1, 3]
+    assert wave_by_id["2"]["runOnlyClauses"] == []
+
+    # Every task object's key set is the earlier set plus `runOnlyClauses`
+    # and nothing else, in both views, and the values of the earlier fields
+    # are undisturbed. [floor-M1]
+    expected = {
+        "1": dict(title="Legged task",
+                  files=["floor1/impl.py", "tests/floor_legged.py"],
+                  depends_on=[], proofTests=["tests/floor_legged.py"],
+                  testCmd="python3 -m pytest -q tests/floor_legged.py",
+                  interfaces={"consumes": ["none"], "produces": ["none"]},
+                  proofGuards=[]),
+        "2": dict(title="No legs task",
+                  files=["floor1/other.py", "tests/floor_nolegs.py"],
+                  depends_on=[], proofTests=["tests/floor_nolegs.py"],
+                  testCmd="python3 -m pytest -q tests/floor_nolegs.py",
+                  interfaces={"consumes": ["none"], "produces": ["none"]},
+                  proofGuards=[]),
+    }
+    for view in (obj["tasks"], [t for wave in obj["launch_waves"] for t in wave]):
+        for t in view:
+            assert set(t.keys()) == TASK_FIELDS_WITH_RUN_ONLY
+            exp = expected[t["id"]]
+            for key, val in exp.items():
+                assert t[key] == val
+
+    # The top-level key set is unchanged by the new task-level field. [floor-M1]
+    assert set(obj.keys()) == {"tasks", "dag_edges", "launch_waves", "pairs"}
+
+    # `--unguarded` on this plan (one unguarded Test path per task, neither
+    # guarded) still prints exactly those paths, one per line. [floor-M1]
+    proc = run_parser_unguarded(tmp_path / "plan.md")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert proc.stdout == "tests/floor_legged.py\ntests/floor_nolegs.py\n"
