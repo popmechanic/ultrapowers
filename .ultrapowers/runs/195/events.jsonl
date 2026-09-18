@@ -1130,3 +1130,4 @@
 {"kind":"pair:label","a":"3","b":"4","calls":null,"fold":"clean"}
 {"kind":"pair:label","a":"3","b":"5","calls":null,"fold":"clean"}
 {"kind":"pair:label","a":"4","b":"5","calls":null,"fold":"clean"}
+{"kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1162","number":1162,"draft":true}
