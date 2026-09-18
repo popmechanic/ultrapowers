@@ -259,3 +259,12 @@
 {"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
 {"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
 {"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"task.clauses\\|clauses:\" factory/engine.mjs"}
+{"kind":"supervisor","task":"3","label":"impl:3:0","answers":{"stuck":{"type":"noul","noul":0.23},"off_track":{"type":"noul","noul":0.26},"needs_human":{"type":"noul","noul":0.13},"done_not_exited":{"type":"noul","noul":0.12}}}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"cat fleet/tests/_engine_helpers.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Write","target":"/home/exedev/run/exam-5/fleet/tests/test_factory_boot_exams.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"ls fleet/tests/ | grep -i engine; echo ---; ls fleet/tests | grep -i factory"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -rl \"factory/engine.mjs\\|from '\\.\\./\\.\\./factory/engine\" fleet/tests | head -20"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"cat fleet/tests/test_factory_hunks.mjs 2>/dev/null | head -50; echo \"---exists check---\"; ls -la fleet/tests/test_factory_hunks.mjs"}
+{"kind":"worker:test-run","task":"3","label":"impl:3:0","cmd":"cat fleet/tests/test_factory_hunks.mjs 2>/dev/null | head -50; echo \"---exists check---\"; ls -la fleet/tests/test_factory_hunks.mjs","red":false}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/tests/test_factory_hunks.mjs"}
