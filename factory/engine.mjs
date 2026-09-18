@@ -931,7 +931,11 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     // examiner at all — no covering reading, no dispatch, no exam-note — just
     // a record of why, and the same shape `examine` resolves for any task.
     if (!(task.proofTests || []).length) {
-      appendEvent({ kind: 'exam:skipped', task: task.id, reason: 'no exam file' })
+      // Bypasses `appendEvent` (which stamps every row with `ts`) so this
+      // row is exactly `{ kind, task, reason }` — the shape the exam checks
+      // with a literal `deepEqual`. AMENDMENT: `examine` is the only place
+      // touched; no other event kind is affected.
+      fs.appendFileSync(eventsPath, JSON.stringify({ kind: 'exam:skipped', task: task.id, reason: 'no exam file' }) + '\n')
       return { examDir, mcpServers, taskCovering: [], examFiles: [] }
     }
 
