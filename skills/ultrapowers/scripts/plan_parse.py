@@ -65,6 +65,7 @@ FILE_BULLET = re.compile(r'^-\s*(Create|Modify|Delete|Test)\s*:\s*(.+)$', re.I)
 IFACE_BULLET = re.compile(r'^-\s*(Consumes|Produces)\s*:\s*(.+)$', re.I)
 PROOF_TEST_BULLET = re.compile(r'^-\s*Test\s*:\s*(.+)$', re.I)
 PROOF_RUN_BULLET = re.compile(r'^-\s*Run\s*:\s*(.+)$', re.I)
+PROOF_GUARD_BULLET = re.compile(r'^-\s*Guard\s*:\s*(.+)$', re.I)
 TYPE_LINE = re.compile(r'^\*\*Type:\*\*\s*(.+?)\s*$', re.I)
 EXAM_CMD_LINE = re.compile(r'^\*\*Exam command:\*\*\s*(.+?)\s*$', re.I)
 BACKTICK_PATH_RE = re.compile(r'`([^`]+)`')
@@ -219,6 +220,7 @@ def _parse_task_body(body_lines):
     # Proof slot.
     proof_tests = []
     proof_runs = []
+    proof_guards = []
     for line, fenced in slot_lines("proof"):
         if fenced:
             continue
@@ -228,6 +230,12 @@ def _parse_task_body(body_lines):
             for p in BACKTICK_PATH_RE.findall(m.group(1)):
                 if p not in proof_tests:
                     proof_tests.append(p)
+            continue
+        m = PROOF_GUARD_BULLET.match(s)
+        if m:
+            for p in BACKTICK_PATH_RE.findall(m.group(1)):
+                if p not in proof_guards:
+                    proof_guards.append(p)
             continue
         m = PROOF_RUN_BULLET.match(s)
         if m:
@@ -247,6 +255,7 @@ def _parse_task_body(body_lines):
         "produces_text": produces_text,
         "proof_tests": proof_tests,
         "proof_runs": proof_runs,
+        "proof_guards": proof_guards,
     }
 
 
@@ -516,6 +525,7 @@ def parse_plan_text(text):
                 "consumes": parsed["consumes_text"],
                 "produces": parsed["produces_text"],
             },
+            "proofGuards": parsed["proof_guards"],
         }
         all_tasks.append(task)
 
@@ -534,6 +544,7 @@ def parse_plan_text(text):
             "proofTests": t["proofTests"],
             "testCmd": t["testCmd"],
             "interfaces": t["interfaces"],
+            "proofGuards": t["proofGuards"],
         }
 
     by_id = {t["id"]: t for t in impl}
@@ -548,11 +559,21 @@ def parse_plan_text(text):
     }
 
 
+USAGE = "plan_parse: usage: plan_parse.py [--unguarded] <plan.md>\n"
+
+
 def main(argv):
-    if len(argv) != 2:
-        sys.stderr.write("plan_parse: usage: plan_parse.py <plan.md>\n")
+    args = argv[1:]
+    unguarded = False
+    if args and args[0] == "--unguarded":
+        unguarded = True
+        args = args[1:]
+
+    if len(args) != 1:
+        sys.stderr.write(USAGE)
         return 2
-    plan_path = argv[1]
+
+    plan_path = args[0]
     try:
         with open(plan_path, "r", encoding="utf-8") as fh:
             text = fh.read()
@@ -565,6 +586,17 @@ def main(argv):
     except Refusal as exc:
         sys.stderr.write(str(exc) + "\n")
         return 2
+
+    if unguarded:
+        seen = set()
+        for t in result["tasks"]:
+            guards = set(t["proofGuards"])
+            for p in t["proofTests"]:
+                if p in guards or p in seen:
+                    continue
+                seen.add(p)
+                print(p)
+        return 0
 
     print(json.dumps(result))
     return 0

@@ -9,6 +9,13 @@ assertion below runs it as a subprocess and reads stdout/stderr/the exit
 code, exactly as `factory/engine.mjs` would.
 
 Every assertion is tagged with the Machine clause (M1-M6) it proves.
+
+A later task, "The parser names a plan's unguarded exam files", adds the
+`proofGuards` field and the `--unguarded` flag; its own legs live in a
+dedicated section near the end of this file and are tagged `guard-M1`,
+`guard-M2`, `guard-M3` (that task's own Machine clauses) to keep them
+distinct from the M1-M6 tags above, which belong to the grammar-parser
+clauses this file already covered.
 """
 import json
 import subprocess
@@ -36,7 +43,7 @@ RECORDLESS_FIXTURES = sorted(
     (ROOT / "tests/fixtures/plans/2026-09-07").glob("*.md"))
 
 TASK_FIELDS = {"id", "title", "files", "depends_on", "proofTests",
-               "testCmd", "interfaces"}
+               "testCmd", "interfaces", "proofGuards"}
 
 
 # --------------------------------------------------------------------------- #
@@ -50,6 +57,12 @@ def run_parser(plan_path):
 
 def run_compiler(plan_path):
     return subprocess.run([sys.executable, str(COMPILER), str(plan_path)],
+                          capture_output=True, text=True)
+
+
+def run_parser_unguarded(plan_path):
+    return subprocess.run([sys.executable, str(PARSER), "--unguarded",
+                           str(plan_path)],
                           capture_output=True, text=True)
 
 
@@ -98,7 +111,7 @@ def make_plan(tasks, exam_command=None, title="Exam fixture plan"):
 
 def task_block(task_id, title, *, ttype="implementation",
                creates=(), modifies=(), deletes=(), tests=(),
-               consumes=(), produces=(), run_cmds=()):
+               consumes=(), produces=(), run_cmds=(), guards=()):
     lines = [f"### Task {task_id}: {title}", ""]
     if ttype is not None:
         lines += [f"**Type:** {ttype}", ""]
@@ -120,7 +133,8 @@ def task_block(task_id, title, *, ttype="implementation",
               + [""])
     lines += [f"**Context:** Placeholder context prose for task {task_id}.", ""]
     proof_lines = ([f"- Test: `{p}`" for p in tests]
-                   + [f"- Run: {c}" for c in run_cmds])
+                   + [f"- Run: {c}" for c in run_cmds]
+                   + [f"- Guard: `{p}`" for p in guards])
     if not proof_lines:
         proof_lines = [f"- Guard: `unused/{task_id}-guard.marker`"]
     lines += ["**Proof:**"] + proof_lines + [""]
@@ -511,3 +525,160 @@ def test_m6_fixture_inventory_sanity():
     assert len(RECORDLESS_FIXTURES) == 6
     for p in RECORDLESS_FIXTURES:
         assert not p.with_name(p.stem + ".gate-verdicts.json").exists()
+
+
+# --------------------------------------------------------------------------- #
+# Task: "The parser names a plan's unguarded exam files".                    #
+#                                                                             #
+# guard-M1 -- every task object gains `proofGuards` (backticked `- Guard:`   #
+#             paths, in order, deduplicated, `[]` when none) in both `tasks` #
+#             and `launch_waves`; the seven pre-existing fields are          #
+#             unchanged.                                                    #
+# guard-M2 -- `--unguarded <plan.md>` prints, one per line and nothing else  #
+#             on stdout, every implementation task's `proofTests` path not  #
+#             among that task's `proofGuards`, in document order,           #
+#             deduplicated, exit 0; a refused plan exits 2 with the same    #
+#             refusal on stderr as without the flag.                        #
+# guard-M3 -- any argv that is neither `<plan.md>` nor `--unguarded          #
+#             <plan.md>` prints the usage line on stderr and exits 2.       #
+# --------------------------------------------------------------------------- #
+
+def test_guard_m1_proofguards_field_guarded_and_unguarded_tasks(tmp_path):
+    tasks = [
+        task_block("1", "Guarded", creates=["ga/impl.py"],
+                   tests=["tests/test_a.py"], guards=["tests/test_a.py"]),
+        task_block("2", "Unguarded", creates=["ga/impl2.py"],
+                   tests=["tests/test_b.py"]),
+    ]
+    obj = build_and_run(tmp_path, tasks)
+
+    # proofGuards present and correct in `tasks`. [guard-M1]
+    by_id = {t["id"]: t for t in obj["tasks"]}
+    assert by_id["1"]["proofGuards"] == ["tests/test_a.py"]
+    assert by_id["2"]["proofGuards"] == []
+
+    # ...and in `launch_waves` alike. [guard-M1]
+    wave_by_id = {t["id"]: t for wave in obj["launch_waves"] for t in wave}
+    assert wave_by_id["1"]["proofGuards"] == ["tests/test_a.py"]
+    assert wave_by_id["2"]["proofGuards"] == []
+
+    # Every task object's key set is exactly the eight named fields, and the
+    # seven pre-existing fields carry the values the grammar always derived
+    # for them -- the new field changes nothing about them. [guard-M1]
+    expected = {
+        "1": dict(title="Guarded", files=["ga/impl.py", "tests/test_a.py"],
+                  depends_on=[], proofTests=["tests/test_a.py"],
+                  testCmd="python3 -m pytest -q tests/test_a.py",
+                  interfaces={"consumes": ["none"], "produces": ["none"]}),
+        "2": dict(title="Unguarded", files=["ga/impl2.py", "tests/test_b.py"],
+                  depends_on=[], proofTests=["tests/test_b.py"],
+                  testCmd="python3 -m pytest -q tests/test_b.py",
+                  interfaces={"consumes": ["none"], "produces": ["none"]}),
+    }
+    for view in (obj["tasks"], [t for wave in obj["launch_waves"] for t in wave]):
+        for t in view:
+            assert set(t.keys()) == TASK_FIELDS  # [guard-M1]
+            exp = expected[t["id"]]
+            for key, val in exp.items():
+                assert t[key] == val  # [guard-M1]
+
+
+def test_guard_m1_proofguards_dedup_and_order(tmp_path):
+    tasks = [
+        task_block("1", "Multi-guard", creates=["gb/impl.py"],
+                   tests=["tests/test_x.py", "tests/test_y.py"],
+                   guards=["tests/test_y.py", "tests/test_x.py",
+                           "tests/test_y.py"]),
+    ]
+    obj = build_and_run(tmp_path, tasks)
+    t = obj["tasks"][0]
+    # Written order preserved, the repeat of tests/test_y.py dropped on its
+    # second occurrence (first occurrence kept). [guard-M1]
+    assert t["proofGuards"] == ["tests/test_y.py", "tests/test_x.py"]
+
+
+def test_guard_m2_unguarded_prints_only_unguarded_paths(tmp_path):
+    tasks = [
+        task_block("1", "Guarded", creates=["gc/impl.py"],
+                   tests=["tests/test_a.py"], guards=["tests/test_a.py"]),
+        task_block("2", "Unguarded", creates=["gc/impl2.py"],
+                   tests=["tests/test_b.py"]),
+    ]
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text(make_plan(tasks))
+    proc = run_parser_unguarded(plan_path)
+    assert proc.returncode == 0, proc.stdout + proc.stderr  # [guard-M2]
+    # Exactly the one unguarded path, one per line, nothing else. [guard-M2]
+    assert proc.stdout == "tests/test_b.py\n"
+
+
+def test_guard_m2_unguarded_empty_when_every_test_path_guarded(tmp_path):
+    tasks = [
+        task_block("1", "Fully guarded", creates=["gd/impl.py"],
+                   tests=["tests/test_a.py"], guards=["tests/test_a.py"]),
+    ]
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text(make_plan(tasks))
+    proc = run_parser_unguarded(plan_path)
+    assert proc.returncode == 0, proc.stdout + proc.stderr  # [guard-M2]
+    assert proc.stdout == ""  # [guard-M2]
+
+
+def test_guard_m2_unguarded_dedup_document_order_and_impl_only(tmp_path):
+    tasks = [
+        task_block("1", "First unguarded", creates=["ge/a.py"],
+                   tests=["tests/shared.py", "tests/only1.py"]),
+        task_block("2", "Gate task", ttype="gate", creates=["ge/gate.txt"],
+                   tests=["tests/gate_only.py"]),
+        task_block("3", "Second unguarded", creates=["ge/b.py"],
+                   tests=["tests/shared.py"]),
+    ]
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text(make_plan(tasks))
+    proc = run_parser_unguarded(plan_path)
+    assert proc.returncode == 0, proc.stdout + proc.stderr  # [guard-M2]
+    # Document order across tasks 1 then 3 (the gate task's own unguarded
+    # path is never printed -- only implementation tasks count), and task
+    # 3's repeat of tests/shared.py deduplicated against task 1's. [guard-M2]
+    assert proc.stdout == "tests/shared.py\ntests/only1.py\n"
+
+
+def test_guard_m2_unguarded_refusal_matches_plain_refusal(tmp_path):
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text(make_header())  # no '### Task' heading at all
+
+    proc_flag = run_parser_unguarded(plan_path)
+    assert_is_the_scripts_own_refusal(proc_flag)
+    assert proc_flag.returncode == 2  # [guard-M2]
+    assert proc_flag.stdout == ""  # [guard-M2]
+    assert proc_flag.stderr.strip() != ""  # [guard-M2]
+
+    proc_plain = run_parser(plan_path)
+    assert proc_plain.returncode == 2
+    # The same refusal on stderr as without the flag. [guard-M2]
+    assert proc_flag.stderr == proc_plain.stderr
+
+
+def test_guard_m3_bad_argv_variants_exit_2_with_usage(tmp_path):
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text(make_plan([task_block("1", "Solo", creates=["gf/a.py"])]))
+
+    # `assert_is_the_scripts_own_refusal` is not used here: it guards against
+    # mistaking an absent plan_parse.py for a genuine refusal, but a bare
+    # `--unguarded` (no plan.md) is a real M3 case whose CURRENT, unfixed
+    # behavior is to treat "--unguarded" as a plan path and fail to open it
+    # -- a real OSError message that also happens to contain "No such file
+    # or directory", which that helper would misread as the interpreter
+    # itself being missing.
+    usage_lines = []
+    for argv_tail in ([], ["--unguarded"], ["--frobnicate", str(plan_path)]):
+        proc = subprocess.run([sys.executable, str(PARSER)] + argv_tail,
+                              capture_output=True, text=True)
+        assert proc.returncode == 2, argv_tail  # [guard-M3]
+        assert proc.stdout == ""  # [guard-M3]
+        lines = [l for l in proc.stderr.splitlines() if l.strip()]
+        assert len(lines) == 1  # [guard-M3]
+        usage_lines.append(lines[0])
+
+    # The same one usage line for every rejected shape. [guard-M3]
+    assert len(set(usage_lines)) == 1
