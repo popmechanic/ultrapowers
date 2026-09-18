@@ -418,3 +418,35 @@
 {"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-3/factory/engine.mjs"}
 {"kind":"worker:tool","task":"6","label":"exam:6","tool":"mcp__factory__hand"}
 {"kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__note"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"git status && git diff --stat"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -n \"EXPORT_LINE_RE\\s*=\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__hand"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"^export\\|module.exports\\|import.meta.url\" /home/exedev/run/fold-fix-3/factory/engine.mjs | head -30"}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Bash","target":"wc -l factory/boot.sh && ls fleet/tests | grep boot"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-3/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Read","target":"/home/exedev/run/impl-6-0/fleet/tests/test_factory_boot_close.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"COMPILER\\s*=\" /home/exedev/run/fold-fix-3/factory/engine.mjs; find /home/exedev/run/fold-fix-3 -iname \"plan_parse.py\""}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Read","target":"/home/exedev/run/impl-6-0/factory/boot.sh"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"cloneAtBase\" -A 25 fleet/run-waves.mjs | head -40"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -rl \"runEngine\\|factory/engine\" /home/exedev/run/fold-fix-3/tests /home/exedev/run/fold-fix-3/factory 2>/dev/null | grep -v \"^/home/exedev/run/fold-fix-3/factory/engine.mjs$\""}
+{"kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"ls && wc -l factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"ls /home/exedev/run/fold-fix-3/factory/replay; find /home/exedev/run/fold-fix-3/factory/replay -iname \"*.mjs\" | xargs grep -l \"runEngine\" 2>/dev/null"}
+{"kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"async function examine\\|^function examine\\|function examine\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"examine\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"return {\" /home/exedev/run/fold-fix-3/factory/engine.mjs | tail -10"}
+{"kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-3/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"cat fleet/tests/test_factory_exam_skip.mjs 2>/dev/null; echo \"---\"; ls fleet/tests/ | grep -i exam"}
+{"kind":"worker:test-run","task":"1","label":"impl:1:0","cmd":"cat fleet/tests/test_factory_exam_skip.mjs 2>/dev/null; echo \"---\"; ls fleet/tests/ | grep -i exam","red":false}
+{"kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"appendEvent\\b\" factory/engine.mjs | head -5; grep -n \"proofTests\" factory/engine.mjs | head -10"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-3/factory/engine.mjs"}
+{"kind":"supervisor","task":"1","label":"impl:1:0","answers":{"stuck":{"type":"noul","noul":0.19},"off_track":{"type":"noul","noul":0.26},"needs_human":{"type":"noul","noul":0.2},"done_not_exited":{"type":"noul","noul":0.09}}}
+{"kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"node fleet/tests/test_factory_exam_skip.mjs"}
+{"kind":"worker:test-run","task":"1","label":"impl:1:0","cmd":"node fleet/tests/test_factory_exam_skip.mjs","red":false}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"dispatch({\" /home/exedev/run/fold-fix-3/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"git diff -- factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-3/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"cd fleet/tests && for f in test_run_engine_state_exams.mjs; do echo \"== $f ==\"; timeout 60 node \"$f\" 2>&1 | tail -20; done"}
+{"kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__note"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"const measure = \\|async function measure\" /home/exedev/run/fold-fix-3/factory/engine.mjs"}
