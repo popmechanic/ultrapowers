@@ -13,3 +13,4 @@
 {"kind":"referee","task":"2","findings":9,"blocking":0,"grades":["minor","minor","minor","minor","minor","minor","minor","minor","minor"]}
 {"kind":"referee","task":"4","findings":8,"blocking":1,"grades":["plan","minor","blocking","minor","minor","minor","minor","minor"]}
 {"kind":"supervisor","task":"4","label":"fix:4","answers":{"stuck":{"type":"noul","noul":0.25},"off_track":{"type":"noul","noul":0.23},"needs_human":{"type":"noul","noul":0.09},"done_not_exited":{"type":"noul","noul":0.18}}}
+{"kind":"supervisor","task":"3","label":"impl:3:0","answers":{"stuck":{"type":"noul","noul":0.48},"off_track":{"type":"noul","noul":0.38},"needs_human":{"type":"noul","noul":0.23},"done_not_exited":{"type":"noul","noul":0.13}}}
