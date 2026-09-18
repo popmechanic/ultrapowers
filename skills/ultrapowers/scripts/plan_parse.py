@@ -1,0 +1,574 @@
+#!/usr/bin/env python3
+"""Parse a claims-v1 plan markdown file to its grammar shape.
+
+Usage: python3 plan_parse.py <plan.md>
+
+Prints exactly one JSON object on stdout with keys `tasks`, `dag_edges` and
+`launch_waves`, and exits 0 -- reading no file but the plan itself, whether
+or not a `<stem>.gate-verdicts.json` sits beside it.
+
+This is a grammar parser, not the old semantic compiler
+(`skills/ultrapowers/scripts/compile_plan.py`): it refuses (exit 2, one
+stderr line) only what it cannot parse -- no `### Task <id>:` heading found,
+a duplicate task id, or a cycle in the derived dependency edges. Everything
+else the old compiler would treat as a semantic violation (missing gate
+verdicts, slot-shape complaints, disjointness, clause citations, ...) is not
+this parser's business.
+"""
+
+import json
+import re
+import sys
+
+
+class Refusal(Exception):
+    """Raised for the three grammar-level refusals (M5)."""
+
+
+# --------------------------------------------------------------------------- #
+# Fence-aware line scanning: track a stack of open ``` / ~~~ fences so
+# headings and labels inside code blocks are never mistaken for real
+# structure.
+# --------------------------------------------------------------------------- #
+
+_FENCE_RE = re.compile(r'^(`{3,}|~{3,})\s*.*$')
+
+
+def _fence_aware_lines(text):
+    """Yield (line, fenced) for each line of text, `fenced` True when the
+    line is itself a fence marker or lies inside an open fence."""
+    stack = []  # stack of fence marker strings, e.g. "```" or "~~~~"
+    out = []
+    for line in text.splitlines():
+        s = line.strip()
+        m = _FENCE_RE.match(s)
+        if m:
+            run = m.group(1)
+            if stack and run[0] == stack[-1][0] and len(run) >= len(stack[-1]):
+                stack.pop()
+            else:
+                stack.append(run)
+            out.append((line, True))
+            continue
+        out.append((line, bool(stack)))
+    return out
+
+
+def _leading_spaces(line):
+    return len(line) - len(line.lstrip(' '))
+
+
+TASK_HEAD = re.compile(r'^### Task ([A-Za-z0-9]+):\s*(.*)$')
+H2_HEAD = re.compile(r'^##\s')
+
+FILE_BULLET = re.compile(r'^-\s*(Create|Modify|Delete|Test)\s*:\s*(.+)$', re.I)
+IFACE_BULLET = re.compile(r'^-\s*(Consumes|Produces)\s*:\s*(.+)$', re.I)
+PROOF_TEST_BULLET = re.compile(r'^-\s*Test\s*:\s*(.+)$', re.I)
+PROOF_RUN_BULLET = re.compile(r'^-\s*Run\s*:\s*(.+)$', re.I)
+TYPE_LINE = re.compile(r'^\*\*Type:\*\*\s*(.+?)\s*$', re.I)
+EXAM_CMD_LINE = re.compile(r'^\*\*Exam command:\*\*\s*(.+?)\s*$', re.I)
+BACKTICK_PATH_RE = re.compile(r'`([^`]+)`')
+
+SLOT_RE = re.compile(
+    r'^\*\*\s*(claim|authorized[-\s]?by|interfaces|context|proof|stale[-\s]?if)'
+    r'\s*:?\s*\*\*\s*:?\s*(.*)$',
+    re.I,
+)
+
+
+def _slot_name(raw):
+    key = re.sub(r'[\s-]+', '-', raw.strip().lower())
+    return key
+
+
+# --------------------------------------------------------------------------- #
+# Plan-level split: headings, boundaries, header block.
+# --------------------------------------------------------------------------- #
+
+def _split_plan(text):
+    scanned = _fence_aware_lines(text)
+    heads = []       # (id, title, line_idx)
+    boundaries = []  # line indices of task headings and h2 headings
+
+    for i, (line, fenced) in enumerate(scanned):
+        if fenced:
+            continue
+        if _leading_spaces(line) > 3:
+            continue
+        s = line.strip()
+        m = TASK_HEAD.match(s)
+        if m:
+            heads.append((m.group(1), m.group(2).strip(), i))
+            boundaries.append(i)
+            continue
+        if H2_HEAD.match(s):
+            boundaries.append(i)
+
+    if not heads:
+        raise Refusal("plan_parse: no '### Task <id>:' heading found")
+
+    seen_ids = {}
+    for tid, _title, idx in heads:
+        seen_ids.setdefault(tid, []).append(idx)
+    dups = sorted(t for t, idxs in seen_ids.items() if len(idxs) > 1)
+    if dups:
+        raise Refusal(
+            "plan_parse: duplicate task id(s) on '### Task' headings: "
+            + ", ".join(dups)
+        )
+
+    boundaries_sorted = sorted(set(boundaries))
+    header_lines = scanned[: heads[0][2]]
+
+    task_bodies = []
+    for n, (tid, title, start) in enumerate(heads):
+        end = next((b for b in boundaries_sorted if b > start), len(scanned))
+        task_bodies.append((tid, title, n, scanned[start:end]))
+
+    return header_lines, task_bodies
+
+
+def _parse_header(header_lines):
+    exam_command = None
+    for line, fenced in header_lines:
+        if fenced:
+            continue
+        m = EXAM_CMD_LINE.match(line.strip())
+        if m:
+            exam_command = m.group(1).strip()
+            break
+    return exam_command
+
+
+# --------------------------------------------------------------------------- #
+# Task-body parsing.
+# --------------------------------------------------------------------------- #
+
+def _parse_task_body(body_lines):
+    """body_lines is the fence-aware (line, fenced) list from the task's
+    heading line through (but not including) the next boundary."""
+
+    # Locate slot label lines (non-fenced) to bound the pre-slot header/Files
+    # region and each of the six slots.
+    slot_positions = []  # (idx, canonical_name)
+    for i, (line, fenced) in enumerate(body_lines):
+        if fenced or i == 0:
+            continue
+        m = SLOT_RE.match(line.strip())
+        if m:
+            slot_positions.append((i, _slot_name(m.group(1))))
+
+    pre_slot_end = slot_positions[0][0] if slot_positions else len(body_lines)
+    pre_slot = body_lines[1:pre_slot_end]
+
+    slot_ranges = {}
+    for k, (idx, name) in enumerate(slot_positions):
+        end = slot_positions[k + 1][0] if k + 1 < len(slot_positions) else len(body_lines)
+        slot_ranges.setdefault(name, []).append((idx, end))
+
+    def slot_lines(name):
+        out = []
+        for start, end in slot_ranges.get(name, []):
+            out.extend(body_lines[start:end])
+        return out
+
+    # Type marker.
+    ttype = None
+    for line, fenced in pre_slot:
+        if fenced:
+            continue
+        m = TYPE_LINE.match(line.strip())
+        if m:
+            ttype = m.group(1).strip().lower()
+            break
+
+    # Files block.
+    creates, modifies, deletes, test_files = [], [], [], []
+    for line, fenced in pre_slot:
+        if fenced:
+            continue
+        m = FILE_BULLET.match(line.strip())
+        if not m:
+            continue
+        label = m.group(1).lower()
+        paths = BACKTICK_PATH_RE.findall(m.group(2))
+        if label == "create":
+            creates.extend(paths)
+        elif label == "modify":
+            modifies.extend(paths)
+        elif label == "delete":
+            deletes.extend(paths)
+        elif label == "test":
+            test_files.extend(paths)
+
+    # Interfaces slot.
+    consumes_text, produces_text = [], []
+    for line, fenced in slot_lines("interfaces"):
+        if fenced:
+            continue
+        m = IFACE_BULLET.match(line.strip())
+        if not m:
+            continue
+        label = m.group(1).lower()
+        value = m.group(2).strip()
+        if label == "consumes":
+            consumes_text.append(value)
+        else:
+            produces_text.append(value)
+
+    # Proof slot.
+    proof_tests = []
+    proof_runs = []
+    for line, fenced in slot_lines("proof"):
+        if fenced:
+            continue
+        s = line.strip()
+        m = PROOF_TEST_BULLET.match(s)
+        if m:
+            for p in BACKTICK_PATH_RE.findall(m.group(1)):
+                if p not in proof_tests:
+                    proof_tests.append(p)
+            continue
+        m = PROOF_RUN_BULLET.match(s)
+        if m:
+            val = m.group(1).strip()
+            bm = re.match(r'^`([^`]*)`$', val)
+            if bm:
+                val = bm.group(1)
+            proof_runs.append(val)
+
+    return {
+        "type": ttype,
+        "creates": creates,
+        "modifies": modifies,
+        "deletes": deletes,
+        "test_files": test_files,
+        "consumes_text": consumes_text,
+        "produces_text": produces_text,
+        "proof_tests": proof_tests,
+        "proof_runs": proof_runs,
+    }
+
+
+def _is_implementation(ttype):
+    return ttype is None or ttype == "implementation"
+
+
+# --------------------------------------------------------------------------- #
+# M2 field derivation: testCmd.
+# --------------------------------------------------------------------------- #
+
+MJS_PROOF_TEST_RE = re.compile(r'^fleet/tests/test_[^/]*\.mjs$')
+PY_PROOF_TEST_RE = re.compile(r'^tests/(?:[^/]+/)*[^/]+\.py$')
+BUN_PROOF_TEST_RE = re.compile(r'^tests/(?:[^/]+/)*[^/]+\.test\.ts$')
+
+
+def _derive_test_cmd(proof_tests, exam_command):
+    if not proof_tests:
+        return None
+    if exam_command:
+        return exam_command.replace("{paths}", " ".join(proof_tests))
+    node_paths, py_paths, bun_paths = [], [], []
+    for path in proof_tests:
+        if MJS_PROOF_TEST_RE.match(path):
+            node_paths.append(path)
+        elif PY_PROOF_TEST_RE.match(path):
+            py_paths.append(path)
+        elif BUN_PROOF_TEST_RE.match(path):
+            bun_paths.append(path)
+        else:
+            return None
+    parts = ["node " + p for p in node_paths]
+    if py_paths:
+        parts.append("python3 -m pytest -q " + " ".join(py_paths))
+    if bun_paths:
+        parts.append("bun test " + " ".join(bun_paths))
+    return " && ".join(parts)
+
+
+# --------------------------------------------------------------------------- #
+# M3: the Interfaces-bullet token rule.
+# --------------------------------------------------------------------------- #
+
+_DECL_KEYWORDS = {"def", "function", "class", "const", "let", "var", "export", "async"}
+
+
+def _interface_token(text):
+    text = text.strip()
+    if not text:
+        return None
+    m = BACKTICK_PATH_RE.search(text)
+    if m:
+        span = m.group(1)
+        words = span.split()
+        while words and words[0] in _DECL_KEYWORDS:
+            words = words[1:]
+        if not words:
+            return None
+        first = words[0]
+        cuts = [i for i in (first.find('('), first.find(':')) if i != -1]
+        if cuts:
+            first = first[:min(cuts)]
+        return first or None
+    tokens = text.split()
+    if len(tokens) != 1:
+        return None
+    word = tokens[0]
+    if word.lower() in ("none", "nothing"):
+        return None
+    return word
+
+
+# --------------------------------------------------------------------------- #
+# M4: the edge-building algorithm.
+# --------------------------------------------------------------------------- #
+
+_RUN_SPLIT_RE = re.compile(r'&&|\|\||[;()|\s]+')
+
+
+def _run_tokens(cmd):
+    toks = [t for t in _RUN_SPLIT_RE.split(cmd) if t]
+    out = []
+    for t in toks:
+        if t.startswith("./"):
+            t = t[2:]
+        out.append(t)
+    return out
+
+
+def _build_edges(impl):
+    edges = []
+    seen = set()
+    adj = {}
+
+    def add(a, b, why):
+        if a == b or (a, b) in seen:
+            return
+        seen.add((a, b))
+        edges.append({"from": a, "to": b, "why": why})
+        adj.setdefault(a, []).append(b)
+
+    def reaches(src, dst):
+        stack = [src]
+        visited = set()
+        while stack:
+            n = stack.pop()
+            if n == dst:
+                return True
+            if n in visited:
+                continue
+            visited.add(n)
+            stack.extend(adj.get(n, []))
+        return False
+
+    def would_cycle(a, b):
+        return reaches(b, a)
+
+    ids = [t["id"] for t in impl]
+    by_id = {t["id"]: t for t in impl}
+
+    # Tier 1: write-after-create -- always added, no cycle guard.
+    for a in ids:
+        for b in ids:
+            if a == b:
+                continue
+            if set(by_id[a]["creates"]) & set(by_id[b]["modifies"]):
+                add(a, b, "write-after-create")
+
+    # Tier 2: interface.
+    produced_tokens = {
+        t["id"]: {tok for p in t["produces_text"]
+                  for tok in [_interface_token(p)] if tok}
+        for t in impl
+    }
+    for b in ids:
+        b_consumes = {tok for c in by_id[b]["consumes_text"]
+                      for tok in [_interface_token(c)] if tok}
+        if not b_consumes:
+            continue
+        for a in ids:
+            if a == b:
+                continue
+            if (a, b) in seen:
+                continue
+            if not (b_consumes & produced_tokens.get(a, set())):
+                continue
+            if would_cycle(a, b):
+                continue
+            add(a, b, "interface")
+
+    # Tier 3: proof-run -- fully after tier 2 completes.
+    files_of = {t["id"]: set(t["files"]) for t in impl}
+    for b in ids:
+        b_files = files_of[b]
+        for cmd in by_id[b]["proof_runs"]:
+            tokens = set(_run_tokens(cmd))
+            if not tokens:
+                continue
+            for a in ids:
+                if a == b:
+                    continue
+                if (a, b) in seen:
+                    continue
+                a_only = files_of[a] - b_files
+                if not (tokens & a_only):
+                    continue
+                if would_cycle(a, b):
+                    continue
+                add(a, b, "proof-run")
+
+    return edges
+
+
+# --------------------------------------------------------------------------- #
+# M5: Kahn layering and cycle detection.
+# --------------------------------------------------------------------------- #
+
+def _find_a_cycle(ids, edges):
+    graph = {i: [] for i in ids}
+    idset = set(ids)
+    for e in edges:
+        if e["from"] in idset and e["to"] in idset:
+            graph[e["from"]].append(e["to"])
+
+    color = {}
+    path = []
+
+    def dfs(u):
+        color[u] = 1
+        path.append(u)
+        for v in graph[u]:
+            c = color.get(v, 0)
+            if c == 0:
+                res = dfs(v)
+                if res is not None:
+                    return res
+            elif c == 1:
+                idx = path.index(v)
+                return path[idx:]
+        color[u] = 2
+        path.pop()
+        return None
+
+    for i in ids:
+        if color.get(i, 0) == 0:
+            res = dfs(i)
+            if res is not None:
+                return res
+    return None
+
+
+def _kahn_layers(ids, edges):
+    indegree = {i: 0 for i in ids}
+    children = {i: [] for i in ids}
+    for e in edges:
+        if e["from"] in indegree and e["to"] in indegree:
+            indegree[e["to"]] += 1
+            children[e["from"]].append(e["to"])
+
+    remaining = set(ids)
+    waves = []
+    while remaining:
+        wave = [i for i in ids if i in remaining and indegree[i] == 0]
+        if not wave:
+            cyc = _find_a_cycle(ids, edges) or sorted(remaining)
+            raise Refusal(
+                "plan_parse: dependency cycle among tasks: " + ", ".join(cyc)
+            )
+        waves.append(wave)
+        for i in wave:
+            remaining.discard(i)
+            for c in children[i]:
+                if c in remaining:
+                    indegree[c] -= 1
+    return waves
+
+
+# --------------------------------------------------------------------------- #
+# Top-level parse.
+# --------------------------------------------------------------------------- #
+
+def parse_plan_text(text):
+    header_lines, task_bodies = _split_plan(text)
+    exam_command = _parse_header(header_lines)
+
+    all_tasks = []
+    for tid, title, order, body_lines in task_bodies:
+        parsed = _parse_task_body(body_lines)
+        files = sorted(set(parsed["creates"]) | set(parsed["modifies"])
+                       | set(parsed["test_files"]))
+        proof_tests = parsed["proof_tests"]
+        task = {
+            "id": tid,
+            "title": title,
+            "order": order,
+            "type": parsed["type"],
+            "creates": parsed["creates"],
+            "modifies": parsed["modifies"],
+            "consumes_text": parsed["consumes_text"],
+            "produces_text": parsed["produces_text"],
+            "proof_runs": parsed["proof_runs"],
+            "files": files,
+            "depends_on": [],
+            "proofTests": proof_tests,
+            "testCmd": _derive_test_cmd(proof_tests, exam_command),
+            "interfaces": {
+                "consumes": parsed["consumes_text"],
+                "produces": parsed["produces_text"],
+            },
+        }
+        all_tasks.append(task)
+
+    impl = [t for t in all_tasks if _is_implementation(t["type"])]
+    ids = [t["id"] for t in impl]
+
+    edges = _build_edges(impl)
+    waves_ids = _kahn_layers(ids, edges)
+
+    def public_view(t):
+        return {
+            "id": t["id"],
+            "title": t["title"],
+            "files": t["files"],
+            "depends_on": t["depends_on"],
+            "proofTests": t["proofTests"],
+            "testCmd": t["testCmd"],
+            "interfaces": t["interfaces"],
+        }
+
+    by_id = {t["id"]: t for t in impl}
+    tasks_out = [public_view(t) for t in impl]
+    dag_edges = [{"from": e["from"], "to": e["to"], "why": e["why"]} for e in edges]
+    launch_waves = [[public_view(by_id[i]) for i in wave] for wave in waves_ids]
+
+    return {
+        "tasks": tasks_out,
+        "dag_edges": dag_edges,
+        "launch_waves": launch_waves,
+    }
+
+
+def main(argv):
+    if len(argv) != 2:
+        sys.stderr.write("plan_parse: usage: plan_parse.py <plan.md>\n")
+        return 2
+    plan_path = argv[1]
+    try:
+        with open(plan_path, "r", encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError as exc:
+        sys.stderr.write("plan_parse: cannot read plan: %s\n" % (exc,))
+        return 2
+
+    try:
+        result = parse_plan_text(text)
+    except Refusal as exc:
+        sys.stderr.write(str(exc) + "\n")
+        return 2
+
+    print(json.dumps(result))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
