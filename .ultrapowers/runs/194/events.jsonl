@@ -525,3 +525,8 @@
 {"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Read","target":"/home/exedev/run/impl-5-0/fleet/tests/test_factory_reverify.mjs"}
 {"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"sed -n 200,225p skills/ultrapowers/kernel/hunks.py; echo ===SEG; sed -n 35,95p skills/ultrapowers/kernel/hunks.py"}
 {"kind":"worker:tool","task":"6","label":"referee:6","tool":"Read","target":"/home/exedev/run/impl-6-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"grep -rn \"union\" factory/*.mjs | grep -v \"^factory/union.mjs\" | grep -v \"^factory/engine.mjs\" | head; echo ===; grep -rln \"union\" fleet/*.mjs | head"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"grep -n \"union\" fleet/run-waves.mjs fleet/publish-fold.mjs fleet/run-engine.mjs | head -30"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"node -e \"\nimport('/home/exedev/run/impl-6-0/factory/union.mjs').then(({unionReply})=>{\nconst t=['HUNK h1 lines 1-3','--- context (read-only)','  ctx','--- conflict','<<<<<<< begin added frontier','HUN"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"node -e \"\nimport('/home/exedev/run/impl-6-0/factory/union.mjs').then(({unionReply})=>{\nconst contract=['HUNK h1 lines 1-3','Commutes: additive registration','--- context (read-only)','  ctx','--- conf"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/fleet/tests/_helpers.mjs"}
