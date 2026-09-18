@@ -224,3 +224,9 @@
 {"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"cd /home/exedev/run/exam-4 && node -e \"\nimport('./factory/tools.mjs').then(m => {\n  console.log('ok', typeof m.factoryTools)\n  const cfg = m.factoryTools({ candidates: [] })\n  console.log(Object.keys("}
 {"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"node -e \"\nimport('./factory/tools.mjs').then(async m => {\n  const cfg = m.factoryTools({ candidates: [] })\n  console.log(Object.keys(cfg.handlers))\n  const r = await cfg.handlers.hand({ reason: 'x' })"}
 {"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"DEFAULT_IDENTITY\" /home/exedev/run/exam-4/fleet/run-waves.mjs | head -5"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"export function literalsOf\\|export function hunksCarrying\" -A 15 /home/exedev/run/exam-4/factory/hunks.mjs | head -60"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"sed -n '1,60p' /home/exedev/run/exam-5/fleet/tests/test_facts_block.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"sed -n '60,140p' /home/exedev/run/exam-5/fleet/tests/test_facts_block.mjs; echo ...; tail -40 /home/exedev/run/exam-5/fleet/tests/test_facts_block.mjs"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"for c in mktemp sed awk grep mkdir date id printf head tail cp rm tr wc install tar sha256sum; do printf '%s: %s\\n' \"$c\" \"$(command -v $c)\"; done"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"command -v sh; command -v python3 git bash sh"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -n \"export function cloneAtBase\\|export const cloneAtBase\" -A 25 /home/exedev/run/exam-5/fleet/run-waves.mjs | head -40"}
