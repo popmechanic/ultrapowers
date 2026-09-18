@@ -9,3 +9,5 @@
 {"event": "emitted", "wave": 1, "path": "fleet/tests/exams/run_185/test_factory_roles.mjs", "stateBlob": "a4c4d6a30a77480198ad34935f7947df5c05eb22ad3a33b640c131563aa33528", "visibleSha": "f9c385b1e516558e18e2b3b903e392fd665dfe00"}
 {"event": "emitted", "wave": 1, "path": "fleet/tests/exams/run_185/test_factory_tools.mjs", "stateBlob": "724e4c91153b8868584e0c48089d6d52b750b7c6aa84fa2706b7e9447ccf2508", "visibleSha": "a60bd636160bf600a3888349699d11be916aa688"}
 {"event": "emitted", "wave": 1, "path": "fleet/tests/exams/run_185/test_factory_worker.mjs", "stateBlob": "b88495bc740ed390037b44c26d156e5e1d5fe97f2f5eb1a0b3491452f0ce04df", "visibleSha": "f3789390f58cbe1182e78a677ec412c72e31d966"}
+{"event": "emitted", "wave": 2, "path": "factory/engine.mjs", "stateBlob": "0a58728847589f8a93e4dd971032e7fd9d7b788f1712969d5aeaaa8818acf4d6", "visibleSha": "8865cb5a482ec66e0ddc56ad511b0a3d72b3467d"}
+{"event": "emitted", "wave": 2, "path": "fleet/tests/exams/run_185/test_factory_engine.mjs", "stateBlob": "4f093ebdc5b547a1151061943b24b692bc5476e8696d45c38ee80e70293e32ff", "visibleSha": "f892bf00d2034124e5408bc153d963b245490407"}

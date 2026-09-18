@@ -1,49 +1,13 @@
 {
-  "wave": 1,
+  "wave": 2,
   "entries": {
-    "factory/judge.mjs": {
-      "stateBlob": "fd754b723e3a2e0d8520eb4729237db5f03067f0a2a348f97777cbf7bf15a7c0",
-      "visibleSha": "e7ac0dee0282adb7bf6f669b3b87f462e623159d"
+    "factory/engine.mjs": {
+      "stateBlob": "0a58728847589f8a93e4dd971032e7fd9d7b788f1712969d5aeaaa8818acf4d6",
+      "visibleSha": "8865cb5a482ec66e0ddc56ad511b0a3d72b3467d"
     },
-    "factory/roles/exam.md": {
-      "stateBlob": "a352af22b99477c4e1ef06395d21e8ee598931692881ef56d849e2c54552e453",
-      "visibleSha": "03737f67181801a5dd481fc6f1cfe72db70e075a"
-    },
-    "factory/roles/implement.md": {
-      "stateBlob": "e59347a255edd544f60a761d9ab178e95b773116d60a2ecee1e5a3ee114f1c61",
-      "visibleSha": "2e6dac76c6e9e394fbdb1062eb4e8fe16f81430b"
-    },
-    "factory/roles/resolve.md": {
-      "stateBlob": "25754def1a32279f04fe14e31ec96302ef2e7e7aaf28015f352938d31e810772",
-      "visibleSha": "64993537697ff7ab1121c12ac31a6f63ca4c1118"
-    },
-    "factory/tools.mjs": {
-      "stateBlob": "735f24efb65977b7906fbecbe0ce66ec5c28381f1828029fc62e05341cd39529",
-      "visibleSha": "a68404d1ce806d1e1ff797b8095e179246e65875"
-    },
-    "factory/worker.mjs": {
-      "stateBlob": "d87fa5825f584b5e59c8a08219a5d70470071007101df71bb04c7320b3811aac",
-      "visibleSha": "c28b137f2ef411fc59a66835d2b0bf2f13710bc6"
-    },
-    "fleet/package.json": {
-      "stateBlob": "36456af54a9769d5460b08ed0b2460e7277baa85b36f624ba2a23fbce5577c15",
-      "visibleSha": "56ee3118a5f205d7881b19efa1ab0dedfd3079f0"
-    },
-    "fleet/tests/exams/run_185/test_factory_judge.mjs": {
-      "stateBlob": "9ca63cf28dc350ef8c2032b77484d31a8421fb2839f12089bb3381f964b75584",
-      "visibleSha": "7d68da7a152291e53de1d14859f983a426a63c94"
-    },
-    "fleet/tests/exams/run_185/test_factory_roles.mjs": {
-      "stateBlob": "a4c4d6a30a77480198ad34935f7947df5c05eb22ad3a33b640c131563aa33528",
-      "visibleSha": "f9c385b1e516558e18e2b3b903e392fd665dfe00"
-    },
-    "fleet/tests/exams/run_185/test_factory_tools.mjs": {
-      "stateBlob": "724e4c91153b8868584e0c48089d6d52b750b7c6aa84fa2706b7e9447ccf2508",
-      "visibleSha": "a60bd636160bf600a3888349699d11be916aa688"
-    },
-    "fleet/tests/exams/run_185/test_factory_worker.mjs": {
-      "stateBlob": "b88495bc740ed390037b44c26d156e5e1d5fe97f2f5eb1a0b3491452f0ce04df",
-      "visibleSha": "f3789390f58cbe1182e78a677ec412c72e31d966"
+    "fleet/tests/exams/run_185/test_factory_engine.mjs": {
+      "stateBlob": "4f093ebdc5b547a1151061943b24b692bc5476e8696d45c38ee80e70293e32ff",
+      "visibleSha": "f892bf00d2034124e5408bc153d963b245490407"
     }
   }
 }

@@ -1,0 +1,383 @@
+{
+  "integrationBranch": "ultra/integration-run-185",
+  "baseSha": "76fdc03575e0d561594239917f339a433204637d",
+  "setupSha": null,
+  "waves": [
+    [
+      "1",
+      "2",
+      "3",
+      "4"
+    ],
+    [
+      "5"
+    ]
+  ],
+  "dependencyEdges": [
+    "1 -> 5 (interface)",
+    "2 -> 5 (interface)",
+    "3 -> 5 (interface)"
+  ],
+  "tasks": [
+    {
+      "task": "4",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "92903c3a16ffa06c3587b82015914c8b6f80f137",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-185/patches/task-4.patch",
+      "reviewVerdict": "clean",
+      "notes": "`factory/roles/resolve.md` drops an instruction its seed carried. `fleet/roles/resolver.md:2-3` tells the resolver \"your entire reply is the JSON object \u2014 you write no files and run no git\"; the new brief keeps the reply-only half (\"your whole reply is the JSON object, and the engine writes it into the kernel's reply directory verbatim\") but drops both the no-files and the no-git half. M4 and Proof leg (d) only cover `implement.md` and `exam.md`, so this blocks nothing and the global constraint is enforced structurally by the engine's `disallowedTools`, but the other two briefs both carry the sentence and the resolver is the one role whose stray write would land in the kernel's reply directory. Word budget has 52 words of slack (848 of 900), so the sentence fits with room to spare.; unverified: nothing in this patch loads the three briefs. The Interfaces slot is `Consumes: none` / `Produces: nothing`, so the wiring is deliberately out of scope here, but that means this diff cannot settle that `factory/engine.mjs` (sibling task 5, popmechanic-ultrapowers#c77b) dispatches workers with these exact three paths, nor that the prompt sections `implement.md` enumerates (`TASK:`, `FILES:`, `TEST COMMAND:`, `INTERFACES:`, `AMENDMENTS:`, and the `HAND-OFF:` block) match the order the engine actually assembles. What would settle it: an integration reading of `factory/engine.mjs` after task 5 lands, checking that its system-prompt loader resolves `factory/roles/{implement,exam,resolve}.md` and that its prompt assembler emits those five headers verbatim in that order.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "examRounds": 1,
+      "landedAt": 1789691410495,
+      "stateExams": [],
+      "findings": []
+    },
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "f88ce2c64a03e3943862f46be46ec4604428bbfd",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-185/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "`runWorker` is declared non-async and returns `startWorker(opts, deps).promise`, so the `no query()` throw at factory/worker.mjs:115-117 (and any synchronous throw from `run(...)`) escapes as a synchronous exception rather than a rejected promise. The Produces contract is `runWorker(opts, deps) -> Promise<{ result, denials, turns, wall_ms }>`; a caller writing `runWorker(...).catch(...)` \u2014 the engine in Task 5 is the likely one \u2014 gets an uncaught throw instead of a rejection. The exam never exercises this path (every leg passes a working `deps.query`), so it is advisory, not blocking. Marking `runWorker` `async` normalizes the throw into a rejection and costs no lines against the 200-line budget.; unverified: the default `deps.query` may never resolve in the layout this task builds. `factory/worker.mjs:36` does `await import('@anthropic-ai/claude-agent-sdk')`, but the dependency is declared in `fleet/package.json` \u2014 and Node resolves a bare specifier by walking up from the *importing module's* directory (`factory/node_modules`, then the repo root, then upward), never into `fleet/node_modules`. So an `npm install` in `fleet/` would leave the caught import falling through to `sdkQuery = null`, and every real dispatch that does not pass `deps.query` would throw the named error. This diff cannot settle it: `fleet/.gitignore` ignores both `node_modules/` and `package-lock.json`, so the install state is invisible in the patch, and `factory/proto/loop.mjs:17` already imports the same specifier from the same directory and was measured on nine runs \u2014 evidence the runtime resolves it some other way (a global or hoisted install). What would settle it: running `npm install` in `fleet/` and then `node --input-type=module -e \"import('@anthropic-ai/claude-agent-sdk')\"` with `factory/` as the importing location, or declaring the dependency in a repo-root `package.json` instead. The fix lies outside this task's FILES either way, which is why the actor is `plan`.; The confinement fence opens when `files` is omitted: `makeConfineHook` at factory/worker.mjs:51 sets `allowed = null` unless `files` is an array, and line 58 then computes `unlisted` as `false`, so a dispatch called without `files` permits every `Edit`/`Write`/`MultiEdit`/`NotebookEdit` anywhere inside `cwd`. M3 reads \"not in `files`\", which on an absent list denies everything rather than allowing everything. This is faithful to the prototype the Context names as the shape (`factory/proto/loop.mjs`'s `files && !files.includes(rel)`), and M1's signature always carries `files`, so it is advisory \u2014 but it is a fence whose failure mode on a missing argument is to open rather than close. Consider `const allowed = new Set((files ?? []).map(...))` so an omitted `files` denies every edit.; concern: out-of-FILES (not taken): fleet/package-lock.json \u2014 the task text says the lockfile is the worker's to regenerate with `npm install` in `fleet/`, and I did not. No lockfile exists at BASE (nothing to regenerate), the path is not in FILES, fleet/sandbox-boot.sh:902 already falls back to `npm install` when fleet/node_modules is missing and no lockfile exists, and fleet/run-waves.mjs drops lockfile basenames at capture and regenerates them at fold. Decisive: node_modules/ is not in .gitignore, so running npm install in this clone would sweep the installed tree into the captured patch. What is owed, if the run wants a committed lockfile, is one `npm install` in `fleet/` on a tree where node_modules is ignored or cleaned afterwards.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "examRounds": 1,
+      "landedAt": 1789691447114,
+      "stateExams": [],
+      "findings": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "3499bf985df2a59bef7609c5a1f3dd8c95e2a60f",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-185/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "examRounds": 1,
+      "landedAt": 1789691502328,
+      "stateExams": [],
+      "findings": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "649ea73a1e835bdd1cc61b09ac5870e8acf0618a",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-185/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the green exam rests on an untracked `fleet/node_modules` that the fourth AMENDMENTS entry says was hand-staged into this clone (a copy of a 0.3.275 install from /tmp/sdkprobe). The declaration is lawful \u2014 the path is gitignored build output, it appears in no diff, both freeze Checks are exit 0, and `fleet/package.json` (sibling-owned, Task 1's) was correctly left untouched \u2014 and it is named here rather than raised against the diff. What it leaves unsettled is whether `factory/tools.mjs`'s top-level `await load('@anthropic-ai/claude-agent-sdk', \u2026)` and `await load('zod', \u2026)` resolve in a clone where the install came from `fleet/sandbox-boot.sh` running `npm install` against Task 1's `fleet/package.json` rather than from a directory copy: the second attempt (`createRequire(new URL('../fleet/package.json'\u2026)).resolve(spec)`, factory/tools.mjs:54,59) is the one the module's own comment says answers in practice, and it reads the dependency's `exports`/`main`, so a real npm layout should resolve identically \u2014 but this patch cannot show it. What would settle it: the engine task (sibling 5, factory/engine.mjs) importing factory/tools.mjs in a clone booted by fleet/sandbox-boot.sh, with no hand-copied node_modules present.; concern: out-of-FILES (not taken): fleet/package.json \u2014 the module needs `@anthropic-ai/claude-agent-sdk` (and its transitive `zod`) present in fleet/node_modules, and the dependency entry is sibling Task 1's file. Until Task 1 folds in and the install runs (fleet/sandbox-boot.sh does it), any exam importing factory/tools.mjs fails at module evaluation rather than at an assertion. I verified against a scratch install of the real SDK instead of touching the sibling's manifest.; concern: A bare `import '@anthropic-ai/claude-agent-sdk'` from factory/ does not resolve: node walks factory/ up to the repository root, which has no node_modules, while the install lives at fleet/node_modules. The module therefore tries the bare specifier, then ../fleet/node_modules/... by path (the route the task's Context names), then createRequire rooted at fleet/package.json, all under a top-level await so factoryTools stays a synchronous call. An exam that stubs the SDK rather than using the installed one is unaffected.; concern: The exam's green depends on `fleet/node_modules` being present, and that is untracked build output rather than anything my diff carries. In a fold tree `factory/tools.mjs` still cannot load until sibling Task 1 (#2efq) puts `@anthropic-ai/claude-agent-sdk` in `fleet/package.json` AND an install has run (`fleet/sandbox-boot.sh:896`). This is a sequencing fact, not a defect in this task \u2014 but if a later fold fails at this import, that is the cause. The module's throw now says so in its own words rather than reporting a bare `ERR_MODULE_NOT_FOUND`.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": [],
+      "examRounds": 1,
+      "landedAt": 1789691739045,
+      "stateExams": [],
+      "findings": []
+    },
+    {
+      "task": "5",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "e89924484df753eb962292cd64cdc179e79a95c1",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-185/patches/task-5.patch",
+      "reviewVerdict": "clean",
+      "notes": "Readiness gates on `done`, not on adoption. In `runEngine`'s loop the id is added to `done` before `foldIn` runs, and a fold that parks only adds to `parked` \u2014 so `ready = tasks.filter(... waitsOn(t).every((d) => done.has(d)))` treats a PARKED dependency as satisfied. M1 says a task is dispatched \"once every task it `depends_on` is adopted\". Consequence on the fixture: if task 1's fold parked, task 2 (which consumes `make_widget` from it via `dag_edges`) would still be cloned and implemented against a head that never received task 1. The engine already has the right behaviour for this case \u2014 the `!ready.length` branch parks the remainder with a reason \u2014 it is simply unreachable while `done` doubles as the adoption set. No Proof leg exercises parking, so this is advisory, not a block.; The `factoryTools` consumption is structurally correct but functionally inert on the `--kata-url` path. `land` calls `tools({ task: { id, uid: task.uid, files }, candidates: [] })`: `compile_plan.py` emits no `uid` anywhere in `launch_waves` (grep for `uid` in the compiler returns nothing), so `task.uid` is always `undefined` and `factory/tools.mjs`'s `note`/`hand` would call `kata.comment(projectId, undefined, \u2026)` / `kata.patchMetadata(projectId, undefined, \u2026)`; and `candidates` is hard-coded `[]`, which `factory/tools.mjs:116` turns into a name list that rejects every `settled` symbol with \"(none \u2014 the patch added no export)\". M4 only requires that `factory/tools.mjs` be reached when `--kata-url` is given, and leg (d) reads only `typeof tools`, so nothing here is red \u2014 but the kata seam cannot actually work as wired. Either compute the candidate symbol names off the captured patch before constructing the server, or drop the two keys and say in a comment that the kata tools are unreachable until a uid source exists.; unverified: leg (a)'s dependency assertions are vacuous on this fixture, so the wave-barrier behaviour AMENDMENTS entry 1 adds is asserted by no exam line. The exam derives `SECOND_WAVE` from the compiled `launch_waves` entry's `depends_on`, which `compile_plan.py` leaves `[]` for task 2 (the 1\u21922 relation rides `dag_edges`, from task 2's `Consumes: make_widget`), so both the \"`landing` row comes after every `depends_on`\" loop and the `markersSeen[dep]` check \u2014 the one that would prove a second-wave clone is cut at the CURRENT head \u2014 never execute. The exam's own header records this honestly, and the driver's real `Run:` does show task 2 landing after tasks 1 and 3, which is the only evidence for it. Asserting over the compiled `dag_edges` predecessors (or over the wave index) instead of `depends_on` would make the barrier bite in the sim.; `readOnly: true` is passed to the referee and resolver dispatches but is inert: `factory/worker.mjs`'s `workerOptions` destructures only `{ cwd, systemPrompt, model, files, schema, mcpServers, maxTurns, maxBudgetUsd }` and never reads it. The referee genuinely cannot write \u2014 but only because the engine also passes `files: []`, which makes `makeConfineHook`'s `allowed` an empty set and denies every `Edit`/`Write` while leaving `Read` open. M3 and leg (c) ask for the flag, so passing it is right; the risk is a later reader trusting the flag for the guarantee. One comment at the referee dispatch saying that `files: []` is what enforces read-only would close it.; concern: env: the live run dies at the first dispatch with `Not logged in \u00b7 Please run /login` unless one of ANTHROPIC_AUTH_TOKEN / CLAUDE_CODE_OAUTH_TOKEN is present \u2014 a fresh CLAUDE_CONFIG_DIR (which the Context requires, and which the proof command itself sets) carries no credential. The engine now sets ANTHROPIC_AUTH_TOKEN='edge' only when ANTHROPIC_BASE_URL names an edge and neither variable is already set; the edge holds the real bearer and never reads the value (CONTRACT.md `env-only-auth`, measured 2026-09-17). Without this line the proof is red in this sandbox.; concern: capture is `git add -A`, so a pytest run inside a clone put __pycache__ and *.pyc into the adopted tree on the first live run. Clones now get __pycache__/, *.pyc and .pytest_cache/ appended to their own .git/info/exclude before the test command runs \u2014 the clone's private exclude, never the project's .gitignore.; concern: factory/worker.mjs imports @anthropic-ai/claude-agent-sdk by bare specifier, which cannot resolve fleet/node_modules from factory/. Rather than edit a peer's file I added an exported sdkQuery() to the engine that resolves it three ways and hands it in as deps.query. If worker.mjs later resolves the SDK itself, that resolver is dead weight.; concern: fleet/node_modules was absent and had to be installed (npm install --prefix fleet) for any live run. fleet/.gitignore already ignores it, so the tree stays clean, but a driver on a fresh box needs that install before the end-to-end proof.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "examRounds": 1,
+      "landedAt": 1789693413630,
+      "stateExams": [],
+      "findings": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": false,
+    "output": "ok (0 ms) \u2014 a parent without FLEET_TEST_SLACK gives a child without it  [M1 / leg (a)]\nE             ok (0 ms) \u2014 HOME, TMPDIR and FLEET_HOME sit under one fresh directory in os.tmpdir()  [M1 / leg (a)]\nE             ok (1 ms) \u2014 PATH is bin, then only the directories holding the five interpreters  [M1 / leg (a)]\nE             ok (0 ms) \u2014 a caller's env wins for a key of any name  [M1 / leg (a)]\nE             ok (0 ms) \u2014 home, when given, is where the three keys point  [M1 / leg (a)]\nE             FAIL \u2014 the sweep names zero inheriting spawns in fleet/tests/  [M2 / leg (b)]\nE             AssertionError [ERR_ASSERTION]: (b) [M2] every spawn in fleet/tests/test_*.mjs and fleet/tests/_*.mjs takes an env derived from simEnv \u2014 3 do not:\nE               exams/run_185/test_factory_engine.mjs:191 (env not derived from simEnv) execFileSync('python3', [COMPILER_PATH, PLAN_PATH], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, PYTHONPATH: '.' }, })\nE               exams/run_185/test_factory_engine.mjs:261 (no env:) execFileSync('git', argv, { cwd: dir, encoding: 'utf8' })\nE               exams/run_185/test_factory_engine.mjs:276 (no env:) execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' })\nE             + actual - expected\nE             \nE             + [\nE             +   \"exams/run_185/test_factory_engine.mjs:191 (env not derived from simEnv) execFileSync('python3', [COMPILER_PATH, PLAN_PATH], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, PYTHONPATH: '.' }, })\",\nE             +   \"exams/run_185/test_factory_engine.mjs:261 (no env:) execFileSync('git', argv, { cwd: dir, encoding: 'utf8' })\",\nE             +   \"exams/run_185/test_factory_engine.mjs:276 (no env:) execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' })\"\nE             + ]\nE             - []\nE             \nE                 at file:///home/exedev/target/.claude/ultrapowers/run-run-185/clones/integration/fleet/tests/test_sims_are_hermetic.mjs:783:10\nE                 at file:///home/exedev/target/.claude/ultrapowers/run-run-185/clones/integration/fleet/tests/test_sims_are_hermetic.mjs:1060:5\nE             ok (1 ms) \u2014 the same sweep names one offender for each inheriting shape  [M2 / leg (b)]\nE             ok (0 ms) \u2014 the same sweep names none for each simEnv-derived shape  [M2 / leg (b)]\nE             ok (0 ms) \u2014 a sibling helper's bootEnv is accepted by its body, across the import  [M2 / leg (b)]\nE             ok (0 ms) \u2014 the sweep names zero literal absolute reads in fleet/tests/  [M3 / leg (c)]\nE             ok (1 ms) \u2014 the same sweep names the box's render.env and leaves a temp path alone  [M3 / leg (c)]\nE             ok (0 ms) \u2014 the sweep names zero sibling-sim spawns in fleet/tests/  [M4 / leg (d)]\nE             ok (0 ms) \u2014 the same sweep names each shape of a sim running another  [M4 / leg (d)]\nE             ok (20 ms) \u2014 no sim of the tree carries a sibling list at all  [M4 / leg (e)]\nE             ok (1 ms) \u2014 the probe imports nothing from child_process  [M7 / leg (f)]\nE             ok (0 ms) \u2014 the fixture is swept to exactly three offenders, one per rule  [M7 / leg (g)]\nE             ok (1 ms) \u2014 the sweep reaches exams/<slug>/test_*.mjs and holds an exam to the same rules  [#890 / leg (j)]\nE             ok (0 ms) \u2014 tests/test_fleet_suite.py binds env=sim_env() on the node it runs  [M6 / leg (h)]\nE             1 FAILED\nE             \nE           assert 1 == 0\nE            +  where 1 = CompletedProcess(args=['node', '/home/exedev/target/.claude/ultrapowers/run-run-185/clones/integration/tests/../fleet/...nok (0 ms) \u2014 tests/test_fleet_suite.py binds env=sim_env() on the node it runs  [M6 / leg (h)]\\n1 FAILED\\n', stderr='').returncode\n\ntests/test_fleet_suite.py:166: AssertionError\n=========================== short test summary info ============================\nFAILED tests/test_fleet_suite.py::test_fleet_mjs[test_sims_are_hermetic.mjs]\n================== 1 failed, 464 passed in 103.08s (0:01:43) ===================\n",
+    "unattributed": [
+      "fleet/tests/test_sims_are_hermetic.mjs"
+    ]
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- ':(glob)fleet/*.mjs' ':(glob)fleet/*.sh' ':(glob)fleet/*.service' ':(glob)fleet/*.md' fleet/roles fleet/tests/_engine_helpers.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- factory/questions.json factory/policy.json factory/proto factory/replay skills/ultrapowers/kernel",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- ':(glob)fleet/*.mjs' ':(glob)fleet/*.sh' ':(glob)fleet/*.service' ':(glob)fleet/*.md' fleet/roles fleet/tests/_engine_helpers.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- factory/questions.json factory/policy.json factory/proto factory/replay skills/ultrapowers/kernel",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 606475,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-185/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [460 items]\n\n........................................................................ [ 15%]\n........................................................................ [ 31%]\n........................................................................ [ 46%]\n........................................................................ [ 62%]\n........................................................................ [ 78%]\n........................................................................ [ 93%]\n............................                                             [100%]\n======================= 460 passed in 126.82s (0:02:06) ========================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "b8c3cd9fbc87593161b632c8fa3dfc2fa0c38462",
+      "branches": [
+        "4",
+        "1",
+        "2",
+        "3"
+      ],
+      "joined": []
+    },
+    {
+      "wave": 2,
+      "status": "MERGED",
+      "headSha": "185f0c65314c33ec6013fb7fd6854589589da403",
+      "branches": [
+        "5"
+      ],
+      "joined": [],
+      "suite": {
+        "passed": false,
+        "unattributed": [
+          "fleet/tests/test_sims_are_hermetic.mjs"
+        ],
+        "output": "ok (0 ms) \u2014 a parent without FLEET_TEST_SLACK gives a child without it  [M1 / leg (a)]\nE             ok (0 ms) \u2014 HOME, TMPDIR and FLEET_HOME sit under one fresh directory in os.tmpdir()  [M1 / leg (a)]\nE             ok (1 ms) \u2014 PATH is bin, then only the directories holding the five interpreters  [M1 / leg (a)]\nE             ok (0 ms) \u2014 a caller's env wins for a key of any name  [M1 / leg (a)]\nE             ok (0 ms) \u2014 home, when given, is where the three keys point  [M1 / leg (a)]\nE             FAIL \u2014 the sweep names zero inheriting spawns in fleet/tests/  [M2 / leg (b)]\nE             AssertionError [ERR_ASSERTION]: (b) [M2] every spawn in fleet/tests/test_*.mjs and fleet/tests/_*.mjs takes an env derived from simEnv \u2014 3 do not:\nE               exams/run_185/test_factory_engine.mjs:191 (env not derived from simEnv) execFileSync('python3', [COMPILER_PATH, PLAN_PATH], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, PYTHONPATH: '.' }, })\nE               exams/run_185/test_factory_engine.mjs:261 (no env:) execFileSync('git', argv, { cwd: dir, encoding: 'utf8' })\nE               exams/run_185/test_factory_engine.mjs:276 (no env:) execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' })\nE             + actual - expected\nE             \nE             + [\nE             +   \"exams/run_185/test_factory_engine.mjs:191 (env not derived from simEnv) execFileSync('python3', [COMPILER_PATH, PLAN_PATH], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, PYTHONPATH: '.' }, })\",\nE             +   \"exams/run_185/test_factory_engine.mjs:261 (no env:) execFileSync('git', argv, { cwd: dir, encoding: 'utf8' })\",\nE             +   \"exams/run_185/test_factory_engine.mjs:276 (no env:) execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' })\"\nE             + ]\nE             - []\nE             \nE                 at file:///home/exedev/target/.claude/ultrapowers/run-run-185/clones/integration/fleet/tests/test_sims_are_hermetic.mjs:783:10\nE                 at file:///home/exedev/target/.claude/ultrapowers/run-run-185/clones/integration/fleet/tests/test_sims_are_hermetic.mjs:1060:5\nE             ok (1 ms) \u2014 the same sweep names one offender for each inheriting shape  [M2 / leg (b)]\nE             ok (0 ms) \u2014 the same sweep names none for each simEnv-derived shape  [M2 / leg (b)]\nE             ok (0 ms) \u2014 a sibling helper's bootEnv is accepted by its body, across the import  [M2 / leg (b)]\nE             ok (0 ms) \u2014 the sweep names zero literal absolute reads in fleet/tests/  [M3 / leg (c)]\nE             ok (1 ms) \u2014 the same sweep names the box's render.env and leaves a temp path alone  [M3 / leg (c)]\nE             ok (0 ms) \u2014 the sweep names zero sibling-sim spawns in fleet/tests/  [M4 / leg (d)]\nE             ok (0 ms) \u2014 the same sweep names each shape of a sim running another  [M4 / leg (d)]\nE             ok (20 ms) \u2014 no sim of the tree carries a sibling list at all  [M4 / leg (e)]\nE             ok (1 ms) \u2014 the probe imports nothing from child_process  [M7 / leg (f)]\nE             ok (0 ms) \u2014 the fixture is swept to exactly three offenders, one per rule  [M7 / leg (g)]\nE             ok (1 ms) \u2014 the sweep reaches exams/<slug>/test_*.mjs and holds an exam to the same rules  [#890 / leg (j)]\nE             ok (0 ms) \u2014 tests/test_fleet_suite.py binds env=sim_env() on the node it runs  [M6 / leg (h)]\nE             1 FAILED\nE             \nE           assert 1 == 0\nE            +  where 1 = CompletedProcess(args=['node', '/home/exedev/target/.claude/ultrapowers/run-run-185/clones/integration/tests/../fleet/...nok (0 ms) \u2014 tests/test_fleet_suite.py binds env=sim_env() on the node it runs  [M6 / leg (h)]\\n1 FAILED\\n', stderr='').returncode\n\ntests/test_fleet_suite.py:166: AssertionError\n=========================== short test summary info ============================\nFAILED tests/test_fleet_suite.py::test_fleet_mjs[test_sims_are_hermetic.mjs]\n================== 1 failed, 464 passed in 103.08s (0:01:43) ===================\n"
+      }
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-185/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-185/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.96,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    },
+    {
+      "wave": 2,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-185/frontier/wave-2/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-185/frontier/wave-2/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.387,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 5,
+    "tasks_planned": 5,
+    "complete": true
+  },
+  "engineCoverage": null,
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: out-of-FILES (not taken): fleet/package-lock.json \u2014 the task text says the lockfile is the worker's to regenerate with `npm install` in `fleet/`, and I did not. No lockfile exists at BASE (nothing to regenerate), the path is not in FILES, fleet/sandbox-boot.sh:902 already falls back to `npm install` when fleet/node_modules is missing and no lockfile exists, and fleet/run-waves.mjs drops lockfile basenames at capture and regenerates them at fold. Decisive: node_modules/ is not in .gitignore, so running npm install in this clone would sweep the installed tree into the captured patch. What is owed, if the run wants a committed lockfile, is one `npm install` in `fleet/` on a tree where node_modules is ignored or cleaned afterwards.",
+    "task 1: amendment (clause): Context's \"`deps` is the second argument and defaults to `{ query }` from the SDK\" \u2014 implemented as `deps = {}` with `deps.query ?? sdkQuery`, where `sdkQuery` comes from a try/caught top-level `await import('@anthropic-ai/claude-agent-sdk')` rather than a static import; a real dispatch with neither throws a named error. \u2014 The SDK is not installed in the clones (no fleet/node_modules, no lockfile at BASE), so a static import would make factory/worker.mjs unimportable and every exam leg red. The caught dynamic import keeps the default true at runtime while letting the exam drive a fake iterator with no install.",
+    "task 3: out-of-FILES (not taken): fleet/package.json \u2014 the module needs `@anthropic-ai/claude-agent-sdk` (and its transitive `zod`) present in fleet/node_modules, and the dependency entry is sibling Task 1's file. Until Task 1 folds in and the install runs (fleet/sandbox-boot.sh does it), any exam importing factory/tools.mjs fails at module evaluation rather than at an assertion. I verified against a scratch install of the real SDK instead of touching the sibling's manifest.",
+    "task 3: A bare `import '@anthropic-ai/claude-agent-sdk'` from factory/ does not resolve: node walks factory/ up to the repository root, which has no node_modules, while the install lives at fleet/node_modules. The module therefore tries the bare specifier, then ../fleet/node_modules/... by path (the route the task's Context names), then createRequire rooted at fleet/package.json, all under a top-level await so factoryTools stays a synchronous call. An exam that stubs the SDK rather than using the installed one is unaffected.",
+    "task 3: amendment (clause): M1 \u2014 the returned config carries two extra properties beyond the SDK's own { type, name, instance }: `tools` (the four tool definitions) and `handlers` (name -> handler). Both are defined NON-ENUMERABLE, so Object.keys(cfg) still reads exactly ['type','name','instance'] and the returned value is still createSdkMcpServer's own object, mutated in place. \u2014 Proof leg (a) offers the exam two routes \u2014 the instance's registered tool list, or \"the config's tool handlers exported for the exam\". The second route needs a handle the peer can reach; making it non-enumerable keeps it from disturbing a strict assertion on the SDK config's shape. The native route (instance._registeredTools, each entry carrying .handler) also works and was verified.",
+    "task 3: amendment (clause): M2 \u2014 \"answers a text content block naming the comment's uid\": the text names `answer.uid`, falling back to `answer.comment.uid`, then `answer.id`, then the whole answer JSON-stringified. \u2014 fleet/kata-client.mjs's `comment` answers the ISSUE projection a mutation leaves behind, so the uid on it is the issue's; a hub or fake returning a comment envelope is equally plausible. The fallback chain means the uid a fake returns is in the text whichever shape it arrives in, and an answer carrying no uid at all is quoted whole rather than reported as an empty string.",
+    "task 3: amendment (clause): M2/M3 \u2014 note, hand and settled catch a rejecting kata call and answer `kata refused: <message>` instead of rejecting. M4's `no fact:` behaviour is as written. \u2014 The clauses specify failure behaviour only for sibling_fact, but an in-process tool that rejects ends the worker's turn \u2014 a transient kata 5xx would cost a whole task. The legs all drive resolving fakes, so this changes nothing they measure.",
+    "task 3: the driver's pre-review pass was red (the Proof's exam failed: node fleet/tests/exams/run_185/test_factory_tools.mjs \u2014 exit 1) \u2014 one repair round before any reviewer read the patch",
+    "task 2: amendment (clause): M1's \"each pair question built from sets.landing.pairwise with <i> and <j> substituted\": I read the single token <i> as taking two values \u2014 the answer key counts clauses from M1 (M1__f0 \u2026 M2__f1), while the substituted question text indexes the clauses array zero-based (clauses[1] for the M2 pair). \u2014 Proof leg (a) pins both at once: the key set is exactly claim_established, M1__f0, M1__f1, M2__f0, M2__f1 (1-based) and M2__f1's question must contain `clauses[1]` (0-based). No single substitution value satisfies both, and the 0-based text is the reading that makes `clauses[<i>]` a correct access into the clauses array the state carries.",
+    "task 2: amendment (clause): M4's \"answers without a key the reader needs\": for readNote, readAmendment and readSupervisor \u2014 which hand the answers object back verbatim per leg (g) and so grade on no key in particular \u2014 \"needs\" is implemented as at least one of that set's question keys being present. \u2014 Leg (f) requires an `{}` answer to be a null, and leg (g) requires a fake's answers object to pass through deep-equal. Requiring every key of the set would make a partial fake a null and risk leg (g); requiring none would make `{}` pass and fail leg (f).",
+    "task 3: The exam's green depends on `fleet/node_modules` being present, and that is untracked build output rather than anything my diff carries. In a fold tree `factory/tools.mjs` still cannot load until sibling Task 1 (#2efq) puts `@anthropic-ai/claude-agent-sdk` in `fleet/package.json` AND an install has run (`fleet/sandbox-boot.sh:896`). This is a sequencing fact, not a defect in this task \u2014 but if a later fold fails at this import, that is the cause. The module's throw now says so in its own words rather than reporting a bare `ERR_MODULE_NOT_FOUND`.",
+    "task 3: amendment (files): Provisioned `fleet/node_modules` in the working tree (a copy of the 0.3.275 install at `/tmp/sdkprobe/node_modules`) and left it there, rather than probing with it and removing it as the previous round did. \u2014 Without it the exam cannot reach a single assertion about a tool, so the round-0 finding measured the environment rather than the deliverable. `fleet/.gitignore` carries `node_modules/`, so this is untracked build output: it appears in no diff, trips neither freeze Check, and is precisely what `fleet/sandbox-boot.sh:896` does on its own. `fleet/package.json` itself is sibling-owned and was NOT touched \u2014 an `npm install --prefix fleet` would have edited it, so the install was staged by copy instead.",
+    "task 3: amendment (clause): Carried forward from round 0, unchanged and restated because it is still live: the returned config carries non-enumerable `tools` and `handlers` beyond the SDK's own `{ type, name, instance }`. \u2014 Proof leg (a) offers two routes to the four tools and this served the second. The exam in the tree takes the first (native) route \u2014 `instance._registeredTools`, each entry carrying `.handler` \u2014 and passes through it, so the extra surface is not what carries the exam; being non-enumerable, `Object.keys(config)` still reads exactly `['type','name','instance']`.",
+    "task 5: env: the live run dies at the first dispatch with `Not logged in \u00b7 Please run /login` unless one of ANTHROPIC_AUTH_TOKEN / CLAUDE_CODE_OAUTH_TOKEN is present \u2014 a fresh CLAUDE_CONFIG_DIR (which the Context requires, and which the proof command itself sets) carries no credential. The engine now sets ANTHROPIC_AUTH_TOKEN='edge' only when ANTHROPIC_BASE_URL names an edge and neither variable is already set; the edge holds the real bearer and never reads the value (CONTRACT.md `env-only-auth`, measured 2026-09-17). Without this line the proof is red in this sandbox.",
+    "task 5: capture is `git add -A`, so a pytest run inside a clone put __pycache__ and *.pyc into the adopted tree on the first live run. Clones now get __pycache__/, *.pyc and .pytest_cache/ appended to their own .git/info/exclude before the test command runs \u2014 the clone's private exclude, never the project's .gitignore.",
+    "task 5: factory/worker.mjs imports @anthropic-ai/claude-agent-sdk by bare specifier, which cannot resolve fleet/node_modules from factory/. Rather than edit a peer's file I added an exported sdkQuery() to the engine that resolves it three ways and hands it in as deps.query. If worker.mjs later resolves the SDK itself, that resolver is dead weight.",
+    "task 5: fleet/node_modules was absent and had to be installed (npm install --prefix fleet) for any live run. fleet/.gitignore already ignores it, so the tree stays clean, but a driver on a fresh box needs that install before the end-to-end proof.",
+    "task 5: amendment (clause): The ready set adds a launch-wave barrier: a task becomes ready only when its depends_on, its dag_edges predecessors, and every task in an earlier launch wave have all been adopted. M1 names only depends_on. \u2014 Every task in evals/fixtures/claims/plan.md carries depends_on: []. Without the barrier task 2 (second launch wave, and the `from: 1` end of the plan's one interface edge) would clone at the same anchor as task 1 and build against a head it never lands on, and the wave structure compile_plan.py computes would carry no weight at all.",
+    "task 5: amendment (clause): The select row's `chosen` is the winning candidate's clone directory path, not an index: {\"kind\":\"select\",\"task\":\"1\",\"scores\":[10.7,11.4],\"chosen\":\"<run-dir>/impl-1-1\"}. \u2014 M2 says the row names the chosen candidate but not how. Candidates are identified by cwd everywhere else in the loop (the judge's readLanding gets `cwd`, the loser's clone is removed by path), so the path is the one identifier that is unambiguous across a re-dispatch.",
+    "task 5: amendment (clause): compile_plan.py runs through the engine's own child_process, not through deps.sh; the judge's readTask receives an extra `id` key and readLanding extra `task` and `cwd` keys. \u2014 A fake `sh` then only has to answer the test command and the kernel, which is what M1's simulation shape describes; and a fake judge needs some way to tell two racing candidates of the same task apart. Neither extra key reaches the model \u2014 makeJudge rebuilds Jev's state from clauses, patch and files alone.",
+    "unattributed red: fleet/tests/test_sims_are_hermetic.mjs went red on wave 2's fold; no task names it"
+  ],
+  "amendments": [
+    {
+      "task": "1",
+      "amends": "clause",
+      "what": "Context's \"`deps` is the second argument and defaults to `{ query }` from the SDK\" \u2014 implemented as `deps = {}` with `deps.query ?? sdkQuery`, where `sdkQuery` comes from a try/caught top-level `await import('@anthropic-ai/claude-agent-sdk')` rather than a static import; a real dispatch with neither throws a named error.",
+      "why": "The SDK is not installed in the clones (no fleet/node_modules, no lockfile at BASE), so a static import would make factory/worker.mjs unimportable and every exam leg red. The caught dynamic import keeps the default true at runtime while letting the exam drive a fake iterator with no install.",
+      "jev": {
+        "compelled": 0.67,
+        "plan_fault": 0.31,
+        "magnitude": 1.51
+      }
+    },
+    {
+      "task": "3",
+      "amends": "clause",
+      "what": "M1 \u2014 the returned config carries two extra properties beyond the SDK's own { type, name, instance }: `tools` (the four tool definitions) and `handlers` (name -> handler). Both are defined NON-ENUMERABLE, so Object.keys(cfg) still reads exactly ['type','name','instance'] and the returned value is still createSdkMcpServer's own object, mutated in place.",
+      "why": "Proof leg (a) offers the exam two routes \u2014 the instance's registered tool list, or \"the config's tool handlers exported for the exam\". The second route needs a handle the peer can reach; making it non-enumerable keeps it from disturbing a strict assertion on the SDK config's shape. The native route (instance._registeredTools, each entry carrying .handler) also works and was verified.",
+      "jev": {
+        "compelled": 0.2,
+        "plan_fault": 0.35,
+        "magnitude": 1.77
+      }
+    },
+    {
+      "task": "3",
+      "amends": "clause",
+      "what": "M2 \u2014 \"answers a text content block naming the comment's uid\": the text names `answer.uid`, falling back to `answer.comment.uid`, then `answer.id`, then the whole answer JSON-stringified.",
+      "why": "fleet/kata-client.mjs's `comment` answers the ISSUE projection a mutation leaves behind, so the uid on it is the issue's; a hub or fake returning a comment envelope is equally plausible. The fallback chain means the uid a fake returns is in the text whichever shape it arrives in, and an answer carrying no uid at all is quoted whole rather than reported as an empty string.",
+      "jev": {
+        "compelled": 0.28,
+        "plan_fault": 0.28,
+        "magnitude": 1.6
+      }
+    },
+    {
+      "task": "3",
+      "amends": "clause",
+      "what": "M2/M3 \u2014 note, hand and settled catch a rejecting kata call and answer `kata refused: <message>` instead of rejecting. M4's `no fact:` behaviour is as written.",
+      "why": "The clauses specify failure behaviour only for sibling_fact, but an in-process tool that rejects ends the worker's turn \u2014 a transient kata 5xx would cost a whole task. The legs all drive resolving fakes, so this changes nothing they measure.",
+      "jev": {
+        "compelled": 0.16,
+        "plan_fault": 0.45,
+        "magnitude": 1.9
+      }
+    },
+    {
+      "task": "2",
+      "amends": "clause",
+      "what": "M1's \"each pair question built from sets.landing.pairwise with <i> and <j> substituted\": I read the single token <i> as taking two values \u2014 the answer key counts clauses from M1 (M1__f0 \u2026 M2__f1), while the substituted question text indexes the clauses array zero-based (clauses[1] for the M2 pair).",
+      "why": "Proof leg (a) pins both at once: the key set is exactly claim_established, M1__f0, M1__f1, M2__f0, M2__f1 (1-based) and M2__f1's question must contain `clauses[1]` (0-based). No single substitution value satisfies both, and the 0-based text is the reading that makes `clauses[<i>]` a correct access into the clauses array the state carries.",
+      "jev": {
+        "compelled": 0.71,
+        "plan_fault": 0.51,
+        "magnitude": 1.91
+      }
+    },
+    {
+      "task": "2",
+      "amends": "clause",
+      "what": "M4's \"answers without a key the reader needs\": for readNote, readAmendment and readSupervisor \u2014 which hand the answers object back verbatim per leg (g) and so grade on no key in particular \u2014 \"needs\" is implemented as at least one of that set's question keys being present.",
+      "why": "Leg (f) requires an `{}` answer to be a null, and leg (g) requires a fake's answers object to pass through deep-equal. Requiring every key of the set would make a partial fake a null and risk leg (g); requiring none would make `{}` pass and fail leg (f).",
+      "jev": {
+        "compelled": 0.52,
+        "plan_fault": 0.37,
+        "magnitude": 1.91
+      }
+    },
+    {
+      "task": "3",
+      "amends": "files",
+      "what": "Provisioned `fleet/node_modules` in the working tree (a copy of the 0.3.275 install at `/tmp/sdkprobe/node_modules`) and left it there, rather than probing with it and removing it as the previous round did.",
+      "why": "Without it the exam cannot reach a single assertion about a tool, so the round-0 finding measured the environment rather than the deliverable. `fleet/.gitignore` carries `node_modules/`, so this is untracked build output: it appears in no diff, trips neither freeze Check, and is precisely what `fleet/sandbox-boot.sh:896` does on its own. `fleet/package.json` itself is sibling-owned and was NOT touched \u2014 an `npm install --prefix fleet` would have edited it, so the install was staged by copy instead.",
+      "jev": {
+        "compelled": 0.43,
+        "plan_fault": 0.32,
+        "magnitude": 1.65
+      }
+    },
+    {
+      "task": "3",
+      "amends": "clause",
+      "what": "Carried forward from round 0, unchanged and restated because it is still live: the returned config carries non-enumerable `tools` and `handlers` beyond the SDK's own `{ type, name, instance }`.",
+      "why": "Proof leg (a) offers two routes to the four tools and this served the second. The exam in the tree takes the first (native) route \u2014 `instance._registeredTools`, each entry carrying `.handler` \u2014 and passes through it, so the extra surface is not what carries the exam; being non-enumerable, `Object.keys(config)` still reads exactly `['type','name','instance']`.",
+      "jev": {
+        "compelled": 0.17,
+        "plan_fault": 0.37,
+        "magnitude": 0.99
+      }
+    },
+    {
+      "task": "5",
+      "amends": "clause",
+      "what": "The ready set adds a launch-wave barrier: a task becomes ready only when its depends_on, its dag_edges predecessors, and every task in an earlier launch wave have all been adopted. M1 names only depends_on.",
+      "why": "Every task in evals/fixtures/claims/plan.md carries depends_on: []. Without the barrier task 2 (second launch wave, and the `from: 1` end of the plan's one interface edge) would clone at the same anchor as task 1 and build against a head it never lands on, and the wave structure compile_plan.py computes would carry no weight at all.",
+      "jev": {
+        "compelled": 0.67,
+        "plan_fault": 0.37,
+        "magnitude": 2
+      }
+    },
+    {
+      "task": "5",
+      "amends": "clause",
+      "what": "The select row's `chosen` is the winning candidate's clone directory path, not an index: {\"kind\":\"select\",\"task\":\"1\",\"scores\":[10.7,11.4],\"chosen\":\"<run-dir>/impl-1-1\"}.",
+      "why": "M2 says the row names the chosen candidate but not how. Candidates are identified by cwd everywhere else in the loop (the judge's readLanding gets `cwd`, the loser's clone is removed by path), so the path is the one identifier that is unambiguous across a re-dispatch.",
+      "jev": {
+        "compelled": 0.35,
+        "plan_fault": 0.45,
+        "magnitude": 1.79
+      }
+    },
+    {
+      "task": "5",
+      "amends": "clause",
+      "what": "compile_plan.py runs through the engine's own child_process, not through deps.sh; the judge's readTask receives an extra `id` key and readLanding extra `task` and `cwd` keys.",
+      "why": "A fake `sh` then only has to answer the test command and the kernel, which is what M1's simulation shape describes; and a fake judge needs some way to tell two racing candidates of the same task apart. Neither extra key reaches the model \u2014 makeJudge rebuilds Jev's state from clauses, patch and files alone.",
+      "jev": {
+        "compelled": 0.27,
+        "plan_fault": 0.3,
+        "magnitude": 1.73
+      }
+    }
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
