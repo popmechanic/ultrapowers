@@ -50,7 +50,7 @@ import { runWorker } from './worker.mjs'
 import { makeJudge } from './judge.mjs'
 import { literalsOf, hunksCarrying } from './hunks.mjs'
 import { unionReply } from './union.mjs'
-import { makeBoard } from './board.mjs'
+import { makeBoard, patchWithRevision } from './board.mjs'
 import { candidateTests, symbolsOf, commandFor, excerptFor } from './select.mjs'
 import { examsTouched } from './reverify.mjs'
 import { waitsFor } from './dispatch.mjs'
@@ -1520,7 +1520,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const uid = uidFor(task.id)
     if (kata && uid !== undefined) {
       try {
-        await kata.patchMetadata(args.kataProject, uid, { 'interface.settled': meta })
+        await patchWithRevision(kata, args.kataProject, uid, { 'interface.settled': meta })
       } catch (e) { log('kata patchMetadata: ' + String((e && e.message) || e).slice(0, 200)) }
     }
     appendEvent({ kind: 'settled', task: task.id, symbol: settled.symbol, file })
