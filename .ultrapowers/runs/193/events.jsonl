@@ -441,3 +441,15 @@
 {"kind":"worker:tool","task":"7","label":"referee:7","tool":"Bash","target":"ls && wc -l /home/exedev/run/patch-7-0.diff factory/engine.mjs factory/roles/exam.md fleet/tests/test_factory_engine_select.mjs"}
 {"kind":"worker:test-run","task":"7","label":"referee:7","cmd":"ls && wc -l /home/exedev/run/patch-7-0.diff factory/engine.mjs factory/roles/exam.md fleet/tests/test_factory_engine_select.mjs","red":false}
 {"kind":"worker:tool","task":"7","label":"referee:7","tool":"Read","target":"/home/exedev/run/patch-7-0.diff"}
+{"kind":"worker:tool","task":"7","label":"referee:7","tool":"Bash","target":"grep -n \"candidatesOf\\|implFilesOf\\|function land\\|cloneAt\\|splitDiff\\|outOf\\|exitOf\\|const args\\|rawArgs\\|POLICY_PATH\\|buildDeps\\|appendEvent\\|const read =\\|judge\\b\" factory/engine.mjs | head -80"}
+{"kind":"worker:tool","task":"7","label":"referee:7","tool":"Bash","target":"sed -n 1,60p factory/select.mjs && echo ==== && grep -n \"export function\\|export const\" factory/select.mjs"}
+{"kind":"worker:tool","task":"7","label":"referee:7","tool":"Bash","target":"sed -n 280,340p factory/engine.mjs; echo ====; grep -n \"normalizeArgs\" -A 30 factory/engine.mjs | sed -n 1,50p"}
+{"kind":"worker:tool","task":"7","label":"referee:7","tool":"Read","target":"/home/exedev/run/impl-7-0/factory/engine.mjs"}
+{"kind":"supervisor","task":"7","label":"referee:7","answers":{"stuck":{"type":"noul","noul":0.19},"off_track":{"type":"noul","noul":0.26},"needs_human":{"type":"noul","noul":0.13},"done_not_exited":{"type":"noul","noul":0.07}}}
+{"kind":"worker:tool","task":"7","label":"referee:7","tool":"Bash","target":"python3 -c \"import json;d=json.load(open('factory/policy.json'));print(json.dumps(d.get('select'),indent=1));print(json.dumps(d.get('landing'),indent=1))\"; grep -rn \"clauses\" factory/engine.mjs | head"}
+{"kind":"worker:tool","task":"7","label":"referee:7","tool":"Bash","target":"sed -n 1,120p fleet/tests/_engine_helpers.mjs"}
+{"kind":"worker:tool","task":"7","label":"referee:7","tool":"Bash","target":"grep -rln \"factory/engine.mjs\" fleet/tests tests evals 2>/dev/null | head -30"}
+{"kind":"worker:tool","task":"7","label":"referee:7","tool":"Bash","target":"timeout 900 node fleet/tests/test_factory_engine_select.mjs; echo \"EXIT=$?\"; grep -n 'COVERED:' factory/roles/exam.md"}
+{"kind":"worker:test-run","task":"7","label":"referee:7","cmd":"timeout 900 node fleet/tests/test_factory_engine_select.mjs; echo \"EXIT=$?\"; grep -n 'COVERED:' factory/roles/exam.md","red":false}
+{"kind":"worker:tool","task":"7","label":"referee:7","tool":"Read","target":"/home/exedev/run/impl-7-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"7","label":"referee:7","tool":"Bash","target":"sed -n 555,600p factory/engine.mjs; echo ===; grep -n \"cloneAtBase\" -A 25 fleet/run-waves.mjs | head -60"}
