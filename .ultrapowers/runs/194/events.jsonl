@@ -993,3 +993,10 @@
 {"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Bash","target":"true"}
 {"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"ls && wc -l /home/exedev/run/patch-8-0.diff"}
 {"kind":"worker:tool","task":"8","label":"referee:8","tool":"Read","target":"/home/exedev/run/patch-8-0.diff"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"wc -l factory/engine.mjs factory/dispatch.mjs fleet/tests/test_factory_dispatch_candidate.mjs && grep -n \"const land\\|async function land\\|const git =\\|function git\\|cloneAt\\|capture(\\|foldIn\\|landing"}
+{"kind":"worker:test-run","task":"8","label":"referee:8","cmd":"wc -l factory/engine.mjs factory/dispatch.mjs fleet/tests/test_factory_dispatch_candidate.mjs && grep -n \"const land\\|async function land\\|const git =\\|function git\\|cloneAt\\|capture(\\|foldIn\\|landing.anchor\\|appendEvent = \\|kind: 'landing'\" factory/engine.mjs | head -60","red":false}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"supervisor","task":"8","label":"referee:8","answers":{"stuck":{"type":"noul","noul":0.18},"off_track":{"type":"noul","noul":0.26},"needs_human":{"type":"noul","noul":0.13},"done_not_exited":{"type":"noul","noul":0.08}}}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/dispatch.mjs"}
