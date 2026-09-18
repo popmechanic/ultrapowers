@@ -974,3 +974,14 @@
 {"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
 {"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Edit","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
 {"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Edit","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Bash","target":"grep -n \"let best = candidates\\[0\\]\\|appendEvent({ kind: 'select'\\|maybeReadPairCandidate(task, best)\" /home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Edit","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Bash","target":"grep -n \"const inflightLandings\\|const launch = \\|const settleReadiness\" /home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Edit","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Bash","target":"node fleet/tests/test_factory_dispatch_candidate.mjs 2>&1 | tail -80"}
+{"kind":"worker:test-run","task":"8","label":"impl:8:0","cmd":"node fleet/tests/test_factory_dispatch_candidate.mjs 2>&1 | tail -80","red":false}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Bash","target":"node fleet/tests/test_factory_dispatch.mjs 2>&1 | tail -40"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Bash","target":"for f in fleet/tests/test_run_engine_*.mjs fleet/tests/test_factory_*.mjs; do\n  out=$(node \"$f\" 2>&1)\n  status=$?\n  last=$(echo \"$out\" | tail -1)\n  if [ $status -ne 0 ] || [ \"$last\" != \"ALL TESTS PASS"}
