@@ -135,3 +135,40 @@
 {"kind":"worker:tool","task":"1","label":"exam:1","tool":"Edit","target":"/home/exedev/run/exam-1/tests/test_plan_parse.py"}
 {"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Bash","target":"grep -n \"^## \\|Every file a task can foresee touching\" /home/exedev/run/impl-7-0/skills/ultrawrite/references/authoring-gotchas.md"}
 {"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Read","target":"/home/exedev/run/impl-7-0/skills/ultrawrite/references/authoring-gotchas.md"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Edit","target":"/home/exedev/run/impl-7-0/skills/ultrawrite/references/authoring-gotchas.md"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Bash","target":"echo \"--- proof 1 ---\" && sed -n '/^## Decomposition judgment/,/^## Global Constraints discipline/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -qE 'run-193' && echo PASS || echo FAIL\necho \"--- p"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"grep -n \"HUNK\\|begin \\|end conflict\\|context (read-only)\" /home/exedev/run/exam-6/skills/ultrapowers/kernel/hunks.py | head -60"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Bash","target":"git diff -- skills/ultrawrite/SKILL.md skills/ultrawrite/references/authoring-gotchas.md"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"sed -n '60,140p' /home/exedev/run/exam-6/skills/ultrapowers/kernel/hunks.py"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Read","target":"/home/exedev/run/impl-7-0/skills/ultrawrite/SKILL.md"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Bash","target":"echo done"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Edit","target":"/home/exedev/run/exam-1/tests/test_plan_parse.py"}
+{"kind":"worker:tool","task":"7","label":"impl:7:redispatch","tool":"Bash","target":"sed -n '1,200p' skills/ultrawrite/SKILL.md | grep -n \"Decomposition judgment\" "}
+{"kind":"worker:tool","task":"7","label":"impl:7:redispatch","tool":"Bash","target":"grep -n \"^## \" skills/ultrawrite/SKILL.md"}
+{"kind":"worker:tool","task":"7","label":"impl:7:redispatch","tool":"Read","target":"/home/exedev/run/impl-7-0/skills/ultrawrite/SKILL.md"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"python3 -m py_compile tests/test_plan_parse.py && echo COMPILE_OK"}
+{"kind":"worker:test-run","task":"1","label":"exam:1","cmd":"python3 -m py_compile tests/test_plan_parse.py && echo COMPILE_OK","red":false}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"python3 -m pytest -q tests/test_plan_parse.py -k pairs 2>&1 | tail -60"}
+{"kind":"worker:test-run","task":"1","label":"exam:1","cmd":"python3 -m pytest -q tests/test_plan_parse.py -k pairs 2>&1 | tail -60","red":false}
+{"kind":"worker:tool","task":"7","label":"impl:7:redispatch","tool":"Bash","target":"git status && git diff --stat"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"ls skills/ultrapowers/kernel/; echo ---; wc -l skills/ultrapowers/kernel/fold_wave.py; echo ---; find . -iname \"*fold_wave*\" -not -path \"*/node_modules/*\""}
+{"kind":"worker:tool","task":"7","label":"impl:7:redispatch","tool":"Bash","target":"grep -n \"Parallelization rationale\" skills/ultrawrite/SKILL.md; grep -n \"^## Self-review\" -A 40 skills/ultrawrite/SKILL.md"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -30"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -n \"add_parser\\|add_argument\\|def cmd_fold\\|def cmd_materialize\\|def main\" skills/ultrapowers/kernel/fold_wave.py | head -60"}
+{"kind":"worker:tool","task":"7","label":"impl:7:redispatch","tool":"Bash","target":"grep -c \"Parallelization rationale\" skills/ultrawrite/SKILL.md"}
+{"kind":"worker:tool","task":"7","label":"impl:7:redispatch","tool":"Bash","target":"grep -n \"^## \" skills/ultrawrite/references/authoring-gotchas.md"}
+{"kind":"supervisor","task":"7","label":"impl:7:redispatch","answers":{"stuck":{"type":"noul","noul":0.49},"off_track":{"type":"noul","noul":0.39},"needs_human":{"type":"noul","noul":0.26},"done_not_exited":{"type":"noul","noul":0.14}}}
+{"kind":"worker:test-run","task":"1","label":"exam:1","cmd":"python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -30","red":false}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Read","target":"/home/exedev/run/exam-5/tests/test_fold_wave_anchor.py"}
+{"kind":"worker:tool","task":"7","label":"impl:7:redispatch","tool":"Read","target":"/home/exedev/run/impl-7-0/skills/ultrawrite/references/authoring-gotchas.md"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"true"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"node -e \"console.log(process.version)\"; ls fleet/tests/README.md >/dev/null 2>&1 && echo has_readme"}
+{"kind":"worker:tool","task":"7","label":"impl:7:redispatch","tool":"Bash","target":"sed -n '/^## The sixteen rows/,/^## Three older/p' skills/ultrawrite/references/authoring-gotchas.md | grep -c '^- \\*\\*'"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -n \"export function cloneAtBase\\|export const cloneAtBase\" -A 20 fleet/run-waves.mjs | head -40"}
+{"kind":"worker:tool","task":"7","label":"impl:7:redispatch","tool":"Bash","target":"python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite; echo \"EXIT:$?\""}
+{"kind":"worker:tool","task":"7","label":"impl:7:redispatch","tool":"Bash","target":"\necho \"--- test1 ---\"\nsed -n '/^## Decomposition judgment/,/^## Global Constraints discipline/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -qE 'run-193' && echo PASS\necho \"--- test2 ---\"\ntest \"$"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"which python3; ls -la /usr/bin/python3 2>/dev/null; python3 --version"}
+{"kind":"worker:tool","task":"7","label":"impl:7:redispatch","tool":"Bash","target":"grep -n \"**A chain must justify itself**\\|A chain must justify itself\\|State the width\" skills/ultrawrite/SKILL.md"}
+{"kind":"worker:tool","task":"7","label":"impl:7:redispatch","tool":"Bash","target":"grep -n \"chain must justify\\|State the width\" skills/ultrawrite/SKILL.md"}
+{"kind":"worker:tool","task":"7","label":"impl:7:redispatch","tool":"Bash","target":"grep -n \"run-193\" skills/ultrawrite/SKILL.md skills/ultrawrite/references/authoring-gotchas.md"}
+{"kind":"worker:tool","task":"7","label":"impl:7:redispatch","tool":"Bash","target":"true"}
