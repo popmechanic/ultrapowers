@@ -530,3 +530,31 @@
 {"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"node -e \"\nimport('/home/exedev/run/impl-6-0/factory/union.mjs').then(({unionReply})=>{\nconst t=['HUNK h1 lines 1-3','--- context (read-only)','  ctx','--- conflict','<<<<<<< begin added frontier','HUN"}
 {"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"node -e \"\nimport('/home/exedev/run/impl-6-0/factory/union.mjs').then(({unionReply})=>{\nconst contract=['HUNK h1 lines 1-3','Commutes: additive registration','--- context (read-only)','  ctx','--- conf"}
 {"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/fleet/tests/_helpers.mjs"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"StructuredOutput"}
+{"kind":"referee","task":"6","findings":6,"blocking":1,"grades":["blocking","minor","minor","plan","minor","minor"]}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Bash","target":"find . -path ./node_modules -prune -o -type f -name \"*.mjs\" -print 2>/dev/null | grep -v node_modules | sort"}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Read","target":"/home/exedev/run/impl-6-0/factory/union.mjs"}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Bash","target":"git status && git log --oneline -5"}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Read","target":"/home/exedev/run/impl-6-0/fleet/tests/test_factory_union.mjs"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"ls /home/exedev/run/impl-5-0/factory/reverify.mjs 2>&1; cat /home/exedev/run/impl-5-0/factory/policy.json | head -50"}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Bash","target":"wc -l /home/exedev/run/impl-6-0/factory/engine.mjs"}
+{"kind":"supervisor","task":"6","label":"fix:6","answers":{"stuck":{"type":"noul","noul":0.23},"off_track":{"type":"noul","noul":0.29},"needs_human":{"type":"noul","noul":0.14},"done_not_exited":{"type":"noul","noul":0.13}}}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Bash","target":"grep -n \"resolve\\|buildDeps\\|readUnion\\|QUESTIONS_PATH\\|POLICY_PATH\\|questions.json\\|policy.json\\|ask:\\|judge\\b\\|function runEngine\\|replyDir\\|notes.txt\\|adopted\\|events.jsonl\\|appendEvent\\|logEvent\" "}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"grep -n '\"fold\"' -A5 /home/exedev/run/impl-5-0/factory/policy.json"}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Bash","target":"grep -n \"unionReply\\|from './union\" /home/exedev/run/impl-6-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Bash","target":"node fleet/tests/test_factory_union.mjs"}
+{"kind":"worker:test-run","task":"6","label":"fix:6","cmd":"node fleet/tests/test_factory_union.mjs","red":false}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Read","target":"/home/exedev/run/impl-6-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Read","target":"/home/exedev/run/impl-6-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Read","target":"/home/exedev/run/impl-6-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Write","target":"/home/exedev/run/impl-5-0/factory/reverify.mjs"}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Read","target":"/home/exedev/run/impl-6-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Edit","target":"/home/exedev/run/impl-5-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Read","target":"/home/exedev/run/impl-6-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Edit","target":"/home/exedev/run/impl-5-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Edit","target":"/home/exedev/run/impl-6-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Bash","target":"node fleet/tests/test_factory_union.mjs"}
+{"kind":"worker:test-run","task":"6","label":"fix:6","cmd":"node fleet/tests/test_factory_union.mjs","red":false}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Edit","target":"/home/exedev/run/impl-5-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Bash","target":"grep -rl \"buildDeps\" fleet/tests/ | head -20"}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Bash","target":"for f in fleet/tests/test_run_engine_*.mjs; do echo \"== $f ==\"; timeout 60 node \"$f\" 2>&1 | tail -5; done"}
