@@ -52,6 +52,7 @@ import { literalsOf, hunksCarrying } from './hunks.mjs'
 import { unionReply } from './union.mjs'
 import { makeBoard } from './board.mjs'
 import { candidateTests, symbolsOf, commandFor } from './select.mjs'
+import { examsTouched } from './reverify.mjs'
 
 // ── where everything lives ───────────────────────────────────────────────────
 
@@ -481,6 +482,9 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   let cost = 0
   let waveNumber = 0
   const adopted = []
+  // M4: a fold-verify exam still red after its one re-attempt forces the
+  // run's resolved `done` to false, whatever else adopted cleanly.
+  let foldUnresolved = false
   const parked = new Set()
   const done = new Set()
   const inflight = new Set()
@@ -498,13 +502,13 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const supervisorMode = (policyDoc.supervisor || {}).mode
   const redispatchPolicy = (policyDoc.landing || {}).redispatch || {}
   const selectPolicy = policyDoc.select || {}
+  const reverifyPolicy = (policyDoc.fold || {}).reverify || {}
 
   // M3: `readUnion` is `deps.readUnion` when a caller injects one; otherwise
   // the engine builds it from `deps.ask` (M3), over `policy.resolve.union`'s
   // own thresholds.
   const unionPolicy = (policyDoc.resolve || {}).union || {}
   const readUnion = typeof deps.readUnion === 'function' ? deps.readUnion : buildReadUnion(deps.ask, unionPolicy)
-
   /** A judge reader that never throws and never is required to exist: Jev
    *  answers no fact, and a reading that did not happen is simply absent. */
   const read = async (name, arg) => {
@@ -1141,6 +1145,75 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   }
 
   /**
+   * M2-M4: directly after a task's fold, the exams of every adopted task the
+   * fold touched are run again on the folded tree — the folded task's own
+   * exam included. A red one buys the folded task exactly one more
+   * implementer attempt, in a clone of the same folded tree, whose patch is
+   * folded through the same kernel path (`foldIn`) before the same exams run
+   * a second time; still red (or a refold that never completes) is
+   * unresolved, and unresolved forces the run's `done` to false without
+   * unadopting anything.
+   */
+  const reverifyAfterFold = async (task, best) => {
+    if (reverifyPolicy.enabled !== true) return
+    const patchText = best.patch && fs.existsSync(best.patch) ? fs.readFileSync(best.patch, 'utf8') : ''
+    const touched = Object.keys(splitDiff(patchText))
+    if (!touched.length) return
+    const cap = Number.isInteger(reverifyPolicy.max_run) ? reverifyPolicy.max_run : 6
+    const timeoutSeconds = reverifyPolicy.timeout_seconds ?? 300
+
+    const exams = examsTouched({ folded: task.id, touched, adopted, tasks, cap })
+    if (!exams.length) return
+
+    const runExams = () => {
+      const dir = cloneAt('fold-verify-' + task.id, head)
+      const ran = []
+      const reds = []
+      for (const exam of exams) {
+        const [cmd, ...argv] = String(exam.testCmd).trim().split(/\s+/)
+        const r = sh('timeout', [String(timeoutSeconds), cmd, ...argv], dir)
+        const exit = exitOf(r)
+        ran.push({ task: exam.id, exit })
+        if (exit !== 0) reds.push({ exam, exit, out: outOf(r) })
+      }
+      return { ran, reds }
+    }
+
+    const first = runExams()
+    appendEvent({ kind: 'fold:verify', task: task.id, ran: first.ran })
+    if (!first.reds.length) return
+
+    for (const red of first.reds) {
+      appendEvent({ kind: 'fold:red', task: task.id, exam: red.exam.id, exit: red.exit })
+      await board.post(task.id, 'fold-red',
+        'exam ' + red.exam.id + ' exit ' + red.exit + '\n' + red.out.slice(-1500))
+    }
+
+    // One more attempt, in a fresh clone of the same folded tree, folded
+    // through the same kernel path as any other landing.
+    const anchor = head
+    const fixDir = cloneAt('fold-fix-' + task.id, anchor)
+    await dispatch({
+      role: 'implement', label: 'impl:' + task.id + ':fold', taskId: task.id, cwd: fixDir,
+      model, systemPrompt: IMPL_MD, files: implFilesOf(task), mcpServers: null,
+      prompt: await withHandoff(await implPrompt(task), task.id),
+    })
+    const fixPatch = capture(fixDir, anchor, path.join(runDir, `patch-${task.id}-fold.diff`))
+    const folded = await foldIn({ task, anchor, best: { patch: fixPatch } })
+    if (folded.sha === null) {
+      for (const red of first.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, exam: red.exam.id })
+      foldUnresolved = true
+      return
+    }
+
+    const second = runExams()
+    if (second.reds.length) {
+      for (const red of second.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, exam: red.exam.id })
+      foldUnresolved = true
+    }
+  }
+
+  /**
    * M2: does this adoption settle an interface for a sibling. The task's
    * newest `[note]` fact and its patch-derived candidates go to
    * `judge.readSettled`; a symbol back is `interface.settled` through the
@@ -1278,6 +1351,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
           '  exam=' + landing.best.examExit + ' k=' + landing.k)
         await maybeSettleInterface(landing.task, landing.best, candidateSha)
         await fileAmendmentEdges(landing.task, landing.best)
+        await reverifyAfterFold(landing.task, landing.best)
       }
     }
     await settleReadiness()
@@ -1298,7 +1372,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   await Promise.allSettled(supervisorTicks)
 
   return {
-    done: adopted.length === tasks.length,
+    done: adopted.length === tasks.length && !foldUnresolved,
     adopted,
     head,
     wall_ms: Date.now() - startedAt,
