@@ -83,6 +83,15 @@
         "rollback": "k = 1, no ranking"
       }
     },
+    "redispatch": {
+      "enabled": true,
+      "coverage_floor": 0.5,
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "experiment": true,
+      "rollback": "enabled = false"
+    },
     "card": {
       "subject_footprint_min_conf": {
         "value": 0.8,

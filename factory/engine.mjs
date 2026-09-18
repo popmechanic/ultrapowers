@@ -48,6 +48,7 @@ import { cloneAtBase } from '../fleet/run-waves.mjs'
 import { makeJevClient } from '../fleet/jev-client.mjs'
 import { runWorker } from './worker.mjs'
 import { makeJudge } from './judge.mjs'
+import { makeBoard } from './board.mjs'
 
 // ── where everything lives ───────────────────────────────────────────────────
 
@@ -301,6 +302,30 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const tools = typeof deps.tools === 'function' ? deps.tools : null
   const log = deps.log || ((s) => process.stderr.write(String(s) + '\n'))
 
+  // The board: every sensor the run has — exam, landing, referee finding,
+  // conflict, worker error, park, redispatch — posts here, and every worker
+  // this file dispatches is handed what the board already knows through
+  // `board.factsFor`. A caller may inject one (the exam's seam); otherwise a
+  // `--kata-url` names a real Kata client to build one over, and with
+  // neither, `makeBoard({})` answers the empty value at every call, so no
+  // call site below needs a guard.
+  let kataTasks = {}
+  if (args.kataJson) {
+    try { kataTasks = JSON.parse(fs.readFileSync(path.resolve(String(args.kataJson)), 'utf8')).tasks || {} } catch { kataTasks = {} }
+  }
+  const uidFor = (taskId) => (kataTasks[taskId] || {}).uid
+  const board = deps.board || (args.kataUrl
+    ? makeBoard({
+        kata: deps.kata || await (async () => {
+          const { makeKataClient, httpTransport } = await import('../fleet/kata-client.mjs')
+          return makeKataClient({ transport: httpTransport({ url: String(args.kataUrl) }), actor: args.kataActor })
+        })(),
+        projectId: args.kataProject,
+        tasks: kataTasks,
+        log,
+      })
+    : makeBoard({}))
+
   fs.mkdirSync(runDir, { recursive: true })
   const eventsPath = path.join(runDir, 'events.jsonl')
   fs.writeFileSync(eventsPath, '')
@@ -360,9 +385,11 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const inflight = new Set()
   const supervisorTicks = []
 
-  const supervisorMode = (() => {
-    try { return (JSON.parse(fs.readFileSync(POLICY_PATH, 'utf8')).supervisor || {}).mode } catch { return null }
+  const policyDoc = (() => {
+    try { return JSON.parse(fs.readFileSync(POLICY_PATH, 'utf8')) } catch { return {} }
   })()
+  const supervisorMode = (policyDoc.supervisor || {}).mode
+  const redispatchPolicy = (policyDoc.landing || {}).redispatch || {}
 
   /** A judge reader that never throws and never is required to exist: Jev
    *  answers no fact, and a reading that did not happen is simply absent. */
@@ -372,25 +399,63 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     try { return (await reader(arg)) ?? null } catch (e) { log('judge ' + name + ': ' + String((e && e.message) || e).slice(0, 200)); return null }
   }
 
-  /** The supervisor tick: record-only, fired once per dispatch off the message
-   *  stream itself, and never awaited inside it — a tick that blocked the
-   *  stream would be a supervisor that slowed the worker it watches. */
+  /** Every message a worker's stream emits, read once, for two purposes:
+   *
+   *  - M6's telemetry, unconditional: a `worker:tool` row for every
+   *    `tool_use` block, and a `worker:test-run` row for the `tool_result` of
+   *    a Bash call whose command names the task's own test command or one of
+   *    its proof tests — paired to its `tool_use` by `tool_use_id`.
+   *  - the supervisor tick: record-only, fired once per dispatch, and never
+   *    awaited inside it — a tick that blocked the stream would be a
+   *    supervisor that slowed the worker it watches.
+   */
   const onMessageFor = (label, taskId) => {
-    if (supervisorMode !== 'record-only' || typeof judge.readSupervisor !== 'function') return undefined
+    const task = tasks.find((t) => t.id === taskId)
+    const testCmd = task && task.testCmd
+    const proofTests = (task && task.proofTests) || []
+    const matchesTest = (cmd) => {
+      const s = String(cmd || '')
+      if (testCmd && s.includes(testCmd)) return true
+      return proofTests.some((p) => p && s.includes(p))
+    }
+    const pendingBash = new Map()
     let turns = 0
     let fired = false
     const tail = []
+    const wantsSupervisor = supervisorMode === 'record-only' && typeof judge.readSupervisor === 'function'
     return (message) => {
-      if (!message || message.type !== 'assistant') return
-      turns += 1
+      if (!message) return
       const blocks = (message.message && message.message.content) || []
-      for (const b of blocks) if (b && b.type === 'text') tail.push(String(b.text))
-      if (fired || turns < SUPERVISOR_TICK_TURNS) return
-      fired = true
-      supervisorTicks.push(
-        read('readSupervisor', { label, task: taskId, transcript: tail.slice(-8).join('\n').slice(-4000) })
-          .then((answers) => { if (answers) appendEvent({ kind: 'supervisor', task: taskId, label, answers }) })
-          .catch(() => {}))
+      if (message.type === 'assistant') {
+        for (const b of blocks) {
+          if (!b) continue
+          if (b.type === 'tool_use') {
+            const input = b.input || {}
+            const target = input.file_path ?? input.path ?? input.pattern ??
+              (input.command !== undefined ? String(input.command).slice(0, 200) : undefined)
+            appendEvent({ kind: 'worker:tool', task: taskId, label, tool: b.name, target })
+            if (b.name === 'Bash') pendingBash.set(b.id, String((input && input.command) || ''))
+          }
+          if (b.type === 'text') tail.push(String(b.text))
+        }
+        turns += 1
+        if (!wantsSupervisor || fired || turns < SUPERVISOR_TICK_TURNS) return
+        fired = true
+        supervisorTicks.push(
+          read('readSupervisor', { label, task: taskId, transcript: tail.slice(-8).join('\n').slice(-4000) })
+            .then((answers) => { if (answers) appendEvent({ kind: 'supervisor', task: taskId, label, answers }) })
+            .catch(() => {}))
+        return
+      }
+      if (message.type === 'user') {
+        for (const b of blocks) {
+          if (!b || b.type !== 'tool_result') continue
+          if (!pendingBash.has(b.tool_use_id)) continue
+          const cmd = pendingBash.get(b.tool_use_id)
+          if (!matchesTest(cmd)) continue
+          appendEvent({ kind: 'worker:test-run', task: taskId, label, cmd, red: Boolean(b.is_error) })
+        }
+      }
     }
   }
 
@@ -400,7 +465,12 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   // the candidate's measurement and never an exception that escapes the loop: the
   // answer carries `error`, the clone is measured as it stands, and a candidate
   // that produced nothing parks its task with that error as the reason.
+  const dispatchedTasks = new Set()
   const dispatch = async (opts) => {
+    if (opts.taskId !== undefined && !dispatchedTasks.has(opts.taskId)) {
+      dispatchedTasks.add(opts.taskId)
+      await board.setState(opts.taskId, 'dispatched')
+    }
     let answer
     try {
       answer = await worker({
@@ -421,6 +491,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       const error = String((e && e.message) || e).slice(0, 500)
       log('worker ' + opts.label + ' ended: ' + error)
       answer = { result: null, denials: [], error }
+      if (opts.taskId !== undefined) await board.post(opts.taskId, 'worker-error', error)
     }
     const result = answer && answer.result
     cost += (result && Number(result.total_cost_usd)) || 0
@@ -478,6 +549,36 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     '\nTEST COMMAND: ' + task.testCmd +
     '\n\nINTERFACES:\n' + interfacesBlock(task) +
     '\n\nAMENDMENTS: (none — this is the first dispatch of this task)'
+
+  /** M3: every prompt this file assembles ends with the board's own memory of
+   *  the task, read fresh at dispatch time so a later dispatch for the same
+   *  task sees what an earlier one just posted. Empty facts add no suffix at
+   *  all — a worker with nothing handed to it reads a prompt with no
+   *  HAND-OFF block, rather than one promising a block with nothing in it. */
+  const withHandoff = async (basePrompt, taskId) => {
+    const facts = await board.factsFor(taskId)
+    return facts ? basePrompt + '\n\nHAND-OFF:\n' + facts : basePrompt
+  }
+
+  /** M2's landing post: the exam's exit code, the last 1,500 characters of
+   *  its own output (already `measure`'s `examTail`), the judge's claim
+   *  reading, and the lowest-covered clause — its own text, off the task,
+   *  and the score the judge gave it. Posted after every measurement of the
+   *  candidate the task is riding: the initial one, and again after any
+   *  redispatch (M4) or blocking-finding fix remeasures it. */
+  const postLanding = async (task, best) => {
+    const coverage = Array.isArray(best.coverage) ? best.coverage : []
+    let low = 0
+    for (let i = 1; i < coverage.length; i += 1) {
+      if ((Number(coverage[i]) || 0) < (Number(coverage[low]) || 0)) low = i
+    }
+    const clauseText = (task.clauses && task.clauses[low]) || '(no clause text)'
+    const clauseScore = coverage.length ? coverage[low] : null
+    const text = 'exit ' + best.examExit + '\n' + (best.examTail || '') +
+      '\nclaim: ' + (best.claim === null || best.claim === undefined ? 'null' : best.claim) +
+      '\nlowest-covered clause (' + clauseScore + '): ' + clauseText
+    await board.post(task.id, 'landing', text)
+  }
 
   /**
    * One candidate, measured: its own exam run, its patch against the anchor,
@@ -565,14 +666,17 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     let mcpServers = null
     if (tools) {
       try {
-        const server = await tools({ task: { id: task.id, uid: task.uid, files: task.files }, candidates: [] })
+        const server = await tools({ task: { id: task.id, uid: uidFor(task.id), files: task.files }, candidates: [], board })
         if (server) mcpServers = { factory: server }
       } catch (e) { log('tools: ' + String((e && e.message) || e).slice(0, 200)) }
     }
-    await dispatch({
+    const examAnswer = await dispatch({
       role: 'exam', label: 'exam:' + task.id, taskId: task.id, cwd: examDir, model,
-      systemPrompt: EXAM_MD, files: task.proofTests, prompt: examPrompt(task), mcpServers,
+      systemPrompt: EXAM_MD, files: task.proofTests, mcpServers,
+      prompt: await withHandoff(examPrompt(task), task.id),
     })
+    await board.post(task.id, 'exam-note',
+      (examAnswer && examAnswer.result && examAnswer.result.result) || '')
     const examFiles = (task.proofTests || []).map((p) => {
       const at = path.join(examDir, p)
       return [p, fs.existsSync(at) ? fs.readFileSync(at, 'utf8') : '']
@@ -584,12 +688,20 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const candidates = await Promise.all(Array.from({ length: k }, async (_, index) => {
       const dir = cloneAt(`impl-${task.id}-${index}`, anchor)
       for (const [p, content] of examFiles) {
+        // A path the exam never actually wrote to (a sim's default worker
+        // writes only its own note file, never the real proof path) carries
+        // no content: writing it anyway would plant a phantom empty file in
+        // every implementer's clone, and a worker that then dies with no
+        // edit of its own would read as a non-empty patch — a candidate with
+        // something to fold when it has nothing.
+        if (!content) continue
         fs.mkdirSync(path.dirname(path.join(dir, p)), { recursive: true })
         fs.writeFileSync(path.join(dir, p), content)
       }
       const answer = await dispatch({
         role: 'implement', label: 'impl:' + task.id + ':' + index, taskId: task.id, cwd: dir,
-        model, systemPrompt: IMPL_MD, files, prompt, mcpServers,
+        model, systemPrompt: IMPL_MD, files, mcpServers,
+        prompt: await withHandoff(prompt, task.id),
       })
       const measured = await measure({ task, dir, index, anchor })
       return { ...measured, error: (answer && answer.error) || null }
@@ -607,11 +719,35 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       }
     }
 
+    await postLanding(task, best)
+
     // A worker that ended with an error and left no patch has nothing to fold:
     // the task parks on the worker's own words, and the run goes on.
     const bytes = best.patch && fs.existsSync(best.patch) ? fs.statSync(best.patch).size : 0
     if (best.error && bytes === 0) {
       return { task, k, anchor, best, dead: 'worker ended without a patch: ' + best.error, wall_ms: Date.now() - t0 }
+    }
+
+    // 3.5. M4: a short landing — a red exam, or a lowest-covered clause under
+    //      the redispatch floor — gets exactly one more implementer in the
+    //      same clone, with the hand-off, and a fresh measurement is kept.
+    const redispatchFloor = Number(redispatchPolicy.coverage_floor)
+    const lowCoverage = best.coverage.length
+      ? Math.min(...best.coverage.map((v) => Number(v) || 0))
+      : null
+    const short = best.examExit !== 0 ||
+      (lowCoverage !== null && Number.isFinite(redispatchFloor) && lowCoverage < redispatchFloor)
+    if (short && redispatchPolicy.enabled === true) {
+      await board.post(task.id, 'redispatch',
+        'exam exit ' + best.examExit + ', lowest coverage ' + lowCoverage)
+      await dispatch({
+        role: 'implement', label: 'impl:' + task.id + ':redispatch', taskId: task.id, cwd: best.dir,
+        model, systemPrompt: IMPL_MD, files, mcpServers,
+        prompt: await withHandoff(prompt, task.id),
+      })
+      const remeasured = await measure({ task, dir: best.dir, index: best.index, anchor })
+      best = { ...remeasured }
+      await postLanding(task, best)
     }
 
     // 4. the discovery referee, exactly when the judge's task reading asks for
@@ -623,11 +759,13 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         role: 'referee', label: 'referee:' + task.id, taskId: task.id, cwd: best.dir,
         model: refereeModel, systemPrompt: REFEREE_SYSTEM, files: [], readOnly: true,
         schema: FINDINGS_SCHEMA,
-        prompt: 'TASK:\n' + task.body +
+        prompt: await withHandoff(
+          'TASK:\n' + task.body +
           '\n\nFILES: ' + (task.files || []).join(', ') +
           '\nTEST COMMAND: ' + task.testCmd + '\nexit ' + best.examExit +
           '\n' + best.examTail +
           '\n\nThe patch this task produced is on disk at ' + best.patch + ' — read it there.',
+          task.id),
       })
       const findings = findingsOf(answer)
       const grades = []
@@ -641,22 +779,22 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         })
         grades.push(grade)
         if (grade === 'blocking') blocking.push(finding)
+        await board.post(task.id, 'finding:' + grade,
+          String((finding && (finding.detail || finding.title)) || finding))
       }
       appendEvent({
         kind: 'referee', task: task.id, findings: findings.length,
         blocking: blocking.length, grades,
       })
       if (blocking.length) {
-        const handoff = blocking
-          .map((f) => '- ' + String((f && (f.detail || f.title)) || f))
-          .join('\n')
         await dispatch({
           role: 'implement', label: 'fix:' + task.id, taskId: task.id, cwd: best.dir,
           model, systemPrompt: IMPL_MD, files, mcpServers,
-          prompt: prompt + '\n\nHAND-OFF:\nAn earlier reading of this task was left with these:\n' + handoff,
+          prompt: await withHandoff(prompt, task.id),
         })
         const remeasured = await measure({ task, dir: best.dir, index: best.index, anchor })
         best = { ...remeasured, examTail: remeasured.examTail }
+        await postLanding(task, best)
       }
     }
 
@@ -679,19 +817,20 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     }
     if (!fold || fold.complete !== true) {
       const reason = 'fold did not complete: ' + JSON.stringify(fold || null).slice(0, 300)
+      await board.post(id, 'conflict', reason)
       appendEvent({ kind: 'parked', task: id, reason })
-      return null
+      return { sha: null, reason }
     }
     const mat = kernel(['materialize', ...common, '--prev-head', head, '--patch', patchArg,
       '--subject', 'task ' + id])
     if (!mat || typeof mat.candidateSha !== 'string') {
       const reason = 'materialize answered no candidate: ' + JSON.stringify(mat || null).slice(0, 300)
       appendEvent({ kind: 'parked', task: id, reason })
-      return null
+      return { sha: null, reason }
     }
     git(['reset', '-q', '--hard', mat.candidateSha], target)
     head = mat.candidateSha
-    return mat.candidateSha
+    return { sha: mat.candidateSha }
   }
 
   /** One pass of the resolver over whatever the fold left open. */
@@ -704,8 +843,10 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         role: 'resolve', label: 'resolve:' + landing.task.id + ':' + conflict.i,
         taskId: landing.task.id, cwd: path.dirname(String(conflict.hunksFile || runDir)),
         model, systemPrompt: RESOLVE_MD, files: [], readOnly: true, schema: RESOLVER_SCHEMA,
-        prompt: 'HUNKS FILE: ' + conflict.hunksFile + ' (conflicted path: ' + conflict.path + ')' +
+        prompt: await withHandoff(
+          'HUNKS FILE: ' + conflict.hunksFile + ' (conflicted path: ' + conflict.path + ')' +
           '\n\nRead that file and resolve every block it carries.',
+          landing.task.id),
       })
       const reply = (answer && answer.result && answer.result.structured_output) || null
       if (!reply || reply.status !== 'RESOLVED') return latest
@@ -726,45 +867,99 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     return latest
   }
 
-  // ── the loop ───────────────────────────────────────────────────────────────
-  while (done.size < tasks.length) {
-    const ready = tasks.filter((t) =>
-      !done.has(t.id) && !inflight.has(t.id) && waitsOn(t).every((d) => done.has(d)))
-    if (!ready.length) {
+  // ── the loop: a pool, not a wave ─────────────────────────────────────────
+  //
+  // No epoch, no barrier: a task starts the moment what it waits on is
+  // adopted, whether or not its siblings from an earlier ready set are still
+  // in flight. `inflight` carries the running `land()` promises; whenever one
+  // settles it is folded on the spot (folds stay one at a time, in settle
+  // order — a park counts as a fold's outcome too), readiness is re-read
+  // immediately, and whatever became ready — including a task whose only
+  // predecessor just adopted — is dispatched before the next wait.
+  const inflightLandings = new Map()
+
+  const launch = (task) => {
+    const anchor = head
+    inflight.add(task.id)
+    inflightLandings.set(task.id, land(task, anchor).then((landing) => ({ id: task.id, landing })))
+  }
+
+  /** One fixed-point pass: a task whose predecessors are all adopted starts
+   *  now; a task with a parked predecessor parks now, by that predecessor's
+   *  name — and either can unlock a further task in the same pass. */
+  const settleReadiness = async () => {
+    let changed = true
+    while (changed) {
+      changed = false
       for (const t of tasks) {
-        if (done.has(t.id)) continue
-        appendEvent({ kind: 'parked', task: t.id, reason: 'no ready set: ' + waitsOn(t).join(', ') + ' never adopted' })
-        parked.add(t.id)
-        done.add(t.id)
+        if (done.has(t.id) || inflight.has(t.id)) continue
+        const preds = waitsOn(t)
+        const badPred = preds.find((d) => parked.has(d))
+        if (badPred !== undefined) {
+          const reason = 'predecessor ' + badPred + ' parked'
+          appendEvent({ kind: 'parked', task: t.id, reason })
+          await board.post(t.id, 'park', reason)
+          await board.setState(t.id, 'parked')
+          parked.add(t.id)
+          done.add(t.id)
+          changed = true
+          continue
+        }
+        if (preds.every((d) => done.has(d))) {
+          launch(t)
+          changed = true
+        }
       }
-      break
     }
-    ready.forEach((t) => inflight.add(t.id))
-    const landings = await Promise.all(ready.map((t) => land(t, head)))
-    for (const landing of landings) {
-      const id = landing.task.id
-      inflight.delete(id)
-      done.add(id)
-      if (landing.dead) {
-        appendEvent({ kind: 'parked', task: id, reason: landing.dead })
+  }
+
+  await settleReadiness()
+  while (inflightLandings.size > 0) {
+    const { id, landing } = await Promise.race([...inflightLandings.values()])
+    inflight.delete(id)
+    inflightLandings.delete(id)
+    done.add(id)
+    if (landing.dead) {
+      appendEvent({ kind: 'parked', task: id, reason: landing.dead })
+      await board.post(id, 'park', landing.dead)
+      await board.setState(id, 'parked')
+      parked.add(id)
+    } else {
+      const folded = await foldIn(landing)
+      if (folded.sha === null) {
+        await board.post(id, 'park', folded.reason)
+        await board.setState(id, 'parked')
         parked.add(id)
-        continue
+      } else {
+        const candidateSha = folded.sha
+        adopted.push(id)
+        appendEvent({
+          kind: 'landing',
+          task: id,
+          k: landing.k,
+          examExit: landing.best.examExit,
+          claim: landing.best.claim,
+          coverage: landing.best.coverage,
+          candidateSha,
+          wall_ms: landing.wall_ms,
+        })
+        await board.setState(id, 'adopted')
+        log('adopted task ' + id + ' -> ' + candidateSha.slice(0, 8) +
+          '  exam=' + landing.best.examExit + ' k=' + landing.k)
       }
-      const candidateSha = await foldIn(landing)
-      if (candidateSha === null) { parked.add(id); continue }
-      adopted.push(id)
-      appendEvent({
-        kind: 'landing',
-        task: id,
-        k: landing.k,
-        examExit: landing.best.examExit,
-        claim: landing.best.claim,
-        coverage: landing.best.coverage,
-        candidateSha,
-        wall_ms: landing.wall_ms,
-      })
-      log('adopted task ' + id + ' -> ' + candidateSha.slice(0, 8) +
-        '  exam=' + landing.best.examExit + ' k=' + landing.k)
+    }
+    await settleReadiness()
+  }
+
+  if (done.size < tasks.length) {
+    for (const t of tasks) {
+      if (done.has(t.id)) continue
+      const reason = 'no ready set: ' + waitsOn(t).join(', ') + ' never adopted'
+      appendEvent({ kind: 'parked', task: t.id, reason })
+      await board.post(t.id, 'park', reason)
+      await board.setState(t.id, 'parked')
+      parked.add(t.id)
+      done.add(t.id)
     }
   }
 
@@ -826,14 +1021,14 @@ export function buildDeps (rawArgs = {}, overrides = {}) {
   // import here would make a run with no kata — the common one — depend on an
   // install it never needs.
   const tools = args.kataUrl
-    ? async ({ task, candidates }) => {
+    ? async ({ task, candidates, board }) => {
       const { makeKataClient, httpTransport } = await import('../fleet/kata-client.mjs')
       const { factoryTools } = await import('./tools.mjs')
       const kata = overrides.kata || makeKataClient({
         transport: httpTransport({ url: String(args.kataUrl) }),
         actor: args.kataActor,
       })
-      return factoryTools({ kata, projectId: args.kataProject, task, candidates })
+      return factoryTools({ kata, projectId: args.kataProject, task, candidates, board })
     }
     : null
 
