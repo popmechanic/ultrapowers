@@ -71,7 +71,11 @@ LEG_MARKER_RE = re.compile(r'\([a-z]\)')
 LEG_CITATION_RE = re.compile(r'\[M(\d+)\]')
 TYPE_LINE = re.compile(r'^\*\*Type:\*\*\s*(.+?)\s*$', re.I)
 EXAM_CMD_LINE = re.compile(r'^\*\*Exam command:\*\*\s*(.+?)\s*$', re.I)
+BOOTSTRAP_LINE = re.compile(r'^\*\*Bootstrap:\*\*\s*(.+?)\s*$', re.I)
 BACKTICK_PATH_RE = re.compile(r'`([^`]+)`')
+GLOBAL_CONSTRAINTS_H2 = re.compile(r'^##\s*Global Constraints\s*$', re.I)
+CHECK_BULLET = re.compile(r'^-\s*Check\s*:\s*(.+)$', re.I)
+MINOR_SUFFIX_RE = re.compile(r'\s*\(minor\)\s*$', re.I)
 
 SLOT_RE = re.compile(
     r'^\*\*\s*(claim|authorized[-\s]?by|interfaces|context|proof|stale[-\s]?if)'
@@ -134,14 +138,47 @@ def _split_plan(text):
 
 def _parse_header(header_lines):
     exam_command = None
+    bootstrap_cmd = None
     for line, fenced in header_lines:
         if fenced:
             continue
-        m = EXAM_CMD_LINE.match(line.strip())
+        s = line.strip()
+        m = EXAM_CMD_LINE.match(s)
         if m:
             exam_command = m.group(1).strip()
-            break
-    return exam_command
+            continue
+        m = BOOTSTRAP_LINE.match(s)
+        if m:
+            bootstrap_cmd = m.group(1).strip()
+    return exam_command, bootstrap_cmd
+
+
+def _parse_checks(header_lines):
+    """`- Check:` bullets under the `## Global Constraints` heading in the
+    plan header, in order; a trailing `(minor)` marks `minor` true and is
+    stripped from `cmd`."""
+    checks = []
+    in_section = False
+    for line, fenced in header_lines:
+        if fenced:
+            continue
+        s = line.strip()
+        if H2_HEAD.match(s):
+            in_section = bool(GLOBAL_CONSTRAINTS_H2.match(s))
+            continue
+        if not in_section:
+            continue
+        m = CHECK_BULLET.match(s)
+        if not m:
+            continue
+        val = m.group(1).strip()
+        minor = False
+        mm = MINOR_SUFFIX_RE.search(val)
+        if mm:
+            minor = True
+            val = val[:mm.start()].rstrip()
+        checks.append({"cmd": val, "minor": minor})
+    return checks
 
 
 # --------------------------------------------------------------------------- #
@@ -313,11 +350,13 @@ PY_PROOF_TEST_RE = re.compile(r'^tests/(?:[^/]+/)*[^/]+\.py$')
 BUN_PROOF_TEST_RE = re.compile(r'^tests/(?:[^/]+/)*[^/]+\.test\.ts$')
 
 
-def _derive_test_cmd(proof_tests, exam_command):
+def _derive_test_cmds(proof_tests, exam_command):
+    """The list of commands whose ` && `-join is `testCmd`; `[]` when
+    `testCmd` would be `null` (no proof tests, or an unrecognized shape)."""
     if not proof_tests:
-        return None
+        return []
     if exam_command:
-        return exam_command.replace("{paths}", " ".join(proof_tests))
+        return [exam_command.replace("{paths}", " ".join(proof_tests))]
     node_paths, py_paths, bun_paths = [], [], []
     for path in proof_tests:
         if MJS_PROOF_TEST_RE.match(path):
@@ -327,13 +366,17 @@ def _derive_test_cmd(proof_tests, exam_command):
         elif BUN_PROOF_TEST_RE.match(path):
             bun_paths.append(path)
         else:
-            return None
+            return []
     parts = ["node " + p for p in node_paths]
     if py_paths:
         parts.append("python3 -m pytest -q " + " ".join(py_paths))
     if bun_paths:
         parts.append("bun test " + " ".join(bun_paths))
-    return " && ".join(parts)
+    return parts
+
+
+def _derive_test_cmd(test_cmds):
+    return " && ".join(test_cmds) if test_cmds else None
 
 
 # --------------------------------------------------------------------------- #
@@ -602,7 +645,8 @@ def _kahn_layers(ids, edges):
 
 def parse_plan_text(text):
     header_lines, task_bodies = _split_plan(text)
-    exam_command = _parse_header(header_lines)
+    exam_command, bootstrap_cmd = _parse_header(header_lines)
+    checks = _parse_checks(header_lines)
 
     all_tasks = []
     for tid, title, order, body_lines in task_bodies:
@@ -610,6 +654,7 @@ def parse_plan_text(text):
         files = sorted(set(parsed["creates"]) | set(parsed["modifies"])
                        | set(parsed["test_files"]))
         proof_tests = parsed["proof_tests"]
+        test_cmds = _derive_test_cmds(proof_tests, exam_command)
         task = {
             "id": tid,
             "title": title,
@@ -623,7 +668,9 @@ def parse_plan_text(text):
             "files": files,
             "depends_on": [],
             "proofTests": proof_tests,
-            "testCmd": _derive_test_cmd(proof_tests, exam_command),
+            "testCmd": _derive_test_cmd(test_cmds),
+            "testCmds": test_cmds,
+            "proofRuns": parsed["proof_runs"],
             "interfaces": {
                 "consumes": parsed["consumes_text"],
                 "produces": parsed["produces_text"],
@@ -649,6 +696,8 @@ def parse_plan_text(text):
             "depends_on": t["depends_on"],
             "proofTests": t["proofTests"],
             "testCmd": t["testCmd"],
+            "testCmds": t["testCmds"],
+            "proofRuns": t["proofRuns"],
             "interfaces": t["interfaces"],
             "proofGuards": t["proofGuards"],
             "runOnlyClauses": t["runOnlyClauses"],
@@ -665,6 +714,8 @@ def parse_plan_text(text):
         "dag_edges": dag_edges,
         "launch_waves": launch_waves,
         "pairs": pairs,
+        "checks": checks,
+        "bootstrapCmd": bootstrap_cmd,
     }
 
 
