@@ -693,3 +693,7 @@
 {"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"sed -n '1,60p' /home/exedev/run/impl-4-1/factory/select.mjs"}
 {"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"ls /home/exedev/run/impl-4-1/factory/ | grep -i pair"}
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"clean\\|resolved\\|union\\|parked\\|complete\" /home/exedev/run/impl-4-0/skills/ultrapowers/kernel/fold_wave.py | head -80"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/policy.json"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -rl \"factory/engine\" /home/exedev/run/impl-4-0 --include=\"*.mjs\" --include=\"*.py\" | grep -v node_modules"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"factory/engine\" /home/exedev/run/impl-4-0/tests/test_plan_parse.py"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"why\\|write-after-create\\|interface\\|proof-run\\|dag_edges\\|def parse_plan_text\\|launch_waves\\|depends_on\" /home/exedev/run/impl-4-0/skills/ultrapowers/scripts/plan_parse.py | head -60"}
