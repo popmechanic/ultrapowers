@@ -48,7 +48,9 @@ import { cloneAtBase } from '../fleet/run-waves.mjs'
 import { makeJevClient } from '../fleet/jev-client.mjs'
 import { runWorker } from './worker.mjs'
 import { makeJudge } from './judge.mjs'
+import { literalsOf, hunksCarrying } from './hunks.mjs'
 import { makeBoard } from './board.mjs'
+import { candidateTests, symbolsOf, commandFor } from './select.mjs'
 
 // ── where everything lives ───────────────────────────────────────────────────
 
@@ -434,11 +436,18 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const inflight = new Set()
   const supervisorTicks = []
 
+  // M5: the policy the run reads is `args.policy` when given, else the
+  // engine's own `POLICY_PATH` — the same fallback `buildDeps` already uses
+  // for the judge's own copy.
   const policyDoc = (() => {
-    try { return JSON.parse(fs.readFileSync(POLICY_PATH, 'utf8')) } catch { return {} }
+    try {
+      const policyFile = args.policy ? path.resolve(String(args.policy)) : POLICY_PATH
+      return JSON.parse(fs.readFileSync(policyFile, 'utf8'))
+    } catch { return {} }
   })()
   const supervisorMode = (policyDoc.supervisor || {}).mode
   const redispatchPolicy = (policyDoc.landing || {}).redispatch || {}
+  const selectPolicy = policyDoc.select || {}
 
   /** A judge reader that never throws and never is required to exist: Jev
    *  answers no fact, and a reading that did not happen is simply absent. */
@@ -603,10 +612,13 @@ export async function runEngine (rawArgs = {}, deps = {}) {
 
   // Prompts carry the task, its files and its test command — and never a
   // command for a model to run against the repository's history.
-  const examPrompt = async (task) =>
+  // M1: `coveredBlock` is `\n\nCOVERED:\n` plus one `M<n>: <path>` line per
+  // covered clause, right after `TEST COMMAND:` — or the empty string, when
+  // selection is off or nothing is covered.
+  const examPrompt = async (task, coveredBlock = '') =>
     'TASK:\n' + task.body +
     '\n\nEXAM FILES: ' + (task.proofTests || []).join(', ') +
-    '\nTEST COMMAND: ' + task.testCmd +
+    '\nTEST COMMAND: ' + task.testCmd + coveredBlock +
     '\n\nINTERFACES:\n' + interfacesBlock(task) + await settledSuffix(task)
 
   const implPrompt = async (task) =>
@@ -661,12 +673,13 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     // `task` and `cwd` ride the reading so a caller can tell one candidate of a
     // raced task from the other; `makeJudge` builds Jev's state from `clauses`,
     // `patch` and `files` alone, so neither reaches the model.
+    const literals = literalsOf(task.clauses)
     const reading = await read('readLanding', {
       task: task.id,
       cwd: dir,
       clauses: task.clauses,
-      patch: text.slice(0, 20000),
-      files: Object.fromEntries(names.map((n, j) => ['f' + j, perFile[n].slice(0, 6000)])),
+      patch: hunksCarrying(text, literals, 20000),
+      files: Object.fromEntries(names.map((n, j) => ['f' + j, hunksCarrying(perFile[n], literals, 6000)])),
     })
     return {
       dir,
@@ -736,10 +749,43 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         if (server) mcpServers = { factory: server }
       } catch (e) { log('tools: ' + String((e && e.message) || e).slice(0, 200)) }
     }
+
+    // M1: before the exam is dispatched, tell it which of its own clauses an
+    // existing test already proves. `taskCovering` (one path or `null` per
+    // clause) rides on into M2, seeding the run set's own covering tests.
+    let taskCovering = []
+    let coveredBlock = ''
+    if (selectPolicy.enabled === true) {
+      const trackedInExam = git(['ls-files'], examDir).split('\n').map((s) => s.trim()).filter(Boolean)
+      const readExamFile = (p) => {
+        try { return fs.readFileSync(path.join(examDir, p), 'utf8') } catch { return '' }
+      }
+      const foundCovering = await candidateTests({
+        files: trackedInExam, read: readExamFile,
+        paths: implFilesOf(task), symbols: symbolsOf(task.clauses),
+        exclude: task.proofTests || [], cap: selectPolicy.max_candidates,
+      })
+      if (foundCovering.length) {
+        const coveringTests = foundCovering.map((c) => ({ path: c.path, text: readExamFile(c.path).slice(0, 6000) }))
+        const covering = await read('readCovering', { clauses: task.clauses, tests: coveringTests })
+        if (covering) {
+          taskCovering = Array.isArray(covering.covered) ? covering.covered : []
+          appendEvent({
+            kind: 'select:exam', task: task.id,
+            candidates: foundCovering.map((c) => c.path), covered: taskCovering,
+          })
+          const lines = taskCovering
+            .map((p, i) => (p ? 'M' + (i + 1) + ': ' + p : null))
+            .filter(Boolean)
+          if (lines.length) coveredBlock = '\n\nCOVERED:\n' + lines.join('\n')
+        }
+      }
+    }
+
     const examAnswer = await dispatch({
       role: 'exam', label: 'exam:' + task.id, taskId: task.id, cwd: examDir, model,
       systemPrompt: EXAM_MD, files: task.proofTests, mcpServers,
-      prompt: await withHandoff(await examPrompt(task), task.id),
+      prompt: await withHandoff(await examPrompt(task, coveredBlock), task.id),
     })
     await board.post(task.id, 'exam-note',
       (examAnswer && examAnswer.result && examAnswer.result.result) || '')
@@ -794,15 +840,88 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       return { task, k, anchor, best, dead: 'worker ended without a patch: ' + best.error, wall_ms: Date.now() - t0 }
     }
 
-    // 3.5. M4: a short landing — a red exam, or a lowest-covered clause under
-    //      the redispatch floor — gets exactly one more implementer in the
-    //      same clone, with the hand-off, and a fresh measurement is kept.
+    // M2/M3: the few existing tests the patch touches, run in the candidate's
+    // clone; one clone of the anchor, made lazily and once for this task, is
+    // where a red one is re-run to tell a catch from a pre-existing redness.
+    const baseCloneCache = new Map()
+    const baseCloneForTask = () => {
+      if (!baseCloneCache.has('base')) baseCloneCache.set('base', cloneAt('base-' + task.id, anchor))
+      return baseCloneCache.get('base')
+    }
+    const runSelection = async (candidate) => {
+      if (selectPolicy.enabled !== true || typeof judge.readGuards !== 'function') return false
+      const patchText = candidate.patch && fs.existsSync(candidate.patch) ? fs.readFileSync(candidate.patch, 'utf8') : ''
+      const touched = Object.keys(splitDiff(patchText))
+      const { names } = candidatesOf(task, patchText)
+      const trackedInCandidate = git(['ls-files'], candidate.dir).split('\n').map((s) => s.trim()).filter(Boolean)
+      const readCandidateFile = (p) => {
+        try { return fs.readFileSync(path.join(candidate.dir, p), 'utf8') } catch { return '' }
+      }
+      const found = await candidateTests({
+        files: trackedInCandidate, read: readCandidateFile,
+        paths: touched, symbols: names,
+        exclude: task.proofTests || [], cap: selectPolicy.max_candidates,
+      })
+      if (!found.length) return false
+      const guardTests = found.map((c) => ({ path: c.path, text: readCandidateFile(c.path) }))
+      const guards = await read('readGuards', {
+        patch: hunksCarrying(patchText, names, 20000),
+        tests: guardTests,
+      })
+      if (!guards) return false
+
+      const runSet = []
+      for (const p of taskCovering) {
+        if (p && !runSet.includes(p)) runSet.push(p)
+      }
+      for (const p of (Array.isArray(guards.selected) ? guards.selected : [])) {
+        if (!runSet.includes(p)) runSet.push(p)
+      }
+      const runSetCapped = runSet.slice(0, selectPolicy.max_run)
+
+      const ran = []
+      const reds = []
+      for (const p of runSetCapped) {
+        const argv = commandFor(p, selectPolicy.timeout_seconds)
+        if (!argv) continue
+        const r = sh(argv[0], argv.slice(1), candidate.dir)
+        const exit = exitOf(r)
+        ran.push({ path: p, exit })
+        if (exit !== 0) reds.push({ path: p, exit, argv, out: outOf(r) })
+      }
+      appendEvent({
+        kind: 'select:landing', task: task.id,
+        candidates: found.map((c) => c.path), selected: guards.selected, ran,
+      })
+
+      let caught = false
+      for (const red of reds) {
+        const baseDir = baseCloneForTask()
+        const r2 = sh(red.argv[0], red.argv.slice(1), baseDir)
+        if (exitOf(r2) !== 0) {
+          appendEvent({ kind: 'select:red-at-base', task: task.id, path: red.path })
+          continue
+        }
+        appendEvent({ kind: 'catch', task: task.id, path: red.path, exit: red.exit })
+        await board.post(task.id, 'catch',
+          red.path + '\nexit ' + red.exit + '\n' + red.out.slice(-1500))
+        caught = true
+      }
+      return caught
+    }
+    let caught = await runSelection(best)
+
+    // 3.5. M4: a short landing — a red exam, a lowest-covered clause under
+    //      the redispatch floor, or at least one catch — gets exactly one
+    //      more implementer in the same clone, with the hand-off, and a
+    //      fresh measurement (and a fresh run-set reading) is kept.
     const redispatchFloor = Number(redispatchPolicy.coverage_floor)
     const lowCoverage = best.coverage.length
       ? Math.min(...best.coverage.map((v) => Number(v) || 0))
       : null
     const short = best.examExit !== 0 ||
-      (lowCoverage !== null && Number.isFinite(redispatchFloor) && lowCoverage < redispatchFloor)
+      (lowCoverage !== null && Number.isFinite(redispatchFloor) && lowCoverage < redispatchFloor) ||
+      caught
     if (short && redispatchPolicy.enabled === true) {
       await board.post(task.id, 'redispatch',
         'exam exit ' + best.examExit + ', lowest coverage ' + lowCoverage)
@@ -814,6 +933,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       const remeasured = await measure({ task, dir: best.dir, index: best.index, anchor })
       best = { ...remeasured }
       await postLanding(task, best)
+      caught = await runSelection(best)
     }
 
     // 4. the discovery referee, exactly when the judge's task reading asks for

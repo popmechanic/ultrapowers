@@ -67,7 +67,12 @@ included. Nothing prints them.
   falsifies neither; a rule that would fire on an existing fixture is a plan
   defect, so read the sibling fixture before writing the clause; and `leg (e)`
   written inside another leg's prose splits the leg even when (e) is another
-  file's leg — say "the previous leg" or "its frozen-sha comparison". Nothing
+  file's leg — say "the previous leg" or "its frozen-sha comparison"; a
+  negation or absence clause ("the enumerable keys are still exactly three",
+  "none of these four words appear") is always a computable fact and always
+  needs a leg of its own, because the diff shows nothing for what is not
+  there — run-192 (n=1 run, 8 tasks, 2026-09-18) scored two such clauses 0.19
+  and 0.40 by Jev where both exams passed. Nothing
   prints this list: read it here, row by row, before a reader is dispatched.
 - **Absolute collected-count pins are integration-hostile.**
   `test "$(pytest --collect-only -q | tail -1 | cut -d' ' -f1)" = 1461` passes

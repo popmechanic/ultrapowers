@@ -207,5 +207,32 @@
       "experiment": true,
       "rollback": 1.01
     }
+  },
+  "select": {
+    "enabled": true,
+    "t_covers": {
+      "value": 0.8,
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "experiment": true,
+      "rollback": 1.01
+    },
+    "t_guards": {
+      "value": 0.5,
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "experiment": true,
+      "rollback": 1.01
+    },
+    "max_candidates": 8,
+    "max_run": 3,
+    "timeout_seconds": 300,
+    "n": 0,
+    "window": "none",
+    "basis": "judgment",
+    "experiment": true,
+    "rollback": "enabled = false"
   }
 }

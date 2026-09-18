@@ -20,6 +20,14 @@ never runs another exam, the package suite, the linter, or the typecheck. A
 node exam that starts a process passes `env: simEnv()`, the named export of
 `fleet/tests/_helpers.mjs`, and never `process.env`.
 
+Your brief may carry a `COVERED:` block, directly under `TEST COMMAND:`. Each
+line names a clause an existing test already establishes and the path of the
+test that establishes it. Write no leg for a covered clause — the proof
+already stands — and spend your assertions on the clauses `COVERED:` leaves
+out. Your hand-in note still names every clause, covered or not: for one
+`COVERED:` names, say which test covers it, beside the clause; for the rest,
+say which leg of your own exam measures it and how.
+
 Do not run git commands — the engine runs those itself.
 
 A clause you cannot encode as it reads is worth saying plainly in your hand-in

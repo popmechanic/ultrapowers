@@ -45,6 +45,7 @@ fleet_git()         { git "$@"; }
 fleet_npm()         { npm "$@"; }
 fleet_systemd_run() { systemd-run "$@"; }
 fleet_systemctl()   { systemctl "$@"; }
+fleet_python3()     { python3 "$@"; }
 # KATA_SERVER rides every call the boot itself makes: the daemon it is talking
 # to is always the one it just started, on localhost.
 fleet_kata() { env "KATA_SERVER=$KATA_URL" kata "$@"; }
@@ -115,10 +116,11 @@ prepare() {
   fleet_git -C "$TARGET_DIR" worktree add --detach "$EVIDENCE_DIR" "$at" || fail "evidence: worktree add $EVIDENCE_DIR at $at"
   EVIDENCE_READY=1; log "evidence: worktree at $at"
 }
-ensure_git_identity() {
-  [ -n "$(fleet_git -C "$EVIDENCE_DIR" config user.email 2>/dev/null || true)" ] && return 0
-  fleet_git -C "$EVIDENCE_DIR" config user.email "fleet@exe.dev" || true
-  fleet_git -C "$EVIDENCE_DIR" config user.name "${VM_NAME:-fleet}" || true
+ensure_git_identity() { # $1 = the dir to configure (default: $EVIDENCE_DIR)
+  local dir="${1:-$EVIDENCE_DIR}"
+  [ -n "$(fleet_git -C "$dir" config user.email 2>/dev/null || true)" ] && return 0
+  fleet_git -C "$dir" config user.email "fleet@exe.dev" || true
+  fleet_git -C "$dir" config user.name "${VM_NAME:-fleet}" || true
 }
 # The projection of the engine's event log: `rows` is the PR body's table, `tasks` the status page's last cell.
 ev_project() { # $1 = rows|tasks
@@ -165,6 +167,7 @@ collect_evidence() {
 evidence_commit() { # $1 = commit subject
   local p n=0 paths=()
   for p in status.json events.jsonl engine.log; do if [ -f "$EVIDENCE_DIR/$EVIDENCE_REL/$p" ]; then paths+=("$EVIDENCE_REL/$p"); fi; done
+  [ -d "$EVIDENCE_DIR/$EVIDENCE_REL/exams" ] && paths+=("$EVIDENCE_REL/exams")
   [ "${#paths[@]}" -gt 0 ] || return 0
   ensure_git_identity; fleet_git -C "$EVIDENCE_DIR" add -- "${paths[@]}" || log "evidence: add refused"
   fleet_git -C "$EVIDENCE_DIR" commit -m "$1" || log "evidence: nothing to commit"
@@ -346,8 +349,35 @@ default_branch() {
 # second request; `html_url` and `login` are read as the FIRST match because GitHub's PR document puts its own ahead of
 # the head and base repositories'. A run the engine did not finish green still gets its PR — as a DRAFT: what is
 # withheld is the claim that it is ready, and the merge is the operator's act.
+# The plan's own listing of the exams it chose not to keep in the pull request:
+# every path it names that is a regular file under $TARGET_DIR is copied to the
+# evidence tree and removed from the target's working copy, in one commit. A
+# listing that errors, prints nothing, or names no such file is a no-op — logged
+# once as `exams:` — and the run proceeds exactly as it would without this step.
+strip_exams() {
+  local listing rc=0 rel dest removed=0
+  listing="$(fleet_python3 "$ENGINE_REPO_DIR/skills/ultrapowers/scripts/plan_parse.py" --unguarded "$PLAN_FILE")" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    log "exams: plan_parse --unguarded exited $rc — nothing stripped"; return 0; fi
+  if [ -z "$listing" ]; then
+    log "exams: plan_parse --unguarded printed nothing — nothing stripped"; return 0; fi
+  while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
+    if [ -f "$TARGET_DIR/$rel" ]; then
+      dest="$EVIDENCE_DIR/$EVIDENCE_REL/exams/$rel"
+      mkdir -p "$(dirname "$dest")"; cp "$TARGET_DIR/$rel" "$dest"
+      fleet_git -C "$TARGET_DIR" rm -- "$rel" || fail "exams: git rm $rel in target"
+      removed=$((removed + 1))
+    fi
+  done <<<"$listing"
+  if [ "$removed" -eq 0 ]; then
+    log "exams: plan_parse --unguarded named no path that is a file under the target"; return 0; fi
+  ensure_git_identity "$TARGET_DIR"
+  fleet_git -C "$TARGET_DIR" commit -m "$RUN_ID: exams to evidence" || fail "exams: commit in target"
+}
 publish() { # $1 = the engine's exit code
   local base title draft body payload answer code reply state number
+  strip_exams
   fleet_git -C "$TARGET_DIR" push origin "HEAD:refs/heads/$BRANCH" || fail "publish: pushing $BRANCH was rejected"
   write_status publishing "opening the pull request"; evidence_commit "$RUN_ID: publishing"
   base="$(default_branch)" || fail "publish: cannot read the target's default branch from refs/remotes/origin/HEAD"
