@@ -225,3 +225,30 @@
 {"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"cd /tmp/scratch && python3 -c \"\nimport json\nwith open('factory/policy.json') as f: d=json.load(f)\nd['pairs']['t_changes_consumer']['value'] = 0.75\nwith open('factory/policy.json','w') as f: json.dump("}
 {"kind":"worker:test-run","task":"3","label":"exam:3","cmd":"cd /tmp/scratch && python3 -c \"\nimport json\nwith open('factory/policy.json') as f: d=json.load(f)\nd['pairs']['t_changes_consumer']['value'] = 0.75\nwith open('factory/policy.json','w') as f: json.dump(d,f)\n\"\nnode fleet/tests/test_factory_judge_pair.mjs 2>&1 | head -12\nrm -rf /tmp/scratch /tmp/judge_good.mjs /tmp/judge_broken_m4.mjs /tmp/questions.orig.json /tmp/policy.orig.json /tmp/judge.orig.mjs","red":true}
 {"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"pwd && git status --short | head -20"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"pwd && git status --short"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"pwd && git status --short"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"pwd && git status --short"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"pwd && git status --short"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"echo hello-world-check"}
+{"kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"python3 - <<'EOF'\nimport sys, json\nsys.path.insert(0, 'tests')\nsys.path.insert(0, 'skills/ultrapowers/scripts')\nimport importlib.util\nspec = importlib.util.spec_from_file_location(\"pp\", \"skills/ultrap"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"git status --short && git diff --stat"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"set -e\nWORKDIR=$(mktemp -d)\nmkdir -p \"$WORKDIR/bin\"\ncat > \"$WORKDIR/bin/python3\" <<'PYEOF'\n#!/usr/bin/python3\nimport sys, os, json, importlib.util\n\nreal_path = sys.argv[1]\nplan_path = sys.argv[2]\n\nspe"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"ls factory 2>/dev/null; test -f factory/pairs.mjs && echo EXISTS || echo ABSENT"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"ls /home/exedev/run/exam-3 | head -5"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"node /home/exedev/run/exam-3/fleet/tests/test_factory_judge_pair.mjs 2>&1 | head -20; echo \"EXIT: $?\""}
+{"kind":"worker:test-run","task":"3","label":"exam:3","cmd":"node /home/exedev/run/exam-3/fleet/tests/test_factory_judge_pair.mjs 2>&1 | head -20; echo \"EXIT: $?\"","red":false}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -rn \"from '\\.\\./\\.\\./factory\" /home/exedev/run/exam-4/fleet/tests/*.mjs 2>/dev/null | head -5\necho \"---helpers---\"\nsed -n '1,60p' /home/exedev/run/exam-4/fleet/tests/_helpers.mjs"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"true"}
+{"kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -rn \"plan_parse\" --include=* -l . | grep -v \"^./.git\" | head -30"}
+{"kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -n \"plan_parse\" -A6 -B4 factory/engine.mjs factory/boot.sh | head -80"}
+{"kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -rn \"launch_waves\\|dag_edges\" --include=*.mjs --include=*.js --include=*.py --include=*.sh . | grep -v \"^./tests/test_plan_parse.py\" | grep -v plan_parse.py | head -30"}
+{"kind":"worker:test-run","task":"1","label":"referee:1","cmd":"grep -rn \"launch_waves\\|dag_edges\" --include=*.mjs --include=*.js --include=*.py --include=*.sh . | grep -v \"^./tests/test_plan_parse.py\" | grep -v plan_parse.py | head -30","red":false}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"tail -n 40 /home/exedev/run/exam-6/fleet/tests/test_resolver_brief.mjs; echo ---TAIL2---; tail -n 30 /home/exedev/run/exam-6/fleet/tests/test_run_engine_fold_policy.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"cat /home/exedev/run/impl-3-0/factory/judge.mjs"}
+{"kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -3"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"cat /home/exedev/run/impl-3-0/factory/questions.json"}
+{"kind":"worker:test-run","task":"1","label":"referee:1","cmd":"python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -3","red":false}
+{"kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"python3 - <<'EOF'\nimport sys, json, importlib.util\nsys.path.insert(0,'tests')\nspec = importlib.util.spec_from_file_location(\"pp\",\"skills/ultrapowers/scripts/plan_parse.py\")\npp = importlib.util.module_"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"python3 -c \"\nimport json\nd = json.load(open('/home/exedev/run/impl-3-0/factory/questions.json'))\nprint(list(d['sets'].keys()))\nprint(json.dumps(d['sets']['settled'], indent=2))\n\"\n"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"python3 -c \"\nimport json\nd = json.load(open('/home/exedev/run/impl-3-0/factory/questions.json'))\nprint(json.dumps(d['sets']['task']['questions']['difficulty'], indent=2))\nprint('---levels search---')\n"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"levels\\|type.*score\\|score\" /home/exedev/run/impl-3-0/fleet/jev-client.mjs | head -80"}
