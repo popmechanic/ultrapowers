@@ -74,3 +74,25 @@
 {"ts":"2026-09-18T21:45:45.442Z","kind":"supervisor","task":"1","label":"exam:1","answers":{"stuck":{"type":"noul","noul":0.24},"off_track":{"type":"noul","noul":0.31},"needs_human":{"type":"noul","noul":0.12},"done_not_exited":{"type":"noul","noul":0.11}}}
 {"ts":"2026-09-18T21:45:47.987Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Edit","target":"/home/exedev/run/exam-1/tests/test_plan_parse.py"}
 {"ts":"2026-09-18T21:45:50.703Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Edit","target":"/home/exedev/run/exam-1/tests/test_plan_parse.py"}
+{"ts":"2026-09-18T21:45:53.758Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Edit","target":"/home/exedev/run/exam-1/tests/test_plan_parse.py"}
+{"ts":"2026-09-18T21:45:54.478Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"wc -l skills/ultrapowers/scripts/plan_parse.py; sed -n '1,80p' skills/ultrapowers/scripts/plan_parse.py"}
+{"ts":"2026-09-18T21:45:56.574Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Edit","target":"/home/exedev/run/exam-1/tests/test_plan_parse.py"}
+{"ts":"2026-09-18T21:45:58.256Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n '\"tasks\", \"dag_edges\", \"launch_waves\"' /home/exedev/run/exam-1/tests/test_plan_parse.py"}
+{"ts":"2026-09-18T21:45:58.294Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"grep -n '\"tasks\", \"dag_edges\", \"launch_waves\"' /home/exedev/run/exam-1/tests/test_plan_parse.py","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T21:45:58.567Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"testCmd\\|bootstrapCmd\\|proofTests\\|Exam command\\|exam_cmd\\|files\\b\" skills/ultrapowers/scripts/plan_parse.py | head -80"}
+{"ts":"2026-09-18T21:46:00.016Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/tests/test_plan_parse.py"}
+{"ts":"2026-09-18T21:46:04.276Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -rn \"bootstrapCmd\\|testCmds\" --include='*.py' --include='*.mjs' --include='*.md' . 2>/dev/null | grep -v node_modules"}
+{"ts":"2026-09-18T21:46:04.997Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/tests/test_plan_parse.py"}
+{"ts":"2026-09-18T21:46:14.983Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -rl \"buildDeps\\|from '\\.\\./\\.\\./factory/\" /home/exedev/run/exam-4/fleet/tests /home/exedev/run/exam-4/factory 2>/dev/null | grep -v node_modules"}
+{"ts":"2026-09-18T21:46:19.541Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -rl \"factory/union\\|factory/judge\\|factory/worker\\|factory/dispatch\\|factory/board\\|factory/reverify\\|factory/select\\|factory/hunks\" --include=\"*.mjs\" --include=\"*.py\" /home/exedev/run/exam-4 2>/"}
+{"ts":"2026-09-18T21:46:23.158Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"cat factory/policy.json 2>/dev/null | head -100"}
+{"ts":"2026-09-18T21:46:23.780Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"find /home/exedev/run/exam-4 -iname \"test_*\" -not -path \"*/node_modules/*\" | sort; echo ---; find /home/exedev/run/exam-4 -iname \"conftest.py\" -o -iname \"pytest.ini\" -o -iname \"package.json\" | grep -v"}
+{"ts":"2026-09-18T21:46:28.164Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Edit","target":"/home/exedev/run/exam-1/tests/test_plan_parse.py"}
+{"ts":"2026-09-18T21:46:36.990Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Edit","target":"/home/exedev/run/exam-1/tests/test_plan_parse.py"}
+{"ts":"2026-09-18T21:46:39.765Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-18T21:46:40.886Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"python3 -m pytest -q tests/test_plan_parse.py","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-18T21:46:44.248Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"python3 -m pytest -q tests/test_plan_parse.py::test_cmds_m3_key_sets_and_other_fields_unchanged -x 2>&1 | tail -40"}
+{"ts":"2026-09-18T21:46:44.899Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"python3 -m pytest -q tests/test_plan_parse.py::test_cmds_m3_key_sets_and_other_fields_unchanged -x 2>&1 | tail -40","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T21:46:45.970Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"const runWave\\|async function runWave\\|for (const wave\\|readiness\\|settleReadiness\\|park(\\|adopted.push\\|done.add\\|await land(\\|foldIn(\\|reverifyAfterFold(\\|buildDeps\\|export async function r"}
+{"ts":"2026-09-18T21:46:47.205Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__settled"}
+{"ts":"2026-09-18T21:46:48.850Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
