@@ -432,3 +432,4 @@
 {"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Bash","target":"grep -q 'COVERED:' factory/roles/exam.md && echo \"grep OK\"\nnode fleet/tests/test_factory_engine_select.mjs > /tmp/out.log 2>&1; tail -5 /tmp/out.log"}
 {"kind":"worker:test-run","task":"7","label":"impl:7:0","cmd":"grep -q 'COVERED:' factory/roles/exam.md && echo \"grep OK\"\nnode fleet/tests/test_factory_engine_select.mjs > /tmp/out.log 2>&1; tail -5 /tmp/out.log","red":false}
 {"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Bash","target":"for f in fleet/tests/test_run_engine_*.mjs fleet/tests/test_factory_*.mjs; do\n  echo \"== $f ==\"\n  timeout 60 node \"$f\" > /tmp/res.log 2>&1\n  code=$?\n  if [ $code -ne 0 ]; then echo \"FAIL ($code)\"; tai"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"TaskOutput"}
