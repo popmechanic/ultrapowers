@@ -8,123 +8,35 @@ This file is the index a stranger reads before opening one: every
 it examines. The `probe_*.mjs` files are not indexed here — they are live
 measurements and design gates, and `PROBES.md` is their list.
 
-## The engine kernel — `test_run_engine_*`
+## What survives cut one (2026-09-18)
 
-The wave scheduler, the review pairing, the fix loop, the examiner and the gate,
-one sim per question:
-
-- `test_run_engine_ready_set.mjs` — the ready set and the epoch: a task is
-  dispatched the moment everything it depends on has been folded in, and a lane
-  folds whatever has landed when a slot frees, instead of waiting on a wave
-  barrier.
-- `test_run_engine_fold_policy.mjs` — when a freed lane claims an epoch at all:
-  a fold that releases a queued task, ends the run, or adopts a result that has
-  aged a suite's length, with the record saying which in a `why`.
-- `test_run_engine_stale_patch.mjs` — the anchor the engine hands the kernel per
-  result, and the `applied` reading the record owes afterwards: `base`,
-  `rebased` or `resolved` per task.
-- `test_run_engine_lockfile_regen.mjs` — the capture drops lockfiles and the
-  fold regenerates them: the run's lockfile is rebuilt from the merged manifests
-  at each fold, and no worker is asked to merge one by hand.
-- `test_run_engine_re_edge.mjs` — a task whose proof needs a sibling still in
-  flight waits for that sibling and is dispatched again, instead of failing the
-  run.
-- `test_run_engine_joined_proofs.mjs` — the integrated pass re-runs a merged
-  task's `Run:` lines only when one of that task's files appears in the fold's
-  joined paths.
-- `test_run_engine_own_proofs.mjs` — the implementer iterates against its own
-  task's proofs: a `PROOFS:` block built from the task's `Run:` commands and the
-  run's Global Constraints `Check:` commands, in place of a `TEST COMMAND:`
-  line the examiner alone keeps.
-- `test_run_engine_proof_runs.mjs` — the driver runs a task's `Run:` proofs
-  itself, after the implementer and before the review, in the task's own clone
-  through the engine's `sh` seam, and a non-zero exit sends the task back
-  whatever the reviewer said.
-- `test_run_engine_one_of_each.mjs` — the run's judgment economy: one referee
-  per task, at most one repair round, and no critic reading the finished run.
-- `test_run_engine_review_economy.mjs` — what a reviewer-minute bought, and the
-  removal of the `cannotVerify` channel that bought nothing.
-- `test_run_engine_infra_retry.mjs` — one bounded retry for the single-dispatch
-  judgments, whose death would otherwise park or fail-close a whole run on one
-  overloaded minute.
-- `test_run_engine_export_collision.mjs` — a worker that adds a public name a
-  sibling task was contracted to provide is told so on the driver's own
-  pre-review pass, and gets the one repair round every other red of that pass
-  buys.
-- `test_run_engine_nul_guard.mjs` — the same pass on a patch that puts a stray
-  `0x00` byte into a source file, so no later merge stalls on a file git and the
-  fold kernel read as binary.
-- `test_run_engine_amendments.mjs` — a worker declares an amendment and the
-  driver writes the typed row onto `events.jsonl` and `report.json`, per task.
-- `test_run_engine_amendment_lens.mjs` — those declared amendments rendered into
-  the prompt of the referee who grades them, as a lens rather than an
-  undisclosed divergence.
-- `test_run_engine_state_exams.mjs` — the report row's state-exam record: the
-  action wall and whether the browser ran.
-- `test_run_engine_state_handshake.mjs` — the state handshake: what a task
-  publishes as the state it reached, and what the driver holds against it.
-- `test_run_engine_jev_finding.mjs` — the `jev:finding` row: a reviewer's
-  finding put to Jev, the answers on the record, and nothing on the record when
-  the call did not answer.
-- `test_run_engine_jev_tier.mjs` — the `jev:tier` row at dispatch and at review,
-  the reading recorded beside the tier the driver chose anyway.
-- `test_run_engine_jev_suite_red.mjs` — the `jev:suite-red` row: a red fold's
-  failing paths attributed per task, a reading that adopts nothing.
-
-## The launcher — `test_launch_*`
+The sims whose only subject was the old engine, the old boot, the old worker or the
+publish fold left the tree in cut one of the mow — 47 files, 32,805 lines: the 19 the
+catch report read at zero catches over five or more touching runs, and the rest on the
+operator's licence that a frozen subject's sims can catch nothing new. The code they
+examined goes at cut two. Git history holds every one of them.
 
 - `test_launch_duplicate.mjs` — the launcher refuses a plan already live on the
   target, names the run, and takes `--again`.
-- `test_launch_compile_facts.mjs` — the launch line carries the compiler's
-  `Stale-if` fact lines: an advisory beside the base facts on a clean compile,
-  and the compiler's own refusal line otherwise.
-
-## The sandbox boot — `test_sandbox_boot_*`
-
-- `test_sandbox_boot_fold_record.mjs` — the boot copies the run's fold record —
-  fold logs, conflicts index, narration, resolver briefs and replies, the weave
-  sidecar's manifest and event log — onto the evidence branch beside the
-  receipts, and never the weave's blob store.
-- `test_sandbox_boot_close_evidence.mjs` — the boot's `done` close of the run
-  issue always carries evidence, built from the PR URL and the merged sha.
-- `test_sandbox_boot_amendments.mjs` — the pull request body lists every
-  amendment by task, above the folded record.
-- `test_sandbox_boot_residuals.mjs` — the boot asks TypeSafe's classifier about
-  every residual row, once, through the edge and with no credential of its own,
-  and writes the answers beside its own `kind` on the ledger.
-- `test_sandbox_boot_card_cells.mjs` — the PR card says which task no reviewer
-  read, rendered inside the existing mutant cell rather than a new column.
-- `test_sandbox_boot_publish_record.mjs` — the page records the disclosures
-  ticket beside the PR, so a re-entered boot files no second one.
-- `test_sandbox_boot_viz.mjs` — the refresher serves `events.jsonl` beside the
-  page, so the page shows the fleet turning and the record keeps up.
-
-## The worker seam — `test_worker_*`
-
-- `test_worker_prompt_stdin.mjs` — the worker hands every prompt to the child on
-  stdin, never on argv.
+- `test_launch_vm_size.mjs` — the launch's `--cpu` and `--memory` come from
+  `~/.ultrapowers/fleet.json`.
+- `test_setup_script.mjs` — the generated first-boot setup script.
 - `test_worker_kata_env.mjs` — every worker session is a kata actor with its
   issue in hand.
-
-## The singletons
-
-- `test_publish_fold.mjs` — the publish fold writes its receipts and reads them
-  back.
-- `test_resolver_brief.mjs` — the publish-fold brief names its contending block
-  and main's patch by path, one conflicted path per brief.
-- `test_facts_block.mjs` — the matcher and the `FACTS:` renderer: which of a
-  run's receipts a brief's files pick up, kept short, and rendered as nothing
-  when there is nothing to say.
 - `test_probe_kata_facts.mjs` — the shape of `probe_kata_facts.mjs`: one line
   per fact, stamped with the hub's version.
 - `test_jev_client.mjs` — the Jev client: one POST at the edge hostname with no
   `Authorization` header of its own, and `null` after one log line on every
   lane that is not an answer.
-- `test_jev_questions.mjs` — the sitting's two question sets and the readers
-  over the client: the note's and the amendment's exact questions with the
-  task's own Claim as context, numbers and one word out, and `null` after one
-  log line when the edge does not answer.
 - `test_sims_are_hermetic.mjs` — the probe below.
+
+## The singletons
+
+- `test_jev_questions.mjs` — the sitting's two question sets and the readers
+  over the client.
+
+The factory's own exams are not here: an unguarded exam lives on its run's evidence tag
+under `.ultrapowers/runs/<N>/exams/`, and a guarded one sits where its plan put it.
 
 ## The rig
 
