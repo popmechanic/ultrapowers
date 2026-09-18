@@ -594,3 +594,19 @@
 {"ts":"2026-09-18T22:18:33.924Z","kind":"supervisor","task":"3","label":"impl:3:0","answers":{"stuck":{"type":"noul","noul":0.19},"off_track":{"type":"noul","noul":0.23},"needs_human":{"type":"noul","noul":0.1},"done_not_exited":{"type":"noul","noul":0.08}}}
 {"ts":"2026-09-18T22:18:35.143Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
 {"ts":"2026-09-18T22:18:47.191Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"mcp__factory__note"}
+{"ts":"2026-09-18T22:18:52.655Z","kind":"dispatch:end","task":"5","label":"exam:5","role":"exam","wall_ms":2101429,"cost_usd":4.614506400000001,"error":null}
+{"ts":"2026-09-18T22:18:59.644Z","kind":"dispatch:start","task":"5","label":"impl:5:0","role":"implement"}
+{"ts":"2026-09-18T22:19:01.781Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"find . -maxdepth 3 -name \"*.sh\" | head -50 && echo --- && ls factory/ && echo --- && ls fleet/tests/ | head -50"}
+{"ts":"2026-09-18T22:19:03.401Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Read","target":"/home/exedev/run/impl-5-0/fleet/tests/test_factory_boot_merge.mjs"}
+{"ts":"2026-09-18T22:19:04.150Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -rln \"factory/engine\" --include=* . 2>/dev/null | grep -v '^./.git/' | head -20"}
+{"ts":"2026-09-18T22:19:05.132Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Read","target":"/home/exedev/run/impl-5-0/factory/boot.sh"}
+{"ts":"2026-09-18T22:19:06.291Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"timeout 60 node -e '\nconst m=new Map();\nasync function ex(){ throw new Error(\"boom\") }\nfor (const id of [\"a\"]) m.set(id, ex());\nasync function main(){\n  await new Promise(r=>setTimeout(r,10));\n  try {"}
+{"ts":"2026-09-18T22:19:31.539Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"grep -rn \"record_tags\\|close_run\\|push tag\\|kata close\" fleet/tests/*.mjs | grep -v test_factory_boot_merge"}
+{"ts":"2026-09-18T22:19:32.555Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"cat /home/exedev/run/impl-3-0/factory/policy.json"}
+{"ts":"2026-09-18T22:19:33.163Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"grep -rln \"boot.sh\" fleet/tests/*.mjs"}
+{"ts":"2026-09-18T22:19:33.349Z","kind":"supervisor","task":"5","label":"impl:5:0","answers":{"stuck":{"type":"noul","noul":0.2},"off_track":{"type":"noul","noul":0.24},"needs_human":{"type":"noul","noul":0.13},"done_not_exited":{"type":"noul","noul":0.1}}}
+{"ts":"2026-09-18T22:19:34.533Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"grep -n \"boot.sh\\|record_tags\\|close_run\\|tag\" fleet/tests/test_jev_client.mjs fleet/tests/test_setup_script.mjs 2>/dev/null | head -60"}
+{"ts":"2026-09-18T22:19:35.674Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"mkdir -p /tmp/ref-probe && cat > /tmp/ref-probe/probe.mjs <<'EOF'\n// scratch probe, outside the repo tree: exam_at_zero + a red bootstrap in the exam clone\nimport fs from 'node:fs'; import os from 'no"}
+{"ts":"2026-09-18T22:19:36.950Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"grep -rln \"factory/boot.sh\\|factory_boot\" fleet/tests/*.mjs fleet/tests/*.md 2>/dev/null"}
+{"ts":"2026-09-18T22:19:37.625Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/reverify.mjs"}
+{"ts":"2026-09-18T22:19:45.033Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"cd /tmp/ref-probe && sed -e \"s/const view = .*/const mk=(id)=>({ id, title:'t'+id, files:[id+'-note.txt'], depends_on:[], proofTests:[id+'-exam.txt'], testCmd:'node run.mjs', interfaces:{consumes:[],p"}
