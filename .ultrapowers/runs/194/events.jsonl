@@ -1008,3 +1008,9 @@
 {"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"sed -n 1,60p fleet/tests/_engine_helpers.mjs"}
 {"kind":"worker:tool","task":"8","label":"referee:8","tool":"Write","target":"/tmp/probe_hang.mjs"}
 {"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"node --input-type=module -e \"$(cat <<'EOF'\nimport fs from 'node:fs'\nimport os from 'node:os'\nimport path from 'node:path'\nimport { spawnSync } from 'node:child_process'\nconst REPO = '/home/exedev/run/"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"ONC=off node --input-type=module -e \"$(cat <<'EOF'\nimport fs from 'node:fs'\nimport os from 'node:os'\nimport path from 'node:path'\nimport { spawnSync } from 'node:child_process'\nconst REPO = '/home/exe"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"grep -rn \"dispatch.mjs\" --include=*.mjs --include=*.py --include=*.md . | grep -v node_modules | head; echo ---; timeout 600 node fleet/tests/test_factory_dispatch_candidate.mjs 2>&1 | tail -5; echo \""}
+{"kind":"worker:test-run","task":"8","label":"referee:8","cmd":"grep -rn \"dispatch.mjs\" --include=*.mjs --include=*.py --include=*.md . | grep -v node_modules | head; echo ---; timeout 600 node fleet/tests/test_factory_dispatch_candidate.mjs 2>&1 | tail -5; echo \"exit=$?\"","red":false}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"timeout 900 node fleet/tests/test_factory_dispatch.mjs > /tmp/sib.log 2>&1; echo \"exit=$?\"; tail -5 /tmp/sib.log"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"grep -rn \"POLICY_PATH\" factory/*.mjs | head -5; echo ---; grep -rn \"speculate\" --include=*.json --include=*.mjs --include=*.md . | grep -v node_modules | grep -v \"fleet/tests\" | grep -v \"factory/engin"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"sed -n 248,268p factory/policy.json"}
