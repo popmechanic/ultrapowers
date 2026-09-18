@@ -214,3 +214,17 @@
 {"kind":"landing","task":"4","k":1,"examExit":0,"claim":0.8,"coverage":[0.96,0.96,0.96],"candidateSha":"59452040773e35f9c9cb35d5892e7ce435e436a3","wall_ms":412041}
 {"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"node --input-type=module -e \"\nimport { makeJudge } from './factory/judge.mjs'\nconst mk = (answers, extra={}) => makeJudge({ ask: async () => answers, log: () => {}, ...extra })\nconst tests = ['p0','p1"}
 {"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -rn \"readCovering\\|readGuards\\|policy.select\\|select\\.t_covers\\|max_candidates\" --include=*.mjs --include=*.js --include=*.json --include=*.md . | grep -v node_modules | grep -v '^./factory/judge"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"ls fleet/tests/ | head -60; echo ---; ls factory/"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -rn \"readSettled\\|questions.json.*sets\\|settled.t_settles\" --include=*.md . | grep -v node_modules | head -20"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"ls fleet/tests/ | grep -i \"judge\\|jev\"; echo \"=== run test_jev_questions ===\"; node fleet/tests/test_jev_questions.mjs 2>&1 | tail -20; echo \"exit=$?\""}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -n \"sets\\|assert\\|forEach\\|for (\" fleet/tests/test_jev_questions.mjs | head -60"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -rln \"makeJudge\" --include=*.mjs . | grep -v node_modules"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"node fleet/tests/test_factory_judge_select.mjs; echo \"exit=$?\""}
+{"kind":"worker:test-run","task":"2","label":"referee:2","cmd":"node fleet/tests/test_factory_judge_select.mjs; echo \"exit=$?\"","red":false}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"tail -40 /home/exedev/run/exam-5/fleet/tests/test_jev_client.mjs; echo ===; grep -n \"runTests\" -r /home/exedev/run/exam-5/fleet/tests/_helpers.mjs /home/exedev/run/exam-5/fleet/tests/*.mjs | grep -v s"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -rn \"readers\" --include=*.md --include=*.mjs . | grep -v node_modules | head -20; echo ===; grep -n \"makeJudge\" -A6 factory/engine.mjs | head -30"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"sed -n '1,60p' /home/exedev/run/exam-5/fleet/tests/test_worker_kata_env.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -n \"^const test\\|^async function main\\|runTests\\|ALL TESTS PASSED\\|process.exit\\|await main\" /home/exedev/run/exam-5/fleet/tests/test_worker_kata_env.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -l \"const tests = \\[\\]\" /home/exedev/run/exam-5/fleet/tests/*.mjs"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -rn \"judge.mjs\" --include=*.mjs fleet/tests/ | grep -v test_factory_judge_select | head"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -n \"export function runTests\\|export async function runTests\" -A 30 /home/exedev/run/exam-5/fleet/tests/_sandbox_boot_helpers.mjs | head -40"}
