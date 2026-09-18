@@ -420,3 +420,11 @@
 {"ts":"2026-09-18T22:11:19.644Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Bash","target":"grep -n \"cloneAtBase\" -A 20 /home/exedev/run/impl-2-1/fleet/run-waves.mjs | head -40"}
 {"ts":"2026-09-18T22:11:32.489Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"red.exam\\|\\.exam\\.id\" factory/engine.mjs; node --check factory/engine.mjs && echo SYNTAX_OK"}
 {"ts":"2026-09-18T22:11:33.138Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -rn \"wave\" factory/engine.mjs | grep -n \"wave-\\|--wave\" | head"}
+{"ts":"2026-09-18T22:11:40.330Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '1,60p' factory/reverify.mjs"}
+{"ts":"2026-09-18T22:11:46.987Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"const appendEvent\\|function appendEvent\" factory/engine.mjs"}
+{"ts":"2026-09-18T22:12:00.070Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:12:03.829Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"land(task\\|land(\\|await land\\|catch (e)\" factory/engine.mjs | sed -n '1,60p'"}
+{"ts":"2026-09-18T22:12:06.619Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:12:08.532Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '315,340p' factory/boot.sh"}
+{"ts":"2026-09-18T22:12:10.154Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"inflightLandings\\|Promise.race\\|settled\\b\" factory/engine.mjs | sed -n '1,40p'"}
+{"ts":"2026-09-18T22:12:16.677Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
