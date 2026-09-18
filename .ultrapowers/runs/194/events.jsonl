@@ -760,3 +760,17 @@
 {"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs"}
 {"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n \"runDir\" /home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs"}
 {"kind":"worker:test-run","task":"4","label":"impl:4:1","cmd":"grep -n \"runDir\" /home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n \"mkdirSync\\|mkdtempSync\" /home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:test-run","task":"4","label":"impl:4:1","cmd":"grep -n \"mkdirSync\\|mkdtempSync\" /home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"git status --short && git log --oneline -1 -- fleet/tests/test_factory_dispatch.mjs && git diff --stat HEAD -- fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:test-run","task":"4","label":"impl:4:0","cmd":"git status --short && git log --oneline -1 -- fleet/tests/test_factory_dispatch.mjs && git diff --stat HEAD -- fleet/tests/test_factory_dispatch.mjs","red":true}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"^export async function runEngine\\|^export function runEngine\\|function runEngine\" /home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"policyDoc\\|POLICY_PATH\" /home/exedev/run/impl-4-0/factory/engine.mjs | head -30"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"^async function main\\|^function main\" /home/exedev/run/impl-4-0/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:test-run","task":"4","label":"impl:4:0","cmd":"grep -n \"^async function main\\|^function main\" /home/exedev/run/impl-4-0/fleet/tests/test_factory_dispatch.mjs","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"ls -la fleet/tests/test_factory_dispatch.mjs && md5sum fleet/tests/test_factory_dispatch.mjs && sed -n '340,356p' fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:test-run","task":"4","label":"impl:4:1","cmd":"ls -la fleet/tests/test_factory_dispatch.mjs && md5sum fleet/tests/test_factory_dispatch.mjs && sed -n '340,356p' fleet/tests/test_factory_dispatch.mjs","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/fleet/tests/test_factory_dispatch.mjs"}
