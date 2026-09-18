@@ -839,3 +839,8 @@
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"RUNDIR=\\|console.log(\\\"DEBUG\\|process.stderr.write('RUNDIR\" /home/exedev/run/impl-4-0/factory/engine.mjs /home/exedev/run/impl-4-0/factory/dispatch.mjs"}
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"node fleet/tests/test_factory_dispatch.mjs; echo \"exit=$?\""}
 {"kind":"worker:test-run","task":"4","label":"impl:4:0","cmd":"node fleet/tests/test_factory_dispatch.mjs; echo \"exit=$?\"","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n \"implFilesOf\\|examFiles\\|function capture\\|const capture\\|withPatchCapture\\|dropLockfiles\" factory/engine.mjs | head -40"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n \"patchArg\\|\\.patch\\b\\|foldIn\\|function foldIn\\|const foldIn\" factory/engine.mjs | head -40"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
