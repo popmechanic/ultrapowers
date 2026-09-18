@@ -261,3 +261,8 @@
 {"ts":"2026-09-18T22:03:01.514Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"nl -ba /home/exedev/run/exam-5/factory/boot.sh | sed -n '60,250p'"}
 {"ts":"2026-09-18T22:03:03.139Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"nl -ba /home/exedev/run/exam-5/factory/boot.sh | sed -n '250,470p'"}
 {"ts":"2026-09-18T22:03:07.738Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/reverify.mjs"}
+{"ts":"2026-09-18T22:03:37.587Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Read","target":"/home/exedev/run/exam-3/factory/engine.mjs"}
+{"ts":"2026-09-18T22:03:43.373Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Read","target":"/home/exedev/run/exam-3/factory/policy.json"}
+{"ts":"2026-09-18T22:03:48.324Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"node --version"}
+{"ts":"2026-09-18T22:03:49.747Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Read","target":"/home/exedev/run/exam-3/factory/reverify.mjs"}
+{"ts":"2026-09-18T22:03:55.676Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"sed -n '1,140p' /home/exedev/run/exam-3/fleet/run-waves.mjs"}
