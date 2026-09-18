@@ -927,6 +927,14 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       } catch (e) { log('tools: ' + String((e && e.message) || e).slice(0, 200)) }
     }
 
+    // M1: a task that names no exam file (`proofTests` empty) gets no
+    // examiner at all — no covering reading, no dispatch, no exam-note — just
+    // a record of why, and the same shape `examine` resolves for any task.
+    if (!(task.proofTests || []).length) {
+      appendEvent({ kind: 'exam:skipped', task: task.id, reason: 'no exam file' })
+      return { examDir, mcpServers, taskCovering: [], examFiles: [] }
+    }
+
     // M1: before the exam is dispatched, tell it which of its own clauses an
     // existing test already proves. `taskCovering` (one path or `null` per
     // clause) rides on into M2, seeding the run set's own covering tests.
