@@ -15,6 +15,9 @@ TYPESAFE_PROXY_URL="${TYPESAFE_PROXY_URL:-https://typesafe.int.exe.xyz}"
 GITHUB_INT_HOST="${GITHUB_INT_HOST:-github.int.exe.xyz}"
 PLAN_BLOB_PATH=".ultrapowers/plan.md"
 FLEET_COMMIT_SECONDS="${FLEET_COMMIT_SECONDS:-60}"
+# The run's one clock: systemd ends the engine unit at this many seconds (the old lease's four hours), and
+# whatever landed by then is published as a draft. No worker carries a cap of its own.
+FLEET_RUN_MAX_SECONDS="${FLEET_RUN_MAX_SECONDS:-14400}"
 # `systemd-run --user` needs a bus address: the run unit inherits one, ssh does not.
 XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"; DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
 export XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS
@@ -204,7 +207,7 @@ run_engine() {
   mkdir -p "$RUN_DIR"; rm -f "$DONE_MARKER"
   ( set +e
     fleet_systemd_run --user "--unit=fleet-engine-$RUN_N" --pipe --wait --collect \
-      -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288 -p "WorkingDirectory=$TARGET_DIR" -- \
+      -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288 -p "RuntimeMaxSec=$FLEET_RUN_MAX_SECONDS" -p "WorkingDirectory=$TARGET_DIR" -- \
       env -u CLAUDE_CONFIG_DIR "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
         "TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL" CLAUDE_CODE_OAUTH_TOKEN=placeholder \
         "ULTRAPOWERS_FLEET_RUN=$RUN_ID" node "$ENGINE_REPO_DIR/factory/engine.mjs" \
@@ -214,12 +217,6 @@ run_engine() {
   while [ ! -f "$DONE_MARKER" ]; do sleep "$FLEET_COMMIT_SECONDS"; tick_events; done
   wait "$pid" 2>/dev/null || true
   log "engine: exited $(cat "$DONE_MARKER") (output in $ENGINE_LOG)"
-}
-# A non-zero exit whose last line still carries the engine's answer document is a run that adopted
-# something and graded itself short; a non-zero exit with no answer at all is a run that fell over.
-engine_answered() {
-  [ -f "$ENGINE_LOG" ] || return 1
-  case "$(tail -n 1 "$ENGINE_LOG")" in *'"adopted"'*) return 0 ;; *) return 1 ;; esac
 }
 plan_title()   { { sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" || true; } | head -n 1; }
 plan_summary() { # the text after `**Summary:** ` to its blank line, verbatim
@@ -290,10 +287,12 @@ boot() {
   write_status running "the engine is starting"; evidence_commit "$RUN_ID: running"
   engine_deps; auth_status; bearer_probe; run_engine
   code="$(cat "$DONE_MARKER")"; collect_evidence
-  [ "$code" = 0 ] || engine_answered || fail "engine exit $code" "$code"
-  # Nothing ahead of base is a run with nothing to propose: a park, not a pull request.
+  # What decides the outcome is what landed, not how the engine ended: nothing ahead of base is a park when the
+  # engine was green and a failure otherwise; anything ahead of base is a pull request — a draft unless the engine
+  # was green — whatever ended the engine, the run's deadline included.
   head="$(fleet_git -C "$TARGET_DIR" rev-parse HEAD 2>/dev/null || true)"
   if [ "$head" = "$BASE_SHA" ]; then
+    [ "$code" = 0 ] || fail "engine exit $code" "$code"
     write_status parked "nothing ahead of base"; evidence_commit "$RUN_ID: parked"; record_tags; exit 0; fi
   publish "$code"; exit 0
 }
