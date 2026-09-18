@@ -1095,3 +1095,10 @@
 {"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Bash","target":"ls -la /home/exedev/run/fold-fix-6/fleet/tests/ | grep -i boot"}
 {"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Bash","target":"find /home/exedev/run/fold-fix-6 -iname \"*factory_boot_close*\" 2>/dev/null; find /home/exedev/run/fold-fix-6 -iname \"*boot_close*\" 2>/dev/null"}
 {"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Bash","target":"git status && git log --oneline -5 -- factory/boot.sh"}
+{"kind":"supervisor","task":"6","label":"impl:6:fold","answers":{"stuck":{"type":"noul","noul":0.47},"off_track":{"type":"noul","noul":0.36},"needs_human":{"type":"noul","noul":0.21},"done_not_exited":{"type":"noul","noul":0.12}}}
+{"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Bash","target":"node fleet/tests/test_factory_boot_close.mjs 2>&1 | head -50"}
+{"kind":"worker:test-run","task":"6","label":"impl:6:fold","cmd":"node fleet/tests/test_factory_boot_close.mjs 2>&1 | head -50","red":false}
+{"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Read","target":"/home/exedev/run/fold-fix-6/fleet/tests/test_sandbox_boot_close_evidence.mjs"}
+{"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Bash","target":"find /home/exedev/run/fold-fix-6/fleet/tests -iname \"*factory*\" 2>/dev/null; find /home/exedev/run/fold-fix-6/fleet/tests -iname \"_helpers.mjs\""}
+{"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Read","target":"/home/exedev/run/fold-fix-6/fleet/tests/test_factory_exam_skip.mjs"}
+{"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Bash","target":"grep -rl \"factory/boot.sh\" /home/exedev/run/fold-fix-6/fleet/tests 2>/dev/null; grep -rl \"factory/boot.sh\" /home/exedev/run/fold-fix-6 --include=*.mjs 2>/dev/null"}
