@@ -291,3 +291,46 @@
 {"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"sed \"s#BOOT_SH = path.join(HERE, '..', '..', 'factory', 'boot.sh')#BOOT_SH = '/tmp/boot_impl.sh'#\" fleet/tests/test_factory_boot_close.mjs > fleet/tests/_tmp_test_against_impl.mjs\nnode fleet/tests/_tm"}
 {"kind":"worker:test-run","task":"6","label":"exam:6","cmd":"sed \"s#BOOT_SH = path.join(HERE, '..', '..', 'factory', 'boot.sh')#BOOT_SH = '/tmp/boot_impl.sh'#\" fleet/tests/test_factory_boot_close.mjs > fleet/tests/_tmp_test_against_impl.mjs\nnode fleet/tests/_tmp_test_against_impl.mjs 2>&1 | tail -150","red":false}
 {"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"python3 - <<'PY'\np = \"/tmp/boot_impl.sh\"\ns = open(p, encoding=\"utf-8\").read()\ns = s.replace('\\xe2\\x80\\x94', '—')\nopen(p, \"w\", encoding=\"utf-8\").write(s)\nPY\ngrep -n \"done:\" /tmp/boot_impl.sh"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Edit","target":"/home/exedev/run/exam-2/tests/test_plan_parse.py"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"node fleet/tests/_tmp_test_against_impl.mjs 2>&1 | tail -150"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"python3 -m pytest -q tests/test_plan_parse.py -k floor_m1 2>&1 | tail -40"}
+{"kind":"worker:test-run","task":"2","label":"exam:2","cmd":"python3 -m pytest -q tests/test_plan_parse.py -k floor_m1 2>&1 | tail -40","red":false}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -n 'events.jsonl\\|eventsPath' factory/*.mjs factory/boot.sh fleet/*.mjs 2>/dev/null | head -60"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -n 'await worker(\\|worker({\\| worker(' factory/engine.mjs"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"python3 -m pytest -q tests/test_plan_parse.py -k \"not floor_m1\" 2>&1 | tail -15"}
+{"kind":"supervisor","task":"3","label":"referee:3","answers":{"stuck":{"type":"noul","noul":0.2},"off_track":{"type":"noul","noul":0.24},"needs_human":{"type":"noul","noul":0.12},"done_not_exited":{"type":"noul","noul":0.08}}}
+{"kind":"worker:test-run","task":"2","label":"exam:2","cmd":"python3 -m pytest -q tests/test_plan_parse.py -k \"not floor_m1\" 2>&1 | tail -15","red":false}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"sed -n 120,165p factory/boot.sh"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"wc -l fleet/tests/test_factory_rows.mjs; cat fleet/tests/test_factory_rows.mjs"}
+{"kind":"worker:test-run","task":"3","label":"referee:3","cmd":"wc -l fleet/tests/test_factory_rows.mjs; cat fleet/tests/test_factory_rows.mjs","red":false}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n \"waves\\b\" /home/exedev/run/exam-1/factory/engine.mjs | head -30"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"normalizeArgs\\|function parseArgv\\|args\\.plan\\|args\\.target\\|args\\.runDir\\|args\\.policy\\|args\\.base\\|camel(\" factory/engine.mjs | head -60"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"cp /tmp/boot_impl.sh /tmp/boot_impl_bad.sh\npython3 - <<'PY'\np = \"/tmp/boot_impl_bad.sh\"\ns = open(p, encoding=\"utf-8\").read()\n# Break M2: always attempt close regardless of exit code (drop the \"$1\"=0 g"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"function clausesOf\\|function bodyOf\\|function splitDiff\\|readLanding\\|readTask\\|function land\\b\\|async function land\\|function measure\\|function dispatch\\|function examine\\|coverage\\|examExit"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"kind":"worker:test-run","task":"6","label":"exam:6","cmd":"cp /tmp/boot_impl.sh /tmp/boot_impl_bad.sh\npython3 - <<'PY'\np = \"/tmp/boot_impl_bad.sh\"\ns = open(p, encoding=\"utf-8\").read()\n# Break M2: always attempt close regardless of exit code (drop the \"$1\"=0 guard).\ns = s.replace('kata_close_run() { # $1 = the engine\\'s exit code (0 == done)\\n  [ \"$1\" = 0 ] || return 0\\n',\n              'kata_close_run() { # $1 = the engine\\'s exit code (0 == done)\\n')\nopen(p, \"w\", encoding=\"utf-8\").write(s)\nPY\nsed \"s#BOOT_SH = path.join(HERE, '..', '..', 'factory', 'boot.sh')#BOOT_SH = '/tmp/boot_impl_bad.sh'#\" fleet/tests/test_factory_boot_close.mjs > fleet/tests/_tmp_test_against_bad.mjs\nnode fleet/tests/_tmp_test_against_bad.mjs 2>&1 | tail -40","red":false}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n \"def _derive_test_cmd\\|def _parse_task\\|proofTests\\|testCmd\\|depends_on\\|def main\\|json.dumps\\|\\\"tasks\\\"\\|launch_waves\" /home/exedev/run/exam-1/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"rm -f fleet/tests/_tmp_test_against_impl.mjs fleet/tests/_tmp_test_against_bad.mjs /tmp/boot_impl.sh /tmp/boot_impl_bad.sh /tmp/smoke_test.mjs /tmp/test_against_impl.mjs\nls fleet/tests | grep -i facto"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Read","target":"/home/exedev/run/exam-6/fleet/tests/test_factory_boot_close.mjs"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"timeout 900 node fleet/tests/test_factory_rows.mjs; echo \"EXIT=$?\""}
+{"kind":"worker:test-run","task":"3","label":"referee:3","cmd":"timeout 900 node fleet/tests/test_factory_rows.mjs; echo \"EXIT=$?\"","red":false}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -ln \"events.jsonl\" fleet/tests/*.mjs tests/*.py 2>/dev/null"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -ln \"factory/engine.mjs\" fleet/tests/*.mjs"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -n \"events.jsonl\" fleet/tests/_engine_helpers.mjs fleet/tests/test_facts_block.mjs fleet/tests/test_publish_fold.mjs fleet/tests/test_sandbox_boot_fold_record.mjs tests/test_catch_counter.py | he"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"time node fleet/tests/test_factory_boot_close.mjs 2>&1 | tail -5"}
+{"kind":"worker:test-run","task":"6","label":"exam:6","cmd":"time node fleet/tests/test_factory_boot_close.mjs 2>&1 | tail -5","red":false}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"node --check fleet/tests/test_factory_boot_close.mjs && echo \"syntax OK\""}
+{"kind":"worker:test-run","task":"6","label":"exam:6","cmd":"node --check fleet/tests/test_factory_boot_close.mjs && echo \"syntax OK\"","red":false}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"sed -n 388,396p factory/boot.sh; echo '=== run-engine 2290-2310 ==='; sed -n 2290,2310p fleet/run-engine.mjs; echo '=== run-engine 1990-2000 ==='; sed -n 1990,2002p fleet/run-engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -rn \"\\bts\\b\" fleet/facts-block.mjs fleet/publish-fold.mjs | head -20; echo '=== docs mentions of events rows ==='; grep -rln \"dispatch:start\\|dispatch:end\" --include=*.md --include=*.mjs --includ"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -rn \"receiptRows\\|factsBlock\" --include=*.mjs --include=*.sh . | grep -v \"fleet/tests\" | head -20"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"sed -n 140,175p fleet/facts-block.mjs"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"mcp__factory__note"}
