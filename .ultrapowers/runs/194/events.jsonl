@@ -481,3 +481,31 @@
 {"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"wc -l /home/exedev/run/patch-6-0.diff && ls"}
 {"kind":"worker:tool","task":"6","label":"referee:6","tool":"Read","target":"/home/exedev/run/patch-6-0.diff"}
 {"kind":"worker:tool","task":"5","label":"exam:5","tool":"Write","target":"/home/exedev/run/exam-5/fleet/tests/test_factory_reverify.mjs"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"ls /home/exedev/run/impl-6-0/fleet/tests/ | head -50; echo ---; ls /home/exedev/run/impl-6-0/factory/"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"grep -n \"resolve\" factory/engine.mjs | head -80"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Edit","target":"/home/exedev/run/exam-5/fleet/tests/test_factory_reverify.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Edit","target":"/home/exedev/run/exam-5/fleet/tests/test_factory_reverify.mjs"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Read","target":"/home/exedev/run/impl-6-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Read","target":"/home/exedev/run/impl-6-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"node fleet/tests/test_factory_reverify.mjs 2>&1 | head -60"}
+{"kind":"worker:test-run","task":"5","label":"exam:5","cmd":"node fleet/tests/test_factory_reverify.mjs 2>&1 | head -60","red":false}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"rm -rf /tmp/proto3 && mkdir -p /tmp/proto3\ncp -r /home/exedev/run/exam-5/factory /tmp/proto3/factory\ncp -r /home/exedev/run/exam-5/fleet /tmp/proto3/fleet 2>/dev/null || rsync -a --exclude node_module"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"mkdir -p /tmp/proto3/fleet/tests\nsed -e \"s#'../../factory/engine.mjs'#'/tmp/proto3/factory/engine.mjs'#\" \\\n    -e \"s#'../../factory/reverify.mjs'#'/tmp/proto3/factory/reverify.mjs'#\" \\\n    -e \"s#'./_h"}
+{"kind":"worker:test-run","task":"5","label":"exam:5","cmd":"mkdir -p /tmp/proto3/fleet/tests\nsed -e \"s#'../../factory/engine.mjs'#'/tmp/proto3/factory/engine.mjs'#\" \\\n    -e \"s#'../../factory/reverify.mjs'#'/tmp/proto3/factory/reverify.mjs'#\" \\\n    -e \"s#'./_helpers.mjs'#'/tmp/proto3/fleet/tests/_helpers.mjs'#\" \\\n    /home/exedev/run/exam-5/fleet/tests/test_factory_reverify.mjs > /tmp/proto3/test_run.mjs\nnode /tmp/proto3/test_run.mjs 2>&1 | head -60","red":false}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"ln -s /home/exedev/run/exam-5/skills /tmp/proto3/skills\nnode /tmp/proto3/test_run.mjs 2>&1 | head -80"}
+{"kind":"supervisor","task":"6","label":"referee:6","answers":{"stuck":{"type":"noul","noul":0.19},"off_track":{"type":"noul","noul":0.25},"needs_human":{"type":"noul","noul":0.13},"done_not_exited":{"type":"noul","noul":0.07}}}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"rm -rf /tmp/proto /tmp/proto2 /tmp/proto3 /tmp/planX.md /tmp/planchk\necho cleaned"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"python3 -c \"\nimport json;d=json.load(open('factory/policy.json'));print(json.dumps(d.get('resolve'),indent=1))\nq=json.load(open('factory/questions.json'));print(list(q.keys()));print(json.dumps(q.get("}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"head -60 fleet/tests/_engine_helpers.mjs && echo \"=== exports:\" && grep -n \"^export\" fleet/tests/_engine_helpers.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Read","target":"/home/exedev/run/exam-5/fleet/tests/test_factory_reverify.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"node fleet/tests/test_factory_reverify.mjs 2>&1 | tail -20"}
+{"kind":"worker:test-run","task":"5","label":"exam:5","cmd":"node fleet/tests/test_factory_reverify.mjs 2>&1 | tail -20","red":false}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"git status --short 2>/dev/null | head -20 || echo \"(git status skipped)\""}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"ls -la /home/exedev/run/exam-5/fleet/tests/test_factory_reverify.mjs\nls /home/exedev/run/exam-5/factory/ | grep -i reverify || echo \"no reverify.mjs in factory/ (expected)\"\nls /tmp | grep -E \"^proto|p"}
+{"kind":"worker:test-run","task":"5","label":"exam:5","cmd":"ls -la /home/exedev/run/exam-5/fleet/tests/test_factory_reverify.mjs\nls /home/exedev/run/exam-5/factory/ | grep -i reverify || echo \"no reverify.mjs in factory/ (expected)\"\nls /tmp | grep -E \"^proto|planchk|planX\" || echo \"tmp scratch cleaned\"","red":false}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"python3 -c \"\nimport json;q=json.load(open('factory/questions.json'));r=q['sets']['resolve'];print(list(r.keys()));print(json.dumps(r.get('questions'),indent=1)[:1200])\""}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"echo \"note tool not in function list; will use available tool\""}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"grep -n \"ask\" factory/judge.mjs | head -40; echo === ; grep -n \"ask\" fleet/jev-client.mjs | head -40"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"sed -n 45,120p fleet/jev-client.mjs; echo ===JUDGE; sed -n 60,95p factory/judge.mjs"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"node -e \"\nimport('/home/exedev/run/impl-6-0/factory/engine.mjs').then(m=>{\nconst d=m.buildDeps({plan:'x',target:'.',runDir:'.'},{});\nconsole.log('deps keys:', Object.keys(d));\nconsole.log('has ask:', "}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"grep -n \"noul\\|const num\\|answers\\[\" factory/judge.mjs | head -30; echo ===; sed -n 96,135p factory/judge.mjs"}
