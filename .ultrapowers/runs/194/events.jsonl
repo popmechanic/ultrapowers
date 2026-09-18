@@ -985,3 +985,4 @@
 {"kind":"worker:test-run","task":"8","label":"impl:8:0","cmd":"node fleet/tests/test_factory_dispatch_candidate.mjs 2>&1 | tail -80","red":false}
 {"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Bash","target":"node fleet/tests/test_factory_dispatch.mjs 2>&1 | tail -40"}
 {"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Bash","target":"for f in fleet/tests/test_run_engine_*.mjs fleet/tests/test_factory_*.mjs; do\n  out=$(node \"$f\" 2>&1)\n  status=$?\n  last=$(echo \"$out\" | tail -1)\n  if [ $status -ne 0 ] || [ \"$last\" != \"ALL TESTS PASS"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Bash","target":"sleep 90; cat /tmp/claude-1000/-home-exedev-run-impl-8-0/8ea4dec4-c294-4d22-b160-b0bfbe0258f8/tasks/bqa148m0r.output 2>/dev/null | tail -100"}
