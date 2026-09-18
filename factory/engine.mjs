@@ -48,6 +48,7 @@ import { cloneAtBase } from '../fleet/run-waves.mjs'
 import { makeJevClient } from '../fleet/jev-client.mjs'
 import { runWorker } from './worker.mjs'
 import { makeJudge } from './judge.mjs'
+import { literalsOf, hunksCarrying } from './hunks.mjs'
 import { makeBoard } from './board.mjs'
 
 // ── where everything lives ───────────────────────────────────────────────────
@@ -661,12 +662,13 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     // `task` and `cwd` ride the reading so a caller can tell one candidate of a
     // raced task from the other; `makeJudge` builds Jev's state from `clauses`,
     // `patch` and `files` alone, so neither reaches the model.
+    const literals = literalsOf(task.clauses)
     const reading = await read('readLanding', {
       task: task.id,
       cwd: dir,
       clauses: task.clauses,
-      patch: text.slice(0, 20000),
-      files: Object.fromEntries(names.map((n, j) => ['f' + j, perFile[n].slice(0, 6000)])),
+      patch: hunksCarrying(text, literals, 20000),
+      files: Object.fromEntries(names.map((n, j) => ['f' + j, hunksCarrying(perFile[n], literals, 6000)])),
     })
     return {
       dir,
