@@ -902,3 +902,39 @@
 {"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"cd /home/exedev/run && sed -n '50,159p' patch-2-0.diff"}
 {"kind":"worker:tool","task":"5","label":"impl:5:fold","tool":"Bash","target":"cat fleet/tests/test_factory_select_excerpt.mjs 2>/dev/null | head -200"}
 {"kind":"worker:test-run","task":"5","label":"impl:5:fold","cmd":"cat fleet/tests/test_factory_select_excerpt.mjs 2>/dev/null | head -200","red":false}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"node -e \"const {spawnSync}=require('node:child_process');const r=spawnSync('definitely-not-a-cmd',[ ],{cwd:'/tmp',encoding:'utf8'});console.log(JSON.stringify({status:r.status,code:r.code,exitCode:r.e"}
+{"kind":"worker:tool","task":"5","label":"impl:5:fold","tool":"Bash","target":"grep -n \"readGuards\\|readCovering\\|excerptFor\\|candidateTests\\|runSelection\\|select:trimmed\\|readExamFile\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"impl:5:fold","tool":"Bash","target":"sed -n '330,420p' factory/engine.mjs"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"git status --porcelain 2>/dev/null | head; sed -n '620,700p' skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -n \"runOnlyClauses\\|legsHasCitation\\|TASK_FIELDS\" -r tests/test_plan_parse.py skills factory fleet | head -60"}
+{"kind":"worker:test-run","task":"2","label":"referee:2","cmd":"grep -n \"runOnlyClauses\\|legsHasCitation\\|TASK_FIELDS\" -r tests/test_plan_parse.py skills factory fleet | head -60","red":false}
+{"kind":"worker:tool","task":"5","label":"impl:5:fold","tool":"Bash","target":"sed -n '955,1000p' factory/engine.mjs; echo ---; sed -n '1110,1150p' factory/engine.mjs"}
+{"kind":"supervisor","task":"5","label":"impl:5:fold","answers":{"stuck":{"type":"noul","noul":0.26},"off_track":{"type":"noul","noul":0.23},"needs_human":{"type":"noul","noul":0.14},"done_not_exited":{"type":"noul","noul":0.5}}}
+{"kind":"worker:tool","task":"5","label":"impl:5:fold","tool":"Bash","target":"node fleet/tests/test_factory_select_excerpt.mjs 2>&1 | tail -50"}
+{"kind":"worker:test-run","task":"5","label":"impl:5:fold","cmd":"node fleet/tests/test_factory_select_excerpt.mjs 2>&1 | tail -50","red":false}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n '40,50p;195,235p;575,590p' tests/test_plan_parse.py"}
+{"kind":"worker:test-run","task":"2","label":"referee:2","cmd":"sed -n '40,50p;195,235p;575,590p' tests/test_plan_parse.py","red":false}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n '880,965p' tests/test_plan_parse.py"}
+{"kind":"worker:test-run","task":"2","label":"referee:2","cmd":"sed -n '880,965p' tests/test_plan_parse.py","red":false}
+{"kind":"supervisor","task":"2","label":"referee:2","answers":{"stuck":{"type":"noul","noul":0.16},"off_track":{"type":"noul","noul":0.23},"needs_human":{"type":"noul","noul":0.12},"done_not_exited":{"type":"noul","noul":0.08}}}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -n \"def task_block\" -A 45 tests/test_plan_parse.py | head -70"}
+{"kind":"worker:test-run","task":"2","label":"referee:2","cmd":"grep -n \"def task_block\" -A 45 tests/test_plan_parse.py | head -70","red":false}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '1,50p' factory/roles/implement.md"}
+{"kind":"worker:tool","task":"5","label":"impl:5:fold","tool":"Bash","target":"ls fleet/tests/ | head -50; echo ---; cat fleet/tests/_engine_helpers.mjs 2>/dev/null | head -100"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -n \"def build_and_run\" -A 30 tests/test_plan_parse.py | head -45; grep -n \"def plan_text\\|def run_parser\\b\" -A 25 tests/test_plan_parse.py | head -60"}
+{"kind":"worker:test-run","task":"2","label":"referee:2","cmd":"grep -n \"def build_and_run\" -A 30 tests/test_plan_parse.py | head -45; grep -n \"def plan_text\\|def run_parser\\b\" -A 25 tests/test_plan_parse.py | head -60","red":false}
+{"kind":"worker:tool","task":"5","label":"impl:5:fold","tool":"Bash","target":"find . -maxdepth 2 -iname \"*engine*\" -o -iname \"select.mjs\" | grep -v node_modules; echo ---; ls factory/ 2>/dev/null; echo ---; ls fleet/ 2>/dev/null"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"cat > /tmp/gen_plan.py <<'EOF'\nimport sys, json, subprocess\nsys.path.insert(0, \"tests\")\nimport test_plan_parse as T\nimport pathlib\n\n# Plan A: one task with a - Legs: line that carries NO [M<n>] citati"}
+{"kind":"worker:tool","task":"5","label":"impl:5:fold","tool":"Bash","target":"grep -rl \"factory/select\\|factory/engine\\|from '../../factory\\|from '../factory\" fleet/ 2>/dev/null"}
+{"kind":"worker:tool","task":"5","label":"impl:5:fold","tool":"Bash","target":"cat fleet/tests/test_factory_exam_skip.mjs"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -rln \"Legs:\" tests/fixtures/ 2>/dev/null | head; echo \"---with citation---\"; grep -rl \"Legs:.*\\[M[0-9]\" tests/fixtures/ 2>/dev/null | head; echo \"--- count of legs= in tests ---\"; grep -n \"legs=\""}
+{"kind":"worker:test-run","task":"2","label":"referee:2","cmd":"grep -rln \"Legs:\" tests/fixtures/ 2>/dev/null | head; echo \"---with citation---\"; grep -rl \"Legs:.*\\[M[0-9]\" tests/fixtures/ 2>/dev/null | head; echo \"--- count of legs= in tests ---\"; grep -n \"legs=\" tests/test_plan_parse.py | head -20","red":false}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"run_exam\\|const tools = \\[note\" factory/tools.mjs; echo ===; grep -n \"run_exam\" factory/roles/*.md; echo ===; sed -n '995,1005p' factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"impl:5:fold","tool":"Bash","target":"git status --short | head -50 && echo --- && git log --oneline -5"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -n -A4 \"Legs:\" tests/fixtures/plans/2026-09-01-511-attempt-racing.md | head -30"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n '150,195p' tests/test_plan_parse.py"}
+{"kind":"worker:test-run","task":"2","label":"referee:2","cmd":"sed -n '150,195p' tests/test_plan_parse.py","red":false}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"cp skills/ultrapowers/scripts/plan_parse.py /tmp/plan_parse_uncond.py && python3 - <<'EOF'\nimport re,pathlib\np=pathlib.Path(\"/tmp/plan_parse_uncond.py\"); s=p.read_text()\ns=s.replace('''        if plan"}
+{"kind":"worker:tool","task":"5","label":"impl:5:fold","tool":"Bash","target":"node -e \"\nimport('./factory/select.mjs').then(({excerptFor}) => {\n  const mk = (n) => Array.from({length:n}, (_,i)=>'line '+(i+1));\n  let lines = mk(20); lines[9] = 'call make_widget(3)';\n  let text ="}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"cat > /tmp/conftest_drive.py <<'EOF'\nimport sys, pathlib\nsys.path.insert(0, \"tests\")\nimport test_plan_parse as T\nT.PARSER = pathlib.Path(\"/tmp/plan_parse_uncond.py\")\nimport traceback\nfor name in (\"tes"}
+{"kind":"worker:tool","task":"5","label":"impl:5:fold","tool":"Bash","target":"grep -n \"select\\b\\|max_candidates\\|selectPolicy\" factory/policy.json factory/engine.mjs | head -40"}
