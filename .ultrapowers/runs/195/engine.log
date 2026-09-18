@@ -1,0 +1,128 @@
+Running as unit: fleet-engine-195.service
+board: factsFor (task 1) failed: kata: GET /api/v1/issues/01M2V3H2MRSPRRWTF9FJJJNXA8 answered 404: {"status":404,"error":{"code":"issue_not_found","message":"no issue matches uid 01M2V3H2MRSPRRWTF9FJJJNXA8"}}
+board: setState (task 1) failed: kata: POST /api/v1/projects/31/issues/01M2V3H2MRSPRRWTF9FJJJNXA8/metadata answered 400: {"status":400,"error":{"code":"validation","message":"actor is required"}}
+board: factsFor (task 6) failed: kata: GET /api/v1/issues/01M2V3HMNED31Y2BKMGBYR8P5X answered 404: {"status":404,"error":{"code":"issue_not_found","message":"no issue matches uid 01M2V3HMNED31Y2BKMGBYR8P5X"}}
+board: factsFor (task 5) failed: kata: GET /api/v1/issues/01M2V3HGZTYEXSQYGNHXEXPAPK answered 404: {"status":404,"error":{"code":"issue_not_found","message":"no issue matches uid 01M2V3HGZTYEXSQYGNHXEXPAPK"}}
+board: factsFor (task 3) failed: kata: GET /api/v1/issues/01M2V3H9T2ZV8CJW3FS696K0AS answered 404: {"status":404,"error":{"code":"issue_not_found","message":"no issue matches uid 01M2V3H9T2ZV8CJW3FS696K0AS"}}
+board: setState (task 6) failed: kata: POST /api/v1/projects/31/issues/01M2V3HMNED31Y2BKMGBYR8P5X/metadata answered 400: {"status":400,"error":{"code":"validation","message":"actor is required"}}
+board: setState (task 5) failed: kata: POST /api/v1/projects/31/issues/01M2V3HGZTYEXSQYGNHXEXPAPK/metadata answered 400: {"status":400,"error":{"code":"validation","message":"actor is required"}}
+board: factsFor (task 2) failed: kata: GET /api/v1/issues/01M2V3H67HEWKK6GYE0VWDEV9W answered 404: {"status":404,"error":{"code":"issue_not_found","message":"no issue matches uid 01M2V3H67HEWKK6GYE0VWDEV9W"}}
+board: factsFor (task 4) failed: kata: GET /api/v1/issues/01M2V3HDCYHXF549XRZP72V78A answered 404: {"status":404,"error":{"code":"issue_not_found","message":"no issue matches uid 01M2V3HDCYHXF549XRZP72V78A"}}
+board: setState (task 3) failed: kata: POST /api/v1/projects/31/issues/01M2V3H9T2ZV8CJW3FS696K0AS/metadata answered 400: {"status":400,"error":{"code":"validation","message":"actor is required"}}
+board: setState (task 2) failed: kata: POST /api/v1/projects/31/issues/01M2V3H67HEWKK6GYE0VWDEV9W/metadata answered 400: {"status":400,"error":{"code":"validation","message":"actor is required"}}
+board: setState (task 4) failed: kata: POST /api/v1/projects/31/issues/01M2V3HDCYHXF549XRZP72V78A/metadata answered 400: {"status":400,"error":{"code":"validation","message":"actor is required"}}
+exam:3: 2 denied edit(s)
+board: post (task 3) failed: kata: POST /api/v1/projects/31/issues/01M2V3H9T2ZV8CJW3FS696K0AS/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 3) failed: kata: POST /api/v1/projects/31/issues/01M2V3H9T2ZV8CJW3FS696K0AS/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+jev: state 276607 bytes over the 120000-byte budget; no call made
+jev: select.guards: no answers
+board: post (task 3) failed: kata: POST /api/v1/projects/31/issues/01M2V3H9T2ZV8CJW3FS696K0AS/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 3) failed: kata: POST /api/v1/projects/31/issues/01M2V3H9T2ZV8CJW3FS696K0AS/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 3) failed: kata: POST /api/v1/projects/31/issues/01M2V3H9T2ZV8CJW3FS696K0AS/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 3) failed: kata: POST /api/v1/projects/31/issues/01M2V3H9T2ZV8CJW3FS696K0AS/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 3) failed: kata: POST /api/v1/projects/31/issues/01M2V3H9T2ZV8CJW3FS696K0AS/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 3) failed: kata: POST /api/v1/projects/31/issues/01M2V3H9T2ZV8CJW3FS696K0AS/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 3) failed: kata: POST /api/v1/projects/31/issues/01M2V3H9T2ZV8CJW3FS696K0AS/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 3) failed: kata: POST /api/v1/projects/31/issues/01M2V3H9T2ZV8CJW3FS696K0AS/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 3) failed: kata: POST /api/v1/projects/31/issues/01M2V3H9T2ZV8CJW3FS696K0AS/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 3) failed: kata: POST /api/v1/projects/31/issues/01M2V3H9T2ZV8CJW3FS696K0AS/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 3) failed: kata: POST /api/v1/projects/31/issues/01M2V3H9T2ZV8CJW3FS696K0AS/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: setState (task 3) failed: kata: POST /api/v1/projects/31/issues/01M2V3H9T2ZV8CJW3FS696K0AS/metadata answered 400: {"status":400,"error":{"code":"validation","message":"actor is required"}}
+adopted task 3 -> 5ce5eb6d  exam=0 k=1
+board: post (task 3) failed: kata: POST /api/v1/projects/31/issues/01M2V3H9T2ZV8CJW3FS696K0AS/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 6) failed: kata: POST /api/v1/projects/31/issues/01M2V3HMNED31Y2BKMGBYR8P5X/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 1) failed: kata: POST /api/v1/projects/31/issues/01M2V3H2MRSPRRWTF9FJJJNXA8/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 1) failed: kata: POST /api/v1/projects/31/issues/01M2V3H2MRSPRRWTF9FJJJNXA8/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+jev: state 275631 bytes over the 120000-byte budget; no call made
+jev: select.guards: no answers
+board: post (task 1) failed: kata: POST /api/v1/projects/31/issues/01M2V3H2MRSPRRWTF9FJJJNXA8/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 1) failed: kata: POST /api/v1/projects/31/issues/01M2V3H2MRSPRRWTF9FJJJNXA8/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+jev: state 275631 bytes over the 120000-byte budget; no call made
+jev: select.guards: no answers
+board: post (task 2) failed: kata: POST /api/v1/projects/31/issues/01M2V3H67HEWKK6GYE0VWDEV9W/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 5) failed: kata: POST /api/v1/projects/31/issues/01M2V3HGZTYEXSQYGNHXEXPAPK/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 6) failed: kata: POST /api/v1/projects/31/issues/01M2V3HMNED31Y2BKMGBYR8P5X/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+jev: state 294786 bytes over the 120000-byte budget; no call made
+jev: select.guards: no answers
+exam:4: 2 denied edit(s)
+board: post (task 4) failed: kata: POST /api/v1/projects/31/issues/01M2V3HDCYHXF549XRZP72V78A/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 5) failed: kata: POST /api/v1/projects/31/issues/01M2V3HGZTYEXSQYGNHXEXPAPK/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+jev: state 280023 bytes over the 120000-byte budget; no call made
+jev: select.guards: no answers
+board: post (task 1) failed: kata: POST /api/v1/projects/31/issues/01M2V3H2MRSPRRWTF9FJJJNXA8/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 1) failed: kata: POST /api/v1/projects/31/issues/01M2V3H2MRSPRRWTF9FJJJNXA8/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 1) failed: kata: POST /api/v1/projects/31/issues/01M2V3H2MRSPRRWTF9FJJJNXA8/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 1) failed: kata: POST /api/v1/projects/31/issues/01M2V3H2MRSPRRWTF9FJJJNXA8/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 1) failed: kata: POST /api/v1/projects/31/issues/01M2V3H2MRSPRRWTF9FJJJNXA8/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 1) failed: kata: POST /api/v1/projects/31/issues/01M2V3H2MRSPRRWTF9FJJJNXA8/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 1) failed: kata: POST /api/v1/projects/31/issues/01M2V3H2MRSPRRWTF9FJJJNXA8/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+impl:3:fold: 2 denied edit(s)
+board: setState (task 1) failed: kata: POST /api/v1/projects/31/issues/01M2V3H2MRSPRRWTF9FJJJNXA8/metadata answered 400: {"status":400,"error":{"code":"validation","message":"actor is required"}}
+adopted task 1 -> 4492b0c4  exam=0 k=1
+board: post (task 1) failed: kata: POST /api/v1/projects/31/issues/01M2V3H2MRSPRRWTF9FJJJNXA8/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 1) failed: kata: POST /api/v1/projects/31/issues/01M2V3H2MRSPRRWTF9FJJJNXA8/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 4) failed: kata: POST /api/v1/projects/31/issues/01M2V3HDCYHXF549XRZP72V78A/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+jev: state 291158 bytes over the 120000-byte budget; no call made
+jev: select.guards: no answers
+board: post (task 6) failed: kata: POST /api/v1/projects/31/issues/01M2V3HMNED31Y2BKMGBYR8P5X/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 6) failed: kata: POST /api/v1/projects/31/issues/01M2V3HMNED31Y2BKMGBYR8P5X/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 6) failed: kata: POST /api/v1/projects/31/issues/01M2V3HMNED31Y2BKMGBYR8P5X/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 6) failed: kata: POST /api/v1/projects/31/issues/01M2V3HMNED31Y2BKMGBYR8P5X/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 6) failed: kata: POST /api/v1/projects/31/issues/01M2V3HMNED31Y2BKMGBYR8P5X/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 5) failed: kata: POST /api/v1/projects/31/issues/01M2V3HGZTYEXSQYGNHXEXPAPK/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 5) failed: kata: POST /api/v1/projects/31/issues/01M2V3HGZTYEXSQYGNHXEXPAPK/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 5) failed: kata: POST /api/v1/projects/31/issues/01M2V3HGZTYEXSQYGNHXEXPAPK/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 5) failed: kata: POST /api/v1/projects/31/issues/01M2V3HGZTYEXSQYGNHXEXPAPK/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 5) failed: kata: POST /api/v1/projects/31/issues/01M2V3HGZTYEXSQYGNHXEXPAPK/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 5) failed: kata: POST /api/v1/projects/31/issues/01M2V3HGZTYEXSQYGNHXEXPAPK/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 5) failed: kata: POST /api/v1/projects/31/issues/01M2V3HGZTYEXSQYGNHXEXPAPK/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 5) failed: kata: POST /api/v1/projects/31/issues/01M2V3HGZTYEXSQYGNHXEXPAPK/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 5) failed: kata: POST /api/v1/projects/31/issues/01M2V3HGZTYEXSQYGNHXEXPAPK/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 5) failed: kata: POST /api/v1/projects/31/issues/01M2V3HGZTYEXSQYGNHXEXPAPK/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: setState (task 5) failed: kata: POST /api/v1/projects/31/issues/01M2V3HGZTYEXSQYGNHXEXPAPK/metadata answered 400: {"status":400,"error":{"code":"validation","message":"actor is required"}}
+adopted task 5 -> 4180308c  exam=0 k=1
+board: post (task 5) failed: kata: POST /api/v1/projects/31/issues/01M2V3HGZTYEXSQYGNHXEXPAPK/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 5) failed: kata: POST /api/v1/projects/31/issues/01M2V3HGZTYEXSQYGNHXEXPAPK/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 2) failed: kata: POST /api/v1/projects/31/issues/01M2V3H67HEWKK6GYE0VWDEV9W/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+jev: state 293850 bytes over the 120000-byte budget; no call made
+jev: select.guards: no answers
+board: post (task 4) failed: kata: POST /api/v1/projects/31/issues/01M2V3HDCYHXF549XRZP72V78A/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 4) failed: kata: POST /api/v1/projects/31/issues/01M2V3HDCYHXF549XRZP72V78A/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 4) failed: kata: POST /api/v1/projects/31/issues/01M2V3HDCYHXF549XRZP72V78A/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 4) failed: kata: POST /api/v1/projects/31/issues/01M2V3HDCYHXF549XRZP72V78A/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 4) failed: kata: POST /api/v1/projects/31/issues/01M2V3HDCYHXF549XRZP72V78A/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 4) failed: kata: POST /api/v1/projects/31/issues/01M2V3HDCYHXF549XRZP72V78A/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 4) failed: kata: POST /api/v1/projects/31/issues/01M2V3HDCYHXF549XRZP72V78A/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 4) failed: kata: POST /api/v1/projects/31/issues/01M2V3HDCYHXF549XRZP72V78A/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 4) failed: kata: POST /api/v1/projects/31/issues/01M2V3HDCYHXF549XRZP72V78A/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 4) failed: kata: POST /api/v1/projects/31/issues/01M2V3HDCYHXF549XRZP72V78A/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 4) failed: kata: POST /api/v1/projects/31/issues/01M2V3HDCYHXF549XRZP72V78A/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 4) failed: kata: POST /api/v1/projects/31/issues/01M2V3HDCYHXF549XRZP72V78A/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: setState (task 4) failed: kata: POST /api/v1/projects/31/issues/01M2V3HDCYHXF549XRZP72V78A/metadata answered 400: {"status":400,"error":{"code":"validation","message":"actor is required"}}
+adopted task 4 -> 00f59cec  exam=0 k=1
+board: post (task 4) failed: kata: POST /api/v1/projects/31/issues/01M2V3HDCYHXF549XRZP72V78A/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 4) failed: kata: POST /api/v1/projects/31/issues/01M2V3HDCYHXF549XRZP72V78A/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 4) failed: kata: POST /api/v1/projects/31/issues/01M2V3HDCYHXF549XRZP72V78A/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 2) failed: kata: POST /api/v1/projects/31/issues/01M2V3H67HEWKK6GYE0VWDEV9W/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 2) failed: kata: POST /api/v1/projects/31/issues/01M2V3H67HEWKK6GYE0VWDEV9W/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 2) failed: kata: POST /api/v1/projects/31/issues/01M2V3H67HEWKK6GYE0VWDEV9W/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 2) failed: kata: POST /api/v1/projects/31/issues/01M2V3H67HEWKK6GYE0VWDEV9W/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 2) failed: kata: POST /api/v1/projects/31/issues/01M2V3H67HEWKK6GYE0VWDEV9W/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+impl:4:fold: 1 denied edit(s)
+board: setState (task 2) failed: kata: POST /api/v1/projects/31/issues/01M2V3H67HEWKK6GYE0VWDEV9W/metadata answered 400: {"status":400,"error":{"code":"validation","message":"actor is required"}}
+adopted task 2 -> 17f60ebb  exam=0 k=1
+board: post (task 2) failed: kata: POST /api/v1/projects/31/issues/01M2V3H67HEWKK6GYE0VWDEV9W/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 2) failed: kata: POST /api/v1/projects/31/issues/01M2V3H67HEWKK6GYE0VWDEV9W/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 2) failed: kata: POST /api/v1/projects/31/issues/01M2V3H67HEWKK6GYE0VWDEV9W/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+board: post (task 2) failed: kata: POST /api/v1/projects/31/issues/01M2V3H67HEWKK6GYE0VWDEV9W/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+impl:2:fold: 2 denied edit(s)
+board: setState (task 6) failed: kata: POST /api/v1/projects/31/issues/01M2V3HMNED31Y2BKMGBYR8P5X/metadata answered 400: {"status":400,"error":{"code":"validation","message":"actor is required"}}
+adopted task 6 -> b32608d0  exam=0 k=1
+board: post (task 6) failed: kata: POST /api/v1/projects/31/issues/01M2V3HMNED31Y2BKMGBYR8P5X/comments answered 404: {"status":404,"error":{"code":"project_not_found","message":"project not found"}}
+{"done":false,"adopted":["3","1","5","4","2","6"],"head":"01a55aeee07b1af2ed7754e42fe364737ba5308b","wall_ms":2563099,"cost_usd":38.24241880000001}
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 42min 43.169s
+CPU time consumed: 11min 57.256s
+Memory peak: 3.4M
+Memory swap peak: 0B
