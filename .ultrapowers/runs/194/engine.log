@@ -1,0 +1,38 @@
+Running as unit: fleet-engine-194.service; invocation ID: bc9a421d72d846c18779f068276bccdf
+jev: state 210959 bytes over the 120000-byte budget; no call made
+jev: select.guards: no answers
+jev: state 210959 bytes over the 120000-byte budget; no call made
+jev: select.guards: no answers
+adopted task 7 -> 3307c626  exam=0 k=1
+exam:3: 1 denied edit(s)
+adopted task 1 -> dd748d5b  exam=0 k=1
+exam:2: 1 denied edit(s)
+jev: state 357439 bytes over the 120000-byte budget; no call made
+jev: select.guards: no answers
+jev: state 156442 bytes over the 120000-byte budget; no call made
+jev: select.guards: no answers
+adopted task 2 -> 96d2360c  exam=0 k=1
+exam:6: 1 denied edit(s)
+adopted task 3 -> 6b369266  exam=0 k=1
+jev: state 420841 bytes over the 120000-byte budget; no call made
+jev: select.guards: no answers
+exam:5: 2 denied edit(s)
+jev: state 270678 bytes over the 120000-byte budget; no call made
+jev: select.guards: no answers
+adopted task 6 -> dcfc25e7  exam=0 k=1
+adopted task 5 -> ea2eeb11  exam=0 k=1
+impl:4:0: 2 denied edit(s)
+jev: state 374145 bytes over the 120000-byte budget; no call made
+jev: select.guards: no answers
+adopted task 4 -> 72ed0b02  exam=0 k=2
+jev: state 258088 bytes over the 120000-byte budget; no call made
+jev: select.guards: no answers
+referee:8: 1 denied edit(s)
+adopted task 8 -> 293d2a80  exam=0 k=1
+{"done":true,"adopted":["7","1","2","3","6","5","4","8"],"head":"293d2a805a80f9551d529f083d3974dbf9dda2ce","wall_ms":5869957,"cost_usd":42.894160400000004}
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 1h 37min 50.061s
+CPU time consumed: 18min 9.003s
+Memory peak: 256.0K
+Memory swap peak: 0B
