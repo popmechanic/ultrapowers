@@ -774,3 +774,12 @@
 {"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"ls -la fleet/tests/test_factory_dispatch.mjs && md5sum fleet/tests/test_factory_dispatch.mjs && sed -n '340,356p' fleet/tests/test_factory_dispatch.mjs"}
 {"kind":"worker:test-run","task":"4","label":"impl:4:1","cmd":"ls -la fleet/tests/test_factory_dispatch.mjs && md5sum fleet/tests/test_factory_dispatch.mjs && sed -n '340,356p' fleet/tests/test_factory_dispatch.mjs","red":false}
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n \"recursive\\|rundir\\|runRoot\" /home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:test-run","task":"4","label":"impl:4:1","cmd":"grep -n \"recursive\\|rundir\\|runRoot\" /home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"node fleet/tests/test_factory_dispatch.mjs 2>&1 | tail -50"}
+{"kind":"worker:test-run","task":"4","label":"impl:4:0","cmd":"node fleet/tests/test_factory_dispatch.mjs 2>&1 | tail -50","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n \"function setupRun\" /home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs; wc -l /home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:test-run","task":"4","label":"impl:4:1","cmd":"grep -n \"function setupRun\" /home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs; wc -l /home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs"}
