@@ -1068,3 +1068,11 @@
 {"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"grep -n \"clauses\" factory/engine.mjs | head -40"}
 {"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"grep -n \"coverage_floor\\|redispatch\" factory/policy.json"}
 {"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"sed -n '75,100p' factory/policy.json"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Write","target":"/tmp/scratch_floor_test.mjs"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"mkdir -p /home/exedev/run/fold-fix-2/.scratch"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Write","target":"/home/exedev/run/fold-fix-2/.scratch/scratch_floor_test.mjs"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"printf 'hello\\n' > /tmp/probe_write.txt && cat /tmp/probe_write.txt"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"rmdir /home/exedev/run/fold-fix-2/.scratch 2>/dev/null; cat > /tmp/scratch_floor_test.mjs << 'SCRATCH_EOF'\nimport assert from 'node:assert/strict'\nimport fs from 'node:fs'\nimport os from 'node:os'\nimp"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"rm -f /tmp/scratch_floor_test.mjs /tmp/probe_write.txt /tmp/test_plan.md /tmp/test_plan2.md\ncd /home/exedev/run/fold-fix-2 && git status --short"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"rm -f /tmp/scratch_floor_test.mjs /tmp/probe_write.txt /tmp/test_plan.md /tmp/test_plan2.md; echo done"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -15"}
