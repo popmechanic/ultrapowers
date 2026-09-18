@@ -17,3 +17,10 @@
 {"kind":"supervisor","task":"3","label":"referee:3","answers":{"stuck":{"type":"noul","noul":0.17},"off_track":{"type":"noul","noul":0.24},"needs_human":{"type":"noul","noul":0.11},"done_not_exited":{"type":"noul","noul":0.08}}}
 {"kind":"referee","task":"3","findings":8,"blocking":1,"grades":["blocking","minor","minor","minor","minor","minor","minor","minor"]}
 {"kind":"supervisor","task":"3","label":"fix:3","answers":{"stuck":{"type":"noul","noul":0.48},"off_track":{"type":"noul","noul":0.38},"needs_human":{"type":"noul","noul":0.24},"done_not_exited":{"type":"noul","noul":0.15}}}
+{"kind":"landing","task":"1","k":1,"examExit":0,"claim":0.5,"coverage":[0.9,0.97,0.92],"candidateSha":"8ff00772bf5cc67bef8a3e575c7421925346139e","wall_ms":310875}
+{"kind":"landing","task":"2","k":1,"examExit":0,"claim":0.56,"coverage":[0.96,0.94,0.92,0.93],"candidateSha":"341279c9d3828492d86a74f8eb452d7b068be894","wall_ms":580644}
+{"kind":"landing","task":"3","k":1,"examExit":0,"claim":0.46,"coverage":[0.95,0.95,0.94,0.95],"candidateSha":"d243a2bb738c1d7b331b3d3e3342fa51944663a6","wall_ms":2807366}
+{"kind":"landing","task":"4","k":1,"examExit":0,"claim":0.33,"coverage":[0.94,0.93,0.9,0.92],"candidateSha":"1c0780ced6260274d25123ffb32d1a847ff9ed7f","wall_ms":659135}
+{"kind":"landing","task":"5","k":1,"examExit":0,"claim":0.9,"coverage":[0.98,0.97,0.19],"candidateSha":"aa8fffa67416c5612829b04ce4799a5a328fa4b0","wall_ms":268106}
+{"kind":"landing","task":"6","k":1,"examExit":0,"claim":0.78,"coverage":[0.97,0.97,0.4],"candidateSha":"c2c363ae5d89d8fd29cdbc37dfef9903ae98b298","wall_ms":89934}
+{"kind":"supervisor","task":"7","label":"exam:7","answers":{"stuck":{"type":"noul","noul":0.46},"off_track":{"type":"noul","noul":0.4},"needs_human":{"type":"noul","noul":0.26},"done_not_exited":{"type":"noul","noul":0.15}}}
