@@ -35,3 +35,4 @@
 {"kind":"supervisor","task":"8","label":"referee:8","answers":{"stuck":{"type":"noul","noul":0.2},"off_track":{"type":"noul","noul":0.25},"needs_human":{"type":"noul","noul":0.12},"done_not_exited":{"type":"noul","noul":0.07}}}
 {"kind":"referee","task":"8","findings":7,"blocking":0,"grades":["minor","minor","minor","minor","minor","minor","minor"]}
 {"kind":"landing","task":"8","k":1,"examExit":0,"claim":0.69,"coverage":[0.88,0.94,0.97,0.94],"candidateSha":"4974c26ec3f2759dd218382a4cc4000b41c992ab","wall_ms":1897292}
+{"kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1147","number":1147,"draft":false}
