@@ -573,3 +573,16 @@
 {"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"cd /home/exedev/run && grep -n '^+++\\|^---\\|^@@' patch-5-0.diff"}
 {"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -n 'reverify\\|fold:\\|examsTouched\\|foldIn\\|adopted.push\\|timeout' factory/engine.mjs"}
 {"kind":"worker:tool","task":"5","label":"referee:5","tool":"Read","target":"/home/exedev/run/impl-5-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Write","target":"/home/exedev/run/exam-4/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -n 'const cloneAt\\|const outOf\\|function outOf\\|const exitOf\\|const implFilesOf\\|const capture\\|foldUnresolved\\|const splitDiff\\|import .*splitDiff\\|done:' factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"cd /home/exedev/run && sed -n '1,130p' patch-5-0.diff"}
+{"kind":"supervisor","task":"5","label":"referee:5","answers":{"stuck":{"type":"noul","noul":0.18},"off_track":{"type":"noul","noul":0.25},"needs_human":{"type":"noul","noul":0.13},"done_not_exited":{"type":"noul","noul":0.07}}}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -n 'splitDiff' factory/engine.mjs | head; sed -n '560,600p' factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Read","target":"/home/exedev/run/impl-5-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Read","target":"/home/exedev/run/impl-5-0/fleet/tests/test_factory_reverify.mjs"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"ls fleet/tests/ | head -50; echo ---; grep -rln '_engine_helpers' fleet/tests/ | head -20; echo ---; grep -n 'never imports\\|another sim' fleet/tests/test_run_engine_fold_policy.mjs | head"}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Bash","target":"cat /home/exedev/run/impl-6-0/factory/policy.json 2>/dev/null | python3 -c \"import json,sys; d=json.load(sys.stdin); print(json.dumps(d.get('resolve'), indent=2))\""}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Bash","target":"cat /home/exedev/run/impl-6-0/factory/questions.json 2>/dev/null | python3 -c \"import json,sys; d=json.load(sys.stdin); print(json.dumps(d.get('sets',{}).get('resolve'), indent=2))\""}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"sed -n '60,85p' fleet/tests/test_run_engine_fold_policy.mjs; echo === ; grep -n \"_engine_helpers\\|^import\" fleet/tests/test_run_engine_fold_policy.mjs | head -20; echo ===README; grep -n -i 'helper' f"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -n '^export function\\|^export const' fleet/tests/_engine_helpers.mjs"}
+{"kind":"worker:tool","task":"6","label":"fix:6","tool":"Bash","target":"sleep 5; cat /tmp/claude-1000/-home-exedev-run-impl-6-0/638872c3-8eab-4f02-afea-d6dfdf50ab34/tasks/bth4ozjee.output 2>/dev/null | tail -100"}
