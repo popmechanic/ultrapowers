@@ -217,11 +217,11 @@ bearer_probe() {
 # --json` is Kata's to define; this only ever tests the words the Machine clause
 # itself uses, never the document around them.
 board_status_ready() { # $1 = the raw `federation status --json` document
+  # Kata 0.18 prints no `status` cell: a bound spoke reads `"role":"spoke"` with `"provider_status":"ready"`
+  # (run-194's own document, 2026-09-18); an unbound one reads `standalone` and `pending` (run-193's).
   case "$1" in *"$BOARD_PROJECT_NAME"*) : ;; *) return 1 ;; esac
-  case "$1" in
-    *'"status":"bound"'*|*'"status": "bound"'*) return 0 ;;
-    *'"status":"approved"'*|*'"status": "approved"'*) return 0 ;;
-  esac
+  case "$1" in *'"role":"spoke"'*|*'"role": "spoke"'*) : ;; *) return 1 ;; esac
+  case "$1" in *'"provider_status":"ready"'*|*'"provider_status": "ready"'*) return 0 ;; esac
   return 1
 }
 # One sandbox, one spoke: brought up before the engine so its three flags are ready
