@@ -292,3 +292,29 @@
 {"ts":"2026-09-18T22:06:18.686Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
 {"ts":"2026-09-18T22:06:20.860Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
 {"ts":"2026-09-18T22:06:22.603Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:06:26.686Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:06:28.739Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"const foldIn = async\\|const resolve = async\\|^  const reverifyAfterFold\" /home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:06:30.430Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:06:42.965Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:06:44.932Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"const reverifyAfterFold\\|const runExams\\|const first = runExams\\|const second = runExams\" /home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:06:46.507Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:06:49.652Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Write","target":"/home/exedev/run/exam-2/fleet/tests/test_factory_commands.mjs"}
+{"ts":"2026-09-18T22:06:53.516Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:06:53.857Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-18T22:06:53.919Z","kind":"worker:test-run","task":"2","label":"exam:2","cmd":"node fleet/tests/test_factory_commands.mjs","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-18T22:06:55.055Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"red.exam\" /home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:06:56.783Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:06:58.127Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"node fleet/tests/test_factory_commands.mjs 2>&1 | head -60"}
+{"ts":"2026-09-18T22:06:58.206Z","kind":"worker:test-run","task":"2","label":"exam:2","cmd":"node fleet/tests/test_factory_commands.mjs 2>&1 | head -60","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:06:58.730Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:07:00.315Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"^// ── the CLI's own deps\" /home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:07:01.810Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:07:05.960Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"cat > /tmp/commands_stub.mjs <<'EOF'\nexport function runAll ({ cmds, cwd, sh, timeoutSeconds }) {\n  let out = ''\n  const ran = []\n  for (const cmdStr of cmds) {\n    const [cmd, ...argv] = String(cmdSt"}
+{"ts":"2026-09-18T22:07:10.533Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"node fleet/tests/test_factory_commands.mjs 2>&1 | head -100"}
+{"ts":"2026-09-18T22:07:10.717Z","kind":"worker:test-run","task":"2","label":"exam:2","cmd":"node fleet/tests/test_factory_commands.mjs 2>&1 | head -100","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:07:15.766Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"node -e \"\nimport('./fleet/tests/_helpers.mjs').then(async () => {\n  const assert = await import('node:assert/strict')\n  console.log('sanity ok')\n})\n\"\n"}
+{"ts":"2026-09-18T22:07:22.993Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Read","target":"/home/exedev/run/exam-5/fleet/tests/test_setup_script.mjs"}
+{"ts":"2026-09-18T22:07:24.915Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Read","target":"/home/exedev/run/exam-5/fleet/tests/test_setup_script.mjs"}
+{"ts":"2026-09-18T22:07:26.721Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"tail -20 /home/exedev/run/exam-5/fleet/tests/test_setup_script.mjs"}
+{"ts":"2026-09-18T22:07:27.704Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:07:28.231Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"ls /home/exedev/run/exam-5/fleet/tests/ | head -50"}
