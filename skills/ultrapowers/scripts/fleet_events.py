@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ultralearn event-log reader — parse a fleet run's `events.jsonl`, summarize
+"""The event-log reader — parse a fleet run's `events.jsonl`, summarize
 it into the bundle's `events` field, and render it as a flat timeline.
 Read-only and advisory: malformed or missing input is skipped with a
 diagnostic, never raised.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ultralearn catch counter — one `catch-count` row per fleet run, derived from
+"""The catch counter — one `catch-count` row per fleet run, derived from
 the record the engine already wrote.
 
 A *catch* is the claim of #778: a red that the fix round then turned green by

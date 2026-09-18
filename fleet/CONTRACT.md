@@ -224,21 +224,6 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     carries `jev: {compelled, plan_fault, magnitude}`, `null` on a read that did not answer and absent without
     one. Nothing here gates, the readings included: an amendment is a note to whoever writes the next plan,
     so for the same tree `tests.passed`, the gate receipt and the merge decision are unchanged.
-    One more kind records what a worker ran rather than what it was asked to run:
-    `driver:suite-runs` `{task, count, slices}` — one row per task an implementer worked, the
-    count of times that task's workers ran the project's whole suite anyway. It is a reported
-    sensor and gates nothing: no status, no review and no verdict reads it, and the same tree
-    merges exactly as it would without the row. A bare suite run is a `Bash` `tool_use` block of
-    an `assistant` record of a worker's reduced transcript slice whose `input.command`, split on
-    `&&`, `||`, `;` and `|` with each segment trimmed, has at least one segment that is exactly
-    `bun test`, `bun run test`, `npm test`, `pnpm test`, `pytest` or `python3 -m pytest`, or one
-    of those followed only by tokens beginning `-`; a segment followed by any token not beginning
-    `-` is not one, and a line that is not JSON, or a record with no such block, counts nothing.
-    What is read is the run's own `transcript:slice` rows whose `label` is `impl:<id>` or begins
-    `fix:<id>:`, and for each the file `<runDir>/transcripts/<sessionId>.jsonl`: `slices` is how
-    many of those files existed, `count` the sum over them, both `0` when no row or no file does.
-    The row is appended once per task — after the implementer has returned, after the pre-review
-    fix round when the pass bought one, and before any reviewer is dispatched.
     Jev (2026-09-16, the `jev:` seam, #1096 — an experiment whose rollback is deleting the three
     appends): three more kinds record what Jev was asked and what it answered, and gate nothing.
     `jev:finding` `{task, round, key, answers}` — one per finding a reviewer raised;
@@ -288,8 +273,6 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     same path, `driver:finding` the same block raised twice on one file, `driver:finding-refuted` a
     false block repeated after it was shown wrong, `handshake:finding` a consumer's examiner blind
     to the producer's rejected post — and a kind no finding ever cites over that window is removed.
-    `transcripts/<sessionId>.jsonl` — one per worker session, the reduced record — is there
-    on the same terms, present when the engine wrote them.
     `state-exams/` — a tree of `task-<id>/<stem>-<pass>/` directories, one per exam run, whose
     contents are the exam's own output copied file by file — is there on the same terms, present
     when the exams wrote it.

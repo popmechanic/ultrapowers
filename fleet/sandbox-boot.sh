@@ -1643,20 +1643,10 @@ collect_evidence() {
   # The HUB's record, beside the engine's own log. A run with no kata record
   # exports nothing and writes no file.
   kata_export
-  # The engine's per-worker transcripts — the reduced records ultralearn's
-  # readers slice, and the only trace of what a worker actually did that
-  # outlives the box. Copied FILE BY FILE, never `cp -R` of the directory: this
-  # function runs at every `write_status` transition and once more at `fail`, so
-  # a directory copy onto a destination that already holds `transcripts/` nests
-  # a second one inside the first. A run whose engine wrote none commits none.
-  if [ -d "$run_dir/transcripts" ]; then
-    mkdir -p "$dest/transcripts"
-    cp "$run_dir/transcripts/"*.jsonl "$dest/transcripts/" 2>/dev/null || true
-  fi
   # The state exams' own records — `task-<id>/<stem>-<pass>/<file>`, a tree of
   # arbitrary depth rather than one flat directory, so the copy WALKS THE
   # REGULAR FILES and rebuilds each one's relative path under the destination.
-  # Never `cp -R` of the directory, for the reason the transcripts give: this
+  # Never `cp -R` of the directory: this
   # function runs again at every later transition, and a directory copy onto a
   # destination that already holds `state-exams/` nests a second one inside the
   # first. A run whose engine wrote none commits none — nothing here creates

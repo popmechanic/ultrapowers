@@ -51,7 +51,7 @@
  *   M6 — `fleet/CONTRACT.md`'s engine unit line carries
  *        `TYPESAFE_BASE_URL=https://typesafe.int.exe.xyz` after
  *        `CLAUDE_CODE_OAUTH_TOKEN=placeholder`; the paragraph after
- *        `driver:suite-runs` names the three kinds, `POST /v1/systemone`, the
+ *        the `jev:` seam names the three kinds, `POST /v1/systemone`, the
  *        one-log-line-and-no-row rule and that nothing reads them; the
  *        `Integration naming` bullet names the `typesafe` http-proxy; and
  *        `fleet/tests/README.md` gains one line each for the four sims.
@@ -758,16 +758,16 @@ assert.ok(/CLAUDE_CODE_OAUTH_TOKEN=placeholder *TYPESAFE_BASE_URL=https:\/\/type
   '`CLAUDE_CODE_OAUTH_TOKEN=placeholder`. (Proof `Run:` line 4) The range read: ' +
   JSON.stringify(joined(contractEngine)))
 
-// Run: sed -n '/driver:suite-runs. .{task, count, slices}/,/^    Receipts (2026-09-16)/p' … | grep -q …
+// Run: sed -n '/Jev (2026-09-16, the .jev:. seam/,/^    Receipts (2026-09-16)/p' … | grep -q …
 const threeKinds = sedRange(contract,
-  /driver:suite-runs. .\{task, count, slices\}/,
+  /Jev \(2026-09-16, the .jev:. seam/,
   /^ {4}Receipts \(2026-09-16\)/)
 assert.ok(threeKinds.length > 0,
-  '(f) [M6] sim precondition: the `driver:suite-runs` paragraph is still there — the range ' +
+  '(f) [M6] sim precondition: the `jev:` seam paragraph is still there — the range ' +
   'the Proof\'s fifth `Run:` line reads')
 assert.ok(/jev:finding.*jev:tier.*jev:suite-red.*POST \/v1\/systemone.*one log line and no row.*read by nothing/
   .test(joined(threeKinds)),
-  '(f) [M6] the paragraph after `driver:suite-runs` names `jev:finding`, `jev:tier` and ' +
+  '(f) [M6] the `jev:` seam paragraph names `jev:finding`, `jev:tier` and ' +
   '`jev:suite-red`, `POST /v1/systemone`, that a failed call is one log line and no row, ' +
   'and that they are read by nothing — in that order. (Proof `Run:` line 5) The range ' +
   'read: ' + JSON.stringify(joined(threeKinds)))

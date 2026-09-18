@@ -1,7 +1,7 @@
 # docs/
 
 `docs/superpowers/` — the specs, plans, gate-verdict records, intents, the docket and the
-ultralearn observation ledger — is **untracked on purpose** (#544, operator decision
+catch ledger — is **untracked on purpose** (#544, operator decision
 2026-09-02): the design record stays out of the GitHub project until the ledger work
 (#485, #484, #417) replicates it through a hosted store. It exists on two devices — the
 laptop checkout and the orchestrator's `/home/exedev/repo` — each with `docs/superpowers/`

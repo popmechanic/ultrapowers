@@ -1593,62 +1593,6 @@ const taskBodyBlock = (task) => '\nTASK:\n' + (typeof task.body === 'string' ? t
 // integrated tree. Deleted with that agent (#964 Task 2) — the composition
 // question it was meant to answer is the per-task referee's, against the same
 // bodies, before anything merges.
-// ── the bare-suite sensor ────────────────────────────────────────────────────
-// `implementer.md` and `fix.md` both say to run the task's own `PROOFS:` block
-// and never the project's whole suite, because the fold runs the suite once per
-// merge. This counts what a worker ran anyway, off the reduced transcript slice
-// `run-worker.mjs` writes to `<runDir>/transcripts/<sessionId>.jsonl` — a Bash
-// tool_use block keeps its `input.command`, which is the whole of what is read.
-// It is a READING. Nothing downstream branches on it.
-//
-// A runner is a token prefix, so `python3 -m pytest` is three tokens and the
-// `-m` inside it is part of the runner rather than a flag after it. What
-// follows the prefix decides: only tokens beginning `-` leave the run bare, so
-// `npm test -- --watch` counts and `bun test tests/x.test.ts` does not — the
-// second one named a path, which is the thing a worker is asked to do.
-const BARE_SUITE_RUNNERS = [
-  ['bun', 'test'],
-  ['bun', 'run', 'test'],
-  ['npm', 'test'],
-  ['pnpm', 'test'],
-  ['pytest'],
-  ['python3', '-m', 'pytest'],
-]
-// `&&`, `||`, `;` and `|` all separate; splitting on single `|` as well means
-// `||` yields an empty middle segment, which no runner matches. Nothing else is
-// a separator, so a redirection like `2>&1` stays inside its segment and is
-// read as the trailing non-flag token it is.
-const SUITE_SEGMENT_SPLIT = /&&|\|\||;|\|/
-const isBareSuiteSegment = (segment) => {
-  const tokens = String(segment).trim().split(/\s+/).filter(Boolean)
-  return BARE_SUITE_RUNNERS.some((runner) =>
-    tokens.length >= runner.length &&
-    runner.every((word, i) => tokens[i] === word) &&
-    tokens.slice(runner.length).every((t) => t.startsWith('-')))
-}
-export const bareSuiteRunCount = (sliceJsonl) => {
-  let count = 0
-  for (const line of String(sliceJsonl == null ? '' : sliceJsonl).split('\n')) {
-    const s = line.trim()
-    if (!s) continue
-    let rec
-    try { rec = JSON.parse(s) } catch { continue /* not a record line */ }
-    // The reduced slice writes `type` on every record and every block; a
-    // hand-built line that left one off is read as the shape it can only be,
-    // so the count is about the command and not about the bookkeeping.
-    if (!rec || typeof rec !== 'object') continue
-    if (rec.type !== undefined && rec.type !== 'assistant') continue
-    const content = rec.message && Array.isArray(rec.message.content) ? rec.message.content : []
-    for (const block of content) {
-      if (!block || typeof block !== 'object') continue
-      if (block.type !== undefined && block.type !== 'tool_use') continue
-      if (block.name !== 'Bash') continue
-      const cmd = block.input && typeof block.input.command === 'string' ? block.input.command : ''
-      if (cmd && cmd.split(SUITE_SEGMENT_SPLIT).some(isBareSuiteSegment)) count += 1
-    }
-  }
-  return count
-}
 // ── small exec adapters ──────────────────────────────────────────────────────
 // Shell strings (testCmd, bootstrapCmd) run through `bash -lc`; git always
 // runs argv-form. Both resolve, never reject — callers branch on code.
@@ -2394,39 +2338,6 @@ export async function runEngine({
     const derived = (typeof fields === 'function') ? fields(answers) : null
     appendEvent({ ...row, ...(derived || {}), answers })
     return answers
-  }
-  // ── the bare-suite reading, one row per task an implementer worked ─────────
-  // The engine holds no copy of a worker's transcript: `run-worker.mjs` writes
-  // the reduced slice to `<runDir>/transcripts/<sessionId>.jsonl` and announces
-  // it with a `transcript:slice` row through run-main's event log, which is the
-  // same `events.jsonl` `appendEvent` above writes. So the record is what is
-  // read back, and the labels are the engine's own: `impl:<id>` for the
-  // implementer's session and `fix:<id>:…` for its repair rounds (only round 0
-  // exists at the call site — the review loop's rounds come after it).
-  //
-  // A slice row whose file is not there is not read and is not counted, which
-  // is why `slices` says how many files were actually opened. Both fields are
-  // `0` when there was no row at all. The row GATES NOTHING: no status, no
-  // review, no verdict reads it.
-  const noteSuiteRuns = (taskId) => {
-    let text = ''
-    try { text = fs.readFileSync(path.join(runDir, 'events.jsonl'), 'utf8') } catch { /* no record yet */ }
-    let count = 0, slices = 0
-    for (const line of text.split('\n')) {
-      const s = line.trim()
-      if (!s || s[0] !== '{') continue
-      let e
-      try { e = JSON.parse(s) } catch { continue /* not an event line */ }
-      if (!e || e.kind !== 'transcript:slice' || typeof e.label !== 'string') continue
-      if (e.label !== 'impl:' + taskId && !e.label.startsWith('fix:' + taskId + ':')) continue
-      let slice
-      try {
-        slice = fs.readFileSync(path.join(runDir, 'transcripts', String(e.sessionId) + '.jsonl'), 'utf8')
-      } catch { continue /* announced, never written */ }
-      slices += 1
-      count += bareSuiteRunCount(slice)
-    }
-    appendEvent({ kind: 'driver:suite-runs', task: taskId, count, slices })
   }
   // The block one brief carries, and the record that it carried one. A
   // non-empty block leaves one `driver:facts` row — a record row and not a
@@ -5032,12 +4943,6 @@ export async function runEngine({
           'the reviewer reads it')
       }
     }
-
-    // One row, here: the implementer has returned, the pre-review fix round has
-    // run when the pass bought one, and no reviewer has been dispatched yet.
-    // Every exit above this line ended the task without a reviewer, so the path
-    // that reaches a referee is the path that carries the reading.
-    noteSuiteRuns(task.id)
 
     // The round's own minor findings, de-duplicated, for the row's notes. They
     // were also carried from round 1 into round 2 (2026-09-01, run-47 read) so

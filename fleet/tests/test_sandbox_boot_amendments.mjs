@@ -475,10 +475,10 @@ const READERS = [
   [
     '(d)', 'M1',
     'fleet/CONTRACT.md\'s evidence sub-bullet must carry, between the "three more kinds" '
-    + 'paragraph and the `transcripts/<sessionId>.jsonl` line, a paragraph naming '
+    + 'paragraph and the `state-exams/` line, a paragraph naming '
     + '`driver:amendment` `{task, amends, what, why}`, the three `amends` values, the hub issue '
     + 'and the report\'s `amendments` list',
-    "sed -n '/^    The driver.s own executions are three more kinds/,/^    .transcripts.<sessionId>.jsonl/p'"
+    "sed -n '/^    The driver.s own executions are three more kinds/,/^    .state-exams\\//p'"
     + " fleet/CONTRACT.md | tr '\\n' ' '"
     + " | grep -q 'driver:amendment.*task, amends, what, why.*clause.*files.*sim.*hub issue.*amendments'",
   ],
