@@ -1117,3 +1117,16 @@
 {"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Bash","target":"python3 -c \"\nm='run-7 done: Fixture Plan — https://github.int.exe.xyz/acme/t/pull/9'\nprint(len(m))\n\""}
 {"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Bash","target":"set -e\nWORK=/tmp/boot_close_scratch\nREPO=/home/exedev/run/fold-fix-6\nPLAN_SHA=\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nBASE_SHA=\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"\nENGINE_SHA=\"ccccccccccccccc"}
 {"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Bash","target":"set -e\nWORK=/tmp/boot_close_scratch\nREPO=/home/exedev/run/fold-fix-6\nPLAN_SHA=\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nBASE_SHA=\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"\nENGINE_SHA=\"ccccccccccccccc"}
+{"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Bash","target":"bash -n /home/exedev/run/fold-fix-6/factory/boot.sh && echo \"syntax OK\""}
+{"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Bash","target":"rm -rf /tmp/boot_close_scratch"}
+{"kind":"fold:unresolved","task":"6","exam":"6"}
+{"kind":"pair:label","a":"1","b":"2","calls":null,"fold":"clean"}
+{"kind":"pair:label","a":"1","b":"3","calls":null,"fold":"clean"}
+{"kind":"pair:label","a":"1","b":"4","calls":null,"fold":"clean"}
+{"kind":"pair:label","a":"1","b":"5","calls":null,"fold":"clean"}
+{"kind":"pair:label","a":"2","b":"3","calls":null,"fold":"clean"}
+{"kind":"pair:label","a":"2","b":"4","calls":null,"fold":"clean"}
+{"kind":"pair:label","a":"2","b":"5","calls":null,"fold":"clean"}
+{"kind":"pair:label","a":"3","b":"4","calls":null,"fold":"clean"}
+{"kind":"pair:label","a":"3","b":"5","calls":null,"fold":"clean"}
+{"kind":"pair:label","a":"4","b":"5","calls":null,"fold":"clean"}
