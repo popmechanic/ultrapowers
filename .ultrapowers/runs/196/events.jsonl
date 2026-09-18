@@ -277,3 +277,18 @@
 {"ts":"2026-09-18T22:05:11.098Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
 {"ts":"2026-09-18T22:05:13.102Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Read","target":"/home/exedev/run/exam-5/fleet/tests/_lobby_helpers.mjs"}
 {"ts":"2026-09-18T22:05:23.066Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"function normalizeArgs\\|function exitOf\\|function outOf\\|function lastJson\\|const defaultSh\\|const defaultGit\\|function splitDiff\\|function bodyOf\\|function clausesOf\\|export default\\|^export"}
+{"ts":"2026-09-18T22:05:26.369Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"ts":"2026-09-18T22:05:30.006Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"^const KERNEL\\|^const COMPILER\\|^const REPO\\|const KERNEL =\\|const COMPILER =\\|const REPO =\\|QUESTIONS_PATH =\\|POLICY_PATH =\" factory/engine.mjs"}
+{"ts":"2026-09-18T22:05:33.661Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"ts":"2026-09-18T22:05:35.034Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"ls /home/exedev/run/impl-4-0/factory/roles/"}
+{"ts":"2026-09-18T22:05:37.665Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"export function cloneAtBase\" -A 25 /home/exedev/run/impl-4-0/fleet/run-waves.mjs | head -40"}
+{"ts":"2026-09-18T22:05:37.812Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"ts":"2026-09-18T22:05:42.872Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"wc -l /home/exedev/run/claude-config/projects/-home-exedev-run-exam-3/5e05e421-c7d5-4574-988c-0144575e1ea4.jsonl 2>&1 | head -5"}
+{"ts":"2026-09-18T22:05:43.475Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"ls factory/ | head -30; echo ---; cat factory/policy.json 2>/dev/null | head -60"}
+{"ts":"2026-09-18T22:05:47.763Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"python3 -c \"\nimport json\nwith open('/home/exedev/run/claude-config/projects/-home-exedev-run-exam-3/5e05e421-c7d5-4574-988c-0144575e1ea4.jsonl') as f:\n    for i, line in enumerate(f):\n        line=lin"}
+{"ts":"2026-09-18T22:05:52.788Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"python3 -c \"\nimport json\nwith open('/home/exedev/run/claude-config/projects/-home-exedev-run-exam-3/5e05e421-c7d5-4574-988c-0144575e1ea4.jsonl') as f:\n    lines = f.readlines()\nobj = json.loads(lines["}
+{"ts":"2026-09-18T22:05:53.191Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"const cloneAt = \\|const resolve = async\\|^  const runExams = \\|^  const anchor = head$\" /home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:05:55.317Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:06:18.686Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:06:20.860Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:06:22.603Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
