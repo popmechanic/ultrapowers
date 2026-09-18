@@ -1076,3 +1076,22 @@
 {"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"rm -f /tmp/scratch_floor_test.mjs /tmp/probe_write.txt /tmp/test_plan.md /tmp/test_plan2.md\ncd /home/exedev/run/fold-fix-2 && git status --short"}
 {"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"rm -f /tmp/scratch_floor_test.mjs /tmp/probe_write.txt /tmp/test_plan.md /tmp/test_plan2.md; echo done"}
 {"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -15"}
+{"kind":"worker:test-run","task":"2","label":"impl:2:fold","cmd":"python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -15","red":false}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"grep -rn \"legsHasCitation\\|legs_has_citation\" --include=\"*.py\" --include=\"*.mjs\" /home/exedev/run/fold-fix-2 2>/dev/null | grep -v \"/\\.git/\""}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"ls -la /home/exedev/run/fold-fix-2/.scratch 2>&1; ls -la /home/exedev/run/fold-fix-2 | grep scratch"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"sed -n '636,663p' skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"(node fleet/tests/test_factory_floor.mjs; echo \"node_exit=$?\") ; python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -10"}
+{"kind":"worker:test-run","task":"2","label":"impl:2:fold","cmd":"(node fleet/tests/test_factory_floor.mjs; echo \"node_exit=$?\") ; python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -10","red":false}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"grep -n \"^def note\\|^note\\b\" /dev/null 2>/dev/null; echo \"no note tool listed among functions — will just answer in text\""}
+{"kind":"fold:unresolved","task":"2","exam":"2"}
+{"kind":"fold:unresolved","task":"2","exam":"3"}
+{"kind":"fold:unresolved","task":"2","exam":"5"}
+{"kind":"fold:unresolved","task":"2","exam":"4"}
+{"kind":"landing","task":"6","k":1,"examExit":0,"claim":0.66,"coverage":[0.96,0.95,0.94],"candidateSha":"b32608d0559d05d618ec3f2e04e09459b3bde5c4","wall_ms":1532320}
+{"kind":"fold:verify","task":"6","ran":[{"task":"6","exit":1}]}
+{"kind":"fold:red","task":"6","exam":"6","exit":1}
+{"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Bash","target":"find . -path ./node_modules -prune -o -name \"*.sh\" -print | grep -i boot"}
+{"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Read","target":"/home/exedev/run/fold-fix-6/factory/boot.sh"}
+{"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Bash","target":"ls -la /home/exedev/run/fold-fix-6/fleet/tests/ | grep -i boot"}
+{"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Bash","target":"find /home/exedev/run/fold-fix-6 -iname \"*factory_boot_close*\" 2>/dev/null; find /home/exedev/run/fold-fix-6 -iname \"*boot_close*\" 2>/dev/null"}
+{"kind":"worker:tool","task":"6","label":"impl:6:fold","tool":"Bash","target":"git status && git log --oneline -5 -- factory/boot.sh"}
