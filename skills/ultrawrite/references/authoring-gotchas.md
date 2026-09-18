@@ -14,7 +14,7 @@ command carrying a backtick is `command carries a backtick` from
 check, here, against this file — `suite-total-pin` and `directory-absence-pin`
 included. Nothing prints them.
 
-## The fifteen rows
+## The sixteen rows
 
 - **A zero-count grep over a source file counts its comments too.** A `Run:` that pins
   `grep -c <symbol> <file>` = 0 goes red the moment the implementer deletes the code and
@@ -139,6 +139,16 @@ included. Nothing prints them.
   driver keep it and never duplicates it; and a proof line's exit comes from
   the command that proves the claim, not from plumbing (fixture run-25,
   popmechanic/tinyapp-fixture, 2026-09-17).
+- **A fake that stands in for a client a sibling feature also calls
+  over-counts the moment the sibling lands.** Give the fake per-exam shape
+  recognition so it records only the states with this exam's own shape
+  (`note`, `amendment`) and answers null to the rest, never an exact call
+  count on a fake shared across features — run-183's
+  `test_run_engine_worker_notes.mjs` pinned "exactly three asks" on the one
+  `jev.ask` fake, run-182's tier rows asked the same client at every dispatch
+  and review, the count read 7 where the exam pinned 3, and the publish fold
+  went red on a correct tree; the amendments exam had the same leg, 4 ≠ 2
+  (run-183, PR #1111, hand fold `f3c69320`).
 
 ## Three older lessons of the same kind
 
