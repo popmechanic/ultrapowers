@@ -195,3 +195,22 @@
 {"kind":"worker:tool","task":"2","label":"referee:2","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/judge.mjs"}
 {"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"cd /home/exedev/run && sed -n '1,145p' patch-2-0.diff"}
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"cd /home/exedev/run && sed -n '143,200p' patch-2-0.diff"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -n '[0-9]\\.[0-9]' factory/judge.mjs; echo \"---decimal grep exit $?\"; node -e \"\nconst d=JSON.parse(require('fs').readFileSync('factory/questions.json','utf8'));\nconsole.log(JSON.stringify(d.sets.s"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"supervisor","task":"4","label":"impl:4:0","answers":{"stuck":{"type":"noul","noul":0.47},"off_track":{"type":"noul","noul":0.39},"needs_human":{"type":"noul","noul":0.22},"done_not_exited":{"type":"noul","noul":0.13}}}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"node -e \"\nconst assert=require('assert');\nconst p=JSON.parse(require('fs').readFileSync('factory/policy.json','utf8'));\nconst want={ enabled: true, t_covers: { value: 0.8, n: 0, window: 'none', basis:"}
+{"kind":"supervisor","task":"2","label":"referee:2","answers":{"stuck":{"type":"noul","noul":0.19},"off_track":{"type":"noul","noul":0.27},"needs_human":{"type":"noul","noul":0.13},"done_not_exited":{"type":"noul","noul":0.08}}}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Read","target":"/home/exedev/run/impl-2-0/fleet/tests/test_factory_judge_select.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"usage\" /home/exedev/run/impl-4-0/tests/test_plan_parse.py"}
+{"kind":"worker:test-run","task":"4","label":"impl:4:0","cmd":"grep -n \"usage\" /home/exedev/run/impl-4-0/tests/test_plan_parse.py","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -60"}
+{"kind":"worker:test-run","task":"4","label":"impl:4:0","cmd":"python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -60","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -rn \"plan_parse\" /home/exedev/run/impl-4-0 --include=\"*.py\" --include=\"*.mjs\" --include=\"*.js\" -l | grep -v tests/"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"python3 -m pyflakes skills/ultrapowers/scripts/plan_parse.py 2>&1 || true"}
+{"kind":"landing","task":"4","k":1,"examExit":0,"claim":0.8,"coverage":[0.96,0.96,0.96],"candidateSha":"59452040773e35f9c9cb35d5892e7ce435e436a3","wall_ms":412041}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"node --input-type=module -e \"\nimport { makeJudge } from './factory/judge.mjs'\nconst mk = (answers, extra={}) => makeJudge({ ask: async () => answers, log: () => {}, ...extra })\nconst tests = ['p0','p1"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -rn \"readCovering\\|readGuards\\|policy.select\\|select\\.t_covers\\|max_candidates\" --include=*.mjs --include=*.js --include=*.json --include=*.md . | grep -v node_modules | grep -v '^./factory/judge"}
