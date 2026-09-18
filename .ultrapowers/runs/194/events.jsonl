@@ -1007,3 +1007,4 @@
 {"kind":"worker:tool","task":"8","label":"referee:8","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
 {"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"sed -n 1,60p fleet/tests/_engine_helpers.mjs"}
 {"kind":"worker:tool","task":"8","label":"referee:8","tool":"Write","target":"/tmp/probe_hang.mjs"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"node --input-type=module -e \"$(cat <<'EOF'\nimport fs from 'node:fs'\nimport os from 'node:os'\nimport path from 'node:path'\nimport { spawnSync } from 'node:child_process'\nconst REPO = '/home/exedev/run/"}
