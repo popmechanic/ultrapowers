@@ -1,0 +1,30 @@
+Running as unit: fleet-engine-196.service; invocation ID: be2a869c15304323a28a55856650670b
+board: factsFor (task 1) failed: kata: GET /api/v1/issues/01M2V7HFTPC7TEXFAFRPTKBADJ answered 404: {"status":404,"error":{"code":"issue_not_found","message":"no issue matches uid 01M2V7HFTPC7TEXFAFRPTKBADJ"}}
+board: setState (task 1) failed: kata: POST /api/v1/projects/2/issues/01M2V7HFTPC7TEXFAFRPTKBADJ/metadata answered 400: {"status":400,"error":{"code":"validation","message":"If-Match revision is not a valid integer"}}
+board: factsFor (task 3) failed: kata: GET /api/v1/issues/01M2V7HQEDV8GJ36CT7PMC60V2 answered 404: {"status":404,"error":{"code":"issue_not_found","message":"no issue matches uid 01M2V7HQEDV8GJ36CT7PMC60V2"}}
+board: setState (task 3) failed: kata: POST /api/v1/projects/2/issues/01M2V7HQEDV8GJ36CT7PMC60V2/metadata answered 400: {"status":400,"error":{"code":"validation","message":"If-Match revision is not a valid integer"}}
+board: factsFor (task 2) failed: kata: GET /api/v1/issues/01M2V7HKK9E37FD6G5REFNEGGE answered 404: {"status":404,"error":{"code":"issue_not_found","message":"no issue matches uid 01M2V7HKK9E37FD6G5REFNEGGE"}}
+board: factsFor (task 4) failed: kata: GET /api/v1/issues/01M2V7HV8XKWBQ3WJANNP73CB7 answered 404: {"status":404,"error":{"code":"issue_not_found","message":"no issue matches uid 01M2V7HV8XKWBQ3WJANNP73CB7"}}
+board: setState (task 2) failed: kata: POST /api/v1/projects/2/issues/01M2V7HKK9E37FD6G5REFNEGGE/metadata answered 400: {"status":400,"error":{"code":"validation","message":"If-Match revision is not a valid integer"}}
+board: setState (task 4) failed: kata: POST /api/v1/projects/2/issues/01M2V7HV8XKWBQ3WJANNP73CB7/metadata answered 400: {"status":400,"error":{"code":"validation","message":"If-Match revision is not a valid integer"}}
+board: factsFor (task 5) failed: kata: GET /api/v1/issues/01M2V7HZ2H5YB5CXYRPPMQ3SBN answered 404: {"status":404,"error":{"code":"issue_not_found","message":"no issue matches uid 01M2V7HZ2H5YB5CXYRPPMQ3SBN"}}
+board: setState (task 5) failed: kata: POST /api/v1/projects/2/issues/01M2V7HZ2H5YB5CXYRPPMQ3SBN/metadata answered 400: {"status":400,"error":{"code":"validation","message":"If-Match revision is not a valid integer"}}
+board: setState (task 1) failed: kata: POST /api/v1/projects/2/issues/01M2V7HFTPC7TEXFAFRPTKBADJ/metadata answered 400: {"status":400,"error":{"code":"validation","message":"If-Match revision is not a valid integer"}}
+adopted task 1 -> 7a851a2a  exam=0 k=1
+board: setState (task 4) failed: kata: POST /api/v1/projects/2/issues/01M2V7HV8XKWBQ3WJANNP73CB7/metadata answered 400: {"status":400,"error":{"code":"validation","message":"If-Match revision is not a valid integer"}}
+adopted task 4 -> 5d6f8140  exam=0 k=1
+exam:5: 1 denied edit(s)
+board: setState (task 2) failed: kata: POST /api/v1/projects/2/issues/01M2V7HKK9E37FD6G5REFNEGGE/metadata answered 400: {"status":400,"error":{"code":"validation","message":"If-Match revision is not a valid integer"}}
+adopted task 2 -> cb10057b  exam=0 k=2
+board: setState (task 5) failed: kata: POST /api/v1/projects/2/issues/01M2V7HZ2H5YB5CXYRPPMQ3SBN/metadata answered 400: {"status":400,"error":{"code":"validation","message":"If-Match revision is not a valid integer"}}
+adopted task 5 -> 32930b92  exam=0 k=1
+impl:3:redispatch: 1 denied edit(s)
+board: setState (task 3) failed: kata: POST /api/v1/projects/2/issues/01M2V7HQEDV8GJ36CT7PMC60V2/metadata answered 400: {"status":400,"error":{"code":"validation","message":"If-Match revision is not a valid integer"}}
+adopted task 3 -> 4b1a9e11  exam=0 k=1
+{"done":false,"adopted":["1","4","2","5","3"],"head":"304b73b5b2e3b406811ab1ad3cfc5b809ce733b8","wall_ms":4505484,"cost_usd":42.481759399999994}
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 1h 15min 5.551s
+CPU time consumed: 6min 55.467s
+Memory peak: 3.5M
+Memory swap peak: 0B
