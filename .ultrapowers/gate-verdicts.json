@@ -1,0 +1,103 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "80985db98c2efc99e77c7859ccfdff4cde7746849e02bec117cd858ed7bee385",
+   "verdict": "pass",
+   "reason": "pairs list, why/paths/symbol literals and the unchanged edges and waves all compute; the only BASE pin is the exam file's own key set, which the exam updates."
+  },
+  "2": {
+   "hash": "a7623e919dc762b41b46ce53b04d0fba1b7dc3897066024dc87b7a6765263d42",
+   "verdict": "pass",
+   "reason": "Round 2: outline, hit lists, decideByCode and labelPair literals compute; the byte-cap leg now exercises the cut (round 1 passed with that leg flagged weak, and it was narrowed)."
+  },
+  "3": {
+   "hash": "d20fdf30b8505b7d2c1e8e62632fcda6be8aa3bfd5158dae78958c2a7ac6a812",
+   "verdict": "pass",
+   "reason": "midpoints 0.5 and 1.5 route 0.3/0.5/1.49/1.5 as pinned; thresholds, option list, null path and the eleven reader keys each have a leg."
+  },
+  "4": {
+   "hash": "584c2af5171d6e428af8067c29da445689271d7484ec18349b87141572302d45",
+   "verdict": "pass",
+   "reason": "Round 2: every ordering leg computes with the landing row at adoption; round 1 failed correctly \u2014 leg (c) held implementers pending while M3 had already dispatched task 1's."
+  },
+  "5": {
+   "hash": "32ea7c9a7f45bf8e767136aa6c07799c67fb33e29e1f12433b4f48831e44eb9f",
+   "verdict": "pass",
+   "reason": "Round 2: examsTouched literals compute with the folded argument; round 1 failed correctly \u2014 the signature had no way to name the folded task."
+  },
+  "6": {
+   "hash": "6d955f8782fd098c6fe97fa0a36cfd29f97f517593ef6ce202821411ee08ef8a",
+   "verdict": "pass",
+   "reason": "unionReply literals, the reply file bytes, the kernel argv, thresholds and the three fall-through cases each have a leg."
+  },
+  "7": {
+   "hash": "3143fd74450d7e9cafcc818f0bbe2026fdd199beae18b4164efc9009373152be",
+   "verdict": "pass",
+   "reason": "each Run exits non-zero when its fact is false; every sed range names a heading present at BASE; the zero-count and the 16-row count are both computable."
+  },
+  "8": {
+   "hash": "3f555a0ddb524e53226d86d969101af155de9227a92afca6f9e28b0bfa3cd349",
+   "verdict": "pass",
+   "reason": "waitsFor literals compute on and off; the ref, the clone contents, the --patch anchor and the two-producer fallback each have a leg."
+  }
+ },
+ "tally": {
+  "dispatched": 11,
+  "rejected": 2,
+  "rounds": {
+   "1": {
+    "dispatched": 8,
+    "rejected": 2
+   },
+   "2": {
+    "dispatched": 3,
+    "rejected": 0
+   }
+  },
+  "base": "27b068bc178e0165a6f218cea46b5041bdcf0a3a",
+  "gate_question": "facts-only with the negation sentence run-193 landed (third plan read under it); both rejections were real defects \u2014 a leg contradicting its clause, and a signature that could not express its leg \u2014 and neither asked for more legs."
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "4",
+   "verdict": "fail",
+   "reason": "leg (c) pinned exactly three exam labels with implementers held pending, but under M3 task 1's implementer is already dispatched."
+  },
+  {
+   "round": 1,
+   "task": "5",
+   "verdict": "fail",
+   "reason": "leg (a) expected the folded task first but examsTouched's signature had no argument naming it."
+  }
+ ],
+ "authoring": {
+  "minutes": 70,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Draft A \u2014 everything starts at once",
+     "Draft B \u2014 `look` pairs wait"
+    ],
+    "recommended": "Draft A \u2014 everything starts at once",
+    "picked": "Draft A \u2014 everything starts at once"
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers on the fleet",
+     "Subagent-driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers on the fleet",
+    "picked": "Ultrapowers on the fleet"
+   }
+  ]
+ }
+}

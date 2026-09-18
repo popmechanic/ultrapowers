@@ -1,0 +1,54 @@
+{
+  "url": "https://kata.int.exe.xyz",
+  "project": {
+    "id": 31,
+    "uid": "01M2HBYF26YQWA0S07E1J3NSGF",
+    "name": "popmechanic-ultrapowers"
+  },
+  "run": {
+    "uid": "01M2TV5XPN8ESJY35TN15PGS70",
+    "revision": 1
+  },
+  "tasks": {
+    "1": {
+      "uid": "01M2TV5YPDXPGE536CKDE3WGEM",
+      "short_id": "wgem",
+      "revision": 2
+    },
+    "2": {
+      "uid": "01M2TV62B5K448R9TN8PT087Z2",
+      "short_id": "87z2",
+      "revision": 2
+    },
+    "3": {
+      "uid": "01M2TV65XWGJTM7VHD8K9MJGWA",
+      "short_id": "jgwa",
+      "revision": 2
+    },
+    "4": {
+      "uid": "01M2TV69NBVRT7B88B9F637KAK",
+      "short_id": "7kak",
+      "revision": 2
+    },
+    "5": {
+      "uid": "01M2TV6E2WDVJ1GBJ0H1QT2EZS",
+      "short_id": "2ezs",
+      "revision": 2
+    },
+    "6": {
+      "uid": "01M2TV6HXVV0Z964KWFK5V99A6",
+      "short_id": "99a6",
+      "revision": 2
+    },
+    "7": {
+      "uid": "01M2TV6NHKAXE1CN2X9RB0E4M8",
+      "short_id": "e4m8",
+      "revision": 2
+    },
+    "8": {
+      "uid": "01M2TV6S4YTQQRPWH4SBSRR76F",
+      "short_id": "r76f",
+      "revision": 2
+    }
+  }
+}
