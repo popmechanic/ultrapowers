@@ -460,3 +460,9 @@
 {"kind":"worker:tool","task":"7","label":"referee:7","tool":"Bash","target":"grep -rn \"policy\" factory/engine.mjs | sed -n 1,40p; echo ===; sed -n 1230,1280p factory/engine.mjs"}
 {"kind":"worker:tool","task":"7","label":"referee:7","tool":"Bash","target":"grep -n \"readCovering\\|readGuards\\|t_covers\\|t_guards\\|covers\\|guards\" factory/judge.mjs factory/questions.json | head -40"}
 {"kind":"worker:tool","task":"7","label":"referee:7","tool":"Read","target":"/home/exedev/run/impl-7-0/factory/judge.mjs"}
+{"kind":"worker:tool","task":"7","label":"referee:7","tool":"Bash","target":"sed -n 265,280p factory/engine.mjs; sed -n 1,25p factory/hunks.mjs | head -30; grep -n \"export function hunksCarrying\" -A 20 factory/hunks.mjs"}
+{"kind":"worker:tool","task":"7","label":"referee:7","tool":"Bash","target":"grep -rn \"test_\\*\\.mjs\\|glob\\|timeout\" tests/test_fleet_suite.py | head -20; echo ===; grep -n \"tmp\\|cleanup\\|rmSync\" CLAUDE.md | head -20"}
+{"kind":"worker:tool","task":"7","label":"referee:7","tool":"Bash","target":"/usr/bin/time -f \"%e s\" node fleet/tests/test_factory_engine_select.mjs > /dev/null 2> /tmp/t.txt; tail -2 /tmp/t.txt; du -sh /tmp/select-exam-* 2>/dev/null | tail -3; ls -d /tmp/select-exam-* 2>/dev/"}
+{"kind":"worker:test-run","task":"7","label":"referee:7","cmd":"/usr/bin/time -f \"%e s\" node fleet/tests/test_factory_engine_select.mjs > /dev/null 2> /tmp/t.txt; tail -2 /tmp/t.txt; du -sh /tmp/select-exam-* 2>/dev/null | tail -3; ls -d /tmp/select-exam-* 2>/dev/null | wc -l","red":false}
+{"kind":"worker:tool","task":"7","label":"referee:7","tool":"Bash","target":"sed -n 100,175p tests/test_fleet_suite.py; echo ===; grep -n \"mkdtemp\\|rmSync\\|finally\" fleet/tests/test_factory_hunks.mjs | head"}
+{"kind":"worker:tool","task":"7","label":"referee:7","tool":"Bash","target":"timeout 600 python3 -m pytest tests/test_fleet_suite.py -k \"factory_engine_select or factory_hunks\" -q 2>&1 | tail -5"}
