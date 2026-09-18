@@ -1,0 +1,1 @@
+{"kind":"supervisor","task":"2","label":"exam:2","answers":{"stuck":{"type":"noul","noul":0.47},"off_track":{"type":"noul","noul":0.4},"needs_human":{"type":"noul","noul":0.26},"done_not_exited":{"type":"noul","noul":0.13}}}
