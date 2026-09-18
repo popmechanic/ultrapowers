@@ -450,3 +450,52 @@
 {"kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"cd fleet/tests && for f in test_run_engine_state_exams.mjs; do echo \"== $f ==\"; timeout 60 node \"$f\" 2>&1 | tail -20; done"}
 {"kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__note"}
 {"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"const measure = \\|async function measure\" /home/exedev/run/fold-fix-3/factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-3/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"impl:1:redispatch","tool":"Bash","target":"ls fleet/tests/ | grep -i exam"}
+{"kind":"worker:tool","task":"1","label":"impl:1:redispatch","tool":"Bash","target":"sed -n '1,50p' fleet/tests/test_factory_exam_skip.mjs 2>/dev/null || echo \"NOT FOUND\""}
+{"kind":"worker:test-run","task":"1","label":"impl:1:redispatch","cmd":"sed -n '1,50p' fleet/tests/test_factory_exam_skip.mjs 2>/dev/null || echo \"NOT FOUND\"","red":false}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Write","target":"/home/exedev/run/exam-2/fleet/tests/test_factory_floor.mjs"}
+{"kind":"worker:tool","task":"1","label":"impl:1:redispatch","tool":"Read","target":"/home/exedev/run/impl-1-0/fleet/tests/test_factory_exam_skip.mjs"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"node fleet/tests/test_factory_floor.mjs; echo \"EXIT: $?\""}
+{"kind":"worker:test-run","task":"2","label":"exam:2","cmd":"node fleet/tests/test_factory_floor.mjs; echo \"EXIT: $?\"","red":false}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-3/tests/fixtures/plans/2026-09-07/2026-09-07-acceptance-log-on-the-record.md"}
+{"kind":"worker:tool","task":"1","label":"impl:1:redispatch","tool":"Bash","target":"grep -n \"function examine\\|async function examine\\|examine(\" /home/exedev/run/impl-1-0/factory/engine.mjs | head -30"}
+{"kind":"worker:tool","task":"1","label":"impl:1:redispatch","tool":"Bash","target":"grep -n \"^  async function examine\\|^async function examine\\|const examine\\|examine =\" /home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"wc -l /home/exedev/run/fold-fix-3/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"1","label":"impl:1:redispatch","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"(node fleet/tests/test_factory_floor.mjs && python3 -m pytest -q tests/test_plan_parse.py); echo \"COMBINED EXIT: $?\""}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-3/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"supervisor","task":"1","label":"impl:1:redispatch","answers":{"stuck":{"type":"noul","noul":0.25},"off_track":{"type":"noul","noul":0.26},"needs_human":{"type":"noul","noul":0.1},"done_not_exited":{"type":"noul","noul":0.08}}}
+{"kind":"worker:test-run","task":"2","label":"exam:2","cmd":"(node fleet/tests/test_factory_floor.mjs && python3 -m pytest -q tests/test_plan_parse.py); echo \"COMBINED EXIT: $?\"","red":false}
+{"kind":"worker:tool","task":"1","label":"impl:1:redispatch","tool":"Bash","target":"node fleet/tests/test_factory_exam_skip.mjs 2>&1 | tail -50"}
+{"kind":"worker:test-run","task":"1","label":"impl:1:redispatch","cmd":"node fleet/tests/test_factory_exam_skip.mjs 2>&1 | tail -50","red":false}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -20"}
+{"kind":"worker:test-run","task":"2","label":"exam:2","cmd":"python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -20","red":false}
+{"kind":"worker:tool","task":"1","label":"impl:1:redispatch","tool":"Bash","target":"git status --short && git diff --stat"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"rm -rf /tmp/floor_smoke; echo done"}
+{"kind":"worker:tool","task":"1","label":"impl:1:redispatch","tool":"Bash","target":"node fleet/tests/test_run_engine_state_exams.mjs 2>&1 | tail -30"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-3/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Write","target":"/home/exedev/run/exam-5/fleet/tests/test_factory_select_excerpt.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"node fleet/tests/test_factory_select_excerpt.mjs"}
+{"kind":"worker:test-run","task":"5","label":"exam:5","cmd":"node fleet/tests/test_factory_select_excerpt.mjs","red":true}
+{"kind":"worker:tool","task":"1","label":"impl:1:redispatch","tool":"mcp__factory__note"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/fleet/tests/test_facts_block.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-3/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"^import\\|function show\\|catch (e)\\|try {\\|ALL TESTS PASSED\\|assert(\" /home/exedev/run/exam-4/fleet/tests/test_facts_block.mjs | head -40"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/fleet/tests/test_facts_block.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-3/factory/policy.json"}
+{"kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"cat /home/exedev/run/patch-1-0.diff"}
+{"kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"ls /home/exedev/run/impl-1-0; ls /home/exedev/run/impl-1-0/fleet/tests/ | head -50"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"awk '\n/^\\/\\/ ═+$/ && /Leg \\(a\\)/ { skip=1 }\n/^\\/\\/ ═+$/ && /Legs \\(b\\)/ { skip=0 }\nskip && /^const \\{ excerptFor \\}/ { next }\n!skip { print }\nskip { next }\n' fleet/tests/test_factory_select_excerpt.mj"}
+{"kind":"worker:test-run","task":"5","label":"exam:5","cmd":"awk '\n/^\\/\\/ ═+$/ && /Leg \\(a\\)/ { skip=1 }\n/^\\/\\/ ═+$/ && /Legs \\(b\\)/ { skip=0 }\nskip && /^const \\{ excerptFor \\}/ { next }\n!skip { print }\nskip { next }\n' fleet/tests/test_factory_select_excerpt.mjs > /tmp/smoke_drives.mjs\n# also remove the earlier hard \"typeof excerptFor\" assertion block that would throw\npython3 - <<'EOF'\nimport re\np = '/tmp/smoke_drives.mjs'\ns = open(p).read()\ns = s.replace(\n\"\"\"const { excerptFor } = selectMod\nassert.equal(typeof excerptFor, 'function',\n  '(a)/M1: `factory/select.mjs` must export `excerptFor` as a function, got ' + typeof excerptFor)\n\n\"\"\", \"\")\nopen(p, 'w').write(s)\nEOF\nnode /tmp/smoke_drives.mjs; echo \"EXIT: $?\"","red":false}
+{"kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -n \"examine\\|examPromises\\|examFiles\\|exam:skipped\\|exam-note\\|readCovering\" factory/engine.mjs | head -60"}
+{"kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"sed -n '860,1010p' factory/engine.mjs"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"mcp__factory__note"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-3/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"cp /tmp/smoke_drives.mjs /home/exedev/run/exam-5/fleet/tests/_smoke_drives_scratch.mjs\nnode /home/exedev/run/exam-5/fleet/tests/_smoke_drives_scratch.mjs\necho \"EXIT: $?\"\nrm -f /home/exedev/run/exam-5/"}
+{"kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-3/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"cat fleet/tests/test_factory_exam_skip.mjs"}
+{"kind":"worker:test-run","task":"1","label":"referee:1","cmd":"cat fleet/tests/test_factory_exam_skip.mjs","red":false}
+{"kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"sed -n '1000,1060p' factory/engine.mjs; echo ====; sed -n '1530,1570p' factory/engine.mjs; echo ==== ; grep -n \"appendEvent = \\|const appendEvent\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"python3 - <<'EOF'\np = '/home/exedev/run/exam-5/fleet/tests/test_factory_select_excerpt.mjs'\ns = open(p).read()\nstart_marker = \"const { excerptFor } = selectMod\"\nend_marker = \"const { simEnv } = await "}
+{"kind":"worker:test-run","task":"5","label":"exam:5","cmd":"python3 - <<'EOF'\np = '/home/exedev/run/exam-5/fleet/tests/test_factory_select_excerpt.mjs'\ns = open(p).read()\nstart_marker = \"const { excerptFor } = selectMod\"\nend_marker = \"const { simEnv } = await import('./_helpers.mjs')\"\ni = s.index(start_marker)\nj = s.index(end_marker)\nscratch = s[:i] + s[j:]\nopen('/tmp/scratch_smoke.mjs', 'w').write(scratch)\nEOF\ncp /tmp/scratch_smoke.mjs /home/exedev/run/exam-5/fleet/tests/_smoke_drives_scratch.mjs\nnode /home/exedev/run/exam-5/fleet/tests/_smoke_drives_scratch.mjs\necho \"EXIT: $?\"\nrm -f /home/exedev/run/exam-5/fleet/tests/_smoke_drives_scratch.mjs","red":false}
