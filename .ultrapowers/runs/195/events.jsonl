@@ -1017,3 +1017,29 @@
 {"kind":"referee","task":"2","findings":5,"blocking":0,"grades":["minor","minor","minor","minor","minor"]}
 {"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"cat > /tmp/verify_bash_row.mjs << 'EOF'\nimport assert from 'node:assert/strict'\nimport fs from 'node:fs'\nimport os from 'node:os'\nimport path from 'node:path'\nimport { spawnSync, execFileSync } from '"}
 {"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"grep -q 'run_exam' factory/roles/exam.md && echo \"exam.md OK\"\ngrep -q 'run_exam' factory/roles/implement.md && echo \"implement.md OK\""}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"sed -n '1,40p' factory/roles/exam.md"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"sed -n '1,35p' factory/roles/implement.md"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"rm -f /tmp/verify_run_exam.mjs /tmp/verify_run_exam_engine.mjs /tmp/verify_bash_row.mjs\nsed -n '440,450p' factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"node --check factory/tools.mjs && node --check factory/engine.mjs && echo \"syntax OK\""}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"node fleet/tests/test_factory_run_exam.mjs 2>&1 | head -5"}
+{"kind":"worker:test-run","task":"4","label":"impl:4:fold","cmd":"node fleet/tests/test_factory_run_exam.mjs 2>&1 | head -5","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"true"}
+{"kind":"fold:unresolved","task":"4","exam":"4"}
+{"kind":"fold:unresolved","task":"4","exam":"3"}
+{"kind":"fold:unresolved","task":"4","exam":"5"}
+{"kind":"landing","task":"2","k":1,"examExit":0,"claim":0.75,"coverage":[0.96,0.95,0.9,0.84,0.92],"candidateSha":"17f60ebb8b82da6263d1b173b0452f161614eed5","wall_ms":2022471}
+{"kind":"fold:verify","task":"2","ran":[{"task":"2","exit":1},{"task":"3","exit":1},{"task":"1","exit":0},{"task":"5","exit":1},{"task":"4","exit":1}]}
+{"kind":"fold:red","task":"2","exam":"2","exit":1}
+{"kind":"fold:red","task":"2","exam":"3","exit":1}
+{"kind":"fold:red","task":"2","exam":"5","exit":1}
+{"kind":"fold:red","task":"2","exam":"4","exit":1}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"sed -n '1,400p' skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"grep -n \"run_only_clauses\\|runOnlyClauses\\|legs_has_citation\\|public_view\\|TASK_FIELDS\" skills/ultrapowers/scripts/plan_parse.py | head -80"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Read","target":"/home/exedev/run/fold-fix-2/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"grep -n \"runOnlyClauses\\|TASK_FIELDS\\|plan_has_run_only\\|legsHasCitation\" tests/test_plan_parse.py | head -80"}
+{"kind":"worker:test-run","task":"2","label":"impl:2:fold","cmd":"grep -n \"runOnlyClauses\\|TASK_FIELDS\\|plan_has_run_only\\|legsHasCitation\" tests/test_plan_parse.py | head -80","red":false}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"git log --oneline -10 -- skills/ultrapowers/scripts/plan_parse.py; echo ---; git log --oneline -10 -- tests/test_plan_parse.py; echo ---; git status"}
+{"kind":"worker:test-run","task":"2","label":"impl:2:fold","cmd":"git log --oneline -10 -- skills/ultrapowers/scripts/plan_parse.py; echo ---; git log --oneline -10 -- tests/test_plan_parse.py; echo ---; git status","red":true}
+{"kind":"supervisor","task":"2","label":"impl:2:fold","answers":{"stuck":{"type":"noul","noul":0.48},"off_track":{"type":"noul","noul":0.38},"needs_human":{"type":"noul","noul":0.23},"done_not_exited":{"type":"noul","noul":0.14}}}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"grep -rn \"runOnlyClauses\\|legsHasCitation\\|coverage_floor\\|redispatch\" factory/engine.mjs | head -100"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Read","target":"/home/exedev/run/fold-fix-2/factory/engine.mjs"}
