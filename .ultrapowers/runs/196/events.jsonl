@@ -836,3 +836,9 @@
 {"ts":"2026-09-18T22:37:08.985Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"mcp__factory__hand"}
 {"ts":"2026-09-18T22:37:11.167Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"mcp__factory__hand"}
 {"ts":"2026-09-18T22:37:14.995Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"mcp__factory__hand"}
+{"ts":"2026-09-18T22:37:38.292Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-18T22:37:38.666Z","kind":"worker:test-run","task":"3","label":"impl:3:0","cmd":"node fleet/tests/test_factory_proofs.mjs","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-18T22:37:52.879Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"mcp__factory__hand"}
+{"ts":"2026-09-18T22:38:15.712Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"git diff --stat"}
+{"ts":"2026-09-18T22:38:17.695Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"DEBUG\" /home/exedev/run/impl-3-0/factory/engine.mjs /home/exedev/run/impl-3-0/factory/proofs.mjs /home/exedev/run/impl-3-0/factory/policy.json"}
+{"ts":"2026-09-18T22:38:20.255Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"mcp__factory__hand"}
