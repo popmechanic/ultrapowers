@@ -1000,3 +1000,10 @@
 {"kind":"worker:tool","task":"8","label":"referee:8","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
 {"kind":"supervisor","task":"8","label":"referee:8","answers":{"stuck":{"type":"noul","noul":0.18},"off_track":{"type":"noul","noul":0.26},"needs_human":{"type":"noul","noul":0.13},"done_not_exited":{"type":"noul","noul":0.08}}}
 {"kind":"worker:tool","task":"8","label":"referee:8","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/dispatch.mjs"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"grep -n \"const capture\\|function capture\\|const measure\\|const dispatch = \\|attemptFix\\|role: 'fix'\\|reverifyAfterFold\" factory/engine.mjs | head -30"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"ls fleet/tests | head -40; grep -rn \"Depends\\|depends_on\" skills/ultrapowers/scripts/plan_parse.py | head -20"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"grep -n \"edgePreds\\|dag_edges\\|depends\" factory/engine.mjs | head -30"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"sed -n 1,60p fleet/tests/_engine_helpers.mjs"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Write","target":"/tmp/probe_hang.mjs"}
