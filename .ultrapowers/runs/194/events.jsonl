@@ -697,3 +697,5 @@
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -rl \"factory/engine\" /home/exedev/run/impl-4-0 --include=\"*.mjs\" --include=\"*.py\" | grep -v node_modules"}
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"factory/engine\" /home/exedev/run/impl-4-0/tests/test_plan_parse.py"}
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"why\\|write-after-create\\|interface\\|proof-run\\|dag_edges\\|def parse_plan_text\\|launch_waves\\|depends_on\" /home/exedev/run/impl-4-0/skills/ultrapowers/scripts/plan_parse.py | head -60"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n \"'look'\\|\\\"look\\\"\" /home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:test-run","task":"4","label":"impl:4:1","cmd":"grep -n \"'look'\\|\\\"look\\\"\" /home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs","red":false}
