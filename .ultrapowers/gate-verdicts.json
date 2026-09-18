@@ -1,0 +1,205 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "122f471f9cd81fed3b1a6e5d77418491115f2ce4b713cb839a11938b3e20334d",
+      "verdict": "pass",
+      "reason": "Each leg fails if its clause is false; both verb strings pinned exactly (round 1, full question)."
+    },
+    "2": {
+      "hash": "4126d704082c257852dd7a947d26fd2d74a82aec1480dd2bac2388b46c1931a6",
+      "verdict": "pass",
+      "reason": "M1\u2013M4 each have a falsifying leg; every M3 status row has its case (round 1, full question)."
+    },
+    "3": {
+      "hash": "1812e653be04242ab01ad467020caa4d9ce4ae6185a6c90bf7034714fcf95085",
+      "verdict": "pass",
+      "reason": "Computable facts in M1\u2013M4 each have a leg, including the three fall-through cases and the failing leave (facts-only)."
+    },
+    "4": {
+      "hash": "050322e24f64d4c43223fd1e7bccf84b8ae19d17385123f36ae99e144c63d0f3",
+      "verdict": "pass",
+      "reason": "Argv, key set, exact renderings, the 12,000 cap (computed: eleven whole facts fit) and the empty values all have legs (facts-only)."
+    },
+    "5": {
+      "hash": "ff3aca14b29e2b47f68fc2129126541de8ae2d54a945fbee7b2986b9620fef34",
+      "verdict": "pass",
+      "reason": "Tool names, factsFor text and fallbacks, the exact [note] body, the enumerable keys (facts-only)."
+    },
+    "6": {
+      "hash": "7df3ab9e893f56e83cd12bc0627567f8052e1e63ae1f10fd03cc0721359e079b",
+      "verdict": "pass",
+      "reason": "Ordered greps pin each brief's operative words; the four grading words are negated over both files (facts-only)."
+    },
+    "7": {
+      "hash": "43f10cde86ea90c8c327156f506e77500baad4acebc2055f6e16b72963f325d5",
+      "verdict": "pass",
+      "reason": "Legs (a)\u2013(f) catch the computable facts of M1\u2013M6 (facts-only)."
+    },
+    "8": {
+      "hash": "2772218aa045a7d12cefd6d979276d8b1403fe26393ab3c44b8e747ac6cec9b0",
+      "verdict": "pass",
+      "reason": "Keys, thresholds, the settled row, the byte-exact SETTLED line, the edge row and its ordering (facts-only)."
+    },
+    "9": {
+      "hash": "db82b85f3d32ec14ce21cdace01ea58bd92befc0a0a903bedba062eb618cbfe6",
+      "verdict": "pass",
+      "reason": "Two greps, neither true before the hub build (facts-only)."
+    }
+  },
+  "tally": {
+    "dispatched": 16,
+    "rejected": 7,
+    "rounds": {
+      "1-full-question": {
+        "dispatched": 9,
+        "rejected": 7
+      },
+      "2-facts-only": {
+        "dispatched": 7,
+        "rejected": 0
+      }
+    },
+    "base": "9d4a279f32f31430688e082c71992490e9bdb240",
+    "gate_question": "EXPERIMENT (operator, 2026-09-18, 'extra test legs sounds bad'): round 2 readers were asked the facts-only question \u2014 a clause stating a computable fact (exit code, argv, byte-exact string, count, ordering) needs one leg that would catch it false; a clause saying what the code says is Jev's at run time and needs no leg; one case per behaviour, never per variant. Round 1's seven rejections each asked for a leg per variant. Rollback: the full question of skills/ultrawrite/SKILL.md \u00a7The proof gate. Reading owed: on this plan's run, which legs went red in a worker's loop (the worker:test-run rows this plan adds) against Jev's per-clause coverage."
+  },
+  "history": [
+    {
+      "round": 1,
+      "task": "1",
+      "verdict": "pass"
+    },
+    {
+      "round": 1,
+      "task": "2",
+      "verdict": "pass"
+    },
+    {
+      "round": 1,
+      "task": "3",
+      "verdict": "fail"
+    },
+    {
+      "round": 1,
+      "task": "4",
+      "verdict": "fail"
+    },
+    {
+      "round": 1,
+      "task": "5",
+      "verdict": "fail"
+    },
+    {
+      "round": 1,
+      "task": "6",
+      "verdict": "fail"
+    },
+    {
+      "round": 1,
+      "task": "7",
+      "verdict": "fail"
+    },
+    {
+      "round": 1,
+      "task": "8",
+      "verdict": "fail"
+    },
+    {
+      "round": 1,
+      "task": "9",
+      "verdict": "fail"
+    },
+    {
+      "round": 2,
+      "task": "3",
+      "verdict": "pass",
+      "question": "facts-only"
+    },
+    {
+      "round": 2,
+      "task": "4",
+      "verdict": "pass",
+      "question": "facts-only"
+    },
+    {
+      "round": 2,
+      "task": "5",
+      "verdict": "pass",
+      "question": "facts-only"
+    },
+    {
+      "round": 2,
+      "task": "6",
+      "verdict": "pass",
+      "question": "facts-only"
+    },
+    {
+      "round": 2,
+      "task": "7",
+      "verdict": "pass",
+      "question": "facts-only"
+    },
+    {
+      "round": 2,
+      "task": "8",
+      "verdict": "pass",
+      "question": "facts-only"
+    },
+    {
+      "round": 2,
+      "task": "9",
+      "verdict": "pass",
+      "question": "facts-only"
+    }
+  ],
+  "authoring": {
+    "minutes": 110,
+    "probes": 0,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Scope of the feedback system",
+        "options": [
+          "Yes, all six, one plan",
+          "One through four now; five and six follow",
+          "Let's brainstorm one piece first",
+          "Other"
+        ],
+        "recommended": "Yes, all six, one plan",
+        "picked": "Other"
+      },
+      {
+        "question": "Mid-task feedback on a red exam",
+        "options": [
+          "The examiner's note, already on the issue",
+          "That, plus Jev reads each red against the clauses",
+          "Nothing more mid-task; feedback lands at re-dispatch"
+        ],
+        "recommended": "The examiner's note, already on the issue",
+        "picked": "The examiner's note, already on the issue"
+      },
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Confirm as drafted",
+          "Drop the cross-task wave from this plan"
+        ],
+        "recommended": "Confirm as drafted",
+        "picked": "Confirm as drafted"
+      },
+      {
+        "question": "Execute",
+        "options": [
+          "Ultrapowers on the fleet",
+          "Subagent-driven",
+          "Inline",
+          "Other"
+        ],
+        "recommended": "Ultrapowers on the fleet",
+        "picked": "Other"
+      }
+    ]
+  }
+}
