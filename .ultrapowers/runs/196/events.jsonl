@@ -266,3 +266,14 @@
 {"ts":"2026-09-18T22:03:48.324Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"node --version"}
 {"ts":"2026-09-18T22:03:49.747Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Read","target":"/home/exedev/run/exam-3/factory/reverify.mjs"}
 {"ts":"2026-09-18T22:03:55.676Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"sed -n '1,140p' /home/exedev/run/exam-3/fleet/run-waves.mjs"}
+{"ts":"2026-09-18T22:04:42.745Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"sed -n '1,60p' factory/engine.mjs | head -80"}
+{"ts":"2026-09-18T22:04:48.066Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"cloneAt\\b\\|cloneAtBase\\|const measure\\|mcpServersFor\\|const dispatch\\|function dispatch\\|const land\\|const foldIn\\|const kernel =\\|reverifyAfterFold\\|examine =\\|const examine\\|runExam\\|bootst"}
+{"ts":"2026-09-18T22:04:51.948Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"ts":"2026-09-18T22:04:55.398Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"ts":"2026-09-18T22:04:58.707Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"ts":"2026-09-18T22:05:00.759Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -n \"initial-branch\\|git init\\|defaultBranch\\|localRemote\\|pointAtOrigin\" -r /home/exedev/run/exam-5/fleet/tests/*.mjs | head -80"}
+{"ts":"2026-09-18T22:05:03.266Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Read","target":"/home/exedev/run/exam-5/fleet/tests/_lobby_helpers.mjs"}
+{"ts":"2026-09-18T22:05:05.058Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"ts":"2026-09-18T22:05:11.098Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"ts":"2026-09-18T22:05:13.102Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Read","target":"/home/exedev/run/exam-5/fleet/tests/_lobby_helpers.mjs"}
+{"ts":"2026-09-18T22:05:23.066Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"function normalizeArgs\\|function exitOf\\|function outOf\\|function lastJson\\|const defaultSh\\|const defaultGit\\|function splitDiff\\|function bodyOf\\|function clausesOf\\|export default\\|^export"}
