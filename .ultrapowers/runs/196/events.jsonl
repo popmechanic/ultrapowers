@@ -780,3 +780,24 @@
 {"ts":"2026-09-18T22:30:48.702Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Read","target":"/home/exedev/run/fold-fix-2/factory/engine.mjs"}
 {"ts":"2026-09-18T22:30:55.141Z","kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"cd /tmp && python3 - <<'PY'\nsrc=open('/tmp/probe.mjs').read()\ncut=src.index(\"\\n// held, green\")\nopen('/tmp/probe2.mjs','w').write(src[:cut]+'''\n// 1) 2xx whose body carries no usable sha -> what lands"}
 {"ts":"2026-09-18T22:31:02.646Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Read","target":"/home/exedev/run/fold-fix-2/factory/engine.mjs"}
+{"ts":"2026-09-18T22:31:12.078Z","kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"sed -n '360,370p' fleet/CONTRACT.md; echo \"=== boot.sh header ===\"; sed -n '1,12p' factory/boot.sh"}
+{"ts":"2026-09-18T22:31:18.920Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Edit","target":"/home/exedev/run/fold-fix-2/factory/engine.mjs"}
+{"ts":"2026-09-18T22:31:27.650Z","kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -n \"record_tags$\\|close_run \\\"\\$state\\\"\\|MERGED_SHA=\\\"\\$(fleet_git\\|mergeable=\\\"\\$(printf\\|tip=\\\"\\\"\\|title=\\\"fleet \\$RUN_ID: \\$(plan_title) (#\" factory/boot.sh"}
+{"ts":"2026-09-18T22:31:29.197Z","kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -n \"close_run\\|record_tags\\|MERGED_SHA=\\|mergeable=\\|title=\\\"fleet\" factory/boot.sh"}
+{"ts":"2026-09-18T22:31:33.258Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Edit","target":"/home/exedev/run/fold-fix-2/factory/engine.mjs"}
+{"ts":"2026-09-18T22:31:35.677Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"node fleet/tests/test_factory_commands.mjs 2>&1 | tail -60"}
+{"ts":"2026-09-18T22:31:36.167Z","kind":"worker:test-run","task":"2","label":"impl:2:fold","cmd":"node fleet/tests/test_factory_commands.mjs 2>&1 | tail -60","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:31:38.759Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"type run_exam 2>&1; which run_exam 2>&1"}
+{"ts":"2026-09-18T22:31:42.549Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"grep -rn \"makeCloner\\|runTaskExams\" fleet/tests/*.mjs 2>/dev/null | head -20"}
+{"ts":"2026-09-18T22:31:44.937Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"grep -rln \"engine.mjs\" fleet/tests/*.mjs 2>/dev/null"}
+{"ts":"2026-09-18T22:31:47.601Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"node fleet/tests/test_factory_refold.mjs 2>&1 | tail -40; echo \"EXIT:$?\""}
+{"ts":"2026-09-18T22:31:50.886Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"node fleet/tests/test_worker_kata_env.mjs 2>&1 | tail -20; echo \"exit:$?\""}
+{"ts":"2026-09-18T22:31:54.737Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"node fleet/tests/test_factory_commands.mjs; echo \"EXIT CODE: $?\""}
+{"ts":"2026-09-18T22:31:55.300Z","kind":"worker:test-run","task":"2","label":"impl:2:fold","cmd":"node fleet/tests/test_factory_commands.mjs; echo \"EXIT CODE: $?\"","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:31:57.942Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"git diff --stat && git status --short"}
+{"ts":"2026-09-18T22:32:01.348Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Read","target":"/home/exedev/run/fold-fix-2/factory/engine.mjs"}
+{"ts":"2026-09-18T22:32:04.238Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"node fleet/tests/test_factory_commands.mjs > /tmp/final_run.log 2>&1; echo \"exit=$?\"; tail -5 /tmp/final_run.log"}
+{"ts":"2026-09-18T22:32:04.699Z","kind":"worker:test-run","task":"2","label":"impl:2:fold","cmd":"node fleet/tests/test_factory_commands.mjs > /tmp/final_run.log 2>&1; echo \"exit=$?\"; tail -5 /tmp/final_run.log","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:32:09.319Z","kind":"worker:tool","task":"5","label":"referee:5","tool":"StructuredOutput"}
+{"ts":"2026-09-18T22:32:09.464Z","kind":"dispatch:end","task":"5","label":"referee:5","role":"referee","wall_ms":377431,"cost_usd":2.01746,"error":null}
+{"ts":"2026-09-18T22:32:11.316Z","kind":"referee","task":"5","findings":8,"blocking":0,"grades":["minor","minor","minor","minor","minor","minor","minor","minor"]}
