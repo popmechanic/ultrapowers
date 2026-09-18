@@ -432,3 +432,19 @@
 {"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -n \"export function cloneAtBase\\|export const cloneAtBase\" -A 25 /home/exedev/run/exam-5/fleet/run-waves.mjs | head -40"}
 {"kind":"worker:tool","task":"4","label":"exam:4","tool":"Skill"}
 {"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Read","target":"/tmp/proto/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Read","target":"/tmp/proto/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Write","target":"/tmp/proto/factory/reverify.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"cat > /tmp/proto/factory/reverify.mjs << 'EOF'\nexport function examsTouched ({ folded, touched, adopted, tasks, cap }) {\n  const touchedSet = new Set(touched || [])\n  const byId = new Map((tasks || []"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"cd /tmp/proto && python3 - << 'PYEOF'\nimport re\np = 'factory/engine.mjs'\ns = open(p).read()\n\n# add import\ns = s.replace(\n  \"import { cloneAtBase, DEFAULT_IDENTITY } from '../fleet/run-waves.mjs'\",\n  \""}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -n \"^import\" /tmp/proto/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Edit","target":"/tmp/proto/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"^def \\|Depends on\\|depends_on\\|Interfaces\\|Consumes\\|Produces\\|Files:\\|Test Command\\|proofTests\\|proof_runs\\|testCmd\\|Proof\\b\\|TEST COMMAND\\|^### \\|title\" skills/ultrapowers/scripts/plan_pars"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"cd /tmp/proto && python3 - << 'PYEOF'\np = 'factory/engine.mjs'\ns = open(p).read()\ns = s.replace(\n  \"import { cloneAtBase } from '../fleet/run-waves.mjs'\",\n  \"import { cloneAtBase } from '../fleet/run-"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"python3 - << 'PYEOF'\np = '/tmp/proto/factory/engine.mjs'\ns = open(p).read()\n\n# declare unresolved + reverifyPolicy near redispatchPolicy/selectPolicy\nold = \"  const redispatchPolicy = (policyDoc.landi"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"python3 - << 'PYEOF'\np = '/tmp/proto/factory/engine.mjs'\ns = open(p).read()\n\nold = \"\"\"        await maybeSettleInterface(landing.task, landing.best, candidateSha)\n        await fileAmendmentEdges(land"}
+{"kind":"worker:tool","task":"6","label":"impl:6:0","tool":"Bash","target":"node fleet/tests/test_factory_union.mjs 2>&1 | head -50"}
+{"kind":"worker:test-run","task":"6","label":"impl:6:0","cmd":"node fleet/tests/test_factory_union.mjs 2>&1 | head -50","red":false}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"python3 - << 'PYEOF'\np = '/tmp/proto/factory/engine.mjs'\ns = open(p).read()\nold = \"  return {\\n    done: adopted.length === tasks.length,\"\nnew = \"  return {\\n    done: adopted.length === tasks.length "}
