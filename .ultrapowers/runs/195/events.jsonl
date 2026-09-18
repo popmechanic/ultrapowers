@@ -728,3 +728,62 @@
 {"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"timeout 600 node fleet/tests/test_factory_select_excerpt.mjs 2>&1 | tail -5; echo \"EXIT=$?\""}
 {"kind":"worker:test-run","task":"5","label":"referee:5","cmd":"timeout 600 node fleet/tests/test_factory_select_excerpt.mjs 2>&1 | tail -5; echo \"EXIT=$?\"","red":false}
 {"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"node -e \"\nimport('./factory/select.mjs').then(({excerptFor}) => {\n  // hit line preceded by 3 long context lines\n  const pad = 'x'.repeat(200);\n  const lines = [pad, pad, pad, 'call make_widget(3)', '"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"cd /tmp && cat > jt.sh <<'EOF'\njson_field() { { grep -o \"\\\"$1\\\"[[:space:]]*:[[:space:]]*\\\"[^\\\"]*\\\"\" || true; } | head -n 1 | sed 's/.*:[[:space:]]*\"\\(.*\\)\"$/\\1/'; }\njson_int()   { { grep -o \"\\\"$1\\\"[[:"}
+{"kind":"fold:unresolved","task":"3","exam":"3"}
+{"kind":"landing","task":"1","k":1,"examExit":0,"claim":0.51,"coverage":[0.95,0.17,0.54],"candidateSha":"4492b0c49e42989fc689f861d69b702837e6440d","wall_ms":1378167}
+{"kind":"fold:verify","task":"1","ran":[{"task":"1","exit":1},{"task":"3","exit":1}]}
+{"kind":"fold:red","task":"1","exam":"1","exit":1}
+{"kind":"fold:red","task":"1","exam":"3","exit":1}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"grep -rn \"kata.json\" --include=*.mjs --include=*.py --include=*.sh fleet factory 2>/dev/null | grep -iv \"test\\|boot.sh\" | head -30"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"const uidFor\\|const tasks =\\|  const tools = \\|const board =\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"ls fleet/tests/ | grep -i exam; echo \"---\"; ls factory/"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"sed -n 1750,1800p fleet/launch.mjs; echo ====; grep -n \"KATA_PATH\" fleet/launch.mjs | head -20"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"grep -n \"kataText\" fleet/launch.mjs | head -20"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"node -e \"\nimport('./factory/select.mjs').then(({excerptFor}) => {\n  const t = Array.from({length: 30}, (_,i) => 'line '+(i+1));\n  t[2] = 'aa make_widget'; t[20] = 'bb make_widget';\n  const full = exce"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"grep -rn \"text:\" fleet/launch.mjs | sed -n 1,40p; echo ====; grep -n \"JSON.stringify\" fleet/launch.mjs | sed -n 1,40p"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -n \"tests:\" factory/engine.mjs; echo ---; grep -rn \"excerptFor\\|excerptTests\" --include=*.mjs . | grep -v node_modules"}
+{"kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"find / -name \"test_factory_exam_skip.mjs\" 2>/dev/null; cat fleet/tests/test_run_engine_state_exams.mjs | head -50"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"sed -n 1300,1350p fleet/launch.mjs"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Read","target":"/home/exedev/run/impl-5-0/fleet/tests/test_factory_select_excerpt.mjs"}
+{"kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"cp /home/exedev/run/exam-1/fleet/tests/test_factory_exam_skip.mjs /home/exedev/run/fold-fix-1/fleet/tests/test_factory_exam_skip.mjs\ndiff /home/exedev/run/impl-1-0/fleet/tests/test_factory_exam_skip.m"}
+{"kind":"worker:test-run","task":"1","label":"impl:1:fold","cmd":"cp /home/exedev/run/exam-1/fleet/tests/test_factory_exam_skip.mjs /home/exedev/run/fold-fix-1/fleet/tests/test_factory_exam_skip.mjs\ndiff /home/exedev/run/impl-1-0/fleet/tests/test_factory_exam_skip.mjs /home/exedev/run/exam-1/fleet/tests/test_factory_exam_skip.mjs\necho \"---diff done---\"\nwc -l /home/exedev/run/fold-fix-1/fleet/tests/test_factory_exam_skip.mjs","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Read","target":"/home/exedev/run/fold-fix-1/fleet/tests/test_factory_exam_skip.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"return { examDir, mcpServers\\|const { mcpServers, taskCovering\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"grep -n \"function examine\\|examine(\\|proofTests\\|appendEvent\\|async function land\\|examPromises\" /home/exedev/run/fold-fix-1/factory/engine.mjs | head -80"}
+{"kind":"supervisor","task":"1","label":"impl:1:fold","answers":{"stuck":{"type":"noul","noul":0.17},"off_track":{"type":"noul","noul":0.26},"needs_human":{"type":"noul","noul":0.09},"done_not_exited":{"type":"noul","noul":0.07}}}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"sed -n '900,1000p' /home/exedev/run/fold-fix-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"node fleet/tests/test_factory_exam_skip.mjs"}
+{"kind":"worker:test-run","task":"1","label":"impl:1:fold","cmd":"node fleet/tests/test_factory_exam_skip.mjs","red":true}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"mkdir -p /tmp/refcheck && cp fleet/tests/test_factory_boot_close.mjs /tmp/refcheck/probe_pretty.mjs && cp fleet/tests/_helpers.mjs /tmp/refcheck/ && cd /tmp/refcheck && python3 - <<'PY'\nimport re\np='/"}
+{"kind":"worker:test-run","task":"6","label":"referee:6","cmd":"mkdir -p /tmp/refcheck && cp fleet/tests/test_factory_boot_close.mjs /tmp/refcheck/probe_pretty.mjs && cp fleet/tests/_helpers.mjs /tmp/refcheck/ && cd /tmp/refcheck && python3 - <<'PY'\nimport re\np='/tmp/refcheck/probe_pretty.mjs'\ns=open(p).read()\ns=s.replace(\"\"\"const KATA_JSON_FULL = JSON.stringify({\n  url: 'https://kata.int.exe.xyz',\n  project: { id: PROJECT_ID, uid: 'P-1', name: 'acme-proj' },\n  run: { uid: RUN_UID, short_id: 'r7' },\n  tasks: {},\n})\"\"\",\"\"\"const KATA_JSON_FULL = JSON.stringify({\n  url: 'https://kata.int.exe.xyz',\n  project: { id: PROJECT_ID, uid: 'P-1', name: 'acme-proj' },\n  run: { uid: RUN_UID, short_id: 'r7' },\n  tasks: {},\n}, null, 2) + '\\\\n'\"\"\")\n# point BOOT_SH at the repo\ns=s.replace(\"path.join(HERE, '..', '..', 'factory', 'boot.sh')\",\"'/home/exedev/run/impl-6-0/factory/boot.sh'\")\nopen(p,'w').write(s)\nprint('patched')\nPY\nnode /tmp/refcheck/probe_pretty.mjs 2>&1 | head -20","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"mcpServers\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -rn \"120000\\|bytes over the\\|no call made\" factory/*.mjs | head -20"}
+{"kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"grep -rn \"kind: 'exam:skipped'\\|delete e.ts\\|delete .*\\.ts\\b\\|{ ts, ...rest }\\|omit.*ts\" /home/exedev/run/fold-fix-1/fleet/tests/*.mjs | grep -v test_factory_exam_skip | head -30"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -rn \"120000\\|budget\" --include=*.mjs --include=*.py --include=*.json factory fleet skills 2>/dev/null | grep -v node_modules | head -20; echo ---; ls factory"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"examResult\\|examPromises\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -rn \"state\\b.*bytes\\|MAX_STATE\\|over the\\|no call made\" factory/judge.mjs | head -20"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -rn \"byteLength\\|state\" factory/judge.mjs | head -30"}
+{"kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"node -e \"\nconst assert = require('assert');\ntry {\n  assert.deepEqual([{a:1,b:2,c:3}], [{a:1,b:2}]);\n  console.log('passed (extra keys allowed)');\n} catch(e) {\n  console.log('failed', e.message);\n}\n\""}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"grep -rn \"test_\\*\\.mjs\\|glob\\|sorted(\" tests/test_fleet_suite.py | head -20"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"grep -n \"40-character\\|hub writes\\|kata.json\\|close\" CLAUDE.md | head -40"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"sed -n 285,305p CLAUDE.md"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"grep -n \"fs.appendFileSync(eventsPath\" /home/exedev/run/fold-fix-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"worker:test-run\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Read","target":"/home/exedev/run/impl-5-0/factory/judge.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -rln \"jev\" factory fleet --include=*.mjs | head; echo ---; grep -rn \"120_000\\|120000\\|state.*over\\|too large\" $(grep -rln \"jev\" factory fleet --include=*.mjs | head -20) 2>/dev/null | head -20"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"6","label":"referee:6","tool":"Bash","target":"grep -rn \"boot.sh\" fleet/tests/_sandbox_boot_helpers.mjs | head -5; ls factory/*.sh fleet/*.sh 2>/dev/null"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"const tools = args.kataUrl\" -A 12 factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Read","target":"/home/exedev/run/impl-5-0/fleet/jev-client.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"grep -rln \"assert from 'node:assert/strict'\" /home/exedev/run/fold-fix-1/fleet/tests/*.mjs | xargs grep -ln \"deepEqual(events\" 2>/dev/null\necho \"---\"\ngrep -rn \"deepEqual(.*events\\|deepEqual(.*Rows\" /h"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"node fleet/tests/test_factory_run_exam.mjs 2>&1 | head -80"}
+{"kind":"worker:test-run","task":"4","label":"impl:4:0","cmd":"node fleet/tests/test_factory_run_exam.mjs 2>&1 | head -80","red":false}
