@@ -627,3 +627,17 @@
 {"ts":"2026-09-18T22:21:22.430Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n 60,80p tests/test_fleet_suite.py; echo ---; time timeout 900 python3 -m pytest tests/test_fleet_suite.py -k factory_commands -q 2>&1 | tail -15"}
 {"ts":"2026-09-18T22:21:35.496Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"cd /tmp/ref-probe && sed \"s/await new Promise(r=>setTimeout(r,25)); //\" probe2.mjs > probe3.mjs && timeout 300 node probe3.mjs 2>&1 | tail -6; echo \"EXIT=${PIPESTATUS[0]}\""}
 {"ts":"2026-09-18T22:21:45.822Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -rn \"unhandledRejection\\|--unhandled-rejections\" --include=*.mjs --include=*.sh --include=*.json . | grep -v '^./.git' | head"}
+{"ts":"2026-09-18T22:22:04.061Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n 1736,1741p factory/engine.mjs; echo '--- 1576,1592 ---'; sed -n 1576,1592p factory/engine.mjs; echo '--- 1386,1394 ---'; sed -n 1386,1394p factory/engine.mjs"}
+{"ts":"2026-09-18T22:22:18.453Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"cd /tmp && rm -rf gittest && mkdir gittest && cd gittest && git init --bare --quiet origin.git && git clone --quiet origin.git work && cd work && git checkout -q -b main 2>/dev/null; echo hi > a.txt &"}
+{"ts":"2026-09-18T22:22:21.449Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"mkdir -p /home/exedev/run/impl-5-0/.scratch/gittest && cd /home/exedev/run/impl-5-0/.scratch/gittest && git init --bare --quiet origin.git && git clone --quiet origin.git work && cd work && echo hi > "}
+{"ts":"2026-09-18T22:22:25.012Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"^import\" /home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:22:32.892Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Write","target":"/home/exedev/run/impl-3-0/factory/proofs.mjs"}
+{"ts":"2026-09-18T22:22:35.402Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:22:39.842Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:22:44.519Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"grep -n \"self_merge\\|refold\\|mergeable\" fleet/*.mjs factory/*.mjs factory/policy.json 2>/dev/null | grep -v test_factory_boot_merge"}
+{"ts":"2026-09-18T22:22:46.010Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:22:47.468Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Read","target":"/home/exedev/run/impl-5-0/factory/policy.json"}
+{"ts":"2026-09-18T22:22:49.879Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"ts":"2026-09-18T22:22:52.279Z","kind":"worker:tool","task":"5","label":"impl:5:0","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-18T22:22:53.891Z","kind":"worker:test-run","task":"5","label":"impl:5:0","cmd":"node fleet/tests/test_factory_boot_merge.mjs","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-18T22:22:53.891Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
