@@ -173,7 +173,7 @@ where this plan's Files sets were wrong.
   path buys — only a guarded exam sits at a stable path a later task can extend. Five
   plans on 2026-09-03 each left one `fleet/tests/test_<task-noun>.mjs`
   behind, which is the shape this replaces; two *same-wave* tasks appending to one file are
-  the adjacent-insert shape rule 4 names, not this one.
+  the adjacent-insert shape rule 3 names, not this one.
   A `byte-identical to BASE` or `git show HEAD:` comparison is a **tautology at the
   integration head**, where HEAD already carries the edit — so the exam carries the value
   measured *before* it: a **frozen pre-edit literal**, such as a `git hash-object` sha
@@ -473,21 +473,23 @@ Independence is a property of contracts, not of files.
    with its own exports and its own tests — is its own task. Where a consumer would wait
    on a producer, put the shared shape (a schema, a signature, a file format) as one
    literal in the Context of every task that touches it; the critic checks that the
-   implementations agree with it. A `Consumes:` of a sibling's `Produces:` orders the two;
-   a shared literal does not, so prefer the literal wherever the consumer only needs the
+   implementations agree with it. A `Consumes:` of a sibling's `Produces:` orders the two,
+   and a `Create:` a sibling task later `Modify:`s is the same kind of fact; a shared
+   literal orders neither, so prefer the literal wherever the consumer only needs the
    shape. Workers have no shared memory — a chain of two tasks is two strangers in
    sequence, not one mind holding a design — so a chain buys no coherence, only the wait.
-2. **A chain must justify itself.** The only reason to make task B wait on task A is that
-   B needs A's *runtime behaviour*, not A's shape — something no contract can promise.
-   Name that behaviour in B's Context, in one sentence. "At this size", "a good engineer
-   would keep this together" and "it is one file" are not reasons: same-file edits fold,
-   and size is what width is for. Measured 2026-09-02 (n=2 runs, one pair): the same tool
-   built as a two-task chain took 79 min with one fix round; as nine contracts, seven
-   wide, it took 49.5 min with none (#541).
-3. **State the width.** The plan's `**Parallelization rationale:**` line names each
-   wave's width and every chain longer than one with its sentence from rule 2. Concluding
-   that a plan is genuinely linear is still a legal outcome — it just has to say why.
-4. **Let same-file edits stand.** Concurrent same-file *text* writes fold at merge, so a
+2. **Write no ordering.** On the factory an author writes no ordering: the engine reads
+   every overlapping or consuming pair itself, with Jev, starts every task at once unless
+   a pair reads as a chain by that reading, and runs the touched exams after every fold.
+   `Consumes:`/`Produces:` bullets are still written exactly, one symbol per bullet,
+   because they are how a pair is found — but the chain they imply is derived, never
+   authored, and there is no width to state and no rationale line to write. An edge an
+   author takes only to keep two same-file edits apart — not because a sibling needs the
+   other's runtime behaviour — is a defect: on run-193 the author chained the engine task
+   behind the hunk-picker task to keep two import inserts out of the resolver, and the
+   consumer waited on a producer it needed nothing from — about nine minutes of clock lost
+   (n=1 run, 2026-09-18).
+3. **Let same-file edits stand.** Concurrent same-file *text* writes fold at merge, so a
    shared hot file is never a reason to reshape a plan — let colliding `Modify` lines
    collide. Non-text (binary, symlink) same-file pairs are ordered automatically. Blast
    radius follows the contract, not the file: a task that changes a `Produces:` shape owns
@@ -499,7 +501,7 @@ Independence is a property of contracts, not of files.
    (3.4 worker-minutes, 6.6 of the 13-minute post-review tail) ordering
    five lines any order would have satisfied. Give each such task its **own region or
    file**: a registration is a new file discovered by glob, never an appended line.
-5. **Prefer several small concurrent plans** folding into one frontier over one large plan
+4. **Prefer several small concurrent plans** folding into one frontier over one large plan
    (0.26× batch wall, n=1 drain of 3 runs, #454, 2026-09-01). Until that fold lands
    (Tier 2), an effort split
    across plans gives the **final** plan an integration-spanning acceptance — per-phase
@@ -590,9 +592,10 @@ author's own to check — nothing prints it.
   has the one leg that would catch it false, and no behaviour has a leg per variant.
 - Every cross-task edge is derivable — Interfaces symbols match a sibling's `Produces:`,
   or the Files blocks overlap. Nothing rides on prose.
-- The rationale line states each wave's width; every chain longer than one names the
-  runtime behaviour its consumer needs (rule 2), and any exam that quantifies over a
-  directory was checked against BASE for pre-existing violators (#536).
+- No edge is written to keep same-file edits apart; every ordering left standing is a
+  fact the engine can derive — a `Consumes:` matching a sibling's `Produces:`, or a
+  `Create:` a sibling later `Modify:`s — and any exam that quantifies over a directory was
+  checked against BASE for pre-existing violators (#536).
 - Global Constraints state results, not process.
 - The `**Closes:**` line, when present, sits directly under `**Goal:**` and names only the
   target repository's issues.
