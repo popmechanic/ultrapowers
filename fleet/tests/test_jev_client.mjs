@@ -782,15 +782,13 @@ assert.ok(/typesafe.*http-proxy/.test(joined(naming)),
   '`tag:fleet` like the rest. (Proof `Run:` line 6) The bullet read: ' +
   JSON.stringify(joined(naming)))
 
-// Run: test "$(grep -c 'test_jev_client.mjs\|test_run_engine_jev_finding.mjs\|…' fleet/tests/README.md)" = 4
+// The README leg pinned one index line for each of four sims; three of them
+// (`test_run_engine_jev_finding`, `_jev_tier`, `_jev_suite_red`) left the tree
+// with the old engine's other sims at cut one of the mow (2026-09-18), so what
+// is left to pin is this file's own line.
 const readme = readAt('fleet/tests/README.md')
-const indexed = countLines(readme,
-  /test_jev_client\.mjs|test_run_engine_jev_finding\.mjs|test_run_engine_jev_tier\.mjs|test_run_engine_jev_suite_red\.mjs/)
-assert.equal(indexed, 4,
-  '(f) [M6] `fleet/tests/README.md` gains one line each for `test_jev_client.mjs`, ' +
-  '`test_run_engine_jev_finding.mjs`, `test_run_engine_jev_tier.mjs` and ' +
-  '`test_run_engine_jev_suite_red.mjs` — four lines naming them. (Proof `Run:` line 7) ' +
-  'Got ' + indexed)
+assert.equal(countLines(readme, /test_jev_client\.mjs/), 1,
+  '(f) [M6] `fleet/tests/README.md` carries one line for `test_jev_client.mjs`.')
 
 // Run: test "$(grep -c 'typesafe.int.exe.xyz' fleet/CONTRACT.md)" -ge 1
 assert.ok(countLines(contract, /typesafe\.int\.exe\.xyz/) >= 1,
