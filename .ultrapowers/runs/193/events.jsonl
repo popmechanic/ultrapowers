@@ -150,3 +150,16 @@
 {"kind":"worker:test-run","task":"4","label":"exam:4","cmd":"cp /tmp/plan_parse_orig.py skills/ultrapowers/scripts/plan_parse.py && git diff --stat skills/ultrapowers/scripts/plan_parse.py && python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -20","red":true}
 {"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"git diff --stat skills/ultrapowers/scripts/plan_parse.py"}
 {"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"diff /tmp/plan_parse_orig.py skills/ultrapowers/scripts/plan_parse.py | head -5; echo DONE"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"git checkout -- skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/tmp/plan_parse_orig.py"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Write","target":"/home/exedev/run/impl-1-0/factory/select.mjs"}
+{"kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"node fleet/tests/test_factory_select.mjs"}
+{"kind":"worker:test-run","task":"1","label":"impl:1:0","cmd":"node fleet/tests/test_factory_select.mjs","red":false}
+{"kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"node fleet/tests/test_factory_select.mjs && echo OK"}
+{"kind":"worker:test-run","task":"1","label":"impl:1:0","cmd":"node fleet/tests/test_factory_select.mjs && echo OK","red":false}
+{"kind":"landing","task":"1","k":1,"examExit":0,"claim":0.84,"coverage":[0.87,0.82,0.89,0.91],"candidateSha":"fdc554ff96ee03fa92ac3b288e1840c77c792460","wall_ms":282112}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/questions.json"}
+{"kind":"supervisor","task":"2","label":"impl:2:0","answers":{"stuck":{"type":"noul","noul":0.16},"off_track":{"type":"noul","noul":0.28},"needs_human":{"type":"noul","noul":0.11},"done_not_exited":{"type":"noul","noul":0.11}}}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/policy.json"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Write","target":"/home/exedev/run/exam-4/skills/ultrapowers/scripts/plan_parse.py"}
