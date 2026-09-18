@@ -589,6 +589,42 @@
         }
       }
     },
+    "select": {
+      "when": "when code found candidate tests already in the tree: once to pick which of them, passing, already establishes a Machine clause, and once per patch to pick which of them would go red if the patch broke what it touches",
+      "reader": "readCovering: which existing test, if any, already establishes each clause. readGuards: which tests to re-run so a regression in the patch is caught",
+      "rollback": "no answer -> select nothing: no test is trusted to cover a clause, and no test is chosen to guard a patch",
+      "state": [
+        "clauses",
+        "tests",
+        "patch"
+      ],
+      "provenance": "drafted for #1133 (\"Jev answers one Noul per (clause, candidate)\"), this task",
+      "calibrated": false,
+      "questions": {
+        "covers": {
+          "type": "noul",
+          "instructions": {
+            "question": "If `tests.t<j>` passes, does it already establish clause `clauses[<i>]`?",
+            "context": "`clauses` are the task's numbered Machine clauses (M1, M2, ...). `tests.t<j>` is one candidate test's source text, one of several tests code found already in the tree."
+          },
+          "criteria": {
+            "true": "A referee checking this clause could stop at this test alone: its passing is enough to establish the clause",
+            "false": "This test does not establish the clause, even where it happens to pass"
+          }
+        },
+        "guards": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `tests.t<j>` exercise behaviour that `patch` changes, so that it would go red if `patch` broke what it touches?",
+            "context": "`patch` is a unified diff. `tests.t<j>` is one candidate test's source text, one of several tests code found already in the tree."
+          },
+          "criteria": {
+            "true": "This test would fail if `patch`'s change were reverted or broken",
+            "false": "This test exercises code `patch` does not touch, or would pass regardless of it"
+          }
+        }
+      }
+    },
     "settled": {
       "when": "after a task adopts, over its newest [note] fact",
       "reader": "readSettled: which of the task's own candidate exports, if any, the note declares finished and safe to build against",

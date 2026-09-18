@@ -210,6 +210,92 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
     })
   }
 
+  /** The two selection readers: which existing test already covers a clause,
+   *  and which tests would catch a regression in a patch. Both key `tests`
+   *  into the state as `t0`, `t1`, … by text, so Jev sees the source and
+   *  never a path; both answer nothing over an empty `tests` without asking. */
+  const selectQuestions = setQuestions('select')
+  const selectPolicy = policy.select || {}
+  const tCovers = num((selectPolicy.t_covers || {}).value)
+  const tGuards = num((selectPolicy.t_guards || {}).value)
+  const maxRun = selectPolicy.max_run
+
+  const testsState = (tests) => {
+    const state = {}
+    tests.forEach((t, j) => { state['t' + j] = t.text })
+    return state
+  }
+
+  /** The covering reading: one pairwise question per (clause, test), filed
+   *  `M<i+1>__t<j>` clause-major, clauses counted from M1 as `readLanding`'s
+   *  pairwise does. `covered[i]` is the path of clause `i`'s best-scoring
+   *  test when that score clears `policy.select.t_covers`, else `null`. */
+  const readCovering = async ({ clauses = [], tests = [] } = {}) => {
+    if (tests.length === 0) return null
+    const template = selectQuestions.covers || {}
+    const keyOf = (i, j) => 'M' + (i + 1) + '__t' + j
+    const questions = {}
+    for (let i = 0; i < clauses.length; i += 1) {
+      for (let j = 0; j < tests.length; j += 1) {
+        questions[keyOf(i, j)] = {
+          type: template.type,
+          instructions: fill(template.instructions, i, j),
+          criteria: fill(template.criteria, i, j),
+        }
+      }
+    }
+    return askOnce('select.covers', { clauses, tests: testsState(tests) }, questions, (answers) => {
+      const scores = []
+      const covered = []
+      for (let i = 0; i < clauses.length; i += 1) {
+        const row = []
+        let best
+        let bestPath = null
+        for (let j = 0; j < tests.length; j += 1) {
+          const score = noulOf(answers[keyOf(i, j)])
+          if (score === undefined) return undefined
+          row.push(score)
+          if (best === undefined || score > best) {
+            best = score
+            bestPath = tests[j].path
+          }
+        }
+        scores.push(row)
+        covered.push(best !== undefined && best >= tCovers ? bestPath : null)
+      }
+      return { covered, scores }
+    })
+  }
+
+  /** The guarding reading: one question per test, filed `g<j>`. `selected` is
+   *  the paths at or above `policy.select.t_guards`, highest score first,
+   *  ties in the order given, capped at `policy.select.max_run`. */
+  const readGuards = async ({ patch, tests = [] } = {}) => {
+    if (tests.length === 0) return null
+    const template = selectQuestions.guards || {}
+    const keyOf = (j) => 'g' + j
+    const questions = {}
+    for (let j = 0; j < tests.length; j += 1) {
+      questions[keyOf(j)] = {
+        type: template.type,
+        instructions: fill(template.instructions, null, j),
+        criteria: fill(template.criteria, null, j),
+      }
+    }
+    return askOnce('select.guards', { patch, tests: testsState(tests) }, questions, (answers) => {
+      const scores = []
+      for (let j = 0; j < tests.length; j += 1) {
+        const score = noulOf(answers[keyOf(j)])
+        if (score === undefined) return undefined
+        scores.push(score)
+      }
+      const indices = tests.map((_, j) => j).filter((j) => scores[j] >= tGuards)
+      indices.sort((a, b) => scores[b] - scores[a])
+      const selected = indices.slice(0, maxRun).map((j) => tests[j].path)
+      return { selected, scores }
+    })
+  }
+
   return {
     readTask,
     readLanding,
@@ -218,5 +304,7 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
     readAmendment: flatReader('amendment'),
     readSupervisor: flatReader('supervisor'),
     readSettled,
+    readCovering,
+    readGuards,
   }
 }
