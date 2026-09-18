@@ -296,6 +296,62 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
     })
   }
 
+  /** The pair readings: `readPair` over the two tasks before either lands,
+   *  `readPairCandidate` over one real patch once it exists. Both live in the
+   *  `pair` set; `readPair` puts five of its six questions in one `ask`,
+   *  `readPairCandidate` the sixth (`changes_consumer`) alone. */
+  const pairQuestions = setQuestions('pair')
+  const pairsPolicy = policy.pairs || {}
+  const tChangesConsumer = num((pairsPolicy.t_changes_consumer || {}).value)
+
+  /** The two cut points a `score` verdict is graded against: the midpoints
+   *  between the question's own level keys, read off `criteria` itself — the
+   *  three levels are `0`, `1`, `2`, so this is `0.5` and `1.5`, but neither
+   *  number is a literal here. */
+  const verdictLevels = Object.keys((pairQuestions.verdict || {}).criteria || {})
+    .map(Number).sort((a, b) => a - b)
+  const midFoldLook = (verdictLevels[0] + verdictLevels[1]) / 2
+  const midLookChain = (verdictLevels[1] + verdictLevels[2]) / 2
+
+  /** The names a `where_` question may answer: every name in `shared`'s own
+   *  outlines, in order, followed by the three fixed options. */
+  const whereOptions = (shared = []) => [
+    ...shared.flatMap((s) => (s.outline || []).map((entry) => entry.name)),
+    'imports', 'new top-level code', 'cannot tell',
+  ]
+
+  const readPair = async (state = {}) => {
+    const options = whereOptions(state.shared)
+    const questions = {
+      verdict: pairQuestions.verdict,
+      where_producer: { ...(pairQuestions.where_producer || {}), options },
+      where_consumer: { ...(pairQuestions.where_consumer || {}), options },
+      ordering_matters: pairQuestions.ordering_matters,
+      needs_behaviour: pairQuestions.needs_behaviour,
+    }
+    const row = await askOnce('pair', state, questions, (answers) => {
+      const score = scoreOf(answers.verdict)
+      const producer = choiceOf(answers.where_producer)
+      const consumer = choiceOf(answers.where_consumer)
+      if ([score, producer, consumer].includes(undefined)) return undefined
+      return { score, where: { producer, consumer }, answers }
+    })
+    if (row === null) return { verdict: 'look', score: null, where: null, answers: null }
+    const verdict = row.score < midFoldLook ? 'fold' : row.score >= midLookChain ? 'chain' : 'look'
+    return { verdict, score: row.score, where: row.where, answers: row.answers }
+  }
+
+  /** Whether a producer's real patch changes a name, a signature or a format
+   *  the consumer's task text relied on. */
+  const readPairCandidate = async ({ hunks, consumer } = {}) => {
+    const questions = { changes_consumer: pairQuestions.changes_consumer }
+    return askOnce('pair.candidate', { hunks, consumer }, questions, (answers) => {
+      const score = noulOf(answers.changes_consumer)
+      if (score === undefined) return undefined
+      return { changes: score >= tChangesConsumer, score }
+    })
+  }
+
   return {
     readTask,
     readLanding,
@@ -306,5 +362,7 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
     readSettled,
     readCovering,
     readGuards,
+    readPair,
+    readPairCandidate,
   }
 }
