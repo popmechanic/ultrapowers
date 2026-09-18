@@ -1,0 +1,19 @@
+Running as unit: fleet-engine-188.service
+file:///home/exedev/engines/b465ffc204658aeb28085d8191d901ec24094564/factory/engine.mjs:337
+    throw new Error('compile_plan.py did not answer a plan: ' + String(compiledOut.stderr || '').slice(0, 400))
+          ^
+
+Error: compile_plan.py did not answer a plan: compile_plan: claims-v1 grammar violation(s) — refusing to compile:
+grammar: gate verdicts missing — expected `run-188.gate-verdicts.json` beside the plan; the proof gate's verdict is an artifact, not a memory (spec §4.5). Run the gate and commit its record.
+
+    at runEngine (file:///home/exedev/engines/b465ffc204658aeb28085d8191d901ec24094564/factory/engine.mjs:337:11)
+    at main (file:///home/exedev/engines/b465ffc204658aeb28085d8191d901ec24094564/factory/engine.mjs:844:24)
+    at file:///home/exedev/engines/b465ffc204658aeb28085d8191d901ec24094564/factory/engine.mjs:852:28
+
+Node.js v24.20.0
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 139ms
+CPU time consumed: 136ms
+Memory peak: 1.8M
+Memory swap peak: 0B
