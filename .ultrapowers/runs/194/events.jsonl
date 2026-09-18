@@ -883,3 +883,13 @@
 {"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"timeout 600 node fleet/tests/test_run_engine_own_proofs.mjs 2>&1 | tail -20"}
 {"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"for t in test_run_engine_proof_runs test_run_engine_ready_set test_run_engine_declared_dependencies test_run_engine_re_edge test_run_engine_fold_policy; do printf \"%s: \" $t; timeout 600 node fleet/tes"}
 {"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"fails=\"\"; for f in fleet/tests/test_run_engine_*.mjs; do timeout 900 node \"$f\" >/tmp/out.log 2>&1; c=$?; if [ $c -ne 0 ]; then fails=\"$fails $f(exit=$c)\"; echo \"=== $f exit=$c\"; tail -5 /tmp/out.log; "}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"rm -rf /tmp/dispatch-exam-run-* 2>/dev/null; timeout 900 node fleet/tests/test_factory_dispatch.mjs 2>&1 | tail -5; echo \"---\"; ls -d /tmp/dispatch-exam-run-* 2>/dev/null | head"}
+{"kind":"worker:test-run","task":"4","label":"referee:4","cmd":"rm -rf /tmp/dispatch-exam-run-* 2>/dev/null; timeout 900 node fleet/tests/test_factory_dispatch.mjs 2>&1 | tail -5; echo \"---\"; ls -d /tmp/dispatch-exam-run-* 2>/dev/null | head","red":false}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"d=$(ls -dt /tmp/dispatch-exam-run-* | tail -1); echo \"$d\"; ls \"$d/rundir\" | head; echo \"--- patch contents:\"; for p in \"$d\"/rundir/patch-*.diff; do echo \"== $p\"; grep -c \"check.sh\" \"$p\"; done"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"d=/tmp/dispatch-exam-run-mloTbv; echo \"--- target repo check.sh:\"; cat \"$d/repo/check.sh\"; echo \"--- exam clone check.sh:\"; cat \"$d/rundir/exam-1/check.sh\"; echo \"--- files in repo:\"; ls \"$d/repo\""}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"capture(\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '735,760p' factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '1265,1300p' factory/engine.mjs; echo \".....\"; sed -n '1360,1425p' factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"look\\|verdict\" fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:test-run","task":"4","label":"referee:4","cmd":"grep -n \"look\\|verdict\" fleet/tests/test_factory_dispatch.mjs","red":false}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '1240,1266p' factory/engine.mjs; echo ---; sed -n '905,960p' factory/engine.mjs"}
