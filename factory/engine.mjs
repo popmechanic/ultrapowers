@@ -277,6 +277,51 @@ export function splitDiff (text) {
   return Object.fromEntries([...String(text || '').matchAll(pattern)].map((m) => [m[1], m[2]]))
 }
 
+// ── M2: the candidates a landing offers a sibling to settle against ─────────
+
+/** One top-level export, added by a patch: `export function|const|class
+ *  <name>`, `def <name>` or `class <name>`, on a line the patch adds (`+`,
+ *  never `+++`). */
+const EXPORT_LINE_RE = /^\+\s*(?:export\s+(?:function|const|class)\s+([A-Za-z_$][\w$]*)|def\s+([A-Za-z_$][\w$]*)|class\s+([A-Za-z_$][\w$]*))/
+
+/** The task's own candidates: every top-level export its patch adds — read
+ *  off the added lines of each file's diff — plus its plan `Produces:`
+ *  entries, in that order, deduplicated. `fileOf` maps a patch-derived name
+ *  back to the file it was found on, for M2's `interface.settled.file`. */
+export function candidatesOf (task, patchText) {
+  const perFile = splitDiff(patchText)
+  const fileOf = new Map()
+  const names = []
+  for (const file of Object.keys(perFile)) {
+    for (const line of String(perFile[file]).split('\n')) {
+      if (!line.startsWith('+') || line.startsWith('+++')) continue
+      const m = EXPORT_LINE_RE.exec(line)
+      const name = m && (m[1] || m[2] || m[3])
+      if (!name) continue
+      if (!fileOf.has(name)) fileOf.set(name, file)
+      if (!names.includes(name)) names.push(name)
+    }
+  }
+  for (const p of ((task.interfaces || {}).produces || [])) {
+    const s = String(p)
+    if (s && !names.includes(s)) names.push(s)
+  }
+  return { names, fileOf }
+}
+
+/** The newest `[note]` fact out of `board.factsFor`'s rendering — the facts
+ *  render oldest first, newest last, so the last `[note]` block wins. `null`
+ *  when the rendering carries no `[note]` fact at all. */
+export function newestNoteFact (factsText) {
+  const blocks = String(factsText || '').split(/\n\n(?=\[[^\]]*\]\n)/)
+  let newest = null
+  for (const block of blocks) {
+    const m = /^\[note\]\n([\s\S]*)$/.exec(block)
+    if (m) newest = m[1]
+  }
+  return newest
+}
+
 // ── the engine ───────────────────────────────────────────────────────────────
 
 /**
@@ -314,6 +359,10 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     try { kataTasks = JSON.parse(fs.readFileSync(path.resolve(String(args.kataJson)), 'utf8')).tasks || {} } catch { kataTasks = {} }
   }
   const uidFor = (taskId) => (kataTasks[taskId] || {}).uid
+  // M2's own write: `interface.settled` is not a board method (`board.mjs`
+  // only ever writes `factory.state`), so this file reaches the Kata client
+  // directly — the same client `board` was built over, when there is one.
+  const kata = deps.kata || null
   const board = deps.board || (args.kataUrl
     ? makeBoard({
         kata: deps.kata || await (async () => {
@@ -535,19 +584,36 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     return 'Consumes: ' + list(io.consumes) + '\nProduces: ' + list(io.produces)
   }
 
+  /** M3: one `SETTLED:` line per predecessor whose `board.settled` answers
+   *  one — read fresh on every prompt, exactly like `withHandoff`'s facts, so
+   *  a predecessor that settles mid-run is seen by a dispatch that follows. */
+  const settledLines = async (task) => {
+    const lines = []
+    for (const predId of waitsOn(task)) {
+      const s = typeof board.settled === 'function' ? await board.settled(predId) : null
+      if (!s || !s.symbol) continue
+      lines.push('SETTLED: ' + s.symbol + ' in ' + s.file + ' (task ' + (s.task ?? predId) + ', ' + s.sha + ')')
+    }
+    return lines
+  }
+  const settledSuffix = async (task) => {
+    const lines = await settledLines(task)
+    return lines.length ? '\n' + lines.join('\n') : ''
+  }
+
   // Prompts carry the task, its files and its test command — and never a
   // command for a model to run against the repository's history.
-  const examPrompt = (task) =>
+  const examPrompt = async (task) =>
     'TASK:\n' + task.body +
     '\n\nEXAM FILES: ' + (task.proofTests || []).join(', ') +
     '\nTEST COMMAND: ' + task.testCmd +
-    '\n\nINTERFACES:\n' + interfacesBlock(task)
+    '\n\nINTERFACES:\n' + interfacesBlock(task) + await settledSuffix(task)
 
-  const implPrompt = (task) =>
+  const implPrompt = async (task) =>
     'TASK:\n' + task.body +
     '\n\nFILES: ' + implFilesOf(task).join(', ') +
     '\nTEST COMMAND: ' + task.testCmd +
-    '\n\nINTERFACES:\n' + interfacesBlock(task) +
+    '\n\nINTERFACES:\n' + interfacesBlock(task) + await settledSuffix(task) +
     '\n\nAMENDMENTS: (none — this is the first dispatch of this task)'
 
   /** M3: every prompt this file assembles ends with the board's own memory of
@@ -673,7 +739,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const examAnswer = await dispatch({
       role: 'exam', label: 'exam:' + task.id, taskId: task.id, cwd: examDir, model,
       systemPrompt: EXAM_MD, files: task.proofTests, mcpServers,
-      prompt: await withHandoff(examPrompt(task), task.id),
+      prompt: await withHandoff(await examPrompt(task), task.id),
     })
     await board.post(task.id, 'exam-note',
       (examAnswer && examAnswer.result && examAnswer.result.result) || '')
@@ -683,7 +749,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     })
 
     // 2. k implementers, concurrently, each with the exam handed in.
-    const prompt = implPrompt(task)
+    const prompt = await implPrompt(task)
     const files = implFilesOf(task)
     const candidates = await Promise.all(Array.from({ length: k }, async (_, index) => {
       const dir = cloneAt(`impl-${task.id}-${index}`, anchor)
@@ -867,6 +933,63 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     return latest
   }
 
+  /**
+   * M2: does this adoption settle an interface for a sibling. The task's
+   * newest `[note]` fact and its patch-derived candidates go to
+   * `judge.readSettled`; a symbol back is `interface.settled` through the
+   * Kata client (the one seam `board.mjs` does not expose — it only ever
+   * writes `factory.state`) and a `settled` event row. No note, or no
+   * candidates, asks Jev nothing at all.
+   */
+  const maybeSettleInterface = async (task, best, sha) => {
+    if (typeof judge.readSettled !== 'function') return
+    const note = newestNoteFact(await board.factsFor(task.id))
+    if (!note) return
+    const patchText = best.patch && fs.existsSync(best.patch) ? fs.readFileSync(best.patch, 'utf8') : ''
+    const { names, fileOf } = candidatesOf(task, patchText)
+    if (!names.length) return
+    const settled = await read('readSettled', { note, candidates: names })
+    if (!settled || !settled.symbol) return
+    const file = fileOf.get(settled.symbol) || Object.keys(splitDiff(patchText))[0] || ''
+    const meta = { symbol: settled.symbol, file, task: task.id, sha }
+    const uid = uidFor(task.id)
+    if (kata && uid !== undefined) {
+      try {
+        await kata.patchMetadata(args.kataProject, uid, { 'interface.settled': meta })
+      } catch (e) { log('kata patchMetadata: ' + String((e && e.message) || e).slice(0, 200)) }
+    }
+    appendEvent({ kind: 'settled', task: task.id, symbol: settled.symbol, file })
+  }
+
+  /**
+   * M4: files amendments are arithmetic, not judgment — a landing's patch
+   * that reaches outside its own task's `files` and into a path another,
+   * not-yet-started task owns edges that task onto the adopting one, so its
+   * next readiness read waits rather than folding straight into a conflict.
+   * A sibling already dispatched (or already adopted) is unaffected: it met
+   * the path, or is past meeting it, on its own.
+   */
+  const fileAmendmentEdges = async (task, best) => {
+    const patchText = best.patch && fs.existsSync(best.patch) ? fs.readFileSync(best.patch, 'utf8') : ''
+    const touched = Object.keys(splitDiff(patchText))
+    if (!touched.length) return
+    const own = new Set(task.files || [])
+    for (const filePath of touched) {
+      if (own.has(filePath)) continue
+      for (const other of tasks) {
+        if (other.id === task.id) continue
+        if (!(other.files || []).includes(filePath)) continue
+        if (dispatchedTasks.has(other.id) || adopted.includes(other.id)) continue
+        const preds = edgePreds.get(other.id)
+        if (preds) preds.add(task.id)
+        appendEvent({ kind: 'edge', from: task.id, to: other.id, why: 'files-amendment', path: filePath })
+        await board.post(other.id, 'edge',
+          'task ' + task.id + "'s landing touched " + filePath +
+          ", which is also in this task's files — waiting on task " + task.id + ' first.')
+      }
+    }
+  }
+
   // ── the loop: a pool, not a wave ─────────────────────────────────────────
   //
   // No epoch, no barrier: a task starts the moment what it waits on is
@@ -946,6 +1069,8 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         await board.setState(id, 'adopted')
         log('adopted task ' + id + ' -> ' + candidateSha.slice(0, 8) +
           '  exam=' + landing.best.examExit + ' k=' + landing.k)
+        await maybeSettleInterface(landing.task, landing.best, candidateSha)
+        await fileAmendmentEdges(landing.task, landing.best)
       }
     }
     await settleReadiness()

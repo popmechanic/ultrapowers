@@ -197,5 +197,15 @@
     "files_overlap": {
       "rule": "code, not Jev: amendment.files ∩ sibling.files ≠ ∅ files the blocked-by edge (#1129)"
     }
+  },
+  "settled": {
+    "t_settles": {
+      "value": 0.8,
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "experiment": true,
+      "rollback": 1.01
+    }
   }
 }

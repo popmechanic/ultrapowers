@@ -188,6 +188,28 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
       (answers) => (keys.some((key) => answers[key] !== undefined) ? answers : undefined))
   }
 
+  /** The seventh reader: does a task's newest `[note]` fact settle one of its
+   *  own candidate exports for a sibling to build against. `which`'s options
+   *  are the candidates plus `none`, put both in the state (so Jev can see
+   *  them) and on the question itself (`factory/policy.json`'s
+   *  `settled.t_settles` is the one threshold, never a literal here). */
+  const settledQuestions = setQuestions('settled')
+  const tSettles = num(((policy.settled || {}).t_settles || {}).value)
+  const readSettled = async ({ note, candidates = [] } = {}) => {
+    const options = [...candidates, 'none']
+    const questions = {
+      settles_interface: settledQuestions.settles_interface,
+      which: { ...(settledQuestions.which || {}), options },
+    }
+    return askOnce('settled', { note, candidates }, questions, (answers) => {
+      const settlesInterface = noulOf(answers.settles_interface)
+      const which = choiceOf(answers.which)
+      if (settlesInterface === undefined || which === undefined) return undefined
+      if (settlesInterface < tSettles || which === 'none' || !candidates.includes(which)) return null
+      return { symbol: which }
+    })
+  }
+
   return {
     readTask,
     readLanding,
@@ -195,5 +217,6 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
     readNote: flatReader('note'),
     readAmendment: flatReader('amendment'),
     readSupervisor: flatReader('supervisor'),
+    readSettled,
   }
 }
