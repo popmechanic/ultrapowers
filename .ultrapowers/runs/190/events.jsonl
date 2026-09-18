@@ -1,1 +1,2 @@
 {"kind":"supervisor","task":"1","label":"exam:1","answers":{"stuck":{"type":"noul","noul":0.2},"off_track":{"type":"noul","noul":0.28},"needs_human":{"type":"noul","noul":0.13},"done_not_exited":{"type":"noul","noul":0.2}}}
+{"kind":"supervisor","task":"1","label":"impl:1:0","answers":{"stuck":{"type":"noul","noul":0.46},"off_track":{"type":"noul","noul":0.34},"needs_human":{"type":"noul","noul":0.18},"done_not_exited":{"type":"noul","noul":0.11}}}
