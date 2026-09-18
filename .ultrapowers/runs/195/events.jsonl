@@ -111,3 +111,28 @@
 {"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"^import\\|require(\" /home/exedev/run/exam-4/fleet/tests/test_run_engine_worker_notes.mjs | head -20"}
 {"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"sed -n '540,620p' /home/exedev/run/exam-5/skills/ultrapowers/scripts/plan_parse.py"}
 {"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"sed -n '250,300p' /home/exedev/run/exam-5/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"sed -n '120,250p' /home/exedev/run/exam-5/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"find /home/exedev/run/exam-4 -iname \"*.md\" | xargs grep -l \"^### Task \" 2>/dev/null | head -20"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"sed -n '1,80p' /home/exedev/run/exam-4/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"grep -rl \"factory.*boot\\.sh\\|factory/boot\" fleet/ --include=*.mjs 2>/dev/null; echo ---; find fleet/tests -iname \"*factory*\""}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"sed -n '1,60p' /home/exedev/run/exam-4/tests/fixtures/plans/2026-07-03-plan-grammar-check.md"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"Machine\\|Claim\\b\" /home/exedev/run/exam-4/skills/ultrapowers/scripts/plan_parse.py | head -30"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"find /home/exedev/run/exam-1 -iname \"*.md\" | xargs grep -l \"^\\*\\*Files:\\*\\*\\|^\\*\\*Type:\\*\\*\" 2>/dev/null | grep -v node_modules | head -20"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"git log --oneline -15 -- factory/engine.mjs | head -30"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"git status 2>&1 | head -5"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"find /home/exedev/run/exam-1 -path \"*proto*\" -iname \"*.md\" -o -path \"*proto*\" -iname \"*.mjs\" | grep -v node_modules | sort"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"sed -n '1,60p' /home/exedev/run/exam-1/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"sed -n '80,400p' /home/exedev/run/exam-4/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n \"proofTests\\|testCmd\\|'files'\\|\\\"files\\\"\\|task_id\\|def parse\\|### Task\\|Test:\\|Files:\\|Type:\\|Review:\" /home/exedev/run/exam-1/skills/ultrapowers/scripts/plan_parse.py | head -80"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"sed -n '1,60p' /home/exedev/run/exam-3/skills/ultrapowers/kernel/fold_wave.py | head -80; echo ---; grep -n \"def cmd_fold\\|def cmd_materialize\\|empty\" /home/exedev/run/exam-3/skills/ultrapowers/kernel"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"testCmd\\|proofTests\\|def _finalize\\|\\\"tasks\\\"\\|task\\[.id.\\]\\|_emit\\|launch_waves\" /home/exedev/run/exam-4/skills/ultrapowers/scripts/plan_parse.py | head -60"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"sed -n '1,80p' /home/exedev/run/exam-3/fleet/tests/test_run_engine_worker_notes.mjs"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -n \"writeFileSync(path.join(cwd\" -B5 /home/exedev/run/exam-3/fleet/tests/test_run_engine_own_proofs.mjs | head -40"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Read","target":"/home/exedev/run/exam-3/factory/policy.json"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/board.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Read","target":"/home/exedev/run/exam-5/factory/engine.mjs"}
