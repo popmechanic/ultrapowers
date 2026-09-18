@@ -4,3 +4,4 @@
 {"kind":"supervisor","task":"3","label":"exam:3","answers":{"stuck":{"type":"noul","noul":0.46},"off_track":{"type":"noul","noul":0.41},"needs_human":{"type":"noul","noul":0.26},"done_not_exited":{"type":"noul","noul":0.13}}}
 {"kind":"supervisor","task":"1","label":"exam:1","answers":{"stuck":{"type":"noul","noul":0.44},"off_track":{"type":"noul","noul":0.37},"needs_human":{"type":"noul","noul":0.25},"done_not_exited":{"type":"noul","noul":0.11}}}
 {"kind":"supervisor","task":"6","label":"impl:6:0","answers":{"stuck":{"type":"noul","noul":0.18},"off_track":{"type":"noul","noul":0.25},"needs_human":{"type":"noul","noul":0.09},"done_not_exited":{"type":"noul","noul":0.68}}}
+{"kind":"supervisor","task":"5","label":"impl:5:0","answers":{"stuck":{"type":"noul","noul":0.26},"off_track":{"type":"noul","noul":0.3},"needs_human":{"type":"noul","noul":0.16},"done_not_exited":{"type":"noul","noul":0.11}}}
