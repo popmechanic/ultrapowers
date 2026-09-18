@@ -68,6 +68,9 @@ export const usage = () => USAGE
 /** The hub's VM name, and the integration that fronts it. */
 export const HUB_VM = 'kata-hub'
 export const HUB_INTEGRATION = 'kata'
+/** The second integration on the same target: no bearer, so a spoke's own
+ *  `Authorization` rides through untouched for federation. */
+export const FED_INTEGRATION = 'kata-sync'
 /** The port the daemon binds and the one verb that pins it. */
 export const HUB_PORT = 8000
 /** The policy every fleet integration rides, this one included. */
@@ -75,6 +78,8 @@ export const FLEET_POLICY = 'tag:fleet'
 /** Two locks against the janitor: no tag at all, and a comment that says why. */
 export const HUB_COMMENT = 'kata hub — persistent service, do not reap'
 export const INTEGRATION_COMMENT = 'kata issue daemon on kata-hub'
+/** The federation transport's own comment — carries no bearer, so it says why. */
+export const FED_INTEGRATION_COMMENT = 'kata hub federation transport — passes Authorization through'
 
 /** The laptop's copy of the hub's address and bearer. */
 export const ENV_FILE = ['.ultrapowers', 'kata-hub.env']
@@ -147,6 +152,21 @@ export const addVerbAttach = (httpsUrl) =>
   `--bearer - --comment '${INTEGRATION_COMMENT}' --attach ${FLEET_POLICY}`
 
 export const editVerb = () => `integrations edit ${HUB_INTEGRATION} --bearer=-`
+
+/**
+ * The federation transport, same target, no `--bearer`: peer auth rides a
+ * reserved internal header the target never sees, so a spoke's own
+ * `Authorization: Bearer <enrollment token>` is the only one in flight
+ * (Shelley's counsel, 2026-09-18, `kata-federation-proxy-configuration`).
+ */
+export const fedAddVerb = (httpsUrl) =>
+  `integrations add http-proxy --name ${FED_INTEGRATION} --target ${httpsUrl} --peer ` +
+  `--comment '${FED_INTEGRATION_COMMENT}' --policy '${FLEET_POLICY}'`
+
+/** The attach-model twin of `fedAddVerb`, `addVerbAttach`'s own shape. */
+export const fedAddVerbAttach = (httpsUrl) =>
+  `integrations add http-proxy --name ${FED_INTEGRATION} --target ${httpsUrl} --peer ` +
+  `--comment '${FED_INTEGRATION_COMMENT}' --attach ${FLEET_POLICY}`
 
 // ── Reads ───────────────────────────────────────────────────────────────────
 
@@ -283,6 +303,7 @@ export async function kataHub ({
 
   const integrations = await listIntegrations(exec)
   const listed = integrations.some((entry) => entry.name === HUB_INTEGRATION)
+  const listedFed = integrations.some((entry) => entry.name === FED_INTEGRATION)
   let row = await readHubRow(exec)
 
   if (dryRun) {
@@ -320,6 +341,16 @@ export async function kataHub ({
     }
   }
   else if (rebuilt) await lobby(exec, editVerb(), { input: bearer })
+
+  // The federation transport: same target, no bearer, idempotent the same way.
+  if (!listedFed) {
+    try {
+      await lobby(exec, fedAddVerb(row.httpsUrl))
+    } catch (error) {
+      // The attach-model lobby knows no `--policy`; create with `--attach`.
+      await lobby(exec, fedAddVerbAttach(row.httpsUrl))
+    }
+  }
 
   // First boot: the setup script's last act before it deletes itself.
   await waitFor(async () => {

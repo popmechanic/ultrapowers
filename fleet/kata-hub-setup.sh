@@ -11,9 +11,9 @@
 # fast and the unit parks.
 set -euo pipefail
 exec >>"$HOME/kata-setup.log" 2>&1
-KATA_VERSION=0.17.2
-ASSET=kata_0.17.2_linux_amd64.tar.gz
-BASE=https://github.com/kenn-io/kata/releases/download/v0.17.2/
+KATA_VERSION=0.18.0
+ASSET=kata_0.18.0_linux_amd64.tar.gz
+BASE=https://github.com/kenn-io/kata/releases/download/v0.18.0/
 printf 'installing kata %s\n' "$KATA_VERSION"
 work="$(mktemp -d)"
 cd "$work"

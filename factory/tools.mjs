@@ -110,7 +110,7 @@ const commentUid = (answer) => {
  * tool without a model) can invoke one directly without reaching into the MCP
  * server's private registry.
  */
-export const factoryTools = ({ kata, projectId, task, candidates } = {}) => {
+export const factoryTools = ({ kata, projectId, task, candidates, board } = {}) => {
   const uid = task && task.uid
   const taskId = task && task.id
   const names = (Array.isArray(candidates) ? candidates : []).map((c) => String(c))
@@ -121,7 +121,8 @@ export const factoryTools = ({ kata, projectId, task, candidates } = {}) => {
     'later session would otherwise have to rediscover, or what you got done before ' +
     'stopping. The issue is the run\'s memory — write to it rather than to a file.',
     { body: z.string().describe('the note, in your own words') },
-    answering(async ({ body }) => say('noted: ' + commentUid(await kata.comment(projectId, uid, body)))),
+    answering(async ({ body }) =>
+      say('noted: ' + commentUid(await kata.comment(projectId, uid, '[note]\n' + body)))),
   )
 
   const hand = tool(
@@ -181,7 +182,20 @@ export const factoryTools = ({ kata, projectId, task, candidates } = {}) => {
     },
   )
 
-  const tools = [note, hand, settled, siblingFact]
+  const taskFacts = tool(
+    'task_facts',
+    'Re-read everything already known about this task — the same facts the next ' +
+    'worker would be handed. Use it when you are stuck and need what earlier ' +
+    'sessions on this task already worked out.',
+    {},
+    answering(async () => {
+      if (!board) return say('no facts yet')
+      const facts = await board.factsFor(taskId)
+      return say(facts ? facts : 'no facts yet')
+    }),
+  )
+
+  const tools = [note, hand, settled, siblingFact, taskFacts]
   const server = createSdkMcpServer({ name: 'factory', tools })
   return Object.defineProperties(server, {
     tools: { value: tools },

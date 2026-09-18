@@ -588,6 +588,41 @@
           }
         }
       }
+    },
+    "settled": {
+      "when": "after a task adopts, over its newest [note] fact",
+      "reader": "readSettled: which of the task's own candidate exports, if any, the note declares finished and safe to build against",
+      "rollback": "no answer, or which below the threshold or not a candidate -> no interface.settled cell is minted, and the task hands its siblings nothing",
+      "state": [
+        "note",
+        "candidates"
+      ],
+      "provenance": "settles_interface and which, verbatim from the note set's own #1130 questions; split into their own set and reader by this task (#1130 as matcher, #1129 for the files half).",
+      "calibrated": false,
+      "questions": {
+        "settles_interface": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `note` say an export of this task is finished and safe for a sibling to build against?",
+            "context": "A worker posted this hand-in note on its task's issue. `candidates` are the task's own added top-level exports, as the driver read them off the captured patch, plus its plan `Produces:` entries. The candidates come from the code; you only choose among them."
+          },
+          "criteria": {
+            "true": "It declares a named export done and stable, not in progress",
+            "false": "It says nothing of the kind, or says the export may still move"
+          }
+        },
+        "which": {
+          "type": "choice",
+          "instructions": {
+            "question": "Which candidate does `note` say is settled?",
+            "context": "A worker posted this hand-in note on its task's issue. `candidates` are the task's own added top-level exports, as the driver read them off the captured patch, plus its plan `Produces:` entries. The candidates come from the code; you only choose among them."
+          },
+          "criteria": {
+            "_candidates": "one key per entry of `candidates`, plus `none`"
+          },
+          "dynamic": "candidates"
+        }
+      }
     }
   }
 }

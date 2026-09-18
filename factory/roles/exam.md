@@ -25,3 +25,9 @@ Do not run git commands — the engine runs those itself.
 A clause you cannot encode as it reads is worth saying plainly in your hand-in
 note, naming the clause and what stopped you, rather than quietly encoding
 something weaker in its place.
+
+Hand in through the `note` tool one note that says, for each leg of the exam,
+which clause it measures and how, and says in that same note what the exam had
+to assume about the code under test. That note is the one piece of context the
+implementer lacks: write it so a reader who has never seen the task can map
+your assertions back to it.
