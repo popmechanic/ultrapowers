@@ -955,3 +955,9 @@
 {"kind":"worker:tool","task":"8","label":"exam:8","tool":"Bash","target":"node --check fleet/tests/test_factory_dispatch_candidate.mjs && echo OK\ntime timeout 60 node fleet/tests/test_factory_dispatch_candidate.mjs 2>&1 | tail -15"}
 {"kind":"worker:test-run","task":"8","label":"exam:8","cmd":"node --check fleet/tests/test_factory_dispatch_candidate.mjs && echo OK\ntime timeout 60 node fleet/tests/test_factory_dispatch_candidate.mjs 2>&1 | tail -15","red":false}
 {"kind":"worker:tool","task":"8","label":"exam:8","tool":"Bash","target":"true"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Bash","target":"find . -path ./node_modules -prune -o -name \"*.mjs\" -print | grep -E \"factory|fleet\" | sort"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/dispatch.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Read","target":"/home/exedev/run/impl-8-0/fleet/tests/test_factory_dispatch_candidate.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Read","target":"/home/exedev/run/impl-8-0/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"impl:8:0","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
