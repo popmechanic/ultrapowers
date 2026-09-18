@@ -334,3 +334,21 @@
 {"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -rn \"receiptRows\\|factsBlock\" --include=*.mjs --include=*.sh . | grep -v \"fleet/tests\" | head -20"}
 {"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"sed -n 140,175p fleet/facts-block.mjs"}
 {"kind":"worker:tool","task":"6","label":"exam:6","tool":"mcp__factory__note"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"sed -n 175,200p factory/boot.sh"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"wc -l /home/exedev/run/exam-4/factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -n \"onEvent\\|appendEvent\" factory/engine.mjs | head -20; echo '=== other appendFileSync to events ==='; grep -n \"appendFileSync\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"export function runEngine\\|export async function runEngine\\|const runEngine\\|export function buildDeps\\|export const buildDeps\\|export function parseArgv\\|export function normalizeArgs\\|const"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -n \"\" factory/engine.mjs | sed -n '686,728p'"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/fleet/tests/_helpers.mjs"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -rln \"ev_project\" . --include=*.py --include=*.mjs --include=*.sh | head"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"timeout 900 node fleet/tests/test_factory_rows.mjs >/dev/null 2>&1; echo \"run2=$?\"; timeout 900 node fleet/tests/test_factory_rows.mjs >/dev/null 2>&1; echo \"run3=$?\""}
+{"kind":"worker:test-run","task":"3","label":"referee:3","cmd":"timeout 900 node fleet/tests/test_factory_rows.mjs >/dev/null 2>&1; echo \"run2=$?\"; timeout 900 node fleet/tests/test_factory_rows.mjs >/dev/null 2>&1; echo \"run3=$?\"","red":false}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n \"const exitOf\\|const outOf\\|const lastJson\\|const camel\\|function camel\\|const scoreOf\\|const roleText\\|function roleText\" /home/exedev/run/exam-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"ls /home/exedev/run/exam-1/fleet/tests/ | grep -i factory | head -50"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"mcp__factory__task_facts"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"find /home/exedev/run/exam-1 -iname \"*engine*\" -path \"*test*\" -not -path \"*/node_modules/*\"; echo ---; find /home/exedev/run/exam-1/factory -iname \"test_*\"; echo ---; find /home/exedev/run/exam-1 -ina"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -rn \"excerptFor\\|select:trimmed\\|readGuards\\|readCovering\" --include=*.md -l . 2>/dev/null; echo ---; grep -rln \"120,000\\|120000\\|60,000\\|run-194\" . 2>/dev/null | grep -v node_modules"}
