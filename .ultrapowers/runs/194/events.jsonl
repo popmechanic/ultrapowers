@@ -933,3 +933,6 @@
 {"kind":"worker:tool","task":"8","label":"exam:8","tool":"Bash","target":"grep -n \"pairs\" /home/exedev/run/exam-8/skills/ultrapowers/scripts/plan_parse.py | head -50"}
 {"kind":"worker:tool","task":"8","label":"exam:8","tool":"Read","target":"/home/exedev/run/exam-8/skills/ultrapowers/scripts/plan_parse.py"}
 {"kind":"worker:tool","task":"8","label":"exam:8","tool":"Read","target":"/home/exedev/run/exam-8/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"8","label":"exam:8","tool":"Bash","target":"python3 -c \"\nimport sys\nsys.path.insert(0, 'skills/ultrapowers/scripts')\nimport plan_parse\nplan = '''**Exam command:** bash check.sh\n\n### Task 1: producer\n\n**Type:** implementation\n\n- Create: \\`out-1."}
+{"kind":"worker:tool","task":"8","label":"exam:8","tool":"Bash","target":"python3 -c \"\nimport sys\nsys.path.insert(0, 'skills/ultrapowers/scripts')\nimport plan_parse, json\nplan = '''**Exam command:** bash check.sh\n\n### Task 1: producer-x\n\n**Type:** implementation\n\n- Create: "}
+{"kind":"worker:tool","task":"8","label":"exam:8","tool":"Bash","target":"python3 -c \"\nimport sys\nsys.path.insert(0, 'skills/ultrapowers/scripts')\nimport plan_parse, json\nplan = '''**Exam command:** bash check.sh\n\n### Task 1: producer-x\n\n**Type:** implementation\n\n- Create: "}
