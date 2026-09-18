@@ -344,23 +344,14 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   }))
   const tasks = waves.flat()
 
-  // What a task waits on. `depends_on` as the plan declares it, the DAG's own
-  // edges, AND every task of an earlier launch wave: `launch_waves` is an
-  // ordering the compiler already made, and a second-wave task that started
-  // before the first wave adopted would be built against a head that is not
-  // the one it lands on.
-  const waveOf = new Map()
-  waves.forEach((wave, i) => wave.forEach((t) => waveOf.set(t.id, i)))
+  // What a task waits on: `depends_on` as the plan declares it and the DAG's
+  // own edges. No launch-wave barrier — the spec's loop folds on every
+  // adoption with no epoch, and a task's interface edge is already an edge.
   const edgePreds = new Map(tasks.map((t) => [t.id, new Set(t.depends_on || [])]))
   for (const edge of compiled.dag_edges || []) {
     if (edgePreds.has(edge.to)) edgePreds.get(edge.to).add(edge.from)
   }
-  const waitsOn = (task) => {
-    const mine = waveOf.get(task.id)
-    const ids = new Set(edgePreds.get(task.id) || [])
-    for (const other of tasks) if (waveOf.get(other.id) < mine) ids.add(other.id)
-    return [...ids]
-  }
+  const waitsOn = (task) => [...(edgePreds.get(task.id) || [])]
 
   let head = String(args.base || git(['rev-parse', 'HEAD'], target).trim())
   let cost = 0
