@@ -54,7 +54,7 @@ import { makeJudge } from './judge.mjs'
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO = path.resolve(HERE, '..')
 const KERNEL = path.join(REPO, 'skills/ultrapowers/kernel/fold_wave.py')
-const COMPILER = path.join(REPO, 'skills/ultrapowers/scripts/compile_plan.py')
+const COMPILER = path.join(REPO, 'skills/ultrapowers/scripts/plan_parse.py')
 
 /** The judge's two documents, named absolutely so `buildDeps` can be read. */
 export const QUESTIONS_PATH = path.join(HERE, 'questions.json')
@@ -329,10 +329,10 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   // The compiler is the engine's own child_process, never `deps.sh`: `sh` is
   // the seam a sim fakes for the task's test command and the kernel, and the
   // plan has to compile for real before there is a task to fake anything about.
-  const compiledOut = spawnSync('python3', [COMPILER, planPath], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  const compiledOut = spawnSync('python3', [COMPILER, String(args.plan)], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
   const compiled = lastJson(compiledOut.stdout)
   if (!compiled || !Array.isArray(compiled.launch_waves)) {
-    throw new Error('compile_plan.py did not answer a plan: ' + String(compiledOut.stderr || '').slice(0, 400))
+    throw new Error('plan_parse.py did not answer a plan: ' + String(compiledOut.stderr || '').slice(0, 400))
   }
 
   const planText = fs.readFileSync(planPath, 'utf8')
