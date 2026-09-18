@@ -28,3 +28,6 @@
 {"kind":"supervisor","task":"7","label":"impl:7:0","answers":{"stuck":{"type":"noul","noul":0.48},"off_track":{"type":"noul","noul":0.38},"needs_human":{"type":"noul","noul":0.23},"done_not_exited":{"type":"noul","noul":0.13}}}
 {"kind":"select","task":"7","scores":[11.245,11.2583333333],"chosen":"/home/exedev/run/impl-7-1"}
 {"kind":"supervisor","task":"7","label":"referee:7","answers":{"stuck":{"type":"noul","noul":0.19},"off_track":{"type":"noul","noul":0.28},"needs_human":{"type":"noul","noul":0.13},"done_not_exited":{"type":"noul","noul":0.08}}}
+{"kind":"referee","task":"7","findings":0,"blocking":0,"grades":[]}
+{"kind":"landing","task":"7","k":2,"examExit":0,"claim":0.32,"coverage":[0.93,0.95,0.96,0.92,0.92,0.95],"candidateSha":"a651c04e5e752492d3b47255bf8b7592369c5d6f","wall_ms":3408274}
+{"kind":"supervisor","task":"8","label":"exam:8","answers":{"stuck":{"type":"noul","noul":0.47},"off_track":{"type":"noul","noul":0.39},"needs_human":{"type":"noul","noul":0.26},"done_not_exited":{"type":"noul","noul":0.14}}}
