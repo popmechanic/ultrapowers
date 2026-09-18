@@ -847,3 +847,16 @@
 {"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n \"capture(\" factory/engine.mjs"}
 {"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
 {"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Edit","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Edit","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"DISPATCH_DEBUG=1 node fleet/tests/test_factory_dispatch.mjs 2>&1 | tail -60"}
+{"kind":"worker:test-run","task":"4","label":"impl:4:1","cmd":"DISPATCH_DEBUG=1 node fleet/tests/test_factory_dispatch.mjs 2>&1 | tail -60","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Edit","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Edit","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"node fleet/tests/test_factory_dispatch.mjs 2>&1 | tail -20"}
+{"kind":"worker:test-run","task":"4","label":"impl:4:1","cmd":"node fleet/tests/test_factory_dispatch.mjs 2>&1 | tail -20","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"for i in 1 2 3; do node fleet/tests/test_factory_dispatch.mjs 2>&1 | tail -3; echo \"---\"; done"}
+{"kind":"worker:test-run","task":"4","label":"impl:4:1","cmd":"for i in 1 2 3; do node fleet/tests/test_factory_dispatch.mjs 2>&1 | tail -3; echo \"---\"; done","red":false}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"git diff --stat 2>&1 | tail -20; echo \"---status---\"; git status --short 2>&1 | head -20"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"node fleet/tests/test_factory_dispatch.mjs; echo \"EXIT: $?\""}
