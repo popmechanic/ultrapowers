@@ -907,3 +907,8 @@
 {"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"start=$(date +%s); timeout 900 node fleet/tests/test_factory_dispatch.mjs >/tmp/dt.log 2>&1; echo \"exit=$? elapsed=$(( $(date +%s) - start ))s\"; tail -1 /tmp/dt.log"}
 {"kind":"worker:test-run","task":"4","label":"referee:4","cmd":"start=$(date +%s); timeout 900 node fleet/tests/test_factory_dispatch.mjs >/tmp/dt.log 2>&1; echo \"exit=$? elapsed=$(( $(date +%s) - start ))s\"; tail -1 /tmp/dt.log","red":false}
 {"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '1,80p' tests/test_fleet_suite.py"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"spawnSync\\|const git = \\|COMPILER\" factory/engine.mjs | head -20"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"examDir\\|taskCovering\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -rn \"proof\\b.*land\\|exam.*lands\\|the exam file\" factory/roles/*.md docs/*.md CLAUDE.md 2>/dev/null | head -20"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -rn \"proofTests\" factory/*.mjs skills/ultrapowers/scripts/plan_parse.py | head -20"}
