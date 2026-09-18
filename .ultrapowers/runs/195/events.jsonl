@@ -182,3 +182,21 @@
 {"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n \"DEFAULT_IDENTITY\" -B2 -A6 /home/exedev/run/exam-1/fleet/run-waves.mjs | head -20"}
 {"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
 {"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -rln \"factory/engine.mjs\\|from '\\.\\./\\.\\./factory/engine.mjs'\\|from '\\.\\./factory/engine.mjs'\" /home/exedev/run/exam-2 --include='*.mjs' --include='*.py' 2>/dev/null | grep -v node_modules"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n \"commit-tree\\|'commit'\\|GIT_AUTHOR\\|GIT_COMMITTER\\|def _git\\|subprocess.run\\|check_output\" /home/exedev/run/exam-1/skills/ultrapowers/kernel/fold_wave.py /home/exedev/run/exam-1/skills/ultrapo"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"const KERNEL\\|KERNEL =\\|fold_wave\\|const REPO\\b\\|const HERE\\b\" /home/exedev/run/exam-2/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"sed -n '270,300p' /home/exedev/run/exam-1/skills/ultrapowers/kernel/fold_wave.py; echo ---; sed -n '1400,1450p' /home/exedev/run/exam-1/skills/ultrapowers/kernel/fold_wave.py"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/board.mjs"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"const maybeSettleInterface\\|const fileAmendmentEdges\\|const reverifyAfterFold\" /home/exedev/run/exam-2/factory/engine.mjs"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"sed -n '1,50p' /home/exedev/run/exam-2/skills/ultrapowers/kernel/fold_wave.py | head -60"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -n \"user.name\\|user.email\\|GIT_AUTHOR\\|committer\\|commit-tree\" /home/exedev/run/exam-3/skills/ultrapowers/kernel/fold_wave.py | head -30"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -n \"_git_env\\b\" -B2 -A25 /home/exedev/run/exam-3/skills/ultrapowers/kernel/fold_wave.py | head -60"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/policy.json"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -rl \"factory/engine\\|from '\\.\\./\\.\\./factory/engine.mjs'\\|from '\\.\\./factory/engine.mjs'\" /home/exedev/run/exam-3 --include=\"*.mjs\" --include=\"*.py\" 2>/dev/null | grep -v node_modules"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"cat > /tmp/proto/try2.mjs <<'EOF'\nimport fs from 'node:fs'\nimport os from 'node:os'\nimport path from 'node:path'\nimport { spawnSync } from 'node:child_process'\n\nconst REPO = '/home/exedev/run/exam-5'\n"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"python3 --version && git --version && node --version"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"python3 --version; git --version; node --version"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"echo hi"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"node --version"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"python3 --version"}
