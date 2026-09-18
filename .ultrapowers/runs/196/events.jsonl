@@ -801,3 +801,9 @@
 {"ts":"2026-09-18T22:32:09.319Z","kind":"worker:tool","task":"5","label":"referee:5","tool":"StructuredOutput"}
 {"ts":"2026-09-18T22:32:09.464Z","kind":"dispatch:end","task":"5","label":"referee:5","role":"referee","wall_ms":377431,"cost_usd":2.01746,"error":null}
 {"ts":"2026-09-18T22:32:11.316Z","kind":"referee","task":"5","findings":8,"blocking":0,"grades":["minor","minor","minor","minor","minor","minor","minor","minor"]}
+{"ts":"2026-09-18T22:32:15.873Z","kind":"dispatch:end","task":"2","label":"impl:2:fold","role":"implement","wall_ms":214816,"cost_usd":0.9722706000000001,"error":null}
+{"ts":"2026-09-18T22:32:17.802Z","kind":"landing","task":"5","k":1,"examExit":0,"claim":0.6,"coverage":[0.94,0.93,0.92,0.91,0.93],"candidateSha":"32930b92d3ae21d8cd155d809d76156748f9f5b2","wall_ms":2899577}
+{"ts":"2026-09-18T22:32:39.137Z","kind":"fold:verify","task":"5","ran":[{"task":"5","exit":0}]}
+{"ts":"2026-09-18T22:33:07.396Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"function fakeKernel\" -A 25 /home/exedev/run/impl-3-0/fleet/tests/test_factory_proofs.mjs"}
+{"ts":"2026-09-18T22:33:07.436Z","kind":"worker:test-run","task":"3","label":"impl:3:0","cmd":"grep -n \"function fakeKernel\" -A 25 /home/exedev/run/impl-3-0/fleet/tests/test_factory_proofs.mjs","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:33:12.095Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"KERNEL\\|const kernel\\|foldIn\\|materialize\\|function kernel\" /home/exedev/run/impl-3-0/factory/engine.mjs | head -60"}
