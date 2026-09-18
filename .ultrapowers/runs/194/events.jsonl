@@ -1021,3 +1021,5 @@
 {"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"grep -rn \"push\" fleet/sandbox_boot*.mjs factory/*.mjs 2>/dev/null | grep -i \"git\\|refs\" | head -15"}
 {"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"grep -rln \"push\" --include=*.mjs --include=*.py fleet factory skills 2>/dev/null | head; echo ---; grep -rn \"'push'\\|\\\"push\\\"\\|git push\" --include=*.mjs --include=*.py fleet factory skills 2>/dev/null"}
 {"kind":"worker:tool","task":"8","label":"referee:8","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"node --input-type=module -e \"$(cat <<'EOF'\nimport fs from 'node:fs'\nimport os from 'node:os'\nimport path from 'node:path'\nimport { spawnSync, execFileSync } from 'node:child_process'\nconst REPO = '/ho"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"grep -n \"candidateDeferreds\\|candidateCommitCache\\|const candidateCommitFor\\|'commit', '-m', 'candidate\\|'fetch', best.dir\\|candidateDeferred(task.id).resolve\" factory/engine.mjs"}
