@@ -1043,3 +1043,16 @@
 {"kind":"supervisor","task":"2","label":"impl:2:fold","answers":{"stuck":{"type":"noul","noul":0.48},"off_track":{"type":"noul","noul":0.38},"needs_human":{"type":"noul","noul":0.23},"done_not_exited":{"type":"noul","noul":0.14}}}
 {"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"grep -rn \"runOnlyClauses\\|legsHasCitation\\|coverage_floor\\|redispatch\" factory/engine.mjs | head -100"}
 {"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Read","target":"/home/exedev/run/fold-fix-2/factory/engine.mjs"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"node fleet/tests/test_factory_floor.mjs; echo \"EXIT_NODE=$?\"; python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -40"}
+{"kind":"worker:test-run","task":"2","label":"impl:2:fold","cmd":"node fleet/tests/test_factory_floor.mjs; echo \"EXIT_NODE=$?\"; python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -40","red":false}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"ls fleet/tests/ 2>&1; echo ---; ls fleet/tests/_engine_helpers.mjs 2>&1"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Read","target":"/home/exedev/run/fold-fix-2/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Edit","target":"/home/exedev/run/fold-fix-2/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"cat > /tmp/test_plan.md << 'EOF'\n**Exam command:** {paths}\n\n### Task T1: Something\n\n**Type:** implementation\n\n**Files:**\n- Modify: `foo.py`\n\n**Interfaces:**\n- Consumes: none\n- Produces: none\n\n**Proof:"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"cat > /tmp/test_plan2.md << 'EOF'\n**Exam command:** {paths}\n\n### Task T1: Something\n\n**Type:** implementation\n\n**Files:**\n- Modify: `foo.py`\n\n**Interfaces:**\n- Consumes: none\n- Produces: none\n\n**Proof"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"python3 skills/ultrapowers/scripts/plan_parse.py /tmp/test_plan.md | python3 -c \"import json,sys; d=json.load(sys.stdin); print(d['tasks'][1]['runOnlyClauses'])\"\npython3 skills/ultrapowers/scripts/pla"}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -60"}
+{"kind":"worker:test-run","task":"2","label":"impl:2:fold","cmd":"python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -60","red":false}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"python3 -m pytest -q tests/test_plan_parse.py -k \"test_m2_task_and_wave_shape_on_widget_plan or test_m6\" -vv 2>&1 | grep -A5 \"AssertionError\" | head -60"}
+{"kind":"worker:test-run","task":"2","label":"impl:2:fold","cmd":"python3 -m pytest -q tests/test_plan_parse.py -k \"test_m2_task_and_wave_shape_on_widget_plan or test_m6\" -vv 2>&1 | grep -A5 \"AssertionError\" | head -60","red":false}
+{"kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"grep -n \"function appendEvent\\|function dispatch\\|function land\\b\\|function measure\\b\\|best.coverage\\|best.examExit\\|postLanding\" factory/engine.mjs | head -60"}
