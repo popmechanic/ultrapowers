@@ -1023,3 +1023,19 @@
 {"kind":"worker:tool","task":"8","label":"referee:8","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
 {"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"node --input-type=module -e \"$(cat <<'EOF'\nimport fs from 'node:fs'\nimport os from 'node:os'\nimport path from 'node:path'\nimport { spawnSync, execFileSync } from 'node:child_process'\nconst REPO = '/ho"}
 {"kind":"worker:tool","task":"8","label":"referee:8","tool":"Bash","target":"grep -n \"candidateDeferreds\\|candidateCommitCache\\|const candidateCommitFor\\|'commit', '-m', 'candidate\\|'fetch', best.dir\\|candidateDeferred(task.id).resolve\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"referee:8","tool":"StructuredOutput"}
+{"kind":"referee","task":"8","findings":5,"blocking":1,"grades":["blocking","minor","minor","minor","minor"]}
+{"kind":"worker:tool","task":"8","label":"fix:8","tool":"Bash","target":"ls && echo --- && cat factory/dispatch.mjs"}
+{"kind":"worker:tool","task":"8","label":"fix:8","tool":"Bash","target":"cat factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"fix:8","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"fix:8","tool":"Bash","target":"grep -n \"settleReadiness\\|candidate\\|chainPreds\\|cand-\\|dispatch:on-candidate\\|foldIn\\|anchor\" /home/exedev/run/impl-8-0/factory/engine.mjs | sed -n '1,200p'"}
+{"kind":"worker:tool","task":"8","label":"fix:8","tool":"Bash","target":"node fleet/tests/test_factory_dispatch_candidate.mjs 2>&1 | tail -80"}
+{"kind":"worker:test-run","task":"8","label":"fix:8","cmd":"node fleet/tests/test_factory_dispatch_candidate.mjs 2>&1 | tail -80","red":false}
+{"kind":"supervisor","task":"8","label":"fix:8","answers":{"stuck":{"type":"noul","noul":0.3},"off_track":{"type":"noul","noul":0.24},"needs_human":{"type":"noul","noul":0.1},"done_not_exited":{"type":"noul","noul":0.63}}}
+{"kind":"worker:tool","task":"8","label":"fix:8","tool":"Bash","target":"node fleet/tests/test_factory_dispatch_candidate.mjs; echo \"EXIT: $?\""}
+{"kind":"worker:test-run","task":"8","label":"fix:8","cmd":"node fleet/tests/test_factory_dispatch_candidate.mjs; echo \"EXIT: $?\"","red":false}
+{"kind":"worker:tool","task":"8","label":"fix:8","tool":"Bash","target":"git status --short && git diff --stat"}
+{"kind":"worker:tool","task":"8","label":"fix:8","tool":"Read","target":"/home/exedev/run/impl-8-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"8","label":"fix:8","tool":"Bash","target":"for i in 1 2 3; do node fleet/tests/test_factory_dispatch_candidate.mjs > /tmp/out_$i.log 2>&1; echo \"run $i exit $?\"; tail -1 /tmp/out_$i.log; done"}
+{"kind":"worker:test-run","task":"8","label":"fix:8","cmd":"for i in 1 2 3; do node fleet/tests/test_factory_dispatch_candidate.mjs > /tmp/out_$i.log 2>&1; echo \"run $i exit $?\"; tail -1 /tmp/out_$i.log; done","red":false}
+{"kind":"landing","task":"8","k":1,"examExit":0,"claim":0.56,"coverage":[0.97,0.92,0.89,0.9],"candidateSha":"293d2a805a80f9551d529f083d3974dbf9dda2ce","wall_ms":1719127}
