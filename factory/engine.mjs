@@ -55,6 +55,7 @@ import { makeBoard } from './board.mjs'
 import { candidateTests, symbolsOf, commandFor, excerptFor } from './select.mjs'
 import { examsTouched } from './reverify.mjs'
 import { waitsFor } from './dispatch.mjs'
+import { runLines } from './proofs.mjs'
 
 // Amendment (undeclared by the task's own M1-M6, needed only to reach them):
 // this module now creates a missing parent directory once, on the one error
@@ -199,11 +200,13 @@ export function normalizeArgs (given) {
 // ── the default seams: child_process, and nothing else ───────────────────────
 
 /** One command, the spawnSync answer. `PYTHONPATH=.` is what lets a clone's
- *  pytest import the package the implementer just wrote. */
-export const defaultSh = (cmd, argv = [], cwd, input) =>
+ *  pytest import the package the implementer just wrote. A fifth argument,
+ *  `env`, is a caller's own environment (a proof line's, or a fold check's
+ *  `ULTRA_BASE`) merged OVER the default rather than replacing it. */
+export const defaultSh = (cmd, argv = [], cwd, input, env) =>
   spawnSync(cmd, argv, {
     cwd, input, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
-    env: { ...process.env, PYTHONPATH: '.' },
+    env: { ...process.env, PYTHONPATH: '.', ...(env || {}) },
   })
 
 /** One git, its stdout, and a throw on anything else. The engine runs every
@@ -685,10 +688,19 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   // The compiler is the engine's own child_process, never `deps.sh`: `sh` is
   // the seam a sim fakes for the task's test command and the kernel, and the
   // plan has to compile for real before there is a task to fake anything about.
-  const compiledOut = spawnSync('python3', [COMPILER, String(args.plan)], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
-  const compiled = lastJson(compiledOut.stdout)
+  // `deps.compiled` is the one seam around that: the parser's own answer,
+  // handed in directly — for a caller (this task's own exam) whose checkout
+  // parses a plan into no `proofRuns` or `checks` at all yet.
+  let compiled = deps.compiled
+  if (!compiled) {
+    const compiledOut = spawnSync('python3', [COMPILER, String(args.plan)], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+    compiled = lastJson(compiledOut.stdout)
+    if (!compiled || !Array.isArray(compiled.launch_waves)) {
+      throw new Error('plan_parse.py did not answer a plan: ' + String(compiledOut.stderr || '').slice(0, 400))
+    }
+  }
   if (!compiled || !Array.isArray(compiled.launch_waves)) {
-    throw new Error('plan_parse.py did not answer a plan: ' + String(compiledOut.stderr || '').slice(0, 400))
+    throw new Error('deps.compiled did not answer a plan: no launch_waves array')
   }
   // M4: the plan's own bootstrap command, when the parser printed one —
   // `bootstrapFor`'s `planCmd`. `null` when it did not, so every clone's own
@@ -720,6 +732,14 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const supervisorMode = (policyDoc.supervisor || {}).mode
   const redispatchPolicy = (policyDoc.landing || {}).redispatch || {}
   const selectPolicy = policyDoc.select || {}
+  // M2-M4: the plan's own proof commands — a task's `Run:` lines after its
+  // exam, and the plan's `Check:` lines on every folded tree — run only when
+  // this is true; with it false, no `bash -lc` call for a proof line happens
+  // and no `run:line`/`check:line` event is appended (M4).
+  const proofsPolicy = policyDoc.proofs || {}
+  const proofsEnabled = proofsPolicy.run_lines === true
+  const proofTimeoutSeconds = Number.isFinite(Number(proofsPolicy.timeout_seconds))
+    ? Number(proofsPolicy.timeout_seconds) : 300
   const pairsPolicy = policyDoc.pairs || {}
   const pairsLive = pairsPolicy.mode === 'live'
   const examAtZero = (policyDoc.speculate || {}).exam_at_zero === true
@@ -965,7 +985,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   }
 
   const kernel = (argv) => {
-    const r = sh('python3', [KERNEL, ...argv], REPO)
+    const r = sh('env', ['python3', KERNEL, ...argv], REPO)
     const answer = lastJson(outOf(r))
     if (!answer) log('kernel ' + argv[0] + ': exit ' + exitOf(r) + ' ' + String((r && r.stderr) || '').slice(-300))
     return answer
@@ -1038,9 +1058,17 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     }
     const clauseText = (task.clauses && task.clauses[low]) || '(no clause text)'
     const clauseScore = coverage.length ? coverage[low] : null
+    // M2: a failing proof Run: line's own command and output tail are in the
+    // worker's hands — carried into this same landing fact, right alongside
+    // the exam's.
+    const failedRuns = Array.isArray(best.runLines) ? best.runLines.filter((r) => r.exit !== 0) : []
+    const runsText = failedRuns.length
+      ? '\n\nfailing proof line(s):\n' +
+        failedRuns.map((r) => r.cmd + '\nexit ' + r.exit + '\n' + r.tail).join('\n\n')
+      : ''
     const text = 'exit ' + best.examExit + '\n' + (best.examTail || '') +
       '\nclaim: ' + (best.claim === null || best.claim === undefined ? 'null' : best.claim) +
-      '\nlowest-covered clause (' + clauseScore + '): ' + clauseText
+      '\nlowest-covered clause (' + clauseScore + '): ' + clauseText + runsText
     await board.post(task.id, 'landing', text)
   }
 
@@ -1055,6 +1083,18 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     // not a first command's exit code with the rest silently never run.
     const examRun = runAll({ cmds: testCmdsOf(task), cwd: dir, sh, timeoutSeconds: DEFAULT_TIMEOUT_SECONDS })
     const examExit = examRun.exit
+    // M2: a task's own Proof `Run:` lines, after its exam, in this SAME
+    // candidate's clone — never split into argv (a Run: line is often a
+    // pipeline), and every line runs even after an earlier one failed.
+    let proofRunResults = []
+    if (proofsEnabled && Array.isArray(task.proofRuns) && task.proofRuns.length) {
+      proofRunResults = await runLines({
+        lines: task.proofRuns, cwd: dir, sh, env: undefined, timeoutSeconds: proofTimeoutSeconds,
+      })
+      for (const r of proofRunResults) {
+        appendEvent({ kind: 'run:line', task: task.id, cmd: r.cmd, exit: r.exit })
+      }
+    }
     // The exam files RIDE the patch. Three things stand on that: the fold check runs a task's exam on
     // the folded tree, a guarded exam reaches the pull request only this way, and the boot copies the
     // unguarded ones to the evidence record from the tree before it strips them. run-195: with them
@@ -1082,6 +1122,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       examTail: examRun.out.slice(-1500),
       claim: reading && typeof reading.claim === 'number' ? reading.claim : null,
       coverage: (reading && Array.isArray(reading.coverage)) ? reading.coverage : [],
+      runLines: proofRunResults,
     }
   }
 
@@ -1440,7 +1481,10 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       : null
     const floorFired = !greenExam && lowCoverage !== null &&
       Number.isFinite(redispatchFloor) && lowCoverage < redispatchFloor
-    const short = best.examExit !== 0 || floorFired || caught
+    // M2: a non-zero exit from any of the task's own proof Run: lines makes
+    // this landing short exactly as a non-zero exam exit does.
+    const proofLineFailed = Array.isArray(best.runLines) && best.runLines.some((r) => r.exit !== 0)
+    const short = best.examExit !== 0 || floorFired || caught || proofLineFailed
     appendEvent({
       kind: 'floor', task: task.id,
       exam: hasTestCmd ? best.examExit : null,
@@ -1572,25 +1616,73 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     })
 
   /**
+   * The fold check's own runner: every `exam` task's test command, and — with
+   * `policy.proofs.run_lines` on — every entry of the plan's own `checks`,
+   * run once in `dir`. Kept callable with any list of tasks and any
+   * directory (never closing over a single task) so a `--refold` entry can
+   * run it over every task at once, not only the one just folded.
+   *
+   * M3: a check's command runs with `ULTRA_BASE` in its own environment, set
+   * to the run's base sha — never the anchor, never the candidate's own
+   * base — and every check runs, minor or not; only a non-minor failure is
+   * folded into `reds` alongside a red exam.
+   */
+  const runExamsAndChecks = async ({ dir, exams, foldedTaskId, timeoutSeconds, includeChecks = true }) => {
+    const ran = []
+    const reds = []
+    for (const exam of exams) {
+      const [cmd, ...argv] = String(exam.testCmd).trim().split(/\s+/)
+      const r = sh('timeout', [String(timeoutSeconds), cmd, ...argv], dir)
+      const exit = exitOf(r)
+      ran.push({ task: exam.id, exit })
+      if (exit !== 0) reds.push({ kind: 'exam', id: exam.id, exit, out: outOf(r) })
+    }
+    const checks = includeChecks && proofsEnabled && Array.isArray(compiled.checks) ? compiled.checks : []
+    if (checks.length) {
+      const results = await runLines({
+        lines: checks.map((c) => c.cmd), cwd: dir, sh,
+        env: { ULTRA_BASE: runBase }, timeoutSeconds: proofTimeoutSeconds,
+      })
+      results.forEach((r, i) => {
+        const minor = Boolean(checks[i] && checks[i].minor)
+        appendEvent({ kind: 'check:line', task: foldedTaskId, cmd: r.cmd, exit: r.exit, minor })
+        if (r.exit !== 0 && !minor) reds.push({ kind: 'check', cmd: r.cmd, exit: r.exit, out: r.tail })
+      })
+    }
+    return { ran, reds }
+  }
+
+  /**
    * M2-M4: directly after a task's fold, the exams of every adopted task the
    * fold touched are run again on the folded tree — the folded task's own
-   * exam included. A red one buys the folded task exactly one more
-   * implementer attempt, in a clone of the same folded tree, whose patch is
-   * folded through the same kernel path (`foldIn`) before the same exams run
-   * a second time; still red (or a refold that never completes) is
-   * unresolved, and unresolved forces the run's `done` to false without
-   * unadopting anything.
+   * exam included — and, with `policy.proofs.run_lines` on, the plan's own
+   * `checks` run there too (M3), once. A red exam, or a non-minor check's own
+   * failure, buys the folded task exactly one more implementer attempt, in a
+   * clone of the same folded tree, whose patch is folded through the same
+   * kernel path (`foldIn`) before the same exams run a second time — the
+   * plan's own `checks` are a run-wide reading already taken once this fold;
+   * still red (or a refold that never completes) is unresolved, and
+   * unresolved forces the run's `done` to false without unadopting anything.
+   * A minor check's own failure is recorded (`check:line`) and nothing more:
+   * it never buys a red row or a re-attempt.
    */
   const reverifyAfterFold = async (task, best) => {
-    if (reverifyPolicy.enabled !== true) return
     const patchText = best.patch && fs.existsSync(best.patch) ? fs.readFileSync(best.patch, 'utf8') : ''
     const touched = Object.keys(splitDiff(patchText))
     if (!touched.length) return
     const cap = Number.isInteger(reverifyPolicy.max_run) ? reverifyPolicy.max_run : 6
     const timeoutSeconds = reverifyPolicy.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS
 
-    const exams = examsTouched({ folded: task.id, touched, adopted, tasks, cap })
-    if (!exams.length) return
+    const exams = reverifyPolicy.enabled === true
+      ? examsTouched({ folded: task.id, touched, adopted, tasks, cap })
+      : []
+    const checksNamed = proofsEnabled && Array.isArray(compiled.checks) ? compiled.checks : []
+    if (!exams.length && !checksNamed.length) return
+
+    const redLabel = (red) => red.kind === 'exam' ? ('exam ' + red.id) : ('check ' + red.cmd)
+    const redEventFields = (red) => red.kind === 'exam'
+      ? { exam: red.id, cmd: null }
+      : { exam: null, cmd: red.cmd }
 
     // Shared with `runRefold` (M2): the same per-task, under-`timeout` exam
     // run, over just the tasks this fold touched here rather than every task
@@ -1600,24 +1692,23 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     // "this fold's re-verify could not run" rather than left to crash the
     // whole run — the same `fold:unresolved`/`foldUnresolved` outcome an
     // exam still red after the one re-attempt gets.
-    const runExams = () => {
-      try {
-        return runTaskExams({ tasks: exams, dir: cloneAt('fold-verify-' + task.id, head), sh, timeoutSeconds })
-      } catch (err) {
-        if (!(err && err.bootstrapRed)) throw err
-        return { ran: [], reds: [], bootstrapRed: err.bootstrapRed }
-      }
+    let first
+    try {
+      first = await runExamsAndChecks({
+        dir: cloneAt('fold-verify-' + task.id, head), exams, foldedTaskId: task.id, timeoutSeconds,
+      })
+    } catch (err) {
+      if (!(err && err.bootstrapRed)) throw err
+      first = { ran: [], reds: [], bootstrapRed: err.bootstrapRed }
     }
-
-    const first = runExams()
     appendEvent({ kind: 'fold:verify', task: task.id, ran: first.ran })
     if (first.bootstrapRed) { foldUnresolved = true; return }
     if (!first.reds.length) return
 
     for (const red of first.reds) {
-      appendEvent({ kind: 'fold:red', task: task.id, exam: red.task.id, exit: red.exit })
+      appendEvent({ kind: 'fold:red', task: task.id, ...redEventFields(red), exit: red.exit })
       await board.post(task.id, 'fold-red',
-        'exam ' + red.task.id + ' exit ' + red.exit + '\n' + red.out.slice(-1500))
+        redLabel(red) + ' exit ' + red.exit + '\n' + red.out.slice(-1500))
     }
 
     // One more attempt, in a fresh clone of the same folded tree, folded
@@ -1640,14 +1731,17 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const fixPatch = capture(fixDir, anchor, path.join(runDir, `patch-${task.id}-fold.diff`))
     const folded = await foldIn({ task, anchor, best: { patch: fixPatch } })
     if (folded.sha === null) {
-      for (const red of first.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, exam: red.task.id })
+      for (const red of first.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, ...redEventFields(red) })
       foldUnresolved = true
       return
     }
 
-    const second = runExams()
+    const second = await runExamsAndChecks({
+      dir: cloneAt('fold-verify-' + task.id, head), exams, foldedTaskId: task.id, timeoutSeconds,
+      includeChecks: false,
+    })
     if (second.bootstrapRed || second.reds.length) {
-      for (const red of second.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, exam: red.task.id })
+      for (const red of second.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, ...redEventFields(red) })
       foldUnresolved = true
     }
   }

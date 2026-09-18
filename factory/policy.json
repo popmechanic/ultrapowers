@@ -271,5 +271,26 @@
       "experiment": true,
       "rollback": "enabled = false"
     }
+  },
+  "proofs": {
+    "run_lines": true,
+    "timeout_seconds": 300,
+    "n": 0,
+    "window": "none",
+    "basis": "judgment",
+    "experiment": true,
+    "rollback": "run_lines = false"
+  },
+  "publish": {
+    "self_merge": {
+      "enabled": true,
+      "max_refolds": 3,
+      "mergeable_wait_seconds": 120,
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "experiment": true,
+      "rollback": "enabled = false"
+    }
   }
 }
