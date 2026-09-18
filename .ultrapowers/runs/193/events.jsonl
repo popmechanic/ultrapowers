@@ -280,3 +280,13 @@
 {"kind":"worker:tool","task":"3","label":"referee:3","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/hunks.mjs"}
 {"kind":"worker:tool","task":"3","label":"referee:3","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/tests/test_factory_hunks.mjs"}
 {"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -n \"hunksCarrying\\|literalsOf\\|splitDiff\\|slice(0, 20000)\\|slice(0, 6000)\\|readLanding\\|judge.mjs\\|board.mjs\\|import \" factory/engine.mjs | head -60"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"sed -n 265,300p factory/engine.mjs && echo \"=== measure ===\" && sed -n 645,700p factory/engine.mjs && echo \"=== clausesOf ===\" && grep -n \"clausesOf\" -A 20 factory/engine.mjs | head -40"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"node fleet/tests/test_factory_hunks.mjs; echo \"EXIT=$?\""}
+{"kind":"worker:test-run","task":"3","label":"referee:3","cmd":"node fleet/tests/test_factory_hunks.mjs; echo \"EXIT=$?\"","red":false}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"node fleet/tests/test_factory_boot_exams.mjs 2>&1 | tail -80"}
+{"kind":"supervisor","task":"3","label":"referee:3","answers":{"stuck":{"type":"noul","noul":0.18},"off_track":{"type":"noul","noul":0.25},"needs_human":{"type":"noul","noul":0.13},"done_not_exited":{"type":"noul","noul":0.07}}}
+{"kind":"worker:test-run","task":"5","label":"exam:5","cmd":"node fleet/tests/test_factory_boot_exams.mjs 2>&1 | tail -80","red":false}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"node -e '\nimport(\"./factory/hunks.mjs\").then(({hunksCarrying, literalsOf}) => {\n  // Probe A: a section with a header but NO hunks (binary / mode-only change)\n  const BIN = \"diff --git a/img.png b/img"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"node fleet/tests/test_factory_boot_exams.mjs 2>&1 | head -40"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"node -e '\nimport(\"./factory/hunks.mjs\").then(({hunksCarrying}) => {\n  // Probe B: first piece alone exceeds cap -> what does the output look like?\n  const S = \"diff --git a/a.txt b/a.txt\\nindex 1..2 1"}
+{"kind":"worker:test-run","task":"5","label":"exam:5","cmd":"node fleet/tests/test_factory_boot_exams.mjs 2>&1 | head -40","red":false}
