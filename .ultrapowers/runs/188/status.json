@@ -9,7 +9,7 @@
   "branch": "ultra/integration-run-188",
   "vm": "fleet-r188-2609180415-5209",
   "startedAt": "2026-09-18T04:15:31Z",
-  "updatedAt": "2026-09-18T04:23:49.233Z",
+  "updatedAt": "2026-09-18T04:51:09.372Z",
   "error": "janitor: fleet-run@188.service ActiveState=failed SubState=failed Result=exit-code ExecMainStatus=1 while the hub said open",
   "tasks": {}
 }
