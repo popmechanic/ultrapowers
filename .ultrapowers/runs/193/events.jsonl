@@ -375,3 +375,12 @@
 {"kind":"worker:tool","task":"7","label":"exam:7","tool":"Read","target":"/home/exedev/run/exam-7/fleet/tests/_helpers.mjs"}
 {"kind":"worker:tool","task":"7","label":"exam:7","tool":"Read","target":"/home/exedev/run/exam-7/fleet/tests/test_factory_hunks.mjs"}
 {"kind":"worker:tool","task":"7","label":"exam:7","tool":"Read","target":"/home/exedev/run/exam-7/fleet/tests/test_factory_judge_select.mjs"}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Bash","target":"grep -n \"sh(\" factory/engine.mjs | head -80"}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Read","target":"/home/exedev/run/exam-7/factory/engine.mjs"}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Read","target":"/home/exedev/run/exam-7/factory/engine.mjs"}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Bash","target":"grep -n \"candidatesOf\\|EXPORT_LINE_RE\\|const read = \\|function read\\|appendEvent\\|redispatchPolicy\\|POLICY_PATH\\|policyDoc\\|ls-files\\|function runEngine\\|async function runEngine\\|args.policy\\|normali"}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Read","target":"/home/exedev/run/exam-7/factory/engine.mjs"}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Bash","target":"grep -n \"function exitOf\\|function outOf\\|function lastJson\\|function bodyOf\\|function clausesOf\\|function splitDiff\\|function defaultSh\\|function defaultGit\\|function cloneAtBase\" factory/engine.mjs "}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Bash","target":"grep -n \"exitOf\\|outOf\\|lastJson\" factory/engine.mjs | head -20"}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Read","target":"/home/exedev/run/exam-7/factory/engine.mjs"}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Read","target":"/home/exedev/run/exam-7/fleet/run-waves.mjs"}
