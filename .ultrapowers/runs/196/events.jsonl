@@ -754,3 +754,17 @@
 {"ts":"2026-09-18T22:29:02.515Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"grep -n \"^import\\|from '\\./commands\" factory/engine.mjs | head -30"}
 {"ts":"2026-09-18T22:29:02.758Z","kind":"supervisor","task":"2","label":"impl:2:fold","answers":{"stuck":{"type":"noul","noul":0.48},"off_track":{"type":"noul","noul":0.37},"needs_human":{"type":"noul","noul":0.24},"done_not_exited":{"type":"noul","noul":0.13}}}
 {"ts":"2026-09-18T22:29:06.156Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Read","target":"/home/exedev/run/fold-fix-2/factory/engine.mjs"}
+{"ts":"2026-09-18T22:29:06.986Z","kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -n -- \"engine.mjs\\|--plan\\|--target\\|--run-dir\\|--exams-dir\" factory/boot.sh"}
+{"ts":"2026-09-18T22:29:07.383Z","kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"sed -n '318,345p' factory/boot.sh"}
+{"ts":"2026-09-18T22:29:09.970Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Read","target":"/home/exedev/run/fold-fix-2/factory/engine.mjs"}
+{"ts":"2026-09-18T22:29:19.207Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Edit","target":"/home/exedev/run/fold-fix-2/factory/engine.mjs"}
+{"ts":"2026-09-18T22:29:22.692Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Read","target":"/home/exedev/run/fold-fix-2/factory/engine.mjs"}
+{"ts":"2026-09-18T22:29:25.490Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"grep -n \"makeCloner\\|bootstrapFor\\|bootstrap:red\\|bootstrapCmd\" factory/engine.mjs"}
+{"ts":"2026-09-18T22:29:36.478Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"grep -n \"cloneAt(\" factory/engine.mjs"}
+{"ts":"2026-09-18T22:29:38.200Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"sed -n '195,215p' /home/exedev/run/impl-3-0/fleet/tests/test_factory_proofs.mjs | cat -A | sed -n '1,30p' | head -40"}
+{"ts":"2026-09-18T22:29:38.256Z","kind":"worker:test-run","task":"3","label":"impl:3:0","cmd":"sed -n '195,215p' /home/exedev/run/impl-3-0/fleet/tests/test_factory_proofs.mjs | cat -A | sed -n '1,30p' | head -40","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:29:42.142Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Read","target":"/home/exedev/run/fold-fix-2/factory/engine.mjs"}
+{"ts":"2026-09-18T22:29:45.862Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"grep -n \"bootstrapRed\\|catch (e\" factory/engine.mjs"}
+{"ts":"2026-09-18T22:29:49.131Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Read","target":"/home/exedev/run/fold-fix-2/factory/engine.mjs"}
+{"ts":"2026-09-18T22:29:54.340Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Bash","target":"grep -n \"appendEvent\\s*=\\|function appendEvent\\|const appendEvent\" factory/engine.mjs | head"}
+{"ts":"2026-09-18T22:30:00.325Z","kind":"worker:tool","task":"2","label":"impl:2:fold","tool":"Read","target":"/home/exedev/run/fold-fix-2/factory/engine.mjs"}
