@@ -822,3 +822,33 @@
 {"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"ls /home/exedev/run/impl-4-0; echo ---; ls /home/exedev/run/impl-4-0/factory"}
 {"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"legs=\" tests/test_plan_parse.py"}
 {"kind":"worker:test-run","task":"2","label":"impl:2:0","cmd":"grep -n \"legs=\" tests/test_plan_parse.py","red":false}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"const sh\\|sh =\\|exitOf\\|outOf\\|function sh\" factory/engine.mjs | head -50"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"mcpServers\" factory/engine.mjs"}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '200,240p;415,435p' factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '900,960p' factory/engine.mjs"}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"supervisor","task":"4","label":"referee:4","answers":{"stuck":{"type":"noul","noul":0.21},"off_track":{"type":"noul","noul":0.24},"needs_human":{"type":"noul","noul":0.11},"done_not_exited":{"type":"noul","noul":0.06}}}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '1140,1175p' factory/engine.mjs; echo === ; grep -n \"const tasks\\|let tasks\\|uidFor =\" factory/engine.mjs | head"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"testCmd\" factory/engine.mjs | head -30"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"StructuredOutput"}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"referee","task":"5","findings":10,"blocking":0,"grades":["minor","minor","minor","minor","minor","minor","minor","minor","minor","minor"]}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '1,120p' factory/tools.mjs"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '185,240p' factory/tools.mjs"}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '620,690p' factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '835,870p' factory/engine.mjs"}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"cat fleet/tests/test_factory_run_exam.mjs"}
+{"kind":"worker:test-run","task":"4","label":"referee:4","cmd":"cat fleet/tests/test_factory_run_exam.mjs","red":false}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -20"}
+{"kind":"worker:test-run","task":"2","label":"impl:2:0","cmd":"python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -20","red":false}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"coverage_floor\\|redispatchPolicy\\|examExit\\|caught\\|short\\b\\|3.5\\|step 3\" factory/engine.mjs | head -60"}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"node fleet/tests/test_factory_run_exam.mjs; echo \"EXIT=$?\""}
+{"kind":"worker:test-run","task":"4","label":"referee:4","cmd":"node fleet/tests/test_factory_run_exam.mjs; echo \"EXIT=$?\"","red":false}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -q 'run_exam' factory/roles/exam.md; echo \"exam.md=$?\"; grep -q 'run_exam' factory/roles/implement.md; echo \"implement.md=$?\"; echo ===; grep -rn \"factoryTools\" --include=*.mjs --include=*.md . |"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -rn \"allowedTools\\|disallowedTools\\|mcp__factory\" factory/ fleet/*.mjs 2>/dev/null | grep -v node_modules | head -30"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -rn \"note\\b\\|hand\\b\\|settled\\|sibling_fact\\|task_facts\" factory/roles/implement.md factory/roles/exam.md | head -30"}
