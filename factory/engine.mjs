@@ -49,6 +49,7 @@ import { makeJevClient } from '../fleet/jev-client.mjs'
 import { runWorker } from './worker.mjs'
 import { makeJudge } from './judge.mjs'
 import { literalsOf, hunksCarrying } from './hunks.mjs'
+import { unionReply } from './union.mjs'
 import { makeBoard } from './board.mjs'
 import { candidateTests, symbolsOf, commandFor } from './select.mjs'
 
@@ -215,6 +216,55 @@ const lastJson = (text) => {
     try { return JSON.parse(lines[i]) } catch { /* not this line */ }
   }
   return null
+}
+
+// ── M3: the union's own reader, built from `deps.ask` when no `deps.readUnion`
+// is injected ─────────────────────────────────────────────────────────────
+
+/** A number, whether the answer is a bare number or the `{ noul }` shape the
+ *  rest of the judge reads; `undefined` otherwise. */
+const noulNum = (v) => {
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (v && typeof v.noul === 'number' && Number.isFinite(v.noul)) return v.noul
+  return undefined
+}
+
+/**
+ * M3: `readUnion` built straight from `deps.ask`, reading the resolve set's
+ * `independent_additions`, `shared_anchor` and `ordering_matters` questions
+ * off `QUESTIONS_PATH` once, and putting all three to `ask` together with
+ * state `{ hunks }`. `union: true` only when the first is at or above
+ * `unionPolicy.independent_additions` and the other two are at or below
+ * their `_max` ceilings; a missing answer, a thrown `ask`, or no `ask` at
+ * all is `null` — the same "no judgment, no guess" shape every other reader
+ * in this file keeps.
+ */
+function buildReadUnion (ask, unionPolicy) {
+  if (typeof ask !== 'function') return null
+  let resolveQuestions = {}
+  try {
+    const doc = JSON.parse(fs.readFileSync(QUESTIONS_PATH, 'utf8'))
+    resolveQuestions = ((doc.sets || {}).resolve || {}).questions || {}
+  } catch { /* no questions document: ask with whatever this leaves */ }
+  const questions = {}
+  for (const key of ['independent_additions', 'shared_anchor', 'ordering_matters']) {
+    if (resolveQuestions[key]) questions[key] = resolveQuestions[key]
+  }
+  return async ({ hunks }) => {
+    let answers
+    try {
+      answers = await ask({ state: { hunks }, questions })
+    } catch { return null }
+    if (!answers || typeof answers !== 'object') return null
+    const independent = noulNum(answers.independent_additions)
+    const sharedAnchor = noulNum(answers.shared_anchor)
+    const orderingMatters = noulNum(answers.ordering_matters)
+    if ([independent, sharedAnchor, orderingMatters].includes(undefined)) return null
+    const union = independent >= Number(unionPolicy.independent_additions) &&
+      sharedAnchor <= Number(unionPolicy.shared_anchor_max) &&
+      orderingMatters <= Number(unionPolicy.ordering_matters_max)
+    return { union }
+  }
 }
 
 // ── the SDK, found where it is actually installed ────────────────────────────
@@ -448,6 +498,12 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const supervisorMode = (policyDoc.supervisor || {}).mode
   const redispatchPolicy = (policyDoc.landing || {}).redispatch || {}
   const selectPolicy = policyDoc.select || {}
+
+  // M3: `readUnion` is `deps.readUnion` when a caller injects one; otherwise
+  // the engine builds it from `deps.ask` (M3), over `policy.resolve.union`'s
+  // own thresholds.
+  const unionPolicy = (policyDoc.resolve || {}).union || {}
+  const readUnion = typeof deps.readUnion === 'function' ? deps.readUnion : buildReadUnion(deps.ask, unionPolicy)
 
   /** A judge reader that never throws and never is required to exist: Jev
    *  answers no fact, and a reading that did not happen is simply absent. */
@@ -1025,6 +1081,37 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     if (!open.length) return fold
     let latest = fold
     for (const conflict of open) {
+      // M2/M4: two sides that only added, read as independent, are united and
+      // folded straight in — no resolver dispatched, no facts changed about
+      // the resolver path below. Anything the union does not cleanly cover
+      // (a `deleted` segment, a `false`/absent reading, or the mode itself
+      // not `live`) falls straight through to the resolver, unchanged.
+      if (unionPolicy.mode === 'live' && typeof readUnion === 'function') {
+        let hunksFileText = null
+        try { hunksFileText = fs.readFileSync(conflict.hunksFile, 'utf8') } catch { /* unreadable: no union */ }
+        const union = hunksFileText !== null ? unionReply(hunksFileText) : null
+        if (union) {
+          const verdict = await readUnion({ hunks: union.hunks })
+          if (verdict && verdict.union === true) {
+            const replyDir = path.join(runDir, `reply-${landing.task.id}-${conflict.i}`)
+            fs.mkdirSync(replyDir, { recursive: true })
+            for (const h of union.hunks) {
+              const safeId = String((h && h.id) || '').replace(/[^A-Za-z0-9]/g, '')
+              if (!safeId) continue
+              const content = String((h && h.content) || '')
+              fs.writeFileSync(path.join(replyDir, safeId + '.txt'),
+                content === '' ? '' : (content.endsWith('\n') ? content : content + '\n'))
+            }
+            fs.writeFileSync(path.join(replyDir, 'notes.txt'),
+              'union: both sides only added, read as independent; kept in order, no resolver dispatched.\n')
+            latest = kernel(['resolve', ...common, '--conflict', String(conflict.i),
+              '--reply-dir', replyDir, '--patch', patchArg]) || latest
+            appendEvent({ kind: 'union', task: landing.task.id, path: conflict.path, hunks: union.hunks.length })
+            if (latest && latest.complete === true) return latest
+            continue
+          }
+        }
+      }
       const answer = await dispatch({
         role: 'resolve', label: 'resolve:' + landing.task.id + ':' + conflict.i,
         taskId: landing.task.id, cwd: path.dirname(String(conflict.hunksFile || runDir)),
@@ -1281,6 +1368,9 @@ export function buildDeps (rawArgs = {}, overrides = {}) {
     worker: overrides.worker ||
       (async (opts) => runWorker(opts, { query: overrides.query || await sdkQuery() })),
     judge,
+    // M3: the same function the judge was built on, exposed so `runEngine`
+    // can build `readUnion` from it when no `deps.readUnion` is injected.
+    ask: (x) => client.ask(x),
     sh: overrides.sh || defaultSh,
     git: overrides.git || defaultGit,
     tools,
