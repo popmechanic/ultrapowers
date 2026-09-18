@@ -96,3 +96,16 @@
 {"ts":"2026-09-18T21:46:45.970Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"const runWave\\|async function runWave\\|for (const wave\\|readiness\\|settleReadiness\\|park(\\|adopted.push\\|done.add\\|await land(\\|foldIn(\\|reverifyAfterFold(\\|buildDeps\\|export async function r"}
 {"ts":"2026-09-18T21:46:47.205Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__settled"}
 {"ts":"2026-09-18T21:46:48.850Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"ts":"2026-09-18T21:47:05.975Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__note"}
+{"ts":"2026-09-18T21:47:11.521Z","kind":"dispatch:end","task":"1","label":"exam:1","role":"exam","wall_ms":200444,"cost_usd":0.8351866000000001,"error":null}
+{"ts":"2026-09-18T21:47:14.206Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"export function cloneAtBase\\|export const cloneAtBase\" -A 30 fleet/run-waves.mjs | head -50"}
+{"ts":"2026-09-18T21:47:18.606Z","kind":"dispatch:start","task":"1","label":"impl:1:0","role":"implement"}
+{"ts":"2026-09-18T21:47:21.523Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"ts":"2026-09-18T21:47:24.382Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/tests/test_plan_parse.py"}
+{"ts":"2026-09-18T21:47:31.628Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"find /home/exedev/run/exam-3 -iname \"*.py\" -path \"*test*\" | xargs grep -l \"fold_wave\\|plan_parse\" 2>/dev/null | grep -v node_modules\necho \"---kernel---\"\nfind /home/exedev/run/exam-3/skills -iname \"fol"}
+{"ts":"2026-09-18T21:47:34.501Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"git log --oneline -- factory/engine.mjs | head -40"}
+{"ts":"2026-09-18T21:47:37.968Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"find /home/exedev/run/exam-3/skills -iname \"fold_wave.py\" -o -iname \"plan_parse.py\" 2>/dev/null"}
+{"ts":"2026-09-18T21:47:43.334Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"sed -n '300,340p' skills/ultrapowers/scripts/plan_parse.py"}
+{"ts":"2026-09-18T21:47:45.186Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/union.mjs"}
+{"ts":"2026-09-18T21:47:47.368Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Read","target":"/home/exedev/run/exam-3/factory/engine.mjs"}
+{"ts":"2026-09-18T21:47:55.106Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/skills/ultrapowers/scripts/plan_parse.py"}
