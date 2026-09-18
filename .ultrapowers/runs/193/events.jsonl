@@ -268,3 +268,15 @@
 {"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"cat fleet/tests/test_factory_hunks.mjs 2>/dev/null | head -50; echo \"---exists check---\"; ls -la fleet/tests/test_factory_hunks.mjs"}
 {"kind":"worker:test-run","task":"3","label":"impl:3:0","cmd":"cat fleet/tests/test_factory_hunks.mjs 2>/dev/null | head -50; echo \"---exists check---\"; ls -la fleet/tests/test_factory_hunks.mjs","red":false}
 {"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/tests/test_factory_hunks.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Write","target":"/home/exedev/run/impl-3-0/factory/hunks.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"node fleet/tests/test_factory_hunks.mjs"}
+{"kind":"worker:test-run","task":"3","label":"impl:3:0","cmd":"node fleet/tests/test_factory_hunks.mjs","red":false}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"git diff -- factory/engine.mjs; git status --short"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"node -c factory/hunks.mjs && node -c factory/engine.mjs && echo OK"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"true"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"cd /home/exedev/run && wc -l patch-3-0.diff && ls impl-3-0/factory/ impl-3-0/fleet/tests/ | head -50"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/hunks.mjs"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/tests/test_factory_hunks.mjs"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -n \"hunksCarrying\\|literalsOf\\|splitDiff\\|slice(0, 20000)\\|slice(0, 6000)\\|readLanding\\|judge.mjs\\|board.mjs\\|import \" factory/engine.mjs | head -60"}
