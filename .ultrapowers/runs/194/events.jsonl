@@ -809,3 +809,12 @@
 {"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"node fleet/tests/test_factory_dispatch.mjs 2>&1 | head -150"}
 {"kind":"worker:test-run","task":"4","label":"impl:4:1","cmd":"node fleet/tests/test_factory_dispatch.mjs 2>&1 | head -150","red":false}
 {"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n \"const launch\\|const settleReadiness\\|const dispatchedTasks\\|const dispatch =\\|inflightLandings\\|const land = async\\|readySet\\|function ready\\|const ready\" /home/exedev/run/impl-4-1/factory/en"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"proofTests\" /home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n \"await settleReadiness()\" factory/engine.mjs | head -5"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Edit","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"DISPATCH_DEBUG=1 node fleet/tests/test_factory_dispatch.mjs 2>&1 | grep -A2 \"DEBUG waitsOn 1\\b\\|DEBUG waitsOn 2\\b\\|DEBUG waitsOn 3\\b\\|DEBUG after\" "}
+{"kind":"worker:test-run","task":"4","label":"impl:4:1","cmd":"DISPATCH_DEBUG=1 node fleet/tests/test_factory_dispatch.mjs 2>&1 | grep -A2 \"DEBUG waitsOn 1\\b\\|DEBUG waitsOn 2\\b\\|DEBUG waitsOn 3\\b\\|DEBUG after\" ","red":false}
