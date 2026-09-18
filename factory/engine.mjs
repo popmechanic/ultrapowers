@@ -456,7 +456,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   fs.mkdirSync(runDir, { recursive: true })
   const eventsPath = path.join(runDir, 'events.jsonl')
   fs.writeFileSync(eventsPath, '')
-  const appendEvent = (row) => fs.appendFileSync(eventsPath, JSON.stringify(row) + '\n')
+  const appendEvent = (row) => fs.appendFileSync(eventsPath, JSON.stringify({ ts: new Date().toISOString(), ...row }) + '\n')
 
   // No worker writes memory into the host project: every dispatch inherits this.
   const configDir = path.join(runDir, 'claude-config')
@@ -688,6 +688,8 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       dispatchedTasks.add(opts.taskId)
       await board.setState(opts.taskId, 'dispatched')
     }
+    appendEvent({ kind: 'dispatch:start', task: opts.taskId, label: opts.label, role: opts.role })
+    const startedAt = Date.now()
     let answer
     try {
       answer = await worker({
@@ -710,10 +712,16 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       answer = { result: null, denials: [], error }
       if (opts.taskId !== undefined) await board.post(opts.taskId, 'worker-error', error)
     }
+    const wall_ms = Math.max(0, Math.round(Date.now() - startedAt))
     const result = answer && answer.result
-    cost += (result && Number(result.total_cost_usd)) || 0
+    const costUsd = (result && Number(result.total_cost_usd)) || 0
+    cost += costUsd
     const denials = (answer && answer.denials) || []
     if (denials.length) log(opts.label + ': ' + denials.length + ' denied edit(s)')
+    appendEvent({
+      kind: 'dispatch:end', task: opts.taskId, label: opts.label, role: opts.role,
+      wall_ms, cost_usd: costUsd, error: (answer && answer.error) || null,
+    })
     return answer
   }
 
