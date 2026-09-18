@@ -558,3 +558,18 @@
 {"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Edit","target":"/home/exedev/run/impl-5-0/factory/engine.mjs"}
 {"kind":"worker:tool","task":"6","label":"fix:6","tool":"Bash","target":"grep -rl \"buildDeps\" fleet/tests/ | head -20"}
 {"kind":"worker:tool","task":"6","label":"fix:6","tool":"Bash","target":"for f in fleet/tests/test_run_engine_*.mjs; do echo \"== $f ==\"; timeout 60 node \"$f\" 2>&1 | tail -5; done"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Edit","target":"/home/exedev/run/impl-5-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Edit","target":"/home/exedev/run/impl-5-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Edit","target":"/home/exedev/run/impl-5-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"node fleet/tests/test_factory_reverify.mjs 2>&1 | tail -100"}
+{"kind":"worker:test-run","task":"5","label":"impl:5:0","cmd":"node fleet/tests/test_factory_reverify.mjs 2>&1 | tail -100","red":false}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"ls fleet/tests | grep -iE 'engine|fold' "}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"grep -rl \"factory/engine.mjs\" /home/exedev/run/impl-5-0/fleet/tests/ 2>/dev/null"}
+{"kind":"worker:tool","task":"5","label":"impl:5:0","tool":"Bash","target":"node fleet/tests/test_factory_reverify.mjs 2>&1 | tail -20"}
+{"kind":"worker:test-run","task":"5","label":"impl:5:0","cmd":"node fleet/tests/test_factory_reverify.mjs 2>&1 | tail -20","red":false}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"wc -l /home/exedev/run/patch-5-0.diff factory/reverify.mjs factory/engine.mjs fleet/tests/test_factory_reverify.mjs 2>&1"}
+{"kind":"worker:test-run","task":"5","label":"referee:5","cmd":"wc -l /home/exedev/run/patch-5-0.diff factory/reverify.mjs factory/engine.mjs fleet/tests/test_factory_reverify.mjs 2>&1","red":false}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Read","target":"/home/exedev/run/impl-5-0/factory/reverify.mjs"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"cd /home/exedev/run && grep -n '^+++\\|^---\\|^@@' patch-5-0.diff"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -n 'reverify\\|fold:\\|examsTouched\\|foldIn\\|adopted.push\\|timeout' factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Read","target":"/home/exedev/run/impl-5-0/factory/engine.mjs"}
