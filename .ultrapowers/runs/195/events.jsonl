@@ -162,3 +162,23 @@
 {"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -rn \"\\[M[0-9]\\].*\\[M[0-9]\\]\" /home/exedev/run/exam-2/tests/fixtures/plans/*.md /home/exedev/run/exam-2/evals/fixtures/claims/*.md 2>/dev/null | head -10"}
 {"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"sed -n '280,370p' /home/exedev/run/exam-5/skills/ultrapowers/kernel/fold_wave.py"}
 {"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -rn \"\\[M[0-9]\\]\\s*\\[M[0-9]\\]\\|\\[M[0-9]\\] and \\[M[0-9]\\]\" /home/exedev/run/exam-2 --include='*.md' 2>/dev/null | grep -v node_modules | head -20"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"sed -n '1,50p' /home/exedev/run/exam-3/fleet/tests/test_run_engine_own_proofs.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"sed -n '100,130p' /home/exedev/run/exam-5/skills/ultrapowers/kernel/fold_wave.py; echo ---; python3 --version; echo ---; ls /home/exedev/run/exam-5/skills/ultrapowers/kernel/"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"sed -n '50,150p' /home/exedev/run/exam-3/fleet/tests/test_run_engine_own_proofs.mjs"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"tail -30 /home/exedev/run/exam-3/fleet/tests/test_run_engine_own_proofs.mjs"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -n \"await run\\|async function\\|await rig\\|const { run\" /home/exedev/run/exam-3/fleet/tests/test_run_engine_own_proofs.mjs | head -20"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -n \"cloneAtBase\\|user.name\\|user.email\" -A8 /home/exedev/run/exam-3/fleet/run-waves.mjs | head -60"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"mkdir -p /tmp/proto && cat > /tmp/proto/try.mjs <<'EOF'\nimport fs from 'node:fs'\nimport os from 'node:os'\nimport path from 'node:path'\nimport { spawnSync } from 'node:child_process'\nimport { fileURLTo"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"const dispatch\\|worker(\\|deps.worker\\|await worker\\|function dispatch\\|const exam =\\|examPromise\\|role: 'exam'\\|role: 'implement'\\|k implementers\\|Number(task.k)\\|readTask\\|wantsReferee\\|land"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Read","target":"/home/exedev/run/exam-3/fleet/run-waves.mjs"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"^def \\|argparse\\|add_argument\\|sub.*add_parser\\|^if __name__\" /home/exedev/run/exam-4/skills/ultrapowers/kernel/fold_wave.py | head -60"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"cat /tmp/proto/*/run/events.jsonl 2>/dev/null | head -50; find /tmp -maxdepth 2 -iname \"run\" 2>/dev/null"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"cat /tmp/engine-proto-VbaqQN/run/events.jsonl"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n \"export function cloneAtBase\\|export function makeCwdFor\\|export function defaultTaskIdOf\" -A 25 /home/exedev/run/exam-1/fleet/run-waves.mjs | head -100"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"cd /tmp/proto && sed -i \"s/runEngine({ plan: planPath, target, runDir, base }/runEngine({ plan: planPath, target, runDir, base, policy: policyPath }/\" try.mjs && rm -rf /tmp/engine-proto-* && node try"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n \"DEFAULT_IDENTITY\" -B2 -A6 /home/exedev/run/exam-1/fleet/run-waves.mjs | head -20"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -rln \"factory/engine.mjs\\|from '\\.\\./\\.\\./factory/engine.mjs'\\|from '\\.\\./factory/engine.mjs'\" /home/exedev/run/exam-2 --include='*.mjs' --include='*.py' 2>/dev/null | grep -v node_modules"}
