@@ -718,3 +718,17 @@
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"const postLanding\\|const measure\\|const scoreOf\\|const hunksFor\" /home/exedev/run/impl-4-0/factory/engine.mjs"}
 {"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -n \"const foldIn\\|const resolve = \\|foldFacts\" /home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Edit","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Edit","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Edit","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Edit","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n \"const dispatchedTasks\\|const dispatch = async\\|const examine = async\\|const maybeReadPairCandidate\\|const land = async\" /home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Bash","target":"grep -n \"^  const foldIn\\|^  const resolve\\|^  const launch\\|^  const settleReadiness\\|^  await settleReadiness\\|^  if (done.size\\|^  await Promise.allSettled\\|^  return {\" /home/exedev/run/impl-4-1/f"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Edit","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:1","tool":"Read","target":"/home/exedev/run/impl-4-1/factory/engine.mjs"}
