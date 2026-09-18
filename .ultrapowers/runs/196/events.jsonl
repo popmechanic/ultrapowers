@@ -514,3 +514,37 @@
 {"ts":"2026-09-18T22:15:41.128Z","kind":"worker:test-run","task":"5","label":"exam:5","cmd":"node fleet/tests/test_factory_boot_merge.mjs","exit":1,"red":true,"via":"run_exam"}
 {"ts":"2026-09-18T22:15:41.128Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"ls fleet/tests | grep -i engine"}
 {"ts":"2026-09-18T22:15:41.283Z","kind":"dispatch:end","task":"2","label":"impl:2:1","role":"implement","wall_ms":367229,"cost_usd":1.7042793999999994,"error":null}
+{"ts":"2026-09-18T22:15:44.530Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -rl \"factory/engine.mjs\\|from '../../factory/engine\" fleet/tests 2>/dev/null"}
+{"ts":"2026-09-18T22:15:47.302Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -rl \"engine.mjs\" --include=\"*.mjs\" . 2>/dev/null | grep -v node_modules"}
+{"ts":"2026-09-18T22:15:47.513Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -n \"export async function runEngine\\|export function runEngine\\|async function runEngine\\|function runEngine\" /home/exedev/run/exam-3/factory/engine.mjs"}
+{"ts":"2026-09-18T22:15:48.686Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"node --check /home/exedev/run/exam-5/fleet/tests/test_factory_boot_merge.mjs && echo SYNTAX_OK"}
+{"ts":"2026-09-18T22:15:48.730Z","kind":"worker:test-run","task":"5","label":"exam:5","cmd":"node --check /home/exedev/run/exam-5/fleet/tests/test_factory_boot_merge.mjs && echo SYNTAX_OK","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:15:50.039Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"engine.mjs\\|runEngine\\|cloneAt\" fleet/tests/test_worker_kata_env.mjs | head -20"}
+{"ts":"2026-09-18T22:15:50.384Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Read","target":"/home/exedev/run/exam-3/factory/engine.mjs"}
+{"ts":"2026-09-18T22:15:51.432Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"node fleet/tests/test_factory_boot_merge.mjs 2>&1 | head -100"}
+{"ts":"2026-09-18T22:15:53.041Z","kind":"worker:test-run","task":"5","label":"exam:5","cmd":"node fleet/tests/test_factory_boot_merge.mjs 2>&1 | head -100","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:15:53.495Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"ls fleet/tests | wc -l; cat package.json 2>/dev/null | grep -A5 '\"scripts\"'"}
+{"ts":"2026-09-18T22:16:00.003Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"^const exitOf\\|^const outOf\" factory/engine.mjs"}
+{"ts":"2026-09-18T22:16:02.553Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-18T22:16:02.998Z","kind":"worker:test-run","task":"2","label":"impl:2:0","cmd":"node fleet/tests/test_factory_commands.mjs","exit":0,"red":false,"via":"run_exam"}
+{"ts":"2026-09-18T22:16:05.353Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"mcp__factory__settled"}
+{"ts":"2026-09-18T22:16:08.921Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -n \"function normalizeArgs\" -A 30 /home/exedev/run/exam-3/factory/engine.mjs | head -40"}
+{"ts":"2026-09-18T22:16:16.632Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -n \"args.base\\|args\\.runDir\\|args\\.target\\b\" /home/exedev/run/exam-3/factory/engine.mjs | head -20"}
+{"ts":"2026-09-18T22:16:25.328Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -n \"reading.k\\|const k =\\|read(\\|function read\\b\" /home/exedev/run/exam-3/factory/engine.mjs | head -30"}
+{"ts":"2026-09-18T22:16:25.965Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"mcp__factory__note"}
+{"ts":"2026-09-18T22:16:29.271Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -n \"const read = \\|async function read\\|function read (\" /home/exedev/run/exam-3/factory/engine.mjs"}
+{"ts":"2026-09-18T22:16:32.038Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Read","target":"/home/exedev/run/exam-3/factory/engine.mjs"}
+{"ts":"2026-09-18T22:16:32.857Z","kind":"dispatch:end","task":"2","label":"impl:2:0","role":"implement","wall_ms":418851,"cost_usd":1.6304795999999997,"error":null}
+{"ts":"2026-09-18T22:16:33.558Z","kind":"select","task":"2","scores":[11.7,11.71],"chosen":"/home/exedev/run/impl-2-1"}
+{"ts":"2026-09-18T22:16:33.848Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"mkdir -p /tmp/fake-boot/factory /tmp/fake-boot/tests && cp /home/exedev/run/exam-5/factory/boot.sh /tmp/fake-boot/factory/boot.sh && cp /home/exedev/run/exam-5/fleet/tests/test_factory_boot_merge.mjs "}
+{"ts":"2026-09-18T22:16:33.923Z","kind":"worker:test-run","task":"5","label":"exam:5","cmd":"mkdir -p /tmp/fake-boot/factory /tmp/fake-boot/tests && cp /home/exedev/run/exam-5/factory/boot.sh /tmp/fake-boot/factory/boot.sh && cp /home/exedev/run/exam-5/fleet/tests/test_factory_boot_merge.mjs /tmp/fake-boot/tests/test.mjs && cp /home/exedev/run/exam-5/fleet/tests/_helpers.mjs /tmp/fake-boot/tests/_helpers.mjs && ls /tmp/fake-boot/factory /tmp/fake-boot/tests","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:16:33.987Z","kind":"select:landing","task":"2","candidates":["tests/test_compile_plan_green_at_base.py","tests/test_plan_parse.py","tests/test_ultra_run_add_cmd.py","fleet/tests/test_jev_client.mjs","fleet/tests/test_launch_duplicate.mjs","fleet/tests/test_setup_script.mjs","fleet/tests/test_sims_are_hermetic.mjs","fleet/tests/test_worker_kata_env.mjs"],"selected":[],"ran":[]}
+{"ts":"2026-09-18T22:16:33.987Z","kind":"floor","task":"2","exam":0,"lowest":0.92,"excluded":[],"fired":false}
+{"ts":"2026-09-18T22:16:36.622Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"cd /tmp/fake-boot && sed -i \"s#path.resolve(HERE, '..', '..', 'factory', 'boot.sh')#process.env.BOOT_SCRIPT_OVERRIDE#\" tests/test.mjs && grep -n BOOT_SCRIPT tests/test.mjs | head -3"}
+{"ts":"2026-09-18T22:16:37.746Z","kind":"dispatch:start","task":"2","label":"referee:2","role":"referee"}
+{"ts":"2026-09-18T22:16:39.214Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -n \"dispatch:start\\|'run:line'\\|'check:line'\\|'fold:red'\\|'fold:verify'\\|impl:.*redispatch\\|impl:.*fold\\|kind: 'landing'\\|'landing'\" /home/exedev/run/exam-3/factory/engine.mjs | head -60"}
+{"ts":"2026-09-18T22:16:40.655Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"wc -l /home/exedev/run/patch-2-1.diff factory/commands.mjs factory/engine.mjs fleet/tests/test_factory_commands.mjs 2>&1"}
+{"ts":"2026-09-18T22:16:40.706Z","kind":"worker:test-run","task":"2","label":"referee:2","cmd":"wc -l /home/exedev/run/patch-2-1.diff factory/commands.mjs factory/engine.mjs fleet/tests/test_factory_commands.mjs 2>&1","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:16:41.095Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Read","target":"/home/exedev/run/impl-2-1/factory/commands.mjs"}
+{"ts":"2026-09-18T22:16:41.212Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Read","target":"/tmp/fake-boot/factory/boot.sh"}
+{"ts":"2026-09-18T22:16:44.267Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -n '^diff --git\\|^@@' /home/exedev/run/patch-2-1.diff"}
