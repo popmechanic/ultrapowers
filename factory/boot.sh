@@ -21,6 +21,8 @@ KATA_VERSION="0.18.0"
 KATA_RELEASE_BASE="https://github.com/kenn-io/kata/releases/download/v$KATA_VERSION/"
 KATA_ASSET="kata_${KATA_VERSION}_linux_amd64.tar.gz"
 KATA_HUB_URL="https://kata-sync.int.exe.xyz"
+# The helper administers through the host where the edge injects the hub's bearer; the spoke syncs through the other.
+KATA_ADMIN_URL="https://kata.int.exe.xyz"
 KATA_URL="http://127.0.0.1:7777"
 FLEET_KATA_WAIT_SECONDS="${FLEET_KATA_WAIT_SECONDS:-120}"
 FLEET_COMMIT_SECONDS="${FLEET_COMMIT_SECONDS:-60}"
@@ -263,7 +265,7 @@ hub = "hub"
 spoke_project = "$project_name"
 hub_project = "$project_name"
 intent = "collaborate"
-credential_provider = ["node", "$ENGINE_REPO_DIR/factory/kata-credential.mjs", "$BOARD_KATA_JSON", "$FLEET_HOME/kata/helper"]
+credential_provider = ["node", "$ENGINE_REPO_DIR/factory/kata-credential.mjs", "--kata-json", "$BOARD_KATA_JSON", "--admin-url", "$KATA_ADMIN_URL", "--state-dir", "$FLEET_HOME/kata/helper"]
 EOF
   # `systemd-run --user` resolves only the FIRST word (`env`) against the caller's
   # PATH; `env` then resolves `kata` itself, against whatever PATH the unit lands
