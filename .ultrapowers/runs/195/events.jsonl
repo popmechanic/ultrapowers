@@ -852,3 +852,23 @@
 {"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -q 'run_exam' factory/roles/exam.md; echo \"exam.md=$?\"; grep -q 'run_exam' factory/roles/implement.md; echo \"implement.md=$?\"; echo ===; grep -rn \"factoryTools\" --include=*.mjs --include=*.md . |"}
 {"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -rn \"allowedTools\\|disallowedTools\\|mcp__factory\" factory/ fleet/*.mjs 2>/dev/null | grep -v node_modules | head -30"}
 {"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -rn \"note\\b\\|hand\\b\\|settled\\|sibling_fact\\|task_facts\" factory/roles/implement.md factory/roles/exam.md | head -30"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -rln \"worker:test-run\\|deps.tools\\|tools:\" fleet/tests/*.mjs 2>/dev/null | head -20; echo ===; grep -rn \"worker:test-run\" --include=*.mjs --include=*.py --include=*.md . | grep -v node_modules | "}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -rln \"test-run\" . 2>/dev/null | grep -v node_modules | grep -v '\\.git/' | head; echo ===; grep -rln \"task_facts\\|sibling_fact\" fleet/tests tests evals 2>/dev/null | grep -v node_modules | head"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n -B3 -A6 \"test-run\" skills/ultrapowers/references/plan-markers.md"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '1,60p' factory/roles/exam.md"}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"runOnlyClauses\\|task.testCmd\\|coverage:\" factory/engine.mjs | head -30"}
+{"kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"grep -rl \"examine\\|exam:skipped\\|proofTests\" /home/exedev/run/fold-fix-1/fleet/tests/test_run_engine*.mjs /home/exedev/run/fold-fix-1/fleet/tests/test_factory*.mjs 2>/dev/null"}
+{"kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"grep -l \"exam:skipped\" /home/exedev/run/fold-fix-1/fleet/tests/test_run_engine*.mjs 2>/dev/null\necho \"---\"\ngrep -n \"proofTests\" /home/exedev/run/fold-fix-1/fleet/tests/test_run_engine_own_proofs.mjs |"}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"ls fleet/tests | head -60"}
+{"kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"node --check /home/exedev/run/fold-fix-1/factory/engine.mjs && echo OK"}
+{"kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"sleep 5; jobs; echo done"}
+{"kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"for t in test_run_engine_worker_notes test_run_engine_proof_runs test_run_engine_one_of_each; do printf \"== %s: \" $t; timeout 180 node fleet/tests/$t.mjs >/tmp/$t.log 2>&1 && echo OK || echo \"FAIL($?)"}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"node fleet/tests/test_factory_floor.mjs 2>&1 | tail -80"}
+{"kind":"worker:test-run","task":"2","label":"impl:2:0","cmd":"node fleet/tests/test_factory_floor.mjs 2>&1 | tail -80","red":false}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"node fleet/tests/test_factory_floor.mjs && python3 -m pytest -q tests/test_plan_parse.py"}
+{"kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"cat /tmp/claude-1000/-home-exedev-run-fold-fix-1/0a3ee1c1-eb34-451a-83c4-4b5953f8a55b/tasks/b07vtxjhi.output 2>/dev/null | tail -100"}
+{"kind":"worker:test-run","task":"2","label":"impl:2:0","cmd":"node fleet/tests/test_factory_floor.mjs && python3 -m pytest -q tests/test_plan_parse.py","red":false}
+{"kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"sleep 30; cat /tmp/claude-1000/-home-exedev-run-fold-fix-1/0a3ee1c1-eb34-451a-83c4-4b5953f8a55b/tasks/b07vtxjhi.output 2>/dev/null | tail -30"}
+{"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"floor\\|runOnlyClauses\\|Legs\" fleet/tests/test_factory_floor.mjs | head -60"}
+{"kind":"worker:test-run","task":"2","label":"impl:2:0","cmd":"grep -n \"floor\\|runOnlyClauses\\|Legs\" fleet/tests/test_factory_floor.mjs | head -60","red":false}
