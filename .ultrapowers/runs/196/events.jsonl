@@ -405,3 +405,18 @@
 {"ts":"2026-09-18T22:10:28.864Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '1440,1500p' factory/engine.mjs"}
 {"ts":"2026-09-18T22:10:29.405Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -rn \"export function cloneAtBase\" -A 25 fleet/*.mjs | head -40"}
 {"ts":"2026-09-18T22:10:33.481Z","kind":"worker:tool","task":"5","label":"exam:5","tool":"Write","target":"/home/exedev/run/exam-5/fleet/tests/test_factory_boot_merge.mjs"}
+{"ts":"2026-09-18T22:10:35.276Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"cat factory/policy.json 2>/dev/null | head -60; echo ---; grep -n \"bootstrap\" factory/policy.json 2>/dev/null"}
+{"ts":"2026-09-18T22:10:35.477Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"wave\" skills/ultrapowers/kernel/fold_wave.py | head -40"}
+{"ts":"2026-09-18T22:10:36.177Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Write","target":"/home/exedev/run/exam-3/fleet/tests/test_factory_proofs.mjs"}
+{"ts":"2026-09-18T22:10:38.392Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"add_argument(\\\"--wave\\\"\\|add_argument('--wave'\" -A 3 skills/ultrapowers/kernel/fold_wave.py"}
+{"ts":"2026-09-18T22:10:38.867Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"_wave_dir(\" skills/ultrapowers/kernel/fold_wave.py | head"}
+{"ts":"2026-09-18T22:10:45.720Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"timeout 60 python3 skills/ultrapowers/kernel/fold_wave.py fold --repo /tmp --run-dir /tmp/rd --wave refold --base HEAD --patch 'refold=/tmp/p.diff@HEAD' 2>&1 | tail -5; echo \"EXIT=${PIPESTATUS[0]}\""}
+{"ts":"2026-09-18T22:10:46.058Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"timeout_seconds\\|selectPolicy\\|timeoutSeconds\" factory/engine.mjs"}
+{"ts":"2026-09-18T22:10:46.256Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"waveNumber\" factory/engine.mjs | head"}
+{"ts":"2026-09-18T22:10:54.160Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"def _patch_arg\" -A 25 skills/ultrapowers/kernel/fold_wave.py"}
+{"ts":"2026-09-18T22:11:15.896Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '2049,2070p' factory/engine.mjs"}
+{"ts":"2026-09-18T22:11:16.285Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"sed -n '1940,1995p' factory/engine.mjs"}
+{"ts":"2026-09-18T22:11:17.063Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"cat factory/reverify.mjs 2>/dev/null | head -80"}
+{"ts":"2026-09-18T22:11:19.644Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Bash","target":"grep -n \"cloneAtBase\" -A 20 /home/exedev/run/impl-2-1/fleet/run-waves.mjs | head -40"}
+{"ts":"2026-09-18T22:11:32.489Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"red.exam\\|\\.exam\\.id\" factory/engine.mjs; node --check factory/engine.mjs && echo SYNTAX_OK"}
+{"ts":"2026-09-18T22:11:33.138Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -rn \"wave\" factory/engine.mjs | grep -n \"wave-\\|--wave\" | head"}
