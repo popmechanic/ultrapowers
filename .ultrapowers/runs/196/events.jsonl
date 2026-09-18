@@ -946,3 +946,15 @@
 {"ts":"2026-09-18T22:49:38.005Z","kind":"dispatch:start","task":"3","label":"referee:3","role":"referee"}
 {"ts":"2026-09-18T22:49:42.299Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"wc -l /home/exedev/run/patch-3-0.diff && ls"}
 {"ts":"2026-09-18T22:49:42.305Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/proofs.mjs"}
+{"ts":"2026-09-18T22:49:42.649Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/policy.json"}
+{"ts":"2026-09-18T22:49:46.298Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -n \"runLines\\|proofRuns\\|check:line\\|run:line\\|ULTRA_BASE\\|deps.compiled\\|proofs\" factory/engine.mjs | head -60"}
+{"ts":"2026-09-18T22:49:46.872Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -n \"^diff\\|^@@\" /home/exedev/run/patch-3-0.diff"}
+{"ts":"2026-09-18T22:49:49.215Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"sed -n '1,270p' /home/exedev/run/patch-3-0.diff"}
+{"ts":"2026-09-18T22:50:08.474Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -rn \"'python3'\\|\\\"python3\\\"\\|python3\" factory/engine.mjs | head -30; echo ---; grep -rn \"python3\\|kernel\\|'env'\" fleet/tests/_engine_helpers.mjs | head -40"}
+{"ts":"2026-09-18T22:50:08.632Z","kind":"supervisor","task":"3","label":"referee:3","answers":{"stuck":{"type":"noul","noul":0.18},"off_track":{"type":"noul","noul":0.25},"needs_human":{"type":"noul","noul":0.11},"done_not_exited":{"type":"noul","noul":0.06}}}
+{"ts":"2026-09-18T22:50:08.934Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -rln \"_engine_helpers\" fleet/tests/ | head -30"}
+{"ts":"2026-09-18T22:50:12.545Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/tests/_engine_helpers.mjs"}
+{"ts":"2026-09-18T22:50:20.502Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -rn \"python3\" fleet/tests/*.mjs factory/*.mjs | grep -v engine.mjs | head -30; echo \"=== tests referencing factory/engine\"; grep -rln \"factory/engine.mjs\" fleet/tests/ tests/ 2>/dev/null | head -"}
+{"ts":"2026-09-18T22:50:25.027Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/tests/test_factory_proofs.mjs"}
+{"ts":"2026-09-18T22:50:42.201Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -n \"KERNEL\\s*=\\|COMPILER\\s*=\\|POLICY_PATH\\s*=\\|REPO\\s*=\" factory/engine.mjs | head; echo ---; ls skills/ultrapowers/kernel/ 2>/dev/null | head"}
+{"ts":"2026-09-18T22:50:42.551Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"sed -n '790,830p' factory/engine.mjs"}
