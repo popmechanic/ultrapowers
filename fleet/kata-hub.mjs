@@ -314,6 +314,11 @@ export async function kataHub ({
     })
   }
   if (listed && row && fs.existsSync(envPath)) {
+    // An existing hub still lacks the federation transport when it predates it
+    // (the hub of 2026-09-12 did, on 2026-09-18): add it before answering built.
+    if (!listedFed && row.httpsUrl) {
+      try { await lobby(exec, fedAddVerb(row.httpsUrl)) } catch (error) { await lobby(exec, fedAddVerbAttach(row.httpsUrl)) }
+    }
     return reported({ alreadyBuilt: true, json, vm: HUB_VM, url: row.httpsUrl })
   }
 
