@@ -327,3 +327,21 @@
 {"kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/fleet/tests/test_factory_pairs.mjs"}
 {"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/judge.mjs"}
 {"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"six readers\\|nine reader\" /home/exedev/run/impl-3-0/factory/judge.mjs"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"node fleet/tests/test_factory_judge_pair.mjs 2>&1 | tail -60"}
+{"kind":"worker:test-run","task":"3","label":"impl:3:0","cmd":"node fleet/tests/test_factory_judge_pair.mjs 2>&1 | tail -60","red":false}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"ls fleet/tests | grep -i judge"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -rl \"factory/judge\" /home/exedev/run/impl-3-0/fleet/tests 2>/dev/null; grep -rl \"factory/judge\" /home/exedev/run/impl-3-0 --include=*.mjs 2>/dev/null | grep -v test_factory_judge_pair"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"judge\" /home/exedev/run/impl-3-0/factory/engine.mjs | head -20"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -rl \"questions.json\\|policy.json\" /home/exedev/run/impl-3-0/fleet/tests 2>/dev/null"}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"node fleet/tests/test_factory_judge_pair.mjs"}
+{"kind":"worker:test-run","task":"3","label":"impl:3:0","cmd":"node fleet/tests/test_factory_judge_pair.mjs","red":false}
+{"kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"git diff --stat"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"cd /home/exedev/run && wc -l patch-3-0.diff && ls impl-3-0"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Read","target":"/home/exedev/run/patch-3-0.diff"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"cat -n factory/judge.mjs"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"python3 - <<'EOF'\nimport json\nd=json.load(open('factory/questions.json'))\nfor sname,s in d['sets'].items():\n    for qn,q in (s.get('questions') or {}).items():\n        if isinstance(q,dict) and q.get("}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -rn \"criteria\" --include=*.mjs --include=*.js --include=*.py -l . | head -30"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"cat -n fleet/jev-questions.mjs | head -160"}
+{"kind":"supervisor","task":"3","label":"referee:3","answers":{"stuck":{"type":"noul","noul":0.18},"off_track":{"type":"noul","noul":0.23},"needs_human":{"type":"noul","noul":0.11},"done_not_exited":{"type":"noul","noul":0.06}}}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"python3 - <<'EOF'\nimport json\nd=json.load(open('factory/questions.json'))\nprint(json.dumps(d['sets']['settled'],indent=1))\nEOF"}
+{"kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -rn \"options\" --include=*.mjs --include=*.py factory fleet | grep -v tests | head -40"}
