@@ -620,3 +620,17 @@
 {"kind":"worker:tool","task":"5","label":"referee:5","tool":"Read","target":"/home/exedev/run/impl-5-0/factory/engine.mjs"}
 {"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"node fleet/tests/test_factory_dispatch.mjs 2>&1 | head -80"}
 {"kind":"worker:test-run","task":"4","label":"exam:4","cmd":"node fleet/tests/test_factory_dispatch.mjs 2>&1 | head -80","red":false}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"cd /tmp/mut && python3 - <<'EOF'\np='/tmp/mut/factory/engine.mjs'\ns=open(p).read()\ns=s.replace(\"'exam ' + red.exam.id + ' exit ' + red.exit + '\\\\n' + red.out.slice(-1500))\",\"'exam exit ' + red.exit + '"}
+{"kind":"worker:test-run","task":"5","label":"referee:5","cmd":"cd /tmp/mut && python3 - <<'EOF'\np='/tmp/mut/factory/engine.mjs'\ns=open(p).read()\ns=s.replace(\"'exam ' + red.exam.id + ' exit ' + red.exit + '\\\\n' + red.out.slice(-1500))\",\"'exam exit ' + red.exit + '\\\\n' + red.out.slice(-1500))\")\nopen(p,'w').write(s)\nEOF\ngrep -n \"'exam exit '\" factory/engine.mjs; node fleet/tests/test_factory_reverify.mjs 2>&1 | grep -E 'OK|Assertion|ALL' | head; cp /tmp/eng.bak /tmp/mut/factory/engine.mjs","red":false}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"mkdir -p /tmp/exam-sanity && cat > /tmp/exam-sanity/check.mjs << 'EOF'\nimport fs from 'node:fs'\nimport os from 'node:os'\nimport path from 'node:path'\nimport { execFileSync } from 'node:child_process'\n"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"worker(\" factory/engine.mjs | head -30"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"dispatch(\" factory/engine.mjs | head -30"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"const measure\\|capture(\\|\\.patch\\b\" factory/engine.mjs | head -40"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"const read = \\|async function read\\|function exitOf\\|function outOf\\|function lastJson\" -A 12 factory/engine.mjs | head -80"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"function exitOf\\|function outOf\\|const exitOf\\|const outOf\" -A 6 factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"edgePreds\\|waitsOn\\|dag_edges\\|hardPreds\\|chainPreds\\|settleReadiness\\|'adopted'\\|inflightLandings\" factory/engine.mjs | head -60"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
