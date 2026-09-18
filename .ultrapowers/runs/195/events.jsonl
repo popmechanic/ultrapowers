@@ -210,3 +210,10 @@
 {"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"command -v python3; command -v bash; command -v git; python3 --version"}
 {"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"ls /home/exedev/run/exam-1/factory/roles/"}
 {"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"^export function clausesOf\\|^export function bodyOf\" -A 15 /home/exedev/run/exam-2/factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"ls /home/exedev/run/exam-3/fleet/tests/test_factory_rows.mjs 2>&1"}
+{"kind":"worker:test-run","task":"3","label":"exam:3","cmd":"ls /home/exedev/run/exam-3/fleet/tests/test_factory_rows.mjs 2>&1","red":true}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"export function simEnv\\|export const simEnv\" -A 20 /home/exedev/run/exam-2/fleet/tests/_helpers.mjs | head -30"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/factory/engine.mjs"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"python3 -c \"import sys; print(sys.version)\" && node --version"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"mkdir -p /tmp/floor_smoke && cat > /tmp/floor_smoke/smoke.mjs << 'EOF'\nimport fs from 'node:fs'\nimport path from 'node:path'\nimport { runEngine, defaultSh } from '/home/exedev/run/exam-2/factory/engin"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Write","target":"/home/exedev/run/exam-3/fleet/tests/test_factory_rows.mjs"}
