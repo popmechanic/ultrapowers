@@ -230,3 +230,16 @@
 {"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"for c in mktemp sed awk grep mkdir date id printf head tail cp rm tr wc install tar sha256sum; do printf '%s: %s\\n' \"$c\" \"$(command -v $c)\"; done"}
 {"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"command -v sh; command -v python3 git bash sh"}
 {"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"grep -n \"export function cloneAtBase\\|export const cloneAtBase\" -A 25 /home/exedev/run/exam-5/fleet/run-waves.mjs | head -40"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"cat > /tmp/plan_test.md << 'EOF'\n# Run exam sim plan\n\n**Acceptance:** suite — sim\n\n### Task 1: One\n\n**Files:**\n- Modify: `src/one.py`\n\n**Proof:**\n- Test: `fleet/tests/test_one.mjs`\n\n### Task 2: Two\n\n*"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"node fleet/tests/test_factory_rows.mjs"}
+{"kind":"worker:test-run","task":"3","label":"exam:3","cmd":"node fleet/tests/test_factory_rows.mjs","red":true}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/fleet/tests/_helpers.mjs"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/factory/policy.json"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Write","target":"/home/exedev/run/exam-6/fleet/tests/test_factory_boot_close.mjs"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"mcp__factory__note"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Edit","target":"/home/exedev/run/exam-6/fleet/tests/test_factory_boot_close.mjs"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/tests/test_plan_parse.py"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Edit","target":"/home/exedev/run/exam-6/fleet/tests/test_factory_boot_close.mjs"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"mcp__factory__task_facts"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"mcp__factory__note"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"Machine:\" /home/exedev/run/claude-config/projects/-home-exedev-run-exam-2/8dceee67-eec6-4b96-8c5a-3c3f26cad304.jsonl | head -5"}
