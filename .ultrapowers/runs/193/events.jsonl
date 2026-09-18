@@ -401,3 +401,16 @@
 {"kind":"worker:tool","task":"7","label":"exam:7","tool":"Bash","target":"python3 - <<'EOF'\np = 'fleet/tests/_scratch_select.mjs'\ns = open(p).read()\ns = s.replace(\"await legD()\\nconsole.log('(d) [M4] catch forces exactly one re-dispatch: PASSED')\\n\", \"\")\nopen(p, 'w').write("}
 {"kind":"worker:tool","task":"7","label":"exam:7","tool":"Bash","target":"rm -f fleet/tests/_scratch_select.mjs"}
 {"kind":"worker:tool","task":"7","label":"exam:7","tool":"Bash","target":"git status --porcelain"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Bash","target":"ls && echo --- && ls factory && echo --- && ls fleet/tests | head -50"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Read","target":"/home/exedev/run/impl-7-0/fleet/tests/test_factory_engine_select.mjs"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Read","target":"/home/exedev/run/impl-7-0/factory/engine.mjs"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Read","target":"/home/exedev/run/impl-7-0/factory/select.mjs"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Read","target":"/home/exedev/run/impl-7-0/factory/hunks.mjs"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Read","target":"/home/exedev/run/impl-7-0/factory/judge.mjs"}
+{"kind":"supervisor","task":"7","label":"impl:7:0","answers":{"stuck":{"type":"noul","noul":0.24},"off_track":{"type":"noul","noul":0.35},"needs_human":{"type":"noul","noul":0.12},"done_not_exited":{"type":"noul","noul":0.13}}}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Bash","target":"cat /home/exedev/run/impl-7-0/factory/policy.json"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Read","target":"/home/exedev/run/impl-7-0/factory/board.mjs"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Read","target":"/home/exedev/run/impl-7-0/factory/roles/exam.md"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Read","target":"/home/exedev/run/impl-7-0/fleet/tests/_engine_helpers.mjs"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Bash","target":"ls /home/exedev/run/impl-7-0/fleet/ | grep -E 'run-engine|run-main|run-waves'"}
+{"kind":"worker:tool","task":"7","label":"impl:7:0","tool":"Bash","target":"grep -n \"export function cloneAtBase\\|export const cloneAtBase\" -A 20 /home/exedev/run/impl-7-0/fleet/run-waves.mjs | head -40"}
