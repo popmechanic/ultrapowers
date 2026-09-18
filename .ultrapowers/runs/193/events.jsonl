@@ -324,3 +324,14 @@
 {"kind":"worker:tool","task":"7","label":"exam:7","tool":"Read","target":"/home/exedev/run/exam-7/factory/select.mjs"}
 {"kind":"worker:tool","task":"7","label":"exam:7","tool":"Read","target":"/home/exedev/run/exam-7/factory/hunks.mjs"}
 {"kind":"supervisor","task":"7","label":"exam:7","answers":{"stuck":{"type":"noul","noul":0.47},"off_track":{"type":"noul","noul":0.42},"needs_human":{"type":"noul","noul":0.26},"done_not_exited":{"type":"noul","noul":0.14}}}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Bash","target":"grep -rl \"factory/engine\" /home/exedev/run/exam-7/fleet/tests | sort"}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Read","target":"/home/exedev/run/exam-7/fleet/tests/test_factory_hunks.mjs"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"cd /home/exedev/run && wc -l patch-5-0.diff && ls impl-5-0"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Read","target":"/home/exedev/run/patch-5-0.diff"}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Read","target":"/home/exedev/run/exam-7/factory/judge.mjs"}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Read","target":"/home/exedev/run/exam-7/fleet/tests/test_factory_judge_select.mjs"}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Read","target":"/home/exedev/run/exam-7/factory/policy.json"}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Read","target":"/home/exedev/run/exam-7/factory/roles/exam.md"}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Read","target":"/home/exedev/run/exam-7/factory/board.mjs"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -n \"set -\" factory/boot.sh | head -20 && echo \"---RUN_ID/PLAN_FILE/ENGINE_REPO_DIR---\" && grep -n \"RUN_ID=\\|PLAN_FILE=\\|ENGINE_REPO_DIR=\\|EVIDENCE_DIR=\\|EVIDENCE_REL=\\|TARGET_DIR=\" factory/boot.s"}
+{"kind":"worker:tool","task":"5","label":"referee:5","tool":"Bash","target":"grep -n \"strip_exams\\|^publish()\\|ensure_git_identity\\|evidence_commit\\|fleet_python3\" factory/boot.sh"}
