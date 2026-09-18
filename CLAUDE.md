@@ -105,6 +105,27 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   any VM and none in any argv. Own npm deps in `fleet/package.json`. Not plugin machinery —
   the sandbox clones the engine at the sha the assignment names, so changes here never require
   a plugin release.
+- `factory/` — the Jev factory (map #1131): the engine a launch gets when `--engine` names a sha
+  whose tree carries `factory/boot.sh` (`fleet/fleet-bootstrap.sh` picks the boot by that file).
+  Launch it from the repository checkout, never the plugin cache, with `--engine <sha>`.
+  `boot.sh` prepares the clone, the plan, the verdict record and the evidence worktree, brings up
+  the board, runs the engine as one transient unit under `RuntimeMaxSec` — one clock, no worker
+  caps (#1144) — and publishes as shell: since #1154 it moves a plan's unguarded exam files out of
+  the pull request into `.ultrapowers/runs/<N>/exams/` first. `engine.mjs` is the run as search,
+  a pool with no waves: per task an exam worker, `k` implementers, a measurement (the task's own
+  exam command and nothing else — no `Run:`, no `Check:`, no `ULTRA_BASE`), selection, at most one
+  re-dispatch, a referee when `readTask` asks for one, and a fold through the kernel on every
+  adoption. Every judgment is a question in `questions.json` read through `judge.mjs`, and every
+  threshold is a cell of `policy.json` carrying its `n`, `window`, `experiment` and `rollback` — a
+  switch there is the rollback of whatever it gates. `board.mjs` is the only module that talks to
+  Kata and never fails a run; `tools.mjs` is the worker's in-process tools (`note`, `hand`,
+  `settled`, `sibling_fact`, `task_facts`); `select.mjs` and `hunks.mjs` are test selection and
+  the hunks Jev is shown (#1154); `worker.mjs` is the SDK worker, whose `DISALLOWED_TOOLS` is the
+  git block (#1156 is its gap). The sandbox's parser is `skills/ultrapowers/scripts/plan_parse.py`;
+  `compile_plan.py` is the laptop's check only. The board is a Kata 0.18 spoke per sandbox: it
+  syncs through `kata-sync.int.exe.xyz`, which passes the spoke's own bearer through untouched
+  (measured on run-194, 2026-09-18), and the credential helper administers through
+  `kata.int.exe.xyz`, where the edge injects the hub's. The record is rows in `events.jsonl`.
 - `fleet/tests/` — the surviving sims, every `test_*.mjs` there (16 on 2026-09-14: the engine
   sims `test_run_engine_*.mjs`, the launcher sims `test_launch_*.mjs`, the boot sims
   `test_sandbox_boot_*.mjs`, `test_worker_kata_env.mjs` and
@@ -275,6 +296,16 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   (run-111). Hub writes are never the run's failure; the boot's ping is the one gate. The laptop reads
   the daemon with `ssh kata-hub.exe.xyz curl localhost:8000/api/v1/…`, the bearer from
   `~/.ultrapowers/kata-hub.env` passed on stdin, never on an argv.
+- **A factory worker sees its own task body and nothing else** — not the plan's header, not
+  `## Global Constraints`, not a sibling. A literal two tasks share goes into the body of each of
+  them, or the worker invents it: run-192's boot examiner wrote in its exam header that it could
+  not see the helper's argv or Kata's status shape and reconstructed both, and both reconstructions
+  shipped wrong — the spoke could never bind (#1149) and then bound unrecognised (#1155). Two runs
+  lost their board to it (193 and 194, 2026-09-18).
+- **Kata 0.18's `federation status --json` has no `status` cell.** A bound spoke reads
+  `"role":"spoke"` with `"provider_status":"ready"`; an unbound one `standalone` and `pending`;
+  and a helper that exits non-zero is logged by the daemon as `category=hub_unavailable status=0`,
+  which reads like a network fault and is not one (run-193).
 - **No direct Anthropic API calls in repo code.** A distributed plugin must need no API key. LLM work
   happens inside Claude Code (the agent loop / `claude -p`), which rides the user's subscription — do
   not add the `anthropic` SDK or `ANTHROPIC_API_KEY` to any shipped or dev script. On the fleet the

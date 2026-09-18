@@ -708,6 +708,24 @@ an exe VM with 2 vCPU / 4 GB)
   as the raw byte. GitHub still merges such a PR by hand. Find one with
   `grep -Plc '\x00' fleet/*.mjs`; the fix is the escape, one byte.
 
+**The factory's board.**
+
+- The spoke's `credential_provider` argv is flags, not positions: `node <engine>/factory/kata-credential.mjs
+  --kata-json <file> --admin-url https://kata.int.exe.xyz --state-dir <dir>`. Passed positionally the helper
+  throws on an undefined path and exits 1, the daemon logs `federation config reconciliation … state=pending
+  category=hub_unavailable status=0`, the helper's state directory stays empty, and the boot logs `board: … did
+  not bind within 120s` — with the network and both integrations fine (run-193, 2026-09-18; #1149). Tell a dark
+  hub from a dead helper from the VM: `kata --daemon hub federation identity --json` answering
+  `web_session_required` means the hub was reached.
+- A bound spoke is `"role":"spoke"` with `"provider_status":"ready"` in `kata federation status --json`; there
+  is no `"status"` cell to wait for. run-194's spoke reconciled one second after its daemon started and the
+  boot still waited its whole 120 s on a string Kata never prints, then ran the engine without its board
+  (2026-09-18; #1155). The same document answered the open measurement: `pull_cursor_event_id` moved and
+  `last_successful_sync_at` was set, so the edge passes the spoke's own bearer through `kata-sync`.
+- A finished factory run's VM is reported `stale … state=open — look before you rm` by the janitor, because
+  the factory boot does not close the hub's run issue yet (#1150). Verify `ultra/evidence/run-<N>` with
+  `git ls-remote --tags origin`, then `ssh exe.dev rm <vm>` by hand.
+
 ## Capacity
 
 Read the meter, never sum the allocation: `billing usage --json --range=24h`
