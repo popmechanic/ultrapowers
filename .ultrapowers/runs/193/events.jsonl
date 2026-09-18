@@ -477,3 +477,8 @@
 {"kind":"supervisor","task":"7","label":"fix:7","answers":{"stuck":{"type":"noul","noul":0.19},"off_track":{"type":"noul","noul":0.28},"needs_human":{"type":"noul","noul":0.11},"done_not_exited":{"type":"noul","noul":0.56}}}
 {"kind":"worker:tool","task":"7","label":"fix:7","tool":"Read","target":"/home/exedev/run/impl-7-0/factory/roles/exam.md"}
 {"kind":"worker:tool","task":"7","label":"fix:7","tool":"Bash","target":"git status --short && echo --- && git log --oneline -5"}
+{"kind":"worker:tool","task":"7","label":"fix:7","tool":"Bash","target":"grep -q 'COVERED:' factory/roles/exam.md && echo \"grep proof OK\"; cat factory/policy.json | python3 -c \"import json,sys; d=json.load(sys.stdin); print(d.get('select')); print(d.get('landing'))\""}
+{"kind":"worker:tool","task":"7","label":"fix:7","tool":"Bash","target":"node fleet/tests/test_factory_engine_select.mjs > /tmp/out.log 2>&1; echo \"exit=$?\"; tail -5 /tmp/out.log"}
+{"kind":"worker:test-run","task":"7","label":"fix:7","cmd":"node fleet/tests/test_factory_engine_select.mjs > /tmp/out.log 2>&1; echo \"exit=$?\"; tail -5 /tmp/out.log","red":false}
+{"kind":"worker:tool","task":"7","label":"fix:7","tool":"Bash","target":"echo done"}
+{"kind":"landing","task":"7","k":1,"examExit":0,"claim":0.48,"coverage":[0.83,0.77,0.81,0.75,0.89,0.72],"candidateSha":"9ff4638e7e58ac2ad629ee26fa0af359b0163700","wall_ms":2063062}
