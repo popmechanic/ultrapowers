@@ -444,8 +444,23 @@ export function newestNoteFact (factsText) {
 /** A `cloneAt(name, sha)` over one `target`: a fresh clone under `runDir`,
  *  detached at `sha`, its own private exclude so a candidate's bytecode
  *  cache never rides a captured patch. The one place either entry makes a
- *  clone, so both make it the same way. */
-function makeCloner ({ target, runDir, git }) {
+ *  clone, so both make it the same way.
+ *
+ *  M4: directly after the clone is made, and before anything else runs
+ *  there, this installs whatever the target needs — `bootstrapFor`'s
+ *  command over `planCmd: bootstrapCmd` and this clone's own tracked files
+ *  — through `sh`, under the same `timeout` an exam command runs under. A
+ *  non-zero exit there is not this clone's caller's problem to notice on
+ *  its own: `appendEvent` (when given) gets a `bootstrap:red` row naming
+ *  this clone and that exit, and `cloneAt` THROWS — an `Error` carrying a
+ *  `bootstrapRed: { clone, exit, tail }` field — rather than answering a
+ *  clone whose dependencies never installed as if it were ready. Every
+ *  caller either lets that propagate (a re-fold, where no per-task park
+ *  exists to route it to) or catches `err.bootstrapRed` to park the one
+ *  task that clone was made for. `sh` absent (no caller left needs this,
+ *  but a direct unit test of `makeCloner` alone might) skips bootstrapping
+ *  entirely, exactly as before this task. */
+function makeCloner ({ target, runDir, git, sh, bootstrapCmd, timeoutSeconds, appendEvent }) {
   return (name, sha) => {
     const dest = path.join(runDir, name)
     fs.rmSync(dest, { recursive: true, force: true })
@@ -454,6 +469,22 @@ function makeCloner ({ target, runDir, git }) {
       fs.appendFileSync(path.join(clone, '.git', 'info', 'exclude'),
         '\n__pycache__/\n*.pyc\n.pytest_cache/\n')
     } catch { /* a clone shape without .git/info is still a clone */ }
+
+    if (sh) {
+      let files = []
+      try { files = git(['ls-files'], clone).split('\n').map((s) => s.trim()).filter(Boolean) } catch { /* none tracked (or not a repo) reads as no evidence */ }
+      const cmd = bootstrapFor({ planCmd: bootstrapCmd, files })
+      if (cmd) {
+        const r = runAll({ cmds: [cmd], cwd: clone, sh, timeoutSeconds: timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS })
+        if (r.exit !== 0) {
+          if (appendEvent) appendEvent({ kind: 'bootstrap:red', clone, exit: r.exit })
+          const err = new Error('bootstrap failed in ' + clone + ': exit ' + r.exit)
+          err.bootstrapRed = { clone, exit: r.exit, tail: r.out.slice(-1500) }
+          throw err
+        }
+      }
+    }
+
     return clone
   }
 }
@@ -481,9 +512,11 @@ function copyMissingFiles (examsDir, destDir) {
   walk('.')
 }
 
-/** Every task in `tasks` with a non-empty `testCmd`, run once in `dir`, each
- *  under `timeout` — the runner `reverifyAfterFold` uses over just the tasks
- *  a fold touched, and `runRefold` (M2) uses over every task the plan names.
+/** Every task in `tasks` with at least one testCmds/testCmd entry, run in
+ *  `dir` through `runAll` (M3: every one of a task's own exam commands runs,
+ *  in order, stopping at that task's own first failure) — the runner
+ *  `reverifyAfterFold` uses over just the tasks a fold touched, and
+ *  `runRefold` (M2) uses over every task the plan names.
  *  Resolves `{ ran, reds }`: `ran` one `{ task, exit }` per exam that ran,
  *  `reds` the subset whose exit was non-zero, each carrying its own task and
  *  output. */
@@ -491,13 +524,11 @@ function runTaskExams ({ tasks, dir, sh, timeoutSeconds }) {
   const ran = []
   const reds = []
   for (const task of tasks) {
-    const cmdline = String(task.testCmd || '').trim()
-    if (!cmdline) continue
-    const [cmd, ...argv] = cmdline.split(/\s+/)
-    const r = sh('timeout', [String(timeoutSeconds), cmd, ...argv], dir)
-    const exit = exitOf(r)
-    ran.push({ task: task.id, exit })
-    if (exit !== 0) reds.push({ task, exit, out: outOf(r) })
+    const cmds = testCmdsOf(task)
+    if (!cmds.length) continue
+    const r = runAll({ cmds, cwd: dir, sh, timeoutSeconds })
+    ran.push({ task: task.id, exit: r.exit })
+    if (r.exit !== 0) reds.push({ task, exit: r.exit, out: r.out })
   }
   return { ran, reds }
 }
@@ -912,7 +943,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   // the clone's own private exclude, the interpreter's own bytecode cache
   // would ride the patch into the adopted tree. `makeCloner` is shared with
   // `runRefold`, below, so both entries make a clone the same way.
-  const cloneAt = makeCloner({ target, runDir, git })
+  const cloneAt = makeCloner({ target, runDir, git, sh, bootstrapCmd, timeoutSeconds: DEFAULT_TIMEOUT_SECONDS, appendEvent })
   // Amendment (undeclared by M1-M6, needed only to reach them under M3):
   // `exclude` drops the task's own Proof/Test files back out of the index
   // before the diff is cut, so a candidate's patch — the one thing this file
@@ -1563,11 +1594,24 @@ export async function runEngine (rawArgs = {}, deps = {}) {
 
     // Shared with `runRefold` (M2): the same per-task, under-`timeout` exam
     // run, over just the tasks this fold touched here rather than every task
-    // the plan names.
-    const runExams = () => runTaskExams({ tasks: exams, dir: cloneAt('fold-verify-' + task.id, head), sh, timeoutSeconds })
+    // the plan names. `cloneAt` can throw a `bootstrapRed`-carrying error
+    // (M4) when a fresh clone's own dependency install goes red; that is not
+    // this landing's own park (it already adopted) so it is read here as
+    // "this fold's re-verify could not run" rather than left to crash the
+    // whole run — the same `fold:unresolved`/`foldUnresolved` outcome an
+    // exam still red after the one re-attempt gets.
+    const runExams = () => {
+      try {
+        return runTaskExams({ tasks: exams, dir: cloneAt('fold-verify-' + task.id, head), sh, timeoutSeconds })
+      } catch (err) {
+        if (!(err && err.bootstrapRed)) throw err
+        return { ran: [], reds: [], bootstrapRed: err.bootstrapRed }
+      }
+    }
 
     const first = runExams()
     appendEvent({ kind: 'fold:verify', task: task.id, ran: first.ran })
+    if (first.bootstrapRed) { foldUnresolved = true; return }
     if (!first.reds.length) return
 
     for (const red of first.reds) {
@@ -1579,7 +1623,15 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     // One more attempt, in a fresh clone of the same folded tree, folded
     // through the same kernel path as any other landing.
     const anchor = head
-    const fixDir = cloneAt('fold-fix-' + task.id, anchor)
+    let fixDir
+    try {
+      fixDir = cloneAt('fold-fix-' + task.id, anchor)
+    } catch (err) {
+      if (!(err && err.bootstrapRed)) throw err
+      for (const red of first.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, exam: red.task.id })
+      foldUnresolved = true
+      return
+    }
     await dispatch({
       role: 'implement', label: 'impl:' + task.id + ':fold', taskId: task.id, cwd: fixDir,
       model, systemPrompt: IMPL_MD, files: implFilesOf(task), mcpServers: null,
@@ -1594,7 +1646,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     }
 
     const second = runExams()
-    if (second.reds.length) {
+    if (second.bootstrapRed || second.reds.length) {
       for (const red of second.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, exam: red.task.id })
       foldUnresolved = true
     }
@@ -1976,8 +2028,14 @@ export async function runRefold (rawArgs = {}, deps = {}) {
     throw new Error('plan_parse.py did not answer a plan: ' + String(compiledOut.stderr || '').slice(0, 400))
   }
   const tasks = compiled.launch_waves.flat()
+  // M4: same bootstrap-command resolution as runEngine's — the plan's own
+  // `bootstrapCmd` when the parser printed one, else each clone's own
+  // tracked files decide.
+  const bootstrapCmd = typeof compiled.bootstrapCmd === 'string' && compiled.bootstrapCmd !== ''
+    ? compiled.bootstrapCmd
+    : null
 
-  const cloneAt = makeCloner({ target, runDir, git })
+  const cloneAt = makeCloner({ target, runDir, git, sh, bootstrapCmd, timeoutSeconds, appendEvent })
 
   // M1: the run's whole patch is the target's own HEAD, as it stands before
   // any of this touches it, against `--base`.
