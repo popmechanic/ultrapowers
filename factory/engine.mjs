@@ -693,7 +693,11 @@ export async function runEngine (rawArgs = {}, deps = {}) {
           if (!pendingBash.has(b.tool_use_id)) continue
           const cmd = pendingBash.get(b.tool_use_id)
           if (!matchesTest(cmd)) continue
-          appendEvent({ kind: 'worker:test-run', task: taskId, label, cmd, red: Boolean(b.is_error) })
+          // The stream only shows a Bash call that happened to name the test
+          // command — never its real exit, which a `| tail` or `; echo
+          // EXIT:$?` hides from `is_error` regardless of what the run did.
+          // Say so rather than guess: this row's result is unknown.
+          appendEvent({ kind: 'worker:test-run', task: taskId, label, cmd, exit: null, red: null, via: 'bash' })
         }
       }
     }
@@ -932,6 +936,44 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   }
 
   /**
+   * The tool server ONE dispatch gets, built fresh for it rather than shared
+   * with any other clone: `runExam` closes over THIS dispatch's own `cwd` and
+   * `label`, so the row it appends (M2) names the clone that actually ran the
+   * command and the exit it actually saw, never a sibling's. A task with no
+   * `testCmd` gets a server with no working `runExam` — `factoryTools` itself
+   * answers `run_exam unavailable` for that case (M1) — and a run with no
+   * `tools` dep at all (no board) gets no server, exactly as before this task.
+   */
+  const mcpServersFor = async (taskId, cwd, label) => {
+    if (!tools) return null
+    const task = tasks.find((t) => t.id === taskId)
+    const testCmd = task && task.testCmd
+    const runExam = testCmd
+      ? async () => {
+        const [cmd, ...argv] = String(testCmd).trim().split(/\s+/)
+        const r = sh(cmd, argv, cwd)
+        const exit = exitOf(r)
+        const tail = outOf(r).slice(-1500)
+        appendEvent({
+          kind: 'worker:test-run', task: taskId, label, cmd: testCmd, exit,
+          red: exit !== 0, via: 'run_exam',
+        })
+        return { exit, tail }
+      }
+      : undefined
+    try {
+      const server = await tools({
+        task: { id: taskId, uid: uidFor(taskId), files: task && task.files },
+        candidates: [], board, runExam,
+      })
+      return server ? { factory: server } : null
+    } catch (e) {
+      log('tools: ' + String((e && e.message) || e).slice(0, 200))
+      return null
+    }
+  }
+
+  /**
    * The front of `land`, split off so it can run on its own schedule (M3):
    * the exam, written at `anchor` by the implementer's peer, and the covering
    * list its `TASK:` prompt was seeded with. `anchor` is the run's own base
@@ -942,13 +984,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
    */
   const examine = async (task, anchor) => {
     const examDir = cloneAt('exam-' + task.id, anchor)
-    let mcpServers = null
-    if (tools) {
-      try {
-        const server = await tools({ task: { id: task.id, uid: uidFor(task.id), files: task.files }, candidates: [], board })
-        if (server) mcpServers = { factory: server }
-      } catch (e) { log('tools: ' + String((e && e.message) || e).slice(0, 200)) }
-    }
+    const mcpServers = await mcpServersFor(task.id, examDir, 'exam:' + task.id)
 
     // M1: a task that names no exam file (`proofTests` empty) gets no
     // examiner at all — no covering reading, no dispatch, no exam-note — just
@@ -961,7 +997,6 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       fs.appendFileSync(eventsPath, JSON.stringify({ kind: 'exam:skipped', task: task.id, reason: 'no exam file' }) + '\n')
       return { examDir, mcpServers, taskCovering: [], examFiles: [] }
     }
-
     // M1: before the exam is dispatched, tell it which of its own clauses an
     // existing test already proves. `taskCovering` (one path or `null` per
     // clause) rides on into M2, seeding the run set's own covering tests.
@@ -1055,13 +1090,15 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     // running at minute zero when the policy speculates, or dispatched only
     // now, at this task's own anchor, when it does not (M6).
     const examResult = await (examAtZero ? examPromises.get(task.id) : examine(task, anchor))
-    const { mcpServers, taskCovering, examFiles } = examResult
+    const { taskCovering, examFiles } = examResult
 
-    // 2. k implementers, concurrently, each with the exam handed in.
+    // 2. k implementers, concurrently, each with the exam handed in — and each
+    //    with its OWN tool server, so its `run_exam` closes over its own clone.
     const prompt = await implPrompt(task)
     const files = implFilesOf(task)
     const candidates = await Promise.all(Array.from({ length: k }, async (_, index) => {
       const dir = cloneAt(`impl-${task.id}-${index}`, anchor)
+      const label = 'impl:' + task.id + ':' + index
       for (const [p, content] of examFiles) {
         // A path the exam never actually wrote to (a sim's default worker
         // writes only its own note file, never the real proof path) carries
@@ -1073,8 +1110,9 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         fs.mkdirSync(path.dirname(path.join(dir, p)), { recursive: true })
         fs.writeFileSync(path.join(dir, p), content)
       }
+      const mcpServers = await mcpServersFor(task.id, dir, label)
       const answer = await dispatch({
-        role: 'implement', label: 'impl:' + task.id + ':' + index, taskId: task.id, cwd: dir,
+        role: 'implement', label, taskId: task.id, cwd: dir,
         model, systemPrompt: IMPL_MD, files, mcpServers,
         prompt: await withHandoff(prompt, task.id),
       })
@@ -1199,9 +1237,11 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     if (short && redispatchPolicy.enabled === true) {
       await board.post(task.id, 'redispatch',
         'exam exit ' + best.examExit + ', lowest coverage ' + lowCoverage)
+      const redispatchLabel = 'impl:' + task.id + ':redispatch'
+      const redispatchServers = await mcpServersFor(task.id, best.dir, redispatchLabel)
       await dispatch({
-        role: 'implement', label: 'impl:' + task.id + ':redispatch', taskId: task.id, cwd: best.dir,
-        model, systemPrompt: IMPL_MD, files, mcpServers,
+        role: 'implement', label: redispatchLabel, taskId: task.id, cwd: best.dir,
+        model, systemPrompt: IMPL_MD, files, mcpServers: redispatchServers,
         prompt: await withHandoff(prompt, task.id),
       })
       const remeasured = await measure({ task, dir: best.dir, index: best.index, anchor })
@@ -1247,9 +1287,11 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         blocking: blocking.length, grades,
       })
       if (blocking.length) {
+        const fixLabel = 'fix:' + task.id
+        const fixServers = await mcpServersFor(task.id, best.dir, fixLabel)
         await dispatch({
-          role: 'implement', label: 'fix:' + task.id, taskId: task.id, cwd: best.dir,
-          model, systemPrompt: IMPL_MD, files, mcpServers,
+          role: 'implement', label: fixLabel, taskId: task.id, cwd: best.dir,
+          model, systemPrompt: IMPL_MD, files, mcpServers: fixServers,
           prompt: await withHandoff(prompt, task.id),
         })
         const remeasured = await measure({ task, dir: best.dir, index: best.index, anchor })
@@ -1771,14 +1813,14 @@ export function buildDeps (rawArgs = {}, overrides = {}) {
   // import here would make a run with no kata — the common one — depend on an
   // install it never needs.
   const tools = args.kataUrl
-    ? async ({ task, candidates, board }) => {
+    ? async ({ task, candidates, board, runExam }) => {
       const { makeKataClient, httpTransport } = await import('../fleet/kata-client.mjs')
       const { factoryTools } = await import('./tools.mjs')
       const kata = overrides.kata || makeKataClient({
         transport: httpTransport({ url: String(args.kataUrl) }),
         actor: args.kataActor,
       })
-      return factoryTools({ kata, projectId: args.kataProject, task, candidates, board })
+      return factoryTools({ kata, projectId: args.kataProject, task, candidates, board, runExam })
     }
     : null
 
