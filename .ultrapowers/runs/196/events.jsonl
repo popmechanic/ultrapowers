@@ -926,3 +926,23 @@
 {"ts":"2026-09-18T22:48:35.934Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"timeout 120 node fleet/tests/test_factory_proofs.mjs 2>&1 | tail -80"}
 {"ts":"2026-09-18T22:48:37.866Z","kind":"worker:test-run","task":"3","label":"impl:3:redispatch","cmd":"timeout 120 node fleet/tests/test_factory_proofs.mjs 2>&1 | tail -80","exit":null,"red":null,"via":"bash"}
 {"ts":"2026-09-18T22:48:39.902Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-18T22:48:41.861Z","kind":"worker:test-run","task":"3","label":"impl:3:redispatch","cmd":"node fleet/tests/test_factory_proofs.mjs","exit":0,"red":false,"via":"run_exam"}
+{"ts":"2026-09-18T22:48:42.699Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-18T22:48:44.733Z","kind":"worker:test-run","task":"3","label":"impl:3:redispatch","cmd":"node fleet/tests/test_factory_proofs.mjs","exit":0,"red":false,"via":"run_exam"}
+{"ts":"2026-09-18T22:48:48.404Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"grep -rn \"python3\" fleet/tests/*.mjs | grep -v test_factory_proofs"}
+{"ts":"2026-09-18T22:48:50.369Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"sed -n '1,140p' fleet/tests/test_launch_duplicate.mjs | grep -n \"import\\|runEngine\\|compilerRule\\|COMPILER\""}
+{"ts":"2026-09-18T22:48:53.991Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"grep -n \"fold_wave\\|kernel\\|python3\" factory/proto/loop.mjs | head -20"}
+{"ts":"2026-09-18T22:48:55.948Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"which env python3"}
+{"ts":"2026-09-18T22:48:58.756Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"rm -f /tmp/debug_c1.mjs /tmp/debug_c1_env.mjs /tmp/engine_backup.mjs /tmp/engine_env_test.mjs /tmp/test_copy.mjs"}
+{"ts":"2026-09-18T22:49:00.493Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"grep -n \"env', \\['python3'\\|includeChecks\" factory/engine.mjs"}
+{"ts":"2026-09-18T22:49:02.987Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"for i in 1 2 3; do node fleet/tests/test_factory_proofs.mjs > /tmp/out_$i.txt 2>&1; echo \"run$i: $(tail -1 /tmp/out_$i.txt)\"; done"}
+{"ts":"2026-09-18T22:49:08.347Z","kind":"worker:test-run","task":"3","label":"impl:3:redispatch","cmd":"for i in 1 2 3; do node fleet/tests/test_factory_proofs.mjs > /tmp/out_$i.txt 2>&1; echo \"run$i: $(tail -1 /tmp/out_$i.txt)\"; done","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-18T22:49:09.288Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-18T22:49:11.187Z","kind":"worker:test-run","task":"3","label":"impl:3:redispatch","cmd":"node fleet/tests/test_factory_proofs.mjs","exit":0,"red":false,"via":"run_exam"}
+{"ts":"2026-09-18T22:49:25.135Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"mcp__factory__note"}
+{"ts":"2026-09-18T22:49:27.062Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"mcp__factory__settled"}
+{"ts":"2026-09-18T22:49:31.683Z","kind":"dispatch:end","task":"3","label":"impl:3:redispatch","role":"implement","wall_ms":636378,"cost_usd":2.647700200000001,"error":null}
+{"ts":"2026-09-18T22:49:33.982Z","kind":"select:landing","task":"3","candidates":["tests/test_compile_plan_green_at_base.py","tests/test_plan_parse.py","fleet/tests/test_jev_client.mjs","fleet/tests/test_launch_duplicate.mjs","fleet/tests/test_setup_script.mjs","fleet/tests/test_sims_are_hermetic.mjs","fleet/tests/test_worker_kata_env.mjs","tests/test_compile_plan_dependencies.py"],"selected":[],"ran":[]}
+{"ts":"2026-09-18T22:49:38.005Z","kind":"dispatch:start","task":"3","label":"referee:3","role":"referee"}
+{"ts":"2026-09-18T22:49:42.299Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"wc -l /home/exedev/run/patch-3-0.diff && ls"}
+{"ts":"2026-09-18T22:49:42.305Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/proofs.mjs"}
