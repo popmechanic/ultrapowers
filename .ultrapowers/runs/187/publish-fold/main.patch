@@ -1,0 +1,1248 @@
+diff --git a/.gitignore b/.gitignore
+index 3cca0babf2b0a4141ba5f9f5b3c8854f85cea39c..c26708ff50199ce95c9911516cd0b426e54b65be 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -11,11 +11,8 @@ __pycache__/
+ .claude/workflows/
+ .claude/ultrapowers/
+ 
+-# ultralearn local cache — raw bundles, slices, verbatim evidence (never committed)
+-.claude/ultralearn/
+-
+-# ultralearn committed-digest output — regenerable from the local run cache
+-# (merge_ledger.py / regenerate_digest); ~600KB and growing, so untracked.
++# the catch ledger — the laptop's record of every run's catch-count row (#870);
++# ~600KB and growing, so untracked.
+ docs/superpowers/observations/ledger.jsonl
+ docs/superpowers/observations/ledger.md
+ 
+diff --git a/docs/README.md b/docs/README.md
+index 3f507e97790f8a7c20c401b101b47db49435cae9..139481cd04893d6536fc60fc5c220c5bf9a8a876 100644
+--- a/docs/README.md
++++ b/docs/README.md
+@@ -1,7 +1,7 @@
+ # docs/
+ 
+ `docs/superpowers/` — the specs, plans, gate-verdict records, intents, the docket and the
+-ultralearn observation ledger — is **untracked on purpose** (#544, operator decision
++catch ledger — is **untracked on purpose** (#544, operator decision
+ 2026-09-02): the design record stays out of the GitHub project until the ledger work
+ (#485, #484, #417) replicates it through a hosted store. It exists on two devices — the
+ laptop checkout and the orchestrator's `/home/exedev/repo` — each with `docs/superpowers/`
+diff --git a/evals/frontier/README.md b/evals/frontier/README.md
+index 30e3f99d44f466dadd6e057a12359ca8b52bbb52..e470b21f3aadb3b0554a399c4f2dc8a8b5cf1cc3 100644
+--- a/evals/frontier/README.md
++++ b/evals/frontier/README.md
+@@ -18,5 +18,5 @@ The tests never read this directory: `tests/conftest.py`'s `fixture_corpus` call
+ `corpuslib.make_fixture_corpus` into a pytest tmp dir, once per session. The two readings
+ cited by path — `2026-08-20-phase2-migration.md` from `CLAUDE.md` and
+ `2026-08-19-t15-resolver-token-share.md` from
+-`skills/ultralearn/references/reading-lenses.md` — are on the laptop, and
++the retired ultralearn skill's reading lenses — are on the laptop, and
+ `git log -- evals/frontier/corpus evals/frontier/results` still reads their history.
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index 511028e599eabe615e887e17c901c8bc01b39762..ff404dbe2c151ff9900355b975a08d656fb4fdf3 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -224,21 +224,6 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+     carries `jev: {compelled, plan_fault, magnitude}`, `null` on a read that did not answer and absent without
+     one. Nothing here gates, the readings included: an amendment is a note to whoever writes the next plan,
+     so for the same tree `tests.passed`, the gate receipt and the merge decision are unchanged.
+-    One more kind records what a worker ran rather than what it was asked to run:
+-    `driver:suite-runs` `{task, count, slices}` — one row per task an implementer worked, the
+-    count of times that task's workers ran the project's whole suite anyway. It is a reported
+-    sensor and gates nothing: no status, no review and no verdict reads it, and the same tree
+-    merges exactly as it would without the row. A bare suite run is a `Bash` `tool_use` block of
+-    an `assistant` record of a worker's reduced transcript slice whose `input.command`, split on
+-    `&&`, `||`, `;` and `|` with each segment trimmed, has at least one segment that is exactly
+-    `bun test`, `bun run test`, `npm test`, `pnpm test`, `pytest` or `python3 -m pytest`, or one
+-    of those followed only by tokens beginning `-`; a segment followed by any token not beginning
+-    `-` is not one, and a line that is not JSON, or a record with no such block, counts nothing.
+-    What is read is the run's own `transcript:slice` rows whose `label` is `impl:<id>` or begins
+-    `fix:<id>:`, and for each the file `<runDir>/transcripts/<sessionId>.jsonl`: `slices` is how
+-    many of those files existed, `count` the sum over them, both `0` when no row or no file does.
+-    The row is appended once per task — after the implementer has returned, after the pre-review
+-    fix round when the pass bought one, and before any reviewer is dispatched.
+     Jev (2026-09-16, the `jev:` seam, #1096 — an experiment whose rollback is deleting the three
+     appends): three more kinds record what Jev was asked and what it answered, and gate nothing.
+     `jev:finding` `{task, round, key, answers}` — one per finding a reviewer raised;
+@@ -288,8 +273,6 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+     same path, `driver:finding` the same block raised twice on one file, `driver:finding-refuted` a
+     false block repeated after it was shown wrong, `handshake:finding` a consumer's examiner blind
+     to the producer's rejected post — and a kind no finding ever cites over that window is removed.
+-    `transcripts/<sessionId>.jsonl` — one per worker session, the reduced record — is there
+-    on the same terms, present when the engine wrote them.
+     `state-exams/` — a tree of `task-<id>/<stem>-<pass>/` directories, one per exam run, whose
+     contents are the exam's own output copied file by file — is there on the same terms, present
+     when the exams wrote it.
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index 6675427f277691ea387dcc1e4635c3f6671c1438..8032c2e3288a423b67b5f2050fda47b0998aac9f 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -1593,62 +1593,6 @@ const taskBodyBlock = (task) => '\nTASK:\n' + (typeof task.body === 'string' ? t
+ // integrated tree. Deleted with that agent (#964 Task 2) — the composition
+ // question it was meant to answer is the per-task referee's, against the same
+ // bodies, before anything merges.
+-// ── the bare-suite sensor ────────────────────────────────────────────────────
+-// `implementer.md` and `fix.md` both say to run the task's own `PROOFS:` block
+-// and never the project's whole suite, because the fold runs the suite once per
+-// merge. This counts what a worker ran anyway, off the reduced transcript slice
+-// `run-worker.mjs` writes to `<runDir>/transcripts/<sessionId>.jsonl` — a Bash
+-// tool_use block keeps its `input.command`, which is the whole of what is read.
+-// It is a READING. Nothing downstream branches on it.
+-//
+-// A runner is a token prefix, so `python3 -m pytest` is three tokens and the
+-// `-m` inside it is part of the runner rather than a flag after it. What
+-// follows the prefix decides: only tokens beginning `-` leave the run bare, so
+-// `npm test -- --watch` counts and `bun test tests/x.test.ts` does not — the
+-// second one named a path, which is the thing a worker is asked to do.
+-const BARE_SUITE_RUNNERS = [
+-  ['bun', 'test'],
+-  ['bun', 'run', 'test'],
+-  ['npm', 'test'],
+-  ['pnpm', 'test'],
+-  ['pytest'],
+-  ['python3', '-m', 'pytest'],
+-]
+-// `&&`, `||`, `;` and `|` all separate; splitting on single `|` as well means
+-// `||` yields an empty middle segment, which no runner matches. Nothing else is
+-// a separator, so a redirection like `2>&1` stays inside its segment and is
+-// read as the trailing non-flag token it is.
+-const SUITE_SEGMENT_SPLIT = /&&|\|\||;|\|/
+-const isBareSuiteSegment = (segment) => {
+-  const tokens = String(segment).trim().split(/\s+/).filter(Boolean)
+-  return BARE_SUITE_RUNNERS.some((runner) =>
+-    tokens.length >= runner.length &&
+-    runner.every((word, i) => tokens[i] === word) &&
+-    tokens.slice(runner.length).every((t) => t.startsWith('-')))
+-}
+-export const bareSuiteRunCount = (sliceJsonl) => {
+-  let count = 0
+-  for (const line of String(sliceJsonl == null ? '' : sliceJsonl).split('\n')) {
+-    const s = line.trim()
+-    if (!s) continue
+-    let rec
+-    try { rec = JSON.parse(s) } catch { continue /* not a record line */ }
+-    // The reduced slice writes `type` on every record and every block; a
+-    // hand-built line that left one off is read as the shape it can only be,
+-    // so the count is about the command and not about the bookkeeping.
+-    if (!rec || typeof rec !== 'object') continue
+-    if (rec.type !== undefined && rec.type !== 'assistant') continue
+-    const content = rec.message && Array.isArray(rec.message.content) ? rec.message.content : []
+-    for (const block of content) {
+-      if (!block || typeof block !== 'object') continue
+-      if (block.type !== undefined && block.type !== 'tool_use') continue
+-      if (block.name !== 'Bash') continue
+-      const cmd = block.input && typeof block.input.command === 'string' ? block.input.command : ''
+-      if (cmd && cmd.split(SUITE_SEGMENT_SPLIT).some(isBareSuiteSegment)) count += 1
+-    }
+-  }
+-  return count
+-}
+ // ── small exec adapters ──────────────────────────────────────────────────────
+ // Shell strings (testCmd, bootstrapCmd) run through `bash -lc`; git always
+ // runs argv-form. Both resolve, never reject — callers branch on code.
+@@ -2395,39 +2339,6 @@ export async function runEngine({
+     appendEvent({ ...row, ...(derived || {}), answers })
+     return answers
+   }
+-  // ── the bare-suite reading, one row per task an implementer worked ─────────
+-  // The engine holds no copy of a worker's transcript: `run-worker.mjs` writes
+-  // the reduced slice to `<runDir>/transcripts/<sessionId>.jsonl` and announces
+-  // it with a `transcript:slice` row through run-main's event log, which is the
+-  // same `events.jsonl` `appendEvent` above writes. So the record is what is
+-  // read back, and the labels are the engine's own: `impl:<id>` for the
+-  // implementer's session and `fix:<id>:…` for its repair rounds (only round 0
+-  // exists at the call site — the review loop's rounds come after it).
+-  //
+-  // A slice row whose file is not there is not read and is not counted, which
+-  // is why `slices` says how many files were actually opened. Both fields are
+-  // `0` when there was no row at all. The row GATES NOTHING: no status, no
+-  // review, no verdict reads it.
+-  const noteSuiteRuns = (taskId) => {
+-    let text = ''
+-    try { text = fs.readFileSync(path.join(runDir, 'events.jsonl'), 'utf8') } catch { /* no record yet */ }
+-    let count = 0, slices = 0
+-    for (const line of text.split('\n')) {
+-      const s = line.trim()
+-      if (!s || s[0] !== '{') continue
+-      let e
+-      try { e = JSON.parse(s) } catch { continue /* not an event line */ }
+-      if (!e || e.kind !== 'transcript:slice' || typeof e.label !== 'string') continue
+-      if (e.label !== 'impl:' + taskId && !e.label.startsWith('fix:' + taskId + ':')) continue
+-      let slice
+-      try {
+-        slice = fs.readFileSync(path.join(runDir, 'transcripts', String(e.sessionId) + '.jsonl'), 'utf8')
+-      } catch { continue /* announced, never written */ }
+-      slices += 1
+-      count += bareSuiteRunCount(slice)
+-    }
+-    appendEvent({ kind: 'driver:suite-runs', task: taskId, count, slices })
+-  }
+   // The block one brief carries, and the record that it carried one. A
+   // non-empty block leaves one `driver:facts` row — a record row and not a
+   // receipt (no `paths`, no `evidence`, not a receipt kind, never rendered
+@@ -5033,12 +4944,6 @@ export async function runEngine({
+       }
+     }
+ 
+-    // One row, here: the implementer has returned, the pre-review fix round has
+-    // run when the pass bought one, and no reviewer has been dispatched yet.
+-    // Every exit above this line ended the task without a reviewer, so the path
+-    // that reaches a referee is the path that carries the reading.
+-    noteSuiteRuns(task.id)
+-
+     // The round's own minor findings, de-duplicated, for the row's notes. They
+     // were also carried from round 1 into round 2 (2026-09-01, run-47 read) so
+     // the second reviewer would not re-find what the first had recorded; with
+diff --git a/fleet/run-worker.mjs b/fleet/run-worker.mjs
+index 9ebcc3c12d537bc779af88b9166810127f93acff..5f4516d4fba324d5b7b1c4d43bc93b84cb90a856 100644
+--- a/fleet/run-worker.mjs
++++ b/fleet/run-worker.mjs
+@@ -646,223 +646,6 @@ export function recordEnvelopeDenials({ workersDir, label, role, envelope }) {
+   } catch { return 0 }
+ }
+ 
+-// ── #702 Task 1: the per-worker transcript slice ─────────────────────────────
+-// Beside the receipts, one small file per worker session: which tools it called
+-// and on what paths, how big each result was, and what it said last — and never
+-// the contents of any file it read or wrote.
+-//
+-// WHY AT THE WRITER, not the reader. `fleet_slice.WORKER_BUDGET` is 12,000
+-// chars and the ultralearn slicer applies it when a lens reads a run. That is
+-// too late for two reasons: the live transcripts live under the sandbox's
+-// per-run CLAUDE_CONFIG_DIR and never leave it, and a run's 14 transcripts were
+-// 564,293 chars on run-30. So the same number is applied HERE, once, and what
+-// lands beside the run is already a slice. Head 8,000 + tail 4,000 is the
+-// slicer's own rule — the brief is at the top, the conclusion at the bottom,
+-// and the middle is the part a lens least often needs.
+-//
+-// WHAT THE SLICE MUST NOT CARRY, and why an allowlist is the only safe shape:
+-// a `Read`'s file body rides in the `tool_result` block AND again in the user
+-// record's top-level `toolUseResult`; `Write`/`Edit`/`MultiEdit` carry file
+-// bodies in their tool_use `input` (`content`, `new_string`, `old_string`,
+-// `edits`); `Agent` carries a whole prompt in `input.prompt`; a `thinking`
+-// block carries the reasoning and its signature. Every one of those is a key
+-// or a block type a denylist would have to enumerate — and the CLI adds record
+-// types and input keys without asking us. So: records by allowlist
+-// (`user`/`assistant`), blocks by allowlist (`text`/`tool_use`/`tool_result`),
+-// tool_use inputs by allowlist (the six path-shaped scalars a lens needs to see
+-// what a worker touched), and every tool_result body replaced by its size.
+-//
+-// The shape is a CONTRACT with the reading side: every line is an object and
+-// `message.content` is either a string or a list of text/tool_use/tool_result
+-// blocks, so `_readers.records()` and `_readers.iter_blocks_indexed()` in
+-// skills/ultralearn/scripts/_readers.py read a slice exactly as they read a
+-// live transcript. `<n> chars` is counted the way `_readers.block_text`
+-// flattens (a string as-is, a list as its blocks' `text` joined by newlines),
+-// so the number a lens reads means the same thing on both sides.
+-const SLICE_MAX_BYTES = 12000
+-const SLICE_HEAD_BYTES = 8000
+-const SLICE_TAIL_BYTES = 4000
+-// Text bounds resolve "the final message kept whole" against the byte cap: a
+-// final assistant text longer than the tail budget would be the record the tail
+-// cut drops, so the thing the brief most wants would be the one thing missing.
+-// Bounded at 3,000 it always fits; the envelope's `result` still carries the
+-// worker's whole final message beside it in the worker dir.
+-const SLICE_TEXT_MAX = 2000
+-const SLICE_FINAL_TEXT_MAX = 3000
+-// A Bash `command` can carry a heredoc with a whole file body in it, which is
+-// why even an allowlisted string is cut.
+-const SLICE_INPUT_STR_MAX = 500
+-// An error's first 200 characters are the part that says what went wrong.
+-const SLICE_ERROR_TEXT_MAX = 200
+-const SLICE_INPUT_KEYS = ['file_path', 'path', 'command', 'pattern', 'glob', 'description']
+-const SLICE_RECORD_KEYS = ['type', 'uuid', 'parentUuid', 'timestamp', 'sessionId']
+-const SLICE_MESSAGE_KEYS = ['role', 'model']
+-
+-// `…[truncated <k> chars]` — the marker is part of the contract, not decoration:
+-// a lens that reads a cut text must be able to tell it was cut.
+-function cutText(text, max) {
+-  const s = typeof text === 'string' ? text : ''
+-  if (s.length <= max) return s
+-  return s.slice(0, max) + '…[truncated ' + (s.length - max) + ' chars]'
+-}
+-
+-// `_readers.block_text`, transliterated: `text` if it is a string, else
+-// `content` as a string, else `content`'s blocks' text joined by newlines. The
+-// count in `[tool_result: <n> chars]` is this length, so the two sides agree.
+-function blockText(block) {
+-  if (!block || typeof block !== 'object' || Array.isArray(block)) return ''
+-  if (typeof block.text === 'string') return block.text
+-  const c = block.content
+-  if (typeof c === 'string') return c
+-  if (Array.isArray(c)) return c.map(blockText).join('\n')
+-  return ''
+-}
+-
+-function reduceToolUse(block) {
+-  const src = (block.input && typeof block.input === 'object') ? block.input : {}
+-  const input = {}
+-  for (const k of SLICE_INPUT_KEYS) {
+-    const v = src[k]
+-    if (typeof v === 'string') input[k] = v.slice(0, SLICE_INPUT_STR_MAX)
+-    else if (typeof v === 'number' || typeof v === 'boolean') input[k] = v
+-    // Anything else — an object, an array, a null — is dropped: `Edit`'s
+-    // `edits` is an array of file bodies, and no path-shaped key is ever one.
+-  }
+-  return { type: 'tool_use', id: block.id, name: block.name, input }
+-}
+-
+-function reduceToolResult(block) {
+-  const flat = blockText(block)
+-  const out = { type: 'tool_result', tool_use_id: block.tool_use_id }
+-  if (block.is_error !== undefined) out.is_error = block.is_error
+-  out.content = block.is_error === true
+-    ? '[tool_result: ' + flat.length + ' chars, is_error] ' + flat.slice(0, SLICE_ERROR_TEXT_MAX)
+-    : '[tool_result: ' + flat.length + ' chars]'
+-  return out
+-}
+-
+-function reduceRecord(rec, finalTextBlock) {
+-  const out = {}
+-  for (const k of SLICE_RECORD_KEYS) if (rec[k] !== undefined) out[k] = rec[k]
+-  const msg = (rec.message && typeof rec.message === 'object' && !Array.isArray(rec.message)) ? rec.message : null
+-  if (msg) {
+-    const m = {}
+-    for (const k of SLICE_MESSAGE_KEYS) if (msg[k] !== undefined) m[k] = msg[k]
+-    const c = msg.content
+-    if (typeof c === 'string') {
+-      // #137's shape: a short CLI prompt arrives as plain string content, and
+-      // `iter_blocks_indexed` reads it as a single text block. It stays a
+-      // string here so it keeps reading as one.
+-      m.content = cutText(c, SLICE_TEXT_MAX)
+-    } else if (Array.isArray(c)) {
+-      const blocks = []
+-      for (const b of c) {
+-        if (!b || typeof b !== 'object') continue
+-        if (b.type === 'text') {
+-          blocks.push({ type: 'text', text: cutText(b.text, b === finalTextBlock ? SLICE_FINAL_TEXT_MAX : SLICE_TEXT_MAX) })
+-        } else if (b.type === 'tool_use') {
+-          blocks.push(reduceToolUse(b))
+-        } else if (b.type === 'tool_result') {
+-          blocks.push(reduceToolResult(b))
+-        }
+-        // Every other block type — `thinking` above all — is dropped by the
+-        // allowlist, so a block type the CLI adds tomorrow is dropped too.
+-      }
+-      m.content = blocks
+-    }
+-    out.message = m
+-  }
+-  return out
+-}
+-
+-// jsonl in, jsonl out — the whole reduction, with no filesystem in it, so the
+-// exam can drive it without a process.
+-export function sliceTranscript(jsonl) {
+-  const kept = []
+-  for (const line of String(jsonl || '').split('\n')) {
+-    const s = line.trim()
+-    if (!s) continue
+-    let rec
+-    try { rec = JSON.parse(s) } catch { continue }   // a partial line is not a record
+-    if (!rec || typeof rec !== 'object' || Array.isArray(rec)) continue
+-    if (rec.type !== 'user' && rec.type !== 'assistant') continue
+-    kept.push(rec)
+-  }
+-
+-  // The last text block of the last assistant record is the worker's final
+-  // message — the one text worth 3,000 characters instead of 2,000.
+-  let finalTextBlock = null
+-  for (let i = kept.length - 1; i >= 0; i--) {
+-    if (kept[i].type !== 'assistant') continue
+-    const c = kept[i].message && kept[i].message.content
+-    if (Array.isArray(c)) for (const b of c) if (b && b.type === 'text') finalTextBlock = b
+-    break
+-  }
+-
+-  const lines = kept.map((r) => JSON.stringify(reduceRecord(r, finalTextBlock)))
+-  // Every line costs its own bytes plus the newline that separates it; the
+-  // joined string is one byte shorter than this sum, so budgeting on it is
+-  // conservative in the safe direction.
+-  const size = (s) => Buffer.byteLength(s, 'utf8') + 1
+-  const total = lines.reduce((n, l) => n + size(l), 0)
+-  if (total <= SLICE_MAX_BYTES) return lines.join('\n')
+-
+-  const elisionLine = (n) => JSON.stringify({ type: 'system', subtype: 'elided', records: n })
+-  // The elision line's own width depends on the count it carries, which is not
+-  // known until the cut is made. Reserve the worst case (every record dropped)
+-  // so the head budget never has to be revised downward after the fact.
+-  let used = size(elisionLine(kept.length))
+-  let head = 0
+-  while (head < lines.length && used + size(lines[head]) <= SLICE_HEAD_BYTES) {
+-    used += size(lines[head]); head++
+-  }
+-  let tailUsed = 0, tail = 0
+-  while (tail < lines.length - head && tailUsed + size(lines[lines.length - 1 - tail]) <= SLICE_TAIL_BYTES) {
+-    tailUsed += size(lines[lines.length - 1 - tail]); tail++
+-  }
+-  // head + tail can never cover every record here: their budgets sum to 12,000
+-  // and the records total more than that, so at least one is always dropped.
+-  return lines.slice(0, head)
+-    .concat([elisionLine(lines.length - head - tail)], lines.slice(lines.length - tail))
+-    .join('\n')
+-}
+-
+-// The CLI writes each session to `<CLAUDE_CONFIG_DIR>/projects/<cwd-slug>/
+-// <sessionId>.jsonl`, where the slug is the worker's cwd with `/` turned into
+-// `-`. Recomputing that slug is a second place to get wrong (a realpath, a
+-// trailing slash, a character class), and the session id is already unique — so
+-// search every subdirectory of `projects/` instead, exactly as
+-// `fleet_slice.find_transcript` does.
+-function findTranscript(configDir, sessionId) {
+-  const projects = path.join(configDir, 'projects')
+-  let entries
+-  try { entries = fs.readdirSync(projects, { withFileTypes: true }) } catch { return null }
+-  const name = sessionId + '.jsonl'
+-  for (const e of entries) {
+-    if (!e.isDirectory()) continue
+-    const p = path.join(projects, e.name, name)
+-    if (fs.existsSync(p)) return p
+-  }
+-  return null
+-}
+-
+-// Find, reduce, write `<runDir>/transcripts/<sessionId>.jsonl`. Returns
+-// `{ bytes }`, or null when there is no transcript to slice. A read or write
+-// that fails THROWS — the call site turns that into `transcript:missing` with a
+-// detail, which is the difference between "this worker left no transcript" and
+-// "this worker's transcript could not be read", and the two are worth telling
+-// apart when a run comes back with nothing to look at.
+-export function writeTranscriptSlice({ configDir, runDir, sessionId }) {
+-  if (!configDir || !runDir || !sessionId) return null
+-  const src = findTranscript(configDir, sessionId)
+-  if (!src) return null
+-  const sliced = sliceTranscript(fs.readFileSync(src, 'utf8'))
+-  const outDir = path.join(runDir, 'transcripts')
+-  fs.mkdirSync(outDir, { recursive: true })
+-  fs.writeFileSync(path.join(outDir, sessionId + '.jsonl'), sliced)
+-  return { bytes: Buffer.byteLength(sliced, 'utf8') }
+-}
+-
+ // The one line of the prompt the confine hook is told about (#762). The hook
+ // reads stdin and its own environment; it never sees the prompt, so the worker
+ // hands it the TEST COMMAND line — the line run-34 died on, when a `pkill -f`
+@@ -1031,29 +814,6 @@ export function createRunWorker(cfg) {
+       reason,
+       meter: envelope ? meterOf(envelope) : null })
+ 
+-    // #702 Task 1 — the slice, after `worker:end` and before the verdict is
+-    // acted on, so every outcome leaves one (a worker that failed is the one
+-    // whose transcript is most worth reading). Best-effort exactly like
+-    // `recordEnvelopeDenials`: a throw anywhere in finding, reading, reducing
+-    // or writing becomes an event, never a change to what agent() returns —
+-    // an evidence writer that can fail a worker is worse than no evidence.
+-    // `workersDir` null is a caller without an evidence bundle: nothing to
+-    // write beside, so nothing is written and nothing is emitted.
+-    if (workersDir) {
+-      try {
+-        const slice = writeTranscriptSlice({
+-          configDir: env && env.CLAUDE_CONFIG_DIR,
+-          runDir: path.dirname(workersDir),
+-          sessionId,
+-        })
+-        if (slice) onEvent({ kind: 'transcript:slice', label: opts.label, sessionId, bytes: slice.bytes })
+-        else onEvent({ kind: 'transcript:missing', label: opts.label, sessionId })
+-      } catch (e) {
+-        onEvent({ kind: 'transcript:missing', label: opts.label, sessionId,
+-          detail: String((e && e.message) || e) })
+-      }
+-    }
+-
+     switch (verdict.outcome) {
+       case 'ok':
+         return envelope.structured_output
+diff --git a/fleet/sandbox-boot.sh b/fleet/sandbox-boot.sh
+index 11f83788ab843ad8407d0a5d2ab1c9deb3163e7d..3798645120f9cf4681aef29e22f1aeb51aa4b5f4 100755
+--- a/fleet/sandbox-boot.sh
++++ b/fleet/sandbox-boot.sh
+@@ -1643,20 +1643,10 @@ collect_evidence() {
+   # The HUB's record, beside the engine's own log. A run with no kata record
+   # exports nothing and writes no file.
+   kata_export
+-  # The engine's per-worker transcripts — the reduced records ultralearn's
+-  # readers slice, and the only trace of what a worker actually did that
+-  # outlives the box. Copied FILE BY FILE, never `cp -R` of the directory: this
+-  # function runs at every `write_status` transition and once more at `fail`, so
+-  # a directory copy onto a destination that already holds `transcripts/` nests
+-  # a second one inside the first. A run whose engine wrote none commits none.
+-  if [ -d "$run_dir/transcripts" ]; then
+-    mkdir -p "$dest/transcripts"
+-    cp "$run_dir/transcripts/"*.jsonl "$dest/transcripts/" 2>/dev/null || true
+-  fi
+   # The state exams' own records — `task-<id>/<stem>-<pass>/<file>`, a tree of
+   # arbitrary depth rather than one flat directory, so the copy WALKS THE
+   # REGULAR FILES and rebuilds each one's relative path under the destination.
+-  # Never `cp -R` of the directory, for the reason the transcripts give: this
++  # Never `cp -R` of the directory: this
+   # function runs again at every later transition, and a directory copy onto a
+   # destination that already holds `state-exams/` nests a second one inside the
+   # first. A run whose engine wrote none commits none — nothing here creates
+diff --git a/fleet/tests/test_jev_client.mjs b/fleet/tests/test_jev_client.mjs
+index 9d59c6e7cea77cd6ced545b7383b54dacbfa5a69..864f918b20e632f75b75e2c3a2db46faecb1b568 100644
+--- a/fleet/tests/test_jev_client.mjs
++++ b/fleet/tests/test_jev_client.mjs
+@@ -51,7 +51,7 @@
+  *   M6 — `fleet/CONTRACT.md`'s engine unit line carries
+  *        `TYPESAFE_BASE_URL=https://typesafe.int.exe.xyz` after
+  *        `CLAUDE_CODE_OAUTH_TOKEN=placeholder`; the paragraph after
+- *        `driver:suite-runs` names the three kinds, `POST /v1/systemone`, the
++ *        the `jev:` seam names the three kinds, `POST /v1/systemone`, the
+  *        one-log-line-and-no-row rule and that nothing reads them; the
+  *        `Integration naming` bullet names the `typesafe` http-proxy; and
+  *        `fleet/tests/README.md` gains one line each for the four sims.
+@@ -758,16 +758,16 @@ assert.ok(/CLAUDE_CODE_OAUTH_TOKEN=placeholder *TYPESAFE_BASE_URL=https:\/\/type
+   '`CLAUDE_CODE_OAUTH_TOKEN=placeholder`. (Proof `Run:` line 4) The range read: ' +
+   JSON.stringify(joined(contractEngine)))
+ 
+-// Run: sed -n '/driver:suite-runs. .{task, count, slices}/,/^    Receipts (2026-09-16)/p' … | grep -q …
++// Run: sed -n '/Jev (2026-09-16, the .jev:. seam/,/^    Receipts (2026-09-16)/p' … | grep -q …
+ const threeKinds = sedRange(contract,
+-  /driver:suite-runs. .\{task, count, slices\}/,
++  /Jev \(2026-09-16, the .jev:. seam/,
+   /^ {4}Receipts \(2026-09-16\)/)
+ assert.ok(threeKinds.length > 0,
+-  '(f) [M6] sim precondition: the `driver:suite-runs` paragraph is still there — the range ' +
++  '(f) [M6] sim precondition: the `jev:` seam paragraph is still there — the range ' +
+   'the Proof\'s fifth `Run:` line reads')
+ assert.ok(/jev:finding.*jev:tier.*jev:suite-red.*POST \/v1\/systemone.*one log line and no row.*read by nothing/
+   .test(joined(threeKinds)),
+-  '(f) [M6] the paragraph after `driver:suite-runs` names `jev:finding`, `jev:tier` and ' +
++  '(f) [M6] the `jev:` seam paragraph names `jev:finding`, `jev:tier` and ' +
+   '`jev:suite-red`, `POST /v1/systemone`, that a failed call is one log line and no row, ' +
+   'and that they are read by nothing — in that order. (Proof `Run:` line 5) The range ' +
+   'read: ' + JSON.stringify(joined(threeKinds)))
+diff --git a/fleet/tests/test_run_engine_own_proofs.mjs b/fleet/tests/test_run_engine_own_proofs.mjs
+index 96c8e10c21e31a4a71850fb4644d5ac36571d014..5658cfe031dfefaa7e0076d174a2feb58ecae5c7 100644
+--- a/fleet/tests/test_run_engine_own_proofs.mjs
++++ b/fleet/tests/test_run_engine_own_proofs.mjs
+@@ -75,10 +75,6 @@ import os from 'node:os'
+ import path from 'node:path'
+ import { fileURLToPath } from 'node:url'
+ import { rig, makeRepo, passReview, doneImpl } from './_engine_helpers.mjs'
+-// A namespace import, not a named one: at a BASE where the engine exports no
+-// `bareSuiteRunCount` a named import is a link-time SyntaxError before a line
+-// of this file runs, and the first thing a reader should see is the assertion
+-// that says which export is missing.
+ import * as engine from '../run-engine.mjs'
+ 
+ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-own-proofs-'))
+@@ -373,310 +369,8 @@ const NONE_LINE = '(none — the driver runs the exam at handoff)'
+ //        COMMAND`. Leg (a) — whose second half is the existing S4 above.
+ //   M2 — `fleet/roles/fix.md` carries the same sentence, above its `## The
+ //        issue`, and does not contain `TEST COMMAND`. Leg (b) — same split.
+-//   M3 — `bareSuiteRunCount(sliceJsonl)`, exported from `fleet/run-engine.mjs`,
+-//        counts the `tool_use` blocks of the slice's `assistant` records whose
+-//        `name` is `Bash` and whose `input.command`, split on `&&`, `||`, `;`
+-//        and `|` with each segment trimmed, has at least one segment that is
+-//        exactly `bun test`, `bun run test`, `npm test`, `pnpm test`, `pytest`
+-//        or `python3 -m pytest`, or one of those followed only by tokens
+-//        beginning `-`; a segment followed by any token not beginning `-` is
+-//        not counted; a line that is not JSON, or a record with no such block,
+-//        counts nothing. Legs (c) and (d).
+-//   M4 — once per task, after the implementer returned and after the
+-//        pre-review fix round when the pass bought one, and BEFORE any
+-//        reviewer is dispatched, the driver reads `<runDir>/events.jsonl` for
+-//        `transcript:slice` rows labelled `impl:<id>` or `fix:<id>:…`, sums
+-//        `bareSuiteRunCount` over `<runDir>/transcripts/<sessionId>.jsonl` for
+-//        each such row whose file exists, and appends exactly one
+-//        `driver:suite-runs {task, count, slices}` — both `0` when no row or
+-//        file exists — and nothing about the row changes the task's status,
+-//        its review, or the run's verdict. Legs (e), (f), (g).
+-//   M5 — `fleet/CONTRACT.md` names `driver:suite-runs {task, count, slices}`
+-//        in the paragraph that names `driver:amendment`, as a reported sensor
+-//        that gates nothing, with the M3 definition and the M4 sites. Leg (h).
+-//
+-// Three readings, recorded here and on the kata issue:
+-//
+-//   Leg (e)'s "position before the run's first `review:T1:1` dispatch". The
+-//   labels list and `events.jsonl` are two different records, so "before" is
+-//   asserted where the two meet: the `review:T1:1` stub snapshots the event log
+-//   AT THE MOMENT IT IS DISPATCHED, and the row must already be in that
+-//   snapshot. That is M4's "before any reviewer is dispatched" exactly, and it
+-//   cannot be satisfied by a row appended after the review round returns.
+-//
+-//   Leg (e)'s "the task's report row is `merged`". The engine's report rows
+-//   carry no literal `merged` status; a task the run merged is `status: 'done'`
+-//   with a clean review verdict and counted in `coverage.tasks_merged`, which
+-//   is what the sim's existing scenarios leave. All three are asserted, so the
+-//   sensor is pinned as a reading that gates nothing.
+-//
+-//   Legs (a), (b) and (h) restate the Proof's own `Run:` lines. Those commands
+-//   execute in the driver's clone; what these blocks pin is the same fact in
+-//   the same words — the sed/grep window and the pattern, transliterated — so
+-//   the sim says what the commands say.
+-const CONTRACT_SRC = fileURLToPath(new URL('../CONTRACT.md', import.meta.url))
+-
+-// One `assistant` record of the reduced shape `sliceTranscript` writes: `type`,
+-// `sessionId` and `message.content` as blocks, a `tool_use` block keeping
+-// `name` and an `input` whose `command` is the string the count reads.
+-const recordOf = (cmds, { name = 'Bash', sessionId = 'sess-x' } = {}) =>
+-  JSON.stringify({
+-    type: 'assistant',
+-    sessionId,
+-    message: {
+-      role: 'assistant',
+-      content: cmds.map((command, i) => ({
+-        type: 'tool_use', id: 't' + (i + 1), name, input: { command },
+-      })),
+-    },
+-  }) + '\n'
+-// The same commands as one record each, which is what a real slice looks like.
+-const perRecordSlice = (cmds, opts) => cmds.map((c) => recordOf([c], opts)).join('')
+-
+-// ── S6: leg (c) [M3] ─────────────────────────────────────────────────────────
+-// The counter, over one assistant record carrying thirteen Bash commands in
+-// the Proof's order: ten of them are bare suite runs.
+-{
+-  assert.equal(typeof engine.bareSuiteRunCount, 'function',
+-    'fleet/run-engine.mjs exports `bareSuiteRunCount(sliceJsonl) -> number` — the counter M3 ' +
+-    'defines and the Produces interface names')
+-
+-  // The Proof's thirteen, in the Proof's order. The comment on each says which
+-  // sentence of M3 decides it.
+-  const CMDS = [
+-    'bun test',                             // counted — exactly a named runner
+-    'bun run test',                         // counted — exactly a named runner
+-    'bun test tests/state-exams/a.test.ts', // not — a token not beginning `-` follows
+-    'python3 -m pytest -q',                 // counted — only `-` tokens follow
+-    'python3 -m pytest tests/test_a.py',    // not — a path follows
+-    'bunx tsc --noEmit && bun test',        // counted — the `&&` segment is bare
+-    'pytest',                               // counted — exactly a named runner
+-    'npm test -- --watch',                  // counted — only `-` tokens follow
+-    'pnpm test',                            // counted — exactly a named runner
+-    'cd app; bun test',                     // counted — the `;` segment is bare
+-    'bun test || true',                     // counted — the `||` segment is bare
+-    'echo start | pytest',                  // counted — the `|` segment is bare
+-    'ls',                                   // not — no named runner at all
+-  ]
+-  assert.equal(engine.bareSuiteRunCount(recordOf(CMDS)), 10,
+-    'bareSuiteRunCount over one assistant record carrying those thirteen Bash commands is ' +
+-    'exactly 10 — one for each of the `&&`, `;`, `||` and `|` separators and one per named ' +
+-    'runner; the three with a path or no runner count nothing')
+-}
+-
+-// ── S7: leg (d) [M3] ─────────────────────────────────────────────────────────
+-// The four slices that count nothing.
+-{
+-  const PATHED = ['bun test tests/x.test.ts', 'bun test 2>&1', 'pytest tests', 'cat bun.lock']
+-  assert.equal(engine.bareSuiteRunCount(recordOf(PATHED)), 0,
+-    'a slice whose Bash commands each carry a token that does not begin `-` — ' +
+-    JSON.stringify(PATHED) + ' — counts 0: none of them is the project\'s whole suite')
+-
+-  const READ_ONLY = JSON.stringify({
+-    type: 'assistant',
+-    sessionId: 'sess-read',
+-    message: {
+-      role: 'assistant',
+-      content: [{ type: 'tool_use', id: 'r1', name: 'Read', input: { file_path: 'a.txt' } }],
+-    },
+-  }) + '\n'
+-  assert.equal(engine.bareSuiteRunCount(READ_ONLY), 0,
+-    'a slice whose only tool_use block is a `Read` counts 0 — a record with no Bash block ' +
+-    'counts nothing')
+-
+-  assert.equal(engine.bareSuiteRunCount(''), 0,
+-    'the empty string counts 0 — an absent or empty slice is no runs, never a throw')
+-
+-  const NOT_JSON = '{"type":"assistant","message":{"content":[{"type":"tool_u\n'
+-  assert.equal(engine.bareSuiteRunCount(NOT_JSON), 0,
+-    'a line that is not JSON counts 0 — a truncated record is skipped, never a throw')
+-}
+-
+-// ── the record legs (e), (f) and (g) read ────────────────────────────────────
+-// The `readEvents` shape of test_run_engine_amendments.mjs: the run's own
+-// `events.jsonl`, a row per line, unparseable lines dropped. An absent file
+-// reads as no rows, so a run that appended nothing fails the count assertion
+-// rather than throwing ENOENT.
+-const readEvents = (runDir) => {
+-  const file = path.join(runDir, 'events.jsonl')
+-  if (!fs.existsSync(file)) return []
+-  return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
+-    .map((l) => { try { return JSON.parse(l) } catch { return null } })
+-    .filter(Boolean)
+-}
+-const suiteRunsOf = (log, id) => log.filter((e) => e.kind === 'driver:suite-runs' && e.task === id)
+-// The row projected onto the three fields the contract names, so the assertion
+-// reads the FIELD NAMES M4 spells and nothing the engine hangs beside them.
+-const rowOf = (e) => ({ task: e.task, count: e.count, slices: e.slices })
+-// What a worker leaves behind: the reduced slice at `<runDir>/transcripts/
+-// <sessionId>.jsonl` and the `transcript:slice` row run-main's event log
+-// appends for it. In a sim the stubbed agent is wrapped by `withPatchCapture`,
+-// not by the run worker, so nothing exists unless the stub plants it.
+-const plantSlice = (runDir, { label, sessionId, cmds }) => {
+-  fs.mkdirSync(runDir, { recursive: true })
+-  if (cmds) {
+-    fs.mkdirSync(path.join(runDir, 'transcripts'), { recursive: true })
+-    fs.writeFileSync(path.join(runDir, 'transcripts', sessionId + '.jsonl'),
+-      perRecordSlice(cmds, { sessionId }))
+-  }
+-  fs.appendFileSync(path.join(runDir, 'events.jsonl'),
+-    JSON.stringify({ kind: 'transcript:slice', label, sessionId, bytes: 1 }) + '\n')
+-}
+-
+-// ── S8: leg (e) [M4] ─────────────────────────────────────────────────────────
+-// One run, one task, the S1 shape: two Proof `Run:` lines, the second red on
+-// the driver's pass and green once the repair round has written its file, so
+-// this single run records `impl:T1`, `fix:T1:0` and `review:T1:1`. The
+-// implementer's slice carries two bare runs, the fix round's one — 3 over 2
+-// slice files, on one row, before the reviewer, and the task merges anyway.
+-{
+-  const repo = makeRepo(path.join(tmp, 'repo-suite-runs'))
+-  const runDir = path.join(tmp, 'run-suite-runs')
+-  const labels = []
+-  // The event log as it stood when the FIRST reviewer was dispatched.
+-  let atFirstReview = null
+-  const stub = (prompt, opts, cwd) => {
+-    labels.push(opts.label)
+-    const kind = opts.label.split(':')[0]
+-    if (kind === 'impl') {
+-      fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n')
+-      plantSlice(runDir, {
+-        label: 'impl:T1', sessionId: 'sess-impl', cmds: ['bun test', 'python3 -m pytest -q'],
+-      })
+-      return doneImpl(cwd)
+-    }
+-    if (kind === 'fix') {
+-      fs.writeFileSync(path.join(cwd, 'fixed.txt'), 'repaired\n')
+-      plantSlice(runDir, { label: 'fix:T1:0', sessionId: 'sess-fix', cmds: ['pnpm test'] })
+-      return doneImpl(cwd)
+-    }
+-    if (kind === 'review') {
+-      if (atFirstReview === null) atFirstReview = readEvents(runDir)
+-      return passReview()
+-    }
+-    throw new Error('unexpected dispatch: ' + opts.label)
+-  }
+-  const { run } = rig({
+-    repo, runDir, stub, stamp: 'op4',
+-    waves: [[mkTask('T1', ['one.txt', 'fixed.txt'], {
+-      proofRuns: ['test -f one.txt', 'test -f fixed.txt'],
+-    })]],
+-  })
+-  const report = await run()
+-  const row = report.tasks.find((r) => r.task === 'T1')
+-
+-  assert.deepEqual(labels, ['impl:T1', 'fix:T1:0', 'review:T1:1'],
+-    'sim precondition: the implementer, the pre-review fix round and one reviewer, in that ' +
+-    'order — ' + JSON.stringify(labels))
+-
+-  const rows = suiteRunsOf(readEvents(runDir), 'T1')
+-  assert.equal(rows.length, 1,
+-    'the run\'s record carries exactly ONE `driver:suite-runs` row for T1 — once per task, ' +
+-    'after the implementer and after the fix round the pass bought: ' + JSON.stringify(rows))
+-  assert.deepEqual(rowOf(rows[0]), { task: 'T1', count: 3, slices: 2 },
+-    'and it counts both workers\' slices: `slices` 2 (the `impl:T1` and `fix:T1:0` rows whose ' +
+-    'file exists) and `count` 3 (two bare runs in the implementer\'s slice, one in the fix ' +
+-    'round\'s): ' + JSON.stringify(rowOf(rows[0])))
+-
+-  // Before any reviewer is dispatched — read at the reviewer's own dispatch.
+-  assert.notEqual(atFirstReview, null,
+-    'sim precondition: a reviewer was dispatched and snapshotted the record')
+-  const atReview = suiteRunsOf(atFirstReview, 'T1')
+-  assert.equal(atReview.length, 1,
+-    'the row was already in `events.jsonl` when `review:T1:1` was dispatched — the driver ' +
+-    'counts before it hands the patch to a reviewer, never after: ' + JSON.stringify(atReview))
+-  assert.deepEqual(rowOf(atReview[0]), { task: 'T1', count: 3, slices: 2 },
+-    'and it was already the finished count, not a placeholder the driver amended later: ' +
+-    JSON.stringify(rowOf(atReview[0])))
+-
+-  // A reading, not a block: the task ends exactly as the sim's existing
+-  // scenarios end — merged.
+-  assert.equal(row.status, 'done',
+-    'and nothing about the row changes the task\'s status: it is `done` — merged — exactly as ' +
+-    'the same scenario without a slice is: ' + JSON.stringify(row))
+-  assert.equal(row.reviewVerdict, 'clean',
+-    'nor its review: the canned PASS still reads `clean`: ' + JSON.stringify(row))
+-  assert.equal(report.coverage.tasks_merged, 1,
+-    'nor the run\'s verdict: the one task merged: ' + JSON.stringify(report.coverage))
+-}
+-
+-// ── S9: leg (f) [M4] ─────────────────────────────────────────────────────────
+-// A run whose stubs plant no slice at all. The row is still written, and both
+-// its numbers are 0 — the sensor reports "nobody ran the suite", which is a
+-// different record from no record.
+-{
+-  const repo = makeRepo(path.join(tmp, 'repo-no-slice'))
+-  const runDir = path.join(tmp, 'run-no-slice')
+-  const labels = []
+-  const stub = (prompt, opts, cwd) => {
+-    labels.push(opts.label)
+-    const kind = opts.label.split(':')[0]
+-    if (kind === 'impl') {
+-      fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n')
+-      return doneImpl(cwd)
+-    }
+-    if (kind === 'review') return passReview()
+-    throw new Error('unexpected dispatch: ' + opts.label)
+-  }
+-  const { run } = rig({
+-    repo, runDir, stub, stamp: 'op5',
+-    waves: [[mkTask('T1', ['one.txt'])]],
+-  })
+-  const report = await run()
+-
+-  assert.deepEqual(labels.filter((l) => l === 'impl:T1'), ['impl:T1'],
+-    'sim precondition: one implementer was dispatched — ' + JSON.stringify(labels))
+-  const rows = suiteRunsOf(readEvents(runDir), 'T1')
+-  assert.equal(rows.length, 1,
+-    'a run whose workers left no slice still carries exactly one `driver:suite-runs` row for ' +
+-    'T1: ' + JSON.stringify(rows))
+-  assert.deepEqual(rowOf(rows[0]), { task: 'T1', count: 0, slices: 0 },
+-    'with `count` 0 and `slices` 0 — no `transcript:slice` row to read: ' +
+-    JSON.stringify(rowOf(rows[0])))
+-  assert.equal(report.tasks.find((r) => r.task === 'T1').status, 'done',
+-    'and the task merges as before')
+-}
+-
+-// ── S10: leg (g) [M4] ────────────────────────────────────────────────────────
+-// A `transcript:slice` row naming a `sessionId` with no file under
+-// `transcripts/`: the row is read, the file is not there, and the sensor says
+-// so — `slices` counts files READ, not rows seen.
+-{
+-  const repo = makeRepo(path.join(tmp, 'repo-missing-slice'))
+-  const runDir = path.join(tmp, 'run-missing-slice')
+-  const labels = []
+-  const stub = (prompt, opts, cwd) => {
+-    labels.push(opts.label)
+-    const kind = opts.label.split(':')[0]
+-    if (kind === 'impl') {
+-      fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n')
+-      // The row, and deliberately no file for it.
+-      plantSlice(runDir, { label: 'impl:T1', sessionId: 'sess-gone', cmds: null })
+-      return doneImpl(cwd)
+-    }
+-    if (kind === 'review') return passReview()
+-    throw new Error('unexpected dispatch: ' + opts.label)
+-  }
+-  const { run } = rig({
+-    repo, runDir, stub, stamp: 'op6',
+-    waves: [[mkTask('T1', ['one.txt'])]],
+-  })
+-  const report = await run()
+-
+-  assert.deepEqual(labels.filter((l) => l === 'impl:T1'), ['impl:T1'],
+-    'sim precondition: one implementer was dispatched — ' + JSON.stringify(labels))
+-  assert.equal(fs.existsSync(path.join(runDir, 'transcripts', 'sess-gone.jsonl')), false,
+-    'sim precondition: the slice the row names was never written')
+-  const rows = suiteRunsOf(readEvents(runDir), 'T1')
+-  assert.equal(rows.length, 1,
+-    'a slice row whose file is missing still leaves exactly one `driver:suite-runs` row: ' +
+-    JSON.stringify(rows))
+-  assert.deepEqual(rowOf(rows[0]), { task: 'T1', count: 0, slices: 0 },
+-    'with `slices` 0 — the number of slice FILES read — and `count` 0: an absent file is ' +
+-    'skipped, never a throw and never a row the run lost: ' + JSON.stringify(rowOf(rows[0])))
+-  assert.equal(report.tasks.find((r) => r.task === 'T1').status, 'done',
+-    'and the task merges as before')
+-}
++//   (M3–M5 — the bare-suite sensor read off the worker's transcript slice —
++//   went with the slicer on 2026-09-18; legs (c)–(h) with them.)
+ 
+ // ── S11: legs (a) and (b), first halves [M1, M2] ─────────────────────────────
+ // The sentence each brief gains, above `## The issue`, in the words M1 spells:
+@@ -709,32 +403,6 @@ const plantSlice = (runDir, { label, sessionId, cmds }) => {
+   }
+ }
+ 
+-// ── S12: leg (h) [M5] ────────────────────────────────────────────────────────
+-// The contract names the new kind where the other reported-sensor kind is
+-// named. The Proof's two `Run:` lines are `grep -q 'driver:suite-runs'` over
+-// the file and `grep -A12 'driver:amendment. .{task, amends' | tr '\n' ' ' |
+-// grep -q 'driver:suite-runs.*task.*count.*slices.*gates nothing'`; both are
+-// transliterated here.
+-{
+-  const contract = fs.readFileSync(CONTRACT_SRC, 'utf8')
+-  assert.ok(contract.includes('driver:suite-runs'),
+-    'fleet/CONTRACT.md names `driver:suite-runs` — every new event kind the engine appends is ' +
+-    'named in the contract by the task that adds it')
+-
+-  const lines = contract.split('\n')
+-  const ANCHOR = /driver:amendment. .\{task, amends/
+-  const hits = lines.map((l, i) => (ANCHOR.test(l) ? i : -1)).filter((i) => i >= 0)
+-  assert.ok(hits.length > 0,
+-    'sim precondition: the contract still carries the `driver:amendment` `{task, amends, what, ' +
+-    'why}` line the new kind is named beside')
+-  // `grep -A12`: each matching line and the twelve after it, joined to one line.
+-  const window = hits.map((i) => lines.slice(i, i + 13).join(' ')).join(' ')
+-  assert.match(window, /driver:suite-runs.*task.*count.*slices.*gates nothing/,
+-    'and within twelve lines of it names `driver:suite-runs` with its `task`, `count` and ' +
+-    '`slices` fields and says it `gates nothing` — a reported sensor in the paragraph that ' +
+-    'already holds one')
+-}
+-
+ // ═══ Task 1 (2026-09-17, #1100) ═══════════════════════════════════════════════
+ // "The engine reads each task's body from the launch file once and hands it
+ // inline to every worker." Claim: do: launch a plan whose task bodies ride the
+diff --git a/fleet/tests/test_sandbox_boot_amendments.mjs b/fleet/tests/test_sandbox_boot_amendments.mjs
+index 3de3b6fd8383b46078cd814b443c3c3af2858803..b6ac58701a3acb5e584f9a686e53ac5a4a0220f5 100644
+--- a/fleet/tests/test_sandbox_boot_amendments.mjs
++++ b/fleet/tests/test_sandbox_boot_amendments.mjs
+@@ -475,10 +475,10 @@ const READERS = [
+   [
+     '(d)', 'M1',
+     'fleet/CONTRACT.md\'s evidence sub-bullet must carry, between the "three more kinds" '
+-    + 'paragraph and the `transcripts/<sessionId>.jsonl` line, a paragraph naming '
++    + 'paragraph and the `state-exams/` line, a paragraph naming '
+     + '`driver:amendment` `{task, amends, what, why}`, the three `amends` values, the hub issue '
+     + 'and the report\'s `amendments` list',
+-    "sed -n '/^    The driver.s own executions are three more kinds/,/^    .transcripts.<sessionId>.jsonl/p'"
++    "sed -n '/^    The driver.s own executions are three more kinds/,/^    .state-exams\\//p'"
+     + " fleet/CONTRACT.md | tr '\\n' ' '"
+     + " | grep -q 'driver:amendment.*task, amends, what, why.*clause.*files.*sim.*hub issue.*amendments'",
+   ],
+diff --git a/skills/ultrapowers/scripts/_outcome.py b/skills/ultrapowers/scripts/_outcome.py
+index b3c8566b67f2894b2f6d270f9798d77cf782c7e5..7f6109e969e368206bdc73662d8eef82c61701e6 100644
+--- a/skills/ultrapowers/scripts/_outcome.py
++++ b/skills/ultrapowers/scripts/_outcome.py
+@@ -1,5 +1,5 @@
+ #!/usr/bin/env python3
+-"""ultralearn outcome vocabulary — the three ways a lookup ends, named once.
++"""The outcome vocabulary — the three ways a lookup ends, named once.
+ 
+ "I could not look" and "I looked and there was nothing" are different facts;
+ spelled as two empty lists they read identically downstream. This module is the
+diff --git a/skills/ultrapowers/scripts/catch_counter.py b/skills/ultrapowers/scripts/catch_counter.py
+index f8651aa9142381922826c20a5cebab102889b500..419f267765b8e67613d25211c5b90df22c08fdab 100644
+--- a/skills/ultrapowers/scripts/catch_counter.py
++++ b/skills/ultrapowers/scripts/catch_counter.py
+@@ -1,5 +1,5 @@
+ #!/usr/bin/env python3
+-"""ultralearn catch counter — one `catch-count` row per fleet run, derived from
++"""The catch counter — one `catch-count` row per fleet run, derived from
+ the record the engine already wrote.
+ 
+ A *catch* is the claim of #778: a red that the fix round then turned green by
+diff --git a/skills/ultrapowers/scripts/catch_report.py b/skills/ultrapowers/scripts/catch_report.py
+index 88c1ece90c4549dddf03fdce2a4590d38ad17211..e150391d414a763cefa77809441616c53aa6e150 100644
+--- a/skills/ultrapowers/scripts/catch_report.py
++++ b/skills/ultrapowers/scripts/catch_report.py
+@@ -1,5 +1,5 @@
+ #!/usr/bin/env python3
+-"""ultralearn catch report — which tests have never caught anything, over how
++"""The catch report — which tests have never caught anything, over how
+ many runs that actually touched what they exercise.
+ 
+ The ledger's `catch-count` rows are the record: one row per harvested run,
+@@ -28,18 +28,39 @@ globbed away. Paths are repository-relative exactly as the record spells them.
+ from __future__ import annotations
+ 
+ import argparse
++import json
+ import subprocess
+ import sys
+ from datetime import datetime, timezone
+ from pathlib import Path
+ 
+ sys.path.insert(0, str(Path(__file__).resolve().parent))
+-from merge_ledger import _read_jsonl  # noqa: E402  (one ledger reader, shared)
+ from _outcome import swallow  # noqa: E402
+ 
+-# The ledger holds the findings rows `merge_ledger.py` writes (no `kind`) in
+-# the same file. Only this kind is the catch record; everything else is another
+-# reader's business and contributes nothing here.
++
++def _read_jsonl(path):
++    """Every JSON object of a `.jsonl` file, in order; a missing file reads as
++    no rows and a malformed line is skipped with a note, so the rest still
++    reads. The one ledger reader, kept here since the ledger writer went."""
++    path = Path(path)
++    if not path.exists():
++        return []
++    out = []
++    for line in path.read_text().splitlines():
++        line = line.strip()
++        if line:
++            try:
++                out.append(json.loads(line))
++            except json.JSONDecodeError as exc:
++                swallow("malformed ledger line skipped; the rest of the "
++                        "ledger still reads", exc)
++                continue
++    return out
++
++
++# The ledger may hold rows of other kinds (older readers wrote findings rows
++# with no `kind`). Only this kind is the catch record; everything else
++# contributes nothing here.
+ CATCH_KIND = "catch-count"
+ 
+ # This repository's two suites: `pytest.ini` collects `tests/`, and
+@@ -452,7 +473,7 @@ def main(argv=None):
+         description="Which tests have never caught anything, over how many "
+                     "runs that touched what they exercise.")
+     parser.add_argument("--ledger", required=True, metavar="PATH",
+-                        help="the ultralearn ledger to read (a missing file "
++                        help="the catch ledger to read (a missing file "
+                              "reads as no rows)")
+     parser.add_argument("--tree", default=".", metavar="DIR",
+                         help="the tree whose tests to list (default: .)")
+diff --git a/skills/ultrapowers/scripts/fleet_events.py b/skills/ultrapowers/scripts/fleet_events.py
+index 0a4b0a2072abd3477226650b29a380fd32d54c80..888a1229f928e0be8e74b6176bd36c3290d39306 100644
+--- a/skills/ultrapowers/scripts/fleet_events.py
++++ b/skills/ultrapowers/scripts/fleet_events.py
+@@ -1,5 +1,5 @@
+ #!/usr/bin/env python3
+-"""ultralearn event-log reader — parse a fleet run's `events.jsonl`, summarize
++"""The event-log reader — parse a fleet run's `events.jsonl`, summarize
+ it into the bundle's `events` field, and render it as a flat timeline.
+ Read-only and advisory: malformed or missing input is skipped with a
+ diagnostic, never raised.
+diff --git a/skills/ultrapowers/scripts/merge_ledger.py b/skills/ultrapowers/scripts/merge_ledger.py
+deleted file mode 100644
+index b3c4ae5696609efa5ba8c435319e45abe4400077..0000000000000000000000000000000000000000
+--- a/skills/ultrapowers/scripts/merge_ledger.py
++++ /dev/null
+@@ -1,252 +0,0 @@
+-#!/usr/bin/env python3
+-"""ultralearn ledger merge — append reader findings to the committed ledger
+-behind a fail-closed redaction guard, then regenerate the markdown digest.
+-Only abstracted findings from foreign runs may be committed."""
+-from __future__ import annotations
+-
+-import hashlib
+-import json
+-import sys
+-from pathlib import Path
+-
+-sys.path.insert(0, str(Path(__file__).resolve().parent))
+-from _outcome import swallow  # noqa: E402  (marks every deliberate skip)
+-
+-LENSES = ["friction", "routing", "operator", "cost", "frontier"]
+-
+-# #696: a bundle whose engineVersion.basis is one of these carries a version
+-# GUESSED from the run's date, not read from anything. The guess dated whole
+-# eras of findings to versions the plugin never released, so a date-basis
+-# bundle now stamps no version at all: an absent stamp is honest, a wrong one
+-# is not. The read bases — "explicit" (the harvester was told), and
+-# "plugin-cache-path" (a foreign run's own cache directory named it) — stay
+-# trusted, as does a bundle with no basis key (August's, written before the
+-# field existed).
+-DATE_GUESS_BASES = frozenset({"home-repo-date", "foreign-date-upper-bound"})
+-
+-
+-def finding_id(finding):
+-    key = json.dumps({k: finding.get(k) for k in ("runId", "lens", "title")},
+-                     sort_keys=True)
+-    return hashlib.sha256(key.encode()).hexdigest()[:16]
+-
+-
+-def redact_finding(finding, origin, engine_version=None):
+-    """Return the finding (with id + origin, and engineVersion when known) if
+-    safe to commit, else None. Origin is one of "home" | "foreign" |
+-    "synthetic" (eval-cell runs; field statistics exclude synthetic rows by
+-    construction). Fails closed: any origin other than 'home' commits
+-    abstracted findings only. engine_version is a plain version string (the
+-    bundle's engineVersion.epoch); a None epoch is omitted, not stored as null."""
+-    if origin != "home" and not finding.get("evidenceAbstracted"):
+-        return None
+-    out = dict(finding)
+-    out["id"] = finding_id(finding)
+-    out["origin"] = origin
+-    if engine_version is not None:
+-        out["engineVersion"] = engine_version
+-    return out
+-
+-
+-def _read_jsonl(path):
+-    path = Path(path)
+-    if not path.exists():
+-        return []
+-    out = []
+-    for line in path.read_text().splitlines():
+-        line = line.strip()
+-        if line:
+-            try:
+-                out.append(json.loads(line))
+-            except json.JSONDecodeError as exc:
+-                swallow("malformed ledger line skipped; the rest of the "
+-                        "ledger still reads", exc)
+-                continue
+-    return out
+-
+-
+-def merge_findings(findings, ledger_path, origin_lookup, engine_lookup=None,
+-                   released=None):
+-    """Append the committable findings to the ledger; return counts.
+-
+-    `released` is the set of version strings this plugin actually released
+-    (`_readers.released_versions()`). When it is given, a finding whose engine
+-    lookup answers a version outside it is refused — not written, and counted
+-    under `refused`. A lookup answering None is not refused on that ground:
+-    an unknown version is a missing stamp, not a false one. When `released` is
+-    None the history is not there to judge by, so nothing is refused for its
+-    version. `skipped` stays `len(findings) - added`, so a refused finding is
+-    skipped too."""
+-    ledger_path = Path(ledger_path)
+-    existing = _read_jsonl(ledger_path)
+-    seen = {f.get("id") for f in existing}
+-    added = []
+-    refused = 0
+-    for f in findings:
+-        origin = origin_lookup(f.get("runId"))
+-        engine_version = engine_lookup(f.get("runId")) if engine_lookup else None
+-        if (released is not None and isinstance(engine_version, str)
+-                and engine_version not in released):
+-            refused += 1
+-            continue
+-        red = redact_finding(f, origin, engine_version)
+-        if red is None or red["id"] in seen:
+-            continue
+-        seen.add(red["id"])
+-        added.append(red)
+-    if added:
+-        ledger_path.parent.mkdir(parents=True, exist_ok=True)
+-        with ledger_path.open("a") as fh:
+-            for f in added:
+-                fh.write(json.dumps(f, sort_keys=True) + "\n")
+-    return {"added": len(added), "skipped": len(findings) - len(added),
+-            "refused": refused}
+-
+-
+-def _redirect_rate_table(findings):
+-    """#220: aggregate structured redirect-round counts by engineVersion.
+-    Rows lacking a well-formed redirectRounds (dict with int total) are
+-    skipped — historical prose-only rows never enter the table. One row per
+-    runId: the LAST qualifying ledger row wins (append-only → most recent).
+-    A version's rate renders "—" unless every counted row carries an integer
+-    implementationTasks (a partial denominator would inflate the rate)."""
+-    latest = {}
+-    for f in findings:
+-        rr = f.get("redirectRounds")
+-        if (isinstance(rr, dict) and isinstance(rr.get("total"), int)
+-                and not isinstance(rr.get("total"), bool)):
+-            latest[f.get("runId")] = f
+-    by_ver = {}
+-    for f in latest.values():
+-        ver = f.get("engineVersion") or "unknown"
+-        row = by_ver.setdefault(ver, {"runs": 0, "rounds": 0, "tasks": 0,
+-                                      "tasksKnown": True})
+-        row["runs"] += 1
+-        row["rounds"] += f["redirectRounds"]["total"]
+-        tasks = f.get("implementationTasks")
+-        if isinstance(tasks, int) and not isinstance(tasks, bool):
+-            row["tasks"] += tasks
+-        else:
+-            row["tasksKnown"] = False
+-    if not by_ver:
+-        return []
+-    lines = ["## redirect-round rate by engineVersion", "",
+-             "| engineVersion | n runs | Σ rounds | Σ tasks | rate |",
+-             "| --- | --- | --- | --- | --- |"]
+-    for ver in sorted(by_ver):
+-        row = by_ver[ver]
+-        if row["tasksKnown"] and row["tasks"] > 0:
+-            rate = f"{row['rounds'] / row['tasks']:.2f}"
+-        else:
+-            rate = "—"
+-        lines.append(f"| {ver} | {row['runs']} | {row['rounds']} "
+-                     f"| {row['tasks']} | {rate} |")
+-    lines.append("")
+-    return lines
+-
+-
+-def regenerate_digest(ledger_path, digest_path):
+-    findings = _read_jsonl(ledger_path)
+-    by_lens = {lens: [] for lens in LENSES}
+-    for f in findings:
+-        by_lens.setdefault(f.get("lens", "other"), []).append(f)
+-    lines = ["# ultralearn — observation ledger (digest)", "",
+-             f"{len(findings)} finding(s) across {len({f.get('runId') for f in findings})} run(s).", ""]
+-    lines.extend(_redirect_rate_table(findings))
+-    for lens in LENSES:
+-        items = by_lens.get(lens, [])
+-        if not items:
+-            continue
+-        lines.append(f"## {lens} ({len(items)})")
+-        for f in sorted(items, key=lambda x: -(x.get("severity", 0) * (x.get("novelty", 0) + 1))):
+-            if f.get("origin") == "home":
+-                tag = ""
+-            elif f.get("origin") == "synthetic":
+-                tag = " _(synthetic)_"
+-            else:
+-                tag = " _(abstracted)_"
+-            ev = f.get("engineVersion")
+-            vtag = f" _(v{ev})_" if ev else ""
+-            lines.append(f"- **{f.get('title','')}** — {f.get('implication','')} "
+-                         f"`{f.get('surface','')}`{vtag}{tag}")
+-        lines.append("")
+-    Path(digest_path).parent.mkdir(parents=True, exist_ok=True)
+-    Path(digest_path).write_text("\n".join(lines))
+-
+-
+-def _opened_at(bundle):
+-    """A bundle's `events.openedAt`, or -inf so a bundle without one sorts
+-    below every bundle that has one."""
+-    opened = (bundle.get("events") or {}).get("openedAt")
+-    if isinstance(opened, (int, float)) and not isinstance(opened, bool):
+-        return opened
+-    return float("-inf")
+-
+-
+-def bundle_lookups(cache_dir):
+-    """Build (origin_lookup, engine_lookup) over the cached run bundles under
+-    <cache_dir>/runs/*/bundle.json. origin fails closed to 'foreign'; the engine
+-    epoch is None when the bundle or field is missing, and None again when the
+-    bundle's `engineVersion.basis` says the epoch was guessed from a date
+-    (DATE_GUESS_BASES) rather than read. Each bundle is read at
+-    most once. Pass both to merge_findings so ledger entries carry the
+-    ultrapowers version a finding was observed under, surfaced in the digest.
+-
+-    The ledger's runId is the bare `run-30`, and the harvester's cache key is
+-    `run-30-<opening date>`, so a lookup by directory name alone would fail
+-    closed to 'foreign' for every fleet run. A run's candidates are therefore
+-    the directory named exactly for it (August's caches are keyed that way, and
+-    they still answer) plus every bundle whose `runId` field names it; the one
+-    with the greatest `events.openedAt` wins, so a restarted numbering reads as
+-    its most recent run rather than as whichever directory sorts first."""
+-    cache_dir = Path(cache_dir).expanduser()
+-    cache = {}
+-    by_dir = {}
+-    scanned = []
+-
+-    def _scan():
+-        """`<directory name> -> bundle`, read once and lazily: a lookup pair
+-        over a cache of N runs costs one directory walk, not one per id."""
+-        if scanned:
+-            return by_dir
+-        scanned.append(True)
+-        try:
+-            entries = sorted((cache_dir / "runs").iterdir())
+-        except OSError as exc:
+-            swallow("run cache unreadable; every origin falls closed to "
+-                    "'foreign'", exc)
+-            return by_dir
+-        for entry in entries:
+-            path = entry / "bundle.json"
+-            if not path.is_file():
+-                continue
+-            try:
+-                bundle = json.loads(path.read_text())
+-            except (OSError, json.JSONDecodeError) as exc:
+-                swallow("bundle unreadable; it is not a lookup candidate and "
+-                        "its origin falls closed to 'foreign'", exc)
+-                continue
+-            if isinstance(bundle, dict):
+-                by_dir[entry.name] = bundle
+-        return by_dir
+-
+-    def _bundle(run_id):
+-        key = str(run_id)
+-        if key not in cache:
+-            candidates = [b for name, b in _scan().items()
+-                          if name == key or b.get("runId") == key]
+-            cache[key] = max(candidates, key=_opened_at, default={})
+-        return cache[key]
+-
+-    def origin_lookup(run_id):
+-        return _bundle(run_id).get("origin") or "foreign"
+-
+-    def engine_lookup(run_id):
+-        ev = _bundle(run_id).get("engineVersion")
+-        if not isinstance(ev, dict):
+-            return None
+-        if ev.get("basis") in DATE_GUESS_BASES:
+-            return None            # a date guess is not a version this reads
+-        return ev.get("epoch")
+-
+-    return origin_lookup, engine_lookup

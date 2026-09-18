@@ -1,0 +1,5 @@
+{"event": "emitted", "wave": 1, "path": "factory/boot.sh", "stateBlob": "df99a96afdb333eccca2a6cb789bbc1db5600c96426c08e2a85a3c7aa2125654", "visibleSha": "1d5ec157c60617fdf9e4564e42d6b33fd7233dc0"}
+{"event": "emitted", "wave": 1, "path": "factory/roles/exam.md", "stateBlob": "2c59ea9eef0eb2b2ada353d8dd19f466354dd30a78beddd4346c23cfc10997e4", "visibleSha": "0d6d0faecfcb00ee857ab01f016cf2656572284a"}
+{"event": "emitted", "wave": 1, "path": "fleet/fleet-bootstrap.sh", "stateBlob": "74c28cba9002e998337e212c6a5f871d12bc57dd32fe2d68d837de5a61d54042", "visibleSha": "48451e185b8c8ec4ed497208a04c12f0bd7842d3"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/exams/run_187/test_factory_boot.mjs", "stateBlob": "33a8135156e465eb488fd32d194943281dcf7a3a6a3b2f36f96912fbc152e160", "visibleSha": "df5f1acc6867d5ca8da1647590e74387fe671f0f"}
+{"event": "emitted", "wave": 1, "path": "fleet/tests/exams/run_187/test_fleet_bootstrap.mjs", "stateBlob": "70046423a9b817a236ff14d0f6939b0ba502227dedd0b6e19868858f6374bee4", "visibleSha": "9713b0ee1746a4697c8d78a5b62045c6eb288407"}

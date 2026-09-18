@@ -1,0 +1,152 @@
+{
+  "integrationBranch": "ultra/integration-run-187",
+  "baseSha": "0bea22669c3656f2a3b5596c7b407a9aa2f3a342",
+  "setupSha": null,
+  "waves": [
+    [
+      "1",
+      "2",
+      "3"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "b25f6cb0eb1ce8b4a83390f3e946138ade12f09f",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-187/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "landedAt": 1789702031005,
+      "stateExams": [],
+      "findings": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "486416e76f28caad8180dad5e67d56088bc0b929",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-187/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "examRounds": 1,
+      "landedAt": 1789702397430,
+      "stateExams": [],
+      "findings": []
+    },
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "b3ff99e8d75d4e8e38e49549811b95727e86a389",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-187/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "factory/boot.sh:45-48 \u2014 `json_escape` escapes backslash, double quote, tab and newline, but leaves every other C0 control byte raw. The one place a foreign byte string reaches `status.json` is M6's failure page: `fail \"${reply:0:2000}\"` (line 264) puts the first 2000 characters of an arbitrary HTTP reply into `error`. A GitHub-edge reply or proxy error page with CRLF line endings leaves a raw CR inside a JSON string, which is invalid JSON \u2014 the operator's page for the very run that failed becomes unparseable. The exam's 422 fixture is 3000 `x` characters, so leg (f) never sees a control byte and EXAM EVIDENCE does not settle this. The fix stays inside the 300-line budget: one more `gsub` on the existing awk line, no new line.; factory/boot.sh:168 \u2014 `tick_events` decides \"the bytes differ\" with `[ \"$(cat \"$src\")\" = \"$(cat \"$dst\")\" ]`. Command substitution strips trailing newlines from both sides, so a tick whose only new bytes are trailing newlines is read as no change, and each tick loads the whole event log into two shell variables. `cmp -s` compares the files themselves, is exact, and resolves through PATH like every other helper the script already uses (`cat`, `cp`, `sed`, `awk`): `if [ -f \"$dst\" ] && cmp -s \"$src\" \"$dst\"; then return 0; fi`. Same line count, so M9 still holds. Advisory only \u2014 leg (e) of EXAM EVIDENCE passes as written, since the engine's rows always end in a newline.; concern: plan-defect: the task says the immutable bootstrap clones the engine before exec'ing this boot, but names no path convention for where it lands. I chose $FLEET_HOME/engines/$ENGINE_SHA (with the engine's own fleet/ beside its factory/), reading `engine=<sha>` out of the assignment; boot.sh does not clone the engine itself and fails at engine_deps if that directory is absent. Sibling task 2 (popmechanic-ultrapowers#wr1m, fleet/fleet-bootstrap.sh) owns the dispatch line and must stage the engine checkout at exactly that path, or the two halves will not meet. Worth a cross-check before the first real run.; concern: factory/boot.sh is 300 lines against a 300-line cap \u2014 zero slack. Any future edit has to pay for itself by deleting a line. The compaction to fit went through comment density and statement joining rather than dropped behaviour, but a reviewer wanting more prose in the file will have to take code out to get it.; concern: The bearer probe's inconclusive-and-proceed default means a genuinely broken proxy that answers something outside the three recognised shapes costs a full engine start before anything notices. That is the task's stated trade (a probe that manufactured parks out of flakes would cost more runs than it saved), so it is implemented as specified \u2014 flagging it as the known cost, not as a defect.; concern: record_tags reads the evidence HEAD once at the top and pushes both tags before verifying either, so an evidence commit that lands between the read and the push would be tagged one commit short. This mirrors the old boot's shape deliberately, and nothing writes to the evidence branch concurrently at that point in the run (the relay has stopped), but it is the one ordering assumption in the function.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": [],
+      "examRounds": 1,
+      "landedAt": 1789704152800,
+      "stateExams": [],
+      "findings": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-187/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [462 items]\n\n........................................................................ [ 15%]\n........................................................................ [ 31%]\n........................................................................ [ 46%]\n........................................................................ [ 62%]\n........................................................................ [ 77%]\n........................................................................ [ 93%]\n..............................                                           [100%]\n======================= 462 passed in 185.51s (0:03:05) ========================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- ':(glob)fleet/*.mjs' fleet/sandbox-boot.sh fleet/strip-exams.sh fleet/kata-hub-setup.sh ':(glob)fleet/*.service' ':(glob)fleet/*.md' fleet/roles fleet/tests/_engine_helpers.mjs fleet/package.json",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- factory/engine.mjs factory/worker.mjs factory/judge.mjs factory/tools.mjs factory/questions.json factory/policy.json factory/proto factory/replay skills/ultrapowers/kernel",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 387842,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-187/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [460 items]\n\n........................................................................ [ 15%]\n........................................................................ [ 31%]\n........................................................................ [ 46%]\n........................................................................ [ 62%]\n........................................................................ [ 78%]\n........................................................................ [ 93%]\n............................                                             [100%]\n======================= 460 passed in 168.58s (0:02:48) ========================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "878a426001467108271b05f4b37c2d5af28c2558",
+      "branches": [
+        "3",
+        "2",
+        "1"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-187/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-187/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.645,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 3,
+    "tasks_planned": 3,
+    "complete": true
+  },
+  "engineCoverage": null,
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: plan-defect: the task says the immutable bootstrap clones the engine before exec'ing this boot, but names no path convention for where it lands. I chose $FLEET_HOME/engines/$ENGINE_SHA (with the engine's own fleet/ beside its factory/), reading `engine=<sha>` out of the assignment; boot.sh does not clone the engine itself and fails at engine_deps if that directory is absent. Sibling task 2 (popmechanic-ultrapowers#wr1m, fleet/fleet-bootstrap.sh) owns the dispatch line and must stage the engine checkout at exactly that path, or the two halves will not meet. Worth a cross-check before the first real run.",
+    "task 1: factory/boot.sh is 300 lines against a 300-line cap \u2014 zero slack. Any future edit has to pay for itself by deleting a line. The compaction to fit went through comment density and statement joining rather than dropped behaviour, but a reviewer wanting more prose in the file will have to take code out to get it.",
+    "task 1: The bearer probe's inconclusive-and-proceed default means a genuinely broken proxy that answers something outside the three recognised shapes costs a full engine start before anything notices. That is the task's stated trade (a probe that manufactured parks out of flakes would cost more runs than it saved), so it is implemented as specified \u2014 flagging it as the known cost, not as a defect.",
+    "task 1: record_tags reads the evidence HEAD once at the top and pushes both tags before verifying either, so an evidence commit that lands between the read and the push would be tagged one commit short. This mirrors the old boot's shape deliberately, and nothing writes to the evidence branch concurrently at that point in the run (the relay has stopped), but it is the one ordering assumption in the function.",
+    "task 1: the driver's pre-review pass was red (the Proof's exam failed: node fleet/tests/exams/run_187/test_factory_boot.mjs \u2014 exit 1) \u2014 one repair round before any reviewer read the patch"
+  ],
+  "amendments": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
