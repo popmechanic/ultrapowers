@@ -51,7 +51,7 @@ import { makeJudge } from './judge.mjs'
 import { literalsOf, hunksCarrying } from './hunks.mjs'
 import { unionReply } from './union.mjs'
 import { makeBoard } from './board.mjs'
-import { candidateTests, symbolsOf, commandFor } from './select.mjs'
+import { candidateTests, symbolsOf, commandFor, excerptFor } from './select.mjs'
 import { examsTouched } from './reverify.mjs'
 import { waitsFor } from './dispatch.mjs'
 
@@ -353,6 +353,29 @@ export function clausesOf (body) {
 export function splitDiff (text) {
   const pattern = /^diff --git a\/(\S+) b\/\S+\n([\s\S]*?)(?=^diff --git |(?![\s\S]))/gm
   return Object.fromEntries([...String(text || '').matchAll(pattern)].map((m) => [m[1], m[2]]))
+}
+
+// ── the tests argument a Jev reader is asked: excerpted, then budget-trimmed ─
+
+const SELECT_TESTS_BUDGET_BYTES = 60000
+
+/**
+ * `found` (a `candidateTests` result, most-matching first) turned into the
+ * `tests` argument a reader gets: each candidate's file text excerpted to
+ * `cap` characters around its own hits (M2), then candidates dropped from
+ * the end of the list — the least-matching first — until the serialized
+ * result is at most 60,000 bytes (M3). `kept`/`dropped` describe the trim
+ * whether or not one actually happened.
+ */
+export function excerptTests (found, readFile, cap) {
+  const entryFor = (c) => ({ path: c.path, text: excerptFor(readFile(c.path), c.hits, cap) })
+  let kept = found
+  let tests = kept.map(entryFor)
+  while (kept.length > 0 && Buffer.byteLength(JSON.stringify(tests), 'utf8') > SELECT_TESTS_BUDGET_BYTES) {
+    kept = kept.slice(0, -1)
+    tests = kept.map(entryFor)
+  }
+  return { tests, kept: kept.length, dropped: found.length - kept.length }
 }
 
 // ── M2: the candidates a landing offers a sibling to settle against ─────────
@@ -955,7 +978,8 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         exclude: task.proofTests || [], cap: selectPolicy.max_candidates,
       })
       if (foundCovering.length) {
-        const coveringTests = foundCovering.map((c) => ({ path: c.path, text: readExamFile(c.path).slice(0, 6000) }))
+        const { tests: coveringTests, kept, dropped } = excerptTests(foundCovering, readExamFile, 6000)
+        if (dropped > 0) appendEvent({ kind: 'select:trimmed', task: task.id, kept, dropped })
         const covering = await read('readCovering', { clauses: task.clauses, tests: coveringTests })
         if (covering) {
           taskCovering = Array.isArray(covering.covered) ? covering.covered : []
@@ -1112,7 +1136,8 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         exclude: task.proofTests || [], cap: selectPolicy.max_candidates,
       })
       if (!found.length) return false
-      const guardTests = found.map((c) => ({ path: c.path, text: readCandidateFile(c.path) }))
+      const { tests: guardTests, kept, dropped } = excerptTests(found, readCandidateFile, 3000)
+      if (dropped > 0) appendEvent({ kind: 'select:trimmed', task: task.id, kept, dropped })
       const guards = await read('readGuards', {
         patch: hunksCarrying(patchText, names, 20000),
         tests: guardTests,

@@ -92,6 +92,56 @@ export async function candidateTests ({ files, read, paths = [], symbols = [], e
   return results.slice(0, cap)
 }
 
+/** The maximal run of `lines`, joined with `\n`, that still fits `cap`
+ *  characters — never a mid-line cut. */
+function wholeLinePrefix (lines, cap) {
+  let out = ''
+  for (const line of lines) {
+    const next = out.length === 0 ? line : out + '\n' + line
+    if (next.length > cap) break
+    out = next
+  }
+  return out
+}
+
+/**
+ * The lines of `text` that carry a needle from `hits` (same substring/
+ * whole-word matching as `candidateTests`), each with the 3 lines before and
+ * after it, overlapping/touching windows merged, windows in file order and
+ * separated by a line holding only `…` — whole lines only, at most `cap`
+ * characters. When no line matches, the first whole lines of `text` up to
+ * `cap` characters.
+ */
+export function excerptFor (text, hits, cap) {
+  const lines = text.split('\n')
+  const hitIdx = []
+  lines.forEach((line, i) => {
+    if (hits.some((h) => matchesNeedle(line, h))) hitIdx.push(i)
+  })
+
+  if (hitIdx.length === 0) return wholeLinePrefix(lines, cap)
+
+  const merged = []
+  for (const i of hitIdx) {
+    const start = Math.max(0, i - 3)
+    const end = Math.min(lines.length - 1, i + 3)
+    const last = merged[merged.length - 1]
+    if (last && start <= last[1] + 1) {
+      last[1] = Math.max(last[1], end)
+    } else {
+      merged.push([start, end])
+    }
+  }
+
+  const outLines = []
+  merged.forEach(([start, end], idx) => {
+    if (idx > 0) outLines.push('…')
+    for (let j = start; j <= end; j++) outLines.push(lines[j])
+  })
+
+  return wholeLinePrefix(outLines, cap)
+}
+
 export function symbolsOf (clauses) {
   const raw = []
   const spanRe = /`([^`]*)`/g
