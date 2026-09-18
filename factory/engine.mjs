@@ -839,7 +839,11 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const [cmd, ...argv] = String(task.testCmd || '').trim().split(/\s+/)
     const examRun = cmd ? sh(cmd, argv, dir) : { status: 0 }
     const examExit = exitOf(examRun)
-    const patch = capture(dir, anchor, path.join(runDir, `patch-${task.id}-${index}.diff`), task.proofTests || [])
+    // The exam files RIDE the patch. Three things stand on that: the fold check runs a task's exam on
+    // the folded tree, a guarded exam reaches the pull request only this way, and the boot copies the
+    // unguarded ones to the evidence record from the tree before it strips them. run-195: with them
+    // excluded here, the first fold check answered `MODULE_NOT_FOUND` on a task whose exam was green.
+    const patch = capture(dir, anchor, path.join(runDir, `patch-${task.id}-${index}.diff`))
     const text = fs.existsSync(patch) ? fs.readFileSync(patch, 'utf8') : ''
     const perFile = splitDiff(text)
     const names = Object.keys(perFile)
