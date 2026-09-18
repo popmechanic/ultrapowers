@@ -200,3 +200,13 @@
 {"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"echo hi"}
 {"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"node --version"}
 {"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"python3 --version"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"mkdir -p /tmp/factory-rows-scratch"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Write","target":"/tmp/factory-rows-scratch/scratch.mjs"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"ls /home/exedev/run/exam-3 | head -30; cat /home/exedev/run/exam-3/.gitignore 2>/dev/null | head -20"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"function camel\\|const camel\" /home/exedev/run/exam-2/factory/engine.mjs"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Write","target":"/home/exedev/run/exam-3/.claude/ultrapowers/scratch_rows.mjs"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"node --input-type=module -e \"\nimport fs from 'node:fs'\nimport os from 'node:os'\nimport path from 'node:path'\nimport { makeRepo } from './fleet/tests/_engine_helpers.mjs'\nimport { runEngine } from './f"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"export function cloneAtBase\\|export const cloneAtBase\" -A 25 /home/exedev/run/exam-4/fleet/run-waves.mjs | head -40"}
+{"kind":"worker:tool","task":"6","label":"exam:6","tool":"Bash","target":"command -v python3; command -v bash; command -v git; python3 --version"}
+{"kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"ls /home/exedev/run/exam-1/factory/roles/"}
+{"kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"grep -n \"^export function clausesOf\\|^export function bodyOf\" -A 15 /home/exedev/run/exam-2/factory/engine.mjs"}
