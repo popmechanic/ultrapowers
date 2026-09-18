@@ -644,3 +644,19 @@
 {"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"COMPILER\\|spawnSync('python3'\\|plan_parse\" factory/engine.mjs"}
 {"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/factory/engine.mjs"}
 {"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"function normalizeArgs\" -A 25 factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Edit","target":"/home/exedev/run/exam-4/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Edit","target":"/home/exedev/run/exam-4/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"process\\.env\" fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:test-run","task":"4","label":"exam:4","cmd":"grep -n \"process\\.env\" fleet/tests/test_factory_dispatch.mjs","red":false}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"node --check fleet/tests/test_factory_dispatch.mjs && node fleet/tests/test_factory_dispatch.mjs 2>&1 | head -20"}
+{"kind":"worker:test-run","task":"4","label":"exam:4","cmd":"node --check fleet/tests/test_factory_dispatch.mjs && node fleet/tests/test_factory_dispatch.mjs 2>&1 | head -20","red":false}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"rm -rf /tmp/exam-sanity; wc -l fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:test-run","task":"4","label":"exam:4","cmd":"rm -rf /tmp/exam-sanity; wc -l fleet/tests/test_factory_dispatch.mjs","red":false}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"^async function main\\|^main(\" fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:test-run","task":"4","label":"exam:4","cmd":"grep -n \"^async function main\\|^main(\" fleet/tests/test_factory_dispatch.mjs","red":false}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Read","target":"/home/exedev/run/exam-4/fleet/tests/test_factory_dispatch.mjs"}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"assert\\.\" fleet/tests/test_factory_dispatch.mjs | grep -v \"^[0-9]*: \\*\" "}
+{"kind":"worker:test-run","task":"4","label":"exam:4","cmd":"grep -n \"assert\\.\" fleet/tests/test_factory_dispatch.mjs | grep -v \"^[0-9]*: \\*\" ","red":false}
+{"kind":"worker:tool","task":"4","label":"exam:4","tool":"Edit","target":"/home/exedev/run/exam-4/fleet/tests/test_factory_dispatch.mjs"}
