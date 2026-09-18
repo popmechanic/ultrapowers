@@ -231,3 +231,12 @@
 {"kind":"worker:tool","task":"2","label":"referee:2","tool":"StructuredOutput"}
 {"kind":"referee","task":"2","findings":9,"blocking":0,"grades":["minor","minor","minor","minor","minor","minor","minor","minor","minor"]}
 {"kind":"landing","task":"2","k":1,"examExit":0,"claim":0.66,"coverage":[0.43,0.4,0.52,0.38],"candidateSha":"57d59bf2192e744ea709482960629d5ef58abd55","wall_ms":511176}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Write","target":"/home/exedev/run/exam-3/fleet/tests/test_factory_hunks.mjs"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Write","target":"/home/exedev/run/exam-3/factory/hunks.mjs"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"mkdir -p /tmp/hunks-validate && rsync -a --exclude 'node_modules' --exclude '.git' /home/exedev/run/exam-3/factory /home/exedev/run/exam-3/fleet /home/exedev/run/exam-3/skills /tmp/hunks-validate/ 2>&"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"ls /tmp/hunks-validate/fleet/node_modules 2>/dev/null | head -3; echo ---; ls /tmp/hunks-validate/fleet | grep -c mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"sed -n '1,40p' /home/exedev/run/exam-5/fleet/tests/test_sims_are_hermetic.mjs"}
+{"kind":"worker:tool","task":"5","label":"exam:5","tool":"Bash","target":"cat /home/exedev/run/exam-5/fleet/package.json; node --version"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Write","target":"/tmp/hunks-validate/factory/hunks.mjs"}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"cat > /tmp/hunks-validate/factory/hunks.mjs << 'HUNKSEOF'\nexport function literalsOf (clauses) {\n  const out = []\n  const seen = new Set()\n  for (const clause of clauses || []) {\n    const s = String("}
+{"kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"cd /tmp/hunks-validate && python3 - << 'PYEOF'\nimport re\np = 'factory/engine.mjs'\ns = open(p).read()\ns = s.replace(\n    \"import { makeBoard } from './board.mjs'\\n\",\n    \"import { makeBoard } from './b"}
