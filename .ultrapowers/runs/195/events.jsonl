@@ -983,3 +983,26 @@
 {"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"git status --short | head -50 && echo --- && git diff --stat"}
 {"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"grep -n \"run_exam\" factory/roles/exam.md factory/roles/implement.md"}
 {"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n '770,830p' skills/ultrapowers/scripts/compile_plan.py"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -rhno \"\\[M[0-9]\\+\\(\\s*,\\s*M\\?[0-9]\\+\\)\\+\\]\" tests/fixtures docs skills evals 2>/dev/null | head -10; echo \"---\"; grep -rc \"LEG_CITE_RE = \" skills/ultrapowers/scripts/compile_plan.py; grep -n \"LEG"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -rln \"\\[M[0-9]\\+\\s*,\\s*M[0-9]\\+\\]\" tests/fixtures docs skills evals 2>/dev/null; echo \"---\"; grep -rn \"\\[M[0-9]\\+\\s*,\\s*M[0-9]\\+\\]\" tests/fixtures docs 2>/dev/null | cut -c1-160 | head"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -n -B4 -A4 \"\\[M[0-9]\\+\\s*,\\s*M[0-9]\\+\\]\" skills/ultrawrite/SKILL.md skills/ultrapowers/references/plan-markers.md | cut -c1-200"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"find fleet/tests -iname '*run_exam*' -o -iname '*factory_run*'; find . -iname '*factory_run_exam*' 2>/dev/null"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Read","target":"/home/exedev/run/fold-fix-4/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Read","target":"/home/exedev/run/fold-fix-4/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"sed -n '200,235p' factory/engine.mjs"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"python3 - <<'EOF'\nimport sys, json, pathlib\nsys.path.insert(0,\"tests\")\nimport test_plan_parse as T\nlegs = \"(a) `Run: python3 check.py` shows the rows still number 16 [M1, M3]; (b) f() equals 3 [M2]\"\np"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"grep -n \"const sh\\b\\|sh:\\|deps.sh\\|buildDeps\\|const tools =\\|tools:\\|async ({ task\" factory/engine.mjs | head -60"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Read","target":"/home/exedev/run/fold-fix-4/factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"sed -n '1450,1470p' factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Write","target":"/tmp/verify_run_exam.mjs"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"python3 - <<'EOF'\nimport sys, json, pathlib\nsys.path.insert(0,\"tests\")\nimport test_plan_parse as T\nlegs = (\"(a) `Run: python3 check.py` shows the skill still validates [M1]; \"\n        \"(b) as (a) but "}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"node -e \"\nimport('./factory/tools.mjs').then(async ({ factoryTools }) => {\n  const assert = await import('node:assert')\n  const server = factoryTools({ runExam: async () => ({ exit: 1, tail: 'Assertio"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"ls fleet/node_modules 2>/dev/null | head -5; echo \"---\"; cat fleet/sandbox-boot.sh 2>/dev/null | head -30"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"python3 - <<'EOF'\nimport sys, json, pathlib\nsys.path.insert(0,\"tests\")\nimport test_plan_parse as T\nlegs = (\"(a) `Run: python3 check.py` shows the skill still validates [M1]; \"\n        \"(b) `Run: pytho"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"find / -maxdepth 6 -iname 'claude-agent-sdk' -type d 2>/dev/null; find / -maxdepth 8 -path '*/node_modules/zod' -type d 2>/dev/null | head; cat fleet/package.json"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"echo hi > /tmp/test_write_probe.txt && cat /tmp/test_write_probe.txt && rm /tmp/test_write_probe.txt"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -n \"plan_parse\\|COMPILER\\|parsed.tasks\\|launch_waves\" factory/engine.mjs | head -20"}
+{"kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n '484,510p' factory/engine.mjs"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"NODE_PATH=/home/exedev/run/exam-4/fleet/node_modules node -e \"\nimport('./factory/tools.mjs').then(async ({ factoryTools }) => {\n  const server = factoryTools({ runExam: async () => ({ exit: 1, tail: '"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"grep -n \"tools\\b\" fleet/tests/*.mjs | grep -v node_modules | head -40"}
+{"kind":"worker:tool","task":"4","label":"impl:4:fold","tool":"Bash","target":"grep -rln \"mcpServers\\|factoryTools\\|tools:\" fleet/tests/*.mjs 2>/dev/null"}
