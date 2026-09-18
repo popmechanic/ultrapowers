@@ -36,5 +36,8 @@ else
   git -C "$dst.tmp" checkout -q "$sha"
   mv "$dst.tmp" "$dst"
 fi
-say "exec $dst/fleet/sandbox-boot.sh boot"
-FLEET_ASSIGNMENT="$comment" exec "$dst/fleet/sandbox-boot.sh" boot
+# The sha picks its boot: the factory's if it carries one, else the old path.
+boot="$dst/fleet/sandbox-boot.sh"
+[ -f "$dst/factory/boot.sh" ] && boot="$dst/factory/boot.sh"
+say "exec $boot boot"
+FLEET_ASSIGNMENT="$comment" exec "$boot" boot

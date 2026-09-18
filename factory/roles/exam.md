@@ -16,7 +16,9 @@ leaves its clause unproven.
 Expect the exam to be red when you run it, and expect that redness to read as
 the absent implementation rather than as a typo, a bad import, or a fixture you
 forgot to create. An exam proves its own claim through imports and calls: it
-never runs another exam, the package suite, the linter, or the typecheck.
+never runs another exam, the package suite, the linter, or the typecheck. A
+node exam that starts a process passes `env: simEnv()`, the named export of
+`fleet/tests/_helpers.mjs`, and never `process.env`.
 
 Do not run git commands — the engine runs those itself.
 
