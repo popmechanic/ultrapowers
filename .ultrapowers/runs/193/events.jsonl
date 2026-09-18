@@ -372,3 +372,4 @@
 {"kind":"worker:tool","task":"5","label":"referee:5","tool":"StructuredOutput"}
 {"kind":"referee","task":"5","findings":8,"blocking":0,"grades":["minor","minor","plan","minor","minor","minor","minor","minor"]}
 {"kind":"landing","task":"5","k":1,"examExit":0,"claim":0.74,"coverage":[0.97,0.96,0.95],"candidateSha":"1391ec593e94aea8629a2ee430bbdf73beef1bea","wall_ms":1359100}
+{"kind":"worker:tool","task":"7","label":"exam:7","tool":"Read","target":"/home/exedev/run/exam-7/fleet/tests/_helpers.mjs"}
