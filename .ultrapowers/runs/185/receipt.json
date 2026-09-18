@@ -1,0 +1,544 @@
+{
+  "ok": true,
+  "stamp": "run-185",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-185"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "5 task(s) in 2 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "add-command",
+      "ok": true,
+      "detail": "no dependencies declared \u2014 nothing to add"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The worker \u2014 one `query()` per dispatch, confinement as a function",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "factory/worker.mjs",
+          "fleet/package.json"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`runWorker(opts, deps) -> Promise<{ result, denials, turns, wall_ms }>`",
+            "`startWorker(opts, deps) -> { promise, handle }`",
+            "`interruptWorker(handle) -> Promise<unknown>`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The judge \u2014 every question read from the file, every threshold read from the policy",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "factory/judge.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`makeJudge({ ask, questionsPath, policyPath, log }) -> { readTask, readLanding, gradeFinding, readNote, readAmendment, readSupervisor }`"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The tools \u2014 kata in the worker's hands, in process, selecting never generating",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "factory/tools.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`factoryTools({ kata, projectId, task, candidates }) -> McpSdkServerConfigWithInstance`"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "Three roles \u2014 produce and discover, never grade, in nine hundred words",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "factory/roles/exam.md",
+          "factory/roles/implement.md",
+          "factory/roles/resolve.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "5",
+        "title": "The engine \u2014 the run as search, folding on every landing",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "factory/engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`runWorker(opts, deps) -> Promise<{ result, denials, turns, wall_ms }>`",
+            "`makeJudge({ ask, questionsPath, policyPath, log }) -> { readTask, readLanding, gradeFinding, readNote, readAmendment, readSupervisor }`",
+            "`factoryTools({ kata, projectId, task, candidates }) -> McpSdkServerConfigWithInstance`"
+          ],
+          "produces": [
+            "`runEngine(args, deps) -> Promise<{ done, adopted, head, wall_ms, cost_usd }>`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [
+      {
+        "from": "1",
+        "to": "5",
+        "why": "interface"
+      },
+      {
+        "from": "2",
+        "to": "5",
+        "why": "interface"
+      },
+      {
+        "from": "3",
+        "to": "5",
+        "why": "interface"
+      }
+    ],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      [
+        "5"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The worker \u2014 one `query()` per dispatch, confinement as a function",
+          "files": [
+            "factory/worker.mjs",
+            "fleet/package.json",
+            "fleet/tests/test_factory_worker.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`runWorker(opts, deps) -> Promise<{ result, denials, turns, wall_ms }>`",
+              "`startWorker(opts, deps) -> { promise, handle }`",
+              "`interruptWorker(handle) -> Promise<unknown>`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "factory/worker.mjs",
+            "fleet/package.json"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_factory_worker.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_factory_worker.mjs",
+          "proofRuns": [
+            "test $(wc -l < factory/worker.mjs) -le 200",
+            "node -e \"const p=require('./fleet/package.json'); process.exit(p.dependencies && p.dependencies['@anthropic-ai/claude-agent-sdk'] ? 0 : 1)\""
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "factory/worker.mjs",
+              "fleet/package.json",
+              "fleet/tests/test_factory_worker.mjs"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [
+              "fleet/tests/test_factory_worker.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_factory_worker.mjs": "fleet/tests/test_factory_worker.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_factory_worker.mjs"
+            ],
+            "siblingOwned": [
+              "factory/judge.mjs",
+              "factory/roles/exam.md",
+              "factory/roles/implement.md",
+              "factory/roles/resolve.md",
+              "factory/tools.mjs",
+              "fleet/tests/test_factory_judge.mjs",
+              "fleet/tests/test_factory_roles.mjs",
+              "fleet/tests/test_factory_tools.mjs"
+            ],
+            "produces": [
+              "`runWorker(opts, deps) -> Promise<{ result, denials, turns, wall_ms }>`",
+              "`startWorker(opts, deps) -> { promise, handle }`",
+              "`interruptWorker(handle) -> Promise<unknown>`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "The judge \u2014 every question read from the file, every threshold read from the policy",
+          "files": [
+            "factory/judge.mjs",
+            "fleet/tests/test_factory_judge.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`makeJudge({ ask, questionsPath, policyPath, log }) -> { readTask, readLanding, gradeFinding, readNote, readAmendment, readSupervisor }`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "factory/judge.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_factory_judge.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_factory_judge.mjs",
+          "proofRuns": [
+            "test $(wc -l < factory/judge.mjs) -le 200",
+            "test $(grep -cE '0\\.[0-9]' factory/judge.mjs) -eq 0"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "factory/judge.mjs",
+              "fleet/tests/test_factory_judge.mjs"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [
+              "fleet/tests/test_factory_judge.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_factory_judge.mjs": "fleet/tests/test_factory_judge.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_factory_judge.mjs"
+            ],
+            "siblingOwned": [
+              "factory/roles/exam.md",
+              "factory/roles/implement.md",
+              "factory/roles/resolve.md",
+              "factory/tools.mjs",
+              "factory/worker.mjs",
+              "fleet/package.json",
+              "fleet/tests/test_factory_roles.mjs",
+              "fleet/tests/test_factory_tools.mjs",
+              "fleet/tests/test_factory_worker.mjs"
+            ],
+            "produces": [
+              "`makeJudge({ ask, questionsPath, policyPath, log }) -> { readTask, readLanding, gradeFinding, readNote, readAmendment, readSupervisor }`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "3",
+          "title": "The tools \u2014 kata in the worker's hands, in process, selecting never generating",
+          "files": [
+            "factory/tools.mjs",
+            "fleet/tests/test_factory_tools.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`factoryTools({ kata, projectId, task, candidates }) -> McpSdkServerConfigWithInstance`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "factory/tools.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_factory_tools.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_factory_tools.mjs",
+          "proofRuns": [
+            "test $(wc -l < factory/tools.mjs) -le 200"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "factory/tools.mjs",
+              "fleet/tests/test_factory_tools.mjs"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [
+              "fleet/tests/test_factory_tools.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_factory_tools.mjs": "fleet/tests/test_factory_tools.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_factory_tools.mjs"
+            ],
+            "siblingOwned": [
+              "factory/judge.mjs",
+              "factory/roles/exam.md",
+              "factory/roles/implement.md",
+              "factory/roles/resolve.md",
+              "factory/worker.mjs",
+              "fleet/package.json",
+              "fleet/tests/test_factory_judge.mjs",
+              "fleet/tests/test_factory_roles.mjs",
+              "fleet/tests/test_factory_worker.mjs"
+            ],
+            "produces": [
+              "`factoryTools({ kata, projectId, task, candidates }) -> McpSdkServerConfigWithInstance`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "4",
+          "title": "Three roles \u2014 produce and discover, never grade, in nine hundred words",
+          "files": [
+            "factory/roles/exam.md",
+            "factory/roles/implement.md",
+            "factory/roles/resolve.md",
+            "fleet/tests/test_factory_roles.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "factory/roles/exam.md",
+            "factory/roles/implement.md",
+            "factory/roles/resolve.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_factory_roles.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_factory_roles.mjs",
+          "proofRuns": [
+            "test $(cat factory/roles/implement.md factory/roles/exam.md factory/roles/resolve.md | wc -w) -le 900",
+            "test $(grep -ciwE 'blocking|minor|severity|verdict' factory/roles/implement.md factory/roles/exam.md factory/roles/resolve.md | awk -F: '{s+=$2} END {print s+0}') -eq 0"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "factory/roles/exam.md",
+              "factory/roles/implement.md",
+              "factory/roles/resolve.md",
+              "fleet/tests/test_factory_roles.mjs"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [
+              "fleet/tests/test_factory_roles.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_factory_roles.mjs": "fleet/tests/test_factory_roles.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_factory_roles.mjs"
+            ],
+            "siblingOwned": [
+              "factory/judge.mjs",
+              "factory/tools.mjs",
+              "factory/worker.mjs",
+              "fleet/package.json",
+              "fleet/tests/test_factory_judge.mjs",
+              "fleet/tests/test_factory_tools.mjs",
+              "fleet/tests/test_factory_worker.mjs"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ],
+      [
+        {
+          "id": "5",
+          "title": "The engine \u2014 the run as search, folding on every landing",
+          "files": [
+            "factory/engine.mjs",
+            "fleet/tests/test_factory_engine.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`runWorker(opts, deps) -> Promise<{ result, denials, turns, wall_ms }>`",
+              "`makeJudge({ ask, questionsPath, policyPath, log }) -> { readTask, readLanding, gradeFinding, readNote, readAmendment, readSupervisor }`",
+              "`factoryTools({ kata, projectId, task, candidates }) -> McpSdkServerConfigWithInstance`"
+            ],
+            "produces": [
+              "`runEngine(args, deps) -> Promise<{ done, adopted, head, wall_ms, cost_usd }>`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "factory/engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_factory_engine.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_factory_engine.mjs",
+          "proofRuns": [
+            "test $(wc -l < factory/engine.mjs) -le 1500",
+            "d=$(mktemp -d) && git -C $d init -q -b main && mkdir -p $d/widgetkit $d/tests && touch $d/widgetkit/__init__.py $d/conftest.py && printf '# target\\n' > $d/README.md && git -C $d add -A && git -C $d -c user.name=f -c user.email=f@x commit -qm BASE && r=$(mktemp -d) && CLAUDE_CONFIG_DIR=$(mktemp -d) timeout 900 node factory/engine.mjs --plan evals/fixtures/claims/plan.md --target $d --base $(git -C $d rev-parse HEAD) --run-dir $r > $r/stdout.txt && tail -n 1 $r/stdout.txt | grep -q '\"done\":true' && test $(grep -c '\"kind\":\"landing\"' $r/events.jsonl) -eq 3 && test $(grep -c '\"kind\":\"referee\"' $r/events.jsonl) -eq 0"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "factory/engine.mjs",
+              "fleet/tests/test_factory_engine.mjs"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [
+              "fleet/tests/test_factory_engine.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_factory_engine.mjs": "fleet/tests/test_factory_engine.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_factory_engine.mjs"
+            ],
+            "siblingOwned": [],
+            "produces": [
+              "`runEngine(args, deps) -> Promise<{ done, adopted, head, wall_ms, cost_usd }>`"
+            ],
+            "consumes": [
+              "`runWorker(opts, deps) -> Promise<{ result, denials, turns, wall_ms }>`",
+              "`makeJudge({ ask, questionsPath, policyPath, log }) -> { readTask, readLanding, gradeFinding, readNote, readAmendment, readSupervisor }`",
+              "`factoryTools({ kata, projectId, task, candidates }) -> McpSdkServerConfigWithInstance`"
+            ]
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "4 parallel tasks",
+      "The engine \u2014 the run as search, folding on every landing"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- No direct Anthropic API call and no `anthropic` SDK anywhere under `factory/`: every model call is one `query()` of `@anthropic-ai/claude-agent-sdk`, which rides the edge-injected bearer exactly as `claude -p` does. A file under `factory/` that imports `@anthropic-ai/sdk` or sets `x-api-key` is a blocking finding.\n- Models never run git. Every `git` and every kernel invocation is the engine's own `child_process`; every worker's `disallowedTools` carries `Bash(git *)`, and the engine's confinement hook denies any `Edit`/`Write` outside the task's Files.\n- A judgment is a question in `factory/questions.json` read through `factory/judge.mjs`, never a regular expression over model prose and never a threshold literal in code: every number the judge compares against is read from `factory/policy.json`.\n- The `fleet/` freeze above names the old engine's own shapes \u2014 its top-level modules, scripts, unit, documents and role files \u2014 and deliberately not `fleet/package.json` (Task 1 adds the SDK dependency there) nor `fleet/tests/exams/` (the driver's exam handoff stages it in every clone): run-184 measured a whole-directory freeze as unsatisfiable on every task, 2026-09-17. Nothing else under `fleet/` moves.\n- A role file states what to produce and what to look for, never how a finding is graded: the words `blocking`, `minor`, `severity` and `verdict` do not appear in `factory/roles/implement.md` or `factory/roles/exam.md` (minor).",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- ':(glob)fleet/*.mjs' ':(glob)fleet/*.sh' ':(glob)fleet/*.service' ':(glob)fleet/*.md' fleet/roles fleet/tests/_engine_helpers.mjs",
+        "minor": false
+      },
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- factory/questions.json factory/policy.json factory/proto factory/replay skills/ultrapowers/kernel",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-185/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-185/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-185/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-185/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for addCmd/addDevCmd \u2014 the package-add commands are driver-derived from the same lockfile/manifest beside the bootstrap and stamped in the args file and receipt (only when the plan declares packages); there is no knob for them",
+    "nothing for regenerateCmd \u2014 the lockfile regenerator is derived from the same lockfile/manifest beside the bootstrap (and only when the bootstrap itself was derived) and stamped in the args file and receipt; there is no knob for it",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini",
+  "foldTestCmd": "python3 -m pytest {paths}"
+}
