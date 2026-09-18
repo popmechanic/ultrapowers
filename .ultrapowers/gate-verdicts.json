@@ -1,0 +1,95 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "b7273a2a747f953a8a85782de53f9e5658c1650333022bed17be07707ef8f70c",
+   "verdict": "pass",
+   "reason": "testCmds/testCmd join, proofRuns with the wrapper stripped, checks with `(minor)` split off, bootstrapCmd and the null cases all compute; the key-set pins are the exam file's own to update."
+  },
+  "2": {
+   "hash": "c820127dc453fe671485a6c12b70fdab6374f3516eedc7da958bb9406fb32f1c",
+   "verdict": "pass",
+   "reason": "runAll argv and stop-at-first-failure, the four bootstrapFor answers, the second command's exit at all three sites, install-once-before-any-test and the no-lockfile absence each have a leg."
+  },
+  "3": {
+   "hash": "6859f5345b90784a726f4d7e80a40aa633698da2dbce48264c756a078b8946e7",
+   "verdict": "pass",
+   "reason": "Round 2 after narrowing the switch-off leg to `-lc` (the rig's own test command may be a bash script): M4 and leg (d) agree with M1's argv; rows, the short landing, ULTRA_BASE and the minor check each have a leg."
+  },
+  "4": {
+   "hash": "cf20173c624006cde7bd7dd20d264f9148e4bb8ea59d275b3f6d5707d4dbdaae",
+   "verdict": "pass",
+   "reason": "exits 0/3/4, the JSON line, where HEAD points after each outcome, the overlaid exam file and the absence of exam:/impl: dispatches each have a leg."
+  },
+  "5": {
+   "hash": "e8cb7e09054b749db2cfda605857b92237c484e361022c08064c08a5d6cd6636",
+   "verdict": "pass",
+   "reason": "PUT counts 2, 3 and 1 compute under max_refolds 3; GET-then-PUT order, the force-with-lease push before the PUT, the no-merge drives and the two-entry evidence array each have a leg."
+  }
+ },
+ "tally": {
+  "dispatched": 6,
+  "rejected": 0,
+  "rounds": {
+   "1": {
+    "dispatched": 5,
+    "rejected": 0
+   },
+   "2": {
+    "dispatched": 1,
+    "rejected": 0
+   }
+  },
+  "base": "e6f3cbaf2316dfb404cc4e7cb14034d69e92ccbf",
+  "gate_question": "facts-only with the negation sentence (fifth plan read under it). Zero rejections; one reader note found a leg the rig would have made unsatisfiable (\"no sh call has bash\" where the rig's default test command is `bash check.sh`) and it was narrowed before compile."
+ },
+ "history": [],
+ "authoring": {
+  "minutes": 55,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Run PRs",
+    "options": [
+     "Draft the gap plan now",
+     "Merge step only, as a hand PR",
+     "Not yet"
+    ],
+    "recommended": "Draft the gap plan now",
+    "picked": "Draft the gap plan now"
+   },
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Sign as drafted",
+     "Self-merge only"
+    ],
+    "recommended": "Sign as drafted",
+    "picked": "Sign as drafted"
+   },
+   {
+    "question": "Gap 2",
+    "options": [
+     "Into the gap plan you just signed",
+     "Its own small plan, launched first",
+     "Run the measurement anyway"
+    ],
+    "recommended": "Into the gap plan you just signed",
+    "picked": "Into the gap plan you just signed"
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers on the fleet",
+     "Hold until tomorrow",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers on the fleet",
+    "picked": "Ultrapowers on the fleet"
+   }
+  ]
+ }
+}
