@@ -208,3 +208,4 @@
 {"ts":"2026-09-18T21:53:58.801Z","kind":"landing","task":"1","k":1,"examExit":0,"claim":0.83,"coverage":[0.96,0.96,0.9],"candidateSha":"7a851a2af5e87e808a84024012009ea9a283912f","wall_ms":606565}
 {"ts":"2026-09-18T21:54:04.109Z","kind":"fold:verify","task":"1","ran":[{"task":"1","exit":0}]}
 {"ts":"2026-09-18T21:55:20.001Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"Bash","target":"grep -n \"const launch\\|function launch\\|launchOnCandidate\\|inflightLandings\" /home/exedev/run/exam-4/factory/engine.mjs | head -30"}
+{"ts":"2026-09-18T21:57:26.668Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Read","target":"/home/exedev/run/exam-3/fleet/tests/test_worker_kata_env.mjs"}
