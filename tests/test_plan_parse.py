@@ -47,8 +47,9 @@ RECORDLESS_FIXTURES = sorted(
 ORACLE_FIELDS = {"id", "title", "files", "depends_on", "proofTests",
                  "testCmd", "interfaces", "proofGuards"}
 # Every field a task object prints: the oracle's eight plus the parser's own
-# `runOnlyClauses` (run-195), which the old compiler never emitted.
-TASK_FIELDS = ORACLE_FIELDS | {"runOnlyClauses"}
+# `runOnlyClauses` (run-195) and `proofRuns`/`testCmds` (this task), none of
+# which the old compiler ever emitted.
+TASK_FIELDS = ORACLE_FIELDS | {"runOnlyClauses", "proofRuns", "testCmds"}
 
 
 # --------------------------------------------------------------------------- #
@@ -96,7 +97,8 @@ def build_and_run(tmp_path, tasks, **plan_kwargs):
 # only the fields the Machine clauses examine are varied per test.           #
 # --------------------------------------------------------------------------- #
 
-def make_header(title="Exam fixture plan", exam_command=None):
+def make_header(title="Exam fixture plan", exam_command=None, bootstrap=None,
+                checks=()):
     lines = [f"# {title}", "",
              "**Grammar:** claims-v1", "",
              "**Claim:** An operator sees the placeholder claim proved. (elicited)", "",
@@ -105,12 +107,20 @@ def make_header(title="Exam fixture plan", exam_command=None):
              "**Tech Stack:** N/A (exam fixture, never executed).", ""]
     if exam_command:
         lines += [f"**Exam command:** {exam_command}", ""]
-    lines += ["## Global Constraints", "", "- None.", ""]
+    if bootstrap:
+        lines += [f"**Bootstrap:** {bootstrap}", ""]
+    lines += ["## Global Constraints", ""]
+    if checks:
+        lines += [f"- Check: {c}" for c in checks] + [""]
+    else:
+        lines += ["- None.", ""]
     return "\n".join(lines)
 
 
-def make_plan(tasks, exam_command=None, title="Exam fixture plan"):
-    return (make_header(title=title, exam_command=exam_command)
+def make_plan(tasks, exam_command=None, title="Exam fixture plan",
+              bootstrap=None, checks=()):
+    return (make_header(title=title, exam_command=exam_command,
+                        bootstrap=bootstrap, checks=checks)
             + "\n" + "\n\n".join(tasks) + "\n")
 
 
@@ -163,8 +173,10 @@ def test_m1_stdout_shape_with_and_without_verdict_record(plan_path, tmp_path):
     assert proc_with.returncode == 0, proc_with.stdout + proc_with.stderr  # [M1]
     obj_with = parse_stdout_json(proc_with.stdout)
     # Pin extended to the fourth top-level key, `pairs`, by "The parser
-    # lists every pair of tasks that share a file or an interface". [M1] [pairs-M1]
-    assert set(obj_with.keys()) == {"tasks", "dag_edges", "launch_waves", "pairs"}
+    # lists every pair of tasks that share a file or an interface", and to
+    # the fifth and sixth, `checks` and `bootstrapCmd`, by this task. [M1] [pairs-M1] [cmds-M2]
+    assert set(obj_with.keys()) == {"tasks", "dag_edges", "launch_waves",
+                                    "pairs", "checks", "bootstrapCmd"}
 
     # A copy of the fixture alone in tmp_path, with no sibling file at all.
     tmp_plan = tmp_path / plan_path.name
@@ -172,7 +184,8 @@ def test_m1_stdout_shape_with_and_without_verdict_record(plan_path, tmp_path):
     proc_without = run_parser(tmp_plan)
     assert proc_without.returncode == 0, proc_without.stdout + proc_without.stderr  # [M1]
     obj_without = parse_stdout_json(proc_without.stdout)
-    assert set(obj_without.keys()) == {"tasks", "dag_edges", "launch_waves", "pairs"}  # [M1] [pairs-M1]
+    assert set(obj_without.keys()) == {"tasks", "dag_edges", "launch_waves",
+                                       "pairs", "checks", "bootstrapCmd"}  # [M1] [pairs-M1] [cmds-M2]
 
     # Reading no file but the plan: the answer does not change when the
     # sibling verdict record vanishes. [M1]
@@ -722,8 +735,10 @@ def test_pairs_m1_files_and_interface_pairs_shape_and_order(tmp_path):
         task_block("3", "Other modifier", modifies=["b.py"]),
     ]
     obj = build_and_run(tmp_path, tasks)
-    # The new top-level key, alongside the three pre-existing ones. [pairs-M1]
-    assert set(obj.keys()) == {"tasks", "dag_edges", "launch_waves", "pairs"}
+    # The new top-level key, alongside the three pre-existing ones (plus the
+    # `checks`/`bootstrapCmd` pair added by this task). [pairs-M1] [cmds-M2]
+    assert set(obj.keys()) == {"tasks", "dag_edges", "launch_waves",
+                               "pairs", "checks", "bootstrapCmd"}
     # Full entry shape, values and list order: (1, 2) by interface (no shared
     # file so no "files" reason, symbol/producer/consumer filled in), (2, 3)
     # by files (no interface so those three are null); (1, 3) shares neither
@@ -960,11 +975,152 @@ def test_floor_m1_run_only_clauses_field(tmp_path):
             for key, val in exp.items():
                 assert t[key] == val
 
-    # The top-level key set is unchanged by the new task-level field. [floor-M1]
-    assert set(obj.keys()) == {"tasks", "dag_edges", "launch_waves", "pairs"}
+    # The top-level key set is unchanged by the new task-level field (beyond
+    # the `checks`/`bootstrapCmd` pair added by this task). [floor-M1] [cmds-M2]
+    assert set(obj.keys()) == {"tasks", "dag_edges", "launch_waves",
+                               "pairs", "checks", "bootstrapCmd"}
 
     # `--unguarded` on this plan (one unguarded Test path per task, neither
     # guarded) still prints exactly those paths, one per line. [floor-M1]
     proc = run_parser_unguarded(tmp_path / "plan.md")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert proc.stdout == "tests/floor_legged.py\ntests/floor_nolegs.py\n"
+
+
+# --------------------------------------------------------------------------- #
+# Task: "The parser says what a plan wants run -- its proof lines, its       #
+# checks, its bootstrap, and its test commands one by one".                  #
+#                                                                             #
+# This task's own Machine clauses are M1-M3, colliding by number with the    #
+# grammar-parser's M1-M6 tags used at the top of this file -- its legs are   #
+# tagged cmds-M1, cmds-M2, cmds-M3 to stay unambiguous, mirroring            #
+# guard-M*/pairs-M*/floor-M*.                                                #
+#                                                                             #
+# cmds-M1 -- every task object gains `proofRuns` (the task's Proof           #
+#            `- Run:` commands in order, a whole-value backtick wrapper      #
+#            removed, `[]` when none) and `testCmds` (the list of commands   #
+#            whose ` && `-join is `testCmd`, `[]` when `testCmd` is `null`). #
+# cmds-M2 -- the printed object gains `checks` (one `{"cmd", "minor"}` per   #
+#            `- Check:` bullet of `## Global Constraints`, in order, with    #
+#            `minor` true exactly when the bullet ends with `(minor)`,       #
+#            which is not part of `cmd`) and `bootstrapCmd` (the text of a   #
+#            `**Bootstrap:**` header line above the first task, `null` when  #
+#            the plan has none).                                            #
+# cmds-M3 -- `testCmd`, the other task fields, `dag_edges`, `launch_waves`,  #
+#            `pairs` and `--unguarded` are unchanged; the task-object key    #
+#            set is the earlier set plus `proofRuns`/`testCmds`, the         #
+#            top-level key set is the earlier set plus                      #
+#            `checks`/`bootstrapCmd`, both and nothing else.                #
+# --------------------------------------------------------------------------- #
+
+def test_cmds_m1_proofruns_and_testcmds_fields(tmp_path):
+    tasks = [
+        task_block("1", "Mixed", creates=["cm1/a.py"],
+                   tests=["fleet/tests/test_a.mjs", "tests/test_b.py"],
+                   run_cmds=["python3 checks/one.py",
+                             "`python3 checks/two.py`"]),
+    ]
+    obj = build_and_run(tmp_path, tasks)
+    t = obj["tasks"][0]
+    # testCmds is the list whose " && "-join is testCmd. [cmds-M1]
+    assert t["testCmds"] == ["node fleet/tests/test_a.mjs",
+                             "python3 -m pytest -q tests/test_b.py"]
+    assert t["testCmd"] == " && ".join(t["testCmds"])  # [cmds-M1]
+    assert t["testCmd"] == ("node fleet/tests/test_a.mjs && "
+                            "python3 -m pytest -q tests/test_b.py")  # [cmds-M1]
+    # proofRuns: the two `- Run:` commands in order, the second's whole-value
+    # backtick wrapper removed (the first carried none to begin with). [cmds-M1]
+    assert t["proofRuns"] == ["python3 checks/one.py",
+                              "python3 checks/two.py"]
+
+
+def test_cmds_m1_proofruns_and_testcmds_empty_when_absent(tmp_path):
+    tasks = [task_block("1", "No proof", creates=["cm1b/a.py"])]
+    obj = build_and_run(tmp_path, tasks)
+    t = obj["tasks"][0]
+    # No Test path -> testCmds [] and testCmd null; no Run: bullets ->
+    # proofRuns []. [cmds-M1]
+    assert t["testCmds"] == []
+    assert t["testCmd"] is None
+    assert t["proofRuns"] == []
+
+
+def test_cmds_m1_testcmds_single_item_under_exam_command_template(tmp_path):
+    tasks = [task_block("1", "Vitest task", creates=["cm1c/a.ts"],
+                        tests=["tests/a.test.ts", "tests/b.test.ts"])]
+    obj = build_and_run(tmp_path, tasks, exam_command="npx vitest run {paths}")
+    t = obj["tasks"][0]
+    # Under an **Exam command:** template, testCmds is a list of exactly one
+    # command -- that command being the whole (templated) testCmd. [cmds-M1]
+    assert t["testCmds"] == ["npx vitest run tests/a.test.ts tests/b.test.ts"]
+    assert t["testCmd"] == t["testCmds"][0]
+
+
+def test_cmds_m2_checks_and_bootstrap_fields(tmp_path):
+    tasks = [task_block("1", "Solo", creates=["cm2/a.py"])]
+    obj = build_and_run(
+        tmp_path, tasks,
+        checks=["git diff --quiet $ULTRA_BASE -- fleet/",
+                "wc -w docs/x.md (minor)"],
+        bootstrap="bun install --frozen-lockfile")
+    # checks: one {"cmd", "minor"} per `- Check:` bullet, in order; the
+    # trailing "(minor)" marks the bullet as minor and is not part of "cmd". [cmds-M2]
+    assert obj["checks"] == [
+        {"cmd": "git diff --quiet $ULTRA_BASE -- fleet/", "minor": False},
+        {"cmd": "wc -w docs/x.md", "minor": True},
+    ]
+    # bootstrapCmd: the text of the **Bootstrap:** header line. [cmds-M2]
+    assert obj["bootstrapCmd"] == "bun install --frozen-lockfile"
+
+
+def test_cmds_m2_checks_and_bootstrap_absent_by_default(tmp_path):
+    tasks = [task_block("1", "Solo", creates=["cm2b/a.py"])]
+    obj = build_and_run(tmp_path, tasks)
+    # A plan with neither a `- Check:` bullet nor a **Bootstrap:** line
+    # prints checks [] and bootstrapCmd null. [cmds-M2]
+    assert obj["checks"] == []
+    assert obj["bootstrapCmd"] is None
+
+
+def test_cmds_m3_key_sets_and_other_fields_unchanged(tmp_path):
+    tasks = [
+        task_block("1", "A", creates=["cm3/a.py"], tests=["tests/cm3_test.py"]),
+        task_block("2", "B", modifies=["cm3/a.py"]),
+    ]
+    obj = build_and_run(
+        tmp_path, tasks,
+        checks=["echo check"], bootstrap="echo boot")
+
+    # The task-object key set is the earlier set plus `proofRuns` and
+    # `testCmds`, nothing else -- TASK_FIELDS already carries that pin. [cmds-M3]
+    for t in obj["tasks"]:
+        assert set(t.keys()) == TASK_FIELDS
+    for wave in obj["launch_waves"]:
+        for t in wave:
+            assert set(t.keys()) == TASK_FIELDS
+
+    # The top-level key set is the earlier set plus `checks` and
+    # `bootstrapCmd`, nothing else. [cmds-M3]
+    assert set(obj.keys()) == {"tasks", "dag_edges", "launch_waves",
+                               "pairs", "checks", "bootstrapCmd"}
+
+    # testCmd, the other task fields, dag_edges, launch_waves and pairs are
+    # what they were: the write-after-create edge (task "1" creates
+    # cm3/a.py, task "2" modifies it) still fires with its own "why", and the
+    # pair still carries "files". [cmds-M3]
+    assert obj["dag_edges"] == [
+        {"from": "1", "to": "2", "why": "write-after-create"}]
+    assert obj["pairs"] == [
+        {"a": "1", "b": "2", "why": ["files"], "paths": ["cm3/a.py"],
+         "symbol": None, "producer": None, "consumer": None},
+    ]
+    by_id = {t["id"]: t for t in obj["tasks"]}
+    assert by_id["1"]["testCmd"] == "python3 -m pytest -q tests/cm3_test.py"  # [cmds-M3]
+    assert by_id["2"]["testCmd"] is None  # [cmds-M3]
+
+    # --unguarded on a plan with one unguarded Test path still prints
+    # exactly that path and a newline. [cmds-M3]
+    plan_path = tmp_path / "plan.md"
+    proc = run_parser_unguarded(plan_path)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert proc.stdout == "tests/cm3_test.py\n"

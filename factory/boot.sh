@@ -38,14 +38,19 @@ BOOT_LOG="$FLEET_HOME/fleet-boot.log"; DONE_MARKER="$FLEET_HOME/.fleet-engine-do
 RUN_N=""; PLAN_SHA=""; TARGET_REPO=""; BASE_SHA=""; ENGINE_SHA=""; RUN_ID=""
 BRANCH=""; PLAN_BRANCH=""; EVIDENCE_BRANCH=""; EVIDENCE_REL=""; PLAN_FILE=""
 ENGINE_REPO_DIR=""; STATUS_FILE=""; STATE=""; PHASE=""; PR_URL=""; PR_AUTHOR=""
-ERROR=""; VM_NAME=""; STARTED_AT=""; EVIDENCE_READY=""
+ERROR=""; VM_NAME=""; STARTED_AT=""; EVIDENCE_READY=""; HOLD_FLAG=0
 BOARD_BOUND=""; BOARD_UNIT=""; BOARD_PROJECT_ID=""; BOARD_PROJECT_NAME=""; BOARD_KATA_JSON=""
+# Self-merge state: MERGED_SHA is the merge commit once a PUT succeeds (else empty, which
+# `write_status` renders as `null`); MERGE_PHASE is the reason `maybe_self_merge` parked,
+# read only when MERGED_SHA stayed empty. SELF_MERGE_* are the read of `publish.self_merge`.
+MERGED_SHA=""; MERGE_PHASE=""; SELF_MERGE_ENABLED=0; SELF_MERGE_MAX_REFOLDS=3; SELF_MERGE_WAIT_SECONDS=120
 fleet_curl()        { curl "$@"; }
 fleet_git()         { git "$@"; }
 fleet_npm()         { npm "$@"; }
 fleet_systemd_run() { systemd-run "$@"; }
 fleet_systemctl()   { systemctl "$@"; }
 fleet_python3()     { python3 "$@"; }
+fleet_node()        { node "$@"; }
 # KATA_SERVER rides every call the boot itself makes: the daemon it is talking
 # to is always the one it just started, on localhost.
 fleet_kata() { env "KATA_SERVER=$KATA_URL" kata "$@"; }
@@ -78,14 +83,16 @@ fail() { # $1 = message, $2 = exit code (default 1)
 read_assignment() { if [ -n "${FLEET_ASSIGNMENT:-}" ]; then printf '%s\n' "$FLEET_ASSIGNMENT"; else fleet_curl -fsS "$REFLECTION_URL/comment" 2>/dev/null | json_field comment || true; fi; }
 is_sha()    { case "$1" in *[!0-9a-f]* | "") return 1 ;; esac; [ "${#1}" -eq 40 ]; }
 is_target() { [[ $1 =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; }
-# `tier`, `effort` and `hold` are accepted for the launcher's sake and acted on by nobody.
+# `tier` and `effort` are accepted for the launcher's sake and acted on by nobody. `hold`
+# is recorded: `hold=1` is the signal that keeps `publish` from ever sending a merge.
 parse_assignment() { # $1 = the comment line
   local tok key val
   for tok in $1; do
     key="${tok%%=*}"; val="${tok#*=}"
     case "$key" in
       run) RUN_N="$val" ;; plan) PLAN_SHA="$val" ;; target) TARGET_REPO="$val" ;;
-      base) BASE_SHA="$val" ;; engine) ENGINE_SHA="$val" ;; tier|effort|hold) : ;;
+      base) BASE_SHA="$val" ;; engine) ENGINE_SHA="$val" ;; tier|effort) : ;;
+      hold) [ "$val" = 1 ] && HOLD_FLAG=1 ;;
       *) fail "assignment: unknown key '$key' in comment" ;; esac
   done
   [ -n "$RUN_N" ]          || fail "assignment: no run id in comment"
@@ -148,15 +155,16 @@ ev_project() { # $1 = rows|tasks
 # One writer, thirteen cells, written atomically. `startedAt` is the run's clock
 # and is set once; every write stamps `updatedAt`.
 write_status() { # $1 = state, $2 = phase (optional)
-  local pr=null author=null vm=null err=null tasks tmp
+  local pr=null author=null vm=null err=null merged=null tasks tmp
   STATE="$1"; if [ "$#" -ge 2 ]; then PHASE="$2"; fi
   [ -n "$STARTED_AT" ] || STARTED_AT="$(now_iso)"
   [ -n "$PR_URL" ] && pr="\"$(json_escape "$PR_URL")\""; [ -n "$PR_AUTHOR" ] && author="\"$(json_escape "$PR_AUTHOR")\""
   [ -n "$VM_NAME" ] && vm="\"$(json_escape "$VM_NAME")\""; [ -n "$ERROR" ] && err="\"$(json_escape "$ERROR")\""
+  [ -n "$MERGED_SHA" ] && merged="\"$(json_escape "$MERGED_SHA")\""
   tasks="$(ev_project tasks)"; [ -n "$tasks" ] || tasks="{}"
   mkdir -p "$EVIDENCE_DIR/$EVIDENCE_REL"; tmp="$STATUS_FILE.tmp.$$"
-  printf '{"run":"%s","state":"%s","phase":"%s","pr":%s,"prAuthor":%s,"merged":null,"disclosures":null,"branch":"%s","vm":%s,"startedAt":"%s","updatedAt":"%s","error":%s,"tasks":%s}\n' \
-    "$(json_escape "$RUN_N")" "$(json_escape "$STATE")" "$(json_escape "$PHASE")" "$pr" "$author" "$(json_escape "$BRANCH")" "$vm" "$STARTED_AT" "$(now_iso)" "$err" "$tasks" >"$tmp"
+  printf '{"run":"%s","state":"%s","phase":"%s","pr":%s,"prAuthor":%s,"merged":%s,"disclosures":null,"branch":"%s","vm":%s,"startedAt":"%s","updatedAt":"%s","error":%s,"tasks":%s}\n' \
+    "$(json_escape "$RUN_N")" "$(json_escape "$STATE")" "$(json_escape "$PHASE")" "$pr" "$author" "$merged" "$(json_escape "$BRANCH")" "$vm" "$STARTED_AT" "$(now_iso)" "$err" "$tasks" >"$tmp"
   mv "$tmp" "$STATUS_FILE"; log "status: state=$STATE phase=$PHASE"
 }
 # The named files the engine left, copied beside the page. Never `git add -A`: the
@@ -366,6 +374,123 @@ default_branch() {
   local ref; ref="$(fleet_git -C "$TARGET_DIR" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || true)"
   case "$ref" in refs/remotes/origin/?*) printf '%s\n' "${ref#refs/remotes/origin/}" ;; *) return 1 ;; esac
 }
+# `publish.self_merge` off `factory/policy.json` in the ENGINE checkout — not the target's.
+# A missing file, a missing `enabled` cell, or a read that fails in any way reads as
+# disabled: self-merge is opt-in, never a default a broken read falls into.
+read_self_merge_policy() {
+  SELF_MERGE_ENABLED=0; SELF_MERGE_MAX_REFOLDS=3; SELF_MERGE_WAIT_SECONDS=120
+  local policy_file="$ENGINE_REPO_DIR/factory/policy.json" out
+  [ -f "$policy_file" ] || return 0
+  out="$(fleet_python3 -c '
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        doc = json.load(f)
+    sm = doc.get("publish", {}).get("self_merge", {})
+    if not isinstance(sm, dict) or "enabled" not in sm:
+        raise SystemExit(1)
+    print("1" if sm.get("enabled") else "0", int(sm.get("max_refolds", 3)), int(sm.get("mergeable_wait_seconds", 120)))
+except Exception:
+    raise SystemExit(1)
+' "$policy_file" 2>/dev/null)" || return 0
+  set -- $out
+  SELF_MERGE_ENABLED="${1:-0}"; SELF_MERGE_MAX_REFOLDS="${2:-3}"; SELF_MERGE_WAIT_SECONDS="${3:-120}"
+}
+# M2: on a moved default branch, hand the target to the sibling re-fold entry and, once it
+# says every exam ran green there (exit 0), force-push the target's new HEAD over the run's
+# own branch. A fetch of $BRANCH first gives `--force-with-lease` a lease to check against —
+# this clone only ever pushed that branch, so without it there is no local tracking ref to
+# lease on. Any other exit (3 red, 4 conflict, or anything else) leaves the target untouched
+# and sets MERGE_PHASE, naming the re-fold's own reason when it gave one.
+refold_onto() { # $1 = the base the run's work stood on, $2 = the moved tip
+  local base="$1" onto="$2" line rc=0 reason
+  line="$(fleet_node "$ENGINE_REPO_DIR/factory/engine.mjs" --refold \
+      --plan "$PLAN_FILE" --target "$TARGET_DIR" --base "$base" --onto "$onto" \
+      --run-dir "$RUN_DIR" --exams-dir "$EVIDENCE_DIR/$EVIDENCE_REL/exams" | tail -n 1)" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    reason="$(printf '%s' "$line" | json_field reason)"
+    MERGE_PHASE="merge: re-fold refused (${reason:-exit $rc})"
+    log "merge: re-fold onto $onto exited $rc — $MERGE_PHASE"
+    return 1
+  fi
+  fleet_git -C "$TARGET_DIR" fetch origin "refs/heads/$BRANCH" 2>/dev/null || true
+  if ! fleet_git -C "$TARGET_DIR" push --force-with-lease origin "HEAD:refs/heads/$BRANCH"; then
+    MERGE_PHASE="merge: force-with-lease push of the re-folded head was refused"
+    log "merge: $MERGE_PHASE"
+    return 1
+  fi
+  log "merge: re-folded onto $onto and pushed $BRANCH"
+  return 0
+}
+# M3: GitHub answers `mergeable: null` for a few seconds after a push while it recomputes.
+# Poll `GET /pulls/<n>` until that stops, bounded by `mergeable_wait_seconds`.
+wait_mergeable() { # $1 = the pull request number
+  local number="$1" start now answer code reply mergeable
+  start="$(date +%s)"
+  while :; do
+    answer="$(fleet_curl -sS "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/pulls/$number" -w '\n%{http_code}' 2>/dev/null || true)"
+    code="$(printf '%s' "$answer" | tail -n 1)"; reply="$(printf '%s' "$answer" | sed '$d')"
+    if [ "$code" = 200 ]; then
+      mergeable="$(printf '%s' "$reply" | grep -o '"mergeable"[[:space:]]*:[[:space:]]*[a-zA-Z]*' | head -n 1 | sed 's/.*://')"
+      [ -n "$mergeable" ] && [ "$mergeable" != null ] && return 0
+    fi
+    now="$(date +%s)"
+    [ "$((now - start))" -ge "$SELF_MERGE_WAIT_SECONDS" ] && return 1
+    sleep 1
+  done
+}
+# M3: the merge itself — squash, titled off the plan's own first heading, the SHA this
+# clone actually pushed. No `authorization` header: the edge injects the credential.
+send_merge() { # $1 = the pull request number; sets MERGE_HTTP_CODE, MERGE_REPLY
+  local number="$1" head_sha title payload answer
+  head_sha="$(fleet_git -C "$TARGET_DIR" rev-parse HEAD)"
+  title="fleet $RUN_ID: $(plan_title) (#$number)"
+  payload="{\"merge_method\":\"squash\",\"commit_title\":\"$(json_escape "$title")\",\"sha\":\"$(json_escape "$head_sha")\"}"
+  answer="$(fleet_curl -sS -X PUT "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/pulls/$number/merge" \
+      -H 'content-type: application/json' -d "$payload" -w '\n%{http_code}' 2>/dev/null || true)"
+  MERGE_HTTP_CODE="$(printf '%s' "$answer" | tail -n 1)"
+  MERGE_REPLY="$(printf '%s' "$answer" | sed '$d')"
+}
+# M1–M4: the gate was already checked by the caller (green, unheld, enabled). Before every
+# send, and again after every 405/409 refusal, re-fetch the default branch and re-fold onto
+# it if it moved (M2); wait out a `null` mergeable (M3); then PUT the merge. A 405/409
+# repeats, up to `max_refolds` merge requests in all; anything else parks immediately.
+maybe_self_merge() { # $1 = the pull request number, $2 = the PR's base branch name
+  local number="$1" base_branch="$2" attempts=0 cur_base="$BASE_SHA" tip
+  read_self_merge_policy
+  [ "$SELF_MERGE_ENABLED" = 1 ] || return 0
+  while [ "$attempts" -lt "$SELF_MERGE_MAX_REFOLDS" ]; do
+    if fleet_git -C "$TARGET_DIR" fetch origin "refs/heads/$base_branch" 2>/dev/null; then
+      tip="$(fleet_git -C "$TARGET_DIR" rev-parse FETCH_HEAD 2>/dev/null || true)"
+    else
+      tip=""
+    fi
+    if [ -n "$tip" ] && [ "$tip" != "$cur_base" ]; then
+      refold_onto "$cur_base" "$tip" || return 0
+      cur_base="$tip"
+    fi
+    if ! wait_mergeable "$number"; then
+      MERGE_PHASE="merge: mergeable wait timed out"; return 0
+    fi
+    attempts=$(( attempts + 1 ))
+    send_merge "$number"
+    case "$MERGE_HTTP_CODE" in
+      2[0-9][0-9])
+        MERGED_SHA="$(printf '%s' "$MERGE_REPLY" | json_field sha)"
+        [ -n "$MERGED_SHA" ] || MERGED_SHA="$(fleet_git -C "$TARGET_DIR" rev-parse HEAD)"
+        log "merge: PUT /pulls/$number/merge answered $MERGE_HTTP_CODE — merged as $MERGED_SHA"
+        return 0 ;;
+      405|409)
+        log "merge: PUT /pulls/$number/merge answered $MERGE_HTTP_CODE — re-folding and trying again" ;;
+      *)
+        MERGE_PHASE="merge: PUT /pulls/$number/merge answered ${MERGE_HTTP_CODE:-<none>}"
+        log "merge: $MERGE_PHASE"
+        return 0 ;;
+    esac
+  done
+  MERGE_PHASE="merge: refused after $SELF_MERGE_MAX_REFOLDS refold attempt(s)"
+  log "merge: $MERGE_PHASE"
+}
 # One POST, one JSON answer, nothing to negotiate. The edge injects the GitHub credential on the way through, so no
 # `authorization` header is sent; the status rides as the answer's last line, so a non-2xx is told from a 201 without a
 # second request; `html_url` and `login` are read as the FIRST match because GitHub's PR document puts its own ahead of
@@ -398,7 +523,7 @@ strip_exams() {
   fleet_git -C "$TARGET_DIR" commit -m "$RUN_ID: exams to evidence" || fail "exams: commit in target"
 }
 publish() { # $1 = the engine's exit code
-  local base title draft body payload answer code reply state number
+  local base title draft body payload answer code reply state number phase_text
   strip_exams
   fleet_git -C "$TARGET_DIR" push origin "HEAD:refs/heads/$BRANCH" || fail "publish: pushing $BRANCH was rejected"
   write_status publishing "opening the pull request"; evidence_commit "$RUN_ID: publishing"
@@ -414,9 +539,24 @@ publish() { # $1 = the engine's exit code
   log "publish: $PR_URL (base $base, draft $draft, author ${PR_AUTHOR:-<unknown>})"
   printf '{"kind":"publish:pr","url":"%s","number":%s,"draft":%s}\n' "$(json_escape "$PR_URL")" "${number:-null}" "$draft" >>"$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl"
   if [ "$1" = 0 ]; then state=done; else state=parked; fi
-  write_status "$state" "the pull request is open"; evidence_commit "$RUN_ID: $state"
-  record_tags
+  # M1: only a green, unheld run even asks whether self-merge is on. A held or non-green
+  # run — or one with no PR number to act on — publishes exactly as before: no merge request.
+  MERGED_SHA=""; MERGE_PHASE=""
+  if [ "$1" = 0 ] && [ "$HOLD_FLAG" != 1 ] && [ -n "$number" ]; then
+    maybe_self_merge "$number" "$base"
+  fi
+  if [ -n "$MERGED_SHA" ]; then
+    phase_text="the pull request was merged"
+  elif [ -n "$MERGE_PHASE" ]; then
+    phase_text="$MERGE_PHASE"; state=parked
+  else
+    phase_text="the pull request is open"
+  fi
+  write_status "$state" "$phase_text"; evidence_commit "$RUN_ID: $state"
+  # M5: the hub close (with the merge commit riding its evidence, once there is one) before
+  # the tags — `record_tags` is what a reader takes as "this run is fully recorded".
   close_run "$state"
+  record_tags
 }
 # What a run leaves behind is the two tags; the branches are only where it worked. A tag that does not verify is not a
 # failed run — the record still exists on the branches, which is why they are deleted only once the listing agrees.
@@ -445,7 +585,7 @@ record_tags() {
 # stay decided. No `authorization` header: the admin host is where the exe.dev
 # edge injects the hub's bearer, and this holds no credential of its own.
 close_run() { # $1 = the run's final state (done|parked)
-  local kata_json project_id run_uid message payload url answer rc=0 code reply
+  local kata_json project_id run_uid message payload url answer rc=0 code reply evidence
   [ "$1" = done ] || return 0
   kata_json="$FLEET_HOME/plans/$RUN_ID.kata.json"
   [ -f "$kata_json" ] || return 0
@@ -453,7 +593,10 @@ close_run() { # $1 = the run's final state (done|parked)
   run_uid="$(json_run_uid "$kata_json")"
   if [ -z "$project_id" ] || [ -z "$run_uid" ]; then return 0; fi
   message="$RUN_ID done: $(plan_title) — $PR_URL"
-  payload="{\"actor\":\"sandbox:$RUN_ID\",\"reason\":\"done\",\"message\":\"$(json_escape "$message")\",\"evidence\":[{\"type\":\"pr\",\"url\":\"$(json_escape "$PR_URL")\"}],\"retry_protocol\":\"close-v1\"}"
+  # M5: a merged run's close carries the merge commit beside the pull request entry.
+  evidence="{\"type\":\"pr\",\"url\":\"$(json_escape "$PR_URL")\"}"
+  [ -n "$MERGED_SHA" ] && evidence="$evidence,{\"type\":\"commit\",\"sha\":\"$(json_escape "$MERGED_SHA")\"}"
+  payload="{\"actor\":\"sandbox:$RUN_ID\",\"reason\":\"done\",\"message\":\"$(json_escape "$message")\",\"evidence\":[$evidence],\"retry_protocol\":\"close-v1\"}"
   url="$KATA_ADMIN_URL/api/v1/projects/$project_id/issues/$run_uid/actions/close"
   answer="$(fleet_curl -sS -X POST "$url" -H 'content-type: application/json' -H "Idempotency-Key: $RUN_ID:run:close" -d "$payload" -w '\n%{http_code}' 2>/dev/null)" || rc=$?
   code="$(printf '%s' "$answer" | tail -n 1)"

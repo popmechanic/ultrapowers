@@ -46,6 +46,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { cloneAtBase } from '../fleet/run-waves.mjs'
 import { makeJevClient } from '../fleet/jev-client.mjs'
+import { runAll, bootstrapFor } from './commands.mjs'
 import { runWorker } from './worker.mjs'
 import { makeJudge } from './judge.mjs'
 import { literalsOf, hunksCarrying } from './hunks.mjs'
@@ -54,6 +55,7 @@ import { makeBoard, patchWithRevision } from './board.mjs'
 import { candidateTests, symbolsOf, commandFor, excerptFor } from './select.mjs'
 import { examsTouched } from './reverify.mjs'
 import { waitsFor } from './dispatch.mjs'
+import { runLines } from './proofs.mjs'
 
 // Amendment (undeclared by the task's own M1-M6, needed only to reach them):
 // this module now creates a missing parent directory once, on the one error
@@ -198,11 +200,13 @@ export function normalizeArgs (given) {
 // ── the default seams: child_process, and nothing else ───────────────────────
 
 /** One command, the spawnSync answer. `PYTHONPATH=.` is what lets a clone's
- *  pytest import the package the implementer just wrote. */
-export const defaultSh = (cmd, argv = [], cwd, input) =>
+ *  pytest import the package the implementer just wrote. A fifth argument,
+ *  `env`, is a caller's own environment (a proof line's, or a fold check's
+ *  `ULTRA_BASE`) merged OVER the default rather than replacing it. */
+export const defaultSh = (cmd, argv = [], cwd, input, env) =>
   spawnSync(cmd, argv, {
     cwd, input, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
-    env: { ...process.env, PYTHONPATH: '.' },
+    env: { ...process.env, PYTHONPATH: '.', ...(env || {}) },
   })
 
 /** One git, its stdout, and a throw on anything else. The engine runs every
@@ -349,6 +353,20 @@ export function clausesOf (body) {
   return numbered.length ? numbered : line.split(/;\s*/).map((s) => s.trim()).filter(Boolean)
 }
 
+/** M3: a task's own list of exam commands, the way `runAll` wants them —
+ *  the parser's own `testCmds` when it printed one (even an empty array:
+ *  a task the parser marked as having nothing to run), else `[task.testCmd]`
+ *  when `testCmd` is a non-empty string, else `[]`. */
+export function testCmdsOf (task) {
+  if (Array.isArray((task || {}).testCmds)) return task.testCmds
+  return (task && task.testCmd) ? [String(task.testCmd)] : []
+}
+
+/** The timeout every command `runAll` runs gets, wherever no more specific
+ *  policy field applies (`policy.fold.reverify.timeout_seconds` and
+ *  `policy.select.timeout_seconds` are the two that do). */
+const DEFAULT_TIMEOUT_SECONDS = 300
+
 /** One patch, split into its per-file diffs, keyed by path. */
 export function splitDiff (text) {
   const pattern = /^diff --git a\/(\S+) b\/\S+\n([\s\S]*?)(?=^diff --git |(?![\s\S]))/gm
@@ -421,6 +439,172 @@ export function newestNoteFact (factsText) {
     if (m) newest = m[1]
   }
   return newest
+}
+
+// ── shared by a task's own fold (`runEngine`'s `foldIn`) and a re-fold
+// (`runRefold`): cloning, the resolver pass, and the exam run ───────────────
+
+/** A `cloneAt(name, sha)` over one `target`: a fresh clone under `runDir`,
+ *  detached at `sha`, its own private exclude so a candidate's bytecode
+ *  cache never rides a captured patch. The one place either entry makes a
+ *  clone, so both make it the same way.
+ *
+ *  M4: directly after the clone is made, and before anything else runs
+ *  there, this installs whatever the target needs — `bootstrapFor`'s
+ *  command over `planCmd: bootstrapCmd` and this clone's own tracked files
+ *  — through `sh`, under the same `timeout` an exam command runs under. A
+ *  non-zero exit there is not this clone's caller's problem to notice on
+ *  its own: `appendEvent` (when given) gets a `bootstrap:red` row naming
+ *  this clone and that exit, and `cloneAt` THROWS — an `Error` carrying a
+ *  `bootstrapRed: { clone, exit, tail }` field — rather than answering a
+ *  clone whose dependencies never installed as if it were ready. Every
+ *  caller either lets that propagate (a re-fold, where no per-task park
+ *  exists to route it to) or catches `err.bootstrapRed` to park the one
+ *  task that clone was made for. `sh` absent (no caller left needs this,
+ *  but a direct unit test of `makeCloner` alone might) skips bootstrapping
+ *  entirely, exactly as before this task. */
+function makeCloner ({ target, runDir, git, sh, bootstrapCmd, timeoutSeconds, appendEvent }) {
+  return (name, sha) => {
+    const dest = path.join(runDir, name)
+    fs.rmSync(dest, { recursive: true, force: true })
+    const clone = cloneAtBase({ repo: target, dest, base: sha, git })
+    try {
+      fs.appendFileSync(path.join(clone, '.git', 'info', 'exclude'),
+        '\n__pycache__/\n*.pyc\n.pytest_cache/\n')
+    } catch { /* a clone shape without .git/info is still a clone */ }
+
+    if (sh) {
+      let files = []
+      try { files = git(['ls-files'], clone).split('\n').map((s) => s.trim()).filter(Boolean) } catch { /* none tracked (or not a repo) reads as no evidence */ }
+      const cmd = bootstrapFor({ planCmd: bootstrapCmd, files })
+      if (cmd) {
+        const r = runAll({ cmds: [cmd], cwd: clone, sh, timeoutSeconds: timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS })
+        if (r.exit !== 0) {
+          if (appendEvent) appendEvent({ kind: 'bootstrap:red', clone, exit: r.exit })
+          const err = new Error('bootstrap failed in ' + clone + ': exit ' + r.exit)
+          err.bootstrapRed = { clone, exit: r.exit, tail: r.out.slice(-1500) }
+          throw err
+        }
+      }
+    }
+
+    return clone
+  }
+}
+
+/** Every file under `examsDir`, copied into `destDir` at its own relative
+ *  path — but only where `destDir` does not already carry it (M2: "when the
+ *  clone lacks it"). The exams a run's own patch dropped from the target's
+ *  tree by the time a re-fold runs (the boot strips them for the pull
+ *  request, keeping copies under its evidence directory) ride back in
+ *  through this, and only into the verify clone — never committed. */
+function copyMissingFiles (examsDir, destDir) {
+  if (!examsDir || !fs.existsSync(examsDir)) return
+  const walk = (rel) => {
+    const abs = path.join(examsDir, rel)
+    for (const name of fs.readdirSync(abs)) {
+      const childRel = path.join(rel, name)
+      const childAbs = path.join(abs, name)
+      if (fs.statSync(childAbs).isDirectory()) { walk(childRel); continue }
+      const dest = path.join(destDir, childRel)
+      if (fs.existsSync(dest)) continue
+      fs.mkdirSync(path.dirname(dest), { recursive: true })
+      fs.copyFileSync(childAbs, dest)
+    }
+  }
+  walk('.')
+}
+
+/** Every task in `tasks` with at least one testCmds/testCmd entry, run in
+ *  `dir` through `runAll` (M3: every one of a task's own exam commands runs,
+ *  in order, stopping at that task's own first failure) — the runner
+ *  `reverifyAfterFold` uses over just the tasks a fold touched, and
+ *  `runRefold` (M2) uses over every task the plan names.
+ *  Resolves `{ ran, reds }`: `ran` one `{ task, exit }` per exam that ran,
+ *  `reds` the subset whose exit was non-zero, each carrying its own task and
+ *  output. */
+function runTaskExams ({ tasks, dir, sh, timeoutSeconds }) {
+  const ran = []
+  const reds = []
+  for (const task of tasks) {
+    const cmds = testCmdsOf(task)
+    if (!cmds.length) continue
+    const r = runAll({ cmds, cwd: dir, sh, timeoutSeconds })
+    ran.push({ task: task.id, exit: r.exit })
+    if (r.exit !== 0) reds.push({ task, exit: r.exit, out: r.out })
+  }
+  return { ran, reds }
+}
+
+/**
+ * One pass of the resolver over whatever a fold left open — the union first
+ * (M3, gated by `unionPolicy.mode`), then one resolver dispatch per
+ * still-open conflict. Shared by a task's own landing (`runEngine`'s
+ * `foldIn`, which hands in `withHandoff` and its task's id) and a re-fold
+ * (`runRefold`, which has neither) — "the union and the resolver included",
+ * exactly the same for both.
+ */
+async function resolveConflicts ({
+  fold, common, patchArg, runDir, unionPolicy, readUnion, dispatch, model,
+  RESOLVE_MD, appendEvent, taskId, labelId, kernel, withHandoff,
+}) {
+  const open = Array.isArray(fold.open) ? fold.open : []
+  if (!open.length) return fold
+  const suffix = withHandoff || (async (p) => p)
+  let latest = fold
+  for (const conflict of open) {
+    if (unionPolicy.mode === 'live' && typeof readUnion === 'function') {
+      let hunksFileText = null
+      try { hunksFileText = fs.readFileSync(conflict.hunksFile, 'utf8') } catch { /* unreadable: no union */ }
+      const union = hunksFileText !== null ? unionReply(hunksFileText) : null
+      if (union) {
+        const verdict = await readUnion({ hunks: union.hunks })
+        if (verdict && verdict.union === true) {
+          const replyDir = path.join(runDir, `reply-${labelId}-${conflict.i}`)
+          fs.mkdirSync(replyDir, { recursive: true })
+          for (const h of union.hunks) {
+            const safeId = String((h && h.id) || '').replace(/[^A-Za-z0-9]/g, '')
+            if (!safeId) continue
+            const content = String((h && h.content) || '')
+            fs.writeFileSync(path.join(replyDir, safeId + '.txt'),
+              content === '' ? '' : (content.endsWith('\n') ? content : content + '\n'))
+          }
+          fs.writeFileSync(path.join(replyDir, 'notes.txt'),
+            'union: both sides only added, read as independent; kept in order, no resolver dispatched.\n')
+          latest = kernel(['resolve', ...common, '--conflict', String(conflict.i),
+            '--reply-dir', replyDir, '--patch', patchArg]) || latest
+          appendEvent({ kind: 'union', task: taskId, path: conflict.path, hunks: union.hunks.length })
+          if (latest && latest.complete === true) return latest
+          continue
+        }
+      }
+    }
+    const answer = await dispatch({
+      role: 'resolve', label: 'resolve:' + labelId + ':' + conflict.i,
+      taskId, cwd: path.dirname(String(conflict.hunksFile || runDir)),
+      model, systemPrompt: RESOLVE_MD, files: [], readOnly: true, schema: RESOLVER_SCHEMA,
+      prompt: await suffix(
+        'HUNKS FILE: ' + conflict.hunksFile + ' (conflicted path: ' + conflict.path + ')' +
+        '\n\nRead that file and resolve every block it carries.',
+        taskId),
+    })
+    const reply = (answer && answer.result && answer.result.structured_output) || null
+    if (!reply || reply.status !== 'RESOLVED') return latest
+    const replyDir = path.join(runDir, `reply-${labelId}-${conflict.i}`)
+    fs.mkdirSync(replyDir, { recursive: true })
+    for (const h of reply.hunks || []) {
+      const safeId = String((h && h.id) || '').replace(/[^A-Za-z0-9]/g, '')
+      if (!safeId) continue
+      const content = String((h && h.content) || '')
+      fs.writeFileSync(path.join(replyDir, safeId + '.txt'),
+        content === '' ? '' : (content.endsWith('\n') ? content : content + '\n'))
+    }
+    fs.writeFileSync(path.join(replyDir, 'notes.txt'), String(reply.notes || '') + '\n')
+    latest = kernel(['resolve', ...common, '--conflict', String(conflict.i),
+      '--reply-dir', replyDir, '--patch', patchArg]) || latest
+    if (latest && latest.complete === true) return latest
+  }
+  return latest
 }
 
 // ── the engine ───────────────────────────────────────────────────────────────
@@ -504,11 +688,26 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   // The compiler is the engine's own child_process, never `deps.sh`: `sh` is
   // the seam a sim fakes for the task's test command and the kernel, and the
   // plan has to compile for real before there is a task to fake anything about.
-  const compiledOut = spawnSync('python3', [COMPILER, String(args.plan)], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
-  const compiled = lastJson(compiledOut.stdout)
-  if (!compiled || !Array.isArray(compiled.launch_waves)) {
-    throw new Error('plan_parse.py did not answer a plan: ' + String(compiledOut.stderr || '').slice(0, 400))
+  // `deps.compiled` is the one seam around that: the parser's own answer,
+  // handed in directly — for a caller (this task's own exam) whose checkout
+  // parses a plan into no `proofRuns` or `checks` at all yet.
+  let compiled = deps.compiled
+  if (!compiled) {
+    const compiledOut = spawnSync('python3', [COMPILER, String(args.plan)], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+    compiled = lastJson(compiledOut.stdout)
+    if (!compiled || !Array.isArray(compiled.launch_waves)) {
+      throw new Error('plan_parse.py did not answer a plan: ' + String(compiledOut.stderr || '').slice(0, 400))
+    }
   }
+  if (!compiled || !Array.isArray(compiled.launch_waves)) {
+    throw new Error('deps.compiled did not answer a plan: no launch_waves array')
+  }
+  // M4: the plan's own bootstrap command, when the parser printed one —
+  // `bootstrapFor`'s `planCmd`. `null` when it did not, so every clone's own
+  // tracked files (a lockfile) decide instead.
+  const bootstrapCmd = typeof compiled.bootstrapCmd === 'string' && compiled.bootstrapCmd !== ''
+    ? compiled.bootstrapCmd
+    : null
 
   const planText = fs.readFileSync(planPath, 'utf8')
   const waves = compiled.launch_waves.map((wave) => wave.map((t) => {
@@ -533,6 +732,14 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const supervisorMode = (policyDoc.supervisor || {}).mode
   const redispatchPolicy = (policyDoc.landing || {}).redispatch || {}
   const selectPolicy = policyDoc.select || {}
+  // M2-M4: the plan's own proof commands — a task's `Run:` lines after its
+  // exam, and the plan's `Check:` lines on every folded tree — run only when
+  // this is true; with it false, no `bash -lc` call for a proof line happens
+  // and no `run:line`/`check:line` event is appended (M4).
+  const proofsPolicy = policyDoc.proofs || {}
+  const proofsEnabled = proofsPolicy.run_lines === true
+  const proofTimeoutSeconds = Number.isFinite(Number(proofsPolicy.timeout_seconds))
+    ? Number(proofsPolicy.timeout_seconds) : 300
   const pairsPolicy = policyDoc.pairs || {}
   const pairsLive = pairsPolicy.mode === 'live'
   const examAtZero = (policyDoc.speculate || {}).exam_at_zero === true
@@ -752,20 +959,11 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     return answer
   }
 
-  const cloneAt = (name, sha) => {
-    const dest = path.join(runDir, name)
-    fs.rmSync(dest, { recursive: true, force: true })
-    const clone = cloneAtBase({ repo: target, dest, base: sha, git })
-    // The test command runs in this clone, and `capture` is an `add -A`: without
-    // this the interpreter's own bytecode cache would ride the patch into the
-    // adopted tree. The clone's private exclude file, never the project's.
-    try {
-      fs.appendFileSync(path.join(clone, '.git', 'info', 'exclude'),
-        '\n__pycache__/\n*.pyc\n.pytest_cache/\n')
-    } catch { /* a clone shape without .git/info is still a clone */ }
-    return clone
-  }
-
+  // The test command runs in this clone, and `capture` is an `add -A`: without
+  // the clone's own private exclude, the interpreter's own bytecode cache
+  // would ride the patch into the adopted tree. `makeCloner` is shared with
+  // `runRefold`, below, so both entries make a clone the same way.
+  const cloneAt = makeCloner({ target, runDir, git, sh, bootstrapCmd, timeoutSeconds: DEFAULT_TIMEOUT_SECONDS, appendEvent })
   // Amendment (undeclared by M1-M6, needed only to reach them under M3):
   // `exclude` drops the task's own Proof/Test files back out of the index
   // before the diff is cut, so a candidate's patch — the one thing this file
@@ -787,7 +985,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   }
 
   const kernel = (argv) => {
-    const r = sh('python3', [KERNEL, ...argv], REPO)
+    const r = sh('env', ['python3', KERNEL, ...argv], REPO)
     const answer = lastJson(outOf(r))
     if (!answer) log('kernel ' + argv[0] + ': exit ' + exitOf(r) + ' ' + String((r && r.stderr) || '').slice(-300))
     return answer
@@ -860,9 +1058,17 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     }
     const clauseText = (task.clauses && task.clauses[low]) || '(no clause text)'
     const clauseScore = coverage.length ? coverage[low] : null
+    // M2: a failing proof Run: line's own command and output tail are in the
+    // worker's hands — carried into this same landing fact, right alongside
+    // the exam's.
+    const failedRuns = Array.isArray(best.runLines) ? best.runLines.filter((r) => r.exit !== 0) : []
+    const runsText = failedRuns.length
+      ? '\n\nfailing proof line(s):\n' +
+        failedRuns.map((r) => r.cmd + '\nexit ' + r.exit + '\n' + r.tail).join('\n\n')
+      : ''
     const text = 'exit ' + best.examExit + '\n' + (best.examTail || '') +
       '\nclaim: ' + (best.claim === null || best.claim === undefined ? 'null' : best.claim) +
-      '\nlowest-covered clause (' + clauseScore + '): ' + clauseText
+      '\nlowest-covered clause (' + clauseScore + '): ' + clauseText + runsText
     await board.post(task.id, 'landing', text)
   }
 
@@ -871,9 +1077,24 @@ export async function runEngine (rawArgs = {}, deps = {}) {
    * and the judge's reading of that patch against the task's clauses.
    */
   const measure = async ({ task, dir, index, anchor }) => {
-    const [cmd, ...argv] = String(task.testCmd || '').trim().split(/\s+/)
-    const examRun = cmd ? sh(cmd, argv, dir) : { status: 0 }
-    const examExit = exitOf(examRun)
+    // M3: every one of the task's own testCmds runs, in order, through
+    // `runAll` — falling back to `[task.testCmd]` when the parser printed no
+    // `testCmds` — so a second command's non-zero exit is the exam's exit,
+    // not a first command's exit code with the rest silently never run.
+    const examRun = runAll({ cmds: testCmdsOf(task), cwd: dir, sh, timeoutSeconds: DEFAULT_TIMEOUT_SECONDS })
+    const examExit = examRun.exit
+    // M2: a task's own Proof `Run:` lines, after its exam, in this SAME
+    // candidate's clone — never split into argv (a Run: line is often a
+    // pipeline), and every line runs even after an earlier one failed.
+    let proofRunResults = []
+    if (proofsEnabled && Array.isArray(task.proofRuns) && task.proofRuns.length) {
+      proofRunResults = await runLines({
+        lines: task.proofRuns, cwd: dir, sh, env: undefined, timeoutSeconds: proofTimeoutSeconds,
+      })
+      for (const r of proofRunResults) {
+        appendEvent({ kind: 'run:line', task: task.id, cmd: r.cmd, exit: r.exit })
+      }
+    }
     // The exam files RIDE the patch. Three things stand on that: the fold check runs a task's exam on
     // the folded tree, a guarded exam reaches the pull request only this way, and the boot copies the
     // unguarded ones to the evidence record from the tree before it strips them. run-195: with them
@@ -898,9 +1119,10 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       index,
       patch,
       examExit,
-      examTail: String((examRun && examRun.stdout) || '').slice(-1500),
+      examTail: examRun.out.slice(-1500),
       claim: reading && typeof reading.claim === 'number' ? reading.claim : null,
       coverage: (reading && Array.isArray(reading.coverage)) ? reading.coverage : [],
+      runLines: proofRunResults,
     }
   }
 
@@ -951,18 +1173,19 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const mcpServersFor = async (taskId, cwd, label) => {
     if (!tools) return null
     const task = tasks.find((t) => t.id === taskId)
-    const testCmd = task && task.testCmd
-    const runExam = testCmd
+    // M3: run_exam runs the same set `measure` does — the task's own
+    // testCmds, in order, through `runAll` — so a second command's non-zero
+    // exit is what this tool resolves too, not just the first command's.
+    const cmds = testCmdsOf(task)
+    const runExam = cmds.length
       ? async () => {
-        const [cmd, ...argv] = String(testCmd).trim().split(/\s+/)
-        const r = sh(cmd, argv, cwd)
-        const exit = exitOf(r)
-        const tail = outOf(r).slice(-1500)
+        const r = runAll({ cmds, cwd, sh, timeoutSeconds: DEFAULT_TIMEOUT_SECONDS })
+        const tail = r.out.slice(-1500)
         appendEvent({
-          kind: 'worker:test-run', task: taskId, label, cmd: testCmd, exit,
-          red: exit !== 0, via: 'run_exam',
+          kind: 'worker:test-run', task: taskId, label, cmd: cmds.join(' && '), exit: r.exit,
+          red: r.exit !== 0, via: 'run_exam',
         })
-        return { exit, tail }
+        return { exit: r.exit, tail }
       }
       : undefined
     try {
@@ -1090,6 +1313,15 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const k = Number.isInteger(reading.k) && reading.k > 0 ? reading.k : 1
     const wantsReferee = reading.referee === true
 
+    // M4: everything past here makes at least one clone (the exam clone, an
+    // implementer clone, or — inside `runSelection`, below — the lazy base
+    // clone), and any one of them can throw a `bootstrapRed`-carrying error
+    // when that clone's own dependency install goes red. That is this task's
+    // own park, not an exception that should escape `land()` and crash the
+    // whole run: caught below, it answers the same `dead`-carrying shape a
+    // worker that ended with no patch already does, for the exact same
+    // caller (the main loop) to turn into a `parked` task the usual way.
+    try {
     // M3: the exam this task's implementers build on — the one already
     // running at minute zero when the policy speculates, or dispatched only
     // now, at this task's own anchor, when it does not (M6).
@@ -1249,7 +1481,10 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       : null
     const floorFired = !greenExam && lowCoverage !== null &&
       Number.isFinite(redispatchFloor) && lowCoverage < redispatchFloor
-    const short = best.examExit !== 0 || floorFired || caught
+    // M2: a non-zero exit from any of the task's own proof Run: lines makes
+    // this landing short exactly as a non-zero exam exit does.
+    const proofLineFailed = Array.isArray(best.runLines) && best.runLines.some((r) => r.exit !== 0)
+    const short = best.examExit !== 0 || floorFired || caught || proofLineFailed
     appendEvent({
       kind: 'floor', task: task.id,
       exam: hasTestCmd ? best.examExit : null,
@@ -1322,6 +1557,12 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     }
 
     return { task, k, anchor, best, wall_ms: Date.now() - t0 }
+    } catch (err) {
+      if (!(err && err.bootstrapRed)) throw err
+      const { clone, exit, tail } = err.bootstrapRed
+      const reason = 'bootstrap failed in ' + clone + ': exit ' + exit + (tail ? '\n' + tail : '')
+      return { task, k, anchor, dead: reason, wall_ms: Date.now() - t0 }
+    }
   }
 
   /**
@@ -1364,120 +1605,124 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     return { sha: mat.candidateSha }
   }
 
-  /** One pass of the resolver over whatever the fold left open. */
-  const resolve = async ({ fold, common, patchArg, landing }) => {
-    const open = Array.isArray(fold.open) ? fold.open : []
-    if (!open.length) return fold
-    let latest = fold
-    for (const conflict of open) {
-      // M2/M4: two sides that only added, read as independent, are united and
-      // folded straight in — no resolver dispatched, no facts changed about
-      // the resolver path below. Anything the union does not cleanly cover
-      // (a `deleted` segment, a `false`/absent reading, or the mode itself
-      // not `live`) falls straight through to the resolver, unchanged.
-      if (unionPolicy.mode === 'live' && typeof readUnion === 'function') {
-        let hunksFileText = null
-        try { hunksFileText = fs.readFileSync(conflict.hunksFile, 'utf8') } catch { /* unreadable: no union */ }
-        const union = hunksFileText !== null ? unionReply(hunksFileText) : null
-        if (union) {
-          const verdict = await readUnion({ hunks: union.hunks })
-          if (verdict && verdict.union === true) {
-            const replyDir = path.join(runDir, `reply-${landing.task.id}-${conflict.i}`)
-            fs.mkdirSync(replyDir, { recursive: true })
-            for (const h of union.hunks) {
-              const safeId = String((h && h.id) || '').replace(/[^A-Za-z0-9]/g, '')
-              if (!safeId) continue
-              const content = String((h && h.content) || '')
-              fs.writeFileSync(path.join(replyDir, safeId + '.txt'),
-                content === '' ? '' : (content.endsWith('\n') ? content : content + '\n'))
-            }
-            fs.writeFileSync(path.join(replyDir, 'notes.txt'),
-              'union: both sides only added, read as independent; kept in order, no resolver dispatched.\n')
-            latest = kernel(['resolve', ...common, '--conflict', String(conflict.i),
-              '--reply-dir', replyDir, '--patch', patchArg]) || latest
-            appendEvent({ kind: 'union', task: landing.task.id, path: conflict.path, hunks: union.hunks.length })
-            if (latest && latest.complete === true) return latest
-            continue
-          }
-        }
-      }
-      const answer = await dispatch({
-        role: 'resolve', label: 'resolve:' + landing.task.id + ':' + conflict.i,
-        taskId: landing.task.id, cwd: path.dirname(String(conflict.hunksFile || runDir)),
-        model, systemPrompt: RESOLVE_MD, files: [], readOnly: true, schema: RESOLVER_SCHEMA,
-        prompt: await withHandoff(
-          'HUNKS FILE: ' + conflict.hunksFile + ' (conflicted path: ' + conflict.path + ')' +
-          '\n\nRead that file and resolve every block it carries.',
-          landing.task.id),
+  /** One pass of the resolver over whatever the fold left open — the union
+   *  and the resolver dispatch, both shared with `runRefold` through
+   *  `resolveConflicts`. */
+  const resolve = async ({ fold, common, patchArg, landing }) =>
+    resolveConflicts({
+      fold, common, patchArg, runDir, unionPolicy, readUnion, dispatch, model,
+      RESOLVE_MD, appendEvent, taskId: landing.task.id, labelId: landing.task.id,
+      kernel, withHandoff,
+    })
+
+  /**
+   * The fold check's own runner: every `exam` task's test command, and — with
+   * `policy.proofs.run_lines` on — every entry of the plan's own `checks`,
+   * run once in `dir`. Kept callable with any list of tasks and any
+   * directory (never closing over a single task) so a `--refold` entry can
+   * run it over every task at once, not only the one just folded.
+   *
+   * M3: a check's command runs with `ULTRA_BASE` in its own environment, set
+   * to the run's base sha — never the anchor, never the candidate's own
+   * base — and every check runs, minor or not; only a non-minor failure is
+   * folded into `reds` alongside a red exam.
+   */
+  const runExamsAndChecks = async ({ dir, exams, foldedTaskId, timeoutSeconds, includeChecks = true }) => {
+    const ran = []
+    const reds = []
+    // Every part of every exam's command, through the one runner the measure and the re-fold use:
+    // the fold check had kept its own whitespace split through two same-file folds (run-196), so a
+    // joined command's second program never ran here — the defect #1163 names, caught on the folded
+    // tree by the commands task's own exam.
+    const examRun = runTaskExams({ tasks: exams, dir, sh, timeoutSeconds })
+    ran.push(...examRun.ran)
+    for (const red of examRun.reds) reds.push({ kind: 'exam', id: red.task.id, exit: red.exit, out: red.out })
+    const checks = includeChecks && proofsEnabled && Array.isArray(compiled.checks) ? compiled.checks : []
+    if (checks.length) {
+      const results = await runLines({
+        lines: checks.map((c) => c.cmd), cwd: dir, sh,
+        env: { ULTRA_BASE: runBase }, timeoutSeconds: proofTimeoutSeconds,
       })
-      const reply = (answer && answer.result && answer.result.structured_output) || null
-      if (!reply || reply.status !== 'RESOLVED') return latest
-      const replyDir = path.join(runDir, `reply-${landing.task.id}-${conflict.i}`)
-      fs.mkdirSync(replyDir, { recursive: true })
-      for (const h of reply.hunks || []) {
-        const safeId = String((h && h.id) || '').replace(/[^A-Za-z0-9]/g, '')
-        if (!safeId) continue
-        const content = String((h && h.content) || '')
-        fs.writeFileSync(path.join(replyDir, safeId + '.txt'),
-          content === '' ? '' : (content.endsWith('\n') ? content : content + '\n'))
-      }
-      fs.writeFileSync(path.join(replyDir, 'notes.txt'), String(reply.notes || '') + '\n')
-      latest = kernel(['resolve', ...common, '--conflict', String(conflict.i),
-        '--reply-dir', replyDir, '--patch', patchArg]) || latest
-      if (latest && latest.complete === true) return latest
+      results.forEach((r, i) => {
+        const minor = Boolean(checks[i] && checks[i].minor)
+        appendEvent({ kind: 'check:line', task: foldedTaskId, cmd: r.cmd, exit: r.exit, minor })
+        if (r.exit !== 0 && !minor) reds.push({ kind: 'check', cmd: r.cmd, exit: r.exit, out: r.tail })
+      })
     }
-    return latest
+    return { ran, reds }
   }
 
   /**
    * M2-M4: directly after a task's fold, the exams of every adopted task the
    * fold touched are run again on the folded tree — the folded task's own
-   * exam included. A red one buys the folded task exactly one more
-   * implementer attempt, in a clone of the same folded tree, whose patch is
-   * folded through the same kernel path (`foldIn`) before the same exams run
-   * a second time; still red (or a refold that never completes) is
-   * unresolved, and unresolved forces the run's `done` to false without
-   * unadopting anything.
+   * exam included — and, with `policy.proofs.run_lines` on, the plan's own
+   * `checks` run there too (M3), once. A red exam, or a non-minor check's own
+   * failure, buys the folded task exactly one more implementer attempt, in a
+   * clone of the same folded tree, whose patch is folded through the same
+   * kernel path (`foldIn`) before the same exams run a second time — the
+   * plan's own `checks` are a run-wide reading already taken once this fold;
+   * still red (or a refold that never completes) is unresolved, and
+   * unresolved forces the run's `done` to false without unadopting anything.
+   * A minor check's own failure is recorded (`check:line`) and nothing more:
+   * it never buys a red row or a re-attempt.
    */
   const reverifyAfterFold = async (task, best) => {
-    if (reverifyPolicy.enabled !== true) return
     const patchText = best.patch && fs.existsSync(best.patch) ? fs.readFileSync(best.patch, 'utf8') : ''
     const touched = Object.keys(splitDiff(patchText))
     if (!touched.length) return
     const cap = Number.isInteger(reverifyPolicy.max_run) ? reverifyPolicy.max_run : 6
-    const timeoutSeconds = reverifyPolicy.timeout_seconds ?? 300
+    const timeoutSeconds = reverifyPolicy.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS
 
-    const exams = examsTouched({ folded: task.id, touched, adopted, tasks, cap })
-    if (!exams.length) return
+    const exams = reverifyPolicy.enabled === true
+      ? examsTouched({ folded: task.id, touched, adopted, tasks, cap })
+      : []
+    const checksNamed = proofsEnabled && Array.isArray(compiled.checks) ? compiled.checks : []
+    if (!exams.length && !checksNamed.length) return
 
-    const runExams = () => {
-      const dir = cloneAt('fold-verify-' + task.id, head)
-      const ran = []
-      const reds = []
-      for (const exam of exams) {
-        const [cmd, ...argv] = String(exam.testCmd).trim().split(/\s+/)
-        const r = sh('timeout', [String(timeoutSeconds), cmd, ...argv], dir)
-        const exit = exitOf(r)
-        ran.push({ task: exam.id, exit })
-        if (exit !== 0) reds.push({ exam, exit, out: outOf(r) })
-      }
-      return { ran, reds }
+    const redLabel = (red) => red.kind === 'exam' ? ('exam ' + red.id) : ('check ' + red.cmd)
+    const redEventFields = (red) => red.kind === 'exam'
+      ? { exam: red.id, cmd: null }
+      : { exam: null, cmd: red.cmd }
+
+    // Shared with `runRefold` (M2): the same per-task, under-`timeout` exam
+    // run, over just the tasks this fold touched here rather than every task
+    // the plan names. `cloneAt` can throw a `bootstrapRed`-carrying error
+    // (M4) when a fresh clone's own dependency install goes red; that is not
+    // this landing's own park (it already adopted) so it is read here as
+    // "this fold's re-verify could not run" rather than left to crash the
+    // whole run — the same `fold:unresolved`/`foldUnresolved` outcome an
+    // exam still red after the one re-attempt gets.
+    let first
+    try {
+      first = await runExamsAndChecks({
+        dir: cloneAt('fold-verify-' + task.id, head), exams, foldedTaskId: task.id, timeoutSeconds,
+      })
+    } catch (err) {
+      if (!(err && err.bootstrapRed)) throw err
+      first = { ran: [], reds: [], bootstrapRed: err.bootstrapRed }
     }
-
-    const first = runExams()
     appendEvent({ kind: 'fold:verify', task: task.id, ran: first.ran })
+    if (first.bootstrapRed) { foldUnresolved = true; return }
     if (!first.reds.length) return
 
     for (const red of first.reds) {
-      appendEvent({ kind: 'fold:red', task: task.id, exam: red.exam.id, exit: red.exit })
+      appendEvent({ kind: 'fold:red', task: task.id, ...redEventFields(red), exit: red.exit })
       await board.post(task.id, 'fold-red',
-        'exam ' + red.exam.id + ' exit ' + red.exit + '\n' + red.out.slice(-1500))
+        redLabel(red) + ' exit ' + red.exit + '\n' + red.out.slice(-1500))
     }
 
     // One more attempt, in a fresh clone of the same folded tree, folded
     // through the same kernel path as any other landing.
     const anchor = head
-    const fixDir = cloneAt('fold-fix-' + task.id, anchor)
+    let fixDir
+    try {
+      fixDir = cloneAt('fold-fix-' + task.id, anchor)
+    } catch (err) {
+      if (!(err && err.bootstrapRed)) throw err
+      for (const red of first.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, ...redEventFields(red) })
+      foldUnresolved = true
+      return
+    }
     await dispatch({
       role: 'implement', label: 'impl:' + task.id + ':fold', taskId: task.id, cwd: fixDir,
       model, systemPrompt: IMPL_MD, files: implFilesOf(task), mcpServers: null,
@@ -1486,14 +1731,17 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const fixPatch = capture(fixDir, anchor, path.join(runDir, `patch-${task.id}-fold.diff`))
     const folded = await foldIn({ task, anchor, best: { patch: fixPatch } })
     if (folded.sha === null) {
-      for (const red of first.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, exam: red.exam.id })
+      for (const red of first.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, ...redEventFields(red) })
       foldUnresolved = true
       return
     }
 
-    const second = runExams()
-    if (second.reds.length) {
-      for (const red of second.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, exam: red.exam.id })
+    const second = await runExamsAndChecks({
+      dir: cloneAt('fold-verify-' + task.id, head), exams, foldedTaskId: task.id, timeoutSeconds,
+      includeChecks: false,
+    })
+    if (second.bootstrapRed || second.reds.length) {
+      for (const red of second.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, ...redEventFields(red) })
       foldUnresolved = true
     }
   }
@@ -1787,6 +2035,150 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   }
 }
 
+// ── the re-fold: a finished run's whole work, folded onto a main that moved ─
+
+/**
+ * `--refold`: the same fold a task's own landing goes through (`foldIn`,
+ * above — the union and the resolver included, through `resolveConflicts`),
+ * asked once for the whole of a finished run's own work rather than for one
+ * task's patch.
+ *
+ * The patch is the target's own `HEAD` (before this touches anything) against
+ * `--base` — the run's own base — and the moving head the kernel folds it
+ * onto is `--onto`, the new tip. A completed fold is re-verified before this
+ * answers at all: every task's own exam, in a clone of the new head with
+ * `--exams-dir` overlaid back in (the tree itself does not carry those files
+ * by the time a re-fold runs — the boot already stripped them for the pull
+ * request). A red exam there undoes the reset; an unresolved conflict never
+ * touches the target to begin with.
+ *
+ * Resolves the one JSON object `main` prints verbatim: `{ refolded, head,
+ * onto }` on success, `{ refolded: false, reason: 'red' | 'conflict', head?,
+ * onto }` otherwise.
+ */
+export async function runRefold (rawArgs = {}, deps = {}) {
+  const args = normalizeArgs(rawArgs)
+  const target = path.resolve(String(args.target))
+  const runDir = path.resolve(String(args.runDir ?? '.'))
+  const base = String(args.base)
+  const onto = String(args.onto)
+  const examsDir = args.examsDir ? path.resolve(String(args.examsDir)) : null
+  const model = args.model || DEFAULT_MODEL
+
+  const worker = deps.worker || runWorker
+  const sh = deps.sh || defaultSh
+  const git = deps.git || defaultGit
+  const log = deps.log || ((s) => process.stderr.write(String(s) + '\n'))
+
+  fs.mkdirSync(runDir, { recursive: true })
+  const eventsPath = path.join(runDir, 'events.jsonl')
+  fs.writeFileSync(eventsPath, '')
+  const appendEvent = (row) => fs.appendFileSync(eventsPath, JSON.stringify({ ts: new Date().toISOString(), ...row }) + '\n')
+
+  const RESOLVE_MD = roleText('resolve')
+
+  const policyDoc = (() => {
+    try {
+      const policyFile = args.policy ? path.resolve(String(args.policy)) : POLICY_PATH
+      return JSON.parse(fs.readFileSync(policyFile, 'utf8'))
+    } catch { return {} }
+  })()
+  const unionPolicy = (policyDoc.resolve || {}).union || {}
+  const reverifyPolicy = (policyDoc.fold || {}).reverify || {}
+  const timeoutSeconds = reverifyPolicy.timeout_seconds ?? 300
+  const readUnion = typeof deps.readUnion === 'function' ? deps.readUnion : buildReadUnion(deps.ask, unionPolicy)
+
+  const kernel = (argv) => {
+    const r = sh('python3', [KERNEL, ...argv], REPO)
+    const answer = lastJson(outOf(r))
+    if (!answer) log('kernel ' + argv[0] + ': exit ' + exitOf(r) + ' ' + String((r && r.stderr) || '').slice(-300))
+    return answer
+  }
+
+  // M4: no board, no examiner, no implementer — the one worker role a
+  // re-fold ever dispatches is the resolver, exactly as a task's own fold.
+  const dispatch = async (opts) => {
+    appendEvent({ kind: 'dispatch:start', task: opts.taskId, label: opts.label, role: opts.role })
+    let answer
+    try {
+      answer = await worker({
+        cwd: opts.cwd, prompt: opts.prompt, systemPrompt: opts.systemPrompt, model: opts.model,
+        files: opts.files, schema: opts.schema ?? null, mcpServers: opts.mcpServers ?? null,
+        onMessage: () => {}, readOnly: Boolean(opts.readOnly), role: opts.role, label: opts.label,
+        task: opts.taskId,
+      })
+    } catch (e) {
+      answer = { result: null, denials: [], error: String((e && e.message) || e).slice(0, 500) }
+    }
+    appendEvent({ kind: 'dispatch:end', task: opts.taskId, label: opts.label, role: opts.role })
+    return answer
+  }
+
+  // The plan, compiled only for the tasks' own test commands — every one of
+  // them is what M2's re-verify runs.
+  const compiledOut = spawnSync('python3', [COMPILER, String(args.plan)], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  const compiled = lastJson(compiledOut.stdout)
+  if (!compiled || !Array.isArray(compiled.launch_waves)) {
+    throw new Error('plan_parse.py did not answer a plan: ' + String(compiledOut.stderr || '').slice(0, 400))
+  }
+  const tasks = compiled.launch_waves.flat()
+  // M4: same bootstrap-command resolution as runEngine's — the plan's own
+  // `bootstrapCmd` when the parser printed one, else each clone's own
+  // tracked files decide.
+  const bootstrapCmd = typeof compiled.bootstrapCmd === 'string' && compiled.bootstrapCmd !== ''
+    ? compiled.bootstrapCmd
+    : null
+
+  const cloneAt = makeCloner({ target, runDir, git, sh, bootstrapCmd, timeoutSeconds, appendEvent })
+
+  // M1: the run's whole patch is the target's own HEAD, as it stands before
+  // any of this touches it, against `--base`.
+  const startHead = git(['rev-parse', 'HEAD'], target).trim()
+  const patchFile = path.join(runDir, 'refold.diff')
+  git(['diff', '--binary', '--full-index', '--no-renames', '--output=' + patchFile, base, startHead], target)
+  const patchArg = 'refold=' + patchFile + '@' + base
+
+  const common = ['--repo', target, '--run-dir', runDir, '--wave', 'refold']
+  let fold = kernel(['fold', ...common, '--base', onto, '--patch', patchArg])
+  if (fold && fold.complete !== true) {
+    fold = await resolveConflicts({
+      fold, common, patchArg, runDir, unionPolicy, readUnion, dispatch, model,
+      RESOLVE_MD, appendEvent, taskId: undefined, labelId: 'refold', kernel,
+    })
+  }
+  if (!fold || fold.complete !== true) {
+    // M3: never touches the target — it is still exactly where it was.
+    const openPath = (Array.isArray(fold && fold.open) && fold.open[0] && fold.open[0].path) || null
+    appendEvent({ kind: 'refold:conflict', path: openPath })
+    return { refolded: false, reason: 'conflict', onto }
+  }
+
+  const mat = kernel(['materialize', ...common, '--prev-head', onto, '--patch', patchArg,
+    '--subject', 'refold onto ' + onto])
+  if (!mat || typeof mat.candidateSha !== 'string') {
+    appendEvent({ kind: 'refold:conflict', path: null })
+    return { refolded: false, reason: 'conflict', onto }
+  }
+
+  // M1: resets the target to the resulting commit.
+  git(['reset', '-q', '--hard', mat.candidateSha], target)
+
+  // M2: before answering, verify the new head in its own clone — every file
+  // under `--exams-dir` overlaid back in where the clone lacks it — and run
+  // every task's own exam there.
+  const verifyDir = cloneAt('refold-verify', mat.candidateSha)
+  copyMissingFiles(examsDir, verifyDir)
+  const { reds } = runTaskExams({ tasks, dir: verifyDir, sh, timeoutSeconds })
+  if (reds.length) {
+    for (const red of reds) appendEvent({ kind: 'refold:red', exam: red.task.id, exit: red.exit })
+    // M2: a red re-verify resets the target back to the head it had.
+    git(['reset', '-q', '--hard', startHead], target)
+    return { refolded: false, reason: 'red', head: mat.candidateSha, onto }
+  }
+
+  return { refolded: true, head: mat.candidateSha, onto }
+}
+
 // ── the CLI's own deps ───────────────────────────────────────────────────────
 
 /**
@@ -1863,9 +2255,27 @@ export function buildDeps (rawArgs = {}, overrides = {}) {
 }
 
 /** The entry. One line of JSON on stdout — the run's answer — and every other
- *  word of it on stderr, so a caller can read the last line and be done. */
+ *  word of it on stderr, so a caller can read the last line and be done.
+ *
+ *  M4: without `--refold` this is exactly what it was; with it, the required
+ *  arguments and the seam are `runRefold`'s own, and the exit is a direct
+ *  function of what it answered — 0 refolded, 3 red, 4 conflict. */
 export async function main (argv = process.argv.slice(2)) {
   const args = parseArgv(argv)
+  if (args.refold) {
+    for (const required of ['plan', 'target', 'base', 'onto', 'runDir']) {
+      if (!args[required]) {
+        process.stderr.write('factory/engine.mjs --refold --plan <plan.md> --target <repo> --base <sha> --onto <sha> --run-dir <dir>\n')
+        return 2
+      }
+    }
+    const answer = await runRefold(args, buildDeps(args))
+    process.stdout.write(JSON.stringify(answer) + '\n')
+    if (answer.refolded) return 0
+    if (answer.reason === 'red') return 3
+    if (answer.reason === 'conflict') return 4
+    return 1
+  }
   for (const required of ['plan', 'target', 'runDir']) {
     if (!args[required]) {
       process.stderr.write('factory/engine.mjs --plan <plan.md> --target <repo> --base <sha> --run-dir <dir>\n')
@@ -1883,4 +2293,4 @@ if (invokedDirectly) {
   process.exitCode = await main()
 }
 
-export default { runEngine, buildDeps, main, parseArgv, normalizeArgs, bodyOf, clausesOf, splitDiff }
+export default { runEngine, runRefold, buildDeps, main, parseArgv, normalizeArgs, bodyOf, clausesOf, splitDiff }
