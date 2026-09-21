@@ -181,3 +181,16 @@
 {"ts":"2026-09-21T18:37:24.302Z","kind":"landing","task":"2","k":1,"examExit":0,"claim":0.74,"coverage":[0.95,0.93,0.97],"candidateSha":"60387683e5b903f81edbdac7a7225fbd42ea1e51","wall_ms":303698}
 {"ts":"2026-09-21T18:37:25.584Z","kind":"check:line","task":"2","cmd":"git diff --quiet $ULTRA_BASE -- ':(glob)fleet/run-*.mjs' fleet/sandbox-boot.sh fleet/fleet-bootstrap.sh fleet/roles fleet/kata-client.mjs fleet/launch.mjs fleet/janitor.mjs skills/ultrapowers/kernel skills/ultrapowers/scripts","exit":0,"minor":false}
 {"ts":"2026-09-21T18:37:25.584Z","kind":"fold:verify","task":"2","ran":[{"task":"2","exit":0}]}
+{"ts":"2026-09-21T18:37:36.142Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"ls fleet/tests | head -60; echo ===; grep -n \"simEnv\" fleet/tests/_helpers.mjs | head"}
+{"ts":"2026-09-21T18:37:37.103Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -rn \"test_factory_boot\" --include=*.mjs --include=*.json --include=*.md --include=*.sh --include=*.yml . | grep -v node_modules | head -20"}
+{"ts":"2026-09-21T18:37:41.158Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"sed -n '60,170p' fleet/tests/_helpers.mjs"}
+{"ts":"2026-09-21T18:37:41.808Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"sed -n '1,80p' fleet/tests/test_sims_are_hermetic.mjs"}
+{"ts":"2026-09-21T18:37:47.134Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"timeout 600 node fleet/tests/test_sims_are_hermetic.mjs 2>&1 | tail -30; echo \"EXIT=${PIPESTATUS[0]}\""}
+{"ts":"2026-09-21T18:37:47.820Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"cat CLAUDE.md | head -120"}
+{"ts":"2026-09-21T18:37:53.420Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -n \"kata.json\\|JSON.stringify(record\\|stringify(.*null, 2)\" fleet/launch.mjs | head -30"}
+{"ts":"2026-09-21T18:37:54.110Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -rn \"close_run\\|board_down\" factory/boot.sh"}
+{"ts":"2026-09-21T18:38:04.465Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"cd /tmp && mkdir -p kt && cd kt\npython3 - <<'EOF'\nimport json\nr={\"url\":\"u\",\"project\":{\"id\":33,\"uid\":\"P\",\"name\":\"n\"},\"run\":{\"uid\":\"01M32D6HP5S5B3C99ZR0T9A6NW\",\"revision\":1},\"tasks\":{}}\nopen('ok.json','"}
+{"ts":"2026-09-21T18:38:22.113Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -rln \"boot.sh\" fleet/tests tests factory 2>/dev/null | head -20"}
+{"ts":"2026-09-21T18:38:22.879Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -rn \"usage: boot.sh\" factory fleet tests docs 2>/dev/null | head"}
+{"ts":"2026-09-21T18:38:26.504Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -rn \"boot.sh\" fleet/tests/test_jev_client.mjs fleet/tests/test_setup_script.mjs fleet/tests/_sandbox_boot_helpers.mjs | head -20"}
+{"ts":"2026-09-21T18:38:29.490Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -n \"boot.sh\" factory/tools.mjs factory/engine.mjs fleet/fleet-bootstrap.sh 2>/dev/null | head"}
