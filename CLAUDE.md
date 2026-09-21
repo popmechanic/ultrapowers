@@ -40,9 +40,9 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
 ## Layout
 
 - `skills/ultrapowers/` — the operator skill: `SKILL.md` (the thin client — commit the plan,
-  launch the fleet), `scripts/` (`compile_plan.py`, the gate pair `gate_check.py` +
-  `ultra_gate.py`, `ultra_run.py`, `finalize_report.py`, `validate_skill.py`, and the catch
-  counter pair), `references/` (`first-run.md` walks each doctor row for a first-timer), and
+  launch the fleet), `scripts/` (`compile_plan.py`, the laptop's check; `plan_parse.py`, the sandbox's parser;
+  `validate_skill.py`; and the catch counter pair with the `fleet_events.py` and `_outcome.py`
+  they read through — the wave engine's sandbox-side scripts left on 2026-09-21), `references/` (`first-run.md` walks each doctor row for a first-timer), and
   `kernel/` — the fold: `fold_wave.py`, `frontier_fold.py`, `hunks.py`, `repo_weave.py` over
   the sha-pinned `vendor/manyana.py`. **The engine itself lives in `factory/engine.mjs`
   since cut two (2026-09-21)** (models never run git); its judgment prompts are plain
