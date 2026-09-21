@@ -399,3 +399,6 @@
 {"ts":"2026-09-21T20:04:44.473Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/fleet/CONTRACT.md"}
 {"ts":"2026-09-21T20:04:47.125Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"node -e \"\nconst fs=require('fs');\nconst c=fs.readFileSync('fleet/CONTRACT.md','utf8');\nconst engineLine='unit=fleet-engine-<N> --pipe --wait --collect -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFIL"}
 {"ts":"2026-09-21T20:04:49.593Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n -E 'run-engine\\.mjs|run-main\\.mjs|run-worker\\.mjs|run-waves\\.mjs|sandbox-boot\\.sh|publish-fold|facts-block|failing-block|engine-coverage|fitness\\.mjs|confine-hook|strip-exams|exam-paths\\.mjs|j"}
+{"ts":"2026-09-21T20:04:56.109Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"ls -la fleet/sandbox-boot.sh 2>&1; ls fleet/run-main.mjs fleet/run-waves.mjs fleet/run-worker.mjs fleet/run-engine.mjs 2>&1"}
+{"ts":"2026-09-21T20:04:59.188Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/CLAUDE.md"}
+{"ts":"2026-09-21T20:05:03.018Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -rn \"ultra_gate\\|gate_check\" /home/exedev/run/impl-3-0/factory/ 2>/dev/null"}
