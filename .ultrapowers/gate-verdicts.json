@@ -1,0 +1,85 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "1f097f3bbacfce56a919b0a192eb897699b514a646d9766627d856a437da9b9d",
+   "verdict": "pass",
+   "reason": "Every computable fact has a Run line or leg that exits non-zero when it is false; the for-loop names 25 files plus the fleet/roles directory whose seven files make the clause's thirty-two; the bootstrap's refusal on a missing factory boot is left to the diff reader, which the Claim does not depend on."
+  },
+  "2": {
+   "hash": "8c88090f60491a03ae9398a64389fcd2b98f4a84431bcb65c1e1151861c0c151",
+   "verdict": "pass",
+   "reason": "Legs (a)-(c) each fail if M1-M3 are false; the second Run exits 1 at BASE and 0 once the knobs and constants are gone; M4's literal tier|effort arm was confirmed by the author at BASE (factory/boot.sh, the parse_assignment case arm)."
+  },
+  "3": {
+   "hash": "b5322d6654d9d64dc476dc529279586a5e61f54724629c9483925357c7c7d18a",
+   "verdict": "pass",
+   "reason": "Each absence clause has an inverted grep over all nine files that fails on a match; M2's literals each have a grep that fails when absent and are satisfiable beside M1's banned names; M3's exit codes are run directly."
+  }
+ },
+ "tally": {
+  "dispatched": 3,
+  "rejected": 0,
+  "rounds": 1,
+  "base": "4315358bc967ed8253b2a2047c5be105d2a4c8bd",
+  "question": "facts-only (experiment, rollback the old sentence)"
+ },
+ "authoring": {
+  "minutes": 70,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "When does cut two go",
+    "options": [
+     "Author now, launch once run-198 proves the close",
+     "First stage a live re-fold",
+     "Wait for five self-merging runs"
+    ],
+    "recommended": "Author now, launch once run-198 proves the close",
+    "picked": "Author now, launch once run-198 proves the close"
+   },
+   {
+    "question": "Rollback after cut two",
+    "options": [
+     "Keep the two-line fallback",
+     "Remove it: rollback is a git revert"
+    ],
+    "recommended": "Keep the two-line fallback",
+    "picked": "Remove it: rollback is a git revert"
+   },
+   {
+    "question": "Release",
+    "options": [
+     "Its own run, then 0.3.32 behind a confidence run",
+     "Cut two's plan bumps the version itself",
+     "No release yet"
+    ],
+    "recommended": "Its own run, then 0.3.32 behind a confidence run",
+    "picked": "Its own run, then 0.3.32 behind a confidence run"
+   },
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Sign as drafted",
+     "Sign, and also delete the old engine's Python",
+     "Sign, but keep the launcher's knobs"
+    ],
+    "recommended": "Sign as drafted",
+    "picked": "Sign as drafted"
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Launch cut two now, with --hold",
+     "One more proving run first",
+     "Launch cut two now, self-merging"
+    ],
+    "recommended": "Launch cut two now, with --hold",
+    "picked": "Launch cut two now, with --hold"
+   }
+  ]
+ }
+}
