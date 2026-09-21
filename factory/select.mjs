@@ -46,29 +46,46 @@ function matchesNeedle (text, needle) {
   return wholeWordMatch(text, needle)
 }
 
-function buildNeedles (paths, symbols) {
+/** The ancestor directories of `path`, deepest first — for
+ *  `a/b/c.txt` that's `['a/b', 'a']`. */
+function ancestorDirs (path) {
+  const parts = path.split('/')
+  parts.pop()
+  const dirs = []
+  for (let i = parts.length; i >= 1; i--) {
+    dirs.push(parts.slice(0, i).join('/'))
+  }
+  return dirs
+}
+
+const KIND_PRIORITY = ['path', 'stem', 'symbol', 'dir']
+
+function buildNeedles (paths, symbols, dirNeedles) {
   const raw = []
   for (const p of paths) {
     if (isTestFile(p)) continue
-    raw.push(p)
-    raw.push(stem(basename(p)))
+    raw.push({ value: p, kind: 'path' })
+    raw.push({ value: stem(basename(p)), kind: 'stem' })
+    if (dirNeedles) {
+      for (const dir of ancestorDirs(p)) raw.push({ value: dir, kind: 'dir' })
+    }
   }
-  for (const s of symbols) raw.push(s)
+  for (const s of symbols) raw.push({ value: s, kind: 'symbol' })
 
   const seen = new Set()
   const needles = []
   for (const n of raw) {
-    if (n.length < 4) continue
-    if (seen.has(n)) continue
-    seen.add(n)
+    if (n.value.length < 4) continue
+    if (seen.has(n.value)) continue
+    seen.add(n.value)
     needles.push(n)
   }
   return needles
 }
 
-export async function candidateTests ({ files, read, paths = [], symbols = [], exclude = [], cap = 8 }) {
+export async function candidateTests ({ files, read, paths = [], symbols = [], exclude = [], cap = 8, dirNeedles = true }) {
   const excludeSet = new Set(exclude)
-  const needles = buildNeedles(paths, symbols)
+  const needles = buildNeedles(paths, symbols, dirNeedles !== false)
 
   const testFiles = files.filter((f) => isTestFile(f) && !excludeSet.has(f))
 
@@ -76,20 +93,31 @@ export async function candidateTests ({ files, read, paths = [], symbols = [], e
   for (const path of testFiles) {
     const text = await read(path)
     const hits = []
+    const kinds = new Set()
+    let nonDirHits = 0
+    let dirHits = 0
     for (const needle of needles) {
-      if (matchesNeedle(text, needle)) hits.push(needle)
+      if (!matchesNeedle(text, needle.value)) continue
+      hits.push(needle.value)
+      kinds.add(needle.kind)
+      if (needle.kind === 'dir') dirHits++
+      else nonDirHits++
     }
-    if (hits.length > 0) results.push({ path, hits })
+    if (hits.length > 0) {
+      const why = KIND_PRIORITY.find((k) => kinds.has(k))
+      results.push({ path, hits, why, nonDirHits, dirHits })
+    }
   }
 
   results.sort((a, b) => {
-    if (b.hits.length !== a.hits.length) return b.hits.length - a.hits.length
+    if (b.nonDirHits !== a.nonDirHits) return b.nonDirHits - a.nonDirHits
+    if (b.dirHits !== a.dirHits) return b.dirHits - a.dirHits
     if (a.path < b.path) return -1
     if (a.path > b.path) return 1
     return 0
   })
 
-  return results.slice(0, cap)
+  return results.slice(0, cap).map(({ path, hits, why }) => ({ path, hits, why }))
 }
 
 /** The maximal run of `lines`, joined with `\n`, that still fits `cap`

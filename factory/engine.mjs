@@ -1243,6 +1243,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         files: trackedInExam, read: readExamFile,
         paths: implFilesOf(task), symbols: symbolsOf(task.clauses),
         exclude: task.proofTests || [], cap: selectPolicy.max_candidates,
+        dirNeedles: selectPolicy.dir_needles !== false,
       })
       if (foundCovering.length) {
         const { tests: coveringTests, kept, dropped } = excerptTests(foundCovering, readExamFile, 6000)
@@ -1253,6 +1254,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
           appendEvent({
             kind: 'select:exam', task: task.id,
             candidates: foundCovering.map((c) => c.path), covered: taskCovering,
+            why: Object.fromEntries(foundCovering.map((c) => [c.path, c.why])),
           })
           const lines = taskCovering
             .map((p, i) => (p ? 'M' + (i + 1) + ': ' + p : null))
@@ -1413,6 +1415,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         files: trackedInCandidate, read: readCandidateFile,
         paths: touched, symbols: names,
         exclude: task.proofTests || [], cap: selectPolicy.max_candidates,
+        dirNeedles: selectPolicy.dir_needles !== false,
       })
       if (!found.length) return false
       const { tests: guardTests, kept, dropped } = excerptTests(found, readCandidateFile, 3000)
@@ -1445,6 +1448,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       appendEvent({
         kind: 'select:landing', task: task.id,
         candidates: found.map((c) => c.path), selected: guards.selected, ran,
+        why: Object.fromEntries(found.map((c) => [c.path, c.why])),
       })
 
       let caught = false

@@ -227,6 +227,7 @@
       "rollback": 1.01
     },
     "max_candidates": 8,
+    "dir_needles": true,
     "max_run": 3,
     "timeout_seconds": 300,
     "n": 0,
