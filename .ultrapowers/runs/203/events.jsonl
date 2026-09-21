@@ -382,3 +382,18 @@
 {"ts":"2026-09-21T23:15:55.247Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"ls fleet/tests | head -50; find . -name \".eslintrc*\" -o -name \"eslint.config*\" | head"}
 {"ts":"2026-09-21T23:15:57.745Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"ls tests | head -60; echo ---; grep -rln \"readLanding\\|buildDeps\" tests evals factory fleet --include=* 2>/dev/null | head -20"}
 {"ts":"2026-09-21T23:16:02.262Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n 95,175p factory/judge.mjs"}
+{"ts":"2026-09-21T23:16:02.939Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -rn \"fleet/tests\" tests/test_fleet_suite.py | head; ls evals | head"}
+{"ts":"2026-09-21T23:16:07.408Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -n \"const read\\|askOnce(\" factory/judge.mjs"}
+{"ts":"2026-09-21T23:16:15.701Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n 1540,1620p factory/engine.mjs"}
+{"ts":"2026-09-21T23:16:25.734Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"timeout 600 python3 -m pytest tests/test_fleet_suite.py -x -q 2>&1 | tail -20"}
+{"ts":"2026-09-21T23:16:33.792Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n 140,175p tests/test_fleet_suite.py; echo ---; grep -rn \"ALL TESTS PASSED\" fleet/tests/*.mjs | head"}
+{"ts":"2026-09-21T23:16:37.556Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"timeout 900 python3 -m pytest tests/test_fleet_suite.py -q 2>&1 | tail -6"}
+{"ts":"2026-09-21T23:16:44.335Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"StructuredOutput"}
+{"ts":"2026-09-21T23:16:44.492Z","kind":"dispatch:end","task":"3","label":"referee:3","role":"referee","wall_ms":134774,"cost_usd":0.696422,"error":null}
+{"ts":"2026-09-21T23:16:45.725Z","kind":"referee","task":"3","findings":7,"blocking":0,"grades":["minor","minor","minor","minor","minor","minor","minor"]}
+{"ts":"2026-09-21T23:16:45.937Z","kind":"landing","task":"3","k":1,"examExit":0,"claim":0.72,"coverage":[0.71,0.71,0.67,0.66,0.65],"candidateSha":"fe45d4e70facd9bf77cd77e22df2fd26f4d9b490","wall_ms":720805}
+{"ts":"2026-09-21T23:16:52.206Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -n \"ALL TESTS PASSED\" fleet/tests/README.md CLAUDE.md docs/*.md 2>/dev/null | head"}
+{"ts":"2026-09-21T23:16:54.763Z","kind":"check:line","task":"3","cmd":"git diff --quiet $ULTRA_BASE -- factory/questions.json factory/roles factory/worker.mjs factory/select.mjs factory/board.mjs factory/boot.sh factory/union.mjs fleet/launch.mjs fleet/fleet-bootstrap.sh skills/ultrapowers/kernel","exit":0,"minor":false}
+{"ts":"2026-09-21T23:16:54.763Z","kind":"fold:verify","task":"3","ran":[{"task":"3","exit":0}],"attempt":1}
+{"ts":"2026-09-21T23:16:54.763Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n 274,286p CLAUDE.md"}
+{"ts":"2026-09-21T23:17:03.406Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n 340,372p factory/judge.mjs; echo ---; sed -n 195,215p factory/judge.mjs"}
