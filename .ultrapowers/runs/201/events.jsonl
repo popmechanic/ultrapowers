@@ -1,0 +1,21 @@
+{"kind":"exam:skipped","task":"1","reason":"no exam file"}
+{"ts":"2026-09-21T21:14:14.179Z","kind":"dispatch:start","task":"1","label":"impl:1:0","role":"implement"}
+{"ts":"2026-09-21T21:14:16.346Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"cat -A /home/exedev/run/impl-1-0/.claude-plugin/plugin.json | head -5; echo \"---\"; cat /home/exedev/run/impl-1-0/.claude-plugin/plugin.json"}
+{"ts":"2026-09-21T21:14:17.615Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/.claude-plugin/marketplace.json"}
+{"ts":"2026-09-21T21:14:18.153Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"Versioning\\|0.3.31\\|0.3.28\" /home/exedev/run/impl-1-0/CLAUDE.md"}
+{"ts":"2026-09-21T21:14:19.520Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/CLAUDE.md"}
+{"ts":"2026-09-21T21:14:21.174Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/.claude-plugin/plugin.json"}
+{"ts":"2026-09-21T21:14:22.081Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/.claude-plugin/marketplace.json"}
+{"ts":"2026-09-21T21:14:23.441Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/CLAUDE.md"}
+{"ts":"2026-09-21T21:14:24.639Z","kind":"supervisor","task":"1","label":"impl:1:0","answers":{"stuck":{"type":"noul","noul":0.24},"off_track":{"type":"noul","noul":0.27},"needs_human":{"type":"noul","noul":0.1},"done_not_exited":{"type":"noul","noul":0.21}}}
+{"ts":"2026-09-21T21:14:26.326Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"python3 -c \"import json; a=json.load(open('.claude-plugin/plugin.json'))['version']; b=[p for p in json.load(open('.claude-plugin/marketplace.json'))['plugins'] if p['name']=='ultrapowers'][0]['versio"}
+{"ts":"2026-09-21T21:14:30.022Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__note"}
+{"ts":"2026-09-21T21:14:32.170Z","kind":"dispatch:end","task":"1","label":"impl:1:0","role":"implement","wall_ms":17990,"cost_usd":0.097725,"error":null}
+{"ts":"2026-09-21T21:14:32.230Z","kind":"run:line","task":"1","cmd":"python3 -c \"import json; a=json.load(open('.claude-plugin/plugin.json'))['version']; b=[p for p in json.load(open('.claude-plugin/marketplace.json'))['plugins'] if p['name']=='ultrapowers'][0]['version']; assert a==b=='0.3.32', (a,b); print(a)\"","exit":0}
+{"ts":"2026-09-21T21:14:32.230Z","kind":"run:line","task":"1","cmd":"sed -n '/\\*\\*Versioning:\\*\\*/,/^- \\*\\*/p' CLAUDE.md | tr '\\n' ' ' | grep -q '0\\.3\\.32.*today.*a release is a fleet plan.*gh release create'","exit":0}
+{"ts":"2026-09-21T21:14:32.230Z","kind":"run:line","task":"1","cmd":"! sed -n '/\\*\\*Versioning:\\*\\*/,/^- \\*\\*/p' CLAUDE.md | tr '\\n' ' ' | grep -q '0\\.3\\.31[^0-9]*today'","exit":0}
+{"ts":"2026-09-21T21:14:32.584Z","kind":"select:landing","task":"1","candidates":["tests/test_catch_report.py","fleet/tests/test_launch_duplicate.mjs","fleet/tests/test_sims_are_hermetic.mjs","tests/test_authoring_census_amendments.py","tests/test_authoring_record.py","tests/test_catch_counter.py","tests/test_compile_plan_exam_sweep.py","tests/test_compile_plan_green_at_base.py"],"selected":[],"ran":[],"why":{"tests/test_catch_report.py":"path","fleet/tests/test_launch_duplicate.mjs":"symbol","fleet/tests/test_sims_are_hermetic.mjs":"symbol","tests/test_authoring_census_amendments.py":"symbol","tests/test_authoring_record.py":"symbol","tests/test_catch_counter.py":"symbol","tests/test_compile_plan_exam_sweep.py":"symbol","tests/test_compile_plan_green_at_base.py":"symbol"}}
+{"ts":"2026-09-21T21:14:32.584Z","kind":"floor","task":"1","exam":null,"lowest":0.63,"excluded":[1,2],"fired":false}
+{"ts":"2026-09-21T21:14:32.951Z","kind":"landing","task":"1","k":1,"examExit":0,"claim":0.87,"coverage":[0.93,0.96,0.63],"candidateSha":"45b34eed58a707d189176adea8e83b4ed2a0c59d","wall_ms":19111}
+{"ts":"2026-09-21T21:14:33.212Z","kind":"check:line","task":"1","cmd":"git diff --quiet $ULTRA_BASE -- factory fleet skills hooks tests README.md docs","exit":0,"minor":false}
+{"ts":"2026-09-21T21:14:33.212Z","kind":"fold:verify","task":"1","ran":[],"attempt":1}
