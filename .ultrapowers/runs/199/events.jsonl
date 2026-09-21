@@ -1,0 +1,10 @@
+{"ts":"2026-09-21T19:36:09.758Z","kind":"select:exam","task":"1","candidates":["fleet/tests/test_sims_are_hermetic.mjs","tests/test_plan_parse.py","fleet/tests/test_jev_client.mjs","fleet/tests/test_jev_questions.mjs","fleet/tests/test_worker_kata_env.mjs","tests/test_compile_plan_green_at_base.py","tests/test_ultra_run_fold_test_cmd.py","fleet/tests/test_probe_kata_facts.mjs"],"covered":[null,null,null,null]}
+{"ts":"2026-09-21T19:36:09.880Z","kind":"dispatch:start","task":"1","label":"exam:1","role":"exam"}
+{"ts":"2026-09-21T19:36:14.922Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"cat -n /home/exedev/run/exam-1/factory/select.mjs"}
+{"ts":"2026-09-21T19:36:15.249Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"ls /home/exedev/run/exam-1/fleet/tests/ | grep -i select"}
+{"ts":"2026-09-21T19:36:18.296Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"ls /home/exedev/run/exam-1/fleet/tests/ | head -50"}
+{"ts":"2026-09-21T19:36:18.590Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -rl \"select.mjs\" /home/exedev/run/exam-1/fleet/tests/ 2>/dev/null"}
+{"ts":"2026-09-21T19:36:21.487Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"cat -n /home/exedev/run/exam-1/fleet/tests/test_jev_questions.mjs | head -60"}
+{"ts":"2026-09-21T19:36:30.023Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"sed -n '60,140p' /home/exedev/run/exam-1/fleet/tests/test_jev_questions.mjs"}
+{"ts":"2026-09-21T19:36:32.363Z","kind":"supervisor","task":"1","label":"exam:1","answers":{"stuck":{"type":"noul","noul":0.21},"off_track":{"type":"noul","noul":0.24},"needs_human":{"type":"noul","noul":0.17},"done_not_exited":{"type":"noul","noul":0.18}}}
+{"ts":"2026-09-21T19:36:33.027Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"tail -40 /home/exedev/run/exam-1/fleet/tests/test_jev_questions.mjs; echo ---; grep -n \"ALL TESTS PASSED\\|process.exit\" /home/exedev/run/exam-1/fleet/tests/*.mjs | head -20"}
