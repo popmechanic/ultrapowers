@@ -482,3 +482,10 @@
 {"ts":"2026-09-21T20:15:26.211Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/skills/ultrapowers/references/design-rationale.md"}
 {"ts":"2026-09-21T20:15:29.495Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"FILES\\|SIBLING-FILES\" factory/roles/*.md skills/ultrawrite/*.md 2>/dev/null | head -10"}
 {"ts":"2026-09-21T20:15:36.477Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/skills/ultrapowers/references/design-rationale.md"}
+{"ts":"2026-09-21T20:20:37.356Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/skills/ultrapowers/references/plan-markers.md"}
+{"ts":"2026-09-21T20:20:40.342Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n -E \"run-engine\\.mjs|run-main\\.mjs|run-worker\\.mjs|run-waves\\.mjs|sandbox-boot\\.sh|publish-fold|facts-block|failing-block|engine-coverage|fitness\\.mjs|confine-hook|strip-exams|exam-paths\\.mjs|j"}
+{"ts":"2026-09-21T20:20:42.328Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/skills/ultrapowers/references/plan-markers.md"}
+{"ts":"2026-09-21T20:20:45.272Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/skills/ultrapowers/references/report-format.md"}
+{"ts":"2026-09-21T20:20:55.454Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"JSON.stringify\\|status.json\\|writeFile.*status\\|phase:\" factory/engine.mjs | head -50"}
+{"ts":"2026-09-21T20:21:01.209Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"DONE_MARKER\\|answer = \\|function main\\|process.argv\" factory/engine.mjs | head -30"}
+{"ts":"2026-09-21T20:21:05.520Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"workflow-result\\|runDir.*json\\|writeFileSync.*runDir\\|report\" factory/engine.mjs | head -30"}
