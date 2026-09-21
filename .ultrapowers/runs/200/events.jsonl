@@ -463,3 +463,15 @@
 {"ts":"2026-09-21T20:13:40.463Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"mcp__factory__task_facts"}
 {"ts":"2026-09-21T20:13:43.126Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"gh pr list --limit 30 --state all --search \"engine\" 2>&1 | head -40"}
 {"ts":"2026-09-21T20:14:03.837Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -rn \"cut two\\|cut one\" fleet/CONTRACT.md fleet/RUNBOOK.md CLAUDE.md README.md fleet/tests/README.md 2>/dev/null"}
+{"ts":"2026-09-21T20:14:19.837Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/fleet/RUNBOOK.md"}
+{"ts":"2026-09-21T20:14:23.271Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"sed -n '/^## /,$p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -qo \"2026-09-21.*revert\" && echo \"M2 PASS\" || echo \"M2 FAIL\"\necho \"=== M1 sweep ===\"\ngrep -n -E 'run-engine\\.mjs|run-main\\.mjs|run-worker\\.mjs|"}
+{"ts":"2026-09-21T20:14:26.409Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"node -e '\nconst fs = require(\"fs\");\nconst t = fs.readFileSync(\"fleet/RUNBOOK.md\", \"utf8\");\nconst perRun = t.slice(t.indexOf(\"## Per run\"), t.indexOf(\"## States\"));\nconsole.log(\"AUTHORING fact refused "}
+{"ts":"2026-09-21T20:14:27.505Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"The sandbox's runtime\" fleet/RUNBOOK.md"}
+{"ts":"2026-09-21T20:14:29.242Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/RUNBOOK.md"}
+{"ts":"2026-09-21T20:14:33.375Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"for f in CLAUDE.md README.md fleet/CONTRACT.md fleet/RUNBOOK.md hooks/session_start.sh skills/ultrapowers/SKILL.md skills/ultrapowers/references/design-rationale.md skills/ultrapowers/references/plan-"}
+{"ts":"2026-09-21T20:14:35.189Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/hooks/session_start.sh"}
+{"ts":"2026-09-21T20:14:42.197Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/hooks/session_start.sh"}
+{"ts":"2026-09-21T20:14:43.856Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/skills/ultrapowers/SKILL.md"}
+{"ts":"2026-09-21T20:15:00.606Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/skills/ultrapowers/SKILL.md"}
+{"ts":"2026-09-21T20:15:02.824Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/skills/ultrapowers/SKILL.md"}
+{"ts":"2026-09-21T20:15:04.684Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"status page\\|status URL\\|status\\.json\" skills/ultrapowers/SKILL.md"}
