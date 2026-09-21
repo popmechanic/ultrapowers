@@ -17,3 +17,5 @@
 {"ts":"2026-09-21T19:38:05.070Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__note"}
 {"ts":"2026-09-21T19:38:10.186Z","kind":"dispatch:end","task":"1","label":"exam:1","role":"exam","wall_ms":120306,"cost_usd":0.2945838,"error":null}
 {"ts":"2026-09-21T19:38:10.328Z","kind":"dispatch:start","task":"1","label":"impl:1:0","role":"implement"}
+{"ts":"2026-09-21T19:38:15.063Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/select.mjs"}
+{"ts":"2026-09-21T19:39:11.154Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/select.mjs"}
