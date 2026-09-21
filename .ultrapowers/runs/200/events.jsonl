@@ -359,3 +359,28 @@
 {"ts":"2026-09-21T20:02:33.658Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n -E 'run-engine\\.mjs|run-main\\.mjs|run-worker\\.mjs|run-waves\\.mjs|sandbox-boot\\.sh|publish-fold|facts-block|failing-block|engine-coverage|fitness\\.mjs|confine-hook|strip-exams|exam-paths\\.mjs|j"}
 {"ts":"2026-09-21T20:02:38.375Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"publish-fold\\|publish fold\" fleet/CONTRACT.md"}
 {"ts":"2026-09-21T20:02:43.566Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/CONTRACT.md"}
+{"ts":"2026-09-21T20:02:47.318Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"^- \\*\\*Publish\\|^- \\*\\*Integration naming\" fleet/CONTRACT.md"}
+{"ts":"2026-09-21T20:02:48.772Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/CONTRACT.md"}
+{"ts":"2026-09-21T20:02:56.895Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"python3 - <<'PYEOF'\npath = \"fleet/CONTRACT.md\"\nwith open(path) as f:\n    lines = f.readlines()\n\nstart, end = 325, 406  # 1-indexed inclusive bullet \"Publish\"\nassert lines[start-1].startswith(\"- **Publ"}
+{"ts":"2026-09-21T20:02:58.829Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n -E 'run-engine\\.mjs|run-main\\.mjs|run-worker\\.mjs|run-waves\\.mjs|sandbox-boot\\.sh|publish-fold|facts-block|failing-block|engine-coverage|fitness\\.mjs|confine-hook|strip-exams|exam-paths\\.mjs|j"}
+{"ts":"2026-09-21T20:03:02.073Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/fleet/CONTRACT.md"}
+{"ts":"2026-09-21T20:03:04.675Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"StructuredOutput"}
+{"ts":"2026-09-21T20:03:04.858Z","kind":"dispatch:end","task":"1","label":"referee:1","role":"referee","wall_ms":192517,"cost_usd":1.4849175000000003,"error":null}
+{"ts":"2026-09-21T20:03:07.313Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/fleet/CONTRACT.md"}
+{"ts":"2026-09-21T20:03:07.433Z","kind":"referee","task":"1","findings":10,"blocking":0,"grades":["minor","plan","plan","minor","minor","minor","minor","minor","minor","minor"]}
+{"ts":"2026-09-21T20:03:10.118Z","kind":"landing","task":"1","k":1,"examExit":0,"claim":0.56,"coverage":[0.97,0.93,0.65,0.95,0.43],"candidateSha":"926537e7a7c40f367ff7f809c8edc6e8c9f92d35","wall_ms":765622}
+{"ts":"2026-09-21T20:03:10.120Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/CONTRACT.md"}
+{"ts":"2026-09-21T20:03:12.038Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n '\"project\"\\|) project\\|project)' /home/exedev/run/impl-3-0/factory/boot.sh | head -10"}
+{"ts":"2026-09-21T20:03:13.740Z","kind":"check:line","task":"1","cmd":"git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel skills/ultrapowers/scripts skills/ultrawrite/scripts fleet/janitor.mjs fleet/doctor.mjs fleet/target.mjs fleet/claude-token.mjs fleet/kata-client.mjs fleet/jev-client.mjs fleet/lobby.mjs fleet/kata-hub.mjs fleet/setup-script.mjs","exit":0,"minor":false}
+{"ts":"2026-09-21T20:03:13.740Z","kind":"fold:verify","task":"1","ran":[{"task":"1","exit":0}],"attempt":1}
+{"ts":"2026-09-21T20:03:14.535Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n '^case\\|^\\s*boot)\\|^\\s*\\*)' /home/exedev/run/impl-3-0/factory/boot.sh | head -20; echo ---; tail -40 /home/exedev/run/impl-3-0/factory/boot.sh"}
+{"ts":"2026-09-21T20:03:17.577Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"write_status\\|STATUS_FILE\\|status.json\" /home/exedev/run/impl-3-0/factory/boot.sh | head -20"}
+{"ts":"2026-09-21T20:03:19.182Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/boot.sh"}
+{"ts":"2026-09-21T20:03:22.325Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"ev_project\" /home/exedev/run/impl-3-0/factory/boot.sh"}
+{"ts":"2026-09-21T20:03:27.382Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/fleet/CONTRACT.md"}
+{"ts":"2026-09-21T20:03:29.206Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/CONTRACT.md"}
+{"ts":"2026-09-21T20:03:35.341Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/fleet/CONTRACT.md"}
+{"ts":"2026-09-21T20:03:38.472Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/fleet/CONTRACT.md"}
+{"ts":"2026-09-21T20:03:40.542Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n -E 'run-engine\\.mjs|run-main\\.mjs|run-worker\\.mjs|run-waves\\.mjs|sandbox-boot\\.sh|publish-fold|facts-block|failing-block|engine-coverage|fitness\\.mjs|confine-hook|strip-exams|exam-paths\\.mjs|j"}
+{"ts":"2026-09-21T20:03:42.322Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n -- '--tier\\|--implementer-effort' fleet/CONTRACT.md"}
+{"ts":"2026-09-21T20:03:45.833Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"wc -l fleet/CONTRACT.md; grep -n \"^## \\|^- \\*\\*\" fleet/CONTRACT.md"}
