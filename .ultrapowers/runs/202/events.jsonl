@@ -383,3 +383,10 @@
 {"ts":"2026-09-21T22:34:19.123Z","kind":"landing","task":"3","k":1,"examExit":0,"claim":0.71,"coverage":[0.96,0.93,0.85,0.94,0.92],"candidateSha":"bda54be4eb787e05e8946d19fb70b05d02f0bbb4","wall_ms":602222}
 {"ts":"2026-09-21T22:34:23.802Z","kind":"check:line","task":"3","cmd":"git diff --quiet $ULTRA_BASE -- skills fleet/launch.mjs fleet/fleet-bootstrap.sh factory/roles factory/worker.mjs factory/select.mjs factory/board.mjs","exit":0,"minor":false}
 {"ts":"2026-09-21T22:34:23.802Z","kind":"fold:verify","task":"3","ran":[{"task":"3","exit":0}],"attempt":1}
+{"ts":"2026-09-21T22:34:39.073Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -rn \"measure\\|readLanding\\|runEngine\" fleet/tests/test_launch_one_engine.mjs | head -10; echo \"--- multibyte cap probe ---\"; node -e \"\nimport('./factory/facts.mjs').then(f=>{\nconst clauses=['M1. "}
+{"ts":"2026-09-21T22:35:12.072Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"StructuredOutput"}
+{"ts":"2026-09-21T22:35:12.206Z","kind":"dispatch:end","task":"2","label":"referee:2","role":"referee","wall_ms":211718,"cost_usd":1.35704,"error":null}
+{"ts":"2026-09-21T22:35:13.525Z","kind":"referee","task":"2","findings":7,"blocking":0,"grades":["minor","minor","minor","minor","minor","minor","minor"]}
+{"ts":"2026-09-21T22:35:14.107Z","kind":"landing","task":"2","k":1,"examExit":0,"claim":0.72,"coverage":[0.57,0.39,0.35,0.22,0.24],"candidateSha":"7b329918c3120c180ae914f4202178b32ae1456b","wall_ms":656991}
+{"ts":"2026-09-21T22:35:21.696Z","kind":"check:line","task":"2","cmd":"git diff --quiet $ULTRA_BASE -- skills fleet/launch.mjs fleet/fleet-bootstrap.sh factory/roles factory/worker.mjs factory/select.mjs factory/board.mjs","exit":0,"minor":false}
+{"ts":"2026-09-21T22:35:21.696Z","kind":"fold:verify","task":"2","ran":[{"task":"2","exit":0}],"attempt":1}
