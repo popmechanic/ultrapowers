@@ -120,3 +120,28 @@
 {"ts":"2026-09-21T18:35:15.257Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"cat /home/exedev/run/patch-2-0.diff"}
 {"ts":"2026-09-21T18:35:15.342Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n \"cloneAtBase\" -A 30 fleet/run-waves.mjs | head -60"}
 {"ts":"2026-09-21T18:35:15.937Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"cat /home/exedev/run/impl-2-0/factory/pairs.mjs"}
+{"ts":"2026-09-21T18:35:25.033Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"wc -l fleet/tests/_engine_helpers.mjs; grep -n \"fold\\|materialize\\|kernel\\|clone\\|commit\" fleet/tests/_engine_helpers.mjs | head -60"}
+{"ts":"2026-09-21T18:35:28.459Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"git log --all --oneline -- '*test_factory*' 2>&1 | head -30"}
+{"ts":"2026-09-21T18:35:28.660Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -n \"foldIn\\|foldOutcomes\\|foldOrder\\|setFoldOutcome\" factory/engine.mjs"}
+{"ts":"2026-09-21T18:35:29.487Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -n \"resolveConflicts\\|const resolve\\b\\|resolve = \" factory/engine.mjs"}
+{"ts":"2026-09-21T18:35:30.335Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"git log --oneline -5 2>&1"}
+{"ts":"2026-09-21T18:35:32.718Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n '810,830p;1625,1645p' factory/engine.mjs"}
+{"ts":"2026-09-21T18:35:33.464Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n '1735,1765p;1975,2000p' factory/engine.mjs"}
+{"ts":"2026-09-21T18:35:34.067Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/factory/engine.mjs"}
+{"ts":"2026-09-21T18:35:37.523Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/factory/engine.mjs"}
+{"ts":"2026-09-21T18:35:37.825Z","kind":"supervisor","task":"2","label":"referee:2","answers":{"stuck":{"type":"noul","noul":0.18},"off_track":{"type":"noul","noul":0.24},"needs_human":{"type":"noul","noul":0.11},"done_not_exited":{"type":"noul","noul":0.08}}}
+{"ts":"2026-09-21T18:35:38.319Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n '1690,1740p' factory/engine.mjs"}
+{"ts":"2026-09-21T18:35:40.499Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"python3 -c \"\nimport json\nd = json.load(open('factory/policy.json'))\nprint(json.dumps(d.get('speculate'), indent=2))\nprint(json.dumps(d.get('landing'), indent=2))\nprint(json.dumps(d.get('supervisor'), "}
+{"ts":"2026-09-21T18:35:44.012Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -n \"reverifyAfterFold\" factory/engine.mjs; sed -n '2000,2035p' factory/engine.mjs"}
+{"ts":"2026-09-21T18:35:57.059Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -rn \"resolveConflicts\\|labelPair\" --include=*.mjs --include=*.js --include=*.sh --include=*.md . | grep -v \"^./factory/engine.mjs\\|^./factory/pairs.mjs\" | head -40"}
+{"ts":"2026-09-21T18:35:58.267Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -rn \"pair:label\\|'clean'\\|\\\"clean\\\"\" --include=*.mjs --include=*.py --include=*.sh . | grep -v node_modules | head -40"}
+{"ts":"2026-09-21T18:36:00.266Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"json_run_uid\\|json_int id\" /home/exedev/run/impl-3-0/factory/boot.sh"}
+{"ts":"2026-09-21T18:36:04.861Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"node fleet/tests/test_factory_pair_label.mjs; echo \"exit=$?\"; node --check factory/engine.mjs && echo \"engine parses\"; grep -c \"foldOrder\" factory/engine.mjs"}
+{"ts":"2026-09-21T18:36:04.919Z","kind":"worker:test-run","task":"2","label":"referee:2","cmd":"node fleet/tests/test_factory_pair_label.mjs; echo \"exit=$?\"; node --check factory/engine.mjs && echo \"engine parses\"; grep -c \"foldOrder\" factory/engine.mjs","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-21T18:36:06.022Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -rn \"pairsList\\s*=\" factory/*.mjs | head; grep -rn \"a:.*b:\" factory/pairsplan.mjs 2>/dev/null | head"}
+{"ts":"2026-09-21T18:36:09.354Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -rn \"pairs\" factory/plan.mjs factory/compile*.mjs 2>/dev/null | head -20; ls factory/"}
+{"ts":"2026-09-21T18:36:11.614Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -rn \"symbol:\" factory/*.mjs | head -20; grep -rn \"pairs\\b\" factory/select.mjs | head -20"}
+{"ts":"2026-09-21T18:36:19.790Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n '540,615p' factory/engine.mjs"}
+{"ts":"2026-09-21T18:36:22.392Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-21T18:36:22.676Z","kind":"worker:test-run","task":"3","label":"impl:3:0","cmd":"node fleet/tests/test_factory_boot_kata_ids.mjs","exit":0,"red":false,"via":"run_exam"}
+{"ts":"2026-09-21T18:36:25.131Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/boot.sh"}
