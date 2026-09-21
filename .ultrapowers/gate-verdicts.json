@@ -1,0 +1,78 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "63900b53a581e9d40232350d769c06f5620e304e63457035ec65391e881284f0",
+      "verdict": "pass",
+      "reason": "Legs (a)-(d) catch M1-M4 and the tagged Run catches M5; no contradiction, base pins nothing opposite."
+    },
+    "2": {
+      "hash": "82eaf4b6246ce89be5ca86c278af52b64218fb0eb94ffc00bd58c82275c455d0",
+      "verdict": "pass",
+      "reason": "Pinned arrays compute ([1,null,0]; three ordered facts; the cap drops the third); Runs cover M4 and M5's wiring."
+    },
+    "3": {
+      "hash": "12df4d89d76d123c735809d4e14d5b32e741a0c332d14f8cf00d779e4d90cba3",
+      "verdict": "pass",
+      "reason": "Byte-exact literals are satisfiable under M1's typing rule; Runs cover syntax, the four call sites and publish's order."
+    },
+    "4": {
+      "hash": "43bd6328c320738b9fccd11a1cb8d7d51729d9d66a0a300a812bff3f13a21600",
+      "verdict": "pass",
+      "reason": "Expected missing lists compute; the CLI leg covers the bad line and the absent file; both files absent at base."
+    }
+  },
+  "tally": {
+    "dispatched": 5,
+    "rejected": 0,
+    "rounds": 2,
+    "base": "60af4a8f93b4d320f0640bf225c85b7a8805df29"
+  },
+  "authoring": {
+    "minutes": 19,
+    "probes": 0,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Scope of the plan",
+        "options": [
+          "Four tasks, exam legs deferred",
+          "All of it, including per-leg exam results",
+          "Only the rows now"
+        ],
+        "recommended": "Four tasks, exam legs deferred",
+        "picked": "Four tasks, exam legs deferred"
+      },
+      {
+        "question": "How the new claim question arrives",
+        "options": [
+          "Ask both, new one record-only",
+          "Replace it now, behind a switch"
+        ],
+        "recommended": "Ask both, new one record-only",
+        "picked": "Ask both, new one record-only"
+      },
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Draft A \u2014 full",
+          "Draft B \u2014 shorter"
+        ],
+        "recommended": "Draft A \u2014 full",
+        "picked": "Draft A \u2014 full"
+      },
+      {
+        "question": "Execute",
+        "options": [
+          "Ultrapowers",
+          "Subagent-Driven",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers"
+      }
+    ]
+  }
+}
