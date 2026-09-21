@@ -19,3 +19,4 @@
 {"ts":"2026-09-21T21:14:32.951Z","kind":"landing","task":"1","k":1,"examExit":0,"claim":0.87,"coverage":[0.93,0.96,0.63],"candidateSha":"45b34eed58a707d189176adea8e83b4ed2a0c59d","wall_ms":19111}
 {"ts":"2026-09-21T21:14:33.212Z","kind":"check:line","task":"1","cmd":"git diff --quiet $ULTRA_BASE -- factory fleet skills hooks tests README.md docs","exit":0,"minor":false}
 {"ts":"2026-09-21T21:14:33.212Z","kind":"fold:verify","task":"1","ran":[],"attempt":1}
+{"kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1186","number":1186,"draft":false}
