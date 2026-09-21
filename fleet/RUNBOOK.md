@@ -698,9 +698,11 @@ an exe VM with 2 vCPU / 4 GB)
   throws on an undefined path and exits 1, the daemon logs `federation config reconciliation … state=pending
   category=hub_unavailable status=0`, the helper's state directory stays empty, and the boot logs `board: … did
   not bind within 120s` — with the network and both integrations fine (run-193, 2026-09-18; #1149). Tell a dark
-  hub from a dead helper from the VM: `kata --daemon hub federation identity --json` answering
+  hub from a dead helper from the VM: `~/.local/bin/fleet-kata --daemon hub federation identity --json` answering
   `web_session_required` means the hub was reached.
-- A bound spoke is `"role":"spoke"` with `"provider_status":"ready"` in `kata federation status --json`; there
+- A bound spoke is `"role":"spoke"` with `"provider_status":"ready"` in `kata federation status --json` (by hand on the VM:
+  `~/.local/bin/fleet-kata federation status --json` — the boot writes that wrapper with the spoke's
+  `KATA_HOME` and `KATA_SERVER` set, and it is the sandbox's only kata since #1190); there
   is no `"status"` cell to wait for. run-194's spoke reconciled one second after its daemon started and the
   boot still waited its whole 120 s on a string Kata never prints, then ran the engine without its board
   (2026-09-18; #1155). The same document answered the open measurement: `pull_cursor_event_id` moved and
