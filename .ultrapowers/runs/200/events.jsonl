@@ -441,3 +441,15 @@
 {"ts":"2026-09-21T20:11:29.417Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/RUNBOOK.md"}
 {"ts":"2026-09-21T20:11:37.144Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n -- '--tier\\|--implementer-effort' fleet/RUNBOOK.md"}
 {"ts":"2026-09-21T20:11:57.307Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"collect_evidence\\b\" -A 15 factory/boot.sh | head -20"}
+{"ts":"2026-09-21T20:12:01.378Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/boot.sh"}
+{"ts":"2026-09-21T20:12:04.714Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/fleet/RUNBOOK.md"}
+{"ts":"2026-09-21T20:12:13.088Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/fleet/RUNBOOK.md"}
+{"ts":"2026-09-21T20:12:18.719Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/RUNBOOK.md"}
+{"ts":"2026-09-21T20:12:29.284Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/fleet/RUNBOOK.md"}
+{"ts":"2026-09-21T20:12:31.857Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/fleet/RUNBOOK.md"}
+{"ts":"2026-09-21T20:12:34.769Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/fleet/RUNBOOK.md"}
+{"ts":"2026-09-21T20:12:37.357Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"status URL\\|statusUrl\\|status.json\\|exe.xyz\" fleet/launch.mjs | head -20"}
+{"ts":"2026-09-21T20:12:39.743Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"function statusUrlFor\\|statusUrlFor =\" -A 5 fleet/launch.mjs fleet/*.mjs 2>/dev/null | head -20"}
+{"ts":"2026-09-21T20:12:44.574Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/RUNBOOK.md"}
+{"ts":"2026-09-21T20:12:56.995Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n -E 'run-engine\\.mjs|run-main\\.mjs|run-worker\\.mjs|run-waves\\.mjs|sandbox-boot\\.sh|publish-fold|facts-block|failing-block|engine-coverage|fitness\\.mjs|confine-hook|strip-exams|exam-paths\\.mjs|j"}
+{"ts":"2026-09-21T20:12:59.411Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/RUNBOOK.md"}
