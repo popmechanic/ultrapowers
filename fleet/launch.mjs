@@ -1161,16 +1161,6 @@ async function launchBody ({
     )
   }
 
-  // ── The target's test command is, like a hash pin, a fact about BASE the
-  //    laptop can read. A tree that matches no rung of the sandbox's ladder is
-  //    a run the gate would refuse an hour from now, after a VM, a clone and a
-  //    setup script; the ladder is file presence only, so the laptop reads the
-  //    same answer off `--base`'s tree before any of that exists.
-  if (await detectTestCommand({ exec, repoDir, base: opts.base }) === null) {
-    throw new Refusal(
-      `launch: ${target} at --base ${opts.base}: ${NO_TEST_CMD_LINE} — ${NO_TEST_CMD_FIX}`
-    )
-  }
 
   // One `integrations list --json`, asked for the target's GitHub object.
   const integrations = await listIntegrations(exec)
@@ -1512,82 +1502,6 @@ async function readDefaultBranch ({ exec, repoDir }) {
     )
   }
   return { branch, tip }
-}
-
-/**
- * The sandbox's own words for a target it cannot test, copied verbatim from the
- * `test-command` stage's failure line of the wave engine's sandbox driver (deleted
- * 2026-09-21) rather than paraphrased: the operator who reads this on the laptop and the
- * operator who would have read it off a preflight receipt read the same sentence.
- */
-export const NO_TEST_CMD_LINE =
-  'no test command detected — pass --test-cmd <run-wide suite command>; ' +
-  'the gate refuses to run without one'
-
-/**
- * What the laptop can add to that line. The launch line has no `--test-cmd` —
- * `COMMENT_KEYS` in `fleet/lobby.mjs` refuses an assignment key for one — so the
- * fix is not a flag but a commit on the target's default branch, and the rungs
- * are named in the ladder's own order.
- */
-export const NO_TEST_CMD_FIX =
-  'the launch line carries no --test-cmd; commit one of pytest.ini, ' +
-  'pyproject.toml [tool.pytest], package.json scripts.test (or a bun lockfile ' +
-  'beside it), Makefile test:, go.mod or Cargo.toml on the target\'s default branch'
-
-/**
- * The sandbox's test-command ladder, run against the tree at `--base` on the
- * laptop. It began as a mirror of the wave engine's sandbox-side `detect_test_cmd`
- * (deleted 2026-09-21); the launcher spawns no python, so the ladder lives here, and
- * it is now the only copy.
- *
- * Only whether a rung matches is decided here: the launcher never runs pytest,
- * never asks about xdist and never spawns python. The rule name is for the
- * refusal's sake, and the command the sandbox derives is the sandbox's own.
- *
- * Every read is of the commit `--base` names and never of the working tree: an
- * untracked `pytest.ini` beside the operator's editor is not a fact about the
- * base, and a base whose `pytest.ini` the operator has deleted locally is still
- * a base the sandbox can test.
- */
-export async function detectTestCommand ({ exec, repoDir, base }) {
-  const present = async (rel) =>
-    (await git(exec, repoDir, ['cat-file', '-e', `${base}:${rel}`])).code === 0
-  const read = async (rel) => {
-    const res = await git(exec, repoDir, ['show', `${base}:${rel}`])
-    return res.code === 0 ? String(res.stdout ?? '') : ''
-  }
-
-  if (await present('pytest.ini')) return { rule: 'pytest-ini' }
-  if (await present('pyproject.toml') && (await read('pyproject.toml')).includes('[tool.pytest')) {
-    return { rule: 'pyproject-pytest' }
-  }
-  if (await present('package.json')) {
-    // A `package.json` that does not parse counts as having no scripts, exactly
-    // as the Python rung's `except (JSONDecodeError, AttributeError)` does.
-    let scripts = null
-    try {
-      scripts = JSON.parse(await read('package.json'))?.scripts ?? null
-    } catch {
-      scripts = null
-    }
-    const hasTest = Array.isArray(scripts)
-      ? scripts.includes('test')
-      : (scripts !== null && typeof scripts === 'object' && 'test' in scripts)
-    const bunLock = (await present('bun.lock')) || (await present('bun.lockb'))
-    if (hasTest) {
-      if (await present('pnpm-lock.yaml')) return { rule: 'package-json-pnpm' }
-      return { rule: bunLock ? 'package-json-bun' : 'package-json-npm' }
-    }
-    // A bun lockfile is a rung only beside a `package.json`, never alone.
-    if (bunLock) return { rule: 'bun-lockfile' }
-  }
-  if (await present('Makefile') && /^test\s*:/m.test(await read('Makefile'))) {
-    return { rule: 'makefile-test' }
-  }
-  if (await present('go.mod')) return { rule: 'go-mod' }
-  if (await present('Cargo.toml')) return { rule: 'cargo-toml' }
-  return null
 }
 
 /**
