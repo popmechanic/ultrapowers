@@ -978,6 +978,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       role: opts.role,
       label: opts.label,
       task: opts.taskId,
+      onDenied: (row) => appendEvent(row),
     })
     } catch (e) {
       const error = String((e && e.message) || e).slice(0, 500)
@@ -2206,6 +2207,7 @@ export async function runRefold (rawArgs = {}, deps = {}) {
         files: opts.files, schema: opts.schema ?? null, mcpServers: opts.mcpServers ?? null,
         onMessage: () => {}, readOnly: Boolean(opts.readOnly), role: opts.role, label: opts.label,
         task: opts.taskId,
+        onDenied: (row) => appendEvent(row),
       })
     } catch (e) {
       answer = { result: null, denials: [], error: String((e && e.message) || e).slice(0, 500) }
