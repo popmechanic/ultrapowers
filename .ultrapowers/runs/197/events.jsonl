@@ -212,3 +212,6 @@
 {"ts":"2026-09-21T18:43:22.180Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"node fleet/tests/test_factory_fold_recheck.mjs; echo \"EXIT:$?\"","exit":null,"red":null,"via":"bash"}
 {"ts":"2026-09-21T18:43:25.364Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/factory/engine.mjs"}
 {"ts":"2026-09-21T18:43:29.600Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Edit","target":"/home/exedev/run/exam-1/factory/engine.mjs"}
+{"ts":"2026-09-21T18:43:35.467Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"mkdir -p /tmp/verify_fix/factory /tmp/verify_fix/skills/ultrapowers/kernel /tmp/verify_fix/skills/ultrapowers/scripts\ncp -r factory/* /tmp/verify_fix/factory/\ncp -r skills/ultrapowers/kernel/* /tmp/ve"}
+{"ts":"2026-09-21T18:43:39.673Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"rm -rf /tmp/verify_fix\nmkdir -p /tmp/verify_fix\ncp -r factory /tmp/verify_fix/\ncp -r fleet /tmp/verify_fix/\ncp -r skills /tmp/verify_fix/ 2>/dev/null || true\nls /tmp/verify_fix"}
+{"ts":"2026-09-21T18:43:41.227Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/tmp/verify_fix/factory/engine.mjs"}
