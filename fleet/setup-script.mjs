@@ -5,7 +5,8 @@
  * HOME/USER/PATH set and nothing else — no XDG_RUNTIME_DIR, passwordless
  * `sudo -n`, the file piped in as /dev/stdin and capped at 10 KiB. The image
  * already ships claude, gh, busybox, git, jq and python3; the delta this script
- * installs is exactly node, bun, kata, celld and pytest. It also drops the two files a run
+ * installs is exactly node, bun, celld and pytest — kata is the engine boot's to install, at the
+ * version its own sha pins (#1190). It also drops the two files a run
  * needs — the bootstrap at /usr/local/lib/fleet/bootstrap.sh (root-owned, 0555)
  * and the unit template in the user's own systemd directory — brings the status
  * page up before anything slow, waits for the user bus, starts the run, and
@@ -144,19 +145,6 @@ curl -fsSL -o bun.zip ${BUN_URL}
 unzip -q -o bun.zip
 sudo -n install -m 0755 bun-linux-x64/bun /usr/local/bin/bun
 sudo -n ln -sf bun /usr/local/bin/bunx
-
-# kata: the pinned release, installed the hub's own verified way — the sums
-# first, and the binary's path read out of the tarball rather than assumed.
-status booting "setup: kata"
-KATA_VERSION=0.17.2
-ASSET=kata_0.17.2_linux_amd64.tar.gz
-BASE=https://github.com/kenn-io/kata/releases/download/v0.17.2/
-curl -fsSL -o SHA256SUMS "\${BASE}SHA256SUMS"
-curl -fsSL -o "$ASSET" "\${BASE}\${ASSET}"
-grep " $ASSET$" SHA256SUMS | sha256sum -c -
-bin="$(tar -tzf "$ASSET" | grep -E '(^|/)kata$' | head -n 1)"
-tar -xzf "$ASSET"
-sudo -n install -m 0755 "$bin" /usr/local/bin/kata
 
 # celld: the pinned release, against the digest the plugin records.
 status booting "setup: celld"

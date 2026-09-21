@@ -342,6 +342,9 @@ board_up() {
       install -m 0755 "$bin_rel" "$FLEET_HOME/.local/bin/kata" )
   then log "board: installing kata $KATA_VERSION failed — proceeding without a spoke"; return 0; fi
   PATH="$FLEET_HOME/.local/bin:$PATH"
+  # The one kata on a sandbox (#1190): nothing system-wide sits behind this PATH entry.
+  command -v kata >/dev/null 2>&1 || { log "board: kata $KATA_VERSION installed but not on PATH — proceeding without a spoke"; return 0; }
+  log "board: kata $KATA_VERSION installed at $(command -v kata)"
   mkdir -p "$FLEET_HOME/kata/helper"
   cat >"$FLEET_HOME/kata/config.toml" <<EOF
 listen = "127.0.0.1:7777"
