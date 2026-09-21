@@ -57,6 +57,7 @@ import { examsTouched } from './reverify.mjs'
 import { waitsFor } from './dispatch.mjs'
 import { runLines } from './proofs.mjs'
 import { settledCoverage, observedFacts } from './facts.mjs'
+import { observedWork, supervisorTick } from './watch.mjs'
 
 // Amendment (undeclared by the task's own M1-M6, needed only to reach them):
 // this module now creates a missing parent directory once, on the one error
@@ -799,6 +800,20 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const done = new Set()
   const inflight = new Set()
   const supervisorTicks = []
+  // M5: `supervisor.observed.enabled` off `policyDoc`, read once — whether
+  // the second, facts-only supervisor reading fires at all.
+  const observedEnabled = ((policyDoc.supervisor || {}).observed || {}).enabled === true
+  // M5: one `{ tools, examRuns }` accumulator per dispatch, keyed by that
+  // dispatch's own label — filled in by `onMessageFor`'s own `tool_use`
+  // handling and by both places a `worker:test-run` row is appended (the
+  // `run_exam` closure in `mcpServersFor`, and the Bash-named-the-test-command
+  // case inside `onMessageFor` itself) — so `observedWork` sees exactly that
+  // dispatch's own history, never a sibling's.
+  const dispatchObserved = new Map()
+  const observedFor = (label) => {
+    if (!dispatchObserved.has(label)) dispatchObserved.set(label, { tools: [], examRuns: [] })
+    return dispatchObserved.get(label)
+  }
   // M2: one pairState reading per pair, keyed `a>b`, so M4's candidate check
   // can hand the same state back to `readPairCandidate` as "the consumer's
   // state" without asking `pairState` twice. M4 fires at most once per pair
@@ -883,6 +898,8 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     let fired = false
     const tail = []
     const wantsSupervisor = supervisorMode === 'record-only' && typeof judge.readSupervisor === 'function'
+    const dispatchStartedAt = Date.now()
+    const observed = observedFor(label)
     return (message) => {
       if (!message) return
       const blocks = (message.message && message.message.content) || []
@@ -894,6 +911,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
             const target = input.file_path ?? input.path ?? input.pattern ??
               (input.command !== undefined ? String(input.command).slice(0, 200) : undefined)
             appendEvent({ kind: 'worker:tool', task: taskId, label, tool: b.name, target })
+            observed.tools.push({ at: Date.now(), tool: b.name, target })
             if (b.name === 'Bash') pendingBash.set(b.id, String((input && input.command) || ''))
           }
           if (b.type === 'text') tail.push(String(b.text))
@@ -902,9 +920,14 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         if (!wantsSupervisor || fired || turns < SUPERVISOR_TICK_TURNS) return
         fired = true
         supervisorTicks.push(
-          read('readSupervisor', { label, task: taskId, transcript: tail.slice(-8).join('\n').slice(-4000) })
-            .then((answers) => { if (answers) appendEvent({ kind: 'supervisor', task: taskId, label, answers }) })
-            .catch(() => {}))
+          supervisorTick({
+            read, appendEvent, observedEnabled,
+            label, task: taskId, transcript: tail.slice(-8).join('\n').slice(-4000),
+            observed: observedWork({
+              tools: observed.tools, examRuns: observed.examRuns,
+              taskFiles: (task && task.files) || [], startedAt: dispatchStartedAt, now: Date.now(),
+            }),
+          }))
         return
       }
       if (message.type === 'user') {
@@ -918,6 +941,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
           // EXIT:$?` hides from `is_error` regardless of what the run did.
           // Say so rather than guess: this row's result is unknown.
           appendEvent({ kind: 'worker:test-run', task: taskId, label, cmd, exit: null, red: null, via: 'bash' })
+          observed.examRuns.push({ via: 'bash', exit: null })
         }
       }
     }
@@ -1232,6 +1256,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
           kind: 'worker:test-run', task: taskId, label, cmd: cmds.join(' && '), exit: r.exit,
           red: r.exit !== 0, via: 'run_exam',
         })
+        observedFor(label).examRuns.push({ via: 'run_exam', exit: r.exit })
         return { exit: r.exit, tail }
       }
       : undefined

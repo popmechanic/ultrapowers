@@ -145,7 +145,16 @@
     "window": "none",
     "basis": "judgment",
     "unread": "#1128 as filed: record-only for the first five runs, rows appended and no stop issued. The flip condition is pre-registered there: the would-have-stopped set dominated by tasks that ended badly or late",
-    "rollback": "--supervisor off; the note poll and attentionFromNote are untouched"
+    "rollback": "--supervisor off; the note poll and attentionFromNote are untouched",
+    "observed": {
+      "enabled": true,
+      "experiment": true,
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "unread": "#1169 desired state 3, the operator's pick of 2026-09-21: the same four questions asked a second time over `observedWork` facts instead of narration, recorded beside the existing reading for the record only — gates nothing.",
+      "rollback": "enabled = false"
+    }
   },
   "resolve": {
     "union": {
