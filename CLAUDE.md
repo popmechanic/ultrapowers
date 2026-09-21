@@ -43,8 +43,7 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
 - `skills/ultrapowers/` — the operator skill: `SKILL.md` (the thin client — commit the plan,
   launch the fleet), `scripts/` (`plan_parse.py`, the one parser — the sandbox runs it; `plan_check.py`, the laptop's
   check on it: the gate and authoring records, `Check:` ownership, Stale-if and the rehearsals at
-  base — cut B, 2026-09-21; `compile_plan.py`, the old compiler, unused and kept as the rollback
-  until one plan has launched through the new path; `validate_skill.py`; and the catch counter pair with the `fleet_events.py` and `_outcome.py`
+  base — cut B, 2026-09-21 — the old compiler, `compile_plan.py`, left the tree once run-202 had launched through them; `validate_skill.py`; and the catch counter pair with the `fleet_events.py` and `_outcome.py`
   they read through — the wave engine's sandbox-side scripts left on 2026-09-21), `references/` (`first-run.md` walks each doctor row for a first-timer), and
   `kernel/` — the fold: `fold_wave.py`, `frontier_fold.py`, `hunks.py`, `repo_weave.py` over
   the sha-pinned `vendor/manyana.py`. **The engine itself lives in `factory/engine.mjs`
@@ -176,7 +175,7 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   sha-pinned on purpose, and the kernel takes patches against BASE (One Driver Amendment 9) so
   no worker needs shared refs. Run STATE has exactly one writer per run — the sandbox — and its
   record is git: `.ultrapowers/runs/<N>/status.json` plus the receipts, committed at every
-  transition and tagged at publish. `compile_plan.py` has defaulted to `overlap=fold` since the
+  transition and tagged at publish. The plan compiler (gone at cut B, 2026-09-21) defaulted to `overlap=fold` from the
   2026-08-14 A/B (0.640× wall, n=1 fixture; re-read 2026-08-30 at 0.594× over n=12 cells, 6
   fixtures, `evals/results/2026-08-30-one-driver-fold-ab.md`), so same-file concurrent writes are
   the shipped default: a substrate that isolates harder than the kernel needs is buying nothing and
@@ -276,8 +275,7 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   `factory/engine.mjs` — the single copy, no bake step. Their sizes are *reported* (`wc -w`,
   a release plan's `- Run:`) and gate nothing; a budget a task cannot meet is a demolition order.
   The one surviving role-file pin is stylistic (no shouted imperatives).
-  `skills/ultrapowers/references/plan-markers.md` is the runtime half only — its authoring rules
-  moved to ultrawrite at #390.
+  The plan grammar's authoring rules are ultrawrite's (#390); its one reader is `plan_parse.py`.
 - **Fleet engine sims ride the pytest suite.** `fleet/tests/test_*.mjs` are run by
   `tests/test_fleet_suite.py` (sentinel `ALL TESTS PASSED`, 300 s per file, no network — `curl`,
   `git`, `gh`, `ssh`, `systemd-run` and `systemctl` are stubbed through a PATH shim). A sim that

@@ -2,7 +2,7 @@
 
 `plan_parse.py` reduces a claims-v1 plan to the nine fields the engine needs
 (`tasks`, `dag_edges`, `launch_waves`) without ever touching the sibling
-`<stem>.gate-verdicts.json` the old compiler (`compile_plan.py`) requires.
+`<stem>.gate-verdicts.json` `plan_check.py` reads (and the old compiler required).
 This exam never imports the module under test — it is a script invoked as
 `python3 skills/ultrapowers/scripts/plan_parse.py <plan.md>` — so every
 assertion below runs it as a subprocess and reads stdout/stderr/the exit
@@ -17,7 +17,6 @@ dedicated section near the end of this file and are tagged `guard-M1`,
 distinct from the M1-M6 tags above, which belong to the grammar-parser
 clauses this file already covered.
 """
-import importlib.util
 import json
 import subprocess
 import sys
@@ -27,7 +26,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 PARSER = ROOT / "skills/ultrapowers/scripts/plan_parse.py"
-COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
 
 # The three claims-v1 fixtures that carry a `.gate-verdicts.json` record
 # beside them — the old compiler's oracle set for M6.
@@ -61,11 +59,6 @@ TASK_FIELDS = ORACLE_FIELDS | {"runOnlyClauses", "proofRuns", "testCmds",
 
 def run_parser(plan_path):
     return subprocess.run([sys.executable, str(PARSER), str(plan_path)],
-                          capture_output=True, text=True)
-
-
-def run_compiler(plan_path):
-    return subprocess.run([sys.executable, str(COMPILER), str(plan_path)],
                           capture_output=True, text=True)
 
 
@@ -491,53 +484,15 @@ def test_m5_refusal_cycle_names_both_tasks(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# M6 — agreement with the old compiler.                                       #
+# M6 — a plan with no verdict record still parses (the old compiler, gone at cut B, refused it). #
 # --------------------------------------------------------------------------- #
 
-@pytest.mark.parametrize("plan_path", RECORD_FIXTURES, ids=lambda p: p.stem)
-def test_m6_agrees_with_old_compiler_on_record_bearing_fixtures(plan_path):
-    parser_proc = run_parser(plan_path)
-    assert parser_proc.returncode == 0, parser_proc.stdout + parser_proc.stderr
-    parser_obj = parse_stdout_json(parser_proc.stdout)
-
-    compiler_proc = run_compiler(plan_path)
-    assert compiler_proc.returncode == 0, (
-        "fixture setup: compile_plan.py must succeed on this fixture -- "
-        + compiler_proc.stdout + compiler_proc.stderr)
-    compiler_obj = json.loads(compiler_proc.stdout)
-
-    parser_ids = [t["id"] for t in parser_obj["tasks"]]
-    compiler_ids = [t["id"] for t in compiler_obj["tasks"]]
-    assert parser_ids == compiler_ids  # [M6]
-
-    # The old compiler's per-task files/proofTests/testCmd/interfaces ride on
-    # its `launch_waves` entries, not its `tasks` entries -- flatten those.
-    compiler_fields = {}
-    for wave in compiler_obj["launch_waves"]:
-        for t in wave:
-            compiler_fields[t["id"]] = {k: t[k] for k in ORACLE_FIELDS}
-
-    for t in parser_obj["tasks"]:
-        assert {k: t[k] for k in ORACLE_FIELDS} == compiler_fields[t["id"]]  # [M6]
-
-    parser_pairs = {(e["from"], e["to"]) for e in parser_obj["dag_edges"]}
-    compiler_pairs = {(e["from"], e["to"]) for e in compiler_obj["dag_edges"]}
-    assert parser_pairs == compiler_pairs  # [M6]
-
-    parser_waves = [[t["id"] for t in wave] for wave in parser_obj["launch_waves"]]
-    compiler_waves = [[t["id"] for t in wave] for wave in compiler_obj["launch_waves"]]
-    assert parser_waves == compiler_waves  # [M6]
-
-
 @pytest.mark.parametrize("plan_path", RECORDLESS_FIXTURES, ids=lambda p: p.stem)
-def test_m6_parser_succeeds_where_old_compiler_refuses(plan_path):
+def test_m6_parser_succeeds_without_a_verdict_record(plan_path):
     parser_proc = run_parser(plan_path)
     assert parser_proc.returncode == 0, parser_proc.stdout + parser_proc.stderr  # [M6]
     parser_obj = parse_stdout_json(parser_proc.stdout)
     assert len(parser_obj["launch_waves"]) > 0  # [M6]
-
-    compiler_proc = run_compiler(plan_path)
-    assert compiler_proc.returncode != 0  # [M6]
 
 
 def test_m6_fixture_inventory_sanity():
@@ -1194,41 +1149,6 @@ def test_runcite_m2_bracket_not_at_end_is_part_of_the_command(tmp_path):
     assert t["proofRuns"] == ['test "$(echo [M1])" = x']
     # No tag was cut off it, so its clause list is empty. [runcite-M2]
     assert t["proofRunClauses"] == [[]]
-
-
-def _load_compile_plan_oracle():
-    """Import `compile_plan.py` by path -- the oracle module for runcite-M3,
-    never the module under test (that is `plan_parse.py`, run only as a
-    subprocess throughout this file)."""
-    spec = importlib.util.spec_from_file_location(
-        "compile_plan_oracle_for_test_plan_parse", COMPILER)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def test_runcite_m3_agrees_with_compiler_proof_runs(tmp_path):
-    tasks = [
-        task_block("3", "Oracle agreement", creates=["runcite3/a.py"],
-                   run_cmds=THREE_RUN_CMDS),
-    ]
-    plan_text = make_plan(tasks)
-    plan_path = tmp_path / "plan.md"
-    plan_path.write_text(plan_text)
-
-    parser_proc = run_parser(plan_path)
-    assert parser_proc.returncode == 0, parser_proc.stdout + parser_proc.stderr
-    parser_task = parse_stdout_json(parser_proc.stdout)["tasks"][0]
-
-    # The compiler's parse of proof_runs needs no sibling gate-verdicts
-    # record to get there -- read only its pure per-task parse
-    # (`parse_claims_body`), which never touches the filesystem. [runcite-M3]
-    compile_plan = _load_compile_plan_oracle()
-    compiler_body = next(t["body"] for t in compile_plan.split_tasks(plan_text)
-                         if t["id"] == "3")
-    compiler_parsed = compile_plan.parse_claims_body(compiler_body, "3")
-
-    assert compiler_parsed["proof_runs"] == parser_task["proofRuns"]  # [runcite-M3]
 
 
 def test_runcite_m4_key_set_and_no_run_line_task(tmp_path):

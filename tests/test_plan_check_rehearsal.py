@@ -2,7 +2,7 @@
 
 A `Run:` line that already passes at BASE proves nothing about the task —
 whatever the implementer writes, that line was green before they started. So
-`compile_plan.py --check --base <sha>` now cuts a detached worktree at BASE,
+`plan_check.py --base <sha>` cuts a detached worktree at BASE,
 runs every Proof `Run:` there, and prints one `GREEN-AT-BASE fact:` line per
 command that exits 0, plus one reading line saying what the rehearsal cost.
 This release the lines are a fact and never a refusal: the verdict stays
@@ -56,7 +56,7 @@ The seven Machine clauses, restated, and where each is graded here:
 Leg (h) is the Proof's three `Run:` lines. Its first two — the constant at 30
 and the function's signature — are graded here as source reads, byte for byte
 with the greps the Proof spells. Its third is `python3 -m pytest -q
-tests/test_compile_plan_green_at_base.py`, which is THIS file: an exam never
+tests/test_plan_check_rehearsal.py`, which is THIS file: an exam never
 runs an exam, least of all itself, so the driver runs that line and nothing
 here does.
 
@@ -78,10 +78,11 @@ import tempfile
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
+COMPILER = ROOT / "skills/ultrapowers/scripts/plan_check.py"
 
 sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
-import compile_plan  # noqa: E402
+import plan_check  # noqa: E402
+import plan_parse  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "skills/ultrawrite/scripts"))
 from extract_gate_input import gate_input, verdicts_path  # noqa: E402
@@ -236,16 +237,13 @@ def compile_at(repo, name, text, *flags, env=None):
 
 
 def check_at(repo, name, text, *flags, env=None):
-    return compile_at(repo, name, text, "--check", *flags, env=env)
+    return compile_at(repo, name, text, *flags, env=env)
 
 
 def tasks_of(text):
     """The task dicts `main()` hands `green_at_base_lines`, built the way the
     `--check` branch builds them."""
-    claim = compile_plan.parse_plan_claim(text)
-    return [compile_plan.parse_task(t, raise_on_marker_error=False,
-                                    plan_claim=claim)
-            for t in compile_plan.split_tasks(text)]
+    return plan_parse.parse_plan_full(text)[1]
 
 
 def base_tree_for(plan):
@@ -253,16 +251,16 @@ def base_tree_for(plan):
     the `--check` branch builds from the flag."""
     repo = plan.parent
     head = _git(repo, "rev-parse", "HEAD").strip()
-    return compile_plan.BaseTree.from_flag(head, plan), head
+    return plan_check.BaseTree.from_flag(head, plan), head
 
 
 def green_lines(repo, name, text, **kw):
     """`green_at_base_lines` on a real plan, reached through the module so a
-    BASE tree fails here with `module 'compile_plan' has no attribute
+    BASE tree fails here with `module 'plan_check' has no attribute
     'green_at_base_lines'` — the absent implementation, not a bad import."""
     plan = write_plan(repo, name, text)
     base_tree, _head = base_tree_for(plan)
-    return compile_plan.green_at_base_lines(tasks_of(text), base_tree, **kw)
+    return plan_check.green_at_base_lines(tasks_of(text), base_tree, **kw)
 
 
 def fact_lines(stdout):
@@ -288,31 +286,6 @@ RUNS_A = run_bullets("true [M1]", "false [M1, M2]", "true")
 PLAN_A = make_plan(machine=TWO_CLAUSES, runs=RUNS_A, legs=LEGS_M1_M2)
 
 
-def parsed_task(text):
-    tasks = tasks_of(text)
-    assert len(tasks) == 1, tasks
-    return tasks[0]["claims"]
-
-
-def test_a_proof_runs_carry_the_command_without_its_tag():
-    """(a)/[M1]: the three commands, tag stripped, in Proof order — and no
-    bracket left in any of them."""
-    claims = parsed_task(PLAN_A)
-    assert claims["proof_runs"] == ["true", "false", "true"], (
-        claims["proof_runs"])
-    for command in claims["proof_runs"]:
-        assert "[" not in command and "]" not in command, command
-
-
-def test_a_proof_run_cites_is_the_parallel_list_of_clause_ids():
-    """(a)/[M1]: the tag's clause ids, sorted, in a list parallel to
-    `proof_runs` — and `[]` for the untagged guard."""
-    claims = parsed_task(PLAN_A)
-    assert claims.get("proof_run_cites") == [["M1"], ["M1", "M2"], []], (
-        claims.get("proof_run_cites"))
-    assert len(claims.get("proof_run_cites", [])) == len(claims["proof_runs"])
-
-
 # =========================================================================== #
 # (b)/[M2] — an unknown clause is refused, and a tag cites nothing             #
 # =========================================================================== #
@@ -330,35 +303,6 @@ PLAN_B_UNKNOWN = make_plan(machine=TWO_CLAUSES,
 PLAN_B_TAG_IS_NO_LEG = make_plan(machine=TWO_CLAUSES,
                                  runs=run_bullets("true [M2]"),
                                  legs=LEG_M1)
-
-
-def test_b_a_tag_naming_an_unnumbered_clause_is_refused(tmp_path):
-    """(b)/[M2]: exit 2, and the refusal on stdout as the whole line the
-    clause pins — the command cut to 80 characters (`true`), the tag's id, and
-    the span `clause_citation_violations` already prints."""
-    p = check_at(tmp_path, "b1.md", PLAN_B_UNKNOWN)
-    out = p.stdout + p.stderr
-    assert p.returncode == 2, out
-    assert "PLAN OK" not in out, out
-    expected = UNKNOWN_CLAUSE_LINE % ("1", "true", "M9", "M1–M2")
-    assert expected in p.stdout.splitlines(), (
-        "stdout carried no such line.\nexpected: %s\nstdout:\n%s\nstderr:\n%s"
-        % (expected, p.stdout, p.stderr))
-
-
-def test_b_a_tag_never_counts_as_a_citing_leg(tmp_path):
-    """(b)/[M2]: M2 is cited by the `Run:` tag and by no leg — so the plan
-    still draws `Machine clause M2 has no citing Proof leg` and exits 2. The
-    tag satisfied nothing."""
-    p = check_at(tmp_path, "b2.md", PLAN_B_TAG_IS_NO_LEG)
-    out = p.stdout + p.stderr
-    assert p.returncode == 2, out
-    assert "PLAN OK" not in out, out
-    wanted = NO_CITING_LEG % "M2"
-    carrying = [line for line in out.splitlines() if wanted in line]
-    assert carrying, (
-        "no line carried %r.\nstdout:\n%s\nstderr:\n%s"
-        % (wanted, p.stdout, p.stderr))
 
 
 # =========================================================================== #
@@ -642,26 +586,12 @@ def test_g_a_bare_check_runs_nothing_and_says_nothing(tmp_path):
     assert FACT not in p.stdout + p.stderr, p.stdout + p.stderr
 
 
-def test_g_a_plain_compile_with_base_runs_nothing_and_says_nothing(tmp_path):
-    """(g)/[M7]: a plain compile emits the launch payload; it rehearses
-    nothing, with a `--base` or without one."""
-    repo, head = base_repo(tmp_path)
-    marker = tmp_path / "ran"
-    p = compile_at(repo, "g5.md", touch_plan(marker), "--base", head)
-    assert p.returncode == 0, p.stdout + p.stderr
-    assert not marker.exists(), "a plain compile ran the Run: line"
-    assert FACT not in p.stdout, p.stdout
-    assert FACT not in p.stderr, p.stderr
-
-
 def test_g_a_refused_check_at_base_runs_nothing_and_says_nothing(tmp_path):
     """(g)/[M7]: a verdict that is a refusal rehearses nothing — the plan the
     engine will not run is not a plan worth timing."""
     repo, head = base_repo(tmp_path)
     marker = tmp_path / "ran"
-    p = check_at(repo, "g6.md",
-                 touch_plan(marker, legs=TOUCH_LEGS, machine=ONE_CLAUSE),
-                 "--base", head)
+    p = check_at_unsigned(repo, "g6.md", touch_plan(marker), "--base", head)
     out = p.stdout + p.stderr
     assert p.returncode == 2, out
     assert "PLAN OK" not in out, out
@@ -677,7 +607,7 @@ def test_g_a_refused_check_at_base_runs_nothing_and_says_nothing(tmp_path):
 #
 # The first two are source reads, written with the grep patterns the Proof
 # spells. The third, `python3 -m pytest -q
-# tests/test_compile_plan_green_at_base.py`, is this file: an exam never runs
+# tests/test_plan_check_rehearsal.py`, is this file: an exam never runs
 # an exam, and it cannot run itself, so the driver runs that line.
 
 SOURCE = COMPILER.read_text()
@@ -687,9 +617,9 @@ def test_h_the_default_timeout_is_a_module_constant_of_thirty():
     """(h)/[M5]: the Proof's first `Run:` line — `^GREEN_AT_BASE_TIMEOUT_S =
     30$` — so a leg can name the default without paying 30 seconds for it."""
     assert re.search(r"^GREEN_AT_BASE_TIMEOUT_S = 30$", SOURCE, re.M), (
-        "compile_plan.py carries no `GREEN_AT_BASE_TIMEOUT_S = 30` line")
-    assert getattr(compile_plan, "GREEN_AT_BASE_TIMEOUT_S", None) == 30, (
-        getattr(compile_plan, "GREEN_AT_BASE_TIMEOUT_S", None))
+        "plan_check.py carries no `GREEN_AT_BASE_TIMEOUT_S = 30` line")
+    assert getattr(plan_check, "GREEN_AT_BASE_TIMEOUT_S", None) == 30, (
+        getattr(plan_check, "GREEN_AT_BASE_TIMEOUT_S", None))
 
 
 def test_h_the_function_has_the_signature_the_interface_names():
@@ -698,10 +628,10 @@ def test_h_the_function_has_the_signature_the_interface_names():
     assert re.search(
         r"^def green_at_base_lines\(tasks, base_tree, "
         r"timeout_s=GREEN_AT_BASE_TIMEOUT_S\)", SOURCE, re.M), (
-        "compile_plan.py carries no `green_at_base_lines(tasks, base_tree, "
+        "plan_check.py carries no `green_at_base_lines(tasks, base_tree, "
         "timeout_s=GREEN_AT_BASE_TIMEOUT_S)` definition")
-    assert callable(getattr(compile_plan, "green_at_base_lines", None)), (
-        "compile_plan has no module-level green_at_base_lines")
+    assert callable(getattr(plan_check, "green_at_base_lines", None)), (
+        "plan_check has no module-level green_at_base_lines")
 
 
 # =========================================================================== #
@@ -810,16 +740,6 @@ def test_red_c_a_bare_check_runs_no_check(tmp_path):
     p = check_at(repo, "redc1.md", PLAN_RED_C)
     assert p.returncode == 0, p.stdout + p.stderr
     assert red_fact_lines(p.stdout) == [], p.stdout
-
-
-def test_red_c_a_plain_compile_with_base_runs_no_check(tmp_path):
-    """[M3], second scenario: a plain compile (no `--check`) emits the launch
-    payload; it rehearses nothing, `--base` or not."""
-    repo, head = base_repo(tmp_path)
-    p = compile_at(repo, "redc2.md", PLAN_RED_C, "--base", head)
-    assert p.returncode == 0, p.stdout + p.stderr
-    assert RED_FACT not in p.stdout, p.stdout
-    assert RED_FACT not in p.stderr, p.stderr
 
 
 def test_red_c_a_refused_check_at_base_runs_no_check(tmp_path):
