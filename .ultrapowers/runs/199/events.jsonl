@@ -36,3 +36,20 @@
 {"ts":"2026-09-21T19:39:59.778Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -q \"dirNeedles\" /home/exedev/run/impl-1-0/factory/engine.mjs && echo \"engine OK\"\npython3 -c \"import json; assert json.load(open('/home/exedev/run/impl-1-0/factory/policy.json'))['select']['dir_ne"}
 {"ts":"2026-09-21T19:40:03.912Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"git diff --stat"}
 {"ts":"2026-09-21T19:40:12.915Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__note"}
+{"ts":"2026-09-21T19:40:15.231Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__settled"}
+{"ts":"2026-09-21T19:40:20.667Z","kind":"dispatch:end","task":"1","label":"impl:1:0","role":"implement","wall_ms":130339,"cost_usd":0.3622930000000001,"error":null}
+{"ts":"2026-09-21T19:40:20.769Z","kind":"run:line","task":"1","cmd":"grep -q \"dirNeedles\" factory/engine.mjs","exit":0}
+{"ts":"2026-09-21T19:40:20.770Z","kind":"run:line","task":"1","cmd":"python3 -c \"import json; assert json.load(open('factory/policy.json'))['select']['dir_needles'] is True\"","exit":0}
+{"ts":"2026-09-21T19:40:21.469Z","kind":"select:landing","task":"1","candidates":["tests/test_plan_parse.py","fleet/tests/test_jev_client.mjs","fleet/tests/test_launch_duplicate.mjs","fleet/tests/test_setup_script.mjs","fleet/tests/test_sims_are_hermetic.mjs","fleet/tests/test_worker_kata_env.mjs","tests/test_compile_plan_dependencies.py","tests/test_compile_plan_green_at_base.py"],"selected":[],"ran":[]}
+{"ts":"2026-09-21T19:40:21.469Z","kind":"floor","task":"1","exam":0,"lowest":0.89,"excluded":[],"fired":false}
+{"ts":"2026-09-21T19:40:21.517Z","kind":"dispatch:start","task":"1","label":"referee:1","role":"referee"}
+{"ts":"2026-09-21T19:40:23.645Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"cat /home/exedev/run/patch-1-0.diff"}
+{"ts":"2026-09-21T19:40:24.021Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/select.mjs"}
+{"ts":"2026-09-21T19:40:41.050Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"node fleet/tests/test_factory_select_dirs.mjs; echo \"EXIT=$?\""}
+{"ts":"2026-09-21T19:40:41.125Z","kind":"worker:test-run","task":"1","label":"referee:1","cmd":"node fleet/tests/test_factory_select_dirs.mjs; echo \"EXIT=$?\"","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-21T19:40:42.060Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -n \"candidateTests\\|selectPolicy\\|select:exam\\|select:landing\\|dirNeedles\" factory/engine.mjs"}
+{"ts":"2026-09-21T19:40:45.047Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"sed -n 375,400p factory/engine.mjs; echo ---; sed -n 1236,1262p factory/engine.mjs; echo ---; sed -n 1440,1456p factory/engine.mjs"}
+{"ts":"2026-09-21T19:40:46.544Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"python3 -c \"import json; d=json.load(open('factory/policy.json')); print(json.dumps(d['select'], indent=1)); assert d['select']['dir_needles'] is True; print('OK')\"; echo ---; grep -q \"dirNeedles\" fac"}
+{"ts":"2026-09-21T19:41:03.032Z","kind":"supervisor","task":"1","label":"referee:1","answers":{"stuck":{"type":"noul","noul":0.18},"off_track":{"type":"noul","noul":0.22},"needs_human":{"type":"noul","noul":0.12},"done_not_exited":{"type":"noul","noul":0.07}}}
+{"ts":"2026-09-21T19:41:04.012Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -rln \"select.mjs\\|candidateTests\" --include=*.mjs --include=*.js --include=*.py --include=*.ts . | grep -v node_modules"}
+{"ts":"2026-09-21T19:41:06.653Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"node -e \"\nimport('./factory/select.mjs').then(async ({candidateTests})=>{\nconst files=['tests/x.test.ts'];\nconst texts={'tests/x.test.ts':'uses select here'};\nconst read=async p=>texts[p];\n// order A:"}
