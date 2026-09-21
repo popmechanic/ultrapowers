@@ -1,0 +1,50 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "f3fe5406805006b2ee41a2e65e0ae40821409d122ffbe115ac45571d94bd84db",
+   "verdict": "pass",
+   "reason": "Each of M1-M4 has a leg that fails when it is false; the second Run exits 1 at BASE and 0 only when both documents name the fact line and the count word is gone; the only opposite pins at BASE sit in files this task modifies."
+  },
+  "2": {
+   "hash": "6e1dde0639f767dd12ae9623d7597327cf606ab0cabc267949d058dcb1207eaf",
+   "verdict": "pass",
+   "reason": "The end-anchored regex yields exactly the pinned proofRuns and proofRunClauses, leaves the mid-command bracket alone, and legs (a)-(d) each catch their clause false; BASE shows only the old TASK_FIELDS pin in the exam this task extends."
+  }
+ },
+ "tally": {
+  "dispatched": 2,
+  "rejected": 0,
+  "rounds": 1,
+  "base": "2730aa0186451c6b92ef56801923233c183c579b",
+  "question": "facts-only (experiment, rollback the old sentence)"
+ },
+ "authoring": {
+  "minutes": 40,
+  "probes": 0,
+  "routing": {
+   "branch": "inline",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Sign as drafted",
+     "Make RED-AT-BASE a refusal"
+    ],
+    "recommended": "Sign as drafted",
+    "picked": "Sign as drafted"
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers, self-merging",
+     "Inline",
+     "Fleet, with --hold"
+    ],
+    "recommended": "Ultrapowers, self-merging",
+    "picked": "Ultrapowers, self-merging"
+   }
+  ]
+ }
+}
