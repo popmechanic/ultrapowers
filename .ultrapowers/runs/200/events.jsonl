@@ -526,3 +526,9 @@
 {"ts":"2026-09-21T20:25:07.153Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"kind: 'jev\\|jev:finding\\|jev:tier\\|jev:suite-red\\|read by nothing\\|one log line\" factory/engine.mjs"}
 {"ts":"2026-09-21T20:25:08.626Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"sed -n '1940,2260p' factory/engine.mjs"}
 {"ts":"2026-09-21T20:25:12.527Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"^import\" fleet/tests/test_jev_client.mjs"}
+{"ts":"2026-09-21T20:25:44.826Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/CONTRACT.md"}
+{"ts":"2026-09-21T20:25:55.869Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/fleet/CONTRACT.md"}
+{"ts":"2026-09-21T20:25:57.509Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"node fleet/tests/test_jev_client.mjs 2>&1 | tail -40"}
+{"ts":"2026-09-21T20:26:01.488Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"node fleet/tests/test_worker_kata_env.mjs 2>&1 | tail -40"}
+{"ts":"2026-09-21T20:26:06.364Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"FILES=\"CLAUDE.md README.md fleet/CONTRACT.md fleet/RUNBOOK.md hooks/session_start.sh skills/ultrapowers/SKILL.md skills/ultrapowers/references/design-rationale.md skills/ultrapowers/references/plan-ma"}
+{"ts":"2026-09-21T20:26:09.540Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"echo \"=== M2a: CLAUDE.md literals ===\"\ngrep -c \"factory/clone.mjs\" CLAUDE.md\ngrep -c \"factory/engine.mjs\" CLAUDE.md\necho \"=== M2b: RUNBOOK.md rollback ===\"\nsed -n '/^## /,$p' fleet/RUNBOOK.md | tr '\\n"}
