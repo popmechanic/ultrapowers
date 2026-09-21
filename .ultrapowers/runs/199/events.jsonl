@@ -53,3 +53,15 @@
 {"ts":"2026-09-21T19:41:03.032Z","kind":"supervisor","task":"1","label":"referee:1","answers":{"stuck":{"type":"noul","noul":0.18},"off_track":{"type":"noul","noul":0.22},"needs_human":{"type":"noul","noul":0.12},"done_not_exited":{"type":"noul","noul":0.07}}}
 {"ts":"2026-09-21T19:41:04.012Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -rln \"select.mjs\\|candidateTests\" --include=*.mjs --include=*.js --include=*.py --include=*.ts . | grep -v node_modules"}
 {"ts":"2026-09-21T19:41:06.653Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"node -e \"\nimport('./factory/select.mjs').then(async ({candidateTests})=>{\nconst files=['tests/x.test.ts'];\nconst texts={'tests/x.test.ts':'uses select here'};\nconst read=async p=>texts[p];\n// order A:"}
+{"ts":"2026-09-21T19:41:28.679Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -rn \"select:exam\\|select:landing\" --include=* -l . 2>/dev/null | grep -v node_modules | head -20"}
+{"ts":"2026-09-21T19:41:30.859Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"node -e \"\nimport('./factory/select.mjs').then(async ({candidateTests})=>{\nconst texts={'tests/a.test.ts':\\\"read('.github/workflows/ci.yml') and x.githubby\\\",'tests/b.test.ts':'x.githubby only'};\nconst"}
+{"ts":"2026-09-21T19:41:37.855Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"ls fleet/tests/ | head -50"}
+{"ts":"2026-09-21T19:41:41.179Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"timeout 180 node fleet/tests/test_sims_are_hermetic.mjs 2>&1 | tail -30; echo \"EXIT=${PIPESTATUS[0]}\""}
+{"ts":"2026-09-21T19:42:15.499Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"StructuredOutput"}
+{"ts":"2026-09-21T19:42:15.635Z","kind":"dispatch:end","task":"1","label":"referee:1","role":"referee","wall_ms":114118,"cost_usd":0.6588489999999999,"error":null}
+{"ts":"2026-09-21T19:42:17.070Z","kind":"referee","task":"1","findings":6,"blocking":0,"grades":["minor","minor","minor","minor","minor","minor"]}
+{"ts":"2026-09-21T19:42:17.628Z","kind":"landing","task":"1","k":1,"examExit":0,"claim":0.83,"coverage":[0.93,0.93,0.93,0.89],"candidateSha":"9f903255df2e5d8ac4447a3f393d46ca940fb51b","wall_ms":367960}
+{"ts":"2026-09-21T19:42:17.882Z","kind":"check:line","task":"1","cmd":"git diff --quiet $ULTRA_BASE -- fleet skills factory/boot.sh factory/questions.json","exit":1,"minor":false}
+{"ts":"2026-09-21T19:42:17.882Z","kind":"fold:verify","task":"1","ran":[{"task":"1","exit":0}],"attempt":1}
+{"ts":"2026-09-21T19:42:17.883Z","kind":"fold:red","task":"1","exam":null,"cmd":"git diff --quiet $ULTRA_BASE -- fleet skills factory/boot.sh factory/questions.json","exit":1}
+{"ts":"2026-09-21T19:42:18.006Z","kind":"dispatch:start","task":"1","label":"impl:1:fold","role":"implement"}
