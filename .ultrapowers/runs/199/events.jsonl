@@ -19,3 +19,20 @@
 {"ts":"2026-09-21T19:38:10.328Z","kind":"dispatch:start","task":"1","label":"impl:1:0","role":"implement"}
 {"ts":"2026-09-21T19:38:15.063Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/select.mjs"}
 {"ts":"2026-09-21T19:39:11.154Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/select.mjs"}
+{"ts":"2026-09-21T19:39:15.114Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"candidateTests\\|select:exam\\|select:landing\\|dir_needles\\|selectPolicy\\|max_candidates\" /home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-21T19:39:17.822Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-21T19:39:20.290Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-21T19:39:28.020Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-21T19:39:28.415Z","kind":"supervisor","task":"1","label":"impl:1:0","answers":{"stuck":{"type":"noul","noul":0.24},"off_track":{"type":"noul","noul":0.27},"needs_human":{"type":"noul","noul":0.12},"done_not_exited":{"type":"noul","noul":0.11}}}
+{"ts":"2026-09-21T19:39:31.565Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-21T19:39:36.240Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-21T19:39:38.498Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"select\" -A 8 /home/exedev/run/impl-1-0/factory/policy.json | head -30"}
+{"ts":"2026-09-21T19:39:40.979Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/policy.json"}
+{"ts":"2026-09-21T19:39:48.753Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/policy.json"}
+{"ts":"2026-09-21T19:39:51.297Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"ls -la /home/exedev/run/impl-1-0/fleet/tests/test_factory_select_dirs.mjs 2>&1"}
+{"ts":"2026-09-21T19:39:51.323Z","kind":"worker:test-run","task":"1","label":"impl:1:0","cmd":"ls -la /home/exedev/run/impl-1-0/fleet/tests/test_factory_select_dirs.mjs 2>&1","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-21T19:39:55.469Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-21T19:39:55.528Z","kind":"worker:test-run","task":"1","label":"impl:1:0","cmd":"node fleet/tests/test_factory_select_dirs.mjs","exit":0,"red":false,"via":"run_exam"}
+{"ts":"2026-09-21T19:39:59.778Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -q \"dirNeedles\" /home/exedev/run/impl-1-0/factory/engine.mjs && echo \"engine OK\"\npython3 -c \"import json; assert json.load(open('/home/exedev/run/impl-1-0/factory/policy.json'))['select']['dir_ne"}
+{"ts":"2026-09-21T19:40:03.912Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"git diff --stat"}
+{"ts":"2026-09-21T19:40:12.915Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__note"}
