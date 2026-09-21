@@ -125,3 +125,44 @@
 {"ts":"2026-09-21T22:27:16.817Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"mcp__factory__run_exam"}
 {"ts":"2026-09-21T22:27:16.863Z","kind":"worker:test-run","task":"4","label":"exam:4","cmd":"node fleet/tests/test_factory_audit.mjs","exit":1,"red":true,"via":"run_exam"}
 {"ts":"2026-09-21T22:27:17.834Z","kind":"dispatch:end","task":"1","label":"exam:1","role":"exam","wall_ms":180462,"cost_usd":0.5408992,"error":null}
+{"ts":"2026-09-21T22:27:22.064Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"^import\\|^export\" factory/hunks.mjs | head -5; echo ---; sed -n '1,15p' factory/hunks.mjs"}
+{"ts":"2026-09-21T22:27:23.353Z","kind":"dispatch:start","task":"1","label":"impl:1:0","role":"implement"}
+{"ts":"2026-09-21T22:27:26.998Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/judge.mjs"}
+{"ts":"2026-09-21T22:27:29.799Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/fleet/tests/test_factory_judge_facts.mjs"}
+{"ts":"2026-09-21T22:27:30.386Z","kind":"worker:tool","task":"4","label":"exam:4","tool":"mcp__factory__note"}
+{"ts":"2026-09-21T22:27:32.731Z","kind":"dispatch:end","task":"4","label":"exam:4","role":"exam","wall_ms":186198,"cost_usd":0.7153868000000001,"error":null}
+{"ts":"2026-09-21T22:27:33.039Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"python3 -c \"\nimport json\nd = json.load(open('factory/questions.json'))\nlanding = d['sets']['landing']\nprint(json.dumps(landing.get('state'), indent=2))\nprint('---')\nprint(json.dumps(landing['questions"}
+{"ts":"2026-09-21T22:27:36.048Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"python3 -c \"\nimport json\nd = json.load(open('factory/questions.json'))\nlanding = d['sets']['landing']\nprint(list(landing.keys()))\nprint(list(landing['questions'].keys()))\n\"\n"}
+{"ts":"2026-09-21T22:27:36.432Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Write","target":"/home/exedev/run/impl-2-0/factory/facts.mjs"}
+{"ts":"2026-09-21T22:27:38.902Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n '\"claim_established\"\\|\"settled_by_fact\"\\|\"state\"' factory/questions.json | head -50"}
+{"ts":"2026-09-21T22:27:39.137Z","kind":"supervisor","task":"1","label":"impl:1:0","answers":{"stuck":{"type":"noul","noul":0.2},"off_track":{"type":"noul","noul":0.26},"needs_human":{"type":"noul","noul":0.14},"done_not_exited":{"type":"noul","noul":0.11}}}
+{"ts":"2026-09-21T22:27:40.642Z","kind":"dispatch:start","task":"4","label":"impl:4:0","role":"implement"}
+{"ts":"2026-09-21T22:27:41.487Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/facts.mjs"}
+{"ts":"2026-09-21T22:27:42.603Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"ls /home/exedev/run/impl-4-0/fleet/tests/ | grep audit; cat /home/exedev/run/impl-4-0/fleet/tests/test_factory_audit.mjs 2>/dev/null"}
+{"ts":"2026-09-21T22:27:42.643Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/questions.json"}
+{"ts":"2026-09-21T22:27:42.716Z","kind":"worker:test-run","task":"4","label":"impl:4:0","cmd":"ls /home/exedev/run/impl-4-0/fleet/tests/ | grep audit; cat /home/exedev/run/impl-4-0/fleet/tests/test_factory_audit.mjs 2>/dev/null","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-21T22:27:44.241Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"cat /home/exedev/run/impl-4-0/fleet/tests/_helpers.mjs 2>/dev/null | head -50; echo ---; ls /home/exedev/run/impl-4-0/factory/"}
+{"ts":"2026-09-21T22:27:45.281Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/facts.mjs"}
+{"ts":"2026-09-21T22:27:45.630Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"tail -40 /home/exedev/run/impl-4-0/factory/reverify.mjs"}
+{"ts":"2026-09-21T22:27:47.346Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"grep -l \"fileURLToPath(import.meta.url) === \" /home/exedev/run/impl-4-0/factory/*.mjs; grep -rn \"import.meta\" /home/exedev/run/impl-4-0/factory/*.mjs"}
+{"ts":"2026-09-21T22:27:47.738Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-21T22:27:47.799Z","kind":"worker:test-run","task":"2","label":"impl:2:0","cmd":"node fleet/tests/test_factory_facts.mjs","exit":0,"red":false,"via":"run_exam"}
+{"ts":"2026-09-21T22:27:48.402Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Bash","target":"sed -n '2320,2345p' /home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"ts":"2026-09-21T22:27:49.912Z","kind":"supervisor","task":"4","label":"impl:4:0","answers":{"stuck":{"type":"noul","noul":0.13},"off_track":{"type":"noul","noul":0.23},"needs_human":{"type":"noul","noul":0.12},"done_not_exited":{"type":"noul","noul":0.09}}}
+{"ts":"2026-09-21T22:27:52.077Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/policy.json"}
+{"ts":"2026-09-21T22:27:52.456Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/questions.json"}
+{"ts":"2026-09-21T22:27:58.636Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/questions.json"}
+{"ts":"2026-09-21T22:28:01.670Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/policy.json"}
+{"ts":"2026-09-21T22:28:03.307Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"python3 -c \"\nimport json,hashlib\nq=json.load(open('factory/questions.json'))['sets']['landing']\nassert hashlib.sha256(json.dumps(q['questions']['claim_established'],sort_keys=True).encode()).hexdigest"}
+{"ts":"2026-09-21T22:28:06.189Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/policy.json"}
+{"ts":"2026-09-21T22:28:06.359Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Write","target":"/home/exedev/run/impl-4-0/factory/audit.mjs"}
+{"ts":"2026-09-21T22:28:09.789Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"python3 -c \"import json; c=json.load(open('factory/policy.json'))['landing']['facts']; assert c['enabled'] is True and c['cap_bytes']==4000 and c['experiment'] is True and c['n']==0 and 'enabled = fal"}
+{"ts":"2026-09-21T22:28:13.072Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"proofsEnabled\\|proofTimeoutSeconds\\|policy\\.\" factory/engine.mjs | head -40"}
+{"ts":"2026-09-21T22:28:16.199Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-21T22:28:16.669Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/judge.mjs"}
+{"ts":"2026-09-21T22:28:19.582Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-21T22:28:20.378Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"Write","target":"/home/exedev/run/impl-4-0/factory/audit.mjs"}
+{"ts":"2026-09-21T22:28:20.398Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-21T22:28:20.449Z","kind":"worker:test-run","task":"1","label":"impl:1:0","cmd":"node fleet/tests/test_factory_judge_facts.mjs","exit":0,"red":false,"via":"run_exam"}
+{"ts":"2026-09-21T22:28:21.232Z","kind":"worker:tool","task":"4","label":"impl:4:0","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-21T22:28:21.375Z","kind":"worker:test-run","task":"4","label":"impl:4:0","cmd":"node fleet/tests/test_factory_audit.mjs","exit":0,"red":false,"via":"run_exam"}
