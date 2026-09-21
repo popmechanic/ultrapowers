@@ -28,3 +28,9 @@
 {"ts":"2026-09-21T19:02:38.304Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/skills/ultrapowers/scripts/compile_plan.py"}
 {"ts":"2026-09-21T19:02:41.562Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/skills/ultrapowers/scripts/compile_plan.py"}
 {"ts":"2026-09-21T19:02:49.426Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"tail -40 /home/exedev/run/exam-2/skills/ultrapowers/scripts/compile_plan.py; echo ---; grep -n \"^import\\|^from\" /home/exedev/run/exam-2/skills/ultrapowers/scripts/compile_plan.py"}
+{"ts":"2026-09-21T19:02:54.146Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/skills/ultrapowers/scripts/compile_plan.py"}
+{"ts":"2026-09-21T19:03:11.286Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n \"def gate_input\\|def verdicts_path\\|gate-verdict\\|verdict.*record\\|no verdict\\|unsigned\" skills/ultrawrite/scripts/extract_gate_input.py | head -30"}
+{"ts":"2026-09-21T19:03:11.554Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/tests/test_plan_parse.py"}
+{"ts":"2026-09-21T19:03:12.528Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"sed -n '1,120p' skills/ultrawrite/scripts/extract_gate_input.py"}
+{"ts":"2026-09-21T19:03:14.483Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n \"verdicts_path\\|gate-verdict\\|gate_verdict\\|no verdict recorded\\|verdict.*missing\" skills/ultrapowers/scripts/compile_plan.py | head -30"}
+{"ts":"2026-09-21T19:03:14.936Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/tests/test_plan_parse.py"}
