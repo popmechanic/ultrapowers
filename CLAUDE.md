@@ -24,7 +24,8 @@ This file is for agents **developing the plugin**; end-user docs are in `README.
 ```bash
 python3 -m pytest                                                            # the test gate (pytest.ini scopes it to tests/)
 python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers      # validate a skill dir
-python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>                 # compile a plan to its waves
+python3 skills/ultrapowers/scripts/plan_parse.py <plan.md>                   # what the sandbox will read: tasks, edges, waves, checks
+python3 skills/ultrapowers/scripts/plan_check.py --base <sha> <plan.md>      # the laptop's check: the records, and the plan against its base
 node fleet/doctor.mjs --json                                                 # which fleet prerequisite is missing
 node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>         # one run on the fleet
 python3 skills/ultrapowers/scripts/catch_counter.py --ledger <f> <path...>   # what a test file has ever caught
@@ -40,8 +41,10 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
 ## Layout
 
 - `skills/ultrapowers/` — the operator skill: `SKILL.md` (the thin client — commit the plan,
-  launch the fleet), `scripts/` (`compile_plan.py`, the laptop's check; `plan_parse.py`, the sandbox's parser;
-  `validate_skill.py`; and the catch counter pair with the `fleet_events.py` and `_outcome.py`
+  launch the fleet), `scripts/` (`plan_parse.py`, the one parser — the sandbox runs it; `plan_check.py`, the laptop's
+  check on it: the gate and authoring records, `Check:` ownership, Stale-if and the rehearsals at
+  base — cut B, 2026-09-21; `compile_plan.py`, the old compiler, unused and kept as the rollback
+  until one plan has launched through the new path; `validate_skill.py`; and the catch counter pair with the `fleet_events.py` and `_outcome.py`
   they read through — the wave engine's sandbox-side scripts left on 2026-09-21), `references/` (`first-run.md` walks each doctor row for a first-timer), and
   `kernel/` — the fold: `fold_wave.py`, `frontier_fold.py`, `hunks.py`, `repo_weave.py` over
   the sha-pinned `vendor/manyana.py`. **The engine itself lives in `factory/engine.mjs`
@@ -70,8 +73,9 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
 - `fleet/` — the fleet in its **target-owns-the-record** shape (0.3.5 lift, 0.3.6 grant
   collapse, #597/#598 the move onto the target). `fleet/CONTRACT.md` is the authority for
   every literal and `fleet/RUNBOOK.md` the operator procedure — the contract wins.
-  `launch.mjs` validates (hash pins, then `compile_plan.py --check --base` through the exec
-  seam — its `BASE fact:` lines and its `STALE fact:` lines print on the launch line),
+  `launch.mjs` validates (hash pins, then `plan_check.py --base` through the exec
+  seam — its `BASE fact:` lines and its `STALE fact:` lines print on the launch line — and sizes
+  the VM from `plan_parse.py`'s waves, both files fetched at `engine=`),
   reads the pool from
   `billing plan --json`, computes N from the target's own `ultra/*-run-*` branches, refreshes
   the Claude bearer, pushes the plan as one commit on base to `ultra/plan-run-<N>`
@@ -123,7 +127,7 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   `settled`, `sibling_fact`, `task_facts`); `select.mjs` and `hunks.mjs` are test selection and
   the hunks Jev is shown (#1154); `worker.mjs` is the SDK worker, whose `DISALLOWED_TOOLS` is the
   git block (#1156 is its gap). The sandbox's parser is `skills/ultrapowers/scripts/plan_parse.py`;
-  `compile_plan.py` is the laptop's check only. The board is a Kata 0.18 spoke per sandbox: it
+  `plan_check.py` is the laptop's check on it. The board is a Kata 0.18 spoke per sandbox: it
   syncs through `kata-sync.int.exe.xyz`, which passes the spoke's own bearer through untouched
   (measured on run-194, 2026-09-18), and the credential helper administers through
   `kata.int.exe.xyz`, where the edge injects the hub's. The record is rows in `events.jsonl`.

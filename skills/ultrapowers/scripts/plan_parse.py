@@ -197,6 +197,9 @@ def _parse_checks(header_lines):
         if mm:
             minor = True
             val = val[:mm.start()].rstrip()
+        bm = re.match(r'^`([^`]+)`$', val)
+        if bm:
+            val = bm.group(1).strip()
         checks.append({"cmd": val, "minor": minor})
     return checks
 
@@ -212,12 +215,14 @@ def _parse_task_body(body_lines):
     # Locate slot label lines (non-fenced) to bound the pre-slot header/Files
     # region and each of the six slots.
     slot_positions = []  # (idx, canonical_name)
+    slot_inline = {}     # idx -> the text after the label on its own line
     for i, (line, fenced) in enumerate(body_lines):
         if fenced or i == 0:
             continue
         m = SLOT_RE.match(line.strip())
         if m:
             slot_positions.append((i, _slot_name(m.group(1))))
+            slot_inline[i] = m.group(2).strip()
 
     pre_slot_end = slot_positions[0][0] if slot_positions else len(body_lines)
     pre_slot = body_lines[1:pre_slot_end]
@@ -232,6 +237,24 @@ def _parse_task_body(body_lines):
         for start, end in slot_ranges.get(name, []):
             out.extend(body_lines[start:end])
         return out
+
+    def slot_text(name):
+        """The slot's raw text, label stripped: the label line's remainder
+        and every line to the next label, stripped once as a whole. First
+        occurrence wins. `plan_check.py`'s gate hash is over two of these
+        (`sha256(claim + NUL + proof)`), so the recipe is byte-for-byte the
+        one every recorded verdict was signed under."""
+        if name not in slot_ranges:
+            return ""
+        start, end = slot_ranges[name][0]
+        inline = slot_inline[start]
+        return "\n".join(([inline] if inline else [])
+                         + [l for l, _ in body_lines[start + 1:end]]).strip()
+
+    # Stale-if: one predicate per line, bullet optional.
+    stale_if_entries = [e for e in (re.sub(r'^[-*+]\s+', '', l.strip())
+                                    for l in slot_text("stale-if").splitlines())
+                        if e]
 
     # Type marker.
     ttype = None
@@ -358,6 +381,10 @@ def _parse_task_body(body_lines):
         "proof_guards": proof_guards,
         "run_only_clauses": run_only_clauses,
         "legs_has_citation": legs_has_citation,
+        "claim": slot_text("claim"),
+        "authorized_by": slot_text("authorized-by"),
+        "proof": slot_text("proof"),
+        "stale_if_entries": stale_if_entries,
     }
 
 
@@ -668,6 +695,15 @@ def _kahn_layers(ids, edges):
 # --------------------------------------------------------------------------- #
 
 def parse_plan_text(text):
+    return parse_plan_full(text)[0]
+
+
+def parse_plan_full(text):
+    """`(result, all_tasks)`: the public object `parse_plan_text` answers,
+    and beside it every task of the plan -- whatever its `**Type:**` -- with
+    the fields the laptop's check and the authoring scripts read and the
+    sandbox does not: `body`, `type`, `deletes`, `test_files`, the `claim`,
+    `authorized_by` and `proof` slot texts, and `stale_if_entries`."""
     header_lines, task_bodies = _split_plan(text)
     exam_command, bootstrap_cmd = _parse_header(header_lines)
     checks = _parse_checks(header_lines)
@@ -703,6 +739,13 @@ def parse_plan_text(text):
             "proofGuards": parsed["proof_guards"],
             "runOnlyClauses": parsed["run_only_clauses"],
             "legsHasCitation": parsed["legs_has_citation"],
+            "body": "\n".join(l for l, _ in body_lines).strip(),
+            "deletes": parsed["deletes"],
+            "test_files": parsed["test_files"],
+            "claim": parsed["claim"],
+            "authorized_by": parsed["authorized_by"],
+            "proof": parsed["proof"],
+            "stale_if_entries": parsed["stale_if_entries"],
         }
         all_tasks.append(task)
 
@@ -742,7 +785,106 @@ def parse_plan_text(text):
         "pairs": pairs,
         "checks": checks,
         "bootstrapCmd": bootstrap_cmd,
-    }
+    }, all_tasks
+
+
+# --------------------------------------------------------------------------- #
+# The Claim's two halves and the plan header -- read by the laptop's check
+# and the authoring scripts, never by the sandbox.
+# --------------------------------------------------------------------------- #
+
+CLAIMS_GRAMMAR = "claims-v1"
+GRAMMAR_RE = re.compile(r'^\*\*Grammar:\*\*\s*(\S+)\s*$')
+MACHINE_LEAD_RE = re.compile(r'^machine\s*:\s*', re.I)
+CLAIM_PROVENANCE_RE = re.compile(
+    r'\((elicited|derived|quoted from #(\d+))\)\s*$', re.I)
+PLAN_CLAIM_PROVENANCE_RE = re.compile(
+    r'\((elicited|quoted from #(\d+))\)\s*$', re.I)
+
+
+def _header_lines(text):
+    """The unfenced-or-not `(line, fenced)` pairs above the first task."""
+    out = []
+    for line, fenced in _fence_aware_lines(text):
+        if (not fenced and _leading_spaces(line) <= 3
+                and TASK_HEAD.match(line.strip())):
+            break
+        out.append((line, fenced))
+    return out
+
+
+def plan_grammar(text):
+    """`claims-v1` when the header declares it, else None."""
+    for line, fenced in _header_lines(text):
+        m = None if fenced else GRAMMAR_RE.match(line.strip())
+        if m and m.group(1) == CLAIMS_GRAMMAR:
+            return CLAIMS_GRAMMAR
+    return None
+
+
+def _plan_claim_raw(text):
+    """The header `**Claim:**` sentence, tag attached, wrapped lines joined
+    on one space -- it runs to the next blank line, bold marker or fence."""
+    value = None
+    for line, fenced in _header_lines(text):
+        s = line.strip()
+        if value is None:
+            m = None if fenced else SLOT_RE.match(s)
+            if m and _slot_name(m.group(1)) == "claim":
+                value = [m.group(2).strip()]
+            continue
+        if fenced or not s or s.startswith("**"):
+            break
+        value.append(s)
+    return None if value is None else re.sub(r'\s+', ' ', " ".join(value)).strip()
+
+
+def parse_plan_claim(text):
+    """The plan's one operator sentence, tag stripped, or None."""
+    raw = _plan_claim_raw(text)
+    return None if raw is None else PLAN_CLAIM_PROVENANCE_RE.sub("", raw).strip()
+
+
+def plan_claim_provenance(text):
+    """`elicited`, `quoted:#NNN`, or None (no header Claim, or no tag)."""
+    m = PLAN_CLAIM_PROVENANCE_RE.search(_plan_claim_raw(text) or "")
+    if m is None:
+        return None
+    return "quoted:#" + m.group(2) if m.group(2) else "elicited"
+
+
+def operator_lines(claim):
+    """A Claim slot's lines above its `Machine:` restatement."""
+    out = []
+    for line in claim.splitlines():
+        if MACHINE_LEAD_RE.match(line.strip()):
+            break
+        out.append(line)
+    return out
+
+
+def claim_provenance(claim):
+    """A task Claim's tag -- `elicited`, `derived`, `quoted:#NNN` or None --
+    read off the whitespace-normalized operator sentence, so a tag an editor
+    wrapped across two lines is still a tag."""
+    m = CLAIM_PROVENANCE_RE.search(
+        re.sub(r'\s+', ' ', " ".join(operator_lines(claim))).strip())
+    if m is None:
+        return None
+    if m.group(2) is not None:
+        return "quoted:#" + m.group(2)
+    return m.group(1).lower() if m.group(1).lower() == "derived" else "elicited"
+
+
+def machine_restatement(claim):
+    """The Machine half of a Claim slot: the text from the `Machine:` lead-in
+    to the end of the slot, lead-in stripped, wrapped lines joined."""
+    lines = claim.splitlines()
+    for i, line in enumerate(lines):
+        if MACHINE_LEAD_RE.match(line.strip()):
+            first = MACHINE_LEAD_RE.sub("", line.strip(), count=1)
+            return " ".join([first] + [l.strip() for l in lines[i + 1:]]).strip()
+    return ""
 
 
 USAGE = "plan_parse: usage: plan_parse.py [--unguarded] <plan.md>\n"

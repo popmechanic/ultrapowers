@@ -196,12 +196,19 @@ def _questions(authoring):
     return [_obj(q) for q in questions]
 
 
+def _picks(question):
+    """A question's picks as a list: `picked` is one option, or a list of them
+    for a multi-select question (#1189) — one row, one question, either way."""
+    picked = question.get("picked")
+    return picked if isinstance(picked, list) else [picked]
+
+
 def _recommended_picked(questions):
     """`(picked, offered)` — the questions that carried a recommended option,
-    and those of them whose `picked` is that option. A question with a null
+    and those of them whose picks include that option. A question with a null
     `recommended` offered no recommendation and counts in neither."""
     offered = [q for q in questions if q.get("recommended") is not None]
-    picked = [q for q in offered if q.get("picked") == q.get("recommended")]
+    picked = [q for q in offered if q.get("recommended") in _picks(q)]
     return len(picked), len(offered)
 
 
@@ -357,7 +364,7 @@ def render_register(rows):
             if not isinstance(options, list):
                 continue
             recommended = question.get("recommended")
-            picked = question.get("picked")
+            picked = _picks(question)
             for option in options:
                 lines.append("\t".join([
                     "run-%d" % row["run"],
@@ -366,7 +373,7 @@ def render_register(rows):
                     str(option),
                     "rec" if recommended is not None and option == recommended
                     else MISSING,
-                    "picked" if picked is not None and option == picked
+                    "picked" if option is not None and option in picked
                     else MISSING,
                 ]))
     return "\n".join(lines)

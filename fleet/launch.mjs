@@ -15,10 +15,11 @@
  *      must fit the plan's pool), the target's `ultra/*` refs (the run number
  *      is one past the highest N they carry) and the engine tip, and asks
  *      `help <verb>` for every verb of `fleet/exe-verbs.json` — a drift there
- *      is a line on the launch, never a refusal. Both of its compiles run
- *      `compile_plan.py` FETCHED AT `engine=` (`git show` from this checkout,
- *      else `gh api`, into a temp directory), so the laptop's verdict is the
- *      sandbox's; a compiler it cannot fetch is a refusal before any push;
+ *      is a line on the launch, never a refusal. Its check and its parse run
+ *      `plan_check.py` and `plan_parse.py` FETCHED AT `engine=` (`git show`
+ *      from this checkout, else `gh api`, into a temp directory), so the
+ *      laptop reads the plan with the sandbox's own parser; files it cannot
+ *      fetch are a refusal before any push;
  *   3. refreshes the Claude credential the run signs in with, the entry
  *      `--account` names — a refresh failure is a failure before any VM
  *      exists;
@@ -235,9 +236,8 @@ export const SHALLOW_FIX = 'is a shallow clone — unshallow it by hand and rela
  * (the rule the wave engine's sandbox driver set, kept since) — so the class admits what a
  * runner and its flags are spelled with (`-q`, `--tb=short`, `./...`,
  * `pkg:test`, `a,b`) and excludes every shell operator, quote and expansion
- * character. This is the same literal `compile_plan.py` writes as
- * `EXAM_RUNNER_WORD`; the launcher copies the rule rather than importing it,
- * so a plan the compiler refuses never reaches a VM.
+ * character. The rule was `compile_plan.py`'s `EXAM_RUNNER_WORD`; since the
+ * compiler left (cut B) this copy is the only one.
  */
 export const EXAM_RUNNER_WORD = /^[A-Za-z0-9_.+/=:@,-]+$/
 
@@ -247,8 +247,7 @@ const FENCE_LINE = /^(`{3,}|~{3,})/
 const TASK_HEAD_LINE = /^ {0,3}### Task [A-Za-z0-9]+:/
 
 /**
- * The plan header's `**Exam command:**` value, read the way `compile_plan.py`
- * reads it: the first matching line before the first task heading and outside
+ * The plan header's `**Exam command:**` value: the first matching line before the first task heading and outside
  * any fence, wrapped lines joined on a space, whitespace collapsed.
  */
 function examCommandValue (planText) {
@@ -504,10 +503,10 @@ export function targetOfOriginUrl (url) {
 const PIN_LINE = /^-\s*(?:Check|Run):\s*(.*)$/
 
 /**
- * `compile_plan.py`'s `_claims_run_command` wrapper rule, copied rather than
- * imported: a whole-value backtick wrapper is decoration and comes off before
- * the value is matched. A value with backticks INSIDE it does not match and
- * rides untouched, exactly as it does there.
+ * `plan_parse.py`'s whole-value backtick rule, copied rather than imported: a
+ * whole-value backtick wrapper is decoration and comes off before the value is
+ * matched. A value with backticks INSIDE it does not match and rides
+ * untouched, exactly as it does there.
  */
 const WHOLLY_BACKTICKED = /^`([^`]+)`$/
 
@@ -649,11 +648,14 @@ export async function verifyPlanPins ({ exec, repoDir, base, planText }) {
 }
 
 /**
- * The compiler's path inside the engine tree, at every sha — never resolved
- * against this checkout. The copy a launch runs is the one it fetches at
- * `engine=`; see `fetchCompilerAt`.
+ * The check's and the parser's paths inside the engine tree, at every sha —
+ * never resolved against this checkout. The copies a launch runs are the ones
+ * it fetches at `engine=`; see `fetchCompilerAt`. `plan_parse.py` is the file
+ * the sandbox runs, and `plan_check.py` imports it from its own directory, so
+ * the two are fetched together and land side by side.
  */
-const COMPILER_REL = 'skills/ultrapowers/scripts/compile_plan.py'
+const CHECKER_REL = 'skills/ultrapowers/scripts/plan_check.py'
+const PARSER_REL = 'skills/ultrapowers/scripts/plan_parse.py'
 /**
  * The checkout this file sits in. On the laptop that is the plugin cache
  * (`~/.claude/plugins/cache/ultrapowers/ultrapowers/<version>/`), whose `.git`
@@ -663,8 +665,8 @@ const COMPILER_REL = 'skills/ultrapowers/scripts/compile_plan.py'
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 /**
- * The compiler the launch's two compiles run: `compile_plan.py` AT THE ENGINE
- * SHA, in a directory of its own.
+ * What the launch's check and parse run: `plan_check.py` and `plan_parse.py`
+ * AT THE ENGINE SHA, in a directory of their own.
  *
  * The trap this closes (run-26, 2026-09-17): the launcher used to run the
  * compiler of the plugin build it was invoked from, while the sandbox's
@@ -676,60 +678,58 @@ const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
  *
  * Two reads, in order, both through the exec seam:
  *
- *   1. `git -C <pluginRoot> show <engine>:<COMPILER_REL>` — free, offline, and
- *      right whenever the checkout has the sha;
+ *   1. `git -C <pluginRoot> show <engine>:<path>` — free, offline, and right
+ *      whenever the checkout has the sha;
  *   2. `gh api -H 'Accept: application/vnd.github.raw' repos/<ENGINE_REPO>/
- *      contents/<COMPILER_REL>?ref=<engine>` — the raw media type makes stdout
- *      the file body.
+ *      contents/<path>?ref=<engine>` — the raw media type makes stdout the
+ *      file body.
  *
  * A read that exits non-zero OR prints an empty stdout has not answered a
- * compiler, so the second is tried; when neither answers, this is a `Refusal`
+ * file, so the second is tried; when neither answers, this is a `Refusal`
  * naming the sha — never a fall back to the copy beside this file, because
  * that copy is the bug.
  *
- * One file is enough: `compile_plan.py` imports only the standard library and
- * nothing from its own directory, and the `PLUGIN_ROOT` it derives from
- * `__file__` is read only under `--run-dir`, which neither launcher call
- * passes. A copy under `os.tmpdir()` reads its plan, its gate record and the
- * `--base` tree exactly as the cache copy does.
+ * Two files are enough: both import only the standard library and each other.
+ * Copies under `os.tmpdir()`, at their real depth, read the plan, its gate
+ * record and the `--base` tree exactly as the cache copies do.
  *
- * Answers `{ dir, scriptPath, source }`: `dir` is what the caller removes,
- * `scriptPath` is the file to run, `source` is `git-show` or `gh-api`.
+ * Answers `{ dir, scriptPath, parserPath, source }`: `dir` is what the caller
+ * removes, `scriptPath` is `plan_check.py`, `parserPath` is `plan_parse.py`,
+ * `source` is `git-show` or `gh-api` (the check's).
  */
 export async function fetchCompilerAt ({ exec, engine, pluginRoot }) {
-  const object = `${engine}:${COMPILER_REL}`
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'fleet-compiler-'))
-  try {
+  const fetchOne = async (rel) => {
     const tried = []
     for (const attempt of [
-      { source: 'git-show', read: () => git(exec, pluginRoot, ['show', object]) },
+      { source: 'git-show', read: () => git(exec, pluginRoot, ['show', `${engine}:${rel}`]) },
       {
         source: 'gh-api',
         read: () => exec('gh', [
           'api', '-H', 'Accept: application/vnd.github.raw',
-          `repos/${ENGINE_REPO}/contents/${COMPILER_REL}?ref=${engine}`
+          `repos/${ENGINE_REPO}/contents/${rel}?ref=${engine}`
         ])
       }
     ]) {
       const res = await attempt.read()
       const body = String(res.stdout ?? '')
       if (res.code === 0 && body !== '') {
-        // At its real depth: `compile_plan.py` resolves its plugin root as
-        // three directories above itself at import time, so a copy written
-        // straight under the temp dir cannot be imported on a shallow `/tmp`
-        // (run-172's deferred plan-defect, 2026-09-17). The temp dir stands
-        // in for the plugin root and the copy sits where the real file does.
-        const scriptPath = path.join(dir, COMPILER_REL)
-        await fsp.mkdir(path.dirname(scriptPath), { recursive: true })
-        await fsp.writeFile(scriptPath, body)
-        return { dir, scriptPath, source: attempt.source }
+        const filePath = path.join(dir, rel)
+        await fsp.mkdir(path.dirname(filePath), { recursive: true })
+        await fsp.writeFile(filePath, body)
+        return { filePath, source: attempt.source }
       }
       tried.push(`  ${attempt.source}: exit ${res.code}${output(res) === '' ? ' (no output)' : `\n${output(res)}`}`)
     }
     throw new Refusal(
-      `launch: could not fetch ${COMPILER_REL} at engine ${engine} — the launch compiles with the ` +
-      'compiler the sandbox will use or it does not launch:\n' + tried.join('\n')
+      `launch: could not fetch ${rel} at engine ${engine} — the launch reads the plan with the ` +
+      'parser the sandbox will use or it does not launch:\n' + tried.join('\n')
     )
+  }
+  try {
+    const parser = await fetchOne(PARSER_REL)
+    const checker = await fetchOne(CHECKER_REL)
+    return { dir, scriptPath: checker.filePath, parserPath: parser.filePath, source: checker.source }
   } catch (error) {
     await fsp.rm(dir, { recursive: true, force: true })
     throw error
@@ -744,7 +744,7 @@ export async function fetchCompilerAt ({ exec, engine, pluginRoot }) {
 const requireCompilerPath = (compilerPath, which) => {
   if (typeof compilerPath === 'string' && compilerPath !== '') return
   throw new Refusal(
-    `launch: compile_plan.py ${which} was asked for without a compilerPath — the compiler fetched at ` +
+    `launch: ${which} was asked for without a compilerPath — the copy fetched at ` +
     'engine= is the only one a launch runs (fetchCompilerAt)'
   )
 }
@@ -762,14 +762,14 @@ const BASE_FACTS_STAMP = /\*\*BASE facts:\*\*\s*\(generated at ([0-9a-f]{7,40})\
  *     from some tree; when that sha is not a prefix of `--base`, the block is a
  *     fact about another commit and every worker would read stale Context
  *     (#865). The refusal carries the exact re-pin command.
- *  2. `compile_plan.py --check --base <base> <plan>` — the grammar, the gate
+ *  2. `plan_check.py --base <base> <plan>` — the gate record, the authoring
  *     record and, since #896, the tree's own facts about the plan (what a
  *     deleted file holds; which files outside a task's Files carry a literal
  *     its clauses pin). A non-zero exit is a refusal carrying the compiler's
  *     text verbatim — including a `STALE fact:` line for a Stale-if predicate
  *     that holds at BASE, which is what the operator reads on the laptop; the
- *     `BASE fact:`, `STALE fact:`, `GREEN-AT-BASE fact:` and `AUTHORING fact:`
- *     lines of a clean compile ride the result so the launch line prints them,
+ *     `BASE fact:`, `STALE fact:`, `GREEN-AT-BASE fact:`, `RED-AT-BASE fact:`
+ *     and `AUTHORING fact:` lines of a clean check ride the result so the launch line prints them,
  *     in the order the compiler printed them (a `STALE fact:` there is the
  *     advisory kind: a predicate the compiler could not read at BASE, never a
  *     refusal; a `GREEN-AT-BASE fact:` line is a Proof `Run:` line the compiler
@@ -787,7 +787,7 @@ const BASE_FACTS_STAMP = /\*\*BASE facts:\*\*\s*\(generated at ([0-9a-f]{7,40})\
  * not have.
  */
 export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planText, compilerPath }) {
-  requireCompilerPath(compilerPath, '--check')
+  requireCompilerPath(compilerPath, 'plan_check.py')
   const stamps = [...String(planText).matchAll(BASE_FACTS_STAMP)].map((m) => m[1])
   const stale = [...new Set(stamps.filter((sha) => !base.startsWith(sha)))]
   if (stale.length > 0) {
@@ -796,10 +796,10 @@ export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planT
       `re-pin them first: python3 ${PIN_SCRIPT_REL} --write --base ${base} ${planPath}`
     )
   }
-  const res = await exec('python3', [compilerPath, '--check', '--base', base, planPath], { cwd: repoDir })
+  const res = await exec('python3', [compilerPath, '--base', base, planPath], { cwd: repoDir })
   if (res.code !== 0) {
     throw new Refusal(
-      `launch: compile_plan.py --check --base ${base} refused ${planPath} (exit ${res.code}):\n${output(res)}`
+      `launch: plan_check.py --base ${base} refused ${planPath} (exit ${res.code}):\n${output(res)}`
     )
   }
   return String(res.stdout ?? '').split('\n').filter(
@@ -807,35 +807,35 @@ export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planT
       line.startsWith('BASE fact:') ||
       line.startsWith('STALE fact:') ||
       line.startsWith('GREEN-AT-BASE fact:') ||
+      line.startsWith('RED-AT-BASE fact:') ||
       line.startsWith('AUTHORING fact:')
   )
 }
 
 /**
- * The launch's stamped compile: `compile_plan.py <plan> --stamp run-<N>
- * --base <sha>`, run once per run number the launch attempts — so once, before
- * the `new` verb, unless the push is bumped — and read by everything that
- * needs to know what the plan IS under that number: how wide its widest wave
- * is (which is what the VM is sized to and what the engine's dispatch bound
- * becomes), and the fact sheets the hub is filed with, whose reserved exam
- * paths the stamp decides. It used to run inside `fileRunOnHub`, where a
- * hubless launch never reached it and the verb could not see it.
+ * The launch's parse: `plan_parse.py <plan>` — the sandbox's own parser, so
+ * what the laptop sizes the box from is what the engine will read. Run once
+ * per run number the launch attempts and read by everything that needs to know
+ * what the plan IS: how wide its widest wave is (which is what the VM is sized
+ * to and what the engine's dispatch bound becomes), and the tasks and edges the
+ * hub is filed with. `stamp` names the run the parse was made for and nothing
+ * in the parse itself: the output is the same under every number.
  *
- * Answers `{ stamp, payload, waves, edges }`; both refusals are the ones that
- * filer carried, word for word. `compilerPath` is `fetchCompilerAt`'s file and
- * is required, for the reason `verifyPlanCompiles` gives.
+ * Answers `{ stamp, payload, waves, edges }`. `compilerPath` is
+ * `fetchCompilerAt`'s `parserPath` and is required, for the reason
+ * `verifyPlanCompiles` gives.
  */
-export async function compilePlanForRun ({ exec, repoDir, planPath, base, stamp, compilerPath }) {
-  requireCompilerPath(compilerPath, `--stamp ${stamp}`)
-  const res = await exec('python3', [compilerPath, planPath, '--stamp', stamp, '--base', base], { cwd: repoDir })
+export async function compilePlanForRun ({ exec, repoDir, planPath, stamp, compilerPath }) {
+  requireCompilerPath(compilerPath, `plan_parse.py for ${stamp}`)
+  const res = await exec('python3', [compilerPath, planPath], { cwd: repoDir })
   if (res.code !== 0) {
-    throw new Refusal(`launch: compile_plan.py --stamp ${stamp} failed (exit ${res.code}):\n${output(res)}`)
+    throw new Refusal(`launch: plan_parse.py for ${stamp} failed (exit ${res.code}):\n${output(res)}`)
   }
   let payload
   try {
     payload = JSON.parse(String(res.stdout ?? ''))
   } catch (error) {
-    throw new Refusal(`launch: compile_plan.py --stamp ${stamp} printed no JSON: ${error?.message ?? error}`)
+    throw new Refusal(`launch: plan_parse.py for ${stamp} printed no JSON: ${error?.message ?? error}`)
   }
   return {
     stamp,
@@ -1262,19 +1262,15 @@ async function launchBody ({
   // the push; the push is where it is settled.
   const firstRun = opts.run ? Number(opts.run) : await highestRunOnTarget(exec, repoDir) + 1
 
-  // ── The stamped compile. One per run number the launch ATTEMPTS, and for a
-  //    launch that is not bumped that is exactly one, here, before the `new`
-  //    verb — everything downstream reads the compile for the number the push
-  //    ended up with: the VM's size, the width the engine dispatches at, and
-  //    the sheets `fileRunOnHub` files on the hub. It used to run inside that
-  //    filer, which meant a launch that reached no hub compiled once and a
-  //    launch that did compiled twice, and neither compile was available to
-  //    the verb. `--stamp` is not decoration: it is what `compile_plan.py`
-  //    reserves each task's exam directory under (`exams/<run-id>/`), so a
-  //    launch that has to take the next number compiles again under it rather
-  //    than re-filing the first N's sheets — see `pushPlan`.
+  // ── The parse. One per run number the launch ATTEMPTS, and for a launch
+  //    that is not bumped that is exactly one, here, before the `new` verb —
+  //    everything downstream reads it: the VM's size, the width the engine
+  //    dispatches at, and the tasks and edges `fileRunOnHub` files on the hub.
+  //    `plan_parse.py`'s output does not move with the number (the old
+  //    compiler's fact sheets did, which is why a bump parses again — see
+  //    `pushPlan`); the flow is kept, the stamp is now only a label.
   const compileFor = (n) => compilePlanForRun({
-    exec, repoDir, planPath, base: opts.base, stamp: `run-${n}`, compilerPath: compiler.scriptPath
+    exec, repoDir, planPath, stamp: `run-${n}`, compilerPath: compiler.parserPath
   })
   // The box one compiled payload asks for: `sizeFromCompile` above, the pure
   // export, reading the compiled object's own waves for W and for C, the
@@ -1317,11 +1313,7 @@ async function launchBody ({
   // CLOSED before N+1 is filed. Nothing is destroyed: the task issues are the
   // repository's and the same idempotency keys answer them again, so a bump
   // refiles them under the new run issue rather than purging a project that
-  // holds the target's whole history. The sheets are the ones the compile
-  // stamped for THIS N produced, so the exam directory a filed sheet names is
-  // the one the sandbox's own compile will reserve. A bump used to re-file the
-  // first N's sheets, which named `exams/run_<N>/` for a run that lands under
-  // N+1.
+  // holds the target's whole history.
   const kataCall = async (method, fn) => {
     try {
       return await fn()
@@ -1435,7 +1427,7 @@ async function launchBody ({
     engine,
     engineSource,
     // The sha the compiler was fetched at — the same one `engine=` carries, so
-    // the launch line says outright which `compile_plan.py` decided this plan
+    // the launch line says outright which `plan_check.py` decided this plan
     // was launchable.
     compiler: engine,
     // The account is the run's, but never the assignment's: `parse_assignment`
@@ -1668,15 +1660,12 @@ export const PUSH_ATTEMPTS = 3
  * `--run N` names an N the operator chose, so it is pushed once and refused if
  * that is refused: `reread` is null and no re-read is made at all.
  *
- * The compile follows the number. `compiled` is the launch's compile for the N
- * it came in asking for, and `recompile(n)` is run once per N it goes on to
- * try, because `--stamp run-<n>` is what `compile_plan.py` reserves each task's
- * exam directory under: sheets filed from the first N's payload would name
- * `exams/run_<N>/` for a run that ends up as N+1, while the sandbox's own
- * compile — the one the exams actually land under — names `exams/run_<N+1>/`.
- * So a launch that is not bumped compiles exactly once, and the compile the
- * winning N was filed under rides back out on `compiled` for the verb to size
- * the box from.
+ * The parse follows the number. `compiled` is the launch's parse for the N it
+ * came in asking for, and `recompile(n)` is run once per N it goes on to try —
+ * a flow kept from the old compiler, whose fact sheets named the run; the
+ * parse itself no longer moves with N. So a launch that is not bumped parses
+ * exactly once, and the parse the winning N was filed under rides back out on
+ * `compiled` for the verb to size the box from.
  *
  * At most `PUSH_ATTEMPTS` pushes in all. The refusal is the push's own — the
  * text a single refused push has always carried — with ` after <n> tries` when
@@ -1690,11 +1679,9 @@ async function pushPlan ({
   let payload = compiled
   for (let attempt = 1; attempt <= PUSH_ATTEMPTS; attempt += 1) {
     const branch = planBranchFor(n)
-    // The hub is filed for THIS N before the commit is built, because every
-    // sheet's landing slug and every reserved exam path carry the number: a
-    // bump closes the run issue it filed, recompiles under N+1 and files that
-    // payload's sheets instead. The project is the target's and outlives every
-    // number, so a bump destroys nothing.
+    // The hub is filed for THIS N before the commit is built: a bump closes
+    // the run issue it filed and files N+1's instead. The project is the
+    // target's and outlives every number, so a bump destroys nothing.
     const filed = kataStep === null ? null : await kataStep(n, payload)
     const sha = await commitPlan({
       exec, repoDir, base, run: n, planText, verdictsText, kataText: filed === null ? null : filed.text
@@ -1740,13 +1727,12 @@ const planBlobSha = (text) => {
 }
 
 /**
- * The run, filed on the hub for one run number: the sheets of the compile
- * stamped `run-<n>` (`compilePlanForRun`, one of the launch's stamped calls —
- * its first call of the compiler was `--check`), one project `<owner>-<repo>` —
+ * The run, filed on the hub for one run number: the tasks of the parse made
+ * for `run-<n>` (`compilePlanForRun`), one project `<owner>-<repo>` —
  * the TARGET's, not this number's, so every run against one repository files
  * into one project and a name the hub already holds answers the project that is
  * there — one run issue carrying the plan's title, Claim line and Closes
- * numbers, one issue per task in wave order whose fact sheet is PATCHED on
+ * numbers, one issue per task in wave order whose run and wave are PATCHED on
  * after the create and whose `parent` is the run issue, one `blocks` link per
  * dependency edge created ON the task that blocks, and then one `getIssue` per
  * task and one for the run — the revisions THOSE answer are the record's,
@@ -1759,14 +1745,14 @@ const planBlobSha = (text) => {
  * for the run — and kata fingerprints that key together with the create's
  * fields, so the create body must be the same on every launch of one plan
  * text or the replay is a 409 `idempotency_mismatch`. That is why a task's
- * create carries only `{task, plan}` and no links: `run`, `wave` and
- * `factsheet` all move with the run number, and initial links are in the
+ * create carries only `{task, plan}` and no links: `run` and `wave`
+ * move with the run number, and initial links are in the
  * fingerprint too. They arrive instead as the metadata patch and the `parent`
  * link that follow, which a second launch simply re-applies to the issue the
  * key answered. The patch reads the issue first because an idempotent replay
  * answers the ORIGINAL revision (the issue is already past it, linked), and a
  * stale `If-Match` is a 412; the metadata endpoint merges per key, so a patch
- * of `{run, wave, factsheet}` leaves `{task, plan}` where they are. The
+ * of `{run, wave}` leaves `{task, plan}` where they are. The
  * `parent` link carries `replace: true` because a second parent is otherwise a
  * 409 `parent_already_set` — a refiled task moves under the new run issue
  * rather than refusing. Hub behaviour measured against kata v0.17.2 on
@@ -1835,7 +1821,7 @@ async function fileRunOnHub ({ hub, call, planText, target, base, n, compiled })
       // issue's), merge the run's own metadata on, and move the parent.
       const read = await call('getIssue', () => hub.getIssue(issue.uid))
       await call('patchMetadata', () => hub.patchMetadata(project.id, issue.uid, {
-        run: n, wave: index + 1, factsheet: entry.factsheet
+        run: n, wave: index + 1
       }, read.revision))
       await call('link', () => hub.link(project.id, issue.uid, {
         type: 'parent', to_ref: runIssue.uid, replace: true
@@ -1848,7 +1834,7 @@ async function fileRunOnHub ({ hub, call, planText, target, base, n, compiled })
     const from = uidOf.get(String(edge.from))
     const to = uidOf.get(String(edge.to))
     if (!from || !to) {
-      throw new Refusal(`launch: compile_plan.py --stamp ${stamp} names an edge ${edge.from} -> ${edge.to} between tasks it did not list`)
+      throw new Refusal(`launch: plan_parse.py for ${stamp} names an edge ${edge.from} -> ${edge.to} between tasks it did not list`)
     }
     await call('link', () => hub.link(project.id, from, { type: 'blocks', to_ref: to }))
   }

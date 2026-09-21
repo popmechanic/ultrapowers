@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Resolve a `claims-v1` plan's Claim quotes and Authorized-by anchors.
 
-The compiler stays a pure function: it checks the provenance tag's *form* and
-stops. Resolution — does `#NNN` exist, and does the operator sentence still
+The parser stays a pure function: `plan_parse.py` reads the provenance tag's
+*form* and stops. Resolution — does `#NNN` exist, and does the operator sentence still
 read verbatim in it — needs the network, so it lives here, in `ultrawrite`'s
-validation step, ahead of the compile (spec 2026-08-31 §4.4).
+validation step, ahead of the check (spec 2026-08-31 §4.4).
 
     check_provenance.py <plan.md> [--gh <cmd>]
 
@@ -29,14 +29,15 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ultrapowers/scripts"))
-from compile_plan import (  # noqa: E402
+from plan_parse import (  # noqa: E402
     CLAIMS_GRAMMAR,
     CLAIM_PROVENANCE_RE,
-    parse_claims_body,
+    claim_provenance,
+    operator_lines,
     parse_plan_claim,
+    parse_plan_full,
     plan_claim_provenance,
     plan_grammar,
-    split_tasks,
 )
 
 # An issue reference inside the Authorized-by slot. A slot may cite several
@@ -44,18 +45,13 @@ from compile_plan import (  # noqa: E402
 # non-issue anchors (spec sections, decision records) are not this script's to
 # check — no mechanism can.
 ANCHOR_RE = re.compile(r"#(\d+)")
-MACHINE_RE = re.compile(r"^machine\s*:", re.I)
 
 
 def operator_sentence(claim):
     """The operator's signed sentence: the Claim slot up to the `Machine:`
     restatement, with the provenance tag that closes it stripped."""
-    lines = []
-    for line in claim.splitlines():
-        if MACHINE_RE.match(line.strip()):
-            break
-        lines.append(line)
-    return CLAIM_PROVENANCE_RE.sub("", "\n".join(lines).strip()).strip()
+    return CLAIM_PROVENANCE_RE.sub(
+        "", "\n".join(operator_lines(claim)).strip()).strip()
 
 
 def fold(text):
@@ -114,14 +110,14 @@ def check_plan(md_text, gh):
         elif sentence not in fold(body):
             failures.append("provenance: plan-level claim is not verbatim in "
                             "#%s" % number)
-    for task in split_tasks(md_text):
-        claims = parse_claims_body(task["body"], task["id"], plan_claim)
-        provenance = claims["claim_provenance"] or ""
+    for task in parse_plan_full(md_text)[1]:
+        claims = task
+        provenance = claim_provenance(task["claim"]) or ""
         if claims.get("claim") and not provenance:
             # Defense in depth (2026-09-01): a tag mangled past recognition
             # made a claim invisible here — counted N-1 quotes, exited 0. The
-            # first layer must not bless what it cannot classify; the
-            # compiler's own refusal stays as the second wall.
+            # first layer must not bless what it cannot classify — and since
+            # the compiler left, this is the only wall.
             failures.append(
                 "provenance: task %s claim carries no recognizable provenance "
                 "tag — `(elicited)`, `(derived)` or `(quoted from #NNN)`"

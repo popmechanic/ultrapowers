@@ -146,10 +146,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   ride its `report.json` row as `tasks[].findings`, `[]` when it collected none.
 - **Launch order (launcher):** validate `--target`/`--base`/plan — a `--base` that is not an ancestor
   of the target's default branch is refused (the publish fold would have nothing to fold onto), and so
-  is a shallow launch clone, whose history cannot answer that question → the `--check --base` compile
-  and the `--stamp` compile both run the compiler fetched at `engine=` — `skills/ultrapowers/scripts/compile_plan.py`
+  is a shallow launch clone, whose history cannot answer that question → the `--base` check
+  and the parse both run files fetched at `engine=` — `skills/ultrapowers/scripts/plan_check.py` and
+  the `plan_parse.py` it imports, the sandbox's own parser,
   at that sha, `git show` from the laptop's plugin checkout, else `gh api` from popmechanic/ultrapowers,
-  into a temp directory — and a launch whose compiler cannot be fetched is refused before any push;
+  into a temp directory — and a launch whose two files cannot be fetched is refused before any push;
   the launch line carries `compiler=<sha>` → read the pool
   (`ssh exe.dev "billing plan --json"`) and refuse a run larger than it → run the janitor
   (`fleet/janitor.mjs`, the reap) → refuse a plan that is already live on the target (#1036): the
@@ -162,8 +163,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   named is `node fleet/target.mjs <owner>/<repo>`; a public target would still clone from github.com
   but could not push or open its PR, so it is not launched) → `node fleet/claude-token.mjs refresh` →
   kata: the run filed on the hub, for each push attempt's N and before that attempt's plan commit is
-  built — `compile_plan.py <plan> --stamp run-N --base <base>` (the launch's second compiler call; its
-  `launch_waves` entries carry each task's `factsheet`), one project `<owner>-<repo>` (slashes in the
+  built — `plan_parse.py <plan>` (the launch's second call; the old compiler's per-task `factsheet`
+  left with it at cut B, 2026-09-21 — nothing in the factory read it), one project `<owner>-<repo>` (slashes in the
   target become `-`) — one project per target and not one per run, so a name the hub already holds
   answers the existing project and this run files into it; every kata behaviour this paragraph
   leans on is one reading of `node fleet/tests/probe_kata_facts.mjs` and one row of this
@@ -175,7 +176,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `Idempotency-Key` `<target>:<plan sha>:task-<id>` (`<plan sha>` the plan text's git blob sha) whose
   create body is the same on every launch of that plan text — `task <id>: <title>`, empty body,
   metadata `{task, plan}`, no links, since kata fingerprints the key with those fields — and then
-  read back, its metadata patched `{run, wave, factsheet}` under that read's revision and the run
+  read back, its metadata patched `{run, wave}` under that read's revision and the run
   issue set as its `parent` with `replace: true`; one `blocks` link per `dag_edges` entry created ON
   the task that blocks, then one `getIssue` per task and one for the run, whose revisions are what
   `.ultrapowers/kata.json` records; a refused push that bumps N closes the run-N issue with reason
@@ -200,8 +201,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   engine read the same W back off its own compile (`args.json`) as its dispatch bound, falling back
   to 12 when the compile answered no waves, and that reading left with it at cut two (2026-09-21).
   `<cpu>` and `<memory>` are the PLAN's size,
-  not the fleet's: the launcher compiles the plan once before this verb (`compile_plan.py <plan>
-  --stamp run-<N> --base <sha>`, the one payload the sizing and the kata filing both read), takes
+  not the fleet's: the launcher parses the plan once before this verb (`plan_parse.py <plan>`,
+  the one payload the sizing and the kata filing both read), takes
   W — the task count of the widest `launch_waves` entry — and C, the browsers that wave may hold
   open at once (the tasks in it whose Proof names a `tests/state-exams/` path, one Chromium each),
   and asks for `min(cpu, 2 + ceil(W / 3))` vCPU and

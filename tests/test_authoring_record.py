@@ -40,7 +40,7 @@ import sys
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
+COMPILER = ROOT / "skills/ultrapowers/scripts/plan_check.py"
 
 sys.path.insert(0, str(ROOT / "skills/ultrawrite/scripts"))
 from extract_gate_input import gate_input, verdicts_path  # noqa: E402
@@ -143,7 +143,7 @@ def run_compiler(plan, *flags):
 
 
 def check(dirpath, name, rec, *flags):
-    return run_compiler(write_plan(dirpath, name, rec), "--check", *flags)
+    return run_compiler(write_plan(dirpath, name, rec), *flags)
 
 
 def fact_lines(stdout):
@@ -253,6 +253,24 @@ def test_b_two_questions_count_only_the_recommended_ones(tmp_path):
     authoring["questions"] = TWO_QUESTIONS
     p = check(repo, "b2.md", record(authoring=authoring), "--base", head)
     assert_one_fact_after_the_verdict(p, TWO_QUESTIONS_LINE)
+
+
+def test_b_a_multi_select_question_is_one_row(tmp_path):
+    """#1189: `picked` may be a list for a multi-select question — one row, one
+    question, counted as recommended-picked when the recommendation is among
+    the picks; a pick outside `options` is still refused."""
+    repo, head = base_repo(tmp_path)
+    authoring = copy.deepcopy(AUTHORING)
+    authoring["questions"] = [{"question": "which features", "options":
+                               ["rename", "sort", "tags", "none"],
+                               "recommended": "sort",
+                               "picked": ["rename", "sort"]}]
+    p = check(repo, "b3.md", record(authoring=authoring), "--base", head)
+    assert_one_fact_after_the_verdict(
+        p, EXAMPLE_LINE)  # 1 questions, 1/1 recommended picked
+    authoring["questions"][0]["picked"] = ["rename", "nope"]
+    p = check(repo, "b4.md", record(authoring=authoring))
+    assert p.returncode == 2 and "questions[0].picked" in p.stdout
 
 
 # ── (c) M2: no record, one `none recorded` line ─────────────────────────────

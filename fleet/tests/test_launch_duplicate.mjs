@@ -92,8 +92,8 @@ const ENGINE_RULE = {
  */
 const COMPILER_FETCH = {
   when: (cmd, argv) => cmd === 'gh' && argv[0] === 'api' &&
-    argv.some((a) => String(a).includes('contents/skills/ultrapowers/scripts/compile_plan.py')),
-  answer: answer('# compile_plan.py, as the seam hands it back\n')
+    argv.some((a) => /contents\/skills\/ultrapowers\/scripts\/plan_(check|parse)\.py/.test(String(a))),
+  answer: answer('# plan_check.py or plan_parse.py, as the seam hands it back\n')
 }
 const pointAtOrigin = (repo, argv) => {
   const pointed = argv.map((a) => (a === 'origin' || /github\.com/.test(String(a)) ? repo.origin : a))
@@ -134,7 +134,7 @@ const HELP_OK = (cmd, argv) => {
 const compilerRule = (compiled) => ({
   when: (cmd) => cmd === 'python3',
   answer: (cmd, argv) =>
-    argv.includes('--check') ? answer('PLAN OK\n') : answer(JSON.stringify(compiled))
+    argv.some((a) => String(a).endsWith('plan_check.py')) ? answer('PLAN OK\n') : answer(JSON.stringify(compiled))
 })
 
 /** A status page as the contents API hands it back. */
