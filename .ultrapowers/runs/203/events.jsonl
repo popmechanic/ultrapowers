@@ -255,3 +255,30 @@
 {"ts":"2026-09-21T23:11:52.706Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
 {"ts":"2026-09-21T23:11:53.291Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"ls; ls factory/replay 2>/dev/null | head; ls sims 2>/dev/null | head -30"}
 {"ts":"2026-09-21T23:11:54.817Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"ls tests | head -40; grep -rln \"engine.mjs\" tests | head"}
+{"ts":"2026-09-21T23:11:55.850Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"readUnion = typeof deps.readUnion\" factory/engine.mjs"}
+{"ts":"2026-09-21T23:11:57.267Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"timeout 300 python3 -m pytest tests/test_fleet_suite.py -q 2>&1 | tail -20"}
+{"ts":"2026-09-21T23:11:58.566Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-21T23:12:00.619Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"sed -n '2122,2150p' factory/engine.mjs"}
+{"ts":"2026-09-21T23:12:03.490Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"sed -n '2122,2260p' factory/engine.mjs | grep -n \"judge\\|deps\\.\""}
+{"ts":"2026-09-21T23:12:06.803Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -n '^diff --git\\|^@@\\|^+++\\|^---' /home/exedev/run/patch-1-0.diff | head -50"}
+{"ts":"2026-09-21T23:12:07.286Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Read","target":"/home/exedev/run/impl-1-0/fleet/tests/test_factory_judge_rows.mjs"}
+{"ts":"2026-09-21T23:12:07.779Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-21T23:12:11.083Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Bash","target":"grep -n \"readSupervisorObserved\" factory/judge.mjs factory/questions.json || echo \"ABSENT (sibling not landed)\""}
+{"ts":"2026-09-21T23:12:11.518Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"readUnion({ hunks\" factory/engine.mjs"}
+{"ts":"2026-09-21T23:12:12.712Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -nE '[0-9]+\\.[0-9]' factory/judge.mjs; echo \"---decimal grep exit $?\"; node -e \"\nconst d=JSON.parse(require('fs').readFileSync('factory/questions.json','utf8'));\nconsole.log('sets:', Object.keys("}
+{"ts":"2026-09-21T23:12:14.066Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -rn \"judge.mjs\" --include=*.mjs --include=*.js --include=*.py fleet tests factory | grep -i \"grep\\|decimal\\|literal\" ; echo \"===\" ; grep -rln \"no decimal\\|threshold literal\" --include=* . | head "}
+{"ts":"2026-09-21T23:12:14.226Z","kind":"supervisor","task":"1","label":"referee:1","answers":{"stuck":{"type":"noul","noul":0.17},"off_track":{"type":"noul","noul":0.22},"needs_human":{"type":"noul","noul":0.11},"done_not_exited":{"type":"noul","noul":0.06}}}
+{"ts":"2026-09-21T23:12:17.720Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-21T23:12:18.649Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"ls fleet/tests | grep -i judge; echo \"===\"; grep -rln \"makeJudge\" --include=*.mjs . | head -30"}
+{"ts":"2026-09-21T23:12:20.844Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-21T23:12:21.024Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -rln \"judge\" tests fleet evals docs 2>/dev/null | head -30"}
+{"ts":"2026-09-21T23:12:21.561Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -n \"readUnion\\|resolve.union\\|independent_additions\" factory/engine.mjs | head -40"}
+{"ts":"2026-09-21T23:12:25.031Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-21T23:12:26.499Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"function ask\\|ask (\\|async ask\\|who\" factory/jev-client.mjs 2>/dev/null | head -30; ls factory | grep -i jev"}
+{"ts":"2026-09-21T23:12:28.556Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -rn \"makeJevClient\" factory/*.mjs | head -5"}
+{"ts":"2026-09-21T23:12:30.575Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"who\\|async ask\\|function ask\\|ask =\" fleet/jev-client.mjs"}
+{"ts":"2026-09-21T23:12:36.875Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"sed -n '93,275p' /home/exedev/run/patch-1-0.diff"}
+{"ts":"2026-09-21T23:12:44.488Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"node fleet/tests/test_factory_judge_rows.mjs && echo \"EXIT $?\""}
+{"ts":"2026-09-21T23:12:44.567Z","kind":"worker:test-run","task":"1","label":"referee:1","cmd":"node fleet/tests/test_factory_judge_rows.mjs && echo \"EXIT $?\"","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-21T23:12:46.422Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
+{"ts":"2026-09-21T23:12:48.401Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"node -e \"\nimport('./factory/judge.mjs').then(async ({makeJudge}) => {\n  // probe 1: no ask at all\n  const rows = []\n  const j = makeJudge({ emit: (r)=>rows.push(r) })\n  const r = await j.readTask({ ti"}
