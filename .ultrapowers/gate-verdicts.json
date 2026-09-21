@@ -1,0 +1,36 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "ce504b51066dba85feed8411e8c3b91f0e42dd5cf4547566e9913e8378714511",
+   "verdict": "pass",
+   "reason": "Every Machine clause M1-M6 is cited by a leg that would fail if its computable fact were false, no leg contradicts its clause, no pinned literal is unsatisfiable, and nothing at BASE pins the opposite; M6's shape half is left to the run-time diff reader."
+  }
+ },
+ "tally": {
+  "dispatched": 1,
+  "rejected": 0,
+  "rounds": 1,
+  "base": "2a1278bf448e588f445e02ff248aaae7e0052369",
+  "question": "facts-only (experiment, rollback the old sentence)"
+ },
+ "authoring": {
+  "minutes": 15,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Execute \u2014 no AskUserQuestion put: the operator's standing instruction of 2026-09-21 ('Launch runs when you can'); the Claim is quoted from #1156",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers"
+   }
+  ]
+ }
+}
