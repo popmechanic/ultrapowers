@@ -397,3 +397,11 @@
 {"ts":"2026-09-21T23:16:54.763Z","kind":"fold:verify","task":"3","ran":[{"task":"3","exit":0}],"attempt":1}
 {"ts":"2026-09-21T23:16:54.763Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n 274,286p CLAUDE.md"}
 {"ts":"2026-09-21T23:17:03.406Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"sed -n 340,372p factory/judge.mjs; echo ---; sed -n 195,215p factory/judge.mjs"}
+{"ts":"2026-09-21T23:17:06.168Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"Bash","target":"grep -n \"flatReader(\" factory/judge.mjs"}
+{"ts":"2026-09-21T23:17:51.805Z","kind":"worker:tool","task":"2","label":"referee:2","tool":"StructuredOutput"}
+{"ts":"2026-09-21T23:17:51.922Z","kind":"dispatch:end","task":"2","label":"referee:2","role":"referee","wall_ms":206484,"cost_usd":1.7323940000000002,"error":null}
+{"ts":"2026-09-21T23:17:53.298Z","kind":"referee","task":"2","findings":8,"blocking":0,"grades":["minor","minor","minor","minor","minor","minor","minor","minor"]}
+{"ts":"2026-09-21T23:17:53.850Z","kind":"landing","task":"2","k":1,"examExit":0,"claim":0.63,"coverage":[0.53,0.43,0.4,1,1,1],"candidateSha":"e1a64efc0db50ff2dae1b807ec545ed86095405b","wall_ms":788379}
+{"ts":"2026-09-21T23:18:01.319Z","kind":"check:line","task":"2","cmd":"git diff --quiet $ULTRA_BASE -- factory/questions.json factory/roles factory/worker.mjs factory/select.mjs factory/board.mjs factory/boot.sh factory/union.mjs fleet/launch.mjs fleet/fleet-bootstrap.sh skills/ultrapowers/kernel","exit":0,"minor":false}
+{"ts":"2026-09-21T23:18:01.319Z","kind":"fold:verify","task":"2","ran":[{"task":"2","exit":0},{"task":"4","exit":0}],"attempt":1}
+{"ts":"2026-09-21T23:18:01.320Z","kind":"pair:label","a":"2","b":"4","calls":null,"fold":"clean"}
