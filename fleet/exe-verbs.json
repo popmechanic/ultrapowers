@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-09-11",
+  "capturedAt": "2026-09-21",
   "verbs": {
     "new": [
       "--comment",
@@ -12,6 +12,7 @@
       "--memory",
       "--name",
       "--no-email",
+      "--no-pool",
       "--pool",
       "--prompt",
       "--registry-auth",
@@ -44,13 +45,11 @@
       "--name",
       "--no-auth",
       "--peer",
-      "--policy",
       "--readonly",
       "--repository",
       "--strip-prefix",
       "--target",
-      "--team",
-      "--until"
+      "--team"
     ],
     "integrations attach": [
       "--for",
@@ -78,17 +77,6 @@
       "--target",
       "--team",
       "--webhook-url"
-    ],
-    "integrations policy get": [
-      "--json",
-      "--team"
-    ],
-    "integrations policy set": [
-      "--for",
-      "--if-revision",
-      "--permanent",
-      "--team",
-      "--until"
     ],
     "ssh-key generate-api-key": [
       "--cmds",
