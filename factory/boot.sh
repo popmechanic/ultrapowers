@@ -342,6 +342,14 @@ board_up() {
       install -m 0755 "$bin_rel" "$FLEET_HOME/.local/bin/kata" )
   then log "board: installing kata $KATA_VERSION failed — proceeding without a spoke"; return 0; fi
   PATH="$FLEET_HOME/.local/bin:$PATH"
+  # The one kata on a sandbox (#1190): nothing system-wide sits behind this PATH entry.
+  command -v kata >/dev/null 2>&1 || { log "board: kata $KATA_VERSION installed but not on PATH — proceeding without a spoke"; return 0; }
+  log "board: kata $KATA_VERSION installed at $(command -v kata)"
+  # A person's kata on this sandbox (Shelley, 2026-09-21): the spoke's home and its daemon already
+  # named, at an absolute path so a non-login `ssh <vm> ~/.local/bin/fleet-kata …` finds it. Never the run's failure.
+  { printf '#!/bin/sh\nexec env "KATA_HOME=%s" "KATA_SERVER=%s" "%s" "$@"\n' \
+      "$FLEET_HOME/kata" "$KATA_URL" "$FLEET_HOME/.local/bin/kata" >"$FLEET_HOME/.local/bin/fleet-kata" &&
+    chmod 0755 "$FLEET_HOME/.local/bin/fleet-kata"; } || log "board: could not write fleet-kata — hand diagnostics need KATA_HOME and KATA_SERVER set by hand"
   mkdir -p "$FLEET_HOME/kata/helper"
   cat >"$FLEET_HOME/kata/config.toml" <<EOF
 listen = "127.0.0.1:7777"

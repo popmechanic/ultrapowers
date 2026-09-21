@@ -22,7 +22,7 @@
  *        a line that pipes `<CELLD_SHA256>  <asset>` into `sha256sum -c -`, a
  *        `gzip -dc` line, and
  *        `sudo -n install -m 0755 celld /usr/local/bin/celld` — the whole stanza
- *        after the line `status booting "setup: kata"` and before the line
+ *        after the line `status booting "setup: bun"` and before the line
  *        `status booting "setup: fleet files"`; and no line of the script runs
  *        `install.sh`, `gh attestation`, or writes under `/usr/local/lib/fleet`
  *        for celld.
@@ -51,7 +51,7 @@
  *            the 64-hex digest above; the rendered script for run `1` contains
  *            each of the five stanza lines of M1 as whole lines, their indices
  *            strictly increasing, the first of them after the index of
- *            `status booting "setup: kata"` and the last before the index of
+ *            `status booting "setup: bun"` and the last before the index of
  *            `status booting "setup: fleet files"`; and the script has no line
  *            containing `install.sh`, no line containing `gh attestation`, and
  *            no line that both contains `celld` and contains
@@ -121,7 +121,7 @@ const ASSET_URL =
   `https://github.com/denoland/celld/releases/download/v${VERSION}/celld-x86_64-unknown-linux-gnu.gz`
 const OPEN_LINE = 'status booting "setup: celld"'
 const INSTALL_LINE = 'sudo -n install -m 0755 celld /usr/local/bin/celld'
-const KATA_LINE = 'status booting "setup: kata"'
+const BUN_LINE = 'status booting "setup: bun"'
 const FILES_LINE = 'status booting "setup: fleet files"'
 const BUDGET = 9216
 const LIMIT_LINE = 'LimitNOFILE=524288'
@@ -159,9 +159,11 @@ const LIMIT_LINE = 'LimitNOFILE=524288'
   assert.ok(sums < gunzip, '(a) [M1] the sums line comes before the `gzip -dc` line')
   assert.ok(gunzip < install, '(a) [M1] the `gzip -dc` line comes before the install line')
 
-  const kata = at(`the line \`${KATA_LINE}\``, (l) => l.trim() === KATA_LINE)
+  const bun = at(`the line \`${BUN_LINE}\``, (l) => l.trim() === BUN_LINE)
   const files = at(`the line \`${FILES_LINE}\``, (l) => l.trim() === FILES_LINE)
-  assert.ok(kata < open, '(a) [M1] the whole stanza comes after `status booting "setup: kata"`')
+  assert.ok(bun < open, '(a) [M1] the whole stanza comes after `status booting "setup: bun"`')
+  // #1190: one kata per sandbox, the engine boot's — the setup script installs none.
+  assert.deepEqual(lines.filter((l) => /kata/i.test(l)), [], '(a) [M1] no line of the setup script names kata')
   assert.ok(
     install < files,
     '(a) [M1] the whole stanza comes before `status booting "setup: fleet files"`'
