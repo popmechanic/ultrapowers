@@ -283,3 +283,4 @@
 {"ts":"2026-09-21T18:50:01.434Z","kind":"check:line","task":"1","cmd":"git diff --quiet $ULTRA_BASE -- ':(glob)fleet/run-*.mjs' fleet/sandbox-boot.sh fleet/fleet-bootstrap.sh fleet/roles fleet/kata-client.mjs fleet/launch.mjs fleet/janitor.mjs skills/ultrapowers/kernel skills/ultrapowers/scripts","exit":0,"minor":false}
 {"ts":"2026-09-21T18:50:01.434Z","kind":"fold:verify","task":"1","ran":[{"task":"1","exit":0},{"task":"2","exit":0}]}
 {"ts":"2026-09-21T18:50:01.434Z","kind":"pair:label","a":"1","b":"2","calls":null,"fold":"clean"}
+{"kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1178","number":1178,"draft":false}
