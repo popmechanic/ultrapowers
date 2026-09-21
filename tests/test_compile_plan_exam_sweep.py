@@ -32,8 +32,6 @@ The five Machine clauses, restated, and where each is graded here:
     and that Check command really does exit 0 on a clean tree and 1 naming the
     offender on a dirty one. Graded by legs (g) — the Proof's first two `Run:`
     lines, byte for byte — and (h), which builds both trees.
-  * M4 `fleet/roles/examiner.md` carries the sentence above `## The issue`.
-    Graded by leg (i), the Proof's third `Run:` line.
   * M5 `skills/ultrawrite/references/authoring-gotchas.md` carries one new row
     naming `one Run, one exam` under a rows heading matching `## The` … `rows`
     (a count-free heading, since #1173 — the row count is no longer pinned
@@ -387,10 +385,6 @@ RUN_GREENFIELD_CHECK = (
     r"skills/ultrawrite/references/greenfield-stack.md | tr '\n' ' ' | "
     r'''grep -q "Check: ! grep -rnE 'bun test|bun run|Bun\\\\.spawn|spawnSync|execSync' tests/state-exams | grep -vE"''')
 
-RUN_EXAMINER = (
-    r"sed -n '1,/^## The issue/p' fleet/roles/examiner.md | tr '\n' ' ' | "
-    r"grep -q 'never runs another exam.*linter.*typecheck.*fold'")
-
 RUN_GOTCHAS_ROW = (
     r"sed -n '/^## The.* rows$/,/^## Three older/p' "
     r"skills/ultrawrite/references/authoring-gotchas.md | tr '\n' ' ' | "
@@ -491,20 +485,6 @@ def test_h_the_check_fails_naming_the_offender_for_each_literal(tmp_path):
         p = _login_shell(CHECK_COMMAND, tree)
         assert p.returncode == 1, (literal, p.returncode, p.stdout, p.stderr)
         assert "tests/state-exams/b.test.ts" in p.stdout, (literal, p.stdout)
-
-
-# ── (i) the examiner role says it ──────────────────────────────────────────
-# "(i) the examiner `Run:` line below exits 0 [M4]"
-
-def test_i_the_examiner_role_says_an_exam_never_runs_another_exam():
-    """(i)/[M4]: above `## The issue`, in one sentence, with its operative
-    words in order — `never runs another exam`, `linter`, `typecheck`,
-    `fold`."""
-    p = _shell(RUN_EXAMINER)
-    assert p.returncode == 0, (
-        "fleet/roles/examiner.md does not say, above `## The issue`, that an "
-        "exam never runs another exam, a linter or a typecheck — regression "
-        "is the fold's\nstderr:\n%s" % p.stderr)
 
 
 # ── (j) the gotchas row ──────────────────────────────────────────────────────

@@ -131,20 +131,11 @@ import { readFleetFiles, renderSetupScript } from './setup-script.mjs'
 /** One string, so a docs check that reads the first `usage` literal sees every
  *  flag the launch line may carry. */
 export const USAGE = `usage: node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <40-hex>
-                             [--repo <dir>] [--engine <40-hex>]
-                             [--tier standard|mostCapable]
-                             [--implementer-effort low|medium|high] [--hold] [--again]
+                             [--repo <dir>] [--engine <40-hex>] [--hold] [--again]
                              [--cpu <n>] [--memory <n>GB]
                              [--run <N>] [--config <path>] [--account <name>] [--json]`
 
 export const usage = () => USAGE
-
-/** The two enumerated flags, with the exact spellings the comment carries. */
-export const TIER_VALUES = Object.freeze(['standard', 'mostCapable'])
-/** The effort the implementers (and their fix rounds) work at; every judge
- *  keeps its own. The CLI also takes `xhigh` and `max`; the knob turns effort
- *  DOWN, so it offers the lower three and refuses the rest. */
-export const EFFORT_VALUES = Object.freeze(['low', 'medium', 'high'])
 
 /**
  * The keychain entry a run signs in with when neither `--account` nor the
@@ -962,12 +953,15 @@ async function launchBody ({
   if (opts.engine !== undefined && !isFullSha(opts.engine)) {
     throw new Refusal(`launch: --engine must be a 40-hex commit sha, got ${JSON.stringify(opts.engine)}`)
   }
-  if (opts.tier !== undefined && !TIER_VALUES.includes(opts.tier)) {
-    throw new Refusal(`launch: --tier must be one of ${TIER_VALUES.join('|')}, got ${JSON.stringify(opts.tier)}`)
+  // Neither flag is read by anything any more (the engine they configured is
+  // gone); `parseArgs` keeps unknown keys for each CLI to refuse for itself,
+  // so both are refused here by name, the same way any other flag this
+  // launcher does not know would be — nothing executes past this point.
+  if (opts.tier !== undefined) {
+    throw new Refusal(`launch: unknown flag --tier`)
   }
-  const implementerEffort = opts['implementer-effort']
-  if (implementerEffort !== undefined && !EFFORT_VALUES.includes(implementerEffort)) {
-    throw new Refusal(`launch: --implementer-effort must be one of ${EFFORT_VALUES.join('|')}, got ${JSON.stringify(implementerEffort)}`)
+  if (opts['implementer-effort'] !== undefined) {
+    throw new Refusal(`launch: unknown flag --implementer-effort`)
   }
   // `--hold` is a bare flag, so `parseArgs` answers `true` for it and a string
   // for any `--hold=<value>` spelling. A string is a refusal here, before the
@@ -1074,8 +1068,6 @@ async function launchBody ({
     target,
     base: opts.base,
     engine: opts.engine ?? '0'.repeat(40),
-    tier: opts.tier,
-    effort: implementerEffort,
     hold: opts.hold === true ? '1' : undefined
   }
   const probeComment = buildComment(fields)

@@ -44,7 +44,7 @@ import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { cloneAtBase } from '../fleet/run-waves.mjs'
+import { cloneAtBase } from './clone.mjs'
 import { makeJevClient } from '../fleet/jev-client.mjs'
 import { runAll, bootstrapFor } from './commands.mjs'
 import { runWorker } from './worker.mjs'

@@ -1,6 +1,6 @@
 # Plan Markers — the Parallel-Execution Contract
 
-> **Audience: the compiler and the engine (`fleet/run-engine.mjs`).** This is the RUNTIME half —
+> **Audience: the compiler and the engine (`factory/engine.mjs`).** This is the RUNTIME half —
 > what a marked plan means once `compile_plan.py` reads it. The authoring half moved to
 > `skills/ultrawrite/SKILL.md` (#390); nothing below tells anyone how to write a plan.
 

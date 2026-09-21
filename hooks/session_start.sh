@@ -7,7 +7,7 @@
 set -euo pipefail
 
 # (The Workflow-harness install step lived here until 0.3.0 — the Amendment 10
-# engine runs waves natively in fleet/run-engine.mjs, and waves.js is deleted.)
+# engine runs its search natively in factory/engine.mjs, and waves.js is deleted.)
 
 cat <<'EOF'
 <ultrapowers-routing>

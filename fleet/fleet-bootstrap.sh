@@ -36,8 +36,8 @@ else
   git -C "$dst.tmp" checkout -q "$sha"
   mv "$dst.tmp" "$dst"
 fi
-# The sha picks its boot: the factory's if it carries one, else the old path.
-boot="$dst/fleet/sandbox-boot.sh"
-[ -f "$dst/factory/boot.sh" ] && boot="$dst/factory/boot.sh"
+# A pre-factory sha carries no factory/boot.sh and is no longer launchable.
+boot="$dst/factory/boot.sh"
+[ -f "$boot" ] || { say "engine $sha carries no factory/boot.sh"; exit 1; }
 say "exec $boot boot"
 FLEET_ASSIGNMENT="$comment" exec "$boot" boot

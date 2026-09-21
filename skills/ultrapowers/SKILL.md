@@ -8,11 +8,11 @@ allowed-tools: Skill Read Grep Glob Bash AskUserQuestion
 # Ultrapowers
 
 This skill is the CLIENT only. Since 0.3.0 there is no LLM engine session:
-on the sandbox, a boot unit spawns the deterministic driver
-(`node fleet/run-main.mjs` → `fleet/run-engine.mjs`), which compiles the plan,
-dispatches judgment agents, folds each wave with the kernel, gates, and
-approves — code, not prose. Nothing in this skill runs a plan locally, and
-`ultra_run.py` refuses to (its `fleet-run` stage).
+on the sandbox, a boot unit (`factory/boot.sh`) spawns the engine
+(`factory/engine.mjs`), which compiles the plan, dispatches an exam worker and
+`k` implementers per task, folds the winner in with the kernel, and decides
+the merge by its own exit code — code, not prose. Nothing in this skill runs a
+plan locally; every dispatch happens on the sandbox.
 
 The argument decides the mode. A plan path is the client below; the bare word
 `setup` is the guided first run. The client falls into setup by itself when the
@@ -147,10 +147,11 @@ approved plan, **is** the authorization to execute — no further approval pause
    node <plugin-root>/fleet/launch.mjs <plan-path> --target <repo> --base <baseSha>
    ```
 
-   It prints the run id, the VM name, the status URL and the assignment
-   comment. Tell the user all four: the run is `run-<N>`, the VM is
-   `fleet-r<N>-…`, and its status page is `https://<vm>.exe.xyz/status.json`.
-   Nothing else needs staging — the launcher commits the plan to the target's
+   It prints the run id and the VM name — `run-<N>` and `fleet-r<N>-…` — along
+   with a status URL and the assignment comment; tell the user the run id and
+   VM name, and point them at `status.json` on the evidence branch or tag
+   (step 3) to read progress, not the printed URL — there is no page behind it
+   today, git is the record. Nothing else needs staging — the launcher commits the plan to the target's
    `ultra/plan-run-<N>` branch, then creates the VM in one lobby call with
    `--tag fleet` (the tag every fleet integration's policy grants), the
    assignment as its comment, and a setup script that starts the run's unit.
@@ -174,8 +175,8 @@ approved plan, **is** the authorization to execute — no further approval pause
    are on its `ultra/evidence-run-<N>` branch, a working surface that goes at
    publish.
 
-   The page at https://<vm>.exe.xyz/status.json is the operator's own: a
-   browser logged in to exe.dev reads it, this agent does not.
+   There is no status page to poll — read `status.json` by branch or tag as
+   above, on whatever cadence the user asks for.
 
 4. **The PR is the gate.** There is no approval command. When the engine is
    done and the branch is ahead of base, the sandbox pushes it and opens the
@@ -215,8 +216,8 @@ approved plan, **is** the authorization to execute — no further approval pause
 
 ## Resources
 
-- `fleet/run-engine.mjs` — the engine (waves, judgments, fold, gate) as code;
-  `fleet/roles/*.md` — the judgment prompts, one file per role.
+- `factory/engine.mjs` — the engine (task search, judgments, fold) as code;
+  `factory/roles/*.md` — the judgment prompts, one file per role.
 - `references/first-run.md` — one section per doctor row: what it means and the
   command that builds it.
 - `references/design-rationale.md` — why each surviving guard exists.

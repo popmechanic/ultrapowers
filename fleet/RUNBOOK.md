@@ -24,10 +24,11 @@ The setup script installs the toolchain, the immutable bootstrap at
 `fleet-run@<N>.service` itself — there is no ssh wait and no separate start.
 That unit runs the bootstrap, which reads the comment once, clones the engine at
 `engine=<sha>` into `/home/exedev/engines/<sha>`, and execs that checkout's
-`fleet/sandbox-boot.sh`. The boot script clones the target at `base=`, checks
-the plan branch's tip against the assignment, runs the engine as a transient
-user service with a memory cap, serves a status page, commits its evidence to
-the target on `ultra/evidence-run-<N>` at every transition, and — only when
+`factory/boot.sh` or refuses — no other engine is launchable since cut two
+(2026-09-21). The boot script clones the target at `base=`, checks the plan
+branch's tip against the assignment, runs the engine as a transient user unit
+with a memory cap — no status page, git is the record — commits its evidence
+to the target on `ultra/evidence-run-<N>` at every transition, and — only when
 there is something to publish — pushes `ultra/integration-run-<N>` and opens the
 PR over GitHub's REST API through the edge. The PR is the human gate; there is
 no approval step before it.
@@ -246,40 +247,24 @@ exits before the plan branch is pushed and before any lobby verb runs.
 
 `--engine <sha>` pins the engine; the default is the public tip of this
 repository, because the sandbox clones from GitHub. `--run N` overrides the
-run number; `--tier` rides the comment to the engine.
+run number.
 `--hold` keeps the pull request open for a person: the sandbox publishes it
 and does not merge it (a measurement run). `--again` is the one way to launch
 a plan that is already live on the target: without it the launcher refuses
 before anything is pushed, naming the live run and its VM (a duplicate launch
 re-answers the live run's task issues on the hub and kills it, #1036).
 
-**Watch.** The same bytes are in two places:
+**Watch.** There is no live page; git is the record, in one place:
 
-- `https://<vm>.exe.xyz/status.json` — the VM's own page, port 8000 behind
-  exe.dev's proxy; a browser logged in to exe.dev reads it. Its `phase` names
-  the sub-step the run is on — `Wave 2 · impl:3`, the phase and the worker the
-  wave is waiting on — and its `tasks` cell says what each task is doing right
-  now: the wave it is in, one of `queued`, `waiting`, `examining`,
-  `implementing`, `proving`, `reviewing`, `fixing`, `folded`, `failed`, the
-  worker open for it, its last proof run, why it was parked and, when the driver
-  re-edged it, the siblings it is waiting on.
-- `https://<vm>.exe.xyz/events.jsonl` — the live event log, the same file the
-  engine is appending to, recopied on every poll. It is what the page above is
-  a projection of; `bash fleet/sandbox-boot.sh project <events.jsonl>` prints
-  that projection for a log you have in your hand.
 - the hub, when the plan commit carried `.ultrapowers/kata.json` — the run's
-  kata project holds the same lines as comments, posted as they happen: every
-  `driver:*` line (the engine's on the task's issue when it names one, run-main's
-  stages on the run issue), every `worker:start`/`worker:end` envelope on the
-  issue of the task its label names (`integration` and the phase marks on the
-  run issue). `fleet/CONTRACT.md` §Kata record (engine) is the exact list of
-  what is mirrored and what is not.
+  kata project holds a mirror of the run's progress, posted as comments as it
+  happens. `fleet/CONTRACT.md` is the authority for what the current engine
+  mirrors there.
 - `.ultrapowers/runs/<N>/status.json` on the target — committed at every
-  transition and, while the engine runs, whenever the log has grown by
-  `FLEET_COMMIT_EVENTS` events (default 10) or `FLEET_COMMIT_SECONDS` seconds
-  have passed (default 120), so the branch is at most ten events or two minutes
-  behind the page. Next to `receipt.json`, `gate-receipt.json`, `report.json`,
-  `events.jsonl`, `engine.log` and `claude-version.txt`. Read it by tag, which
+  transition and, while the engine runs, every `FLEET_COMMIT_SECONDS` (default
+  60) that `events.jsonl` has changed, so the branch is at most one tick
+  behind. Next to `events.jsonl`, `engine.log` and, when the plan carried
+  unguarded exam files, `exams/`. Read it by tag, which
   is the one spelling that keeps working after the run's branches are gone:
 
   ```bash
@@ -287,10 +272,8 @@ re-answers the live run's task issues on the hub and kills it, #1036).
   ```
 
   While the run is still in flight the tag is not written yet, and the same
-  bytes are on its evidence branch. From a shell on the laptop that branch is
-  the read that works with no browser (`curl` on the VM's page answers a
-  redirect to the exe.dev login), so a live run is read by branch and, after
-  publish, by tag — the two spellings of one read:
+  bytes are on its evidence branch instead, so a live run is read by branch
+  and, after publish, by tag — the two spellings of one read:
 
   ```bash
   gh api 'repos/<owner>/<repo>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence-run-<N>' --jq .content | base64 -d   # in flight
@@ -310,7 +293,7 @@ receipt otherwise, against the target's default branch. Its body links the plan 
 the PR is the whole index of the run. It opens with the summary the operator
 signed, the answer line, the plan's Claim and one table row per task saying what
 was promised and how it was proved, with the record — receipt, shas, evidence
-listing and residuals checklist — folded away below. `pr` and `prAuthor` on the status page are
+listing and residuals checklist — folded away below. `pr` and `prAuthor` in `status.json` are
 the answer's `html_url` and `user.login`.
 A ready PR merges itself, on the run's own evidence and nobody else's: the
 publish fold rebased the branch onto the default branch's tip and the gate then
@@ -337,8 +320,8 @@ It lists the fleet, reads each VM's comment for its run and its target, asks
 the hub for that run's issue (`ssh <KATA_URL host> curl localhost:8000/api/v1/…`,
 the bearer sourced on the hub — the road the launcher takes), and `rm`s every
 VM whose run issue has been closed for over an hour — the `--age 1h` default:
-a finished run's VM is kept for one hour so the operator can read its status
-page before it goes, so a janitor that answers `nothing to do` beside `done`
+a finished run's VM is kept for one hour so the operator has a window to look
+at it before it goes, so a janitor that answers `nothing to do` beside `done`
 VMs inside that hour is the hold and not a fault (six such VMs on 2026-09-15);
 `--age 30m`, or `ssh exe.dev "rm <vm> --json"`, takes one sooner. When the hub
 cannot be asked — no `~/.ultrapowers/kata-hub.env`, an ssh that fails — it says so on its
@@ -704,9 +687,9 @@ an exe VM with 2 vCPU / 4 GB)
 - A NUL byte in a source file makes git diff it as binary, `is_binary` in
   `skills/ultrapowers/kernel/repo_weave.py` agrees, and every fold that touches the file parks
   with `no annotated narration for <path> (binary)` and zero resolvers — run-163's publish fold,
-  2026-09-16, after run-162's implementer wrote a `'\0'` key separator into `fleet/run-engine.mjs`
-  as the raw byte. GitHub still merges such a PR by hand. Find one with
-  `grep -Plc '\x00' fleet/*.mjs`; the fix is the escape, one byte.
+  2026-09-16, after run-162's implementer wrote a `'\0'` key separator into the wave engine's own
+  entry source (since gone with it at cut two) as the raw byte. GitHub still merges such a PR by
+  hand. Find one with `grep -Plc '\x00' fleet/*.mjs factory/*.mjs`; the fix is the escape, one byte.
 
 **The factory's board.**
 
@@ -770,6 +753,15 @@ anything, and deletion of a listed file follows on the reading, one file at a
 time in its own pull request, as `CLAUDE.md`'s Test doctrine has it.
 
 ## Rollback
+
+**The wave engine's removal (cut two, 2026-09-21).** The wave engine this contract and this
+runbook described in detail until that date is gone — its own boot script, its per-task role
+prompts, its worker and its deterministic-wave dispatch all went with it. An engine sha from
+before that date is no longer launchable: the bootstrap execs the current engine's own boot
+script or refuses, with nothing to fall back to. If this does not hold, the way back is to
+revert that merge — the pull request that retired the wave engine for the factory, opened and
+merged 2026-09-21 — which restores both the previous engine tree and this file's own text as
+it read before it.
 
 The move onto the target is one release. If it does not hold:
 

@@ -124,15 +124,14 @@ fail() { # $1 = message, $2 = exit code (default 1)
 read_assignment() { if [ -n "${FLEET_ASSIGNMENT:-}" ]; then printf '%s\n' "$FLEET_ASSIGNMENT"; else fleet_curl -fsS "$REFLECTION_URL/comment" 2>/dev/null | json_field comment || true; fi; }
 is_sha()    { case "$1" in *[!0-9a-f]* | "") return 1 ;; esac; [ "${#1}" -eq 40 ]; }
 is_target() { [[ $1 =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; }
-# `tier` and `effort` are accepted for the launcher's sake and acted on by nobody. `hold`
-# is recorded: `hold=1` is the signal that keeps `publish` from ever sending a merge.
+# `hold` is recorded: `hold=1` is the signal that keeps `publish` from ever sending a merge.
 parse_assignment() { # $1 = the comment line
   local tok key val
   for tok in $1; do
     key="${tok%%=*}"; val="${tok#*=}"
     case "$key" in
       run) RUN_N="$val" ;; plan) PLAN_SHA="$val" ;; target) TARGET_REPO="$val" ;;
-      base) BASE_SHA="$val" ;; engine) ENGINE_SHA="$val" ;; tier|effort) : ;;
+      base) BASE_SHA="$val" ;; engine) ENGINE_SHA="$val" ;;
       hold) [ "$val" = 1 ] && HOLD_FLAG=1 ;;
       *) fail "assignment: unknown key '$key' in comment" ;; esac
   done

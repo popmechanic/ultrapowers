@@ -64,9 +64,11 @@
  *            the stanza grows past it
  *   (c) [M3] the text of `fleet/fleet-run@.service` has the line
  *            `LimitNOFILE=524288` after its `[Service]` line, and the text of
- *            `fleet/sandbox-boot.sh`, from the line containing
+ *            `factory/boot.sh` (the old engine's boot left the tree with it —
+ *            *the old engine leaves the tree, and the factory clones at base
+ *            with its own code*), from the line containing
  *            `--unit=fleet-engine-$RUN_N` to the next line containing
- *            `run-main.mjs`, joined with spaces, contains both
+ *            `engine.mjs`, joined with spaces, contains both
  *            `-p MemoryMax=40G` and `-p LimitNOFILE=524288`; a copy of the unit
  *            text with that line removed makes the same check fail
  *   (d) [M4] the first three `Run:` lines of the Proof, re-encoded here as reads
@@ -231,11 +233,17 @@ const LIMIT_LINE = 'LimitNOFILE=524288'
     '(c) [M3] the same check fails on a copy of the unit with that line removed'
   )
 
-  const boot = readFleet('sandbox-boot.sh').split('\n')
+  // Re-aimed at `factory/boot.sh` (the old engine's `sandbox-boot.sh` left the
+  // tree with it — *the old engine leaves the tree, and the factory clones at
+  // base with its own code*): the same unit name is set there by
+  // `fleet_systemd_run --user "--unit=fleet-engine-$RUN_N"`, and the same
+  // invocation still reaches `factory/engine.mjs` and carries both `-p`
+  // flags.
+  const boot = fs.readFileSync(path.join(FLEET_DIR, '..', 'factory', 'boot.sh'), 'utf8').split('\n')
   const start = boot.findIndex((l) => l.includes('--unit=fleet-engine-$RUN_N'))
-  assert.ok(start >= 0, '(c) [M3] sandbox-boot.sh carries the engine `--unit=fleet-engine-$RUN_N`')
-  const end = boot.findIndex((l, i) => i > start && l.includes('run-main.mjs'))
-  assert.ok(end > start, '(c) [M3] that invocation reaches a `run-main.mjs` line')
+  assert.ok(start >= 0, '(c) [M3] factory/boot.sh carries the engine `--unit=fleet-engine-$RUN_N`')
+  const end = boot.findIndex((l, i) => i > start && l.includes('engine.mjs'))
+  assert.ok(end > start, '(c) [M3] that invocation reaches an `engine.mjs` line')
   const invocation = boot.slice(start, end + 1).join(' ')
   assert.ok(
     invocation.includes('-p MemoryMax=40G'),
