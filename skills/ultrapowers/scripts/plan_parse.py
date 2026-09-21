@@ -8,7 +8,7 @@ Prints exactly one JSON object on stdout with keys `tasks`, `dag_edges`,
 itself, whether or not a `<stem>.gate-verdicts.json` sits beside it.
 
 This is a grammar parser, not the old semantic compiler
-(`skills/ultrapowers/scripts/compile_plan.py`): it refuses (exit 2, one
+(`compile_plan.py`, deleted at cut B, 2026-09-21): it refuses (exit 2, one
 stderr line) only what it cannot parse -- no `### Task <id>:` heading found,
 a duplicate task id, or a cycle in the derived dependency edges. Everything
 else the old compiler would treat as a semantic violation (missing gate
@@ -69,7 +69,7 @@ PROOF_GUARD_BULLET = re.compile(r'^-\s*Guard\s*:\s*(.+)$', re.I)
 PROOF_LEGS_BULLET = re.compile(r'^-\s*Legs\s*:\s*(.+)$', re.I)
 LEG_MARKER_RE = re.compile(r'\([a-z]\)')
 
-# A Proof `Run:` bullet's citation tag (mirrors compile_plan.py's
+# A Proof `Run:` bullet's citation tag (the old compiler's
 # RUN_CITE_RE exactly): the same bracket shape a Legs bullet's own citation
 # carries (`[M2]`, `[M1, M3]`), anchored at the END of the value after
 # whitespace -- a tag mid-command is part of the command, not a tag.
@@ -78,7 +78,7 @@ RUN_CITE_RE = re.compile(r"\s*\[\s*(M\d+(?:\s*,\s*M\d+)*)\s*\]\s*$")
 
 def _claims_run_cites(value):
     """Split a Proof `Run:` value into (command text, sorted clause ids),
-    exactly as compile_plan.py's `_claims_run_cites` does. Untagged, the
+    exactly as the old compiler's `_claims_run_cites` did. Untagged, the
     value rides back whole with `[]`. Tagged, the tag is cut off FIRST --
     before any backtick-wrapper stripping -- and its ids are returned
     sorted by number."""

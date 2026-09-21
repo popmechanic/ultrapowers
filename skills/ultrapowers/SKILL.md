@@ -221,7 +221,6 @@ approved plan, **is** the authorization to execute — no further approval pause
 - `references/first-run.md` — one section per doctor row: what it means and the
   command that builds it.
 - `references/design-rationale.md` — why each surviving guard exists.
-- `references/dependency-analysis.md`, `references/plan-markers.md` — plan → waves.
 - `references/report-format.md`, `references/finishing-notes.md` — report schema; finishing checks.
 - `kernel/FOLD_LOG.md` — the fold-log schema (contended-wave state a parked run's evidence carries).
-- `scripts/plan_parse.py` (the one parser — the sandbox runs it), `scripts/plan_check.py` (the laptop's check of the records and the base, on that parser). `scripts/compile_plan.py` is the old compiler, unused since cut B and kept one launch as the rollback.
+- `scripts/plan_parse.py` (the one parser — the sandbox runs it), `scripts/plan_check.py` (the laptop's check of the records and the base, on that parser).
