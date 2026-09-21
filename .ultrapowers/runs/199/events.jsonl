@@ -8,3 +8,12 @@
 {"ts":"2026-09-21T19:36:30.023Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"sed -n '60,140p' /home/exedev/run/exam-1/fleet/tests/test_jev_questions.mjs"}
 {"ts":"2026-09-21T19:36:32.363Z","kind":"supervisor","task":"1","label":"exam:1","answers":{"stuck":{"type":"noul","noul":0.21},"off_track":{"type":"noul","noul":0.24},"needs_human":{"type":"noul","noul":0.17},"done_not_exited":{"type":"noul","noul":0.18}}}
 {"ts":"2026-09-21T19:36:33.027Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"tail -40 /home/exedev/run/exam-1/fleet/tests/test_jev_questions.mjs; echo ---; grep -n \"ALL TESTS PASSED\\|process.exit\" /home/exedev/run/exam-1/fleet/tests/*.mjs | head -20"}
+{"ts":"2026-09-21T19:37:14.536Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"ls factory/ | head; echo ---; ls fleet/tests/factory 2>/dev/null; find . -maxdepth 2 -name \"factory\" "}
+{"ts":"2026-09-21T19:37:44.477Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Write","target":"/home/exedev/run/exam-1/fleet/tests/test_factory_select_dirs.mjs"}
+{"ts":"2026-09-21T19:37:47.576Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-21T19:37:47.641Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"node fleet/tests/test_factory_select_dirs.mjs","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-21T19:37:50.785Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"node fleet/tests/test_factory_select_dirs.mjs; echo \"EXIT:$?\""}
+{"ts":"2026-09-21T19:37:50.857Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"node fleet/tests/test_factory_select_dirs.mjs; echo \"EXIT:$?\"","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-21T19:38:05.070Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__note"}
+{"ts":"2026-09-21T19:38:10.186Z","kind":"dispatch:end","task":"1","label":"exam:1","role":"exam","wall_ms":120306,"cost_usd":0.2945838,"error":null}
+{"ts":"2026-09-21T19:38:10.328Z","kind":"dispatch:start","task":"1","label":"impl:1:0","role":"implement"}
