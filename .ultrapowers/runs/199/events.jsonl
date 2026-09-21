@@ -65,3 +65,22 @@
 {"ts":"2026-09-21T19:42:17.882Z","kind":"fold:verify","task":"1","ran":[{"task":"1","exit":0}],"attempt":1}
 {"ts":"2026-09-21T19:42:17.883Z","kind":"fold:red","task":"1","exam":null,"cmd":"git diff --quiet $ULTRA_BASE -- fleet skills factory/boot.sh factory/questions.json","exit":1}
 {"ts":"2026-09-21T19:42:18.006Z","kind":"dispatch:start","task":"1","label":"impl:1:fold","role":"implement"}
+{"ts":"2026-09-21T19:42:19.869Z","kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Read","target":"/home/exedev/run/fold-fix-1/factory/select.mjs"}
+{"ts":"2026-09-21T19:42:21.711Z","kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"grep -n \"candidateTests\\|select:exam\\|select:landing\\|dir_needles\\|dirNeedles\" /home/exedev/run/fold-fix-1/factory/engine.mjs"}
+{"ts":"2026-09-21T19:42:23.413Z","kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Read","target":"/home/exedev/run/fold-fix-1/factory/engine.mjs"}
+{"ts":"2026-09-21T19:42:25.030Z","kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Read","target":"/home/exedev/run/fold-fix-1/factory/engine.mjs"}
+{"ts":"2026-09-21T19:42:26.496Z","kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"cat /home/exedev/run/fold-fix-1/factory/policy.json"}
+{"ts":"2026-09-21T19:42:26.654Z","kind":"supervisor","task":"1","label":"impl:1:fold","answers":{"stuck":{"type":"noul","noul":0.49},"off_track":{"type":"noul","noul":0.32},"needs_human":{"type":"noul","noul":0.12},"done_not_exited":{"type":"noul","noul":0.22}}}
+{"ts":"2026-09-21T19:42:27.921Z","kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"ls -la /home/exedev/run/fold-fix-1/fleet/tests/test_factory_select_dirs.mjs 2>&1"}
+{"ts":"2026-09-21T19:42:27.945Z","kind":"worker:test-run","task":"1","label":"impl:1:fold","cmd":"ls -la /home/exedev/run/fold-fix-1/fleet/tests/test_factory_select_dirs.mjs 2>&1","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-21T19:42:29.435Z","kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"node fleet/tests/test_factory_select_dirs.mjs"}
+{"ts":"2026-09-21T19:42:29.505Z","kind":"worker:test-run","task":"1","label":"impl:1:fold","cmd":"node fleet/tests/test_factory_select_dirs.mjs","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-21T19:42:31.445Z","kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"grep -q \"dirNeedles\" factory/engine.mjs && echo OK1\npython3 -c \"import json; assert json.load(open('factory/policy.json'))['select']['dir_needles'] is True\" && echo OK2"}
+{"ts":"2026-09-21T19:42:37.834Z","kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"git status --short && git diff --stat"}
+{"ts":"2026-09-21T19:42:40.863Z","kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Read","target":"/home/exedev/run/fold-fix-1/fleet/tests/test_factory_select_dirs.mjs"}
+{"ts":"2026-09-21T19:42:42.566Z","kind":"worker:tool","task":"1","label":"impl:1:fold","tool":"Bash","target":"node fleet/tests/test_factory_select_dirs.mjs; echo \"exit: $?\""}
+{"ts":"2026-09-21T19:42:42.627Z","kind":"worker:test-run","task":"1","label":"impl:1:fold","cmd":"node fleet/tests/test_factory_select_dirs.mjs; echo \"exit: $?\"","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-21T19:42:47.603Z","kind":"dispatch:end","task":"1","label":"impl:1:fold","role":"implement","wall_ms":29596,"cost_usd":0.30656839999999996,"error":null}
+{"ts":"2026-09-21T19:42:47.991Z","kind":"check:line","task":"1","cmd":"git diff --quiet $ULTRA_BASE -- fleet skills factory/boot.sh factory/questions.json","exit":1,"minor":false}
+{"ts":"2026-09-21T19:42:47.992Z","kind":"fold:verify","task":"1","ran":[{"task":"1","exit":0}],"attempt":2}
+{"ts":"2026-09-21T19:42:47.992Z","kind":"fold:unresolved","task":"1","exam":null,"cmd":"git diff --quiet $ULTRA_BASE -- fleet skills factory/boot.sh factory/questions.json"}
