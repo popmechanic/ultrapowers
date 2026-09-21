@@ -115,9 +115,10 @@
         "sibling_facts",
         "clauses",
         "patch",
-        "files.fN"
+        "files.fN",
+        "facts"
       ],
-      "provenance": "borne_out, actor, claim_false, fixable_in_files: fleet/run-engine.mjs JEV_FINDING_QUESTIONS, verbatim (#1093). defect_visible, status, subject, process_only, scope_only: #1127. settled_by_fact: #1127's 2026-09-17 amendment. claim_established and the M<i>__f<j> pair: factory/proto/loop.mjs, the 2026-09-17 prototype.",
+      "provenance": "borne_out, actor, claim_false, fixable_in_files: fleet/run-engine.mjs JEV_FINDING_QUESTIONS, verbatim (#1093). defect_visible, status, subject, process_only, scope_only: #1127. settled_by_fact: #1127's 2026-09-17 amendment. claim_established and the M<i>__f<j> pair: factory/proto/loop.mjs, the 2026-09-17 prototype. claim_established_given_facts: #1167 (desired state 1 and 3), 2026-09-21.",
       "calibrated": "borne_out, actor, claim_false, fixable_in_files were replayed over 1,157 residuals at these strings",
       "questions": {
         "borne_out": {
@@ -246,6 +247,18 @@
             "true": "Every clause has code in the patch that satisfies it",
             "false": "At least one clause is unmet, wrong, or only a stub"
           }
+        },
+        "claim_established_given_facts": {
+          "type": "noul",
+          "instructions": {
+            "question": "Given `patch` (a unified diff) and `facts` (results the engine measured after applying it: the task's exam exit code and the exit codes of the plan's own proof commands, each with the clauses it cites), is every clause in `clauses` established as delivered?",
+            "context": "`clauses` are the task's numbered Machine clauses (M1, M2, ...), which restate its signed Claim mechanically. `facts` are measured, not asserted: a passing exit code is evidence a command actually produced, not a claim someone wrote down."
+          },
+          "criteria": {
+            "true": "Every clause is satisfied by code in the patch or by a measured fact that proves it",
+            "false": "At least one clause is unmet by the patch and unproved by any fact"
+          },
+          "note": "Record-only: read alongside claim_established for the record, never in place of it (#1167)."
         }
       },
       "pairwise": {

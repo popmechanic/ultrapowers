@@ -114,6 +114,35 @@ json_escape() {
   printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' |
     awk 'BEGIN { ORS = "" } { gsub(/\t/, "\\\\t"); print (NR > 1 ? "\\n" : "") $0 }'
 }
+# M1: a value is bare (an unquoted JSON literal) when it is the word `null`/`true`/`false`
+# or an integer (an optional leading `-` then one or more digits); every other value is a
+# JSON string.
+is_bare_value() {
+  case "$1" in null|true|false) return 0 ;; esac
+  local n="$1"
+  case "$n" in -*) n="${n#-}" ;; esac
+  [ -n "$n" ] || return 1
+  case "$n" in *[!0-9]*) return 1 ;; esac
+  return 0
+}
+# The one writer for every end-of-run row (#1167): one JSON object, one line, appended to
+# `<file>` (created if it does not exist). $1 = file, $2 = kind, then any number of
+# `key=value` pairs, each written in argument order — `is_bare_value` decides bare vs
+# `json_escape`d string. Also reachable as `boot.sh event-row <file> <kind> [key=value ...]`
+# so the writer is examinable without running a boot.
+event_row() {
+  local file="$1" kind="$2" line tok key val
+  shift 2
+  line="{\"kind\":\"$(json_escape "$kind")\""
+  for tok in "$@"; do
+    key="${tok%%=*}"; val="${tok#*=}"
+    if is_bare_value "$val"; then line="$line,\"$(json_escape "$key")\":$val"
+    else line="$line,\"$(json_escape "$key")\":\"$(json_escape "$val")\""; fi
+  done
+  line="$line}"
+  mkdir -p "$(dirname "$file")" 2>/dev/null || true
+  printf '%s\n' "$line" >>"$file"
+}
 # The failure account: the page, one evidence commit, one push, out — once there is an evidence branch to write to.
 fail() { # $1 = message, $2 = exit code (default 1)
   ERROR="$1"; log "FAILED: $1"
@@ -361,13 +390,14 @@ EOF
 # fails is logged and nothing else — the run's own state and exit code were decided
 # before this ran, and stay decided (CLAUDE.md: hub writes are never the run's failure).
 board_down() {
-  local out
+  local out rc=0
   [ -n "$BOARD_BOUND" ] || return 0
   # `--yes` and a closed stdin: under the run unit there is no TTY, and kata answers `no TTY: pass --yes to
   # proceed noninteractively` (exit 6) without it — every factory run through run-198 left its enrollment
   # live on the hub that way (#1176; measured on run-36's sandbox 2026-09-21, where `--yes` left and revoked).
   if ! out="$(fleet_kata federation leave "$BOARD_PROJECT_NAME" --yes </dev/null 2>&1)"
-  then log "board: kata federation leave $BOARD_PROJECT_NAME failed — leaving the unit for the box to reap — $(printf '%s' "$out" | head -n 1 | cut -c1-300)"; fi
+  then rc=$?; log "board: kata federation leave $BOARD_PROJECT_NAME failed — leaving the unit for the box to reap — $(printf '%s' "$out" | head -n 1 | cut -c1-300)"; fi
+  event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" board:leave rc="$rc" || true
   fleet_systemctl --user stop "$BOARD_UNIT" >/dev/null 2>&1 || true
   BOARD_BOUND=""
   return 0
@@ -455,15 +485,18 @@ refold_onto() { # $1 = the base the run's work stood on, $2 = the moved tip
     reason="$(printf '%s' "$line" | json_field reason)"
     MERGE_PHASE="merge: re-fold refused (${reason:-exit $rc})"
     log "merge: re-fold onto $onto exited $rc — $MERGE_PHASE"
+    event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" refold ok=false reason="$MERGE_PHASE" || true
     return 1
   fi
   fleet_git -C "$TARGET_DIR" fetch origin "refs/heads/$BRANCH" 2>/dev/null || true
   if ! fleet_git -C "$TARGET_DIR" push --force-with-lease origin "HEAD:refs/heads/$BRANCH"; then
     MERGE_PHASE="merge: force-with-lease push of the re-folded head was refused"
     log "merge: $MERGE_PHASE"
+    event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" refold ok=false reason="$MERGE_PHASE" || true
     return 1
   fi
   log "merge: re-folded onto $onto and pushed $BRANCH"
+  event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" refold ok=true || true
   return 0
 }
 # M3: GitHub answers `mergeable: null` for a few seconds after a push while it recomputes.
@@ -518,6 +551,7 @@ maybe_self_merge() { # $1 = the pull request number, $2 = the PR's base branch n
     fi
     attempts=$(( attempts + 1 ))
     send_merge "$number"
+    event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" merge code="${MERGE_HTTP_CODE:-null}" || true
     case "$MERGE_HTTP_CODE" in
       2[0-9][0-9])
         MERGED_SHA="$(printf '%s' "$MERGE_REPLY" | json_field sha)"
@@ -568,6 +602,7 @@ strip_exams() {
 }
 publish() { # $1 = the engine's exit code
   local base title draft body payload answer code reply state number phase_text
+  local was_bound audit_args audit_line
   strip_exams
   fleet_git -C "$TARGET_DIR" push origin "HEAD:refs/heads/$BRANCH" || fail "publish: pushing $BRANCH was rejected"
   write_status publishing "opening the pull request"; evidence_commit "$RUN_ID: publishing"
@@ -598,8 +633,15 @@ publish() { # $1 = the engine's exit code
   fi
   write_status "$state" "$phase_text"; evidence_commit "$RUN_ID: $state"
   # M5: the hub close (with the merge commit riding its evidence, once there is one) before
-  # the tags — `record_tags` is what a reader takes as "this run is fully recorded".
+  # the tags — `record_tags` is what a reader takes as "this run is fully recorded". Whether
+  # the board was bound is read BEFORE `close_run`, because `close_run` calls `board_down`
+  # itself, which clears `BOARD_BOUND`.
+  was_bound="$BOARD_BOUND"
   close_run "$state"
+  audit_args=(); [ -n "$was_bound" ] && audit_args=(--bound)
+  audit_line="$(fleet_node "$ENGINE_REPO_DIR/factory/audit.mjs" "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" "$state" ${audit_args[@]+"${audit_args[@]}"} 2>/dev/null)" || true
+  [ -n "${audit_line:-}" ] && printf '%s\n' "$audit_line" >>"$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl"
+  evidence_commit "$RUN_ID: audit"
   record_tags
 }
 # What a run leaves behind is the two tags; the branches are only where it worked. A tag that does not verify is not a
@@ -637,22 +679,34 @@ close_issue() {
   answer="$(fleet_curl -sS -X POST "$url" -H 'content-type: application/json' -H "Idempotency-Key: $4" -d "$payload" -w '\n%{http_code}' 2>/dev/null)" || rc=$?
   code="$(printf '%s' "$answer" | tail -n 1)"
   if [ "$rc" -eq 0 ]; then
-    case "$code" in 2[0-9][0-9]) log "board: close answered $code ($5)"; return 0 ;; esac
+    case "$code" in 2[0-9][0-9])
+      log "board: close answered $code ($5)"
+      event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" board:close what="$5" code="$code" || true
+      return 0 ;;
+    esac
   fi
   reply="$(printf '%s' "$answer" | sed '$d')"
   log "board: closing the $5 issue failed (exit $rc, http ${code:-<none>}) — $(printf '%s' "$reply" | tr '\n' ' ' | cut -c1-500)"
+  event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" board:close what="$5" code="${code:-null}" || true
   return 1
 }
 close_run() { # $1 = the run's final state (done|parked)
   local kata_json ids project_id run_uid message evidence task_id task_uid
   [ "$1" = done ] || return 0
   kata_json="$FLEET_HOME/plans/$RUN_ID.kata.json"
-  if [ ! -f "$kata_json" ]; then log "board: close skipped — no $kata_json to read"; return 0; fi
+  if [ ! -f "$kata_json" ]; then
+    log "board: close skipped — no $kata_json to read"
+    event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" board:close what=run code=null skipped="no kata.json to read" || true
+    return 0
+  fi
   ids="$(kata_ids "$kata_json")" || ids=""
   project_id="$(printf '%s' "$ids" | awk '{ print $1 }')"
   run_uid="$(printf '%s' "$ids" | awk '{ print $2 }')"
   if [ -z "$project_id" ] || [ -z "$run_uid" ]; then
-    log "board: close skipped — $kata_json carries no readable project.id/run.uid"; return 0; fi
+    log "board: close skipped — $kata_json carries no readable project.id/run.uid"
+    event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" board:close what=run code=null skipped="no readable project.id/run.uid" || true
+    return 0
+  fi
   # M5: a merged run's close carries the merge commit beside the pull request entry.
   evidence="{\"type\":\"pr\",\"url\":\"$(json_escape "$PR_URL")\"}"
   [ -n "$MERGED_SHA" ] && evidence="$evidence,{\"type\":\"commit\",\"sha\":\"$(json_escape "$MERGED_SHA")\"}"
@@ -694,5 +748,6 @@ case "${1:-}" in
   boot) boot ;;
   kata-ids) kata_ids "${2:-}" ;;
   kata-task-uids) kata_task_uids "${2:-}" ;;
+  event-row) shift; event_row "$@" ;;
   *) printf 'usage: boot.sh boot\n' >&2; exit 2 ;;
 esac
