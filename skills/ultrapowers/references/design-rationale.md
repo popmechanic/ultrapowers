@@ -65,6 +65,6 @@ it, the `undeclared-dependency` cross-check there — its remedy became unsayabl
 unmatched `Consumes:` is the author's own to catch, since nothing warns on
 it). Legacy-grammar plans keep
 both the marker and the cross-check. The same run motivated the FILES and SIBLING-FILES scope rules
-carried by the implementer/reviewer role prompts (`fleet/roles/*.md` since 0.3.0):
+carried by the implementer/reviewer role prompts (`factory/roles/*.md` since cut two, 2026-09-21):
 the implementer's final commit deleted a sibling-owned file its task never named,
 and the reviewer treated it as an ordinary judgment call.

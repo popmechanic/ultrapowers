@@ -3,8 +3,9 @@
 Design record: `docs/superpowers/specs/2026-09-03-fleet-on-the-grain.md`, whose `## Counsel 2` section
 (Sol + Opus on the papercuts of runs 65–69) is the authority for the sandbox internals below, and
 issues #597/#598 for the shape of a launch. Where v2 of this file (git history) and this text
-disagree, this text wins. The engine (`run-main.mjs`, `run-engine.mjs`, `run-worker.mjs`,
-`run-waves.mjs`, `confine-hook.mjs`, `fitness.mjs`, `roles/`) is untouched.
+disagree, this text wins. This contract is the launcher's and the fleet VM's; the engine itself is
+`factory/`, and its own literals are not restated here. The wave engine this file described in detail
+until 2026-09-21 (cut two) is gone; `fleet/RUNBOOK.md` names the rollback.
 
 ## The shape in one paragraph
 A run is a number N per target. The launcher validates its arguments, reads the account pool from
@@ -16,10 +17,11 @@ issues ONE lobby verb — `new` — which creates a fresh VM and runs the genera
 The setup script installs the toolchain, an immutable bootstrap and the run's unit, then starts
 `fleet-run@<N>.service`. The bootstrap reads the assignment from the VM comment once, clones the
 engine at `engine=` into a content-addressed directory, and execs that checkout's
-`fleet/sandbox-boot.sh`. The boot script clones the target at `base=`, runs the engine as a transient
-user service with a memory cap, serves a status page, commits its evidence to the TARGET repository on
-`ultra/evidence-run-N` at every transition, and — only when there is something to publish — folds the
-target's moved tip into the run's branch in a second transient unit, then pushes
+`factory/boot.sh`. The boot script clones the target at `base=`, runs the engine as a transient
+user service with a memory cap, commits its evidence to the TARGET repository on
+`ultra/evidence-run-N` at every transition — no status page; git is the record — and, only when
+there is something to publish and the default branch moved underneath it, re-folds the target's tip
+into the run's branch inline before the PR, then pushes
 `ultra/integration-run-N` and opens the PR over GitHub's REST API through the edge. The PR is the human
 gate: the target's one integration rides the VM for the run's whole life, and there is no grant step.
 There is no image to keep fresh, no state repository, no orchestrator, no control VM, and no token on
@@ -49,294 +51,16 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     record; `JSON.stringify(…, null, 2)` plus a trailing newline). Written by the launcher, before
     any VM exists.
   - `ultra/evidence-run-<N>` — the run's record under `.ultrapowers/runs/<N>/`: `status.json`,
-    `receipt.json`, `gate-receipt.json`, `report.json`, `events.jsonl`, `engine.log`,
-    `claude-version.txt` (the boot's `claude --version` line, written before the engine starts), plus
-    `approve-receipt.json` and `standing-approval.json`, present when the engine wrote them.
-    That `report.json`'s `engineCoverage` — on a run that changed `fleet/run-engine.mjs`, which of
-    the lines it changed an engine sim ran and which none did, `null` on every other run — is a
-    reading beside the receipt and gates nothing: for the same tree, `tests.passed`, the gate
-    receipt and the merge decision are what they would have been without it.
-    The engine's own wave record is two kinds in that `events.jsonl`, one per epoch that folded.
-    An epoch is a fold, not a layer: the driver keeps its lanes full from the ready set — a task
-    is ready when every predecessor an edge names has been adopted — and folds whatever has
-    landed, all of it as one epoch, when a slot frees AND the fold would release a queued task,
-    end the run, or adopt a result older than `foldAgeMs`. A fold costs a suite, so a fold that
-    does none of the three is not run and the results wait for one that does. Which of the three
-    it was is the event's `why`: `released`, with `released: [<ids>]` — the tasks, in plan order,
-    that adopting this epoch makes ready; `end` — nothing in flight, nothing folding, nothing
-    ready and nothing pending but these results; or `aged` — the oldest pending result has waited
-    `foldAgeMs` milliseconds since it landed and nothing is in flight: no sibling task is
-    implementing or in review, so nothing left could release a task or end the run. `foldAgeMs` is
-    the run's argument when it is a non-negative number and otherwise the larger of 60000 and the
-    wall the baseline suite took (the age clause is off until the baseline settles);
-    `foldAgeMs: 0` folds at every landing, siblings in flight or not.
-    A fold judges the wave, so it may run the wave's own exams rather than the repository's:
-    `foldTestCmd` is the target's scoped runner carrying exactly one `{paths}` token and
-    `foldTestPattern` a JavaScript `RegExp` source over repo-relative paths, both written by the
-    launcher beside `testCmd` and read exactly as they are. The fold takes the union of every
-    epoch task's touch set — its declared `files` then its captured patch's paths — and the
-    `proofTests` spellings its Proof named, keeps the entries matching `foldTestPattern` that the
-    integration clone holds after the candidate's read-tree, and substitutes them, sorted,
-    de-duplicated and space-joined, for the `{paths}` token. That one command is the candidate
-    suite, the `TEST COMMAND:` line the reconcile round carries, and the suite re-run after a
-    `FIXED`, and the driver logs `wave <n> fold suite: <command>` once before it runs. An empty
-    subset — nothing matched the pattern, or nothing that matched is on the tree — is no command
-    at all: the fold runs the whole suite and logs no `fold suite:` line, exactly as a run
-    carrying no `foldTestCmd` does at every fold. The narrowing is the wave fold's and nothing
-    else's: the publish fold and the gate run `testCmd`, the whole suite, so nothing ships on a
-    scoped green. A typecheck a target wants at every fold is therefore written as a Global
-    Constraints `- Check:` line and not folded into the command, because the engine runs
-    `foldTestCmd` and nothing else at the fold.
-    So `driver:wave-adopted` `{wave, tasks, headSha, why, released?, applied}` — the 1-based epoch
-    in fold order, the ids it merged in plan order, and `applied`, one key per id saying how that
-    task LANDED: `base` when its patch was captured against this very head, `rebased` when it was
-    captured against an older one and the kernel three-way merged it with nothing narrated, and
-    `resolved` when a narrated conflict of the fold named one of the task's own files — then the
-    head it left on the integration branch, each a descendant of the epoch before it. And
-    `driver:wave-blocked` `{wave, tasks, detail, why, released?, applied, paths?, evidence?}`, the
-    same epoch, ids and `applied` with the `waveMerges` row's own `detail` — appended for an epoch
-    whose fold the kernel could not complete (`CONFLICT`, the conflict it stopped on being what
-    `applied` reads `resolved` off) exactly as for one whose candidate suite stayed red. `paths`
-    and `evidence` are the receipt below, carried on a `CONFLICT` epoch's row and on no other.
-    And `driver:regenerated` `{wave, cmd, exit, paths}` — the epoch, the run's `regenerateCmd`
-    exactly as it ran, its exit code, and the sorted lockfile paths it rewrote, appended once by
-    a fold that ran it and by no other. A lockfile is a derived file and no model merges one: a
-    run that carries a `regenerateCmd` drops the lockfile basenames `bun.lock`, `bun.lockb`,
-    `package-lock.json`, `pnpm-lock.yaml` and `uv.lock`, at any depth, from every patch its
-    capture writes, and names each dropped path on that capture's `capture:dropped`
-    `{label, paths}` beside the unnamed binaries it already drops; a run carrying no
-    `regenerateCmd` drops no lockfile, runs no regenerator, appends no `driver:regenerated`, and
-    captures and folds a lockfile exactly as it captures and folds any other file. The
-    regenerator runs in the integration clone on the materialized candidate, when the paths
-    between `prevHead` and that candidate changed a bootstrap manifest, and BEFORE the
-    candidate's own bootstrap — the install is frozen against a lockfile, so a rebuild that ran
-    after it would be rebuilding against an install that already failed. The lockfile it writes
-    is committed onto the candidate, subject `wave <n> regenerated <paths>` under the plan's H1
-    when one is set, and that commit is the candidate every later step of the fold uses: the
-    bootstrap, the suite, the adopt, the weave and the epoch's own `headSha`. A regenerator that
-    exits non-zero rewrites nothing, stands in place of the suite exactly as a failed bootstrap
-    does (`exit` its own, `paths` empty), and the epoch takes the route a red bootstrap takes.
-    And `driver:dependencies` `{specs, dev, cmd, exit, headSha}` — the runtime specs the plan's
-    `Dependencies:` line declared, the dev specs, the one shell line the driver ran in the
-    integration clone verbatim, its exit code, and the head the run continues from after it: the
-    setup commit when one was made, `reuseHead || baseSha` when the line changed no manifest, and
-    `null` on a non-zero exit. Appended once, at Setup, by a run that ran the line and by no
-    other — a run whose args carry no `dependencies`, and one that declares specs without both
-    `addCmd` and `addDevCmd` (which pushes the judgment call `setup: dependencies declared but no
-    add command` and runs on as at BASE), append none.
-    And `driver:reconcile-retry` `{wave, attempt, class}` — the epoch, the 1-based reconcile
-    attempt that produced no reply, and the class it died of: the `workerVerdict.class` the worker
-    attached to its non-fatal throw, and `null` when the reply was simply `null`. A reconcile
-    dispatch that produced no reply is asked the same question ONCE more — a fresh worker on the
-    byte-identical prompt under the same `label`, `model` and `schema`, immediately and with no
-    backoff — before the attempt is read as no reply, and that one re-dispatch is what this event
-    and the `wave <n>: reconcile attempt <a> produced no reply (<class>) — re-dispatched once`
-    judgment call beside it record. The second reply is the attempt's: an object there is read
-    exactly as a first-dispatch reply is, a `FIXED` committed and the suite re-run. A second
-    no-reply is the attempt's no reply — the `wave <n>: reconcile attempt <a> produced no reply`
-    judgment call and the epoch's `TEST_FAILED` route, with no third dispatch. A first dispatch
-    that answered at all — `BLOCKED` included, an object being an answer — and one whose throw
-    began `RUN_FATAL` are never re-dispatched and append no event.
-    What an epoch adopts is what was captured and unadopted at the INSTANT the slot freed — a
-    result that lands while a fold is running is adopted by the fold after it, never by the one
-    already in flight, and only one fold runs at a time.
-    The driver's own executions are three more kinds, one per command run: `driver:proof-run`
-    `{task, cmd, exit, iter}`, `driver:check-run` `{task, cmd, exit, minor, iter}` and
-    `driver:exam-run` `{task, cmd, exit, iter, stdout, paths?, evidence?}` — `paths` and
-    `evidence` are the receipt below, carried on a red row and on no other; `stdout` is the exam's
-    combined stdout+stderr, last 4,000 characters, the same tail the fix prompt reads (#944), so a parked
-    task's red is legible from the tag and the hub.
-    Every command the driver runs as a shell string — the suite (`testCmd`), a Proof `Run:`, a
-    Global `Check:`, a task's exam and the bootstrap — goes through the engine's one `bash -lc`
-    adapter, which prepends the sandbox's toolchain directory to `PATH` inside the command string:
-    `args.toolchainBin` when the run's args carry a non-empty string, else `TOOLCHAIN_BIN`, the
-    engine's export, `/usr/local/bin` — where the sandbox installs the pinned Bun. The prefix is
-    written into the command rather than into the environment because `-l` sources the login
-    profile AFTER the environment is set and a profile may reassign `PATH`; the rest of the PATH
-    the command would otherwise have had follows the toolchain directory, so a direct `bun` or
-    `bunx` is the sandbox's, whatever the profile or the tree's `node_modules/.bin` put first.
-    (`bun run <script>` prepends `node_modules/.bin` itself and is not reached by this; a tree
-    whose suite is a `bun run` script pins its own toolchain.) The prefix lives in the adapter and
-    never in the record: the `cmd` a `driver:proof-run`, `driver:check-run` or `driver:exam-run`
-    carries is the command as the plan wrote it — the exam's is the task's `testCmd` with its
-    Proof `Test:` path substituted by the exam's landing path — and carries no toolchain directory
-    and no `PATH=`. The pre-review pass (`iter: 0`) parks a task
-    for the plan (`reviewVerdict: plan-defect`, actor `plan`, no fix round) only on the pair: the
-    implementer's `plan-defect:` concern names a Proof leg by its `(x)` label AND says it cannot
-    pass (`cannot pass|can't pass|unsatisfiable|no output|for any output`, case-insensitive), and
-    the exam is red on the pass AND on the one re-run the driver then makes in the same clone
-    and environment — a second `driver:exam-run` at `iter: 0` carrying `rerun: true`. A green
-    re-run also carries `flaky: true` and is read as green: the exam's red leaves the pass and
-    the task proceeds (to review, or to the ordinary repair round if a `Run:`/`Check:` is still
-    red). An ordinary red exam with no such concern is never re-run; it buys the one repair round.
-    The pass reads the captured patch's own added top-level exports against the plan's other
-    contracts: an added export whose name equals the symbol another task's `Produces:` entry
-    names — and none this task's own `Produces:` names — is a red of the pass like any other,
-    routed to the same `fix:<id>:0` repair round with the line in its blocking-issues block
-    (`the patch exports <name> at <path>, a symbol task <id> is contracted to Produce and this
-    task is not — rename it or drop the export`), and recorded as one `driver:finding` at
-    `round` `0`, `severity` `blocking`, `actor` `implementer`, `paths` the export's file — one
-    per distinct name-and-path pair, so the collision is answered before any reviewer reads it.
-    The pass reads the same patch's bytes the same way: a patch that introduces a `NUL` (`0x00`)
-    byte into a path that was text or absent at the dispatch head — a path git and the fold
-    kernel read as `binary` from that byte on — is a red of the pass routed to the same
-    `fix:<id>:0` repair round with the line in its blocking-issues block (`the patch writes a NUL
-    byte into <path> at byte <offset> — git and the fold kernel read the file as binary from here
-    on; write the escape, never the byte`), and recorded as one `driver:finding` at `round` `0`,
-    `severity` `blocking`, `actor` `implementer`, `paths` the one path — one red and one row per
-    path, over the paths the capture touched, with a path whose base blob already carried a
-    `0x00` and a new path the task's `Files` declare (a binary deliverable the plan named) both
-    drawing none.
-    The pass reads the same patch's paths one last way: a path whose basename is a bootstrap
-    manifest (`bootstrapManifestChanged`'s own set, at any depth — `client/package.json` is one,
-    `package.json.bak` is not) and that the task's `Files` do not list is a red of the pass routed
-    to the same `fix:<id>:0` repair round with the line in its blocking-issues block (`the patch
-    edits <path> — dependencies are declared on the plan's Dependencies: line and installed at
-    setup, never by a task`), and recorded as one `driver:finding` at `round` `0`, `severity`
-    `blocking`, `actor` `implementer`, `paths` the one path — one red and one row per path. A
-    manifest the task's own `Files` name is a signed, non-dependency edit (a `scripts` entry, a
-    config field) and draws none. The rule is plan-level and fires on every run, a plan with a
-    `Dependencies:` line and a plan without: packages are installed once at Setup, in the
-    integration clone, never in a worker's.
-    One more kind records a blocking finding the graded party could not have answered:
-    `driver:exam-rejected` `{task, path, detail}` — one per blocking issue of a review round whose
-    `detail` names, in backticks, one of the task's Proof `Test:` landing paths (the token equal to
-    that path, or the path followed by `:<digits>` or `:<digits>-<digits>`), appended only in round
-    1 and only for a task whose examiner recorded an exam. It buys one `exam:<id>:2` round in the
-    examiner's own clone — its prompt the first round's with an `EXAM REJECTED:` block carrying
-    those details one per line — then a second `driver:exam-handoff`, a fresh capture, a
-    `driver:exam-run` at `iter: 2` and one `review:<id>:2`. No fix worker is dispatched from either
-    round: the implementation was never what the finding was about. A round 2 with no blocking issue
-    ends the task `done`/`clean`; one with a blocking issue, or a red exam at `iter: 2`, ends it
-    `failed`/`fix-loop-exhausted`. A blocking finding naming no landing path ends the task at that
-    exit from round 1, as it did before this kind existed. The row itself says which of those
-    happened: `report.json`'s `tasks[].examRounds` is `2` when the exam-rejected round ran and `1`
-    otherwise, present on every row of a task whose examiner recorded an exam — `examEdited`'s
-    presence rule — and absent from every other, so "exhausted" is distinguishable from "the
-    examiner was never asked".
-    One more kind records what a worker asked the PLAN for rather than what it did:
-    `driver:amendment` `{task, amends, what, why}` — the task the worker was dispatched at, which
-    part of that task it would have the plan change (`amends` is one of `clause`, `files` and
-    `sim`, and no other value), the change itself and the reason for it — one event per entry of a
-    worker's reply's `amendments`, appended in the reply's own order and mirrored on the task's
-    hub issue like every `driver:` line naming a task. `report.json`'s top-level `amendments` is
-    the same rows in the same order, `[]` when the run collected none. With a reader handed in each row also
-    carries `jev: {compelled, plan_fault, magnitude}`, `null` on a read that did not answer and absent without
-    one. Nothing here gates, the readings included: an amendment is a note to whoever writes the next plan,
-    so for the same tree `tests.passed`, the gate receipt and the merge decision are unchanged.
-    Jev (2026-09-16, the `jev:` seam, #1096 — an experiment whose rollback is deleting the three
-    appends): three more kinds record what Jev was asked and what it answered, and gate nothing.
-    `jev:finding` `{task, round, key, answers}` — one per finding a reviewer raised;
-    `jev:tier` `{task, at, tierChosen, answers}` with `at` one of `dispatch`, `review` and, on the
-    review row, `round`; and `jev:suite-red` `{epoch, failing: [{path, byTask: {<id>: <noul>},
-    artifact: <noul>}]}` — one per fold whose suite came back red. Each is ONE
-    `POST /v1/systemone` at `https://typesafe.int.exe.xyz` through the `typesafe` http-proxy,
-    carrying `{state, model: "jev-latest", questions}` and NO `Authorization` header of its own
-    (the edge injects the bearer; no key is on the box, on disk, in `argv` or in the boot's
-    environment). A call the edge does not answer — a non-2xx, a timeout, a dead socket, an
-    unparsable body, or a state over the 120000-byte budget, for which no call is made at all —
-    is one log line and no row: it never rejects, never parks and never fails the run, and the
-    row is simply absent. A row that IS appended rides to the hub by the `driver:` rule
-    (`kataUidFor`): the task's issue when the row names a task the record knows, the run's issue
-    otherwise. They are read by nothing — no verdict, route, tier, model choice, fold adoption,
-    gate or report field reads one, so for the same canned replies a run with this seam and a run
-    without it dispatch the same labels in the same order and end with the same task statuses.
-    Receipts (2026-09-16): a receipt is `paths` and `evidence` — `paths` an array of repo-relative
-    path strings, sorted, de-duplicated, never empty; `evidence` is `{ read, against }`, two
-    strings of at most 500 characters each, a longer one cut to 499 characters plus `…`. Seven
-    kinds carry one: `driver:exam-run` (red rows only), `resolver:reply` (rows whose status is not
-    `RESOLVED`), `driver:wave-blocked` (`CONFLICT` epochs), `driver:publish-fold` (attempts with at
-    least one open conflict, whatever their disposition), `driver:finding`, `driver:finding-refuted`
-    and `handshake:finding` (whose `paths` is the post's expected path). The two finding kinds are
-    new with the receipts. `driver:finding` records a block: its `severity`, the `actor` that raised
-    it, the `round` it was raised in and the `detail` of the block itself — `{task, round, severity,
-    actor, detail, paths, evidence}` — one row per blocking finding of a review round after plan
-    routing, and one for the `minor`/`examiner` hollow-exam row. `driver:finding-refuted` `{task,
-    round, paths, evidence, verdict, refutedBy, detail}` records a block shown wrong: `verdict` says
-    how and `refutedBy` says what showed it, `verdict` one of `flaky` — the driver's re-run went
-    green — `exam-concern-upheld` — review round 1 agreed the fix round's `exam:` concern — and
-    `clean` — review round 2 cleared an exam its author left unchanged after an exam-rejected round.
-    The `FACTS:` block is what a judge sees of them: `factsBlock` from `fleet/facts-block.mjs`
-    renders it at dispatch of an examiner (its Files and its exam landing paths), a reviewer (its
-    touch set and those same landing paths) and a resolver (its conflicted path), by kind and exact
-    path match, at most 20 rows, newest kept, `''` when none — so a run whose record holds no
-    receipt dispatches briefs byte-identical to today's. The rows it matches are the ones this run's
-    own process appended and never another run's. Each non-empty render is one `driver:facts`
-    `{label, task?, receipts}` row — `receipts` the ids it rendered — which is a record row and not
-    a receipt itself. The reading is the operator's, pre-registered and read over `n=5 runs`, the
-    five that follow this merge: how often a block is non-empty (`driver:facts` rows per dispatch),
-    how often a finding cites one (a `detail` naming `receipt <id>`), and whether a judge that saw a
-    prior failure on a path catches more or repeats less than one that did not. Each kind is owed a
-    deletion — `driver:exam-run` a later judge on the same file re-raising the leg that already went
-    red, `resolver:reply` and `driver:wave-blocked` a resolver re-briefed on a path it already gave
-    up on, `driver:publish-fold` a second fold attempt blind to the first attempt's conflict on the
-    same path, `driver:finding` the same block raised twice on one file, `driver:finding-refuted` a
-    false block repeated after it was shown wrong, `handshake:finding` a consumer's examiner blind
-    to the producer's rejected post — and a kind no finding ever cites over that window is removed.
-    `state-exams/` — a tree of `task-<id>/<stem>-<pass>/` directories, one per exam run, whose
-    contents are the exam's own output copied file by file — is there on the same terms, present
-    when the exams wrote it.
-    `frontier/` — THE RUN'S FOLD RECORD, copied file by file at the same relative paths, present
-    when the engine wrote it: each wave directory `wave-<n>/`'s files (`fold_log.jsonl`,
-    `conflicts.json`, `fold_stats.json`, the `conflict-<i>.txt` narrations and `conflict-<i>.hunks.txt`
-    briefs, the `reply-<i>-<attempt>/` resolver replies) and the `emit-weave` sidecar's
-    `manifest.json` and `weave-events.jsonl` — but never `weave/blobs/`, the sidecar's
-    content-addressed store of whole state strings, which the manifest and the event log already
-    name. Each file is copied only when it is at most `FLEET_EVIDENCE_FILE_MAX` bytes (default
-    `1048576`): a fold log carries a whole resolved file's lines per `resolve` row, so the cap is per
-    file, and one over it is named in the boot log and left behind while the rest of the tree lands.
-    `residuals.jsonl` — one JSON object per residual, present when the run had one, and a union
-    across transitions — a row an earlier transition recorded stays when a later report no longer
-    carries it, and no row is written twice:
-    `{run, task, file, line, kind, text, sha, jev}`, keys sorted on the line, `kind` one of `nit`,
-    `unverified`, `deferred`, `structural`, and `jev` the classifier's reading of that row —
-    `kind.status` one of `verified`, `unverified`, `deferred`, `kind.subject` one of `plan text`,
-    `proof leg`, `exam file`, `implementation`, `footprint`, `quality`, `actor` one of
-    `implementer`, `plan`, `examiner`, `nobody`, `attention` a score from 0 to 3, `claim_false` and
-    the three `confidence` scores (`actor`, `status`, `subject`) each from 0 to 1, and `model` the
-    version that answered. The `jev` key is absent — not null — when that row's request failed, and
-    the rule's own `kind` is unchanged by it. It is the same items the PR body lists, on the record
-    rather than in a page a merge closes; append-only, and a run that left nothing writes no file.
-    `residuals-jev.jsonl` — THE CLASSIFIER'S CACHE, beside it, one line per request ever made for
-    the run, `{answers, error, key, model, usage}` with keys sorted, `key` the sha256 hex of the
-    item's name and text joined by a newline; a failure writes `answers` null and `error`
-    `curl exit <n>`, and no key is requested twice, so the file is one line per distinct checklist
-    item and the run repeats no request it already holds.
-    `kata.jsonl` — THE HUB'S OWN RECORD of the run, beside the engine's, present when the plan
-    commit carried a `.ultrapowers/kata.json`. Two line kinds, one JSON object per line with `kind`
-    first and the object's own fields spread after it: `{"kind":"issue", …}` per one of
-    the run's issues — the run issue and the tasks named by that same `.ultrapowers/kata.json` —
-    then `{"kind":"event", …}` per envelope of the events on them, in the log's order. The kata
-    project is the repository's and holds every run of it; no other run's issue and no event that
-    names no issue is exported. Exported at every
-    transition to a temporary name and moved into place, so a fetch that fails leaves the last whole
-    export exactly as it was — the hub is archived and the run's state outlives it here. The last
-    export carries the run issue's own terminal write (the boot's, `sandbox:run-<N>`: the
-    `issue.closed` of a run that ended `done` — #937 — or the `work.state` patch of one that
-    parked or failed and stays open — #964) beside the task closes the engine made.
-    `exams/` is where publish moves the run's reserved exam directories — `tests/exams/<slug>/`
-    and `fleet/tests/exams/<slug>/`, under those same paths, byte for byte — off
-    `ultra/integration-run-<N>` and onto the record, so the fold's suite still runs them and the
-    pull request's diff never carries one.
-    The publish fold writes its own `publish-fold/` receipts directory beside them, holding
-    `receipt.json` (the fold's record: `{ engineHead, attempts: { "1": { tip, candidate, pushedHead,
-    disposition, reason, path, pathsJoined, resolversDispatched, suite, checks, checkRetries } } }`,
-    where `checks` is the candidate checks the fold ran before the suite — one
-    `{ check, path, result }` per command, and `{ check, exam, path, result }` for an exam a joined
-    path's own task named — and `checkRetries` the number of resolvers a red check
-    sent back), `engine-head`, `main.patch`, `run.patch`, `frontier/wave-<attempt>/`,
-    `frontier/wave-<attempt>-retried/` (the wave a red check re-folded, kept whole),
-    `resolver-brief-<i>-<attempt>.txt`, `resolver-brief-<i>-<attempt>-retry.txt` (the re-brief a red
-    check earned), `contending-<i>-<attempt>.txt` (the contending task bodies for that conflict's
-    path, which the brief names by path rather than inlining),
-    `exam-<attempt>-<n>.txt` (one per exam run, `n` from 1 in the order they ran),
-    `suite-<attempt>.txt` and `publish-fold-<attempt>.log`.
-    Committed from a detached worktree at every transition **and, while the engine runs, on the
-    first refresher poll that has seen either `FLEET_COMMIT_EVENTS` new lines in that
-    `events.jsonl` (default 10) or `FLEET_COMMIT_SECONDS` seconds (default 120) since the last
-    commit** — so the record is never more than ten events or two minutes behind the live page,
-    and a poll that saw no new line commits nothing however long it has been; append-only paths,
-    `pull --rebase` and retry on non-fast-forward.
+    `events.jsonl` and `engine.log`, committed at every state transition and, while the engine
+    runs, on the first tick that finds `events.jsonl` changed since the last commit, at most
+    `FLEET_COMMIT_SECONDS` seconds apart (default 60) — so the branch is never far behind the
+    live run, and a tick that saw no change commits nothing however long it has been.
+    **This bullet described the wave engine's own record here in detail through 2026-09-21** —
+    `report.json`'s per-run schema, the `driver:wave-adopted`/`driver:wave-blocked`/
+    `driver:finding` event kinds, the seven kinds of receipt, the `FACTS:` block, `frontier/`,
+    `state-exams/`, `residuals.jsonl`, `kata.jsonl`'s per-event hub export and the fold-again
+    receipts directory — and it left with that engine at cut two; what the current engine writes
+    to this branch beyond the three files above is not yet described in this contract.
   - `ultra/integration-run-<N>` — the work. Pushed only when it is ahead of `base=`; the PR's head.
     It has three fates, decided by the pull request with the highest `number` on that head:
     a merged one goes with the merge (delete-on-merge), a `hold=1` run's stays while its PR is open,
@@ -472,10 +196,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   with the generated setup script on the verb's stdin, under a `# fleet: width=<W> browsers=<C>`
   header line the
   launcher stamps on it — neither W nor C is an assignment key (`COMMENT_KEYS` spells nine and
-  `parse_assignment` fails the boot on a tenth), so that header is a record, and the box arrives at
-  the same W itself: `fleet/run-main.mjs` takes the widest wave of its own compile (`args.json`,
-  which carries `waves` and no `width`) as the engine's dispatch bound, and falls back to 12 only
-  when that compile answers no waves. `<cpu>` and `<memory>` are the PLAN's size,
+  `parse_assignment` fails the boot on a tenth), so that header is a record only: the old wave
+  engine read the same W back off its own compile (`args.json`) as its dispatch bound, falling back
+  to 12 when the compile answered no waves, and that reading left with it at cut two (2026-09-21).
+  `<cpu>` and `<memory>` are the PLAN's size,
   not the fleet's: the launcher compiles the plan once before this verb (`compile_plan.py <plan>
   --stamp run-<N> --base <sha>`, the one payload the sizing and the kata filing both read), takes
   W — the task count of the widest `launch_waves` entry — and C, the browsers that wave may hold
@@ -545,445 +269,45 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   bash, `set -euo pipefail`):** read the comment once → when `$1` (the unit's `%i`) is given, it and the
   comment's `run=` agree or the run fails → parse `engine=` (40 hex or fail) →
   `dst=/home/exedev/engines/<sha>`; if absent, clone `https://github.com/popmechanic/ultrapowers.git`
-  to `$dst.tmp`, `git checkout -q <sha>`, `mv` → `exec "$dst/fleet/sandbox-boot.sh" boot` with
+  to `$dst.tmp`, `git checkout -q <sha>`, `mv` → `exec "$dst/factory/boot.sh" boot` with
   `FLEET_ASSIGNMENT='<comment>'` in its env. It never writes anywhere but `/home/exedev/engines/` and
   `/home/exedev/fleet-boot.log`. It is never overwritten by a run. The assignment comes from
   Reflection, never from `$1`.
-- **Boot script (`fleet/sandbox-boot.sh`), invoked by the bootstrap:** takes the assignment from
-  `FLEET_ASSIGNMENT` (one Reflection read as fallback; no polling loop). Paths: engine
-  `/home/exedev/engines/<sha>` (`ENGINE_REPO_DIR`), target `/home/exedev/target` (clone at `base=`
-  through `https://github.int.exe.xyz/<owner>/<repo>.git`, public fallback `https://github.com/...`),
-  evidence worktree `/home/exedev/evidence`, boot log `/home/exedev/fleet-boot.log`, served
-  `/home/exedev/www/status.json` + `events.jsonl` + `engine.log` — where `events.jsonl` is the run's
-  own log, copied over on every refresher poll, so the page and the log are the same facts.
-  Engine deps: `npm ci` (or `npm install` without a lockfile) in
-  `fleet/` ONLY when `fleet/package.json` declares dependencies.
-  - preflight, right after the assignment is parsed and before any clone: ONE read of Reflection
-    `/integrations`; every github integration's repository is read out of its `help` string
-    (`github.int.exe.xyz/<owner>/<repo>.git`), and a repository named by two integrations is `failed`
-    with the duplicates in `error` — the edge routes by repo path and documents no tie-break between
-    them. Nothing reads `/integrations` again.
-  - the plan: `git fetch origin ultra/plan-run-<N>` in the target clone, and its tip must equal the
-    assignment's `plan=` or the run is `failed` — the plan a run executes is the plan the launcher
-    signed. `.ultrapowers/plan.md` is read out of that commit into `/home/exedev/plans/run-N.md`,
-    which is the path the engine's argv carries.
-  - kata writes are never the run's failure: a claim, comment, metadata patch or close the hub
-    refuses is one `kata:write-failed` event (`what`, `uid`, `detail`) on the record and the run
-    goes on (operator, 2026-09-11 — run-111 died green on a close-message length rule); the
-    boot's ping is the one hard kata gate, and a sheet whose revision disagrees at dispatch is the
-    one fatal read. A `done` close message carries the task title and the merge sha (kata wants
-    ≥40 characters).
-  - kata: `.ultrapowers/kata.json` is read out of that same commit the same way, into
-    `/home/exedev/plans/run-N.kata.json`. A plan commit that carries none is a run that proceeds
-    without kata — no kata request is made and the engine is handed no `--kata`. With the file, and
-    directly after the evidence worktree is built, one request and only one:
-    `curl -fsS --max-time 10 --retry 3 --retry-delay 2 --retry-connrefused
-    https://kata.int.exe.xyz/api/v1/ping`. The retry flags are the contract, not a nicety: a single
-    try turns one hub hiccup — a restart, a two-second `Restart=on-failure` window — into every
-    sandbox of a wave parking at once, and `--retry-connrefused` is what makes a refused connection
-    retryable at all. The request carries no bearer of its own; it passes the hub's exe.dev auth
-    proxy only because the peer key is injected at the edge, and the Host the daemon sees is the
-    hub's own host, which is what kata's `public_origin` check needs. A non-zero curl exit parks the
-    run right there, before any engine: state `parked`, phase `kata unreachable`, `error` exactly
-    `parked: kata unreachable at https://kata.int.exe.xyz (curl exit <n>)`, evidence committed and
-    pushed under the subject `run-<N>: parked — kata unreachable`, both record tags pushed, a
-    `run-<N> parked` notify, exit 0 — no engine unit started and no pull request opened.
-    With the file, every `collect_evidence` also exports the hub's record to the `kata.jsonl` the
-    evidence bullet declares:
-    `GET https://kata.int.exe.xyz/api/v1/projects/<project id>/issues?limit=1000`, then
-    `GET …/projects/<project id>/events?after_id=<c>&limit=1000` from `after_id=0`, following each
-    answer's `next_after_id` until an answer's `events` is empty. The project id is the file's own
-    `project.id`; a fetch that fails logs
-    `kata: export failed (curl exit <n>) — previous kata.jsonl kept` and changes nothing.
-    With the file, the RUN issue — the file's `run.uid` — is closed by the boot, once, at the
-    terminal transition and before that transition's export, so the `issue.closed` rides
-    `kata.jsonl` on the tag (#937): `POST …/projects/<project id>/issues/<run uid>/actions/close`
-    with `Idempotency-Key: run-<N>:run:close` and the body `{actor: "sandbox:run-<N>", reason,
-    message, evidence, retry_protocol: "close-v1"}`. A run whose page ends `done` closes `done`
-    with `{type: "pr", url}` and, when the sandbox merged, `{type: "commit", sha: <merge sha>}`
-    as evidence, the message the plan's H1 and the merge sha (40+ characters — kata refuses a
-    shorter `done`), and it writes `work.state` `done` first (see below). A run whose page ends
-    `parked` or `failed` makes no close at all: it leaves that run issue open and marked instead
-    (#964), for the operator to resolve and close by hand. The marking is one
-    `POST …/projects/<project id>/issues/<run uid>/metadata` under
-    `Idempotency-Key: run-<N>:run:park` with NO `If-Match` and the body
-    `{actor: "sandbox:run-<N>", patch: {…}}`, whose patch is the three flat keys `work.state`
-    (`parked` or `failed`), `work.attention` (`needs-human`) and `work.attention_msg` (the first
-    line of the page's `error`); a `done` run's patch is the single key `work.state`, with no
-    attention keys and the close after it. The task issues are the engine's to close; the boot
-    closes only this one, and never at the ping park, where the hub was never reached. A close or
-    a patch the hub refuses is one `kata:write-failed` event (`what` `close` or `metadata`, `uid`,
-    `detail` naming the curl exit) on the record, and the run publishes and merges exactly as it
-    would have.
-  - status server: `systemd-run --user --unit=fleet-status -p Restart=on-failure -- busybox httpd -f -p 8000 -h /home/exedev/www`
-    (skip when the unit is already active). exe.dev proxies port 8000 at `https://<vm>.exe.xyz/`.
-  - engine: `systemd-run --user --unit=fleet-engine-<N> --pipe --wait --collect -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288 --
-    env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz CLAUDE_CODE_OAUTH_TOKEN=placeholder TYPESAFE_BASE_URL=https://typesafe.int.exe.xyz
-    ULTRAPOWERS_FLEET_RUN=run-N node <engine>/fleet/run-main.mjs /home/exedev/plans/run-N.md run-N --repo /home/exedev/target [--kata /home/exedev/plans/run-N.kata.json] [--tier …]`,
-    cwd `/home/exedev/target`, stdout+stderr teed to `/home/exedev/www/engine.log`; the exit code is the
-    service's (`--wait`).
-    `claude auth status` must show `oauth_token` — logged before the engine starts.
-    Beside it, once, the bearer probe: one `GET https://claude-max.int.exe.xyz/api/oauth/usage`
-    through the proxy carrying `-sS`, `--max-time 20` and the header
-    `authorization: Bearer placeholder` (the edge replaces that header with the real token, so the
-    answer is about the token and not about the script), with the status riding as the answer's last
-    line. A 200 logs `bearer probe: alive` and the unit starts. A 401 or 403 whose body is a JSON
-    error document (`"type":"error"`) parks the run right there, before any engine, exam or
-    implementer has spent a token: state `parked`, phase `credential`, `error` exactly
-    `parked: credential bearer <status> — <the body's error.message>`, evidence committed and pushed,
-    both record tags pushed, a `run-<N> parked` notify, exit 0. exe.dev's own plain-text 403 parks
-    the same way as `parked: credential edge 403 — integration not found or not attached to this VM
-    (trace: <32 hex>)`, the trace id verbatim — that is the id support resolves. Anything else — curl
-    non-zero, or a status outside {200, 401, 403} — logs `bearer probe: inconclusive (…)` and starts
-    the unit: a probe never manufactures a park out of a flake, and a credential that really is dead
-    is still stopped by the engine's own credential row at its first worker.
-    No `--scope`, no `KillMode=process`, no re-exec, no self-hash.
-  - the worker's role is DECLARED, never derived: `createRunWorker(...).agent(prompt, opts)` takes
-    `role` as a required dispatch option beside `label`, one of exactly five values — `examiner`,
-    `implementer`, `reviewer`, `resolver`, `writeSide` — and a dispatch with no `role`, or a `role`
-    outside that set, throws before anything is spawned, naming `role`. The declared role is the one
-    the worker gets: it rides the `role` key of that dispatch's `worker:start` and `worker:end`, and
-    it alone picks the prompt file (`fleet/roles/<role>.md`), the confine settings, the `--add-dir`
-    set, the timeout, the effort and the `--permission-mode` / `--allowedTools` /
-    `--disallowedTools` of `ROLES[role]`. A `label` is an identity and may be renamed freely; its
-    spelling decides no confinement. The engine's declarations: `exam:<id>` examiner, `impl:<id>`
-    and `fix:<id>:<iter>` implementer, `review:<id>:<iter>` reviewer, `resolve:wave<n>:<i>:<a>`
-    resolver, `reconcile:wave<n>:<a>` writeSide.
-  - the worker's API-layer classes (`fleet/run-worker.mjs` `classify`), read off the envelope's
-    `api_error_status`: `infra` is 429, 500, 502, 503, 504 and 529 — the call answers `null` and the
-    engine's infra lane owns the one re-dispatch after `INFRA_BACKOFF_MS`; `credential` is 401, 403
-    and 404 (`CREDENTIAL_STATUSES`) — the first such worker latches `run:fatal` and every later
-    dispatch is refused before it spawns. A 403 is `credential` only when its body is Anthropic's
-    (a JSON `authentication_error` document, or anything else that is not the edge's sentence).
-    A 403 whose body matches `integration not found or not attached to this VM (trace: <32 hex>)`
-    is the class `attachment` (#903), exe.dev's edge refusing the VM, and is never a verdict on its
-    own: the worker asks reflection — `curl -fsS --max-time 5 https://reflection.int.exe.xyz/integrations`,
-    `.integrations[].name` read in-process, no `jq` — and `claude-max` listed there (or reflection
-    unable to answer: curl non-zero, a body that is not the listing) resolves the call as `infra`
-    (`null`, status 403, the same lane as a 529); `claude-max` absent from the listing resolves it as
-    `run:fatal` naming the attachment. Two independent labels refused by the edge inside
-    `ATTACHMENT_WINDOW_MS` (120 s) are `run:fatal` without a probe. The trace id rides verbatim as
-    `trace` on the `worker:edge-403` event (`label`, `trace`, `status`, `probe` one of `attached`,
-    `not-listed`, `inconclusive`, `skipped`, `sightings`, `resolution` one of `infra`, `fail-run`,
-    `detail`), on that worker's `worker:end`, on `run:fatal` when it fails the run, and on the
-    engine's `driver:infra-retry` when the lane re-dispatches a judgment — it is the only handle
-    exe.dev support resolves.
-  - `reason` on every `worker:end` (`fleet/run-worker.mjs`, `reasonFor`): `null` when a result
-    envelope was read off the child's stdout — the `class` then says what happened and no reason is
-    invented for it — and otherwise `{ kind, code, stderr }`, the two shapes of a death before the
-    first token told apart. `kind` is `spawn-error` when the child's `error` event fired before any
-    `close` (the process never started), with `code` the error's errno string — `E2BIG`, `ENOENT`, …
-    `kind` is `no-envelope` when the child ran and closed with no envelope on stdout, with `code` the
-    exit code as a number; a SIGTERM or timeout death is `no-envelope` with `code` 143 and not a
-    third kind. `stderr` is the last 400 characters the child itself wrote to stderr, `''` when it
-    wrote nothing. The same object rides the thrown error at `workerVerdict.reason`, so a caller that
-    never reads the event still learns which death this was (#1054).
-  - publish fold: the target's default branch may have moved while the run worked, so before the PR is
-    opened the boot script folds that tip into the run's branch — under state `running` with phase
-    `publish fold`, after the engine's unit is inactive and before `publishing`, as its own transient
-    unit through the same `systemd-run` prefix as the engine's line above, entry for entry:
-    `systemd-run --user --unit=fleet-fold-<N>-<attempt> --pipe --wait --collect -p MemoryMax=40G
-    -p MemorySwapMax=0 -p LimitNOFILE=524288 -- env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz
-    CLAUDE_CODE_OAUTH_TOKEN=placeholder ULTRAPOWERS_FLEET_RUN=run-N node
-    <engine>/fleet/publish-fold.mjs --repo /home/exedev/target --base <base> --branch
-    ultra/integration-run-N --run N --run-dir <run dir> --evidence-dir
-    /home/exedev/evidence/.ultrapowers/runs/N --attempt <n>`.
-    It folds, runs the suite, and pushes the head with `push_head` — a plain push on attempt 1,
-    `--force-with-lease=<branch>:<pushedHead>` on every attempt after it. Its disposition is one of `folded`,
-    `nothing to join`, `tip unmoved`, `suite red`, `conflict parked` or `cannot fold`, and its receipt is
-    `.ultrapowers/runs/<N>/publish-fold/receipt.json`. The candidate checks it runs before the suite
-    are reasons under those words and never a seventh: a joined path that fails its parser is
-    `cannot fold` with `reason: <path> does not parse`, and a joined path whose own exam — a `- Test:`
-    bullet in the Proof of a task whose Files name that path, on either plan — goes red on the
-    candidate is `suite red` with `reason: <exam> red on <path>`, and the whole suite is not run.
-    A `hold=1` run still folds — only its merge is skipped — and keeps `left open: hold=1`. Amendment 10 holds inside the fold: the only model it may
-    dispatch is the read-only `fleet/roles/resolver.md` role answering through `RESOLVER_SCHEMA`, and
-    every git command, ref move and push is the script's.
-  - after the engine: exit 1 WITH a gate receipt is a verdict (parked), not a failure. `ahead = git rev-list
-    --count <base>..ultra/integration-run-N`; `ahead == 0` → state `parked`, evidence committed, NO push,
-    NO PR. That parked page names what failed: `error` is exactly
-    `parked: <branch> has no commits ahead of base (verdict <verdict>)`, the whole cell.
-    Otherwise the publish fold above runs, and then
-    `publishing` (written only after `systemctl --user is-active fleet-engine-<N>.service` and `systemctl --user is-active fleet-fold-<N>-<attempt>.service` are inactive;
-    evidence committed BEFORE the push, except a fold-again's push, made under `running`, before its `publishing` commit) → the head is on the remote (`push_head`'s `git push origin
-    ultra/integration-run-N`) → one REST call, never `gh`: `curl -sS -X POST
-    https://github.int.exe.xyz/api/v3/repos/<owner>/<repo>/pulls -H 'content-type: application/json'
-    -d <json>` with `title` (`fleet run-N: <plan h1>`), `head` = `ultra/integration-run-N`, `base` = the
-    target's default branch read from the clone (`git symbolic-ref refs/remotes/origin/HEAD`; unreadable
-    is `failed`, never a guess), `body` = the rendered card,
-    `draft` = true unless the verdict is PASS or `approve-receipt.json` is present beside the gate
-    receipt (the two-move rule already approved this run).
-    The body links the plan blob (`blob/ultra/plan/run-<N>/.ultrapowers/plan.md`) and the
-    evidence tree (`tree/ultra/evidence/run-<N>/.ultrapowers/runs/<N>/`), so the PR is the whole
-    index of the run.
-    `.html_url` is recorded as `pr` and `.user.login` as `prAuthor`, both logged; a non-2xx answer is
-    `failed` with the body quoted → `done` (PASS) or `parked`. `gh auth status` and `gh api user` are
-    meaningless through the edge — the aggregate host proxies `/repos/<owner>/<repo>/…` only, and
-    `/user` answers 403 from the edge itself — so nothing asks them.
-  - re-entry is idempotent: a page already `done`/`parked`/`failed` with the engine marker present exits 0;
-    a recorded `pr` is never opened twice and a recorded disclosures ticket is never filed twice (the
-    page's `disclosures` cell is that ticket's record, read beside `pr` before the first write);
-    clones present are not re-cloned; `.ultrapowers/runs/<N>/` is
-    never checked out over. A failure at ANY step commits and pushes a `failed` page before exiting
-    (pre-clone included).
-  - merge: after a gate-green publish the script merges on ITS OWN EVIDENCE and asks the target for
-    no opinion of the head. The publish fold rebased the branch onto the default branch's tip and
-    recorded which tip in `publish-fold/receipt.json`, and the gate then greened the target's suite
-    on the tree that produced; so the merge's one remaining question is whether that tip is still the
-    base's. `git fetch origin <default>` then `git rev-parse refs/remotes/origin/<default>`, compared
-    to the receipt's `tip`. EQUAL: one
-    `PUT /repos/<owner>/<repo>/pulls/<n>/merge` (`merge_method` squash, `commit_title` the plan's H1, `sha`
-    the head, and `commit_message` the run's two trailers on two lines — `Fleet-Run: <N>`
-    then `Plan-Tag: ultra/plan/run-<N>`), and the answer's `sha` is recorded as `merged`.
-    DIFFERENT: no PUT at all — this run has measured nothing about the tree that merge would make —
-    and the PR is left open with `left open: base moved`, one `publish:merge` line whose `left` is
-    `base moved` and whose `detail` is `tip <old> → <new>`, and another fold. A comparison that
-    cannot be made (an unreadable default branch, a receipt with no `tip`) is not a refusal: the PUT
-    goes out. `MERGE_CHECK_WAIT` (30 minutes) is the wait on `GET /pulls/<n>` for a non-null
-    `mergeable` before a PUT that follows a fold-again, and names no check run.
-    The merge folds again for a moved tip, for as long as the fold stays clean and the clock holds:
-    the tip read above, or a 405 whose `message` says the pull request is not mergeable,
-    or that the base branch was modified, or that a required status check is expected
-    (the match ignores case), means the target moved between the fold and the PUT, so the script writes
-    `running "publish fold (attempt <n>)"` (an evidence commit),
-    re-folds onto the new tip, pushes with the lease, writes `publishing` (an evidence commit),
-    reads the tip again on the new head, polls `GET /pulls/<n>` until `mergeable` is
-    non-null and PUTs once more — and answers the next such refusal the same way, for as long as the
-    base keeps moving. THE BOUND IS A WALL CLOCK, NOT A COUNT: the first base-moved refusal always earns
-    its fold, and each one after it earns another only while fewer than `FOLD_AGAIN_WAIT`
-    (`FLEET_FOLD_AGAIN_WAIT`, default 3600 s) seconds have passed since that first one — and a re-fold
-    that comes back on the tip it already offered buys no further fold, because a folder that cannot
-    reach the base will not reach it on a third try. The end of
-    that clock leaves the PR open with
-    `left open: merge PUT answered 405 after <N>s of folding again`, where `<N>` is `FOLD_AGAIN_WAIT`;
-    a fold that moved nothing has no new head to offer and makes no further PUT, leaving the PR open
-    with `left open: merge PUT answered 405 and the fold moved nothing`; and a fold that did not end
-    clean leaves the `left open: publish fold — <disposition text>` hold it always did.
-    Every PUT is one `publish:merge` line, in order, and the LAST of them is what became of the PR.
-    Any other non-2xx keeps the one PUT it made.
-    `hold=1` in the assignment skips all of it, and so does a gate receipt whose `suite.unattributed`
-    is a non-empty list: the PR is ready, no tip is read, no PUT is issued, the note is
-    `left open: suite red, unattributed: <first path>`, the `publish:merge` line's `left` is `held`
-    and its `detail` the paths joined by `, `, and the card carries the `## Held` section below.
-  - record: after the last evidence push of a `done` or `parked` run, tag the plan commit `ultra/plan/run-<N>` and the evidence head `ultra/evidence/run-<N>`, verify both with `git ls-remote --tags` against the remote, then delete the branches `ultra/plan-run-<N>` and `ultra/evidence-run-<N>` in the same step.
-    A run that ends `failed` keeps its branches for the sweep, and a tag that does not verify keeps
-    both branches and logs `record: … kept` — the record step never leaves a run with neither a tag
-    nor a branch.
-- **Kata record (engine):** `run-main.mjs --kata <path>` names the run's kata record
-  (`{url, project, run, tasks}`), read as JSON **before the run tree is provisioned** — an unreadable
-  or malformed file is `kata-unreadable` and the run never starts. With it the engine is handed a
-  client built on `httpTransport({url})` — no `Authorization` header, because the edge injects the
-  bearer — and the record itself; without it the engine makes no request at all and behaves exactly
-  as it does with no hub.
-  Per task, once, at setup — for every task of every wave, before the baseline suite starts and
-  before any worker is dispatched: one `getIssue` of the recorded uid. A revision unequal to the
-  recorded one ends the run
-  (`kata-revision-mismatch`) — the record and the hub disagree about what this run is, and no retry
-  can clear that. The answer's `metadata.factsheet` IS the task from then on: its `files`, its
-  `proofTests`, its `guards`, and every exam landing the pipeline uses, read from `landing[p]` and
-  never computed again. The answer is kept, so the task's own pipeline reads it rather than asking
-  again; then `claim` — on the hub before the implementer and examiner exist.
-  Re-drive reuse (#383): those same answers say which tasks a parked earlier run already finished —
-  an issue whose `status` is `closed` and whose metadata carries both `work.adopted_run` and
-  `work.adopted_sha`, the two flat keys only a `done` close writes. When that set is empty the run
-  proceeds exactly as it does without a parked predecessor and fetches nothing. When it is not
-  empty and every member names the same run `M`, the engine fetches the tag `ultra/evidence/run-<M>`
-  from `origin` into the integration clone, reads `.ultrapowers/runs/<M>/report.json` and
-  `.ultrapowers/runs/<M>/publish-fold/run.patch` off that tag, and folds them through the kernel at
-  `--wave 0` — `--base <report.baseSha>`, `--patch main=` this run's BASE since that base and
-  `--patch reuse=` the tag's own `run.patch`, materialized onto BASE — so the integration head
-  before wave 1 is BASE plus the parked run's adopted work. That head is the base wave 1's clones
-  and the baseline suite start from, and one `driver:reuse` event `{run, tasks, headSha}` records
-  it. A reused task dispatches no worker, is not claimed, is not closed, is not marked
-  `needs-review`, is excluded from its wave's fold, and is reported `status: 'done'`,
-  `reviewVerdict: 'reused'` at that head; the run's suite and its gate still run on the whole tree.
-  Reuse is refused — one `driver:reuse` carrying a `reason` and an empty `tasks`, and the full plan
-  then runs exactly as it does at BASE — when the reused tasks name two different runs, when the tag
-  cannot be fetched, when its `report.json` does not list every reused task as `done`, when its
-  `baseSha` is not an ancestor of BASE, or when the `--wave 0` fold gives up. In that last case the
-  `reason` is the fold's own sentence and never a generic one: the conflict count when the two sides
-  do not fold cleanly (`<N> conflict(s)`, and no resolver exists at setup), the `materialize`
-  refusal the kernel printed, or the missing `fold` verdict. That one sentence is what the event's
-  `reason` carries, what the `reuse fold of <tag>: …` judgment call carries after its colon, and
-  what the `reuse refused: <reason>` log line carries. A refusal is never the run's own failure.
-  The declared packages (#1066): after that reuse pass and before the baseline clone is cut, a run
-  whose args carry a `dependencies` object with at least one spec and both `addCmd` and
-  `addDevCmd` runs ONE shell line in the integration clone — `<addCmd> '<spec>' …` over the
-  runtime specs joined by ` && ` to `<addDevCmd> '<spec>' …` over the dev specs, each spec one
-  single-quoted word, and one half alone when the other group is empty. On exit 0 the driver
-  stages every path `git status --porcelain -uall` reports whose basename is a bootstrap manifest —
-  and no other path, and never a path carrying a `node_modules/` segment whatever its basename, so
-  the vendored tree the install wrote is never committed while a manifest the add command created
-  in a directory that did not exist at BASE (`client/package.json`) is — and commits them
-  under the plan's H1 (`setup: dependencies` when the plan has none) with body `setup:
-  dependencies <runtime specs>` and ` dev: <dev specs>` when there are dev specs. That commit is
-  the SETUP HEAD: `adoptedHead` starts there, every task clone is anchored there before its first
-  dispatch, the baseline clone is checked out there, every patch is diffed against it, and it is
-  the run's `$ULTRA_BASE` in the per-task and the integrated pass alike. `report.baseSha` stays
-  the launch BASE — the publish fold reads the run as `BASE..head`, so the pull request carries
-  the setup commit's manifest and lockfile — and `report.setupSha` is the setup head, `null` on
-  every run that made no setup commit. A line that exits 0 and changes no manifest makes no
-  commit and leaves `setupSha` `null`; a line that exits non-zero restores the clone
-  (`git checkout -- .`, `git clean -fd`) and parks the run before any worker of any label is
-  dispatched — one `waveMerges` row `{wave: 1, status: 'TEST_FAILED'}`, one `driver:wave-blocked`
-  carrying `why: 'setup'` and every task id, a `detail` beginning `setup: the dependency install
-  failed (exit <code>)` quoting the installer's own output, `report.tasks` `[]`, and every task
-  named in `unfinished` as `<id>: never dispatched — the dependency install failed at setup`.
-  Every worker of a run with a record is an actor on the hub, and knows which issue it is working:
-  its process env carries `KATA_SERVER` (the record's url, `https://kata.int.exe.xyz`),
-  `KATA_AUTH_TOKEN=edge-injects-the-bearer`
-  (the literal placeholder and the only one a worker ever holds — the edge replaces the
-  `Authorization` header with the real bearer, so no credential is on the VM),
-  `KATA_AUTHOR=<label>@run-<N>` (the worker's label as the engine spells its events, `impl:3@run-114`)
-  and, for a worker whose label's second colon-segment names a task the record knows,
-  `KATA_REF=<project name>#<short_id>` of that task's issue — the `short_id` read from the SAME
-  `getIssue` answer that checked the revision above and kept on the task's row, never a second read.
-  `reconcile:*` names no task, so it carries no `KATA_REF`.
-  The state a task reached (#998): `state.reached` is the one metadata key that carries it, set with
-  `--json-value` so the hub holds JSON and not a string, and its value is exactly two fields —
-  `expected`, the path under `state-exams/expected/` of the file that task's own exam names, and
-  `content`, the `getContent()` pair of tables and values that file holds. The producing task's own
-  implementer is the only writer of it, posting it once from its worker session after that task's
-  exam is green (`fleet/roles/implementer.md`), and the driver is the only reader: no other role
-  posts it, no other key carries it, and a task whose Proof names no state exam posts nothing.
-  The settings file handed to the three write roles carries, beside the unchanged PreToolUse confine
-  hook, a `SessionStart` hook running `kata attention-hook start` and a `SessionEnd` hook running
-  `kata attention-hook end`, so a worker's start and end are stamped on its issue without the worker
-  remembering to do it; with `KATA_REF` unset the hook exits 0 doing nothing. Without a record none
-  of the four variables is set and the settings file is byte for byte the one it was without a hub.
-  Every capture of the graded patch (the exam handoff's re-capture, and each fix round's) patches the
-  issue's metadata with `touched_files`, the patch's own paths, under the revision the last answer
-  carried; a 412 there is one `kata:write-failed` and the run goes on. The hub is the LIVE view of the run
-  (#880 reads it), so the record's lines reach it as they happen: every `driver:*` event the
-  engine appends, every `worker:start` and `worker:end` envelope (the `meter` included) and every
-  `engine:phase` mark is a comment — the event's JSON line verbatim — posted eagerly on one
-  serialized chain, each post started the moment the one before it has answered, never two in
-  flight, in append order. A `driver:*` line goes on the task's issue when it names one and on the
-  run's issue otherwise; a worker envelope goes on the issue of the task its label's second
-  colon-segment names (`impl:1`, `exam:1`, `fix:1:0`, `review:1:1`) and on the run's issue when
-  that segment names no task the record knows (`reconcile:wave1:1`); a phase mark
-  goes on the run's issue. A `jev:*` line is routed by the `driver:*` rule and by nothing of its
-  own — the task's issue when its `task` names one the record knows, the run's issue otherwise — and
-  a `jev:note` line is routed like every other `jev:` row. One whose reading is `plan_defect` at or
-  above 0.7 is, BESIDES that line, one comment
-  `plan-defect: task <id> (<role>) — <sentence>` on the run's issue: the task's own issue already
-  holds the note, and the run's issue is what the next plan's author opens. It is posted
-  once per note — keyed on the note's `commentUid`, so the same note reaching the mirror twice is one
-  comment — and it is a note to the next author that nothing blocks on: no verdict, gate, park,
-  `tests.passed` or merge decision reads it, and a post the hub refuses is one `kata:write-failed`
-  like any other. `transcript:*`, `engine:log`, `capture:*`, `kata:*` and `run:*` lines
-  are never posted. The chain is still drained — every pending comment on the hub — before each
-  claim, metadata patch and close and before the engine returns. run-main's own `driver:*` lines
-  (`driver:stage`, `driver:auth`, `driver:critic-decision`, `driver:ack-decision`,
-  `driver:approved`, `driver:fail`) are comments on the run's issue too, on run-main's own chain,
-  drained before run-main returns; the record is read before the first stage the log records, so
-  the hub's view starts where the record's does.
-  The worker's raised hand: while a task's worker runs, the engine READS that task's issue metadata
-  every `ATTENTION_POLL_MS` (`args.attentionPollMs`, default 15000 ms) and does not write it — the
-  value is the worker's for as long as that worker is alive. The driver writes it at two instants of
-  its own, both outside any worker's life: the landing below, and the Setup clear.
-  The Setup clear (#1037): a relaunch reuses the same task issues, so the one read `openKataTask`
-  takes at Setup finds whatever the EARLIER run left on them — a `kataMark` verdict on work this
-  run's workers have not touched yet, which is history and not a raised hand. An OPEN task issue
-  whose metadata reads `work.attention` `needs-human` or `stuck` therefore gets, before any worker
-  of that task is dispatched, one `driver:attention-cleared` event `{task, was, msg}` on the run's
-  log — `was` the value read, `msg` the issue's `work.attention_msg` or `''` — and one metadata
-  patch whose two flat keys — and it carries no others — are `work.attention` back to `ok` and
-  `work.attention_msg` emptied. An issue already resting (`ok`, or no `work.attention` key at all) gets neither, and a
-  `closed` issue is never patched at all: it is the reuse pass's, and its last state belongs to the
-  run that finished it. The poll's baseline for a cleared task is that `ok`, so the clear records no
-  `driver:attention` of its own and the status page's attention cell is unchanged by it. Each change
-  of that value to `stuck`, to `needs-human`, or back to `ok` is one `driver:attention` event
-  `{task, attention, msg, actor}` on the run's log: `msg` is the metadata's `work.attention_msg`,
-  and `actor` is the actor the metadata answer exposes — `''` when it exposes none. An unchanged
-  value records nothing, a read the hub refuses records nothing and does not end the run, and a task
-  the record does not name is never polled.
-  The note is the attention signal (#1095): for as long as at least one worker of the run is alive
-  the engine also reads the project's own events page — `kata.events(<project id>, <cursor>)`, one
-  timer for the whole project on that same interval, the cursor set at Setup to the hub's tail by
-  walking the page from `0` through each answer's `next_after_id` until a page whose `events` is
-  empty, and thereafter the last `next_after_id` a non-empty poll answered. Each `issue.commented`
-  event on a task issue this run's record names, whose `actor` begins `impl:`, `exam:` or `fix:`, is
-  read exactly once through `readNote` (`fleet/jev-questions.mjs`) with that task's title and its
-  Claim, and appended as one `jev:note` row `{task, role, actor, commentUid, eventId, chars, read,
-  stuck, plan_defect, divergence, note_kind, operator_should_read, sentence}` — `sentence` the
-  note's first 200 characters with every newline flattened to one space. A call that did not answer
-  is the same row with `read: false`, no answer fields and one log line, and it raises nothing. A
-  comment by anyone else — the engine's own mirror `engine:run-<N>` first of all, which is how these
-  very rows land on the issue — an event of any other type, and a comment on an issue no task row
-  names are never sent to Jev at all. A `read: true` row from an `impl` or a `fix` note whose `stuck`
-  reads 0.7 or above, or from an `exam` note whose `stuck` reads 0.7 or above AND whose `note_kind`
-  is `blocker`, raises the hand the worker did not: on a task not already recorded `needs-human`, one
-  `driver:attention` `{task, attention: 'needs-human', msg: 'note: <sentence>', actor, source:
-  'note'}` and one metadata patch of the same two flat keys under the revision a fresh `getIssue`
-  answers — a patch the hub refuses is one `kata:write-failed` and the row stands. The examiner's
-  second criterion is the examiner's job: it writes the exam before the implementer's patch exists,
-  so a suite red at BASE is its resting state, the hand-in that says so reads as a `handin` or a
-  `reading`, and it is never a hand. The SessionEnd hook's stamp is recorded as one
-  `driver:attention-hook` `{task, msg, actor}` per ARRIVAL of a `needs-human` whose
-  `work.attention_msg` is exactly `session ended without hand-off` (a reading unchanged since the
-  last poll appends nothing), and that stamp no longer sets attention at all: no `driver:attention`,
-  no change to the poll's recorded value, and so no change to the status page's attention cell,
-  which projects `driver:attention` alone. Every other reading is the `driver:attention` it always
-  was, carrying `source` `worker` beside the four fields it carried before. The hook keeps writing
-  the stamp and the landing keeps clearing it, so the rollback is this one reading and nothing else.
-  And before the fix round's worker is dispatched, the
-  engine posts one comment on the task's issue whose body begins `review round <n>:` — always `0`,
-  the pre-review repair round, which is the only round that dispatches a fix worker — followed by
-  that round's blocking findings, one per line, the same lines the fix prompt carries; a refused
-  post is one `kata:write-failed` and the fix round still runs. A reviewer's own blocking findings
-  reach no comment: they end the task, and the row's `notes` carry them.
-  The re-edge (#979): every dispatch's `SIBLING FILES` line names each sibling's issue beside its
-  id — `<id> (<project name>#<short_id>): <files>`, the same reference that sibling's own `KATA_REF`
-  carries — for a run with a record, and the bare `<id>: <files>` for a run without one. A worker
-  whose proof needs a sibling still in flight files `kata edit $KATA_REF --blocked-by <that
-  sibling>`, sets `work.attention` `stuck` naming it and returns `BLOCKED`; the engine then reads
-  that task's issue once more (one `getIssue`, through the non-fatal path — a refused read answers
-  nothing and the task fails as it would have) and looks at its `links` for a `blocks` link whose
-  `from` is another task of this run that was not adopted in the head this task's dispatch went out
-  on — the tree that worker was handed does not carry it, whether the sibling is still in flight or
-  has been adopted since. Each such link is recorded as the edge sibling → task and appended as one
-  `driver:re-edged` event `{task, blockedBy}`; the task itself is put back to unstarted — no row, no
-  fold, no fix round, no `needs-review`, no close — its slot frees, and it is
-  dispatched again, a fresh worker on a clone re-anchored at the head of the moment, once every one
-  of those siblings is adopted. A `BLOCKED` naming no such link is the failure it always was, an edge already
-  recorded for that pair is never recorded twice (a second `BLOCKED` naming it is that failure), and
-  a sibling that fails leaves the task `blocked — depends on a failed task` through the same
-  dependency cascade every plan edge uses.
-  Lands, then adopts (#979): a task issue's `work.state` reads `landed` from the driver's capture of
-  its result and `adopted` from its fold, and that capture also clears `work.attention` back to `ok`
-  with an empty `work.attention_msg`, because the worker's SessionEnd hook stamped `needs-human` on
-  a session that in fact handed off to the driver. The `landed` half is one metadata patch carrying
-  exactly those three flat keys, sent the instant the engine settles a mergeable result — after that
-  result's last worker has ended and before any fold can adopt it — under the revision the engine
-  last held for that issue, through the non-fatal path like every other hub write. Only a landing
-  gets it: a re-edge is not a landing, and neither is a parked, failed or blocked row, which keeps
-  the `needs-human` its marking wrote.
-  Closes: an adopted task's issue is patched first, with exactly the three flat keys
-  `work.adopted_run` (the run stamp's number as an integer, `null` when the stamp is not `run-<N>`),
-  `work.adopted_sha` (the wave's adopted head) and `work.state` (`adopted`), under the revision the
-  engine last held for that issue; then that task is closed `done` — `adopted in wave <n>
-  (<verdict>)`, evidence the adopted commit (the same sha) and the task's test command, under the
-  idempotency key `<runId>:<task>:close`. A task adopted into the tree is the only task the engine
-  ever closes, and so the only task that carries those three keys — a task left for a person
-  carries none of them.
-  Needs review: a failed task stays OPEN and is marked for a person instead — the label
-  `needs-review`, then `work.attention` `needs-human` and `work.attention_msg` `<status>: <verdict>`
-  (its first 200 characters) in one metadata patch, then one comment carrying the result's notes.
-  Every task the run could not finish is marked exactly so: a row that is not `done`
-  (`failed: <verdict>`), every task of a wave the barrier could not make green
-  (`blocked: wave <n> blocked: <detail>`), a task the driver never dispatched because an upstream
-  task failed (`skipped: …`) and a task whose wave the run never reached (`unattempted: …`). All
-  three writes go through the non-fatal path — a refusal is one `kata:write-failed` whose `what` is
-  `label`, `metadata` or `comment`, and the other two still go out — and a task is marked at most
-  once, a wave's marking ahead of the end-of-run sweep's.
-  `wontfix` is never the engine's word about a task — it is a person's decision (#940, #964),
-  taken on the issue this leaves open for them.
-  The RUN issue is not the engine's at all, and since #964 it is nobody's to close automatically:
-  a run whose page ends `parked` or `failed` leaves that issue open, marked by the boot with
-  `work.state` (`parked` or `failed`), `work.attention` (`needs-human`) and `work.attention_msg`
-  (the page's error head) — the three flat keys the boot-script bullet above spells — and the
-  operator resolves it and closes it by hand. Only a run that ended `done` is closed, by the boot.
+- **Boot script (`factory/boot.sh`), invoked by the bootstrap:** clones the target at `base=`,
+  runs the engine as one transient unit, commits evidence under `ultra/evidence-run-<N>` at every
+  transition (see above), and — only when there is something to publish — opens the pull request
+  and, gated by `factory/policy.json`'s `publish.self_merge`, merges it, re-folding onto the
+  target's tip inline (`node factory/engine.mjs --refold`) when it moved underneath the run. The
+  engine unit itself:
+  - engine: `systemd-run --user --unit=fleet-engine-<N> --pipe --wait --collect -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288 -p RuntimeMaxSec=<seconds> -p WorkingDirectory=<target>
+    -- env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=<proxy> CLAUDE_CODE_OAUTH_TOKEN=placeholder
+    TYPESAFE_BASE_URL=https://typesafe.int.exe.xyz ULTRAPOWERS_FLEET_RUN=<run id> node
+    <engine>/factory/engine.mjs --plan <plan> --target <target> --base <sha> --run-dir <dir>`,
+    stdout+stderr teed to `engine.log`.
+    cwd `<target>` — the same working directory the unit's own `WorkingDirectory=` sets.
+  **This bullet spelled out the wave engine's own boot script here in detail through 2026-09-21** —
+  the kata ping and reuse-driven relaunch, the five declared worker roles and their confinement,
+  the worker API-layer error classes, the fold-before-publish transient unit and its six
+  dispositions, the fold-again wall-clock and the tag-and-branch record step — and all of it left
+  with that engine at cut two; what `factory/boot.sh` itself does at this level of detail is not
+  yet written down here.
+- **Kata record (engine):** When a run carries a kata record, a worker's env names the hub it talks
+  to as `KATA_SERVER` (the record's own `url`, or the fallback `https://kata.int.exe.xyz` when it
+  names none), the placeholder bearer the edge replaces on the way out as
+  `KATA_AUTH_TOKEN=edge-injects-the-bearer` (no real token is ever written to disk or argv), the
+  label the run spells its events with as `KATA_AUTHOR=<label>@<run id>`, and — for a label whose
+  task the record knows — that task's issue as `KATA_REF=<project>#<short id>`; a label naming no
+  task (`integration`, a reconcile worker) carries the first three and no `KATA_REF`. The same
+  worker's issue is stamped by two hooks on its session: `kata attention-hook start` and
+  `kata attention-hook end`, exiting 0 doing nothing when the worker carries no `KATA_REF`.
+- **Jev (2026-09-16, the `jev:` seam):** three event kinds ride the run's own event log exactly as
+  a `driver:` row does — `jev:finding` (a reviewer's blocking finding, beside the task it was raised
+  against), `jev:tier` (the tier chosen at a task's dispatch and again at each review round) and
+  `jev:suite-red` (an epoch's own red suite, on the run's issue) — each one a `POST /v1/systemone`
+  against the typesafe host; a failed call is one log line and no row, and the reply itself is
+  read by nothing else in this engine.
+    Receipts (2026-09-16): the same POST carries a `state` object out and an `answers` object back;
+  neither is persisted anywhere this engine reads again.
 - **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","disclosures":"<url or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"wave":"<n or null>","state":"queued|waiting|examining|implementing|proving|reviewing|fixing|folded|failed","role":"<worker label or null>","lastProof":"{cmd, exit, ts} or null","park":"<detail or null>","attention":"{value, msg, ts} or null","blockedBy":"[<task ids>] or null"}}}`
   — the SAME bytes are served at `/status.json` and committed to
   `.ultrapowers/runs/<N>/status.json` on `ultra/evidence-run-<N>` at every transition **and, while
@@ -1002,8 +326,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   named, whatever the `worker:end` before it said, and the state moves on at the task's next
   `worker:start` while `blockedBy` keeps the record of what it waited on; a task no `driver:re-edged`
   names reads `null` there.
-  The same projection is printed for any log by
-  `bash fleet/sandbox-boot.sh project <events.jsonl> [<args.json>]`, which reads and writes nothing.
+  The same projection runs inside `factory/boot.sh` itself (`ev_project`), each time `write_status`
+  writes the page, rather than as a separate invocation over a log file.
   `phase` names the SUB-STEP while the engine runs: the run's last phase event alone when no worker
   is open, and `<phase> · <sub>` — that phase, a space, `·`, a space, and either the label of the
   most recent worker still running or the kind of the last event — otherwise. That last event is the
@@ -1018,88 +342,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `running → publishing → running → publishing → done`, one folded three times more carries three
   such pairs before its `done`, and the count is whatever `FOLD_AGAIN_WAIT` and the folds allowed —
   never a fixed number. `parked` and `failed` are terminal wherever they are reached.
-- **Publish:** the sandbox's own act, at the end of the boot script above — there is no grant tool and no
-  operator step between the gate and the PR.
-  The card is written for a PERSON, and nothing above its folded record is a hash, a JSON fence, a
-  file listing or a reviewer's sentence — the errands and the `Act on these` rows excepted. The
-  body opens with the plan's `**Summary:**` paragraph
-  verbatim, its label stripped — `_No summary was signed with this plan._` when the plan signed
-  none; then the answer line, exactly one of `**Merged** <sha>` (the status page's `merged` cell),
-  `**Merge-ready**`, `**Held:** <text>` (the merge note less its `left open: ` prefix) or
-  `**Parked:** <error>` (the status page's `error` cell); then `> ` and the plan's `**Claim:**`
-  sentence with its provenance tag stripped; then one table,
-  `| task | claim | exam | probes | mutant | suite |`, one row per task in the plan's order, whose
-  cells are read off the plan, `report.json`, `gate-receipt.json` and the status page and are never
-  narrated at publish time — the `mutant` cell reads `SURVIVED` when any state exam's mutant lived,
-  and where they were all killed a row whose `reviewVerdict` is `skipped-mutant-killed` reads
-  `killed, reviewer skipped` and every other row reads `killed`;
-  then one `Act on these: <q> of <n>` line — `q` the residuals the classifier scored at or above
-  `2.5`, `n` all of them — a blank line, and at most ten
-  `- <name> — <text> — attention <a>, actor <actor>, <status> / <subject>` lines, one per row whose
-  `jev.attention` is at least `2.5`, highest attention first and ties in checklist order, `<a>` to
-  one decimal, with no section at all when none qualifies: an `experiment` (#1093) read over
-  `n=5 runs` whose rollback is deleting the section, and nothing gates on it — the answer line, the
-  table, the counts and the record read the same whether it is there or not;
-  then `Residuals: <n> from review` — `Residuals: none` at zero — and, as
-  `- ` lines, only the items nobody else will do; then, below those errands,
-  `Amendments: <n> from workers` and, after a blank line, one
-  `- task <id> — <amends>: <what> — <why>` line per row of `report.json`'s `amendments` in the
-  report's own order, and `Amendments: none` when that list is empty, absent or the report
-  unreadable — the residual count above is never one of these rows.
-  Everything the run knows beyond that is folded
-  into a `<details><summary>Record</summary>` block: the `## fleet <run> — <outcome>` heading, the
-  metadata table, `### Checks`, `## Publish fold`, `## Held`, `### Evidence`, `### Plan` and
-  `### Residuals`, in that order.
-  The PR is ready on PASS or on the two-move rule's approval, a draft otherwise; the
-  sandbox merges its own ready PR once its gate is green and the default branch's tip is the one it
-  folded onto — it asks the target for no verdict of its own — unless the assignment carries
-  `hold=1` or the gate receipt carries an unattributed red, and a draft is the operator's to merge
-  or close. Between the push and the POST the script polls
-  `GET /repos/<owner>/<repo>/branches/<branch>` every 2 s until it reports the pushed head (at most
-  `PUBLISH_BRANCH_WAIT` s, default 60), because a PR opened before GitHub has indexed its branch gets no
-  `pull_request` CI run (#595); on timeout the PR is opened anyway and the log says so. NO GitHub
-  integration is attached to `tag:fleet`, ever.
-  The publish fold is the run's last edit and the record's first section: the body carries a
-  `## Publish fold` section before `### Evidence`, and a fold that ends `suite red`, `conflict parked`
-  or `cannot fold` opens the PR held — non-draft on a green verdict, merge skipped,
-  `left open: publish fold — <disposition text>`. The fold's record is that section, the
-  `publish-fold/` receipts directory and the `driver:publish-fold` event; `status.json` gains no cell
-  for it.
-  Inside the record, after `### Plan`, comes a `### Residuals` checklist — one `- [ ]` line per
-  `deferred:external` ack of the gate receipt and per non-blocking reviewer finding of
-  `report.json`, each with its evidence sentence — and no section at all when there is none; the
-  record closes after it, so the `Closes #<n>` lines are still the body's last lines. The count
-  above the record is every one of those items; the `- ` lines above it are the `deferred:external`
-  ones, the notes of a task whose report row carries `actor` `plan`, and the up-to-ten
-  `Act on these` rows, and no other reviewer
-  sentence appears above the record. The same items are also rows of `residuals.jsonl` on the run's record,
-  written with the evidence and not at publish — the checklist closes with the PR that carries it,
-  the rows do not — and the sandbox files no issue for them, against this target or any other,
-  except the one disclosures ticket, which is not read off that checklist at all. Every
-  `judgmentCalls` entry of `report.json` reading `task <id>: out-of-FILES (not taken): <text>` — an
-  edit a task needed and could not make, as against a plain `out-of-FILES:` entry, which is an edit
-  it did make and is in the diff — goes out, after the PR is opened and before the merge is
-  decided, as ONE issue: `title` `fleet <run> disclosures: <heading>` (the PR title's heading),
-  `body` the PR URL, a blank line and one `- [ ] task <id> — <text>` box per entry in report order,
-  and NO `labels` key. A run with no such entry, and a run that opened no PR, files nothing; a POST
-  that is refused is one log line and the merge goes on unchanged.
-  The ticket's URL is the page's `disclosures` cell once that POST answers 2xx — `null` before it,
-  on a refusal and on a run that files none — which is what makes the filing idempotent across a
-  re-entry the way `pr` makes the PR idempotent.
-  The publish record is three event kinds — four with the ticket's `publish:disclosures`
-  (`url`, `items`), appended once its POST answers 2xx — appended to the run's `events.jsonl`
-  beside the engine's own and carrying the same `id`/`ts` stamp, in the order the steps run:
-  `publish:pr` (`url`, `number`, `draft`) once the POST
-  answers 2xx; `publish:hold` (`why`, the phase's text after `left open: ` — `hold=1`, or
-  `publish fold — <disposition text>`) for a PR left open without asking; and `publish:merge` per
-  merge decision — `sha` alone when the PUT merged, else `sha` null with `left` one of
-  `held`, `base moved` or `refused` and `detail` the account (the unattributed paths joined by
-  `, `, `tip <old> → <new>`, `merge PUT answered <code>`). The LAST `publish:merge`
-  line is what became of the PR.
-  A run held on an unattributed red also carries a `## Held` section in the card, after
-  `## Publish fold` and before `### Evidence`: the failing block cut from `report.json`'s
-  `tests.output`, then `gh pr merge <number> --squash --match-head-commit <head>`, then one line
-  `Fix: <first path> went red on the fold of run-<N>`. No other run carries it.
+- **Publish:** **This bullet spelled out the wave engine's own PR card and publish record here in
+  detail through 2026-09-21** — the card's per-task table, the Jev residuals checklist and
+  `Act on these` list, the amendments list, the disclosures ticket, and the `publish:*` event kinds
+  — and all of it left with that engine at cut two; what the current engine's PR body and publish
+  record contain is not yet written down here.
 - **Integration naming:** ONE GitHub integration per target, `gh-<owner>-<repo>` (slashes → `-`),
   `--act-as-user`, not readonly, created on the policy `tag:fleet` by `node fleet/target.mjs
   <owner>/<repo>` (`integrations add github … --policy 'tag:fleet'`; an object that already exists
@@ -1236,14 +483,14 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   - env-only-auth — the same query answers with `ANTHROPIC_AUTH_TOKEN=placeholder` and NO
     `CLAUDE_CODE_OAUTH_TOKEN`, and the control with neither variable set fails fast
     (`Not logged in · Please run /login`, `terminal_reason: api_error`, 0.5 s). Env-only auth is
-    therefore real and not the edge answering regardless, so the four-flag `--bare` substitute in
-    `fleet/run-worker.mjs` `buildArgs` is retirable (2026-09-17; #1131 probe 2, the 2026-08-28
+    therefore real and not the edge answering regardless, so the four-flag `--bare` substitute the
+    old engine's worker `buildArgs` carried was retirable (2026-09-17; #1131 probe 2, the 2026-08-28
     `--bare` blocker settled).
   - setup-token-infers-but-fails-the-bearer-probe — a `claude setup-token` one-year token installed
     as `claude-max`'s bearer SERVES INFERENCE (same query, structured output, 2.1 s) and passes the
     boot's first gate (`claude auth status` → `authMethod: oauth_token`, `apiProvider: firstParty`),
     but `GET /api/oauth/usage` through the proxy is 403 `oauth_scope_insufficient`, required scope
-    `user:profile`, with a `"type":"error"` body — exactly the shape `sandbox-boot.sh`'s
+    `user:profile`, with a `"type":"error"` body — exactly the shape `factory/boot.sh`'s
     `bearer_probe` classifies as a dead credential, so it would PARK EVERY RUN at boot. The token is
     inference-scoped by construction. Retiring the four-hour refresh and the revocation trap of
     runs 92/100/103 therefore costs one change to the bearer probe, not zero (2026-09-17; #1131

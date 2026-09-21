@@ -93,7 +93,7 @@ work-in-progress was restored byte-for-byte.
 ## How it works
 
 ultrapowers runs on an exe.dev fleet you provision — the plugin is the client, and the engine is
-`fleet/run-engine.mjs`. `/ultrapowers <plan-path>` publishes your approved plan and starts a run on
+`factory/engine.mjs`. `/ultrapowers <plan-path>` publishes your approved plan and starts a run on
 a disposable sandbox of its own; every wave, per-task review, fold and test suite executes there.
 Nothing builds, tests, or merges on your machine. When you approve the finished result at the gate,
 the sandbox opens the pull request on the repository you ran in, with the gate receipt in its body.

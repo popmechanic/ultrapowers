@@ -3,12 +3,12 @@
 ## Purpose & vision
 
 ultrapowers authors a plan and then executes it in parallel. Where a sequential executor
-works a plan one task at a time, ultrapowers compiles it into dependency-ordered waves and
-executes them as a fleet of `claude -p` workers on a disposable exe.dev sandbox, driven by
-the deterministic engine in `fleet/run-engine.mjs`: each worker gets a clone at BASE, its
-patch is captured, and the kernel folds each wave — no LLM orchestrator, no Workflow tool
-(since 0.3.0), and since 0.3.5 no orchestrator VM either: the sandbox owns its run and
-opens its own PR.
+works a plan one task at a time, ultrapowers compiles it into a pool of tasks and runs them
+as a fleet of `claude -p` workers on a disposable exe.dev sandbox, driven by the engine in
+`factory/engine.mjs`: per task an exam worker and `k` implementers each get a clone at
+BASE, a patch is captured, and selection plus the fold kernel adopt the winner — no LLM
+orchestrator, no Workflow tool (since 0.3.0), and since 0.3.5 no orchestrator VM either:
+the sandbox owns its run and opens its own PR.
 
 The aim is to move where humans spend their attention. ultrapowers keeps users
 closely involved in **planning** — deciding what to build and how it will be
@@ -31,11 +31,11 @@ python3 skills/ultrapowers/scripts/catch_counter.py --ledger <f> <path...>   # w
 python3 skills/ultrapowers/scripts/catch_report.py --ledger <f> --tree .     # the deletion candidates that reading names
 ```
 
-Nothing runs on push or on a pull request. The check is the fleet run's own gate
-(`ultra_gate.py`, reading the suite result the engine recorded): a PR merges from the
-sandbox once that gate is green, and a release's check is the confidence run on the merged
-engine. `python3 -m pytest` is the same suite by hand; it bridges every
-`fleet/tests/test_*.mjs`, the engine sims included.
+Nothing runs on push or on a pull request. The check is the fleet run's own gate: the
+sandbox opens a ready pull request when the engine's own run ended green and a draft
+otherwise, so the engine's exit code is the merge decision; a release's check is the
+confidence run on the merged engine. `python3 -m pytest` is the same suite by hand; it
+bridges every `fleet/tests/test_*.mjs`, the engine sims included.
 
 ## Layout
 
@@ -44,9 +44,9 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   `ultra_gate.py`, `ultra_run.py`, `finalize_report.py`, `validate_skill.py`, and the catch
   counter pair), `references/` (`first-run.md` walks each doctor row for a first-timer), and
   `kernel/` — the fold: `fold_wave.py`, `frontier_fold.py`, `hunks.py`, `repo_weave.py` over
-  the sha-pinned `vendor/manyana.py`. **The engine itself lives in `fleet/run-engine.mjs`
-  since 0.3.0** (models never run git); its judgment prompts are plain files in
-  `fleet/roles/*.md` — one copy, no bake step.
+  the sha-pinned `vendor/manyana.py`. **The engine itself lives in `factory/engine.mjs`
+  since cut two (2026-09-21)** (models never run git); its judgment prompts are plain
+  files in `factory/roles/*.md` — one copy, no bake step.
 - `skills/ultrawrite/` — the plan-authoring skill: the claims-v1 grammar (six body slots,
   contracts signed and edges derived; `- Run:` proofs since #592), plus
   `references/greenfield-stack.md`, the provenance/base-fact scripts, and
@@ -82,12 +82,13 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   script installs the toolchain, the immutable bootstrap at `/usr/local/lib/fleet/bootstrap.sh`
   and the unit template, then starts `fleet-run@<N>.service`. The bootstrap
   (`fleet-bootstrap.sh`) reads the comment once, clones the engine at `engine=` into
-  `/home/exedev/engines/<sha>`, and execs that checkout's `sandbox-boot.sh`, which runs the
-  engine as a transient user service under the edge-injected Claude OAuth token (`claude-max`
-  is an `http-proxy` that injects the bearer and nothing else), serves status on port 8000,
-  commits evidence to `ultra/evidence-run-<N>` under `.ultrapowers/runs/<N>/` at every
-  transition, and pushes `ultra/integration-run-<N>` and opens its own PR over REST with
-  `prAuthor` recorded. The PR is the gate; there is no grant step.
+  `/home/exedev/engines/<sha>`, and execs that checkout's `factory/boot.sh` or refuses — no
+  other engine is launchable since cut two (2026-09-21). `boot.sh` runs the engine as a
+  transient user unit under the edge-injected Claude OAuth token (`claude-max` is an
+  `http-proxy` that injects the bearer and nothing else); no status server — git is the
+  record. It commits evidence to `ultra/evidence-run-<N>` under `.ultrapowers/runs/<N>/` at
+  every transition, and pushes `ultra/integration-run-<N>` and opens its own PR over REST
+  with `prAuthor` recorded. The PR is the gate; there is no grant step.
 - **The record is two tags**, both on the target: `ultra/plan/run-<N>` on the plan commit and
   `ultra/evidence/run-<N>` on the final evidence commit. Publish tags both, verifies them with
   `git ls-remote --tags`, then deletes the two branches in the same step — so
@@ -98,13 +99,13 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   `janitor.mjs` reads each fleet VM's comment and asks the kata hub for the run issue's state,
   falling back to the target's evidence through `gh api` only when the hub is dark, never a
   VM's disk; `target.mjs` creates the per-target integration; `doctor.mjs` says which of its
-  eight rows is missing. The engine proper is `run-main.mjs` (entry) → `run-engine.mjs`
-  (deterministic waves), `run-worker.mjs` (`agent()` backed by one `claude -p`),
-  `run-waves.mjs` (clones-at-BASE + `withPatchCapture`), `confine-hook.mjs` (the implementer's
-  `PreToolUse` boundary), `fitness.mjs`, `roles/`. No orchestrator, no control VM, no token on
-  any VM and none in any argv. Own npm deps in `fleet/package.json`. Not plugin machinery —
-  the sandbox clones the engine at the sha the assignment names, so changes here never require
-  a plugin release.
+  eight rows is missing. **What ran the wave engine here left with it at cut two
+  (2026-09-21)** — `cloneAtBase` now lives in `factory/clone.mjs`, and the rest of the
+  engine is `factory/engine.mjs` and its own modules (see below). Past this point `fleet/`
+  is laptop tools and the bootstrap only, not an engine: no orchestrator, no control VM, no
+  token on any VM and none in any argv. Own npm deps in `fleet/package.json`. Not plugin
+  machinery — the sandbox clones the engine at the sha the assignment names, so changes
+  here never require a plugin release.
 - `factory/` — the Jev factory (map #1131): the engine a launch gets when `--engine` names a sha
   whose tree carries `factory/boot.sh` (`fleet/fleet-bootstrap.sh` picks the boot by that file).
   Launch it from the repository checkout, never the plugin cache, with `--engine <sha>`.
@@ -267,8 +268,8 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   task bumps both manifests and edits this bullet's version. The PR is opened and merged by the
   sandbox (the squash commit's title is that H1), and the operator then runs
   `gh release create v0.x.y` with the notes.
-- **Judgment prompts are data files.** `fleet/roles/*.md` are read at dispatch by
-  `fleet/run-engine.mjs` — the single copy, no bake step. Their sizes are *reported* (`wc -w`,
+- **Judgment prompts are data files.** `factory/roles/*.md` are read at dispatch by
+  `factory/engine.mjs` — the single copy, no bake step. Their sizes are *reported* (`wc -w`,
   a release plan's `- Run:`) and gate nothing; a budget a task cannot meet is a demolition order.
   The one surviving role-file pin is stylistic (no shouted imperatives).
   `skills/ultrapowers/references/plan-markers.md` is the runtime half only — its authoring rules
@@ -277,13 +278,13 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   `tests/test_fleet_suite.py` (sentinel `ALL TESTS PASSED`, 300 s per file, no network — `curl`,
   `git`, `gh`, `ssh`, `systemd-run` and `systemctl` are stubbed through a PATH shim). A sim that
   touches the real network or the real repo is caught by `test_sims_are_hermetic.mjs`.
-- **The boot serves a watcher, not just a status page.** `sandbox-boot.sh` copies
-  `events.jsonl` beside the page every tick (temp file + `mv`, never a partial read) and commits
-  evidence on `FLEET_COMMIT_EVENTS` lines or `FLEET_COMMIT_SECONDS` seconds, never on a tick with
-  no new line — that cadence is the contract the live model of the fleet, map #876 *Viz*, reads.
-  The page itself is its own repo on its own VM, not plugin machinery; what binds here is the
-  cadence, written in `fleet/CONTRACT.md` and `fleet/RUNBOOK.md`'s **Watch.** list (its sim,
-  `test_sandbox_boot_viz.mjs`, left with the old boot's other sims at cut one).
+- **The boot commits evidence on a clock, not a watcher.** `factory/boot.sh` copies
+  `events.jsonl` into the evidence worktree every tick, only when the bytes differ (temp file
+  + `mv`, never a partial read), and commits `status.json`, `events.jsonl`, `engine.log` and
+  any `exams/` to `ultra/evidence-run-<N>` every `FLEET_COMMIT_SECONDS` — no status server, no
+  live page: git is the record, written up in `fleet/CONTRACT.md` and `fleet/RUNBOOK.md`. **The
+  old boot served a status page a live model of the fleet, map #876 *Viz*, read over HTTP** —
+  that watcher and its sim left with the old engine at cut one.
 - **Never force-rotate the Claude token while a run is live.** A refresh grant revokes the old
   access token at once, and every in-flight run dies on its next API call with
   `401 OAuth access token has been revoked` before the edge carries the new one (run-103 was
