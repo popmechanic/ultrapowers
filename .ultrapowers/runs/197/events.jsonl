@@ -194,3 +194,14 @@
 {"ts":"2026-09-21T18:38:22.879Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -rn \"usage: boot.sh\" factory fleet tests docs 2>/dev/null | head"}
 {"ts":"2026-09-21T18:38:26.504Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -rn \"boot.sh\" fleet/tests/test_jev_client.mjs fleet/tests/test_setup_script.mjs fleet/tests/_sandbox_boot_helpers.mjs | head -20"}
 {"ts":"2026-09-21T18:38:29.490Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -n \"boot.sh\" factory/tools.mjs factory/engine.mjs fleet/fleet-bootstrap.sh 2>/dev/null | head"}
+{"ts":"2026-09-21T18:38:31.440Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"sed -n '30,55p' fleet/fleet-bootstrap.sh"}
+{"ts":"2026-09-21T18:38:40.064Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"cd /tmp/kt && PATH=/usr/bin:/bin bash -c 'command -v python3'; env -i PATH=/nonexistent bash /home/exedev/run/impl-3-0/factory/boot.sh kata-ids /tmp/kt/ok.json; echo \"rc=$?\""}
+{"ts":"2026-09-21T18:38:42.715Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"mkdir -p /tmp/emptybin && env -i PATH=/tmp/emptybin:/bin /bin/bash /home/exedev/run/impl-3-0/factory/boot.sh kata-ids /tmp/kt/ok.json; echo \"rc=$?\""}
+{"ts":"2026-09-21T18:38:46.266Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"Bash","target":"grep -n \"close skipped\\|close answered\\|federation leave\\|kata_ids\\|kata-ids\" factory/boot.sh"}
+{"ts":"2026-09-21T18:39:02.302Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n \"board\\.\\|deps\\.board\\|kata\\.\" factory/engine.mjs | grep -v \"^[0-9]*: *//\" | head -60"}
+{"ts":"2026-09-21T18:39:27.969Z","kind":"worker:tool","task":"3","label":"referee:3","tool":"StructuredOutput"}
+{"ts":"2026-09-21T18:39:28.109Z","kind":"dispatch:end","task":"3","label":"referee:3","role":"referee","wall_ms":154665,"cost_usd":1.1979470000000003,"error":null}
+{"ts":"2026-09-21T18:39:30.326Z","kind":"referee","task":"3","findings":11,"blocking":0,"grades":["minor","minor","minor","minor","minor","minor","minor","minor","minor","minor","minor"]}
+{"ts":"2026-09-21T18:39:30.711Z","kind":"landing","task":"3","k":1,"examExit":0,"claim":0.81,"coverage":[0.96,0.94,0.89,0.94],"candidateSha":"a4d93772f862b8b87eec544c3205791ee29b73a5","wall_ms":430270}
+{"ts":"2026-09-21T18:39:31.245Z","kind":"check:line","task":"3","cmd":"git diff --quiet $ULTRA_BASE -- ':(glob)fleet/run-*.mjs' fleet/sandbox-boot.sh fleet/fleet-bootstrap.sh fleet/roles fleet/kata-client.mjs fleet/launch.mjs fleet/janitor.mjs skills/ultrapowers/kernel skills/ultrapowers/scripts","exit":0,"minor":false}
+{"ts":"2026-09-21T18:39:31.245Z","kind":"fold:verify","task":"3","ran":[{"task":"3","exit":0}]}
