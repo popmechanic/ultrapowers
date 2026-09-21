@@ -1,0 +1,88 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "5552c4a532d315e1c58aeff7304dc9c5a0292bc63c8ffebe8cbcfd8ec1760d71",
+   "verdict": "pass",
+   "reason": "Legs (a)-(f) catch M1-M6; ms 250 and the union thresholds recompute; base pins nothing opposite."
+  },
+  "2": {
+   "hash": "cb7d84862bd89a8c72a4da579343d78746e2abf5d04a34e3af936d1658ac3068",
+   "verdict": "pass",
+   "reason": "Legs (a)-(d) and the three tagged Runs catch M1-M6 after round 1's rejection (M3 grep-only, M4 uncited) moved the writer into buildDeps and gave M4 a prover."
+  },
+  "3": {
+   "hash": "b01307ca1fb0db310f9c5bc4061cb1ec150a628a4887e30c7e581e189447b28c",
+   "verdict": "pass",
+   "reason": "Legs (a)-(e) catch M1-M5; every table cell, the sort order and both flags recompute."
+  },
+  "4": {
+   "hash": "a4f2ebfa3576269b55ad6cb669201d94104d4440019e51183ae5d05a82e294f3",
+   "verdict": "pass",
+   "reason": "Legs (a)-(d) and two tagged Runs catch M1-M5 after round 1's rejection (M4's absences grep-only) moved the tick into the pure module."
+  }
+ },
+ "tally": {
+  "dispatched": 8,
+  "rejected": 2,
+  "rounds": 3,
+  "base": "623860409a6bd1210475d12f0299f2a241b24da6"
+ },
+ "authoring": {
+  "minutes": 50,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "#1198 next",
+    "options": [
+     "Record, decide at n=5",
+     "Stop asking on a green exam",
+     "Per-leg arithmetic now"
+    ],
+    "recommended": "Record, decide at n=5",
+    "picked": "Record, decide at n=5"
+   },
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Sign as drafted",
+     "Narrower: rows only"
+    ],
+    "recommended": "Sign as drafted",
+    "picked": "Sign as drafted"
+   },
+   {
+    "question": "Supervisor state",
+    "options": [
+     "(a) Record both, side by side",
+     "(b) Replace behind a switch",
+     "(c) Leave it out"
+    ],
+    "recommended": "(a) Record both, side by side",
+    "picked": "(a) Record both, side by side"
+   },
+   {
+    "question": "Census home",
+    "options": [
+     "Beside the catch counter",
+     "In factory/replay/"
+    ],
+    "recommended": "Beside the catch counter",
+    "picked": "Beside the catch counter"
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers"
+   }
+  ]
+ }
+}
