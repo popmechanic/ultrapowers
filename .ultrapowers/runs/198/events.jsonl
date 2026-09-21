@@ -207,3 +207,4 @@
 {"ts":"2026-09-21T19:15:10.222Z","kind":"landing","task":"1","k":1,"examExit":0,"claim":0.52,"coverage":[0.92,0.79,0.79,0.91],"candidateSha":"cad91f8894162d516f11c745dfda3006dcbf8f6c","wall_ms":797591}
 {"ts":"2026-09-21T19:15:17.534Z","kind":"check:line","task":"1","cmd":"git diff --quiet $ULTRA_BASE -- factory fleet skills/ultrapowers/kernel","exit":0,"minor":false}
 {"ts":"2026-09-21T19:15:17.534Z","kind":"fold:verify","task":"1","ran":[{"task":"1","exit":0}],"attempt":1}
+{"kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1180","number":1180,"draft":false}
