@@ -52,7 +52,7 @@ const ENGINE = 'b'.repeat(40)
 const NOW = new Date('2026-09-16T03:20:00.000Z')
 const CAPPED = { cpu: '6', memory: '8GB' }
 const BILLING_OK = { max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'Individual' }
-const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n', 'pytest.ini': '[pytest]\n' }
+const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n' }
 const PLAN = '# a plan\n\nOne plan, and a trailing newline.\n'
 const OTHER_PLAN = '# a plan\n\nOne plan, and a trailing newline.\nAnd one more line.\n'
 const LIVE_VM = 'fleet-r7-2609160900-ab12'

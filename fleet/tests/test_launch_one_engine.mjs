@@ -60,7 +60,7 @@ const ENGINE = 'c'.repeat(40)
 const NOW = new Date('2026-09-21T12:00:00.000Z')
 const CAPPED = { cpu: '6', memory: '8GB' }
 const BILLING_OK = { max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'Individual' }
-const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n', 'pytest.ini': '[pytest]\n' }
+const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n' }
 const PLAN = '# a plan\n\nOne plan, and a trailing newline.\n'
 
 // ── The compiled plan the stubbed compiler answers ──────────────────────────
