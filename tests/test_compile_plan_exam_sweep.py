@@ -35,10 +35,9 @@ The five Machine clauses, restated, and where each is graded here:
   * M4 `fleet/roles/examiner.md` carries the sentence above `## The issue`.
     Graded by leg (i), the Proof's third `Run:` line.
   * M5 `skills/ultrawrite/references/authoring-gotchas.md` carries one new row
-    naming `one Run, one exam` under a rows heading reading
-    `## The sixteen rows`, and the rows between that heading and
-    `## Three older lessons` number exactly sixteen. Graded by leg (j), the
-    Proof's fourth and fifth `Run:` lines.
+    naming `one Run, one exam` under a rows heading matching `## The` … `rows`
+    (a count-free heading, since #1173 — the row count is no longer pinned
+    here). Graded by leg (j), the Proof's fourth `Run:` line.
 
 The Proof's sixth `Run:` line, `wc -w fleet/roles/examiner.md`, is a reading
 the task reports and never gates, so no leg cites it and none is written here.
@@ -393,13 +392,9 @@ RUN_EXAMINER = (
     r"grep -q 'never runs another exam.*linter.*typecheck.*fold'")
 
 RUN_GOTCHAS_ROW = (
-    r"sed -n '/^## The sixteen rows/,/^## Three older/p' "
+    r"sed -n '/^## The.* rows$/,/^## Three older/p' "
     r"skills/ultrawrite/references/authoring-gotchas.md | tr '\n' ' ' | "
     r"grep -q 'one Run, one exam'")
-
-RUN_GOTCHAS_COUNT = (
-    r'''test "$(sed -n '/^## The sixteen rows/,/^## Three older/p' '''
-    r'''skills/ultrawrite/references/authoring-gotchas.md | grep -c '^- \*\*')" = 16''')
 
 
 def _shell(cmd, cwd=None):
@@ -512,24 +507,14 @@ def test_i_the_examiner_role_says_an_exam_never_runs_another_exam():
         "is the fold's\nstderr:\n%s" % p.stderr)
 
 
-# ── (j) the gotchas row, and the row count ─────────────────────────────────
-# "(j) the two gotchas `Run:` lines below exit 0 [M5]"
+# ── (j) the gotchas row ──────────────────────────────────────────────────────
+# "(j) the gotchas `Run:` line below exits 0 [M5]"
 
 def test_j_the_gotchas_rows_carry_one_run_one_exam():
     """(j)/[M5]: one new row naming `one Run, one exam`, under a rows heading
-    that now reads `## The sixteen rows`."""
+    matching `## The` … `rows` — a count-free heading, since #1173."""
     p = _shell(RUN_GOTCHAS_ROW)
     assert p.returncode == 0, (
         "skills/ultrawrite/references/authoring-gotchas.md has no "
-        "`one Run, one exam` row under `## The sixteen rows`\n"
+        "`one Run, one exam` row under its rows heading\n"
         "stderr:\n%s" % p.stderr)
-
-
-def test_j_the_gotchas_rows_number_exactly_sixteen():
-    """(j)/[M5]: the rows between `## The sixteen rows` and `## Three older
-    lessons` number exactly sixteen — the heading counts what is under it."""
-    p = _shell(RUN_GOTCHAS_COUNT)
-    assert p.returncode == 0, (
-        "the rows between `## The sixteen rows` and `## Three older lessons` "
-        "in skills/ultrawrite/references/authoring-gotchas.md do not number "
-        "sixteen\nstderr:\n%s" % p.stderr)
