@@ -231,8 +231,8 @@ export const SHALLOW_FIX = 'is a shallow clone — unshallow it by hand and rela
 /**
  * What a word of a plan's `**Exam command:**` template may be spelled with
  * (#716). The sandbox reads that template as ONE RUNNER AND ITS ARGUMENTS —
- * `ultra_run.py`'s `runner_for` takes `cmd.split()[0]` for a command its table
- * does not know and probes it with `command -v` — so the class admits what a
+ * the first word is the runner, probed with `command -v` when no table knows it
+ * (the rule the wave engine's sandbox driver set, kept since) — so the class admits what a
  * runner and its flags are spelled with (`-q`, `--tb=short`, `./...`,
  * `pkg:test`, `a,b`) and excludes every shell operator, quote and expansion
  * character. This is the same literal `compile_plan.py` writes as
@@ -1524,8 +1524,8 @@ async function readDefaultBranch ({ exec, repoDir }) {
 
 /**
  * The sandbox's own words for a target it cannot test, copied verbatim from the
- * `test-command` stage's failure line in `skills/ultrapowers/scripts/ultra_run.py`
- * rather than paraphrased: the operator who reads this on the laptop and the
+ * `test-command` stage's failure line of the wave engine's sandbox driver (deleted
+ * 2026-09-21) rather than paraphrased: the operator who reads this on the laptop and the
  * operator who would have read it off a preflight receipt read the same sentence.
  */
 export const NO_TEST_CMD_LINE =
@@ -1545,9 +1545,9 @@ export const NO_TEST_CMD_FIX =
 
 /**
  * The sandbox's test-command ladder, run against the tree at `--base` on the
- * laptop. This mirrors `detect_test_cmd` in `skills/ultrapowers/scripts/ultra_run.py`
- * — the launcher spawns no python, so the ladder is mirrored here and
- * `detect_test_cmd` in `ultra_run.py` stays the one the sandbox runs.
+ * laptop. It began as a mirror of the wave engine's sandbox-side `detect_test_cmd`
+ * (deleted 2026-09-21); the launcher spawns no python, so the ladder lives here, and
+ * it is now the only copy.
  *
  * Only whether a rung matches is decided here: the launcher never runs pytest,
  * never asks about xdist and never spawns python. The rule name is for the
