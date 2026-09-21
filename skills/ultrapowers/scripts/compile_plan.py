@@ -3130,6 +3130,63 @@ def green_at_base_lines(tasks, base_tree, timeout_s=GREEN_AT_BASE_TIMEOUT_S):
     return lines
 
 
+RED_FACT = "RED-AT-BASE fact:"
+
+
+def red_at_base_lines(checks, base_tree, timeout_s=GREEN_AT_BASE_TIMEOUT_S):
+    """The plan's Global Constraints `Check:` commands, rehearsed at BASE, as
+    fact lines — the mirror image of `green_at_base_lines` for the run-wide
+    checks rather than the Proof `Run:` lines (#1173, fixture run-36).
+
+    A `Check:` is meant to hold for the whole plan on every pass; one already
+    red before any task lands is a red no task can be blamed for, unless one
+    task's Files happen to own the offending path (a separate refusal,
+    `constraint_check_ownership_violations`). This rehearsal exists so a plan
+    author reads that fact instead of spending repair attempts on it.
+
+    Each command runs, in section order, in a detached worktree cut at BASE
+    under a fresh temporary directory — its own worktree, torn down with
+    `--force` before this returns, exactly the way `green_at_base_lines` cuts
+    and drops its own. A worktree at BASE has no installed dependencies, so a
+    check such as `bun run typecheck` fails there for that reason alone; the
+    line says `in a bare worktree` so a reader knows why, and never reads it
+    as a refusal.
+
+    A command that exits 0 draws nothing — green at BASE is unremarkable. A
+    command that exits non-zero draws one line naming the command and its
+    exit code, with ` (minor)` appended to the command when the check was
+    marked `(minor)`. A command still running at `timeout_s` is killed and
+    reported as not run, the same way a `Run:` line is. `[]` for a plan with
+    no checks or no base commit — no worktree is cut for nothing to run in."""
+    sha = base_tree.commit_sha() if base_tree is not None else ""
+    lines = []
+    if sha and checks:
+        tmp = tempfile.mkdtemp(prefix="ultra-red-")
+        worktree = os.path.join(tmp, "tree")
+        try:
+            ok, _ = _git_run(base_tree.repo, "worktree", "add", "--detach",
+                             worktree, sha)
+            for check in (checks if ok else []):
+                command = check["cmd"]
+                suffix = " (minor)" if check["minor"] else ""
+                code, _elapsed = _run_at_base(command, worktree, sha, timeout_s)
+                if code is None:
+                    lines.append(
+                        "%s check: %s — not run (timeout after %s s)"
+                        % (RED_FACT, command, timeout_s))
+                elif code != 0:
+                    lines.append(
+                        "%s check: %s%s — exits %d at BASE in a bare "
+                        "worktree; no task can turn it green unless its "
+                        "Files hold the offender"
+                        % (RED_FACT, command, suffix, code))
+        finally:
+            _git_run(base_tree.repo, "worktree", "remove", "--force", worktree)
+            _git_run(base_tree.repo, "worktree", "prune")
+            shutil.rmtree(tmp, ignore_errors=True)
+    return lines
+
+
 # Path referents. A backticked token in a task body may name a repo path, and
 # `skills/ultrawrite/scripts/pin_base_facts.py` resolves those referents
 # against the tree at BASE. It imports the normalizer (`_path_referent`) and
@@ -3311,6 +3368,12 @@ def main(argv=None):
             # seconds would buy a reading of a document nobody will dispatch.
             if rc == 0:
                 for line in green_at_base_lines(tasks, base_tree):
+                    print(line)
+                # ... and beside those, which of the plan's run-wide `Check:`
+                # lines are already red at BASE (#1173) — same gate, same
+                # reason: a refused plan's checks are not run either.
+                for line in red_at_base_lines(
+                        parse_constraint_checks(plan_text), base_tree):
                     print(line)
             # ... and last, what the sitting that wrote this plan cost (#988).
             # Only with a tree to read, like its neighbours above: a bare

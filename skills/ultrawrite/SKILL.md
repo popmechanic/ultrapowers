@@ -154,6 +154,9 @@ where this plan's Files sets were wrong.
   A command still running at 30 s is killed and reported `not run (timeout after 30 s)`; a
   non-zero exit prints nothing. This release the line is a fact, not a refusal — `PLAN OK`
   still prints, and the refusal for a prover green at BASE comes after one release's census.
+  The same rehearsal also runs the plan's Global Constraints `Check:` lines in that worktree
+  and prints a `RED-AT-BASE fact:` line for each that exits non-zero there — a red no task
+  can be blamed for unless one task's Files hold the offender.
   A bare `--check` without `--base` runs nothing.
   A `- Guard:` bullet in this slot names **one of this Proof's own `Test:` paths**, and it
   is the one way an exam file reaches the pull request: the peer examiner still writes the

@@ -14,7 +14,7 @@ command carrying a backtick is `command carries a backtick` from
 check, here, against this file — `suite-total-pin` and `directory-absence-pin`
 included. Nothing prints them.
 
-## The sixteen rows
+## The rows
 
 - **A zero-count grep over a source file counts its comments too.** A `Run:` that pins
   `grep -c <symbol> <file>` = 0 goes red the moment the implementer deletes the code and
@@ -160,6 +160,19 @@ included. Nothing prints them.
   and review, the count read 7 where the exam pinned 3, and the publish fold
   went red on a correct tree; the amendments exam had the same leg, 4 ≠ 2
   (run-183, PR #1111, hand fold `f3c69320`).
+
+- **A `Check:` red at BASE is a red no task of the plan owns, unless one
+  task's Files hold the offender.** A run-wide `Check:` is paid by every task
+  on every pass; one already failing before any work is done costs repair
+  attempts that can change nothing, because no task caused it and no task can
+  turn it green. The compiler now rehearses every `- Check:` line in a
+  worktree at BASE under `--check --base` and prints one `RED-AT-BASE fact:`
+  line per command that exits non-zero there — read it before dispatch, the
+  same way a `GREEN-AT-BASE fact:` line is read. A fixture `Check:` copied
+  verbatim from `greenfield-stack.md` exited 1 at BASE on a file no task
+  owned, turned both fold checks red, and bought two repair attempts that
+  could change nothing (fixture run-36, popmechanic/tinyapp-fixture,
+  2026-09-21; #1173).
 
 ## Three older lessons of the same kind
 

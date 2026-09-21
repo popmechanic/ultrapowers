@@ -702,3 +702,134 @@ def test_h_the_function_has_the_signature_the_interface_names():
         "timeout_s=GREEN_AT_BASE_TIMEOUT_S)` definition")
     assert callable(getattr(compile_plan, "green_at_base_lines", None)), (
         "compile_plan has no module-level green_at_base_lines")
+
+
+# =========================================================================== #
+# RED-AT-BASE — "The laptop check rehearses the plan's Check lines at BASE    #
+# and names the ones already red" (#1173). Mirrors GREEN-AT-BASE above, for   #
+# the plan's `## Global Constraints` `- Check:` bullets instead of the Proof's #
+# `Run:` lines: `red_at_base_lines(checks, base_tree, timeout_s)` draws one    #
+# `RED-AT-BASE fact:` line per command that exits non-zero at BASE, and       #
+# nothing for one that exits 0. Three legs, one per Machine clause; M4 (the   #
+# gotchas row, the heading rename, and the loosened sweep-exam pins) is       #
+# proven by the Proof's `Run:` lines and needs no pytest leg here.            #
+# =========================================================================== #
+
+RED_FACT = "RED-AT-BASE fact: "
+RED_LINE_FMT = (RED_FACT + "check: %s — exits %s at BASE in a bare "
+                "worktree; no task can turn it green unless its Files hold "
+                "the offender")
+
+
+def plan_with_checks(checks, **kw):
+    """`make_plan`'s text (`**kw` as `make_plan` itself takes them) with a
+    `## Global Constraints` section holding one `- Check: <command>` bullet
+    per entry of `checks`, spliced in between the plan header and the task
+    body — the shape `CONSTRAINTS_SWEEPING_CHECK` in
+    `tests/test_compile_plan_exam_sweep.py` uses. `make_plan` itself has no
+    Global Constraints parameter; this builds the text directly rather than
+    widening its signature for the legs above, which never need one."""
+    text = make_plan(**kw)
+    constraints = "\n## Global Constraints\n\n" + "".join(
+        "- Check: %s\n" % c for c in checks)
+    return HEAD + constraints + text[len(HEAD):]
+
+
+def red_fact_lines(stdout):
+    """Every `RED-AT-BASE fact:` line, in the order printed."""
+    return [line for line in stdout.splitlines() if line.startswith(RED_FACT)]
+
+
+def check_at_unsigned(repo, name, text, *flags):
+    """`check_at`, but with the gate-verdict record removed right after the
+    plan is signed and written — a refusal for a reason that has nothing to
+    do with the plan's own `Check:` line, which `gate_verdict_violations`
+    already refuses with `grammar: gate verdicts missing …` (#3's witness for
+    leg (c))."""
+    plan = write_plan(repo, name, text)
+    verdicts_path(plan).unlink()
+    return subprocess.run([sys.executable, str(COMPILER), str(plan),
+                           "--check", *flags],
+                          capture_output=True, text=True)
+
+
+# --------------------------------------------------------------------------- #
+# [M1] — exactly one line, naming the command that is red at BASE             #
+# --------------------------------------------------------------------------- #
+
+PLAN_RED_A = plan_with_checks(["false", "true"])
+
+
+def test_red_a_exactly_one_line_names_the_failing_check(tmp_path):
+    """[M1]: a plan whose `## Global Constraints` holds `- Check: false` and
+    `- Check: true` still prints `PLAN OK` first and exits 0; stdout carries
+    exactly one `RED-AT-BASE fact:` line, and — by equality, the whole line
+    the Context spells — it names `false` and exit `1`; no such line names
+    `true`, which exits 0 at BASE and so draws nothing."""
+    repo, head = base_repo(tmp_path)
+    p = check_at(repo, "reda.md", PLAN_RED_A, "--base", head)
+    out = p.stdout + p.stderr
+    assert p.returncode == 0, out
+    assert p.stdout.splitlines()[:1] == ["PLAN OK"], p.stdout
+    assert red_fact_lines(p.stdout) == [RED_LINE_FMT % ("false", 1)], p.stdout
+
+
+# --------------------------------------------------------------------------- #
+# [M2] — the check runs in the Run: lines' own worktree at BASE, ULTRA_BASE   #
+# set to the base sha, and the worktree is gone afterwards                    #
+# --------------------------------------------------------------------------- #
+
+def test_red_b_the_check_sees_the_runs_lines_own_base_env_and_worktree(
+        tmp_path):
+    """[M2]: a check that asserts `$ULTRA_BASE` equals the base commit's own
+    sha exits 0 and draws no `RED-AT-BASE fact:` line — so it really did run
+    in a worktree checked out at BASE, with that sha in its environment — and
+    afterwards `git worktree list` in the plan's repository names exactly one
+    worktree: the repository itself, the rehearsal's own already gone."""
+    repo, head = base_repo(tmp_path)
+    plan = plan_with_checks(['test "$ULTRA_BASE" = %s' % head])
+    p = check_at(repo, "redb.md", plan, "--base", head)
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert red_fact_lines(p.stdout) == [], p.stdout
+    paths = worktree_paths(repo)
+    assert len(paths) == 1, paths
+    assert pathlib.Path(paths[0]).resolve() == repo.resolve(), (paths, repo)
+
+
+# --------------------------------------------------------------------------- #
+# [M3] — a bare --check, a plain compile, and a refused plan run no check     #
+# --------------------------------------------------------------------------- #
+
+PLAN_RED_C = plan_with_checks(["false"])
+
+
+def test_red_c_a_bare_check_runs_no_check(tmp_path):
+    """[M3], first scenario: a bare `--check` validates grammar only — no
+    `Check:` command runs, so no `RED-AT-BASE fact:` line prints."""
+    repo, _head = base_repo(tmp_path)
+    p = check_at(repo, "redc1.md", PLAN_RED_C)
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert red_fact_lines(p.stdout) == [], p.stdout
+
+
+def test_red_c_a_plain_compile_with_base_runs_no_check(tmp_path):
+    """[M3], second scenario: a plain compile (no `--check`) emits the launch
+    payload; it rehearses nothing, `--base` or not."""
+    repo, head = base_repo(tmp_path)
+    p = compile_at(repo, "redc2.md", PLAN_RED_C, "--base", head)
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert RED_FACT not in p.stdout, p.stdout
+    assert RED_FACT not in p.stderr, p.stderr
+
+
+def test_red_c_a_refused_check_at_base_runs_no_check(tmp_path):
+    """[M3], third scenario: `--check --base` on a plan refused for a reason
+    unrelated to its `Check:` line (its gate-verdict record is missing)
+    rehearses nothing — a plan the grammar rejects is not a plan worth
+    timing."""
+    repo, head = base_repo(tmp_path)
+    p = check_at_unsigned(repo, "redc3.md", PLAN_RED_C, "--base", head)
+    out = p.stdout + p.stderr
+    assert p.returncode == 2, out
+    assert "PLAN OK" not in out, out
+    assert RED_FACT not in out, out

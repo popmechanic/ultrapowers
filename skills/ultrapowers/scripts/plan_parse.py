@@ -68,6 +68,26 @@ PROOF_RUN_BULLET = re.compile(r'^-\s*Run\s*:\s*(.+)$', re.I)
 PROOF_GUARD_BULLET = re.compile(r'^-\s*Guard\s*:\s*(.+)$', re.I)
 PROOF_LEGS_BULLET = re.compile(r'^-\s*Legs\s*:\s*(.+)$', re.I)
 LEG_MARKER_RE = re.compile(r'\([a-z]\)')
+
+# A Proof `Run:` bullet's citation tag (mirrors compile_plan.py's
+# RUN_CITE_RE exactly): the same bracket shape a Legs bullet's own citation
+# carries (`[M2]`, `[M1, M3]`), anchored at the END of the value after
+# whitespace -- a tag mid-command is part of the command, not a tag.
+RUN_CITE_RE = re.compile(r"\s*\[\s*(M\d+(?:\s*,\s*M\d+)*)\s*\]\s*$")
+
+
+def _claims_run_cites(value):
+    """Split a Proof `Run:` value into (command text, sorted clause ids),
+    exactly as compile_plan.py's `_claims_run_cites` does. Untagged, the
+    value rides back whole with `[]`. Tagged, the tag is cut off FIRST --
+    before any backtick-wrapper stripping -- and its ids are returned
+    sorted by number."""
+    m = RUN_CITE_RE.search(value)
+    if not m:
+        return value, []
+    cites = sorted({c.strip() for c in m.group(1).split(",")},
+                   key=lambda c: int(c[1:]))
+    return value[:m.start()], cites
 LEG_CITATION_RE = re.compile(r'\[M(\d+)\]')
 TYPE_LINE = re.compile(r'^\*\*Type:\*\*\s*(.+?)\s*$', re.I)
 EXAM_CMD_LINE = re.compile(r'^\*\*Exam command:\*\*\s*(.+?)\s*$', re.I)
@@ -261,6 +281,7 @@ def _parse_task_body(body_lines):
     proof_slot_lines = slot_lines("proof")
     proof_tests = []
     proof_runs = []
+    proof_run_clauses = []
     proof_guards = []
     legs_start = None
     legs_first_text = None
@@ -283,10 +304,12 @@ def _parse_task_body(body_lines):
         m = PROOF_RUN_BULLET.match(s)
         if m:
             val = m.group(1).strip()
+            val, clauses = _claims_run_cites(val)
             bm = re.match(r'^`([^`]*)`$', val)
             if bm:
                 val = bm.group(1)
             proof_runs.append(val)
+            proof_run_clauses.append(clauses)
             continue
         m = PROOF_LEGS_BULLET.match(s)
         if m and legs_start is None:
@@ -331,6 +354,7 @@ def _parse_task_body(body_lines):
         "produces_text": produces_text,
         "proof_tests": proof_tests,
         "proof_runs": proof_runs,
+        "proof_run_clauses": proof_run_clauses,
         "proof_guards": proof_guards,
         "run_only_clauses": run_only_clauses,
         "legs_has_citation": legs_has_citation,
@@ -671,6 +695,7 @@ def parse_plan_text(text):
             "testCmd": _derive_test_cmd(test_cmds),
             "testCmds": test_cmds,
             "proofRuns": parsed["proof_runs"],
+            "proofRunClauses": parsed["proof_run_clauses"],
             "interfaces": {
                 "consumes": parsed["consumes_text"],
                 "produces": parsed["produces_text"],
@@ -698,6 +723,7 @@ def parse_plan_text(text):
             "testCmd": t["testCmd"],
             "testCmds": t["testCmds"],
             "proofRuns": t["proofRuns"],
+            "proofRunClauses": t["proofRunClauses"],
             "interfaces": t["interfaces"],
             "proofGuards": t["proofGuards"],
             "runOnlyClauses": t["runOnlyClauses"],
