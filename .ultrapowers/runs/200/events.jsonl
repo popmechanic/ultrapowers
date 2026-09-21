@@ -433,3 +433,11 @@
 {"ts":"2026-09-21T20:10:37.629Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/CLAUDE.md"}
 {"ts":"2026-09-21T20:10:41.129Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"echo \"=== M1 forbidden ===\" && grep -n -E 'run-engine\\.mjs|run-main\\.mjs|run-worker\\.mjs|run-waves\\.mjs|sandbox-boot\\.sh|publish-fold|facts-block|failing-block|engine-coverage|fitness\\.mjs|confine-hoo"}
 {"ts":"2026-09-21T20:10:52.655Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -rln \"factory/clone.mjs\\|factory/engine.mjs\" tests/ fleet/tests/ 2>/dev/null; echo \"---\"; grep -rln \"CLAUDE.md\" tests/ fleet/tests/ 2>/dev/null | head -20"}
+{"ts":"2026-09-21T20:11:00.019Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/CLAUDE.md"}
+{"ts":"2026-09-21T20:11:16.717Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"wc -l fleet/RUNBOOK.md; grep -n \"^## \" fleet/RUNBOOK.md"}
+{"ts":"2026-09-21T20:11:18.342Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/RUNBOOK.md"}
+{"ts":"2026-09-21T20:11:21.209Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"plan_branch\\|PLAN_BRANCH\\|tip\\|PLAN_SHA\" factory/boot.sh | head -20"}
+{"ts":"2026-09-21T20:11:27.302Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/fleet/RUNBOOK.md"}
+{"ts":"2026-09-21T20:11:29.417Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/RUNBOOK.md"}
+{"ts":"2026-09-21T20:11:37.144Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n -- '--tier\\|--implementer-effort' fleet/RUNBOOK.md"}
+{"ts":"2026-09-21T20:11:57.307Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"collect_evidence\\b\" -A 15 factory/boot.sh | head -20"}
