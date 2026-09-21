@@ -390,3 +390,4 @@
 {"ts":"2026-09-21T22:35:14.107Z","kind":"landing","task":"2","k":1,"examExit":0,"claim":0.72,"coverage":[0.57,0.39,0.35,0.22,0.24],"candidateSha":"7b329918c3120c180ae914f4202178b32ae1456b","wall_ms":656991}
 {"ts":"2026-09-21T22:35:21.696Z","kind":"check:line","task":"2","cmd":"git diff --quiet $ULTRA_BASE -- skills fleet/launch.mjs fleet/fleet-bootstrap.sh factory/roles factory/worker.mjs factory/select.mjs factory/board.mjs","exit":0,"minor":false}
 {"ts":"2026-09-21T22:35:21.696Z","kind":"fold:verify","task":"2","ran":[{"task":"2","exit":0}],"attempt":1}
+{"kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1196","number":1196,"draft":false}
