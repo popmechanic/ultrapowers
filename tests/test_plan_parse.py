@@ -17,6 +17,7 @@ dedicated section near the end of this file and are tagged `guard-M1`,
 distinct from the M1-M6 tags above, which belong to the grammar-parser
 clauses this file already covered.
 """
+import importlib.util
 import json
 import subprocess
 import sys
@@ -47,9 +48,11 @@ RECORDLESS_FIXTURES = sorted(
 ORACLE_FIELDS = {"id", "title", "files", "depends_on", "proofTests",
                  "testCmd", "interfaces", "proofGuards"}
 # Every field a task object prints: the oracle's eight plus the parser's own
-# `runOnlyClauses` (run-195) and `proofRuns`/`testCmds` (this task), none of
-# which the old compiler ever emitted.
-TASK_FIELDS = ORACLE_FIELDS | {"runOnlyClauses", "proofRuns", "testCmds"}
+# `runOnlyClauses` (run-195), `proofRuns`/`testCmds` and `proofRunClauses`
+# (the Run-line clause-tag task), none of which the old compiler ever
+# emitted.
+TASK_FIELDS = ORACLE_FIELDS | {"runOnlyClauses", "proofRuns", "testCmds",
+                               "proofRunClauses"}
 
 
 # --------------------------------------------------------------------------- #
@@ -1124,3 +1127,130 @@ def test_cmds_m3_key_sets_and_other_fields_unchanged(tmp_path):
     proc = run_parser_unguarded(plan_path)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert proc.stdout == "tests/cm3_test.py\n"
+
+
+# --------------------------------------------------------------------------- #
+# runcite -- "The sandbox's parser strips a Run line's clause tag and prints #
+# the clauses beside the command": a Proof `Run:` bullet may close with a    #
+# `[M2]` / `[M1, M3]` citation tag, the same shape a Legs bullet's own       #
+# citation carries. The tag is cut from `proofRuns` (the command a shell     #
+# would actually run) and reappears, parallel to `proofRuns`, as the new     #
+# `proofRunClauses` field -- `[]` for a command that carried no tag.         #
+# runcite-M1 -- for a task whose Proof carries the three named `Run:`        #
+#               bullets, `proofRuns` is exactly the three commands with      #
+#               every tag stripped and `proofRunClauses` is exactly          #
+#               `[["M2"], [], ["M1", "M3"]]`.                                #
+# runcite-M2 -- a bracket that is not at the end of the command is part of   #
+#               the command: it survives in `proofRuns` unchanged and        #
+#               `proofRunClauses` is `[[]]`.                                 #
+# runcite-M3 -- on that same plan, the compiler's own (pure, per-task) parse #
+#               of `proof_runs` agrees with the parser's `proofRuns`,        #
+#               element for element.                                        #
+# runcite-M4 -- every task object gains exactly the one key                  #
+#               `proofRunClauses` (TASK_FIELDS, line 52, already has it      #
+#               folded in) and a task with no `Run:` bullet at all prints    #
+#               `proofRunClauses` exactly `[]`.                              #
+# --------------------------------------------------------------------------- #
+
+# The three `- Run:` bullets named by the task's own Machine restatement
+# (M1): one tagged [M2], one untagged, one tagged [M1, M3].
+THREE_RUN_CMDS = [
+    "grep -q 'kata 0.17.2' fleet/CONTRACT.md [M2]",
+    "bash -n x.sh",
+    "true [M1, M3]",
+]
+
+
+def test_runcite_m1_three_run_task_proofruns_and_clauses(tmp_path):
+    tasks = [
+        task_block("1", "Three runs", creates=["runcite1/a.py"],
+                   run_cmds=THREE_RUN_CMDS),
+    ]
+    obj = build_and_run(tmp_path, tasks)
+    t = obj["tasks"][0]
+    # proofRuns: the citation tag stripped off every command that carries
+    # one, the untagged command riding back unchanged, all three in Proof
+    # order. [runcite-M1]
+    assert t["proofRuns"] == [
+        "grep -q 'kata 0.17.2' fleet/CONTRACT.md",
+        "bash -n x.sh",
+        "true",
+    ]
+    # proofRunClauses: parallel to proofRuns, [] for the untagged command,
+    # each tag's ids sorted numerically. [runcite-M1]
+    assert t["proofRunClauses"] == [["M2"], [], ["M1", "M3"]]
+
+
+def test_runcite_m2_bracket_not_at_end_is_part_of_the_command(tmp_path):
+    tasks = [
+        task_block("2", "Mid-command bracket", creates=["runcite2/a.py"],
+                   run_cmds=['test "$(echo [M1])" = x']),
+    ]
+    obj = build_and_run(tmp_path, tasks)
+    t = obj["tasks"][0]
+    # The bracket sits mid-command, not at the end of the value -- it is part
+    # of the command and proofRuns prints the whole value unchanged.
+    # [runcite-M2]
+    assert t["proofRuns"] == ['test "$(echo [M1])" = x']
+    # No tag was cut off it, so its clause list is empty. [runcite-M2]
+    assert t["proofRunClauses"] == [[]]
+
+
+def _load_compile_plan_oracle():
+    """Import `compile_plan.py` by path -- the oracle module for runcite-M3,
+    never the module under test (that is `plan_parse.py`, run only as a
+    subprocess throughout this file)."""
+    spec = importlib.util.spec_from_file_location(
+        "compile_plan_oracle_for_test_plan_parse", COMPILER)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_runcite_m3_agrees_with_compiler_proof_runs(tmp_path):
+    tasks = [
+        task_block("3", "Oracle agreement", creates=["runcite3/a.py"],
+                   run_cmds=THREE_RUN_CMDS),
+    ]
+    plan_text = make_plan(tasks)
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text(plan_text)
+
+    parser_proc = run_parser(plan_path)
+    assert parser_proc.returncode == 0, parser_proc.stdout + parser_proc.stderr
+    parser_task = parse_stdout_json(parser_proc.stdout)["tasks"][0]
+
+    # The compiler's parse of proof_runs needs no sibling gate-verdicts
+    # record to get there -- read only its pure per-task parse
+    # (`parse_claims_body`), which never touches the filesystem. [runcite-M3]
+    compile_plan = _load_compile_plan_oracle()
+    compiler_body = next(t["body"] for t in compile_plan.split_tasks(plan_text)
+                         if t["id"] == "3")
+    compiler_parsed = compile_plan.parse_claims_body(compiler_body, "3")
+
+    assert compiler_parsed["proof_runs"] == parser_task["proofRuns"]  # [runcite-M3]
+
+
+def test_runcite_m4_key_set_and_no_run_line_task(tmp_path):
+    tasks = [
+        task_block("4", "Has a run", creates=["runcite4/a.py"],
+                   run_cmds=["true [M1]"]),
+        task_block("5", "No run at all", creates=["runcite5/a.py"]),
+    ]
+    obj = build_and_run(tmp_path, tasks)
+
+    # Every task object's key set is exactly TASK_FIELDS, which now carries
+    # proofRunClauses and nothing else new -- in both `tasks` and
+    # `launch_waves`. [runcite-M4]
+    for t in obj["tasks"]:
+        assert set(t.keys()) == TASK_FIELDS
+    for wave in obj["launch_waves"]:
+        for t in wave:
+            assert set(t.keys()) == TASK_FIELDS
+
+    by_id = {t["id"]: t for t in obj["tasks"]}
+    assert by_id["4"]["proofRunClauses"] == [["M1"]]  # [runcite-M4]
+    # A task with no Run: bullet at all prints proofRunClauses exactly [].
+    # [runcite-M4]
+    assert by_id["5"]["proofRuns"] == []
+    assert by_id["5"]["proofRunClauses"] == []
