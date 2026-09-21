@@ -1,3 +1,0 @@
-{ "name": "jev-factory-proto", "private": true, "type": "module",
-  "description": "PROTOTYPE — throwaway. The Jev-factory loop on the laptop (map #1131). Run: node factory/proto/loop.mjs --arm line|judge|search --n 3",
-  "dependencies": { "@anthropic-ai/claude-agent-sdk": "*" } }
