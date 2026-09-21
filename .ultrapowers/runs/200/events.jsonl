@@ -91,3 +91,31 @@
 {"ts":"2026-09-21T19:53:16.546Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/tests/test_compile_plan_exam_sweep.py"}
 {"ts":"2026-09-21T19:53:18.494Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/tests/test_compile_plan_exam_sweep.py"}
 {"ts":"2026-09-21T19:53:24.299Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"^## \\|^- \\*\\*\" fleet/CONTRACT.md"}
+{"ts":"2026-09-21T19:53:29.494Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/tests/test_compile_plan_exam_sweep.py"}
+{"ts":"2026-09-21T19:53:32.363Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/tests/test_compile_plan_exam_sweep.py"}
+{"ts":"2026-09-21T19:53:32.462Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Write","target":"/home/exedev/run/exam-2/fleet/tests/test_launch_one_engine.mjs"}
+{"ts":"2026-09-21T19:53:33.795Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-21T19:53:34.006Z","kind":"worker:test-run","task":"2","label":"exam:2","cmd":"node fleet/tests/test_launch_one_engine.mjs","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-21T19:53:34.697Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/tests/test_compile_plan_exam_sweep.py"}
+{"ts":"2026-09-21T19:53:35.921Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"receipt.json\\|gate-receipt\\|report.json\\|claude-version\\|status.json\\|events.jsonl\\|engine.log\" factory/boot.sh | head -30\necho \"---engine.mjs---\"\ngrep -n \"receipt.json\\|gate-receipt\\|report."}
+{"ts":"2026-09-21T19:53:36.535Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"node fleet/tests/test_launch_one_engine.mjs 2>&1 | tail -80"}
+{"ts":"2026-09-21T19:53:36.787Z","kind":"worker:test-run","task":"2","label":"exam:2","cmd":"node fleet/tests/test_launch_one_engine.mjs 2>&1 | tail -80","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-21T19:53:38.148Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/tests/test_compile_plan_exam_sweep.py"}
+{"ts":"2026-09-21T19:53:40.059Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"examiner\" tests/test_compile_plan_exam_sweep.py; python3 -c \"import ast; ast.parse(open('tests/test_compile_plan_exam_sweep.py').read())\" && echo OK"}
+{"ts":"2026-09-21T19:53:42.198Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-21T19:53:43.030Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"node fleet/tests/test_launch_duplicate.mjs 2>&1 | tail -40"}
+{"ts":"2026-09-21T19:53:47.630Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"node -e \"\nimport('./fleet/launch.mjs').then(async (launchModule) => {\n  const { usage, USAGE } = launchModule\n  console.log('usage has --tier:', usage().includes('--tier'))\n  console.log('keys has TIE"}
+{"ts":"2026-09-21T19:53:57.335Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Write","target":"/home/exedev/run/impl-1-0/factory/clone.mjs"}
+{"ts":"2026-09-21T19:53:59.089Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-21T19:54:00.409Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -rl \"run-waves\" factory 2>/dev/null; echo \"---done---\""}
+{"ts":"2026-09-21T19:54:05.476Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/clone.mjs"}
+{"ts":"2026-09-21T19:54:07.037Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -rl \"run-waves\" factory 2>/dev/null; echo \"exit:$?\""}
+{"ts":"2026-09-21T19:54:08.722Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"refold_onto\\|systemd_run\\|fleet_systemd_run\\|RuntimeMaxSec\\|run_engine()\" factory/boot.sh | head -30"}
+{"ts":"2026-09-21T19:54:10.319Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/fleet/fleet-bootstrap.sh"}
+{"ts":"2026-09-21T19:54:11.336Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/boot.sh"}
+{"ts":"2026-09-21T19:54:11.615Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"bash -n fleet/fleet-bootstrap.sh && echo OK && cat fleet/fleet-bootstrap.sh"}
+{"ts":"2026-09-21T19:54:13.066Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"sandbox-boot\" fleet/fleet-bootstrap.sh; echo \"exit:$?\""}
+{"ts":"2026-09-21T19:54:14.977Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"fleet-bootstrap\\|sandbox-boot\" fleet/setup-script.mjs"}
+{"ts":"2026-09-21T19:54:20.200Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"rm -f \\\n  fleet/run-engine.mjs fleet/run-main.mjs fleet/run-worker.mjs fleet/run-waves.mjs \\\n  fleet/sandbox-boot.sh fleet/publish-fold.mjs fleet/publish-fold-block.mjs \\\n  fleet/facts-block.mjs fleet"}
+{"ts":"2026-09-21T19:54:22.907Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -rlE \"run-engine\\.mjs|run-main\\.mjs|run-worker\\.mjs|run-waves\\.mjs|publish-fold|facts-block|failing-block|engine-coverage|confine-hook|strip-exams|exam-paths\\.mjs|jev-questions|_engine_helpers|_s"}
+{"ts":"2026-09-21T19:54:27.602Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -rlE \"run-engine\\.mjs|run-main\\.mjs|run-worker\\.mjs|run-waves\\.mjs|publish-fold|facts-block|failing-block|engine-coverage|confine-hook|strip-exams|exam-paths\\.mjs|jev-questions|_engine_helpers|_s"}
