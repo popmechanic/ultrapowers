@@ -1,0 +1,45 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "6317637e69a6997aeff0b2396f2e31b78149698e08bd6983422b34709a2afaef",
+   "verdict": "pass",
+   "reason": "M1 and M2 each have a Run line that exits non-zero when false (and the 0.3.31 pattern is red at BASE); M3's in-file unchanged-ness is not something the Claim depends on and is read against the diff, with everything outside the three files frozen by the run-wide check."
+  }
+ },
+ "tally": {
+  "dispatched": 1,
+  "rejected": 0,
+  "rounds": 1,
+  "question": "facts-only (experiment, rollback the old sentence)",
+  "base": "a944a606337e277aff838d712e3634d3ea1860a2"
+ },
+ "authoring": {
+  "minutes": 30,
+  "probes": 0,
+  "routing": {
+   "branch": "inline",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Claim, summary and version",
+    "options": [
+     "Sign as drafted",
+     "Make it 0.4.0"
+    ],
+    "recommended": "Sign as drafted",
+    "picked": "Sign as drafted"
+   },
+   {
+    "question": "Confidence run",
+    "options": [
+     "Fleet, self-merging, and I move main mid-run",
+     "Fleet, self-merging, main left alone",
+     "Fleet, with --hold"
+    ],
+    "recommended": "Fleet, self-merging, and I move main mid-run",
+    "picked": "Fleet, self-merging, and I move main mid-run"
+   }
+  ]
+ }
+}
