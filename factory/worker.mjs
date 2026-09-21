@@ -21,6 +21,7 @@
  */
 
 import path from 'node:path'
+import { findGit } from './gitblock.mjs'
 
 /** The tools whose `file_path` the confinement hook adjudicates. */
 export const EDIT_TOOLS = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit']
@@ -69,8 +70,44 @@ export function makeConfineHook ({ cwd, files, denials = [] }) {
   }
 }
 
+/**
+ * Build the `PreToolUse` callback that refuses a Bash line that runs git.
+ *
+ * `findGit` reads the whole line — behind `&&`, `;`, `|`, a subshell, an
+ * `eval` — not just its first word, which is all `DISALLOWED_TOOLS`' prefix
+ * match ever caught. On a hit, `onDenied` (when given) is handed the row
+ * this refusal earned, inside a `try`/`catch`: a row that cannot be written
+ * never turns a deny into an allow, and neither does a missing callback.
+ */
+export function makeGitHook ({ task, label, onDenied }) {
+  return async (input) => {
+    if (input?.tool_name !== 'Bash') return {}
+    const command = input?.tool_input?.command
+    const hit = findGit(command)
+    if (hit === null) return {}
+    const row = {
+      kind: 'worker:denied',
+      task,
+      label,
+      tool: 'Bash',
+      why: 'git',
+      command: String(command).slice(0, 200),
+    }
+    if (typeof onDenied === 'function') {
+      try { onDenied(row) } catch { /* a row that fails to write never turns a deny into an allow */ }
+    }
+    return {
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason: 'Bash denied: this line runs git, and the engine runs git itself — never a worker. Drop the git command and carry on; your edits are captured for you.',
+      },
+    }
+  }
+}
+
 /** The options literal every dispatch shares, built once per worker. */
-export function workerOptions ({ cwd, systemPrompt, model, files, schema, mcpServers, maxTurns, maxBudgetUsd }, denials) {
+export function workerOptions ({ cwd, systemPrompt, model, files, schema, mcpServers, maxTurns, maxBudgetUsd, task, label, onDenied }, denials) {
   const options = {
     cwd,
     systemPrompt,
@@ -78,7 +115,7 @@ export function workerOptions ({ cwd, systemPrompt, model, files, schema, mcpSer
     settingSources: [],
     permissionMode: 'bypassPermissions',
     disallowedTools: [...DISALLOWED_TOOLS],
-    hooks: { PreToolUse: [{ hooks: [makeConfineHook({ cwd, files, denials })] }] },
+    hooks: { PreToolUse: [{ hooks: [makeConfineHook({ cwd, files, denials }), makeGitHook({ task, label, onDenied })] }] },
   }
   if (maxTurns !== undefined && maxTurns !== null) options.maxTurns = maxTurns
   if (maxBudgetUsd !== undefined && maxBudgetUsd !== null) options.maxBudgetUsd = maxBudgetUsd
@@ -118,7 +155,11 @@ export function startWorker (opts = {}, deps = {}) {
   const startedAt = Date.now()
   const denials = []
   const handle = run({ prompt: opts.prompt, options: workerOptions(opts, denials) })
-  const promise = drain(handle, { denials, onMessage: opts.onMessage, startedAt })
+  // The real SDK's `query()` answers the iterator synchronously; a fake
+  // `query` driving an exam may be declared `async` and so answer a promise
+  // of one instead — `Promise.resolve` reads either the same way.
+  const promise = Promise.resolve(handle)
+    .then((iterator) => drain(iterator, { denials, onMessage: opts.onMessage, startedAt }))
   // The caller owns this rejection; this arm only keeps a handle-only caller
   // (one that interrupts and never awaits) from tripping unhandledRejection.
   promise.catch(() => {})
@@ -136,4 +177,4 @@ export async function interruptWorker (handle) {
   return await handle.interrupt()
 }
 
-export default { runWorker, startWorker, interruptWorker, makeConfineHook, workerOptions, EDIT_TOOLS, DISALLOWED_TOOLS }
+export default { runWorker, startWorker, interruptWorker, makeConfineHook, makeGitHook, workerOptions, EDIT_TOOLS, DISALLOWED_TOOLS }
