@@ -1,0 +1,73 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "86f6305cca7a569dbc750b1c6d4e80dac9be6ddc0e5547c6f55fa29685fce84a",
+   "verdict": "pass",
+   "reason": "Every clause has a leg that would catch its computable facts false: the Run line covers the set, its state list and the other nine sets' hash; leg (b) both threshold sides, the exact state and the absent cell; leg (c) the three no-answer paths and the jev row; base pins no opposite."
+  },
+  "2": {
+   "hash": "12920ba591240f85836fae7ca014adec5c49763059e504da386edb19985ffc6c",
+   "verdict": "pass",
+   "reason": "Every computable fact in M1-M6 has a leg that fails when it is false (call counts, row fields, green_before true/false/null, the absences, the unresolved counts, rejections resolving); M7 is wiring read against the diff with its grep; all literals are satisfiable and no base excerpt pins the opposite."
+  },
+  "3": {
+   "hash": "432f8da80ce576287493de1d8e3cd9645ac0200a57fe2217b0663bb94f3f1a38",
+   "verdict": "pass",
+   "reason": "Each Run line would fail if its clause were false (the two phrases in order inside the quotation, the run and reading outside it, the ordered gotchas row, the existing pin as a guard); every named section and path exists at BASE and nothing pins the opposite."
+  }
+ },
+ "tally": {
+  "dispatched": 3,
+  "rejected": 0,
+  "rounds": 1,
+  "base": "2a1278bf448e588f445e02ff248aaae7e0052369",
+  "question": "facts-only (experiment, rollback the old sentence)"
+ },
+ "authoring": {
+  "minutes": 9,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Exam still red after the examiner's one repair",
+    "options": [
+     "Run ends not-done",
+     "Record it, don't fail the run"
+    ],
+    "recommended": "Run ends not-done",
+    "picked": "Run ends not-done"
+   },
+   {
+    "question": "How 'green before the fold' is known",
+    "options": [
+     "Measure it",
+     "Read earlier rows"
+    ],
+    "recommended": "Measure it",
+    "picked": "Measure it"
+   },
+   {
+    "question": "Where the exact-keys rule lives",
+    "options": [
+     "In the gate question",
+     "Gotchas list only"
+    ],
+    "recommended": "In the gate question",
+    "picked": "In the gate question"
+   },
+   {
+    "question": "Execute \u2014 no AskUserQuestion put: the operator's standing instruction of 2026-09-21 ('Launch runs when you can'); the Claim is quoted from #1164",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers"
+   }
+  ]
+ }
+}
