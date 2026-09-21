@@ -2088,8 +2088,11 @@ export async function runRefold (rawArgs = {}, deps = {}) {
   const log = deps.log || ((s) => process.stderr.write(String(s) + '\n'))
 
   fs.mkdirSync(runDir, { recursive: true })
+  // Appended to, never truncated: `runDir` is the run's own directory, and the
+  // file already holds every row the engine wrote. run-198 (2026-09-21) lost
+  // its live `events.jsonl` to a `writeFileSync(eventsPath, '')` here — the
+  // tagged evidence survived only because the boot had copied it first.
   const eventsPath = path.join(runDir, 'events.jsonl')
-  fs.writeFileSync(eventsPath, '')
   const appendEvent = (row) => fs.appendFileSync(eventsPath, JSON.stringify({ ts: new Date().toISOString(), ...row }) + '\n')
 
   const RESOLVE_MD = roleText('resolve')
@@ -2155,8 +2158,24 @@ export async function runRefold (rawArgs = {}, deps = {}) {
   git(['diff', '--binary', '--full-index', '--no-renames', '--output=' + patchFile, base, startHead], target)
   const patchArg = 'refold=' + patchFile + '@' + base
 
-  const common = ['--repo', target, '--run-dir', runDir, '--wave', 'refold']
+  // The kernel's `--wave` is an integer and its fold log is per (run dir,
+  // wave). run-198 passed `--wave refold`: argparse refused it, the kernel
+  // answered no JSON, and the null was reported as a conflict — so no re-fold
+  // had ever worked. Each re-fold gets a kernel directory of its own under the
+  // run's, at wave 1, so neither the engine's waves nor an earlier re-fold's
+  // log can collide with it (measured on run-198's sandbox with the real
+  // kernel: `--wave 1` in a fresh directory folds clean and materializes).
+  let attempt = 1
+  while (fs.existsSync(path.join(runDir, 'refold-' + attempt))) attempt += 1
+  const kernelDir = path.join(runDir, 'refold-' + attempt)
+  fs.mkdirSync(kernelDir, { recursive: true })
+  const common = ['--repo', target, '--run-dir', kernelDir, '--wave', '1']
   let fold = kernel(['fold', ...common, '--base', onto, '--patch', patchArg])
+  if (!fold) {
+    // A kernel that answered nothing is not a conflict: say so, and stop.
+    appendEvent({ kind: 'refold:kernel-error', step: 'fold', onto })
+    return { refolded: false, reason: 'kernel', onto }
+  }
   if (fold && fold.complete !== true) {
     const result = await resolveConflicts({
       fold, common, patchArg, runDir, unionPolicy, readUnion, dispatch, model,
