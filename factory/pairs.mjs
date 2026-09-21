@@ -206,7 +206,7 @@ export function decideByCode(state) {
 
 // ── M4: labelPair ────────────────────────────────────────────────────────
 
-export async function labelPair({ pair, tasks, read, folds }) {
+export async function labelPair({ pair, tasks, read, folds, foldOrder }) {
   const byId = new Map(tasks.map((t) => [String(t.id), t]))
 
   let calls = null
@@ -224,7 +224,24 @@ export async function labelPair({ pair, tasks, read, folds }) {
     calls = found
   }
 
-  const fold = folds && Object.prototype.hasOwnProperty.call(folds, pair.b) ? folds[pair.b] : null
+  let fold
+  if (foldOrder !== undefined) {
+    const aId = String(pair.a)
+    const bId = String(pair.b)
+    const aIdx = foldOrder.findIndex((id) => String(id) === aId)
+    const bIdx = foldOrder.findIndex((id) => String(id) === bId)
+    let laterId = null
+    if (aIdx === -1 && bIdx === -1) laterId = null
+    else if (aIdx === -1) laterId = pair.b
+    else if (bIdx === -1) laterId = pair.a
+    else laterId = bIdx > aIdx ? pair.b : pair.a
+    fold =
+      laterId != null && folds && Object.prototype.hasOwnProperty.call(folds, laterId)
+        ? folds[laterId]
+        : null
+  } else {
+    fold = folds && Object.prototype.hasOwnProperty.call(folds, pair.b) ? folds[pair.b] : null
+  }
 
   return { a: pair.a, b: pair.b, calls, fold }
 }

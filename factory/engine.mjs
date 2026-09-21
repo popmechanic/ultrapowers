@@ -549,9 +549,10 @@ async function resolveConflicts ({
   RESOLVE_MD, appendEvent, taskId, labelId, kernel, withHandoff,
 }) {
   const open = Array.isArray(fold.open) ? fold.open : []
-  if (!open.length) return fold
+  if (!open.length) return { fold, dispatchedResolver: false }
   const suffix = withHandoff || (async (p) => p)
   let latest = fold
+  let dispatchedResolver = false
   for (const conflict of open) {
     if (unionPolicy.mode === 'live' && typeof readUnion === 'function') {
       let hunksFileText = null
@@ -574,11 +575,12 @@ async function resolveConflicts ({
           latest = kernel(['resolve', ...common, '--conflict', String(conflict.i),
             '--reply-dir', replyDir, '--patch', patchArg]) || latest
           appendEvent({ kind: 'union', task: taskId, path: conflict.path, hunks: union.hunks.length })
-          if (latest && latest.complete === true) return latest
+          if (latest && latest.complete === true) return { fold: latest, dispatchedResolver }
           continue
         }
       }
     }
+    dispatchedResolver = true
     const answer = await dispatch({
       role: 'resolve', label: 'resolve:' + labelId + ':' + conflict.i,
       taskId, cwd: path.dirname(String(conflict.hunksFile || runDir)),
@@ -589,7 +591,7 @@ async function resolveConflicts ({
         taskId),
     })
     const reply = (answer && answer.result && answer.result.structured_output) || null
-    if (!reply || reply.status !== 'RESOLVED') return latest
+    if (!reply || reply.status !== 'RESOLVED') return { fold: latest, dispatchedResolver }
     const replyDir = path.join(runDir, `reply-${labelId}-${conflict.i}`)
     fs.mkdirSync(replyDir, { recursive: true })
     for (const h of reply.hunks || []) {
@@ -602,9 +604,9 @@ async function resolveConflicts ({
     fs.writeFileSync(path.join(replyDir, 'notes.txt'), String(reply.notes || '') + '\n')
     latest = kernel(['resolve', ...common, '--conflict', String(conflict.i),
       '--reply-dir', replyDir, '--patch', patchArg]) || latest
-    if (latest && latest.complete === true) return latest
+    if (latest && latest.complete === true) return { fold: latest, dispatchedResolver }
   }
-  return latest
+  return { fold: latest, dispatchedResolver }
 }
 
 // ── the engine ───────────────────────────────────────────────────────────────
@@ -797,6 +799,9 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const pairStates = new Map()
   const pairCandidateDone = new Set()
   const foldOutcomes = new Map()
+  // M5: the order tasks folded in — earliest first — handed to `labelPair`
+  // as `foldOrder` so a pair's label reads the later of its two folds.
+  const foldOrder = []
   // M3: a task's exam worker, dispatched at minute zero when the policy says
   // so — one promise per task, awaited by that task's own `land()` rather
   // than by whichever task happens to be ready first.
@@ -1570,22 +1575,32 @@ export async function runEngine (rawArgs = {}, deps = {}) {
    * is not complete is a conflict, and one resolver pass is what it gets — a
    * second would be a loop, and the task is parked instead.
    */
+  // M5: records both the outcome and the order it was set in, so `labelPair`
+  // can tell which of two tasks folded later.
+  const setFoldOutcome = (id, outcome) => {
+    foldOutcomes.set(id, outcome)
+    foldOrder.push(id)
+  }
+
   const foldIn = async (landing) => {
     waveNumber += 1
     const id = landing.task.id
     const common = ['--repo', target, '--run-dir', runDir, '--wave', String(waveNumber)]
     const patchArg = id + '=' + landing.best.patch + '@' + landing.anchor
-    let usedResolve = false
+    let neededResolveConflicts = false
+    let dispatchedResolver = false
     let fold = kernel(['fold', ...common, '--base', head, '--patch', patchArg])
     if (fold && fold.complete !== true) {
-      usedResolve = true
-      fold = await resolve({ fold, common, patchArg, landing })
+      neededResolveConflicts = true
+      const result = await resolve({ fold, common, patchArg, landing })
+      fold = result.fold
+      dispatchedResolver = result.dispatchedResolver
     }
     if (!fold || fold.complete !== true) {
       const reason = 'fold did not complete: ' + JSON.stringify(fold || null).slice(0, 300)
       await board.post(id, 'conflict', reason)
       appendEvent({ kind: 'parked', task: id, reason })
-      foldOutcomes.set(id, 'parked')
+      setFoldOutcome(id, 'parked')
       return { sha: null, reason }
     }
     const mat = kernel(['materialize', ...common, '--prev-head', head, '--patch', patchArg,
@@ -1593,15 +1608,17 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     if (!mat || typeof mat.candidateSha !== 'string') {
       const reason = 'materialize answered no candidate: ' + JSON.stringify(mat || null).slice(0, 300)
       appendEvent({ kind: 'parked', task: id, reason })
-      foldOutcomes.set(id, 'parked')
+      setFoldOutcome(id, 'parked')
       return { sha: null, reason }
     }
     git(['reset', '-q', '--hard', mat.candidateSha], target)
     head = mat.candidateSha
     // M5's `labelPair` reads this back as `folds`: `clean` when the kernel's
-    // own three-way merge completed with no conflict, `resolved` when this
-    // landing's own resolver round settled one.
-    foldOutcomes.set(id, usedResolve ? 'resolved' : 'clean')
+    // own three-way merge completed with no conflict, `resolved` when a
+    // resolver was dispatched for this fold, `union` when `resolveConflicts`
+    // settled it without ever dispatching one.
+    const outcome = dispatchedResolver ? 'resolved' : (neededResolveConflicts ? 'union' : 'clean')
+    setFoldOutcome(id, outcome)
     return { sha: mat.candidateSha }
   }
 
@@ -2013,7 +2030,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   if (pairsLive && pairsMod && pairsList.length) {
     const folds = Object.fromEntries(foldOutcomes)
     for (const pair of pairsList) {
-      const label = await pairsMod.labelPair({ pair, tasks, read, folds })
+      const label = await pairsMod.labelPair({ pair, tasks, read, folds, foldOrder })
       appendEvent({
         kind: 'pair:label',
         a: pair.a,
@@ -2141,10 +2158,11 @@ export async function runRefold (rawArgs = {}, deps = {}) {
   const common = ['--repo', target, '--run-dir', runDir, '--wave', 'refold']
   let fold = kernel(['fold', ...common, '--base', onto, '--patch', patchArg])
   if (fold && fold.complete !== true) {
-    fold = await resolveConflicts({
+    const result = await resolveConflicts({
       fold, common, patchArg, runDir, unionPolicy, readUnion, dispatch, model,
       RESOLVE_MD, appendEvent, taskId: undefined, labelId: 'refold', kernel,
     })
+    fold = result.fold
   }
   if (!fold || fold.complete !== true) {
     // M3: never touches the target — it is still exactly where it was.
