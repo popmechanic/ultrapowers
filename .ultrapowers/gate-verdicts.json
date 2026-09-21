@@ -1,0 +1,62 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "5ffbde79c2ee90841791a875c90668267a9a591a8a1793bb3a722422193ba943",
+   "verdict": "pass",
+   "reason": "M1-M3 each have a leg that fails when the fact is false (call counts, the argument runLines is handed, the two rows by key, no rows when off, a throw swallowed); M4 is the two Run lines plus shape read against the diff; nothing at BASE pins the opposite."
+  },
+  "2": {
+   "hash": "e9f98985dcb3a789cf3e2d81708bb1f692209f78bbaed7481baf7e0f86f80824",
+   "verdict": "pass",
+   "reason": "M1 by the subprocess leg (exit 0, PLAN OK first, zero RED-AT-BASE lines, marker absent), M2 by hasattr, M3 by the grep over four files and the per-file count 14 = 18 less four test_red_*, M4 by the scoped sed lines; the literal left in the gotchas file sits in the next row, outside the range."
+  },
+  "3": {
+   "hash": "04aa8ba8bd8f6fda21a99df7ca18d9884dc89d2cd427a3d4062a1c6f9bd0f108",
+   "verdict": "pass",
+   "reason": "M1-M3 each have a leg keyed on exit code and the freezes line (directory prefix, string prefix that covers nothing, equality); M4 is cited by three Run lines and its spawns-nothing half is read against the diff; every section the Run lines name exists at BASE."
+  },
+  "4": {
+   "hash": "bdf89c7b454e2a7688272e2417533207277eb5de33b76ed45fe347d3889149d1",
+   "verdict": "pass",
+   "reason": "Exit 0, exactly one line, first key ts, the toISOString round-trip and the kept fields are each asserted for the event-row door (M1) and the audit CLI (M2); nothing at BASE pins the opposite."
+  }
+ },
+ "tally": {
+  "dispatched": 4,
+  "rejected": 0,
+  "rounds": 1,
+  "base": "2a1278bf448e588f445e02ff248aaae7e0052369",
+  "question": "facts-only (experiment, rollback the old sentence)",
+  "prompt_note": "Each reader was given the facts-only question word for word, followed by the skill's base-excerpt sentence verbatim and ONE sentence the author composed (name any uncited clause, any leg citing nothing, any leg that mentions but cannot falsify its clause) - a paraphrase of the skill's prose, not its wording. Diet: the extractor's output as a file the reader was told to Read and nothing else; each reader made exactly 1 tool call."
+ },
+ "authoring": {
+  "minutes": 10,
+  "probes": 0,
+  "routing": {
+   "branch": "width",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Plan D Claim and summary",
+    "options": [
+     "Sign as drafted",
+     "Sign, but re-run the gate verbatim",
+     "Don't sign \u2014 I'll edit the Claim"
+    ],
+    "recommended": "Sign as drafted",
+    "picked": "Sign as drafted"
+   },
+   {
+    "question": "Execute \u2014 no AskUserQuestion put: the operator's standing instruction of 2026-09-21 ('Launch runs when you can')",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers"
+   }
+  ]
+ }
+}
