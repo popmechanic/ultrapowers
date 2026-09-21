@@ -34,3 +34,11 @@
 {"ts":"2026-09-21T19:03:12.528Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"sed -n '1,120p' skills/ultrawrite/scripts/extract_gate_input.py"}
 {"ts":"2026-09-21T19:03:14.483Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n \"verdicts_path\\|gate-verdict\\|gate_verdict\\|no verdict recorded\\|verdict.*missing\" skills/ultrapowers/scripts/compile_plan.py | head -30"}
 {"ts":"2026-09-21T19:03:14.936Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/tests/test_plan_parse.py"}
+{"ts":"2026-09-21T19:04:06.899Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"sed -n '1,50p' tests/test_compile_plan_exam_sweep.py | grep -n \"HEAD = \" -A 15"}
+{"ts":"2026-09-21T19:04:08.435Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n \"^HEAD\" tests/test_compile_plan_exam_sweep.py; sed -n '/^HEAD = /,/^\"\"\"/p' tests/test_compile_plan_exam_sweep.py | head -20"}
+{"ts":"2026-09-21T19:04:36.350Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Edit","target":"/home/exedev/run/exam-1/tests/test_compile_plan_green_at_base.py"}
+{"ts":"2026-09-21T19:04:37.876Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-21T19:04:39.762Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"python3 -m pytest -q tests/test_compile_plan_green_at_base.py","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-21T19:04:41.113Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/tests/test_plan_parse.py"}
+{"ts":"2026-09-21T19:04:47.960Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Edit","target":"/home/exedev/run/exam-2/tests/test_plan_parse.py"}
+{"ts":"2026-09-21T19:04:50.320Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Edit","target":"/home/exedev/run/exam-2/tests/test_plan_parse.py"}
