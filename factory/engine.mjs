@@ -1718,7 +1718,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       if (!(err && err.bootstrapRed)) throw err
       first = { ran: [], reds: [], bootstrapRed: err.bootstrapRed }
     }
-    appendEvent({ kind: 'fold:verify', task: task.id, ran: first.ran })
+    appendEvent({ kind: 'fold:verify', task: task.id, ran: first.ran, attempt: 1 })
     if (first.bootstrapRed) { foldUnresolved = true; return }
     if (!first.reds.length) return
 
@@ -1755,8 +1755,8 @@ export async function runEngine (rawArgs = {}, deps = {}) {
 
     const second = await runExamsAndChecks({
       dir: cloneAt('fold-verify-' + task.id, head), exams, foldedTaskId: task.id, timeoutSeconds,
-      includeChecks: false,
     })
+    appendEvent({ kind: 'fold:verify', task: task.id, ran: second.ran, attempt: 2 })
     if (second.bootstrapRed || second.reds.length) {
       for (const red of second.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, ...redEventFields(red) })
       foldUnresolved = true
