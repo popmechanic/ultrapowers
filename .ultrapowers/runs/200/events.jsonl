@@ -423,3 +423,13 @@
 {"ts":"2026-09-21T20:09:42.416Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"8000\\|python3 -m http.server\\|status server\\|StatusServer\" factory/boot.sh"}
 {"ts":"2026-09-21T20:09:48.513Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/CLAUDE.md"}
 {"ts":"2026-09-21T20:09:55.210Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"ls factory/clone.mjs 2>/dev/null && grep -n \"cloneAtBase\\|withPatchCapture\" factory/clone.mjs | head -10; echo \"---npm deps---\"; cat fleet/package.json 2>/dev/null | head -5; echo \"---doctor rows---\";"}
+{"ts":"2026-09-21T20:10:00.472Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"cloneAtBase\" fleet/run-waves.mjs | head -5; echo \"---factory dir listing---\"; ls factory/"}
+{"ts":"2026-09-21T20:10:07.507Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n '\"factory/clone.mjs\"\\|factory/clone.mjs\\|factory/engine.mjs' CLAUDE.md"}
+{"ts":"2026-09-21T20:10:13.245Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/CLAUDE.md"}
+{"ts":"2026-09-21T20:10:16.947Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -rn \"plan-markers\" factory/ 2>/dev/null | grep -v replay; echo \"---wc -w---\"; grep -n \"wc -w\\|role.*size\\|roleWords\\|sizeWords\" factory/*.mjs 2>/dev/null | head"}
+{"ts":"2026-09-21T20:10:21.815Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/CLAUDE.md"}
+{"ts":"2026-09-21T20:10:24.298Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"tick_events\\|FLEET_COMMIT_SECONDS\\|FLEET_COMMIT_EVENTS\\|evidence_commit\" factory/boot.sh | head -20"}
+{"ts":"2026-09-21T20:10:26.664Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/boot.sh"}
+{"ts":"2026-09-21T20:10:37.629Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/CLAUDE.md"}
+{"ts":"2026-09-21T20:10:41.129Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"echo \"=== M1 forbidden ===\" && grep -n -E 'run-engine\\.mjs|run-main\\.mjs|run-worker\\.mjs|run-waves\\.mjs|sandbox-boot\\.sh|publish-fold|facts-block|failing-block|engine-coverage|fitness\\.mjs|confine-hoo"}
+{"ts":"2026-09-21T20:10:52.655Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -rln \"factory/clone.mjs\\|factory/engine.mjs\" tests/ fleet/tests/ 2>/dev/null; echo \"---\"; grep -rln \"CLAUDE.md\" tests/ fleet/tests/ 2>/dev/null | head -20"}
