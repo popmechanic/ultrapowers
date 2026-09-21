@@ -1,0 +1,36 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "ed61e12cc5017872339fd90917f5fdb422ccdf4abe54f53dcafa9caa165dd7f4",
+   "verdict": "pass",
+   "reason": "Every computable fact in M1-M4 has a leg that fails when it is false; the pinned results compute under the needle rules (state-exams matches as a whole word, src and a are under four characters); nothing at BASE pins the opposite."
+  }
+ },
+ "tally": {
+  "dispatched": 1,
+  "rejected": 0,
+  "rounds": 1,
+  "base": "4315358bc967ed8253b2a2047c5be105d2a4c8bd",
+  "question": "facts-only (experiment, rollback the old sentence)"
+ },
+ "authoring": {
+  "minutes": 20,
+  "probes": 0,
+  "routing": {
+   "branch": "inline",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Claim, summary and execute (one touch)",
+    "options": [
+     "Sign and launch on the fleet, self-merging",
+     "Skip the proving run; cut two is its own proof",
+     "Sign it, but run it Inline"
+    ],
+    "recommended": "Sign and launch on the fleet, self-merging",
+    "picked": "Sign and launch on the fleet, self-merging"
+   }
+  ]
+ }
+}
