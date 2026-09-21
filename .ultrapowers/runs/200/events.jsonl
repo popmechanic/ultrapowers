@@ -508,3 +508,12 @@
 {"ts":"2026-09-21T20:23:01.847Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"engine: \\`systemd-run\\|CLAUDE_CODE_OAUTH_TOKEN=placeholder\\|typesafe.int.exe.xyz\" fleet/CONTRACT.md"}
 {"ts":"2026-09-21T20:23:04.362Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/CONTRACT.md"}
 {"ts":"2026-09-21T20:23:06.873Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/CONTRACT.md"}
+{"ts":"2026-09-21T20:23:14.154Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"^  - engine:\\|^  - fold:\\|^    cwd \\|- engine: \\`\" fleet/CONTRACT.md"}
+{"ts":"2026-09-21T20:23:21.918Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"ls fleet/sandbox-boot.sh 2>&1; echo \"---\"; sed -n '/--unit=fleet-engine-\\$RUN_N/,/RuntimeMaxSec/p' fleet/sandbox-boot.sh | head -30"}
+{"ts":"2026-09-21T20:23:33.366Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"unit=fleet-engine\\|CLAUDE_CODE_OAUTH_TOKEN\\|TYPESAFE\\|ANTHROPIC_BASE_URL\\|WorkingDirectory\\|RuntimeMaxSec\" factory/boot.sh | head -30"}
+{"ts":"2026-09-21T20:23:35.063Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/boot.sh"}
+{"ts":"2026-09-21T20:23:47.546Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"systemd-run\\|launch order\\|Launch order\" fleet/CONTRACT.md"}
+{"ts":"2026-09-21T20:23:53.679Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/tests/test_jev_client.mjs"}
+{"ts":"2026-09-21T20:24:08.391Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"function sedRange\\|function joined\\|function countLines\\|function readAt\" fleet/tests/test_jev_client.mjs"}
+{"ts":"2026-09-21T20:24:09.899Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"sedRange\\s*=\\|joined\\s*=\\|countLines\\s*=\\|readAt\\s*=\" fleet/tests/test_jev_client.mjs"}
+{"ts":"2026-09-21T20:24:11.685Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/tests/test_jev_client.mjs"}
