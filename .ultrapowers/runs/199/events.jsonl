@@ -84,3 +84,4 @@
 {"ts":"2026-09-21T19:42:47.991Z","kind":"check:line","task":"1","cmd":"git diff --quiet $ULTRA_BASE -- fleet skills factory/boot.sh factory/questions.json","exit":1,"minor":false}
 {"ts":"2026-09-21T19:42:47.992Z","kind":"fold:verify","task":"1","ran":[{"task":"1","exit":0}],"attempt":2}
 {"ts":"2026-09-21T19:42:47.992Z","kind":"fold:unresolved","task":"1","exam":null,"cmd":"git diff --quiet $ULTRA_BASE -- fleet skills factory/boot.sh factory/questions.json"}
+{"kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1182","number":1182,"draft":true}
