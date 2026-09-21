@@ -90,6 +90,25 @@ except Exception:
     raise SystemExit(1)
 ' "$1" 2>/dev/null
 }
+# The run's task issues, one `<task id> <uid>` line each in task-id order, from the same record. Exit 1 and
+# nothing on stdout when the file is missing, is not JSON, or names no task with a uid.
+kata_task_uids() {
+  fleet_python3 -c '
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        tasks = json.load(f)["tasks"]
+    rows = [(k, v["uid"]) for k, v in tasks.items() if isinstance(v.get("uid"), str) and v["uid"]]
+    if not rows:
+        raise SystemExit(1)
+    def order(row):
+        return (0, int(row[0]), "") if row[0].isdigit() else (1, 0, row[0])
+    for k, uid in sorted(rows, key=order):
+        print(k, uid)
+except Exception:
+    raise SystemExit(1)
+' "$1" 2>/dev/null
+}
 # Backslash, quote, tab, and newline as `\n` and never as nothing — `error` carries a reply body.
 json_escape() {
   printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' |
@@ -345,7 +364,10 @@ EOF
 board_down() {
   local out
   [ -n "$BOARD_BOUND" ] || return 0
-  if ! out="$(fleet_kata federation leave "$BOARD_PROJECT_NAME" 2>&1)"
+  # `--yes` and a closed stdin: under the run unit there is no TTY, and kata answers `no TTY: pass --yes to
+  # proceed noninteractively` (exit 6) without it — every factory run through run-198 left its enrollment
+  # live on the hub that way (#1176; measured on run-36's sandbox 2026-09-21, where `--yes` left and revoked).
+  if ! out="$(fleet_kata federation leave "$BOARD_PROJECT_NAME" --yes </dev/null 2>&1)"
   then log "board: kata federation leave $BOARD_PROJECT_NAME failed — leaving the unit for the box to reap — $(printf '%s' "$out" | head -n 1 | cut -c1-300)"; fi
   fleet_systemctl --user stop "$BOARD_UNIT" >/dev/null 2>&1 || true
   BOARD_BOUND=""
@@ -607,8 +629,23 @@ record_tags() {
 # run's failure) — the run's own state and exit code were decided already, and
 # stay decided. No `authorization` header: the admin host is where the exe.dev
 # edge injects the hub's bearer, and this holds no credential of its own.
+# One close, logged whatever the hub answers. $1 = project id, $2 = issue uid, $3 = message, $4 = idempotency
+# key, $5 = what it is for the log line, $6 = the evidence entries. Returns 0 on a 2xx and 1 otherwise; never fatal.
+close_issue() {
+  local payload url answer rc=0 code reply
+  payload="{\"actor\":\"sandbox:$RUN_ID\",\"reason\":\"done\",\"message\":\"$(json_escape "$3")\",\"evidence\":[$6],\"retry_protocol\":\"close-v1\"}"
+  url="$KATA_ADMIN_URL/api/v1/projects/$1/issues/$2/actions/close"
+  answer="$(fleet_curl -sS -X POST "$url" -H 'content-type: application/json' -H "Idempotency-Key: $4" -d "$payload" -w '\n%{http_code}' 2>/dev/null)" || rc=$?
+  code="$(printf '%s' "$answer" | tail -n 1)"
+  if [ "$rc" -eq 0 ]; then
+    case "$code" in 2[0-9][0-9]) log "board: close answered $code ($5)"; return 0 ;; esac
+  fi
+  reply="$(printf '%s' "$answer" | sed '$d')"
+  log "board: closing the $5 issue failed (exit $rc, http ${code:-<none>}) — $(printf '%s' "$reply" | tr '\n' ' ' | cut -c1-500)"
+  return 1
+}
 close_run() { # $1 = the run's final state (done|parked)
-  local kata_json ids project_id run_uid message payload url answer rc=0 code reply evidence
+  local kata_json ids project_id run_uid message evidence task_id task_uid
   [ "$1" = done ] || return 0
   kata_json="$FLEET_HOME/plans/$RUN_ID.kata.json"
   if [ ! -f "$kata_json" ]; then log "board: close skipped — no $kata_json to read"; return 0; fi
@@ -617,19 +654,24 @@ close_run() { # $1 = the run's final state (done|parked)
   run_uid="$(printf '%s' "$ids" | awk '{ print $2 }')"
   if [ -z "$project_id" ] || [ -z "$run_uid" ]; then
     log "board: close skipped — $kata_json carries no readable project.id/run.uid"; return 0; fi
-  message="$RUN_ID done: $(plan_title) — $PR_URL"
   # M5: a merged run's close carries the merge commit beside the pull request entry.
   evidence="{\"type\":\"pr\",\"url\":\"$(json_escape "$PR_URL")\"}"
   [ -n "$MERGED_SHA" ] && evidence="$evidence,{\"type\":\"commit\",\"sha\":\"$(json_escape "$MERGED_SHA")\"}"
-  payload="{\"actor\":\"sandbox:$RUN_ID\",\"reason\":\"done\",\"message\":\"$(json_escape "$message")\",\"evidence\":[$evidence],\"retry_protocol\":\"close-v1\"}"
-  url="$KATA_ADMIN_URL/api/v1/projects/$project_id/issues/$run_uid/actions/close"
-  answer="$(fleet_curl -sS -X POST "$url" -H 'content-type: application/json' -H "Idempotency-Key: $RUN_ID:run:close" -d "$payload" -w '\n%{http_code}' 2>/dev/null)" || rc=$?
-  code="$(printf '%s' "$answer" | tail -n 1)"
-  if [ "$rc" -eq 0 ]; then
-    case "$code" in 2[0-9][0-9]) log "board: close answered $code"; return 0 ;; esac
-  fi
-  reply="$(printf '%s' "$answer" | sed '$d')"
-  log "board: closing the run issue failed (exit $rc, http ${code:-<none>}) — $(printf '%s' "$reply" | tr '\n' ' ' | cut -c1-500)"
+  # The spoke leaves first: the three closes measured to work (runs 36, 197 and 37, by hand, 2026-09-21) were
+  # sent after `leave`, and a hub-side close under a bound spoke has never been read. `board_down` is idempotent.
+  board_down
+  # The task issues before the run's: the hub refuses a parent with open children — `409
+  # parent_has_open_children` — and nothing else in the factory closes a task issue. A `done` run adopted
+  # every task, so every one of them closes `done` on the run's own evidence.
+  while read -r task_id task_uid; do
+    [ -n "$task_uid" ] || continue
+    close_issue "$project_id" "$task_uid" "$RUN_ID task $task_id done: adopted green in the run's pull request — $PR_URL" \
+      "$RUN_ID:task:$task_id:close" "task $task_id" "$evidence" || true
+  done <<EOF_TASKS
+$(kata_task_uids "$kata_json" || true)
+EOF_TASKS
+  message="$RUN_ID done: $(plan_title) — $PR_URL"
+  close_issue "$project_id" "$run_uid" "$message" "$RUN_ID:run:close" "run" "$evidence" || true
 }
 boot() {
   local comment code head; comment="$(read_assignment)"
@@ -652,5 +694,6 @@ boot() {
 case "${1:-}" in
   boot) boot ;;
   kata-ids) kata_ids "${2:-}" ;;
+  kata-task-uids) kata_task_uids "${2:-}" ;;
   *) printf 'usage: boot.sh boot\n' >&2; exit 2 ;;
 esac
