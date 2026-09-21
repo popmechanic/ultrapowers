@@ -147,7 +147,7 @@ where this plan's Files sets were wrong.
   paired with the clause it names: the compiler strips the tag before the driver runs the
   command, refuses a tag naming a clause the Machine line does not number, and never counts
   the tag as a citing leg (the legs still cite). A `Run:` with no tag is a *guard* — a
-  `bash -n`, a sim that must stay green. Under `--check --base <sha>` the compiler cuts a
+  `bash -n`, a sim that must stay green. Under `--base <sha>` `plan_check.py` cuts a
   clean worktree at BASE and runs every `Run:` there, printing one line per command that
   exits 0 at BASE: a `GREEN-AT-BASE fact:` line naming the task and the command, ending for
   a prover `this line cannot falsify its clause` and for a guard `a guard, no leg cites it`.
@@ -157,7 +157,7 @@ where this plan's Files sets were wrong.
   The same rehearsal also runs the plan's Global Constraints `Check:` lines in that worktree
   and prints a `RED-AT-BASE fact:` line for each that exits non-zero there — a red no task
   can be blamed for unless one task's Files hold the offender.
-  A bare `--check` without `--base` runs nothing.
+  Without `--base` nothing is run.
   A `- Guard:` bullet in this slot names **one of this Proof's own `Test:` paths**, and it
   is the one way an exam file reaches the pull request: the peer examiner still writes the
   exam, but the file it names is written at that path and is merged with the task. An exam
@@ -324,10 +324,10 @@ The literal-computing half is there because on walk run-10 a
 Claim pinned `4` vowels in `Ada Lovelace` — `6` under its own M1 and M2 — and the reader
 passed the legs on shape without ever computing the number, where a reader asked exactly
 this computed six on the re-read and passed the corrected plan.
-Run `compile_plan.py --check` first: the mechanical gaps (an uncited
-clause, an uncited leg) are refusals there, so the gate reads the pair clause by clause
-with those already closed and spends its judgment on the species only it can see — does
-leg (b) actually falsify M2, or merely mention it?
+Nothing mechanical closes the citation gaps any more (an uncited clause, an uncited leg
+— the compiler that refused them left at cut B, 2026-09-21), so the gate reads the pair
+clause by clause and names those too, beside the species only it can see — does leg (b)
+actually falsify M2, or merely mention it?
 
 Its diet is capped mechanically, not by the reader's restraint:
 
@@ -396,18 +396,27 @@ re-dispatches, and a round boundary buys nothing. Measured 2026-09-04 (n=1 sitti
 one or two tasks apiece,
 each of them idle behind a barrier it did not need.
 
-Then resolve provenance and compile:
+Then resolve provenance and check:
 
     python3 $UW/check_provenance.py <plan.md>
-    python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/compile_plan.py --check --base <checkout-dir|sha> <plan.md>
+    python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/plan_check.py --base <checkout-dir|sha> <plan.md>
+    python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/plan_parse.py <plan.md>
+
+`plan_check.py` sits on `plan_parse.py`, the parser the sandbox runs, and refuses only
+what a parser cannot see: a gate record that is missing, stale or `fail`, a malformed
+authoring record, a `Check:` carrying a backtick or naming a path one task owns, and a
+Stale-if predicate that already holds at BASE. It is not a grammar check — the old
+compiler's grammar refusals left with it at cut B (2026-09-21), so read `plan_parse.py`'s
+own output for the plan before launching (`proofTests`, `testCmd`, `proofRuns`, `checks`,
+`dag_edges`): what it prints is what the engine will do.
 
 `check_provenance.py` (needs `gh`) resolves every anchor and string-matches every
 `quoted from #NNN` claim against its issue body at signing time. The plan is done when
-`compile_plan.py --check` prints `PLAN OK` and those two checks — the proof gate and
+`plan_check.py` prints `PLAN OK` and those two checks — the proof gate and
 `check_provenance.py` — have passed.
 
 `--base` takes a checkout directory or a 40-hex sha, and a sha must be present locally:
-the compiler reads that commit's tree with `git show`/`git ls-tree` in the plan's own
+the check reads that commit's tree with `git show`/`git ls-tree` in the plan's own
 repository, so every BASE fact — which paths exist, which file mentions a `Produces:`
 symbol, which test pins a Machine-clause span — resolves against the exact commit
 `launch.mjs --base` will hand the run, not against whatever the working tree happens to
@@ -573,10 +582,8 @@ task-by-task from contract plus proof.
 
 The author reads `references/authoring-gotchas.md` — the lessons every claims-v1 sitting
 since run-45 paid for, each a rule with its reason — before the gate readers are
-dispatched, and checks the plan against each of them; the file also names the compiler
-refusals that already catch the mechanical half, so those are read off
-`compile_plan.py --check` rather than re-derived here. Everything else in it is the
-author's own to check — nothing prints it.
+dispatched, and checks the plan against each of them. They are the author's own to
+check — nothing prints them.
 
 - Every task carries all six slots, in order, none empty, and no checkbox steps.
 - The plan carries one `**Claim:**` above the first task, elicited or quoted from an

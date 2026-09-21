@@ -3,7 +3,7 @@
 
 The gate's judgment is not mechanizable; what it READS is (spec 2026-08-31 §4,
 "deterministic input, non-deterministic judgment"). This script is that cap: it
-parses the plan with the compiler's own slot parser and prints exactly the
+parses the plan with the sandbox's own parser (`plan_parse.py`) and prints exactly the
 task's Claim and Proof, plus the hash the gate's verdict is keyed on. Context,
 Authorized-by, Interfaces, Stale-if and every sibling task stay out — not by the
 reader's restraint but because they never reach the reader.
@@ -11,7 +11,7 @@ reader's restraint but because they never reach the reader.
     extract_gate_input.py <plan.md> --task <id>
 
 prints `{"task", "claim", "proof", "hash"}` where hash is
-`sha256(claim + "\\x00" + proof)` — the same value `compile_plan.py` recomputes
+`sha256(claim + "\\x00" + proof)` — the same value `plan_check.py` recomputes
 when it checks `<plan-stem>.gate-verdicts.json` (§4.5). `verdicts_path` is
 re-exported here so gate tooling has one import for both halves of the contract.
 
@@ -42,30 +42,29 @@ import re
 import sys
 from pathlib import Path
 
-# scripts -> ultrawrite -> skills; the compiler owns the grammar and this script
-# never re-implements it.
+# scripts -> ultrawrite -> skills; `plan_parse.py` owns the grammar and this
+# script never re-implements it.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ultrapowers/scripts"))
 
-from compile_plan import (  # noqa: E402
-    _BANNER_CAP,
+from plan_check import (  # noqa: E402
     _BANNER_RE,
     _CASE_LINE_RE,
     _LITERAL_MIN,
     _RULE_RE,
-    _SHA40_RE,
-    _claims_run_command,
     _path_referent,
     BaseTree,
-    CLAIMS_GRAMMAR,
     PATH_RE,
-    RUN_LINE,
+    base_flag_refusal,
     gate_input_hash,
-    machine_restatement,
-    parse_claims_body,
-    parse_plan_claim,
-    plan_grammar,
-    split_tasks,
     verdicts_path,
+)
+from plan_parse import (  # noqa: E402
+    CLAIMS_GRAMMAR,
+    Refusal,
+    machine_restatement,
+    parse_plan_claim,
+    parse_plan_full,
+    plan_grammar,
 )
 
 __all__ = ["base_excerpt", "gate_input", "gate_input_hash", "plan_input",
@@ -93,17 +92,28 @@ def _claims_text(plan_path):
     return text
 
 
-def gate_input(plan_path, task_id):
-    """The (Claim, Proof) diet for one task of a claims-v1 plan, plus its hash."""
-    text = _claims_text(plan_path)
-    tasks = split_tasks(text)
+def _tasks(plan_path, text):
+    """Every task of the plan, as `plan_parse.py` reads it."""
+    try:
+        return parse_plan_full(text)[1]
+    except Refusal as exc:
+        raise SystemExit("extract_gate_input: %s — %s" % (plan_path, exc))
+
+
+def _task(plan_path, task_id):
+    tasks = _tasks(plan_path, _claims_text(plan_path))
     task = next((t for t in tasks if t["id"] == task_id), None)
     if task is None:
         raise SystemExit(
             "extract_gate_input: no task %s in %s (found: %s)"
             % (task_id, plan_path, ", ".join(t["id"] for t in tasks) or "none"))
-    claims = parse_claims_body(task["body"], task["id"], parse_plan_claim(text))
-    claim, proof = claims["claim"], claims["proof"]
+    return task
+
+
+def gate_input(plan_path, task_id):
+    """The (Claim, Proof) diet for one task of a claims-v1 plan, plus its hash."""
+    task = _task(plan_path, task_id)
+    claim, proof = task["claim"], task["proof"]
     return {"task": task["id"], "claim": claim, "proof": proof,
             "hash": gate_input_hash(claim, proof)}
 
@@ -111,7 +121,7 @@ def gate_input(plan_path, task_id):
 def _files_in_block_order(body):
     """The task's Files paths as the block lists them — `Create:`, `Modify:`,
     `Delete:` and `Test:` bullets in their written order, first mention wins.
-    `parse_task` sorts each kind; the reader is shown the author's order."""
+    The reader is shown the author's order."""
     paths = []
     in_files = False
     for line in body.splitlines():
@@ -132,20 +142,17 @@ def _files_in_block_order(body):
     return paths
 
 
-def _proof_paths(proof):
+def _proof_paths(task):
     """Every repository path the Proof names: its backticked tokens that are
     path referents, then every whitespace-separated token of a `Run:` command
     that contains `/` and ends in a dot and 1–8 alphanumerics."""
     paths = []
-    for tok in PATH_RE.findall(proof):
+    for tok in PATH_RE.findall(task["proof"]):
         ref = _path_referent(tok)
         if ref and ref not in paths:
             paths.append(ref)
-    for line in proof.splitlines():
-        m = RUN_LINE.match(line.strip())
-        if not m:
-            continue
-        for tok in _claims_run_command(m.group(1)).split():
+    for command in task["proofRuns"]:
+        for tok in command.split():
             tok = tok.strip("'\"")
             if _RUN_PATH_TOKEN.match(tok) and not tok.startswith(("-", "/", "./", "../")):
                 if tok not in paths:
@@ -166,7 +173,7 @@ def _diet_literals(claim, proof):
 
 def _headings(path, lines):
     """A `.md` file's `#` lines; any other file's test-case lines and section
-    banners (the compiler's own two shapes), in file order."""
+    banners (`plan_check.py`'s own two shapes), in file order."""
     if path.endswith(".md"):
         return [l for l in lines if l.startswith("#")]
     out = []
@@ -210,18 +217,11 @@ def base_excerpt(plan_path, task_id, base):
     """The `base` key (#989): what the task's Files and its Proof's paths hold
     at `base` — a `BaseTree` flag value (40-hex sha of the plan's repository,
     or a checkout directory). Never touches the hash."""
-    text = _claims_text(plan_path)
-    tasks = split_tasks(text)
-    task = next((t for t in tasks if t["id"] == task_id), None)
-    if task is None:
-        raise SystemExit(
-            "extract_gate_input: no task %s in %s (found: %s)"
-            % (task_id, plan_path, ", ".join(t["id"] for t in tasks) or "none"))
-    claims = parse_claims_body(task["body"], task["id"], parse_plan_claim(text))
-    literals = _diet_literals(claims["claim"], claims["proof"])
+    task = _task(plan_path, task_id)
+    literals = _diet_literals(task["claim"], task["proof"])
     tree = BaseTree.from_flag(base, plan_path)
     paths = _files_in_block_order(task["body"])
-    for p in _proof_paths(claims["proof"]):
+    for p in _proof_paths(task):
         if p not in paths:
             paths.append(p)
     files = []
@@ -261,11 +261,8 @@ def plan_input(plan_path):
         raise SystemExit(
             "extract_gate_input: %s carries no plan-level Claim — the one "
             "elicited operator sentence sits above the first task." % plan_path)
-    entries = [
-        {"id": t["id"],
-         "machine": machine_restatement(
-             parse_claims_body(t["body"], t["id"], claim)["claim"])}
-        for t in split_tasks(text)]
+    entries = [{"id": t["id"], "machine": machine_restatement(t["claim"])}
+               for t in _tasks(plan_path, text)]
     machines = "\n".join(e["machine"] for e in entries)
     return {"claim": claim, "tasks": entries,
             "hash": hashlib.sha256(
@@ -294,16 +291,13 @@ def main(argv=None):
         ap.exit(2, "extract_gate_input: --base rides a task diet only; the "
                    "plan-level diet (--plan) reads no tree\n")
     # A base that is neither a checkout directory nor a 40-hex sha is refused
-    # here, before the compiler's reader sees it: that reader treats any
-    # non-sha value as a directory on purpose, so an 8-character abbreviation
-    # became `git -C <abbrev>` and every file read `absent` — a diet six gate
-    # readers were handed on 2026-09-15 (#1025). A 40-hex sha the repository
-    # does not have is still the reader's own `error:` refusal.
-    if (args.base is not None and not Path(args.base).is_dir()
-            and not _SHA40_RE.fullmatch(args.base)):
-        sys.stderr.write("extract: --base %s is not a commit this repository "
-                         "has — pass the 40-hex sha or a checkout directory\n"
-                         % args.base)
+    # here, before the tree reader sees it: that reader treats any non-sha
+    # value as a directory on purpose, so an 8-character abbreviation became
+    # `git -C <abbrev>` and every file read `absent` — a diet six gate readers
+    # were handed on 2026-09-15 (#1025). A 40-hex sha the repository does not
+    # have is still the reader's own `error:` refusal.
+    if args.base is not None and base_flag_refusal(args.base) is not None:
+        sys.stderr.write("extract: %s\n" % base_flag_refusal(args.base))
         return 2
     payload = (plan_input(args.plan) if args.plan_mode
                else gate_input(args.plan, args.task))

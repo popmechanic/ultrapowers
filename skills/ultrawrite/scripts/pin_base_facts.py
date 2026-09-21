@@ -24,10 +24,10 @@ A referent that does not resolve at BASE is OMITTED rather than pinned as
 missing: a block of facts is not the place to record an absence. A plan that is
 not claims-v1 is not this script's business and exits 0 saying so.
 
-Nothing here reaches the network, and the resolver is the compiler's own — the
-referent scan, the path normalizer and the tree reader (`BaseTree`, `_git`) are
-imported, never re-implemented, so what this pins is exactly what the compiler
-resolves. `--base` therefore takes what the compiler's does: a checkout
+Nothing here reaches the network, and the resolver is `plan_check.py`'s own —
+the referent scan, the path normalizer and the tree reader (`BaseTree`, `_git`)
+are imported, never re-implemented, so what this pins is exactly what the check
+resolves. `--base` therefore takes what the check's does: a checkout
 directory, or a 40-hex sha of the plan's own repository, whose tree is read
 with `git show`/`git ls-tree` and never checked out.
 """
@@ -39,20 +39,29 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ultrapowers/scripts"))
-from compile_plan import (  # noqa: E402
-    CLAIMS_GRAMMAR,
+from plan_check import (  # noqa: E402
     PATH_RE,
-    SLOT_LABEL_RE,
     BaseTree,
-    _fence_aware_lines,
     _git,
     _path_referent,
     _referent_scan_lines,
     default_base,
-    match_head,
-    plan_grammar,
-    split_tasks,
 )
+from plan_parse import (  # noqa: E402
+    CLAIMS_GRAMMAR,
+    SLOT_RE,
+    TASK_HEAD,
+    _fence_aware_lines,
+    _leading_spaces,
+    parse_plan_full,
+    plan_grammar,
+)
+
+
+def match_head(line):
+    """A task heading, as `plan_parse.py` reads one."""
+    return (TASK_HEAD.match(line.strip())
+            if _leading_spaces(line) <= 3 else None)
 
 BLOCK_LABEL = "**BASE facts:**"
 BLOCK_HEAD_RE = re.compile(r"^\*\*BASE facts:\*\*")
@@ -267,12 +276,12 @@ def _slot_name(raw):
 
 
 def context_ranges(text):
-    """For each task, in `split_tasks` order, the (start, end) line indices of
+    """For each task, in plan order, the (start, end) line indices of
     its Context slot's content within `text.split("\\n")` — end exclusive, past
     the slot's last non-blank line. None for a task with no locatable Context.
 
-    Recomputed from the label lines rather than reached out of
-    `parse_claims_body`, which returns slot TEXT and keeps its ranges private.
+    Recomputed from the label lines: the parser returns slot TEXT and keeps
+    its ranges private.
     """
     lines = list(_fence_aware_lines(text))
     heads = [i for i, (line, fenced) in enumerate(lines)
@@ -282,7 +291,7 @@ def context_ranges(text):
         stop = heads[n + 1] if n + 1 < len(heads) else len(lines)
         labels = [(i, _slot_name(m.group(1)))
                   for i in range(start, stop)
-                  for m in [SLOT_LABEL_RE.match(lines[i][0].strip())]
+                  for m in [SLOT_RE.match(lines[i][0].strip())]
                   if m and not lines[i][1]]
         span = None
         for k, (i, name) in enumerate(labels):
@@ -378,7 +387,7 @@ def main(argv=None):
               % args.plan)
         return 0
 
-    # The compiler's reader resolves the flag: a directory, or a sha it refuses
+    # `plan_check.py`'s reader resolves the flag: a directory, or a sha it refuses
     # with one `error:` line when the plan's repository holds no such commit.
     if args.base is not None:
         tree = BaseTree.from_flag(args.base, args.plan)
@@ -392,7 +401,7 @@ def main(argv=None):
     if not sha:
         sys.exit("error: %s is not a git checkout" % base)
 
-    tasks = split_tasks(text)
+    tasks = parse_plan_full(text)[1]
     if args.verify:
         stale = [line for t in tasks
                  for line in [verify_fact(base, sha, t["id"], f)

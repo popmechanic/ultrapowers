@@ -6,13 +6,11 @@ makes it a rule and the run or sitting that cost it — a fresh clone, a subagen
 author and a stranger operator get the same guidance from this file that the
 last sitting got from one agent's memory.
 
-A few of these rules the compiler still refuses outright, and the bullet names
-the refusal so the reading to learn is the compiler's output: a `Run:`/`Check:`
-command carrying a backtick is `command carries a backtick` from
-`compile_plan.py --check`, and a Proof `Run:` sweeping `tests/state-exams/` is
-`one Run, one exam` from the same check. Every other species below is the author's own to
-check, here, against this file — `suite-total-pin` and `directory-absence-pin`
-included. Nothing prints them.
+One of these rules is still refused outright: a `Run:`/`Check:` command carrying a
+backtick is `command carries a backtick` from `plan_check.py`. Every other species below
+is the author's own to check, here, against this file — `suite-total-pin`,
+`directory-absence-pin` and, since the compiler left at cut B (2026-09-21), the
+`one Run, one exam` sweep included. Nothing prints them.
 
 ## The rows
 
@@ -132,10 +130,10 @@ included. Nothing prints them.
   pin on a sibling file belongs in a `Run:` line of the plan, and
   never in the merged exam (run-13 and run-12, popmechanic/tinyapp-fixture,
   2026-09-15; #1019).
-- **A `Run:` that names two exams at once is a sweep, and the compiler refuses
-  it.** A Proof `Run:` naming two or more paths under `tests/state-exams/` — or
-  the bare `tests/state-exams` directory, which names all of them — is
-  `one Run, one exam` from `compile_plan.py --check`. The reading behind it: 19
+- **A `Run:` that names two exams at once is a sweep; do not write one.** A Proof
+  `Run:` naming two or more paths under `tests/state-exams/` — or the bare
+  `tests/state-exams` directory, which names all of them — was the old compiler's
+  `one Run, one exam` refusal; nothing refuses it now. The reading behind it: 19
   of 29 fixture exam files spawned a runner over their neighbours, one leg took
   573 s, and the fold suite grew from 2.4 to 19 minutes over four fixture runs
   ending at run-24. One claim, one prover; regression is the fold's one suite
