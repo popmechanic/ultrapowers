@@ -111,13 +111,24 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
    *  established, and which clause is carried by which file. One pairwise
    *  question per (clause, file) pair beside `claim_established`, filed under
    *  `M<i>__f<j>` clause-major, clauses counted from M1 and files from f0;
-   *  `coverage[i]` is the best any one file does for clause `i`. */
-  const readLanding = async ({ clauses = [], patch, files = {} } = {}) => {
+   *  `coverage[i]` is the best any one file does for clause `i`. A clause
+   *  whose `settled` entry is not `null` was already proved by a command, so
+   *  its pairwise questions are never sent and its `coverage` entry is that
+   *  entry verbatim. When `facts` is given, the whole-claim reading is also
+   *  taken with those measured facts in front of it, at the record-only
+   *  `claim_established_given_facts` question — a missing answer to it never
+   *  fails the reading. */
+  const readLanding = async ({ clauses = [], patch, files = {}, facts, settled } = {}) => {
     const template = (sets.landing || {}).pairwise || {}
     const names = Object.keys(files)
     const keyOf = (i, j) => 'M' + (i + 1) + '__f' + j
+    const isSettled = (i) => Array.isArray(settled) && settled[i] !== null && settled[i] !== undefined
     const questions = { claim_established: landingQuestions.claim_established }
+    if (Array.isArray(facts) && facts.length > 0) {
+      questions.claim_established_given_facts = landingQuestions.claim_established_given_facts
+    }
     for (let i = 0; i < clauses.length; i += 1) {
+      if (isSettled(i)) continue
       for (let j = 0; j < names.length; j += 1) {
         questions[keyOf(i, j)] = {
           type: template.type,
@@ -126,11 +137,20 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
         }
       }
     }
-    return askOnce('landing', { clauses, patch, files }, questions, (answers) => {
+    const state = { clauses, patch, files }
+    if (Array.isArray(facts) && facts.length > 0) state.facts = facts
+    return askOnce('landing', state, questions, (answers) => {
       const claim = noulOf(answers.claim_established)
       if (claim === undefined) return undefined
+      const claimGivenFacts = questions.claim_established_given_facts
+        ? (noulOf(answers.claim_established_given_facts) ?? null)
+        : undefined
       const coverage = []
       for (let i = 0; i < clauses.length; i += 1) {
+        if (isSettled(i)) {
+          coverage.push(settled[i])
+          continue
+        }
         let best
         for (let j = 0; j < names.length; j += 1) {
           const pair = noulOf(answers[keyOf(i, j)])
@@ -139,7 +159,7 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
         }
         coverage.push(best === undefined ? 0 : best)
       }
-      return { claim, coverage }
+      return claimGivenFacts === undefined ? { claim, coverage } : { claim, coverage, claimGivenFacts }
     })
   }
 

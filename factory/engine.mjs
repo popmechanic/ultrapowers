@@ -56,6 +56,7 @@ import { candidateTests, symbolsOf, commandFor, excerptFor } from './select.mjs'
 import { examsTouched } from './reverify.mjs'
 import { waitsFor } from './dispatch.mjs'
 import { runLines } from './proofs.mjs'
+import { settledCoverage, observedFacts } from './facts.mjs'
 
 // Amendment (undeclared by the task's own M1-M6, needed only to reach them):
 // this module now creates a missing parent directory once, on the one error
@@ -742,6 +743,13 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const proofsEnabled = proofsPolicy.run_lines === true
   const proofTimeoutSeconds = Number.isFinite(Number(proofsPolicy.timeout_seconds))
     ? Number(proofsPolicy.timeout_seconds) : 300
+  // M5: with `landing.facts.enabled`, `measure` hands Jev the facts the
+  // task's own exam and proof lines already settled, instead of asking it to
+  // guess a cited clause's coverage from the diff alone (run-200).
+  const factsPolicy = (policyDoc.landing || {}).facts || {}
+  const factsEnabled = factsPolicy.enabled === true
+  const factsCapBytes = Number.isFinite(Number(factsPolicy.cap_bytes))
+    ? Number(factsPolicy.cap_bytes) : 4000
   const pairsPolicy = policyDoc.pairs || {}
   const pairsLive = pairsPolicy.mode === 'live'
   const examAtZero = (policyDoc.speculate || {}).exam_at_zero === true
@@ -1112,13 +1120,47 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     // raced task from the other; `makeJudge` builds Jev's state from `clauses`,
     // `patch` and `files` alone, so neither reaches the model.
     const literals = literalsOf(task.clauses)
+    // M5: with `landing.facts.enabled`, Jev is handed the facts the exam and
+    // the task's own proof lines already observed, and the per-clause
+    // coverage those same lines already settled — so a clause a cited
+    // command already proved is no longer a guess from the diff alone.
+    let factsArgs = {}
+    let settled
+    if (factsEnabled) {
+      const facts = observedFacts({
+        clauses: task.clauses,
+        hasExam: !!task.testCmd,
+        examExit,
+        proofRuns: Array.isArray(task.proofRuns) ? task.proofRuns : [],
+        proofRunClauses: Array.isArray(task.proofRunClauses) ? task.proofRunClauses : [],
+        runLines: proofRunResults,
+        capBytes: factsCapBytes,
+      })
+      settled = settledCoverage({
+        clauses: task.clauses,
+        proofRunClauses: Array.isArray(task.proofRunClauses) ? task.proofRunClauses : [],
+        runLines: proofRunResults,
+      })
+      factsArgs = { facts, settled }
+    }
     const reading = await read('readLanding', {
       task: task.id,
       cwd: dir,
       clauses: task.clauses,
       patch: hunksCarrying(text, literals, 20000),
       files: Object.fromEntries(names.map((n, j) => ['f' + j, hunksCarrying(perFile[n], literals, 6000)])),
+      ...factsArgs,
     })
+    if (factsEnabled) {
+      appendEvent({
+        kind: 'landing:facts',
+        task: task.id,
+        settled,
+        claim: reading && typeof reading.claim === 'number' ? reading.claim : null,
+        claimGivenFacts: reading && typeof reading.claimGivenFacts === 'number' ? reading.claimGivenFacts : null,
+        facts: factsArgs.facts ? factsArgs.facts.length : 0,
+      })
+    }
     return {
       dir,
       index,
