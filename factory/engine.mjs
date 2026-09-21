@@ -49,7 +49,7 @@ import { makeJevClient } from '../fleet/jev-client.mjs'
 import { runAll, bootstrapFor } from './commands.mjs'
 import { runWorker } from './worker.mjs'
 import { makeJudge } from './judge.mjs'
-import { literalsOf, hunksCarrying } from './hunks.mjs'
+import { literalsOf, hunksCarrying, filesShown } from './hunks.mjs'
 import { unionReply } from './union.mjs'
 import { makeBoard, patchWithRevision } from './board.mjs'
 import { candidateTests, symbolsOf, commandFor, excerptFor } from './select.mjs'
@@ -57,6 +57,7 @@ import { examsTouched } from './reverify.mjs'
 import { waitsFor } from './dispatch.mjs'
 import { runLines } from './proofs.mjs'
 import { settledCoverage, observedFacts } from './facts.mjs'
+import { observedWork, supervisorTick } from './watch.mjs'
 
 // Amendment (undeclared by the task's own M1-M6, needed only to reach them):
 // this module now creates a missing parent directory once, on the one error
@@ -560,7 +561,7 @@ async function resolveConflicts ({
       try { hunksFileText = fs.readFileSync(conflict.hunksFile, 'utf8') } catch { /* unreadable: no union */ }
       const union = hunksFileText !== null ? unionReply(hunksFileText) : null
       if (union) {
-        const verdict = await readUnion({ hunks: union.hunks })
+        const verdict = await readUnion({ hunks: union.hunks, who: { task: taskId ?? null, label: null } })
         if (verdict && verdict.union === true) {
           const replyDir = path.join(runDir, `reply-${labelId}-${conflict.i}`)
           fs.mkdirSync(replyDir, { recursive: true })
@@ -799,6 +800,20 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const done = new Set()
   const inflight = new Set()
   const supervisorTicks = []
+  // M5: `supervisor.observed.enabled` off `policyDoc`, read once — whether
+  // the second, facts-only supervisor reading fires at all.
+  const observedEnabled = ((policyDoc.supervisor || {}).observed || {}).enabled === true
+  // M5: one `{ tools, examRuns }` accumulator per dispatch, keyed by that
+  // dispatch's own label — filled in by `onMessageFor`'s own `tool_use`
+  // handling and by both places a `worker:test-run` row is appended (the
+  // `run_exam` closure in `mcpServersFor`, and the Bash-named-the-test-command
+  // case inside `onMessageFor` itself) — so `observedWork` sees exactly that
+  // dispatch's own history, never a sibling's.
+  const dispatchObserved = new Map()
+  const observedFor = (label) => {
+    if (!dispatchObserved.has(label)) dispatchObserved.set(label, { tools: [], examRuns: [] })
+    return dispatchObserved.get(label)
+  }
   // M2: one pairState reading per pair, keyed `a>b`, so M4's candidate check
   // can hand the same state back to `readPairCandidate` as "the consumer's
   // state" without asking `pairState` twice. M4 fires at most once per pair
@@ -846,11 +861,13 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     return candidateCommitCache.get(producerId)
   }
 
-  // M3: `readUnion` is `deps.readUnion` when a caller injects one; otherwise
-  // the engine builds it from `deps.ask` (M3), over `policy.resolve.union`'s
-  // own thresholds.
+  // M5: `readUnion` is `deps.readUnion` when a caller injects one; else the
+  // judge's own `readUnion` when the judge has one; else the engine builds it
+  // from `deps.ask` (M3), over `policy.resolve.union`'s own thresholds.
   const unionPolicy = (policyDoc.resolve || {}).union || {}
-  const readUnion = typeof deps.readUnion === 'function' ? deps.readUnion : buildReadUnion(deps.ask, unionPolicy)
+  const readUnion = typeof deps.readUnion === 'function' ? deps.readUnion
+    : typeof judge.readUnion === 'function' ? judge.readUnion
+      : buildReadUnion(deps.ask, unionPolicy)
   /** A judge reader that never throws and never is required to exist: Jev
    *  answers no fact, and a reading that did not happen is simply absent. */
   const read = async (name, arg) => {
@@ -883,6 +900,8 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     let fired = false
     const tail = []
     const wantsSupervisor = supervisorMode === 'record-only' && typeof judge.readSupervisor === 'function'
+    const dispatchStartedAt = Date.now()
+    const observed = observedFor(label)
     return (message) => {
       if (!message) return
       const blocks = (message.message && message.message.content) || []
@@ -894,6 +913,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
             const target = input.file_path ?? input.path ?? input.pattern ??
               (input.command !== undefined ? String(input.command).slice(0, 200) : undefined)
             appendEvent({ kind: 'worker:tool', task: taskId, label, tool: b.name, target })
+            observed.tools.push({ at: Date.now(), tool: b.name, target })
             if (b.name === 'Bash') pendingBash.set(b.id, String((input && input.command) || ''))
           }
           if (b.type === 'text') tail.push(String(b.text))
@@ -902,9 +922,14 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         if (!wantsSupervisor || fired || turns < SUPERVISOR_TICK_TURNS) return
         fired = true
         supervisorTicks.push(
-          read('readSupervisor', { label, task: taskId, transcript: tail.slice(-8).join('\n').slice(-4000) })
-            .then((answers) => { if (answers) appendEvent({ kind: 'supervisor', task: taskId, label, answers }) })
-            .catch(() => {}))
+          supervisorTick({
+            read, appendEvent, observedEnabled,
+            label, task: taskId, transcript: tail.slice(-8).join('\n').slice(-4000),
+            observed: observedWork({
+              tools: observed.tools, examRuns: observed.examRuns,
+              taskFiles: (task && task.files) || [], startedAt: dispatchStartedAt, now: Date.now(),
+            }),
+          }))
         return
       }
       if (message.type === 'user') {
@@ -918,6 +943,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
           // EXIT:$?` hides from `is_error` regardless of what the run did.
           // Say so rather than guess: this row's result is unknown.
           appendEvent({ kind: 'worker:test-run', task: taskId, label, cmd, exit: null, red: null, via: 'bash' })
+          observed.examRuns.push({ via: 'bash', exit: null })
         }
       }
     }
@@ -1148,8 +1174,9 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       cwd: dir,
       clauses: task.clauses,
       patch: hunksCarrying(text, literals, 20000),
-      files: Object.fromEntries(names.map((n, j) => ['f' + j, hunksCarrying(perFile[n], literals, 6000)])),
+      files: filesShown(perFile, literals, 6000),
       ...factsArgs,
+      who: { task: task.id, label: 'impl:' + task.id + ':' + index },
     })
     if (factsEnabled) {
       appendEvent({
@@ -1232,6 +1259,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
           kind: 'worker:test-run', task: taskId, label, cmd: cmds.join(' && '), exit: r.exit,
           red: r.exit !== 0, via: 'run_exam',
         })
+        observedFor(label).examRuns.push({ via: 'run_exam', exit: r.exit })
         return { exit: r.exit, tail }
       }
       : undefined
@@ -1290,7 +1318,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       if (foundCovering.length) {
         const { tests: coveringTests, kept, dropped } = excerptTests(foundCovering, readExamFile, 6000)
         if (dropped > 0) appendEvent({ kind: 'select:trimmed', task: task.id, kept, dropped })
-        const covering = await read('readCovering', { clauses: task.clauses, tests: coveringTests })
+        const covering = await read('readCovering', { clauses: task.clauses, tests: coveringTests, who: { task: task.id, label: 'exam:' + task.id } })
         if (covering) {
           taskCovering = Array.isArray(covering.covered) ? covering.covered : []
           appendEvent({
@@ -1344,7 +1372,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       pairCandidateDone.add(key)
       const patchText = best.patch && fs.existsSync(best.patch) ? fs.readFileSync(best.patch, 'utf8') : ''
       const hunks = hunksCarrying(patchText, [pair.symbol], 8000)
-      const answer = await read('readPairCandidate', { hunks, state: pairStates.get(key) })
+      const answer = await read('readPairCandidate', { hunks, state: pairStates.get(key), who: { task: task.id, label: null } })
       const changes = Boolean(answer && answer.changes)
       const score = answer && typeof answer.score === 'number' ? answer.score : null
       appendEvent({ kind: 'pair:candidate', a: pair.a, b: pair.b, changes, score })
@@ -1358,7 +1386,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
 
   const land = async (task, anchor) => {
     const t0 = Date.now()
-    const reading = (await read('readTask', { id: task.id, title: task.title, body: task.body })) || {}
+    const reading = (await read('readTask', { id: task.id, title: task.title, body: task.body, who: { task: task.id, label: null } })) || {}
     const k = Number.isInteger(reading.k) && reading.k > 0 ? reading.k : 1
     const wantsReferee = reading.referee === true
 
@@ -1465,6 +1493,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       const guards = await read('readGuards', {
         patch: hunksCarrying(patchText, names, 20000),
         tests: guardTests,
+        who: { task: task.id, label: 'impl:' + task.id + ':' + candidate.index },
       })
       if (!guards) return false
 
@@ -1583,6 +1612,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
           finding,
           hunks: hunksFor(patchText, finding && (finding.path || finding.detail)),
           siblingFacts: null,
+          who: { task: task.id, label: 'referee:' + task.id },
         })
         grades.push(grade)
         if (grade === 'blocking') blocking.push(finding)
@@ -1824,7 +1854,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const patchText = best.patch && fs.existsSync(best.patch) ? fs.readFileSync(best.patch, 'utf8') : ''
     const { names, fileOf } = candidatesOf(task, patchText)
     if (!names.length) return
-    const settled = await read('readSettled', { note, candidates: names })
+    const settled = await read('readSettled', { note, candidates: names, who: { task: task.id, label: 'impl:' + task.id + ':' + best.index } })
     if (!settled || !settled.symbol) return
     const file = fileOf.get(settled.symbol) || Object.keys(splitDiff(patchText))[0] || ''
     const meta = { symbol: settled.symbol, file, task: task.id, sha }
@@ -1997,7 +2027,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         by = 'code'
         score = null
       } else {
-        const answer = await read('readPair', state)
+        const answer = await read('readPair', { ...state, who: { task: null, label: null } })
         // A `null` reading (the reader absent, or nothing came back) is the
         // verdict `look`: a pair worth a human's eye, never an ordering.
         verdict = (answer && answer.verdict) || 'look'
@@ -2152,7 +2182,11 @@ export async function runRefold (rawArgs = {}, deps = {}) {
   const unionPolicy = (policyDoc.resolve || {}).union || {}
   const reverifyPolicy = (policyDoc.fold || {}).reverify || {}
   const timeoutSeconds = reverifyPolicy.timeout_seconds ?? 300
-  const readUnion = typeof deps.readUnion === 'function' ? deps.readUnion : buildReadUnion(deps.ask, unionPolicy)
+  // M5: same fallback chain as `runEngine`'s.
+  const judge = deps.judge || {}
+  const readUnion = typeof deps.readUnion === 'function' ? deps.readUnion
+    : typeof judge.readUnion === 'function' ? judge.readUnion
+      : buildReadUnion(deps.ask, unionPolicy)
 
   const kernel = (argv) => {
     const r = sh('python3', [KERNEL, ...argv], REPO)
@@ -2299,8 +2333,17 @@ export function buildDeps (rawArgs = {}, overrides = {}) {
     fetchImpl,
     log,
   })
+  // M1/M2: a writer onto this run's own record. Never throws — a run
+  // directory that does not exist (yet, or ever) just swallows the row
+  // rather than take the judge down with it.
+  const emit = (row) => {
+    try {
+      const eventsPath = path.join(path.resolve(String(args.runDir ?? '.')), 'events.jsonl')
+      fs.appendFileSync(eventsPath, JSON.stringify({ ts: new Date().toISOString(), ...row }) + '\n')
+    } catch { /* the record is best-effort from here; the judge call itself must not fail on it */ }
+  }
   const judgeOf = overrides.makeJudge || makeJudge
-  const judge = judgeOf({ ask: (x) => client.ask(x), questionsPath, policyPath, log })
+  const judge = judgeOf({ ask: (x) => client.ask(x), emit, questionsPath, policyPath, log })
   // Readable after the fact: which two documents this judge was built on.
   try { Object.assign(judge, { questionsPath, policyPath }) } catch { /* frozen is fine */ }
 

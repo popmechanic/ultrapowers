@@ -47,7 +47,7 @@ const fill = (value, i, j) => {
 /** The judge: six readers over one `ask`. `makeJudge` reads both JSON files
  *  once, at construction, and closes over them; every reader puts its set's
  *  questions to `ask` exactly once and resolves its row or `null`. */
-export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {}) => {
+export const makeJudge = ({ ask, emit, now = Date.now, questionsPath, policyPath, log = () => {} } = {}) => {
   const doc = load(questionsPath, './questions.json')
   const policy = load(policyPath, './policy.json')
   const sets = doc.sets || {}
@@ -68,16 +68,47 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
 
   /** One call, or `null`. `read` maps the answers to the reader's row, and
    *  `undefined` when an answer it needs is absent or the wrong shape — which
-   *  is a `null` and one log line, like a call that never answered. */
-  const askOnce = async (what, state, questions, read) => {
-    if (typeof ask !== 'function') return refuse(what + ': no ask()')
+   *  is a `null` and one log line, like a call that never answered. Every
+   *  invocation writes exactly one Jev row through `emit` (M1): `kind: 'jev'`,
+   *  `site: what`, the `task`/`label` off `who` (or `null`), the questions'
+   *  own keys in order, the raw `values` Jev sent back (`null` when it never
+   *  answered), `state_bytes` over the state sent, `ms` from `now()` before
+   *  to `now()` after, and `answered`. An `emit` that throws, or none at all,
+   *  never reaches the reader — evidence, not control flow. */
+  const askOnce = async (what, state, questions, read, who) => {
+    const t0 = now()
+    const writeRow = (answered, values) => {
+      const row = {
+        kind: 'jev',
+        site: what,
+        task: (who && who.task != null) ? who.task : null,
+        label: (who && who.label != null) ? who.label : null,
+        keys: Object.keys(questions),
+        values,
+        state_bytes: Buffer.byteLength(JSON.stringify(state)),
+        ms: now() - t0,
+        answered,
+      }
+      if (typeof emit === 'function') {
+        try { emit(row) } catch { /* evidence, not control flow */ }
+      }
+    }
+    if (typeof ask !== 'function') {
+      writeRow(false, null)
+      return refuse(what + ': no ask()')
+    }
     let answers
     try {
       answers = await ask({ state, questions })
     } catch (e) {
+      writeRow(false, null)
       return refuse(what + ': ask threw: ' + String((e && e.message) || e).slice(0, 200))
     }
-    if (answers == null || typeof answers !== 'object') return refuse(what + ': no answers')
+    if (answers == null || typeof answers !== 'object') {
+      writeRow(false, null)
+      return refuse(what + ': no answers')
+    }
+    writeRow(true, answers)
     let row
     try {
       row = read(answers)
@@ -93,7 +124,7 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
    *  OR `design_open` reaches its value; the referee rides on
    *  `review_difficulty` alone — `doc_or_prose_only` is recorded and gates
    *  nothing, the rule `factory/policy.json` states. */
-  const readTask = async ({ title, body } = {}) =>
+  const readTask = async ({ title, body, who } = {}) =>
     askOnce('task', { task: { title, body } }, setQuestions('task'), (answers) => {
       const difficulty = scoreOf(answers.difficulty)
       const designOpen = noulOf(answers.design_open)
@@ -105,7 +136,7 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
         referee: reviewDifficulty >= num(taskReferee.review_difficulty_rung),
         answers,
       }
-    })
+    }, who)
 
   /** The adoption reading over one candidate's patch: is the claim
    *  established, and which clause is carried by which file. One pairwise
@@ -118,7 +149,7 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
    *  taken with those measured facts in front of it, at the record-only
    *  `claim_established_given_facts` question — a missing answer to it never
    *  fails the reading. */
-  const readLanding = async ({ clauses = [], patch, files = {}, facts, settled } = {}) => {
+  const readLanding = async ({ clauses = [], patch, files = {}, facts, settled, who } = {}) => {
     const template = (sets.landing || {}).pairwise || {}
     const names = Object.keys(files)
     const keyOf = (i, j) => 'M' + (i + 1) + '__f' + j
@@ -160,7 +191,7 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
         coverage.push(best === undefined ? 0 : best)
       }
       return claimGivenFacts === undefined ? { claim, coverage } : { claim, coverage, claimGivenFacts }
-    })
+    }, who)
   }
 
   /** One reviewer finding, graded by `policy.landing.severity`'s own rule,
@@ -170,7 +201,7 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
    *  merely about how the work was produced, and is not unverified at
    *  confidence. A plan route needs the actor answered `plan` at confidence
    *  AND a fixable answer low enough not to contradict it; else minor. */
-  const gradeFinding = async ({ task, finding, hunks, siblingFacts } = {}) => {
+  const gradeFinding = async ({ task, finding, hunks, siblingFacts, who } = {}) => {
     const questions = { ...landingQuestions }
     delete questions.claim_established
     const state = { task, finding, hunks, sibling_facts: siblingFacts }
@@ -196,16 +227,19 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
         confOf(answers.actor) >= severity('t5_actor_plan') &&
         fixable < severity('t5_fixable_guard')
       return routed ? 'plan' : 'minor'
-    })
+    }, who)
   }
 
   /** The three readings whose row is the answers themselves: the set's
-   *  questions out, the flat answers object back. */
-  const flatReader = (name) => async (state = {}) => {
+   *  questions out, the flat answers object back. `who` never reaches Jev —
+   *  the state sent to `ask` is the argument minus `who`, every other key
+   *  unchanged. */
+  const flatReader = (name) => async (arg = {}) => {
+    const { who, ...state } = arg
     const questions = setQuestions(name)
     const keys = Object.keys(questions)
     return askOnce(name, state, questions,
-      (answers) => (keys.some((key) => answers[key] !== undefined) ? answers : undefined))
+      (answers) => (keys.some((key) => answers[key] !== undefined) ? answers : undefined), who)
   }
 
   /** The seventh reader: does a task's newest `[note]` fact settle one of its
@@ -215,7 +249,7 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
    *  `settled.t_settles` is the one threshold, never a literal here). */
   const settledQuestions = setQuestions('settled')
   const tSettles = num(((policy.settled || {}).t_settles || {}).value)
-  const readSettled = async ({ note, candidates = [] } = {}) => {
+  const readSettled = async ({ note, candidates = [], who } = {}) => {
     const options = [...candidates, 'none']
     const questions = {
       settles_interface: settledQuestions.settles_interface,
@@ -227,7 +261,7 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
       if (settlesInterface === undefined || which === undefined) return undefined
       if (settlesInterface < tSettles || which === 'none' || !candidates.includes(which)) return null
       return { symbol: which }
-    })
+    }, who)
   }
 
   /** The two selection readers: which existing test already covers a clause,
@@ -250,7 +284,7 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
    *  `M<i+1>__t<j>` clause-major, clauses counted from M1 as `readLanding`'s
    *  pairwise does. `covered[i]` is the path of clause `i`'s best-scoring
    *  test when that score clears `policy.select.t_covers`, else `null`. */
-  const readCovering = async ({ clauses = [], tests = [] } = {}) => {
+  const readCovering = async ({ clauses = [], tests = [], who } = {}) => {
     if (tests.length === 0) return null
     const template = selectQuestions.covers || {}
     const keyOf = (i, j) => 'M' + (i + 1) + '__t' + j
@@ -284,13 +318,13 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
         covered.push(best !== undefined && best >= tCovers ? bestPath : null)
       }
       return { covered, scores }
-    })
+    }, who)
   }
 
   /** The guarding reading: one question per test, filed `g<j>`. `selected` is
    *  the paths at or above `policy.select.t_guards`, highest score first,
    *  ties in the order given, capped at `policy.select.max_run`. */
-  const readGuards = async ({ patch, tests = [] } = {}) => {
+  const readGuards = async ({ patch, tests = [], who } = {}) => {
     if (tests.length === 0) return null
     const template = selectQuestions.guards || {}
     const keyOf = (j) => 'g' + j
@@ -313,7 +347,7 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
       indices.sort((a, b) => scores[b] - scores[a])
       const selected = indices.slice(0, maxRun).map((j) => tests[j].path)
       return { selected, scores }
-    })
+    }, who)
   }
 
   /** The pair readings: `readPair` over the two tasks before either lands,
@@ -340,7 +374,8 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
     'imports', 'new top-level code', 'cannot tell',
   ]
 
-  const readPair = async (state = {}) => {
+  const readPair = async (arg = {}) => {
+    const { who, ...state } = arg
     const options = whereOptions(state.shared)
     const questions = {
       verdict: pairQuestions.verdict,
@@ -355,7 +390,7 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
       const consumer = choiceOf(answers.where_consumer)
       if ([score, producer, consumer].includes(undefined)) return undefined
       return { score, where: { producer, consumer }, answers }
-    })
+    }, who)
     if (row === null) return { verdict: 'look', score: null, where: null, answers: null }
     const verdict = row.score < midFoldLook ? 'fold' : row.score >= midLookChain ? 'chain' : 'look'
     return { verdict, score: row.score, where: row.where, answers: row.answers }
@@ -363,13 +398,51 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
 
   /** Whether a producer's real patch changes a name, a signature or a format
    *  the consumer's task text relied on. */
-  const readPairCandidate = async ({ hunks, consumer } = {}) => {
+  const readPairCandidate = async ({ hunks, consumer, who } = {}) => {
     const questions = { changes_consumer: pairQuestions.changes_consumer }
     return askOnce('pair.candidate', { hunks, consumer }, questions, (answers) => {
       const score = noulOf(answers.changes_consumer)
       if (score === undefined) return undefined
       return { changes: score >= tChangesConsumer, score }
-    })
+    }, who)
+  }
+
+  /** The supervisor's second reader: the same four questions, over the
+   *  driver's own `observed` state rather than the worker's `inferred` one,
+   *  filed at its own site so the census can tell the two readings apart.
+   *  `who` never reaches Jev, exactly as `readSupervisor`'s does not. */
+  const readSupervisorObserved = async (arg = {}) => {
+    const { who, ...state } = arg
+    const questions = setQuestions('supervisor')
+    const keys = Object.keys(questions)
+    return askOnce('supervisor.observed', state, questions,
+      (answers) => (keys.some((key) => answers[key] !== undefined) ? answers : undefined), who)
+  }
+
+  /** The union reading: whether two sides that collided can simply both be
+   *  kept, in order — the second door engine.mjs used to open on `ask`
+   *  directly, now behind this one. `union: true` only when
+   *  `independent_additions` clears `policy.resolve.union.independent_additions`
+   *  AND the other two stay at or under their own `_max` ceilings; a missing
+   *  answer is `null`, never a guess. */
+  const resolveQuestions = setQuestions('resolve')
+  const unionPolicy = (policy.resolve || {}).union || {}
+  const readUnion = async ({ hunks, who } = {}) => {
+    const questions = {
+      independent_additions: resolveQuestions.independent_additions,
+      shared_anchor: resolveQuestions.shared_anchor,
+      ordering_matters: resolveQuestions.ordering_matters,
+    }
+    return askOnce('resolve.union', { hunks }, questions, (answers) => {
+      const independent = noulOf(answers.independent_additions)
+      const sharedAnchor = noulOf(answers.shared_anchor)
+      const orderingMatters = noulOf(answers.ordering_matters)
+      if ([independent, sharedAnchor, orderingMatters].includes(undefined)) return null
+      const union = independent >= num(unionPolicy.independent_additions) &&
+        sharedAnchor <= num(unionPolicy.shared_anchor_max) &&
+        orderingMatters <= num(unionPolicy.ordering_matters_max)
+      return { union }
+    }, who)
   }
 
   return {
@@ -379,10 +452,12 @@ export const makeJudge = ({ ask, questionsPath, policyPath, log = () => {} } = {
     readNote: flatReader('note'),
     readAmendment: flatReader('amendment'),
     readSupervisor: flatReader('supervisor'),
+    readSupervisorObserved,
     readSettled,
     readCovering,
     readGuards,
     readPair,
     readPairCandidate,
+    readUnion,
   }
 }
