@@ -282,3 +282,35 @@
 {"ts":"2026-09-21T23:12:44.567Z","kind":"worker:test-run","task":"1","label":"referee:1","cmd":"node fleet/tests/test_factory_judge_rows.mjs && echo \"EXIT $?\"","exit":null,"red":null,"via":"bash"}
 {"ts":"2026-09-21T23:12:46.422Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"Read","target":"/home/exedev/run/impl-4-0/factory/engine.mjs"}
 {"ts":"2026-09-21T23:12:48.401Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"node -e \"\nimport('./factory/judge.mjs').then(async ({makeJudge}) => {\n  // probe 1: no ask at all\n  const rows = []\n  const j = makeJudge({ emit: (r)=>rows.push(r) })\n  const r = await j.readTask({ ti"}
+{"ts":"2026-09-21T23:12:57.854Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"python3 -c \"\nimport re\ns = open('factory/engine.mjs').read()\nc = [m.end() for m in re.finditer(r'\\bread\\(.(?!readSupervisor)[A-Za-z]+.,', s)]\nprint(len(c))\nfor i in c:\n    seg = s[i:i+600]\n    found ="}
+{"ts":"2026-09-21T23:13:01.025Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -q \"filesShown\" factory/engine.mjs && echo \"M6 grep OK\"; grep -q \"judge.readUnion\" factory/engine.mjs && echo \"M5 grep OK\""}
+{"ts":"2026-09-21T23:13:05.709Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"node -e \"\nimport('./factory/judge.mjs').then(async ({makeJudge}) => {\n  const circ = { a: 1 }; circ.self = circ\n  const j = makeJudge({ ask: async()=>({stuck:0.1}), emit: ()=>{} })\n  try {\n    const r"}
+{"ts":"2026-09-21T23:13:09.517Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/hunks.mjs"}
+{"ts":"2026-09-21T23:13:11.411Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -n \"JSON.stringify\\|state\" fleet/jev-client.mjs | head -30"}
+{"ts":"2026-09-21T23:13:12.126Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-21T23:13:12.169Z","kind":"worker:test-run","task":"2","label":"impl:2:0","cmd":"node fleet/tests/test_factory_engine_jev.mjs","exit":0,"red":false,"via":"run_exam"}
+{"ts":"2026-09-21T23:13:17.272Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"node --check factory/engine.mjs && node --check factory/hunks.mjs && echo OK\npython3 -c \"import re; s=open('factory/engine.mjs').read(); c=[m.end() for m in re.finditer(r'\\bread\\(.(?!readSupervisor)[A"}
+{"ts":"2026-09-21T23:13:17.758Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -n \"makeJudge(\" factory/engine.mjs"}
+{"ts":"2026-09-21T23:13:19.321Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -n \"makeJudge\" factory/engine.mjs"}
+{"ts":"2026-09-21T23:13:19.753Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"ls fleet/tests | grep -i \"engine\\|hunks\\|judge\" "}
+{"ts":"2026-09-21T23:13:21.621Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"sed -n '2296,2340p' factory/engine.mjs"}
+{"ts":"2026-09-21T23:13:22.056Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"node fleet/tests/test_launch_one_engine.mjs 2>&1 | tail -40"}
+{"ts":"2026-09-21T23:13:25.222Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"find fleet/tests -iname \"*hunks*\""}
+{"ts":"2026-09-21T23:13:25.430Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"sed -n '1,50p' skills/ultrapowers/scripts/_outcome.py | head -20; echo ---; sed -n '1,30p' skills/ultrapowers/scripts/fleet_events.py"}
+{"ts":"2026-09-21T23:13:27.813Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -rl \"factory/engine.mjs\\|from '../../factory/engine\" fleet/tests | sort"}
+{"ts":"2026-09-21T23:13:29.614Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -n \"readPair(\\|readSupervisor(\\|readNote(\\|readAmendment(\" factory/engine.mjs | head -20"}
+{"ts":"2026-09-21T23:13:29.904Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"node fleet/tests/test_setup_script.mjs 2>&1 | tail -20"}
+{"ts":"2026-09-21T23:13:31.526Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -rn \"readPair\\|readSupervisor\\|readNote\\|readAmendment\" --include=*.mjs factory fleet | grep -v \"judge.mjs\" | head -20"}
+{"ts":"2026-09-21T23:13:32.487Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"git diff -- factory/engine.mjs factory/hunks.mjs"}
+{"ts":"2026-09-21T23:13:35.536Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-21T23:13:37.194Z","kind":"worker:tool","task":"4","label":"referee:4","tool":"StructuredOutput"}
+{"ts":"2026-09-21T23:13:37.305Z","kind":"dispatch:end","task":"4","label":"referee:4","role":"referee","wall_ms":241712,"cost_usd":1.6881614999999996,"error":null}
+{"ts":"2026-09-21T23:13:38.313Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-21T23:13:38.366Z","kind":"worker:test-run","task":"2","label":"impl:2:0","cmd":"node fleet/tests/test_factory_engine_jev.mjs","exit":0,"red":false,"via":"run_exam"}
+{"ts":"2026-09-21T23:13:39.282Z","kind":"referee","task":"4","findings":12,"blocking":0,"grades":["minor","minor","minor","minor","minor","minor","minor","minor","minor","minor","minor","minor"]}
+{"ts":"2026-09-21T23:13:39.937Z","kind":"landing","task":"4","k":1,"examExit":0,"claim":0.71,"coverage":[0.97,0.9,1,0.96,1],"candidateSha":"ea6a082ebdefd81144838801322fecb18f63bce6","wall_ms":534362}
+{"ts":"2026-09-21T23:13:40.659Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"mcp__factory__settled"}
+{"ts":"2026-09-21T23:13:46.719Z","kind":"check:line","task":"4","cmd":"git diff --quiet $ULTRA_BASE -- factory/questions.json factory/roles factory/worker.mjs factory/select.mjs factory/board.mjs factory/boot.sh factory/union.mjs fleet/launch.mjs fleet/fleet-bootstrap.sh skills/ultrapowers/kernel","exit":0,"minor":false}
+{"ts":"2026-09-21T23:13:46.719Z","kind":"fold:verify","task":"4","ran":[{"task":"4","exit":0}],"attempt":1}
+{"ts":"2026-09-21T23:13:46.719Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"export function filesShown\" factory/hunks.mjs"}
+{"ts":"2026-09-21T23:13:49.862Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"mcp__factory__settled"}
