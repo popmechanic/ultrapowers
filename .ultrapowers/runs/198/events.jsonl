@@ -201,3 +201,9 @@
 {"ts":"2026-09-21T19:13:36.221Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -n \"STALE fact:\\|AUTHORING fact:\\|BASE fact:\" skills/ultrapowers/scripts/compile_plan.py | head -20"}
 {"ts":"2026-09-21T19:14:10.772Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -n \"\" skills/ultrapowers/scripts/compile_plan.py | sed -n '3160,3175p'; echo ---; grep -n \"\" tests/test_compile_plan_green_at_base.py | sed -n '724,745p'; echo ---; grep -n \"\" skills/ultrawrite/r"}
 {"ts":"2026-09-21T19:14:10.820Z","kind":"worker:test-run","task":"1","label":"referee:1","cmd":"grep -n \"\" skills/ultrapowers/scripts/compile_plan.py | sed -n '3160,3175p'; echo ---; grep -n \"\" tests/test_compile_plan_green_at_base.py | sed -n '724,745p'; echo ---; grep -n \"\" skills/ultrawrite/references/authoring-gotchas.md | sed -n '9,17p;163,166p'","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-21T19:15:06.238Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"StructuredOutput"}
+{"ts":"2026-09-21T19:15:06.354Z","kind":"dispatch:end","task":"1","label":"referee:1","role":"referee","wall_ms":343723,"cost_usd":1.9372035,"error":null}
+{"ts":"2026-09-21T19:15:09.497Z","kind":"referee","task":"1","findings":12,"blocking":0,"grades":["minor","minor","minor","minor","minor","minor","minor","minor","minor","minor","minor","minor"]}
+{"ts":"2026-09-21T19:15:10.222Z","kind":"landing","task":"1","k":1,"examExit":0,"claim":0.52,"coverage":[0.92,0.79,0.79,0.91],"candidateSha":"cad91f8894162d516f11c745dfda3006dcbf8f6c","wall_ms":797591}
+{"ts":"2026-09-21T19:15:17.534Z","kind":"check:line","task":"1","cmd":"git diff --quiet $ULTRA_BASE -- factory fleet skills/ultrapowers/kernel","exit":0,"minor":false}
+{"ts":"2026-09-21T19:15:17.534Z","kind":"fold:verify","task":"1","ran":[{"task":"1","exit":0}],"attempt":1}
