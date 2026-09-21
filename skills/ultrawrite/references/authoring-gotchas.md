@@ -174,6 +174,18 @@ included. Nothing prints them.
   could change nothing (fixture run-36, popmechanic/tinyapp-fixture,
   2026-09-21; #1173).
 
+- **A `Check:` that freezes a path must not cover any task's own Files or `Test:` path.**
+  A run-wide `git diff --quiet $ULTRA_BASE -- <paths>` is green at BASE by construction, so
+  the `RED-AT-BASE fact:` line cannot see this one: it goes red the moment a task's own
+  patch lands under a frozen path — and on the factory an exam file rides the patch into
+  the folded tree even when it is unguarded and stripped at publish. Read the pathspec
+  against every task's `Create:`, `Modify:`, `Delete:` and `Test:` paths before the gate
+  readers are dispatched, and freeze files, not the directory they sit in. Run-199 froze
+  `fleet/` while its one task's exam was `fleet/tests/test_factory_select_dirs.mjs`: the
+  check exited 1 on both fold passes, the repair could change nothing, and a task adopted
+  green parked as `done: false` with a draft pull request (n=1 run, 2026-09-21) — the gate
+  fix of #1172 working exactly as designed on a plan defect.
+
 ## Three older lessons of the same kind
 
 - **Quote desired-state sentences, never diagnosis sentences.** An issue's
