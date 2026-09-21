@@ -94,3 +94,21 @@ export function hunksCarrying (diffText, literals, cap) {
   }
   return out
 }
+
+/** M3: `{ f0, f1, … }` over `perFile`'s own key order, keyed only across the
+ *  files whose `hunksCarrying` text still carries a `@@ ` line — a file
+ *  trimmed down to the bare `(N hunks omitted)` string is dropped rather
+ *  than shown as a file with nothing in it. Jev is no longer asked about a
+ *  file it is shown nothing of. */
+export function filesShown (perFile, literals, cap) {
+  const names = Object.keys(perFile || {})
+  const out = {}
+  let j = 0
+  for (const name of names) {
+    const text = hunksCarrying(perFile[name], literals, cap)
+    if (!/^@@ /m.test(text)) continue
+    out['f' + j] = text
+    j += 1
+  }
+  return out
+}

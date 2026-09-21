@@ -49,7 +49,7 @@ import { makeJevClient } from '../fleet/jev-client.mjs'
 import { runAll, bootstrapFor } from './commands.mjs'
 import { runWorker } from './worker.mjs'
 import { makeJudge } from './judge.mjs'
-import { literalsOf, hunksCarrying } from './hunks.mjs'
+import { literalsOf, hunksCarrying, filesShown } from './hunks.mjs'
 import { unionReply } from './union.mjs'
 import { makeBoard, patchWithRevision } from './board.mjs'
 import { candidateTests, symbolsOf, commandFor, excerptFor } from './select.mjs'
@@ -561,7 +561,7 @@ async function resolveConflicts ({
       try { hunksFileText = fs.readFileSync(conflict.hunksFile, 'utf8') } catch { /* unreadable: no union */ }
       const union = hunksFileText !== null ? unionReply(hunksFileText) : null
       if (union) {
-        const verdict = await readUnion({ hunks: union.hunks })
+        const verdict = await readUnion({ hunks: union.hunks, who: { task: taskId ?? null, label: null } })
         if (verdict && verdict.union === true) {
           const replyDir = path.join(runDir, `reply-${labelId}-${conflict.i}`)
           fs.mkdirSync(replyDir, { recursive: true })
@@ -861,11 +861,13 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     return candidateCommitCache.get(producerId)
   }
 
-  // M3: `readUnion` is `deps.readUnion` when a caller injects one; otherwise
-  // the engine builds it from `deps.ask` (M3), over `policy.resolve.union`'s
-  // own thresholds.
+  // M5: `readUnion` is `deps.readUnion` when a caller injects one; else the
+  // judge's own `readUnion` when the judge has one; else the engine builds it
+  // from `deps.ask` (M3), over `policy.resolve.union`'s own thresholds.
   const unionPolicy = (policyDoc.resolve || {}).union || {}
-  const readUnion = typeof deps.readUnion === 'function' ? deps.readUnion : buildReadUnion(deps.ask, unionPolicy)
+  const readUnion = typeof deps.readUnion === 'function' ? deps.readUnion
+    : typeof judge.readUnion === 'function' ? judge.readUnion
+      : buildReadUnion(deps.ask, unionPolicy)
   /** A judge reader that never throws and never is required to exist: Jev
    *  answers no fact, and a reading that did not happen is simply absent. */
   const read = async (name, arg) => {
@@ -1172,8 +1174,9 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       cwd: dir,
       clauses: task.clauses,
       patch: hunksCarrying(text, literals, 20000),
-      files: Object.fromEntries(names.map((n, j) => ['f' + j, hunksCarrying(perFile[n], literals, 6000)])),
+      files: filesShown(perFile, literals, 6000),
       ...factsArgs,
+      who: { task: task.id, label: 'impl:' + task.id + ':' + index },
     })
     if (factsEnabled) {
       appendEvent({
@@ -1315,7 +1318,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       if (foundCovering.length) {
         const { tests: coveringTests, kept, dropped } = excerptTests(foundCovering, readExamFile, 6000)
         if (dropped > 0) appendEvent({ kind: 'select:trimmed', task: task.id, kept, dropped })
-        const covering = await read('readCovering', { clauses: task.clauses, tests: coveringTests })
+        const covering = await read('readCovering', { clauses: task.clauses, tests: coveringTests, who: { task: task.id, label: 'exam:' + task.id } })
         if (covering) {
           taskCovering = Array.isArray(covering.covered) ? covering.covered : []
           appendEvent({
@@ -1369,7 +1372,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       pairCandidateDone.add(key)
       const patchText = best.patch && fs.existsSync(best.patch) ? fs.readFileSync(best.patch, 'utf8') : ''
       const hunks = hunksCarrying(patchText, [pair.symbol], 8000)
-      const answer = await read('readPairCandidate', { hunks, state: pairStates.get(key) })
+      const answer = await read('readPairCandidate', { hunks, state: pairStates.get(key), who: { task: task.id, label: null } })
       const changes = Boolean(answer && answer.changes)
       const score = answer && typeof answer.score === 'number' ? answer.score : null
       appendEvent({ kind: 'pair:candidate', a: pair.a, b: pair.b, changes, score })
@@ -1383,7 +1386,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
 
   const land = async (task, anchor) => {
     const t0 = Date.now()
-    const reading = (await read('readTask', { id: task.id, title: task.title, body: task.body })) || {}
+    const reading = (await read('readTask', { id: task.id, title: task.title, body: task.body, who: { task: task.id, label: null } })) || {}
     const k = Number.isInteger(reading.k) && reading.k > 0 ? reading.k : 1
     const wantsReferee = reading.referee === true
 
@@ -1490,6 +1493,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       const guards = await read('readGuards', {
         patch: hunksCarrying(patchText, names, 20000),
         tests: guardTests,
+        who: { task: task.id, label: 'impl:' + task.id + ':' + candidate.index },
       })
       if (!guards) return false
 
@@ -1608,6 +1612,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
           finding,
           hunks: hunksFor(patchText, finding && (finding.path || finding.detail)),
           siblingFacts: null,
+          who: { task: task.id, label: 'referee:' + task.id },
         })
         grades.push(grade)
         if (grade === 'blocking') blocking.push(finding)
@@ -1849,7 +1854,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const patchText = best.patch && fs.existsSync(best.patch) ? fs.readFileSync(best.patch, 'utf8') : ''
     const { names, fileOf } = candidatesOf(task, patchText)
     if (!names.length) return
-    const settled = await read('readSettled', { note, candidates: names })
+    const settled = await read('readSettled', { note, candidates: names, who: { task: task.id, label: 'impl:' + task.id + ':' + best.index } })
     if (!settled || !settled.symbol) return
     const file = fileOf.get(settled.symbol) || Object.keys(splitDiff(patchText))[0] || ''
     const meta = { symbol: settled.symbol, file, task: task.id, sha }
@@ -2022,7 +2027,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         by = 'code'
         score = null
       } else {
-        const answer = await read('readPair', state)
+        const answer = await read('readPair', { ...state, who: { task: null, label: null } })
         // A `null` reading (the reader absent, or nothing came back) is the
         // verdict `look`: a pair worth a human's eye, never an ordering.
         verdict = (answer && answer.verdict) || 'look'
@@ -2177,7 +2182,11 @@ export async function runRefold (rawArgs = {}, deps = {}) {
   const unionPolicy = (policyDoc.resolve || {}).union || {}
   const reverifyPolicy = (policyDoc.fold || {}).reverify || {}
   const timeoutSeconds = reverifyPolicy.timeout_seconds ?? 300
-  const readUnion = typeof deps.readUnion === 'function' ? deps.readUnion : buildReadUnion(deps.ask, unionPolicy)
+  // M5: same fallback chain as `runEngine`'s.
+  const judge = deps.judge || {}
+  const readUnion = typeof deps.readUnion === 'function' ? deps.readUnion
+    : typeof judge.readUnion === 'function' ? judge.readUnion
+      : buildReadUnion(deps.ask, unionPolicy)
 
   const kernel = (argv) => {
     const r = sh('python3', [KERNEL, ...argv], REPO)
@@ -2324,8 +2333,17 @@ export function buildDeps (rawArgs = {}, overrides = {}) {
     fetchImpl,
     log,
   })
+  // M1/M2: a writer onto this run's own record. Never throws — a run
+  // directory that does not exist (yet, or ever) just swallows the row
+  // rather than take the judge down with it.
+  const emit = (row) => {
+    try {
+      const eventsPath = path.join(path.resolve(String(args.runDir ?? '.')), 'events.jsonl')
+      fs.appendFileSync(eventsPath, JSON.stringify({ ts: new Date().toISOString(), ...row }) + '\n')
+    } catch { /* the record is best-effort from here; the judge call itself must not fail on it */ }
+  }
   const judgeOf = overrides.makeJudge || makeJudge
-  const judge = judgeOf({ ask: (x) => client.ask(x), questionsPath, policyPath, log })
+  const judge = judgeOf({ ask: (x) => client.ask(x), emit, questionsPath, policyPath, log })
   // Readable after the fact: which two documents this judge was built on.
   try { Object.assign(judge, { questionsPath, policyPath }) } catch { /* frozen is fine */ }
 
