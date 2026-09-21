@@ -65,9 +65,31 @@ now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 # is an answer rather than an error. Both take the field in $1, the document on stdin.
 json_field() { { grep -o "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" || true; } | head -n 1 | sed 's/.*:[[:space:]]*"\(.*\)"$/\1/'; }
 json_int()   { { grep -o "\"$1\"[[:space:]]*:[[:space:]]*-\?[0-9]\+" || true; } | head -n 1 | sed 's/.*[:[:space:]]//'; }
-# `run.uid` alone, never `project.uid` — the two share a field name, so the run
-# object is sliced out of the document first and read within it. $1 = the file.
-json_run_uid() { { grep -o '"run"[[:space:]]*:[[:space:]]*{[^}]*}' "$1" 2>/dev/null || true; } | head -n 1 | json_field uid; }
+# The one reader for both ids the launcher's kata.json record carries: parsed
+# as JSON (never grepped — `fleet/launch.mjs` writes the record pretty-printed,
+# `"run": {` and its closing `}` on different lines, which no line-based
+# pattern can match), through `fleet_python3` with the standard library alone,
+# the same door `read_self_merge_policy` already uses for `factory/policy.json`.
+# $1 = the file. Prints `<project id> <run uid>` and exits 0 on success; prints
+# nothing and exits 1 when the file is missing, is not JSON, or lacks either
+# `project.id` (an integer) or `run.uid` (a non-empty string).
+kata_ids() {
+  fleet_python3 -c '
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        doc = json.load(f)
+    project_id = doc["project"]["id"]
+    run_uid = doc["run"]["uid"]
+    if not isinstance(project_id, int) or isinstance(project_id, bool):
+        raise SystemExit(1)
+    if not isinstance(run_uid, str) or not run_uid:
+        raise SystemExit(1)
+    print(project_id, run_uid)
+except Exception:
+    raise SystemExit(1)
+' "$1" 2>/dev/null
+}
 # Backslash, quote, tab, and newline as `\n` and never as nothing — `error` carries a reply body.
 json_escape() {
   printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' |
@@ -321,9 +343,10 @@ EOF
 # fails is logged and nothing else — the run's own state and exit code were decided
 # before this ran, and stay decided (CLAUDE.md: hub writes are never the run's failure).
 board_down() {
+  local out
   [ -n "$BOARD_BOUND" ] || return 0
-  if ! fleet_kata federation leave "$BOARD_PROJECT_NAME" >/dev/null 2>&1
-  then log "board: kata federation leave $BOARD_PROJECT_NAME failed — leaving the unit for the box to reap"; fi
+  if ! out="$(fleet_kata federation leave "$BOARD_PROJECT_NAME" 2>&1)"
+  then log "board: kata federation leave $BOARD_PROJECT_NAME failed — leaving the unit for the box to reap — $(printf '%s' "$out" | head -n 1 | cut -c1-300)"; fi
   fleet_systemctl --user stop "$BOARD_UNIT" >/dev/null 2>&1 || true
   BOARD_BOUND=""
   return 0
@@ -585,13 +608,15 @@ record_tags() {
 # stay decided. No `authorization` header: the admin host is where the exe.dev
 # edge injects the hub's bearer, and this holds no credential of its own.
 close_run() { # $1 = the run's final state (done|parked)
-  local kata_json project_id run_uid message payload url answer rc=0 code reply evidence
+  local kata_json ids project_id run_uid message payload url answer rc=0 code reply evidence
   [ "$1" = done ] || return 0
   kata_json="$FLEET_HOME/plans/$RUN_ID.kata.json"
-  [ -f "$kata_json" ] || return 0
-  project_id="$(json_int id <"$kata_json")"
-  run_uid="$(json_run_uid "$kata_json")"
-  if [ -z "$project_id" ] || [ -z "$run_uid" ]; then return 0; fi
+  if [ ! -f "$kata_json" ]; then log "board: close skipped — no $kata_json to read"; return 0; fi
+  ids="$(kata_ids "$kata_json")" || ids=""
+  project_id="$(printf '%s' "$ids" | awk '{ print $1 }')"
+  run_uid="$(printf '%s' "$ids" | awk '{ print $2 }')"
+  if [ -z "$project_id" ] || [ -z "$run_uid" ]; then
+    log "board: close skipped — $kata_json carries no readable project.id/run.uid"; return 0; fi
   message="$RUN_ID done: $(plan_title) — $PR_URL"
   # M5: a merged run's close carries the merge commit beside the pull request entry.
   evidence="{\"type\":\"pr\",\"url\":\"$(json_escape "$PR_URL")\"}"
@@ -601,7 +626,7 @@ close_run() { # $1 = the run's final state (done|parked)
   answer="$(fleet_curl -sS -X POST "$url" -H 'content-type: application/json' -H "Idempotency-Key: $RUN_ID:run:close" -d "$payload" -w '\n%{http_code}' 2>/dev/null)" || rc=$?
   code="$(printf '%s' "$answer" | tail -n 1)"
   if [ "$rc" -eq 0 ]; then
-    case "$code" in 2[0-9][0-9]) return 0 ;; esac
+    case "$code" in 2[0-9][0-9]) log "board: close answered $code"; return 0 ;; esac
   fi
   reply="$(printf '%s' "$answer" | sed '$d')"
   log "board: closing the run issue failed (exit $rc, http ${code:-<none>}) — $(printf '%s' "$reply" | tr '\n' ' ' | cut -c1-500)"
@@ -624,4 +649,8 @@ boot() {
     write_status parked "nothing ahead of base"; evidence_commit "$RUN_ID: parked"; record_tags; board_down; exit 0; fi
   publish "$code"; board_down; exit 0
 }
-case "${1:-}" in boot) boot ;; *) printf 'usage: boot.sh boot\n' >&2; exit 2 ;; esac
+case "${1:-}" in
+  boot) boot ;;
+  kata-ids) kata_ids "${2:-}" ;;
+  *) printf 'usage: boot.sh boot\n' >&2; exit 2 ;;
+esac
