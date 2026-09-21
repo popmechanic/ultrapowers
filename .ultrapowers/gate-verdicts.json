@@ -1,0 +1,89 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "028b131dd676dee31dee6f0c76f504e4762dc5e5c267d7ae78d9be57b46faba0",
+   "verdict": "pass",
+   "reason": "Every clause M1-M6 has a leg that falsifies its computable facts (zero fetch and keychain writes, exact hold and refusal lines, first lobby verb, the empty-listing rotation, the unread usage row); the pinned ISO times compute from 12:00Z; nothing at BASE pins the opposite. Note: the 90-minute boundary is bracketed by 60 min and 2 h, not pinned."
+  },
+  "2": {
+   "hash": "88e4c1c9178c821a0ef5e857f79a05e6ad42639f0d5ab2abef16f8eb2c13d78f",
+   "verdict": "pass",
+   "reason": "Each of M1-M4 has one leg that can falsify it (exact held/refused strings, argv tail, Refusal exitCode 2 with no push and no new verb, the token line rendered once and absent otherwise); every named symbol exists at BASE and nothing there pins the opposite."
+  },
+  "3": {
+   "hash": "12491a391ba07506553fc2a6bff0d0b3b27f4aa3e9193866257868d77371c544",
+   "verdict": "pass",
+   "reason": "M1-M3 each have a leg that fails if false (runId plus absolute python3 argv and no bare relative one, Refusal exit 2 naming the absolute path with zero exec calls and the cwd variant, the absolute path outside R resolving); no literal is unsatisfiable and BASE pins nothing opposite."
+  },
+  "4": {
+   "hash": "2f26ed0d23caf5a1111bc9fe9bacd6bd8482113867a7b0232069d438c8491b95",
+   "verdict": "pass",
+   "reason": "Round 2: M1-M3 each have Run: provers that are red at BASE and catch the fact false (ordered phrases in the flattened bullet and sections, two absence greps); all four section anchors exist at BASE; no clause is uncited. Round 1 also passed; M4 (an unlegged negation) was dropped and M3's prover loosened on the reader's caveat."
+  }
+ },
+ "tally": {
+  "dispatched": 5,
+  "rejected": 0,
+  "rounds": 2,
+  "round_1": {
+   "dispatched": 4,
+   "rejected": 0
+  },
+  "round_2": {
+   "dispatched": 1,
+   "rejected": 0,
+   "note": "task 4 re-read after the author narrowed it (M4 dropped, M3 prover loosened); no rejection prompted it"
+  },
+  "base": "2a1278bf448e588f445e02ff248aaae7e0052369",
+  "question": "facts-only (experiment, rollback the old sentence)"
+ },
+ "authoring": {
+  "minutes": 12,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Plan A Claim, summary and where the rule lives",
+    "options": [
+     "Sign; rule in the credential tool",
+     "Sign; rule in the launcher only",
+     "Don't sign \u2014 I'll edit the Claim"
+    ],
+    "recommended": "Sign; rule in the credential tool",
+    "picked": "Sign; rule in the credential tool"
+   },
+   {
+    "question": "Escape hatch for an unreaped or kept fleet VM",
+    "options": [
+     "No hatch",
+     "Hand-only override flag",
+     "Ignore VMs marked 'do not reap'"
+    ],
+    "recommended": "No hatch",
+    "picked": "No hatch"
+   },
+   {
+    "question": "Account scope of the guard",
+    "options": [
+     "Any live run blocks any renewal",
+     "Block only the edge's account"
+    ],
+    "recommended": "Any live run blocks any renewal",
+    "picked": "Any live run blocks any renewal"
+   },
+   {
+    "question": "Execute \u2014 no AskUserQuestion put: the operator's standing instruction of 2026-09-21 ('Launch runs when you can')",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers"
+   }
+  ]
+ }
+}
