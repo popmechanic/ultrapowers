@@ -40,6 +40,9 @@ examined goes at cut two. Git history holds every one of them.
 - `test_factory_worker_gitblock.mjs` — the factory worker's git block: the
   whole Bash line is read, a git command word is denied, and the denial is a
   row.
+- `test_factory_retry.mjs` — the infra retry: a gateway death before the
+  first turn is dispatched once more after the backoff, labelled `:retry`
+  with `retry_of`, and nothing else is.
 
 The factory's own exams are not here: an unguarded exam lives on its run's evidence tag
 under `.ultrapowers/runs/<N>/exams/`, and a guarded one sits where its plan put it.

@@ -61,6 +61,7 @@ import { settledCoverage, observedFacts } from './facts.mjs'
 import { observedWork, supervisorTick, makeObservedWatch } from './watch.mjs'
 import { kFor, probeRecord } from './kprobe.mjs'
 import { refereeTrigger } from './referee.mjs'
+import { retrying } from './retry.mjs'
 // Amendment (undeclared by the task's own M1-M6, needed only to reach them):
 // this module now creates a missing parent directory once, on the one error
 // that means "the directory a write was aimed at doesn't exist yet", and
@@ -977,15 +978,20 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   // answer carries `error`, the clone is measured as it stands, and a candidate
   // that produced nothing parks its task with that error as the reason.
   const dispatchedTasks = new Set()
-  const dispatch = async (opts) => {
+  const dispatchOnce = async (opts) => {
     if (opts.taskId !== undefined && !dispatchedTasks.has(opts.taskId)) {
       dispatchedTasks.add(opts.taskId)
       await board.setState(opts.taskId, 'dispatched')
     }
-    appendEvent({ kind: 'dispatch:start', task: opts.taskId, label: opts.label, role: opts.role })
+    appendEvent({
+      kind: 'dispatch:start', task: opts.taskId, label: opts.label, role: opts.role,
+      ...(opts.retry_of ? { retry_of: opts.retry_of } : {}),
+    })
     const startedAt = Date.now()
     let answer
+    let turns = 0
     try {
+      const inner = onMessageFor(opts.label, opts.taskId)
       answer = await worker({
       cwd: opts.cwd,
       prompt: opts.prompt,
@@ -994,7 +1000,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       files: opts.files,
       schema: opts.schema ?? null,
       mcpServers: opts.mcpServers ?? null,
-      onMessage: onMessageFor(opts.label, opts.taskId),
+      onMessage: (m) => { if (m && m.type === 'assistant') turns += 1; return inner(m) },
       readOnly: Boolean(opts.readOnly),
       role: opts.role,
       label: opts.label,
@@ -1004,7 +1010,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     } catch (e) {
       const error = String((e && e.message) || e).slice(0, 500)
       log('worker ' + opts.label + ' ended: ' + error)
-      answer = { result: null, denials: [], error }
+      answer = { result: null, denials: [], error, turns }
       if (opts.taskId !== undefined) await board.post(opts.taskId, 'worker-error', error)
     }
     const wall_ms = Math.max(0, Math.round(Date.now() - startedAt))
@@ -1016,9 +1022,11 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     appendEvent({
       kind: 'dispatch:end', task: opts.taskId, label: opts.label, role: opts.role,
       wall_ms, cost_usd: costUsd, error: (answer && answer.error) || null,
+      ...(opts.retry_of ? { retry_of: opts.retry_of } : {}),
     })
     return answer
   }
+  const dispatch = retrying(dispatchOnce, { policy: policyDoc })
 
   // The test command runs in this clone, and `capture` is an `add -A`: without
   // the clone's own private exclude, the interpreter's own bytecode cache
@@ -1454,6 +1462,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     // 3. select. The scores ride the row in candidate order, so the chosen one
     //    is readable against its rivals and not merely asserted.
     const scores = candidates.map(scoreOf)
+    let refereeDied = false
     let best = candidates[0]
     for (const c of candidates) if (scoreOf(c) > scoreOf(best)) best = c
     if (k > 1) {
@@ -1628,41 +1637,51 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         schema: FINDINGS_SCHEMA,
         prompt: await withHandoff(refereePrompt, task.id),
       })
-      const findings = findingsOf(answer)
-      const grades = []
-      const blocking = []
-      for (const finding of findings) {
-        const grade = await read('gradeFinding', {
-          task: { id: task.id, title: task.title, body: task.body, files: task.files },
-          finding,
-          hunks: hunksFor(patchText, finding && (finding.path || finding.detail)),
-          siblingFacts: null,
-          who: { task: task.id, label: 'referee:' + task.id },
+      if (answer && answer.error) {
+        refereeDied = true
+        appendEvent({
+          kind: 'referee', task: task.id, died: true, error: answer.error, trigger: trig.trigger,
         })
-        grades.push(grade)
-        if (grade === 'blocking') blocking.push(finding)
-        await board.post(task.id, 'finding:' + grade,
-          String((finding && (finding.detail || finding.title)) || finding))
-      }
-      appendEvent({
-        kind: 'referee', task: task.id, findings: findings.length,
-        blocking: blocking.length, grades, trigger: trig.trigger,
-      })
-      if (blocking.length) {
-        const fixLabel = 'fix:' + task.id
-        const fixServers = await mcpServersFor(task.id, best.dir, fixLabel)
-        await dispatch({
-          role: 'implement', label: fixLabel, taskId: task.id, cwd: best.dir,
-          model, systemPrompt: IMPL_MD, files, mcpServers: fixServers,
-          prompt: await withHandoff(prompt, task.id),
+      } else {
+        const findings = findingsOf(answer)
+        const grades = []
+        const blocking = []
+        for (const finding of findings) {
+          const grade = await read('gradeFinding', {
+            task: { id: task.id, title: task.title, body: task.body, files: task.files },
+            finding,
+            hunks: hunksFor(patchText, finding && (finding.path || finding.detail)),
+            siblingFacts: null,
+            who: { task: task.id, label: 'referee:' + task.id },
+          })
+          grades.push(grade)
+          if (grade === 'blocking') blocking.push(finding)
+          await board.post(task.id, 'finding:' + grade,
+            String((finding && (finding.detail || finding.title)) || finding))
+        }
+        appendEvent({
+          kind: 'referee', task: task.id, findings: findings.length,
+          blocking: blocking.length, grades, trigger: trig.trigger,
         })
-        const remeasured = await measure({ task, dir: best.dir, index: best.index, anchor })
-        best = { ...remeasured, examTail: remeasured.examTail }
-        await postLanding(task, best)
+        if (blocking.length) {
+          const fixLabel = 'fix:' + task.id
+          const fixServers = await mcpServersFor(task.id, best.dir, fixLabel)
+          await dispatch({
+            role: 'implement', label: fixLabel, taskId: task.id, cwd: best.dir,
+            model, systemPrompt: IMPL_MD, files, mcpServers: fixServers,
+            prompt: await withHandoff(prompt, task.id),
+          })
+          const remeasured = await measure({ task, dir: best.dir, index: best.index, anchor })
+          best = { ...remeasured, examTail: remeasured.examTail }
+          await postLanding(task, best)
+        }
       }
     }
 
-    return { task, k, anchor, best, record: probeRecord({ candidates, scores }), wall_ms: Date.now() - t0 }
+    return {
+      task, k, anchor, best, record: probeRecord({ candidates, scores }), wall_ms: Date.now() - t0,
+      ...(refereeDied ? { referee: 'died' } : {}),
+    }
     } catch (err) {
       if (!(err && err.bootstrapRed)) throw err
       const { clone, exit, tail } = err.bootstrapRed
@@ -2124,6 +2143,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
           chosen: landing.record.chosen,
           margin: landing.record.margin,
           wall_ms: landing.wall_ms,
+          ...(landing.referee ? { referee: landing.referee } : {}),
         })
         await board.setState(id, 'adopted')
         log('adopted task ' + id + ' -> ' + candidateSha.slice(0, 8) +
@@ -2199,24 +2219,34 @@ export async function runEngine (rawArgs = {}, deps = {}) {
 
 // M4: no board, no examiner, no implementer — the one worker role a
 // re-fold ever dispatches is the resolver, exactly as a task's own fold.
-export function makeRefoldDispatch ({ worker, appendEvent }) {
-  return async (opts) => {
-    appendEvent({ kind: 'dispatch:start', task: opts.taskId, label: opts.label, role: opts.role })
+export function makeRefoldDispatch ({ worker, appendEvent, policy, sleep }) {
+  const dispatchOnce = async (opts) => {
+    appendEvent({
+      kind: 'dispatch:start', task: opts.taskId, label: opts.label, role: opts.role,
+      ...(opts.retry_of ? { retry_of: opts.retry_of } : {}),
+    })
     let answer
+    let turns = 0
     try {
       answer = await worker({
         cwd: opts.cwd, prompt: opts.prompt, systemPrompt: opts.systemPrompt, model: opts.model,
         files: opts.files, schema: opts.schema ?? null, mcpServers: opts.mcpServers ?? null,
-        onMessage: () => {}, readOnly: Boolean(opts.readOnly), role: opts.role, label: opts.label,
+        onMessage: (m) => { if (m && m.type === 'assistant') turns += 1 },
+        readOnly: Boolean(opts.readOnly), role: opts.role, label: opts.label,
         task: opts.taskId,
         onDenied: (row) => appendEvent(row),
       })
     } catch (e) {
-      answer = { result: null, denials: [], error: String((e && e.message) || e).slice(0, 500) }
+      answer = { result: null, denials: [], error: String((e && e.message) || e).slice(0, 500), turns }
     }
-    appendEvent({ kind: 'dispatch:end', task: opts.taskId, label: opts.label, role: opts.role, error: (answer && answer.error) || null })
+    appendEvent({
+      kind: 'dispatch:end', task: opts.taskId, label: opts.label, role: opts.role,
+      error: (answer && answer.error) || null,
+      ...(opts.retry_of ? { retry_of: opts.retry_of } : {}),
+    })
     return answer
   }
+  return retrying(dispatchOnce, { policy, sleep })
 }
 
 export async function runRefold (rawArgs = {}, deps = {}) {
@@ -2267,7 +2297,7 @@ export async function runRefold (rawArgs = {}, deps = {}) {
 
   // M4: no board, no examiner, no implementer — the one worker role a
   // re-fold ever dispatches is the resolver, exactly as a task's own fold.
-  const dispatch = makeRefoldDispatch({ worker, appendEvent })
+  const dispatch = makeRefoldDispatch({ worker, appendEvent, policy: policyDoc })
 
   // The plan, compiled only for the tasks' own test commands — every one of
   // them is what M2's re-verify runs.
