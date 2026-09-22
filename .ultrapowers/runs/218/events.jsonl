@@ -19,3 +19,17 @@
 {"ts":"2026-09-22T20:51:14.340Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"node fleet/tests/test_board_read.mjs","exit":1,"red":true,"via":"run_exam"}
 {"ts":"2026-09-22T20:51:16.764Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"node fleet/tests/test_board_read.mjs 2>&1 | head -100"}
 {"ts":"2026-09-22T20:51:16.845Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"node fleet/tests/test_board_read.mjs 2>&1 | head -100","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T20:51:46.887Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"node -e \"\nimport('./fleet/board-read.mjs').then(({ projectBoard }) => {\n  const row = (event_id, type, issue_short_id, actor, created_at, payload) => ({ event_id, type, issue_short_id, actor, created_"}
+{"ts":"2026-09-22T20:52:04.961Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__note"}
+{"ts":"2026-09-22T20:52:06.012Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__settled"}
+{"ts":"2026-09-22T20:52:09.149Z","kind":"dispatch:end","task":"1","label":"exam:1","role":"exam","wall_ms":350061,"cost_usd":0.9310014000000001,"error":null}
+{"ts":"2026-09-22T20:52:09.426Z","kind":"dispatch:start","task":"1","label":"impl:1:0","role":"implement"}
+{"ts":"2026-09-22T20:52:09.437Z","kind":"dispatch:start","task":"1","label":"impl:1:1","role":"implement"}
+{"ts":"2026-09-22T20:52:11.220Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/fleet/board-read.mjs"}
+{"ts":"2026-09-22T20:52:12.204Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/fleet/tests/test_board_read.mjs"}
+{"ts":"2026-09-22T20:52:12.619Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/fleet/board-read.mjs"}
+{"ts":"2026-09-22T20:52:15.250Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/fleet/kata-client.mjs"}
+{"ts":"2026-09-22T20:52:15.926Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"node fleet/tests/test_board_read.mjs 2>&1 | tail -50"}
+{"ts":"2026-09-22T20:52:16.062Z","kind":"worker:test-run","task":"1","label":"impl:1:1","cmd":"node fleet/tests/test_board_read.mjs 2>&1 | tail -50","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T20:52:17.881Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/fleet/kata-client.mjs"}
+{"ts":"2026-09-22T20:52:18.107Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/fleet/tests/test_board_read.mjs"}
