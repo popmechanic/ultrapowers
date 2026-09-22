@@ -21,3 +21,43 @@
 {"ts":"2026-09-22T16:05:21.758Z","kind":"supervisor","task":"2","label":"exam:2","answers":{"stuck":{"type":"noul","noul":0.12},"off_track":{"type":"noul","noul":0.28},"needs_human":{"type":"noul","noul":0.1},"done_not_exited":{"type":"noul","noul":0.07}}}
 {"ts":"2026-09-22T16:05:26.489Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"node fleet/tests/test_factory_retry.mjs 2>&1 | head -20"}
 {"ts":"2026-09-22T16:05:26.567Z","kind":"worker:test-run","task":"2","label":"exam:2","cmd":"node fleet/tests/test_factory_retry.mjs 2>&1 | head -20","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T16:05:44.358Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"mcp__factory__note"}
+{"ts":"2026-09-22T16:05:47.345Z","kind":"supervisor:observed","task":"2","label":"exam:2","skipped":"under floor","elapsed_ms":74056,"min_elapsed_ms":120000}
+{"ts":"2026-09-22T16:05:47.566Z","kind":"dispatch:end","task":"2","label":"exam:2","role":"exam","wall_ms":74277,"cost_usd":0.23772279999999998,"error":null}
+{"ts":"2026-09-22T16:05:47.813Z","kind":"dispatch:start","task":"2","label":"impl:2:0","role":"implement"}
+{"ts":"2026-09-22T16:05:47.827Z","kind":"dispatch:start","task":"2","label":"impl:2:1","role":"implement"}
+{"ts":"2026-09-22T16:05:49.744Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"sed -n '1,80p' factory/engine.mjs | head -100"}
+{"ts":"2026-09-22T16:05:49.990Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Bash","target":"ls factory/ && echo --- && sed -n '1,80p' factory/engine.mjs | head -80"}
+{"ts":"2026-09-22T16:05:50.224Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"wc -l factory/engine.mjs factory/policy.json fleet/tests/README.md"}
+{"ts":"2026-09-22T16:05:51.829Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Bash","target":"grep -n \"policyDoc\" factory/engine.mjs | head -20"}
+{"ts":"2026-09-22T16:05:53.117Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-22T16:05:53.561Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-22T16:05:53.567Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Read","target":"/home/exedev/run/impl-2-1/factory/engine.mjs"}
+{"ts":"2026-09-22T16:05:55.110Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"dispatchedTasks\\|const dispatch = async\\|dispatch:start\\|dispatch:end\\|onMessageFor\" factory/engine.mjs | head -60"}
+{"ts":"2026-09-22T16:05:55.160Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Bash","target":"grep -n \"onMessageFor\" factory/engine.mjs | head"}
+{"ts":"2026-09-22T16:05:56.479Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-22T16:05:56.785Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Read","target":"/home/exedev/run/impl-2-1/factory/engine.mjs"}
+{"ts":"2026-09-22T16:05:57.829Z","kind":"jev","site":"supervisor","task":"2","label":"impl:2:1","keys":["stuck","off_track","needs_human","done_not_exited"],"values":{"stuck":{"type":"noul","noul":0.19},"off_track":{"type":"noul","noul":0.35},"needs_human":{"type":"noul","noul":0.12},"done_not_exited":{"type":"noul","noul":0.14}},"state_bytes":191,"ms":171,"answered":true}
+{"ts":"2026-09-22T16:05:57.829Z","kind":"supervisor","task":"2","label":"impl:2:1","answers":{"stuck":{"type":"noul","noul":0.19},"off_track":{"type":"noul","noul":0.35},"needs_human":{"type":"noul","noul":0.12},"done_not_exited":{"type":"noul","noul":0.14}}}
+{"ts":"2026-09-22T16:05:57.932Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Bash","target":"grep -n \"kind: 'landing'\" factory/engine.mjs"}
+{"ts":"2026-09-22T16:05:57.959Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-22T16:05:58.088Z","kind":"jev","site":"supervisor","task":"2","label":"impl:2:0","keys":["stuck","off_track","needs_human","done_not_exited"],"values":{"stuck":{"type":"noul","noul":0.12},"off_track":{"type":"noul","noul":0.24},"needs_human":{"type":"noul","noul":0.09},"done_not_exited":{"type":"noul","noul":0.09}},"state_bytes":133,"ms":129,"answered":true}
+{"ts":"2026-09-22T16:05:58.088Z","kind":"supervisor","task":"2","label":"impl:2:0","answers":{"stuck":{"type":"noul","noul":0.12},"off_track":{"type":"noul","noul":0.24},"needs_human":{"type":"noul","noul":0.09},"done_not_exited":{"type":"noul","noul":0.09}}}
+{"ts":"2026-09-22T16:05:59.337Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Read","target":"/home/exedev/run/impl-2-1/factory/engine.mjs"}
+{"ts":"2026-09-22T16:06:00.358Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"turns\\|return {\" factory/worker.mjs | head -30"}
+{"ts":"2026-09-22T16:06:00.833Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Bash","target":"grep -n \"makeRefoldDispatch\\|runRefold\\b\" factory/engine.mjs"}
+{"ts":"2026-09-22T16:06:02.448Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Read","target":"/home/exedev/run/impl-2-1/factory/engine.mjs"}
+{"ts":"2026-09-22T16:06:03.482Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/worker.mjs"}
+{"ts":"2026-09-22T16:06:08.016Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Write","target":"/home/exedev/run/impl-2-1/factory/retry.mjs"}
+{"ts":"2026-09-22T16:06:09.053Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Bash","target":"sed -n '58,64p' factory/engine.mjs"}
+{"ts":"2026-09-22T16:06:09.282Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-22T16:06:10.989Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Edit","target":"/home/exedev/run/impl-2-1/factory/engine.mjs"}
+{"ts":"2026-09-22T16:06:18.060Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-22T16:06:21.238Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"python3 -m pytest -q tests/test_jev_census.py 2>&1 | tail -20"}
+{"ts":"2026-09-22T16:06:21.836Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Edit","target":"/home/exedev/run/impl-2-1/factory/engine.mjs"}
+{"ts":"2026-09-22T16:06:22.053Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"python3 -m pytest -q tests/test_jev_census.py 2>&1 | tail -20","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T16:06:25.853Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Read","target":"/home/exedev/run/impl-2-1/factory/engine.mjs"}
+{"ts":"2026-09-22T16:06:26.839Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Write","target":"/home/exedev/run/impl-2-0/factory/retry.mjs"}
+{"ts":"2026-09-22T16:06:28.313Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Edit","target":"/home/exedev/run/impl-2-1/factory/engine.mjs"}
+{"ts":"2026-09-22T16:06:30.666Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Bash","target":"grep -n \"turns\\|return {\" factory/worker.mjs | head -30"}
+{"ts":"2026-09-22T16:06:32.510Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Read","target":"/home/exedev/run/impl-2-1/factory/worker.mjs"}
