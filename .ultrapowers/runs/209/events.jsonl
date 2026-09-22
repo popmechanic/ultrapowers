@@ -33,3 +33,25 @@
 {"ts":"2026-09-22T01:22:30.523Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/policy.json"}
 {"ts":"2026-09-22T01:22:45.340Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/select.mjs"}
 {"ts":"2026-09-22T01:22:46.808Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"ancestorDirs\" /home/exedev/run/impl-1-0/factory/select.mjs"}
+{"ts":"2026-09-22T01:22:49.449Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/select.mjs"}
+{"ts":"2026-09-22T01:22:51.837Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-22T01:22:59.934Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-22T01:23:02.982Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-22T01:23:04.927Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"dirNeedles\\|dir_needles\" /home/exedev/run/impl-1-0/factory/engine.mjs /home/exedev/run/impl-1-0/factory/select.mjs /home/exedev/run/impl-1-0/factory/policy.json; ls /home/exedev/run/impl-1-0/"}
+{"ts":"2026-09-22T01:23:06.359Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/fleet/tests/test_factory_select.mjs"}
+{"ts":"2026-09-22T01:23:07.454Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-22T01:23:07.522Z","kind":"worker:test-run","task":"1","label":"impl:1:0","cmd":"node fleet/tests/test_factory_select.mjs","exit":0,"red":false,"via":"run_exam"}
+{"ts":"2026-09-22T01:23:10.379Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"\\\ngrep -q \"examSelectionRow(\" factory/engine.mjs && ! grep -q \"dirNeedles\" factory/engine.mjs && echo \"M5 OK\"; \\\npython3 -c \"\nimport json\ns=json.load(open('factory/policy.json'))['select']\nassert 'dir"}
+{"ts":"2026-09-22T01:23:12.164Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"git diff -- factory/select.mjs factory/engine.mjs factory/policy.json"}
+{"ts":"2026-09-22T01:23:12.169Z","kind":"worker:denied","task":"1","label":"impl:1:0","tool":"Bash","why":"git","command":"git diff -- factory/select.mjs factory/engine.mjs factory/policy.json"}
+{"ts":"2026-09-22T01:23:13.967Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/select.mjs"}
+{"ts":"2026-09-22T01:23:15.334Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-22T01:23:15.380Z","kind":"worker:test-run","task":"1","label":"impl:1:0","cmd":"node fleet/tests/test_factory_select.mjs","exit":0,"red":false,"via":"run_exam"}
+{"ts":"2026-09-22T01:23:16.716Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__settled"}
+{"ts":"2026-09-22T01:23:20.338Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"export function examSelectionRow\" /home/exedev/run/impl-1-0/factory/select.mjs"}
+{"ts":"2026-09-22T01:23:22.758Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__settled"}
+{"ts":"2026-09-22T01:23:26.680Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__task_facts"}
+{"ts":"2026-09-22T01:23:35.348Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__settled"}
+{"ts":"2026-09-22T01:23:47.359Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__note"}
+{"ts":"2026-09-22T01:23:48.785Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-22T01:23:48.847Z","kind":"worker:test-run","task":"1","label":"impl:1:0","cmd":"node fleet/tests/test_factory_select.mjs","exit":0,"red":false,"via":"run_exam"}
