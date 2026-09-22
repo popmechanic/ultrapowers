@@ -65,50 +65,6 @@ now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 # is an answer rather than an error. Both take the field in $1, the document on stdin.
 json_field() { { grep -o "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" || true; } | head -n 1 | sed 's/.*:[[:space:]]*"\(.*\)"$/\1/'; }
 json_int()   { { grep -o "\"$1\"[[:space:]]*:[[:space:]]*-\?[0-9]\+" || true; } | head -n 1 | sed 's/.*[:[:space:]]//'; }
-# The one reader for both ids the launcher's kata.json record carries: parsed
-# as JSON (never grepped — `fleet/launch.mjs` writes the record pretty-printed,
-# `"run": {` and its closing `}` on different lines, which no line-based
-# pattern can match), through `fleet_python3` with the standard library alone,
-# the same door `read_self_merge_policy` already uses for `factory/policy.json`.
-# $1 = the file. Prints `<project id> <run uid>` and exits 0 on success; prints
-# nothing and exits 1 when the file is missing, is not JSON, or lacks either
-# `project.id` (an integer) or `run.uid` (a non-empty string).
-kata_ids() {
-  fleet_python3 -c '
-import json, sys
-try:
-    with open(sys.argv[1]) as f:
-        doc = json.load(f)
-    project_id = doc["project"]["id"]
-    run_uid = doc["run"]["uid"]
-    if not isinstance(project_id, int) or isinstance(project_id, bool):
-        raise SystemExit(1)
-    if not isinstance(run_uid, str) or not run_uid:
-        raise SystemExit(1)
-    print(project_id, run_uid)
-except Exception:
-    raise SystemExit(1)
-' "$1" 2>/dev/null
-}
-# The run's task issues, one `<task id> <uid>` line each in task-id order, from the same record. Exit 1 and
-# nothing on stdout when the file is missing, is not JSON, or names no task with a uid.
-kata_task_uids() {
-  fleet_python3 -c '
-import json, sys
-try:
-    with open(sys.argv[1]) as f:
-        tasks = json.load(f)["tasks"]
-    rows = [(k, v["uid"]) for k, v in tasks.items() if isinstance(v.get("uid"), str) and v["uid"]]
-    if not rows:
-        raise SystemExit(1)
-    def order(row):
-        return (0, int(row[0]), "") if row[0].isdigit() else (1, 0, row[0])
-    for k, uid in sorted(rows, key=order):
-        print(k, uid)
-except Exception:
-    raise SystemExit(1)
-' "$1" 2>/dev/null
-}
 # Backslash, quote, tab, and newline as `\n` and never as nothing — `error` carries a reply body.
 json_escape() {
   printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' |
@@ -251,45 +207,17 @@ bearer_probe() {
     'integration not found'*) fail "bearer probe: the edge refused ($code) — $(printf '%s' "$body" | tr '\n' ' ')" ;; esac
   log "bearer probe: inconclusive"
 }
-# The readiness heuristic: a binding for OUR project (spoke_project or hub_project
-# naming it) whose status reads approved or bound. The shape of `federation status
-# --json` is Kata's to define; this only ever tests the words the Machine clause
-# itself uses, never the document around them.
-board_status_ready() { # $1 = the raw `federation status --json` document
-  # Kata 0.18 prints no `status` cell: a bound spoke reads `"role":"spoke"` with `"provider_status":"ready"`
-  # (run-194's own document, 2026-09-18); an unbound one reads `standalone` and `pending` (run-193's).
-  case "$1" in *"$BOARD_PROJECT_NAME"*) : ;; *) return 1 ;; esac
-  case "$1" in *'"role":"spoke"'*|*'"role": "spoke"'*) : ;; *) return 1 ;; esac
-  case "$1" in *'"provider_status":"ready"'*|*'"provider_status": "ready"'*) return 0 ;; esac
-  return 1
-}
-# One sandbox, one spoke: brought up before the engine so its three flags are ready
-# for `run_engine`, joined to the hub through config alone (Kata's own credential
-# provider mints and holds the token — this writes no `token`/`token_env`/`actor`
-# anywhere). Anything that does not land — no kata.json on the plan commit, a
-# release that does not verify, a wait that runs out — is one `board:` log line and
-# BOARD_BOUND stays empty, which is `run_engine`'s whole signal.
-# The run's first task issue, answered by the spoke: the sign that the first pull has landed. A kata.json
-# that names no task reads as present — there is nothing to wait for.
-board_issue_present() {
-  local uid
-  uid="$(fleet_python3 -c 'import json,sys
-tasks = (json.load(open(sys.argv[1])).get("tasks") or {})
-print(next(iter(tasks.values()), {}).get("uid", ""))' "$BOARD_KATA_JSON" 2>/dev/null || true)"
-  [ -n "$uid" ] || return 0
-  fleet_curl -fsS -o /dev/null --max-time 5 "$KATA_URL/api/v1/issues/$uid" 2>/dev/null
-}
+# One sandbox, one spoke: installs kata, then hands the rest — the spoke's config, the
+# bound-wait — to `board.mjs`, the one module that talks to Kata; every miss along the
+# way is one `board:` log line and a return 0 with BOARD_BOUND left empty, which is
+# `run_engine`'s whole signal.
 board_up() {
-  local blob project_name project_id work start_ts now_ts out local_id
+  local blob work bin_rel out local_id
   BOARD_UNIT="fleet-kata-$RUN_N"
   blob="$(fleet_git -C "$TARGET_DIR" show "$PLAN_SHA:$KATA_BLOB_PATH" 2>/dev/null || true)"
   [ -n "$blob" ] || { log "board: no $KATA_BLOB_PATH at $PLAN_SHA — the run proceeds without a spoke"; return 0; }
   mkdir -p "$FLEET_HOME/plans"; BOARD_KATA_JSON="$FLEET_HOME/plans/$RUN_ID.kata.json"
   printf '%s' "$blob" >"$BOARD_KATA_JSON"
-  project_name="$(json_field name <"$BOARD_KATA_JSON")"; project_id="$(json_int id <"$BOARD_KATA_JSON")"
-  if [ -z "$project_name" ] || [ -z "$project_id" ]; then
-    log "board: $KATA_BLOB_PATH at $PLAN_SHA carries no project.name/project.id — proceeding without a spoke"; return 0; fi
-  BOARD_PROJECT_NAME="$project_name"; BOARD_PROJECT_ID="$project_id"
   work="$(mktemp -d)" || { log "board: mktemp failed — proceeding without a spoke"; return 0; }
   if ! ( cd "$work" &&
       fleet_curl -fsSL -o SHA256SUMS "${KATA_RELEASE_BASE}SHA256SUMS" &&
@@ -304,54 +232,17 @@ board_up() {
   # The one kata on a sandbox (#1190): nothing system-wide sits behind this PATH entry.
   command -v kata >/dev/null 2>&1 || { log "board: kata $KATA_VERSION installed but not on PATH — proceeding without a spoke"; return 0; }
   log "board: kata $KATA_VERSION installed at $(command -v kata)"
-  # A person's kata on this sandbox (Shelley, 2026-09-21): the spoke's home and its daemon already
-  # named, at an absolute path so a non-login `ssh <vm> ~/.local/bin/fleet-kata …` finds it. Never the run's failure.
-  { printf '#!/bin/sh\nexec env "KATA_HOME=%s" "KATA_SERVER=%s" "%s" "$@"\n' \
-      "$FLEET_HOME/kata" "$KATA_URL" "$FLEET_HOME/.local/bin/kata" >"$FLEET_HOME/.local/bin/fleet-kata" &&
-    chmod 0755 "$FLEET_HOME/.local/bin/fleet-kata"; } || log "board: could not write fleet-kata — hand diagnostics need KATA_HOME and KATA_SERVER set by hand"
-  mkdir -p "$FLEET_HOME/kata/helper"
-  cat >"$FLEET_HOME/kata/config.toml" <<EOF
-listen = "127.0.0.1:7777"
-
-[[daemon]]
-name = "hub"
-url = "$KATA_HUB_URL"
-
-[[federation.project]]
-hub = "hub"
-spoke_project = "$project_name"
-hub_project = "$project_name"
-intent = "collaborate"
-credential_provider = ["node", "$ENGINE_REPO_DIR/factory/kata-credential.mjs", "--kata-json", "$BOARD_KATA_JSON", "--admin-url", "$KATA_ADMIN_URL", "--state-dir", "$FLEET_HOME/kata/helper"]
-EOF
-  # `systemd-run --user` resolves only the FIRST word (`env`) against the caller's
-  # PATH; `env` then resolves `kata` itself, against whatever PATH the unit lands
-  # with — the user manager's own, NOT this shell's just-updated one. Forwarding
-  # PATH explicitly (rather than trusting the manager to have heard of
-  # $FLEET_HOME/.local/bin) is what makes `kata` findable inside the unit at all.
+  if ! out="$(fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" spoke-config --kata-json "$BOARD_KATA_JSON" --engine-dir "$ENGINE_REPO_DIR" --home "$FLEET_HOME" 2>&1)"
+  then log "board: spoke-config failed — proceeding without a spoke — $(printf '%s' "$out" | tr '\n' ' ' | cut -c1-300)"; return 0; fi
+  BOARD_PROJECT_NAME="$(printf '%s' "$out" | awk '{ print $1 }')"; BOARD_PROJECT_ID="$(printf '%s' "$out" | awk '{ print $2 }')"
   if ! fleet_systemd_run --user "--unit=$BOARD_UNIT" -p "WorkingDirectory=$FLEET_HOME/kata" -- \
       env "KATA_HOME=$FLEET_HOME/kata" "PATH=$PATH" kata daemon start --foreground
   then log "board: systemd-run could not start $BOARD_UNIT — proceeding without a spoke"; return 0; fi
-  start_ts="$(date +%s)"
-  while :; do
-    out="$(fleet_kata federation status --json 2>/dev/null || true)"
-    if board_status_ready "$out"; then
-      # The spoke numbers its own projects: the engine writes to the LOCAL id the status names, never the hub's
-      # (run-195: every comment answered `404 project_not_found` on the hub's 31 where the spoke's was 2).
-      local_id="$(printf '%s' "$out" | json_int project_id)"; [ -n "$local_id" ] && BOARD_PROJECT_ID="$local_id"
-      # Bound is not yet pulled: the spoke's first pull lands some seconds after the binding, and an engine
-      # started in that gap reads `404 issue_not_found` for its own tasks (run-196, every task at minute zero).
-      # So the wait also covers the run's first task issue arriving on the spoke.
-      if board_issue_present; then
-        BOARD_BOUND=1; log "kata federation status: $project_name is bound as local project $BOARD_PROJECT_ID, and the run's issues have arrived"; return 0; fi
-    fi
-    now_ts="$(date +%s)"
-    if [ "$((now_ts - start_ts))" -ge "$FLEET_KATA_WAIT_SECONDS" ]; then
-      log "board: $project_name was not bound with the run's issues pulled within ${FLEET_KATA_WAIT_SECONDS}s — federation status said: $out"
-      return 0
-    fi
-    sleep 1
-  done
+  if ! local_id="$(fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" wait --project "$BOARD_PROJECT_NAME" --kata-json "$BOARD_KATA_JSON" --kata-url "$KATA_URL" --seconds "$FLEET_KATA_WAIT_SECONDS")"
+  then log "board: $BOARD_PROJECT_NAME was not bound with the run's issues pulled within ${FLEET_KATA_WAIT_SECONDS}s"; return 0; fi
+  BOARD_BOUND=1
+  [ -n "$local_id" ] && BOARD_PROJECT_ID="$local_id"
+  log "kata federation status: $BOARD_PROJECT_NAME is bound as local project $BOARD_PROJECT_ID, and the run's issues have arrived"
 }
 # The teardown side: a bound spoke leaves the hub and its unit stops. A `leave` that
 # fails is logged and nothing else — the run's own state and exit code were decided
@@ -608,69 +499,18 @@ record_tags() {
   fleet_git -C "$TARGET_DIR" push origin --delete "refs/heads/$PLAN_BRANCH" "refs/heads/$EVIDENCE_BRANCH" || { log "record: the tags are on origin but the delete was rejected — both branches kept"; return 0; }
   log "record: $pt at $PLAN_SHA and $et at $head — both branches deleted"
 }
-# The run issue's close: one POST, after the pull request is open, sent only when
-# the run ends done and the plan commit left a kata.json this boot can still read
-# a project.id and run.uid out of — a parked or failed run stays open for a
-# person, and a hub that refuses the close (or cannot be reached at all) costs the
-# run nothing beyond one board: log line (CLAUDE.md: hub writes are never the
-# run's failure) — the run's own state and exit code were decided already, and
-# stay decided. No `authorization` header: the admin host is where the exe.dev
-# edge injects the hub's bearer, and this holds no credential of its own.
-# One close, logged whatever the hub answers. $1 = project id, $2 = issue uid, $3 = message, $4 = idempotency
-# key, $5 = what it is for the log line, $6 = the evidence entries. Returns 0 on a 2xx and 1 otherwise; never fatal.
-close_issue() {
-  local payload url answer rc=0 code reply
-  payload="{\"actor\":\"sandbox:$RUN_ID\",\"reason\":\"done\",\"message\":\"$(json_escape "$3")\",\"evidence\":[$6],\"retry_protocol\":\"close-v1\"}"
-  url="$KATA_ADMIN_URL/api/v1/projects/$1/issues/$2/actions/close"
-  answer="$(fleet_curl -sS -X POST "$url" -H 'content-type: application/json' -H "Idempotency-Key: $4" -d "$payload" -w '\n%{http_code}' 2>/dev/null)" || rc=$?
-  code="$(printf '%s' "$answer" | tail -n 1)"
-  if [ "$rc" -eq 0 ]; then
-    case "$code" in 2[0-9][0-9])
-      log "board: close answered $code ($5)"
-      event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" board:close what="$5" code="$code" || true
-      return 0 ;;
-    esac
-  fi
-  reply="$(printf '%s' "$answer" | sed '$d')"
-  log "board: closing the $5 issue failed (exit $rc, http ${code:-<none>}) — $(printf '%s' "$reply" | tr '\n' ' ' | cut -c1-500)"
-  event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" board:close what="$5" code="${code:-null}" || true
-  return 1
-}
+# The run's close: the spoke leaves first — the three closes measured to work (runs
+# 36, 197 and 37, by hand, 2026-09-21) were sent after `leave`, and `board_down` is
+# idempotent — then `board.mjs close-run` itself, the one module that talks to Kata
+# and never fails a run (CLAUDE.md).
 close_run() { # $1 = the run's final state (done|parked)
-  local kata_json ids project_id run_uid message evidence task_id task_uid
+  local args
   [ "$1" = done ] || return 0
-  kata_json="$FLEET_HOME/plans/$RUN_ID.kata.json"
-  if [ ! -f "$kata_json" ]; then
-    log "board: close skipped — no $kata_json to read"
-    event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" board:close what=run code=null skipped="no kata.json to read" || true
-    return 0
-  fi
-  ids="$(kata_ids "$kata_json")" || ids=""
-  project_id="$(printf '%s' "$ids" | awk '{ print $1 }')"
-  run_uid="$(printf '%s' "$ids" | awk '{ print $2 }')"
-  if [ -z "$project_id" ] || [ -z "$run_uid" ]; then
-    log "board: close skipped — $kata_json carries no readable project.id/run.uid"
-    event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" board:close what=run code=null skipped="no readable project.id/run.uid" || true
-    return 0
-  fi
-  # M5: a merged run's close carries the merge commit beside the pull request entry.
-  evidence="{\"type\":\"pr\",\"url\":\"$(json_escape "$PR_URL")\"}"
-  [ -n "$MERGED_SHA" ] && evidence="$evidence,{\"type\":\"commit\",\"sha\":\"$(json_escape "$MERGED_SHA")\"}"
-  # The spoke leaves first: the three closes measured to work (runs 36, 197 and 37, by hand, 2026-09-21) were
-  # sent after `leave`, and a hub-side close under a bound spoke has never been read. `board_down` is idempotent.
   board_down
-  # The task issues before the run's: the hub refuses a parent with open children — `409
-  # parent_has_open_children` — and nothing else in the factory closes a task issue. A `done` run adopted
-  # every task, so every one of them closes `done` on the run's own evidence.
-  while read -r task_id task_uid; do
-    [ -n "$task_uid" ] || continue
-    close_issue "$project_id" "$task_uid" "$RUN_ID task $task_id done: adopted green in the run's pull request — $PR_URL" \
-      "$RUN_ID:task:$task_id:close" "task $task_id" "$evidence" || true
-  done <<EOF_TASKS
-$(kata_task_uids "$kata_json" || true)
-EOF_TASKS
-  message="$RUN_ID done: $(plan_title) — $PR_URL"
-  close_issue "$project_id" "$run_uid" "$message" "$RUN_ID:run:close" "run" "$evidence" || true
+  args=(--kata-json "$FLEET_HOME/plans/$RUN_ID.kata.json" --run "$RUN_ID" --pr "$PR_URL" \
+    --admin-url "$KATA_ADMIN_URL" --events "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" --title "$(plan_title)")
+  [ -n "$MERGED_SHA" ] && args+=(--merged "$MERGED_SHA")
+  fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" close-run "${args[@]}" || true
 }
 boot() {
   local comment code head; comment="$(read_assignment)"

@@ -49,6 +49,9 @@ examined goes at cut two. Git history holds every one of them.
 - `test_factory_retry.mjs` — the infra retry: a gateway death before the
   first turn is dispatched once more after the backoff, labelled `:retry`
   with `retry_of`, and nothing else is.
+- `test_factory_board.mjs` — the board's CLI: the spoke's two files byte for
+  byte, the bound-wait's local id, and the run close's Idempotency-Key order
+  on a stub hub that never fails the run.
 The factory's own exams are not here: an unguarded exam lives on its run's evidence tag
 under `.ultrapowers/runs/<N>/exams/`, and a guarded one sits where its plan put it.
 
