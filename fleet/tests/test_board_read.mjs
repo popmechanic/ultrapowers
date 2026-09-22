@@ -293,7 +293,11 @@ assert.equal(renderedLines[renderedLines.length - 1], 'cursor 130',
   JSON.stringify(renderedLines[renderedLines.length - 1]))
 
 // ══════════════════════════════════════════════════════════════════════════
-// (f) [M6] `readBoard`'s paging and fallback
+// (f) `readBoard` over a hub-shaped feed — rewritten by the task "`readBoard`
+// starts at the asked run's creation event and pages to the feed's end"
+// (#1227, map #876, on #1174), replacing the old 1000-row-page pin. The
+// first block below proves that task's M1–M3; the second block is the
+// original `since: 500` leg, unchanged, and now proves that task's M5.
 // ══════════════════════════════════════════════════════════════════════════
 
 /** A recording `client.events`: `answer(projectId, afterId)` decides each page. */
@@ -310,35 +314,83 @@ const recordingClient = (answer) => {
   }
 }
 
-const FILLER = Array.from({ length: 1000 }, (_, i) =>
-  row(i, 'project.created', null, 'seed', '2026-01-01T00:00:00.000Z', {}))
+/** The hub's own paging rule, as Context and `fleet/CONTRACT.md`'s
+ *  `events-page` fact describe it: at most 100 rows a page whatever `limit`
+ *  says, `next_after_id` the last answered row's `event_id`, and for an
+ *  empty page `after` itself. */
+const hubPage = (feed) => (after) => {
+  const rows = feed.filter((e) => e.event_id > after).slice(0, 100)
+  return { events: rows, next_after_id: rows.length ? rows[rows.length - 1].event_id : after, reset_required: false }
+}
+
+/** 3,000 rows of another run (205): an `issue.created` at `event_id` 1, then
+ *  2,999 `issue.commented` rows on it, `created_at` rising through
+ *  `2026-09-20T…` — earlier than every row of `FIXTURE`. */
+const fillerAt = (eventId) => new Date(Date.UTC(2026, 8, 20, 0, 0, 0) + (eventId - 1) * 1000).toISOString()
+const FILLER_RUN_205 = [
+  row(1, 'issue.created', 'r205', 'launch', fillerAt(1),
+    { title: 'run-205: A different fold entirely', body: '', metadata: { run: 205, target: 'other/other' } }),
+  ...Array.from({ length: 2999 }, (_, i) =>
+    row(i + 2, 'issue.commented', 'r205', 'factory', fillerAt(i + 2), { body: '[note]\nfiller comment ' + (i + 2) }))
+]
+/** `FIXTURE` renumbered `event_id` 3001–3031, `created_at` unchanged — the
+ *  hub-shaped feed Machine M1 describes, built once and shared with leg (g). */
+const shiftRows = (rows, delta) => rows.map((r) => ({ ...r, event_id: r.event_id + delta }))
+const HUB_FEED = [...FILLER_RUN_205, ...shiftRows(FIXTURE, 2901)]
+assert.equal(HUB_FEED.length, 3031,
+  '(f) [M1] the hub-shaped feed itself has 3,031 rows — 3,000 of run 205 then the 31-row ' +
+  'fixture renumbered 3001–3031 — as Machine describes')
+
+/** `listIssues`'s answer: the run-205 issue, the run 207 issue `zdbs` (its
+ *  `created_at` 3 ms before its creation event's, row 3001's), and the two
+ *  task issues, neither carrying a `run`. */
+const HUB_ISSUES = [
+  { short_id: 'r205', title: 'run-205: A different fold entirely', metadata: { run: 205 }, created_at: fillerAt(1), status: 'open', uid: 'u-r205' },
+  { short_id: 'zdbs', title: 'run-207: A fold red names its fold', metadata: { run: 207, target: 'popmechanic/ultrapowers' }, created_at: '2026-09-21T23:58:00.097Z', status: 'open', uid: 'u-zdbs' },
+  { short_id: '06tw', title: 'task 1: The judge reads one question', metadata: { task: '1', plan: 'p' }, created_at: '2026-09-21T23:58:03.997Z', status: 'open', uid: 'u-06tw' },
+  { short_id: 'vwnn', title: 'task 2: A fold round', metadata: { task: '2', plan: 'p' }, created_at: '2026-09-21T23:58:07.997Z', status: 'open', uid: 'u-vwnn' }
+]
 
 {
-  const { calls, client } = recordingClient((projectId, afterId) => {
-    if (afterId === 0) return { events: FILLER, next_after_id: 1000, reset_required: false }
-    if (afterId === 1000) return { events: FIXTURE, next_after_id: 130, reset_required: false }
-    throw new Error('unexpected afterId ' + afterId)
-  })
+  const calls = []
+  const page = hubPage(HUB_FEED)
+  const client = {
+    events: async (projectId, afterId) => {
+      calls.push([projectId, afterId])
+      return page(afterId)
+    },
+    listIssues: async () => ({ issues: HUB_ISSUES })
+  }
   const answer = await readBoard({ client, projectId: 31, runs: [207], since: 0 })
-  assert.deepEqual(calls, [[31, 0], [31, 1000]],
-    '(f) [M6] `readBoard` pages from `after = since` (0) until a page holds fewer than ' +
-    '1000 rows, following `next_after_id`; recorded calls are ' + JSON.stringify(calls))
-  assert.equal(answer.tasks.length, 3,
-    '(f) [M6] the answer is the projection over every row read across both pages: `tasks` ' +
-    'has length 3; got ' + answer.tasks.length)
-  assert.equal(answer.cursor, 130, '(f) [M6] and its `cursor` is 130; got ' + JSON.stringify(answer.cursor))
+
+  assert.deepEqual(answer.tasks.map((t) => t.issue), ['zdbs', '06tw', 'vwnn'],
+    '(f) [M1] over the 3,031-row hub-shaped feed, `readBoard`\'s `tasks` map to exactly ' +
+    '`[\'zdbs\', \'06tw\', \'vwnn\']` by `issue`, in that order; got ' +
+    JSON.stringify(answer.tasks.map((t) => t.issue)))
+  assert.deepEqual(answer.timeline.map((t) => t.eventId),
+    [3011, 3012, 3014, 3015, 3016, 3017, 3018, 3019, 3020, 3021, 3023, 3027, 3028, 3031],
+    '(f) [M1] and its `timeline` maps to exactly those fourteen `eventId`s, in that order — ' +
+    'nothing of run 205 before it; got ' + JSON.stringify(answer.timeline.map((t) => t.eventId)))
+
+  assert.equal(answer.cursor, 3031,
+    '(f) [M2] that answer\'s `cursor` is exactly 3031, the last event the hub holds; got ' +
+    JSON.stringify(answer.cursor))
+
+  assert.ok(calls.length < 31,
+    '(f) [M3] the read makes fewer than 31 calls to `client.events` (a walk from `after_id` ' +
+    '0 over this 3,031-row feed at 100 rows a page is 31 calls); recorded ' + calls.length +
+    ' calls: ' + JSON.stringify(calls))
 }
 
 {
   const { calls, client } = recordingClient(() => ({ events: [], next_after_id: 500, reset_required: false }))
   const answer = await readBoard({ client, projectId: 31, runs: [207], since: 500 })
   assert.deepEqual(calls, [[31, 500]],
-    '(f) [M6] `since: 500` against an immediately-short page: exactly one call, `[[31, 500]]`; ' +
-    'got ' + JSON.stringify(calls))
-  assert.deepEqual(answer.tasks, [], '(f) [M6] `tasks` is `[]`; got ' + JSON.stringify(answer.tasks))
+    '(f) [M5] `since: 500` against an `events` fake answering an empty page: exactly one ' +
+    'call, `[[31, 500]]`; got ' + JSON.stringify(calls))
+  assert.deepEqual(answer.tasks, [], '(f) [M5] `tasks` is `[]`; got ' + JSON.stringify(answer.tasks))
   assert.equal(answer.cursor, 500,
-    '(f) [M6] `cursor` falls back to `since` (500) when the projection\'s own cursor is ' +
-    '`null`; got ' + JSON.stringify(answer.cursor))
+    '(f) [M5] `cursor` is `500`; got ' + JSON.stringify(answer.cursor))
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -369,15 +421,25 @@ assert.equal(parseBoardArgs(['--run', '207', '--target', 'o/r']).since, 0,
   '(g) [M7] `since` defaults to `0` with none given')
 
 /** `main`'s `exec`: a recording fake in the ssh-curl shape `sshTransport`
- *  expects, chosen by which path the remote (the last argv element) names. */
-const makeMainExec = ({ projectsAnswer, eventsAnswer }) => {
+ *  expects, chosen by which path the remote (the last argv element) names —
+ *  the projects listing, the issues listing, or a hub-shaped page of `feed`
+ *  for the `after_id` parsed out of the remote (the same `hubPage` leg (f)
+ *  uses). */
+const makeMainExec = ({ projects, issues, feed }) => {
   const calls = []
+  const page = hubPage(feed)
   const exec = async (cmd, argv) => {
     calls.push({ cmd, argv })
-    const remote = argv[argv.length - 1]
-    const answer = String(remote).includes('/api/v1/projects?limit=1000')
-      ? projectsAnswer
-      : eventsAnswer
+    const remote = String(argv[argv.length - 1])
+    let answer
+    if (remote.includes('/api/v1/projects?limit=1000')) {
+      answer = { projects }
+    } else if (remote.includes('/api/v1/projects/31/issues?limit=1000')) {
+      answer = { issues }
+    } else {
+      const match = remote.match(/\/api\/v1\/projects\/31\/events\?after_id=(\d+)/)
+      answer = page(match ? Number(match[1]) : 0)
+    }
     return { code: 0, stdout: JSON.stringify(answer) + '\n200', stderr: '' }
   }
   return { calls, exec }
@@ -390,48 +452,44 @@ const writeKataEnv = async (lines) => {
   return file
 }
 
-const PROJECTS_ANSWER = { projects: [{ id: 31, uid: 'P', name: 'popmechanic-ultrapowers' }] }
-const EVENTS_ANSWER = { events: FIXTURE, next_after_id: 130, reset_required: false }
+const HUB_PROJECTS = [{ id: 31, uid: 'P', name: 'popmechanic-ultrapowers' }]
 
 {
   const kataEnvPath = await writeKataEnv('KATA_URL=https://hub.example\nKATA_TOKEN=deadbeefcafe\n')
-  const { calls, exec } = makeMainExec({ projectsAnswer: PROJECTS_ANSWER, eventsAnswer: EVENTS_ANSWER })
+  const { calls, exec } = makeMainExec({ projects: HUB_PROJECTS, issues: HUB_ISSUES, feed: HUB_FEED })
   let written = ''
   const write = (s) => { written += s }
   await main(['--run', '207', '--target', 'popmechanic/ultrapowers'], { exec, kataEnvPath, write })
 
-  assert.equal(calls.length, 2,
-    '(g) [M7] `main` made exactly two `exec` calls (list projects, then read events); got ' + calls.length)
   for (const call of calls) {
-    assert.equal(call.cmd, 'ssh', '(g) [M7] every call\'s `cmd` is `ssh`; got ' + JSON.stringify(call.cmd))
+    assert.equal(call.cmd, 'ssh', '(g) [M4] every recorded call\'s `cmd` is `ssh`; got ' + JSON.stringify(call.cmd))
     assert.ok(call.argv.includes('hub.example'),
-      '(g) [M7] every call\'s `argv` includes the host `hub.example`; got ' + JSON.stringify(call.argv))
+      '(g) [M4] every call\'s `argv` includes the host `hub.example`; got ' + JSON.stringify(call.argv))
     const remote = call.argv[call.argv.length - 1]
     assert.ok(remote.includes('. /etc/kata/kata.env'),
-      '(g) [M7] the remote sources `/etc/kata/kata.env`, the janitor\'s own door; got ' + JSON.stringify(remote))
+      '(g) [M4] the remote sources `/etc/kata/kata.env`, the janitor\'s own door; got ' + JSON.stringify(remote))
     assert.ok(remote.includes('Authorization: Bearer $KATA_AUTH_TOKEN'),
-      '(g) [M7] the remote carries the literal `$KATA_AUTH_TOKEN`, never a value; got ' + JSON.stringify(remote))
-    assert.ok(remote.includes('-X GET'), '(g) [M7] the remote is a GET; got ' + JSON.stringify(remote))
+      '(g) [M4] the remote carries the literal `$KATA_AUTH_TOKEN`, never a value; got ' + JSON.stringify(remote))
+    assert.ok(remote.includes('-X GET'), '(g) [M4] the remote is a GET; got ' + JSON.stringify(remote))
     for (const arg of call.argv) {
       assert.ok(!String(arg).includes('deadbeefcafe'),
-        '(g) [M7] no argv element of any call carries the bearer\'s value; got ' + JSON.stringify(call.argv))
+        '(g) [M4] no argv element of any call carries the env file\'s token value; got ' + JSON.stringify(call.argv))
     }
   }
   assert.ok(calls[0].argv[calls[0].argv.length - 1].includes('/api/v1/projects?limit=1000'),
     '(g) [M7] the first remote lists the projects; got ' + JSON.stringify(calls[0].argv[calls[0].argv.length - 1]))
-  assert.ok(calls[1].argv[calls[1].argv.length - 1].includes('/api/v1/projects/31/events?after_id=0&limit=1000'),
-    '(g) [M7] the second remote reads project 31\'s feed from `after_id=0`; got ' +
-    JSON.stringify(calls[1].argv[calls[1].argv.length - 1]))
 
-  assert.ok(TASK_LINE.test(written), '(g) [M7] the written text matches leg (e)\'s task-line pattern; got:\n' + written)
-  assert.ok(TIMELINE_LINE.test(written), '(g) [M7] the written text matches leg (e)\'s timeline-line pattern; got:\n' + written)
-  assert.ok(written.endsWith('cursor 130\n'),
-    '(g) [M7] the written text ends `cursor 130\\n`; got ' + JSON.stringify(written.slice(-20)))
+  assert.ok(TASK_LINE.test(written), '(g) [M4] the written text matches leg (e)\'s task-line pattern; got:\n' + written)
+  assert.ok(TIMELINE_LINE.test(written),
+    '(g) [M4] the written text contains a `run-207 task 2` timeline line, matching leg (e)\'s ' +
+    'timeline-line pattern; got:\n' + written)
+  assert.ok(written.endsWith('cursor 3031\n'),
+    '(g) [M4] the written text ends `cursor 3031\\n`; got ' + JSON.stringify(written.slice(-20)))
 }
 
 {
   const kataEnvPath = await writeKataEnv('KATA_URL=https://hub.example\nKATA_TOKEN=deadbeefcafe\n')
-  const { exec } = makeMainExec({ projectsAnswer: PROJECTS_ANSWER, eventsAnswer: EVENTS_ANSWER })
+  const { exec } = makeMainExec({ projects: HUB_PROJECTS, issues: HUB_ISSUES, feed: HUB_FEED })
   let written = ''
   const write = (s) => { written += s }
   await main(['--run', '207', '--target', 'popmechanic/ultrapowers', '--json'], { exec, kataEnvPath, write })
@@ -439,12 +497,12 @@ const EVENTS_ANSWER = { events: FIXTURE, next_after_id: 130, reset_required: fal
   assert.equal(parsed.tasks.length, 3,
     '(g) [M7] `--json` writes `JSON.stringify(projection, null, 2)`: parsed `tasks` has length 3; got ' +
     (parsed.tasks && parsed.tasks.length))
-  assert.equal(parsed.cursor, 130, '(g) [M7] and parsed `cursor` is 130; got ' + JSON.stringify(parsed.cursor))
+  assert.equal(parsed.cursor, 3031, '(g) [M7] and parsed `cursor` is 3031; got ' + JSON.stringify(parsed.cursor))
 }
 
 {
   const kataEnvPath = await writeKataEnv('KATA_URL=https://hub.example\nKATA_TOKEN=deadbeefcafe\n')
-  const { calls, exec } = makeMainExec({ projectsAnswer: PROJECTS_ANSWER, eventsAnswer: EVENTS_ANSWER })
+  const { calls, exec } = makeMainExec({ projects: HUB_PROJECTS, issues: HUB_ISSUES, feed: HUB_FEED })
   let rejection = null
   try {
     await main(['--run', '207', '--target', 'nobody/nothing'], { exec, kataEnvPath, write: () => {} })
