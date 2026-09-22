@@ -149,9 +149,8 @@ approved plan, **is** the authorization to execute — no further approval pause
 
    It prints the run id and the VM name — `run-<N>` and `fleet-r<N>-…` — along
    with a status URL and the assignment comment; tell the user the run id and
-   VM name, and point them at `status.json` on the evidence branch or tag
-   (step 3) to read progress, not the printed URL — there is no page behind it
-   today, git is the record. Nothing else needs staging — the launcher commits the plan to the target's
+   VM name, and point them at step 3 to read progress, not the printed URL —
+   there is no page behind it today, git is the record. Nothing else needs staging — the launcher commits the plan to the target's
    `ultra/plan-run-<N>` branch, then creates the VM in one lobby call with
    `--tag fleet` (the tag every fleet integration's policy grants), the
    assignment as its comment, and a setup script that starts the run's unit.
@@ -160,12 +159,22 @@ approved plan, **is** the authorization to execute — no further approval pause
    Add `--hold` to that line when the PR should stay open for a person — a
    measurement run; the sandbox then publishes and does not merge.
 
-3. **Walk away.** The run outlives this session; there is nothing to tail. Its
-   state is `status.json`, written at every transition: `booting` → `running` →
-   `publishing` → `done`, or `parked` or `failed`. When the user asks how the
-   run is doing, read `status.json` by tag: a finished run's record is
-   `ultra/evidence/run-<N>`, the one spelling that keeps working after the VM
-   is reaped and after the run's branches are gone.
+3. **Walk away.** The run outlives this session; there is nothing to tail.
+   While the run is in flight, read it off the board:
+
+   ```bash
+   node <plugin-root>/fleet/board-read.mjs --run <N> --target <repo>
+   ```
+
+   It prints `== now` — one line per issue of the run (the run issue and each
+   task) with its state — then `== events`, the event feed for the run in
+   order.
+
+   Its state is also `status.json`, written at every transition: `booting` →
+   `running` → `publishing` → `done`, or `parked` or `failed`. A finished
+   run's record is `status.json` by tag: `ultra/evidence/run-<N>`, the one
+   spelling that keeps working after the VM is reaped and after the run's
+   branches are gone.
 
    ```bash
    gh api 'repos/<repo>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>' --jq .content | base64 -d
@@ -173,10 +182,10 @@ approved plan, **is** the authorization to execute — no further approval pause
 
    While the run is in flight that tag is not written yet and the same bytes
    are on its `ultra/evidence-run-<N>` branch, a working surface that goes at
-   publish.
+   publish — read `status.json` there as a fallback when the hub is dark.
 
-   There is no status page to poll — read `status.json` by branch or tag as
-   above, on whatever cadence the user asks for.
+   The board is the poll: read it on whatever cadence the user asks for, and
+   never a timer on this machine.
 
 4. **The PR is the gate.** There is no approval command. When the engine is
    done and the branch is ahead of base, the sandbox pushes it and opens the

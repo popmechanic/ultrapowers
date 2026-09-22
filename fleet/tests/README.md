@@ -32,6 +32,9 @@ examined goes at cut two. Git history holds every one of them.
 
 ## The singletons
 
+- `test_board_read.mjs` — the board reader: the pure projection over a
+  fixture in the hub's shape, the paging, and the ssh argv carrying the
+  token's name and never a value.
 - `test_jev_questions.mjs` — the sitting's two question sets and the readers
   over the client.
 - `test_factory_worker_gitblock.mjs` — the factory worker's git block: the

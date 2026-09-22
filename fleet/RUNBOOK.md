@@ -261,7 +261,16 @@ re-answers the live run's task issues on the hub and kills it, #1036).
 - the hub, when the plan commit carried `.ultrapowers/kata.json` — the run's
   kata project holds a mirror of the run's progress, posted as comments as it
   happens. `fleet/CONTRACT.md` is the authority for what the current engine
-  mirrors there.
+  mirrors there. A run in flight is read off the board:
+
+  ```bash
+  node fleet/board-read.mjs --run <N> --target <owner>/<repo>
+  ```
+
+  It prints per-task state — `== now`, one line per issue of the run — then
+  the event rows under `== events`, read through the same `ssh <hub> curl`
+  door the janitor uses: the bearer is sourced on the hub, and the laptop's
+  command line carries no token.
 - `.ultrapowers/runs/<N>/status.json` on the target — committed at every
   transition and, while the engine runs, every `FLEET_COMMIT_SECONDS` (default
   60) that `events.jsonl` has changed, so the branch is at most one tick
