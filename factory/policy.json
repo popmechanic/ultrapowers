@@ -182,29 +182,29 @@
     "done_not_exited": 0.8,
     "hysteresis_ticks": 2,
     "mode": "record-only",
-    "n": 0,
-    "window": "none",
+    "n": 8,
+    "window": "runs 213–220",
     "basis": "judgment",
-    "unread": "#1128 as filed: record-only for the first five runs, rows appended and no stop issued. The flip condition is pre-registered there: the would-have-stopped set dominated by tasks that ended badly or late",
     "rollback": "--supervisor off; the note poll and attentionFromNote are untouched",
     "observed": {
       "enabled": true,
-      "experiment": true,
-      "n": 0,
-      "window": "none",
+      "experiment": false,
+      "n": 8,
+      "window": "runs 213–220",
       "basis": "judgment",
-      "unread": "#1169 desired state 3, the operator's pick of 2026-09-21: the same four questions asked a second time over `observedWork` facts instead of narration, recorded beside the existing reading for the record only — gates nothing.",
       "rollback": "enabled = false",
       "min_elapsed_ms": {
         "value": 120000,
-        "n": 0,
-        "window": "none",
+        "n": 8,
+        "window": "runs 213–220",
         "basis": "judgment",
-        "experiment": true,
+        "experiment": false,
         "rollback": 0,
-        "unread": "#1212 desired state and #1128's comment of 2026-09-21: the observed reading fired in band on 19 of 27 ticks, every one a worker still reading its task about ten seconds in with edits: 0; deferred to the first assistant turn past two minutes so a worker that runs past the floor is still read once, and only one that finishes inside it is a skipped row."
-      }
-    }
+        "read": "The two-minute floor held over runs 213–220 (n=8): one skipped row on a worker that finished inside it, every worker past it read once."
+      },
+      "read": "Read with the supervisor cell above: the observed reading fired 29 ticks over runs 213–220, never at 0.8; kept on for the record, gates nothing."
+    },
+    "read": "#1128's pre-registered reading, taken 2026-09-22 over runs 213–220 (n=8 runs, 42 workers, 11 late, 0 errored): the would-have-stopped set at stuck ≥ 0.8 is empty (highest observed score 0.70), and the one tick's score does not separate a late worker from a fast one (run-220's implementers read 0.68/0.69 and finished in 3–4 min; run-215's read 0.57/0.58 and ran 43–45 min). The stop verb stays off; record-only is the default, not an experiment. Rows keep accruing for a cadence reading."
   },
   "resolve": {
     "union": {
