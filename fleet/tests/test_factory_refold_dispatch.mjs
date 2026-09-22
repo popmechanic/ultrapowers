@@ -151,4 +151,52 @@ const BASE_OPTS = {
   assert.equal(recordedArg.schema, schema, '(c) [M2] the argument\'s schema is opts.schema when one was given')
 }
 
+// ── #1228: the dispatch:end row carries the dispatched model and the ids the result reports ──
+
+// ── d. [M1] a worker with a null result: model is opts.model, models is null ──
+{
+  const rows = []
+  const dispatch = makeRefoldDispatch({
+    worker: async () => ({ result: null, denials: [] }),
+    appendEvent: (row) => rows.push(row),
+  })
+
+  await dispatch(BASE_OPTS)
+
+  assert.equal(rows.length, 2, '(d) [M1] appendEvent received exactly two rows')
+  const endRow = rows[1]
+  assert.equal(endRow.kind, 'dispatch:end', '(d) [M1] the second row\'s kind is dispatch:end')
+  assert.equal(endRow.model, 'm', '(d) [M1] the second row\'s model is exactly opts.model')
+  assert.equal(endRow.models, null, '(d) [M1] the second row\'s models is exactly null when result is null')
+}
+
+// ── e. [M2] a worker whose result carries modelUsage: models is its keys, sorted ──
+{
+  const rows = []
+  const dispatch = makeRefoldDispatch({
+    worker: async () => ({
+      result: {
+        modelUsage: {
+          'claude-opus-5-5': { inputTokens: 1 },
+          'claude-haiku-5': { inputTokens: 1 },
+        },
+      },
+      denials: [],
+    }),
+    appendEvent: (row) => rows.push(row),
+  })
+
+  await dispatch(BASE_OPTS)
+
+  assert.equal(rows.length, 2, '(e) [M2] appendEvent received exactly two rows')
+  const endRow = rows[1]
+  assert.equal(endRow.kind, 'dispatch:end', '(e) [M2] the second row\'s kind is dispatch:end')
+  assert.equal(endRow.model, 'm', '(e) [M2] the second row\'s model is exactly opts.model')
+  assert.deepEqual(
+    endRow.models,
+    ['claude-haiku-5', 'claude-opus-5-5'],
+    '(e) [M2] the second row\'s models deep-equals the modelUsage keys sorted ascending, not insertion order'
+  )
+}
+
 console.log('ALL TESTS PASSED')
