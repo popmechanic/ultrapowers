@@ -133,7 +133,7 @@ is_bare_value() {
 event_row() {
   local file="$1" kind="$2" line tok key val
   shift 2
-  line="{\"kind\":\"$(json_escape "$kind")\""
+  line="{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\",\"kind\":\"$(json_escape "$kind")\""
   for tok in "$@"; do
     key="${tok%%=*}"; val="${tok#*=}"
     if is_bare_value "$val"; then line="$line,\"$(json_escape "$key")\":$val"

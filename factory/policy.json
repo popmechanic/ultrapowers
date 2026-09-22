@@ -298,7 +298,15 @@
     "window": "none",
     "basis": "judgment",
     "experiment": true,
-    "rollback": "run_lines = false"
+    "rollback": "run_lines = false",
+    "checks_at_base": {
+      "enabled": true,
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "experiment": true,
+      "rollback": "enabled = false"
+    }
   },
   "publish": {
     "self_merge": {
