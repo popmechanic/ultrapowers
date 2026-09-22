@@ -261,4 +261,79 @@ function lines (text) {
   )
 }
 
+// ── #1222 pass two: "The boot's exam drives the probe to `alive`, and the
+//    boot hands its dead and misplaced pieces to their modules" — the two
+//    payload subcommands `factory/record.mjs` gains so the boot no longer
+//    builds either JSON body by hand (`json_escape`, gone from boot.sh).
+// ────────────────────────────────────────────────────────────────────────
+
+// ── e. [M5] `pr-payload title=… head=… base=… body=… draft=…` ──────────────
+{
+  // The frozen inputs Context 5 computed at BASE 2026-09-22 by running the
+  // shell expression `publish` built at the time — five lines joined by
+  // newline as the body, the middle line a landing row, the last carrying
+  // one literal backslash.
+  const frozenBody = [
+    'One widget, one size.',
+    '',
+    '| 1 | 1 | 0 | abc |',
+    '',
+    'Closes #1222 back\\slash'
+  ].join('\n')
+
+  const r1 = run([
+    'pr-payload',
+    'title=fleet run-502: A widget that "answers" its size',
+    'head=ultra/integration-run-502',
+    'base=main',
+    `body=${frozenBody}`,
+    'draft=false'
+  ])
+  assert.equal(r1.status, 0, '(e) [M5] pr-payload over the frozen inputs exits 0')
+  const expectedPrPayload = '{"title":"fleet run-502: A widget that \\"answers\\" its size",' +
+    '"head":"ultra/integration-run-502","base":"main",' +
+    '"body":"One widget, one size.\\n\\n| 1 | 1 | 0 | abc |\\n\\nCloses #1222 back\\\\slash",' +
+    '"draft":false}'
+  assert.equal(
+    r1.stdout, expectedPrPayload + '\n',
+    '(e) [M5] pr-payload prints exactly the frozen five-key JSON object (title, head, base, body, draft in that ' +
+    'order, the four strings JSON-encoded, draft the bare boolean) plus a newline, byte-equal to what the shell ' +
+    'expression printed at BASE — got ' + JSON.stringify(r1.stdout)
+  )
+
+  // draft is the boolean true ONLY when the token is exactly "draft=true" —
+  // not on any other spelling, and never a string.
+  const r2 = run(['pr-payload', 'title=t', 'head=h', 'base=b', 'body=x', 'draft=true'])
+  assert.equal(r2.status, 0, '(e) [M5] pr-payload with draft=true exits 0')
+  assert.equal(
+    JSON.parse(r2.stdout).draft, true,
+    '(e) [M5] draft=true parses to the boolean true'
+  )
+  const r3 = run(['pr-payload', 'title=t', 'head=h', 'base=b', 'body=x', 'draft=TRUE'])
+  assert.equal(r3.status, 0, '(e) [M5] pr-payload with draft=TRUE exits 0')
+  assert.equal(
+    JSON.parse(r3.stdout).draft, false,
+    '(e) [M5] draft=TRUE (not the exact token "draft=true") parses to the boolean false, not true'
+  )
+}
+
+// ── f. [M5] `merge-payload title=… sha=…` ───────────────────────────────────
+{
+  const r1 = run([
+    'merge-payload',
+    'title=fleet run-502: A widget that "answers" its size (#7)',
+    'sha=deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+  ])
+  assert.equal(r1.status, 0, '(f) [M5] merge-payload over the frozen inputs exits 0')
+  const expectedMergePayload = '{"merge_method":"squash",' +
+    '"commit_title":"fleet run-502: A widget that \\"answers\\" its size (#7)",' +
+    '"sha":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"}'
+  assert.equal(
+    r1.stdout, expectedMergePayload + '\n',
+    '(f) [M5] merge-payload prints exactly the frozen three-key JSON object (merge_method, commit_title, sha ' +
+    'in that order) plus a newline, byte-equal to what the shell expression printed at BASE — got ' +
+    JSON.stringify(r1.stdout)
+  )
+}
+
 console.log('ALL TESTS PASSED')

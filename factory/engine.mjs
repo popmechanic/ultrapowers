@@ -2556,10 +2556,6 @@ export async function main (argv = process.argv.slice(2)) {
   return answer.done ? 0 : 1
 }
 
-const invokedDirectly = process.argv[1] &&
-  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
-if (invokedDirectly) {
-  process.exitCode = await main()
-}
+if (import.meta.main) { process.exitCode = await main() }
 
 export default { runEngine, runRefold, makeRefoldDispatch, modelCells, buildDeps, main, parseArgv, normalizeArgs, bodyOf, clausesOf, splitDiff }
