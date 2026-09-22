@@ -1005,3 +1005,6 @@
 {"ts":"2026-09-22T18:58:37.722Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Edit","target":"/home/exedev/run/fold-fix-implement-3-3/factory/record.mjs"}
 {"ts":"2026-09-22T18:58:41.048Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"ENGINE_REPO_DIR\\|fleet_node\\|record.mjs\\|preflight.mjs\" factory/boot.sh"}
 {"ts":"2026-09-22T18:58:57.179Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-implement-3-3/factory/boot.sh"}
+{"ts":"2026-09-22T19:00:18.788Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"node fleet/tests/test_factory_boot.mjs 2>&1 | tail -60"}
+{"ts":"2026-09-22T19:00:19.157Z","kind":"worker:test-run","task":"3","label":"impl:3:fold","cmd":"node fleet/tests/test_factory_boot.mjs 2>&1 | tail -60","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T19:00:22.426Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-implement-3-3/fleet/tests/test_factory_boot.mjs"}
