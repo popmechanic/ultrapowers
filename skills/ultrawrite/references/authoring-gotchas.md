@@ -6,11 +6,12 @@ makes it a rule and the run or sitting that cost it — a fresh clone, a subagen
 author and a stranger operator get the same guidance from this file that the
 last sitting got from one agent's memory.
 
-One of these rules is still refused outright: a `Run:`/`Check:` command carrying a
-backtick is `command carries a backtick` from `plan_check.py`. Every other species below
-is the author's own to check, here, against this file — `suite-total-pin`,
-`directory-absence-pin` and, since the compiler left at cut B (2026-09-21), the
-`one Run, one exam` sweep included. Nothing prints them.
+Two of these rules are refused outright: a `Run:`/`Check:` command carrying a
+backtick is `command carries a backtick` from `plan_check.py`, and a `Check:` that
+freezes a path covering a task's own Files or `Test:` path is refused the same way
+(below). Every other species below is the author's own to check, here, against this
+file — `suite-total-pin`, `directory-absence-pin` and, since the compiler left at cut B
+(2026-09-21), the `one Run, one exam` sweep included. Nothing prints them.
 
 ## The rows
 
@@ -163,26 +164,25 @@ is the author's own to check, here, against this file — `suite-total-pin`,
   task's Files hold the offender.** A run-wide `Check:` is paid by every task
   on every pass; one already failing before any work is done costs repair
   attempts that can change nothing, because no task caused it and no task can
-  turn it green. The compiler now rehearses every `- Check:` line in a
-  worktree at BASE under `--check --base` and prints one `RED-AT-BASE fact:`
-  line per command that exits non-zero there — read it before dispatch, the
-  same way a `GREEN-AT-BASE fact:` line is read. A fixture `Check:` copied
-  verbatim from `greenfield-stack.md` exited 1 at BASE on a file no task
-  owned, turned both fold checks red, and bought two repair attempts that
-  could change nothing (fixture run-36, popmechanic/tinyapp-fixture,
-  2026-09-21; #1173).
+  turn it green. The sandbox runs every `Check:` once at base before the
+  first dispatch and records it as a `check:line` row carrying `base: true`
+  (#1195), so the author's defence before launch is to run the command by
+  hand in an installed checkout. A fixture `Check:` copied verbatim from
+  `greenfield-stack.md` exited 1 at BASE on a file no task owned, turned both
+  fold checks red, and bought two repair attempts that could change nothing
+  (fixture run-36, popmechanic/tinyapp-fixture, 2026-09-21; #1173).
 
 - **A `Check:` that freezes a path must not cover any task's own Files or `Test:` path.**
-  A run-wide `git diff --quiet $ULTRA_BASE -- <paths>` is green at BASE by construction, so
-  the `RED-AT-BASE fact:` line cannot see this one: it goes red the moment a task's own
-  patch lands under a frozen path — and on the factory an exam file rides the patch into
-  the folded tree even when it is unguarded and stripped at publish. Read the pathspec
-  against every task's `Create:`, `Modify:`, `Delete:` and `Test:` paths before the gate
-  readers are dispatched, and freeze files, not the directory they sit in. Run-199 froze
-  `fleet/` while its one task's exam was `fleet/tests/test_factory_select_dirs.mjs`: the
-  check exited 1 on both fold passes, the repair could change nothing, and a task adopted
-  green parked as `done: false` with a draft pull request (n=1 run, 2026-09-21) — the gate
-  fix of #1172 working exactly as designed on a plan defect.
+  A run-wide `git diff --quiet $ULTRA_BASE -- <paths>` is green at BASE by construction: it
+  goes red the moment a task's own patch lands under a frozen path — and on the factory an
+  exam file rides the patch into the folded tree even when it is unguarded and stripped at
+  publish. `plan_check.py` refuses such a plan outright — one line naming the check, the
+  pathspec, the task and the path, exit 2 (#1202) — so freeze files, not the directory they
+  sit in. Run-199 froze `fleet/` while its one task's exam was
+  `fleet/tests/test_factory_select_dirs.mjs`: the check exited 1 on both fold passes, the
+  repair could change nothing, and a task adopted green parked as `done: false` with a draft
+  pull request (n=1 run, 2026-09-21) — the gate fix of #1172 working exactly as designed on a
+  plan defect.
 
 - **An exam of a record other tasks also write must assert that the record carries these keys,
   never that it has exactly these keys.** A whole-row deep-equal is lawful only over

@@ -9,7 +9,10 @@
 //                                         copied `code#state` carries THIS login's state
 //   node fleet/claude-token.mjs refresh   install the keychain's access token at the
 //                                         edge before a run, rotating it first when
-//                                         < 4 h remain
+//                                         < 4 h remain — held instead, with the
+//                                         cached token installed, while a fleet VM
+//                                         is listed and 90 min or more remain; refused
+//                                         under 90 minutes with a fleet VM listed
 //   node fleet/claude-token.mjs status    when the current access token expires
 //   node fleet/claude-token.mjs accounts  every account the keychain holds, and whether
 //                                         its access token is still fresh (`--json`)
@@ -75,8 +78,20 @@ export const LOCK_STALE_MS = 2 * 60 * 1000
 // minted at 16:28; the five launches between them each found more than
 // thirty minutes remaining and rotated nothing. Four hours is the longest
 // run on record (about ninety minutes) with room to spare, and a rotation is
-// one refresh grant behind the single-flight lock — cheap.
+// one refresh grant behind the single-flight lock — cheap. But inside this
+// window, with a fleet VM up, the rotation is held instead (see
+// LIVE_FLOOR_MS): the refresh grant revokes the previous access token at
+// once and the edge carries one bearer for every run, so rotating while a
+// run is in flight kills it on its next call with a 401.
 export const REFRESH_AHEAD_MS = 4 * 60 * 60 * 1000
+// Below REFRESH_AHEAD_MS, a listed fleet VM changes what `refresh` will do:
+// with at least this much left on the cached access token, the rotation is
+// held (the cached token is installed, nothing is spent); under it, `refresh`
+// refuses outright rather than revoke a bearer a live run may call next.
+// Ninety minutes is the longest run on record (see REFRESH_AHEAD_MS above) —
+// runs 92, 100, 103 and 178 (2026-09-11 to 2026-09-17) were all killed by a
+// rotation landing while a run was up.
+export const LIVE_FLOOR_MS = 90 * 60 * 1000
 // `login --code-from-clipboard` reads the clipboard every POLL and gives up after WAIT.
 export const CLIPBOARD_POLL_MS = 2 * 1000
 export const CLIPBOARD_WAIT_MS = 10 * 60 * 1000
@@ -282,6 +297,22 @@ export function installBearer (deps, accessToken, account = DEFAULT_ACCOUNT) {
   return verb.startsWith('integrations add') ? 'added' : 'edited'
 }
 
+// The same verb `fleet/lobby.mjs`'s `listVms` issues, read here for the one
+// question `refresh` needs answered: which VMs are up. A row's `status` is
+// not read — the lobby's status vocabulary beyond `running` is not on record,
+// and the launcher's janitor pass has already reaped the VMs of finished
+// runs, so every row with a `vm_name` counts as a live run. A listing that
+// exits non-zero, or whose `out` is not JSON, is an Error — never read as an
+// empty fleet, since that would spend a grant a live run could be killed by.
+function listLiveFleet (deps) {
+  const r = deps.lobby("ls 'fleet-r*' --json")
+  if (r.code !== 0) throw new Error(`exe.dev ls 'fleet-r*' --json failed (exit ${r.code}):\n${r.out}`)
+  let payload
+  try { payload = JSON.parse(r.out) } catch { throw new Error(`ls 'fleet-r*' --json was not JSON:\n${String(r.out).slice(0, 300)}`) }
+  const vms = Array.isArray(payload?.vms) ? payload.vms : []
+  return vms.map((row) => row?.vm_name).filter((name) => typeof name === 'string')
+}
+
 // ---- keychain record ----------------------------------------------------------
 
 export function readRecord (deps, account = DEFAULT_ACCOUNT) {
@@ -366,6 +397,21 @@ export async function refresh (deps, { force = false, account = DEFAULT_ACCOUNT,
         ? `${INTEGRATION}: access token fresh until ${iso(rec.expiresAt)} — bearer ${how} for ${account}`
         : `${INTEGRATION}: access token fresh until ${iso(rec.expiresAt)} — nothing to do`)
       return { refreshed: false, installed: install, expiresAt: rec.expiresAt }
+    }
+    // The function has now decided it would spend a grant — so the fleet is
+    // checked BEFORE it does. Anthropic's refresh grant revokes the previous
+    // access token at once, and the edge carries one bearer for every run, so
+    // rotating while a run is up kills it on its next call (runs 92, 100,
+    // 103, 178). The two log/error lines below are shared, byte for byte,
+    // with the launcher, which greps this tool's output for them.
+    const liveVms = listLiveFleet(deps)
+    if (liveVms.length > 0) {
+      if (remaining >= LIVE_FLOOR_MS && typeof rec.accessToken === 'string') {
+        const how = install ? installBearer(deps, rec.accessToken, account) : null
+        deps.log(`token: fresh until ${iso(rec.expiresAt)}; ${liveVms.length} run(s) live — not rotated`)
+        return { refreshed: false, installed: install, expiresAt: rec.expiresAt, held: true }
+      }
+      throw new Error(`token: expires ${iso(rec.expiresAt)}; ${liveVms.length} run(s) live (${liveVms.join(', ')}) — not rotated; under 90 minutes is too short to launch on, so wait for the runs to end or remove their VMs`)
     }
     const tokens = await refreshGrant(deps, rec.refreshToken)
     // The rotated pair replaces the old one BEFORE the edge is touched: a consumed

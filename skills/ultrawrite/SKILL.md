@@ -154,9 +154,9 @@ where this plan's Files sets were wrong.
   A command still running at 30 s is killed and reported `not run (timeout after 30 s)`; a
   non-zero exit prints nothing. This release the line is a fact, not a refusal — `PLAN OK`
   still prints, and the refusal for a prover green at BASE comes after one release's census.
-  The same rehearsal also runs the plan's Global Constraints `Check:` lines in that worktree
-  and prints a `RED-AT-BASE fact:` line for each that exits non-zero there — a red no task
-  can be blamed for unless one task's Files hold the offender.
+  The plan's Global Constraints `Check:` lines are not rehearsed on the laptop: the sandbox
+  runs each one once at base before the first dispatch and records it as a `check:line` row
+  carrying `base: true`, so a check red before any task landed is a fact on the run's record.
   Without `--base` nothing is run.
   A `- Guard:` bullet in this slot names **one of this Proof's own `Test:` paths**, and it
   is the one way an exam file reaches the pull request: the peer examiner still writes the
@@ -411,7 +411,8 @@ Then resolve provenance and check:
 
 `plan_check.py` sits on `plan_parse.py`, the parser the sandbox runs, and refuses only
 what a parser cannot see: a gate record that is missing, stale or `fail`, a malformed
-authoring record, a `Check:` carrying a backtick or naming a path one task owns, and a
+authoring record, a `Check:` carrying a backtick or naming a path one task owns, a
+`Check:` that freezes a pathspec covering a task's own Files or `Test:` path, and a
 Stale-if predicate that already holds at BASE. It is not a grammar check — the old
 compiler's grammar refusals left with it at cut B (2026-09-21), so read `plan_parse.py`'s
 own output for the plan before launching (`proofTests`, `testCmd`, `proofRuns`, `checks`,
@@ -552,7 +553,10 @@ And a `Check:` that runs a sim is paid by every task on every pass, where the sa
 in the owning task's `Run:` is paid once: put it there, and keep this section for what no
 single task owns. That is not only advice: a `Check:` whose command names a file one task's
 Files own is refused at `--check`, naming the task and the path, because a check a single
-task would turn green was never run-wide.
+task would turn green was never run-wide. A `Check:` that freezes a pathspec covering any
+task's `Create:`, `Modify:`, `Delete:` or `Test:` path is refused by `plan_check.py` the
+same way, because it goes red the moment that task's own patch lands (run-199, n=1 run,
+2026-09-21) — freeze files, not the directory they sit in.
 ## Execution handoff — analyze, then recommend
 
 Offer three options, parallel first, and do **not** default to the parallel lane. Read

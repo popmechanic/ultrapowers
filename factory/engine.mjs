@@ -56,6 +56,7 @@ import { candidateTests, symbolsOf, commandFor, excerptFor } from './select.mjs'
 import { examsTouched, foldRound } from './reverify.mjs'
 import { waitsFor } from './dispatch.mjs'
 import { runLines } from './proofs.mjs'
+import { checksAtBase } from './checks-at-base.mjs'
 import { settledCoverage, observedFacts } from './facts.mjs'
 import { observedWork, supervisorTick } from './watch.mjs'
 
@@ -979,6 +980,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       role: opts.role,
       label: opts.label,
       task: opts.taskId,
+      onDenied: (row) => appendEvent(row),
     })
     } catch (e) {
       const error = String((e && e.message) || e).slice(0, 500)
@@ -1986,6 +1988,12 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   if (pairsLive) {
     pairsMod = deps.pairs || (await import('./pairs.mjs'))
   }
+  await checksAtBase({
+    checks: compiled.checks,
+    enabled: proofsEnabled && (proofsPolicy.checks_at_base || {}).enabled === true,
+    clone: () => cloneAt('checks-at-base', runBase),
+    base: runBase, sh, timeoutSeconds: proofTimeoutSeconds, runLines, appendEvent,
+  })
   if (examAtZero) {
     for (const t of tasks) examPromises.set(t.id, examine(t, runBase))
   }
@@ -2206,6 +2214,7 @@ export async function runRefold (rawArgs = {}, deps = {}) {
         files: opts.files, schema: opts.schema ?? null, mcpServers: opts.mcpServers ?? null,
         onMessage: () => {}, readOnly: Boolean(opts.readOnly), role: opts.role, label: opts.label,
         task: opts.taskId,
+        onDenied: (row) => appendEvent(row),
       })
     } catch (e) {
       answer = { result: null, denials: [], error: String((e && e.message) || e).slice(0, 500) }

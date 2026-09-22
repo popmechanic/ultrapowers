@@ -290,11 +290,13 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
 - **Never force-rotate the Claude token while a run is live.** A refresh grant revokes the old
   access token at once, and every in-flight run dies on its next API call with
   `401 OAuth access token has been revoked` before the edge carries the new one (run-103 was
-  killed by a `refresh --force` for run-104's launch, 2026-09-11; run-92 the same way). The
-  launcher's own refresh rotates only inside the four-hour window and is safe; run `refresh
-  --force` only when `ssh exe.dev ls` shows no `fleet-r*` VM running. The sibling trap: a
-  `usage` read rotates an expired account with `install: false` and leaves the edge holding a
-  revoked bearer (run-100).
+  killed by a `refresh --force` for run-104's launch, 2026-09-11; run-92 the same way; run-178
+  the same way again, 2026-09-17, when another session's launch rotated inside the four-hour
+  window). While `ssh exe.dev ls` lists a `fleet-r*` VM, the token is `not rotated` at all —
+  by a launch, a hand `refresh --force`, or a `usage` read — and a launch beside those runs
+  starts on the current sign-in with `ninety minutes` or more left on it, or refuses. The
+  sibling trap: a `usage` read rotates an expired account with `install: false` and leaves the
+  edge holding a revoked bearer (run-100).
 - **Kata seams, measured 2026-09-11.** Every `*.int.exe.xyz` hostname is `https://` (http 301s, and a
   followed 301 turns a POST into a GET — run-110). A `done` close needs a ≥40-character message
   (run-111). Hub writes are never the run's failure; the boot's ping is the one gate. The laptop reads

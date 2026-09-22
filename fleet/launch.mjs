@@ -867,7 +867,9 @@ async function defaultEngineSha (exec) {
 
 // The Claude Max access token lives at the edge and expires in hours; the
 // laptop holds the refresh token. Before a VM exists, rotate it if it is within
-// 30 minutes of expiry — a run that outlives its bearer dies in the gate.
+// four hours of expiry — a run that outlives its bearer dies in the gate. The
+// tool holds instead of rotating when a listed fleet VM is still live, since a
+// refresh grant would revoke the access token every live run is using.
 // A laptop set up with `claude setup-token` (no keychain record) skips this.
 //
 // The account is the launch's, so the entry this rotates and installs is the
@@ -878,8 +880,14 @@ export function defaultRefreshCredential (account = DEFAULT_ACCOUNT, spawn = spa
   const tool = new URL('./claude-token.mjs', import.meta.url).pathname
   const r = spawn(process.execPath, [tool, 'refresh', '--account', account], { encoding: 'utf8' })
   const out = `${r.stdout ?? ''}${r.stderr ?? ''}`
-  if (r.status === 0) return { ok: true, out }
+  if (r.status === 0) {
+    const held = out.split('\n').find((line) => line.startsWith('token: fresh until ') && line.endsWith('not rotated'))
+    if (held !== undefined) return { ok: true, held, out }
+    return { ok: true, out }
+  }
   if (/no refresh token in the keychain/.test(out)) return { ok: true, skipped: true, out }
+  const refused = out.split('\n').find((line) => line.startsWith('token: expires '))
+  if (refused !== undefined) return { ok: false, refused, out }
   return { ok: false, out }
 }
 
@@ -941,7 +949,7 @@ async function launchBody ({
 
   // ── Local validation. Nothing has been executed at this point, and nothing
   //    will be until every one of these passes. ──────────────────────────────
-  const planPath = positional[0]
+  let planPath = positional[0]
   if (!planPath) throw new Refusal(`launch: a plan path is required\n${usage()}`)
   const target = opts.target
   if (!isSafeTarget(target)) {
@@ -1040,6 +1048,14 @@ async function launchBody ({
   }
 
   const repoDir = path.resolve(String(opts.repo ?? process.cwd()))
+  // A relative plan path is read against `repoDir` — the target clone when
+  // `--repo` is given, the working directory otherwise, which is what
+  // `repoDir` already resolves to in that case — and an absolute path is left
+  // as it is. Resolved once here, this same absolute path is what every
+  // downstream read, refusal message, re-pin command and `python3` argv
+  // carries, so the launcher and the children it spawns with `cwd: repoDir`
+  // agree on which file `planPath` names.
+  planPath = path.resolve(repoDir, planPath)
 
   let planText
   try {
@@ -1289,6 +1305,9 @@ async function launchBody ({
   }
 
   const cred = refreshCredential(account)
+  if (cred.refused) {
+    throw new Refusal(`launch: ${cred.refused} — no VM was created and nothing was pushed`)
+  }
   if (!cred.ok) {
     throw new LobbyError(`launch: the Claude credential could not be refreshed — no VM was created\n${cred.out}`)
   }
@@ -1425,6 +1444,10 @@ async function launchBody ({
     // `COMMENT_KEYS` nor `buildComment` spells `account`. It lives here and on
     // the launch line instead.
     account,
+    // The hold line from `defaultRefreshCredential`, when the credential tool
+    // held rather than rotated because a listed fleet VM is still live — carried
+    // onto the launch line so a launch beside live runs says so.
+    ...(cred.held === undefined ? {} : { token: cred.held }),
     // The hub's record of this run — `{url, project, run, tasks}`, the same
     // object the plan commit carries as `.ultrapowers/kata.json` — or null for
     // a launch that reached no hub.
@@ -1816,6 +1839,7 @@ export const renderLaunch = (result) => [
   ...(result.reaped ?? []).map((vm) => `reaped ${vm}`),
   ...(result.again ?? []).map((d) => `again run-${d.run} ${d.vm}`),
   result.account === undefined ? null : `account=${result.account}`,
+  result.token === undefined ? null : result.token,
   result.kata ? `kata=${result.kata.project.name} ${Object.keys(result.kata.tasks).length} tasks` : null,
   result.verbDrift === undefined ? null : `verb-drift: ${result.verbDrift.detail}`,
   engineLine(result),

@@ -130,10 +130,12 @@ exchanges it, keeps the refresh token in your login keychain, and puts the
 access token on `claude-max` on stdin. Nothing is printed. The launcher runs
 `node fleet/claude-token.mjs refresh` before every launch, which installs the
 keychain's access token on `claude-max` at every launch and rotates it first when
-fewer than four hours remain — so a token something else rotated (a `usage` read
-meters an account by rotating it, and never installs) is on the edge before the
-VM exists, and the bearer a run starts on always has the whole run ahead of it;
-`status` shows the expiry.
+fewer than four hours remain and no `fleet-r*` VM is listed — so a token something
+else rotated (a `usage` read meters an account by rotating it, and never installs)
+is on the edge before the VM exists, and the bearer a run starts on always has the
+whole run ahead of it. When a `fleet-r*` VM is listed, it never rotates, and instead
+installs the current token if ninety minutes or more remain or exits without
+launching if less; `status` shows the expiry.
 
 Rotate the token with `integrations edit claude-max --bearer=-` and a fresh
 token on stdin. `claude-max` reaches a run's VM by its attachment policy,
@@ -232,7 +234,7 @@ never by `integrations attach`.
 node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>
 ```
 
-The launcher checks the plan against `--base` itself (`plan_check.py --base`, on `plan_parse.py` — the sandbox's own parser — after the hash pins and before any lobby verb) and refuses on anything but `PLAN OK`; the `BASE fact:` lines, the `STALE fact:` lines, the `GREEN-AT-BASE fact:` and `RED-AT-BASE fact:` lines and the `AUTHORING fact:` line of a clean check are printed on the launch line after the engine line, in the order the compiler printed them. A `STALE fact:` line on a clean compile is an advisory — a Stale-if predicate the compiler could not read at `--base` (`STALE fact: task <id>: <entry> unreadable at BASE — <reason>`); a predicate that holds is a refusal instead, and the compiler's own `STALE fact: task <id>: <entry> holds at BASE` line comes back verbatim in it. A `GREEN-AT-BASE fact:` line is a fact this release and not a refusal — the compile still prints `PLAN OK` and exits 0 however many of them there are — and it says a Proof `Run:` line was already green on the tree at `--base`, before any worker touched it: `GREEN-AT-BASE fact: task <id>: Run: <command> — exits 0 at BASE; this line cannot falsify its clause` for a prover, `… — exits 0 at BASE; a guard, no leg cites it` for a guard, `… — not run (timeout after 30 s)` for a line the compiler gave up on, and last one `GREEN-AT-BASE fact: <S> s over <R> lines run, <T> not run (timeout)` totalling what the reads cost. Only Proof `Run:` lines are run at `--base`, never a `Check:` line, and only under `--base`: a bare `--check` prints none of this. The `AUTHORING fact:` line is what the plan cost to author — `AUTHORING fact: <minutes> min to PLAN OK, <probes> hub probes, <dispatched> gate dispatches, <rejected> rejected, routing <branch>-><lane>, <n> questions, <p>/<q> recommended picked`, `AUTHORING fact: none recorded` when the gate record carries no `authoring` key, and, for a record the compiler refused, one `AUTHORING fact: refused — <key>: <rule>` line per violation (the compile is then a refusal and those lines come back verbatim inside it) — so the cost of the plan is read beside the run it launched, without opening the record.
+The launcher checks the plan against `--base` itself (`plan_check.py --base`, on `plan_parse.py` — the sandbox's own parser — after the hash pins and before any lobby verb) and refuses on anything but `PLAN OK`; the `BASE fact:` lines, the `STALE fact:` lines, the `GREEN-AT-BASE fact:` lines and the `AUTHORING fact:` line of a clean check are printed on the launch line after the engine line, in the order the compiler printed them. A `STALE fact:` line on a clean compile is an advisory — a Stale-if predicate the compiler could not read at `--base` (`STALE fact: task <id>: <entry> unreadable at BASE — <reason>`); a predicate that holds is a refusal instead, and the compiler's own `STALE fact: task <id>: <entry> holds at BASE` line comes back verbatim in it. A `GREEN-AT-BASE fact:` line is a fact this release and not a refusal — the compile still prints `PLAN OK` and exits 0 however many of them there are — and it says a Proof `Run:` line was already green on the tree at `--base`, before any worker touched it: `GREEN-AT-BASE fact: task <id>: Run: <command> — exits 0 at BASE; this line cannot falsify its clause` for a prover, `… — exits 0 at BASE; a guard, no leg cites it` for a guard, `… — not run (timeout after 30 s)` for a line the compiler gave up on, and last one `GREEN-AT-BASE fact: <S> s over <R> lines run, <T> not run (timeout)` totalling what the reads cost. Only Proof `Run:` lines are run at `--base`, never a `Check:` line, and only under `--base`: a bare `--check` prints none of this. The `AUTHORING fact:` line is what the plan cost to author — `AUTHORING fact: <minutes> min to PLAN OK, <probes> hub probes, <dispatched> gate dispatches, <rejected> rejected, routing <branch>-><lane>, <n> questions, <p>/<q> recommended picked`, `AUTHORING fact: none recorded` when the gate record carries no `authoring` key, and, for a record the compiler refused, one `AUTHORING fact: refused — <key>: <rule>` line per violation (the compile is then a refusal and those lines come back verbatim inside it) — so the cost of the plan is read beside the run it launched, without opening the record.
 
 The launcher, in this order: validates the plan, the target and the base;
 reads the pool; computes N from the target's `ultra/*-run-*` branches and its
@@ -463,8 +465,9 @@ on the next one, ask her before editing a script.
 - `claude-token.mjs usage` rotates an EXPIRED account's access token with `install: false`,
   and Anthropic's refresh grant revokes the previous token — the one the edge holds — so a
   live run dies at its next call with `401 OAuth access token has been revoked` (run-100,
-  2026-09-11). Never `refresh --force` while `ssh exe.dev ls` shows a `fleet-r*` VM running;
-  the launcher's own in-window refresh is the safe one (measured 2026-09-11).
+  2026-09-11; run-178, 2026-09-17). While `ssh exe.dev ls` shows a `fleet-r*` VM running, the
+  token is `not rotated` — by a launch, a hand `refresh --force`, or a `usage` read — and a
+  launch starts on the current sign-in if `ninety minutes` or more remain, or refuses.
 - `claude-token.mjs login --account <x>` rewrites `claude-max`'s bearer at once: every
   in-flight run switches to that account mid-run (run-96, 2026-09-11). Enrol a new account
   before a drain, not during one.

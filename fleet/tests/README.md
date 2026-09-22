@@ -34,6 +34,9 @@ examined goes at cut two. Git history holds every one of them.
 
 - `test_jev_questions.mjs` — the sitting's two question sets and the readers
   over the client.
+- `test_factory_worker_gitblock.mjs` — the factory worker's git block: the
+  whole Bash line is read, a git command word is denied, and the denial is a
+  row.
 
 The factory's own exams are not here: an unguarded exam lives on its run's evidence tag
 under `.ultrapowers/runs/<N>/exams/`, and a guarded one sits where its plan put it.
