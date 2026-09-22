@@ -1,0 +1,45 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "b2463572324cafa57d5241ffced648217456c0edf189f981494e6dd80d7ea53c",
+      "verdict": "pass",
+      "reason": "Every computable fact the sentence depends on has a leg that would catch it false \u2014 leg (a)'s exact tasks/timeline equality pins nothing of the runs before it, (b) the cursor 3031, (c) the sub-31 call count, (d) the CLI's ssh-only argv and token absence, (e) the exact [[31, 500]] single call on an empty page \u2014 and the literals compute (offset 2901 maps the fourteen ids exactly, 3,031 rows at 100/page is 31 pages), while the base's leg (f) pinning [[31, 0], [31, 1000]] is the one the Proof rewrites, not an opposite pin left standing."
+    }
+  },
+  "tally": {
+    "dispatched": 1,
+    "rejected": 0,
+    "rounds": 1,
+    "base": "e6bd702a221a4ff1f5afefb735e6ab868917e846",
+    "question": "facts-only (experiment, rollback the old sentence)"
+  },
+  "authoring": {
+    "minutes": 22,
+    "probes": 4,
+    "routing": {
+      "branch": "inline",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Confirm",
+          "Alternate sentence"
+        ],
+        "recommended": "Confirm",
+        "picked": "Confirm"
+      },
+      {
+        "question": "Execute",
+        "options": [
+          "Ultrapowers, all four serial",
+          "Subagent-Driven",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers, all four serial",
+        "picked": "Ultrapowers, all four serial"
+      }
+    ]
+  }
+}
