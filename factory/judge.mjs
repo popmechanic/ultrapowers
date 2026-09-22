@@ -148,14 +148,29 @@ export const makeJudge = ({ ask, emit, now = Date.now, questionsPath, policyPath
    *  entry verbatim. When `facts` is given, the whole-claim reading is also
    *  taken with those measured facts in front of it, at the record-only
    *  `claim_established_given_facts` question — a missing answer to it never
-   *  fails the reading. */
-  const readLanding = async ({ clauses = [], patch, files = {}, facts, settled, who } = {}) => {
+   *  fails the reading. When `clauseFacts` is given (#1210), that record-only
+   *  question is replaced by `claim_established_given_assertions` plus one
+   *  `M<i>__facts` question per clause, each asked over that clause's own
+   *  `clause_facts[i-1]` entry — still never gating the reading. */
+  const readLanding = async ({ clauses = [], patch, files = {}, facts, settled, clauseFacts, who } = {}) => {
     const template = (sets.landing || {}).pairwise || {}
+    const perClauseTemplate = (sets.landing || {}).per_clause_facts || {}
     const names = Object.keys(files)
     const keyOf = (i, j) => 'M' + (i + 1) + '__f' + j
+    const factsKeyOf = (i) => 'M' + (i + 1) + '__facts'
     const isSettled = (i) => Array.isArray(settled) && settled[i] !== null && settled[i] !== undefined
+    const hasCF = Array.isArray(clauseFacts) && clauseFacts.length > 0
     const questions = { claim_established: landingQuestions.claim_established }
-    if (Array.isArray(facts) && facts.length > 0) {
+    if (hasCF) {
+      questions.claim_established_given_assertions = landingQuestions.claim_established_given_assertions
+      for (let i = 0; i < clauses.length; i += 1) {
+        questions[factsKeyOf(i)] = {
+          type: perClauseTemplate.type,
+          instructions: fill(perClauseTemplate.instructions, i),
+          criteria: fill(perClauseTemplate.criteria, i),
+        }
+      }
+    } else if (Array.isArray(facts) && facts.length > 0) {
       questions.claim_established_given_facts = landingQuestions.claim_established_given_facts
     }
     for (let i = 0; i < clauses.length; i += 1) {
@@ -170,11 +185,13 @@ export const makeJudge = ({ ask, emit, now = Date.now, questionsPath, policyPath
     }
     const state = { clauses, patch, files }
     if (Array.isArray(facts) && facts.length > 0) state.facts = facts
+    if (hasCF) state.clause_facts = clauseFacts
     return askOnce('landing', state, questions, (answers) => {
       const claim = noulOf(answers.claim_established)
       if (claim === undefined) return undefined
-      const claimGivenFacts = questions.claim_established_given_facts
-        ? (noulOf(answers.claim_established_given_facts) ?? null)
+      const givenFactsKey = hasCF ? 'claim_established_given_assertions' : 'claim_established_given_facts'
+      const claimGivenFacts = questions[givenFactsKey]
+        ? (noulOf(answers[givenFactsKey]) ?? null)
         : undefined
       const coverage = []
       for (let i = 0; i < clauses.length; i += 1) {
@@ -190,7 +207,15 @@ export const makeJudge = ({ ask, emit, now = Date.now, questionsPath, policyPath
         }
         coverage.push(best === undefined ? 0 : best)
       }
-      return claimGivenFacts === undefined ? { claim, coverage } : { claim, coverage, claimGivenFacts }
+      const row = { claim, coverage }
+      if (claimGivenFacts !== undefined) row.claimGivenFacts = claimGivenFacts
+      if (hasCF) {
+        row.claimGivenFactsPerClause = []
+        for (let i = 0; i < clauses.length; i += 1) {
+          row.claimGivenFactsPerClause.push(noulOf(answers[factsKeyOf(i)]) ?? null)
+        }
+      }
+      return row
     }, who)
   }
 
