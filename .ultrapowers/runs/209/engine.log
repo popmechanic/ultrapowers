@@ -1,0 +1,10 @@
+Running as unit: fleet-engine-209.service; invocation ID: 1f5d86c61f954fdcbfac90cd209c1b94
+worker referee:1 ended: Claude Code returned an error result: API Error: 529 Overloaded. This is a server-side issue, usually temporary — try again in a moment. If it persists, check your inference gateway (claude-max.int.exe.xyz).
+adopted task 1 -> bac16d00  exam=0 k=1
+{"done":true,"adopted":["1"],"head":"bac16d00bc688cbfed806c1ce09edae129bc4356","wall_ms":421628,"cost_usd":0.8194266}
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 7min 1.701s
+CPU time consumed: 11.706s
+Memory peak: 1.6M
+Memory swap peak: 0B
