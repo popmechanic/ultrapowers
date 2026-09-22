@@ -2157,6 +2157,29 @@ export async function runEngine (rawArgs = {}, deps = {}) {
  * onto }` on success, `{ refolded: false, reason: 'red' | 'conflict', head?,
  * onto }` otherwise.
  */
+
+// M4: no board, no examiner, no implementer — the one worker role a
+// re-fold ever dispatches is the resolver, exactly as a task's own fold.
+export function makeRefoldDispatch ({ worker, appendEvent }) {
+  return async (opts) => {
+    appendEvent({ kind: 'dispatch:start', task: opts.taskId, label: opts.label, role: opts.role })
+    let answer
+    try {
+      answer = await worker({
+        cwd: opts.cwd, prompt: opts.prompt, systemPrompt: opts.systemPrompt, model: opts.model,
+        files: opts.files, schema: opts.schema ?? null, mcpServers: opts.mcpServers ?? null,
+        onMessage: () => {}, readOnly: Boolean(opts.readOnly), role: opts.role, label: opts.label,
+        task: opts.taskId,
+        onDenied: (row) => appendEvent(row),
+      })
+    } catch (e) {
+      answer = { result: null, denials: [], error: String((e && e.message) || e).slice(0, 500) }
+    }
+    appendEvent({ kind: 'dispatch:end', task: opts.taskId, label: opts.label, role: opts.role, error: (answer && answer.error) || null })
+    return answer
+  }
+}
+
 export async function runRefold (rawArgs = {}, deps = {}) {
   const args = normalizeArgs(rawArgs)
   const target = path.resolve(String(args.target))
@@ -2205,23 +2228,7 @@ export async function runRefold (rawArgs = {}, deps = {}) {
 
   // M4: no board, no examiner, no implementer — the one worker role a
   // re-fold ever dispatches is the resolver, exactly as a task's own fold.
-  const dispatch = async (opts) => {
-    appendEvent({ kind: 'dispatch:start', task: opts.taskId, label: opts.label, role: opts.role })
-    let answer
-    try {
-      answer = await worker({
-        cwd: opts.cwd, prompt: opts.prompt, systemPrompt: opts.systemPrompt, model: opts.model,
-        files: opts.files, schema: opts.schema ?? null, mcpServers: opts.mcpServers ?? null,
-        onMessage: () => {}, readOnly: Boolean(opts.readOnly), role: opts.role, label: opts.label,
-        task: opts.taskId,
-        onDenied: (row) => appendEvent(row),
-      })
-    } catch (e) {
-      answer = { result: null, denials: [], error: String((e && e.message) || e).slice(0, 500) }
-    }
-    appendEvent({ kind: 'dispatch:end', task: opts.taskId, label: opts.label, role: opts.role })
-    return answer
-  }
+  const dispatch = makeRefoldDispatch({ worker, appendEvent })
 
   // The plan, compiled only for the tasks' own test commands — every one of
   // them is what M2's re-verify runs.
@@ -2428,4 +2435,4 @@ if (invokedDirectly) {
   process.exitCode = await main()
 }
 
-export default { runEngine, runRefold, buildDeps, main, parseArgv, normalizeArgs, bodyOf, clausesOf, splitDiff }
+export default { runEngine, runRefold, makeRefoldDispatch, buildDeps, main, parseArgv, normalizeArgs, bodyOf, clausesOf, splitDiff }
