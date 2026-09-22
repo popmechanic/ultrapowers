@@ -53,7 +53,7 @@ import { literalsOf, hunksCarrying, filesShown } from './hunks.mjs'
 import { unionReply } from './union.mjs'
 import { makeBoard, patchWithRevision } from './board.mjs'
 import { candidateTests, symbolsOf, commandFor, excerptFor } from './select.mjs'
-import { examsTouched } from './reverify.mjs'
+import { examsTouched, foldRound } from './reverify.mjs'
 import { waitsFor } from './dispatch.mjs'
 import { runLines } from './proofs.mjs'
 import { settledCoverage, observedFacts } from './facts.mjs'
@@ -830,6 +830,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   // than by whichever task happens to be ready first.
   const examPromises = new Map()
   const reverifyPolicy = (policyDoc.fold || {}).reverify || {}
+  const attributionPolicy = (policyDoc.fold || {}).attribution || {}
 
   // M2 (this task's own): one deferred per task, resolved exactly once — the
   // moment `land()` selects that task's best candidate, well before its own
@@ -1747,19 +1748,14 @@ export async function runEngine (rawArgs = {}, deps = {}) {
 
   /**
    * M2-M4: directly after a task's fold, the exams of every adopted task the
-   * fold touched are run again on the folded tree — the folded task's own
-   * exam included — and, with `policy.proofs.run_lines` on, the plan's own
-   * `checks` run there too (M3), once. A red exam, or a non-minor check's own
-   * failure, buys the folded task exactly one more implementer attempt, in a
-   * clone of the same folded tree, whose patch is folded through the same
-   * kernel path (`foldIn`) before the same exams run a second time — the
-   * plan's own `checks` are a run-wide reading already taken once this fold;
-   * still red (or a refold that never completes) is unresolved, and
-   * unresolved forces the run's `done` to false without unadopting anything.
-   * A minor check's own failure is recorded (`check:line`) and nothing more:
-   * it never buys a red row or a re-attempt.
+   * fold touched (the folded task's own included), plus the plan's own
+   * `checks`, run once on the folded tree; every red goes through one
+   * `foldRound` (`./reverify.mjs`) — attributed, judged, re-attempted by the
+   * right worker, verified once more. Still red forces `done` to false
+   * without unadopting anything. A minor check's own failure is recorded
+   * (`check:line`) and buys neither a red row nor a re-attempt.
    */
-  const reverifyAfterFold = async (task, best) => {
+  const reverifyAfterFold = async (task, best, headBefore) => {
     const patchText = best.patch && fs.existsSync(best.patch) ? fs.readFileSync(best.patch, 'utf8') : ''
     const touched = Object.keys(splitDiff(patchText))
     if (!touched.length) return
@@ -1772,19 +1768,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const checksNamed = proofsEnabled && Array.isArray(compiled.checks) ? compiled.checks : []
     if (!exams.length && !checksNamed.length) return
 
-    const redLabel = (red) => red.kind === 'exam' ? ('exam ' + red.id) : ('check ' + red.cmd)
-    const redEventFields = (red) => red.kind === 'exam'
-      ? { exam: red.id, cmd: null }
-      : { exam: null, cmd: red.cmd }
-
-    // Shared with `runRefold` (M2): the same per-task, under-`timeout` exam
-    // run, over just the tasks this fold touched here rather than every task
-    // the plan names. `cloneAt` can throw a `bootstrapRed`-carrying error
-    // (M4) when a fresh clone's own dependency install goes red; that is not
-    // this landing's own park (it already adopted) so it is read here as
-    // "this fold's re-verify could not run" rather than left to crash the
-    // whole run — the same `fold:unresolved`/`foldUnresolved` outcome an
-    // exam still red after the one re-attempt gets.
+    // A `bootstrapRed` here is not this landing's own park: read as "this fold's re-verify could not run".
     let first
     try {
       first = await runExamsAndChecks({
@@ -1799,44 +1783,59 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     if (!first.reds.length) return
 
     for (const red of first.reds) {
-      appendEvent({ kind: 'fold:red', task: task.id, ...redEventFields(red), exit: red.exit })
       await board.post(task.id, 'fold-red',
-        redLabel(red) + ' exit ' + red.exit + '\n' + red.out.slice(-1500))
+        (red.kind === 'exam' ? ('exam ' + red.id) : ('check ' + red.cmd)) +
+        ' exit ' + red.exit + '\n' + red.out.slice(-1500))
     }
 
-    // One more attempt, in a fresh clone of the same folded tree, folded
-    // through the same kernel path as any other landing.
-    const anchor = head
-    let fixDir
-    try {
-      fixDir = cloneAt('fold-fix-' + task.id, anchor)
-    } catch (err) {
-      if (!(err && err.bootstrapRed)) throw err
-      for (const red of first.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, ...redEventFields(red) })
-      foldUnresolved = true
-      return
-    }
-    await dispatch({
-      role: 'implement', label: 'impl:' + task.id + ':fold', taskId: task.id, cwd: fixDir,
-      model, systemPrompt: IMPL_MD, files: implFilesOf(task), mcpServers: null,
-      prompt: await withHandoff(await implPrompt(task), task.id),
-    })
-    const fixPatch = capture(fixDir, anchor, path.join(runDir, `patch-${task.id}-fold.diff`))
-    const folded = await foldIn({ task, anchor, best: { patch: fixPatch } })
-    if (folded.sha === null) {
-      for (const red of first.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, ...redEventFields(red) })
-      foldUnresolved = true
-      return
+    const hunks = hunksCarrying(patchText, [],
+      Number.isInteger(attributionPolicy.hunks_cap) ? attributionPolicy.hunks_cap : 4000)
+
+    // A `cloneAt` throw here rejects, which `foldRound` reads as `null`.
+    const runExamAt = async (id, sha) => {
+      const t = tasks.find((tk) => tk.id === id)
+      const dir = cloneAt('fold-before-' + id + '-' + task.id, sha)
+      const { reds } = runTaskExams({ tasks: t ? [t] : [], dir, sh, timeoutSeconds })
+      return reds.length ? reds[0].exit : 0
     }
 
-    const second = await runExamsAndChecks({
+    // A fresh clone, the right worker dispatched with the fact riding its own prompt, folded as any landing.
+    const reattempt = async (action) => {
+      const actionTask = tasks.find((t) => t.id === action.task)
+      if (!actionTask) return false
+      const anchor = head
+      let dir
+      try {
+        dir = cloneAt('fold-fix-' + action.role + '-' + action.task + '-' + task.id, anchor)
+      } catch (err) {
+        if (err && err.bootstrapRed) return false
+        throw err
+      }
+      const isExam = action.role === 'exam'
+      await dispatch({
+        role: action.role, label: (isExam ? 'exam:' : 'impl:') + action.task + ':fold',
+        taskId: action.task, cwd: dir, model, mcpServers: null,
+        systemPrompt: isExam ? EXAM_MD : IMPL_MD,
+        files: isExam ? actionTask.proofTests : implFilesOf(actionTask),
+        prompt: await withHandoff(
+          (isExam ? await examPrompt(actionTask) : await implPrompt(actionTask)) + '\n\n' + action.fact,
+          action.task),
+      })
+      const patch = capture(dir, anchor, path.join(runDir, `patch-${action.task}-fold-${task.id}.diff`))
+      const folded = await foldIn({ task: actionTask, anchor, best: { patch } })
+      return folded.sha !== null
+    }
+
+    const verify = () => runExamsAndChecks({
       dir: cloneAt('fold-verify-' + task.id, head), exams, foldedTaskId: task.id, timeoutSeconds,
     })
-    appendEvent({ kind: 'fold:verify', task: task.id, ran: second.ran, attempt: 2 })
-    if (second.bootstrapRed || second.reds.length) {
-      for (const red of second.reds) appendEvent({ kind: 'fold:unresolved', task: task.id, ...redEventFields(red) })
-      foldUnresolved = true
-    }
+
+    const { unresolved } = await foldRound({
+      reds: first.reds, folded: task.id, headBefore, head,
+      enabled: attributionPolicy.enabled === true, hunks,
+      runExamAt, read, appendEvent, reattempt, verify,
+    })
+    if (unresolved) foldUnresolved = true
   }
 
   /**
@@ -2060,6 +2059,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       await board.setState(id, 'parked')
       parked.add(id)
     } else {
+      const headBeforeFold = head
       const folded = await foldIn(landing)
       if (folded.sha === null) {
         await board.post(id, 'park', folded.reason)
@@ -2083,7 +2083,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
           '  exam=' + landing.best.examExit + ' k=' + landing.k)
         await maybeSettleInterface(landing.task, landing.best, candidateSha)
         await fileAmendmentEdges(landing.task, landing.best)
-        await reverifyAfterFold(landing.task, landing.best)
+        await reverifyAfterFold(landing.task, landing.best, headBeforeFold)
       }
     }
     await settleReadiness()
