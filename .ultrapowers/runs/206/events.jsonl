@@ -340,3 +340,5 @@
 {"ts":"2026-09-21T23:59:14.847Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -n \"DEFAULT_TIMEOUT_SECONDS =\" factory/*.mjs; echo ---; sed -n '1000,1010p' factory/engine.mjs"}
 {"ts":"2026-09-21T23:59:18.863Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/proofs.mjs"}
 {"ts":"2026-09-21T23:59:25.455Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -n \"defaultSh\" -A 25 factory/engine.mjs | head -45"}
+{"ts":"2026-09-21T23:59:44.610Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"node --input-type=module -e \"\nimport { checksAtBase } from './factory/checks-at-base.mjs'\nconst rows=[]\nconst out = await checksAtBase({\n  checks:[{cmd:'a',minor:false},{cmd:'b',minor:'yes'}], enabled"}
+{"ts":"2026-09-21T23:59:50.427Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -n \"const appendEvent\" -A 12 factory/engine.mjs | head -20"}
