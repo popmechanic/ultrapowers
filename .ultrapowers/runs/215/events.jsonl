@@ -666,3 +666,9 @@
 {"ts":"2026-09-22T17:52:41.530Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"grep -n \"FIXTURE_PLAN\\|Test:\\|Create:\\|Machine:\\|Proof:\" fleet/tests/test_factory_boot.mjs | head -30"}
 {"ts":"2026-09-22T17:52:41.558Z","kind":"worker:test-run","task":"3","label":"impl:3:1","cmd":"grep -n \"FIXTURE_PLAN\\|Test:\\|Create:\\|Machine:\\|Proof:\" fleet/tests/test_factory_boot.mjs | head -30","exit":null,"red":null,"via":"bash"}
 {"ts":"2026-09-22T17:52:46.578Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"grep -n \"^strip_exams\\|^}\" factory/boot.sh | grep -A1 \"strip_exams\" ; grep -n \"strip_exams\" factory/boot.sh"}
+{"ts":"2026-09-22T17:53:21.794Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"sed -n '470,510p' fleet/tests/test_factory_boot.mjs"}
+{"ts":"2026-09-22T17:53:21.817Z","kind":"worker:test-run","task":"3","label":"impl:3:1","cmd":"sed -n '470,510p' fleet/tests/test_factory_boot.mjs","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T17:53:24.403Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Read","target":"/home/exedev/run/impl-3-1/factory/boot.sh"}
+{"ts":"2026-09-22T17:53:35.137Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Edit","target":"/home/exedev/run/impl-3-1/factory/boot.sh"}
+{"ts":"2026-09-22T17:53:37.190Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"bash -n factory/boot.sh && echo \"SYNTAX OK\""}
+{"ts":"2026-09-22T17:53:38.853Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"timeout 90 node fleet/tests/test_factory_boot.mjs 2>&1 | tail -80"}
