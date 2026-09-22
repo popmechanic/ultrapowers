@@ -164,3 +164,8 @@
 {"ts":"2026-09-22T16:16:01.549Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -n \"claim_established\\|landing\" skills/ultrapowers/scripts/jev_census.py factory/replay/replay_landing.py | head -40"}
 {"ts":"2026-09-22T16:16:05.604Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"sed -n 1,80p skills/ultrapowers/scripts/jev_census.py"}
 {"ts":"2026-09-22T16:16:06.270Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"sed -n 25,70p factory/replay/replay_landing.py"}
+{"ts":"2026-09-22T16:16:30.092Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"node fleet/tests/test_factory_facts.mjs; echo \"EXIT=$?\""}
+{"ts":"2026-09-22T16:16:30.168Z","kind":"worker:test-run","task":"1","label":"referee:1","cmd":"node fleet/tests/test_factory_facts.mjs; echo \"EXIT=$?\"","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T16:16:36.098Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"node -e \"\nimport('./factory/facts.mjs').then(({examAssertions, clauseFacts})=>{\nconst c3=['a','b','c'];\n// duplicate citations on one line\nconsole.log(JSON.stringify(examAssertions({text:\\\"assert.ok(x"}
+{"ts":"2026-09-22T16:16:47.744Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"ls tests | head -50; grep -rln \"policy.json\\|questions.json\" tests/ fleet/tests/ 2>/dev/null | head -20"}
+{"ts":"2026-09-22T16:16:51.116Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"sed -n 1,60p tests/test_fleet_suite.py; echo ====; grep -rn \"test_factory_facts\\|singletons\\|README\" tests/test_fleet_suite.py | head"}
