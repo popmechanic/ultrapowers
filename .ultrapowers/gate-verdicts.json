@@ -1,0 +1,61 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "35b0132de7c5e767625c2c5ab6d96b27f14b98fc849ec6ba042539b30b815d24",
+   "verdict": "pass",
+   "reason": "Every computable fact \u2014 the trigger table, the lowest-clause selection, the fact string, the policy cell's exact values and the unchanged review_difficulty_rung, and the engine's naming of the call and the row \u2014 has a leg that would fail if false, while the wiring's shape (how the call is fed and the prompt appended) is a code-says-X matter for the diff reader; the base excerpt pins nothing to the contrary."
+  },
+  "2": {
+   "hash": "c5a12a6f1e038d1252d4a320a327b5151de54bad8c5c397a09aada61b0b870cd",
+   "verdict": "pass",
+   "reason": "Legs (a)-(c) compute every M1/M2 fact (including the 10.4 margin, exact since 11.9 and 10.4 share a binade offset from 1.5), the first Run: pins M3's cell and the untouched task.k, and M4's remaining content \u2014 where the readings are taken and which keys the shared landing/dispatch:k rows carry \u2014 is engine wiring read against the diff, with the rule itself forbidding a key-pin on a shared-log row."
+  }
+ },
+ "tally": {
+  "dispatched": 2,
+  "rejected": 0,
+  "rounds": 1,
+  "base": "7128a91ad9b088c830bb407f86e5bc4194e03544",
+  "question": "facts-only (experiment, rollback the old sentence)"
+ },
+ "authoring": {
+  "minutes": 25,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Sign the five Claims and launch",
+    "options": [
+     "Sign all five, launch",
+     "Sign, but hold D",
+     "Don't sign \u2014 I'll edit a Claim"
+    ],
+    "recommended": "Sign all five, launch",
+    "picked": "Sign all five, launch"
+   },
+   {
+    "question": "referee.min_coverage value",
+    "options": [
+     "0.8",
+     "0.9",
+     "0.5"
+    ],
+    "recommended": "0.8",
+    "picked": "0.8"
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers"
+   }
+  ]
+ }
+}
