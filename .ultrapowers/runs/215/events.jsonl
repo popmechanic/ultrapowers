@@ -469,3 +469,8 @@
 {"ts":"2026-09-22T17:34:56.375Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"rm -f /tmp/repro.mjs /tmp/child.mjs /tmp/probe_preflight.mjs /tmp/strace.out"}
 {"ts":"2026-09-22T17:36:40.555Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/boot.sh"}
 {"ts":"2026-09-22T17:38:03.808Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"timeout 30 node fleet/tests/test_factory_preflight.mjs; echo \"EXIT:$?\""}
+{"ts":"2026-09-22T17:38:23.975Z","kind":"worker:test-run","task":"3","label":"impl:3:1","cmd":"timeout 30 node fleet/tests/test_factory_preflight.mjs; echo \"EXIT:$?\"","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T17:38:26.947Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"time (timeout 30 node fleet/tests/test_factory_preflight.mjs >/tmp/out.log 2>&1); echo done"}
+{"ts":"2026-09-22T17:38:47.109Z","kind":"worker:test-run","task":"3","label":"impl:3:1","cmd":"time (timeout 30 node fleet/tests/test_factory_preflight.mjs >/tmp/out.log 2>&1); echo done","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T17:38:59.364Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"time (timeout 30 node fleet/tests/test_factory_preflight.mjs >/tmp/out2.log 2>&1); echo done; tail -5 /tmp/out2.log"}
+{"ts":"2026-09-22T17:39:19.546Z","kind":"worker:test-run","task":"3","label":"impl:3:1","cmd":"time (timeout 30 node fleet/tests/test_factory_preflight.mjs >/tmp/out2.log 2>&1); echo done; tail -5 /tmp/out2.log","exit":null,"red":null,"via":"bash"}
