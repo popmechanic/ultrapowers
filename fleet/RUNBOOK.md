@@ -130,10 +130,12 @@ exchanges it, keeps the refresh token in your login keychain, and puts the
 access token on `claude-max` on stdin. Nothing is printed. The launcher runs
 `node fleet/claude-token.mjs refresh` before every launch, which installs the
 keychain's access token on `claude-max` at every launch and rotates it first when
-fewer than four hours remain — so a token something else rotated (a `usage` read
-meters an account by rotating it, and never installs) is on the edge before the
-VM exists, and the bearer a run starts on always has the whole run ahead of it;
-`status` shows the expiry.
+fewer than four hours remain and no `fleet-r*` VM is listed — so a token something
+else rotated (a `usage` read meters an account by rotating it, and never installs)
+is on the edge before the VM exists, and the bearer a run starts on always has the
+whole run ahead of it. When a `fleet-r*` VM is listed, it never rotates, and instead
+installs the current token if ninety minutes or more remain or exits without
+launching if less; `status` shows the expiry.
 
 Rotate the token with `integrations edit claude-max --bearer=-` and a fresh
 token on stdin. `claude-max` reaches a run's VM by its attachment policy,
@@ -463,8 +465,9 @@ on the next one, ask her before editing a script.
 - `claude-token.mjs usage` rotates an EXPIRED account's access token with `install: false`,
   and Anthropic's refresh grant revokes the previous token — the one the edge holds — so a
   live run dies at its next call with `401 OAuth access token has been revoked` (run-100,
-  2026-09-11). Never `refresh --force` while `ssh exe.dev ls` shows a `fleet-r*` VM running;
-  the launcher's own in-window refresh is the safe one (measured 2026-09-11).
+  2026-09-11; run-178, 2026-09-17). While `ssh exe.dev ls` shows a `fleet-r*` VM running, the
+  token is `not rotated` — by a launch, a hand `refresh --force`, or a `usage` read — and a
+  launch starts on the current sign-in if `ninety minutes` or more remain, or refuses.
 - `claude-token.mjs login --account <x>` rewrites `claude-max`'s bearer at once: every
   in-flight run switches to that account mid-run (run-96, 2026-09-11). Enrol a new account
   before a drain, not during one.
