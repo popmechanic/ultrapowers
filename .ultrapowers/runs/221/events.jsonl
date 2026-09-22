@@ -54,3 +54,44 @@
 {"ts":"2026-09-22T21:27:54.976Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/fleet/tests/test_factory_boot.mjs"}
 {"ts":"2026-09-22T21:27:57.424Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__run_exam"}
 {"ts":"2026-09-22T21:28:02.894Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"node fleet/tests/test_factory_boot.mjs fleet/tests/test_factory_record.mjs fleet/tests/test_factory_board.mjs","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-22T21:28:29.483Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__note"}
+{"ts":"2026-09-22T21:28:31.652Z","kind":"dispatch:end","task":"1","label":"exam:1","role":"exam","wall_ms":690221,"cost_usd":2.201273999999999,"error":null,"model":"claude-sonnet-5","models":["claude-sonnet-5"]}
+{"ts":"2026-09-22T21:28:31.932Z","kind":"dispatch:start","task":"1","label":"impl:1:0","role":"implement"}
+{"ts":"2026-09-22T21:28:31.942Z","kind":"dispatch:start","task":"1","label":"impl:1:1","role":"implement"}
+{"ts":"2026-09-22T21:28:33.358Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__task_facts"}
+{"ts":"2026-09-22T21:28:34.948Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"wc -l factory/boot.sh factory/record.mjs factory/board.mjs factory/engine.mjs fleet/CONTRACT.md fleet/tests/test_factory_boot.mjs fleet/tests/test_factory_record.mjs fleet/tests/test_factory_board.mjs"}
+{"ts":"2026-09-22T21:28:35.064Z","kind":"worker:test-run","task":"1","label":"impl:1:0","cmd":"wc -l factory/boot.sh factory/record.mjs factory/board.mjs factory/engine.mjs fleet/CONTRACT.md fleet/tests/test_factory_boot.mjs fleet/tests/test_factory_record.mjs fleet/tests/test_factory_board.mjs","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T21:28:35.615Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"ls && echo --- && wc -l factory/boot.sh factory/record.mjs factory/board.mjs factory/engine.mjs fleet/CONTRACT.md fleet/tests/test_factory_boot.mjs fleet/tests/test_factory_record.mjs fleet/tests/test"}
+{"ts":"2026-09-22T21:28:35.708Z","kind":"worker:test-run","task":"1","label":"impl:1:1","cmd":"ls && echo --- && wc -l factory/boot.sh factory/record.mjs factory/board.mjs factory/engine.mjs fleet/CONTRACT.md fleet/tests/test_factory_boot.mjs fleet/tests/test_factory_record.mjs fleet/tests/test_factory_board.mjs","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T21:28:37.200Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"git log --oneline -10 && git status"}
+{"ts":"2026-09-22T21:28:37.205Z","kind":"worker:denied","task":"1","label":"impl:1:0","tool":"Bash","why":"git","command":"git log --oneline -10 && git status"}
+{"ts":"2026-09-22T21:28:38.307Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/boot.sh"}
+{"ts":"2026-09-22T21:28:39.849Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"invokedDirectly\\|fileURLToPath\\|^import\\|main(process.argv\\|import.meta\" factory/record.mjs"}
+{"ts":"2026-09-22T21:28:40.081Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"mcp__factory__task_facts"}
+{"ts":"2026-09-22T21:28:41.107Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/record.mjs"}
+{"ts":"2026-09-22T21:28:41.273Z","kind":"jev","site":"supervisor","task":"1","label":"impl:1:0","keys":["stuck","off_track","needs_human","done_not_exited"],"values":{"stuck":{"type":"noul","noul":0.13},"off_track":{"type":"noul","noul":0.23},"needs_human":{"type":"noul","noul":0.15},"done_not_exited":{"type":"noul","noul":0.15}},"state_bytes":110,"ms":166,"answered":true}
+{"ts":"2026-09-22T21:28:41.273Z","kind":"supervisor","task":"1","label":"impl:1:0","answers":{"stuck":{"type":"noul","noul":0.13},"off_track":{"type":"noul","noul":0.23},"needs_human":{"type":"noul","noul":0.15},"done_not_exited":{"type":"noul","noul":0.15}}}
+{"ts":"2026-09-22T21:28:42.350Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/board.mjs"}
+{"ts":"2026-09-22T21:28:43.459Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/boot.sh"}
+{"ts":"2026-09-22T21:28:44.015Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"invokedDirectly\\|fileURLToPath\\|^import path\\|import.meta\\|async function main\\|process.exitCode\\|^import \" factory/engine.mjs | head -60"}
+{"ts":"2026-09-22T21:28:46.017Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-22T21:28:46.528Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/record.mjs"}
+{"ts":"2026-09-22T21:28:48.286Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-22T21:28:48.993Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/board.mjs"}
+{"ts":"2026-09-22T21:28:50.391Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/board.mjs"}
+{"ts":"2026-09-22T21:28:51.578Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"path\\.\\|fileURLToPath\" factory/board.mjs"}
+{"ts":"2026-09-22T21:28:52.345Z","kind":"jev","site":"supervisor","task":"1","label":"impl:1:1","keys":["stuck","off_track","needs_human","done_not_exited"],"values":{"stuck":{"type":"noul","noul":0.14},"off_track":{"type":"noul","noul":0.32},"needs_human":{"type":"noul","noul":0.1},"done_not_exited":{"type":"noul","noul":0.11}},"state_bytes":265,"ms":139,"answered":true}
+{"ts":"2026-09-22T21:28:52.345Z","kind":"supervisor","task":"1","label":"impl:1:1","answers":{"stuck":{"type":"noul","noul":0.14},"off_track":{"type":"noul","noul":0.32},"needs_human":{"type":"noul","noul":0.1},"done_not_exited":{"type":"noul","noul":0.11}}}
+{"ts":"2026-09-22T21:28:52.806Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"invokedDirectly\\|import.meta.main\\|fileURLToPath\\|^import\" /home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-22T21:28:54.332Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/board.mjs"}
+{"ts":"2026-09-22T21:28:55.824Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-22T21:28:56.782Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/record.mjs"}
+{"ts":"2026-09-22T21:28:58.295Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"import.meta.main\\|invokedDirectly\" /home/exedev/run/impl-1-1/factory/preflight.mjs /home/exedev/run/impl-1-1/factory/audit.mjs"}
+{"ts":"2026-09-22T21:28:58.891Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/record.mjs"}
+{"ts":"2026-09-22T21:29:00.615Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"path\\.\\|fileURLToPath\" /home/exedev/run/impl-1-1/factory/board.mjs"}
+{"ts":"2026-09-22T21:29:00.705Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/record.mjs"}
+{"ts":"2026-09-22T21:29:03.861Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"fileURLToPath\" /home/exedev/run/impl-1-1/factory/engine.mjs; echo ---; grep -n \"path\\.\\b\" /home/exedev/run/impl-1-1/factory/engine.mjs | head -30"}
+{"ts":"2026-09-22T21:29:06.767Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/record.mjs"}
+{"ts":"2026-09-22T21:29:09.572Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/record.mjs"}
+{"ts":"2026-09-22T21:29:10.106Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/record.mjs"}
+{"ts":"2026-09-22T21:29:12.274Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/record.mjs"}
