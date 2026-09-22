@@ -1,0 +1,53 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "fa392b7a8d468cb7e89a6d145f3008094044b4402cc8ee3dcf7b8baca1242e2e",
+      "verdict": "pass",
+      "reason": "M1, M2, M3 and M5 each carry a leg that would fail if the pinned string, the patchMetadata call count, or the call count of `candidates` were false, and M4 is a wiring-shape clause read against the hunk at landing, with nothing at base pinning the opposite."
+    }
+  },
+  "tally": {
+    "dispatched": 2,
+    "rejected": 0,
+    "rounds": 2,
+    "base": "e6bd702a221a4ff1f5afefb735e6ab868917e846",
+    "question": "facts-only (experiment, rollback the old sentence)",
+    "history": [
+      {
+        "round": 1,
+        "hash": "449f5543aac85534605dbfd8cf16ca65cfca7e408cb507c75a4a44e080d567bc",
+        "verdict": "pass",
+        "note": "superseded by the coordinator's revision: the grep-count prover over factory/engine.mjs was dropped as a code-says-X pin, M4 became a shape clause cited by leg (a)"
+      }
+    ]
+  },
+  "authoring": {
+    "minutes": 30,
+    "probes": 0,
+    "routing": {
+      "branch": "inline",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Confirm",
+          "Alternate sentence"
+        ],
+        "recommended": "Confirm",
+        "picked": "Confirm"
+      },
+      {
+        "question": "Execute",
+        "options": [
+          "Ultrapowers, all four serial",
+          "Subagent-Driven",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers, all four serial",
+        "picked": "Ultrapowers, all four serial"
+      }
+    ]
+  }
+}
