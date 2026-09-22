@@ -95,3 +95,26 @@
 {"ts":"2026-09-22T21:29:09.572Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/record.mjs"}
 {"ts":"2026-09-22T21:29:10.106Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/record.mjs"}
 {"ts":"2026-09-22T21:29:12.274Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/record.mjs"}
+{"ts":"2026-09-22T21:29:16.243Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"node -e '\nimport(\"./factory/record.mjs\").then(m => {\n  const body = [\"One widget, one size.\", \"\", \"| 1 | 1 | 0 | abc |\", \"\", \"Closes #1222 back\\\\slash\"].join(\"\\n\")\n  console.log(m.renderPrPayload([\"ti"}
+{"ts":"2026-09-22T21:29:17.338Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"node --version"}
+{"ts":"2026-09-22T21:29:19.091Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"mkdir -p /tmp/symtest && ln -sfn \"$(pwd)/factory\" /tmp/symtest/factory\nnode /tmp/symtest/factory/record.mjs row x; echo \"exit=$?\"\nnode factory/record.mjs row x; echo \"direct exit=$?\""}
+{"ts":"2026-09-22T21:29:20.727Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"node /tmp/symtest/factory/engine.mjs; echo \"engine exit=$?\"\nnode /tmp/symtest/factory/board.mjs; echo \"board exit=$?\""}
+{"ts":"2026-09-22T21:29:22.662Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"rm -rf /tmp/symtest"}
+{"ts":"2026-09-22T21:29:23.301Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/record.mjs"}
+{"ts":"2026-09-22T21:29:27.423Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/record.mjs"}
+{"ts":"2026-09-22T21:29:27.619Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/boot.sh"}
+{"ts":"2026-09-22T21:29:29.119Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"engine_path\" factory/boot.sh"}
+{"ts":"2026-09-22T21:29:32.464Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/record.mjs"}
+{"ts":"2026-09-22T21:29:32.797Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"python3 - <<'EOF'\nimport re\npath = \"factory/boot.sh\"\nwith open(path) as f:\n    content = f.read()\n\nreplacements = [\n    ('$(engine_path factory/record.mjs)', '\"$ENGINE_REPO_DIR/factory/record.mjs\"'),\n"}
+{"ts":"2026-09-22T21:29:34.502Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n 'ENGINE_REPO_DIR/factory\\|ENGINE_REPO_DIR/skills' factory/boot.sh"}
+{"ts":"2026-09-22T21:29:36.296Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"strip_exams\\|IGNORECASE\\|listing=\\|rc -ne 0\\|no Test\" factory/boot.sh"}
+{"ts":"2026-09-22T21:29:36.569Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/board.mjs"}
+{"ts":"2026-09-22T21:29:37.716Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/boot.sh"}
+{"ts":"2026-09-22T21:29:41.945Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/board.mjs"}
+{"ts":"2026-09-22T21:29:57.179Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/boot.sh"}
+{"ts":"2026-09-22T21:29:58.742Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"board_up\\|KATA_VERSION\\|KATA_RELEASE_BASE\\|KATA_ASSET\\|sha256sum\" factory/boot.sh"}
+{"ts":"2026-09-22T21:30:00.100Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/boot.sh"}
+{"ts":"2026-09-22T21:30:05.255Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/board.mjs"}
+{"ts":"2026-09-22T21:30:10.545Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/boot.sh"}
+{"ts":"2026-09-22T21:30:11.845Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"KATA_ASSET\\|sha256sum\" factory/boot.sh"}
+{"ts":"2026-09-22T21:30:14.459Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/boot.sh"}
