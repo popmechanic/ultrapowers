@@ -117,3 +117,21 @@
 {"ts":"2026-09-22T17:03:02.237Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"printf '{\"kind\":\"landing\",\"task\":1}\\n{\"kind\":\"parked\",\"task\":2,\"reason\":\"r\"}\\n' > /tmp/rtest/events2.jsonl\nnode factory/record.mjs status run=5 state=done phase=p pr= prAuthor= merged= branch=b vm= st"}
 {"ts":"2026-09-22T17:03:05.511Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/boot.sh"}
 {"ts":"2026-09-22T17:03:13.980Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:03:16.235Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n 'ev_project\\|write_status' factory/boot.sh"}
+{"ts":"2026-09-22T17:03:19.190Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:03:23.623Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -n '\"kind\":\"publish:pr\"' /home/exedev/run/exam-3/factory/boot.sh\ngrep -n 'git log --oneline -5' /dev/null; cd /home/exedev/run/exam-3 && git log --oneline -5 -- factory/boot.sh"}
+{"ts":"2026-09-22T17:03:23.625Z","kind":"worker:denied","task":"3","label":"exam:3","tool":"Bash","why":"git","command":"grep -n '\"kind\":\"publish:pr\"' /home/exedev/run/exam-3/factory/boot.sh\ngrep -n 'git log --oneline -5' /dev/null; cd /home/exedev/run/exam-3 && git log --oneline -5 -- factory/boot.sh"}
+{"ts":"2026-09-22T17:03:26.032Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -n '\"kind\":\"publish:pr\"' /home/exedev/run/exam-3/factory/boot.sh"}
+{"ts":"2026-09-22T17:03:35.854Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:03:38.550Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n 'plan_title\\|plan_summary\\|plan_closes\\|pr_body' factory/boot.sh"}
+{"ts":"2026-09-22T17:03:40.906Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:03:47.344Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:03:49.922Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n 'read_self_merge_policy' factory/boot.sh"}
+{"ts":"2026-09-22T17:03:52.362Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:03:58.632Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:04:01.022Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n 'publish:pr' factory/boot.sh"}
+{"ts":"2026-09-22T17:04:03.430Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:04:07.078Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:04:10.266Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"bash -n factory/boot.sh && echo OK\ngrep -cE '^(is_bare_value|ev_project|plan_summary|plan_closes)\\(\\)' factory/boot.sh\nwc -l factory/boot.sh"}
+{"ts":"2026-09-22T17:04:13.123Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n 'is_bare_value\\|ev_project\\|plan_summary\\|plan_closes' factory/boot.sh; echo \"---json_escape usage---\"; grep -n 'json_escape' factory/boot.sh"}
+{"ts":"2026-09-22T17:04:14.758Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"TaskStop"}
