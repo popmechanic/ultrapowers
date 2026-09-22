@@ -57,7 +57,7 @@ import { examsTouched, foldRound } from './reverify.mjs'
 import { waitsFor } from './dispatch.mjs'
 import { runLines } from './proofs.mjs'
 import { checksAtBase } from './checks-at-base.mjs'
-import { settledCoverage, observedFacts } from './facts.mjs'
+import { settledCoverage, observedFacts, examAssertions, clauseFacts } from './facts.mjs'
 import { observedWork, supervisorTick, makeObservedWatch } from './watch.mjs'
 import { kFor, probeRecord } from './kprobe.mjs'
 import { refereeTrigger } from './referee.mjs'
@@ -760,6 +760,12 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const factsEnabled = factsPolicy.enabled === true
   const factsCapBytes = Number.isFinite(Number(factsPolicy.cap_bytes))
     ? Number(factsPolicy.cap_bytes) : 4000
+  // #1210: the per-clause assertion reading rides on top of `factsEnabled` —
+  // it never runs without it — and is gated by its own policy cell.
+  const assertionsPolicy = factsPolicy.assertions || {}
+  const assertionsEnabled = factsEnabled && assertionsPolicy.enabled === true
+  const assertionsCapChars = Number.isFinite(Number(assertionsPolicy.cap_chars))
+    ? Number(assertionsPolicy.cap_chars) : 4000
   const pairsPolicy = policyDoc.pairs || {}
   const pairsLive = pairsPolicy.mode === 'live'
   const examAtZero = (policyDoc.speculate || {}).exam_at_zero === true
@@ -1182,6 +1188,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     // command already proved is no longer a guess from the diff alone.
     let factsArgs = {}
     let settled
+    let clauseFactsArr
     if (factsEnabled) {
       const facts = observedFacts({
         clauses: task.clauses,
@@ -1198,6 +1205,29 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         runLines: proofRunResults,
       })
       factsArgs = { facts, settled }
+      // #1210: the exam's own test names and assertion lines, attributed to
+      // the clause they cite, so the landing reads each clause over the
+      // proof it actually got — not just a bare exit code. The exam files
+      // ride the patch (see the comment above `capture`), so they are on
+      // disk in this SAME candidate's clone.
+      if (assertionsEnabled) {
+        const examText = (task.proofTests || [])
+          .filter((p) => fs.existsSync(path.join(dir, p)))
+          .map((p) => fs.readFileSync(path.join(dir, p), 'utf8'))
+          .join('\n')
+        const examAsserts = examAssertions({ text: examText, clauses: task.clauses })
+        clauseFactsArr = clauseFacts({
+          clauses: task.clauses,
+          examAsserts,
+          hasExam: !!task.testCmd,
+          examExit,
+          proofRuns: Array.isArray(task.proofRuns) ? task.proofRuns : [],
+          proofRunClauses: Array.isArray(task.proofRunClauses) ? task.proofRunClauses : [],
+          runLines: proofRunResults,
+          capChars: assertionsCapChars,
+        })
+        factsArgs = { facts, settled, clauseFacts: clauseFactsArr }
+      }
     }
     const reading = await read('readLanding', {
       task: task.id,
@@ -1209,12 +1239,17 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       who: { task: task.id, label: 'impl:' + task.id + ':' + index },
     })
     if (factsEnabled) {
+      const assertionChars = Array.isArray(clauseFactsArr)
+        ? clauseFactsArr.reduce((s, e) => s + (e.exam ? e.exam.text.length : 0), 0)
+        : 0
       appendEvent({
         kind: 'landing:facts',
         task: task.id,
         settled,
         claim: reading && typeof reading.claim === 'number' ? reading.claim : null,
         claimGivenFacts: reading && typeof reading.claimGivenFacts === 'number' ? reading.claimGivenFacts : null,
+        perClause: reading && Array.isArray(reading.claimGivenFactsPerClause) ? reading.claimGivenFactsPerClause : null,
+        assertionChars,
         facts: factsArgs.facts ? factsArgs.facts.length : 0,
       })
     }

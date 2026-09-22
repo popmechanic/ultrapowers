@@ -99,7 +99,17 @@
       "window": "none",
       "basis": "judgment",
       "experiment": true,
-      "rollback": "enabled = false"
+      "rollback": "enabled = false",
+      "assertions": {
+        "enabled": true,
+        "cap_chars": 4000,
+        "n": 0,
+        "window": "none",
+        "basis": "judgment",
+        "experiment": true,
+        "rollback": "enabled = false: exit codes only, the shape before #1210",
+        "unread": "#1210: over runs 203-207 (n=5 runs, 17 tasks) claim_established_given_facts read lower than claim_established on 14 tasks, equal on 2, higher on 1. Pre-registered reading: the direction of claimGivenFacts - claim per task over the next 5 runs, expected to cross zero on tasks whose exam exits 0 with strong assertions"
+      }
     },
     "card": {
       "subject_footprint_min_conf": {

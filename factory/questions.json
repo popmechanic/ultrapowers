@@ -116,9 +116,10 @@
         "clauses",
         "patch",
         "files.fN",
-        "facts"
+        "facts",
+        "clause_facts"
       ],
-      "provenance": "borne_out, actor, claim_false, fixable_in_files: fleet/run-engine.mjs JEV_FINDING_QUESTIONS, verbatim (#1093). defect_visible, status, subject, process_only, scope_only: #1127. settled_by_fact: #1127's 2026-09-17 amendment. claim_established and the M<i>__f<j> pair: factory/proto/loop.mjs, the 2026-09-17 prototype. claim_established_given_facts: #1167 (desired state 1 and 3), 2026-09-21.",
+      "provenance": "borne_out, actor, claim_false, fixable_in_files: fleet/run-engine.mjs JEV_FINDING_QUESTIONS, verbatim (#1093). defect_visible, status, subject, process_only, scope_only: #1127. settled_by_fact: #1127's 2026-09-17 amendment. claim_established and the M<i>__f<j> pair: factory/proto/loop.mjs, the 2026-09-17 prototype. claim_established_given_facts: #1167 (desired state 1 and 3), 2026-09-21. claim_established_given_assertions and the M<i>__facts per_clause_facts template: #1210, the per-leg reading over each clause's own assertion lines.",
       "calibrated": "borne_out, actor, claim_false, fixable_in_files were replayed over 1,157 residuals at these strings",
       "questions": {
         "borne_out": {
@@ -259,6 +260,18 @@
             "false": "At least one clause is unmet by the patch and unproved by any fact"
           },
           "note": "Record-only: read alongside claim_established for the record, never in place of it (#1167)."
+        },
+        "claim_established_given_assertions": {
+          "type": "noul",
+          "instructions": {
+            "question": "Given `patch` (a unified diff), `facts` (results the engine measured after applying it: the task's exam exit code and the exit codes of the plan's own proof commands, each with the clauses it cites) and `clause_facts` (per Machine clause, in order: the exam's test names and assertion lines that cite that clause with the exam's exit code, and each proof command that cites it with its exit code), is every clause in `clauses` established as delivered?",
+            "context": "`clauses` are the task's numbered Machine clauses (M1, M2, ...), which restate its signed Claim mechanically. `facts` and `clause_facts` are measured, not asserted: an assertion line under a passing exit code is a check the exam actually made and the run actually passed, not a claim someone wrote down; a clause whose `clause_facts` entry carries no assertion line and no proof command was measured by nothing."
+          },
+          "criteria": {
+            "true": "Every clause is satisfied by code in the patch or by a measured assertion or command that proves it",
+            "false": "At least one clause is unmet by the patch and unproved by any measured assertion or command"
+          },
+          "note": "Record-only (#1210): read beside claim_established, never in place of it; claim_established_given_facts is its rollback."
         }
       },
       "pairwise": {
@@ -274,6 +287,20 @@
           "false": "This diff is irrelevant to this clause"
         },
         "note": "Record-only until it has a label (#1127 reading 4). The 2026-09-16 replay read AUROC 0.68 at precision <= 20% against the reviewer's own (clause, path) pairs, which is not a gating reading."
+      },
+      "per_clause_facts": {
+        "key": "M<i>__facts",
+        "type": "noul",
+        "over": "every clauses[i], filed under M<i+1>__facts",
+        "instructions": {
+          "question": "Given `patch` (a unified diff) and `clause_facts[<i>]` (what the engine measured for clause `clauses[<i>]` after applying it: the exam's test names and assertion lines that cite this clause, the exam's exit code, and each proof command that cites it with its exit code), is clause `clauses[<i>]` established as delivered?",
+          "context": "`clauses` are the task's numbered Machine clauses (M1, M2, ...), which restate its signed Claim mechanically. `clause_facts[<i>]` is measured, not asserted: an assertion line under exit 0 is a check the exam made and the run passed; an entry with no assertion line and no command means nothing measured this clause, and the patch alone must carry it."
+        },
+        "criteria": {
+          "true": "This clause is satisfied by code in the patch, or by a measured assertion or command that proves it",
+          "false": "This clause is unmet by the patch and unproved by anything measured"
+        },
+        "note": "Record-only (#1210): #1167's per-leg step, read beside claim_established and never in place of it."
       }
     },
     "supervisor": {
