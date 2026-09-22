@@ -1028,6 +1028,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     appendEvent({
       kind: 'dispatch:end', task: opts.taskId, label: opts.label, role: opts.role,
       wall_ms, cost_usd: costUsd, error: (answer && answer.error) || null,
+      ...modelCells({ model: opts.model, result: answer && answer.result }),
       ...(opts.retry_of ? { retry_of: opts.retry_of } : {}),
     })
     return answer
@@ -2252,6 +2253,15 @@ export async function runEngine (rawArgs = {}, deps = {}) {
  * onto }` otherwise.
  */
 
+// The dispatched model id and the models the SDK reports it actually used,
+// for a `dispatch:end` row: `models` is the sorted keys of the result's
+// `modelUsage`, or `null` when there is none to report.
+export function modelCells ({ model, result }) {
+  const usage = result && typeof result === 'object' ? result.modelUsage : null
+  const keys = usage && typeof usage === 'object' ? Object.keys(usage) : []
+  return { model: model ?? null, models: keys.length ? keys.sort() : null }
+}
+
 // M4: no board, no examiner, no implementer — the one worker role a
 // re-fold ever dispatches is the resolver, exactly as a task's own fold.
 export function makeRefoldDispatch ({ worker, appendEvent, policy, sleep }) {
@@ -2277,6 +2287,7 @@ export function makeRefoldDispatch ({ worker, appendEvent, policy, sleep }) {
     appendEvent({
       kind: 'dispatch:end', task: opts.taskId, label: opts.label, role: opts.role,
       error: (answer && answer.error) || null,
+      ...modelCells({ model: opts.model, result: answer && answer.result }),
       ...(opts.retry_of ? { retry_of: opts.retry_of } : {}),
     })
     return answer
@@ -2539,4 +2550,4 @@ if (invokedDirectly) {
   process.exitCode = await main()
 }
 
-export default { runEngine, runRefold, makeRefoldDispatch, buildDeps, main, parseArgv, normalizeArgs, bodyOf, clausesOf, splitDiff }
+export default { runEngine, runRefold, makeRefoldDispatch, modelCells, buildDeps, main, parseArgv, normalizeArgs, bodyOf, clausesOf, splitDiff }
