@@ -269,3 +269,15 @@
 {"ts":"2026-09-22T17:12:12.757Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/boot.sh"}
 {"ts":"2026-09-22T17:13:04.095Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"plan_title()\" factory/boot.sh"}
 {"ts":"2026-09-22T17:13:11.269Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:13:43.755Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:13:53.736Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:13:58.240Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:13:59.906Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:14:08.413Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:14:10.355Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:14:25.948Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:14:29.632Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"bash -n factory/boot.sh && echo \"SYNTAX OK\"\necho \"---\"\ngrep -cE '^(kata_ids|kata_task_uids|board_status_ready|board_issue_present|close_issue)\\(\\)' factory/boot.sh\necho \"---\"\nwc -l factory/boot.sh"}
+{"ts":"2026-09-22T17:14:31.603Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"tail -10 factory/boot.sh; echo \"---json_escape---\"; grep -n \"json_escape\" factory/boot.sh"}
+{"ts":"2026-09-22T17:14:33.208Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Read","target":"/home/exedev/run/exam-3/fleet/tests/_helpers.mjs"}
+{"ts":"2026-09-22T17:14:33.374Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"test_factory_retry.mjs\\|The factory's own exams are not here\" fleet/tests/README.md"}
+{"ts":"2026-09-22T17:14:35.282Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/fleet/tests/README.md"}
