@@ -1070,3 +1070,5 @@
 {"ts":"2026-09-22T19:08:15.726Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"timeout 60 node fleet/tests/test_factory_preflight.mjs 2>&1 | tail -100"}
 {"ts":"2026-09-22T19:08:35.884Z","kind":"worker:test-run","task":"3","label":"impl:3:fold","cmd":"timeout 60 node fleet/tests/test_factory_preflight.mjs 2>&1 | tail -100","exit":null,"red":null,"via":"bash"}
 {"ts":"2026-09-22T19:09:02.632Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"time (timeout 60 node fleet/tests/test_factory_preflight.mjs >/tmp/pf.out 2>&1); tail -20 /tmp/pf.out"}
+{"ts":"2026-09-22T19:09:22.779Z","kind":"worker:test-run","task":"3","label":"impl:3:fold","cmd":"time (timeout 60 node fleet/tests/test_factory_preflight.mjs >/tmp/pf.out 2>&1); tail -20 /tmp/pf.out","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T19:09:56.024Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"cat > /tmp/standalone_server.mjs <<'EOF'\nimport http from 'node:http'\nconst server = http.createServer((_req, res) => {\n  res.writeHead(200, { 'Content-Type': 'application/json' })\n  res.end('{}')\n})\n"}
