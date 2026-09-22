@@ -12,8 +12,6 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 const USAGE_PATH = '/api/oauth/usage'
 const USAGE_TIMEOUT_MS = 20000
@@ -101,16 +99,6 @@ async function main (argv) {
   return 0
 }
 
-const here = path.resolve(fileURLToPath(import.meta.url))
-// `$ENGINE_REPO_DIR/factory` is a symlink onto this file's real directory (`factory/boot.sh`'s
-// own checkout), and Node resolves the entry module's `import.meta.url` through it while leaving
-// `process.argv[1]` exactly as the CLI was called — so the basename is the fallback that still
-// holds when the two paths' directories disagree only over that symlink.
-const invokedDirectly = process.argv[1] && (
-  path.resolve(process.argv[1]) === here || path.basename(process.argv[1]) === path.basename(here)
-)
-if (invokedDirectly) {
-  main(process.argv.slice(2)).then((code) => { process.exitCode = code })
-}
+if (import.meta.main) { main(process.argv.slice(2)).then((code) => { process.exitCode = code }) }
 
 export default { classify, main }
