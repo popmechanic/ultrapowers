@@ -79,3 +79,12 @@
 {"ts":"2026-09-22T19:56:32.393Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"cd /home/exedev/run/impl-1-1\necho \"--- import.meta.main counts ---\"\ntest \"$(grep -c 'import.meta.main' factory/preflight.mjs)\" -eq 1 && echo OK1\ntest \"$(grep -c 'import.meta.main' factory/audit.mjs)\" "}
 {"ts":"2026-09-22T19:56:35.433Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/preflight.mjs"}
 {"ts":"2026-09-22T19:56:39.052Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/fleet/tests/README.md"}
+{"ts":"2026-09-22T19:56:41.018Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-22T19:56:41.613Z","kind":"worker:test-run","task":"1","label":"impl:1:0","cmd":"node fleet/tests/test_factory_preflight.mjs","exit":0,"red":false,"via":"run_exam"}
+{"ts":"2026-09-22T19:56:45.286Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"cd /home/exedev/run/impl-1-0\necho \"--- import.meta.main preflight:\"; grep -c 'import.meta.main' factory/preflight.mjs\necho \"--- import.meta.main audit:\"; grep -c 'import.meta.main' factory/audit.mjs\ne"}
+{"ts":"2026-09-22T19:57:17.514Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/preflight.mjs"}
+{"ts":"2026-09-22T19:57:18.148Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/audit.mjs"}
+{"ts":"2026-09-22T19:57:19.865Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"mcp__factory__settled"}
+{"ts":"2026-09-22T19:57:24.923Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"mcp__factory__note"}
+{"ts":"2026-09-22T19:57:30.383Z","kind":"supervisor:observed","task":"1","label":"impl:1:1","skipped":"under floor","elapsed_ms":88879,"min_elapsed_ms":120000}
+{"ts":"2026-09-22T19:57:30.511Z","kind":"dispatch:end","task":"1","label":"impl:1:1","role":"implement","wall_ms":89008,"cost_usd":0.32549120000000004,"error":null}
