@@ -59,7 +59,8 @@ import { runLines } from './proofs.mjs'
 import { checksAtBase } from './checks-at-base.mjs'
 import { settledCoverage, observedFacts } from './facts.mjs'
 import { observedWork, supervisorTick } from './watch.mjs'
-
+import { kFor, probeRecord } from './kprobe.mjs'
+import { refereeTrigger } from './referee.mjs'
 // Amendment (undeclared by the task's own M1-M6, needed only to reach them):
 // this module now creates a missing parent directory once, on the one error
 // that means "the directory a write was aimed at doesn't exist yet", and
@@ -723,6 +724,12 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   // M4: a fold-verify exam still red after its one re-attempt forces the
   // run's resolved `done` to false, whatever else adopted cleanly.
   let foldUnresolved = false
+  // #1211: every task's `readTask` reading, taken once before the first
+  // dispatch, and the `k_probe` plan built off those readings — `land` reads
+  // both by closure; a task the pass did not reach (there should be none)
+  // falls back to `land`'s own lazy read.
+  let taskReadings = new Map()
+  let kPlan = { probe: null, k: {} }
   // M5: the policy the run reads is `args.policy` when given, else the
   // engine's own `POLICY_PATH` — the same fallback `buildDeps` already uses
   // for the judge's own copy. Read early: whether `pairs.mode` is `live` and
@@ -1384,8 +1391,9 @@ export async function runEngine (rawArgs = {}, deps = {}) {
 
   const land = async (task, anchor) => {
     const t0 = Date.now()
-    const reading = (await read('readTask', { id: task.id, title: task.title, body: task.body, who: { task: task.id, label: null } })) || {}
-    const k = Number.isInteger(reading.k) && reading.k > 0 ? reading.k : 1
+    const reading = taskReadings.get(task.id) ||
+      (await read('readTask', { id: task.id, title: task.title, body: task.body, who: { task: task.id, label: null } })) || {}
+    const k = kPlan.k[task.id] || 1
     const wantsReferee = reading.referee === true
 
     // M4: everything past here makes at least one clone (the exam clone, an
@@ -1586,19 +1594,27 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     // 4. the discovery referee, exactly when the judge's task reading asks for
     //    one. Each finding is graded by the judge; a blocking grade buys the
     //    candidate one re-dispatch with the finding in hand, before the fold.
-    if (wantsReferee) {
+    const trig = refereeTrigger({
+      coverage: best.coverage, clauses: task.clauses, rung: wantsReferee, policy: policyDoc,
+    })
+    const minCoverageCell = (policyDoc.task && policyDoc.task.referee && policyDoc.task.referee.min_coverage) || null
+    appendEvent({
+      kind: 'referee:trigger', task: task.id, trigger: trig.trigger, clause: trig.clause,
+      min_coverage: minCoverageCell ? minCoverageCell.value : null,
+    })
+    if (trig.dispatch) {
       const patchText = fs.existsSync(best.patch) ? fs.readFileSync(best.patch, 'utf8') : ''
+      const refereePrompt = 'TASK:\n' + task.body +
+          '\n\nFILES: ' + (task.files || []).join(', ') +
+          '\nTEST COMMAND: ' + task.testCmd + '\nexit ' + best.examExit +
+          '\n' + best.examTail +
+          '\n\nThe patch this task produced is on disk at ' + best.patch + ' — read it there.' +
+          (typeof trig.fact === 'string' ? '\n\n' + trig.fact : '')
       const answer = await dispatch({
         role: 'referee', label: 'referee:' + task.id, taskId: task.id, cwd: best.dir,
         model: refereeModel, systemPrompt: REFEREE_SYSTEM, files: [], readOnly: true,
         schema: FINDINGS_SCHEMA,
-        prompt: await withHandoff(
-          'TASK:\n' + task.body +
-          '\n\nFILES: ' + (task.files || []).join(', ') +
-          '\nTEST COMMAND: ' + task.testCmd + '\nexit ' + best.examExit +
-          '\n' + best.examTail +
-          '\n\nThe patch this task produced is on disk at ' + best.patch + ' — read it there.',
-          task.id),
+        prompt: await withHandoff(refereePrompt, task.id),
       })
       const findings = findingsOf(answer)
       const grades = []
@@ -1618,7 +1634,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       }
       appendEvent({
         kind: 'referee', task: task.id, findings: findings.length,
-        blocking: blocking.length, grades,
+        blocking: blocking.length, grades, trigger: trig.trigger,
       })
       if (blocking.length) {
         const fixLabel = 'fix:' + task.id
@@ -1634,7 +1650,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       }
     }
 
-    return { task, k, anchor, best, wall_ms: Date.now() - t0 }
+    return { task, k, anchor, best, record: probeRecord({ candidates, scores }), wall_ms: Date.now() - t0 }
     } catch (err) {
       if (!(err && err.bootstrapRed)) throw err
       const { clone, exit, tail } = err.bootstrapRed
@@ -1991,6 +2007,20 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   if (examAtZero) {
     for (const t of tasks) examPromises.set(t.id, examine(t, runBase))
   }
+  // #1211: every task's `readTask` reading, taken once before the first
+  // implementer is dispatched, feeds `kFor` — the `dispatch.k_probe`
+  // experiment's one-task, k=2 probe. A `null` reading (no reader, or one
+  // that threw) stores as `{}`, same as `land`'s own fallback read.
+  for (const t of tasks) {
+    const reading = (await read('readTask', { id: t.id, title: t.title, body: t.body, who: { task: t.id, label: null } })) || {}
+    taskReadings.set(t.id, reading)
+  }
+  const difficulties = Object.fromEntries(
+    tasks.map((t) => [t.id, taskReadings.get(t.id).answers && taskReadings.get(t.id).answers.difficulty])
+  )
+  const judgedK = Object.fromEntries(tasks.map((t) => [t.id, taskReadings.get(t.id).k]))
+  kPlan = kFor({ tasks, difficulties, judged: judgedK, policy: policyDoc })
+  appendEvent({ kind: 'dispatch:k', probe: kPlan.probe, k: kPlan.k, difficulties })
   if (pairsLive && pairsMod) {
     // A cycle guard shaped exactly like `plan_parse.py`'s own: an adjacency
     // seeded with the hard-predecessor graph already built above, so a chain
@@ -2078,6 +2108,9 @@ export async function runEngine (rawArgs = {}, deps = {}) {
           claim: landing.best.claim,
           coverage: landing.best.coverage,
           candidateSha,
+          candidates: landing.record.candidates,
+          chosen: landing.record.chosen,
+          margin: landing.record.margin,
           wall_ms: landing.wall_ms,
         })
         await board.setState(id, 'adopted')
