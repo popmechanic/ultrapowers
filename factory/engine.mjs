@@ -52,7 +52,7 @@ import { makeJudge } from './judge.mjs'
 import { literalsOf, hunksCarrying, filesShown } from './hunks.mjs'
 import { unionReply } from './union.mjs'
 import { makeBoard, patchWithRevision } from './board.mjs'
-import { candidateTests, symbolsOf, commandFor, excerptFor } from './select.mjs'
+import { candidateTests, symbolsOf, commandFor, excerptFor, examSelectionRow } from './select.mjs'
 import { examsTouched, foldRound } from './reverify.mjs'
 import { waitsFor } from './dispatch.mjs'
 import { runLines } from './proofs.mjs'
@@ -1316,7 +1316,6 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         files: trackedInExam, read: readExamFile,
         paths: implFilesOf(task), symbols: symbolsOf(task.clauses),
         exclude: task.proofTests || [], cap: selectPolicy.max_candidates,
-        dirNeedles: selectPolicy.dir_needles !== false,
       })
       if (foundCovering.length) {
         const { tests: coveringTests, kept, dropped } = excerptTests(foundCovering, readExamFile, 6000)
@@ -1324,17 +1323,13 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         const covering = await read('readCovering', { clauses: task.clauses, tests: coveringTests, who: { task: task.id, label: 'exam:' + task.id } })
         if (covering) {
           taskCovering = Array.isArray(covering.covered) ? covering.covered : []
-          appendEvent({
-            kind: 'select:exam', task: task.id,
-            candidates: foundCovering.map((c) => c.path), covered: taskCovering,
-            why: Object.fromEntries(foundCovering.map((c) => [c.path, c.why])),
-          })
           const lines = taskCovering
             .map((p, i) => (p ? 'M' + (i + 1) + ': ' + p : null))
             .filter(Boolean)
           if (lines.length) coveredBlock = '\n\nCOVERED:\n' + lines.join('\n')
         }
       }
+      appendEvent(examSelectionRow({ task: task.id, found: foundCovering, covered: taskCovering }))
     }
 
     const examAnswer = await dispatch({
@@ -1488,7 +1483,6 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         files: trackedInCandidate, read: readCandidateFile,
         paths: touched, symbols: names,
         exclude: task.proofTests || [], cap: selectPolicy.max_candidates,
-        dirNeedles: selectPolicy.dir_needles !== false,
       })
       if (!found.length) return false
       const { tests: guardTests, kept, dropped } = excerptTests(found, readCandidateFile, 3000)

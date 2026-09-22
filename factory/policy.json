@@ -245,7 +245,14 @@
       "rollback": 1.01
     },
     "max_candidates": 8,
-    "dir_needles": true,
+    "needles": {
+      "kinds": ["path", "import", "symbol"],
+      "n": 4,
+      "window": "runs 204-207: 344 M__t answers, max 0.38, 11 of 12 landings selected []",
+      "basis": "census",
+      "experiment": true,
+      "rollback": "the stem, bare-word symbol and directory needles of select.mjs at the run's base (#1175's dir kind included) — a revert of that file"
+    },
     "max_run": 3,
     "timeout_seconds": 300,
     "n": 0,

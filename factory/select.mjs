@@ -46,46 +46,45 @@ function matchesNeedle (text, needle) {
   return wholeWordMatch(text, needle)
 }
 
-/** The ancestor directories of `path`, deepest first — for
- *  `a/b/c.txt` that's `['a/b', 'a']`. */
-function ancestorDirs (path) {
-  const parts = path.split('/')
-  parts.pop()
-  const dirs = []
-  for (let i = parts.length; i >= 1; i--) {
-    dirs.push(parts.slice(0, i).join('/'))
-  }
-  return dirs
+const KIND_PRIORITY = ['path', 'import', 'symbol']
+
+/** A line counts as an import line when, after leading whitespace, it begins
+ *  `import ` or `from `, or it contains `require(` anywhere. */
+function isImportLine (line) {
+  const trimmed = line.replace(/^\s+/, '')
+  if (trimmed.startsWith('import ') || trimmed.startsWith('from ')) return true
+  return line.includes('require(')
 }
 
-const KIND_PRIORITY = ['path', 'stem', 'symbol', 'dir']
-
-function buildNeedles (paths, symbols, dirNeedles) {
-  const raw = []
-  for (const p of paths) {
-    if (isTestFile(p)) continue
-    raw.push({ value: p, kind: 'path' })
-    raw.push({ value: stem(basename(p)), kind: 'stem' })
-    if (dirNeedles) {
-      for (const dir of ancestorDirs(p)) raw.push({ value: dir, kind: 'dir' })
-    }
-  }
-  for (const s of symbols) raw.push({ value: s, kind: 'symbol' })
-
+function dedupNeedles (values) {
   const seen = new Set()
-  const needles = []
-  for (const n of raw) {
-    if (n.value.length < 4) continue
-    if (seen.has(n.value)) continue
-    seen.add(n.value)
-    needles.push(n)
+  const out = []
+  for (const v of values) {
+    if (v.length < 4) continue
+    if (seen.has(v)) continue
+    seen.add(v)
+    out.push(v)
   }
-  return needles
+  return out
 }
 
-export async function candidateTests ({ files, read, paths = [], symbols = [], exclude = [], cap = 8, dirNeedles = true }) {
+function buildPathNeedles (paths) {
+  return dedupNeedles(paths.filter((p) => !isTestFile(p)))
+}
+
+function buildStemNeedles (paths) {
+  return dedupNeedles(paths.filter((p) => !isTestFile(p)).map((p) => stem(basename(p))))
+}
+
+function buildSymbolNeedles (symbols) {
+  return dedupNeedles(symbols)
+}
+
+export async function candidateTests ({ files, read, paths = [], symbols = [], exclude = [], cap = 8 }) {
   const excludeSet = new Set(exclude)
-  const needles = buildNeedles(paths, symbols, dirNeedles !== false)
+  const pathNeedles = buildPathNeedles(paths)
+  const stemNeedles = buildStemNeedles(paths)
+  const symbolNeedles = buildSymbolNeedles(symbols)
 
   const testFiles = files.filter((f) => isTestFile(f) && !excludeSet.has(f))
 
@@ -94,30 +93,57 @@ export async function candidateTests ({ files, read, paths = [], symbols = [], e
     const text = await read(path)
     const hits = []
     const kinds = new Set()
-    let nonDirHits = 0
-    let dirHits = 0
-    for (const needle of needles) {
-      if (!matchesNeedle(text, needle.value)) continue
-      hits.push(needle.value)
-      kinds.add(needle.kind)
-      if (needle.kind === 'dir') dirHits++
-      else nonDirHits++
+
+    for (const needle of pathNeedles) {
+      if (text.includes(needle)) {
+        hits.push(needle)
+        kinds.add('path')
+      }
     }
+
+    const importLines = text.split('\n').filter(isImportLine)
+    if (importLines.length > 0) {
+      for (const needle of stemNeedles) {
+        if (importLines.some((line) => wholeWordMatch(line, needle))) {
+          hits.push(needle)
+          kinds.add('import')
+        }
+      }
+      for (const needle of symbolNeedles) {
+        if (importLines.some((line) => wholeWordMatch(line, needle))) {
+          hits.push(needle)
+          kinds.add('symbol')
+        }
+      }
+    }
+
     if (hits.length > 0) {
       const why = KIND_PRIORITY.find((k) => kinds.has(k))
-      results.push({ path, hits, why, nonDirHits, dirHits })
+      results.push({ path, hits, why, hitCount: hits.length })
     }
   }
 
   results.sort((a, b) => {
-    if (b.nonDirHits !== a.nonDirHits) return b.nonDirHits - a.nonDirHits
-    if (b.dirHits !== a.dirHits) return b.dirHits - a.dirHits
+    if (b.hitCount !== a.hitCount) return b.hitCount - a.hitCount
     if (a.path < b.path) return -1
     if (a.path > b.path) return 1
     return 0
   })
 
   return results.slice(0, cap).map(({ path, hits, why }) => ({ path, hits, why }))
+}
+
+/** The `select:exam` event row: `candidates` the paths of `found`, in order,
+ *  `covered` as given, and `why` a per-path map of the reason each candidate
+ *  was found, or the string `'none'` when nothing was found. */
+export function examSelectionRow ({ task, found = [], covered = [] }) {
+  return {
+    kind: 'select:exam',
+    task,
+    candidates: found.map((c) => c.path),
+    covered,
+    why: found.length > 0 ? Object.fromEntries(found.map((c) => [c.path, c.why])) : 'none',
+  }
 }
 
 /** The maximal run of `lines`, joined with `\n`, that still fits `cap`
