@@ -1,0 +1,12 @@
+Running as unit: fleet-engine-211.service
+adopted task 2 -> a072c3db  exam=0 k=1
+exam:1: 1 denied edit(s)
+worker referee:1 ended: Claude Code returned an error result: API Error: 529 Overloaded. This is a server-side issue, usually temporary — try again in a moment. If it persists, check your inference gateway (claude-max.int.exe.xyz).
+adopted task 1 -> 77d19d88  exam=0 k=1
+{"done":true,"adopted":["2","1"],"head":"77d19d88198cf8aa98682e62702e1c61d0603edb","wall_ms":990289,"cost_usd":1.9877336000000003}
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 16min 30.362s
+CPU time consumed: 23.697s
+Memory peak: 1.5M
+Memory swap peak: 0B
