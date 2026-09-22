@@ -122,3 +122,7 @@
 {"ts":"2026-09-22T21:37:24.713Z","kind":"refold","ok":true}
 {"ts":"2026-09-22T21:37:26.549Z","kind":"merge","code":405}
 {"ts":"2026-09-22T21:37:29.877Z","kind":"merge","code":200}
+{"ts":"2026-09-22T21:37:31.456Z","kind":"board:leave","rc":0}
+{"ts":"2026-09-22T21:37:31.613Z","kind":"board:close","what":"task 1","code":200}
+{"ts":"2026-09-22T21:37:31.662Z","kind":"board:close","what":"run","code":200}
+{"ts":"2026-09-22T21:37:31.767Z","kind":"run:audit","state":"done","missing":[]}
