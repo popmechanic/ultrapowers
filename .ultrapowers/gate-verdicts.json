@@ -1,0 +1,64 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "c13c41589dd021b223c91809a92894fc024493bc59eaa0c86e8b306236cae4e6",
+   "verdict": "pass",
+   "reason": "Every computable fact \u2014 the held/asked/done ordering, the single read call, the exact skipped row, the zero-floor and off cases, the policy cell's six keys, the questions.json state entry and context literals with hashes over what must stay byte-identical, and the engine's three names \u2014 has a leg or Run line that would fail if it were false, the base excerpts pin nothing contrary, and the remaining M8 wording is code shape left to the diff reader as leg (h) says."
+  }
+ },
+ "tally": {
+  "dispatched": 2,
+  "rejected": 0,
+  "rounds": 2,
+  "base": "7128a91ad9b088c830bb407f86e5bc4194e03544",
+  "question": "facts-only (experiment, rollback the old sentence)",
+  "history": [
+   {
+    "round": 1,
+    "task": "1",
+    "hash": "3b0618f314ce3544fb011dce28ae005d11e602cbdcfded20bd653259c124c216",
+    "verdict": "pass",
+    "note": "skip shape; superseded by the operator's defer decision"
+   }
+  ]
+ },
+ "authoring": {
+  "minutes": 16,
+  "probes": 0,
+  "routing": {
+   "branch": "inline",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Sign the five Claims and launch",
+    "options": [
+     "Sign all five, launch",
+     "Sign, but hold D",
+     "Don't sign \u2014 I'll edit a Claim"
+    ],
+    "recommended": "Sign all five, launch",
+    "picked": "Sign all five, launch"
+   },
+   {
+    "question": "The floor: defer or skip the observed tick",
+    "options": [
+     "Defer, don't skip",
+     "Skip, as the issue says"
+    ],
+    "recommended": "Defer, don't skip",
+    "picked": "Defer, don't skip"
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers"
+   }
+  ]
+ }
+}
