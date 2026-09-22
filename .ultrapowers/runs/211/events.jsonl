@@ -110,3 +110,11 @@
 {"ts":"2026-09-22T01:33:58.065Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Read","target":"/home/exedev/run/impl-1-0/fleet/tests/README.md"}
 {"ts":"2026-09-22T01:33:59.234Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -rn \"board-read\" --include=*.md --include=*.mjs --include=*.json --include=*.py . | grep -v \"^./fleet/board-read.mjs\" | head -20"}
 {"ts":"2026-09-22T01:34:20.338Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"sed -n 336,400p fleet/lobby.mjs; echo ---; ls fleet/tests | head -60; echo ---; ls tests 2>/dev/null | head; ls *.py 2>/dev/null; ls | head -30"}
+{"ts":"2026-09-22T01:34:23.924Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"grep -rln \"fleet/tests\" tests/*.py | head -20"}
+{"ts":"2026-09-22T01:34:30.358Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"sed -n 1,120p tests/test_fleet_suite.py"}
+{"ts":"2026-09-22T01:34:35.662Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"sed -n 120,220p tests/test_fleet_suite.py"}
+{"ts":"2026-09-22T01:34:46.073Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"env -i PATH=/usr/bin:/bin HOME=$(mktemp -d) TMPDIR=$(mktemp -d) node fleet/tests/test_board_read.mjs; echo \"EXIT=$?\""}
+{"ts":"2026-09-22T01:34:46.102Z","kind":"worker:test-run","task":"1","label":"referee:1","cmd":"env -i PATH=/usr/bin:/bin HOME=$(mktemp -d) TMPDIR=$(mktemp -d) node fleet/tests/test_board_read.mjs; echo \"EXIT=$?\"","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T01:34:46.846Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"sed -n 1,60p fleet/tests/test_sims_are_hermetic.mjs"}
+{"ts":"2026-09-22T01:34:54.528Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"timeout 300 node fleet/tests/test_sims_are_hermetic.mjs 2>&1 | tail -20; echo \"EXIT=$?\""}
+{"ts":"2026-09-22T01:35:16.792Z","kind":"worker:tool","task":"1","label":"referee:1","tool":"Bash","target":"mkdir -p /tmp/probe && cat > /tmp/probe/p.mjs <<'EOF'\nconst m = await import('/home/exedev/run/impl-1-0/fleet/board-read.mjs')\nconst { projectBoard, renderBoard, readBoard, parseBoardArgs } = m\nconst "}
