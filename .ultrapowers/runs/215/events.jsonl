@@ -1061,3 +1061,8 @@
 {"ts":"2026-09-22T19:06:21.095Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"factory/preflight.mjs\\|bearer_probe\\|bearer probe\" fleet/CONTRACT.md"}
 {"ts":"2026-09-22T19:06:33.387Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-implement-3-3/skills/ultrapowers/scripts/plan_parse.py"}
 {"ts":"2026-09-22T19:06:38.019Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Edit","target":"/home/exedev/run/fold-fix-implement-3-3/skills/ultrapowers/scripts/plan_parse.py"}
+{"ts":"2026-09-22T19:07:11.613Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"cat > /tmp/awktest.sh <<'AWKEOF'\nplan=\"$1\"\nawk '\n  BEGIN{IGNORECASE=1}\n  /^[ \\t]*-[ \\t]*Test[ \\t]*:/ {\n    line=$0\n    sub(/^[ \\t]*-[ \\t]*Test[ \\t]*:[ \\t]*/, \"\", line)\n    if (match(line, /`/)) {\n    "}
+{"ts":"2026-09-22T19:07:20.210Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-implement-3-3/factory/boot.sh"}
+{"ts":"2026-09-22T19:07:28.345Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Edit","target":"/home/exedev/run/fold-fix-implement-3-3/factory/boot.sh"}
+{"ts":"2026-09-22T19:07:29.395Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"bash -n factory/boot.sh && echo \"SYNTAX OK\""}
+{"ts":"2026-09-22T19:07:30.566Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"timeout 180 node fleet/tests/test_factory_boot.mjs 2>&1 | tail -100"}
