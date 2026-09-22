@@ -154,6 +154,15 @@
       "unread": "every landing of runs 204-207 (n=12 tasks) carried k: 1, so the selector's line never had two candidates to choose between and could not be calibrated. The pre-registered reading is over the next 5 runs the probe fires on: how often the two candidates differ on exam exit (a real catch) versus only on the claim/coverage tail of the selector's line, and the second implementer's token cost against the modest 126s mean / 335s max already read for implementer dispatch",
       "experiment": true,
       "rollback": "enabled = false: k is the judge's task reading, which read 1 on every task of runs 204-207"
+    },
+    "infra_backoff_ms": {
+      "value": 60000,
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "experiment": true,
+      "rollback": 0,
+      "unread": "#1219: five referees died on the gateway in 1-2 s over runs 209-212 (n=5 dispatches over 4 runs, 2026-09-21) and each was adopted as a review with zero findings. One re-dispatch after this backoff for a worker whose error is a gateway shape and that produced no assistant turn; 0 is no retry. The pre-registered reading per run: infra deaths, retries, retries that succeeded, referees that died twice."
     }
   },
   "supervisor": {
