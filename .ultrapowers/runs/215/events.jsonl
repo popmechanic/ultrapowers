@@ -58,3 +58,5 @@
 {"ts":"2026-09-22T16:57:22.204Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"sed -n '1,50p' fleet/tests/README.md | tail -20; echo ---; wc -l factory/boot.sh; echo ---; sed -n '440,480p' factory/boot.sh"}
 {"ts":"2026-09-22T16:57:24.082Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"sed -n '100,240p' factory/boot.sh"}
 {"ts":"2026-09-22T16:58:01.307Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Read","target":"/home/exedev/run/exam-2/fleet/tests/test_board_read.mjs"}
+{"ts":"2026-09-22T16:58:04.145Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"sed -n '1,80p' /home/exedev/run/exam-2/fleet/tests/test_sims_are_hermetic.mjs"}
+{"ts":"2026-09-22T16:58:37.023Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"ls factory/record.mjs 2>&1; sed -n '1,20p' fleet/tests/README.md | head -5"}
