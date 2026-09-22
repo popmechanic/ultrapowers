@@ -690,3 +690,22 @@
 {"ts":"2026-09-22T17:54:53.122Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Edit","target":"/home/exedev/run/impl-3-1/factory/boot.sh"}
 {"ts":"2026-09-22T17:54:54.754Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"sed -n '490,502p' fleet/CONTRACT.md"}
 {"ts":"2026-09-22T17:54:57.047Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"grep -n \"bearer_probe\\|boot.sh\" fleet/CONTRACT.md | sed -n '1,40p'"}
+{"ts":"2026-09-22T17:54:59.773Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Edit","target":"/home/exedev/run/impl-3-1/fleet/CONTRACT.md"}
+{"ts":"2026-09-22T17:55:01.066Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Read","target":"/home/exedev/run/impl-3-1/fleet/tests/README.md"}
+{"ts":"2026-09-22T17:55:04.890Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"cd /home/exedev/run/impl-3-0\ngrep -n \"FIXTURE_PLAN\\b\" -A 40 fleet/tests/test_factory_boot.mjs | head -60"}
+{"ts":"2026-09-22T17:55:04.925Z","kind":"worker:test-run","task":"3","label":"impl:3:0","cmd":"cd /home/exedev/run/impl-3-0\ngrep -n \"FIXTURE_PLAN\\b\" -A 40 fleet/tests/test_factory_boot.mjs | head -60","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T17:55:06.631Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Edit","target":"/home/exedev/run/impl-3-1/fleet/tests/README.md"}
+{"ts":"2026-09-22T17:55:08.057Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"wc -l factory/boot.sh"}
+{"ts":"2026-09-22T17:55:08.266Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"cd /home/exedev/run/impl-3-0\ngrep -n \"PLAN_FILE\" factory/boot.sh"}
+{"ts":"2026-09-22T17:55:08.894Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-22T17:55:29.039Z","kind":"worker:test-run","task":"3","label":"impl:3:1","cmd":"node fleet/tests/test_factory_preflight.mjs && node fleet/tests/test_factory_boot.mjs","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-22T17:55:29.040Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"cd /home/exedev/run/impl-3-0\ngrep -n \"unguarded\\|proofGuards\\|proofTests\\|def main\" skills/ultrapowers/scripts/plan_parse.py | head -60"}
+{"ts":"2026-09-22T17:55:30.553Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"ts":"2026-09-22T17:55:31.523Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"node fleet/tests/test_factory_preflight.mjs; echo \"PREFLIGHT EXIT: $?\""}
+{"ts":"2026-09-22T17:55:33.090Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"cd /home/exedev/run/impl-3-0\ngrep -n \"proof_tests\\|proof_guards\\|Test:\\|Machine:\\|Guard\" skills/ultrapowers/scripts/plan_parse.py | head -60"}
+{"ts":"2026-09-22T17:55:34.682Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"ts":"2026-09-22T17:55:40.109Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"cd /home/exedev/run/impl-3-0\ngrep -n \"PROOF_TEST_BULLET\\s*=\\|BACKTICK_PATH_RE\\s*=\\|def slot_lines\\|slot_lines(\\\"proof\\\")\\|def slot_text\\|CREATE_BULLET\\|MACHINE\" skills/ultrapowers/scripts/plan_parse.p"}
+{"ts":"2026-09-22T17:55:46.636Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/skills/ultrapowers/scripts/plan_parse.py"}
+{"ts":"2026-09-22T17:55:50.697Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"cd /home/exedev/run/impl-3-0\ngrep -n \"SLOT_RE\\s*=\\|_slot_name\\s*=\\|def _slot_name\" skills/ultrapowers/scripts/plan_parse.py | head"}
+{"ts":"2026-09-22T17:55:51.705Z","kind":"worker:test-run","task":"3","label":"impl:3:1","cmd":"node fleet/tests/test_factory_preflight.mjs; echo \"PREFLIGHT EXIT: $?\"","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T17:55:52.171Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/skills/ultrapowers/scripts/plan_parse.py"}
