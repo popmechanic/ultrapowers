@@ -102,7 +102,7 @@ const roleText = (name) => fs.readFileSync(rolePath(name), 'utf8')
 
 /** Every producer runs on this; the discovery referee on the other. */
 export const DEFAULT_MODEL = 'claude-sonnet-5'
-export const DEFAULT_REFEREE_MODEL = 'claude-opus-5'
+export const DEFAULT_REFEREE_MODEL = 'claude-opus-5-5'
 
 /** One dispatch's ceiling. Not a judgment: a stop, so a wedged worker ends. */
 
