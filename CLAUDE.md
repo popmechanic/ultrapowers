@@ -266,11 +266,16 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   release), patch bumps otherwise — the 0.3.5 lift stayed a patch on the operator's call ("we're
   still fixing the features that .3 was meant to deliver"). A release bumps **both** `plugin.json`
   **and** `marketplace.json` to the same value — `.claude-plugin/plugin.json` carries `0.3.33`
-  today — `plugin.json` wins silently if they drift, and they have. Shipping one is itself fleet
-  work: a release is a fleet plan, whose H1 is the `chore(release): 0.x.y — …` line and whose one
-  task bumps both manifests and edits this bullet's version. The PR is opened and merged by the
-  sandbox (the squash commit's title is that H1), and the operator then runs
-  `gh release create v0.x.y` with the notes.
+  today — `plugin.json` wins silently if they drift, and they have. **A release is the bump on
+  main and nothing more (operator, 2026-09-22):** one hand PR titled `chore: version 0.x.y — …`
+  that bumps both manifests and edits this bullet's version, squash-merged, then a bare git tag
+  `v0.x.y` pushed on that squash commit (`git tag v0.x.y <sha> && git push origin v0.x.y`) — a
+  ref only, so `catch_report.py --zero-over` keeps a per-release window. The marketplace
+  version is what the plugin side reads for an update, and that is enough. **No GitHub release
+  and no `gh release create`** until the operator calls the product production-ready — 0.3.33
+  was the first shipped this way, and 0.3.30–0.3.32 were bumps that were never tagged at all.
+  The notes still get written, to `docs/superpowers/plans/<date>-release-0-x-y.notes.md`
+  (untracked), with the census line and the catch report, so the reading is on the laptop.
 - **Judgment prompts are data files.** `factory/roles/*.md` are read at dispatch by
   `factory/engine.mjs` — the single copy, no bake step. Their sizes are *reported* (`wc -w`,
   a release plan's `- Run:`) and gate nothing; a budget a task cannot meet is a demolition order.
