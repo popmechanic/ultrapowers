@@ -42,3 +42,15 @@
 {"ts":"2026-09-22T21:26:54.000Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"node fleet/tests/test_factory_boot.mjs 2>&1 | tail -80","exit":null,"red":null,"via":"bash"}
 {"ts":"2026-09-22T21:27:01.478Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"find /home/exedev/run/exam-1 -iname 'plan_parse.py' "}
 {"ts":"2026-09-22T21:27:02.482Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/skills/ultrapowers/scripts/plan_parse.py"}
+{"ts":"2026-09-22T21:27:13.720Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/factory/boot.sh"}
+{"ts":"2026-09-22T21:27:26.338Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n 'strip_exams' /home/exedev/run/exam-1/factory/boot.sh"}
+{"ts":"2026-09-22T21:27:29.103Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"node fleet/tests/test_factory_record.mjs 2>&1 | tail -60"}
+{"ts":"2026-09-22T21:27:29.460Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"node fleet/tests/test_factory_record.mjs 2>&1 | tail -60","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T21:27:31.335Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"node fleet/tests/test_factory_board.mjs 2>&1 | tail -80"}
+{"ts":"2026-09-22T21:27:32.984Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"node fleet/tests/test_factory_board.mjs 2>&1 | tail -80","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T21:27:40.646Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"node -e \"\nconst fs = require('fs'), os = require('os'), path = require('path');\nconst { spawnSync } = require('child_process');\nconst root = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-guard-'));\nco"}
+{"ts":"2026-09-22T21:27:52.863Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n \"FIXTURE_PLAN\\|widget that answers\\|integrationTip\\|merge-put.json\\|prPostBody\\|PR_TITLE\\|title:\" fleet/tests/test_factory_boot.mjs | head -60"}
+{"ts":"2026-09-22T21:27:52.899Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"grep -n \"FIXTURE_PLAN\\|widget that answers\\|integrationTip\\|merge-put.json\\|prPostBody\\|PR_TITLE\\|title:\" fleet/tests/test_factory_boot.mjs | head -60","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T21:27:54.976Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/fleet/tests/test_factory_boot.mjs"}
+{"ts":"2026-09-22T21:27:57.424Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-22T21:28:02.894Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"node fleet/tests/test_factory_boot.mjs fleet/tests/test_factory_record.mjs fleet/tests/test_factory_board.mjs","exit":1,"red":true,"via":"run_exam"}
