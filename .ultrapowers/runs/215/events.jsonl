@@ -358,3 +358,17 @@
 {"ts":"2026-09-22T17:17:39.576Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/audit.mjs"}
 {"ts":"2026-09-22T17:17:41.160Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/tests/README.md"}
 {"ts":"2026-09-22T17:17:42.421Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"simEnv\" -A 20 fleet/tests/_helpers.mjs | head -40"}
+{"ts":"2026-09-22T17:17:44.377Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"AbortSignal.timeout\\|fetch(\" -r factory/ | head -20"}
+{"ts":"2026-09-22T17:17:46.125Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/kata-credential.mjs"}
+{"ts":"2026-09-22T17:17:47.672Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Read","target":"/home/exedev/run/impl-3-1/fleet/tests/test_factory_preflight.mjs"}
+{"ts":"2026-09-22T17:17:49.900Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"cat fleet/tests/_helpers.mjs | head -60; echo ---; cat factory/policy.json 2>/dev/null; echo ---; sed -n '1,60p' fleet/tests/README.md"}
+{"ts":"2026-09-22T17:17:51.455Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"grep -n \"test_board_read\\|test_jev_questions\" fleet/tests/README.md"}
+{"ts":"2026-09-22T17:17:53.128Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Read","target":"/home/exedev/run/impl-3-1/fleet/tests/README.md"}
+{"ts":"2026-09-22T17:17:54.983Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"node fleet/tests/test_factory_preflight.mjs; echo \"EXIT:$?\""}
+{"ts":"2026-09-22T17:17:55.104Z","kind":"worker:test-run","task":"3","label":"impl:3:1","cmd":"node fleet/tests/test_factory_preflight.mjs; echo \"EXIT:$?\"","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T17:18:11.822Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Write","target":"/home/exedev/run/impl-3-1/factory/preflight.mjs"}
+{"ts":"2026-09-22T17:18:13.182Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"node fleet/tests/test_factory_preflight.mjs; echo \"EXIT:$?\""}
+{"ts":"2026-09-22T17:18:33.303Z","kind":"worker:test-run","task":"3","label":"impl:3:1","cmd":"node fleet/tests/test_factory_preflight.mjs; echo \"EXIT:$?\"","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T17:18:35.824Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"node -e '\nimport(\"./factory/preflight.mjs\").then(async (m) => {\n  console.log(m.default.classify({authOutput:\"authMethod: oauth_token\", code:200, body:\"{}\"}))\n})\n'"}
+{"ts":"2026-09-22T17:18:41.316Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"node -e '\nimport(\"node:http\").then(async ({default: http}) => {\n  const server = http.createServer((req,res)=>{res.writeHead(200,{\"Content-Type\":\"application/json\"}); res.end(\"{}\")});\n  await new Prom"}
+{"ts":"2026-09-22T17:18:43.420Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"sed -n '60,140p' fleet/tests/_helpers.mjs"}
