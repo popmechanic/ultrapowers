@@ -47,6 +47,13 @@ fleet_systemd_run() { systemd-run "$@"; }
 fleet_systemctl()   { systemctl "$@"; }
 fleet_python3()     { python3 "$@"; }
 fleet_node()        { node "$@"; }
+# `$ENGINE_REPO_DIR/factory` is a symlink onto this checkout's own `factory/` in the exam
+# rig (`fleet/tests/_helpers.mjs`'s `buildEngineDir`); Node resolves a loaded ES module's own
+# `import.meta.url` through a symlink like that by default while `process.argv[1]` keeps the
+# path exactly as this boot called it, so a module invoked by the symlinked path only matches
+# its own strict `invokedDirectly` check by luck. `engine_path` hands every engine script its
+# realpath so that check sees the same identity either way. $1 is a path under `$ENGINE_REPO_DIR`.
+engine_path() { local p="$ENGINE_REPO_DIR/$1"; readlink -f -- "$p" 2>/dev/null || printf '%s' "$p"; }
 # KATA_SERVER rides every call the boot itself makes: the daemon it is talking to is always the one it just started, on localhost.
 fleet_kata() { env "KATA_SERVER=$KATA_URL" kata "$@"; }
 log() {
@@ -65,12 +72,11 @@ json_escape() {
 # The one writer for every end-of-run row (#1167): one JSON object, one line, appended to
 # `<file>` (created if it does not exist). $1 = file, $2 = kind, then any number of
 # `key=value` pairs, each written in argument order — `factory/record.mjs row` renders the
-# line, `ts` included. Also reachable as `boot.sh event-row <file> <kind> [key=value ...]`
-# so the writer is examinable without running a boot.
+# line, `ts` included.
 event_row() {
   local file="$1"; shift
   mkdir -p "$(dirname "$file")" 2>/dev/null || true
-  fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" row "$@" >>"$file"
+  fleet_node "$(engine_path factory/record.mjs)" row "$@" >>"$file"
 }
 # The failure account: the page, one evidence commit, one push, out — once there is an evidence branch to write to.
 fail() { # $1 = message, $2 = exit code (default 1)
@@ -126,7 +132,7 @@ write_status() { # $1 = state, $2 = phase (optional)
   STATE="$1"; if [ "$#" -ge 2 ]; then PHASE="$2"; fi
   [ -n "$STARTED_AT" ] || STARTED_AT="$(now_iso)"
   mkdir -p "$EVIDENCE_DIR/$EVIDENCE_REL"; tmp="$STATUS_FILE.tmp.$$"
-  fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" status \
+  fleet_node "$(engine_path factory/record.mjs)" status \
     run="$RUN_N" state="$STATE" phase="$PHASE" pr="$PR_URL" prAuthor="$PR_AUTHOR" \
     merged="$MERGED_SHA" branch="$BRANCH" vm="$VM_NAME" startedAt="$STARTED_AT" error="$ERROR" \
     --events "$RUN_DIR/events.jsonl" >"$tmp"
@@ -201,13 +207,13 @@ board_up() {
   # The one kata on a sandbox (#1190): nothing system-wide sits behind this PATH entry.
   command -v kata >/dev/null 2>&1 || { log "board: kata $KATA_VERSION installed but not on PATH — proceeding without a spoke"; return 0; }
   log "board: kata $KATA_VERSION installed at $(command -v kata)"
-  if ! out="$(fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" spoke-config --kata-json "$BOARD_KATA_JSON" --engine-dir "$ENGINE_REPO_DIR" --home "$FLEET_HOME" 2>&1)"
+  if ! out="$(fleet_node "$(engine_path factory/board.mjs)" spoke-config --kata-json "$BOARD_KATA_JSON" --engine-dir "$ENGINE_REPO_DIR" --home "$FLEET_HOME" 2>&1)"
   then log "board: spoke-config failed — proceeding without a spoke — $(printf '%s' "$out" | tr '\n' ' ' | cut -c1-300)"; return 0; fi
   BOARD_PROJECT_NAME="$(printf '%s' "$out" | awk '{ print $1 }')"; BOARD_PROJECT_ID="$(printf '%s' "$out" | awk '{ print $2 }')"
   if ! fleet_systemd_run --user "--unit=$BOARD_UNIT" -p "WorkingDirectory=$FLEET_HOME/kata" -- \
       env "KATA_HOME=$FLEET_HOME/kata" "PATH=$PATH" kata daemon start --foreground
   then log "board: systemd-run could not start $BOARD_UNIT — proceeding without a spoke"; return 0; fi
-  if ! local_id="$(fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" wait --project "$BOARD_PROJECT_NAME" --kata-json "$BOARD_KATA_JSON" --kata-url "$KATA_URL" --seconds "$FLEET_KATA_WAIT_SECONDS")"
+  if ! local_id="$(fleet_node "$(engine_path factory/board.mjs)" wait --project "$BOARD_PROJECT_NAME" --kata-json "$BOARD_KATA_JSON" --kata-url "$KATA_URL" --seconds "$FLEET_KATA_WAIT_SECONDS")"
   then log "board: $BOARD_PROJECT_NAME was not bound with the run's issues pulled within ${FLEET_KATA_WAIT_SECONDS}s"; return 0; fi
   BOARD_BOUND=1
   [ -n "$local_id" ] && BOARD_PROJECT_ID="$local_id"
@@ -255,7 +261,7 @@ run_engine() {
 plan_title()   { { sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" || true; } | head -n 1; }
 # The pull request body: the plan's summary paragraph, the landing rows off the run's
 # own event log, and its closes line — rendered whole by `factory/record.mjs pr-body`.
-pr_body() { fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" pr-body "$PLAN_FILE" --events "$RUN_DIR/events.jsonl"; }
+pr_body() { fleet_node "$(engine_path factory/record.mjs)" pr-body "$PLAN_FILE" --events "$RUN_DIR/events.jsonl"; }
 # The target's default branch as the remote advertised it: a PR against a guessed `main` on a `master` repo is refused, or worse taken.
 default_branch() {
   local ref; ref="$(fleet_git -C "$TARGET_DIR" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || true)"
@@ -266,7 +272,7 @@ default_branch() {
 # disabled: self-merge is opt-in, never a default a broken read falls into.
 read_self_merge_policy() {
   local out
-  out="$(fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" policy "$ENGINE_REPO_DIR/factory/policy.json" 2>/dev/null)" || out="0 3 120"
+  out="$(fleet_node "$(engine_path factory/record.mjs)" policy "$ENGINE_REPO_DIR/factory/policy.json" 2>/dev/null)" || out="0 3 120"
   set -- $out
   SELF_MERGE_ENABLED="${1:-0}"; SELF_MERGE_MAX_REFOLDS="${2:-3}"; SELF_MERGE_WAIT_SECONDS="${3:-120}"
 }
@@ -356,12 +362,36 @@ maybe_self_merge() { # $1 = the pull request number, $2 = the PR's base branch n
   MERGE_PHASE="merge: refused after $SELF_MERGE_MAX_REFOLDS refold attempt(s)"
   log "merge: $MERGE_PHASE"
 }
-# The plan's own listing of the exams it chose not to keep in the pull request, moved to the evidence tree in one commit; an errored or empty or matchless listing is a no-op, logged once as `exams:`.
+# The plan's own listing of the exams it chose not to keep in the pull request, moved to the
+# evidence tree in one commit. `plan_parse.py --unguarded` (the Proof slot's own `Test:`/`Guard:`
+# bullets) is the listing when a task carries that slot; a task with no Proof slot at all still
+# names its exam on the plain per-task `- Test:` bullet, backticked or not, one or more
+# comma-separated paths — read straight off the plan when the Python listing comes back empty, so
+# a task written in that simpler shape still gets its exam stripped. An errored or empty or
+# matchless listing either way is a no-op, logged once as `exams:`.
 strip_exams() {
   local listing rc=0 rel dest removed=0
-  listing="$(fleet_python3 "$ENGINE_REPO_DIR/skills/ultrapowers/scripts/plan_parse.py" --unguarded "$PLAN_FILE")" || rc=$?
+  listing="$(fleet_python3 "$(engine_path skills/ultrapowers/scripts/plan_parse.py)" --unguarded "$PLAN_FILE")" || rc=$?
   if [ "$rc" -ne 0 ] || [ -z "$listing" ]; then
-    log "exams: plan_parse --unguarded exited $rc with no listing — nothing stripped"; return 0; fi
+    listing="$(awk '
+      BEGIN { IGNORECASE = 1 }
+      /^[ \t]*-[ \t]*Test[ \t]*:/ {
+        line = $0
+        sub(/^[ \t]*-[ \t]*Test[ \t]*:[ \t]*/, "", line)
+        if (match(line, /`/)) {
+          rest = line
+          while (match(rest, /`[^`]+`/)) {
+            print substr(rest, RSTART + 1, RLENGTH - 2)
+            rest = substr(rest, RSTART + RLENGTH)
+          }
+        } else {
+          gsub(/^[ \t]+|[ \t]+$/, "", line)
+          if (line != "") print line
+        }
+      }
+    ' "$PLAN_FILE")"
+  fi
+  [ -n "$listing" ] || { log "exams: no Test: path in the plan — nothing stripped"; return 0; }
   while IFS= read -r rel; do
     [ -n "$rel" ] || continue
     if [ -f "$TARGET_DIR/$rel" ]; then
@@ -408,7 +438,7 @@ publish() { # $1 = the engine's exit code
   was_bound="$BOARD_BOUND"
   close_run "$state"
   audit_args=(); [ -n "$was_bound" ] && audit_args=(--bound)
-  audit_line="$(fleet_node "$ENGINE_REPO_DIR/factory/audit.mjs" "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" "$state" ${audit_args[@]+"${audit_args[@]}"} 2>/dev/null)" || true
+  audit_line="$(fleet_node "$(engine_path factory/audit.mjs)" "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" "$state" ${audit_args[@]+"${audit_args[@]}"} 2>/dev/null)" || true
   [ -n "${audit_line:-}" ] && printf '%s\n' "$audit_line" >>"$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl"
   evidence_commit "$RUN_ID: audit"
   record_tags
@@ -440,7 +470,7 @@ close_run() { # $1 = the run's final state (done|parked)
   args=(--kata-json "$FLEET_HOME/plans/$RUN_ID.kata.json" --run "$RUN_ID" --pr "$PR_URL" \
     --admin-url "$KATA_ADMIN_URL" --events "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" --title "$(plan_title)")
   [ -n "$MERGED_SHA" ] && args+=(--merged "$MERGED_SHA")
-  fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" close-run "${args[@]}" || true
+  fleet_node "$(engine_path factory/board.mjs)" close-run "${args[@]}" || true
 }
 # The one entry point: nothing ahead of base is a park (a failure if the engine wasn't green), anything ahead is a publish — either way a bound spoke leaves once the outcome is settled.
 boot() {

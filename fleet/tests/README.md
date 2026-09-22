@@ -35,8 +35,11 @@ examined goes at cut two. Git history holds every one of them.
 - `test_board_read.mjs` — the board reader: the pure projection over a
   fixture in the hub's shape, the paging, and the ssh argv carrying the
   token's name and never a value.
-- `test_factory_preflight.mjs` — the boot's credential probe: one printed classification per answer the edge can give, and never a decision.
-- `test_factory_boot.mjs` — the boot end to end against stubs: the pull request opened and merged, every record row stamped, the two tags on the origin and neither branch, and a failed engine's own exit code.
+- `test_factory_preflight.mjs` — the boot's credential probe: one printed
+  classification per answer the edge can give, and never a decision.
+- `test_factory_boot.mjs` — the boot end to end against stubs: the pull
+  request opened and merged, every record row stamped, the two tags on the
+  origin and neither branch, and a failed engine's own exit code.
 - `test_jev_questions.mjs` — the sitting's two question sets and the readers
   over the client.
 - `test_factory_worker_gitblock.mjs` — the factory worker's git block: the
