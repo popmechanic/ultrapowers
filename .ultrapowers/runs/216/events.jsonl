@@ -36,3 +36,46 @@
 {"ts":"2026-09-22T19:55:34.763Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"TMP=$(ls -d /tmp/tmp.* 2>/dev/null | xargs -I{} sh -c 'test -f {}/real/preflight.mjs && echo {}' | tail -1)\nrm -rf \"$TMP\"\nnode fleet/tests/test_factory_preflight.mjs 2>&1 | tail -15; echo \"EXIT:${PIPE"}
 {"ts":"2026-09-22T19:55:35.328Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"TMP=$(ls -d /tmp/tmp.* 2>/dev/null | xargs -I{} sh -c 'test -f {}/real/preflight.mjs && echo {}' | tail -1)\nrm -rf \"$TMP\"\nnode fleet/tests/test_factory_preflight.mjs 2>&1 | tail -15; echo \"EXIT:${PIPESTATUS[0]}\"","exit":null,"red":null,"via":"bash"}
 {"ts":"2026-09-22T19:55:37.391Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"grep -n \"invokedDirectly\\|import.meta.main\" factory/preflight.mjs factory/audit.mjs"}
+{"ts":"2026-09-22T19:55:38.735Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-22T19:55:39.265Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"node fleet/tests/test_factory_preflight.mjs","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-22T19:55:54.358Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__note"}
+{"ts":"2026-09-22T19:56:01.278Z","kind":"dispatch:end","task":"1","label":"exam:1","role":"exam","wall_ms":206760,"cost_usd":0.9586489999999999,"error":null}
+{"ts":"2026-09-22T19:56:01.482Z","kind":"dispatch:start","task":"1","label":"impl:1:0","role":"implement"}
+{"ts":"2026-09-22T19:56:01.503Z","kind":"dispatch:start","task":"1","label":"impl:1:1","role":"implement"}
+{"ts":"2026-09-22T19:56:03.224Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/preflight.mjs"}
+{"ts":"2026-09-22T19:56:03.597Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/audit.mjs"}
+{"ts":"2026-09-22T19:56:03.987Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/fleet/tests/README.md"}
+{"ts":"2026-09-22T19:56:04.779Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/preflight.mjs"}
+{"ts":"2026-09-22T19:56:05.194Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/audit.mjs"}
+{"ts":"2026-09-22T19:56:05.375Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"node --version; sed -n '1,80p' /home/exedev/run/impl-1-1/fleet/tests/_helpers.mjs"}
+{"ts":"2026-09-22T19:56:05.548Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/fleet/tests/README.md"}
+{"ts":"2026-09-22T19:56:07.400Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/fleet/tests/_helpers.mjs"}
+{"ts":"2026-09-22T19:56:07.904Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"sed -n '1,60p' /home/exedev/run/impl-1-1/fleet/tests/test_factory_boot.mjs | head -100"}
+{"ts":"2026-09-22T19:56:08.076Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"sed -n '1,80p' fleet/tests/_helpers.mjs"}
+{"ts":"2026-09-22T19:56:08.966Z","kind":"jev","site":"supervisor","task":"1","label":"impl:1:1","keys":["stuck","off_track","needs_human","done_not_exited"],"values":{"stuck":{"type":"noul","noul":0.14},"off_track":{"type":"noul","noul":0.24},"needs_human":{"type":"noul","noul":0.11},"done_not_exited":{"type":"noul","noul":0.09}},"state_bytes":105,"ms":191,"answered":true}
+{"ts":"2026-09-22T19:56:08.966Z","kind":"supervisor","task":"1","label":"impl:1:1","answers":{"stuck":{"type":"noul","noul":0.14},"off_track":{"type":"noul","noul":0.24},"needs_human":{"type":"noul","noul":0.11},"done_not_exited":{"type":"noul","noul":0.09}}}
+{"ts":"2026-09-22T19:56:09.652Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/audit.mjs"}
+{"ts":"2026-09-22T19:56:10.090Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"sed -n '80,140p' fleet/tests/_helpers.mjs"}
+{"ts":"2026-09-22T19:56:11.479Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/audit.mjs"}
+{"ts":"2026-09-22T19:56:12.676Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -l \"createServer\" fleet/tests/*.mjs | head -5"}
+{"ts":"2026-09-22T19:56:13.205Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/preflight.mjs"}
+{"ts":"2026-09-22T19:56:14.910Z","kind":"jev","site":"supervisor","task":"1","label":"impl:1:0","keys":["stuck","off_track","needs_human","done_not_exited"],"values":{"stuck":{"type":"noul","noul":0.28},"off_track":{"type":"noul","noul":0.35},"needs_human":{"type":"noul","noul":0.22},"done_not_exited":{"type":"noul","noul":0.13}},"state_bytes":47,"ms":145,"answered":true}
+{"ts":"2026-09-22T19:56:14.910Z","kind":"supervisor","task":"1","label":"impl:1:0","answers":{"stuck":{"type":"noul","noul":0.28},"off_track":{"type":"noul","noul":0.35},"needs_human":{"type":"noul","noul":0.22},"done_not_exited":{"type":"noul","noul":0.13}}}
+{"ts":"2026-09-22T19:56:15.231Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/fleet/tests/test_factory_preflight.mjs"}
+{"ts":"2026-09-22T19:56:16.263Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/preflight.mjs"}
+{"ts":"2026-09-22T19:56:17.489Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-22T19:56:18.040Z","kind":"worker:test-run","task":"1","label":"impl:1:0","cmd":"node fleet/tests/test_factory_preflight.mjs","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-22T19:56:18.341Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/fleet/tests/README.md"}
+{"ts":"2026-09-22T19:56:21.746Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"timeout 60 node fleet/tests/test_factory_preflight.mjs; echo EXIT:$?"}
+{"ts":"2026-09-22T19:56:22.296Z","kind":"worker:test-run","task":"1","label":"impl:1:0","cmd":"timeout 60 node fleet/tests/test_factory_preflight.mjs; echo EXIT:$?","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T19:56:22.472Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n -A2 \"test_factory_preflight\" /home/exedev/run/impl-1-1/fleet/tests/README.md"}
+{"ts":"2026-09-22T19:56:24.115Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"ls /home/exedev/run/impl-1-1/fleet/tests/ | grep -i factory; cat /home/exedev/run/impl-1-1/fleet/tests/test_factory_facts.mjs | head -40"}
+{"ts":"2026-09-22T19:56:25.443Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/audit.mjs"}
+{"ts":"2026-09-22T19:56:25.739Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/fleet/tests/test_factory_preflight.mjs"}
+{"ts":"2026-09-22T19:56:28.184Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/audit.mjs"}
+{"ts":"2026-09-22T19:56:28.806Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-22T19:56:29.347Z","kind":"worker:test-run","task":"1","label":"impl:1:1","cmd":"node fleet/tests/test_factory_preflight.mjs","exit":0,"red":false,"via":"run_exam"}
+{"ts":"2026-09-22T19:56:30.963Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/preflight.mjs"}
+{"ts":"2026-09-22T19:56:32.393Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"cd /home/exedev/run/impl-1-1\necho \"--- import.meta.main counts ---\"\ntest \"$(grep -c 'import.meta.main' factory/preflight.mjs)\" -eq 1 && echo OK1\ntest \"$(grep -c 'import.meta.main' factory/audit.mjs)\" "}
+{"ts":"2026-09-22T19:56:35.433Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/preflight.mjs"}
+{"ts":"2026-09-22T19:56:39.052Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/fleet/tests/README.md"}
