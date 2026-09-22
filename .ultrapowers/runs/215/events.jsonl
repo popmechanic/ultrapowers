@@ -265,3 +265,5 @@
 {"ts":"2026-09-22T17:11:28.322Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"node --check factory/board.mjs && echo OK"}
 {"ts":"2026-09-22T17:11:29.498Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"mcp__factory__run_exam"}
 {"ts":"2026-09-22T17:11:31.044Z","kind":"worker:test-run","task":"2","label":"impl:2:0","cmd":"node fleet/tests/test_factory_board.mjs","exit":0,"red":false,"via":"run_exam"}
+{"ts":"2026-09-22T17:12:10.002Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"fleet_node\\|ENGINE_REPO_DIR\\|audit.mjs\\|board.mjs\" factory/boot.sh"}
+{"ts":"2026-09-22T17:12:12.757Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/boot.sh"}
