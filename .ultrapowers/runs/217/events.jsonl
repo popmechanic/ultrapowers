@@ -26,3 +26,4 @@
 {"ts":"2026-09-22T20:46:26.712Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"mcp__factory__run_exam"}
 {"ts":"2026-09-22T20:46:26.755Z","kind":"worker:test-run","task":"1","label":"impl:1:1","cmd":"node fleet/tests/test_factory_worker_gitblock.mjs","exit":1,"red":true,"via":"run_exam"}
 {"ts":"2026-09-22T20:46:42.752Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"findGit\\|gitblock\" /home/exedev/run/impl-1-1/factory/worker.mjs"}
+{"ts":"2026-09-22T20:49:18.049Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/gitblock.mjs"}
