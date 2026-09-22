@@ -1,0 +1,75 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "b889503b8a8c988e6e1f4703943771886dec5b4ada54642498f5ecff105126f8",
+      "verdict": "pass",
+      "reason": "Every clause has a falsifying leg: (a) drives all M1 cases to byte-exact stdout plus exit 0, (b) and (c) invoke audit and preflight through the <D>/factory symlink and check the parsed row / alive and exit codes, and (d)'s Run lines compute M4's counts (1, 1, summed 0) and the README grep; the base excerpts (both files on invokedDirectly, no import.meta.main) predate rather than pin the opposite; the only uncited line is the regression Run of test_factory_boot.mjs, a guard."
+    }
+  },
+  "tally": {
+    "dispatched": 2,
+    "rejected": 0,
+    "rounds": 2,
+    "base": "d0b00f50db0fda874768bad79c4e1ed783cf9d71",
+    "question": "facts-only (experiment, rollback the old sentence)",
+    "history": [
+      {
+        "round": 1,
+        "base": "8caf5a815241609b5b58e80b8793052bf3b3f3a9",
+        "hash": "2ab551b3429c457d99c84c4b4ab7c6ac9597d3af56b47544e635eacc8d6bcd11",
+        "verdict": "pass",
+        "note": "the run-215 task-3 retry shape, superseded when #1224 merged with task 3's boot patch folded in"
+      }
+    ],
+    "retry_of": "run-215 task 3 (docs/superpowers/plans/2026-09-22-the-boot-trim.md); the boot half landed via #1224"
+  },
+  "authoring": {
+    "minutes": 48,
+    "probes": 0,
+    "routing": {
+      "branch": "inline",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Run-215 task 3 cannot go green: park and replan, park and drop, or kill",
+        "options": [
+          "Let it park, land 1 and 2 by hand, replan task 3",
+          "Let it park, then merge only 1 and 2",
+          "Kill the VM now and relaunch all three"
+        ],
+        "recommended": "Let it park, land 1 and 2 by hand, replan task 3",
+        "picked": "Let it park, land 1 and 2 by hand, replan task 3"
+      },
+      {
+        "question": "Retry claim: reword to what the task does, or keep the quoted 300-line sentence",
+        "options": [
+          "Reword the Claim to what this task does",
+          "Keep the quoted 300-line Claim"
+        ],
+        "recommended": "Reword the Claim to what this task does",
+        "picked": "Reword the Claim to what this task does"
+      },
+      {
+        "question": "PR #1224: merge minus the broken exam, merge only 1 and 2, or merge as-is",
+        "options": [
+          "Merge it minus the one broken exam",
+          "Merge only tasks 1 and 2",
+          "Merge as-is"
+        ],
+        "recommended": "Merge it minus the one broken exam",
+        "picked": "Merge it minus the one broken exam"
+      },
+      {
+        "question": "Retry claim and lane",
+        "options": [
+          "Confirm; run on the fleet",
+          "Confirm; do it inline here",
+          "Hold; widen"
+        ],
+        "recommended": "Confirm; run on the fleet",
+        "picked": "Confirm; run on the fleet"
+      }
+    ]
+  }
+}
