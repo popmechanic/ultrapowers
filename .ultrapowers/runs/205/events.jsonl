@@ -283,3 +283,10 @@
 {"kind":"refold","ok":true}
 {"kind":"merge","code":405}
 {"kind":"merge","code":200}
+{"kind":"board:leave","rc":0}
+{"kind":"board:close","what":"task 1","code":200}
+{"kind":"board:close","what":"task 2","code":200}
+{"kind":"board:close","what":"task 3","code":200}
+{"kind":"board:close","what":"task 4","code":200}
+{"kind":"board:close","what":"run","code":200}
+{"kind":"run:audit","state":"done","missing":[]}
