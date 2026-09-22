@@ -308,7 +308,9 @@ One fresh-context subagent per task, asked the facts-only question, word for wor
 > ONLY when: a computable fact the Claim's sentence depends on has no leg that could catch
 > it being false; or a literal a clause pins is unsatisfiable under the clauses' own rules
 > (compute it); or a leg contradicts its clause; or the `base` excerpts show a file already
-> pinning the opposite.
+> pinning the opposite; or a leg pins exactly these keys on a record other tasks also
+> write — a row of a shared log, a cell of a shared JSON file — where the clause needs
+> only that the record carries these keys.
 
 The question it replaced — *if this exam passes, is the sentence necessarily true* — can
 only be satisfied by enumeration, so its readers asked for a leg per variant: on the
@@ -320,6 +322,11 @@ vacuity — a proof line that passed with its variable unset, a cycle clause its
 made impossible, a leg pinning a sha where its clause pinned `HEAD:` — and each would have
 cost a fleet run. **An author who answers a rejection by adding legs is answering the wrong
 question: narrow the clause first.** A mismatch means no compile until the task is revised.
+The exactly-these-keys clause exists because on run-195 (2026-09-18) one task added `ts`
+to every row of the run's event log and the exams of two sibling tasks, each asserting a
+row's exact key list, went red on the folded tree with both features right (n=2 exams on
+1 run, read by hand against the folded head); the engine now sends such an exam back to
+its examiner, and the gate's job is that it is never written.
 The literal-computing half is there because on walk run-10 a
 Claim pinned `4` vowels in `Ada Lovelace` — `6` under its own M1 and M2 — and the reader
 passed the legs on shape without ever computing the number, where a reader asked exactly

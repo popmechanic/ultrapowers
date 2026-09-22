@@ -184,6 +184,15 @@ is the author's own to check, here, against this file — `suite-total-pin`,
   green parked as `done: false` with a draft pull request (n=1 run, 2026-09-21) — the gate
   fix of #1172 working exactly as designed on a plan defect.
 
+- **An exam of a record other tasks also write must assert that the record carries these keys,
+  never that it has exactly these keys.** A whole-row deep-equal is lawful only over
+  a row the exam's own fake received from the one function under test — never over a row
+  read back from a shared log or a shared JSON file that another task's own leg also
+  writes. On run-195 (2026-09-18) one task added `ts` to every row of the run's event log
+  and the exams of two sibling tasks, each asserting a row's exact key list, went red on
+  the folded tree with both features right; the gate now refuses such a leg before
+  dispatch.
+
 ## Three older lessons of the same kind
 
 - **Quote desired-state sentences, never diagnosis sentences.** An issue's
