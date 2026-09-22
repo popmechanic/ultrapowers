@@ -316,10 +316,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
 - **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","disclosures":"<url or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"wave":"<n or null>","state":"queued|waiting|examining|implementing|proving|reviewing|fixing|folded|failed","role":"<worker label or null>","lastProof":"{cmd, exit, ts} or null","park":"<detail or null>","attention":"{value, msg, ts} or null","blockedBy":"[<task ids>] or null"}}}`
   — the SAME bytes are served at `/status.json` and committed to
   `.ultrapowers/runs/<N>/status.json` on `ultra/evidence-run-<N>` at every transition **and, while
-  the engine runs, on the first refresher poll that has seen either `FLEET_COMMIT_EVENTS` new lines
-  in the run's `events.jsonl` (default 10) or `FLEET_COMMIT_SECONDS` seconds (default 120) since the
-  last commit**. A poll that saw no new line is a heartbeat (`updatedAt` moves, the page is
-  rewritten every poll) and earns no commit.
+  the engine runs, on the first tick that finds `events.jsonl` changed since the last commit, at
+  most once every `FLEET_COMMIT_SECONDS` seconds (default 60)**. A tick that saw no change is a
+  heartbeat (`updatedAt` moves, the page is rewritten every poll) and earns no commit.
   `"tasks":` is the LAST cell on the page — a reader answers the FIRST `"state"` in the file, so a
   task's own `folded` must never sit above the run's — and it is a projection of `events.jsonl` and
   nothing else: one key per task id the plan's waves or the log names, each carrying the wave it
@@ -331,8 +330,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   named, whatever the `worker:end` before it said, and the state moves on at the task's next
   `worker:start` while `blockedBy` keeps the record of what it waited on; a task no `driver:re-edged`
   names reads `null` there.
-  The same projection runs inside `factory/boot.sh` itself (`ev_project`), each time `write_status`
-  writes the page, rather than as a separate invocation over a log file.
+  The same projection runs inside `factory/record.mjs` (`status`), called by `write_status` each
+  time it writes the page, rather than as a separate invocation over a log file.
   `phase` names the SUB-STEP while the engine runs: the run's last phase event alone when no worker
   is open, and `<phase> · <sub>` — that phase, a space, `·`, a space, and either the label of the
   most recent worker still running or the kind of the last event — otherwise. That last event is the
@@ -347,11 +346,15 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `running → publishing → running → publishing → done`, one folded three times more carries three
   such pairs before its `done`, and the count is whatever `FOLD_AGAIN_WAIT` and the folds allowed —
   never a fixed number. `parked` and `failed` are terminal wherever they are reached.
-- **Publish:** **This bullet spelled out the wave engine's own PR card and publish record here in
-  detail through 2026-09-21** — the card's per-task table, the Jev residuals checklist and
-  `Act on these` list, the amendments list, the disclosures ticket, and the `publish:*` event kinds
-  — and all of it left with that engine at cut two; what the current engine's PR body and publish
-  record contain is not yet written down here.
+- **Publish:** the pull request is one `POST /repos/<target>/pulls` with title
+  `fleet run-<N>: <plan H1>`, head `ultra/integration-run-<N>`, base the target's default branch,
+  `draft` true unless the engine exited 0, and no `authorization` header — the edge injects the
+  credential. Its body is the plan's `**Summary:**` paragraph, a blank line, one
+  `| <task> | <k> | <examExit> | <candidateSha> |` row per `landing` row of the run's own
+  `events.jsonl`, a blank line, and one `Closes #<n>` line per number on the plan's `**Closes:**`
+  line, all rendered by `factory/record.mjs pr-body`. The `publish:pr` row it leaves —
+  `{ts, kind, url, number, draft}` — is written through the same writer as every other
+  end-of-run row (`event_row`, over `factory/record.mjs row`).
 - **Integration naming:** ONE GitHub integration per target, `gh-<owner>-<repo>` (slashes → `-`),
   `--act-as-user`, not readonly, created on the policy `tag:fleet` by `node fleet/target.mjs
   <owner>/<repo>` (`integrations add github … --policy 'tag:fleet'`; an object that already exists
@@ -495,8 +498,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     as `claude-max`'s bearer SERVES INFERENCE (same query, structured output, 2.1 s) and passes the
     boot's first gate (`claude auth status` → `authMethod: oauth_token`, `apiProvider: firstParty`),
     but `GET /api/oauth/usage` through the proxy is 403 `oauth_scope_insufficient`, required scope
-    `user:profile`, with a `"type":"error"` body — exactly the shape `factory/boot.sh`'s
-    `bearer_probe` classifies as a dead credential, so it would PARK EVERY RUN at boot. The token is
+    `user:profile`, with a `"type":"error"` body — exactly the shape `factory/preflight.mjs`
+    classifies as a dead credential, so it would PARK EVERY RUN at boot. The token is
     inference-scoped by construction. Retiring the four-hour refresh and the revocation trap of
     runs 92/100/103 therefore costs one change to the bearer probe, not zero (2026-09-17; #1131
     probe 3).

@@ -35,6 +35,9 @@ examined goes at cut two. Git history holds every one of them.
 - `test_board_read.mjs` — the board reader: the pure projection over a
   fixture in the hub's shape, the paging, and the ssh argv carrying the
   token's name and never a value.
+- `test_factory_boot.mjs` — the boot end to end against stubs: the pull
+  request opened and merged, every record row stamped, the two tags on the
+  origin and neither branch, and a failed engine's own exit code.
 - `test_jev_questions.mjs` — the sitting's two question sets and the readers
   over the client.
 - `test_factory_worker_gitblock.mjs` — the factory worker's git block: the
@@ -43,9 +46,15 @@ examined goes at cut two. Git history holds every one of them.
 - `test_factory_facts.mjs` — the landing's facts: an exam's assertion lines
   attributed to the clauses they cite, the per-clause facts array under its
   cap, and the judge asking about each clause over it.
+- `test_factory_record.mjs` — the boot's record module: a row with its `ts`,
+  the 13-cell status page with `tasks` last, the pull request body byte for
+  byte, and the policy read.
 - `test_factory_retry.mjs` — the infra retry: a gateway death before the
   first turn is dispatched once more after the backoff, labelled `:retry`
   with `retry_of`, and nothing else is.
+- `test_factory_board.mjs` — the board's CLI: the spoke's two files byte for
+  byte, the bound-wait's local id, and the run close's Idempotency-Key order
+  on a stub hub that never fails the run.
 The factory's own exams are not here: an unguarded exam lives on its run's evidence tag
 under `.ultrapowers/runs/<N>/exams/`, and a guarded one sits where its plan put it.
 
