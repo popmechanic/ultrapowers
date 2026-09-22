@@ -372,7 +372,7 @@ maybe_self_merge() { # $1 = the pull request number, $2 = the PR's base branch n
 strip_exams() {
   local listing rc=0 rel dest removed=0
   listing="$(fleet_python3 "$(engine_path skills/ultrapowers/scripts/plan_parse.py)" --unguarded "$PLAN_FILE")" || rc=$?
-  if [ "$rc" -ne 0 ] || [ -z "$listing" ]; then
+  if [ "$rc" -ne 0 ]; then # an empty listing is the parser's answer (every exam guarded), not a failure — run-216 stripped a guarded exam on it
     listing="$(awk '
       BEGIN { IGNORECASE = 1 }
       /^[ \t]*-[ \t]*Test[ \t]*:/ {
