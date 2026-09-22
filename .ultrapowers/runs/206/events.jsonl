@@ -360,3 +360,7 @@
 {"ts":"2026-09-22T00:01:25.991Z","kind":"check:line","task":"1","cmd":"git diff --quiet $ULTRA_BASE -- factory/roles factory/select.mjs factory/board.mjs factory/union.mjs fleet/fleet-bootstrap.sh skills/ultrapowers/kernel","exit":0,"minor":false}
 {"ts":"2026-09-22T00:01:25.991Z","kind":"fold:verify","task":"1","ran":[{"task":"1","exit":0}],"attempt":1}
 {"ts":"2026-09-22T00:01:25.992Z","kind":"pair:label","a":"2","b":"3","calls":null,"fold":"clean"}
+{"kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1205","number":1205,"draft":false}
+{"kind":"refold","ok":true}
+{"kind":"merge","code":405}
+{"kind":"merge","code":200}
