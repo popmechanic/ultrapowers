@@ -46,3 +46,12 @@
 {"ts":"2026-09-22T01:27:30.353Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/watch.mjs"}
 {"ts":"2026-09-22T01:27:42.263Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
 {"ts":"2026-09-22T01:27:44.656Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-22T01:27:54.467Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-22T01:28:17.004Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-22T01:28:21.941Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/policy.json"}
+{"ts":"2026-09-22T01:28:23.834Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/questions.json"}
+{"ts":"2026-09-22T01:28:29.026Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/questions.json"}
+{"ts":"2026-09-22T01:28:32.729Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"python3 -c \"\nimport json; c=json.load(open('factory/policy.json'))['supervisor']['observed']; f=c['min_elapsed_ms']\nassert c['enabled'] is True\nassert f['value']==120000 and f['n']==0 and f['window']="}
+{"ts":"2026-09-22T01:28:38.148Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"python3 -c \"\ns='38040f9be956589d2e1f02d1ce1e99b3f3f9fe7980ffa4940886fd980b2362ad'\nprint(len(s))\ns2='8fd64b92eafe9e973d1f5687dc34b5a653ec8da7766fbeef89ce48f5d467bec8'\nprint(len(s2))\ns3='4218ce1705c613f"}
+{"ts":"2026-09-22T01:28:41.079Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"python3 -c \"\na='38040f9be956589d2e1f02d1ce1e99b3f3f9fe7980ffa4940886fd980b2362ad'\nb='38040f9be956589d2e1f02d1ce1e99b3f3f9fe7980ffa4940886fd980b2362ad'\nprint(a==b)\n\"\n"}
+{"ts":"2026-09-22T01:28:46.421Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"python3 - <<'EOF'\ns1 = \"38040f9be956589d2e1f02d1ce1e99b3f3f9fe7980ffa4940886fd980b2362ad\"\ns2 = \"8fd64b92eafe9e973d1f5687dc34b5a653ec8da7766fbeef89ce48f5d467bec8\"\ns3 = \"4218ce1705c613fc3c3db7cf5479d05d"}
