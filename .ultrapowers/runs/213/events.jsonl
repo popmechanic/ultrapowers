@@ -22,3 +22,33 @@
 {"ts":"2026-09-22T16:07:48.100Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"node fleet/tests/test_factory_facts.mjs","exit":1,"red":true,"via":"run_exam"}
 {"ts":"2026-09-22T16:07:51.195Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"node fleet/tests/test_factory_facts.mjs 2>&1 | head -40"}
 {"ts":"2026-09-22T16:07:51.270Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"node fleet/tests/test_factory_facts.mjs 2>&1 | head -40","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T16:08:07.404Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__note"}
+{"ts":"2026-09-22T16:08:12.752Z","kind":"dispatch:end","task":"1","label":"exam:1","role":"exam","wall_ms":260140,"cost_usd":0.7650648,"error":null}
+{"ts":"2026-09-22T16:08:21.016Z","kind":"dispatch:start","task":"1","label":"impl:1:1","role":"implement"}
+{"ts":"2026-09-22T16:08:21.044Z","kind":"dispatch:start","task":"1","label":"impl:1:0","role":"implement"}
+{"ts":"2026-09-22T16:08:22.902Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/facts.mjs"}
+{"ts":"2026-09-22T16:08:23.258Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/judge.mjs"}
+{"ts":"2026-09-22T16:08:24.182Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"mcp__factory__task_facts"}
+{"ts":"2026-09-22T16:08:25.078Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"claim_established_given_facts\\|\\\"pairwise\\\"\\|\\\"landing\\\"\\|\\\"state\\\"\\|\\\"provenance\\\"\" -A5 /home/exedev/run/impl-1-0/factory/questions.json | head -150"}
+{"ts":"2026-09-22T16:08:25.431Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"sed -n '90,115p' /home/exedev/run/impl-1-0/factory/policy.json"}
+{"ts":"2026-09-22T16:08:27.263Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/facts.mjs"}
+{"ts":"2026-09-22T16:08:27.327Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"sed -n '105,283p' /home/exedev/run/impl-1-0/factory/questions.json"}
+{"ts":"2026-09-22T16:08:27.517Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/judge.mjs"}
+{"ts":"2026-09-22T16:08:29.985Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"python3 -c \"\nimport json,hashlib\nq=json.load(open('factory/questions.json'))['sets']['landing']['questions']['claim_established_given_facts']['instructions']['question']\nprint(hashlib.sha256(q.encode("}
+{"ts":"2026-09-22T16:08:30.190Z","kind":"jev","site":"supervisor","task":"1","label":"impl:1:0","keys":["stuck","off_track","needs_human","done_not_exited"],"values":{"stuck":{"type":"noul","noul":0.12},"off_track":{"type":"noul","noul":0.23},"needs_human":{"type":"noul","noul":0.16},"done_not_exited":{"type":"noul","noul":0.14}},"state_bytes":216,"ms":205,"answered":true}
+{"ts":"2026-09-22T16:08:30.190Z","kind":"supervisor","task":"1","label":"impl:1:0","answers":{"stuck":{"type":"noul","noul":0.12},"off_track":{"type":"noul","noul":0.23},"needs_human":{"type":"noul","noul":0.16},"done_not_exited":{"type":"noul","noul":0.14}}}
+{"ts":"2026-09-22T16:08:30.546Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n '\"landing\"' -A 5 /home/exedev/run/impl-1-1/factory/questions.json | head -20"}
+{"ts":"2026-09-22T16:08:31.239Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n 'claim_established_given_facts\\|\"pairwise\"\\|\"landing\"\\|sets.landing\\|\"state\"\\|\"provenance\"' /home/exedev/run/impl-1-1/factory/questions.json"}
+{"ts":"2026-09-22T16:08:33.676Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/questions.json"}
+{"ts":"2026-09-22T16:08:34.388Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"python3 -c \"\nq='e6cade4ac4504446c8b7a1fe9eeb4bacc57caeaf3f01fc392dfe3b3b763db1ef'\nprint(len(q))\n\""}
+{"ts":"2026-09-22T16:08:36.127Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"sed -n '1,65p' /home/exedev/run/impl-1-0/factory/engine.mjs | grep -n \"import\" "}
+{"ts":"2026-09-22T16:08:36.551Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/questions.json"}
+{"ts":"2026-09-22T16:08:36.666Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"sed -n '750,765p' /home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-22T16:08:37.029Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"sed -n '1140,1225p' /home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-22T16:08:39.147Z","kind":"jev","site":"supervisor","task":"1","label":"impl:1:1","keys":["stuck","off_track","needs_human","done_not_exited"],"values":{"stuck":{"type":"noul","noul":0.29},"off_track":{"type":"noul","noul":0.33},"needs_human":{"type":"noul","noul":0.22},"done_not_exited":{"type":"noul","noul":0.13}},"state_bytes":47,"ms":194,"answered":true}
+{"ts":"2026-09-22T16:08:39.147Z","kind":"supervisor","task":"1","label":"impl:1:1","answers":{"stuck":{"type":"noul","noul":0.29},"off_track":{"type":"noul","noul":0.33},"needs_human":{"type":"noul","noul":0.22},"done_not_exited":{"type":"noul","noul":0.13}}}
+{"ts":"2026-09-22T16:08:40.051Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"settledCoverage\\|observedFacts\\|factsPolicy\\|factsEnabled\\|factsCapBytes\\|from './facts.mjs'\" /home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-22T16:08:42.902Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-22T16:08:46.203Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-22T16:08:48.871Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n '\"facts\"' -A 10 /home/exedev/run/impl-1-1/factory/policy.json"}
+{"ts":"2026-09-22T16:08:51.309Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"The singletons\" -A 20 /home/exedev/run/impl-1-1/fleet/tests/README.md | head -30"}
