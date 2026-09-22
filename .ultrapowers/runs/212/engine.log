@@ -1,0 +1,10 @@
+Running as unit: fleet-engine-212.service; invocation ID: 19f7f805057146be884f5d027775de89
+worker referee:1 ended: Claude Code returned an error result: API Error: 500 Internal server error. This is a server-side issue, usually temporary — try again in a moment. If it persists, check your inference gateway (claude-max.int.exe.xyz).
+adopted task 1 -> 57a2a552  exam=0 k=1
+{"done":true,"adopted":["1"],"head":"57a2a5525bd301bfe57f07d8fdbf05fb769d7a7d","wall_ms":306896,"cost_usd":1.3315322000000003}
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 5min 6.965s
+CPU time consumed: 14.018s
+Memory peak: 512.0K
+Memory swap peak: 0B
