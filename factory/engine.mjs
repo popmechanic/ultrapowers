@@ -58,7 +58,7 @@ import { waitsFor } from './dispatch.mjs'
 import { runLines } from './proofs.mjs'
 import { checksAtBase } from './checks-at-base.mjs'
 import { settledCoverage, observedFacts } from './facts.mjs'
-import { observedWork, supervisorTick } from './watch.mjs'
+import { observedWork, supervisorTick, makeObservedWatch } from './watch.mjs'
 import { kFor, probeRecord } from './kprobe.mjs'
 import { refereeTrigger } from './referee.mjs'
 // Amendment (undeclared by the task's own M1-M6, needed only to reach them):
@@ -811,6 +811,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   // M5: `supervisor.observed.enabled` off `policyDoc`, read once — whether
   // the second, facts-only supervisor reading fires at all.
   const observedEnabled = ((policyDoc.supervisor || {}).observed || {}).enabled === true
+  const minElapsedMs = Number((((policyDoc.supervisor || {}).observed || {}).min_elapsed_ms || {}).value) || 0
   // M5: one `{ tools, examRuns }` accumulator per dispatch, keyed by that
   // dispatch's own label — filled in by `onMessageFor`'s own `tool_use`
   // handling and by both places a `worker:test-run` row is appended (the
@@ -907,13 +908,23 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const pendingBash = new Map()
     let turns = 0
     let fired = false
+    let observedAsked = false
     const tail = []
     const wantsSupervisor = supervisorMode === 'record-only' && typeof judge.readSupervisor === 'function'
     const dispatchStartedAt = Date.now()
     const observed = observedFor(label)
+    const watch = makeObservedWatch({ read, appendEvent, observedEnabled, minElapsedMs, label, task: taskId })
+    const watchFacts = () => observedWork({
+      tools: observed.tools, examRuns: observed.examRuns,
+      taskFiles: (task && task.files) || [], startedAt: dispatchStartedAt, now: Date.now(),
+    })
     return (message) => {
       if (!message) return
       const blocks = (message.message && message.message.content) || []
+      if (message.type === 'result') {
+        supervisorTicks.push(watch.end(watchFacts()))
+        return
+      }
       if (message.type === 'assistant') {
         for (const b of blocks) {
           if (!b) continue
@@ -928,17 +939,18 @@ export async function runEngine (rawArgs = {}, deps = {}) {
           if (b.type === 'text') tail.push(String(b.text))
         }
         turns += 1
-        if (!wantsSupervisor || fired || turns < SUPERVISOR_TICK_TURNS) return
-        fired = true
-        supervisorTicks.push(
-          supervisorTick({
-            read, appendEvent, observedEnabled,
-            label, task: taskId, transcript: tail.slice(-8).join('\n').slice(-4000),
-            observed: observedWork({
-              tools: observed.tools, examRuns: observed.examRuns,
-              taskFiles: (task && task.files) || [], startedAt: dispatchStartedAt, now: Date.now(),
-            }),
-          }))
+        if (wantsSupervisor && !fired && turns >= SUPERVISOR_TICK_TURNS) {
+          fired = true
+          supervisorTicks.push(
+            supervisorTick({
+              read, appendEvent,
+              label, task: taskId, transcript: tail.slice(-8).join('\n').slice(-4000),
+            }))
+        }
+        if (!observedAsked && turns >= SUPERVISOR_TICK_TURNS) {
+          supervisorTicks.push(
+            watch.turn(watchFacts()).then((r) => { if (r === 'asked' || r === 'off') observedAsked = true }))
+        }
         return
       }
       if (message.type === 'user') {
