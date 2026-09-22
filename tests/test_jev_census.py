@@ -440,3 +440,239 @@ def test_leg_k_role_sd_is_the_largest_over_qualifying_roles(tmp_path):
     assert len(line) == 1, proc.stdout
     assert line[0] == "w/k\t4\t0\t2\t0.50\t0.50\t0.20\t-", (
         "(k) [M1] " + proc.stdout)
+
+
+# ================================================================
+# Task: "The census joins each supervisor tick to its worker's end and its
+# task's landing, and reads the alarms per role" (#1218) -- legs (l)-(o),
+# `--ticks` and `--outcomes` over the task's own pinned `run-7` fixture.
+# ================================================================
+
+TICKS_HEADER = ("run\ttask\tlabel\trole\treading\telapsed_ms\tstuck\t"
+               "off_track\tneeds_human\tdone_not_exited\twall_ms\terror\t"
+               "examExit\tfolded")
+
+OUTCOMES_HEADER = ("role\treading\tworkers\tlate\terrored\tmedian_wall_ms\t"
+                   "ticks\tfired\tfired_late\tfired_errored\tfired_clean")
+
+
+def dispatch_start_row(ts, task, label, role):
+    return {"ts": ts, "kind": "dispatch:start", "task": task, "label": label,
+           "role": role}
+
+
+def supervisor_row(ts, task, label, stuck, off_track, needs_human,
+                   done_not_exited):
+    return {"ts": ts, "kind": "supervisor", "task": task, "label": label,
+           "answers": {"stuck": noul(stuck), "off_track": noul(off_track),
+                       "needs_human": noul(needs_human),
+                       "done_not_exited": noul(done_not_exited)}}
+
+
+def observed_row(ts, task, label, stuck, off_track, needs_human,
+                 done_not_exited, elapsed_ms):
+    return {"ts": ts, "kind": "supervisor:observed", "task": task,
+           "label": label,
+           "answers": {"stuck": noul(stuck), "off_track": noul(off_track),
+                       "needs_human": noul(needs_human),
+                       "done_not_exited": noul(done_not_exited)},
+           "observed": {"elapsed_ms": elapsed_ms}}
+
+
+def observed_skipped_row(ts, task, label, elapsed_ms, min_elapsed_ms,
+                         skipped="under floor"):
+    """A `supervisor:observed` row that never fired -- carries `skipped` and
+    no `answers`, so it is not a tick (Context)."""
+    return {"ts": ts, "kind": "supervisor:observed", "task": task,
+           "label": label, "skipped": skipped, "elapsed_ms": elapsed_ms,
+           "min_elapsed_ms": min_elapsed_ms}
+
+
+def dispatch_end_row(ts, task, label, role, wall_ms, error):
+    return {"ts": ts, "kind": "dispatch:end", "task": task, "label": label,
+           "role": role, "wall_ms": wall_ms, "cost_usd": 0, "error": error}
+
+
+def landing_row(ts, task, exam_exit):
+    return {"ts": ts, "kind": "landing", "task": task, "k": 1,
+           "examExit": exam_exit, "claim": 0.86, "coverage": [1, 1, 0.16],
+           "candidateSha": "a072c3dbd83ed22d94a4513be83fa97fd8ffbbf8",
+           "wall_ms": 52475}
+
+
+def build_join_fixture(root):
+    """`run-7/events.jsonl`, verbatim from the task's own pinned fixture: three
+    `impl` dispatches (one clean, one late+folded, one errored+unfolded) and
+    one `referee` dispatch whose only supervisor row never fired. No `jev` row
+    anywhere."""
+    rows = [
+        dispatch_start_row("2026-09-22T00:00:00.000Z", "1", "impl:1:0",
+                          "implement"),
+        supervisor_row("2026-09-22T00:00:20.000Z", "1", "impl:1:0",
+                       0.9, 0.1, 0.1, 0.1),
+        observed_row("2026-09-22T00:00:20.500Z", "1", "impl:1:0",
+                    0.2, 0.1, 0.1, 0.1, 20500),
+        dispatch_end_row("2026-09-22T00:00:30.500Z", "1", "impl:1:0",
+                        "implement", 30000, None),
+        landing_row("2026-09-22T00:00:31.000Z", "1", 0),
+        dispatch_start_row("2026-09-22T00:01:00.000Z", "2", "impl:2:0",
+                          "implement"),
+        supervisor_row("2026-09-22T00:01:20.000Z", "2", "impl:2:0",
+                       0.3, 0.1, 0.1, 0.1),
+        observed_row("2026-09-22T00:01:20.500Z", "2", "impl:2:0",
+                    0.85, 0.1, 0.1, 0.1, 20500),
+        dispatch_end_row("2026-09-22T00:04:40.500Z", "2", "impl:2:0",
+                        "implement", 200000, None),
+        landing_row("2026-09-22T00:04:41.000Z", "2", 1),
+        dispatch_start_row("2026-09-22T00:05:00.000Z", "3", "impl:3:0",
+                          "implement"),
+        supervisor_row("2026-09-22T00:05:20.000Z", "3", "impl:3:0",
+                       0.1, 0.1, 0.1, 0.1),
+        dispatch_end_row("2026-09-22T00:05:40.000Z", "3", "impl:3:0",
+                        "implement", 40000, "API Error: 529 Overloaded"),
+        dispatch_start_row("2026-09-22T00:06:00.000Z", "1", "referee:1",
+                          "referee"),
+        observed_skipped_row("2026-09-22T00:06:00.100Z", "1", "referee:1",
+                            1500, 120000),
+        dispatch_end_row("2026-09-22T00:06:01.500Z", "1", "referee:1",
+                        "referee", 1500, "API Error: 529 Overloaded"),
+    ]
+    return write_run(root, 7, rows)
+
+
+# ------------------------------------------------------------------- leg (l)
+
+def test_leg_l_ticks_header_and_first_two_lines(tmp_path):
+    """(l) [M1]: `--ticks` over the fixture prints the tick header, exactly
+    five body lines between header and trailer, and the first two are
+    byte-equal to the narrated and observed readings of `impl:1:0` -- the
+    clean, folded worker."""
+    root = tmp_path / "joinroot"
+    root.mkdir()
+    build_join_fixture(root)
+    proc = census("--ticks", str(root))
+    assert proc.returncode == 0, (
+        "(l) [M4] --ticks over a readable root exits 0: "
+        + proc.stdout + proc.stderr)
+    out_lines = lines(proc.stdout)
+    assert out_lines[0] == TICKS_HEADER, "(l) [M1] " + proc.stdout
+    body_lines = out_lines[1:-1]
+    assert len(body_lines) == 5, "(l) [M1] " + proc.stdout
+    assert body_lines[0] == (
+        "7\t1\timpl:1:0\timpl\tnarrated\t20000\t0.90\t0.10\t0.10\t0.10\t"
+        "30000\t-\t0\t1"), "(l) [M1] " + proc.stdout
+    assert body_lines[1] == (
+        "7\t1\timpl:1:0\timpl\tobserved\t20500\t0.20\t0.10\t0.10\t0.10\t"
+        "30000\t-\t0\t1"), "(l) [M1] " + proc.stdout
+
+
+# ------------------------------------------------------------------- leg (m)
+
+def test_leg_m_ticks_join_worker_end_and_task_landing(tmp_path):
+    """(m) [M2]: the third and fifth tick lines join the same run+label's
+    `dispatch:end` (`wall_ms`, `error`) and the same run+task's `landing`
+    (`examExit`, `folded`) -- `impl:2:0` narrated (late worker, folded task,
+    landed) and `impl:3:0` narrated (errored worker, unfolded task, no
+    landing row at all: `examExit` `-`, `folded` `0`)."""
+    root = tmp_path / "joinroot2"
+    root.mkdir()
+    build_join_fixture(root)
+    proc = census("--ticks", str(root))
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    body_lines = lines(proc.stdout)[1:-1]
+    assert len(body_lines) == 5, proc.stdout
+    assert body_lines[2] == (
+        "7\t2\timpl:2:0\timpl\tnarrated\t20000\t0.30\t0.10\t0.10\t0.10\t"
+        "200000\t-\t1\t1"), "(m) [M2] " + proc.stdout
+    assert body_lines[4] == (
+        "7\t3\timpl:3:0\timpl\tnarrated\t20000\t0.10\t0.10\t0.10\t0.10\t"
+        "40000\tAPI Error: 529 Overloaded\t-\t0"), "(m) [M2] " + proc.stdout
+
+
+# ------------------------------------------------------------------- leg (n)
+
+def test_leg_n_outcomes_ticks_in_band_against_late_and_errored_workers(
+       tmp_path):
+    """(n) [M3]: `--outcomes` over the fixture prints the outcomes header,
+    then exactly the four (role, reading) lines the task's own arithmetic
+    gives, in role-then-reading order: `impl` walls 30000/200000/40000 median
+    to 40000 (late above 80000, so `impl:2:0` is the one late worker and
+    `impl:3:0` the one errored); `impl` narrated fires once
+    (`impl:1:0` at 0.9, worker clean -- `fired_clean`), `impl` observed fires
+    once (`impl:2:0` at 0.85, worker late -- `fired_late`); `referee` has one
+    worker (errored) and no tick of either reading."""
+    root = tmp_path / "joinroot3"
+    root.mkdir()
+    build_join_fixture(root)
+    proc = census("--outcomes", str(root))
+    assert proc.returncode == 0, (
+        "(n) [M4] --outcomes over a readable root exits 0: "
+        + proc.stdout + proc.stderr)
+    out_lines = lines(proc.stdout)
+    assert out_lines[0] == OUTCOMES_HEADER, "(n) [M3] " + proc.stdout
+    body_lines = out_lines[1:-1]
+    assert body_lines == [
+        "impl\tnarrated\t3\t1\t1\t40000\t3\t1\t0\t0\t1",
+        "impl\tobserved\t3\t1\t1\t40000\t2\t1\t1\t0\t0",
+        "referee\tnarrated\t1\t0\t1\t1500\t0\t0\t0\t0\t0",
+        "referee\tobserved\t1\t0\t1\t1500\t0\t0\t0\t0\t0",
+    ], "(n) [M3] " + proc.stdout
+
+
+# ------------------------------------------------------------------- leg (o)
+
+def test_leg_o_ticks_and_outcomes_read_a_run_with_no_jev_rows(tmp_path):
+    """(o) [M4]: under either flag a run is read whenever its `events.jsonl`
+    exists -- the `no jev rows` skip belongs to the question table only -- so
+    both `--ticks` and `--outcomes` over a fixture with no `jev` row at all
+    end with `runs: n=1 read=7 skipped=none`."""
+    root = tmp_path / "joinroot4"
+    root.mkdir()
+    build_join_fixture(root)
+    ticks_proc = census("--ticks", str(root))
+    outcomes_proc = census("--outcomes", str(root))
+    assert ticks_proc.returncode == 0, (
+        "(o) [M4] " + ticks_proc.stdout + ticks_proc.stderr)
+    assert outcomes_proc.returncode == 0, (
+        "(o) [M4] " + outcomes_proc.stdout + outcomes_proc.stderr)
+    assert lines(ticks_proc.stdout)[-1] == "runs: n=1 read=7 skipped=none", (
+        "(o) [M4] " + ticks_proc.stdout)
+    assert lines(outcomes_proc.stdout)[-1] == (
+        "runs: n=1 read=7 skipped=none"), "(o) [M4] " + outcomes_proc.stdout
+
+
+def test_leg_o_both_flags_together_exit_2_with_one_stderr_line(tmp_path):
+    """(o) [M4]: `--ticks` and `--outcomes` given together print exactly one
+    line on stderr, refuse with the exact shape `_fetch_bounds` uses
+    elsewhere in this script, and exit 2 with nothing on stdout."""
+    root = tmp_path / "joinroot5"
+    root.mkdir()
+    build_join_fixture(root)
+    proc = census("--ticks", "--outcomes", str(root))
+    assert proc.returncode == 2, (
+        "(o) [M4] both flags together exit 2, got "
+        f"{proc.returncode}: {proc.stdout + proc.stderr}")
+    assert proc.stdout == "", "(o) [M4] nothing on stdout: " + repr(proc.stdout)
+    err_lines = stderr_lines(proc)
+    assert len(err_lines) == 1, (
+        "(o) [M4] exactly one stderr line: " + repr(proc.stderr))
+    assert err_lines[0] == (
+        "jev-census: --ticks and --outcomes are two tables; ask for one"
+    ), "(o) [M4] " + repr(proc.stderr)
+
+
+def test_leg_o_neither_flag_is_unchanged_at_base(tmp_path):
+    """(o) [M4]: with neither flag, the same fixture prints exactly the
+    question header line followed by the BASE trailer `runs: n=0 read=
+    skipped=7(no jev rows)` -- the question table's own `no jev rows` skip is
+    untouched by the new flags."""
+    root = tmp_path / "joinroot6"
+    root.mkdir()
+    build_join_fixture(root)
+    proc = census(str(root))
+    assert proc.returncode == 0, (
+        "(o) [M4] " + proc.stdout + proc.stderr)
+    assert lines(proc.stdout) == [
+        HEADER,
+        "runs: n=0 read= skipped=7(no jev rows)",
+    ], "(o) [M4] " + proc.stdout

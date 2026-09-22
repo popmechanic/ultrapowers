@@ -48,6 +48,7 @@ import os
 import re
 import statistics
 import sys
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -64,6 +65,16 @@ CONSTANT_N_MIN = 5
 
 HEADER = ["question", "n", "unanswered", "in_band", "share", "mean",
          "role_sd", "flag"]
+
+TICKS_HEADER = ["run", "task", "label", "role", "reading", "elapsed_ms",
+               "stuck", "off_track", "needs_human", "done_not_exited",
+               "wall_ms", "error", "examExit", "folded"]
+
+OUTCOMES_HEADER = ["role", "reading", "workers", "late", "errored",
+                   "median_wall_ms", "ticks", "fired", "fired_late",
+                   "fired_errored", "fired_clean"]
+
+DEFAULT_STUCK = 0.8
 
 
 # --- folding and value reading ----------------------------------------------
@@ -156,6 +167,252 @@ def merge_stats(into, stats):
             target["role_values"].setdefault(role, []).extend(values)
 
 
+# --- one run's supervisor ticks (--ticks, --outcomes) -----------------------
+
+def _parse_ts(ts):
+    """The `ts` string as a UTC `datetime`, or None when it doesn't parse."""
+    if not isinstance(ts, str):
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _elapsed_ms(start_ts, tick_ts):
+    """Whole milliseconds from `start_ts` to `tick_ts`, or None when either
+    doesn't parse."""
+    start = _parse_ts(start_ts)
+    tick = _parse_ts(tick_ts)
+    if start is None or tick is None:
+        return None
+    return int(round((tick - start).total_seconds() * 1000))
+
+
+def _numeric_cell(value):
+    """A number read as a plain int/float, or None -- distinct from
+    `numeric_of`, which also reads the noul answer shape."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    return None
+
+
+def _load_rows(events_path):
+    rows = []
+    try:
+        handle = open(events_path, encoding="utf-8")
+    except OSError:
+        return rows
+    with handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(row, dict):
+                rows.append(row)
+    return rows
+
+
+def read_ticks(events_path):
+    """One `events.jsonl`'s supervisor ticks -- a `supervisor` row (reading
+    `narrated`) or a `supervisor:observed` row that carries `answers`
+    (reading `observed`); a `supervisor:observed` row without `answers` (the
+    `skipped` shape) is not a tick. Each dict carries the join: the worker's
+    `wall_ms`/`error` off the same run+label's last `dispatch:end` row, and
+    the task's `examExit`/`folded` off the same run+task's landing row. Does
+    not carry `run` -- the caller stamps that on, one run at a time."""
+    rows = _load_rows(events_path)
+
+    last_end = {}
+    for row in rows:
+        if row.get("kind") == "dispatch:end":
+            last_end[row.get("label")] = row
+
+    last_landing = {}
+    for row in rows:
+        if row.get("kind") == "landing":
+            last_landing[row.get("task")] = row
+
+    ticks = []
+    last_start_ts = {}
+    for row in rows:
+        kind = row.get("kind")
+        if kind == "dispatch:start":
+            last_start_ts[row.get("label")] = row.get("ts")
+            continue
+        if kind == "supervisor":
+            reading = "narrated"
+        elif kind == "supervisor:observed" and isinstance(row.get("answers"), dict):
+            reading = "observed"
+        else:
+            continue
+
+        task = row.get("task")
+        label = row.get("label")
+        answers = row.get("answers") or {}
+        scores = {key: numeric_of(answers.get(key)) for key in
+                 ("stuck", "off_track", "needs_human", "done_not_exited")}
+
+        if reading == "observed":
+            observed = row.get("observed") or {}
+            elapsed_ms = _numeric_cell(observed.get("elapsed_ms"))
+        else:
+            elapsed_ms = _elapsed_ms(last_start_ts.get(label), row.get("ts"))
+
+        end_row = last_end.get(label)
+        wall_ms = None
+        error = None
+        if end_row is not None:
+            wall_ms = _numeric_cell(end_row.get("wall_ms"))
+            error = end_row.get("error")
+
+        landing = last_landing.get(task)
+        folded = landing is not None
+        exam_exit = _numeric_cell(landing.get("examExit")) if landing else None
+
+        ticks.append({
+            "task": task,
+            "label": label,
+            "role": role_of(label),
+            "reading": reading,
+            "elapsed_ms": elapsed_ms,
+            "stuck": scores["stuck"],
+            "off_track": scores["off_track"],
+            "needs_human": scores["needs_human"],
+            "done_not_exited": scores["done_not_exited"],
+            "wall_ms": wall_ms,
+            "error": error,
+            "examExit": exam_exit,
+            "folded": folded,
+        })
+    return ticks
+
+
+def read_ends(events_path):
+    """One `events.jsonl`'s `dispatch:end` rows, each a worker: `role`
+    (`role_of(label)`), `wall_ms` (a number or None) and `error`."""
+    ends = []
+    for row in _load_rows(events_path):
+        if row.get("kind") != "dispatch:end":
+            continue
+        ends.append({
+            "role": role_of(row.get("label")),
+            "wall_ms": _numeric_cell(row.get("wall_ms")),
+            "error": row.get("error"),
+        })
+    return ends
+
+
+def _int_or_dash(value):
+    return "-" if value is None else str(int(value))
+
+
+def _score_cell(value):
+    return "-" if value is None else "%.2f" % value
+
+
+def _error_cell(error):
+    if error is None:
+        return "-"
+    text = str(error).replace("\t", " ").replace("\n", " ")
+    return text[:60]
+
+
+def render_tick(tick):
+    """One `--ticks` line for a tick dict carrying `run` (stamped on by the
+    caller) plus every key `read_ticks` produces."""
+    return "\t".join([
+        str(tick["run"]),
+        str(tick["task"]),
+        str(tick["label"]),
+        str(tick["role"]),
+        tick["reading"],
+        _int_or_dash(tick["elapsed_ms"]),
+        _score_cell(tick["stuck"]),
+        _score_cell(tick["off_track"]),
+        _score_cell(tick["needs_human"]),
+        _score_cell(tick["done_not_exited"]),
+        _int_or_dash(tick["wall_ms"]),
+        _error_cell(tick["error"]),
+        _int_or_dash(tick["examExit"]),
+        "1" if tick["folded"] else "0",
+    ])
+
+
+def outcome_rows(ticks, ends, stuck=DEFAULT_STUCK):
+    """One `--outcomes` line per (role, reading) pair, for every role seen on
+    a `dispatch:end` row (`ends`) and both readings, sorted role then
+    reading."""
+    workers = {}
+    walls_by_role = {}
+    errored_count = {}
+    for end in ends:
+        role = end["role"]
+        workers[role] = workers.get(role, 0) + 1
+        if end["wall_ms"] is not None:
+            walls_by_role.setdefault(role, []).append(end["wall_ms"])
+        if end.get("error") is not None:
+            errored_count[role] = errored_count.get(role, 0) + 1
+
+    median = {role: statistics.median(vals)
+             for role, vals in walls_by_role.items()}
+
+    late_count = {}
+    for end in ends:
+        role = end["role"]
+        m = median.get(role)
+        if m is not None and end["wall_ms"] is not None and end["wall_ms"] > 2 * m:
+            late_count[role] = late_count.get(role, 0) + 1
+
+    empty_entry = {"ticks": 0, "fired": 0, "fired_late": 0,
+                   "fired_errored": 0, "fired_clean": 0}
+    tick_stats = {}
+    for tick in ticks:
+        key = (tick["role"], tick["reading"])
+        entry = tick_stats.setdefault(key, dict(empty_entry))
+        entry["ticks"] += 1
+        stuck_val = tick["stuck"]
+        if stuck_val is None or stuck_val < stuck:
+            continue
+        entry["fired"] += 1
+        m = median.get(tick["role"])
+        is_late = (m is not None and tick["wall_ms"] is not None
+                  and tick["wall_ms"] > 2 * m)
+        is_errored = tick["error"] is not None
+        if is_late:
+            entry["fired_late"] += 1
+        elif is_errored:
+            entry["fired_errored"] += 1
+        else:
+            entry["fired_clean"] += 1
+
+    rows = []
+    for role in sorted(workers):
+        for reading in ("narrated", "observed"):
+            entry = tick_stats.get((role, reading), empty_entry)
+            m = median.get(role)
+            median_cell = "-" if m is None else str(int(round(m)))
+            rows.append("\t".join([
+                role, reading,
+                str(workers.get(role, 0)),
+                str(late_count.get(role, 0)),
+                str(errored_count.get(role, 0)),
+                median_cell,
+                str(entry["ticks"]),
+                str(entry["fired"]),
+                str(entry["fired_late"]),
+                str(entry["fired_errored"]),
+                str(entry["fired_clean"]),
+            ]))
+    return rows
+
+
 # --- finding run directories -------------------------------------------------
 
 def find_run_dirs(paths):
@@ -244,7 +501,22 @@ def main(argv=None):
                         help="where --fetch writes the runs it reads")
     parser.add_argument("--gh", default="gh", metavar="BIN",
                         help="the gh binary (or command) to run; default `gh`")
+    parser.add_argument("--ticks", action="store_true",
+                        help="print one line per supervisor tick, joined to "
+                             "its worker's end and its task's landing")
+    parser.add_argument("--outcomes", action="store_true",
+                        help="print one line per role/reading, reading the "
+                             "alarms against late and errored workers")
+    parser.add_argument("--stuck", type=float, default=DEFAULT_STUCK,
+                        metavar="N",
+                        help="the stuck score that arms a tick for "
+                             "--outcomes (default %.1f)" % DEFAULT_STUCK)
     args = parser.parse_args(argv)
+
+    if args.ticks and args.outcomes:
+        print("jev-census: --ticks and --outcomes are two tables; ask for one",
+              file=sys.stderr)
+        return 2
 
     # entries: an ordered list of (run number, directory-or-None). None marks
     # a run that never produced an events.jsonl at all (M4) -- distinct from
@@ -267,6 +539,7 @@ def main(argv=None):
         entries = sorted(find_run_dirs(args.paths).items())
 
     merged = {}
+    all_ticks, all_ends = [], []
     read, skipped = [], []
     for number, directory in entries:
         if directory is None:
@@ -276,6 +549,15 @@ def main(argv=None):
         if not events_path.is_file():
             skipped.append("%d(no events.jsonl)" % number)
             continue
+        if args.ticks or args.outcomes:
+            read.append(number)
+            run_ticks = read_ticks(events_path)
+            for tick in run_ticks:
+                tick["run"] = number
+            all_ticks.extend(run_ticks)
+            if args.outcomes:
+                all_ends.extend(read_ends(events_path))
+            continue
         saw_jev, stats = read_run(events_path)
         if not saw_jev:
             skipped.append("%d(no jev rows)" % number)
@@ -283,9 +565,18 @@ def main(argv=None):
         read.append(number)
         merge_stats(merged, stats)
 
-    print("\t".join(HEADER))
-    for question in sorted(merged):
-        print(render_row(question, merged[question]))
+    if args.ticks:
+        print("\t".join(TICKS_HEADER))
+        for tick in all_ticks:
+            print(render_tick(tick))
+    elif args.outcomes:
+        print("\t".join(OUTCOMES_HEADER))
+        for row in outcome_rows(all_ticks, all_ends, stuck=args.stuck):
+            print(row)
+    else:
+        print("\t".join(HEADER))
+        for question in sorted(merged):
+            print(render_row(question, merged[question]))
     print("runs: n=%d read=%s skipped=%s" % (
         len(read),
         ",".join(str(n) for n in read),
