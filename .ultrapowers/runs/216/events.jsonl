@@ -14,3 +14,5 @@
 {"ts":"2026-09-22T19:52:42.424Z","kind":"jev","site":"supervisor","task":"1","label":"exam:1","keys":["stuck","off_track","needs_human","done_not_exited"],"values":{"stuck":{"type":"noul","noul":0.32},"off_track":{"type":"noul","noul":0.37},"needs_human":{"type":"noul","noul":0.22},"done_not_exited":{"type":"noul","noul":0.11}},"state_bytes":45,"ms":206,"answered":true}
 {"ts":"2026-09-22T19:52:42.425Z","kind":"supervisor","task":"1","label":"exam:1","answers":{"stuck":{"type":"noul","noul":0.32},"off_track":{"type":"noul","noul":0.37},"needs_human":{"type":"noul","noul":0.22},"done_not_exited":{"type":"noul","noul":0.11}}}
 {"ts":"2026-09-22T19:52:42.648Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/fleet/tests/test_sims_are_hermetic.mjs"}
+{"ts":"2026-09-22T19:54:19.441Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Read","target":"/home/exedev/run/exam-1/fleet/tests/test_factory_record.mjs"}
+{"ts":"2026-09-22T19:54:22.059Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"tail -30 fleet/tests/test_factory_record.mjs"}
