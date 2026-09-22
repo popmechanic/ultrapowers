@@ -830,3 +830,6 @@
 {"ts":"2026-09-22T18:22:28.450Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"cd /home/exedev/run/impl-3-0\nnode fleet/tests/test_setup_script.mjs 2>&1 | tail -5"}
 {"ts":"2026-09-22T18:22:32.417Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/boot.sh"}
 {"ts":"2026-09-22T18:22:39.360Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/boot.sh"}
+{"ts":"2026-09-22T18:25:17.078Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-22T18:25:37.238Z","kind":"worker:test-run","task":"3","label":"impl:3:redispatch","cmd":"node fleet/tests/test_factory_preflight.mjs && node fleet/tests/test_factory_boot.mjs","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-22T18:25:41.900Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"timeout 60 node fleet/tests/test_factory_preflight.mjs; echo \"EXIT:$?\""}
