@@ -474,3 +474,17 @@
 {"ts":"2026-09-22T17:38:47.109Z","kind":"worker:test-run","task":"3","label":"impl:3:1","cmd":"time (timeout 30 node fleet/tests/test_factory_preflight.mjs >/tmp/out.log 2>&1); echo done","exit":null,"red":null,"via":"bash"}
 {"ts":"2026-09-22T17:38:59.364Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"time (timeout 30 node fleet/tests/test_factory_preflight.mjs >/tmp/out2.log 2>&1); echo done; tail -5 /tmp/out2.log"}
 {"ts":"2026-09-22T17:39:19.546Z","kind":"worker:test-run","task":"3","label":"impl:3:1","cmd":"time (timeout 30 node fleet/tests/test_factory_preflight.mjs >/tmp/out2.log 2>&1); echo done; tail -5 /tmp/out2.log","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T17:39:50.259Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Read","target":"/home/exedev/run/impl-3-1/factory/boot.sh"}
+{"ts":"2026-09-22T17:39:59.119Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Edit","target":"/home/exedev/run/impl-3-1/factory/boot.sh"}
+{"ts":"2026-09-22T17:40:06.728Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:40:10.372Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Edit","target":"/home/exedev/run/impl-3-1/factory/boot.sh"}
+{"ts":"2026-09-22T17:40:11.794Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:40:13.225Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Edit","target":"/home/exedev/run/impl-3-1/factory/boot.sh"}
+{"ts":"2026-09-22T17:40:14.849Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:40:16.052Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:40:16.970Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Edit","target":"/home/exedev/run/impl-3-1/factory/boot.sh"}
+{"ts":"2026-09-22T17:40:19.478Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"grep -n \"gate-verdicts\\|ensure_git_identity\" /home/exedev/run/impl-3-1/factory/boot.sh"}
+{"ts":"2026-09-22T17:40:21.104Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Read","target":"/home/exedev/run/impl-3-1/factory/boot.sh"}
+{"ts":"2026-09-22T17:40:24.354Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Edit","target":"/home/exedev/run/impl-3-1/factory/boot.sh"}
+{"ts":"2026-09-22T17:40:25.752Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"grep -n \"ensure_git_identity\" /home/exedev/run/impl-3-1/factory/boot.sh"}
+{"ts":"2026-09-22T17:40:27.054Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/boot.sh"}
