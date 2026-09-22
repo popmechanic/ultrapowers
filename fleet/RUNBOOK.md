@@ -772,8 +772,10 @@ laptop:
    (untracked): what changed for someone launching a plan, what was read and
    not flipped, the authoring census `totals:` line, and that section as it is.
 4. One hand PR, `chore: version 0.x.y — …`, that bumps `plugin.json` and
-   `marketplace.json` together and the CLAUDE.md Versioning bullet; squash-merge
-   it.
+   `marketplace.json` together and the CLAUDE.md Versioning bullet. The notes
+   are its body, so the section is pasted into the release commit body as it
+   is, beside the prose sizes (`wc -l factory/boot.sh`, `wc -w factory/roles/*.md`).
+   Squash-merge it.
 5. Push a bare tag on the squash commit: `git tag v0.x.y <sha> && git push
    origin v0.x.y`. A tag is a ref only — it is what step 2's window opens at
    next time. No `gh release create`.
