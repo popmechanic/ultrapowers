@@ -56,6 +56,7 @@ examined goes at cut two. Git history holds every one of them.
 - `test_factory_board.mjs` — the board's CLI: the spoke's two files byte for
   byte, the bound-wait's local id, and the run close's Idempotency-Key order
   on a stub hub that never fails the run.
+- `test_factory_tools.mjs` — the worker's in-process tools: `settled` reads its candidates off the worker's own patch at every call, a new file's exports included, and a refusal names what it found.
 The factory's own exams are not here: an unguarded exam lives on its run's evidence tag
 under `.ultrapowers/runs/<N>/exams/`, and a guarded one sits where its plan put it.
 

@@ -1309,8 +1309,15 @@ export async function runEngine (rawArgs = {}, deps = {}) {
    * `testCmd` gets a server with no working `runExam` — `factoryTools` itself
    * answers `run_exam unavailable` for that case (M1) — and a run with no
    * `tools` dep at all (no board) gets no server, exactly as before this task.
+   *
+   * `candidates` is a function, not a list: `settled` (`factory/tools.mjs`)
+   * calls it fresh on every offer, and it re-reads the clone's own working
+   * tree each time — `capture` (the same `git add -A` / `diff --cached` the
+   * landing itself uses, above) against this dispatch's own `anchor` — so a
+   * worker that has just written a new export sees it on its very next call,
+   * with no wait for the patch this dispatch eventually lands.
    */
-  const mcpServersFor = async (taskId, cwd, label) => {
+  const mcpServersFor = async (taskId, cwd, label, anchor) => {
     if (!tools) return null
     const task = tasks.find((t) => t.id === taskId)
     // M3: run_exam runs the same set `measure` does — the task's own
@@ -1329,10 +1336,15 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         return { exit: r.exit, tail }
       }
       : undefined
+    const candidatesFor = async () => {
+      const out = path.join(runDir, 'patch-' + String(label).replace(/:/g, '-') + '-settled.diff')
+      capture(cwd, anchor, out)
+      return candidatesOf(task, fs.readFileSync(out, 'utf8')).names
+    }
     try {
       const server = await tools({
         task: { id: taskId, uid: uidFor(taskId), files: task && task.files },
-        candidates: [], board, runExam,
+        candidates: candidatesFor, board, runExam,
       })
       return server ? { factory: server } : null
     } catch (e) {
@@ -1352,7 +1364,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
    */
   const examine = async (task, anchor) => {
     const examDir = cloneAt('exam-' + task.id, anchor)
-    const mcpServers = await mcpServersFor(task.id, examDir, 'exam:' + task.id)
+    const mcpServers = await mcpServersFor(task.id, examDir, 'exam:' + task.id, anchor)
 
     // M1: a task that names no exam file (`proofTests` empty) gets no
     // examiner at all — no covering reading, no dispatch, no exam-note — just
@@ -1485,7 +1497,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         fs.mkdirSync(path.dirname(path.join(dir, p)), { recursive: true })
         fs.writeFileSync(path.join(dir, p), content)
       }
-      const mcpServers = await mcpServersFor(task.id, dir, label)
+      const mcpServers = await mcpServersFor(task.id, dir, label, anchor)
       const answer = await dispatch({
         role: 'implement', label, taskId: task.id, cwd: dir,
         model, systemPrompt: IMPL_MD, files, mcpServers,
@@ -1636,7 +1648,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       await board.post(task.id, 'redispatch',
         'exam exit ' + best.examExit + ', lowest coverage ' + lowCoverage)
       const redispatchLabel = 'impl:' + task.id + ':redispatch'
-      const redispatchServers = await mcpServersFor(task.id, best.dir, redispatchLabel)
+      const redispatchServers = await mcpServersFor(task.id, best.dir, redispatchLabel, anchor)
       await dispatch({
         role: 'implement', label: redispatchLabel, taskId: task.id, cwd: best.dir,
         model, systemPrompt: IMPL_MD, files, mcpServers: redispatchServers,
@@ -1701,7 +1713,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         })
         if (blocking.length) {
           const fixLabel = 'fix:' + task.id
-          const fixServers = await mcpServersFor(task.id, best.dir, fixLabel)
+          const fixServers = await mcpServersFor(task.id, best.dir, fixLabel, anchor)
           await dispatch({
             role: 'implement', label: fixLabel, taskId: task.id, cwd: best.dir,
             model, systemPrompt: IMPL_MD, files, mcpServers: fixServers,
