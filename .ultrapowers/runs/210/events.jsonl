@@ -143,3 +143,10 @@
 {"ts":"2026-09-22T01:24:48.015Z","kind":"dispatch:start","task":"2","label":"referee:2","role":"referee"}
 {"ts":"2026-09-22T01:27:31.030Z","kind":"dispatch:end","task":"1","label":"referee:1","role":"referee","wall_ms":226811,"cost_usd":0,"error":"Claude Code returned an error result: API Error: 529 Overloaded. This is a server-side issue, usually temporary — try again in a moment. If it persists, check your inference gateway (claude-max.int.exe.xyz)."}
 {"ts":"2026-09-22T01:27:31.030Z","kind":"referee","task":"1","findings":0,"blocking":0,"grades":[]}
+{"ts":"2026-09-22T01:27:31.613Z","kind":"landing","task":"1","k":1,"examExit":0,"claim":0.62,"coverage":[0.23,0.18,0.15,1,1],"candidateSha":"c5dec02600fd6d3861e6fe9c6d703e4946a61606","wall_ms":365211}
+{"ts":"2026-09-22T01:27:31.976Z","kind":"check:line","task":"1","cmd":"git diff --quiet $ULTRA_BASE -- factory/roles factory/board.mjs factory/union.mjs factory/worker.mjs factory/reverify.mjs fleet/fleet-bootstrap.sh skills/ultrapowers/kernel","exit":0,"minor":false}
+{"ts":"2026-09-22T01:27:31.977Z","kind":"fold:verify","task":"1","ran":[{"task":"1","exit":0}],"attempt":1}
+{"ts":"2026-09-22T01:28:30.927Z","kind":"dispatch:end","task":"2","label":"referee:2","role":"referee","wall_ms":222912,"cost_usd":0,"error":"Claude Code returned an error result: API Error: 529 Overloaded. This is a server-side issue, usually temporary — try again in a moment. If it persists, check your inference gateway (claude-max.int.exe.xyz)."}
+{"ts":"2026-09-22T01:28:30.927Z","kind":"referee","task":"2","findings":0,"blocking":0,"grades":[]}
+{"ts":"2026-09-22T01:28:31.384Z","kind":"jev","site":"resolve.union","task":"2","label":null,"keys":["independent_additions","shared_anchor","ordering_matters"],"values":{"independent_additions":{"type":"noul","noul":0.51},"shared_anchor":{"type":"noul","noul":0.28},"ordering_matters":{"type":"noul","noul":0.27}},"state_bytes":134,"ms":210,"answered":true}
+{"ts":"2026-09-22T01:28:31.474Z","kind":"dispatch:start","task":"2","label":"resolve:2:1","role":"resolve"}
