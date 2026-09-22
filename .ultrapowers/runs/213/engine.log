@@ -1,0 +1,10 @@
+Running as unit: fleet-engine-213.service
+impl:1:1: 1 denied edit(s)
+adopted task 1 -> 6db18749  exam=0 k=2
+{"done":true,"adopted":["1"],"head":"6db187494ca05524f35f61beefdbcd127b513c09","wall_ms":1027230,"cost_usd":5.2836726999999994}
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 17min 7.287s
+CPU time consumed: 30.770s
+Memory peak: 2.6M
+Memory swap peak: 0B
