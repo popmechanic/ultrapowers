@@ -1008,3 +1008,7 @@
 {"ts":"2026-09-22T19:00:18.788Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"node fleet/tests/test_factory_boot.mjs 2>&1 | tail -60"}
 {"ts":"2026-09-22T19:00:19.157Z","kind":"worker:test-run","task":"3","label":"impl:3:fold","cmd":"node fleet/tests/test_factory_boot.mjs 2>&1 | tail -60","exit":null,"red":null,"via":"bash"}
 {"ts":"2026-09-22T19:00:22.426Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-implement-3-3/fleet/tests/test_factory_boot.mjs"}
+{"ts":"2026-09-22T19:01:05.024Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-implement-3-3/factory/boot.sh"}
+{"ts":"2026-09-22T19:01:35.707Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"FIXTURE_PLAN\\|kata.json\\|KATA_BLOB\" fleet/tests/test_factory_boot.mjs | head -30"}
+{"ts":"2026-09-22T19:01:35.745Z","kind":"worker:test-run","task":"3","label":"impl:3:fold","cmd":"grep -n \"FIXTURE_PLAN\\|kata.json\\|KATA_BLOB\" fleet/tests/test_factory_boot.mjs | head -30","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T19:01:46.087Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-implement-3-3/fleet/tests/test_factory_boot.mjs"}
