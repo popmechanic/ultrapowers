@@ -453,3 +453,9 @@
 {"ts":"2026-09-22T17:28:19.698Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"node -e '\nconst { spawnSync } = require(\"child_process\");\nlet fired = false;\nsetTimeout(() => { fired = true; console.error(\"TIMER FIRED\"); }, 500);\nconst start = Date.now();\nspawnSync(\"sleep\", [\"2\"])"}
 {"ts":"2026-09-22T17:28:37.340Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"cat > /tmp/childfetch2.mjs <<'EOF'\ntry {\n  const res = await fetch(process.argv[2], { signal: AbortSignal.timeout(3000) })\n  console.log('OK', res.status, await res.text())\n} catch (e) {\n  console.log"}
 {"ts":"2026-09-22T17:28:59.517Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/preflight.mjs"}
+{"ts":"2026-09-22T17:29:23.648Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/preflight.mjs"}
+{"ts":"2026-09-22T17:29:26.558Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/preflight.mjs"}
+{"ts":"2026-09-22T17:29:27.432Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-22T17:29:47.580Z","kind":"worker:test-run","task":"3","label":"impl:3:1","cmd":"node fleet/tests/test_factory_preflight.mjs && node fleet/tests/test_factory_boot.mjs","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-22T17:29:47.581Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"time node fleet/tests/test_factory_preflight.mjs 2>&1 | tail -20"}
+{"ts":"2026-09-22T17:30:07.733Z","kind":"worker:test-run","task":"3","label":"impl:3:0","cmd":"time node fleet/tests/test_factory_preflight.mjs 2>&1 | tail -20","exit":null,"red":null,"via":"bash"}
