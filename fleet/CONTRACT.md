@@ -498,8 +498,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     as `claude-max`'s bearer SERVES INFERENCE (same query, structured output, 2.1 s) and passes the
     boot's first gate (`claude auth status` → `authMethod: oauth_token`, `apiProvider: firstParty`),
     but `GET /api/oauth/usage` through the proxy is 403 `oauth_scope_insufficient`, required scope
-    `user:profile`, with a `"type":"error"` body — exactly the shape `factory/boot.sh`'s
-    `bearer_probe` classifies as a dead credential, so it would PARK EVERY RUN at boot. The token is
+    `user:profile`, with a `"type":"error"` body — exactly the shape `factory/preflight.mjs`
+    classifies as a dead credential, so it would PARK EVERY RUN at boot. The token is
     inference-scoped by construction. Retiring the four-hour refresh and the revocation trap of
     runs 92/100/103 therefore costs one change to the bearer probe, not zero (2026-09-17; #1131
     probe 3).
