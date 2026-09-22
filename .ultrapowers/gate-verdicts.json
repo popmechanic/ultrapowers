@@ -1,0 +1,60 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "97ab5832e253aea26b2db4da8473bf33b82a4b7e89b8f4c2aa7f4bf715b7431b",
+      "verdict": "pass",
+      "reason": "Every clause M1-M4 is cited by a leg that would fail if its fact were false (byte-exact lines, exact body counts, exit codes, empty stdout, one stderr line, trailers), and the pinned literals compute consistently: impl median wall of {30000, 200000, 40000} is 40000 so late (>80000) is 1 and errored is 1, ticks 3 narrated + 2 observed match the five body lines, fired splits sum to fired in both rows, cell counts match both headers (14 and 11), and the no-flag trailer is consistent with the base excerpts."
+    },
+    "2": {
+      "hash": "ff9d7e47f0c216e5191cedf095429a4b48a93a5737f0938757d845a831c6ec08",
+      "verdict": "pass",
+      "reason": "Every clause M1-M4 is cited by a leg and every pinned literal is satisfiable: the M1 truth table, the M2/M3 row counts (4 on one throw, 2 on boom/one-turn/value-0, 4 on two throws) and sleep counts are mutually consistent, the base test_factory_refold_dispatch.mjs pins nothing opposite (its throwing workers are non-gateway strings, so two rows still hold), and M4's computable facts each have a Run: prover cited by leg (d) while the referee row's key set is read against the diff."
+    }
+  },
+  "tally": {
+    "dispatched": 2,
+    "rejected": 0,
+    "rounds": 1,
+    "base": "73ea89ecc6bec6f05202d6994798de2b3feecb19",
+    "question": "facts-only (experiment, rollback the old sentence)"
+  },
+  "authoring": {
+    "minutes": 18,
+    "probes": 0,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Where do you want to start this session?",
+        "options": [
+          "Both plans, side by side",
+          "Plan E alone first",
+          "Read the record first, no launch"
+        ],
+        "recommended": "Both plans, side by side",
+        "picked": "Both plans, side by side"
+      },
+      {
+        "question": "Supervisor claim and summary",
+        "options": [
+          "Confirm as drafted",
+          "Confirm, retry only, drop the census join"
+        ],
+        "recommended": "Confirm as drafted",
+        "picked": "Confirm as drafted"
+      },
+      {
+        "question": "Supervisor lane",
+        "options": [
+          "Ultrapowers",
+          "Subagent-Driven",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers"
+      }
+    ]
+  }
+}
