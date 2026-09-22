@@ -1,0 +1,55 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "7c44a37b2eaf8f27bfef29011837234ae8dd7233a6b97cfe8f27727c22537a9d",
+      "verdict": "pass",
+      "reason": "Every Machine clause M1-M6 is carried by a leg or Run: that would go red if its fact were false; the no-clauseFacts BASE shape M4 pins is what judge.mjs lines 158-193 hold at BASE; no clause is uncited, no leg cites a missing clause, and the one absent path is the exam this task creates."
+    }
+  },
+  "tally": {
+    "dispatched": 1,
+    "rejected": 0,
+    "rounds": 1,
+    "base": "73ea89ecc6bec6f05202d6994798de2b3feecb19",
+    "question": "facts-only (experiment, rollback the old sentence)"
+  },
+  "authoring": {
+    "minutes": 16,
+    "probes": 0,
+    "routing": {
+      "branch": "inline",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Where do you want to start this session?",
+        "options": [
+          "Both plans, side by side",
+          "Plan E alone first",
+          "Read the record first, no launch"
+        ],
+        "recommended": "Both plans, side by side",
+        "picked": "Both plans, side by side"
+      },
+      {
+        "question": "Plan E claim and summary",
+        "options": [
+          "Confirm as drafted",
+          "Confirm, but drop the per-clause half"
+        ],
+        "recommended": "Confirm as drafted",
+        "picked": "Confirm as drafted"
+      },
+      {
+        "question": "Plan E lane",
+        "options": [
+          "Ultrapowers",
+          "Inline",
+          "Subagent-Driven"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers"
+      }
+    ]
+  }
+}
