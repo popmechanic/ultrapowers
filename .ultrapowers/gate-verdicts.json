@@ -1,0 +1,54 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "9b6768e557dc212743486f93f0c580fb1b1d985a3d00eb46cfe81a885db4ea24",
+      "verdict": "pass",
+      "reason": "M1 and M2 each have a leg (a, b) that would fail if model/models were wrong, M2's pinned order ['claude-haiku-5', 'claude-opus-5-5'] is the correct ascending string sort of the two keys, M3 is a shape clause read at landing and cited by (c), every path and symbol named exists at BASE, and nothing in the base excerpts pins the opposite."
+    }
+  },
+  "tally": {
+    "dispatched": 2,
+    "rejected": 0,
+    "rounds": 2,
+    "base": "e6bd702a221a4ff1f5afefb735e6ab868917e846",
+    "question": "facts-only (experiment, rollback the old sentence)"
+  },
+  "authoring": {
+    "minutes": 14,
+    "probes": 0,
+    "routing": {
+      "branch": "inline",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Confirm",
+          "Alternate sentence"
+        ],
+        "recommended": "Confirm",
+        "picked": "Confirm"
+      },
+      {
+        "question": "Execute",
+        "options": [
+          "Ultrapowers, all four serial",
+          "Subagent-Driven",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers, all four serial",
+        "picked": "Ultrapowers, all four serial"
+      }
+    ]
+  },
+  "history": [
+    {
+      "round": 1,
+      "task": "1",
+      "hash": "8268e55736c8e88de809466afdfcf2f5628a5a1ff178a090e126901829b1b47b",
+      "verdict": "pass",
+      "note": "the Run: prover on M3 was dropped after this verdict \u2014 a symbol count in source is Jev's reading, not an exam fact"
+    }
+  ]
+}
