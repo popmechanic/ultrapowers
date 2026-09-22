@@ -44,3 +44,4 @@
 {"ts":"2026-09-22T01:23:04.364Z","kind":"landing","task":"2","k":1,"examExit":0,"claim":0.86,"coverage":[1,1,0.16],"candidateSha":"a072c3dbd83ed22d94a4513be83fa97fd8ffbbf8","wall_ms":52475}
 {"ts":"2026-09-22T01:23:04.600Z","kind":"check:line","task":"2","cmd":"git diff --quiet $ULTRA_BASE -- factory/roles factory/board.mjs factory/union.mjs factory/worker.mjs factory/reverify.mjs fleet/fleet-bootstrap.sh skills/ultrapowers/kernel","exit":0,"minor":false}
 {"ts":"2026-09-22T01:23:04.601Z","kind":"fold:verify","task":"2","ran":[],"attempt":1}
+{"ts":"2026-09-22T01:24:51.708Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"sed -n '1,40p' fleet/tests/test_launch_plan_path.mjs"}
