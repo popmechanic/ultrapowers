@@ -264,6 +264,21 @@ export const makeJudge = ({ ask, emit, now = Date.now, questionsPath, policyPath
     }, who)
   }
 
+  /** The fold-red reading: whether a red exam that turned red only after a
+   *  fold is an exam defect — an exact-shape assertion broken by a field the
+   *  folding patch added — graded against `policy.fold.attribution.t_exam_defect`
+   *  (never a literal here; absent, the comparison is false). */
+  const foldRedQuestions = setQuestions('fold_red')
+  const tExamDefect = num(((((policy.fold || {}).attribution || {}).t_exam_defect) || {}).value)
+  const readFoldRed = async ({ assertion, hunks, who } = {}) => {
+    const questions = { exact_shape_broken: foldRedQuestions.exact_shape_broken }
+    return askOnce('fold_red', { assertion, hunks }, questions, (answers) => {
+      const score = noulOf(answers.exact_shape_broken)
+      if (score === undefined) return undefined
+      return { examDefect: score >= tExamDefect, score }
+    }, who)
+  }
+
   /** The two selection readers: which existing test already covers a clause,
    *  and which tests would catch a regression in a patch. Both key `tests`
    *  into the state as `t0`, `t1`, … by text, so Jev sees the source and
@@ -454,6 +469,7 @@ export const makeJudge = ({ ask, emit, now = Date.now, questionsPath, policyPath
     readSupervisor: flatReader('supervisor'),
     readSupervisorObserved,
     readSettled,
+    readFoldRed,
     readCovering,
     readGuards,
     readPair,

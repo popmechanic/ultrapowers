@@ -289,6 +289,23 @@
       "basis": "judgment",
       "experiment": true,
       "rollback": "enabled = false"
+    },
+    "attribution": {
+      "enabled": true,
+      "hunks_cap": 4000,
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "experiment": true,
+      "rollback": "enabled = false",
+      "t_exam_defect": {
+        "value": 0.8,
+        "n": 0,
+        "window": "none",
+        "basis": "judgment",
+        "experiment": true,
+        "rollback": 1.01
+      }
     }
   },
   "proofs": {
