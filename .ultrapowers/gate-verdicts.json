@@ -1,0 +1,45 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "4be42d8f82589656f57b2fc6be20120c8caf6d78c5836aec1fb80c489cb484ce",
+      "verdict": "pass",
+      "reason": "Every clause is a computable fact with a falsifying leg \u2014 (a) pins M1's heredoc line to null, (b) pins M2's appended `; git status` to a string and the five #1156 legs to their base answers, (c) pins M3's double-quoted string to null \u2014 the literals are mutually satisfiable and the single-quoted remark is a variant of one behaviour needing no extra leg."
+    }
+  },
+  "tally": {
+    "dispatched": 1,
+    "rejected": 0,
+    "rounds": 1,
+    "base": "e6bd702a221a4ff1f5afefb735e6ab868917e846",
+    "question": "facts-only (experiment, rollback the old sentence)"
+  },
+  "authoring": {
+    "minutes": 14,
+    "probes": 0,
+    "routing": {
+      "branch": "inline",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Confirm",
+          "Alternate sentence"
+        ],
+        "recommended": "Confirm",
+        "picked": "Confirm"
+      },
+      {
+        "question": "Execute",
+        "options": [
+          "Ultrapowers, all four serial",
+          "Subagent-Driven",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers, all four serial",
+        "picked": "Ultrapowers, all four serial"
+      }
+    ]
+  }
+}
