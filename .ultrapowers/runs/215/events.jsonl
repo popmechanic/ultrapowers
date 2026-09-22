@@ -833,3 +833,7 @@
 {"ts":"2026-09-22T18:25:17.078Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"mcp__factory__run_exam"}
 {"ts":"2026-09-22T18:25:37.238Z","kind":"worker:test-run","task":"3","label":"impl:3:redispatch","cmd":"node fleet/tests/test_factory_preflight.mjs && node fleet/tests/test_factory_boot.mjs","exit":1,"red":true,"via":"run_exam"}
 {"ts":"2026-09-22T18:25:41.900Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"timeout 60 node fleet/tests/test_factory_preflight.mjs; echo \"EXIT:$?\""}
+{"ts":"2026-09-22T18:26:02.049Z","kind":"worker:test-run","task":"3","label":"impl:3:redispatch","cmd":"timeout 60 node fleet/tests/test_factory_preflight.mjs; echo \"EXIT:$?\"","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T18:26:08.613Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"time (timeout 60 node fleet/tests/test_factory_preflight.mjs 2>&1 | tail -5)"}
+{"ts":"2026-09-22T18:26:28.751Z","kind":"worker:test-run","task":"3","label":"impl:3:redispatch","cmd":"time (timeout 60 node fleet/tests/test_factory_preflight.mjs 2>&1 | tail -5)","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T18:26:45.512Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"timeout 120 node fleet/tests/test_factory_boot.mjs 2>&1 | tail -40; echo \"EXIT:${PIPESTATUS[0]}\""}
