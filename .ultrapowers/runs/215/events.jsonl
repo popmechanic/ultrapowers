@@ -593,3 +593,19 @@
 {"ts":"2026-09-22T17:45:22.988Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/audit.mjs"}
 {"ts":"2026-09-22T17:45:24.688Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"invokedDirectly\\|process.argv\\[1\\]\\|realpath\\|fileURLToPath\" /home/exedev/run/impl-3-0/factory/audit.mjs"}
 {"ts":"2026-09-22T17:45:36.272Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Edit","target":"/home/exedev/run/impl-3-1/factory/preflight.mjs"}
+{"ts":"2026-09-22T17:45:40.612Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Edit","target":"/home/exedev/run/impl-3-1/factory/preflight.mjs"}
+{"ts":"2026-09-22T17:45:42.207Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Read","target":"/home/exedev/run/impl-3-1/factory/preflight.mjs"}
+{"ts":"2026-09-22T17:45:44.265Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Edit","target":"/home/exedev/run/impl-3-1/factory/audit.mjs"}
+{"ts":"2026-09-22T17:45:59.894Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"cd /tmp\ncat > realdir/mod2.mjs <<'EOF'\nconsole.log('import.meta.main', import.meta.main)\nEOF\nnode /tmp/linkdir/factory/mod2.mjs\nnode -e \"console.log(process.version)\""}
+{"ts":"2026-09-22T17:46:15.458Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"cp /tmp/preflight.mjs.orig /home/exedev/run/impl-3-0/factory/preflight.mjs\necho done"}
+{"ts":"2026-09-22T17:46:16.481Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/factory/preflight.mjs"}
+{"ts":"2026-09-22T17:46:18.402Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"grep -n 'audit_line=\"\\$(fleet_node' /home/exedev/run/impl-3-1/factory/boot.sh"}
+{"ts":"2026-09-22T17:46:20.514Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/preflight.mjs"}
+{"ts":"2026-09-22T17:46:20.870Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"real=\"$(cd -P \"/tmp/pf_debug/engines/eee/factory\" && pwd)\"\necho \"$real\"\nnode \"$real/audit.mjs\" /nonexistent.jsonl done 2>&1; echo \"EXIT:$?\""}
+{"ts":"2026-09-22T17:46:22.427Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"cd /home/exedev/run/impl-3-0\ntimeout 300 node fleet/tests/test_factory_boot.mjs 2>&1 | tail -80; echo \"EXIT:${PIPESTATUS[0]}\""}
+{"ts":"2026-09-22T17:46:22.662Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Read","target":"/home/exedev/run/impl-3-1/factory/boot.sh"}
+{"ts":"2026-09-22T17:46:24.863Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Read","target":"/home/exedev/run/impl-3-1/factory/boot.sh"}
+{"ts":"2026-09-22T17:46:26.766Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Edit","target":"/home/exedev/run/impl-3-1/factory/boot.sh"}
+{"ts":"2026-09-22T17:46:31.819Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Edit","target":"/home/exedev/run/impl-3-1/factory/boot.sh"}
+{"ts":"2026-09-22T17:46:35.974Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"bash -n /home/exedev/run/impl-3-1/factory/boot.sh && echo \"SYNTAX OK\""}
+{"ts":"2026-09-22T17:46:37.450Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"time (timeout 120 node fleet/tests/test_factory_boot.mjs > /tmp/boot_test_out2.log 2>&1); echo \"EXIT:$?\"; tail -100 /tmp/boot_test_out2.log"}
