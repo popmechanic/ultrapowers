@@ -114,34 +114,15 @@ json_escape() {
   printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' |
     awk 'BEGIN { ORS = "" } { gsub(/\t/, "\\\\t"); print (NR > 1 ? "\\n" : "") $0 }'
 }
-# M1: a value is bare (an unquoted JSON literal) when it is the word `null`/`true`/`false`
-# or an integer (an optional leading `-` then one or more digits); every other value is a
-# JSON string.
-is_bare_value() {
-  case "$1" in null|true|false) return 0 ;; esac
-  local n="$1"
-  case "$n" in -*) n="${n#-}" ;; esac
-  [ -n "$n" ] || return 1
-  case "$n" in *[!0-9]*) return 1 ;; esac
-  return 0
-}
 # The one writer for every end-of-run row (#1167): one JSON object, one line, appended to
 # `<file>` (created if it does not exist). $1 = file, $2 = kind, then any number of
-# `key=value` pairs, each written in argument order — `is_bare_value` decides bare vs
-# `json_escape`d string. Also reachable as `boot.sh event-row <file> <kind> [key=value ...]`
+# `key=value` pairs, each written in argument order — `factory/record.mjs row` renders the
+# line, `ts` included. Also reachable as `boot.sh event-row <file> <kind> [key=value ...]`
 # so the writer is examinable without running a boot.
 event_row() {
-  local file="$1" kind="$2" line tok key val
-  shift 2
-  line="{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\",\"kind\":\"$(json_escape "$kind")\""
-  for tok in "$@"; do
-    key="${tok%%=*}"; val="${tok#*=}"
-    if is_bare_value "$val"; then line="$line,\"$(json_escape "$key")\":$val"
-    else line="$line,\"$(json_escape "$key")\":\"$(json_escape "$val")\""; fi
-  done
-  line="$line}"
+  local file="$1"; shift
   mkdir -p "$(dirname "$file")" 2>/dev/null || true
-  printf '%s\n' "$line" >>"$file"
+  fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" row "$@" >>"$file"
 }
 # The failure account: the page, one evidence commit, one push, out — once there is an evidence branch to write to.
 fail() { # $1 = message, $2 = exit code (default 1)
@@ -201,39 +182,17 @@ ensure_git_identity() { # $1 = the dir to configure (default: $EVIDENCE_DIR)
   fleet_git -C "$dir" config user.email "fleet@exe.dev" || true
   fleet_git -C "$dir" config user.name "${VM_NAME:-fleet}" || true
 }
-# The projection of the engine's event log: `rows` is the PR body's table, `tasks` the status page's last cell.
-ev_project() { # $1 = rows|tasks
-  local f="$RUN_DIR/events.jsonl"; [ -f "$f" ] || { [ "$1" = tasks ] && printf '{}'; return 0; }
-  awk -v mode="$1" '
-    # A quoted value is taken WITH its JSON escapes still in it: the engine writes park reasons that
-    # quote the exam, a `\"` read as the end of the string truncates one, and taken whole it goes
-    # straight back out — no re-escaping, because what came off a JSON document is already escaped.
-    function g(s, f,   r) { if (!match(s, "\"" f "\"[ \t]*:[ \t]*")) return ""
-      r = substr(s, RSTART + RLENGTH)
-      if (substr(r, 1, 1) != "\"") { sub(/[ \t]*[,}].*/, "", r); return r }
-      match(r, /^"([^"\\]|\\.)*"/); return substr(r, 2, RLENGTH - 2) }
-    function note(t, s, p) { if (!(t in st)) o[++n] = t; st[t] = s; pk[t] = p }
-    /"kind"[ \t]*:[ \t]*"landing"/ { if (mode == "rows") printf "| %s | %s | %s | %s |\n", g($0, "task"), g($0, "k"), g($0, "examExit"), g($0, "candidateSha"); else note(g($0, "task"), "folded", "null") }
-    /"kind"[ \t]*:[ \t]*"parked"/ { if (mode == "tasks") note(g($0, "task"), "failed", "\"" g($0, "reason") "\"") }
-    END { if (mode != "tasks") exit
-      printf "{"
-      for (i = 1; i <= n; i++) printf "%s\"%s\":{\"wave\":null,\"state\":\"%s\",\"role\":null,\"lastProof\":null,\"park\":%s,\"attention\":null,\"blockedBy\":null}", (i > 1 ? "," : ""), o[i], st[o[i]], pk[o[i]]
-      printf "}" }
-  ' "$f"
-}
-# One writer, thirteen cells, written atomically. `startedAt` is the run's clock
-# and is set once; every write stamps `updatedAt`.
+# One writer, thirteen cells, written atomically through `factory/record.mjs status`.
+# `startedAt` is the run's clock and is set once; every write stamps `updatedAt`.
 write_status() { # $1 = state, $2 = phase (optional)
-  local pr=null author=null vm=null err=null merged=null tasks tmp
+  local tmp
   STATE="$1"; if [ "$#" -ge 2 ]; then PHASE="$2"; fi
   [ -n "$STARTED_AT" ] || STARTED_AT="$(now_iso)"
-  [ -n "$PR_URL" ] && pr="\"$(json_escape "$PR_URL")\""; [ -n "$PR_AUTHOR" ] && author="\"$(json_escape "$PR_AUTHOR")\""
-  [ -n "$VM_NAME" ] && vm="\"$(json_escape "$VM_NAME")\""; [ -n "$ERROR" ] && err="\"$(json_escape "$ERROR")\""
-  [ -n "$MERGED_SHA" ] && merged="\"$(json_escape "$MERGED_SHA")\""
-  tasks="$(ev_project tasks)"; [ -n "$tasks" ] || tasks="{}"
   mkdir -p "$EVIDENCE_DIR/$EVIDENCE_REL"; tmp="$STATUS_FILE.tmp.$$"
-  printf '{"run":"%s","state":"%s","phase":"%s","pr":%s,"prAuthor":%s,"merged":%s,"disclosures":null,"branch":"%s","vm":%s,"startedAt":"%s","updatedAt":"%s","error":%s,"tasks":%s}\n' \
-    "$(json_escape "$RUN_N")" "$(json_escape "$STATE")" "$(json_escape "$PHASE")" "$pr" "$author" "$merged" "$(json_escape "$BRANCH")" "$vm" "$STARTED_AT" "$(now_iso)" "$err" "$tasks" >"$tmp"
+  fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" status \
+    run="$RUN_N" state="$STATE" phase="$PHASE" pr="$PR_URL" prAuthor="$PR_AUTHOR" \
+    merged="$MERGED_SHA" branch="$BRANCH" vm="$VM_NAME" startedAt="$STARTED_AT" error="$ERROR" \
+    --events "$RUN_DIR/events.jsonl" >"$tmp"
   mv "$tmp" "$STATUS_FILE"; log "status: state=$STATE phase=$PHASE"
 }
 # The named files the engine left, copied beside the page. Never `git add -A`: the
@@ -438,19 +397,9 @@ run_engine() {
   log "engine: exited $(cat "$DONE_MARKER") (output in $ENGINE_LOG)"
 }
 plan_title()   { { sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" || true; } | head -n 1; }
-plan_summary() { # the text after `**Summary:** ` to its blank line, verbatim
-  awk '/^\*\*Summary:\*\*/ { s = 1; l = $0; sub(/^\*\*Summary:\*\*[ ]?/, "", l); print l; next }
-       s && /^[[:space:]]*$/ { exit } s { print }' "$PLAN_FILE"
-}
-# Exactly one line of the plan is read: the first `**Closes:**` after `**Goal:**` and before the first `### `.
-# Never a regex over the whole body — a Goal line cites decisions, and a task body may name any number at all.
-plan_closes() {
-  awk '/^### / { exit }
-       goal && /^\*\*Closes:\*\*/ { line = $0; exit }
-       /^\*\*Goal:\*\*/ { goal = 1 }
-       END { while (match(line, /#[0-9]+/)) { printf "Closes %s\n", substr(line, RSTART, RLENGTH); line = substr(line, RSTART + RLENGTH) } }' "$PLAN_FILE"
-}
-pr_body() { plan_summary; printf '\n'; ev_project rows; printf '\n'; plan_closes; }
+# The pull request body: the plan's summary paragraph, the landing rows off the run's
+# own event log, and its closes line — rendered whole by `factory/record.mjs pr-body`.
+pr_body() { fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" pr-body "$PLAN_FILE" --events "$RUN_DIR/events.jsonl"; }
 # The target's default branch as the remote advertised it: a PR against a guessed `main` on a `master` repo is refused, or worse taken.
 default_branch() {
   local ref; ref="$(fleet_git -C "$TARGET_DIR" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || true)"
@@ -460,21 +409,8 @@ default_branch() {
 # A missing file, a missing `enabled` cell, or a read that fails in any way reads as
 # disabled: self-merge is opt-in, never a default a broken read falls into.
 read_self_merge_policy() {
-  SELF_MERGE_ENABLED=0; SELF_MERGE_MAX_REFOLDS=3; SELF_MERGE_WAIT_SECONDS=120
-  local policy_file="$ENGINE_REPO_DIR/factory/policy.json" out
-  [ -f "$policy_file" ] || return 0
-  out="$(fleet_python3 -c '
-import json, sys
-try:
-    with open(sys.argv[1]) as f:
-        doc = json.load(f)
-    sm = doc.get("publish", {}).get("self_merge", {})
-    if not isinstance(sm, dict) or "enabled" not in sm:
-        raise SystemExit(1)
-    print("1" if sm.get("enabled") else "0", int(sm.get("max_refolds", 3)), int(sm.get("mergeable_wait_seconds", 120)))
-except Exception:
-    raise SystemExit(1)
-' "$policy_file" 2>/dev/null)" || return 0
+  local out
+  out="$(fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" policy "$ENGINE_REPO_DIR/factory/policy.json" 2>/dev/null)" || out="0 3 120"
   set -- $out
   SELF_MERGE_ENABLED="${1:-0}"; SELF_MERGE_MAX_REFOLDS="${2:-3}"; SELF_MERGE_WAIT_SECONDS="${3:-120}"
 }
@@ -626,7 +562,7 @@ publish() { # $1 = the engine's exit code
   PR_URL="$(printf '%s' "$reply" | json_field html_url)"; PR_AUTHOR="$(printf '%s' "$reply" | json_field login)"
   number="$(printf '%s' "$reply" | json_int number)"
   log "publish: $PR_URL (base $base, draft $draft, author ${PR_AUTHOR:-<unknown>})"
-  printf '{"kind":"publish:pr","url":"%s","number":%s,"draft":%s}\n' "$(json_escape "$PR_URL")" "${number:-null}" "$draft" >>"$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl"
+  event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" publish:pr url="$PR_URL" number="${number:-null}" draft="$draft"
   if [ "$1" = 0 ]; then state=done; else state=parked; fi
   # M1: only a green, unheld run even asks whether self-merge is on. A held or non-green
   # run — or one with no PR number to act on — publishes exactly as before: no merge request.

@@ -43,6 +43,9 @@ examined goes at cut two. Git history holds every one of them.
 - `test_factory_facts.mjs` — the landing's facts: an exam's assertion lines
   attributed to the clauses they cite, the per-clause facts array under its
   cap, and the judge asking about each clause over it.
+- `test_factory_record.mjs` — the boot's record module: a row with its `ts`,
+  the 13-cell status page with `tasks` last, the pull request body byte for
+  byte, and the policy read.
 - `test_factory_retry.mjs` — the infra retry: a gateway death before the
   first turn is dispatched once more after the backoff, labelled `:retry`
   with `retry_of`, and nothing else is.
