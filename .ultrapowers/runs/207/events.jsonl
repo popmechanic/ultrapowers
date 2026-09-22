@@ -261,3 +261,5 @@
 {"ts":"2026-09-22T00:11:24.092Z","kind":"landing","task":"2","k":1,"examExit":0,"claim":0.57,"coverage":[0.96,0.95,0.95,0.94,0.93,1,1],"candidateSha":"705ee84f01d4e46c0d96c867e3cd37d0fefeda71","wall_ms":742221}
 {"ts":"2026-09-22T00:11:24.432Z","kind":"check:line","task":"2","cmd":"git diff --quiet $ULTRA_BASE -- factory/roles factory/select.mjs factory/board.mjs factory/union.mjs fleet/fleet-bootstrap.sh skills/ultrapowers/kernel","exit":0,"minor":false}
 {"ts":"2026-09-22T00:11:24.432Z","kind":"fold:verify","task":"2","ran":[{"task":"2","exit":0}],"attempt":1}
+{"kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1206","number":1206,"draft":false}
+{"kind":"refold","ok":false,"reason":"merge: re-fold refused (conflict)"}
