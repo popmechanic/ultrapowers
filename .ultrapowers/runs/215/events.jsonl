@@ -468,3 +468,4 @@
 {"ts":"2026-09-22T17:33:43.864Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"node -e 'console.log(process.version, process.config.variables.node_shared_libuv)' 2>&1\nfind / -maxdepth 6 -iname \"spawn_sync*\" 2>/dev/null | head\nfind / -maxdepth 8 -path \"*node*src*\" -iname \"*.cc\" 2"}
 {"ts":"2026-09-22T17:34:56.375Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"rm -f /tmp/repro.mjs /tmp/child.mjs /tmp/probe_preflight.mjs /tmp/strace.out"}
 {"ts":"2026-09-22T17:36:40.555Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:38:03.808Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"timeout 30 node fleet/tests/test_factory_preflight.mjs; echo \"EXIT:$?\""}
