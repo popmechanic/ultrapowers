@@ -1,0 +1,61 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "7cf718fe6fe27517a39c0acee9b34d4f1ac8bbf6d55b22d5798bd64deaf3f5c4",
+   "verdict": "pass",
+   "reason": "Every computable fact in M1\u2013M3 (the null result, the empty denials, the 500-char truncation and string fallback, the two rows' kinds and order, the single worker call and its argument shape, the module-level export and runRefold's assignment) has a leg or Run: that would fail if it were false, and the base excerpt pins nothing to the contrary."
+  },
+  "2": {
+   "hash": "41f50d3278a4bd45796fee51eb9599ddfaa4cee88b28c75cecb22dc3f21fafe1",
+   "verdict": "pass",
+   "reason": "Both computable facts have legs \u2014 M1's grep over the extracted refold_onto body pins the env -u CLAUDE_CONFIG_DIR prefix, the four assignments in the unit's order, node and --refold, and M2's grep over the boot-script bullet pins refold before same environment \u2014 while the base excerpts show fleet_node and a bullet without those words, so nothing pins the opposite and no literal is unsatisfiable."
+  }
+ },
+ "tally": {
+  "dispatched": 3,
+  "rejected": 0,
+  "rounds": 2,
+  "base": "7128a91ad9b088c830bb407f86e5bc4194e03544",
+  "question": "facts-only (experiment, rollback the old sentence)",
+  "note": "round 2 re-read task 2 after `bash -n` became an untagged guard (it was a prover green at BASE)"
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "2",
+   "hash": "e02fd2b83562a7042a0c960c1ad269ac07321b999db89347813f32e361c80609",
+   "verdict": "pass",
+   "reason": "Every computable fact has a leg \u2014 M1's ordered env prefix is grepped inside refold_onto's body, M2 is the bash -n exit code, M3's refold-before-same environment is grepped inside the boot-script bullet \u2014 the pinned order matches the unit's at base (lines 429\u2013431), and nothing at base pins the opposite."
+  }
+ ],
+ "authoring": {
+  "minutes": 15,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Sign the five Claims and launch",
+    "options": [
+     "Sign all five, launch",
+     "Sign, but hold D",
+     "Don't sign \u2014 I'll edit a Claim"
+    ],
+    "recommended": "Sign all five, launch",
+    "picked": "Sign all five, launch"
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers"
+   }
+  ]
+ }
+}
