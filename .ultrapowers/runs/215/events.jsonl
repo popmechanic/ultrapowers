@@ -1055,3 +1055,9 @@
 {"ts":"2026-09-22T19:05:37.056Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"SLOT_RE\\|_slot_name\\|PROOF_TEST_BULLET\\s*=\" skills/ultrapowers/scripts/plan_parse.py | head"}
 {"ts":"2026-09-22T19:06:02.726Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"strip_exams\\|unguarded\\|exams/\\|Guard:\" fleet/CONTRACT.md | head -40"}
 {"ts":"2026-09-22T19:06:04.706Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"exams\\b\\|plan_parse\\|--unguarded\\|proofTests\\|record.mjs\" fleet/CONTRACT.md"}
+{"ts":"2026-09-22T19:06:08.846Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"exams to evidence\\|kept out of the pull request\\|pull request\\|Guard\\b\" fleet/CONTRACT.md | head -30"}
+{"ts":"2026-09-22T19:06:09.837Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"sed -n '330,400p' fleet/CONTRACT.md"}
+{"ts":"2026-09-22T19:06:15.810Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"sed -n '470,530p' fleet/CONTRACT.md"}
+{"ts":"2026-09-22T19:06:21.095Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"factory/preflight.mjs\\|bearer_probe\\|bearer probe\" fleet/CONTRACT.md"}
+{"ts":"2026-09-22T19:06:33.387Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-implement-3-3/skills/ultrapowers/scripts/plan_parse.py"}
+{"ts":"2026-09-22T19:06:38.019Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Edit","target":"/home/exedev/run/fold-fix-implement-3-3/skills/ultrapowers/scripts/plan_parse.py"}
