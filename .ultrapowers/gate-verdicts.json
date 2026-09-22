@@ -1,0 +1,59 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "eb4f8314a4d61b17bbe3f214f5dbcd7c187ce08568513c4d4b8a4eb9ea5e9561",
+      "verdict": "pass",
+      "reason": "Every computable fact has a leg \u2014 M1's log line, exit code and record in leg (a); M2's counts in the tagged Run: lines and the symlinked exit 2 in leg (b); M3's IGNORECASE absence in its Run: line and the refused-plan failure record in leg (c); M4's install output, mode, digest-mismatch refusal and the two boot-text absences in leg (d) and its Run: lines; M5's byte-equal payloads, key order and json_escape absence in leg (e) and its Run: line \u2014 no pinned literal is unsatisfiable, no leg contradicts its clause, and the base excerpts show only the BASE shapes the clauses say they replace, not a test already pinning the opposite."
+    }
+  },
+  "tally": {
+    "dispatched": 1,
+    "rejected": 0,
+    "rounds": 1,
+    "base": "97c988fedfed8abe63adee863395474747fbe6bc",
+    "question": "facts-only (experiment, rollback the old sentence)",
+    "history": [],
+    "retry_of": "#1222 pass two; pass one landed as #1224 (run-215) and the probe's exam and two guards as #1225 (run-216)"
+  },
+  "authoring": {
+    "minutes": 41,
+    "probes": 0,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Boot budget",
+        "options": [
+          "Revise to 420",
+          "Keep 300 as a note",
+          "Move publish into Node",
+          "Remove the boot budget (Other)"
+        ],
+        "recommended": "Revise to 420",
+        "picked": "Remove the boot budget (Other)"
+      },
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Confirm",
+          "Exam repair only",
+          "Edit"
+        ],
+        "recommended": "Confirm",
+        "picked": "Confirm"
+      },
+      {
+        "question": "Execute",
+        "options": [
+          "Ultrapowers",
+          "Subagent-Driven",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers"
+      }
+    ]
+  }
+}
