@@ -86,3 +86,7 @@
 {"ts":"2026-09-22T20:52:40.817Z","kind":"refold","ok":true}
 {"ts":"2026-09-22T20:52:42.736Z","kind":"merge","code":405}
 {"ts":"2026-09-22T20:52:46.039Z","kind":"merge","code":200}
+{"ts":"2026-09-22T20:52:52.384Z","kind":"board:leave","rc":0}
+{"ts":"2026-09-22T20:52:52.586Z","kind":"board:close","what":"task 1","code":200}
+{"ts":"2026-09-22T20:52:52.648Z","kind":"board:close","what":"run","code":200}
+{"ts":"2026-09-22T20:52:52.756Z","kind":"run:audit","state":"done","missing":[]}
