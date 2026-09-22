@@ -7,8 +7,11 @@
  * `projectBoard` is the pure heart: two passes over the hub's own event rows
  * — the first learns each issue's run and title, the second projects only the
  * events of issues whose run is asked for. `renderBoard` turns that answer
- * into the CLI's text. `readBoard` pages `client.events` until a short page
- * and answers the projection over everything read. `parseBoardArgs` and
+ * into the CLI's text. `readBoard` (with `since` 0) reads the issues listing
+ * to find the asked run's creation event by bisection, then pages
+ * `client.events` from there to the feed's end and answers the projection
+ * over everything read; with a `since` above `0` it pages from `since`
+ * instead, unchanged. `parseBoardArgs` and
  * `main` are the CLI: argument parsing (with its own refusals) and the two
  * hub reads (list the projects, then the feed) through `fleet/kata-client.mjs`'s
  * transport, built exactly as the janitor builds it.
@@ -161,21 +164,111 @@ export function renderBoard (projection) {
 
 // ── Reading the hub ──────────────────────────────────────────────────────
 
+/** The hub's own paging fact (`fleet/CONTRACT.md`'s `events-page` fact,
+ *  re-measured at BASE): a page never holds more than this many rows,
+ *  whatever `limit` a request asks for — a page short of this, or empty, is
+ *  the feed's end. */
+const HUB_PAGE_SIZE = 100
+
+/** The run issue of run `n`: `metadata.run` is `n` and `metadata` carries no
+ *  `task` (a task issue's run arrives on the feed, not on the issue itself). */
+const isRunIssueFor = (issue, n) => {
+  const meta = issue && issue.metadata
+  if (!meta || meta.task !== undefined) return false
+  return meta.run !== undefined && meta.run !== null && Number(meta.run) === n
+}
+
 /**
- * Pages `client.events(projectId, after)` from `after = since` until a page
- * holds fewer than 1000 rows, following each page's `next_after_id`, and
- * answers `projectBoard` over every row read. `cursor` falls back to `since`
- * when the projection's own is `null` (nothing was read).
+ * `client.events(projectId, after)`, memoized on `after` for the lifetime of
+ * one `readBoard` call — the bisection below asks about the same `after`
+ * more than once, and the forward walk that follows it starts at the very
+ * `after` the bisection just settled on.
+ */
+const pager = (client, projectId, cache) => async (after) => {
+  if (cache.has(after)) return cache.get(after)
+  const page = await client.events(projectId, after)
+  cache.set(after, page)
+  return page
+}
+
+/**
+ * The feed position of the earliest of `runs`' run issues' creation, found by
+ * bisection over `after_id` on `created_at` (Context, `readBoard` starts at
+ * the asked run's creation event): a page whose first row's `created_at` is
+ * at or after `targetAt` is past the start, a page whose first row is
+ * earlier is not, and an empty page is past the end. Answers the greatest
+ * `after` whose page is still not past the start — the point a forward walk
+ * from `after` is guaranteed to reach the target creation event.
+ */
+async function findBoundary (fetchPage, targetAt) {
+  const classify = async (after) => {
+    const page = await fetchPage(after)
+    const rows = page?.events || []
+    if (rows.length === 0) return 'past-end'
+    return rows[0].created_at < targetAt ? 'before' : 'at-or-after'
+  }
+
+  if (await classify(0) !== 'before') return 0
+
+  // Doubling search for an `after` that is no longer before the start.
+  let lo = 0
+  let hi = 1
+  while (await classify(hi) === 'before') {
+    lo = hi
+    hi *= 2
+  }
+
+  // Bisect the gap for the greatest `after` still before the start.
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2)
+    if (await classify(mid) === 'before') lo = mid
+    else hi = mid
+  }
+  return lo
+}
+
+/**
+ * With `since` `0`: reads the issues listing, takes the asked runs' run
+ * issues (the earliest `created_at` when several are asked — a `Refusal`
+ * naming the run(s) when none is listed), finds that creation's feed
+ * position by bisection, then pages `client.events` forward from there to
+ * the feed's end (a page short of `HUB_PAGE_SIZE`, or empty). With `since`
+ * above `0`: no listing, no bisection — pages forward from `since` the same
+ * way. Either way, answers `projectBoard` over every row read; `cursor`
+ * falls back to `since` when the projection's own is `null` (nothing read).
  */
 export async function readBoard ({ client, projectId, runs, since }) {
-  let after = since
+  const cache = new Map()
+  const fetchPage = pager(client, projectId, cache)
+
+  let start = since
+  if (since === 0) {
+    const listing = await client.listIssues(projectId)
+    const issues = listing?.issues || []
+    const runList = (runs || []).map(Number)
+    const candidates = []
+    for (const n of runList) {
+      const issue = issues.find((iss) => isRunIssueFor(iss, n))
+      if (issue) candidates.push(issue)
+    }
+    if (candidates.length === 0) {
+      fail(`no run issue for run ${runList.join(', ')} in project ${projectId}`)
+    }
+    candidates.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    const targetAt = candidates[0].created_at
+    start = await findBoundary(fetchPage, targetAt)
+  }
+
   const events = []
+  let after = start
   for (;;) {
-    const page = await client.events(projectId, after)
+    const page = await fetchPage(after)
     const rows = page?.events || []
     events.push(...rows)
-    after = page?.next_after_id
-    if (rows.length < 1000) break
+    if (rows.length < HUB_PAGE_SIZE) break
+    const nextAfter = page?.next_after_id
+    if (nextAfter === after) break
+    after = nextAfter
   }
   const projection = projectBoard(events, { runs })
   return { ...projection, cursor: projection.cursor === null ? since : projection.cursor }
