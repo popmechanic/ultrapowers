@@ -150,3 +150,10 @@
 {"ts":"2026-09-22T01:28:30.927Z","kind":"referee","task":"2","findings":0,"blocking":0,"grades":[]}
 {"ts":"2026-09-22T01:28:31.384Z","kind":"jev","site":"resolve.union","task":"2","label":null,"keys":["independent_additions","shared_anchor","ordering_matters"],"values":{"independent_additions":{"type":"noul","noul":0.51},"shared_anchor":{"type":"noul","noul":0.28},"ordering_matters":{"type":"noul","noul":0.27}},"state_bytes":134,"ms":210,"answered":true}
 {"ts":"2026-09-22T01:28:31.474Z","kind":"dispatch:start","task":"2","label":"resolve:2:1","role":"resolve"}
+{"ts":"2026-09-22T01:28:33.508Z","kind":"worker:tool","task":"2","label":"resolve:2:1","tool":"Read","target":"/home/exedev/run/frontier/wave-2/conflict-1.hunks.txt"}
+{"ts":"2026-09-22T01:28:37.503Z","kind":"worker:tool","task":"2","label":"resolve:2:1","tool":"StructuredOutput"}
+{"ts":"2026-09-22T01:28:37.687Z","kind":"dispatch:end","task":"2","label":"resolve:2:1","role":"resolve","wall_ms":6213,"cost_usd":0.128845,"error":null}
+{"ts":"2026-09-22T01:28:38.260Z","kind":"landing","task":"2","k":1,"examExit":0,"claim":0.75,"coverage":[0.97,0.97,1,1],"candidateSha":"e66b4f4517ba00b997bf1f8a92d336b909b30bbd","wall_ms":425107}
+{"ts":"2026-09-22T01:28:41.854Z","kind":"check:line","task":"2","cmd":"git diff --quiet $ULTRA_BASE -- factory/roles factory/board.mjs factory/union.mjs factory/worker.mjs factory/reverify.mjs fleet/fleet-bootstrap.sh skills/ultrapowers/kernel","exit":0,"minor":false}
+{"ts":"2026-09-22T01:28:41.854Z","kind":"fold:verify","task":"2","ran":[{"task":"2","exit":0},{"task":"1","exit":0}],"attempt":1}
+{"ts":"2026-09-22T01:28:41.854Z","kind":"pair:label","a":"1","b":"2","calls":null,"fold":"resolved"}
