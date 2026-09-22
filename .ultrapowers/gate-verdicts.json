@@ -1,0 +1,57 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "0b8fbd59ef52ebbf7a6741f5d2c409309e52c55ca6eb646d13d372e01ccb7f45",
+   "verdict": "pass",
+   "reason": "Every computable clause has a leg that would fail if false \u2014 M1\u2013M4 through the fixture cases in legs (a)\u2013(d), M5's absence of dirNeedles and M6's dir_needles removal and needles cell through the two Run: lines \u2014 while the where-the-row-is-appended and when-readCovering-is-asked parts of M5 are code-shape read against the diff; no literal is unsatisfiable, no leg contradicts its clause, the base excerpts pin nothing opposite, and leg (d) pins the function's own return value rather than a shared log row."
+  }
+ },
+ "tally": {
+  "dispatched": 2,
+  "rejected": 0,
+  "rounds": 1,
+  "base": "7128a91ad9b088c830bb407f86e5bc4194e03544",
+  "question": "facts-only (experiment, rollback the old sentence)",
+  "note": "task 2 (#1198) was gated pass then removed on the operator's decision to ship #1208 alone; its first reader died on an API 529 and was re-dispatched once"
+ },
+ "authoring": {
+  "minutes": 40,
+  "probes": 0,
+  "routing": {
+   "branch": "width",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Sign the five Claims and launch",
+    "options": [
+     "Sign all five, launch",
+     "Sign, but hold D",
+     "Don't sign \u2014 I'll edit a Claim"
+    ],
+    "recommended": "Sign all five, launch",
+    "picked": "Sign all five, launch"
+   },
+   {
+    "question": "#1198 vs #1209: drop pairwise on green or keep coverage",
+    "options": [
+     "Keep the coverage questions; drop B's task 2",
+     "Ship both; referee reads coverage only on red",
+     "Ship B's task 2, hold D"
+    ],
+    "recommended": "Keep the coverage questions; drop B's task 2",
+    "picked": "Keep the coverage questions; drop B's task 2"
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers"
+   }
+  ]
+ }
+}
