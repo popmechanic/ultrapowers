@@ -280,8 +280,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   runs the engine as one transient unit, commits evidence under `ultra/evidence-run-<N>` at every
   transition (see above), and — only when there is something to publish — opens the pull request
   and, gated by `factory/policy.json`'s `publish.self_merge`, merges it, re-folding onto the
-  target's tip inline (`node factory/engine.mjs --refold`) when it moved underneath the run. The
-  engine unit itself:
+  target's tip inline (`node factory/engine.mjs --refold`) when it moved underneath the run. That
+  refold runs under the same environment as the engine unit — the same `env -u CLAUDE_CONFIG_DIR …`
+  prefix, so the resolver it dispatches reaches the proxy and the edge-injected bearer (run-207,
+  2026-09-21, n=1 run). The engine unit itself:
   - engine: `systemd-run --user --unit=fleet-engine-<N> --pipe --wait --collect -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288 -p RuntimeMaxSec=<seconds> -p WorkingDirectory=<target>
     -- env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=<proxy> CLAUDE_CODE_OAUTH_TOKEN=placeholder
     TYPESAFE_BASE_URL=https://typesafe.int.exe.xyz ULTRAPOWERS_FLEET_RUN=<run id> node
