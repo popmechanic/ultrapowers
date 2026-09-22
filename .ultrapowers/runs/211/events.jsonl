@@ -52,3 +52,7 @@
 {"ts":"2026-09-22T01:26:29.885Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"node fleet/tests/test_board_read.mjs; echo EXIT:$?","exit":null,"red":null,"via":"bash"}
 {"ts":"2026-09-22T01:26:33.193Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"mkdir -p /tmp/br-check && ls /home/exedev/run/exam-1/fleet"}
 {"ts":"2026-09-22T01:26:56.080Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Write","target":"/home/exedev/run/exam-1/fleet/board-read.mjs"}
+{"ts":"2026-09-22T01:27:55.424Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"node --check fleet/tests/test_board_read.mjs && echo SYNTAX_OK"}
+{"ts":"2026-09-22T01:27:55.479Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"node --check fleet/tests/test_board_read.mjs && echo SYNTAX_OK","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T01:27:58.634Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-22T01:27:58.691Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"node fleet/tests/test_board_read.mjs","exit":1,"red":true,"via":"run_exam"}
