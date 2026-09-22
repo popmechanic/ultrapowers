@@ -466,3 +466,4 @@
 {"ts":"2026-09-22T17:32:28.839Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"node --version"}
 {"ts":"2026-09-22T17:32:35.699Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"cat > /tmp/childfetch3.mjs <<'EOF'\nconst res = await fetch(process.argv[2])\nconsole.log('OK', res.status, await res.text())\nEOF\ntimeout 15 node -e '\nimport(\"node:http\").then(async ({default: http}) =>"}
 {"ts":"2026-09-22T17:33:43.864Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"node -e 'console.log(process.version, process.config.variables.node_shared_libuv)' 2>&1\nfind / -maxdepth 6 -iname \"spawn_sync*\" 2>/dev/null | head\nfind / -maxdepth 8 -path \"*node*src*\" -iname \"*.cc\" 2"}
+{"ts":"2026-09-22T17:34:56.375Z","kind":"worker:tool","task":"3","label":"impl:3:1","tool":"Bash","target":"rm -f /tmp/repro.mjs /tmp/child.mjs /tmp/probe_preflight.mjs /tmp/strace.out"}
