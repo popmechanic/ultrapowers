@@ -124,14 +124,36 @@
       "rollback": "k = 1 always"
     },
     "referee": {
-      "rule": "the discovery referee is dispatched when review_difficulty >= 2 (`Careful`); doc_or_prose_only is recorded on the row and gates nothing",
+      "rule": "the discovery referee is dispatched when review_difficulty >= 2 (`Careful`), or when the landing's lowest-covered clause reads below min_coverage.value; doc_or_prose_only is recorded on the row and gates nothing",
       "review_difficulty_rung": 2,
       "n": 0,
       "window": "none",
       "basis": "judgment",
       "unread": "#1096's jev:tier rows have no n on any tag yet (run-183 predates #1109). The 2026-09-17 first draft read `OR doc_or_prose_only < 0.5`, which would have dispatched a referee on every code task and contradicted the spec's rule that no routine task carries one; caught by the engine plan's gate reader the same day",
       "experiment": true,
-      "rollback": "the referee dispatched on every task"
+      "rollback": "the referee dispatched on every task",
+      "min_coverage": {
+        "value": 0.8,
+        "n": 0,
+        "window": "none",
+        "basis": "judgment",
+        "detail": "n=12 tasks, runs 204-207 (2026-09-21): review_difficulty read 0.20-0.32 on prose tasks and 1.63-2.71 on code tasks, noise around the 2.0 rung, while three clauses' coverage read 0.39, 0.70 and 0.13 against 0.93-1.0 elsewhere and none of the three got a referee",
+        "experiment": true,
+        "rollback": 0,
+        "rollback_note": "0 = the coverage trigger never fires; the rung alone, as today"
+      }
+    }
+  },
+  "dispatch": {
+    "k_probe": {
+      "enabled": true,
+      "k": 2,
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "unread": "every landing of runs 204-207 (n=12 tasks) carried k: 1, so the selector's line never had two candidates to choose between and could not be calibrated. The pre-registered reading is over the next 5 runs the probe fires on: how often the two candidates differ on exam exit (a real catch) versus only on the claim/coverage tail of the selector's line, and the second implementer's token cost against the modest 126s mean / 335s max already read for implementer dispatch",
+      "experiment": true,
+      "rollback": "enabled = false: k is the judge's task reading, which read 1 on every task of runs 204-207"
     }
   },
   "supervisor": {
