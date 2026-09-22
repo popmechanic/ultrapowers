@@ -73,3 +73,7 @@
 {"ts":"2026-09-22T01:28:01.410Z","kind":"refold","ok":true}
 {"ts":"2026-09-22T01:28:02.993Z","kind":"merge","code":405}
 {"ts":"2026-09-22T01:28:06.301Z","kind":"merge","code":200}
+{"ts":"2026-09-22T01:28:07.802Z","kind":"board:leave","rc":0}
+{"ts":"2026-09-22T01:28:07.983Z","kind":"board:close","what":"task 1","code":200}
+{"ts":"2026-09-22T01:28:08.110Z","kind":"board:close","what":"run","code":200}
+{"ts":"2026-09-22T01:28:08.166Z","kind":"run:audit","state":"done","missing":[]}
