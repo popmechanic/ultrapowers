@@ -159,3 +159,17 @@
 {"ts":"2026-09-22T00:05:06.816Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"mcp__factory__run_exam"}
 {"ts":"2026-09-22T00:05:06.895Z","kind":"worker:test-run","task":"2","label":"impl:2:0","cmd":"node fleet/tests/test_factory_fold_round.mjs","exit":0,"red":false,"via":"run_exam"}
 {"ts":"2026-09-22T00:05:10.040Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"python3 -c \"\nimport json\nc=json.load(open('factory/policy.json'))['fold']['attribution']\nt=c['t_exam_defect']\nassert c['enabled'] is True and c['hunks_cap']==4000 and c['n']==0 and c['window']=='none'"}
+{"ts":"2026-09-22T00:05:11.935Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"wc -l /home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-22T00:05:14.302Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"const reverifyAfterFold = async\\|^  }$\" /home/exedev/run/impl-2-0/factory/engine.mjs | sed -n '1,5p'"}
+{"ts":"2026-09-22T00:05:15.994Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"awk '/const reverifyAfterFold = async/{print NR\": \"$0; f=1} f{c++} f && /^  }$/{print NR\": end\"; print \"lines: \"c; exit}' /home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-22T00:05:18.557Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-22T00:05:30.240Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-22T00:05:40.898Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-22T00:05:42.853Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"awk '/const reverifyAfterFold = async/{print NR\": \"$0; f=1; next} f{c++} f && /^  }$/{print NR\": end\"; print \"lines: \"c; exit}' /home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-22T00:05:45.083Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"sed -n '1762,1849p' /home/exedev/run/impl-2-0/factory/engine.mjs | wc -l"}
+{"ts":"2026-09-22T00:05:46.683Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-22T00:05:55.706Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-22T00:06:01.236Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-22T00:06:05.878Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/factory/engine.mjs"}
+{"ts":"2026-09-22T00:06:07.920Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"awk '/^  \\/\\*\\*$/{start=NR} /M2-M4: directly after/{doc=start} /const reverifyAfterFold = async/{fstart=NR} fstart && /^  }$/{print \"doc start:\"doc\" body end:\"NR\" total lines:\"(NR-doc+1); exit}' /home"}
+{"ts":"2026-09-22T00:06:12.421Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"^  /\\*\\*$\" /home/exedev/run/impl-2-0/factory/engine.mjs | awk -F: '$1>1740 && $1<1770'\nsed -n '1749,1842p' /home/exedev/run/impl-2-0/factory/engine.mjs | wc -l"}
