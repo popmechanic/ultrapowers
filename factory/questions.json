@@ -761,6 +761,30 @@
           }
         }
       }
+    },
+    "fold_red": {
+      "when": "after a fold, once per red exam that belongs to a task other than the one that folded and that was green at the head before the fold",
+      "reader": "readFoldRed: whether the red exam asserts an exact shape that the folding patch's added field breaks",
+      "rollback": "no answer -> not an exam defect: the re-attempt goes to the exam's own task as an implementer",
+      "state": [
+        "assertion",
+        "hunks"
+      ],
+      "provenance": "#1164, drafted at this sitting; no corpus has been read at this string",
+      "calibrated": false,
+      "questions": {
+        "exact_shape_broken": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `assertion` fail because it requires a record to have exactly a fixed set of keys or an exact shape, and do `hunks` add a field to that record?",
+            "context": "An exam that passed before a sibling task's patch was folded fails after it. `assertion` is the tail of the failing exam's output. `hunks` are the folded patch's hunks."
+          },
+          "criteria": {
+            "true": "The assertion is an equality over a whole record or its key list, and the hunks add a key or field to that same record",
+            "false": "The assertion fails for any other reason, or the hunks change or remove what the assertion reads"
+          }
+        }
+      }
     }
   }
 }
