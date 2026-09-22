@@ -486,7 +486,9 @@ except Exception:
 # and sets MERGE_PHASE, naming the re-fold's own reason when it gave one.
 refold_onto() { # $1 = the base the run's work stood on, $2 = the moved tip
   local base="$1" onto="$2" line rc=0 reason
-  line="$(fleet_node "$ENGINE_REPO_DIR/factory/engine.mjs" --refold \
+  line="$(env -u CLAUDE_CONFIG_DIR "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
+      "TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL" CLAUDE_CODE_OAUTH_TOKEN=placeholder \
+      "ULTRAPOWERS_FLEET_RUN=$RUN_ID" node "$ENGINE_REPO_DIR/factory/engine.mjs" --refold \
       --plan "$PLAN_FILE" --target "$TARGET_DIR" --base "$base" --onto "$onto" \
       --run-dir "$RUN_DIR" --exams-dir "$EVIDENCE_DIR/$EVIDENCE_REL/exams" | tail -n 1)" || rc=$?
   if [ "$rc" -ne 0 ]; then
