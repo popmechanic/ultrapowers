@@ -65,14 +65,32 @@ const load = async (spec, relative) => {
 
 // Top-level await, so `factoryTools` below stays an ordinary synchronous call:
 // an importer of this module awaits its evaluation for free, and the exam's
-// `factoryTools({…}).name` is a property and not a promise.
-const sdk = await load('@anthropic-ai/claude-agent-sdk',
-  '../fleet/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs')
-const zodModule = await load('zod', '../fleet/node_modules/zod/index.cjs')
+// `factoryTools({…}).name` is a property and not a promise. Loaded forgivingly,
+// the way `factory/worker.mjs` loads the SDK: a clone with no `fleet/node_modules`
+// (this task's own exam clone, measured 2026-09-22) must still be able to
+// import this module and call `makeHandlers`, which needs neither dependency.
+// A real dispatch with no SDK is loud about it — `factoryTools` throws below,
+// naming the same three failures `load` collected.
+let sdk = null
+let sdkLoadError = null
+try {
+  sdk = await load('@anthropic-ai/claude-agent-sdk',
+    '../fleet/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs')
+} catch (err) { sdkLoadError = err; sdk = null }
 
-const { createSdkMcpServer, tool } = sdk
+let zodModule = null
+let zodLoadError = null
+try {
+  zodModule = await load('zod', '../fleet/node_modules/zod/index.cjs')
+} catch (err) { zodLoadError = err; zodModule = null }
+
+/** The message a call with no SDK/zod gets — `sdkLoadError`'s or `zodLoadError`'s
+ *  own text, whichever tripped first, unchanged from what `load` threw. */
+const noSdkMessage = () => (sdkLoadError || zodLoadError).message
+
+const { createSdkMcpServer, tool } = sdk || {}
 /** zod ships CJS and ESM; a resolved-by-path CJS build arrives under `default`. */
-const z = zodModule.z || (zodModule.default && zodModule.default.z) || zodModule.default
+const z = zodModule && (zodModule.z || (zodModule.default && zodModule.default.z) || zodModule.default)
 
 /** The shape every handler answers. */
 const say = (text) => ({ content: [{ type: 'text', text }] })
@@ -97,13 +115,108 @@ const commentUid = (answer) => {
 }
 
 /**
- * The factory's MCP server, one per task.
+ * The six handlers themselves — `note`, `hand`, `settled`, `sibling_fact`,
+ * `task_facts`, `run_exam` — built and returned as plain async functions,
+ * needing neither the SDK nor zod: `factoryTools` below wraps each in a
+ * `tool(…)` definition (its zod input schema, description), but the handler
+ * a call actually runs is exactly the function this makes.
  *
- * `kata` is the engine's client (`fleet/kata-client.mjs`), `projectId` the run's
- * project, `task` the `{ id, uid, files }` fact sheet, and `candidates` the
- * symbol names the engine computed for this task. Nothing here derives a
- * candidate and nothing here holds a credential: the client was built before
- * the worker existed.
+ * `kata` is the engine's client (`fleet/kata-client.mjs`), `projectId` the
+ * run's project, `task` the `{ id, uid, files }` fact sheet. `candidates`
+ * is the symbol names the ENGINE computed for this task — an array, or a
+ * function (sync or async) answering one — read fresh on every `settled`
+ * call, never captured once at build: a worker that writes a new export
+ * between two calls sees it offered on the second. Nothing here derives a
+ * candidate and nothing here holds a credential: the client was built
+ * before the worker existed.
+ */
+export const makeHandlers = ({ kata, projectId, task, candidates, board, runExam } = {}) => {
+  const uid = task && task.uid
+  const taskId = task && task.id
+
+  const readCandidates = async () => {
+    const got = typeof candidates === 'function' ? await candidates() : candidates
+    return Array.isArray(got) ? got : []
+  }
+
+  const note = answering(async ({ body }) =>
+    say('noted: ' + commentUid(await kata.comment(projectId, uid, '[note]\n' + body))))
+
+  const hand = answering(async ({ reason: why }) => {
+    await patchWithRevision(kata, projectId, uid, {
+      'work.attention': 'needs-human',
+      'work.attention_msg': why,
+    })
+    return say('hand raised for a human: ' + why)
+  })
+
+  const settled = async ({ symbol, file }) => {
+    let names
+    try {
+      names = (await readCandidates()).map(String)
+    } catch (err) {
+      // Not `answering`'s `kata refused:` — nothing here called kata, so
+      // that prefix would misname what actually failed.
+      return say('candidates unreadable: ' + reason(err))
+    }
+    if (!names.includes(symbol)) {
+      const shell = typeof file === 'string' && file.endsWith('.sh')
+      const found = names.length ? names.join(', ') : '(none)'
+      return say(
+        '"' + symbol + '" is not among the candidates this task can declare. ' +
+        'Candidates found in your patch: ' + found + '. A candidate is a top-level export ' +
+        'your patch adds — export function, export const, export class, def or class — ' +
+        (shell ? 'and ' + file + ' is a shell file, whose functions are never candidates.'
+          : 'add it first, then declare it.'),
+      )
+    }
+    // Flat and dotted, and the value a JSON STRING: kata stores metadata keys
+    // that way (CONTRACT.md's `metadata-dotted-flat`), so a nested object here
+    // would land as keys no reader of the record knows to look for.
+    await patchWithRevision(kata, projectId, uid, {
+      'interface.settled': JSON.stringify({ symbol, file, task: taskId }),
+    })
+    return say('settled: ' + symbol + ' in ' + file)
+  }
+
+  const siblingFact = async ({ task_uid: siblingUid }) => {
+    try {
+      const issue = await kata.getIssue(siblingUid)
+      return say(JSON.stringify((issue && issue.metadata) || {}, null, 2))
+    } catch (err) {
+      // Not an error a worker should stop on: a sibling that has not started
+      // has no facts yet, and that is an answer.
+      return say('no fact: ' + reason(err))
+    }
+  }
+
+  const taskFacts = answering(async () => {
+    if (!board) return say('no facts yet')
+    const facts = await board.factsFor(taskId)
+    return say(facts ? facts : 'no facts yet')
+  })
+
+  const runExamTool = async () => {
+    if (typeof runExam !== 'function') return say('run_exam unavailable')
+    try {
+      const { exit, tail } = await runExam()
+      return say('exit ' + exit + '\n' + tail)
+    } catch (err) {
+      return say('run_exam failed: ' + reason(err))
+    }
+  }
+
+  return {
+    note, hand, settled, sibling_fact: siblingFact, task_facts: taskFacts, run_exam: runExamTool,
+  }
+}
+
+/**
+ * The factory's MCP server, one per task. Builds `makeHandlers`' six
+ * functions, then wraps each in a `tool(…)` definition — its zod input
+ * schema and description unchanged from before this task — so
+ * `server.handlers` and `makeHandlers`' own return answer the same
+ * functions.
  *
  * Returns `createSdkMcpServer`'s own value — `{ type: 'sdk', name: 'factory',
  * instance }` — with the tool definitions and their handlers hung off it
@@ -111,10 +224,9 @@ const commentUid = (answer) => {
  * tool without a model) can invoke one directly without reaching into the MCP
  * server's private registry.
  */
-export const factoryTools = ({ kata, projectId, task, candidates, board, runExam } = {}) => {
-  const uid = task && task.uid
-  const taskId = task && task.id
-  const names = (Array.isArray(candidates) ? candidates : []).map((c) => String(c))
+export const factoryTools = (opts = {}) => {
+  if (!sdk || !zodModule) throw new Error(noSdkMessage())
+  const handlers = makeHandlers(opts)
 
   const note = tool(
     'note',
@@ -122,8 +234,7 @@ export const factoryTools = ({ kata, projectId, task, candidates, board, runExam
     'later session would otherwise have to rediscover, or what you got done before ' +
     'stopping. The issue is the run\'s memory — write to it rather than to a file.',
     { body: z.string().describe('the note, in your own words') },
-    answering(async ({ body }) =>
-      say('noted: ' + commentUid(await kata.comment(projectId, uid, '[note]\n' + body)))),
+    handlers.note,
   )
 
   const hand = tool(
@@ -132,13 +243,7 @@ export const factoryTools = ({ kata, projectId, task, candidates, board, runExam
     'further work of yours can clear — a missing dependency, a contradiction in ' +
     'the task, a credential that is not there.',
     { reason: z.string().describe('one line saying what you are blocked on') },
-    answering(async ({ reason: why }) => {
-      await patchWithRevision(kata, projectId, uid, {
-        'work.attention': 'needs-human',
-        'work.attention_msg': why,
-      })
-      return say('hand raised for a human: ' + why)
-    }),
+    handlers.hand,
   )
 
   const settled = tool(
@@ -150,19 +255,7 @@ export const factoryTools = ({ kata, projectId, task, candidates, board, runExam
       symbol: z.string().describe('the exported name, exactly as it appears in the code'),
       file: z.string().describe('the file that exports it, repository-relative'),
     },
-    answering(async ({ symbol, file }) => {
-      if (!names.includes(symbol)) {
-        return say('"' + symbol + '" is not among the candidates this task can declare: ' +
-          (names.length ? names.join(', ') : '(none — the patch added no export)'))
-      }
-      // Flat and dotted, and the value a JSON STRING: kata stores metadata keys
-      // that way (CONTRACT.md's `metadata-dotted-flat`), so a nested object here
-      // would land as keys no reader of the record knows to look for.
-      await patchWithRevision(kata, projectId, uid, {
-        'interface.settled': JSON.stringify({ symbol, file, task: taskId }),
-      })
-      return say('settled: ' + symbol + ' in ' + file)
-    }),
+    handlers.settled,
   )
 
   const siblingFact = tool(
@@ -171,16 +264,7 @@ export const factoryTools = ({ kata, projectId, task, candidates, board, runExam
     'task settled and where it got to. Use it when your work has to meet a ' +
     'neighbour\'s contract; you will never see their code.',
     { task_uid: z.string().describe('the sibling task\'s issue uid') },
-    async ({ task_uid: siblingUid }) => {
-      try {
-        const issue = await kata.getIssue(siblingUid)
-        return say(JSON.stringify((issue && issue.metadata) || {}, null, 2))
-      } catch (err) {
-        // Not an error a worker should stop on: a sibling that has not started
-        // has no facts yet, and that is an answer.
-        return say('no fact: ' + reason(err))
-      }
-    },
+    handlers.sibling_fact,
   )
 
   const taskFacts = tool(
@@ -189,11 +273,7 @@ export const factoryTools = ({ kata, projectId, task, candidates, board, runExam
     'worker would be handed. Use it when you are stuck and need what earlier ' +
     'sessions on this task already worked out.',
     {},
-    answering(async () => {
-      if (!board) return say('no facts yet')
-      const facts = await board.factsFor(taskId)
-      return say(facts ? facts : 'no facts yet')
-    }),
+    handlers.task_facts,
   )
 
   const runExamTool = tool(
@@ -204,15 +284,7 @@ export const factoryTools = ({ kata, projectId, task, candidates, board, runExam
     'EXIT:$?` can look clean in your own shell while the record behind it stays ' +
     'unable to say what actually happened.',
     {},
-    async () => {
-      if (typeof runExam !== 'function') return say('run_exam unavailable')
-      try {
-        const { exit, tail } = await runExam()
-        return say('exit ' + exit + '\n' + tail)
-      } catch (err) {
-        return say('run_exam failed: ' + reason(err))
-      }
-    },
+    handlers.run_exam,
   )
 
   const tools = [note, hand, settled, siblingFact, taskFacts, runExamTool]
