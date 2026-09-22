@@ -263,3 +263,4 @@
 {"ts":"2026-09-22T00:11:24.432Z","kind":"fold:verify","task":"2","ran":[{"task":"2","exit":0}],"attempt":1}
 {"kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1206","number":1206,"draft":false}
 {"kind":"refold","ok":false,"reason":"merge: re-fold refused (conflict)"}
+{"kind":"run:audit","state":"parked","missing":[]}
