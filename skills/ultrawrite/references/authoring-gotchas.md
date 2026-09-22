@@ -193,6 +193,21 @@ file — `suite-total-pin`, `directory-absence-pin` and, since the compiler left
   the folded tree with both features right; the gate now refuses such a leg before
   dispatch.
 
+- **An end-to-end exam cannot pass in a lone clone at BASE when it drives a sibling's
+  region, and its stub must be able to answer.** A task whose exam boots the whole
+  system exercises every sibling's lines, so an assertion that only a sibling's edit
+  satisfies is red in that task's own clone whatever the task does — the author's
+  "passes at BASE" assumption is the thing to check, clause by clause, against the Files
+  of every sibling. Either the clause names only what this task's Files can change, or
+  the exam is one only the fold runs. And a rig that starts its subject with `spawnSync`
+  beside an in-process `http.createServer` stub deadlocks on itself: the stub never
+  answers while the loop is blocked, the child aborts, and the leg reads the fallback
+  value as a defect. On run-215 (2026-09-22) task 3 paid both at once — two implementers
+  and a re-dispatch, 90 worker-minutes, every one red on a `ts` a sibling wrote and on a
+  preflight stub that could not reply — where task 2's examiner had hit the same rig bug
+  in its own draft and fixed it with an async `spawn`. The retry (#1225) fixed the exam,
+  not the boot.
+
 ## Three older lessons of the same kind
 
 - **Quote desired-state sentences, never diagnosis sentences.** An issue's
