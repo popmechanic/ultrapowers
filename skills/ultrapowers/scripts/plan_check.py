@@ -16,15 +16,17 @@ What refuses:
   * that record's `authoring` object, when it carries one and it is malformed;
   * a `- Check:` or Proof `Run:` command carrying a backtick, and a `Check:`
     naming a path one implementation task's Files own;
+  * a `- Check:` that freezes a `git diff … $ULTRA_BASE -- <pathspecs>` whose
+    pathspec covers any task's `Create:`, `Modify:`, `Delete:` or `Test:`
+    path (run-199);
   * with `--base`: a Stale-if predicate that already holds at BASE, and a
     `--base` that is neither a checkout directory nor a 40-hex sha.
 
 What is printed after the verdict, with `--base` only, and refuses nothing:
 `BASE fact:` (what a deleted file holds; which files outside a task's Files
 carry a literal its Machine clauses pin), `STALE fact: … unreadable at BASE`,
-`GREEN-AT-BASE fact:` and `RED-AT-BASE fact:` (the plan's `Run:` and `Check:`
-lines rehearsed in a throwaway worktree at BASE — behind a `PLAN OK` only),
-and `AUTHORING fact:`.
+`GREEN-AT-BASE fact:` (the plan's `Run:` lines rehearsed in a throwaway
+worktree at BASE — behind a `PLAN OK` only), and `AUTHORING fact:`.
 """
 from __future__ import annotations
 
@@ -297,6 +299,50 @@ def command_violations(checks, tasks):
                         "turn green is not run-wide; move it to that task's "
                         "Proof as a `Run:`."
                         % (t["id"], check["cmd"], path, t["id"]))
+    return violations
+
+
+_SHELL_OPERATORS = ("&&", "||", "|", ";")
+
+
+def freeze_violations(checks, tasks):
+    """A `- Check:` that freezes a `git diff … $ULTRA_BASE -- <pathspecs>` is
+    green at BASE by construction — it goes red the moment a task's own patch
+    lands under the frozen path (run-199). Reads only the strings the parser
+    printed: no worktree, no git, no subprocess."""
+    violations = []
+    for check in checks:
+        cmd = check["cmd"]
+        idx_diff = cmd.find("git diff")
+        if idx_diff == -1:
+            continue
+        idx_base = cmd.find("$ULTRA_BASE", idx_diff)
+        if idx_base == -1:
+            continue
+        idx_sep = cmd.find(" -- ", idx_base)
+        if idx_sep == -1:
+            continue
+        rest = cmd[idx_sep + len(" -- "):]
+        pathspecs = []
+        for tok in rest.split():
+            if tok in _SHELL_OPERATORS:
+                break
+            raw = tok
+            if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "\"'":
+                raw = raw[1:-1]
+            normalized = raw[:-1] if len(raw) > 1 and raw.endswith("/") else raw
+            pathspecs.append((raw, normalized))
+        for raw, normalized in pathspecs:
+            for t in tasks:
+                for path in sorted(task_files(t)):
+                    if path == normalized or path.startswith(normalized + "/"):
+                        violations.append(
+                            "grammar: task %s: run-wide `- Check: %s` freezes "
+                            "`%s`, which covers `%s`, a path task %s's Files "
+                            "own — the check goes red the moment that task's "
+                            "own patch lands (run-199); freeze files, not the "
+                            "directory they sit in."
+                            % (t["id"], cmd, raw, path, t["id"]))
     return violations
 
 
@@ -665,11 +711,10 @@ def base_fact_lines(tasks, base_tree):
 
 
 # --------------------------------------------------------------------------- #
-# The rehearsals at BASE: every `Run:` (#1098) and every `Check:` (#1173)      #
+# The rehearsals at BASE: every `Run:` (#1098)                                #
 # --------------------------------------------------------------------------- #
 GREEN_AT_BASE_TIMEOUT_S = 30
 GREEN_FACT = "GREEN-AT-BASE fact:"
-RED_FACT = "RED-AT-BASE fact:"
 
 
 def _run_at_base(command, worktree, sha, timeout_s):
@@ -751,26 +796,6 @@ def green_at_base_lines(tasks, base_tree, timeout_s=GREEN_AT_BASE_TIMEOUT_S):
     return lines
 
 
-def red_at_base_lines(checks, base_tree, timeout_s=GREEN_AT_BASE_TIMEOUT_S):
-    """A `Check:` already red at BASE is a red no task can be blamed for
-    (fixture run-36). Green is silent. A worktree at BASE has no installed
-    dependencies, so `bun run typecheck` is red there for that reason alone;
-    the line says `in a bare worktree` so a reader knows why."""
-    lines = []
-    results = _rehearse([c["cmd"] for c in checks], base_tree, timeout_s)
-    for check, (code, _elapsed) in zip(checks, results):
-        if code is None:
-            lines.append("%s check: %s — not run (timeout after %s s)"
-                         % (RED_FACT, check["cmd"], timeout_s))
-        elif code != 0:
-            lines.append(
-                "%s check: %s%s — exits %d at BASE in a bare worktree; no "
-                "task can turn it green unless its Files hold the offender"
-                % (RED_FACT, check["cmd"],
-                   " (minor)" if check["minor"] else "", code))
-    return lines
-
-
 # --------------------------------------------------------------------------- #
 def main(argv=None):
     ap = argparse.ArgumentParser(
@@ -800,7 +825,8 @@ def main(argv=None):
 
     violations = (gate_verdict_violations(args.plan, tasks)
                   + authoring_record_violations(args.plan)
-                  + command_violations(result["checks"], tasks))
+                  + command_violations(result["checks"], tasks)
+                  + freeze_violations(result["checks"], tasks))
     advisories = []
     if base_tree is not None:
         refusals, advisories = evaluate_stale_if(tasks, base_tree)
@@ -818,8 +844,7 @@ def main(argv=None):
         # A refused plan's commands are not run: the seconds would buy a
         # reading of a document nobody will dispatch.
         if not violations:
-            for line in (green_at_base_lines(tasks, base_tree)
-                         + red_at_base_lines(result["checks"], base_tree)):
+            for line in green_at_base_lines(tasks, base_tree):
                 print(line)
         print(authoring_fact_line(args.plan))
     return 2 if violations else 0

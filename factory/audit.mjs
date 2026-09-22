@@ -128,7 +128,8 @@ function main (argv) {
 
   const rows = eventsPath ? readRows(eventsPath) : []
   const result = auditRows(rows, { state, bound })
-  process.stdout.write(JSON.stringify(result) + '\n')
+  const line = { ts: new Date().toISOString(), ...result }
+  process.stdout.write(JSON.stringify(line) + '\n')
   return 0
 }
 
