@@ -206,3 +206,7 @@
 {"ts":"2026-09-22T16:20:52.148Z","kind":"landing","task":"1","k":2,"examExit":0,"claim":0.41,"coverage":[0.27,0.3,0.36,0.29,1,1],"candidateSha":"6db187494ca05524f35f61beefdbcd127b513c09","candidates":[{"index":0,"examExit":0,"claim":0.41,"coverage":[0.27,0.3,0.36,0.29,1,1],"score":10.9466666667},{"index":1,"examExit":0,"claim":0.38,"coverage":[0.34,0.37,0.33,0.29,1,1],"score":10.935}],"chosen":0,"margin":0.01166666670000005,"wall_ms":1018994}
 {"ts":"2026-09-22T16:20:58.814Z","kind":"check:line","task":"1","cmd":"git diff --quiet $ULTRA_BASE -- factory/roles factory/board.mjs factory/union.mjs factory/worker.mjs factory/reverify.mjs factory/boot.sh fleet/fleet-bootstrap.sh skills/ultrapowers/kernel","exit":0,"minor":false}
 {"ts":"2026-09-22T16:20:58.814Z","kind":"fold:verify","task":"1","ran":[{"task":"1","exit":0}],"attempt":1}
+{"kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1221","number":1221,"draft":false}
+{"ts":"2026-09-22T16:21:42.169Z","kind":"refold","ok":true}
+{"ts":"2026-09-22T16:21:43.356Z","kind":"merge","code":405}
+{"ts":"2026-09-22T16:21:47.903Z","kind":"merge","code":200}
