@@ -183,9 +183,10 @@ export const makeBoard = ({ kata, projectId, tasks, log } = {}) => {
 // fails a run".
 // ═══════════════════════════════════════════════════════════════════════
 
-import { readFileSync, writeFileSync, appendFileSync, mkdirSync, chmodSync } from 'node:fs'
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync, chmodSync, mkdtempSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import os from 'node:os'
+import crypto from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 
 const DEFAULT_HUB_URL = 'https://kata-sync.int.exe.xyz'
@@ -475,18 +476,113 @@ async function cmdCloseRun (flags) {
   }
 }
 
+/**
+ * `install --version <v> --release-base <U> --home <H>`: fetches
+ * `<U>SHA256SUMS` and `<U>kata_<v>_linux_amd64.tar.gz`, checks the archive's
+ * bytes against the digest `SHA256SUMS` names beside that asset, extracts
+ * the member matching `(^|/)kata$` into a fresh `mkdtemp` directory, and
+ * installs it at `<H>/.local/bin/kata` mode 0755 — the fetch, the check, the
+ * extraction and the install `board_up` used to do in the boot's own shell
+ * (#1222). `--release-base` defaults to the project's own GitHub releases
+ * URL for `<v>` when absent. Any miss — a fetch that is not 2xx, no line for
+ * the asset, a digest that differs, no `kata` member, a failed extraction or
+ * copy — is one stderr line beginning `board: install` and exit 1, nothing
+ * on stdout, and nothing written at the install path.
+ */
+async function cmdInstall (flags) {
+  const version = flags.version
+  const releaseBase = flags['release-base'] ??
+    ('https://github.com/kenn-io/kata/releases/download/v' + version + '/')
+  const home = flags.home
+  const asset = 'kata_' + version + '_linux_amd64.tar.gz'
+  const destPath = home + '/.local/bin/kata'
+
+  const fail = (message) => {
+    process.stderr.write('board: install: ' + message + '\n')
+    return 1
+  }
+  const errText = (error) => (error && error.message ? error.message : String(error))
+
+  let sumsText
+  try {
+    const sumsRes = await fetch(releaseBase + 'SHA256SUMS')
+    if (!sumsRes.ok) return fail('fetching SHA256SUMS answered ' + sumsRes.status)
+    sumsText = await sumsRes.text()
+  } catch (error) {
+    return fail('fetching SHA256SUMS failed: ' + errText(error))
+  }
+
+  let archiveBuffer
+  try {
+    const archiveRes = await fetch(releaseBase + asset)
+    if (!archiveRes.ok) return fail('fetching ' + asset + ' answered ' + archiveRes.status)
+    archiveBuffer = Buffer.from(await archiveRes.arrayBuffer())
+  } catch (error) {
+    return fail('fetching ' + asset + ' failed: ' + errText(error))
+  }
+
+  const sumsLine = sumsText.split('\n').find((line) => {
+    const parts = line.trim().split(/\s+/)
+    return parts.length >= 2 && parts[1] === asset
+  })
+  if (!sumsLine) return fail('SHA256SUMS carries no line for ' + asset)
+  const expectedDigest = sumsLine.trim().split(/\s+/)[0]
+  const actualDigest = crypto.createHash('sha256').update(archiveBuffer).digest('hex')
+  if (expectedDigest !== actualDigest) {
+    return fail(asset + ' digest ' + actualDigest + ' does not match SHA256SUMS ' + expectedDigest)
+  }
+
+  let work
+  try {
+    work = mkdtempSync(path.join(os.tmpdir(), 'board-kata-'))
+  } catch (error) {
+    return fail('mktemp failed: ' + errText(error))
+  }
+  const archivePath = path.join(work, asset)
+  try {
+    writeFileSync(archivePath, archiveBuffer)
+  } catch (error) {
+    return fail('writing ' + archivePath + ' failed: ' + errText(error))
+  }
+
+  const list = spawnSync('tar', ['-tzf', archivePath], { encoding: 'utf8' })
+  if (list.error || list.status !== 0) return fail('tar -tzf failed: ' + (list.error ? errText(list.error) : (list.stderr || '').trim()))
+  const member = (list.stdout || '').split('\n')
+    .map((line) => line.trim())
+    .find((line) => /(^|\/)kata$/.test(line))
+  if (!member) return fail(asset + ' carries no member matching (^|/)kata$')
+
+  const extract = spawnSync('tar', ['-xzf', archivePath, '-C', work], { encoding: 'utf8' })
+  if (extract.error || extract.status !== 0) return fail('tar -xzf failed: ' + (extract.error ? errText(extract.error) : (extract.stderr || '').trim()))
+
+  let bytes
+  try {
+    bytes = readFileSync(path.join(work, member))
+  } catch (error) {
+    return fail('reading extracted ' + member + ' failed: ' + errText(error))
+  }
+
+  try {
+    mkdirSync(path.dirname(destPath), { recursive: true })
+    writeFileSync(destPath, bytes)
+    chmodSync(destPath, 0o755)
+  } catch (error) {
+    return fail('installing ' + destPath + ' failed: ' + errText(error))
+  }
+
+  process.stdout.write(destPath + '\n')
+  return 0
+}
+
 async function main (argv) {
   const [, , cmd, ...rest] = argv
   const flags = parseFlags(rest)
   if (cmd === 'spoke-config') return cmdSpokeConfig(flags)
   if (cmd === 'wait') return cmdWait(flags)
   if (cmd === 'close-run') return cmdCloseRun(flags)
-  process.stderr.write('board: usage: board.mjs spoke-config|wait|close-run ...\n')
+  if (cmd === 'install') return cmdInstall(flags)
+  process.stderr.write('board: usage: board.mjs spoke-config|wait|close-run|install ...\n')
   return 2
 }
 
-const invokedDirectly = process.argv[1] &&
-  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
-if (invokedDirectly) {
-  main(process.argv).then((code) => { process.exitCode = code })
-}
+if (import.meta.main) { main(process.argv).then((code) => { process.exitCode = code }) }

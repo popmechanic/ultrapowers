@@ -440,4 +440,117 @@ const readEventRows = (file) =>
     '(e) [M5] `patchWithRevision` is still exported as a function; got ' + typeof mod.patchWithRevision)
 }
 
+// ── #1222 pass two: "The boot's exam drives the probe to `alive`, and the
+//    boot hands its dead and misplaced pieces to their modules" — the fourth
+//    `board.mjs` subcommand, `install`, which moves the fetch/check/extract/
+//    install `board_up` did over `curl`+`sha256sum`+`tar` in shell into this
+//    module (`factory/boot.sh` afterward carries neither `sha256sum` nor
+//    `KATA_ASSET`). Driven with `runCliAsync` (it touches a stub server of
+//    its own) against a `node:http` stub on `127.0.0.1:0` serving
+//    `/SHA256SUMS` and `/kata_0.18.0_linux_amd64.tar.gz`, the archive a
+//    fixture this leg builds itself with the real `tar` binary (on
+//    `simEnv`'s own `PATH`, beside `git`) over a `mkdtemp` directory holding
+//    one file `kata`. `spawnSync`/`node:crypto` are pulled in with a dynamic
+//    `import()` so the file's static imports above stay untouched.
+// ────────────────────────────────────────────────────────────────────────
+
+// ── (f) [M4] `install` over a matching digest ───────────────────────────
+{
+  const { spawnSync } = await import('node:child_process')
+  const crypto = await import('node:crypto')
+
+  const root = mkdir()
+  const work = path.join(root, 'work')
+  fs.mkdirSync(work, { recursive: true })
+
+  const memberBytes = Buffer.from('#!/bin/sh\necho kata-fixture-binary\n')
+  fs.writeFileSync(path.join(work, 'kata'), memberBytes)
+  const archivePath = path.join(work, 'kata_0.18.0_linux_amd64.tar.gz')
+  const tarRes = spawnSync('tar', ['-czf', archivePath, '-C', work, 'kata'], { env: simEnv({}), encoding: 'utf8' })
+  assert.equal(tarRes.status, 0,
+    "(f) [M4] the exam's own fixture archive builds with the real tar binary — got status " +
+    JSON.stringify(tarRes.status) + ', stderr ' + JSON.stringify(tarRes.stderr))
+  const archiveBytes = fs.readFileSync(archivePath)
+  const digest = crypto.createHash('sha256').update(archiveBytes).digest('hex')
+  const sumsText = digest + '  kata_0.18.0_linux_amd64.tar.gz\n'
+
+  const server = http.createServer((req, res) => {
+    if (req.url === '/SHA256SUMS') { res.writeHead(200, { 'content-type': 'text/plain' }); res.end(sumsText); return }
+    if (req.url === '/kata_0.18.0_linux_amd64.tar.gz') { res.writeHead(200, { 'content-type': 'application/octet-stream' }); res.end(archiveBytes); return }
+    res.writeHead(404); res.end()
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const releaseBase = `http://127.0.0.1:${server.address().port}/`
+
+  try {
+    const home = path.join(root, 'home')
+    fs.mkdirSync(home, { recursive: true })
+    const kataPath = path.join(home, '.local', 'bin', 'kata')
+
+    const result = await runCliAsync(
+      ['install', '--version', '0.18.0', '--release-base', releaseBase, '--home', home],
+      { timeoutMs: 15000 },
+    )
+    assert.equal(result.status, 0,
+      '(f) [M4] install over a matching digest exits 0; got status ' + JSON.stringify(result.status) +
+      ', stderr ' + JSON.stringify(result.stderr))
+    assert.equal(result.stdout, kataPath + '\n',
+      '(f) [M4] it prints exactly <H>/.local/bin/kata plus a newline; got ' + JSON.stringify(result.stdout))
+    assert.equal(fs.statSync(kataPath).mode & 0o777, 0o755,
+      '(f) [M4] the installed file\'s mode is 0755; got ' + (fs.statSync(kataPath).mode & 0o777).toString(8))
+    assert.deepEqual(fs.readFileSync(kataPath), memberBytes,
+      "(f) [M4] the installed file's bytes equal the archive member kata's bytes")
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+}
+
+// ── (g) [M4] `install` over an altered digest ───────────────────────────
+{
+  const { spawnSync } = await import('node:child_process')
+
+  const root = mkdir()
+  const work = path.join(root, 'work')
+  fs.mkdirSync(work, { recursive: true })
+
+  const memberBytes = Buffer.from('#!/bin/sh\necho kata-fixture-binary\n')
+  fs.writeFileSync(path.join(work, 'kata'), memberBytes)
+  const archivePath = path.join(work, 'kata_0.18.0_linux_amd64.tar.gz')
+  const tarRes = spawnSync('tar', ['-czf', archivePath, '-C', work, 'kata'], { env: simEnv({}), encoding: 'utf8' })
+  assert.equal(tarRes.status, 0,
+    "(g) [M4] the exam's own fixture archive builds with the real tar binary — got status " +
+    JSON.stringify(tarRes.status) + ', stderr ' + JSON.stringify(tarRes.stderr))
+  const archiveBytes = fs.readFileSync(archivePath)
+  // A digest that does not match the archive's real sha256 — sixty-four
+  // zeros never equals a real sha256 hex digest.
+  const badSumsText = '0'.repeat(64) + '  kata_0.18.0_linux_amd64.tar.gz\n'
+
+  const server = http.createServer((req, res) => {
+    if (req.url === '/SHA256SUMS') { res.writeHead(200, { 'content-type': 'text/plain' }); res.end(badSumsText); return }
+    if (req.url === '/kata_0.18.0_linux_amd64.tar.gz') { res.writeHead(200, { 'content-type': 'application/octet-stream' }); res.end(archiveBytes); return }
+    res.writeHead(404); res.end()
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const releaseBase = `http://127.0.0.1:${server.address().port}/`
+
+  try {
+    const home = path.join(root, 'home')
+    fs.mkdirSync(home, { recursive: true })
+    const kataPath = path.join(home, '.local', 'bin', 'kata')
+
+    const result = await runCliAsync(
+      ['install', '--version', '0.18.0', '--release-base', releaseBase, '--home', home],
+      { timeoutMs: 15000 },
+    )
+    assert.equal(result.status, 1,
+      '(g) [M4] install over an altered SHA256SUMS digest exits 1; got status ' + JSON.stringify(result.status))
+    assert.equal(result.stdout, '',
+      '(g) [M4] it prints nothing on stdout; got ' + JSON.stringify(result.stdout))
+    assert.equal(fs.existsSync(kataPath), false,
+      '(g) [M4] it leaves no file at <H>/.local/bin/kata')
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+}
+
 console.log('ALL TESTS PASSED')

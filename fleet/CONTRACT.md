@@ -234,8 +234,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
      before the engine exists;
   2. install the toolchain: node 24.20.0, bun 1.4.2 — and no kata: a sandbox carries one kata, the
      one `factory/boot.sh` installs at `/home/exedev/.local/bin/kata` at the version its own engine
-     sha pins (`KATA_VERSION`, the release tarball verified with `sha256sum -c` against the
-     release's own `SHA256SUMS`), because the spoke's config is coupled to the engine and a second,
+     sha pins (`KATA_VERSION`, the release tarball fetched and checked against the release's own
+     `SHA256SUMS` by `factory/board.mjs install`), because the spoke's config is coupled to the engine and a second,
      system-wide binary shadowed it for any non-login `ssh <vm> kata …` (#1190; Shelley, 2026-09-21) —
      celld 0.5.0 (the one `.gz` asset from
      `github.com/denoland/celld`, verified with `sha256sum -c` against the digest the plugin records

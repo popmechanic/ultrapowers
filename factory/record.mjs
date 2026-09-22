@@ -20,8 +20,6 @@
  */
 
 import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import path from 'node:path'
 
 /** A `key=value` token split at its FIRST `=`; a token with no `=` is the
  *  whole token as the key and an empty string as the value. */
@@ -256,6 +254,41 @@ export function renderPolicy (policyPath) {
   return `${enabled} ${maxRefolds} ${waitSeconds}`
 }
 
+/** `pr-payload title=… head=… base=… body=… draft=…` — the five-key object
+ *  the boot's `publish` used to build by hand: the four named strings always
+ *  rendered as JSON strings (never the bare-value rule `row` applies), a
+ *  missing key an empty string, and `draft` the boolean `true` only when the
+ *  token is exactly `draft=true`. */
+export function renderPrPayload (tokens) {
+  const fields = {}
+  for (const token of tokens) {
+    const [key, value] = splitToken(token)
+    fields[key] = value
+  }
+  return JSON.stringify({
+    title: fields.title ?? '',
+    head: fields.head ?? '',
+    base: fields.base ?? '',
+    body: fields.body ?? '',
+    draft: fields.draft === 'true'
+  })
+}
+
+/** `merge-payload title=… sha=…` — the object `maybe_self_merge` used to
+ *  build by hand; a missing key an empty string. */
+export function renderMergePayload (tokens) {
+  const fields = {}
+  for (const token of tokens) {
+    const [key, value] = splitToken(token)
+    fields[key] = value
+  }
+  return JSON.stringify({
+    merge_method: 'squash',
+    commit_title: fields.title ?? '',
+    sha: fields.sha ?? ''
+  })
+}
+
 /** The tokens after a subcommand, split into plain tokens and the file named
  *  by a `--events <file>` pair wherever it falls among them. */
 function extractEvents (args) {
@@ -314,15 +347,19 @@ export function main (argv) {
       process.stdout.write(renderPolicy(policyPath) + '\n')
       return 0
     }
+    case 'pr-payload': {
+      process.stdout.write(renderPrPayload(args.slice(1)) + '\n')
+      return 0
+    }
+    case 'merge-payload': {
+      process.stdout.write(renderMergePayload(args.slice(1)) + '\n')
+      return 0
+    }
     default:
       return usageError(`unknown subcommand '${subcommand ?? ''}'`)
   }
 }
 
-const invokedDirectly = process.argv[1] &&
-  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
-if (invokedDirectly) {
-  process.exitCode = main(process.argv)
-}
+if (import.meta.main) { process.exitCode = main(process.argv) }
 
-export default { renderRow, renderStatus, renderPrBody, renderPolicy, projectTasks, main }
+export default { renderRow, renderStatus, renderPrBody, renderPolicy, renderPrPayload, renderMergePayload, projectTasks, main }
