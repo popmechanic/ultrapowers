@@ -1,0 +1,75 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "b6a28fbf2c0220f6ff6b4cabecf8196231556751d2830cbd7d116d010b1c5899",
+      "verdict": "pass",
+      "reason": "Every Machine clause (M1-M6) is cited by a leg or a paired Run: prover, the pinned literals compute consistently (thirteen status keys with tasks last, six null cells, the M3 byte strings, the M4 1 3 120 / 0 3 120 defaults matching base's 3/120), and the absence clauses M5 and M6 each carry a leg that would fail if the definitions or the FLEET_COMMIT_EVENTS / default 120 text remained."
+    },
+    "2": {
+      "hash": "1c2a9d40578158ea9e3ad06e887d8f5980220ff7e52d1241b147b35e53574863",
+      "verdict": "pass",
+      "reason": "Every Machine clause M1-M5 is cited by a leg (a)-(e) and both [M5] Run lines, the pinned counts (three POSTs, three keys, three rows, one skipped row with code null) are consistent, the absences each have a leg or prover that would fail if false, and the base excerpts show makeBoard/patchWithRevision already exported and the shell functions present to be removed."
+    },
+    "3": {
+      "hash": "229c11a735bb38ac014a28cac051e730eb32c1b099d9ef4083f8fe76bf4e9148",
+      "verdict": "pass",
+      "reason": "Every Machine clause M1-M5 is cited by a leg (a-e) and by the tagged Run: provers for M5's absences, each leg cites an existing clause, the thirteen-key order and six pinned cells in M3 compute consistently with the base's own status.json printf, and no base excerpt pins the opposite of any clause."
+    }
+  },
+  "tally": {
+    "dispatched": 3,
+    "rejected": 0,
+    "rounds": 1,
+    "base": "73ea89ecc6bec6f05202d6994798de2b3feecb19",
+    "question": "facts-only (experiment, rollback the old sentence)"
+  },
+  "authoring": {
+    "minutes": 26,
+    "probes": 0,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "While waiting: boot tally, Viz, or release notes",
+        "options": [
+          "Boot trim tally",
+          "Author and launch the Viz page",
+          "Update the 0.3.32 release notes"
+        ],
+        "recommended": "Boot trim tally",
+        "picked": "Boot trim tally"
+      },
+      {
+        "question": "File the boot-trim ticket?",
+        "options": [
+          "File it, then author the plan",
+          "File it, author later",
+          "Do not file yet"
+        ],
+        "recommended": "File it, then author the plan",
+        "picked": "File it, then author the plan"
+      },
+      {
+        "question": "Boot-trim claim and summary",
+        "options": [
+          "Confirm as drafted",
+          "Confirm, but two tasks"
+        ],
+        "recommended": "Confirm as drafted",
+        "picked": "Confirm as drafted"
+      },
+      {
+        "question": "Boot-trim lane",
+        "options": [
+          "Ultrapowers",
+          "Subagent-Driven",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers"
+      }
+    ]
+  }
+}
