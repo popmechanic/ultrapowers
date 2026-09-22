@@ -1,0 +1,9 @@
+Running as unit: fleet-engine-222.service
+adopted task 1 -> 744f8a90  exam=0 k=2
+{"done":true,"adopted":["1"],"head":"744f8a9046b3dcf264fd47c043194230a2355adb","wall_ms":623147,"cost_usd":3.1713464}
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 10min 23.217s
+CPU time consumed: 47.172s
+Memory peak: 3.0M
+Memory swap peak: 0B
