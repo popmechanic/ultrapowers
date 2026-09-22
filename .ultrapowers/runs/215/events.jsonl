@@ -780,3 +780,10 @@
 {"ts":"2026-09-22T18:02:47.112Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"grep -n \"gate-verdicts\\|kata-ids\\|kata-task-uids\\|event-row\" factory/boot.sh"}
 {"ts":"2026-09-22T18:02:56.107Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"bash -n factory/boot.sh && echo \"SYNTAX OK\""}
 {"ts":"2026-09-22T18:02:58.136Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-22T18:03:18.263Z","kind":"worker:test-run","task":"3","label":"impl:3:redispatch","cmd":"node fleet/tests/test_factory_preflight.mjs && node fleet/tests/test_factory_boot.mjs","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-22T18:03:21.099Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"node fleet/tests/test_factory_preflight.mjs; echo \"EXIT: $?\""}
+{"ts":"2026-09-22T18:03:41.280Z","kind":"worker:test-run","task":"3","label":"impl:3:redispatch","cmd":"node fleet/tests/test_factory_preflight.mjs; echo \"EXIT: $?\"","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-22T18:03:47.757Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"cat > /tmp/test_manual.mjs << 'EOF'\nimport http from 'node:http';\nconst server = http.createServer((req,res)=>{ res.writeHead(200,{'Content-Type':'application/json'}); res.end('{}'); });\nawait new Pro"}
+{"ts":"2026-09-22T18:03:51.057Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"grep -n \"simEnv\" -A 30 fleet/tests/_helpers.mjs | head -60"}
+{"ts":"2026-09-22T18:03:55.383Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/tests/_helpers.mjs"}
+{"ts":"2026-09-22T18:04:06.314Z","kind":"worker:tool","task":"3","label":"impl:3:redispatch","tool":"Bash","target":"node -e \"\nimport('node:http').then(async ({default: http}) => {\n  const server = http.createServer((req,res)=>{res.writeHead(200,{'Content-Type':'application/json'}); res.end('{}');});\n  await new Pro"}
