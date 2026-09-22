@@ -1,0 +1,71 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "26e019cab9cf95729e112a928e41e15474276caf3b9d2cd88fcf926f942ae393",
+   "verdict": "pass",
+   "reason": "Every Machine clause M1-M8 has a citing leg (a-h) whose assertions would fail if the clause's facts were false - including the negations (no z5hh/g9xy/nrun rows, no deadbeefcafe in any argv, exactly two/one exec calls, cursor null and empty arrays on empty input), the literals cross-check (the 00:09:00Z and 00:01:10Z render lines match M2's lastAt and M3's at), M8 is carried by the Run: grep, and no leg pins keys on a shared record."
+  },
+  "2": {
+   "hash": "bd2bf793514b231fc11c8a36a834d4857a9257ffca34bae7e451369c4eefec73",
+   "verdict": "pass",
+   "reason": "M1-M3 are each a computable fact with a leg that would fail if false - the step-3 grep for the board command with --target <repo> before status.json, the Watch-paragraph grep for the command before 'in flight' then the branch and tag reads in order (satisfiable against base lines 276-282 once the command is inserted above them), and validate_skill.py's exit 0; nothing at base pins the opposite."
+  }
+ },
+ "tally": {
+  "dispatched": 3,
+  "rejected": 0,
+  "rounds": 2,
+  "base": "7128a91ad9b088c830bb407f86e5bc4194e03544",
+  "question": "facts-only (experiment, rollback the old sentence)",
+  "history": [
+   {
+    "round": 1,
+    "task": "1",
+    "hash": "a49c3ada5f2f2421cb9618165b95f5bd64fd49506265bff562e2ce1de47b93a0",
+    "verdict": "pass",
+    "note": "passed; the author then reworded leg (e)'s '== now below == events' to 'smaller index (now first)' after the reader flagged it as ambiguous, which re-dispatched task 1"
+   }
+  ],
+  "prompt_note": "Each reader was given the facts-only question word for word plus one sentence asking it to name any uncited clause, any leg citing nothing, and any leg that could not falsify its clause. Diet: the extractor's output as a file the reader was told to Read and nothing else; each reader made exactly 1 tool call."
+ },
+ "authoring": {
+  "minutes": 25,
+  "probes": 0,
+  "routing": {
+   "branch": "inline",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Sign the five Claims and launch",
+    "options": [
+     "Sign all five, launch",
+     "Sign, but hold D",
+     "Don't sign \u2014 I'll edit a Claim"
+    ],
+    "recommended": "Sign all five, launch",
+    "picked": "Sign all five, launch"
+   },
+   {
+    "question": "board-read: --target and --since shape",
+    "options": [
+     "--target required; --since pages events only",
+     "Default --target to this repo",
+     "Dual-source: issues + events"
+    ],
+    "recommended": "--target required; --since pages events only",
+    "picked": "--target required; --since pages events only"
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers"
+   }
+  ]
+ }
+}
