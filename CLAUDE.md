@@ -265,7 +265,7 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
 - **Versioning:** 0.x.y — minor bumps for architectural releases (0.1.0 = the subtraction
   release), patch bumps otherwise — the 0.3.5 lift stayed a patch on the operator's call ("we're
   still fixing the features that .3 was meant to deliver"). A release bumps **both** `plugin.json`
-  **and** `marketplace.json` to the same value — `.claude-plugin/plugin.json` carries `0.3.32`
+  **and** `marketplace.json` to the same value — `.claude-plugin/plugin.json` carries `0.3.33`
   today — `plugin.json` wins silently if they drift, and they have. Shipping one is itself fleet
   work: a release is a fleet plan, whose H1 is the `chore(release): 0.x.y — …` line and whose one
   task bumps both manifests and edits this bullet's version. The PR is opened and merged by the
