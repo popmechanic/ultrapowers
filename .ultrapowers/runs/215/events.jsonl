@@ -254,3 +254,5 @@
 {"ts":"2026-09-22T17:09:22.948Z","kind":"supervisor","task":"2","label":"impl:2:0","answers":{"stuck":{"type":"noul","noul":0.13},"off_track":{"type":"noul","noul":0.29},"needs_human":{"type":"noul","noul":0.1},"done_not_exited":{"type":"noul","noul":0.1}}}
 {"ts":"2026-09-22T17:09:25.273Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"wc -l factory/boot.sh && node -e \"console.log('check')\" && cat factory/audit.mjs | grep -n \"invokedDirectly\\|import.meta.url\\|process.argv\" | head -30"}
 {"ts":"2026-09-22T17:09:27.094Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/audit.mjs"}
+{"ts":"2026-09-22T17:09:29.578Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"event_row\" factory/boot.sh | head -5; echo ---; cat fleet/tests/_helpers.mjs 2>/dev/null | sed -n '1,60p'"}
+{"ts":"2026-09-22T17:09:31.586Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/fleet/tests/_helpers.mjs"}
