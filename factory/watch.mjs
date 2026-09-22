@@ -81,30 +81,58 @@ export function observedWork ({ tools, examRuns, taskFiles, startedAt, now }) {
 }
 
 /**
- * The two-reading dispatch: the existing narration reading, unconditionally,
- * and the new observed-facts reading, only when `observedEnabled`. Resolves
- * once both calls have settled (or the one call, when the second is
- * skipped) and never rejects — a `read` that throws or returns a rejected
- * promise for either name simply appends no row for that reading.
+ * The narration-only reading, as today's first half. Resolves once the one
+ * call has settled and never rejects — a `read` that throws or returns a
+ * rejected promise, or answers `null`, simply appends no row.
  */
 export async function supervisorTick ({
-  read, appendEvent, observedEnabled, label, task, transcript, observed,
+  read, appendEvent, label, task, transcript,
 }) {
   const who = { task, label }
+  let answers = null
+  try { answers = await read('readSupervisor', { label, task, transcript, who }) } catch { answers = null }
+  if (answers) appendEvent({ kind: 'supervisor', task, label, answers })
+}
 
-  const narration = (async () => {
+/**
+ * `makeObservedWatch({ read, appendEvent, observedEnabled, minElapsedMs, label, task })`
+ * -> `{ turn, end }`, one pair per dispatch.
+ *
+ * The observed reading, deferred rather than skipped: held while the worker
+ * is under `minElapsedMs` of elapsed time, asked exactly once at or past it,
+ * and — for a worker whose stream ends before it was ever asked — recorded
+ * as a skipped row naming how far in it was. `observedEnabled` anything but
+ * `true` turns the whole thing off: no row, no `read` call, ever.
+ */
+export function makeObservedWatch ({
+  read, appendEvent, observedEnabled, minElapsedMs, label, task,
+}) {
+  const floor = typeof minElapsedMs === 'number' ? minElapsedMs : 0
+  let asked = false
+  let ended = false
+
+  const turn = async (observed) => {
+    if (observedEnabled !== true) return 'off'
+    if (asked) return 'done'
+    if (typeof observed.elapsed_ms === 'number' && observed.elapsed_ms < floor) return 'held'
+    asked = true
+    const who = { task, label }
     let answers = null
-    try { answers = await read('readSupervisor', { label, task, transcript, who }) } catch { answers = null }
-    if (answers) appendEvent({ kind: 'supervisor', task, label, answers })
-  })()
+    try { answers = await read('readSupervisorObserved', { observed, who }) } catch { answers = null }
+    if (answers) appendEvent({ kind: 'supervisor:observed', task, label, answers, observed })
+    return 'asked'
+  }
 
-  const facts = observedEnabled
-    ? (async () => {
-      let answers = null
-      try { answers = await read('readSupervisorObserved', { observed, who }) } catch { answers = null }
-      if (answers) appendEvent({ kind: 'supervisor:observed', task, label, answers, observed })
-    })()
-    : Promise.resolve()
+  const end = async (observed) => {
+    if (observedEnabled !== true) return 'off'
+    if (asked || ended) return 'done'
+    ended = true
+    appendEvent({
+      kind: 'supervisor:observed', task, label,
+      skipped: 'under floor', elapsed_ms: observed.elapsed_ms, min_elapsed_ms: floor,
+    })
+    return 'skipped'
+  }
 
-  await Promise.all([narration, facts])
+  return { turn, end }
 }

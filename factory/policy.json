@@ -153,7 +153,16 @@
       "window": "none",
       "basis": "judgment",
       "unread": "#1169 desired state 3, the operator's pick of 2026-09-21: the same four questions asked a second time over `observedWork` facts instead of narration, recorded beside the existing reading for the record only — gates nothing.",
-      "rollback": "enabled = false"
+      "rollback": "enabled = false",
+      "min_elapsed_ms": {
+        "value": 120000,
+        "n": 0,
+        "window": "none",
+        "basis": "judgment",
+        "experiment": true,
+        "rollback": 0,
+        "unread": "#1212 desired state and #1128's comment of 2026-09-21: the observed reading fired in band on 19 of 27 ticks, every one a worker still reading its task about ten seconds in with edits: 0; deferred to the first assistant turn past two minutes so a worker that runs past the floor is still read once, and only one that finishes inside it is a skipped row."
+      }
     }
   },
   "resolve": {

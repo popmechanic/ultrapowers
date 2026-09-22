@@ -290,7 +290,8 @@
         "observed.task_files",
         "observed.suite_runs",
         "observed.exam_exit",
-        "observed.prior_tick"
+        "observed.prior_tick",
+        "observed.elapsed_ms"
       ],
       "provenance": "#1128, drafted at this sitting; no corpus has been read at these strings",
       "calibrated": false,
@@ -303,7 +304,7 @@
           "type": "noul",
           "instructions": {
             "question": "Given `observed` and `inferred`, is the worker looping or otherwise unable to advance?",
-            "context": "A worker (an implementer, examiner or fix session) is RUNNING on a fleet task right now. `inferred` is the worker's own words: its last notes, its attention cell, the blocked-by edges it filed. `observed` is the driver's own facts about it: elapsed against the role's median on the record, the diff stat of its clone against its anchor, the paths it has touched against `task.files`, whole-suite runs counted so far, exam and proof exits if any, and the previous tick's reading. Prefer `observed` wherever it speaks: a worker that says it is done is not evidence that it is."
+            "context": "A worker (an implementer, examiner or fix session) is RUNNING on a fleet task right now. `inferred` is the worker's own words: its last notes, its attention cell, the blocked-by edges it filed. `observed` is the driver's own facts about it: elapsed against the role's median on the record, the diff stat of its clone against its anchor, the paths it has touched against `task.files`, whole-suite runs counted so far, exam and proof exits if any, and the previous tick's reading. Prefer `observed` wherever it speaks: a worker that says it is done is not evidence that it is. `observed.elapsed_ms` is how long the worker has been running, in milliseconds; a worker in its first minutes with few or no edits is reading, not stuck, so a short elapsed time argues against `true` — nothing is stuck under a floor of minutes."
           },
           "criteria": {
             "true": "It is repeating work, retrying the same failure, or its diff has stopped growing while it keeps going",
