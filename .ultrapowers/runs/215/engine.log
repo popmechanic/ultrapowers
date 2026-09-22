@@ -1,0 +1,15 @@
+Running as unit: fleet-engine-215.service; invocation ID: 6f29f8529570420da889f3d19993596f
+adopted task 1 -> f9e1a078  exam=0 k=1
+exam:2: 2 denied edit(s)
+adopted task 2 -> 2012af12  exam=0 k=1
+impl:3:0: 1 denied edit(s)
+impl:3:1: 1 denied edit(s)
+adopted task 3 -> 6622f587  exam=1 k=2
+impl:3:fold: 3 denied edit(s)
+{"done":false,"adopted":["1","2","3"],"head":"60e933f6dd41d6976d2f4b42fa56841110c84f32","wall_ms":8365674,"cost_usd":34.15255400000001}
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 2h 19min 25.743s
+CPU time consumed: 4min 42.674s
+Memory peak: 788.6M
+Memory swap peak: 0B

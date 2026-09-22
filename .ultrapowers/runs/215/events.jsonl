@@ -1084,3 +1084,9 @@
 {"ts":"2026-09-22T19:15:32.358Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"cd /home/exedev/run/fold-fix-implement-3-3\ntimeout 180 bash -c 'node fleet/tests/test_factory_preflight.mjs && node fleet/tests/test_factory_boot.mjs'; echo \"EXIT=$?\""}
 {"ts":"2026-09-22T19:15:52.515Z","kind":"worker:test-run","task":"3","label":"impl:3:fold","cmd":"cd /home/exedev/run/fold-fix-implement-3-3\ntimeout 180 bash -c 'node fleet/tests/test_factory_preflight.mjs && node fleet/tests/test_factory_boot.mjs'; echo \"EXIT=$?\"","exit":null,"red":null,"via":"bash"}
 {"ts":"2026-09-22T19:16:05.416Z","kind":"dispatch:end","task":"3","label":"impl:3:fold","role":"implement","wall_ms":2409923,"cost_usd":6.216548700000001,"error":null}
+{"ts":"2026-09-22T19:16:27.886Z","kind":"check:line","task":"3","cmd":"git diff --quiet $ULTRA_BASE -- factory/roles factory/engine.mjs factory/union.mjs factory/worker.mjs factory/reverify.mjs factory/judge.mjs factory/questions.json fleet/fleet-bootstrap.sh skills/ultrapowers/kernel","exit":0,"minor":false}
+{"ts":"2026-09-22T19:16:27.886Z","kind":"fold:verify","task":"3","ran":[{"task":"3","exit":1},{"task":"1","exit":0},{"task":"2","exit":0}],"attempt":2}
+{"ts":"2026-09-22T19:16:27.886Z","kind":"fold:unresolved","task":"3","exam":"3","cmd":null}
+{"ts":"2026-09-22T19:16:27.886Z","kind":"pair:label","a":"1","b":"2","calls":null,"fold":"clean"}
+{"ts":"2026-09-22T19:16:27.887Z","kind":"pair:label","a":"1","b":"3","calls":null,"fold":"clean"}
+{"ts":"2026-09-22T19:16:27.887Z","kind":"pair:label","a":"2","b":"3","calls":null,"fold":"clean"}
