@@ -15,8 +15,6 @@
  */
 
 import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import path from 'node:path'
 
 /** The `landing` rows' tasks, each task's id kept exactly once and in the
  *  order its first `landing` row arrived. */
@@ -133,10 +131,6 @@ function main (argv) {
   return 0
 }
 
-const invokedDirectly = process.argv[1] &&
-  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
-if (invokedDirectly) {
-  process.exitCode = main(process.argv)
-}
+if (import.meta.main) { process.exitCode = main(process.argv) }
 
 export default { auditRows, main }
