@@ -1,0 +1,47 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "3a5e824244a5c14bdcfb12fde861a8f300f786b55ca9b2359e543455ff729642",
+      "verdict": "pass",
+      "reason": "M1 is falsified by leg (a) (exit code, byte-exact last line, the 16/5 label counts; n=40 split every-second gives 20/20), M2 by (b), M3 by (c) (0.98 - 0.18 = 0.80 for the fit without planted sits between the single-add fits, and the 0.0 ablations are consistent with all = added.planted = 0.98), M4 by (d), M5 by (e), M6 by (f); M7's fetch, proposer and fan-out are off the exam and outside what the Claim's sentence depends on, so they are shape read against the hunk; both named files are absent at base with nothing pinning the opposite."
+    }
+  },
+  "tally": {
+    "dispatched": 1,
+    "rejected": 0,
+    "rounds": 1,
+    "base": "97c988fedfed8abe63adee863395474747fbe6bc",
+    "question": "facts-only (experiment, rollback the old sentence)",
+    "diet": "1132-gate-1.json"
+  },
+  "authoring": {
+    "minutes": 34,
+    "probes": 0,
+    "routing": {
+      "branch": "inline",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Confirm, full loop",
+          "Confirm, harness first",
+          "Defer #1132"
+        ],
+        "recommended": "Confirm, full loop",
+        "picked": "Confirm, full loop"
+      },
+      {
+        "question": "Execute",
+        "options": [
+          "Ultrapowers",
+          "Inline",
+          "Subagent-Driven"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers"
+      }
+    ]
+  }
+}
