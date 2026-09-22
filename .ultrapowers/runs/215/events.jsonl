@@ -652,3 +652,5 @@
 {"ts":"2026-09-22T17:49:31.719Z","kind":"worker:test-run","task":"3","label":"impl:3:0","cmd":"sed -n '470,500p' /home/exedev/run/impl-3-0/fleet/tests/test_factory_boot.mjs","exit":null,"red":null,"via":"bash"}
 {"ts":"2026-09-22T17:49:42.679Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"^strip_exams\" -A 18 /home/exedev/run/impl-3-0/factory/boot.sh"}
 {"ts":"2026-09-22T17:49:46.287Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Edit","target":"/home/exedev/run/impl-3-0/factory/boot.sh"}
+{"ts":"2026-09-22T17:49:48.537Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"cp /tmp/diagtests/test_factory_boot_diag.mjs /home/exedev/run/impl-3-0/fleet/tests/_diag_boot4.mjs\ncd /home/exedev/run/impl-3-0\ntimeout 300 node fleet/tests/_diag_boot4.mjs 2>&1 | grep -i \"DEBUGXX\\|ex"}
+{"ts":"2026-09-22T17:50:19.055Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"cp /tmp/diagtests/test_factory_boot_diag.mjs /home/exedev/run/impl-3-0/fleet/tests/_diag_boot5.mjs\ncd /home/exedev/run/impl-3-0\ntimeout 300 node fleet/tests/_diag_boot5.mjs > /tmp/diag_out.txt 2>&1\nec"}
