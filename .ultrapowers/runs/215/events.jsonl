@@ -1012,3 +1012,16 @@
 {"ts":"2026-09-22T19:01:35.707Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"FIXTURE_PLAN\\|kata.json\\|KATA_BLOB\" fleet/tests/test_factory_boot.mjs | head -30"}
 {"ts":"2026-09-22T19:01:35.745Z","kind":"worker:test-run","task":"3","label":"impl:3:fold","cmd":"grep -n \"FIXTURE_PLAN\\|kata.json\\|KATA_BLOB\" fleet/tests/test_factory_boot.mjs | head -30","exit":null,"red":null,"via":"bash"}
 {"ts":"2026-09-22T19:01:46.087Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-implement-3-3/fleet/tests/test_factory_boot.mjs"}
+{"ts":"2026-09-22T19:02:13.355Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"invokedDirectly\\|close-run\\|board:close\\|--events\\|appendFileSync\\|writeFileSync\" factory/board.mjs | head -40"}
+{"ts":"2026-09-22T19:02:15.817Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-implement-3-3/factory/boot.sh"}
+{"ts":"2026-09-22T19:02:20.179Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Edit","target":"/home/exedev/run/fold-fix-implement-3-3/factory/boot.sh"}
+{"ts":"2026-09-22T19:02:22.542Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n 'fleet_node \"\\$ENGINE_REPO_DIR/factory' factory/boot.sh"}
+{"ts":"2026-09-22T19:02:24.532Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n 'ENGINE_REPO_DIR/factory/engine.mjs' factory/boot.sh"}
+{"ts":"2026-09-22T19:02:26.653Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n \"invokedDirectly\\|import.meta.url\\|process.argv\\[1\\]\" factory/engine.mjs"}
+{"ts":"2026-09-22T19:02:36.895Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Read","target":"/home/exedev/run/fold-fix-implement-3-3/factory/boot.sh"}
+{"ts":"2026-09-22T19:02:44.962Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Edit","target":"/home/exedev/run/fold-fix-implement-3-3/factory/boot.sh"}
+{"ts":"2026-09-22T19:02:46.218Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Bash","target":"grep -n 'fleet_node \"\\$ENGINE_REPO_DIR/factory' factory/boot.sh"}
+{"ts":"2026-09-22T19:02:48.191Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Edit","target":"/home/exedev/run/fold-fix-implement-3-3/factory/boot.sh"}
+{"ts":"2026-09-22T19:02:52.568Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Edit","target":"/home/exedev/run/fold-fix-implement-3-3/factory/boot.sh"}
+{"ts":"2026-09-22T19:02:55.265Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Edit","target":"/home/exedev/run/fold-fix-implement-3-3/factory/boot.sh"}
+{"ts":"2026-09-22T19:02:58.259Z","kind":"worker:tool","task":"3","label":"impl:3:fold","tool":"Edit","target":"/home/exedev/run/fold-fix-implement-3-3/factory/boot.sh"}
