@@ -161,3 +161,8 @@
 {"ts":"2026-09-22T01:29:43.734Z","kind":"refold","ok":true}
 {"ts":"2026-09-22T01:29:45.567Z","kind":"merge","code":405}
 {"ts":"2026-09-22T01:29:48.710Z","kind":"merge","code":200}
+{"ts":"2026-09-22T01:29:50.280Z","kind":"board:leave","rc":0}
+{"ts":"2026-09-22T01:29:50.441Z","kind":"board:close","what":"task 1","code":200}
+{"ts":"2026-09-22T01:29:50.551Z","kind":"board:close","what":"task 2","code":200}
+{"ts":"2026-09-22T01:29:50.696Z","kind":"board:close","what":"run","code":200}
+{"ts":"2026-09-22T01:29:50.751Z","kind":"run:audit","state":"done","missing":[]}
