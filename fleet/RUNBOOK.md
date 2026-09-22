@@ -749,22 +749,34 @@ token is on no VM and in no argv.
 
 ## Release
 
-Two commands before the release commit, both on the laptop. First pull the
-runs since the last release off their evidence tags and count them:
-`python3 skills/ultrapowers/scripts/catch_counter.py --fetch <owner>/<repo>
---runs <last tag's run + 1>..<latest> --into <dir> --ledger
-docs/superpowers/observations/ledger.jsonl` — the run numbers are off
-`git ls-remote --tags origin 'ultra/evidence/run-*'`, and the ledger is the
-untracked laptop one, never a sandbox path. Then read it over the window:
-`python3 skills/ultrapowers/scripts/catch_report.py --ledger
-docs/superpowers/observations/ledger.jsonl --tree . --zero-over 1` prints a
-`## Zero catches over the last 1 release(s)` section — its window line naming
-the `v*` tag it opened at and how many runs fell inside it, then one
-`- <path> — exercised by <k> run(s)` line per test of the tree that caught
-nothing since that tag — and that section is pasted into the release commit
-body as it is, beside the prose sizes. It is report-only: nothing in it deletes
-anything, and deletion of a listed file follows on the reading, one file at a
-time in its own pull request, as `CLAUDE.md`'s Test doctrine has it.
+A release is the version bump on main and a bare git tag — no GitHub release
+(operator, 2026-09-22: the product is not production-ready, and the marketplace
+version is what the plugin side reads for an update). The steps, all on the
+laptop:
+
+1. Pull the runs since the last tag off their evidence tags and count them:
+   `python3 skills/ultrapowers/scripts/catch_counter.py --fetch <owner>/<repo>
+   --runs <last tag's run + 1>..<latest> --into <dir> --ledger
+   docs/superpowers/observations/ledger.jsonl` — the run numbers are off
+   `git ls-remote --tags origin 'ultra/evidence/run-*'`, and the ledger is the
+   untracked laptop one, never a sandbox path.
+2. Read it over the window: `python3 skills/ultrapowers/scripts/catch_report.py
+   --ledger docs/superpowers/observations/ledger.jsonl --tree . --zero-over 1`
+   prints a `## Zero catches over the last 1 release(s)` section — its window
+   line naming the `v*` tag it opened at and how many runs fell inside it, then
+   one `- <path> — exercised by <k> run(s)` line per test of the tree that
+   caught nothing since that tag. It is report-only: nothing in it deletes
+   anything, and deletion of a listed file follows on the reading, one file at
+   a time in its own pull request, as `CLAUDE.md`'s Test doctrine has it.
+3. Write the notes to `docs/superpowers/plans/<date>-release-0-x-y.notes.md`
+   (untracked): what changed for someone launching a plan, what was read and
+   not flipped, the authoring census `totals:` line, and that section as it is.
+4. One hand PR, `chore: version 0.x.y — …`, that bumps `plugin.json` and
+   `marketplace.json` together and the CLAUDE.md Versioning bullet; squash-merge
+   it.
+5. Push a bare tag on the squash commit: `git tag v0.x.y <sha> && git push
+   origin v0.x.y`. A tag is a ref only — it is what step 2's window opens at
+   next time. No `gh release create`.
 
 ## Rollback
 
