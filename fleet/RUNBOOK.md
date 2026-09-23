@@ -570,8 +570,7 @@ list, and `node fleet/tests/probe_exe_facts.mjs` re-reads them.
   once, your own tag-scoped ssh key included. Never mid-run.
 - A tag-scoped key cannot bind or unbind integrations; `launch.mjs` needs
   the account key.
-- exe.dev reserves a deleted VM's name for good. Never reuse one; the run
-  number is the identity and the VM name is one incarnation.
+- exe.dev does NOT reserve a deleted VM's name: on 2026-09-23 the lobby probe created `new --name <just-deleted>` and it succeeded, where the 2026-09-04 reading said "reserved for good" (`rm-reserves-name` in the contract's `exe.dev facts (measured)` list, n=1). The practice is unchanged: never reuse a name; the run number is the identity and the VM name is one incarnation.
 - The VM comment holds 200 bytes. The assignment is one line of `key=value`
   pairs and nothing else lives there.
 

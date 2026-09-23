@@ -484,18 +484,18 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   re-read after any verb-drift finding and before any plan touching `fleet/launch.mjs` or
   `fleet/lobby.mjs`; a reading that moves is one edited row, and a document or an issue comment
   cites the row instead of repeating what it says.
-  - help-all-digest — `help all --json` is JSON with a `commands` array, and its sha256 is the only version marker exe.dev exposes (2026-09-23; Shelley cKAZXHW).
-  - ls-json-shape — `ls --json` is `{shared_vms, vms}`; read `.vms[]` only; rows carry `vm_name`, `ssh_dest`, `ssh_host`, `status` (2026-09-03; Traps).
-  - billing-plan-json — `billing plan --json` carries `max_cpus`, `max_memory_gb`, `tier` and `plan`, the pool the launcher sizes against (2026-09-05; RUNBOOK §Capacity).
-  - help-verb-flags — `help <verb>` prints an `Options:` block one flag per line, the set the doctor's verb-drift row diffs (2026-09-05; fleet/doctor.mjs).
-  - error-on-stdout — a lobby error comes back on stdout with exit 1 and no envelope (2026-09-03; Traps).
-  - new-no-positionals — `new` takes no positionals; a spaced `--comment` travels inside one ssh argument with its quotes intact (2026-09-12; the ultraviz deploy, Traps).
-  - comment-200-bytes — the VM comment holds 200 bytes (2026-09-04; Traps, `COMMENT_MAX_BYTES`).
-  - share-port-single — `share port` sets the VM's single `proxy_port` and a second call replaces it (2026-09-12; Traps).
-  - tag-add-remove — `tag` adds and `tag -d` removes a tag; `tag -d` of a policy-named tag detaches that integration at once, not re-measured by the probe (2026-09-04; Traps).
-  - cp-copies-tags — `cp` copies tags by default and `--copy-tags=false` makes a copy with none (2026-09-04; Traps).
-  - rm-reserves-name — exe.dev reserves a deleted VM's name for good (2026-09-04; Traps).
-  - refused-verbs — `new --integration`, `integrations attach` and `integrations detach` are refused since 2026-09-11; the policy is the only grant (2026-09-11; Traps, #1036).
+  - help-all-digest — `help all --json` is JSON with a `commands` array, and its sha256 is the only version marker exe.dev exposes (lobby 92465a0aa5e0141b, 2026-09-23; first read 2026-09-23, Shelley cKAZXHW).
+  - ls-json-shape — `ls --json` is `{shared_vms, vms}`; read `.vms[]` only; rows carry `vm_name`, `ssh_dest`, `ssh_host`, `status` (lobby 92465a0aa5e0141b, 2026-09-23; first read 2026-09-03, Traps).
+  - billing-plan-json — `billing plan --json` carries `max_cpus`, `max_memory_gb`, `tier` and `plan`, the pool the launcher sizes against (lobby 92465a0aa5e0141b, 2026-09-23; first read 2026-09-05, RUNBOOK §Capacity).
+  - help-verb-flags — `help <verb>` prints an `Options:` block one flag per line, the set the doctor's verb-drift row diffs (lobby 92465a0aa5e0141b, 2026-09-23; first read 2026-09-05, fleet/doctor.mjs).
+  - error-on-stdout — a lobby error comes back on stdout with exit 1 and no envelope (lobby 92465a0aa5e0141b, 2026-09-23; first read 2026-09-03, Traps).
+  - new-no-positionals — `new` takes no positionals; a spaced `--comment` travels inside one ssh argument with its quotes intact; `--memory` under 2 GB is refused with `--memory must be at least 2 GB` (a 1 GB throwaway parked the probe's first hand run) (lobby 92465a0aa5e0141b, 2026-09-23; first read 2026-09-12, the ultraviz deploy, Traps).
+  - comment-200-bytes — the VM comment holds 200 bytes (lobby 92465a0aa5e0141b, 2026-09-23; first read 2026-09-04, Traps, `COMMENT_MAX_BYTES`).
+  - share-port-single — `share port` sets the VM's single `proxy_port` and a second call replaces it (lobby 92465a0aa5e0141b, 2026-09-23; first read 2026-09-12, Traps).
+  - tag-add-remove — `tag` adds and `tag -d` removes a tag; `tag -d` of a policy-named tag detaches that integration at once, not re-measured by the probe (lobby 92465a0aa5e0141b, 2026-09-23; first read 2026-09-04, Traps).
+  - cp-copies-tags — `cp` copies tags by default and `--copy-tags=false` makes a copy with none (lobby 92465a0aa5e0141b, 2026-09-23; first read 2026-09-04, Traps).
+  - rm-reserves-name — DRIFTED: a `new` with a just-deleted name succeeds — the name is not reserved (lobby 92465a0aa5e0141b, 2026-09-23; the 2026-09-04 Trap read "reserved for good" and the probe's first hand run read the opposite, n=1). The practice stands regardless: the run number is the identity and a VM name is one incarnation, never reused.
+  - refused-verbs — `new --integration`, `integrations attach` and `integrations detach` are refused since 2026-09-11; the policy is the only grant (lobby 92465a0aa5e0141b, 2026-09-23; first read 2026-09-11, Traps, #1036).
 - **SDK and edge-auth facts (measured 2026-09-17, one hand-stood `--tag fleet` box):** the readings
   the Agent SDK worker layer rests on, taken on `jev-probe-09172119` (node 24.20.0, SDK 0.3.274,
   image CLI 2.1.272) under the boot's own engine env, one row per probe. A reading that moves is one

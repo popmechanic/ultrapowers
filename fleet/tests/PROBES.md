@@ -39,8 +39,8 @@ The current probes:
   seam (`ssh exe.dev`), each line stamped with the sha256 of `help all
   --json` — exe.dev exposes no version verb, no `--version` and no
   changelog, so that digest is the only version marker there is — and the
-  UTC date. It creates three throwaway VMs (`probe-exe-facts-<stamp>` and two
-  copies of it) and removes every one of them as its last mutating verbs, and
+  UTC date. It creates three throwaway VMs (`probe-exe-facts-<stamp>`, 1 vCPU and 2 GB —
+  the lobby's floor — and two copies of it) and removes every one of them as its last mutating verbs, and
   it refuses outright, issuing no `new`, when a `fleet-r*` VM is already
   listed — a live run's VM, never to be created beside. Run it on a
   verb-drift finding from the doctor's `verb-drift` row or the launch line,

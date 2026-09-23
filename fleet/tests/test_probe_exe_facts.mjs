@@ -147,14 +147,14 @@ const makeFakeLobby = ({
       vms.get(name).comment = text
       return ok({ ok: true })
     }
-    if ((m = /^new --name (\S+) --cpu 1 --memory 1GB --comment '(.*)'$/.exec(remote))) {
+    if ((m = /^new --name (\S+) --cpu 1 --memory 2GB --comment '(.*)'$/.exec(remote))) {
       const [, name, comment] = m
       if (everCreated.has(name)) return refuse(`Error: name reserved: ${name}`)
       everCreated.add(name)
       vms.set(name, { comment, tags: new Set(), proxy_port: null })
       return ok({ ok: true, vm_name: name })
     }
-    if ((m = /^new --name (\S+) --cpu 1 --memory 1GB$/.exec(remote))) {
+    if ((m = /^new --name (\S+) --cpu 1 --memory 2GB$/.exec(remote))) {
       const [, name] = m
       if (everCreated.has(name)) return refuse(`Error: name reserved: ${name}`)
       everCreated.add(name)
