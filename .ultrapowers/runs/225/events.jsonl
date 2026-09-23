@@ -600,3 +600,19 @@
 {"ts":"2026-09-23T02:55:49.506Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/commands.mjs"}
 {"ts":"2026-09-23T02:55:52.624Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/commands.mjs"}
 {"ts":"2026-09-23T02:55:55.812Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"exam\\|testCmd\" factory/commands.mjs"}
+{"ts":"2026-09-23T02:55:58.183Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/policy.json"}
+{"ts":"2026-09-23T02:56:02.741Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"assertions\\|landing.facts\\|facts\\.\\|factsPolicy\\|policyDoc\\.exam\\|policyDoc\\.landing\\|min_coverage\\|minCoverage\\|t_exam_defect\\|jev_claim\\|gate\\.\" factory/engine.mjs | head -60"}
+{"ts":"2026-09-23T02:56:09.626Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"referee\\|wantsReferee\\|refereeTrigger\\|review_difficulty\\|rung\" factory/engine.mjs | head -40"}
+{"ts":"2026-09-23T02:56:14.237Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/referee.mjs"}
+{"ts":"2026-09-23T02:56:17.335Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:56:19.756Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:56:25.984Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/policy.json"}
+{"ts":"2026-09-23T02:56:35.353Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/policy.json"}
+{"ts":"2026-09-23T02:56:41.233Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/policy.json"}
+{"ts":"2026-09-23T02:56:43.053Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:56:45.598Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/policy.json"}
+{"ts":"2026-09-23T02:56:46.825Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"runExamsAndChecks\\|const reverifyAfterFold\\|examsTouched\\|runExamAt\\|const reattempt\\|const verify\\|foldRound(\" /home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:56:48.532Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n '\"gate\"' factory/policy.json factory/*.mjs"}
+{"ts":"2026-09-23T02:56:50.273Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"reverifyAfterFold(\\|selectedByTask\\|adopted\\.push\\|adopted =\" /home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:56:54.170Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:56:57.503Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/policy.json"}
