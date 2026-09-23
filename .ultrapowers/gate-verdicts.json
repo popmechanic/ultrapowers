@@ -1,0 +1,75 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "55f9988964ed451168a5323b57e76e5f4a09968dcef605360d0b1fee15e8d763",
+      "verdict": "pass",
+      "reason": "Every computable fact of M1-M4 has a leg that would catch it false; no literal unsatisfiable; the base check already emits the backtick line M3 relies on; the parser's stdout is not a shared record."
+    },
+    "2": {
+      "hash": "e01e23975e07e0ef7a605b50a6835d643a3d7e9bad134ba4b1bb1525d36b6af9",
+      "verdict": "pass",
+      "reason": "The policy prints, the ordered publish rows, publish.json cells, call-log counts, environment and phases across four cases, and the two sims plus bash -n each have a tagged probe; the sim writes its own temporary evidence, not a shared log."
+    },
+    "3": {
+      "hash": "29f8d08142cccb450c246bfab1211ae4c4bc580ca20c9a2c4cf25a1997c8b505",
+      "verdict": "pass",
+      "reason": "The nine-id array, the three exec tables, the section literals and heading order, the eight-rows absence across all four carriers, the four publishRefusal inputs and the two sim sentinels each have a probe; BASE's eight extend rather than contradict."
+    }
+  },
+  "tally": {
+    "dispatched": 3,
+    "rejected": 0,
+    "rounds": {
+      "1": {
+        "dispatched": 3,
+        "rejected": 0
+      }
+    },
+    "base": "066f685493a96f2abb9f008feef0739c0df59dda",
+    "question": "facts-only (2026-09-18)"
+  },
+  "authoring": {
+    "minutes": 52,
+    "probes": 0,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Sign as drafted",
+          "Sign, engine only, no rollback",
+          "Please explain"
+        ],
+        "recommended": "Sign as drafted",
+        "picked": "Sign as drafted",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Where the Cloudflare account id lives",
+        "options": [
+          "In the target's wrangler.jsonc",
+          "On the plan's Publish line",
+          "Please explain"
+        ],
+        "recommended": "In the target's wrangler.jsonc",
+        "picked": "In the target's wrangler.jsonc",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Execution lane",
+        "options": [
+          "Ultrapowers",
+          "Subagent-Driven",
+          "Inline",
+          "Please explain"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers",
+        "explain_rounds": 0
+      }
+    ]
+  }
+}
