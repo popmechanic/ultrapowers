@@ -336,6 +336,17 @@
     "experiment": true,
     "rollback": "exam_at_zero = false, on_candidate = false"
   },
+  "exam": {
+    "rig_red": {
+      "enabled": true,
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "experiment": true,
+      "rollback": "enabled = false",
+      "unread": "the #1245 reading: 3 exams on 2 of 22 runs (202-223, 2026-09-21/22) red on their own rig; the pre-registered reading per release is parks by exam-rig defect, examiner fix rounds per run, and self-checks wrong about a rig red"
+    }
+  },
   "fold": {
     "reverify": {
       "enabled": true,

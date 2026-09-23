@@ -13,9 +13,14 @@ expected value by equality rather than by containment. Where it names an action
 — a call, a keystroke, a click — keep that action; a substituted easier one
 leaves its clause unproven.
 
-Expect the exam to be red when you run it, and expect that redness to read as
-the absent implementation rather than as a typo, a bad import, or a fixture you
-forgot to create. An exam proves its own claim through imports and calls: it
+Expect the exam to be red when you run it. The engine runs your exam itself
+when you hand in, against a tree where no implementation exists, before any
+implementer is sent, and it reads the red: the redness must be red on an
+assertion that names its clause, not on the rig — an exception outside an
+assertion, a timeout, a helper that never reaches the seam — and a rig red
+comes back to you once, with the engine's output under `EXAM RIG-RED`. When a
+later prompt carries an `EXAM RIG-RED` block, the fix is to the rig, never to
+weaken a leg. An exam proves its own claim through imports and calls: it
 never runs another exam, the package suite, the linter, or the typecheck. A
 node exam that starts a process passes `env: simEnv()`, the named export of
 `fleet/tests/_helpers.mjs`, and never `process.env`.

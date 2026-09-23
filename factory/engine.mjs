@@ -62,6 +62,7 @@ import { observedWork, supervisorTick, makeObservedWatch } from './watch.mjs'
 import { kFor, probeRecord } from './kprobe.mjs'
 import { refereeTrigger } from './referee.mjs'
 import { retrying, isRateLimited } from './retry.mjs'
+import { redKind, rigRound } from './redkind.mjs'
 // Amendment (undeclared by the task's own M1-M6, needed only to reach them):
 // this module now creates a missing parent directory once, on the one error
 // that means "the directory a write was aimed at doesn't exist yet", and
@@ -1414,6 +1415,29 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     })
     await board.post(task.id, 'exam-note',
       (examAnswer && examAnswer.result && examAnswer.result.result) || '')
+
+    // M4: the engine's own check on the exam it just had written — runs it
+    // where no implementation exists, and buys the examiner one more round
+    // on a rig red, before any implementer is sent against it.
+    const rigRedCell = (policyDoc.exam || {}).rig_red || {}
+    await selfCheckExam({
+      task: task.id,
+      runExam: () => {
+        const r = runTaskExams({ tasks: [task], dir: examDir, sh, timeoutSeconds: DEFAULT_TIMEOUT_SECONDS })
+        return { exit: r.ran[0].exit, out: r.reds[0] ? r.reds[0].out : '' }
+      },
+      dispatchExaminer: async ({ fact }) => {
+        await board.post(task.id, 'exam-rig', fact)
+        return dispatch({
+          role: 'exam', label: 'exam:' + task.id + ':rig', taskId: task.id, cwd: examDir, model,
+          systemPrompt: EXAM_MD, files: task.proofTests, mcpServers,
+          prompt: await withHandoff(await examPrompt(task, coveredBlock) + '\n\n' + fact, task.id),
+        })
+      },
+      appendEvent,
+      enabled: rigRedCell.enabled === true,
+    })
+
     const examFiles = (task.proofTests || []).map((p) => {
       const at = path.join(examDir, p)
       return [p, fs.existsSync(at) ? fs.readFileSync(at, 'utf8') : '']
@@ -1922,10 +1946,12 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       dir: cloneAt('fold-verify-' + task.id, head), exams, foldedTaskId: task.id, timeoutSeconds,
     })
 
+    const rigRedCell = (policyDoc.exam || {}).rig_red || {}
     const { unresolved } = await foldRound({
       reds: first.reds, folded: task.id, headBefore, head,
       enabled: attributionPolicy.enabled === true, hunks,
       runExamAt, read, appendEvent, reattempt, verify,
+      rigToExam: rigRedCell.enabled === true,
     })
     if (unresolved) foldUnresolved = true
   }
@@ -2308,6 +2334,52 @@ export function makeRefoldDispatch ({ worker, appendEvent, policy, sleep }) {
   return retrying(dispatchOnce, { policy, sleep })
 }
 
+/**
+ * selfCheckExam({ task, runExam, dispatchExaminer, appendEvent, enabled })
+ * -> Promise<{ rows }>
+ *
+ * The engine's own check on the exam it just had written: run the exam
+ * where no implementation exists yet, and write down what kind of red (if
+ * any) came back. A leg red there is the examiner's own proof that its rig
+ * reaches the seam — recorded and left alone. A rig red, when `enabled`,
+ * buys the examiner exactly one more round: it is handed the first run's
+ * exit and output, gets to fix its rig, and the engine runs the exam again
+ * and records that second answer too — never a third round, whatever the
+ * second answer reads (`rigRound` itself refuses attempt 2).
+ *
+ * Pure over its arguments: no `fs`, no `sh`, no clone. `runExam` and
+ * `dispatchExaminer` are handed in by the caller, which is where the real
+ * exam clone and the real dispatch live.
+ */
+export async function selfCheckExam ({ task, runExam, dispatchExaminer, appendEvent, enabled }) {
+  const rows = []
+
+  const first = await runExam()
+  const redFirst = redKind(first)
+  const row1 = { kind: 'exam:self-check', task, attempt: 1, exit: first.exit, red: redFirst }
+  appendEvent(row1)
+  rows.push(row1)
+
+  if (rigRound({ attempt: 1, red: redFirst, enabled })) {
+    const out = typeof first.out === 'string' ? first.out : ''
+    const fact = [
+      'EXAM RIG-RED',
+      'The engine ran the exam where no implementation exists and it was red for a reason no leg names — fix the rig, not a leg.',
+      'exit ' + first.exit,
+      out.slice(-1500),
+    ].join('\n')
+    await dispatchExaminer({ fact })
+
+    const second = await runExam()
+    const redSecond = redKind(second)
+    const row2 = { kind: 'exam:self-check', task, attempt: 2, exit: second.exit, red: redSecond }
+    appendEvent(row2)
+    rows.push(row2)
+  }
+
+  return { rows }
+}
+
 export async function runRefold (rawArgs = {}, deps = {}) {
   const args = normalizeArgs(rawArgs)
   const target = path.resolve(String(args.target))
@@ -2559,4 +2631,4 @@ export async function main (argv = process.argv.slice(2)) {
 
 if (import.meta.main) { process.exitCode = await main() }
 
-export default { runEngine, runRefold, makeRefoldDispatch, modelCells, buildDeps, main, parseArgv, normalizeArgs, bodyOf, clausesOf, splitDiff }
+export default { runEngine, runRefold, makeRefoldDispatch, selfCheckExam, modelCells, buildDeps, main, parseArgv, normalizeArgs, bodyOf, clausesOf, splitDiff }
