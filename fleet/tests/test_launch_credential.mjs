@@ -1,7 +1,8 @@
 /**
  * fleet/tests/test_launch_credential.mjs — the exam for "The launcher puts a
  * held sign-in on the launch line and turns a declined one into a one-line
- * refusal before anything is pushed" (#1113).
+ * refusal before anything is pushed" (#1113), plus "The launcher reads the
+ * windows after the refresh, prints them, and refuses at the wall" (#1114).
  *
  * A sibling task changes `fleet/claude-token.mjs` so it stops rotating the
  * Claude credential while a `fleet-r*` VM is listed (a refresh grant would
@@ -33,6 +34,33 @@
  * uses, copied rather than imported (a sim may not run a sibling sim): a local
  * bare origin stands in for GitHub, and every lobby verb, `gh api` and `python3`
  * call is answered by a rule.
+ *
+ * ── #1114 (this task) ───────────────────────────────────────────────────────
+ *
+ * Legs (e)-(i) sit under this comment, added for "The launcher reads the
+ * windows after the refresh, prints them, and refuses at the wall":
+ *
+ *   (e) [M1] `defaultReadUsage(account, spawn)` over a spawn spy: exit 0 with
+ *       a one-row JSON array answers that row, one spy call, `process.execPath`
+ *       as the spawned command and argv's last five entries `usage`, `--json`,
+ *       `--account`, `<account>`, `--no-rotate`; exit 1, an empty array and
+ *       unparseable stdout each answer `{ unread: true, reason: <string> }`.
+ *   (f) [M2] `launch` with `readUsage` answering `sevenDay.utilization: 96`
+ *       rejects with a `Refusal` carrying the account, `seven-day`, `96`, the
+ *       reset string and the ending sentence, with no push and no `new` verb
+ *       issued; `fiveHour.utilization: 95` (the wall itself) carries
+ *       `five-hour` the same way. `USAGE_REFUSE_PCT` is asserted to be 95.
+ *   (g) [M3] `readUsage` answering a row under both thresholds resolves with
+ *       `result.usage` byte-exact as the Machine spells it, and `renderLaunch`
+ *       carries that line immediately after the `account=` line; an
+ *       `{ unread: true, reason }` row resolves `usage: <account> unread —
+ *       <reason>` in the same place.
+ *   (h) [M4] a `refreshCredential` answering `refused` leaves a spy
+ *       `readUsage` at zero calls; one answering `{ ok: true }` leaves it at
+ *       one call, ordered before the rig's first `git push`.
+ *   (i) [M5] `fleet/CONTRACT.md` names the `--no-rotate` usage read and the
+ *       `usage: <account> 7d` launch line (the two `grep` legs of the Proof,
+ *       run here as substring checks over the file the exam already reads).
  */
 
 import assert from 'node:assert/strict'
@@ -40,7 +68,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { defaultRefreshCredential, launch, renderLaunch } from '../launch.mjs'
+import { defaultReadUsage, defaultRefreshCredential, launch, renderLaunch, USAGE_REFUSE_PCT } from '../launch.mjs'
 import { Refusal, defaultExec } from '../lobby.mjs'
 import {
   answer, cleanup, cmdRule, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmsPayload
@@ -253,6 +281,207 @@ const newVerbs = (exec) => exec.mutating().filter((line) => line.startsWith('new
     `(d) [M4] with no held credential, renderLaunch has no line starting token: — got:\n${renderLaunch(result)}`
   )
   ws.cleanup()
+}
+
+// ── #1114 — the launcher reads the windows after the refresh, prints them, ─
+//            and refuses at the wall ───────────────────────────────────────
+
+// (e) [M1] defaultReadUsage(account, spawn) over a spawn spy
+{
+  const ROW = {
+    name: 'acct',
+    sevenDay: { utilization: 58, resetsAt: '2026-09-20T00:00:00.000Z' },
+    fiveHour: { utilization: 0, resetsAt: '2026-09-16T08:20:00.000Z' }
+  }
+  const sp = spy({ status: 0, stdout: JSON.stringify([ROW]), stderr: '' })
+  const row = defaultReadUsage('acct', sp)
+  assert.deepEqual(row, ROW, '(e) [M1] the row is the first (only) element of the JSON array on stdout')
+  assert.equal(sp.calls.length, 1, '(e) [M1] the spy was called once')
+  assert.equal(sp.calls[0][0], process.execPath, '(e) [M1] spawned with process.execPath')
+  const argv = sp.calls[0][1]
+  assert.deepEqual(
+    argv.slice(-5), ['usage', '--json', '--account', 'acct', '--no-rotate'],
+    `(e) [M1] the argv's last five entries are usage, --json, --account, acct, --no-rotate — got ${JSON.stringify(argv)}`
+  )
+
+  const spFailed = spy({ status: 1, stdout: '', stderr: 'token endpoint answered 500\n' })
+  const rowFailed = defaultReadUsage('acct', spFailed)
+  assert.equal(rowFailed.unread, true, '(e) [M1] a non-zero status answers unread: true')
+  assert.equal(typeof rowFailed.reason, 'string', '(e) [M1] a non-zero status answers a string reason')
+
+  const spEmpty = spy({ status: 0, stdout: '[]', stderr: '' })
+  const rowEmpty = defaultReadUsage('acct', spEmpty)
+  assert.equal(rowEmpty.unread, true, '(e) [M1] a JSON array with zero elements answers unread: true')
+  assert.equal(typeof rowEmpty.reason, 'string', '(e) [M1] and a string reason')
+
+  const spBad = spy({ status: 0, stdout: 'not json at all', stderr: '' })
+  const rowBad = defaultReadUsage('acct', spBad)
+  assert.equal(rowBad.unread, true, '(e) [M1] stdout that is not JSON answers unread: true')
+  assert.equal(typeof rowBad.reason, 'string', '(e) [M1] and a string reason')
+}
+
+// USAGE_REFUSE_PCT is exported and exactly 95, as M2 spells it
+assert.equal(USAGE_REFUSE_PCT, 95, '[M2] USAGE_REFUSE_PCT is exactly 95')
+
+const rowAt = (sevenPct, fivePct) => ({
+  sevenDay: { utilization: sevenPct, resetsAt: '2026-09-20T00:00:00.000Z' },
+  fiveHour: { utilization: fivePct, resetsAt: '2026-09-16T08:20:00.000Z' }
+})
+
+// (f) [M2] a wall reading refuses before anything is pushed
+{
+  const ws = workspace()
+  const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
+  const readUsage = () => rowAt(96, 0)
+  const refreshCredential = () => ({ ok: true })
+  const error = await thrown(() => launchIn(ws, { exec, refreshCredential, readUsage }))
+  assert.ok(error, '(f) [M2] launch() rejected on a seven-day reading at the wall')
+  assert.ok(error instanceof Refusal, '(f) [M2] and it is a Refusal')
+  assert.ok(error.message.includes('ultrapowers'), `(f) [M2] the message carries the account: ${error.message}`)
+  assert.ok(error.message.includes('seven-day'), `(f) [M2] the message carries seven-day: ${error.message}`)
+  assert.ok(error.message.includes('96'), `(f) [M2] the message carries the utilization: ${error.message}`)
+  assert.ok(
+    error.message.includes('2026-09-20T00:00:00.000Z'),
+    `(f) [M2] the message carries sevenDay.resetsAt: ${error.message}`
+  )
+  assert.ok(
+    error.message.endsWith('— no VM was created and nothing was pushed'),
+    `(f) [M2] the message ends with the no-VM sentence: ${error.message}`
+  )
+  assert.deepEqual(pushCalls(exec), [], '(f) [M2] no git push was executed')
+  assert.deepEqual(newVerbs(exec), [], '(f) [M2] and no `new` lobby verb was issued')
+  ws.cleanup()
+}
+{
+  const ws = workspace()
+  const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
+  const readUsage = () => rowAt(0, 95)
+  const refreshCredential = () => ({ ok: true })
+  const error = await thrown(() => launchIn(ws, { exec, refreshCredential, readUsage }))
+  assert.ok(error, '(f) [M2] launch() rejected on a five-hour reading at the wall (95 exactly)')
+  assert.ok(error instanceof Refusal, '(f) [M2] and it is a Refusal')
+  assert.ok(error.message.includes('ultrapowers'), `(f) [M2] the message carries the account: ${error.message}`)
+  assert.ok(error.message.includes('five-hour'), `(f) [M2] the message carries five-hour: ${error.message}`)
+  assert.ok(error.message.includes('95'), `(f) [M2] the message carries the utilization: ${error.message}`)
+  assert.ok(
+    error.message.includes('2026-09-16T08:20:00.000Z'),
+    `(f) [M2] the message carries fiveHour.resetsAt: ${error.message}`
+  )
+  assert.ok(
+    error.message.endsWith('— no VM was created and nothing was pushed'),
+    `(f) [M2] the message ends with the no-VM sentence: ${error.message}`
+  )
+  assert.deepEqual(pushCalls(exec), [], '(f) [M2] no git push was executed')
+  assert.deepEqual(newVerbs(exec), [], '(f) [M2] and no `new` lobby verb was issued')
+  ws.cleanup()
+}
+
+// (g) [M3] a row under both thresholds carries usage on the result and the launch line
+{
+  const ws = workspace()
+  const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
+  const readUsage = () => rowAt(58, 0)
+  const refreshCredential = () => ({ ok: true })
+  const result = await launchIn(ws, { exec, refreshCredential, readUsage })
+  assert.equal(
+    result.usage,
+    'usage: ultrapowers 7d 58% resets 2026-09-20T00:00:00.000Z; 5h 0% resets 2026-09-16T08:20:00.000Z',
+    `(g) [M3] result.usage is byte-exact — got ${JSON.stringify(result.usage)}`
+  )
+  const lines = renderLaunch(result).split('\n')
+  const accountIdx = lines.indexOf('account=ultrapowers')
+  assert.ok(accountIdx >= 0, `(g) [M3] renderLaunch carries an account= line — got:\n${renderLaunch(result)}`)
+  assert.equal(
+    lines[accountIdx + 1], result.usage,
+    `(g) [M3] the usage line sits directly after account= — got:\n${renderLaunch(result)}`
+  )
+  ws.cleanup()
+}
+{
+  const ws = workspace()
+  const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
+  const readUsage = () => ({ unread: true, reason: 'x' })
+  const refreshCredential = () => ({ ok: true })
+  const result = await launchIn(ws, { exec, refreshCredential, readUsage })
+  assert.equal(
+    result.usage, 'usage: ultrapowers unread — x',
+    `(g) [M3] an unread row resolves result.usage byte-exact — got ${JSON.stringify(result.usage)}`
+  )
+  const lines = renderLaunch(result).split('\n')
+  const accountIdx = lines.indexOf('account=ultrapowers')
+  assert.ok(accountIdx >= 0, `(g) [M3] renderLaunch carries an account= line — got:\n${renderLaunch(result)}`)
+  assert.equal(
+    lines[accountIdx + 1], result.usage,
+    `(g) [M3] the unread usage line sits directly after account= — got:\n${renderLaunch(result)}`
+  )
+  ws.cleanup()
+}
+
+// (h) [M4] readUsage's call count is gated on refreshCredential, and ordered before push
+function orderedSpy (result, order, tag) {
+  const calls = []
+  const fn = (...args) => {
+    calls.push(args)
+    order.push(tag)
+    return result
+  }
+  fn.calls = calls
+  return fn
+}
+const pushOrderRule = (repo, order) => ({
+  when: (cmd, argv) => cmd === 'git' && argv.includes('push') && !argv.some((a) => /ultrapowers/.test(String(a))),
+  answer: (cmd, argv, options) => {
+    order.push('push')
+    return defaultExec('git', pointAtOrigin(repo, argv), options ?? {})
+  }
+})
+{
+  const ws = workspace()
+  const order = []
+  const exec = makeExec({ rules: [pushOrderRule(ws.repo, order), ...readRules({ repo: ws.repo })] })
+  const readUsage = orderedSpy(rowAt(0, 0), order, 'readUsage')
+  const refreshCredential = () => ({ ok: false, refused: REFUSED_LINE })
+  await thrown(() => launchIn(ws, { exec, refreshCredential, readUsage }))
+  assert.equal(
+    readUsage.calls.length, 0,
+    '(h) [M4] a refused refreshCredential leaves readUsage at zero calls'
+  )
+  ws.cleanup()
+}
+{
+  const ws = workspace()
+  const order = []
+  const exec = makeExec({ rules: [pushOrderRule(ws.repo, order), ...readRules({ repo: ws.repo })] })
+  const readUsage = orderedSpy(rowAt(0, 0), order, 'readUsage')
+  const refreshCredential = () => ({ ok: true })
+  await launchIn(ws, { exec, refreshCredential, readUsage })
+  assert.equal(
+    readUsage.calls.length, 1,
+    '(h) [M4] an ok refreshCredential leaves readUsage at exactly one call'
+  )
+  const readUsageIdx = order.indexOf('readUsage')
+  const pushIdx = order.indexOf('push')
+  assert.ok(readUsageIdx >= 0, '(h) [M4] readUsage was recorded in the call order')
+  assert.ok(pushIdx >= 0, '(h) [M4] a git push was recorded in the call order')
+  assert.ok(
+    readUsageIdx < pushIdx,
+    `(h) [M4] readUsage ran before the first git push — order was ${JSON.stringify(order)}`
+  )
+  ws.cleanup()
+}
+
+// (i) [M5] fleet/CONTRACT.md names the usage read and the launch line — the
+// two `grep` legs of the Proof, run here as substring checks over the file.
+{
+  const contract = fs.readFileSync(path.join(FLEET_DIR, 'CONTRACT.md'), 'utf8')
+  assert.ok(
+    contract.includes('no-rotate'),
+    '(i) [M5] CONTRACT.md names the --no-rotate usage read (grep -q \'no-rotate\')'
+  )
+  assert.ok(
+    contract.includes('usage: <account> 7d'),
+    '(i) [M5] CONTRACT.md\'s launch-line list names the usage: line (grep -qF \'usage: <account> 7d\')'
+  )
 }
 
 console.log('ALL TESTS PASSED')

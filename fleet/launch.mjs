@@ -891,6 +891,44 @@ export function defaultRefreshCredential (account = DEFAULT_ACCOUNT, spawn = spa
   return { ok: false, out }
 }
 
+// A launch on an account at or past this share of either its five-hour or its
+// seven-day window is refused before anything is pushed (#1114) — the
+// reading the release owes is how often a refused launch would have merged.
+export const USAGE_REFUSE_PCT = 95
+
+// The usage read that follows a held-or-fresh credential, before the plan
+// commit is pushed. `--no-rotate` (the same tool's `usage` verb) never mints
+// anything, so the read is safe immediately after `defaultRefreshCredential`
+// has just run or held. The sandbox itself cannot make this call — the proxy
+// answers `GET /api/oauth/usage` with 403 (CONTRACT §probe 3) — so a laptop
+// offline, or a keychain with no `accessToken`, answers `unread` here rather
+// than a refusal, and the launch proceeds.
+export function defaultReadUsage (account = DEFAULT_ACCOUNT, spawn = spawnSync) {
+  const tool = new URL('./claude-token.mjs', import.meta.url).pathname
+  const r = spawn(process.execPath, [tool, 'usage', '--json', '--account', account, '--no-rotate'], { encoding: 'utf8' })
+  if (r.status !== 0) {
+    return { unread: true, reason: `claude-token usage --json exited ${r.status}: ${String(r.stderr ?? r.stdout ?? '').trim()}` }
+  }
+  let parsed
+  try {
+    parsed = JSON.parse(String(r.stdout ?? ''))
+  } catch (error) {
+    return { unread: true, reason: `claude-token usage --json answered unparseable stdout: ${error.message}` }
+  }
+  if (!Array.isArray(parsed) || parsed.length !== 1) {
+    return { unread: true, reason: `claude-token usage --json answered no single-row array (got ${JSON.stringify(parsed)})` }
+  }
+  return parsed[0]
+}
+
+// The refusal message for a usage window at or past `USAGE_REFUSE_PCT`, named
+// as the Machine spells it: the account, the window's label, its utilization
+// and its reset time, ending the same way every other pre-push refusal ends.
+function usageRefusal (account, label, window) {
+  return `launch: ${account} is at ${window.utilization}% of its ${label} window (resets ${window.resetsAt}) — ` +
+    'a run on it can only die; pick another with --account — no VM was created and nothing was pushed'
+}
+
 /**
  * The rows of the janitor's `runs` list that carry this launch's plan on this
  * launch's target and whose record does not say the run ended (#1036). The
@@ -942,7 +980,7 @@ export async function launch (params) {
 
 async function launchBody ({
   argv, exec = defaultExec, config, now = () => new Date(), sleep = defaultSleep, rand,
-  refreshCredential = defaultRefreshCredential, verbsPath = VERBS_PATH,
+  refreshCredential = defaultRefreshCredential, readUsage = defaultReadUsage, verbsPath = VERBS_PATH,
   kata, kataEnvPath = defaultKataEnvPath(), held
 }) {
   const { opts, positional } = parseArgs(argv, { flags: ['json', 'hold', 'again'] })
@@ -1312,6 +1350,26 @@ async function launchBody ({
     throw new LobbyError(`launch: the Claude credential could not be refreshed — no VM was created\n${cred.out}`)
   }
 
+  // The usage read, right after the refresh has just run or held — the record
+  // is unexpired and `--no-rotate` cannot mint anything. A row at or past the
+  // wall on either window is a refusal before any push; an unread row is
+  // never a refusal (#1114).
+  const usageRow = readUsage(account)
+  let usage
+  if (usageRow.unread) {
+    usage = `usage: ${account} unread — ${usageRow.reason}`
+  } else {
+    const { sevenDay, fiveHour } = usageRow
+    if (sevenDay.utilization >= USAGE_REFUSE_PCT) {
+      throw new Refusal(usageRefusal(account, 'seven-day', sevenDay))
+    }
+    if (fiveHour.utilization >= USAGE_REFUSE_PCT) {
+      throw new Refusal(usageRefusal(account, 'five-hour', fiveHour))
+    }
+    usage = `usage: ${account} 7d ${sevenDay.utilization}% resets ${sevenDay.resetsAt}; ` +
+      `5h ${fiveHour.utilization}% resets ${fiveHour.resetsAt}`
+  }
+
   // ── The plan commit, pushed to the target before the VM exists. Plumbing
   //    against a temporary index, so the operator's index and working tree are
   //    never touched. The push is also what reserves the run number, so the N
@@ -1444,6 +1502,9 @@ async function launchBody ({
     // `COMMENT_KEYS` nor `buildComment` spells `account`. It lives here and on
     // the launch line instead.
     account,
+    // The usage line, read after the refresh and before any push (#1114) —
+    // carried on `renderLaunch` directly after `account=`.
+    usage,
     // The hold line from `defaultRefreshCredential`, when the credential tool
     // held rather than rotated because a listed fleet VM is still live — carried
     // onto the launch line so a launch beside live runs says so.
@@ -1839,6 +1900,7 @@ export const renderLaunch = (result) => [
   ...(result.reaped ?? []).map((vm) => `reaped ${vm}`),
   ...(result.again ?? []).map((d) => `again run-${d.run} ${d.vm}`),
   result.account === undefined ? null : `account=${result.account}`,
+  result.usage === undefined ? null : result.usage,
   result.token === undefined ? null : result.token,
   result.kata ? `kata=${result.kata.project.name} ${Object.keys(result.kata.tasks).length} tasks` : null,
   result.verbDrift === undefined ? null : `verb-drift: ${result.verbDrift.detail}`,
