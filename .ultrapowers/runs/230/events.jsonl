@@ -292,3 +292,8 @@
 {"ts":"2026-09-23T21:01:45.397Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Write","target":"/home/exedev/run/impl-2-1/fleet/tests/_boot_helpers.mjs"}
 {"ts":"2026-09-23T21:01:47.012Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n 'FIXTURE_PLAN' /home/exedev/run/impl-2-0/fleet/tests/test_factory_boot.mjs"}
 {"ts":"2026-09-23T21:01:49.384Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n 'EXPECTED_STATUS_KEYS\\|MERGE_SHA' /home/exedev/run/impl-2-0/fleet/tests/test_factory_boot.mjs"}
+{"ts":"2026-09-23T21:01:52.879Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/fleet/tests/test_factory_boot.mjs"}
+{"ts":"2026-09-23T21:01:54.603Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"node fleet/tests/test_factory_boot.mjs 2>&1 | tail -50"}
+{"ts":"2026-09-23T21:02:00.570Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"node fleet/tests/test_factory_record.mjs 2>&1 | tail -30"}
+{"ts":"2026-09-23T21:02:02.525Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"node fleet/tests/test_sims_are_hermetic.mjs 2>&1 | tail -50"}
+{"ts":"2026-09-23T21:02:22.102Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/fleet/tests/test_factory_record.mjs"}
