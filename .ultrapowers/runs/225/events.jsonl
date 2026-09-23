@@ -71,3 +71,29 @@
 {"ts":"2026-09-23T02:16:41.440Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"readLanding\\|readFoldRed\\|tExamDefect\\|examAsserts\\|hasExam\\|examExit\\|clauseFacts\\|claim_established\" /home/exedev/run/impl-1-1/factory/judge.mjs"}
 {"ts":"2026-09-23T02:16:44.120Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/judge.mjs"}
 {"ts":"2026-09-23T02:16:47.856Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/judge.mjs"}
+{"ts":"2026-09-23T02:16:50.887Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"python3 -c \"\nimport json\nd = json.load(open('/home/exedev/run/impl-1-1/factory/questions.json'))\nprint(list(d['sets'].keys()))\n\"\n"}
+{"ts":"2026-09-23T02:16:53.321Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"python3 -c \"\nimport json\nd = json.load(open('/home/exedev/run/impl-1-1/factory/questions.json'))\nprint(json.dumps(d['sets']['landing'], indent=2))\n\"\n"}
+{"ts":"2026-09-23T02:16:55.201Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/commands.mjs"}
+{"ts":"2026-09-23T02:16:58.668Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/proofs.mjs"}
+{"ts":"2026-09-23T02:17:00.574Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"python3 -c \"\nimport json\nd = json.load(open('/home/exedev/run/impl-1-1/factory/questions.json'))\nprint(json.dumps(d['sets']['supervisor'], indent=2))\n\"\n"}
+{"ts":"2026-09-23T02:17:01.910Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/pairs.mjs"}
+{"ts":"2026-09-23T02:17:05.387Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/tools.mjs"}
+{"ts":"2026-09-23T02:17:06.289Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"python3 -c \"\nimport json\nd = json.load(open('/home/exedev/run/impl-1-1/factory/policy.json'))\nprint(json.dumps(d.get('exam'), indent=2))\nprint('---speculate---')\nprint(json.dumps(d.get('speculate'), i"}
+{"ts":"2026-09-23T02:17:08.630Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/redkind.mjs"}
+{"ts":"2026-09-23T02:17:10.183Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"python3 -c \"\nimport json\nd = json.load(open('/home/exedev/run/impl-1-1/factory/policy.json'))\nprint(list(d.keys()))\nprint(json.dumps(d.get('proofs'), indent=2))\nprint(json.dumps(d.get('select'), inden"}
+{"ts":"2026-09-23T02:17:11.077Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/policy.json"}
+{"ts":"2026-09-23T02:17:11.602Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"examExit\\|factsExit\" -r /home/exedev/run/impl-2-0/factory /home/exedev/run/impl-2-0/fleet 2>/dev/null"}
+{"ts":"2026-09-23T02:17:12.690Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/commands.mjs"}
+{"ts":"2026-09-23T02:17:14.250Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/questions.json"}
+{"ts":"2026-09-23T02:17:15.884Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/proofs.mjs"}
+{"ts":"2026-09-23T02:17:21.058Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"labelPair\\|proofTests\\|calls\" /home/exedev/run/impl-1-1/factory/pairs.mjs | head -50"}
+{"ts":"2026-09-23T02:17:21.076Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/record.mjs"}
+{"ts":"2026-09-23T02:17:23.902Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/pairs.mjs"}
+{"ts":"2026-09-23T02:17:27.525Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/tools.mjs"}
+{"ts":"2026-09-23T02:17:29.976Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"self-check\\|redkind\\|rig_red\\|strip_exams\\|--exams-dir\\|Guard:\\|exam worker\\|unguarded exam\\|run_exam\" fleet/CONTRACT.md fleet/RUNBOOK.md skills/ultrapowers/SKILL.md fleet/tests/README.md"}
+{"ts":"2026-09-23T02:17:32.105Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/skills/ultrapowers/SKILL.md"}
+{"ts":"2026-09-23T02:17:35.886Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Read","target":"/home/exedev/run/impl-3-0/fleet/tests/README.md"}
+{"ts":"2026-09-23T02:17:38.915Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"run_exam\\|runExam\\|run_proof\\|runProof\\|makeHandlers\\|worker:test-run\" /home/exedev/run/impl-1-1/fleet/tests/test_factory_tools.mjs | head -80"}
+{"ts":"2026-09-23T02:17:39.596Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -rn \"test_factory_exam_selfcheck\\|test_factory_redkind\" fleet/tests/README.md fleet/tests/*.mjs 2>/dev/null | head -30; echo ---; ls fleet/tests | grep -i \"exam\\|redkind\\|selfcheck\""}
+{"ts":"2026-09-23T02:17:41.712Z","kind":"worker:tool","task":"3","label":"impl:3:0","tool":"Bash","target":"grep -n \"test_factory\" fleet/tests/README.md; echo ---; ls fleet/tests/test_factory_*.mjs"}
+{"ts":"2026-09-23T02:17:41.843Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/fleet/tests/test_factory_tools.mjs"}
