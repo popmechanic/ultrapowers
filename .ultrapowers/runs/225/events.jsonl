@@ -629,3 +629,26 @@
 {"ts":"2026-09-23T02:57:50.867Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/questions.json"}
 {"ts":"2026-09-23T02:57:54.710Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/questions.json"}
 {"ts":"2026-09-23T02:57:57.806Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"exam and proof exits\" factory/questions.json"}
+{"ts":"2026-09-23T02:58:03.875Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"role: 'exam'\\|'examiner'\\|examiner\" factory/engine.mjs factory/watch.mjs"}
+{"ts":"2026-09-23T02:58:07.431Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -c \"implementer, examiner or fix session\" factory/questions.json"}
+{"ts":"2026-09-23T02:58:11.522Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/questions.json"}
+{"ts":"2026-09-23T02:58:14.684Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/questions.json"}
+{"ts":"2026-09-23T02:58:19.880Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"examiner\\|exam file\\|the exam\\b\\|exam_file\\|owns the exam\" factory/questions.json"}
+{"ts":"2026-09-23T02:58:24.723Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:58:24.913Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/questions.json"}
+{"ts":"2026-09-23T02:58:28.299Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"reverifyAfterFold\\|maybeSettleInterface\" /home/exedev/run/impl-1-1/factory/engine.mjs | head -5"}
+{"ts":"2026-09-23T02:58:31.577Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:58:33.090Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -rn \"examiner\\|'actor'\\|actor ===\" factory/judge.mjs factory/engine.mjs"}
+{"ts":"2026-09-23T02:58:35.523Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:58:41.225Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/questions.json"}
+{"ts":"2026-09-23T02:58:44.197Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/questions.json"}
+{"ts":"2026-09-23T02:58:44.468Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:58:47.125Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -rn \"exam_file\\|'plan_text'\\|'proof_leg'\\|subject ===\" factory/judge.mjs factory/engine.mjs"}
+{"ts":"2026-09-23T02:58:49.192Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:58:51.771Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/questions.json"}
+{"ts":"2026-09-23T02:58:52.726Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:58:55.773Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"selfCheckExam\\|examAtZero\\|examPromises\\|runRefold\\|examsDir\\|runExam\\b\\|export default\" /home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:58:56.320Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/questions.json"}
+{"ts":"2026-09-23T02:58:58.371Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:58:58.936Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -rn \"'reading'\\|kind ===\" factory/judge.mjs factory/engine.mjs"}
+{"ts":"2026-09-23T02:59:01.548Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
