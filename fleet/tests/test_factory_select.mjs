@@ -24,6 +24,16 @@
  *       `why: 'none'`; non-empty `found` answers `candidates` in order and
  *       `why` keyed by path.
  *
+ * Task 1 of #1242 (the hermetic sweep is a standing candidate), legs under
+ * its own comment below:
+ *
+ *   (a) [M1] a changed sim or sim helper under `fleet/tests` offers the sweep
+ *       last, past `cap`, with `why: 'hermetic'` and `hits` the matching
+ *       changed paths in `paths` order;
+ *   (b) [M2] changed paths outside that shape offer nothing extra;
+ *   (c) [M3] a patch to the sweep itself offers it exactly once;
+ *   (d) [M4] `exclude` naming the sweep answers `[]`.
+ *
  * `candidateTests` and `examSelectionRow` are pure: this exam supplies an
  * in-memory `files` array and a `read` function over a map of fixture texts —
  * no disk, no child process, no network.
@@ -157,6 +167,69 @@ const find = (opts) => candidateTests(opts)
     },
     '(d) [M4] one candidate: candidates the found paths in order, covered as given, why keyed by path'
   )
+}
+
+// ── Task 1 of #1242: the hermetic sweep is a standing candidate ──────────
+const SWEEP = 'fleet/tests/test_sims_are_hermetic.mjs'
+
+// (a) [M1] a changed sim under fleet/tests offers the sweep last, past cap
+{
+  const texts = {
+    'fleet/tests/test_a.mjs': '// reads factory/select.mjs\n',
+    [SWEEP]: '// the sweep reads every sim by glob and names no path here\n'
+  }
+  const files = Object.keys(texts)
+  const result = await find({
+    files,
+    read: readerFor(texts),
+    paths: ['factory/select.mjs', 'fleet/tests/test_new.mjs', 'fleet/tests/_helpers.mjs'],
+    symbols: [],
+    cap: 1
+  })
+  assert.deepEqual(
+    result,
+    [
+      { path: 'fleet/tests/test_a.mjs', hits: ['factory/select.mjs'], why: 'path' },
+      { path: SWEEP, hits: ['fleet/tests/test_new.mjs', 'fleet/tests/_helpers.mjs'], why: 'hermetic' }
+    ],
+    '(a) [M1] the path hit first, then the sweep past cap with why hermetic and hits in paths order'
+  )
+
+  // (b) [M2] changed paths outside fleet/tests/(test_|_)*.mjs offer nothing extra
+  const none = await find({
+    files,
+    read: readerFor(texts),
+    paths: ['factory/select.mjs', 'tests/test_parse.py', 'fleet/tests/fixtures/hermetic/leaky_sim.mjs'],
+    symbols: [],
+    cap: 1
+  })
+  assert.equal(none.length, 1, '(b) [M2] exactly one candidate')
+  assert.equal(none[0].path, 'fleet/tests/test_a.mjs', '(b) [M2] the path hit only')
+  assert.ok(!none.some((c) => c.path === SWEEP), '(b) [M2] the sweep is not offered')
+}
+
+// (c) [M3] a patch to the sweep itself offers it once; (d) [M4] exclude wins
+{
+  const texts = {
+    [SWEEP]: '// the sweep reads every sim by glob and names no path here\n',
+    'fleet/tests/test_words.mjs': '// nothing that matches\n'
+  }
+  const files = Object.keys(texts)
+  const once = await find({ files, read: readerFor(texts), paths: [SWEEP], symbols: [] })
+  assert.deepEqual(
+    once,
+    [{ path: SWEEP, hits: [SWEEP], why: 'hermetic' }],
+    '(c) [M3] the sweep editing itself is offered exactly once'
+  )
+
+  const excluded = await find({
+    files,
+    read: readerFor(texts),
+    paths: ['fleet/tests/test_new.mjs'],
+    symbols: [],
+    exclude: [SWEEP]
+  })
+  assert.deepEqual(excluded, [], '(d) [M4] exclude naming the sweep answers []')
 }
 
 console.log('ALL TESTS PASSED')

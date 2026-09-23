@@ -5,7 +5,16 @@
  * repository (as repository-relative paths) and a `read(path)` function, it
  * names the few existing test files that mention a set of paths and symbols,
  * most mentions first, and says how each one would be run.
+ *
+ * One standing candidate (#1242): when a changed path is itself a sim or a
+ * sim helper under `fleet/tests`, the hermetic sweep
+ * (`fleet/tests/test_sims_are_hermetic.mjs`) is offered last, past the cap,
+ * with `why: 'hermetic'` — it reads every sim by glob, so no changed path is
+ * ever verbatim in its text and nothing else would ever offer it.
  */
+
+const SWEEP = 'fleet/tests/test_sims_are_hermetic.mjs'
+const SIM_PATH_RE = /^fleet\/tests\/(test_|_)[^/]+\.mjs$/
 
 const TEST_FILE_RE = [
   /^test_.*\.py$/,
@@ -130,7 +139,22 @@ export async function candidateTests ({ files, read, paths = [], symbols = [], e
     return 0
   })
 
-  return results.slice(0, cap).map(({ path, hits, why }) => ({ path, hits, why }))
+  const offered = results.slice(0, cap).map(({ path, hits, why }) => ({ path, hits, why }))
+
+  const trigger = []
+  for (const p of paths) {
+    if (SIM_PATH_RE.test(p) && !trigger.includes(p)) trigger.push(p)
+  }
+  if (
+    trigger.length > 0 &&
+    files.includes(SWEEP) &&
+    !excludeSet.has(SWEEP) &&
+    !offered.some((c) => c.path === SWEEP)
+  ) {
+    offered.push({ path: SWEEP, hits: trigger, why: 'hermetic' })
+  }
+
+  return offered
 }
 
 /** The `select:exam` event row: `candidates` the paths of `found`, in order,
