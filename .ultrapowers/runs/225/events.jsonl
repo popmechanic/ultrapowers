@@ -556,3 +556,27 @@
 {"ts":"2026-09-23T02:53:40.445Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
 {"ts":"2026-09-23T02:53:43.436Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
 {"ts":"2026-09-23T02:53:53.415Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:53:56.470Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:53:58.378Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"const land = async\" /home/exedev/run/impl-1-1/factory/engine.mjs | head -5"}
+{"ts":"2026-09-23T02:53:59.445Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:54:00.720Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:54:03.671Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:54:05.390Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -rn \"examsDir\\|exams-dir\" factory/*.mjs fleet/tests/*.mjs 2>/dev/null"}
+{"ts":"2026-09-23T02:54:07.569Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:54:10.820Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/reverify.mjs"}
+{"ts":"2026-09-23T02:54:11.287Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:54:13.939Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:54:16.807Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"cat /home/exedev/run/impl-1-1/factory/referee.mjs"}
+{"ts":"2026-09-23T02:54:19.032Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:54:21.148Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"runLines\\|import.*kprobe\\|probeRecord\\|from './facts.mjs'\\|EXAM_MD\\|IMPL_MD\\|literalsOf\\|hunksCarrying\\|filesShown\\|splitDiff\\|excerptTests\\|outOf\\|exitOf\\|candidatesOf\\b\" /home/exedev/run/im"}
+{"ts":"2026-09-23T02:54:22.073Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:54:24.468Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"EXAM_MD\\s*=\\|roleText\" /home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:54:27.672Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:54:30.662Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"exams-dir\\|examsDir\\|exam\" factory/engine.mjs | grep -v \"^[0-9]*: *\\*\" "}
+{"ts":"2026-09-23T02:54:33.524Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"EXAM_MD\\|IMPL_MD\\|roleText(\" factory/engine.mjs"}
+{"ts":"2026-09-23T02:54:37.134Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:54:40.205Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:54:43.148Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:54:46.434Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:54:49.902Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:54:52.286Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
