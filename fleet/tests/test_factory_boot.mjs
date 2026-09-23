@@ -505,14 +505,10 @@ const runAsync = (argv, opts) => runChild(process.execPath, argv, opts)
   assert.equal(closeRow.code, null, '(b) [M1] the sole board:close row carries code null')
 
   const prPost = fs.readFileSync(path.join(home, 'pr-post.json'), 'utf8')
-  // `factory/record.mjs`'s landing-row cell (the sibling engine task's own
-  // file, out of this task's reach) still reads the old field name off the
-  // landing row, which the fixture row above no longer carries — so that
-  // cell reads as absent (`cellText`'s empty string) until that sibling
-  // task switches its reader to the new field too. Asserted as it actually
-  // renders today, not as it will once that lands.
+  // `factory/record.mjs` renders the landing row's `factsExit` as the third
+  // cell (cut three, run-225): the fixture row above carries `factsExit: 0`.
   const expectedBody = 'One widget, one size. It exists so the boot has a plan to carry. It benefits the record.\n\n' +
-    `| 1 | 1 |  | ${landedSha} |\n\n` +
+    `| 1 | 1 | 0 | ${landedSha} |\n\n` +
     'Closes #1222'
   const expectedPrPost = JSON.stringify({
     title: `fleet run-${runN}: A widget that answers its size`,
