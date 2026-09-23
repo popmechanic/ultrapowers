@@ -540,3 +540,9 @@
 {"ts":"2026-09-23T02:50:14.867Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
 {"ts":"2026-09-23T02:50:18.011Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
 {"ts":"2026-09-23T02:50:37.826Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:52:16.212Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"examAtZero\\|examPromises\\|examine(\\|selfCheckExam\\|copyMissingFiles\\|runTaskExams\\|redKind\\|rigRound\\|EXAM_MD\\|examPrompt\\|examExit\\|examTail\\|examsTouched\\|runExamAt\\|runExamsAndChecks\\|rigT"}
+{"ts":"2026-09-23T02:52:18.954Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:52:21.590Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/reverify.mjs"}
+{"ts":"2026-09-23T02:52:25.611Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"runTaskProofs\" factory/engine.mjs"}
+{"ts":"2026-09-23T02:52:28.430Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:52:44.225Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
