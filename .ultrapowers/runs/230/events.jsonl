@@ -282,3 +282,13 @@
 {"ts":"2026-09-23T21:00:39.376Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Edit","target":"/home/exedev/run/impl-2-1/factory/boot.sh"}
 {"ts":"2026-09-23T21:00:40.418Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Bash","target":"bash -n factory/boot.sh && echo OK"}
 {"ts":"2026-09-23T21:00:40.451Z","kind":"worker:test-run","task":"2","label":"impl:2:1","cmd":"bash -n factory/boot.sh && echo OK","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-23T21:00:56.871Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Write","target":"/home/exedev/run/impl-2-0/fleet/tests/_boot_helpers.mjs"}
+{"ts":"2026-09-23T21:01:02.511Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Bash","target":"cat > /tmp/testplan.md <<'EOF'\n# A widget\n\n**Claim:** x. (elicited)\n\n**Summary:** blah\n\n**Goal:** ship\n\n**Closes:** #1222\n**Publish:** bun run --cwd server deploy\n**Verify:** bun server/probe/converge"}
+{"ts":"2026-09-23T21:01:27.748Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/fleet/tests/test_factory_boot.mjs"}
+{"ts":"2026-09-23T21:01:33.719Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/fleet/tests/test_factory_boot.mjs"}
+{"ts":"2026-09-23T21:01:39.176Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"python3 - <<'EOF'\nwith open('fleet/tests/test_factory_boot.mjs') as f:\n    lines = f.readlines()\nprint(len(lines))\nprint(repr(lines[81]))\nprint(repr(lines[386]))\nprint(repr(lines[387]))\nEOF"}
+{"ts":"2026-09-23T21:01:43.047Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"python3 - <<'EOF'\nwith open('fleet/tests/test_factory_boot.mjs') as f:\n    lines = f.readlines()\n\nnew_block = \"\"\"import assert from 'node:assert/strict'\nimport fs from 'node:fs'\nimport os from 'node:o"}
+{"ts":"2026-09-23T21:01:45.237Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/fleet/tests/test_factory_boot.mjs"}
+{"ts":"2026-09-23T21:01:45.397Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Write","target":"/home/exedev/run/impl-2-1/fleet/tests/_boot_helpers.mjs"}
+{"ts":"2026-09-23T21:01:47.012Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n 'FIXTURE_PLAN' /home/exedev/run/impl-2-0/fleet/tests/test_factory_boot.mjs"}
+{"ts":"2026-09-23T21:01:49.384Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n 'EXPECTED_STATUS_KEYS\\|MERGE_SHA' /home/exedev/run/impl-2-0/fleet/tests/test_factory_boot.mjs"}
