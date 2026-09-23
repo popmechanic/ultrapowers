@@ -331,3 +331,10 @@
 {"ts":"2026-09-23T21:06:07.154Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"sed -n '1,120p' fleet/tests/_helpers.mjs"}
 {"ts":"2026-09-23T21:06:12.287Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Bash","target":"env -i HOME=/tmp/doesnotexist12345 PATH=/tmp/mybin:/usr/bin:/bin bash -lc 'echo PATH=$PATH'"}
 {"ts":"2026-09-23T21:07:22.847Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Bash","target":"grep -n 'RUN_DIR' factory/boot.sh"}
+{"ts":"2026-09-23T21:08:33.803Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Write","target":"/home/exedev/run/impl-2-1/fleet/tests/test_factory_publish.mjs"}
+{"ts":"2026-09-23T21:08:35.891Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Bash","target":"timeout 120 node fleet/tests/test_factory_publish.mjs 2>&1 | tail -100"}
+{"ts":"2026-09-23T21:08:48.667Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Bash","target":"node fleet/tests/test_factory_boot.mjs && node fleet/tests/test_sims_are_hermetic.mjs 2>&1 | tail -5"}
+{"ts":"2026-09-23T21:08:54.139Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Read","target":"/home/exedev/run/impl-2-1/fleet/tests/test_factory_record.mjs"}
+{"ts":"2026-09-23T21:08:58.592Z","kind":"worker:tool","task":"2","label":"impl:2:1","tool":"Edit","target":"/home/exedev/run/impl-2-1/fleet/tests/test_factory_record.mjs"}
+{"ts":"2026-09-23T21:09:01.044Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Write","target":"/home/exedev/run/impl-2-0/fleet/tests/test_factory_publish.mjs"}
+{"ts":"2026-09-23T21:09:02.391Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"node --check fleet/tests/test_factory_publish.mjs && echo SYNTAX_OK"}
