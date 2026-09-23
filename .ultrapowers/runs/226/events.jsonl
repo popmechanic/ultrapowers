@@ -403,3 +403,15 @@
 {"ts":"2026-09-23T04:26:25.456Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -60"}
 {"ts":"2026-09-23T04:26:26.404Z","kind":"worker:test-run","task":"1","label":"impl:1:1","cmd":"python3 -m pytest -q tests/test_plan_parse.py 2>&1 | tail -60","exit":null,"red":null,"via":"bash"}
 {"ts":"2026-09-23T04:26:29.324Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/tests/test_plan_check_freeze.py"}
+{"ts":"2026-09-23T04:30:13.670Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/tests/test_plan_check_freeze.py"}
+{"ts":"2026-09-23T04:30:19.642Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/tests/test_plan_check_freeze.py"}
+{"ts":"2026-09-23T04:30:26.124Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/tests/test_plan_check_freeze.py"}
+{"ts":"2026-09-23T04:30:28.868Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"python3 -m pytest -q tests/test_plan_check_freeze.py 2>&1 | tail -60"}
+{"ts":"2026-09-23T04:30:29.519Z","kind":"worker:test-run","task":"1","label":"impl:1:1","cmd":"python3 -m pytest -q tests/test_plan_check_freeze.py 2>&1 | tail -60","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-23T04:30:32.273Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/tests/test_plan_check_rehearsal.py"}
+{"ts":"2026-09-23T04:30:38.397Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/tests/test_plan_check_rehearsal.py"}
+{"ts":"2026-09-23T04:30:41.157Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"python3 -m pytest -q tests/test_plan_check_rehearsal.py 2>&1 | tail -80"}
+{"ts":"2026-09-23T04:30:42.950Z","kind":"worker:test-run","task":"1","label":"impl:1:1","cmd":"python3 -m pytest -q tests/test_plan_check_rehearsal.py 2>&1 | tail -80","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-23T04:30:45.871Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/tests/test_extract_gate_input.py"}
+{"ts":"2026-09-23T04:30:54.845Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/tests/test_extract_gate_input.py"}
+{"ts":"2026-09-23T04:31:00.876Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/tests/test_extract_gate_input.py"}
