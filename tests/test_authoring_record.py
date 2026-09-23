@@ -99,7 +99,7 @@ TALLY = {"dispatched": 4, "rejected": 1}
 # M1's line for that pair, exactly as the Context writes it.
 EXAMPLE_LINE = ("AUTHORING fact: 118 min to PLAN OK, 12 hub probes, "
                 "4 gate dispatches, 1 rejected, routing risk->ultrapowers, "
-                "1 questions, 1/1 recommended picked")
+                "1 questions, 1/1 recommended picked, 0 explain rounds")
 # M2's line for a record with no `authoring` key.
 NONE_LINE = "AUTHORING fact: none recorded"
 # M3's refusal prefix.
@@ -197,8 +197,8 @@ def assert_one_fact_after_the_verdict(p, expected):
 # top-level `authoring` object prints, after the verdict line, exactly one line
 # of the form `AUTHORING fact: <minutes> min to PLAN OK, <probes> hub probes,
 # <dispatched> gate dispatches, <rejected> rejected, routing <branch>-><lane>,
-# <n> questions, <p>/<q> recommended picked` ... and the compile still exits 0
-# with `PLAN OK`."
+# <n> questions, <p>/<q> recommended picked, <e> explain rounds` ... and the
+# compile still exits 0 with `PLAN OK`."
 
 def test_a_the_example_record_prints_the_example_line(tmp_path):
     """(a)/[M1]: the Context's example `authoring` object beside a `tally` of
@@ -219,20 +219,22 @@ def test_a_the_example_record_prints_the_example_line(tmp_path):
 REJECTED_ABSENT_LINE = ("AUTHORING fact: 118 min to PLAN OK, 12 hub probes, "
                         "4 gate dispatches, - rejected, "
                         "routing risk->ultrapowers, "
-                        "1 questions, 1/1 recommended picked")
+                        "1 questions, 1/1 recommended picked, "
+                        "0 explain rounds")
 
 # One question carrying no recommended option, one whose pick is the
 # recommendation: two questions, one of them recommended, that one picked.
 TWO_QUESTIONS = [
     {"question": "Claim and summary", "options": ["A", "B"],
-     "recommended": None, "picked": "B"},
+     "recommended": None, "picked": "B", "explain_rounds": 2},
     {"question": "Routing", "options": ["A", "B"],
      "recommended": "A", "picked": "A"},
 ]
 TWO_QUESTIONS_LINE = ("AUTHORING fact: 118 min to PLAN OK, 12 hub probes, "
                       "4 gate dispatches, 1 rejected, "
                       "routing risk->ultrapowers, "
-                      "2 questions, 1/1 recommended picked")
+                      "2 questions, 1/1 recommended picked, "
+                      "2 explain rounds")
 
 
 def test_b_a_tally_without_rejected_prints_a_dash(tmp_path):
@@ -348,6 +350,8 @@ MALFORMED = [
                                    picked="only"), "options"),
     ('picked "C"', _question(picked="C"), "picked"),
     ('recommended "C"', _question(recommended="C"), "recommended"),
+    ("explain_rounds -1", _question(explain_rounds=-1),
+     "questions[0].explain_rounds"),
 ]
 
 
