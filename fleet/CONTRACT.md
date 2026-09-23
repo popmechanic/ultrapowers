@@ -139,7 +139,12 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   the `plan_parse.py` it imports, the sandbox's own parser,
   at that sha, `git show` from the laptop's plugin checkout, else `gh api` from popmechanic/ultrapowers,
   into a temp directory — and a launch whose two files cannot be fetched is refused before any push;
-  the launch line carries `compiler=<sha>` → read the pool
+  the launch line carries `compiler=<sha>` → read every command word of every task's `Run:`
+  probes and of the plan's `Check:` lines against `SANDBOX_TOOLCHAIN` in `fleet/launch.mjs` (the
+  image's tools plus the delta `fleet/setup-script.mjs` installs: node, bun, celld, pytest) and
+  refuse a word outside it, one line per word — `launch: task <id>: probe runner '<word>' is not
+  in the sandbox toolchain — <line>`, `check` where a task id would be — before anything is
+  pushed (#645) → read the pool
   (`ssh exe.dev "billing plan --json"`) and refuse a run larger than it → run the janitor
   (`fleet/janitor.mjs`, the reap) → refuse a plan that is already live on the target (#1036): the
   plan text's git blob sha — the `<plan sha>` of the kata `Idempotency-Key` below — is compared with
