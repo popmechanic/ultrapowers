@@ -763,3 +763,4 @@
 {"ts":"2026-09-23T03:09:05.544Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/facts.mjs"}
 {"ts":"2026-09-23T03:09:10.215Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/fleet/tests/test_factory_facts.mjs"}
 {"ts":"2026-09-23T03:09:16.187Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/judge.mjs"}
+{"ts":"2026-09-23T03:09:25.585Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"literalsOf\" -A 15 /home/exedev/run/impl-1-1/factory/hunks.mjs | head -30"}
