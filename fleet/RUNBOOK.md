@@ -556,6 +556,9 @@ on the next one, ask her before editing a script.
 
 **Tags, keys and names.**
 
+Every measured form of the lobby facts below is a row of the contract's `exe.dev facts (measured)`
+list, and `node fleet/tests/probe_exe_facts.mjs` re-reads them.
+
 - One HTTPS service per VM: `share port` sets the VM's single `proxy_port`, so a second
   service is a second VM reached through a peer integration by tag (measured 2026-09-12).
 - `new` takes no positional arguments — `new --name <vm> … --setup-script /dev/stdin` — and
@@ -573,6 +576,9 @@ on the next one, ask her before editing a script.
   pairs and nothing else lives there.
 
 **Reading the lobby.**
+
+Every measured form of the lobby facts below is a row of the contract's `exe.dev facts (measured)`
+list, and `node fleet/tests/probe_exe_facts.mjs` re-reads them.
 
 - exe.dev exposes nothing finer than 24 h (`stat --range=24h`, `billing usage`,
   `pool list --usage` for host-computed starvation, gated). There is no per-VM steal or
