@@ -1,6 +1,6 @@
 # First run — one section per doctor row
 
-`node <plugin-root>/fleet/doctor.mjs --json` answers with eight rows in a fixed
+`node <plugin-root>/fleet/doctor.mjs --json` answers with nine rows in a fixed
 order. Each row that is not `ok` has a section here, named for the row's `id`.
 A section says what the piece is, what the agent runs for you, what you do in a
 browser, and the two or three things a newcomer would not know. The commands are
@@ -393,3 +393,37 @@ Five things a newcomer would not know:
 ssh exe.dev "integrations policy get kata --json"
 ssh exe.dev "integrations policy set kata 'tag:fleet' --permanent --if-revision=<revision>"
 ```
+
+## cloudflare
+
+The deploy's credential, needed only by a plan that carries a `**Publish:**`
+line — most plans never do, so nothing here is needed until one does, and an
+absent `cloudflare` integration is a green row. It is a Cloudflare API token,
+reached the same way every other fleet credential is: an `http-proxy`
+integration whose bearer is injected at the network edge, never on a VM's disk
+or in an argv.
+
+**In a browser:** the Cloudflare dashboard's API Tokens page, "Create Token",
+the Workers template. Give it exactly three scopes: `Workers Scripts:Edit`,
+`Account Settings:Read`, `User Details:Read`. Copy the token it prints once.
+
+**The agent runs**, the token pasted by the operator on stdin and never on an
+argv:
+
+```bash
+ssh exe.dev "integrations add http-proxy --name cloudflare --target https://api.cloudflare.com --bearer - --policy 'tag:fleet'"
+```
+
+Three things a newcomer would not know:
+
+- **The account id is not a secret.** It does not go on the integration at
+  all: it lives in the target repository's `wrangler.jsonc`, as `account_id`,
+  right beside the rest of the deploy's config.
+- **The sandbox never talks to `api.cloudflare.com` directly.** It reaches the
+  API through the edge at `https://cloudflare.int.exe.xyz`, and `wrangler` is
+  pointed there by the `CLOUDFLARE_API_BASE_URL` environment variable the box
+  is launched with — the same shape as `kata`'s and `typesafe`'s http-proxies.
+- **This row is not part of the one-time walk.** Every other row is built once
+  and stays built; `cloudflare` is the one the launcher checks fresh against
+  each plan, refusing a `**Publish:**` plan that has no credential at the edge
+  rather than a plan that will never ask for one.

@@ -1064,6 +1064,24 @@ export function defaultReadUsage (account = DEFAULT_ACCOUNT, spawn = spawnSync) 
   return parsed[0]
 }
 
+/**
+ * The refusal for a publishing plan with no credential at the edge, or `null`
+ * when nothing is wrong: a `compiled.publish` object (the plan carries a
+ * `**Publish:**` line) with no `cloudflare` row in `integrations`
+ * (`listIntegrations`'s own rows, each carrying a `name`) is the one case
+ * refused; a `compiled` with no `publish` at all — `null`, or absent because
+ * it was parsed by a `plan_parse.py` from before that key existed — is not a
+ * publishing plan and is never refused here, whatever `integrations` carries.
+ */
+export function publishRefusal ({ compiled, integrations }) {
+  const publish = compiled?.publish
+  if (publish === null || publish === undefined || typeof publish !== 'object') return null
+  const rows = Array.isArray(integrations) ? integrations : []
+  if (rows.some((row) => row?.name === 'cloudflare')) return null
+  return 'launch: the plan carries a **Publish:** line but the fleet has no cloudflare integration — ' +
+    'the deploy would have no credential at the edge; first-run.md §cloudflare walks the token, then launch again'
+}
+
 // The refusal message for a usage window at or past `USAGE_REFUSE_PCT`, named
 // as the Machine spells it: the account, the window's label, its utilization
 // and its reset time, ending the same way every other pre-push refusal ends.
@@ -1463,6 +1481,14 @@ async function launchBody ({
   // export, reading the compiled object's own waves for W and for C, the
   // browsers it may hold open at once.
   const firstCompiled = await compileFor(firstRun)
+  // The credential a publishing plan needs at the edge — checked as soon as a
+  // real `compiled` object exists (a plan with no `**Publish:**` line, the
+  // common case, carries no `publish` key and is never refused here), against
+  // the `integrations` this launch already read for the GitHub check above.
+  const publishRefused = publishRefusal({ compiled: firstCompiled, integrations })
+  if (publishRefused !== null) {
+    throw new Refusal(publishRefused)
+  }
   // #645: a probe or check whose command word the sandbox lacks would exit 127
   // in its first second on the box, after the push and the `new`; read every
   // word against `SANDBOX_TOOLCHAIN` here, before the pool, the janitor, the

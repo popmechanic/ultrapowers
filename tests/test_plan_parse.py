@@ -155,7 +155,7 @@ def test_m1_stdout_shape_with_and_without_verdict_record(plan_path, tmp_path):
     # lists every pair of tasks that share a file or an interface", and to
     # the fifth and sixth, `checks` and `bootstrapCmd`, by this task. [M1] [pairs-M1] [cmds-M2]
     assert set(obj_with.keys()) == {"tasks", "dag_edges", "launch_waves",
-                                    "pairs", "checks", "bootstrapCmd"}
+                                    "pairs", "checks", "bootstrapCmd", "publish"}
 
     # A copy of the fixture alone in tmp_path, with no sibling file at all.
     tmp_plan = tmp_path / plan_path.name
@@ -164,7 +164,7 @@ def test_m1_stdout_shape_with_and_without_verdict_record(plan_path, tmp_path):
     assert proc_without.returncode == 0, proc_without.stdout + proc_without.stderr  # [M1]
     obj_without = parse_stdout_json(proc_without.stdout)
     assert set(obj_without.keys()) == {"tasks", "dag_edges", "launch_waves",
-                                       "pairs", "checks", "bootstrapCmd"}  # [M1] [pairs-M1] [cmds-M2]
+                                       "pairs", "checks", "bootstrapCmd", "publish"}  # [M1] [pairs-M1] [cmds-M2]
 
     # Reading no file but the plan: the answer does not change when the
     # sibling verdict record vanishes. [M1]
@@ -520,7 +520,7 @@ def test_pairs_m1_files_and_interface_pairs_shape_and_order(tmp_path):
     # The new top-level key, alongside the three pre-existing ones (plus the
     # `checks`/`bootstrapCmd` pair added by this task). [pairs-M1] [cmds-M2]
     assert set(obj.keys()) == {"tasks", "dag_edges", "launch_waves",
-                               "pairs", "checks", "bootstrapCmd"}
+                               "pairs", "checks", "bootstrapCmd", "publish"}
     # Full entry shape, values and list order: (1, 2) by interface (no shared
     # file so no "files" reason, symbol/producer/consumer filled in), (2, 3)
     # by files (no interface so those three are null); (1, 3) shares neither
@@ -745,7 +745,7 @@ def test_cmds_m3_key_sets_and_other_fields_unchanged(tmp_path):
     # The top-level key set is the earlier set plus `checks` and
     # `bootstrapCmd`, nothing else. [cmds-M3]
     assert set(obj.keys()) == {"tasks", "dag_edges", "launch_waves",
-                               "pairs", "checks", "bootstrapCmd"}
+                               "pairs", "checks", "bootstrapCmd", "publish"}
 
     # dag_edges and pairs are what they were: the write-after-create edge
     # (task "1" creates cm3/a.py, task "2" modifies it) still fires with its

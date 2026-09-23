@@ -109,7 +109,7 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   `janitor.mjs` reads each fleet VM's comment and asks the kata hub for the run issue's state,
   falling back to the target's evidence through `gh api` only when the hub is dark, never a
   VM's disk; `target.mjs` creates the per-target integration; `doctor.mjs` says which of its
-  eight rows is missing. **What ran the wave engine here left with it at cut two
+  nine rows is missing. **What ran the wave engine here left with it at cut two
   (2026-09-21)** — `cloneAtBase` now lives in `factory/clone.mjs`, and the rest of the
   engine is `factory/engine.mjs` and its own modules (see below). Past this point `fleet/`
   is laptop tools and the bootstrap only, not an engine: no orchestrator, no control VM, no

@@ -379,6 +379,16 @@
       "basis": "judgment",
       "experiment": true,
       "rollback": "enabled = false"
+    },
+    "probe": {
+      "enabled": true,
+      "timeout_seconds": 600,
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "experiment": true,
+      "rollback": "enabled = false",
+      "unread": "publish-as-probe (#835): deploy, live verify and rollback after the self-merge; pre-registered reading per release: publishes per run, verify reds, rollbacks and deploy seconds against timeout_seconds"
     }
   }
 }

@@ -51,6 +51,16 @@ Files list is edited for a script or a config field, not for a dependency — th
 reds a manifest edit outside a task's Files, so a package that is not on this line is a
 package the run never gets.
 
+A TinyApp plan that publishes carries `**Publish:** <deploy command>` (run in the
+target's checkout after the self-merge, with `CLOUDFLARE_API_BASE_URL` pointed at the
+`cloudflare` edge integration and `CLOUDFLARE_API_TOKEN` a placeholder; the checkout has
+no `node_modules`, so the command installs what it needs), `**Verify:** <probe command>`
+(run with `ULTRA_PUBLISH_URL` set to the first `https://…workers.dev` URL the deploy
+printed; it must read that variable), and optionally `**Rollback:** <command>` (run once
+when the verify exits non-zero); the account id is the target's `wrangler.jsonc`
+`account_id`, never a plan line. The parser prints the three as `publish: {deploy, verify,
+rollback}`.
+
 An optional `**Closes:**` line names the tickets the plan closes. It sits directly under
 `**Goal:**` — the next line — and is one line: `**Closes:** #660 #668`, the numbers
 space-separated, each an issue of the target repository (a bare `#N` means the target to

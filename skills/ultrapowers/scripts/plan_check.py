@@ -14,10 +14,14 @@ What refuses:
     an entry missing, stale against the live `sha256(claim NUL proof)`, or
     `fail`;
   * that record's `authoring` object, when it carries one and it is malformed;
-  * a `- Check:` or Proof `Run:` command carrying a backtick, and a `Check:`
-    naming a path one implementation task's Files own;
+  * a `- Check:`, Proof `Run:`, `**Publish:**`, `**Verify:**` or
+    `**Rollback:**` command carrying a backtick, and a `Check:` naming a path
+    one implementation task's Files own;
   * a `- Check:` that freezes a `git diff … $ULTRA_BASE -- <pathspecs>` whose
     pathspec covers any task's `Create:`, `Modify:` or `Delete:` path (run-199);
+  * a `**Publish:**` header line without a `**Verify:**` line (or the other
+    way around), and a `**Verify:**` command that never reads
+    `$ULTRA_PUBLISH_URL`;
   * a `- Test:` or `- Guard:` bullet under a task's Files or Proof, and an
     `**Exam command:**` header line — cut three (2026-09-22) retired the
     examiner these fed; the parser reads none of them any more, and this is
@@ -286,15 +290,22 @@ def _is_implementation(t):
     return t["type"] is None or t["type"] == "implementation"
 
 
-def command_violations(checks, tasks):
+def command_violations(checks, tasks, publish=None):
     """The engine runs a `Check:` and a Proof `Run:` through a shell, which
     reads a backtick as a command substitution (run-74) — one wording, two
     callers; and a `Check:` naming a path ONE implementation task's Files own
     is that task's `Run:` wearing a run-wide coat — red for every other task
-    until that one lands (#978)."""
+    until that one lands (#978). A `**Publish:**`, `**Verify:**` or
+    `**Rollback:**` command earns the same backtick refusal — the driver's
+    shell reads all four the same way."""
     commands = ([("Check", "", c["cmd"]) for c in checks]
                 + [("Run", "task %s: " % t["id"], cmd)
                    for t in tasks for cmd in t["proofRuns"]])
+    if publish:
+        commands += [(kind, "", publish[key]) for kind, key in
+                      (("Publish", "deploy"), ("Verify", "verify"),
+                       ("Rollback", "rollback"))
+                      if publish.get(key)]
     violations = [
         "grammar: %s: command carries a backtick — %s%s; the driver's shell "
         "reads it as a command substitution (run-74)" % (kind, where, cmd[:80])
@@ -311,6 +322,33 @@ def command_violations(checks, tasks):
                         "turn green is not run-wide; move it to that task's "
                         "Proof as a `Run:`."
                         % (t["id"], check["cmd"], path, t["id"]))
+    return violations
+
+
+def publish_violations(publish):
+    """A `**Publish:**` line names a deploy — worthless without a
+    `**Verify:**` line to check it landed live, and a `**Verify:**` line
+    is worthless without a `**Publish:**` line naming the deploy it probes;
+    and a `**Verify:**` command that never reads `$ULTRA_PUBLISH_URL` never
+    reads the URL the deploy actually printed, so it cannot be a live
+    probe."""
+    if not publish:
+        return []
+    deploy, verify = publish.get("deploy"), publish.get("verify")
+    violations = []
+    if deploy is not None and verify is None:
+        violations.append(
+            "grammar: Publish: a **Publish:** line needs a **Verify:** "
+            "line — a deploy nobody checks live is not a publish")
+    elif verify is not None and deploy is None:
+        violations.append(
+            "grammar: Publish: a **Verify:** line needs a **Publish:** "
+            "line — there is no deployed URL to check")
+    if verify is not None and "$ULTRA_PUBLISH_URL" not in verify:
+        violations.append(
+            "grammar: Verify: the **Verify:** command never reads "
+            "$ULTRA_PUBLISH_URL — a probe that does not read the deployed "
+            "URL is not a live probe")
     return violations
 
 
@@ -912,10 +950,11 @@ def main(argv=None):
 
     violations = (gate_verdict_violations(args.plan, tasks)
                   + authoring_record_violations(args.plan)
-                  + command_violations(result["checks"], tasks)
+                  + command_violations(result["checks"], tasks, result["publish"])
                   + freeze_violations(result["checks"], tasks)
                   + retired_slot_violations(tasks)
-                  + retired_slot_violations(plan_text))
+                  + retired_slot_violations(plan_text)
+                  + publish_violations(result["publish"]))
     advisories = []
     if base_tree is not None:
         refusals, advisories = evaluate_stale_if(tasks, base_tree)
