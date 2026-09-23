@@ -471,3 +471,19 @@
 {"ts":"2026-09-23T02:44:23.230Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
 {"ts":"2026-09-23T02:44:29.774Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
 {"ts":"2026-09-23T02:44:36.759Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:44:40.721Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/referee.mjs"}
+{"ts":"2026-09-23T02:44:40.918Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"testCmdsOf\\|EXAM_MD\\|copyMissingFiles\\|runTaskExams\\|examSelectionRow\\|examsTouched\\|examAssertions\\|redKind\\|rigRound\\|examPromises\\|examAtZero\\|examine(\\|examPrompt\\|selfCheckExam\\|implFile"}
+{"ts":"2026-09-23T02:44:44.669Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:44:45.206Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:44:50.786Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:44:52.245Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:44:54.360Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:44:57.336Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:44:59.676Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:45:07.435Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/select.mjs"}
+{"ts":"2026-09-23T02:45:12.308Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:45:14.174Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"testCmdsOf\\|EXAM_MD\\|copyMissingFiles\\|runTaskExams\\|examSelectionRow\\|examsTouched\\|examAssertions\\|redKind\\|rigRound\\|examPromises\\|examAtZero\\|examine(\\|examPrompt\\|selfCheckExam\\|implFile"}
+{"ts":"2026-09-23T02:45:18.236Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:45:26.579Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"readCovering\" /home/exedev/run/impl-1-1/factory/judge.mjs /home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:45:29.410Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/judge.mjs"}
+{"ts":"2026-09-23T02:45:31.936Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/judge.mjs"}
