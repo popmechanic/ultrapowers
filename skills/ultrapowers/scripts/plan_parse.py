@@ -61,11 +61,9 @@ def _leading_spaces(line):
 TASK_HEAD = re.compile(r'^### Task ([A-Za-z0-9]+):\s*(.*)$')
 H2_HEAD = re.compile(r'^##\s')
 
-FILE_BULLET = re.compile(r'^-\s*(Create|Modify|Delete|Test)\s*:\s*(.+)$', re.I)
+FILE_BULLET = re.compile(r'^-\s*(Create|Modify|Delete)\s*:\s*(.+)$', re.I)
 IFACE_BULLET = re.compile(r'^-\s*(Consumes|Produces)\s*:\s*(.+)$', re.I)
-PROOF_TEST_BULLET = re.compile(r'^-\s*Test\s*:\s*(.+)$', re.I)
 PROOF_RUN_BULLET = re.compile(r'^-\s*Run\s*:\s*(.+)$', re.I)
-PROOF_GUARD_BULLET = re.compile(r'^-\s*Guard\s*:\s*(.+)$', re.I)
 PROOF_LEGS_BULLET = re.compile(r'^-\s*Legs\s*:\s*(.+)$', re.I)
 LEG_MARKER_RE = re.compile(r'\([a-z]\)')
 
@@ -90,7 +88,6 @@ def _claims_run_cites(value):
     return value[:m.start()], cites
 LEG_CITATION_RE = re.compile(r'\[M(\d+)\]')
 TYPE_LINE = re.compile(r'^\*\*Type:\*\*\s*(.+?)\s*$', re.I)
-EXAM_CMD_LINE = re.compile(r'^\*\*Exam command:\*\*\s*(.+?)\s*$', re.I)
 BOOTSTRAP_LINE = re.compile(r'^\*\*Bootstrap:\*\*\s*(.+?)\s*$', re.I)
 BACKTICK_PATH_RE = re.compile(r'`([^`]+)`')
 GLOBAL_CONSTRAINTS_H2 = re.compile(r'^##\s*Global Constraints\s*$', re.I)
@@ -157,20 +154,15 @@ def _split_plan(text):
 
 
 def _parse_header(header_lines):
-    exam_command = None
     bootstrap_cmd = None
     for line, fenced in header_lines:
         if fenced:
             continue
         s = line.strip()
-        m = EXAM_CMD_LINE.match(s)
-        if m:
-            exam_command = m.group(1).strip()
-            continue
         m = BOOTSTRAP_LINE.match(s)
         if m:
             bootstrap_cmd = m.group(1).strip()
-    return exam_command, bootstrap_cmd
+    return bootstrap_cmd
 
 
 def _parse_checks(header_lines):
@@ -267,7 +259,7 @@ def _parse_task_body(body_lines):
             break
 
     # Files block.
-    creates, modifies, deletes, test_files = [], [], [], []
+    creates, modifies, deletes = [], [], []
     for line, fenced in pre_slot:
         if fenced:
             continue
@@ -282,8 +274,6 @@ def _parse_task_body(body_lines):
             modifies.extend(paths)
         elif label == "delete":
             deletes.extend(paths)
-        elif label == "test":
-            test_files.extend(paths)
 
     # Interfaces slot.
     consumes_text, produces_text = [], []
@@ -302,28 +292,14 @@ def _parse_task_body(body_lines):
 
     # Proof slot.
     proof_slot_lines = slot_lines("proof")
-    proof_tests = []
     proof_runs = []
     proof_run_clauses = []
-    proof_guards = []
     legs_start = None
     legs_first_text = None
     for i, (line, fenced) in enumerate(proof_slot_lines):
         if fenced:
             continue
         s = line.strip()
-        m = PROOF_TEST_BULLET.match(s)
-        if m:
-            for p in BACKTICK_PATH_RE.findall(m.group(1)):
-                if p not in proof_tests:
-                    proof_tests.append(p)
-            continue
-        m = PROOF_GUARD_BULLET.match(s)
-        if m:
-            for p in BACKTICK_PATH_RE.findall(m.group(1)):
-                if p not in proof_guards:
-                    proof_guards.append(p)
-            continue
         m = PROOF_RUN_BULLET.match(s)
         if m:
             val = m.group(1).strip()
@@ -341,7 +317,6 @@ def _parse_task_body(body_lines):
 
     # The Legs text runs from the `- Legs:` bullet to the end of the Proof
     # slot -- every unfenced line after it (however it wraps) is part of it.
-    run_only_clauses = []
     if legs_start is not None:
         parts = [legs_first_text]
         for line, fenced in proof_slot_lines[legs_start + 1:]:
@@ -359,10 +334,8 @@ def _parse_task_body(body_lines):
 
         cited = {}
         for leg in legs:
-            has_run = "Run:" in leg
             for n in LEG_CITATION_RE.findall(leg):
-                cited.setdefault(int(n), []).append(has_run)
-        run_only_clauses = sorted(n for n, runs in cited.items() if all(runs))
+                cited.setdefault(n, True)
         legs_has_citation = bool(cited)
     else:
         legs_has_citation = False
@@ -372,14 +345,10 @@ def _parse_task_body(body_lines):
         "creates": creates,
         "modifies": modifies,
         "deletes": deletes,
-        "test_files": test_files,
         "consumes_text": consumes_text,
         "produces_text": produces_text,
-        "proof_tests": proof_tests,
         "proof_runs": proof_runs,
         "proof_run_clauses": proof_run_clauses,
-        "proof_guards": proof_guards,
-        "run_only_clauses": run_only_clauses,
         "legs_has_citation": legs_has_citation,
         "claim": slot_text("claim"),
         "authorized_by": slot_text("authorized-by"),
@@ -390,44 +359,6 @@ def _parse_task_body(body_lines):
 
 def _is_implementation(ttype):
     return ttype is None or ttype == "implementation"
-
-
-# --------------------------------------------------------------------------- #
-# M2 field derivation: testCmd.
-# --------------------------------------------------------------------------- #
-
-MJS_PROOF_TEST_RE = re.compile(r'^fleet/tests/test_[^/]*\.mjs$')
-PY_PROOF_TEST_RE = re.compile(r'^tests/(?:[^/]+/)*[^/]+\.py$')
-BUN_PROOF_TEST_RE = re.compile(r'^tests/(?:[^/]+/)*[^/]+\.test\.ts$')
-
-
-def _derive_test_cmds(proof_tests, exam_command):
-    """The list of commands whose ` && `-join is `testCmd`; `[]` when
-    `testCmd` would be `null` (no proof tests, or an unrecognized shape)."""
-    if not proof_tests:
-        return []
-    if exam_command:
-        return [exam_command.replace("{paths}", " ".join(proof_tests))]
-    node_paths, py_paths, bun_paths = [], [], []
-    for path in proof_tests:
-        if MJS_PROOF_TEST_RE.match(path):
-            node_paths.append(path)
-        elif PY_PROOF_TEST_RE.match(path):
-            py_paths.append(path)
-        elif BUN_PROOF_TEST_RE.match(path):
-            bun_paths.append(path)
-        else:
-            return []
-    parts = ["node " + p for p in node_paths]
-    if py_paths:
-        parts.append("python3 -m pytest -q " + " ".join(py_paths))
-    if bun_paths:
-        parts.append("bun test " + " ".join(bun_paths))
-    return parts
-
-
-def _derive_test_cmd(test_cmds):
-    return " && ".join(test_cmds) if test_cmds else None
 
 
 # --------------------------------------------------------------------------- #
@@ -702,19 +633,16 @@ def parse_plan_full(text):
     """`(result, all_tasks)`: the public object `parse_plan_text` answers,
     and beside it every task of the plan -- whatever its `**Type:**` -- with
     the fields the laptop's check and the authoring scripts read and the
-    sandbox does not: `body`, `type`, `deletes`, `test_files`, the `claim`,
+    sandbox does not: `body`, `type`, `deletes`, the `claim`,
     `authorized_by` and `proof` slot texts, and `stale_if_entries`."""
     header_lines, task_bodies = _split_plan(text)
-    exam_command, bootstrap_cmd = _parse_header(header_lines)
+    bootstrap_cmd = _parse_header(header_lines)
     checks = _parse_checks(header_lines)
 
     all_tasks = []
     for tid, title, order, body_lines in task_bodies:
         parsed = _parse_task_body(body_lines)
-        files = sorted(set(parsed["creates"]) | set(parsed["modifies"])
-                       | set(parsed["test_files"]))
-        proof_tests = parsed["proof_tests"]
-        test_cmds = _derive_test_cmds(proof_tests, exam_command)
+        files = sorted(set(parsed["creates"]) | set(parsed["modifies"]))
         task = {
             "id": tid,
             "title": title,
@@ -727,21 +655,15 @@ def parse_plan_full(text):
             "proof_runs": parsed["proof_runs"],
             "files": files,
             "depends_on": [],
-            "proofTests": proof_tests,
-            "testCmd": _derive_test_cmd(test_cmds),
-            "testCmds": test_cmds,
             "proofRuns": parsed["proof_runs"],
             "proofRunClauses": parsed["proof_run_clauses"],
             "interfaces": {
                 "consumes": parsed["consumes_text"],
                 "produces": parsed["produces_text"],
             },
-            "proofGuards": parsed["proof_guards"],
-            "runOnlyClauses": parsed["run_only_clauses"],
             "legsHasCitation": parsed["legs_has_citation"],
             "body": "\n".join(l for l, _ in body_lines).strip(),
             "deletes": parsed["deletes"],
-            "test_files": parsed["test_files"],
             "claim": parsed["claim"],
             "authorized_by": parsed["authorized_by"],
             "proof": parsed["proof"],
@@ -762,14 +684,9 @@ def parse_plan_full(text):
             "title": t["title"],
             "files": t["files"],
             "depends_on": t["depends_on"],
-            "proofTests": t["proofTests"],
-            "testCmd": t["testCmd"],
-            "testCmds": t["testCmds"],
             "proofRuns": t["proofRuns"],
             "proofRunClauses": t["proofRunClauses"],
             "interfaces": t["interfaces"],
-            "proofGuards": t["proofGuards"],
-            "runOnlyClauses": t["runOnlyClauses"],
         }
         return view
 
@@ -887,15 +804,11 @@ def machine_restatement(claim):
     return ""
 
 
-USAGE = "plan_parse: usage: plan_parse.py [--unguarded] <plan.md>\n"
+USAGE = "plan_parse: usage: plan_parse.py <plan.md>\n"
 
 
 def main(argv):
     args = argv[1:]
-    unguarded = False
-    if args and args[0] == "--unguarded":
-        unguarded = True
-        args = args[1:]
 
     if len(args) != 1:
         sys.stderr.write(USAGE)
@@ -914,17 +827,6 @@ def main(argv):
     except Refusal as exc:
         sys.stderr.write(str(exc) + "\n")
         return 2
-
-    if unguarded:
-        seen = set()
-        for t in result["tasks"]:
-            guards = set(t["proofGuards"])
-            for p in t["proofTests"]:
-                if p in guards or p in seen:
-                    continue
-                seen.add(p)
-                print(p)
-        return 0
 
     print(json.dumps(result))
     return 0

@@ -104,7 +104,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   peer exam role, its files and their
   evidence copy left the engine at cut three (2026-09-22); `--engine d412149a` runs the engine from
   before it.
-- **State handshake:** a task that reaches a state its consumers are examined against posts it on
+- **State handshake:** Deferred since cut three (2026-09-22): no plan can name a state exam, so
+  this handshake has no reader until state exams return as probes (owed on #1248); the text stands
+  as the shape for that day. A task that reaches a state its consumers are examined against posts it on
   its own kata issue, as the single metadata key `state.reached` with
   `{"expected":"<path under state-exams/expected/>","content":[tables, values]}` — the pair
   `getContent()` answers, beside the snapshot the task left in its tree. The driver reads that post
@@ -199,7 +201,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `min(memory, 2 + W)GB` for a plan with no state exam, `min(memory, max(6, 2 + 1.25 × C))GB`
   otherwise, where the `cpu`/`memory` pair of `~/.ultrapowers/fleet.json` (or
   `FLEET_DEFAULTS`) is the CEILING; `--cpu` or `--memory` on the launch line wins outright, and
-  either number is refused when `billing plan --json` cannot seat it. The verb carries NO `--integration`: exe.dev
+  either number is refused when `billing plan --json` cannot seat it. Since cut three (2026-09-22)
+  the parser prints no test paths, so C reads 0 for every plan and the browsers rule has no reader
+  (owed on #1248). The verb carries NO `--integration`: exe.dev
   refuses it since 2026-09-11 (`new --integration cannot safely rewrite a singular attachment
   policy; create the VM first, then use integrations policy get/set with the complete expression`),
   and the launcher refuses its own line before issuing it should the flag ever reappear. The run's

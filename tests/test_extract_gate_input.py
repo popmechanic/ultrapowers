@@ -77,7 +77,7 @@ def _plan_text(md_path, py_path, mjs_path, absent_path, dir_path,
 - Modify: `{py_path}`
 - Create: `{absent_path}`
 - Modify: `{mjs_path}`
-- Test: `{dir_path}`
+- Create: `{dir_path}`
 
 **Claim:** The thing holds `{LONG_LIT}` and `{SHORT_LIT}`. (derived)
 Machine: M1. The file carries `{LONG_LIT}` and `{OTHER_LIT}`.
@@ -91,8 +91,8 @@ Machine: M1. The file carries `{LONG_LIT}` and `{OTHER_LIT}`.
 **Context:** none.
 
 **Proof:**
-- Test: `{proof_extra}`
 - Legs: (a) [M1] the carrier is there and `{md_path}` is read again.
+- Run: cat {proof_extra}
 - Run: python3 -c 'print(1)' {run_path}
 
 **Stale-if:**
@@ -221,9 +221,9 @@ def test_d_m4_caps(tmp_path):
     for i in range(4):                        # 4 × ~8 KB crosses 24,000
         (r / f"t/fill{i}.py").write_text(big)
     plan = r / "plan.md"
-    # Files: big, small, (nothing — absent), fill0, fill1; Proof: fill2 (Test:)
-    # and fill3 (Run:). Present entries in order: big, small, fill0, fill1,
-    # fill2, fill3 — the total cap lands inside fill1.
+    # Files: big, small, (nothing — absent), fill0, fill1 (Create:); Proof:
+    # fill2 (Run: cat) and fill3 (Run: python3). Present entries in order:
+    # big, small, fill0, fill1, fill2, fill3 — the total cap lands inside fill1.
     plan.write_text(_plan_text("t/big.py", "t/small.py", "t/fill0.py",
                                "t/nothing.py", "t/fill1.py", "t/fill2.py",
                                "t/fill3.py"))

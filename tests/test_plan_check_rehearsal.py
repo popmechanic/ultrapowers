@@ -134,7 +134,6 @@ TASK = """
 
 **Files:**
 - Modify: `src/prover.ts`
-- Test: `tests/test_prover.py`
 
 **Claim:** An operator running the prover sees it pass. (derived)
 Machine: {machine}
@@ -148,7 +147,6 @@ Machine: {machine}
 **Context:** The prover is a standalone module with no registry to update.
 
 **Proof:**
-- Test: `tests/test_prover.py`
 {runs}{legs}
 
 **Stale-if:**

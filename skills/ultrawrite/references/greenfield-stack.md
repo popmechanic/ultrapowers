@@ -101,6 +101,8 @@ exam starts, budgets and stops that server is `## The runtime host`, below.
 
 ## State exams
 
+*Deferred since cut three (2026-09-22): no plan can name a `Test:` path, so nothing in this section has a reader until state exams return as probes — owed on map #1248. The text below is the shape for that day, kept as it was.*
+
 Every `**Review:** peer` task of a TinyApp plan names one `*.test.ts` state exam
 as a Proof `Test:` path — a `lean` task may carry one, and no other task type
 owes one. The exam is a single Bun test. The `tinyapp-exam` it imports is
@@ -268,6 +270,8 @@ leading `!` makes a clean tree exit 0 and silent, and one offender exit 1
 with that file's path on stdout.
 
 ## The runtime host
+
+*Deferred since cut three (2026-09-22): no plan can name a `Test:` path, so nothing in this section has a reader until state exams return as probes — owed on map #1248. The text below is the shape for that day, kept as it was.*
 
 A TinyApp's server runs on **celld**, and a plan that names a state exam names
 the host with it. What follows is what a plan writes down about that host — the

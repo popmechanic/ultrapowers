@@ -5,9 +5,11 @@
 ultrapowers authors a plan and then executes it in parallel. Where a sequential executor
 works a plan one task at a time, ultrapowers compiles it into a pool of tasks and runs them
 as a fleet of `claude -p` workers on a disposable exe.dev sandbox, driven by the engine in
-`factory/engine.mjs`: per task an exam worker and `k` implementers each get a clone at
-BASE, a patch is captured, and selection plus the fold kernel adopt the winner — no LLM
-orchestrator, no Workflow tool (since 0.3.0), and since 0.3.5 no orchestrator VM either:
+`factory/engine.mjs`: per task `k` implementers each get a clone at BASE, a patch is
+captured and measured by the plan's own `Run:` probes, the existing tests the engine
+selects for it and the plan's `Check:` lines, and selection plus the fold kernel adopt
+the winner — no LLM orchestrator, no Workflow tool (since 0.3.0), and since 0.3.5 no
+orchestrator VM either:
 the sandbox owns its run and opens its own PR.
 
 The aim is to move where humans spend their attention. ultrapowers keeps users
@@ -114,17 +116,18 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   Launch it from the repository checkout, never the plugin cache, with `--engine <sha>`.
   `boot.sh` prepares the clone, the plan, the verdict record and the evidence worktree, brings up
   the board, runs the engine as one transient unit under `RuntimeMaxSec` — one clock, no worker
-  caps (#1144) — and publishes as shell: since #1154 it moves a plan's unguarded exam files out of
-  the pull request into `.ultrapowers/runs/<N>/exams/` first. `engine.mjs` is the run as search,
-  a pool with no waves: per task an exam worker, `k` implementers, a measurement (the task's own
-  exam command and nothing else — no `Run:`, no `Check:`, no `ULTRA_BASE`), selection, at most one
+  caps (#1144) — and publishes as shell (publish is a push and one POST). `engine.mjs` is the run
+  as search, a pool with no waves: per task `k` implementers, a measurement (the task's `Run:`
+  probes in the candidate's clone, then the existing tests selection offers for the patch; the
+  plan's `Check:` lines run on every folded tree with `ULTRA_BASE`), selection, at most one
   re-dispatch, a referee when `readTask` asks for one, and a fold through the kernel on every
-  adoption. Every judgment is a question in `questions.json` read through `judge.mjs`, and every
+  adoption — and the fold check re-runs every adopted task's probes on every fold (#1251). Every
+  judgment is a question in `questions.json` read through `judge.mjs`, and every
   threshold is a cell of `policy.json` carrying its `n`, `window`, `experiment` and `rollback` — a
   switch there is the rollback of whatever it gates. `board.mjs` is the only module that talks to
   Kata and never fails a run; `tools.mjs` is the worker's in-process tools (`note`, `hand`,
-  `settled`, `sibling_fact`, `task_facts`); `select.mjs` and `hunks.mjs` are test selection and
-  the hunks Jev is shown (#1154); `worker.mjs` is the SDK worker, whose `DISALLOWED_TOOLS` is the
+  `settled`, `sibling_fact`, `task_facts`, `run_proof`); `select.mjs` and `hunks.mjs` are test
+  selection and the hunks Jev is shown (#1154); `worker.mjs` is the SDK worker, whose `DISALLOWED_TOOLS` is the
   git block (#1156 is its gap). The sandbox's parser is `skills/ultrapowers/scripts/plan_parse.py`;
   `plan_check.py` is the laptop's check on it. The board is a Kata 0.18 spoke per sandbox: it
   syncs through `kata-sync.int.exe.xyz`, which passes the spoke's own bearer through untouched
@@ -134,7 +137,7 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   `test_launch_*.mjs`, `test_setup_script.mjs`, `test_worker_kata_env.mjs`, the Jev client's two,
   `test_probe_kata_facts.mjs` and `test_sims_are_hermetic.mjs`, which forbids a sim naming a
   sibling sim — plus the rig (`_helpers.mjs` and the per-family helpers, which the factory's
-  exams build on) and the live `probe_*.mjs` (see `PROBES.md`), run by hand. The 47 sims of the
+  sims build on) and the live `probe_*.mjs` (see `PROBES.md`), run by hand. The 47 sims of the
   old engine, boot, worker and publish fold are gone (32,805 lines); the code they examined goes
   at cut two. They reach pytest through the bridge, `tests/test_fleet_suite.py`;
   `ls fleet/tests/test_*.mjs` is the list.
@@ -147,16 +150,17 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   four gated slices had been planned, and the old fleet stayed up as the rollback until the new
   one had driven runs.
 - **The values, reordered for the factory (map #1131, 2026-09-17).** In tie-break order:
-  the exam is the invariant, never traded; then clock speed; then simplicity of the factory, in
-  lines and roles — what "code quality" means for ultrapowers itself; then tokens, last and
-  deliberately, because search spends generation where judgment is nearly free. Three rules
+  the mechanical facts are the invariant, never traded; then clock speed; then simplicity of the
+  factory, in lines and roles — what "code quality" means for ultrapowers itself; then tokens, last
+  and deliberately, because search spends generation where judgment is nearly free. Three rules
   added with it: **a judgment is a question, never a sentence or a regex** (every one lives in
   `factory/questions.json` with its reader and rollback); **speculate, then select** (`k`
-  implementers per task, the exam exit first and Jev's reading as the tie-break); **fold on every
+  implementers per task, the facts' exit first and Jev's reading as the tie-break); **fold on every
   landing** (no wave, no fold rule — every adoption folds through the kernel and is checked on
   the folded tree). Reason: the reading behind the reorder is on #1131; it stands beside, not
   over, the operator's own tie-break for hand work (§Working with the operator: quality, tokens,
-  clock).
+  clock). Cut three (2026-09-22, map #1248) retired the dedicated examiner role: the facts are
+  the plan's probes, the selected tests and the checks.
 - **Don't vendor the vendor** — before building a mechanism, ask whether exe.dev already provides
   it (identity, credentials at the edge, the VM comment, tags, the first-boot setup script, cold
   start). Reason: a custom OCI base image was rejected on exactly this ground on 2026-09-04
@@ -205,9 +209,11 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   (see §Working with the operator). And every sitting-level question is recorded with its pick in
   the plan's `authoring` record, so the Recommended `pick rate` is read per release and a
   recommendation taken every time is retired into a written default rather than asked again.
-- **Test doctrine (operator, 2026-09-09).** The implementer never does TDD: it iterates against the
-  suite and writes no test of its own. The peer exam plus driver-run probes are the proof, and the
-  target's suite is a *reported sensor* with attribution, measured and never asserted on a
+- **Test doctrine (operator, 2026-09-09; rewritten for cut three, 2026-09-22).** The implementer
+  never does TDD: it iterates against the plan's probes and the target's suite and writes no test of
+  its own — nothing is written on the fleet to prove a task. The plan's `Run:` probes plus the
+  existing tests the engine selects for the patch plus the run-wide `Check:` lines are the proof,
+  and the target's suite is a *reported sensor* with attribution, measured and never asserted on a
   narrative. Deletion is owed per file, on the reading: a test file that has never caught anything
   goes, and `skills/ultrapowers/scripts/catch_counter.py` is what turns that reading into the
   deletion. Ballast goes behind a measurement gate, never on an incident narrative. And every
@@ -218,17 +224,24 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   floor to three readings: `#872`'s escapes reading is over the floor at `n=9` merged runs
   (131–140); the fold rule (`#1006`, one replay) stays an `experiment` until five, its rollback
   `foldAgeMs=0` — a fold at every landing; and one reviewer (`#974`) was flipped on `n=71` runs and
-  stands.
-- **Verification is mechanical and fast (operator, 2026-09-18).** An exam computes facts — an
-  exit code, an argv, a byte-exact string, a count, an ordering, agreement with an oracle — and
-  everything of the form "the code says X" is Jev's, read against the hunk at landing. One case per
-  behaviour, never per variant. Regression protection follows the same shape: code supplies the
-  candidate tests a patch touches, Jev selects, the engine runs those few; nothing runs the whole
-  collection as a matter of course. A plan that answers a gate rejection by adding legs is answering
-  the wrong question — narrow the clause. Reason: the gate's old question ("is the sentence
-  *necessarily* true") can only be bought by enumeration; on the 2026-09-18 feedback-board plan it
-  rejected seven of nine tasks, each asking for more legs, where the facts-only question passed the
-  same seven in one round (n=1 plan — an `experiment`, its rollback the old sentence in
+  stands. The Jev claim gate (`gate.jev_claim`, cut three) is `record-only` at `n=0` until five runs
+  of `gate:jev_claim` rows are joined to the operator's smoke outcome; run-225's first label points
+  the wrong way (the task that needed a hotfix scored 0.85), which is why it is a reading and not a
+  threshold.
+- **Verification is mechanical and fast (operator, 2026-09-18; rewritten for cut three, 2026-09-22).**
+  A probe computes facts — an exit code, an argv, a byte-exact string, a count, an
+  ordering, agreement with an oracle — and everything of the form "the code says X" is Jev's, read
+  against the hunk at landing. A probe is one `Run:` line, one command, ending in the tag of the
+  clause it proves; an untagged prover settles nothing for Jev (run-225: every landing's `settled`
+  null, n=1 run, 3 tasks). One case per behaviour, never per variant. Regression protection follows
+  the same shape: code supplies the candidate tests a patch touches, Jev selects, the engine runs
+  those few in the candidate's clone; and on every fold the engine re-runs every adopted task's
+  probes and selected tests on the folded tree (#1251: a probe reads what it reads, not only what
+  its task wrote). A plan that answers a gate rejection by adding legs is answering the wrong
+  question — narrow the clause. Reason: the gate's old question ("is the sentence *necessarily*
+  true") can only be bought by enumeration; on the 2026-09-18 feedback-board plan it rejected seven
+  of nine tasks, each asking for more legs, where the facts-only question passed the same seven in
+  one round (n=1 plan — an `experiment`, its rollback the old sentence in
   `skills/ultrawrite/SKILL.md` §The proof gate). A size budget is a design note the pull request
   reports, never a clause a task proves; and publish is shell, not a seam (run-186 was killed on a
   fake-choreographed publish stage inside the engine).
@@ -250,8 +263,8 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   question. A signed Claim is drafted by the author and confirmed by the operator in one touch —
   the draft, its machine restatement and its summary in a single question; their edit is the Claim.
   Explain an idea; do not state it in the technical register and leave them to decode it.
-- **They never read code or tests.** The trust chain is plan → peer exam → gate receipt →
-  smoke. Quote receipts; never narrate a green.
+- **They never read code or tests.** The trust chain is plan → probes → gate receipt → smoke.
+  Quote receipts; never narrate a green.
 - **Priorities, in tie-break order: quality, then tokens, then clock.** The simpler design wins
   whenever it costs none of the three. Per-task model tiering is the one thing never simplified
   away.
@@ -298,8 +311,8 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   touches the real network or the real repo is caught by `test_sims_are_hermetic.mjs`.
 - **The boot commits evidence on a clock, not a watcher.** `factory/boot.sh` copies
   `events.jsonl` into the evidence worktree every tick, only when the bytes differ (temp file
-  + `mv`, never a partial read), and commits `status.json`, `events.jsonl`, `engine.log` and
-  any `exams/` to `ultra/evidence-run-<N>` every `FLEET_COMMIT_SECONDS` — no status server, no
+  + `mv`, never a partial read), and commits `status.json`, `events.jsonl` and
+  `engine.log` to `ultra/evidence-run-<N>` every `FLEET_COMMIT_SECONDS` — no status server, no
   live page: git is the record, written up in `fleet/CONTRACT.md` and `fleet/RUNBOOK.md`. **The
   old boot served a status page a live model of the fleet, map #876 *Viz*, read over HTTP** —
   that watcher and its sim left with the old engine at cut one.

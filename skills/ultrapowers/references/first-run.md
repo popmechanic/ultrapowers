@@ -77,7 +77,9 @@ asks for `max(6, 2 + 1.25 × C)` GB instead. A page-carrying Chromium is 0.7–1
 so a two-task TinyApp run wants 6 GB and an eight-task one 12. If this fleet
 runs TinyApp plans, set the `memory` ceiling to `12GB`: that is the most the
 browser formula ever asks for, and a lower ceiling silently clamps a wide run
-back onto a box its browsers will not fit in.
+back onto a box its browsers will not fit in. Since cut three (2026-09-22) no
+plan can name a state exam, so C reads 0 for every plan and this rule has no
+reader until state exams return as probes (owed on #1248).
 
 **In a browser:** nothing, unless the answer is a bigger plan.
 

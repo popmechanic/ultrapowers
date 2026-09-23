@@ -67,7 +67,6 @@ PLAN = """# Authoring record probe
 
 **Files:**
 - Modify: `fleet/tests/sim_probe.mjs`
-- Test: `tests/test_sim_probe.py`
 
 **Claim:** An operator running the sim sees it pass. (derived)
 Machine: M1. The sim prints `PASSED`.
@@ -81,7 +80,6 @@ Machine: M1. The sim prints `PASSED`.
 **Context:** The sim is a standalone script with no registry to update.
 
 **Proof:**
-- Test: `tests/test_sim_probe.py`
 - The suite asserts the sim prints `PASSED`. [M1]
 
 **Stale-if:**
