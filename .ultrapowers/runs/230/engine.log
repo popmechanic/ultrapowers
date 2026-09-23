@@ -1,0 +1,37 @@
+Running as unit: fleet-engine-230.service; invocation ID: 9a8b2f0794404f93af0d10ff4afb588c
+jev: call failed: The operation was aborted due to timeout
+jev: supervisor.observed: no answers
+jev: call failed: The operation was aborted due to timeout
+jev: supervisor.observed: no answers
+jev: call failed: The operation was aborted due to timeout
+jev: landing.finding: no answers
+jev: call failed: The operation was aborted due to timeout
+jev: landing.finding: no answers
+jev: call failed: The operation was aborted due to timeout
+jev: landing.finding: no answers
+adopted task 1 -> 0e4647de  facts=0 k=1
+jev: call failed: The operation was aborted due to timeout
+jev: supervisor.observed: no answers
+jev: call failed: The operation was aborted due to timeout
+jev: select.guards: no answers
+jev: call failed: The operation was aborted due to timeout
+jev: landing: no answers
+jev: call failed: The operation was aborted due to timeout
+jev: landing.finding: no answers
+jev: call failed: The operation was aborted due to timeout
+jev: landing.finding: no answers
+jev: call failed: The operation was aborted due to timeout
+jev: landing.finding: no answers
+adopted task 3 -> d80a3ad0  facts=0 k=1
+jev: call failed: The operation was aborted due to timeout
+jev: supervisor.observed: no answers
+jev: call failed: The operation was aborted due to timeout
+jev: select.covers: no answers
+adopted task 2 -> 493d9765  facts=0 k=2
+{"done":true,"adopted":["1","3","2"],"head":"493d976590ea60abf7bf3b5695953609fa09faa9","wall_ms":1358946,"cost_usd":12.092628500000004}
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 22min 39.028s
+CPU time consumed: 3min 42.198s
+Memory peak: 1.5M
+Memory swap peak: 0B
