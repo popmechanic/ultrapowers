@@ -777,3 +777,11 @@
 {"ts":"2026-09-23T03:11:18.696Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"examExit\\|factsExit\" /home/exedev/run/impl-1-1/fleet/tests/test_factory_record.mjs"}
 {"ts":"2026-09-23T03:11:21.526Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/fleet/tests/test_factory_record.mjs"}
 {"ts":"2026-09-23T03:11:26.001Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/fleet/tests/test_factory_record.mjs"}
+{"ts":"2026-09-23T03:11:29.672Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"examExit\\|exam\\b\\|factsExit\" /home/exedev/run/impl-1-1/fleet/tests/test_factory_record.mjs"}
+{"ts":"2026-09-23T03:11:34.784Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"node --check fleet/tests/test_factory_record.mjs && node fleet/tests/test_factory_record.mjs"}
+{"ts":"2026-09-23T03:11:38.291Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"observedWork\\|proofRuns\\|proof_runs\\|examRuns\\|exam_runs\" /home/exedev/run/impl-1-1/factory/watch.mjs"}
+{"ts":"2026-09-23T03:11:41.008Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/watch.mjs"}
+{"ts":"2026-09-23T03:11:46.280Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/fleet/tests/test_factory_watch.mjs"}
+{"ts":"2026-09-23T03:11:51.880Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"examRuns\\|proofRuns\\|proof_runs\\|observedWork(\" /home/exedev/run/impl-1-1/fleet/tests/test_factory_watch.mjs"}
+{"ts":"2026-09-23T03:11:57.507Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/fleet/tests/test_factory_watch.mjs"}
+{"ts":"2026-09-23T03:12:01.403Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"node --check fleet/tests/test_factory_watch.mjs && node fleet/tests/test_factory_watch.mjs"}
