@@ -2,7 +2,7 @@
  * fleet/tests/test_factory_reverify.mjs — the exam for "The examiner leaves
  * the engine and the facts stay".
  *
- * The claim: `factory/reverify.mjs`'s `proofsTouched` names which already
+ * The claim: `factory/reverify.mjs`'s `proofsAdopted` names which already
  * adopted tasks a fold's own touched paths put back in play — the folded
  * task itself first, then the rest of `adopted` in their own order, filtered
  * to a task that shares a touched path AND has something to run (its own
@@ -16,10 +16,10 @@
  *
  * Legs:
  *
- *   (a) `proofsTouched`: the folded task always comes first when it
+ *   (a) `proofsAdopted`: the folded task always comes first when it
  *       qualifies; the rest of `adopted`, in adoption order, filtered to a
- *       task that both shares a touched path and has a non-empty `proofRuns`
- *       or a non-empty `selected[task.id]`; capped at `cap`.
+ *       task with a non-empty `proofRuns` or a non-empty `selected[task.id]`
+ *       — no touched-path filter (run-225's seam); capped at `cap`.
  *   (b) `foldRound` attribution: a probe/test red whose id is the folded
  *       task is `cause: 'own'`; a probe/test red of another task is
  *       `cause: 'sibling'`; a check red is `cause: 'check'`, `owner: null`;
@@ -42,13 +42,13 @@
  *       or answers nothing is the same `unresolved: true` an unsuccessful
  *       reattempt gives, over the ORIGINAL reds.
  *
- * `proofsTouched` and `foldRound` are pure, so this exam supplies every
+ * `proofsAdopted` and `foldRound` are pure, so this exam supplies every
  * argument as its own in-memory fake — nothing spawns, nothing touches disk.
  */
 
 import assert from 'node:assert/strict'
 
-import { proofsTouched, foldRound } from '../../factory/reverify.mjs'
+import { proofsAdopted, foldRound } from '../../factory/reverify.mjs'
 
 const HUNKS = 'HUNKS TEXT'
 
@@ -80,7 +80,7 @@ function makeFakes ({ runProofsAtAnswer, reattemptAnswer = true, verifyAnswer = 
   }
 }
 
-// ── a. proofsTouched: folded first, adoption order, qualifies, capped ─────
+// ── a. proofsAdopted: folded first, adoption order, qualifies, capped ─────
 {
   const tasks = [
     { id: '1', files: ['a.mjs'], proofRuns: ['node a.mjs'] },
@@ -89,29 +89,28 @@ function makeFakes ({ runProofsAtAnswer, reattemptAnswer = true, verifyAnswer = 
     { id: '4', files: ['a.mjs'], proofRuns: [] },
   ]
   const selected = { 2: ['tests/test_b.mjs'] }
-  const touched = ['a.mjs', 'b.mjs']
 
-  const result = proofsTouched({
-    folded: '1', touched, adopted: ['4', '2', '3', '1'], tasks, selected, cap: 10,
+  const result = proofsAdopted({
+    folded: '1', adopted: ['4', '2', '3', '1'], tasks, selected, cap: 10,
   })
   assert.deepEqual(
-    result.map((t) => t.id), ['1', '2'],
-    'the folded task comes first, then the rest of adopted in adoption order, filtered to a task that shares a touched path and qualifies'
+    result.map((t) => t.id), ['1', '2', '3'],
+    'the folded task comes first, then the rest of adopted in adoption order, filtered to a task that qualifies — whatever files it owns'
   )
-  // task 3 does not share a.mjs/b.mjs -> excluded; task 4 shares a.mjs but
-  // has empty proofRuns and no selected entry of its own -> excluded too.
-  assert.ok(!result.some((t) => t.id === '4'), 'a task that shares a touched path but has no proofRuns and no selected tests does not qualify')
-  assert.ok(!result.some((t) => t.id === '3'), 'a task that qualifies but shares no touched path is excluded')
+  // task 3 shares no file with anyone and still runs (run-225: a probe reads
+  // what it reads); task 4 has empty proofRuns and no selected entry -> excluded.
+  assert.ok(!result.some((t) => t.id === '4'), 'a task with no proofRuns and no selected tests does not qualify')
+  assert.ok(result.some((t) => t.id === '3'), 'a task that qualifies runs even when it shares no file with the fold')
 
-  const capped = proofsTouched({
-    folded: '1', touched, adopted: ['2', '1'], tasks, selected, cap: 1,
+  const capped = proofsAdopted({
+    folded: '1', adopted: ['2', '1'], tasks, selected, cap: 1,
   })
   assert.deepEqual(capped.map((t) => t.id), ['1'], 'the result is capped at `cap` entries overall')
 
-  const noFolded = proofsTouched({
-    folded: '9', touched: ['zzz.mjs'], adopted: ['1', '2'], tasks, selected, cap: 10,
+  const noFolded = proofsAdopted({
+    folded: '9', adopted: ['4'], tasks, selected, cap: 10,
   })
-  assert.deepEqual(noFolded, [], 'a folded id with no matching task and no adopted task touching the path answers []')
+  assert.deepEqual(noFolded, [], 'a folded id with no matching task and no qualifying adopted task answers []')
 }
 
 // ── b. foldRound attribution: own / sibling / check, and the probe/test/cmd

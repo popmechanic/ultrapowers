@@ -1,25 +1,29 @@
-// factory/reverify.mjs — which adopted tasks a fold's own touched paths put
-// back in play.
+// factory/reverify.mjs — which adopted tasks' measurements a fold puts back
+// in play: every one of them.
 //
 // `factory/engine.mjs` folds one candidate at a time and, with
-// `policy.fold.reverify.enabled` true, wants to know — right after that fold
-// — which already-adopted tasks have a stake in the paths the fold just
-// touched: the folded task's own probes/selected tests always, plus any
-// sibling whose `files` overlap. `proofsTouched` is that reading, kept pure
-// and separate from the engine so M1 stands as one small answer a caller can
-// check with no clone, no `sh`, and no fold at all.
+// `policy.fold.reverify.enabled` true, re-runs — right after that fold — the
+// probes and selected tests of the folded task and of EVERY adopted sibling,
+// not only the siblings whose `files` overlap the fold. The overlap rule was
+// run-225's seam (2026-09-22): task 2's boot sim pinned how a sibling's
+// `record.mjs` rendered a cell, the two tasks shared no file, the fold check
+// skipped the sim, and the merged tree was red by hand. A probe reads what
+// it reads, not only what its task wrote, so the folded tree is green only
+// when every adopted probe is green on it. `proofsAdopted` is that reading,
+// kept pure and separate from the engine so it stands as one small answer a
+// caller can check with no clone, no `sh`, and no fold at all.
 
 /**
  * The adopted tasks whose measurement belongs on the folded tree: `folded`
  * itself first, then the rest of `adopted` in their own (adoption) order,
- * filtered to a task that both shares at least one path with `touched` and
- * qualifies — its own `proofRuns` is non-empty, or `selected[task.id]` (the
- * `{ [taskId]: [paths] }` map of each landing's own selected tests) is a
- * non-empty array — and capped at `cap` entries overall.
+ * filtered to a task that qualifies — its own `proofRuns` is non-empty, or
+ * `selected[task.id]` (the `{ [taskId]: [paths] }` map of each landing's own
+ * selected tests) is a non-empty array — and capped at `cap` entries overall.
+ * No path overlap is asked: a sibling's probe may read what the fold changed
+ * without its task owning the file.
  */
-export function proofsTouched ({ folded, touched, adopted, tasks, selected, cap }) {
+export function proofsAdopted ({ folded, adopted, tasks, selected, cap }) {
   const byId = new Map((tasks || []).map((t) => [String(t.id), t]))
-  const touchedSet = new Set(touched || [])
   const foldedId = String(folded)
   const selectedMap = selected || {}
 
@@ -34,8 +38,7 @@ export function proofsTouched ({ folded, touched, adopted, tasks, selected, cap 
     if (!task) return false
     const hasProofRuns = Array.isArray(task.proofRuns) && task.proofRuns.length > 0
     const hasSelected = selectedFor(task.id).length > 0
-    if (!hasProofRuns && !hasSelected) return false
-    return (task.files || []).some((f) => touchedSet.has(f))
+    return hasProofRuns || hasSelected
   }
 
   const orderedIds = [foldedId, ...(adopted || []).map(String).filter((id) => id !== foldedId)]
@@ -184,4 +187,4 @@ export async function foldRound ({ reds, folded, headBefore, head, enabled, hunk
   return { unresolved: remaining.length > 0, actions }
 }
 
-export default { proofsTouched, foldRound }
+export default { proofsAdopted, foldRound }
