@@ -1,0 +1,96 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "b6f1174f033199ade4cb86a155dce126c222831b45d8ed580c5d514768b87407",
+   "verdict": "pass",
+   "reason": "the frozen id list, the holds/drift/unreachable/cleanup runs under the sim, the fleet-r refusal with no new, and the PROBES.md entry each have a falsifying Run: line"
+  },
+  "2": {
+   "hash": "c51a8afb2b3dde2397af7db3d20f0916f79c925448c38f27bfd27b652d610123",
+   "verdict": "pass",
+   "reason": "round 2: the twelve rows and order, the Traps openers, the drift detail suffix and the byte-identical no-drift detail, and the pinned sims \u2014 with the two plain pytest files run without a -k filter"
+  }
+ },
+ "tally": {
+  "dispatched": 3,
+  "rejected": 1,
+  "rounds": [
+   {
+    "round": 1,
+    "dispatched": 2,
+    "rejected": 1
+   },
+   {
+    "round": 2,
+    "dispatched": 1,
+    "rejected": 0
+   }
+  ],
+  "base": "43514263af4ca5e844b64163d8f0e9e5ff570a62",
+  "question": "facts-only (experiment, rollback the old sentence)",
+  "history": [
+   {
+    "round": 1,
+    "task": "2",
+    "verdict": "pass-with-flaw",
+    "reason": "a -k filter on the M4 pytest line would have deselected two plain files; split into two invocations before launch"
+   }
+  ]
+ },
+ "authoring": {
+  "minutes": 58,
+  "probes": 1,
+  "routing": {
+   "branch": "inline",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Run 5",
+    "options": [
+     "#1014: re-measure the lobby facts",
+     "#835: publish-as-probe",
+     "#888: codemod species",
+     "Please explain"
+    ],
+    "recommended": "#1014: re-measure the lobby facts",
+    "picked": "#1014: re-measure the lobby facts",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Allowlist",
+    "options": [
+     "Throwaway-VM set",
+     "Read-only verbs only",
+     "Throwaway set minus cp and tag",
+     "Please explain"
+    ],
+    "recommended": "Throwaway-VM set",
+    "picked": "Throwaway-VM set",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Confirm as drafted",
+     "Quote #1014's own sentence",
+     "Please explain"
+    ],
+    "recommended": "Confirm as drafted",
+    "picked": "Confirm as drafted",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Inline",
+     "Please explain"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
