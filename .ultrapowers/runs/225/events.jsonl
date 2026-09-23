@@ -798,3 +798,11 @@
 {"ts":"2026-09-23T03:13:53.208Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"mcp__factory__run_exam"}
 {"ts":"2026-09-23T03:13:57.313Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"timeout 300 python3 -m pytest -q tests/test_fleet_suite.py tests/test_jev_census.py 2>&1 | tail -100"}
 {"ts":"2026-09-23T03:14:26.106Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"mcp__factory__task_facts"}
+{"ts":"2026-09-23T03:14:45.240Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"examExit\\|factsExit\" /home/exedev/run/impl-1-1/fleet/tests/test_factory_boot.mjs"}
+{"ts":"2026-09-23T03:14:50.460Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/fleet/tests/test_factory_boot.mjs"}
+{"ts":"2026-09-23T03:14:54.907Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/fleet/tests/test_factory_boot.mjs"}
+{"ts":"2026-09-23T03:15:06.763Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"cd /home/exedev/run/impl-1-1\ntimeout 300 python3 -m pytest -q tests/test_fleet_suite.py tests/test_jev_census.py 2>&1 | tail -15"}
+{"ts":"2026-09-23T03:15:17.257Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"factsExit\\|examExit\" /home/exedev/run/impl-1-1/factory/kprobe.mjs"}
+{"ts":"2026-09-23T03:15:21.194Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"cd /home/exedev/run/impl-1-1\nfor f in fleet/tests/test_factory_facts.mjs fleet/tests/test_factory_select.mjs fleet/tests/test_factory_reverify.mjs fleet/tests/test_factory_record.mjs fleet/tests/test_"}
+{"ts":"2026-09-23T03:15:25.330Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-23T03:15:34.403Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"mcp__factory__settled"}
