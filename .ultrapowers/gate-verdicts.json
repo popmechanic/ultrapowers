@@ -1,0 +1,65 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "e03dd53a0ff6a376dc3b768294e2c53fff696711eb5ff9f31645c10e3a876e32",
+   "verdict": "pass",
+   "reason": "Every clause M1-M4 has a falsifying leg; M4's literal is satisfiable at base; the base usageRow rotating is what the task changes."
+  },
+  "2": {
+   "hash": "adf244b0f8a724bc07391078eaf5d6f8b5873ba7d8fdabcd0a0fd95cd34bbbf4",
+   "verdict": "pass",
+   "reason": "Every clause M1-M5 has a falsifying leg; literals consistent with base excerpts; CONTRACT pins nothing opposite."
+  },
+  "3": {
+   "hash": "7f451c6de1e78a74d591d7cffbef96038f8703e92cb732d489b26a153b809c34",
+   "verdict": "pass",
+   "reason": "Every clause M1-M4 has a falsifying leg; base retrying and shouldRetry are the gateway-only shapes this task extends."
+  },
+  "4": {
+   "hash": "b2594b6867b0e8806dd40648df524ce4adcab6fa8b272c98652bf03b531b265e",
+   "verdict": "pass",
+   "reason": "Every clause M1-M4 has a falsifying leg; base doctor.mjs and first-run.md pin nothing opposite; the exam file is this task's to create."
+  }
+ },
+ "tally": {
+  "dispatched": 4,
+  "rejected": 0,
+  "rounds": [
+   {
+    "round": 1,
+    "dispatched": 4,
+    "rejected": 0
+   }
+  ],
+  "base": "4b663c02f30c84e82cf738eca39b9285664e077e"
+ },
+ "authoring": {
+  "minutes": 50,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Elicited draft",
+     "Quote #1114's own sentence"
+    ],
+    "recommended": "Elicited draft",
+    "picked": "Elicited draft"
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers"
+   }
+  ]
+ }
+}
