@@ -19,10 +19,13 @@
  *       import line; and a `symbol` hit — a `symbols` entry as a whole word on
  *       an import line;
  *   (c) [M3] a stem, a symbol or a directory outside an import line buys
- *       nothing, and needles matching no file answer `[]`;
- *   (d) [M4] `examSelectionRow` — empty `found` answers `candidates: []`,
- *       `why: 'none'`; non-empty `found` answers `candidates` in order and
- *       `why` keyed by path.
+ *       nothing, and needles matching no file answer `[]`.
+ *
+ * With the exam gone (#the examiner leaves the engine and the facts stay),
+ * the row this module's caller (`factory/engine.mjs`'s `measure`) appends is
+ * `select:landing`, built inline from a `candidateTests` result and a
+ * `readGuards`/`readCovering` reading — there is no `examSelectionRow` left
+ * to export or exam here.
  *
  * Task 1 of #1242 (the hermetic sweep is a standing candidate), legs under
  * its own comment below:
@@ -34,14 +37,14 @@
  *   (c) [M3] a patch to the sweep itself offers it exactly once;
  *   (d) [M4] `exclude` naming the sweep answers `[]`.
  *
- * `candidateTests` and `examSelectionRow` are pure: this exam supplies an
- * in-memory `files` array and a `read` function over a map of fixture texts —
- * no disk, no child process, no network.
+ * `candidateTests` is pure: this exam supplies an in-memory `files` array and
+ * a `read` function over a map of fixture texts — no disk, no child process,
+ * no network.
  */
 
 import assert from 'node:assert/strict'
 
-import { candidateTests, examSelectionRow } from '../../factory/select.mjs'
+import { candidateTests } from '../../factory/select.mjs'
 
 /** A `read` function over an in-memory map of fixture texts. */
 const readerFor = (texts) => async (path) => {
@@ -140,33 +143,6 @@ const find = (opts) => candidateTests(opts)
     symbols: []
   })
   assert.deepEqual(result2, [], '(c) [M3] needles matching no file answer exactly []')
-}
-
-// ── d. [M4] examSelectionRow ─────────────────────────────────────────────
-{
-  const empty = examSelectionRow({ task: '3', found: [], covered: [] })
-  assert.deepEqual(
-    empty,
-    { kind: 'select:exam', task: '3', candidates: [], covered: [], why: 'none' },
-    '(d) [M4] no candidates: candidates [], covered as given, why the string "none"'
-  )
-
-  const nonEmpty = examSelectionRow({
-    task: '3',
-    found: [{ path: 'tests/test_parse.py', hits: ['plan_parse'], why: 'import' }],
-    covered: ['tests/test_parse.py', null]
-  })
-  assert.deepEqual(
-    nonEmpty,
-    {
-      kind: 'select:exam',
-      task: '3',
-      candidates: ['tests/test_parse.py'],
-      covered: ['tests/test_parse.py', null],
-      why: { 'tests/test_parse.py': 'import' }
-    },
-    '(d) [M4] one candidate: candidates the found paths in order, covered as given, why keyed by path'
-  )
 }
 
 // ── Task 1 of #1242: the hermetic sweep is a standing candidate ──────────

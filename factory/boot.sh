@@ -135,7 +135,6 @@ collect_evidence() {
 evidence_commit() { # $1 = commit subject
   local p n=0 paths=()
   for p in status.json events.jsonl engine.log; do if [ -f "$EVIDENCE_DIR/$EVIDENCE_REL/$p" ]; then paths+=("$EVIDENCE_REL/$p"); fi; done
-  [ -d "$EVIDENCE_DIR/$EVIDENCE_REL/exams" ] && paths+=("$EVIDENCE_REL/exams")
   [ "${#paths[@]}" -gt 0 ] || return 0
   fleet_git -C "$EVIDENCE_DIR" add -- "${paths[@]}" || log "evidence: add refused"
   fleet_git -C "$EVIDENCE_DIR" commit -m "$1" || log "evidence: nothing to commit"
@@ -262,7 +261,7 @@ refold_onto() { # $1 = the base the run's work stood on, $2 = the moved tip
       "TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL" CLAUDE_CODE_OAUTH_TOKEN=placeholder \
       "ULTRAPOWERS_FLEET_RUN=$RUN_ID" node "$ENGINE_REPO_DIR/factory/engine.mjs" --refold \
       --plan "$PLAN_FILE" --target "$TARGET_DIR" --base "$base" --onto "$onto" \
-      --run-dir "$RUN_DIR" --exams-dir "$EVIDENCE_DIR/$EVIDENCE_REL/exams" | tail -n 1)" || rc=$?
+      --run-dir "$RUN_DIR" | tail -n 1)" || rc=$?
   if [ "$rc" -ne 0 ]; then
     reason="$(printf '%s' "$line" | json_field reason)"
     MERGE_PHASE="merge: re-fold refused (${reason:-exit $rc})"
@@ -341,28 +340,10 @@ maybe_self_merge() { # $1 = the pull request number, $2 = the PR's base branch n
   MERGE_PHASE="merge: refused after $SELF_MERGE_MAX_REFOLDS refold attempt(s)"
   log "merge: $MERGE_PHASE"
 }
-strip_exams() {
-  local listing rc=0 rel dest removed=0
-  listing="$(fleet_python3 "$ENGINE_REPO_DIR/skills/ultrapowers/scripts/plan_parse.py" --unguarded "$PLAN_FILE")" || rc=$?
-  [ "$rc" -eq 0 ] || fail "exams: plan_parse.py --unguarded exited $rc"
-  [ -n "$listing" ] || { log "exams: no Test: path in the plan — nothing stripped"; return 0; }
-  while IFS= read -r rel; do
-    [ -n "$rel" ] || continue
-    if [ -f "$TARGET_DIR/$rel" ]; then
-      dest="$EVIDENCE_DIR/$EVIDENCE_REL/exams/$rel"
-      mkdir -p "$(dirname "$dest")"; cp "$TARGET_DIR/$rel" "$dest"
-      fleet_git -C "$TARGET_DIR" rm -- "$rel" || fail "exams: git rm $rel in target"
-      removed=$((removed + 1))
-    fi
-  done <<<"$listing"
-  [ "$removed" -gt 0 ] || { log "exams: plan_parse --unguarded named no path that is a file under the target"; return 0; }
-  fleet_git -C "$TARGET_DIR" commit -m "$RUN_ID: exams to evidence" || fail "exams: commit in target"
-}
 # One POST, one JSON answer: the status rides as the answer's last line, and a run the engine did not finish green still gets its PR — as a DRAFT, since the merge is the operator's act.
 publish() { # $1 = the engine's exit code
   local base title draft body payload answer code reply state number phase_text
   local was_bound audit_args audit_line
-  strip_exams
   fleet_git -C "$TARGET_DIR" push origin "HEAD:refs/heads/$BRANCH" || fail "publish: pushing $BRANCH was rejected"
   write_status publishing "opening the pull request"; evidence_commit "$RUN_ID: publishing"
   base="$(default_branch)" || fail "publish: cannot read the target's default branch from refs/remotes/origin/HEAD"

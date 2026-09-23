@@ -5,8 +5,8 @@
 // under `bash -lc` rather than as a split argv — and its `## Global
 // Constraints` may carry `- Check:` bullets, run-wide commands that may read
 // `$ULTRA_BASE` and may end `(minor)`. `factory/engine.mjs` runs a task's own
-// `proofRuns` after that candidate's exam (M2), and the plan's `checks` on
-// every folded tree (M3); this module is the one small piece both share: one
+// `proofRuns` when measuring each candidate, and the plan's `checks` on
+// every folded tree; this module is the one small piece both share: one
 // line, run for real, answered as `{ cmd, exit, tail }`.
 
 /** A fake `sh` may answer `{ status }`, `{ code }` or a bare number; read all

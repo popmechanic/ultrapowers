@@ -15,10 +15,10 @@
  *
  *   compile the plan  ->  for every wave, for every ready task, in parallel:
  *     readTask             how many candidates, and does this one want a referee
- *     exam worker          at the current head, writing only the Proof's Test files
- *     k implementers       each in its own clone at that head, the exam copied in
- *     measure              the task's own test command, the patch, readLanding
- *     select               10 x (exam green) + claim + mean(coverage); best wins
+ *     k implementers       each in its own clone at the current head
+ *     measure              the task's own Proof `Run:` lines, then the tests the
+ *                          engine selects against the patch, then readLanding
+ *     select               10 x (factsExit 0) + claim + mean(coverage); best wins
  *     referee (sometimes)  read-only discovery, each finding graded by the judge
  *     fold + materialize   the kernel's, and `git reset --hard` onto the candidate
  *
@@ -52,17 +52,16 @@ import { makeJudge } from './judge.mjs'
 import { literalsOf, hunksCarrying, filesShown } from './hunks.mjs'
 import { unionReply } from './union.mjs'
 import { makeBoard, patchWithRevision } from './board.mjs'
-import { candidateTests, symbolsOf, commandFor, excerptFor, examSelectionRow } from './select.mjs'
-import { examsTouched, foldRound } from './reverify.mjs'
+import { candidateTests, symbolsOf, commandFor, excerptFor } from './select.mjs'
+import { proofsTouched, foldRound } from './reverify.mjs'
 import { waitsFor } from './dispatch.mjs'
 import { runLines } from './proofs.mjs'
 import { checksAtBase } from './checks-at-base.mjs'
-import { settledCoverage, observedFacts, examAssertions, clauseFacts } from './facts.mjs'
+import { settledCoverage, observedFacts, clauseFacts } from './facts.mjs'
 import { observedWork, supervisorTick, makeObservedWatch } from './watch.mjs'
 import { kFor, probeRecord } from './kprobe.mjs'
 import { refereeTrigger } from './referee.mjs'
 import { retrying, isRateLimited } from './retry.mjs'
-import { redKind, rigRound } from './redkind.mjs'
 // Amendment (undeclared by the task's own M1-M6, needed only to reach them):
 // this module now creates a missing parent directory once, on the one error
 // that means "the directory a write was aimed at doesn't exist yet", and
@@ -359,15 +358,6 @@ export function clausesOf (body) {
   return numbered.length ? numbered : line.split(/;\s*/).map((s) => s.trim()).filter(Boolean)
 }
 
-/** M3: a task's own list of exam commands, the way `runAll` wants them —
- *  the parser's own `testCmds` when it printed one (even an empty array:
- *  a task the parser marked as having nothing to run), else `[task.testCmd]`
- *  when `testCmd` is a non-empty string, else `[]`. */
-export function testCmdsOf (task) {
-  if (Array.isArray((task || {}).testCmds)) return task.testCmds
-  return (task && task.testCmd) ? [String(task.testCmd)] : []
-}
-
 /** The timeout every command `runAll` runs gets, wherever no more specific
  *  policy field applies (`policy.fold.reverify.timeout_seconds` and
  *  `policy.select.timeout_seconds` are the two that do). */
@@ -448,7 +438,7 @@ export function newestNoteFact (factsText) {
 }
 
 // ── shared by a task's own fold (`runEngine`'s `foldIn`) and a re-fold
-// (`runRefold`): cloning, the resolver pass, and the exam run ───────────────
+// (`runRefold`): cloning, the resolver pass, and the proof run ──────────────
 
 /** A `cloneAt(name, sha)` over one `target`: a fresh clone under `runDir`,
  *  detached at `sha`, its own private exclude so a candidate's bytecode
@@ -496,50 +486,6 @@ function makeCloner ({ target, runDir, git, sh, bootstrapCmd, timeoutSeconds, ap
 
     return clone
   }
-}
-
-/** Every file under `examsDir`, copied into `destDir` at its own relative
- *  path — but only where `destDir` does not already carry it (M2: "when the
- *  clone lacks it"). The exams a run's own patch dropped from the target's
- *  tree by the time a re-fold runs (the boot strips them for the pull
- *  request, keeping copies under its evidence directory) ride back in
- *  through this, and only into the verify clone — never committed. */
-function copyMissingFiles (examsDir, destDir) {
-  if (!examsDir || !fs.existsSync(examsDir)) return
-  const walk = (rel) => {
-    const abs = path.join(examsDir, rel)
-    for (const name of fs.readdirSync(abs)) {
-      const childRel = path.join(rel, name)
-      const childAbs = path.join(abs, name)
-      if (fs.statSync(childAbs).isDirectory()) { walk(childRel); continue }
-      const dest = path.join(destDir, childRel)
-      if (fs.existsSync(dest)) continue
-      fs.mkdirSync(path.dirname(dest), { recursive: true })
-      fs.copyFileSync(childAbs, dest)
-    }
-  }
-  walk('.')
-}
-
-/** Every task in `tasks` with at least one testCmds/testCmd entry, run in
- *  `dir` through `runAll` (M3: every one of a task's own exam commands runs,
- *  in order, stopping at that task's own first failure) — the runner
- *  `reverifyAfterFold` uses over just the tasks a fold touched, and
- *  `runRefold` (M2) uses over every task the plan names.
- *  Resolves `{ ran, reds }`: `ran` one `{ task, exit }` per exam that ran,
- *  `reds` the subset whose exit was non-zero, each carrying its own task and
- *  output. */
-function runTaskExams ({ tasks, dir, sh, timeoutSeconds }) {
-  const ran = []
-  const reds = []
-  for (const task of tasks) {
-    const cmds = testCmdsOf(task)
-    if (!cmds.length) continue
-    const r = runAll({ cmds, cwd: dir, sh, timeoutSeconds })
-    ran.push({ task: task.id, exit: r.exit })
-    if (r.exit !== 0) reds.push({ task, exit: r.exit, out: r.out })
-  }
-  return { ran, reds }
 }
 
 /**
@@ -690,7 +636,6 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   }
 
   const IMPL_MD = roleText('implement')
-  const EXAM_MD = roleText('exam')
   const RESOLVE_MD = roleText('resolve')
 
   // The compiler is the engine's own child_process, never `deps.sh`: `sh` is
@@ -723,8 +668,8 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     return { ...t, body, clauses: clausesOf(body) }
   }))
   const tasks = waves.flat()
-  // M4: a fold-verify exam still red after its one re-attempt forces the
-  // run's resolved `done` to false, whatever else adopted cleanly.
+  // M4: a fold-verify probe or test still red after its one re-attempt
+  // forces the run's resolved `done` to false, whatever else adopted cleanly.
   let foldUnresolved = false
   // #1211: every task's `readTask` reading, taken once before the first
   // dispatch, and the `k_probe` plan built off those readings — `land` reads
@@ -734,9 +679,8 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   let kPlan = { probe: null, k: {} }
   // M5: the policy the run reads is `args.policy` when given, else the
   // engine's own `POLICY_PATH` — the same fallback `buildDeps` already uses
-  // for the judge's own copy. Read early: whether `pairs.mode` is `live` and
-  // whether `speculate.exam_at_zero` is on both shape how hard predecessors
-  // are even built, below.
+  // for the judge's own copy. Read early: whether `pairs.mode` is `live`
+  // shapes how hard predecessors are even built, below.
   const policyDoc = (() => {
     try {
       const policyFile = args.policy ? path.resolve(String(args.policy)) : POLICY_PATH
@@ -746,30 +690,27 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const supervisorMode = (policyDoc.supervisor || {}).mode
   const redispatchPolicy = (policyDoc.landing || {}).redispatch || {}
   const selectPolicy = policyDoc.select || {}
-  // M2-M4: the plan's own proof commands — a task's `Run:` lines after its
-  // exam, and the plan's `Check:` lines on every folded tree — run only when
-  // this is true; with it false, no `bash -lc` call for a proof line happens
-  // and no `run:line`/`check:line` event is appended (M4).
+  // M2-M4: the plan's own proof commands — a task's own `Run:` lines, and the
+  // plan's `Check:` lines on every folded tree — run only when this is true;
+  // with it false, no `bash -lc` call for a proof line happens and no
+  // `run:line`/`check:line` event is appended (M4).
   const proofsPolicy = policyDoc.proofs || {}
   const proofsEnabled = proofsPolicy.run_lines === true
   const proofTimeoutSeconds = Number.isFinite(Number(proofsPolicy.timeout_seconds))
     ? Number(proofsPolicy.timeout_seconds) : 300
-  // M5: with `landing.facts.enabled`, `measure` hands Jev the facts the
-  // task's own exam and proof lines already settled, instead of asking it to
-  // guess a cited clause's coverage from the diff alone (run-200).
+  // M4: with `landing.facts.enabled`, `measure` hands Jev the facts the
+  // task's own proof lines and selected tests already settled, instead of
+  // asking it to guess a cited clause's coverage from the diff alone
+  // (run-200).
   const factsPolicy = (policyDoc.landing || {}).facts || {}
   const factsEnabled = factsPolicy.enabled === true
   const factsCapBytes = Number.isFinite(Number(factsPolicy.cap_bytes))
     ? Number(factsPolicy.cap_bytes) : 4000
-  // #1210: the per-clause assertion reading rides on top of `factsEnabled` —
-  // it never runs without it — and is gated by its own policy cell.
-  const assertionsPolicy = factsPolicy.assertions || {}
-  const assertionsEnabled = factsEnabled && assertionsPolicy.enabled === true
-  const assertionsCapChars = Number.isFinite(Number(assertionsPolicy.cap_chars))
-    ? Number(assertionsPolicy.cap_chars) : 4000
+  // M8: `gate.jev_claim.mode` rides on every `gate:jev_claim` row this run
+  // writes; `record-only` means neither `short` nor adoption ever reads it.
+  const jevClaimMode = ((policyDoc.gate || {}).jev_claim || {}).mode ?? null
   const pairsPolicy = policyDoc.pairs || {}
   const pairsLive = pairsPolicy.mode === 'live'
-  const examAtZero = (policyDoc.speculate || {}).exam_at_zero === true
   const pairsList = pairsLive && Array.isArray(compiled.pairs) ? compiled.pairs : []
 
   // What a task waits on: `depends_on` as the plan declares it, plus — with
@@ -805,13 +746,18 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   }
 
   let head = String(args.base || git(['rev-parse', 'HEAD'], target).trim())
-  // M3: every exam worker — under `speculate.exam_at_zero` — runs in a clone
-  // of THIS, the run's own base, constant for the whole run: it never moves,
-  // even as `head` does on every landing.
+  // The run's own base, constant for the whole run — it never moves, even as
+  // `head` does on every landing. `checksAtBase` runs the plan's own
+  // `Check:` lines here, once, before any task's own work begins.
   const runBase = head
   let cost = 0
   let waveNumber = 0
   const adopted = []
+  // M6: `{ [taskId]: [paths] }`, filled in on every landing — the tests
+  // `measure` selected and ran for that task's own best candidate — so a
+  // later fold's own re-verify (`proofsTouched`, `runProofsAndChecks`) knows
+  // which tests, beyond a task's own probes, belong on the folded tree.
+  const selectedByTask = {}
   const parked = new Set()
   const done = new Set()
   const inflight = new Set()
@@ -820,15 +766,15 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   // the second, facts-only supervisor reading fires at all.
   const observedEnabled = ((policyDoc.supervisor || {}).observed || {}).enabled === true
   const minElapsedMs = Number((((policyDoc.supervisor || {}).observed || {}).min_elapsed_ms || {}).value) || 0
-  // M5: one `{ tools, examRuns }` accumulator per dispatch, keyed by that
+  // M5: one `{ tools, proofRuns }` accumulator per dispatch, keyed by that
   // dispatch's own label — filled in by `onMessageFor`'s own `tool_use`
   // handling and by both places a `worker:test-run` row is appended (the
-  // `run_exam` closure in `mcpServersFor`, and the Bash-named-the-test-command
+  // `run_proof` closure in `mcpServersFor`, and the Bash-named-a-proof-line
   // case inside `onMessageFor` itself) — so `observedWork` sees exactly that
   // dispatch's own history, never a sibling's.
   const dispatchObserved = new Map()
   const observedFor = (label) => {
-    if (!dispatchObserved.has(label)) dispatchObserved.set(label, { tools: [], examRuns: [] })
+    if (!dispatchObserved.has(label)) dispatchObserved.set(label, { tools: [], proofRuns: [] })
     return dispatchObserved.get(label)
   }
   // M2: one pairState reading per pair, keyed `a>b`, so M4's candidate check
@@ -842,10 +788,6 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   // M5: the order tasks folded in — earliest first — handed to `labelPair`
   // as `foldOrder` so a pair's label reads the later of its two folds.
   const foldOrder = []
-  // M3: a task's exam worker, dispatched at minute zero when the policy says
-  // so — one promise per task, awaited by that task's own `land()` rather
-  // than by whichever task happens to be ready first.
-  const examPromises = new Map()
   const reverifyPolicy = (policyDoc.fold || {}).reverify || {}
   const attributionPolicy = (policyDoc.fold || {}).attribution || {}
 
@@ -898,20 +840,18 @@ export async function runEngine (rawArgs = {}, deps = {}) {
    *
    *  - M6's telemetry, unconditional: a `worker:tool` row for every
    *    `tool_use` block, and a `worker:test-run` row for the `tool_result` of
-   *    a Bash call whose command names the task's own test command or one of
-   *    its proof tests — paired to its `tool_use` by `tool_use_id`.
+   *    a Bash call whose command names one of the task's own proof `Run:`
+   *    lines — paired to its `tool_use` by `tool_use_id`.
    *  - the supervisor tick: record-only, fired once per dispatch, and never
    *    awaited inside it — a tick that blocked the stream would be a
    *    supervisor that slowed the worker it watches.
    */
   const onMessageFor = (label, taskId) => {
     const task = tasks.find((t) => t.id === taskId)
-    const testCmd = task && task.testCmd
-    const proofTests = (task && task.proofTests) || []
+    const proofRunsOf = (task && task.proofRuns) || []
     const matchesTest = (cmd) => {
       const s = String(cmd || '')
-      if (testCmd && s.includes(testCmd)) return true
-      return proofTests.some((p) => p && s.includes(p))
+      return proofRunsOf.some((p) => p && s.includes(p))
     }
     const pendingBash = new Map()
     let turns = 0
@@ -923,7 +863,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const observed = observedFor(label)
     const watch = makeObservedWatch({ read, appendEvent, observedEnabled, minElapsedMs, label, task: taskId })
     const watchFacts = () => observedWork({
-      tools: observed.tools, examRuns: observed.examRuns,
+      tools: observed.tools, proofRuns: observed.proofRuns,
       taskFiles: (task && task.files) || [], startedAt: dispatchStartedAt, now: Date.now(),
     })
     return (message) => {
@@ -972,7 +912,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
           // EXIT:$?` hides from `is_error` regardless of what the run did.
           // Say so rather than guess: this row's result is unknown.
           appendEvent({ kind: 'worker:test-run', task: taskId, label, cmd, exit: null, red: null, via: 'bash' })
-          observed.examRuns.push({ via: 'bash', exit: null })
+          observed.proofRuns.push({ via: 'bash', exit: null })
         }
       }
     }
@@ -1041,19 +981,10 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   // would ride the patch into the adopted tree. `makeCloner` is shared with
   // `runRefold`, below, so both entries make a clone the same way.
   const cloneAt = makeCloner({ target, runDir, git, sh, bootstrapCmd, timeoutSeconds: DEFAULT_TIMEOUT_SECONDS, appendEvent })
-  // Amendment (undeclared by M1-M6, needed only to reach them under M3):
-  // `exclude` drops the task's own Proof/Test files back out of the index
-  // before the diff is cut, so a candidate's patch — the one thing this file
-  // measures, judges, AND folds a landing by — never carries the exam step's
-  // own scratch write to a shared Test file (`examine`'s `examFiles`, copied
-  // into every implementer clone so the test command runs the same way the
-  // exam saw it). Under the old, one-task-at-a-time-per-file-set world this
-  // never showed: nothing else ever wrote to a Test file, so `git add -A`
-  // staged the same nothing every time. M3 makes two siblings with no
-  // predecessor of each other, and the SAME shared Test file, land at once —
-  // and an uncaptured scratch write to that file would otherwise fold as a
-  // real (and unresolvable, here — see the hand-in note) conflict between
-  // them, despite neither task ever declaring the file as its own.
+  // `exclude` is kept as a parameter for a caller with its own reason to drop
+  // paths back out of the index before the diff is cut; no call site in this
+  // file passes one any more now that there is no separate exam step writing
+  // a shared scratch file into every implementer's clone.
   const capture = (clone, anchor, out, exclude = []) => {
     git(['add', '-A'], clone)
     if (exclude.length) git(['reset', '-q', '--', ...exclude], clone)
@@ -1067,8 +998,6 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     if (!answer) log('kernel ' + argv[0] + ': exit ' + exitOf(r) + ' ' + String((r && r.stderr) || '').slice(-300))
     return answer
   }
-
-  const implFilesOf = (task) => (task.files || []).filter((f) => !(task.proofTests || []).includes(f))
 
   const interfacesBlock = (task) => {
     const io = task.interfaces || {}
@@ -1093,21 +1022,17 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     return lines.length ? '\n' + lines.join('\n') : ''
   }
 
-  // Prompts carry the task, its files and its test command — and never a
-  // command for a model to run against the repository's history.
-  // M1: `coveredBlock` is `\n\nCOVERED:\n` plus one `M<n>: <path>` line per
-  // covered clause, right after `TEST COMMAND:` — or the empty string, when
-  // selection is off or nothing is covered.
-  const examPrompt = async (task, coveredBlock = '') =>
-    'TASK:\n' + task.body +
-    '\n\nEXAM FILES: ' + (task.proofTests || []).join(', ') +
-    '\nTEST COMMAND: ' + task.testCmd + coveredBlock +
-    '\n\nINTERFACES:\n' + interfacesBlock(task) + await settledSuffix(task)
-
+  // Prompts carry the task, its files (unfiltered — M7) and its own Proof
+  // `Run:` lines — and never a command for a model to run against the
+  // repository's history.
+  const proofBlock = (task) => {
+    const lines = Array.isArray(task.proofRuns) ? task.proofRuns : []
+    return lines.length ? '\n\nPROOF:\n' + lines.join('\n') : '\n\nPROOF: (none)'
+  }
   const implPrompt = async (task) =>
     'TASK:\n' + task.body +
-    '\n\nFILES: ' + implFilesOf(task).join(', ') +
-    '\nTEST COMMAND: ' + task.testCmd +
+    '\n\nFILES: ' + (task.files || []).join(', ') +
+    proofBlock(task) +
     '\n\nINTERFACES:\n' + interfacesBlock(task) + await settledSuffix(task) +
     '\n\nAMENDMENTS: (none — this is the first dispatch of this task)'
 
@@ -1121,12 +1046,12 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     return facts ? basePrompt + '\n\nHAND-OFF:\n' + facts : basePrompt
   }
 
-  /** M2's landing post: the exam's exit code, the last 1,500 characters of
-   *  its own output (already `measure`'s `examTail`), the judge's claim
-   *  reading, and the lowest-covered clause — its own text, off the task,
-   *  and the score the judge gave it. Posted after every measurement of the
-   *  candidate the task is riding: the initial one, and again after any
-   *  redispatch (M4) or blocking-finding fix remeasures it. */
+  /** M2's landing post: `factsExit`, any failing proof line's own command
+   *  and output tail, the judge's claim reading, and the lowest-covered
+   *  clause — its own text, off the task, and the score the judge gave it.
+   *  Posted after every measurement of the candidate the task is riding: the
+   *  initial one, and again after any redispatch (M4) or blocking-finding
+   *  fix remeasures it. */
   const postLanding = async (task, best) => {
     const coverage = Array.isArray(best.coverage) ? best.coverage : []
     let low = 0
@@ -1136,33 +1061,38 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const clauseText = (task.clauses && task.clauses[low]) || '(no clause text)'
     const clauseScore = coverage.length ? coverage[low] : null
     // M2: a failing proof Run: line's own command and output tail are in the
-    // worker's hands — carried into this same landing fact, right alongside
-    // the exam's.
+    // worker's hands — carried into this same landing fact.
     const failedRuns = Array.isArray(best.runLines) ? best.runLines.filter((r) => r.exit !== 0) : []
     const runsText = failedRuns.length
       ? '\n\nfailing proof line(s):\n' +
         failedRuns.map((r) => r.cmd + '\nexit ' + r.exit + '\n' + r.tail).join('\n\n')
       : ''
-    const text = 'exit ' + best.examExit + '\n' + (best.examTail || '') +
+    const text = 'exit ' + best.factsExit +
       '\nclaim: ' + (best.claim === null || best.claim === undefined ? 'null' : best.claim) +
       '\nlowest-covered clause (' + clauseScore + '): ' + clauseText + runsText
     await board.post(task.id, 'landing', text)
+    // M4: every landing writes Jev's claim reading to the record, whatever
+    // `gate.jev_claim.mode` says — the row is unconditional; only whether
+    // `short` or adoption ever reads it back is gated.
+    appendEvent({
+      kind: 'gate:jev_claim', task: task.id,
+      claim: best.claim ?? null, claimGivenFacts: best.claimGivenFacts ?? null,
+      mode: jevClaimMode,
+    })
   }
 
   /**
-   * One candidate, measured: its own exam run, its patch against the anchor,
-   * and the judge's reading of that patch against the task's clauses.
+   * One candidate, measured: its own Proof `Run:` lines, then — in the SAME
+   * clone — the few existing tests the patch touches (M2's selection, moved
+   * in here so it runs once per candidate rather than once for whichever
+   * candidate a task's `land()` happened to pick), then the judge's reading
+   * of the patch against the task's clauses, with both sets of facts in
+   * front of it.
    */
-  const measure = async ({ task, dir, index, anchor }) => {
-    // M3: every one of the task's own testCmds runs, in order, through
-    // `runAll` — falling back to `[task.testCmd]` when the parser printed no
-    // `testCmds` — so a second command's non-zero exit is the exam's exit,
-    // not a first command's exit code with the rest silently never run.
-    const examRun = runAll({ cmds: testCmdsOf(task), cwd: dir, sh, timeoutSeconds: DEFAULT_TIMEOUT_SECONDS })
-    const examExit = examRun.exit
-    // M2: a task's own Proof `Run:` lines, after its exam, in this SAME
-    // candidate's clone — never split into argv (a Run: line is often a
-    // pipeline), and every line runs even after an earlier one failed.
+  const measure = async ({ task, dir, index, anchor, baseCloneForTask }) => {
+    // M2: a task's own Proof `Run:` lines, in this candidate's own clone —
+    // never split into argv (a Run: line is often a pipeline), and every
+    // line runs even after an earlier one failed.
     let proofRunResults = []
     if (proofsEnabled && Array.isArray(task.proofRuns) && task.proofRuns.length) {
       proofRunResults = await runLines({
@@ -1172,33 +1102,110 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         appendEvent({ kind: 'run:line', task: task.id, cmd: r.cmd, exit: r.exit })
       }
     }
-    // The exam files RIDE the patch. Three things stand on that: the fold check runs a task's exam on
-    // the folded tree, a guarded exam reaches the pull request only this way, and the boot copies the
-    // unguarded ones to the evidence record from the tree before it strips them. run-195: with them
-    // excluded here, the first fold check answered `MODULE_NOT_FOUND` on a task whose exam was green.
     const patch = capture(dir, anchor, path.join(runDir, `patch-${task.id}-${index}.diff`))
     const text = fs.existsSync(patch) ? fs.readFileSync(patch, 'utf8') : ''
     const perFile = splitDiff(text)
-    const names = Object.keys(perFile)
-    // `task` and `cwd` ride the reading so a caller can tell one candidate of a
-    // raced task from the other; `makeJudge` builds Jev's state from `clauses`,
-    // `patch` and `files` alone, so neither reaches the model.
     const literals = literalsOf(task.clauses)
-    // M5: with `landing.facts.enabled`, Jev is handed the facts the exam and
-    // the task's own proof lines already observed, and the per-clause
-    // coverage those same lines already settled — so a clause a cited
-    // command already proved is no longer a guess from the diff alone.
+    const label = 'impl:' + task.id + ':' + index
+
+    // M2: selection, once for this candidate — the few existing tests its
+    // patch touches, run in this SAME clone; a red one is re-run at the
+    // anchor to tell a genuine catch from a redness the base already had.
+    let selectedRan = []
+    let covered = {}
+    const catches = []
+    if (selectPolicy.enabled === true && typeof judge.readGuards === 'function') {
+      const { names: candNames } = candidatesOf(task, text)
+      const touched = Object.keys(perFile)
+      const trackedInCandidate = git(['ls-files'], dir).split('\n').map((s) => s.trim()).filter(Boolean)
+      const readCandidateFile = (p) => {
+        try { return fs.readFileSync(path.join(dir, p), 'utf8') } catch { return '' }
+      }
+      const found = await candidateTests({
+        files: trackedInCandidate, read: readCandidateFile,
+        paths: touched, symbols: candNames,
+        exclude: [], cap: selectPolicy.max_candidates,
+      })
+      if (found.length) {
+        const { tests: guardTests, kept, dropped } = excerptTests(found, readCandidateFile, 3000)
+        if (dropped > 0) appendEvent({ kind: 'select:trimmed', task: task.id, kept, dropped })
+        const guards = await read('readGuards', {
+          patch: hunksCarrying(text, candNames, 20000),
+          tests: guardTests,
+          who: { task: task.id, label },
+        })
+        if (guards) {
+          const runSetCapped = (Array.isArray(guards.selected) ? guards.selected : []).slice(0, selectPolicy.max_run)
+          const ran = []
+          const reds = []
+          for (const p of runSetCapped) {
+            const argv = commandFor(p, selectPolicy.timeout_seconds)
+            if (!argv) continue
+            const r = sh(argv[0], argv.slice(1), dir)
+            const exit = exitOf(r)
+            ran.push({ path: p, exit })
+            if (exit !== 0) reds.push({ path: p, exit, argv, out: outOf(r) })
+          }
+          selectedRan = ran
+          for (const red of reds) {
+            const baseDir = baseCloneForTask
+              ? baseCloneForTask()
+              : cloneAt('base-' + task.id + '-' + index, anchor)
+            const r2 = sh(red.argv[0], red.argv.slice(1), baseDir)
+            if (exitOf(r2) !== 0) {
+              appendEvent({ kind: 'select:red-at-base', task: task.id, path: red.path })
+              continue
+            }
+            appendEvent({ kind: 'catch', task: task.id, path: red.path, exit: red.exit })
+            await board.post(task.id, 'catch', red.path + '\nexit ' + red.exit + '\n' + red.out.slice(-1500))
+            catches.push(red)
+          }
+
+          // M2: `covered` = `readCovering`'s per-clause answer over the
+          // selected tests that exited 0, shaped `{ M1: [paths], ... }`.
+          const greenPaths = new Set(ran.filter((r) => r.exit === 0).map((r) => r.path))
+          const greenTests = guardTests.filter((t) => greenPaths.has(t.path))
+          const coveringRead = greenTests.length
+            ? await read('readCovering', { clauses: task.clauses, tests: greenTests, who: { task: task.id, label } })
+            : null
+          task.clauses.forEach((_c, i) => {
+            const key = 'M' + (i + 1)
+            const p = coveringRead && Array.isArray(coveringRead.covered) ? coveringRead.covered[i] : null
+            covered[key] = p ? [p] : []
+          })
+
+          appendEvent({
+            kind: 'select:landing', task: task.id,
+            candidates: found.map((c) => c.path), selected: runSetCapped, ran,
+            why: Object.fromEntries(found.map((c) => [c.path, c.why])),
+            covered,
+          })
+        }
+      }
+    }
+    if (!Object.keys(covered).length) {
+      task.clauses.forEach((_c, i) => { covered['M' + (i + 1)] = [] })
+    }
+
+    // M2: `factsExit` = 0 iff every probe exited 0 AND no selected test was
+    // a catch; else the first non-zero exit among probes-then-catches, in
+    // that order.
+    const orderedExits = [...proofRunResults.map((r) => r.exit), ...catches.map((c) => c.exit)]
+    const factsExit = orderedExits.every((e) => e === 0) ? 0 : orderedExits.find((e) => e !== 0)
+
+    // M4: Jev is handed the facts the task's own proof lines and its
+    // selected tests already observed, and the per-clause coverage those
+    // same facts already settled — so a clause a cited command already
+    // proved is no longer a guess from the diff alone.
     let factsArgs = {}
     let settled
-    let clauseFactsArr
     if (factsEnabled) {
       const facts = observedFacts({
         clauses: task.clauses,
-        hasExam: !!task.testCmd,
-        examExit,
         proofRuns: Array.isArray(task.proofRuns) ? task.proofRuns : [],
         proofRunClauses: Array.isArray(task.proofRunClauses) ? task.proofRunClauses : [],
         runLines: proofRunResults,
+        tests: selectedRan,
         capBytes: factsCapBytes,
       })
       settled = settledCoverage({
@@ -1206,30 +1213,15 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         proofRunClauses: Array.isArray(task.proofRunClauses) ? task.proofRunClauses : [],
         runLines: proofRunResults,
       })
-      factsArgs = { facts, settled }
-      // #1210: the exam's own test names and assertion lines, attributed to
-      // the clause they cite, so the landing reads each clause over the
-      // proof it actually got — not just a bare exit code. The exam files
-      // ride the patch (see the comment above `capture`), so they are on
-      // disk in this SAME candidate's clone.
-      if (assertionsEnabled) {
-        const examText = (task.proofTests || [])
-          .filter((p) => fs.existsSync(path.join(dir, p)))
-          .map((p) => fs.readFileSync(path.join(dir, p), 'utf8'))
-          .join('\n')
-        const examAsserts = examAssertions({ text: examText, clauses: task.clauses })
-        clauseFactsArr = clauseFacts({
-          clauses: task.clauses,
-          examAsserts,
-          hasExam: !!task.testCmd,
-          examExit,
-          proofRuns: Array.isArray(task.proofRuns) ? task.proofRuns : [],
-          proofRunClauses: Array.isArray(task.proofRunClauses) ? task.proofRunClauses : [],
-          runLines: proofRunResults,
-          capChars: assertionsCapChars,
-        })
-        factsArgs = { facts, settled, clauseFacts: clauseFactsArr }
-      }
+      const clauseFactsArr = clauseFacts({
+        clauses: task.clauses,
+        proofRuns: Array.isArray(task.proofRuns) ? task.proofRuns : [],
+        proofRunClauses: Array.isArray(task.proofRunClauses) ? task.proofRunClauses : [],
+        runLines: proofRunResults,
+        tests: selectedRan,
+        covers: covered,
+      })
+      factsArgs = { facts, settled, clauseFacts: clauseFactsArr }
     }
     const reading = await read('readLanding', {
       task: task.id,
@@ -1238,12 +1230,9 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       patch: hunksCarrying(text, literals, 20000),
       files: filesShown(perFile, literals, 6000),
       ...factsArgs,
-      who: { task: task.id, label: 'impl:' + task.id + ':' + index },
+      who: { task: task.id, label },
     })
     if (factsEnabled) {
-      const assertionChars = Array.isArray(clauseFactsArr)
-        ? clauseFactsArr.reduce((s, e) => s + (e.exam ? e.exam.text.length : 0), 0)
-        : 0
       appendEvent({
         kind: 'landing:facts',
         task: task.id,
@@ -1251,7 +1240,6 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         claim: reading && typeof reading.claim === 'number' ? reading.claim : null,
         claimGivenFacts: reading && typeof reading.claimGivenFacts === 'number' ? reading.claimGivenFacts : null,
         perClause: reading && Array.isArray(reading.claimGivenFactsPerClause) ? reading.claimGivenFactsPerClause : null,
-        assertionChars,
         facts: factsArgs.facts ? factsArgs.facts.length : 0,
       })
     }
@@ -1259,22 +1247,26 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       dir,
       index,
       patch,
-      examExit,
-      examTail: examRun.out.slice(-1500),
+      factsExit,
       claim: reading && typeof reading.claim === 'number' ? reading.claim : null,
+      claimGivenFacts: reading && typeof reading.claimGivenFacts === 'number' ? reading.claimGivenFacts : null,
       coverage: (reading && Array.isArray(reading.coverage)) ? reading.coverage : [],
       runLines: proofRunResults,
+      selected: selectedRan,
+      covered,
+      caught: catches.length > 0,
     }
   }
 
-  /** M2's line, and nothing else: exam green first, then the claim reading,
-   *  then the mean of the per-clause coverage. Rounded only far enough to keep
-   *  binary floating point from turning `10 + 0.2 + 0.5` into a long tail. */
+  /** M2's line, and nothing else: `factsExit` 0 first, then the claim
+   *  reading, then the mean of the per-clause coverage. Rounded only far
+   *  enough to keep binary floating point from turning `10 + 0.2 + 0.5` into
+   *  a long tail. */
   const scoreOf = (c) => {
     const mean = c.coverage.length
       ? c.coverage.reduce((s, v) => s + (Number(v) || 0), 0) / c.coverage.length
       : 0
-    return Math.round((10 * (c.examExit === 0 ? 1 : 0) + (c.claim ?? 0) + mean) * 1e10) / 1e10
+    return Math.round((10 * (c.factsExit === 0 ? 1 : 0) + (c.claim ?? 0) + mean) * 1e10) / 1e10
   }
 
   /** The hunks of one path out of a patch, for a finding the judge grades. */
@@ -1304,12 +1296,13 @@ export async function runEngine (rawArgs = {}, deps = {}) {
 
   /**
    * The tool server ONE dispatch gets, built fresh for it rather than shared
-   * with any other clone: `runExam` closes over THIS dispatch's own `cwd` and
-   * `label`, so the row it appends (M2) names the clone that actually ran the
-   * command and the exit it actually saw, never a sibling's. A task with no
-   * `testCmd` gets a server with no working `runExam` — `factoryTools` itself
-   * answers `run_exam unavailable` for that case (M1) — and a run with no
-   * `tools` dep at all (no board) gets no server, exactly as before this task.
+   * with any other clone: `runProof` closes over THIS dispatch's own `cwd`
+   * and `label`, so the row it appends (M7) names the clone that actually
+   * ran the lines and the exit it actually saw, never a sibling's. A task
+   * with no `proofRuns` gets a server with no working `runProof` —
+   * `factoryTools` itself answers `run_proof unavailable` for that case
+   * (M7) — and a run with no `tools` dep at all (no board) gets no server,
+   * exactly as before this task.
    *
    * `candidates` is a function, not a list: `settled` (`factory/tools.mjs`)
    * calls it fresh on every offer, and it re-reads the clone's own working
@@ -1321,20 +1314,26 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const mcpServersFor = async (taskId, cwd, label, anchor) => {
     if (!tools) return null
     const task = tasks.find((t) => t.id === taskId)
-    // M3: run_exam runs the same set `measure` does — the task's own
-    // testCmds, in order, through `runAll` — so a second command's non-zero
-    // exit is what this tool resolves too, not just the first command's.
-    const cmds = testCmdsOf(task)
-    const runExam = cmds.length
+    // M7: run_proof runs the same set `measure` does — the task's own
+    // `proofRuns`, in order, through `runLines` — so a second line's
+    // non-zero exit is what this tool resolves too, not just the first
+    // line's. It resolves an array, one `{ cmd, exit, tail }` per line;
+    // the one `worker:test-run` row it appends carries the first non-zero
+    // exit among them, or 0 when every line ran clean.
+    const lines = Array.isArray(task && task.proofRuns) ? task.proofRuns : []
+    const runProof = lines.length
       ? async () => {
-        const r = runAll({ cmds, cwd, sh, timeoutSeconds: DEFAULT_TIMEOUT_SECONDS })
-        const tail = r.out.slice(-1500)
-        appendEvent({
-          kind: 'worker:test-run', task: taskId, label, cmd: cmds.join(' && '), exit: r.exit,
-          red: r.exit !== 0, via: 'run_exam',
+        const results = await runLines({
+          lines, cwd, sh, env: undefined, timeoutSeconds: proofTimeoutSeconds,
         })
-        observedFor(label).examRuns.push({ via: 'run_exam', exit: r.exit })
-        return { exit: r.exit, tail }
+        const firstRed = results.find((r) => r.exit !== 0)
+        const exit = firstRed ? firstRed.exit : 0
+        appendEvent({
+          kind: 'worker:test-run', task: taskId, label, cmd: lines.join(' && '), exit,
+          red: exit !== 0, via: 'run_proof',
+        })
+        observedFor(label).proofRuns.push({ via: 'run_proof', exit })
+        return results
       }
       : undefined
     const candidatesFor = async () => {
@@ -1345,7 +1344,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     try {
       const server = await tools({
         task: { id: taskId, uid: uidFor(taskId), files: task && task.files },
-        candidates: candidatesFor, board, runExam,
+        candidates: candidatesFor, board, runProof,
       })
       return server ? { factory: server } : null
     } catch (e) {
@@ -1355,104 +1354,14 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   }
 
   /**
-   * The front of `land`, split off so it can run on its own schedule (M3):
-   * the exam, written at `anchor` by the implementer's peer, and the covering
-   * list its `TASK:` prompt was seeded with. `anchor` is the run's own base
-   * when `speculate.exam_at_zero` is on (every task's exam, dispatched at
-   * minute zero, all in clones of the same still-unmoved commit) and the head
-   * as of this task's own readiness otherwise (M6: unchanged from before this
-   * task, folded together with `land`'s own dispatch).
-   */
-  const examine = async (task, anchor) => {
-    const examDir = cloneAt('exam-' + task.id, anchor)
-    const mcpServers = await mcpServersFor(task.id, examDir, 'exam:' + task.id, anchor)
-
-    // M1: a task that names no exam file (`proofTests` empty) gets no
-    // examiner at all — no covering reading, no dispatch, no exam-note — just
-    // a record of why, and the same shape `examine` resolves for any task.
-    if (!(task.proofTests || []).length) {
-      // Bypasses `appendEvent` (which stamps every row with `ts`) so this
-      // row is exactly `{ kind, task, reason }` — the shape the exam checks
-      // with a literal `deepEqual`. AMENDMENT: `examine` is the only place
-      // touched; no other event kind is affected.
-      fs.appendFileSync(eventsPath, JSON.stringify({ kind: 'exam:skipped', task: task.id, reason: 'no exam file' }) + '\n')
-      return { examDir, mcpServers, taskCovering: [], examFiles: [] }
-    }
-    // M1: before the exam is dispatched, tell it which of its own clauses an
-    // existing test already proves. `taskCovering` (one path or `null` per
-    // clause) rides on into M2, seeding the run set's own covering tests.
-    let taskCovering = []
-    let coveredBlock = ''
-    if (selectPolicy.enabled === true) {
-      const trackedInExam = git(['ls-files'], examDir).split('\n').map((s) => s.trim()).filter(Boolean)
-      const readExamFile = (p) => {
-        try { return fs.readFileSync(path.join(examDir, p), 'utf8') } catch { return '' }
-      }
-      const foundCovering = await candidateTests({
-        files: trackedInExam, read: readExamFile,
-        paths: implFilesOf(task), symbols: symbolsOf(task.clauses),
-        exclude: task.proofTests || [], cap: selectPolicy.max_candidates,
-      })
-      if (foundCovering.length) {
-        const { tests: coveringTests, kept, dropped } = excerptTests(foundCovering, readExamFile, 6000)
-        if (dropped > 0) appendEvent({ kind: 'select:trimmed', task: task.id, kept, dropped })
-        const covering = await read('readCovering', { clauses: task.clauses, tests: coveringTests, who: { task: task.id, label: 'exam:' + task.id } })
-        if (covering) {
-          taskCovering = Array.isArray(covering.covered) ? covering.covered : []
-          const lines = taskCovering
-            .map((p, i) => (p ? 'M' + (i + 1) + ': ' + p : null))
-            .filter(Boolean)
-          if (lines.length) coveredBlock = '\n\nCOVERED:\n' + lines.join('\n')
-        }
-      }
-      appendEvent(examSelectionRow({ task: task.id, found: foundCovering, covered: taskCovering }))
-    }
-
-    const examAnswer = await dispatch({
-      role: 'exam', label: 'exam:' + task.id, taskId: task.id, cwd: examDir, model,
-      systemPrompt: EXAM_MD, files: task.proofTests, mcpServers,
-      prompt: await withHandoff(await examPrompt(task, coveredBlock), task.id),
-    })
-    await board.post(task.id, 'exam-note',
-      (examAnswer && examAnswer.result && examAnswer.result.result) || '')
-
-    // M4: the engine's own check on the exam it just had written — runs it
-    // where no implementation exists, and buys the examiner one more round
-    // on a rig red, before any implementer is sent against it.
-    const rigRedCell = (policyDoc.exam || {}).rig_red || {}
-    await selfCheckExam({
-      task: task.id,
-      runExam: () => {
-        const r = runTaskExams({ tasks: [task], dir: examDir, sh, timeoutSeconds: DEFAULT_TIMEOUT_SECONDS })
-        return { exit: r.ran[0].exit, out: r.reds[0] ? r.reds[0].out : '' }
-      },
-      dispatchExaminer: async ({ fact }) => {
-        await board.post(task.id, 'exam-rig', fact)
-        return dispatch({
-          role: 'exam', label: 'exam:' + task.id + ':rig', taskId: task.id, cwd: examDir, model,
-          systemPrompt: EXAM_MD, files: task.proofTests, mcpServers,
-          prompt: await withHandoff(await examPrompt(task, coveredBlock) + '\n\n' + fact, task.id),
-        })
-      },
-      appendEvent,
-      enabled: rigRedCell.enabled === true,
-    })
-
-    const examFiles = (task.proofTests || []).map((p) => {
-      const at = path.join(examDir, p)
-      return [p, fs.existsSync(at) ? fs.readFileSync(at, 'utf8') : '']
-    })
-
-    return { examDir, mcpServers, taskCovering, examFiles }
-  }
-
-  /**
-   * One task, from its exam's resolution to the patch that is ready to fold.
+   * One task, from its own dispatch to the patch that is ready to fold.
    *
-   * Everything past the exam happens at `anchor` — the head this task's own
-   * predecessors were adopted as of (M3) — and the patch is captured against
-   * it, so the kernel merges the candidate three ways onto whatever head the
-   * earlier landings of this wave have moved to.
+   * Everything happens at `anchor` — the head this task's own predecessors
+   * were adopted as of (M3) — and the patch is captured against it, so the
+   * kernel merges the candidate three ways onto whatever head the earlier
+   * landings of this wave have moved to. No exam worker runs first: a task
+   * is measured by its own Proof `Run:` lines and the tests the engine
+   * selects against the patch, never by a file an exam step wrote (M1).
    */
   // M4: when `task`'s best candidate is first measured, every pair naming it
   // as `producer` — read once each, never again for the same pair — whose
@@ -1488,46 +1397,43 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const k = kPlan.k[task.id] || 1
     const wantsReferee = reading.referee === true
 
-    // M4: everything past here makes at least one clone (the exam clone, an
-    // implementer clone, or — inside `runSelection`, below — the lazy base
-    // clone), and any one of them can throw a `bootstrapRed`-carrying error
-    // when that clone's own dependency install goes red. That is this task's
-    // own park, not an exception that should escape `land()` and crash the
-    // whole run: caught below, it answers the same `dead`-carrying shape a
-    // worker that ended with no patch already does, for the exact same
-    // caller (the main loop) to turn into a `parked` task the usual way.
+    // M4: everything past here makes at least one clone (an implementer
+    // clone, or — inside `measure`'s own base-clone cache, below — the lazy
+    // base clone), and any one of them can throw a `bootstrapRed`-carrying
+    // error when that clone's own dependency install goes red. That is this
+    // task's own park, not an exception that should escape `land()` and
+    // crash the whole run: caught below, it answers the same `dead`-carrying
+    // shape a worker that ended with no patch already does, for the exact
+    // same caller (the main loop) to turn into a `parked` task the usual way.
     try {
-    // M3: the exam this task's implementers build on — the one already
-    // running at minute zero when the policy speculates, or dispatched only
-    // now, at this task's own anchor, when it does not (M6).
-    const examResult = await (examAtZero ? examPromises.get(task.id) : examine(task, anchor))
-    const { taskCovering, examFiles } = examResult
+    // M2/M3: the few existing tests a candidate's patch touches are run in
+    // that candidate's own clone (inside `measure`); one clone of the
+    // anchor, made lazily and shared across every candidate of this task, is
+    // where a red one is re-run to tell a catch from a pre-existing redness.
+    const baseCloneCache = new Map()
+    const baseCloneForTask = () => {
+      if (!baseCloneCache.has('base')) baseCloneCache.set('base', cloneAt('base-' + task.id, anchor))
+      return baseCloneCache.get('base')
+    }
 
-    // 2. k implementers, concurrently, each with the exam handed in — and each
-    //    with its OWN tool server, so its `run_exam` closes over its own clone.
+    // 2. k implementers, concurrently — each in its own clone at `anchor`,
+    //    each with its OWN tool server, so its `run_proof` closes over its
+    //    own clone. No exam worker runs first (M1): `task.files` rides the
+    //    prompt unfiltered (M7), and `measure` (below) is where a
+    //    candidate's own Proof `Run:` lines and the tests the engine selects
+    //    against its patch both run.
     const prompt = await implPrompt(task)
-    const files = implFilesOf(task)
+    const files = task.files || []
     const candidates = await Promise.all(Array.from({ length: k }, async (_, index) => {
       const dir = cloneAt(`impl-${task.id}-${index}`, anchor)
       const label = 'impl:' + task.id + ':' + index
-      for (const [p, content] of examFiles) {
-        // A path the exam never actually wrote to (a sim's default worker
-        // writes only its own note file, never the real proof path) carries
-        // no content: writing it anyway would plant a phantom empty file in
-        // every implementer's clone, and a worker that then dies with no
-        // edit of its own would read as a non-empty patch — a candidate with
-        // something to fold when it has nothing.
-        if (!content) continue
-        fs.mkdirSync(path.dirname(path.join(dir, p)), { recursive: true })
-        fs.writeFileSync(path.join(dir, p), content)
-      }
       const mcpServers = await mcpServersFor(task.id, dir, label, anchor)
       const answer = await dispatch({
         role: 'implement', label, taskId: task.id, cwd: dir,
         model, systemPrompt: IMPL_MD, files, mcpServers,
         prompt: await withHandoff(prompt, task.id),
       })
-      const measured = await measure({ task, dir, index, anchor })
+      const measured = await measure({ task, dir, index, anchor, baseCloneForTask })
       return { ...measured, error: (answer && answer.error) || null }
     }))
 
@@ -1550,8 +1456,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     candidateDeferred(task.id).resolve({ dir: best.dir, patch: best.patch })
 
     // M4: this task's best candidate, first measured — the moment a sibling
-    // that consumes what it produces (already speculatively dispatched, its
-    // own exam at minute zero) might want to know about it.
+    // that consumes what it produces might want to know about it.
     await maybeReadPairCandidate(task, best)
 
     await postLanding(task, best)
@@ -1564,114 +1469,29 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       return { task, k, anchor, best, dead, wall_ms: Date.now() - t0 }
     }
 
-    // M2/M3: the few existing tests the patch touches, run in the candidate's
-    // clone; one clone of the anchor, made lazily and once for this task, is
-    // where a red one is re-run to tell a catch from a pre-existing redness.
-    const baseCloneCache = new Map()
-    const baseCloneForTask = () => {
-      if (!baseCloneCache.has('base')) baseCloneCache.set('base', cloneAt('base-' + task.id, anchor))
-      return baseCloneCache.get('base')
-    }
-    const runSelection = async (candidate) => {
-      if (selectPolicy.enabled !== true || typeof judge.readGuards !== 'function') return false
-      const patchText = candidate.patch && fs.existsSync(candidate.patch) ? fs.readFileSync(candidate.patch, 'utf8') : ''
-      const touched = Object.keys(splitDiff(patchText))
-      const { names } = candidatesOf(task, patchText)
-      const trackedInCandidate = git(['ls-files'], candidate.dir).split('\n').map((s) => s.trim()).filter(Boolean)
-      const readCandidateFile = (p) => {
-        try { return fs.readFileSync(path.join(candidate.dir, p), 'utf8') } catch { return '' }
-      }
-      const found = await candidateTests({
-        files: trackedInCandidate, read: readCandidateFile,
-        paths: touched, symbols: names,
-        exclude: task.proofTests || [], cap: selectPolicy.max_candidates,
-      })
-      if (!found.length) return false
-      const { tests: guardTests, kept, dropped } = excerptTests(found, readCandidateFile, 3000)
-      if (dropped > 0) appendEvent({ kind: 'select:trimmed', task: task.id, kept, dropped })
-      const guards = await read('readGuards', {
-        patch: hunksCarrying(patchText, names, 20000),
-        tests: guardTests,
-        who: { task: task.id, label: 'impl:' + task.id + ':' + candidate.index },
-      })
-      if (!guards) return false
-
-      const runSet = []
-      for (const p of taskCovering) {
-        if (p && !runSet.includes(p)) runSet.push(p)
-      }
-      for (const p of (Array.isArray(guards.selected) ? guards.selected : [])) {
-        if (!runSet.includes(p)) runSet.push(p)
-      }
-      const runSetCapped = runSet.slice(0, selectPolicy.max_run)
-
-      const ran = []
-      const reds = []
-      for (const p of runSetCapped) {
-        const argv = commandFor(p, selectPolicy.timeout_seconds)
-        if (!argv) continue
-        const r = sh(argv[0], argv.slice(1), candidate.dir)
-        const exit = exitOf(r)
-        ran.push({ path: p, exit })
-        if (exit !== 0) reds.push({ path: p, exit, argv, out: outOf(r) })
-      }
-      appendEvent({
-        kind: 'select:landing', task: task.id,
-        candidates: found.map((c) => c.path), selected: guards.selected, ran,
-        why: Object.fromEntries(found.map((c) => [c.path, c.why])),
-      })
-
-      let caught = false
-      for (const red of reds) {
-        const baseDir = baseCloneForTask()
-        const r2 = sh(red.argv[0], red.argv.slice(1), baseDir)
-        if (exitOf(r2) !== 0) {
-          appendEvent({ kind: 'select:red-at-base', task: task.id, path: red.path })
-          continue
-        }
-        appendEvent({ kind: 'catch', task: task.id, path: red.path, exit: red.exit })
-        await board.post(task.id, 'catch',
-          red.path + '\nexit ' + red.exit + '\n' + red.out.slice(-1500))
-        caught = true
-      }
-      return caught
-    }
-    let caught = await runSelection(best)
-
-    // 3.5. M2-M5: a short landing — a red exam, a lowest-covered clause under
-    //      the redispatch floor, or at least one catch — gets exactly one
-    //      more implementer in the same clone, with the hand-off, and a
-    //      fresh measurement (and a fresh run-set reading) is kept. A green
-    //      exam on a task that has one settles it: coverage alone never
-    //      makes that landing short (M2). Absent a testCmd, the clauses a
-    //      Run: leg alone proves (task.runOnlyClauses) never enter the
-    //      coverage reading -- Jev's reading for those is not evidence
-    //      either way (M3).
+    // 3.5. M3: a short landing — `factsExit` non-zero (a probe or a caught
+    //      selected test), or the lowest-covered clause under the
+    //      redispatch floor — gets exactly one more implementer in the same
+    //      clone, with the hand-off, and a fresh measurement is kept. The
+    //      floor never fires for a candidate whose facts are already clean
+    //      and that ran at least one probe or one selected test — coverage
+    //      alone never makes that landing short.
     const redispatchFloor = Number(redispatchPolicy.coverage_floor)
-    const hasTestCmd = !!task.testCmd
-    const greenExam = hasTestCmd && best.examExit === 0
-    const runOnlyClauses = Array.isArray(task.runOnlyClauses) ? task.runOnlyClauses : []
-    const excluded = hasTestCmd ? [] : runOnlyClauses.slice().sort((a, b) => a - b)
-    const coverageForFloor = excluded.length
-      ? best.coverage.filter((_, i) => !excluded.includes(i + 1))
-      : best.coverage
-    const lowCoverage = coverageForFloor.length
-      ? Math.min(...coverageForFloor.map((v) => Number(v) || 0))
+    const lowCoverage = best.coverage.length
+      ? Math.min(...best.coverage.map((v) => Number(v) || 0))
       : null
-    const floorFired = !greenExam && lowCoverage !== null &&
+    const ranProofOrTest = (Array.isArray(best.runLines) && best.runLines.length > 0) ||
+      (Array.isArray(best.selected) && best.selected.length > 0)
+    const factsClean = best.factsExit === 0 && ranProofOrTest
+    const floorFired = !factsClean && lowCoverage !== null &&
       Number.isFinite(redispatchFloor) && lowCoverage < redispatchFloor
-    // M2: a non-zero exit from any of the task's own proof Run: lines makes
-    // this landing short exactly as a non-zero exam exit does.
-    const proofLineFailed = Array.isArray(best.runLines) && best.runLines.some((r) => r.exit !== 0)
-    const short = best.examExit !== 0 || floorFired || caught || proofLineFailed
+    const short = best.factsExit !== 0 || floorFired
     appendEvent({
-      kind: 'floor', task: task.id,
-      exam: hasTestCmd ? best.examExit : null,
-      lowest: lowCoverage, excluded, fired: floorFired,
+      kind: 'floor', task: task.id, facts: best.factsExit, lowest: lowCoverage, fired: floorFired,
     })
     if (short && redispatchPolicy.enabled === true) {
       await board.post(task.id, 'redispatch',
-        'exam exit ' + best.examExit + ', lowest coverage ' + lowCoverage)
+        'facts exit ' + best.factsExit + ', lowest coverage ' + lowCoverage)
       const redispatchLabel = 'impl:' + task.id + ':redispatch'
       const redispatchServers = await mcpServersFor(task.id, best.dir, redispatchLabel, anchor)
       await dispatch({
@@ -1679,31 +1499,23 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         model, systemPrompt: IMPL_MD, files, mcpServers: redispatchServers,
         prompt: await withHandoff(prompt, task.id),
       })
-      const remeasured = await measure({ task, dir: best.dir, index: best.index, anchor })
+      const remeasured = await measure({ task, dir: best.dir, index: best.index, anchor, baseCloneForTask })
       best = { ...remeasured }
       await postLanding(task, best)
-      caught = await runSelection(best)
     }
 
     // 4. the discovery referee, exactly when the judge's task reading asks for
     //    one. Each finding is graded by the judge; a blocking grade buys the
     //    candidate one re-dispatch with the finding in hand, before the fold.
-    const trig = refereeTrigger({
-      coverage: best.coverage, clauses: task.clauses, rung: wantsReferee, policy: policyDoc,
-    })
-    const minCoverageCell = (policyDoc.task && policyDoc.task.referee && policyDoc.task.referee.min_coverage) || null
-    appendEvent({
-      kind: 'referee:trigger', task: task.id, trigger: trig.trigger, clause: trig.clause,
-      min_coverage: minCoverageCell ? minCoverageCell.value : null,
-    })
+    const trig = refereeTrigger({ rung: wantsReferee })
+    appendEvent({ kind: 'referee:trigger', task: task.id, trigger: trig.trigger })
     if (trig.dispatch) {
       const patchText = fs.existsSync(best.patch) ? fs.readFileSync(best.patch, 'utf8') : ''
       const refereePrompt = 'TASK:\n' + task.body +
           '\n\nFILES: ' + (task.files || []).join(', ') +
-          '\nTEST COMMAND: ' + task.testCmd + '\nexit ' + best.examExit +
-          '\n' + best.examTail +
-          '\n\nThe patch this task produced is on disk at ' + best.patch + ' — read it there.' +
-          (typeof trig.fact === 'string' ? '\n\n' + trig.fact : '')
+          proofBlock(task) +
+          '\nexit ' + best.factsExit +
+          '\n\nThe patch this task produced is on disk at ' + best.patch + ' — read it there.'
       const answer = await dispatch({
         role: 'referee', label: 'referee:' + task.id, taskId: task.id, cwd: best.dir,
         model: refereeModel, systemPrompt: REFEREE_SYSTEM, files: [], readOnly: true,
@@ -1744,8 +1556,8 @@ export async function runEngine (rawArgs = {}, deps = {}) {
             model, systemPrompt: IMPL_MD, files, mcpServers: fixServers,
             prompt: await withHandoff(prompt, task.id),
           })
-          const remeasured = await measure({ task, dir: best.dir, index: best.index, anchor })
-          best = { ...remeasured, examTail: remeasured.examTail }
+          const remeasured = await measure({ task, dir: best.dir, index: best.index, anchor, baseCloneForTask })
+          best = { ...remeasured }
           await postLanding(task, best)
         }
       }
@@ -1837,16 +1649,33 @@ export async function runEngine (rawArgs = {}, deps = {}) {
    * base — and every check runs, minor or not; only a non-minor failure is
    * folded into `reds` alongside a red exam.
    */
-  const runExamsAndChecks = async ({ dir, exams, foldedTaskId, timeoutSeconds, includeChecks = true }) => {
+  const runProofsAndChecks = async ({ dir, tasksToRun, foldedTaskId, timeoutSeconds, includeChecks = true }) => {
     const ran = []
     const reds = []
-    // Every part of every exam's command, through the one runner the measure and the re-fold use:
-    // the fold check had kept its own whitespace split through two same-file folds (run-196), so a
-    // joined command's second program never ran here — the defect #1163 names, caught on the folded
-    // tree by the commands task's own exam.
-    const examRun = runTaskExams({ tasks: exams, dir, sh, timeoutSeconds })
-    ran.push(...examRun.ran)
-    for (const red of examRun.reds) reds.push({ kind: 'exam', id: red.task.id, exit: red.exit, out: red.out })
+    // Every touched task's own probes and selected tests, through the one
+    // runner the fold check and `--refold` both use: the fold check had kept
+    // its own whitespace split through two same-file folds (run-196), so a
+    // joined command's second program never ran here — the defect #1163
+    // names, caught on the folded tree by the commands task's own probe.
+    for (const t of tasksToRun) {
+      const lines = Array.isArray(t.proofRuns) ? t.proofRuns : []
+      if (lines.length) {
+        const results = await runLines({ lines, cwd: dir, sh, env: undefined, timeoutSeconds })
+        for (const r of results) {
+          ran.push({ id: t.id, kind: 'probe', cmd: r.cmd, exit: r.exit })
+          if (r.exit !== 0) reds.push({ kind: 'probe', id: t.id, exit: r.exit, out: r.tail })
+        }
+      }
+      const testPaths = selectedByTask[t.id] || selectedByTask[String(t.id)] || []
+      for (const p of testPaths) {
+        const argv = commandFor(p, selectPolicy.timeout_seconds)
+        if (!argv) continue
+        const r = sh(argv[0], argv.slice(1), dir)
+        const exit = exitOf(r)
+        ran.push({ id: t.id, kind: 'test', path: p, exit })
+        if (exit !== 0) reds.push({ kind: 'test', id: t.id, path: p, exit, out: outOf(r) })
+      }
+    }
     const checks = includeChecks && proofsEnabled && Array.isArray(compiled.checks) ? compiled.checks : []
     if (checks.length) {
       const results = await runLines({
@@ -1863,13 +1692,14 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   }
 
   /**
-   * M2-M4: directly after a task's fold, the exams of every adopted task the
-   * fold touched (the folded task's own included), plus the plan's own
-   * `checks`, run once on the folded tree; every red goes through one
-   * `foldRound` (`./reverify.mjs`) — attributed, judged, re-attempted by the
-   * right worker, verified once more. Still red forces `done` to false
-   * without unadopting anything. A minor check's own failure is recorded
-   * (`check:line`) and buys neither a red row nor a re-attempt.
+   * M2-M4/M6: directly after a task's fold, the probes and selected tests of
+   * every adopted task the fold touched (the folded task's own included),
+   * plus the plan's own `checks`, run once on the folded tree; every red
+   * goes through one `foldRound` (`./reverify.mjs`) — attributed, judged,
+   * re-attempted by the right worker, verified once more. Still red forces
+   * `done` to false without unadopting anything. A minor check's own
+   * failure is recorded (`check:line`) and buys neither a red row nor a
+   * re-attempt.
    */
   const reverifyAfterFold = async (task, best, headBefore) => {
     const patchText = best.patch && fs.existsSync(best.patch) ? fs.readFileSync(best.patch, 'utf8') : ''
@@ -1878,17 +1708,17 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const cap = Number.isInteger(reverifyPolicy.max_run) ? reverifyPolicy.max_run : 6
     const timeoutSeconds = reverifyPolicy.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS
 
-    const exams = reverifyPolicy.enabled === true
-      ? examsTouched({ folded: task.id, touched, adopted, tasks, cap })
+    const tasksToRun = reverifyPolicy.enabled === true
+      ? proofsTouched({ folded: task.id, touched, adopted, tasks, selected: selectedByTask, cap })
       : []
     const checksNamed = proofsEnabled && Array.isArray(compiled.checks) ? compiled.checks : []
-    if (!exams.length && !checksNamed.length) return
+    if (!tasksToRun.length && !checksNamed.length) return
 
     // A `bootstrapRed` here is not this landing's own park: read as "this fold's re-verify could not run".
     let first
     try {
-      first = await runExamsAndChecks({
-        dir: cloneAt('fold-verify-' + task.id, head), exams, foldedTaskId: task.id, timeoutSeconds,
+      first = await runProofsAndChecks({
+        dir: cloneAt('fold-verify-' + task.id, head), tasksToRun, foldedTaskId: task.id, timeoutSeconds,
       })
     } catch (err) {
       if (!(err && err.bootstrapRed)) throw err
@@ -1900,7 +1730,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
 
     for (const red of first.reds) {
       await board.post(task.id, 'fold-red',
-        (red.kind === 'exam' ? ('exam ' + red.id) : ('check ' + red.cmd)) +
+        (red.kind === 'probe' ? ('probe ' + red.id) : red.kind === 'test' ? ('test ' + red.path) : ('check ' + red.cmd)) +
         ' exit ' + red.exit + '\n' + red.out.slice(-1500))
     }
 
@@ -1908,14 +1738,17 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       Number.isInteger(attributionPolicy.hunks_cap) ? attributionPolicy.hunks_cap : 4000)
 
     // A `cloneAt` throw here rejects, which `foldRound` reads as `null`.
-    const runExamAt = async (id, sha) => {
+    const runProofsAt = async (id, sha) => {
       const t = tasks.find((tk) => tk.id === id)
+      if (!t) return 0
       const dir = cloneAt('fold-before-' + id + '-' + task.id, sha)
-      const { reds } = runTaskExams({ tasks: t ? [t] : [], dir, sh, timeoutSeconds })
+      const { reds } = await runProofsAndChecks({
+        dir, tasksToRun: [t], foldedTaskId: task.id, timeoutSeconds, includeChecks: false,
+      })
       return reds.length ? reds[0].exit : 0
     }
 
-    // A fresh clone, the right worker dispatched with the fact riding its own prompt, folded as any landing.
+    // A fresh clone, the implementer dispatched with the fact riding its own prompt, folded as any landing.
     const reattempt = async (action) => {
       const actionTask = tasks.find((t) => t.id === action.task)
       if (!actionTask) return false
@@ -1927,14 +1760,12 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         if (err && err.bootstrapRed) return false
         throw err
       }
-      const isExam = action.role === 'exam'
       await dispatch({
-        role: action.role, label: (isExam ? 'exam:' : 'impl:') + action.task + ':fold',
+        role: 'implement', label: 'impl:' + action.task + ':fold',
         taskId: action.task, cwd: dir, model, mcpServers: null,
-        systemPrompt: isExam ? EXAM_MD : IMPL_MD,
-        files: isExam ? actionTask.proofTests : implFilesOf(actionTask),
+        systemPrompt: IMPL_MD, files: actionTask.files || [],
         prompt: await withHandoff(
-          (isExam ? await examPrompt(actionTask) : await implPrompt(actionTask)) + '\n\n' + action.fact,
+          (await implPrompt(actionTask)) + '\n\n' + action.fact,
           action.task),
       })
       const patch = capture(dir, anchor, path.join(runDir, `patch-${action.task}-fold-${task.id}.diff`))
@@ -1942,16 +1773,14 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       return folded.sha !== null
     }
 
-    const verify = () => runExamsAndChecks({
-      dir: cloneAt('fold-verify-' + task.id, head), exams, foldedTaskId: task.id, timeoutSeconds,
+    const verify = () => runProofsAndChecks({
+      dir: cloneAt('fold-verify-' + task.id, head), tasksToRun, foldedTaskId: task.id, timeoutSeconds,
     })
 
-    const rigRedCell = (policyDoc.exam || {}).rig_red || {}
     const { unresolved } = await foldRound({
       reds: first.reds, folded: task.id, headBefore, head,
       enabled: attributionPolicy.enabled === true, hunks,
-      runExamAt, read, appendEvent, reattempt, verify,
-      rigToExam: rigRedCell.enabled === true,
+      runProofsAt, appendEvent, reattempt, verify,
     })
     if (unresolved) foldUnresolved = true
   }
@@ -2110,9 +1939,6 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     clone: () => cloneAt('checks-at-base', runBase),
     base: runBase, sh, timeoutSeconds: proofTimeoutSeconds, runLines, appendEvent,
   })
-  if (examAtZero) {
-    for (const t of tasks) examPromises.set(t.id, examine(t, runBase))
-  }
   // #1211: every task's `readTask` reading, taken once before the first
   // implementer is dispatched, feeds `kFor` — the `dispatch.k_probe`
   // experiment's one-task, k=2 probe. A `null` reading (no reader, or one
@@ -2206,11 +2032,14 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       } else {
         const candidateSha = folded.sha
         adopted.push(id)
+        selectedByTask[id] = Array.isArray(landing.best.selected)
+          ? landing.best.selected.map((s) => s.path)
+          : []
         appendEvent({
           kind: 'landing',
           task: id,
           k: landing.k,
-          examExit: landing.best.examExit,
+          factsExit: landing.best.factsExit,
           claim: landing.best.claim,
           coverage: landing.best.coverage,
           candidateSha,
@@ -2222,7 +2051,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         })
         await board.setState(id, 'adopted')
         log('adopted task ' + id + ' -> ' + candidateSha.slice(0, 8) +
-          '  exam=' + landing.best.examExit + ' k=' + landing.k)
+          '  facts=' + landing.best.factsExit + ' k=' + landing.k)
         await maybeSettleInterface(landing.task, landing.best, candidateSha)
         await fileAmendmentEdges(landing.task, landing.best)
         await reverifyAfterFold(landing.task, landing.best, headBeforeFold)
@@ -2281,11 +2110,9 @@ export async function runEngine (rawArgs = {}, deps = {}) {
  * The patch is the target's own `HEAD` (before this touches anything) against
  * `--base` — the run's own base — and the moving head the kernel folds it
  * onto is `--onto`, the new tip. A completed fold is re-verified before this
- * answers at all: every task's own exam, in a clone of the new head with
- * `--exams-dir` overlaid back in (the tree itself does not carry those files
- * by the time a re-fold runs — the boot already stripped them for the pull
- * request). A red exam there undoes the reset; an unresolved conflict never
- * touches the target to begin with.
+ * answers at all: every task's own Proof `Run:` lines, in a clone of the new
+ * head — no exam file, no `--exams-dir` (M1). A red line there undoes the
+ * reset; an unresolved conflict never touches the target to begin with.
  *
  * Resolves the one JSON object `main` prints verbatim: `{ refolded, head,
  * onto }` on success, `{ refolded: false, reason: 'red' | 'conflict', head?,
@@ -2334,59 +2161,12 @@ export function makeRefoldDispatch ({ worker, appendEvent, policy, sleep }) {
   return retrying(dispatchOnce, { policy, sleep })
 }
 
-/**
- * selfCheckExam({ task, runExam, dispatchExaminer, appendEvent, enabled })
- * -> Promise<{ rows }>
- *
- * The engine's own check on the exam it just had written: run the exam
- * where no implementation exists yet, and write down what kind of red (if
- * any) came back. A leg red there is the examiner's own proof that its rig
- * reaches the seam — recorded and left alone. A rig red, when `enabled`,
- * buys the examiner exactly one more round: it is handed the first run's
- * exit and output, gets to fix its rig, and the engine runs the exam again
- * and records that second answer too — never a third round, whatever the
- * second answer reads (`rigRound` itself refuses attempt 2).
- *
- * Pure over its arguments: no `fs`, no `sh`, no clone. `runExam` and
- * `dispatchExaminer` are handed in by the caller, which is where the real
- * exam clone and the real dispatch live.
- */
-export async function selfCheckExam ({ task, runExam, dispatchExaminer, appendEvent, enabled }) {
-  const rows = []
-
-  const first = await runExam()
-  const redFirst = redKind(first)
-  const row1 = { kind: 'exam:self-check', task, attempt: 1, exit: first.exit, red: redFirst }
-  appendEvent(row1)
-  rows.push(row1)
-
-  if (rigRound({ attempt: 1, red: redFirst, enabled })) {
-    const out = typeof first.out === 'string' ? first.out : ''
-    const fact = [
-      'EXAM RIG-RED',
-      'The engine ran the exam where no implementation exists and it was red for a reason no leg names — fix the rig, not a leg.',
-      'exit ' + first.exit,
-      out.slice(-1500),
-    ].join('\n')
-    await dispatchExaminer({ fact })
-
-    const second = await runExam()
-    const redSecond = redKind(second)
-    const row2 = { kind: 'exam:self-check', task, attempt: 2, exit: second.exit, red: redSecond }
-    appendEvent(row2)
-    rows.push(row2)
-  }
-
-  return { rows }
-}
-
 export async function runRefold (rawArgs = {}, deps = {}) {
   const args = normalizeArgs(rawArgs)
   const target = path.resolve(String(args.target))
   const runDir = path.resolve(String(args.runDir ?? '.'))
   const base = String(args.base)
   const onto = String(args.onto)
-  const examsDir = args.examsDir ? path.resolve(String(args.examsDir)) : null
   const model = args.model || DEFAULT_MODEL
 
   const worker = deps.worker || runWorker
@@ -2496,14 +2276,21 @@ export async function runRefold (rawArgs = {}, deps = {}) {
   // M1: resets the target to the resulting commit.
   git(['reset', '-q', '--hard', mat.candidateSha], target)
 
-  // M2: before answering, verify the new head in its own clone — every file
-  // under `--exams-dir` overlaid back in where the clone lacks it — and run
-  // every task's own exam there.
+  // M2/M6: before answering, verify the new head in its own clone — every
+  // task's own Proof `Run:` lines, run there directly (no `--exams-dir`,
+  // no exam file to overlay back in).
   const verifyDir = cloneAt('refold-verify', mat.candidateSha)
-  copyMissingFiles(examsDir, verifyDir)
-  const { reds } = runTaskExams({ tasks, dir: verifyDir, sh, timeoutSeconds })
+  const reds = []
+  for (const t of tasks) {
+    const lines = Array.isArray(t.proofRuns) ? t.proofRuns : []
+    if (!lines.length) continue
+    const results = await runLines({ lines, cwd: verifyDir, sh, env: undefined, timeoutSeconds })
+    for (const r of results) {
+      if (r.exit !== 0) reds.push({ task: t.id, cmd: r.cmd, exit: r.exit })
+    }
+  }
   if (reds.length) {
-    for (const red of reds) appendEvent({ kind: 'refold:red', exam: red.task.id, exit: red.exit })
+    for (const red of reds) appendEvent({ kind: 'refold:red', task: red.task, cmd: red.cmd, exit: red.exit })
     // M2: a red re-verify resets the target back to the head it had.
     git(['reset', '-q', '--hard', startHead], target)
     return { refolded: false, reason: 'red', head: mat.candidateSha, onto }
@@ -2518,8 +2305,8 @@ export async function runRefold (rawArgs = {}, deps = {}) {
  * The four seams the CLI runs on, constructed from the arguments.
  *
  * `overrides` is for a caller that wants one of them swapped without building
- * the other three — the exam's seam, and the only way the Jev wiring below can
- * be read without opening a socket.
+ * the other three — the worker's seam, and the only way the Jev wiring below
+ * can be read without opening a socket.
  *
  * The Jev bearer: `fleet/jev-client.mjs` sends no authorization header of its
  * own, because on a fleet VM the edge injects it. Off the edge — a laptop, a
@@ -2568,14 +2355,14 @@ export function buildDeps (rawArgs = {}, overrides = {}) {
   // import here would make a run with no kata — the common one — depend on an
   // install it never needs.
   const tools = args.kataUrl
-    ? async ({ task, candidates, board, runExam }) => {
+    ? async ({ task, candidates, board, runProof }) => {
       const { makeKataClient, httpTransport } = await import('../fleet/kata-client.mjs')
       const { factoryTools } = await import('./tools.mjs')
       const kata = overrides.kata || makeKataClient({
         transport: httpTransport({ url: String(args.kataUrl) }),
         actor: args.kataActor,
       })
-      return factoryTools({ kata, projectId: args.kataProject, task, candidates, board, runExam })
+      return factoryTools({ kata, projectId: args.kataProject, task, candidates, board, runProof })
     }
     : null
 
@@ -2631,4 +2418,4 @@ export async function main (argv = process.argv.slice(2)) {
 
 if (import.meta.main) { process.exitCode = await main() }
 
-export default { runEngine, runRefold, makeRefoldDispatch, selfCheckExam, modelCells, buildDeps, main, parseArgv, normalizeArgs, bodyOf, clausesOf, splitDiff }
+export default { runEngine, runRefold, makeRefoldDispatch, modelCells, buildDeps, main, parseArgv, normalizeArgs, bodyOf, clausesOf, splitDiff }

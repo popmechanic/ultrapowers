@@ -62,7 +62,7 @@ export function kFor({ tasks, difficulties, judged, policy }) {
  * `probeRecord({ candidates, scores })` — pure, synchronous.
  *
  * Builds one `candidates` entry per input candidate (in input order),
- * carrying its `index`, `examExit`, `claim`, `coverage` and `score`
+ * carrying its `index`, `factsExit`, `claim`, `coverage` and `score`
  * (`scores[i]`). `chosen` is the `index` of the highest-scoring entry (first
  * on a tie). `margin` is the chosen score minus the highest score among the
  * other entries, `null` when there is only one candidate.
@@ -70,7 +70,7 @@ export function kFor({ tasks, difficulties, judged, policy }) {
 export function probeRecord({ candidates, scores }) {
   const entries = candidates.map((c, i) => ({
     index: c.index,
-    examExit: c.examExit,
+    factsExit: c.factsExit,
     claim: c.claim,
     coverage: c.coverage,
     score: scores[i],

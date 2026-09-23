@@ -2,12 +2,12 @@
  * factory/watch.mjs — the supervisor's four questions, asked a second time
  * over what a worker actually did rather than over its own narration.
  *
- * `observedWork` turns one dispatch's own tool calls and exam runs into the
+ * `observedWork` turns one dispatch's own tool calls and proof runs into the
  * flat facts the questions in `factory/judge.mjs`'s `readSupervisorObserved`
  * are worded to read: elapsed time, time since the last edit, which paths
  * were touched and whether any of them sit outside the task's own Files
  * list, how many times the same tool landed on the same target, and the
- * exam's own exits. `supervisorTick` is the two-reading dispatch itself: the
+ * task's own proof runs. `supervisorTick` is the two-reading dispatch itself: the
  * existing narration reading (`readSupervisor`), unconditionally, and this
  * new facts reading (`readSupervisorObserved`), only when the policy turns
  * it on — appending a row for each answer that comes back non-null, and
@@ -30,11 +30,11 @@ const inScope = (target, taskFiles) =>
   taskFiles.some((f) => target === f || target.endsWith('/' + f))
 
 /**
- * `{ tools, examRuns, taskFiles, startedAt, now }` -> the nine facts named
+ * `{ tools, proofRuns, taskFiles, startedAt, now }` -> the nine facts named
  * above. `tools` is read in order and never mutated; nothing here throws on
  * a missing or malformed entry beyond what a plain property read tolerates.
  */
-export function observedWork ({ tools, examRuns, taskFiles, startedAt, now }) {
+export function observedWork ({ tools, proofRuns, taskFiles, startedAt, now }) {
   const list = Array.isArray(tools) ? tools : []
   const files = Array.isArray(taskFiles) ? taskFiles : []
 
@@ -74,7 +74,7 @@ export function observedWork ({ tools, examRuns, taskFiles, startedAt, now }) {
     tool_counts,
     paths_touched,
     outside_files,
-    exam_runs: examRuns,
+    proof_runs: proofRuns,
     repeats,
     last_tools,
   }

@@ -676,3 +676,48 @@ def test_leg_o_neither_flag_is_unchanged_at_base(tmp_path):
         HEADER,
         "runs: n=0 read= skipped=7(no jev rows)",
     ], "(o) [M4] " + proc.stdout
+
+
+# ------------------------------------------------------------------- leg (p)
+
+def landing_row_with_facts(ts, task, facts_exit, exam_exit):
+    """A `landing` row from a run recorded after the exam left -- carries
+    both `factsExit` (the current field) and a stale `examExit` alongside
+    it, so a fixture can tell which one `read_ticks` actually reads."""
+    return {"ts": ts, "kind": "landing", "task": task, "k": 1,
+           "factsExit": facts_exit, "examExit": exam_exit,
+           "claim": 0.86, "coverage": [1, 1, 0.16],
+           "candidateSha": "a072c3dbd83ed22d94a4513be83fa97fd8ffbbf8",
+           "wall_ms": 52475}
+
+
+def build_facts_fixture(root):
+    """One `impl` dispatch, landed with a `factsExit` of 0 alongside a stale
+    non-zero `examExit` left over from an older recording -- the task's own
+    claim that `read_ticks` prefers `factsExit` when the row carries one."""
+    rows = [
+        dispatch_start_row("2026-09-22T00:00:00.000Z", "1", "impl:1:0",
+                          "implement"),
+        supervisor_row("2026-09-22T00:00:20.000Z", "1", "impl:1:0",
+                       0.9, 0.1, 0.1, 0.1),
+        dispatch_end_row("2026-09-22T00:00:30.500Z", "1", "impl:1:0",
+                        "implement", 30000, None),
+        landing_row_with_facts("2026-09-22T00:00:31.000Z", "1", 0, 9),
+    ]
+    return write_run(root, 8, rows)
+
+
+def test_leg_p_ticks_prefer_facts_exit_over_a_stale_exam_exit(tmp_path):
+    """(p) [M9]: a `landing` row that carries both `factsExit` and an older
+    `examExit` reads `factsExit` -- the tick's `examExit` column shows the
+    facts value (0), not the stale exam one (9)."""
+    root = tmp_path / "factsroot"
+    root.mkdir()
+    build_facts_fixture(root)
+    proc = census("--ticks", str(root))
+    assert proc.returncode == 0, "(p) [M9] " + proc.stdout + proc.stderr
+    body_lines = lines(proc.stdout)[1:-1]
+    assert len(body_lines) == 1, "(p) [M9] " + proc.stdout
+    assert body_lines[0] == (
+        "8\t1\timpl:1:0\timpl\tnarrated\t20000\t0.90\t0.10\t0.10\t0.10\t"
+        "30000\t-\t0\t1"), "(p) [M9] " + proc.stdout

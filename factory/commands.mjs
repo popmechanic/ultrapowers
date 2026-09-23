@@ -2,18 +2,19 @@
 // and answers what a fresh clone of the target needs installed before any
 // of them may run there.
 //
-// `runAll` is the one path every exam this run takes — measuring a
-// candidate, the fold check's re-run of a touched exam, and the `run_exam`
-// tool a worker calls — walks from here on: every command in `cmds`, in
-// order, through `timeout`, stopping at the first non-zero exit. Before
-// run-195, `factory/engine.mjs` ran only `task.testCmd` — one string — split
-// on whitespace with no shell, so a plan whose exam is `node a.mjs &&
-// python3 -m pytest -q t.py` handed `&&` and everything after it to `node`
-// as plain arguments, which ignored them: the pytest half never ran.
+// `runAll` is the one path every command this run runs — measuring a
+// candidate's `proofRuns`, the fold check's re-run of a touched probe or
+// test, and the `run_proof` tool a worker calls — walks from here on: every
+// command in `cmds`, in order, through `timeout`, stopping at the first
+// non-zero exit. A plan whose `Run:` line is `node a.mjs && python3 -m
+// pytest -q t.py` needs its full string split on whitespace with no shell
+// dropped, so a caller that once handed `&&` and everything after it to
+// `node` as plain arguments — which ignored them, so the pytest half never
+// ran — reads correctly from here on.
 //
 // `bootstrapFor` answers what a fresh clone of the target needs installed
 // before ANY of that runs there, so a missing `node_modules` or a missing
-// `bun install` never reads as the task's own exam failing.
+// `bun install` never reads as the task's own probes or tests failing.
 
 /** A fake `sh` may answer `{ status }`, `{ code }` or a bare number; read
  *  all three the same way `factory/engine.mjs`'s own `exitOf` does, rather

@@ -274,8 +274,8 @@ re-answers the live run's task issues on the hub and kills it, #1036).
 - `.ultrapowers/runs/<N>/status.json` on the target — committed at every
   transition and, while the engine runs, every `FLEET_COMMIT_SECONDS` (default
   60) that `events.jsonl` has changed, so the branch is at most one tick
-  behind. Next to `events.jsonl`, `engine.log` and, when the plan carried
-  unguarded exam files, `exams/`. Read it by tag, which
+  behind. Next to it sit `events.jsonl` and `engine.log`, the run's whole
+  evidence. Read it by tag, which
   is the one spelling that keeps working after the run's branches are gone:
 
   ```bash
@@ -790,6 +790,12 @@ script or refuses, with nothing to fall back to. If this does not hold, the way 
 revert that merge — the pull request that retired the wave engine for the factory, opened and
 merged 2026-09-21 — which restores both the previous engine tree and this file's own text as
 it read before it.
+
+**The peer exam role's removal (cut three, 2026-09-22).** The role that graded a task's patch
+separately from the implementer, and its own evidence copy, left the engine the next day: a
+task's proof is now its `Run:` probes, the tests the engine selects for the patch and the plan's
+`Check:` lines, and nothing on the fleet writes a file for that role. An engine sha from before
+that date still carries it; `--engine d412149a` is how you run it.
 
 The move onto the target is one release. If it does not hold:
 

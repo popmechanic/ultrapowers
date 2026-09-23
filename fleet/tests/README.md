@@ -44,9 +44,9 @@ examined goes at cut two. Git history holds every one of them.
 - `test_factory_worker_gitblock.mjs` — the factory worker's git block: the
   whole Bash line is read, a git command word is denied, and the denial is a
   row.
-- `test_factory_facts.mjs` — the landing's facts: an exam's assertion lines
-  attributed to the clauses they cite, the per-clause facts array under its
-  cap, and the judge asking about each clause over it.
+- `test_factory_facts.mjs` — the landing's facts: probe and selected-test
+  assertion lines attributed to the clauses they cite, the per-clause facts
+  array under its cap, and the judge asking about each clause over it.
 - `test_factory_record.mjs` — the boot's record module: a row with its `ts`,
   the 13-cell status page with `tasks` last, the pull request body byte for
   byte, and the policy read.
@@ -57,8 +57,6 @@ examined goes at cut two. Git history holds every one of them.
   byte, the bound-wait's local id, and the run close's Idempotency-Key order
   on a stub hub that never fails the run.
 - `test_factory_tools.mjs` — the worker's in-process tools: `settled` reads its candidates off the worker's own patch at every call, a new file's exports included, and a refusal names what it found.
-The factory's own exams are not here: an unguarded exam lives on its run's evidence tag
-under `.ultrapowers/runs/<N>/exams/`, and a guarded one sits where its plan put it.
 
 ## The rig
 

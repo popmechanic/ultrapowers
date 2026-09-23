@@ -74,7 +74,7 @@
       }
     },
     "adopt": {
-      "rule": "exam exit 0 first; then claim_established; then mean of max_j M<i>__f<j> per clause",
+      "rule": "factsExit 0 first; then claim_established; then mean of max_j M<i>__f<j> per clause",
       "basis": {
         "n": 9,
         "window": "the 2026-09-17 laptop prototype, fixture plan, 9 runs, every candidate pair tied within 0.02",
@@ -99,17 +99,7 @@
       "window": "none",
       "basis": "judgment",
       "experiment": true,
-      "rollback": "enabled = false",
-      "assertions": {
-        "enabled": true,
-        "cap_chars": 4000,
-        "n": 0,
-        "window": "none",
-        "basis": "judgment",
-        "experiment": true,
-        "rollback": "enabled = false: exit codes only, the shape before #1210",
-        "unread": "#1210: over runs 203-207 (n=5 runs, 17 tasks) claim_established_given_facts read lower than claim_established on 14 tasks, equal on 2, higher on 1. Pre-registered reading: the direction of claimGivenFacts - claim per task over the next 5 runs, expected to cross zero on tasks whose exam exits 0 with strong assertions"
-      }
+      "rollback": "enabled = false"
     },
     "card": {
       "subject_footprint_min_conf": {
@@ -134,24 +124,14 @@
       "rollback": "k = 1 always"
     },
     "referee": {
-      "rule": "the discovery referee is dispatched when review_difficulty >= 2 (`Careful`), or when the landing's lowest-covered clause reads below min_coverage.value; doc_or_prose_only is recorded on the row and gates nothing",
+      "rule": "the discovery referee is dispatched when review_difficulty >= 2 (`Careful`), and on the review-difficulty rung alone; doc_or_prose_only is recorded on the row and gates nothing",
       "review_difficulty_rung": 2,
       "n": 0,
       "window": "none",
       "basis": "judgment",
       "unread": "#1096's jev:tier rows have no n on any tag yet (run-183 predates #1109). The 2026-09-17 first draft read `OR doc_or_prose_only < 0.5`, which would have dispatched a referee on every code task and contradicted the spec's rule that no routine task carries one; caught by the engine plan's gate reader the same day",
       "experiment": true,
-      "rollback": "the referee dispatched on every task",
-      "min_coverage": {
-        "value": 0.8,
-        "n": 0,
-        "window": "none",
-        "basis": "judgment",
-        "detail": "n=12 tasks, runs 204-207 (2026-09-21): review_difficulty read 0.20-0.32 on prose tasks and 1.63-2.71 on code tasks, noise around the 2.0 rung, while three clauses' coverage read 0.39, 0.70 and 0.13 against 0.93-1.0 elsewhere and none of the three got a referee",
-        "experiment": true,
-        "rollback": 0,
-        "rollback_note": "0 = the coverage trigger never fires; the rung alone, as today"
-      }
+      "rollback": "the referee dispatched on every task"
     }
   },
   "dispatch": {
@@ -328,23 +308,22 @@
     "rollback": "mode = off"
   },
   "speculate": {
-    "exam_at_zero": true,
     "on_candidate": true,
     "n": 0,
     "window": "none",
     "basis": "judgment",
     "experiment": true,
-    "rollback": "exam_at_zero = false, on_candidate = false"
+    "rollback": "on_candidate = false"
   },
-  "exam": {
-    "rig_red": {
-      "enabled": true,
+  "gate": {
+    "jev_claim": {
+      "mode": "record-only",
       "n": 0,
       "window": "none",
       "basis": "judgment",
       "experiment": true,
-      "rollback": "enabled = false",
-      "unread": "the #1245 reading: 3 exams on 2 of 22 runs (202-223, 2026-09-21/22) red on their own rig; the pre-registered reading per release is parks by exam-rig defect, examiner fix rounds per run, and self-checks wrong about a rig red"
+      "rollback": "mode = record-only",
+      "unread": "no run has yet read whether claim (or claimGivenFacts) separates a task later found wrong from one later found right; gate.jev_claim stays record-only — every landing's gate:jev_claim row is written, but neither `short` nor adoption reads it — until that reading exists"
     }
   },
   "fold": {
@@ -365,15 +344,7 @@
       "window": "none",
       "basis": "judgment",
       "experiment": true,
-      "rollback": "enabled = false",
-      "t_exam_defect": {
-        "value": 0.8,
-        "n": 0,
-        "window": "none",
-        "basis": "judgment",
-        "experiment": true,
-        "rollback": 1.01
-      }
+      "rollback": "enabled = false"
     }
   },
   "proofs": {

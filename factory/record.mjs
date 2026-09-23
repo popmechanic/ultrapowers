@@ -202,7 +202,7 @@ function cellText (value) {
   return JSON.stringify(value)
 }
 
-/** `| <task> | <k> | <examExit> | <candidateSha> |` for every `landing` row
+/** `| <task> | <k> | <factsExit> | <candidateSha> |` for every `landing` row
  *  of the events file, in file order; no file gives no rows. */
 function landingRowLines (eventsPath) {
   if (!eventsPath) return []
@@ -210,7 +210,7 @@ function landingRowLines (eventsPath) {
   const out = []
   for (const row of rows) {
     if (row && row.kind === 'landing') {
-      out.push(`| ${cellText(row.task)} | ${cellText(row.k)} | ${cellText(row.examExit)} | ${cellText(row.candidateSha)} |`)
+      out.push(`| ${cellText(row.task)} | ${cellText(row.k)} | ${cellText(row.factsExit)} | ${cellText(row.candidateSha)} |`)
     }
   }
   return out

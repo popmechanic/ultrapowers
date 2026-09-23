@@ -225,8 +225,11 @@ def read_ticks(events_path):
     (reading `observed`); a `supervisor:observed` row without `answers` (the
     `skipped` shape) is not a tick. Each dict carries the join: the worker's
     `wall_ms`/`error` off the same run+label's last `dispatch:end` row, and
-    the task's `examExit`/`folded` off the same run+task's landing row. Does
-    not carry `run` -- the caller stamps that on, one run at a time."""
+    the task's `examExit`/`folded` off the same run+task's landing row --
+    `examExit` reads that row's own `factsExit` when the row carries one
+    (a run recorded after the exam left), else its `examExit` (an older
+    run's own record). Does not carry `run` -- the caller stamps that on,
+    one run at a time."""
     rows = _load_rows(events_path)
 
     last_end = {}
@@ -274,7 +277,12 @@ def read_ticks(events_path):
 
         landing = last_landing.get(task)
         folded = landing is not None
-        exam_exit = _numeric_cell(landing.get("examExit")) if landing else None
+        exam_exit = None
+        if landing is not None:
+            if "factsExit" in landing:
+                exam_exit = _numeric_cell(landing.get("factsExit"))
+            else:
+                exam_exit = _numeric_cell(landing.get("examExit"))
 
         ticks.append({
             "task": task,

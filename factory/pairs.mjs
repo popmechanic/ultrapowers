@@ -209,20 +209,12 @@ export function decideByCode(state) {
 export async function labelPair({ pair, tasks, read, folds, foldOrder }) {
   const byId = new Map(tasks.map((t) => [String(t.id), t]))
 
-  let calls = null
-  if (pair.symbol) {
-    const consumerTask = byId.get(String(pair.consumer))
-    const wordRe = new RegExp('\\b' + escapeRegExp(pair.symbol) + '\\b')
-    let found = false
-    for (const path of (consumerTask && consumerTask.proofTests) || []) {
-      const text = await read(path)
-      if (text && wordRe.test(text)) {
-        found = true
-        break
-      }
-    }
-    calls = found
-  }
+  // With the exam gone (#the examiner leaves the engine and the facts
+  // stay), there is no fixed list of a consumer's own test files left to
+  // grep for a call — the engine's own selection round
+  // (`factory/select.mjs`) is what finds those now, per candidate patch,
+  // not per pair. `calls` answers `null` always here.
+  const calls = null
 
   let fold
   if (foldOrder !== undefined) {
