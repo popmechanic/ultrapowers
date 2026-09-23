@@ -4,7 +4,8 @@
 Every run leaves a gate record, and since this plan that record carries an
 `authoring` object — the minutes, the probes, the routing branch the risk
 override chose, the lane, and the questions with their recommended and picked
-options. One run's record answers one run; a release is a handful of them, and
+options and how many explain rounds each asked for. One run's record answers
+one run; a release is a handful of them, and
 the question an operator asks at a release ("what did authoring cost, how often
 did the override send a plan to the fleet, how often was Recommended picked")
 is a question about the pile. This census is that pile read into one table.
@@ -60,6 +61,7 @@ COLUMNS = (
     "compelled",
     "plan_fault",
     "magnitude",
+    "explain_rounds",
 )
 
 #: What a column prints when the run's files do not carry it.
@@ -212,6 +214,17 @@ def _recommended_picked(questions):
     return len(picked), len(offered)
 
 
+def _explain_rounds(questions):
+    """The sum of every row's `explain_rounds` — absent, or not an int,
+    counts 0 (#526)."""
+    total = 0
+    for q in questions:
+        value = q.get("explain_rounds")
+        if isinstance(value, int) and not isinstance(value, bool):
+            total += value
+    return total
+
+
 def census_rows(root):
     """One row per `run-<N>` directory under `root` that holds a record.
 
@@ -266,6 +279,8 @@ def census_rows(root):
             "compelled": jev[0] if jev is not None else None,
             "plan_fault": jev[1] if jev is not None else None,
             "magnitude": jev[2] if jev is not None else None,
+            "explain_rounds": (
+                _explain_rounds(questions) if has_authoring else None),
             "questions_detail": questions,
         })
     return rows
@@ -308,7 +323,8 @@ def _totals_line(rows):
     rows that carry a count; a release where no run wrote one reads 0. The
     three reading fields sum the same way over every row that carries a
     reading, so a release where none did reads `0/0` and `0/0/0/0` — the empty
-    sums, which is what the release notes' line says when nothing was read."""
+    sums, which is what the release notes' line says when nothing was read.
+    `explain_rounds`, last, sums `census_rows`'s per-row sums (#526)."""
     routed = [row for row in rows if row["routing"] is not None]
     risk = [row for row in routed if row["routing"] == "risk"]
     picked = offered = 0
@@ -332,12 +348,13 @@ def _totals_line(rows):
     return ("totals: plans=%d runs=%s risk_override=%d/%d "
             "recommended_picked=%d/%d authoring_min=%d run_min=%d "
             "amendments=%d compelled=%d/%d plan_fault=%d/%d "
-            "magnitude=%d/%d/%d/%d"
+            "magnitude=%d/%d/%d/%d explain_rounds=%d"
             % (len(rows), _window(rows), len(risk), len(routed),
                picked, offered,
                _sum(rows, "authoring_min"), _sum(rows, "run_min"),
                _sum(rows, "amendments"),
-               compelled, read, plan_fault, read, *buckets))
+               compelled, read, plan_fault, read, *buckets,
+               _sum(rows, "explain_rounds")))
 
 
 def render_table(rows):

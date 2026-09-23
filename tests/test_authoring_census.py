@@ -61,7 +61,7 @@ RECORD_131 = {
         "routing": {"branch": "risk", "lane": "ultrapowers"},
         "questions": [
             {"question": "Claim and summary", "options": ["A", "B"],
-             "recommended": "A", "picked": "A"},
+             "recommended": "A", "picked": "A", "explain_rounds": 2},
         ],
     },
 }
@@ -120,7 +120,8 @@ def blob(obj):
 
 HEADER = tsv("run", "authoring_min", "probes", "dispatched", "rejected",
              "routing", "lane", "questions", "recommended_picked", "run_min",
-             "amendments", "compelled", "plan_fault", "magnitude")
+             "amendments", "compelled", "plan_fault", "magnitude",
+             "explain_rounds")
 
 # (a): the no-`authoring` record — `-` in every authoring column, its tally
 # read, and `-` for `run_min` (it carries no `status.json`). `amendments` is
@@ -128,14 +129,15 @@ HEADER = tsv("run", "authoring_min", "probes", "dispatched", "rejected",
 # left no report reads `-`, never `0`. The three reading columns read `-` for
 # the same reason — no report is no amendments list, and no list is no reading.
 ROW_9 = tsv("9", "-", "-", "3", "0", "-", "-", "-", "-", "-", "-",
-            "-", "-", "-")
-# (a): the leg's row, verbatim.
+            "-", "-", "-", "-")
+# (a): the leg's row, verbatim. Its question carries `explain_rounds: 2`.
 ROW_131 = tsv("131", "118", "12", "4", "1", "risk", "ultrapowers", "1",
-              "1/1", "16", "-", "-", "-", "-")
+              "1/1", "16", "-", "-", "-", "-", "2")
 # (a): `rejected` and `run_min` both `-`, `recommended_picked` 1/1 — the
-# null-recommended question counts in neither p nor q.
+# null-recommended question counts in neither p nor q. Neither of its
+# questions carries `explain_rounds`, so the cell is `0`, not `-`.
 ROW_133 = tsv("133", "47", "5", "2", "-", "width", "ultrapowers", "2",
-              "1/1", "-", "-", "-", "-", "-")
+              "1/1", "-", "-", "-", "-", "-", "0")
 # (a): m = the rows with a routing record (131, 133), k = those whose branch
 # is `risk` (131); p/q summed over every row; 118 + 47 = 165; 16 is the one
 # row carrying a `run_min`; no row carries an amendment count, so the sum over
@@ -143,7 +145,8 @@ ROW_133 = tsv("133", "47", "5", "2", "-", "width", "ultrapowers", "2",
 # sums are their empty ones.
 TOTALS = ("totals: plans=3 runs=9..133 risk_override=1/2 "
           "recommended_picked=2/2 authoring_min=165 run_min=16 "
-          "amendments=0 compelled=0/0 plan_fault=0/0 magnitude=0/0/0/0")
+          "amendments=0 compelled=0/0 plan_fault=0/0 magnitude=0/0/0/0 "
+          "explain_rounds=2")
 
 TABLE = [HEADER, ROW_9, ROW_131, ROW_133, TOTALS]
 
@@ -318,9 +321,9 @@ def test_a_run_min_is_whole_minutes_rounded_down(tmp_path):
     root = build_root(tmp_path)
     p = census("--from", str(root))
     assert ROW_131 in lines(p.stdout), p.stdout
-    # `run_min` is the fifth cell from the end now that `amendments` and the
-    # three amendment-reading columns close the row.
-    assert lines(p.stdout)[2].split("\t")[-5] == "16", p.stdout
+    # `run_min` is the sixth cell from the end now that `amendments`, the
+    # three amendment-reading columns and `explain_rounds` close the row.
+    assert lines(p.stdout)[2].split("\t")[-6] == "16", p.stdout
 
 
 def test_a_the_totals_line_is_exact(tmp_path):
@@ -453,7 +456,8 @@ def test_d_fetch_then_prints_the_table_over_the_directory(tmp_path):
         HEADER, ROW_131, ROW_133,
         ("totals: plans=2 runs=131..133 risk_override=1/2 "
          "recommended_picked=2/2 authoring_min=165 run_min=16 "
-         "amendments=0 compelled=0/0 plan_fault=0/0 magnitude=0/0/0/0"),
+         "amendments=0 compelled=0/0 plan_fault=0/0 magnitude=0/0/0/0 "
+         "explain_rounds=2"),
     ], p.stdout + p.stderr
 
 

@@ -169,11 +169,12 @@ REPORT_FETCHED = {
 
 # ------------------------------------------------------------- the M2 expected
 
-#: [M2] `COLUMNS` gains `amendments` as its last name, after `run_min`.
+#: [M2] `COLUMNS` gains `amendments` as its last name, after `run_min`. A
+#: later plan (#526) hangs `explain_rounds` off the end, after `magnitude`.
 COLUMN_NAMES = ("run", "authoring_min", "probes", "dispatched", "rejected",
                 "routing", "lane", "questions", "recommended_picked",
                 "run_min", "amendments", "compelled", "plan_fault",
-                "magnitude")
+                "magnitude", "explain_rounds")
 
 HEADER = tsv(*COLUMN_NAMES)
 
@@ -185,14 +186,16 @@ AMENDMENTS_FROM_END = len(COLUMN_NAMES) - COLUMN_NAMES.index("amendments")
 # tally read — and its report carries three amendment rows, none of them read
 # (no row carries a `jev`), so the readings are the empty ones and not `-`.
 ROW_9 = tsv("9", "-", "-", "3", "0", "-", "-", "-", "-", "-", "3",
-            "0/0", "0/0", "0/0/0/0")
+            "0/0", "0/0", "0/0/0/0", "-")
 # (a): the full row, its report carrying no `amendments` key — so no list, and
-# no list is no reading: `-` in all three.
+# no list is no reading: `-` in all three. Its question carries no
+# `explain_rounds`, so that cell is `0`, not `-` — the record has an
+# `authoring` key.
 ROW_131 = tsv("131", "118", "12", "4", "1", "risk", "ultrapowers", "1",
-              "1/1", "16", "-", "-", "-", "-")
+              "1/1", "16", "-", "-", "-", "-", "0")
 # (a): no report at all beside the record.
 ROW_133 = tsv("133", "47", "5", "2", "-", "width", "ultrapowers", "2",
-              "1/1", "-", "-", "-", "-", "-")
+              "1/1", "-", "-", "-", "-", "-", "0")
 
 # ------------------------------------------------------------- the M3 expected
 
@@ -202,7 +205,8 @@ ROW_133 = tsv("133", "47", "5", "2", "-", "width", "ultrapowers", "2",
 TOTALS_WITHOUT_WINDOW = ("totals: plans=3 risk_override=1/2 "
                          "recommended_picked=2/2 authoring_min=165 "
                          "run_min=16 amendments=3 compelled=0/0 "
-                         "plan_fault=0/0 magnitude=0/0/0/0")
+                         "plan_fault=0/0 magnitude=0/0/0/0 "
+                         "explain_rounds=0")
 
 WINDOW_RE = re.compile(r" runs=\S+")
 
@@ -489,7 +493,7 @@ def test_b_a_root_whose_reports_carry_no_lists_ends_with_zero(tmp_path):
     assert without_window(totals) == (
         "totals: plans=3 risk_override=1/2 recommended_picked=2/2 "
         "authoring_min=165 run_min=16 amendments=0 compelled=0/0 "
-        "plan_fault=0/0 magnitude=0/0/0/0"), totals
+        "plan_fault=0/0 magnitude=0/0/0/0 explain_rounds=0"), totals
 
 
 def test_b_a_root_whose_reports_carry_empty_lists_also_ends_with_zero(

@@ -210,11 +210,12 @@ REPORT_NO_LIST = {
 # ------------------------------------------------------------ the M1 expected
 
 #: [M1] `COLUMNS` gains `compelled`, `plan_fault` and `magnitude`, in that
-#: order, directly after `amendments`.
+#: order, directly after `amendments`. A later plan (#526) hangs
+#: `explain_rounds` off the end, after `magnitude`.
 COLUMN_NAMES = ("run", "authoring_min", "probes", "dispatched", "rejected",
                 "routing", "lane", "questions", "recommended_picked",
                 "run_min", "amendments", "compelled", "plan_fault",
-                "magnitude")
+                "magnitude", "explain_rounds")
 
 HEADER = tsv(*COLUMN_NAMES)
 
@@ -224,18 +225,20 @@ AMENDMENTS_AT = COLUMN_NAMES.index("amendments")
 
 # ------------------------------------------------------------ the M2 expected
 
-# The eleven BASE cells of each row, then the three this task adds. Rows sort
+# The eleven BASE cells of each row, then the three this task adds, then
+# `explain_rounds` (#526) — `-` for a record with no `authoring` key, `0`
+# for one that carries the key but no question's `explain_rounds`. Rows sort
 # by ascending run number, so this is the printed order.
 ROW_9 = tsv("9", "-", "-", "3", "0", "-", "-", "-", "-", "-",
-            "4", "2/3", "1/3", "0/1/1/1")
+            "4", "2/3", "1/3", "0/1/1/1", "-")
 ROW_12 = tsv("12", "-", "-", "1", "2", "-", "-", "-", "-", "-",
-             "0", "0/0", "0/0", "0/0/0/0")
+             "0", "0/0", "0/0", "0/0/0/0", "-")
 ROW_131 = tsv("131", "118", "12", "4", "1", "risk", "ultrapowers", "1",
-              "1/1", "16", "2", "0/0", "0/0", "0/0/0/0")
+              "1/1", "16", "2", "0/0", "0/0", "0/0/0/0", "0")
 ROW_133 = tsv("133", "47", "5", "2", "-", "width", "ultrapowers", "2",
-              "1/1", "-", "-", "-", "-", "-")
+              "1/1", "-", "-", "-", "-", "-", "0")
 ROW_140 = tsv("140", "30", "3", "5", "0", "width", "ultrapowers", "1",
-              "0/1", "-", "-", "-", "-", "-")
+              "0/1", "-", "-", "-", "-", "-", "0")
 
 TABLE_ROWS = [ROW_9, ROW_12, ROW_131, ROW_133, ROW_140]
 
@@ -268,20 +271,22 @@ JEV_CELLS_ANSWER = ((1, 2), (1, 2), (0, 0, 1, 1))
 #: list; the three read fields sum to the one run that carried a read.
 TOTALS = ("totals: plans=5 runs=9..140 risk_override=1/3 "
           "recommended_picked=2/3 authoring_min=195 run_min=16 "
-          "amendments=6 compelled=2/3 plan_fault=1/3 magnitude=0/1/1/1")
+          "amendments=6 compelled=2/3 plan_fault=1/3 magnitude=0/1/1/1 "
+          "explain_rounds=0")
 
 #: [M3] the leg's exact suffix on that line.
-TOTALS_SUFFIX = " amendments=6 compelled=2/3 plan_fault=1/3 magnitude=0/1/1/1"
+TOTALS_SUFFIX = (" amendments=6 compelled=2/3 plan_fault=1/3 "
+                 "magnitude=0/1/1/1 explain_rounds=0")
 
 #: [M3] the other root — only the no-list and the no-report run, so no run
 #: carried a read and the sums are the empty ones.
 TOTALS_UNREAD = ("totals: plans=2 runs=133..140 risk_override=0/2 "
                  "recommended_picked=1/2 authoring_min=77 run_min=0 "
                  "amendments=0 compelled=0/0 plan_fault=0/0 "
-                 "magnitude=0/0/0/0")
+                 "magnitude=0/0/0/0 explain_rounds=0")
 
 TOTALS_UNREAD_SUFFIX = (" amendments=0 compelled=0/0 plan_fault=0/0 "
-                        "magnitude=0/0/0/0")
+                        "magnitude=0/0/0/0 explain_rounds=0")
 
 
 # ------------------------------------------------------------ the M4 expected
@@ -392,12 +397,13 @@ def test_a_the_header_ends_with_the_three_new_columns_after_amendments(
         tmp_path):
     """(a)/[M1]: the header line's tab-separated names end `…\\trun_min\\t
     amendments\\tcompelled\\tplan_fault\\tmagnitude` — the three new names in
-    that order, directly after `amendments` and after nothing else."""
+    that order, directly after `amendments` and after nothing else; a later
+    plan (#526) hangs `explain_rounds` off the end, after those three."""
     p = table(build_root(tmp_path))
     header = lines(p.stdout)[0]
-    assert header.split("\t")[-5:] == [
+    assert header.split("\t")[-6:] == [
         "run_min", "amendments", "compelled", "plan_fault",
-        "magnitude"], header
+        "magnitude", "explain_rounds"], header
     assert header == HEADER, p.stdout
 
 
@@ -416,9 +422,10 @@ def test_b_the_five_runs_last_three_cells(tmp_path):
     """(b)/[M2]: the four-row run reads `2/3`, `1/3`, `0/1/1/1` (`R` = 3 of its
     four rows, `k` = 2 over the 0.7 threshold, `p` = 1, buckets 2, 1 and 3);
     the empty-list run and the no-`jev`-rows run both read `0/0`, `0/0`,
-    `0/0/0/0`; the no-list run and the no-report run read `-`, `-`, `-`."""
+    `0/0/0/0`; the no-list run and the no-report run read `-`, `-`, `-` — the
+    three, then `explain_rounds` last (#526)."""
     p = table(build_root(tmp_path))
-    got = [line.split("\t")[-3:] for line in body(p.stdout)]
+    got = [line.split("\t")[-4:-1] for line in body(p.stdout)]
     assert got == LAST_THREE, p.stdout
 
 
@@ -433,12 +440,14 @@ def test_b_the_no_jev_rows_run_keeps_its_amendments_count(tmp_path):
     cells = row[0].split("\t")
     assert cells[AMENDMENTS_AT] == str(len(REPORT_NO_JEV["amendments"])), row
     assert cells[AMENDMENTS_AT] == "2", row
-    assert cells[AMENDMENTS_AT + 1:] == ["0/0", "0/0", "0/0/0/0"], row
+    assert cells[AMENDMENTS_AT + 1:AMENDMENTS_AT + 4] == \
+        ["0/0", "0/0", "0/0/0/0"], row
 
 
 def test_b_each_whole_row_is_its_base_cells_then_the_three(tmp_path):
     """(b)/[M2] and [M4]: the rows verbatim — the eleven cells this task does
-    not touch, each followed by the three it adds, in ascending run order."""
+    not touch, each followed by the three it adds, then `explain_rounds`
+    (#526) last, in ascending run order."""
     p = table(build_root(tmp_path))
     assert body(p.stdout) == TABLE_ROWS, p.stdout
 

@@ -168,7 +168,9 @@ def picks(question):
 
 def authoring_record_violations(plan_path):
     """Every refusal the `authoring` object earns, one line per offending
-    field. A question whose option list is unusable says nothing further."""
+    field. A question whose option list is unusable says nothing further.
+    A question row's `explain_rounds` may be absent; when present it must be
+    a non-negative integer."""
     auth = _record(plan_path).get(AUTHORING_KEY)
     if auth is None:
         return []
@@ -223,13 +225,20 @@ def authoring_record_violations(plan_path):
         if recommended is not None and recommended not in options:
             bad(where + ".recommended", "must be null or one of %r, got %r"
                 % (options, recommended))
+        explain_rounds = q.get("explain_rounds")
+        if explain_rounds is not None and not _nonneg_int(explain_rounds):
+            bad(where + ".explain_rounds",
+                "must be a non-negative integer or absent, got %r"
+                % (explain_rounds,))
     return out
 
 
 def authoring_fact_line(plan_path):
     """The `AUTHORING fact:` line(s): `none recorded` only for a record with
     no `authoring` key; one `refused — <key>: <rule>` line per violation for a
-    malformed one (#1029), so it is never read as an absent one."""
+    malformed one (#1029), so it is never read as an absent one. A
+    well-formed record's line ends with the question and pick-rate counts and
+    the sum of every row's `explain_rounds` (absent reads 0)."""
     record = _record(plan_path)
     auth = record.get(AUTHORING_KEY)
     if auth is None:
@@ -243,14 +252,15 @@ def authoring_fact_line(plan_path):
     questions = auth.get("questions", [])
     with_rec = [q for q in questions if q.get("recommended") is not None]
     picked = [q for q in with_rec if q.get("recommended") in picks(q)]
+    explain_rounds = sum(q.get("explain_rounds", 0) for q in questions)
     # `-` reads as "the record does not say" — distinct from a recorded 0.
     return ("AUTHORING fact: %s min to PLAN OK, %s hub probes, "
             "%s gate dispatches, %s rejected, routing %s->%s, "
-            "%d questions, %d/%d recommended picked"
+            "%d questions, %d/%d recommended picked, %d explain rounds"
             % (auth["minutes"], auth["probes"], tally.get("dispatched", "-"),
                tally.get("rejected", "-"), auth["routing"]["branch"],
                auth["routing"]["lane"], len(questions), len(picked),
-               len(with_rec)))
+               len(with_rec), explain_rounds))
 
 
 # --------------------------------------------------------------------------- #
