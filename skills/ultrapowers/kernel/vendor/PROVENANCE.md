@@ -10,9 +10,11 @@
     +        arrow = ('<', '>')[anchored_right]
     +        result.append(f'{depth} {arrow} {count} {line}')
 
-- sha256 of the patched file (pinned by tests/test_frontier_kernel.py):
+- sha256 of the patched file (pinned, with this file, by the vendor-directory digest in
+  tests/test_fold_wave_anchor.py M7 leg (g); read it with
+  `shasum -a 256 skills/ultrapowers/kernel/vendor/manyana.py`):
   3c8ba319bb286aac0ca8f2d7ac355e2610eafa290d2f1e46c7eb5ff562220004
 
 Re-vendoring procedure: fetch upstream, re-apply the patch hunk above, re-run
-`python3 evals/frontier/vendor/manyana.py` (all tests must pass), update the
-sha256 in BOTH this file and tests/test_frontier_kernel.py in the same commit.
+`python3 -m pytest -q` (the kernel's tests ride the suite), and update the sha256 in
+this file and `FROZEN_VENDOR_DIGEST` in tests/test_fold_wave_anchor.py in the same commit.
