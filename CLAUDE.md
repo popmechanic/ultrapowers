@@ -55,8 +55,13 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   contracts signed and edges derived; `- Run:` proofs since #592), plus
   `references/greenfield-stack.md`, the provenance/base-fact scripts, and
   `scripts/authoring_census.py` (`--fetch` a run range, `totals:` for the release notes).
-- `hooks/session_start.sh` — injects the plan-routing rule into every session. The rule lives
-  there, not here.
+- `hooks/` — `session_start.sh` injects the plan-routing rule into every session (the rule
+  lives there, not here); `keep_working.sh` is the Stop hook the ultrawrite and ultrapowers
+  skills declare in their frontmatter (#685), active for the rest of a session once either
+  skill is invoked: it blocks the first stop of a turn while `background_tasks` still carries
+  running work, with the in-flight list and the question, and allows the second stop
+  (`stop_hook_active`) and any stop with nothing in flight silently; a session that never
+  invoked either skill sees no such hook.
 - `.claude-plugin/{plugin.json,marketplace.json}` — manifest + marketplace entry; the version
   lives here.
 - `docs/superpowers/{specs,plans}/` — design docs, named `YYYY-MM-DD-<topic>.md`. Specs are the

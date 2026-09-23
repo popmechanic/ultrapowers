@@ -3,6 +3,12 @@ name: ultrapowers
 description: Use when the user runs "/ultrapowers <plan-path>", asks to "execute this plan", "go ultra", or wants an approved plan built autonomously in parallel waves — on the exe.dev fleet, never on this machine. Also use when the user runs "/ultrapowers setup", asks whether they have a fleet yet, or asks to build one.
 argument-hint: <plan-path> | setup
 allowed-tools: Skill Read Grep Glob Bash AskUserQuestion
+hooks:
+  Stop:
+    - hooks:
+        - type: command
+          command: bash "${CLAUDE_PLUGIN_ROOT}/hooks/keep_working.sh"
+          timeout: 10
 ---
 
 # Ultrapowers

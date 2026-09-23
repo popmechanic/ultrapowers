@@ -1,6 +1,12 @@
 ---
 name: ultrawrite
 description: Use when writing ANY implementation plan — this plugin's owned authoring skill. Elicits the operator's claim, shapes the decomposition into signed contracts, runs the proof gate, and emits a claims-v1 plan that /ultrapowers compiles into waves. Replaces the marker-layering skill and the external writing-plans dependency for plan bodies.
+hooks:
+  Stop:
+    - hooks:
+        - type: command
+          command: bash "${CLAUDE_PLUGIN_ROOT}/hooks/keep_working.sh"
+          timeout: 10
 ---
 
 > **Audience: the authoring agent.** The operator brainstorms, answers elicitation and
