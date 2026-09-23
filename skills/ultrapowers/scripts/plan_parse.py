@@ -89,6 +89,9 @@ def _claims_run_cites(value):
 LEG_CITATION_RE = re.compile(r'\[M(\d+)\]')
 TYPE_LINE = re.compile(r'^\*\*Type:\*\*\s*(.+?)\s*$', re.I)
 BOOTSTRAP_LINE = re.compile(r'^\*\*Bootstrap:\*\*\s*(.+?)\s*$', re.I)
+PUBLISH_LINE = re.compile(r'^\*\*Publish:\*\*\s*(.+?)\s*$', re.I)
+VERIFY_LINE = re.compile(r'^\*\*Verify:\*\*\s*(.+?)\s*$', re.I)
+ROLLBACK_LINE = re.compile(r'^\*\*Rollback:\*\*\s*(.+?)\s*$', re.I)
 BACKTICK_PATH_RE = re.compile(r'`([^`]+)`')
 GLOBAL_CONSTRAINTS_H2 = re.compile(r'^##\s*Global Constraints\s*$', re.I)
 CHECK_BULLET = re.compile(r'^-\s*Check\s*:\s*(.+)$', re.I)
@@ -153,8 +156,18 @@ def _split_plan(text):
     return header_lines, task_bodies
 
 
+def _strip_whole_backticks(val):
+    """A whole-value backtick wrapper stripped, exactly as `Check:` strips
+    one."""
+    bm = re.match(r'^`([^`]+)`$', val)
+    return bm.group(1).strip() if bm else val
+
+
 def _parse_header(header_lines):
     bootstrap_cmd = None
+    deploy_cmd = None
+    verify_cmd = None
+    rollback_cmd = None
     for line, fenced in header_lines:
         if fenced:
             continue
@@ -162,7 +175,28 @@ def _parse_header(header_lines):
         m = BOOTSTRAP_LINE.match(s)
         if m:
             bootstrap_cmd = m.group(1).strip()
-    return bootstrap_cmd
+            continue
+        m = PUBLISH_LINE.match(s)
+        if m:
+            deploy_cmd = _strip_whole_backticks(m.group(1).strip())
+            continue
+        m = VERIFY_LINE.match(s)
+        if m:
+            verify_cmd = _strip_whole_backticks(m.group(1).strip())
+            continue
+        m = ROLLBACK_LINE.match(s)
+        if m:
+            rollback_cmd = _strip_whole_backticks(m.group(1).strip())
+            continue
+
+    publish = None
+    if deploy_cmd is not None or verify_cmd is not None:
+        publish = {
+            "deploy": deploy_cmd,
+            "verify": verify_cmd,
+            "rollback": rollback_cmd,
+        }
+    return bootstrap_cmd, publish
 
 
 def _parse_checks(header_lines):
@@ -636,7 +670,7 @@ def parse_plan_full(text):
     sandbox does not: `body`, `type`, `deletes`, the `claim`,
     `authorized_by` and `proof` slot texts, and `stale_if_entries`."""
     header_lines, task_bodies = _split_plan(text)
-    bootstrap_cmd = _parse_header(header_lines)
+    bootstrap_cmd, publish = _parse_header(header_lines)
     checks = _parse_checks(header_lines)
 
     all_tasks = []
@@ -702,6 +736,7 @@ def parse_plan_full(text):
         "pairs": pairs,
         "checks": checks,
         "bootstrapCmd": bootstrap_cmd,
+        "publish": publish,
     }, all_tasks
 
 
