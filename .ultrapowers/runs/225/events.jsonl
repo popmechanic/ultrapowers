@@ -487,3 +487,11 @@
 {"ts":"2026-09-23T02:45:26.579Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"readCovering\" /home/exedev/run/impl-1-1/factory/judge.mjs /home/exedev/run/impl-1-1/factory/engine.mjs"}
 {"ts":"2026-09-23T02:45:29.410Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/judge.mjs"}
 {"ts":"2026-09-23T02:45:31.936Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/judge.mjs"}
+{"ts":"2026-09-23T02:45:41.349Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/facts.mjs"}
+{"ts":"2026-09-23T02:45:46.843Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T02:45:53.654Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:45:56.943Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"excerptTests\\s*=\" /home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:45:59.470Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"excerptTests\" /home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:46:03.506Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:46:25.676Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:46:29.755Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
