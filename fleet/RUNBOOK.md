@@ -435,6 +435,41 @@ Either way the parked branch is a record, never a starting point:
 `relaunch from main; a parked branch is re-driven as a plan on main, not as a
 base`.
 
+### Reading a publish probe (#835)
+
+Once a run's PR self-merges and its plan named a `**Publish:**` line,
+`factory/boot.sh` deploys through the merged checkout, probes the live URL the
+deploy printed, and rolls back once on a red probe — before `state`/`phase`
+ever settle. Four files ride beside `status.json`/`events.jsonl`/`engine.log`
+on the evidence branch, under `.ultrapowers/runs/<N>/`:
+
+| file | what it holds |
+|---|---|
+| `publish.json` | `{url, published, deploy: {cmd, exit, ms}, verify: {cmd, exit, ms} or null, rollback: {cmd, exit} or null}` — the whole probe's outcome, rendered by `factory/record.mjs publish-json` |
+| `publish-deploy.log` | the deploy command's last 4000 bytes of combined stdout+stderr |
+| `publish-verify.log` | the verify command's last 4000 bytes |
+| `publish-rollback.log` | the rollback command's last 4000 bytes, only when a rollback ran |
+
+None of the run's own `publish:*` event rows (`publish:deploy`,
+`publish:verify`, `publish:rollback`) ever carry that stdout — only `cmd`,
+`exit`, `ms` and, for deploy/verify, the deployed `url`. Read the `.log`
+files for the deploy or verify command's own output.
+
+`status.json`'s `phase` names which of the probe's outcomes a `done` run
+landed on — the exact text, byte for byte:
+
+| phase | meaning |
+|---|---|
+| `the pull request was merged` | no `**Publish:**` line on the plan, or `factory/policy.json`'s `publish.probe.enabled` is off — the probe never ran |
+| `the pull request was merged and the app is published` | deploy and verify both green |
+| `the pull request was merged; the deploy failed` | the deploy command exited non-zero, or printed no `https://*.workers.dev` url — verify and rollback never ran |
+| `the pull request was merged; the live check was red and the deploy was rolled back` | verify was red and the plan named a `**Rollback:**` line, which then ran |
+| `the pull request was merged; the live check was red and no rollback was named` | verify was red and the plan named no `**Rollback:**` line |
+
+A red verify or a failed rollback is never itself a `failed` run — `state`
+stays whatever the engine's own exit already set it to (`done` for exit 0);
+only `phase` tells the rest.
+
 ## Reading a failure
 
 Four logs, in the order a run writes them:

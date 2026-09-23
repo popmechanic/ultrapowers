@@ -254,6 +254,88 @@ export function renderPolicy (policyPath) {
   return `${enabled} ${maxRefolds} ${waitSeconds}`
 }
 
+/** `publish-policy <policy.json>` — `<enabled> <timeout_seconds>` off
+ *  `publish.probe`; a missing file, unparseable JSON, or a `probe` that is
+ *  not an object carrying an `enabled` key reads as disabled (`0 600`),
+ *  never a default a broken read falls into — the same rule `policy` reads
+ *  `publish.self_merge` by. */
+export function renderPublishPolicy (policyPath) {
+  let doc
+  try {
+    doc = JSON.parse(readFileSync(policyPath, 'utf8'))
+  } catch {
+    return '0 600'
+  }
+  const probe = doc && typeof doc === 'object' ? doc.publish && doc.publish.probe : undefined
+  if (!probe || typeof probe !== 'object' || Array.isArray(probe) || !Object.prototype.hasOwnProperty.call(probe, 'enabled')) {
+    return '0 600'
+  }
+  const enabled = probe.enabled ? 1 : 0
+  const timeoutSeconds = probe.timeout_seconds === undefined ? 600 : Math.trunc(Number(probe.timeout_seconds))
+  return `${enabled} ${timeoutSeconds}`
+}
+
+/** The three command strings off `plan_parse.py`'s own `publish` object —
+ *  read from `jsonText`, its full stdout (`{..., "publish": {"deploy",
+ *  "verify", "rollback"} | null}`) — one per line, an absent command (the
+ *  plan named no `**Publish:**` line, or that particular line) an empty
+ *  line; unparseable input reads as three empty lines, same as a null
+ *  `publish`. */
+export function renderPublishCmds (jsonText) {
+  let doc
+  try {
+    doc = JSON.parse(jsonText)
+  } catch {
+    doc = null
+  }
+  const publish = doc && typeof doc === 'object' ? doc.publish : null
+  const strOr = (v) => (publish && typeof publish === 'object' && typeof v === 'string' ? v : '')
+  const deploy = publish && typeof publish === 'object' ? strOr(publish.deploy) : ''
+  const verify = publish && typeof publish === 'object' ? strOr(publish.verify) : ''
+  const rollback = publish && typeof publish === 'object' ? strOr(publish.rollback) : ''
+  return `${deploy}\n${verify}\n${rollback}`
+}
+
+/** `publish-json url=… published=… deployCmd=… deployExit=… deployMs=…
+ *  [verifyCmd=… verifyExit=… verifyMs=…] [rollbackCmd=… rollbackExit=…]` —
+ *  the object the boot's publish probe used to build by hand:
+ *  `{"url", "published", "deploy": {"cmd","exit","ms"},
+ *  "verify": {"cmd","exit","ms"}|null, "rollback": {"cmd","exit"}|null}`.
+ *  `verify` is an object only when `verifyExit` was given (the deploy
+ *  produced a URL and a live check ran); `rollback` is an object only when
+ *  `rollbackExit` was given (the check went red and a rollback command was
+ *  named). */
+export function renderPublishJson (tokens) {
+  const fields = {}
+  for (const token of tokens) {
+    const [key, value] = splitToken(token)
+    fields[key] = value
+  }
+  const url = fields.url === undefined || fields.url === '' || fields.url === 'null' ? null : fields.url
+  const published = fields.published === 'true'
+  const deploy = {
+    cmd: fields.deployCmd ?? '',
+    exit: fields.deployExit === undefined ? null : Math.trunc(Number(fields.deployExit)),
+    ms: fields.deployMs === undefined ? null : Math.trunc(Number(fields.deployMs))
+  }
+  let verify = null
+  if (fields.verifyExit !== undefined) {
+    verify = {
+      cmd: fields.verifyCmd ?? '',
+      exit: Math.trunc(Number(fields.verifyExit)),
+      ms: fields.verifyMs === undefined ? null : Math.trunc(Number(fields.verifyMs))
+    }
+  }
+  let rollback = null
+  if (fields.rollbackExit !== undefined) {
+    rollback = {
+      cmd: fields.rollbackCmd ?? '',
+      exit: Math.trunc(Number(fields.rollbackExit))
+    }
+  }
+  return JSON.stringify({ url, published, deploy, verify, rollback })
+}
+
 /** `pr-payload title=… head=… base=… body=… draft=…` — the five-key object
  *  the boot's `publish` used to build by hand: the four named strings always
  *  rendered as JSON strings (never the bare-value rule `row` applies), a
@@ -347,6 +429,21 @@ export function main (argv) {
       process.stdout.write(renderPolicy(policyPath) + '\n')
       return 0
     }
+    case 'publish-policy': {
+      const policyPath = args[1]
+      if (policyPath === undefined) return usageError('publish-policy: missing <policy.json>')
+      process.stdout.write(renderPublishPolicy(policyPath) + '\n')
+      return 0
+    }
+    case 'publish-cmds': {
+      const jsonText = readFileSync(0, 'utf8')
+      process.stdout.write(renderPublishCmds(jsonText) + '\n')
+      return 0
+    }
+    case 'publish-json': {
+      process.stdout.write(renderPublishJson(args.slice(1)) + '\n')
+      return 0
+    }
     case 'pr-payload': {
       process.stdout.write(renderPrPayload(args.slice(1)) + '\n')
       return 0
@@ -362,4 +459,16 @@ export function main (argv) {
 
 if (import.meta.main) { process.exitCode = main(process.argv) }
 
-export default { renderRow, renderStatus, renderPrBody, renderPolicy, renderPrPayload, renderMergePayload, projectTasks, main }
+export default {
+  renderRow,
+  renderStatus,
+  renderPrBody,
+  renderPolicy,
+  renderPublishPolicy,
+  renderPublishCmds,
+  renderPublishJson,
+  renderPrPayload,
+  renderMergePayload,
+  projectTasks,
+  main
+}

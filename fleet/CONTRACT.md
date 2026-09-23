@@ -354,6 +354,39 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   line, all rendered by `factory/record.mjs pr-body`. The `publish:pr` row it leaves —
   `{ts, kind, url, number, draft}` — is written through the same writer as every other
   end-of-run row (`event_row`, over `factory/record.mjs row`).
+- **Publish probe (#835, `run_publish_probe` in `factory/boot.sh`, called from `publish()` once
+  `MERGED_SHA` is non-empty, before `write_status`):** the plan's `**Publish:**`/`**Verify:**`/
+  `**Rollback:**` header lines are read once through `skills/ultrapowers/scripts/plan_parse.py`
+  (never grepped off the plan text) and handed, one per line, to `factory/record.mjs publish-cmds`;
+  a plan naming no `**Publish:**` line, or `factory/policy.json`'s `publish.probe.enabled` false
+  (read by `factory/record.mjs publish-policy`, which prints `"<0 or 1> <timeout_seconds>"`), leaves
+  the run's `phase` at the plain `"the pull request was merged"` and writes no `publish:*` row and
+  no `publish.json`. Otherwise:
+  1. **Deploy** — `bash -lc "<deploy cmd>"`, cwd `<target>`, under `timeout <publish.probe.
+     timeout_seconds>` (policy default 600), env carrying `CLOUDFLARE_API_BASE_URL=https://
+     cloudflare.int.exe.xyz/client/v4` and `CLOUDFLARE_API_TOKEN=placeholder`. Its combined
+     stdout+stderr is grepped for the first `https://[A-Za-z0-9.-]*.workers.dev` url; a
+     `publish:deploy{cmd, exit, ms, url}` row is written (`url` is `null` when none matched). Exit
+     non-zero, or no url matched, writes `publish.json` (`url` null, `published` false, `verify`
+     null, `rollback` null) and sets `phase` to `"the pull request was merged; the deploy failed"`;
+     the verify and rollback steps never run.
+  2. **Verify** — the same `bash -lc "<verify cmd>"` shape, plus `ULTRA_PUBLISH_URL=<the deployed
+     url>` in its env (the deploy step never gets this var). A `publish:verify{cmd, exit, ms, url}`
+     row is written. Exit 0 writes `publish.json` (`published` true, `rollback` null) and sets
+     `phase` to `"the pull request was merged and the app is published"`.
+  3. **Rollback** — only on a red verify, and only when the plan named a `**Rollback:**` line: the
+     same `bash -lc` shape (no extra env), a `publish:rollback{cmd, exit}` row, `publish.json`
+     (`published` false, `rollback` the rollback's `{cmd, exit}`) and `phase` set to `"the pull
+     request was merged; the live check was red and the deploy was rolled back"`. A red verify with
+     no `**Rollback:**` line skips this step and sets `phase` to `"the pull request was merged; the
+     live check was red and no rollback was named"` instead, `publish.json`'s `rollback` staying
+     `null`. Every case's `publish.json` is rendered whole by `factory/record.mjs publish-json`,
+     never hand-built shell JSON.
+  Every step's raw combined stdout+stderr is truncated to its last 4000 bytes and written beside
+  `publish.json` in the evidence directory as `publish-deploy.log`/`publish-verify.log`/
+  `publish-rollback.log` — none of it is ever embedded in an event row. `evidence_commit`'s fixed
+  file list grew the four new names (`publish.json` and the three logs) alongside
+  `status.json`/`events.jsonl`/`engine.log`.
 - **Integration naming:** ONE GitHub integration per target, `gh-<owner>-<repo>` (slashes → `-`),
   `--act-as-user`, not readonly, created on the policy `tag:fleet` by `node fleet/target.mjs
   <owner>/<repo>` (`integrations add github … --policy 'tag:fleet'`; an object that already exists

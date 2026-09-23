@@ -134,7 +134,9 @@ collect_evidence() {
 }
 evidence_commit() { # $1 = commit subject
   local p n=0 paths=()
-  for p in status.json events.jsonl engine.log; do if [ -f "$EVIDENCE_DIR/$EVIDENCE_REL/$p" ]; then paths+=("$EVIDENCE_REL/$p"); fi; done
+  for p in status.json events.jsonl engine.log publish.json publish-deploy.log publish-verify.log publish-rollback.log; do
+    if [ -f "$EVIDENCE_DIR/$EVIDENCE_REL/$p" ]; then paths+=("$EVIDENCE_REL/$p"); fi
+  done
   [ "${#paths[@]}" -gt 0 ] || return 0
   fleet_git -C "$EVIDENCE_DIR" add -- "${paths[@]}" || log "evidence: add refused"
   fleet_git -C "$EVIDENCE_DIR" commit -m "$1" || log "evidence: nothing to commit"
@@ -340,6 +342,88 @@ maybe_self_merge() { # $1 = the pull request number, $2 = the PR's base branch n
   MERGE_PHASE="merge: refused after $SELF_MERGE_MAX_REFOLDS refold attempt(s)"
   log "merge: $MERGE_PHASE"
 }
+# #835: the deploy the self-merge earned, read live, rolled back once on red. Only
+# called once MERGED_SHA is non-empty. PUBLISH_PHASE stays empty — the caller keeps
+# the plain "the pull request was merged" phase — when the plan named no
+# `**Publish:**` line or `publish.probe.enabled` is off; either way that is never a
+# failure of the run. The plan's publish object is `plan_parse.py`'s own, read once
+# here (never grepped off the plan text) and its three commands handed to
+# `record.mjs publish-cmds`, one per line, an absent command an empty line.
+PUBLISH_PHASE=""
+run_publish_probe() {
+  PUBLISH_PHASE=""
+  local parsed cmds deploy_cmd verify_cmd rollback_cmd policy_out enabled timeout_seconds
+  parsed="$(fleet_python3 "$ENGINE_REPO_DIR/skills/ultrapowers/scripts/plan_parse.py" "$PLAN_FILE" 2>/dev/null)" || parsed=""
+  [ -n "$parsed" ] || return 0
+  cmds="$(printf '%s' "$parsed" | fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" publish-cmds)" || return 0
+  deploy_cmd="$(printf '%s\n' "$cmds" | sed -n '1p')"
+  verify_cmd="$(printf '%s\n' "$cmds" | sed -n '2p')"
+  rollback_cmd="$(printf '%s\n' "$cmds" | sed -n '3p')"
+  [ -n "$deploy_cmd" ] || return 0
+  policy_out="$(fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" publish-policy "$ENGINE_REPO_DIR/factory/policy.json" 2>/dev/null)" || policy_out="0 600"
+  set -- $policy_out
+  enabled="${1:-0}"; timeout_seconds="${2:-600}"
+  [ "$enabled" = 1 ] || return 0
+
+  local pub_dir="$EVIDENCE_DIR/$EVIDENCE_REL"
+  mkdir -p "$pub_dir" "$RUN_DIR"
+  local deploy_raw="$RUN_DIR/.publish-deploy-raw.log" deploy_log="$pub_dir/publish-deploy.log"
+  local verify_raw="$RUN_DIR/.publish-verify-raw.log" verify_log="$pub_dir/publish-verify.log"
+  local rollback_raw="$RUN_DIR/.publish-rollback-raw.log" rollback_log="$pub_dir/publish-rollback.log"
+  local start_ms end_ms deploy_exit deploy_ms verify_exit verify_ms rollback_exit url json_args
+
+  start_ms="$(date +%s%3N)"
+  if (cd "$TARGET_DIR" && CLOUDFLARE_API_BASE_URL="https://cloudflare.int.exe.xyz/client/v4" CLOUDFLARE_API_TOKEN="placeholder" \
+      timeout "$timeout_seconds" bash -lc "$deploy_cmd") >"$deploy_raw" 2>&1
+  then deploy_exit=0; else deploy_exit=$?; fi
+  end_ms="$(date +%s%3N)"; deploy_ms=$(( end_ms - start_ms ))
+  url="$(grep -oE 'https://[A-Za-z0-9.-]*\.workers\.dev' "$deploy_raw" | head -n 1 || true)"
+  tail -c 4000 "$deploy_raw" >"$deploy_log"; rm -f "$deploy_raw"
+  event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" publish:deploy cmd="$deploy_cmd" exit="$deploy_exit" ms="$deploy_ms" url="${url:-null}"
+
+  if [ "$deploy_exit" != 0 ] || [ -z "$url" ]; then
+    json_args=(url="${url:-null}" published=false deployCmd="$deploy_cmd" deployExit="$deploy_exit" deployMs="$deploy_ms")
+    fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" publish-json "${json_args[@]}" >"$pub_dir/publish.json"
+    PUBLISH_PHASE="the pull request was merged; the deploy failed"
+    return 0
+  fi
+
+  start_ms="$(date +%s%3N)"
+  if (cd "$TARGET_DIR" && CLOUDFLARE_API_BASE_URL="https://cloudflare.int.exe.xyz/client/v4" CLOUDFLARE_API_TOKEN="placeholder" \
+      ULTRA_PUBLISH_URL="$url" timeout "$timeout_seconds" bash -lc "$verify_cmd") >"$verify_raw" 2>&1
+  then verify_exit=0; else verify_exit=$?; fi
+  end_ms="$(date +%s%3N)"; verify_ms=$(( end_ms - start_ms ))
+  tail -c 4000 "$verify_raw" >"$verify_log"; rm -f "$verify_raw"
+  event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" publish:verify cmd="$verify_cmd" exit="$verify_exit" ms="$verify_ms" url="$url"
+
+  if [ "$verify_exit" = 0 ]; then
+    json_args=(url="$url" published=true deployCmd="$deploy_cmd" deployExit="$deploy_exit" deployMs="$deploy_ms" \
+      verifyCmd="$verify_cmd" verifyExit="$verify_exit" verifyMs="$verify_ms")
+    fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" publish-json "${json_args[@]}" >"$pub_dir/publish.json"
+    PUBLISH_PHASE="the pull request was merged and the app is published"
+    return 0
+  fi
+
+  if [ -z "$rollback_cmd" ]; then
+    json_args=(url="$url" published=false deployCmd="$deploy_cmd" deployExit="$deploy_exit" deployMs="$deploy_ms" \
+      verifyCmd="$verify_cmd" verifyExit="$verify_exit" verifyMs="$verify_ms")
+    fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" publish-json "${json_args[@]}" >"$pub_dir/publish.json"
+    PUBLISH_PHASE="the pull request was merged; the live check was red and no rollback was named"
+    return 0
+  fi
+
+  if (cd "$TARGET_DIR" && CLOUDFLARE_API_BASE_URL="https://cloudflare.int.exe.xyz/client/v4" CLOUDFLARE_API_TOKEN="placeholder" \
+      timeout "$timeout_seconds" bash -lc "$rollback_cmd") >"$rollback_raw" 2>&1
+  then rollback_exit=0; else rollback_exit=$?; fi
+  tail -c 4000 "$rollback_raw" >"$rollback_log"; rm -f "$rollback_raw"
+  event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" publish:rollback cmd="$rollback_cmd" exit="$rollback_exit"
+
+  json_args=(url="$url" published=false deployCmd="$deploy_cmd" deployExit="$deploy_exit" deployMs="$deploy_ms" \
+    verifyCmd="$verify_cmd" verifyExit="$verify_exit" verifyMs="$verify_ms" \
+    rollbackCmd="$rollback_cmd" rollbackExit="$rollback_exit")
+  fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" publish-json "${json_args[@]}" >"$pub_dir/publish.json"
+  PUBLISH_PHASE="the pull request was merged; the live check was red and the deploy was rolled back"
+}
 # One POST, one JSON answer: the status rides as the answer's last line, and a run the engine did not finish green still gets its PR — as a DRAFT, since the merge is the operator's act.
 publish() { # $1 = the engine's exit code
   local base title draft body payload answer code reply state number phase_text
@@ -364,6 +448,8 @@ publish() { # $1 = the engine's exit code
   fi
   if [ -n "$MERGED_SHA" ]; then
     phase_text="the pull request was merged"
+    run_publish_probe
+    [ -n "$PUBLISH_PHASE" ] && phase_text="$PUBLISH_PHASE"
   elif [ -n "$MERGE_PHASE" ]; then
     phase_text="$MERGE_PHASE"; state=parked
   else

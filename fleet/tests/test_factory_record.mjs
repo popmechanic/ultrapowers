@@ -336,4 +336,137 @@ function lines (text) {
   )
 }
 
+// ── #835 pass three: "the boot deploys after its merge, checks the live URL,
+//    rolls back on red, and records it" — `publish-policy` (the probe's
+//    sibling read beside `policy`'s self-merge read) and the two subcommands
+//    the boot's publish probe leans on so it builds no JSON by hand.
+// ────────────────────────────────────────────────────────────────────────
+
+// ── g. [M1] `publish-policy <policy.json>` ──────────────────────────────────
+{
+  const r1 = run(['publish-policy', POLICY_JSON])
+  assert.equal(r1.status, 0, "(g) [M1] publish-policy over the repo's own factory/policy.json exits 0")
+  assert.equal(
+    r1.stdout, '1 600\n',
+    "(g) [M1] publish-policy over the repo's own factory/policy.json prints exactly '1 600\\n' " +
+    '(its publish.probe is enabled: true, timeout_seconds: 600)'
+  )
+
+  const noEnabledPath = path.join(FIXTURES, 'publish-policy-no-enabled.json')
+  fs.writeFileSync(noEnabledPath, JSON.stringify({
+    publish: { probe: { timeout_seconds: 30 } },
+  }))
+  const r2 = run(['publish-policy', noEnabledPath])
+  assert.equal(r2.status, 0, '(g) [M1] publish-policy over a probe object with no "enabled" key exits 0')
+  assert.equal(
+    r2.stdout, '0 600\n',
+    '(g) [M1] publish-policy over a probe object with no "enabled" key prints exactly \'0 600\\n\' — ' +
+    'the whole read falls back, not just the missing key'
+  )
+
+  const missingPath = path.join(FIXTURES, 'no-such-publish-policy.json')
+  const r3 = run(['publish-policy', missingPath])
+  assert.equal(r3.status, 0, '(g) [M1] publish-policy over a path that does not exist exits 0')
+  assert.equal(
+    r3.stdout, '0 600\n',
+    "(g) [M1] publish-policy over a path that does not exist prints exactly '0 600\\n'"
+  )
+
+  // The sibling self-merge read is untouched by the new cell.
+  const r4 = run(['policy', POLICY_JSON])
+  assert.equal(
+    r4.stdout, '1 3 120\n',
+    "(g) [M1] policy still prints '1 3 120\\n' over the repo's own factory/policy.json"
+  )
+}
+
+// ── h. [M2–M4] `publish-cmds` (stdin) and `publish-json` ────────────────────
+{
+  const r1 = spawnSync(process.execPath, [RECORD_MJS, 'publish-cmds'], {
+    encoding: 'utf8',
+    env: simEnv({ home: HOME }),
+    input: JSON.stringify({
+      publish: {
+        deploy: 'bun run --cwd server deploy',
+        verify: 'bun server/probe/converge-live.ts $ULTRA_PUBLISH_URL',
+        rollback: 'bunx --cwd server wrangler rollback --yes',
+      },
+    }),
+  })
+  assert.equal(r1.status, 0, '(h) [M2] publish-cmds over a full publish object exits 0')
+  assert.equal(
+    r1.stdout,
+    'bun run --cwd server deploy\nbun server/probe/converge-live.ts $ULTRA_PUBLISH_URL\nbunx --cwd server wrangler rollback --yes\n',
+    `(h) [M2] publish-cmds prints the deploy, verify and rollback commands, one per line — got ${JSON.stringify(r1.stdout)}`
+  )
+
+  const r2 = spawnSync(process.execPath, [RECORD_MJS, 'publish-cmds'], {
+    encoding: 'utf8',
+    env: simEnv({ home: HOME }),
+    input: JSON.stringify({ publish: null }),
+  })
+  assert.equal(r2.status, 0, '(h) [M5] publish-cmds over a null publish exits 0')
+  assert.equal(
+    r2.stdout, '\n\n\n',
+    `(h) [M5] publish-cmds over a null publish prints three empty lines — got ${JSON.stringify(r2.stdout)}`
+  )
+
+  const r3 = run([
+    'publish-json',
+    'url=https://fixture.example.workers.dev', 'published=true',
+    'deployCmd=bun run --cwd server deploy', 'deployExit=0', 'deployMs=1200',
+    'verifyCmd=bun server/probe/converge-live.ts https://fixture.example.workers.dev', 'verifyExit=0', 'verifyMs=300',
+  ])
+  assert.equal(r3.status, 0, '(h) [M2] publish-json for the green case exits 0')
+  assert.deepEqual(
+    JSON.parse(r3.stdout),
+    {
+      url: 'https://fixture.example.workers.dev',
+      published: true,
+      deploy: { cmd: 'bun run --cwd server deploy', exit: 0, ms: 1200 },
+      verify: { cmd: 'bun server/probe/converge-live.ts https://fixture.example.workers.dev', exit: 0, ms: 300 },
+      rollback: null,
+    },
+    '(h) [M2] publish-json for the green case is exactly url, published true, deploy, verify, rollback null'
+  )
+
+  const r4 = run([
+    'publish-json',
+    'url=https://fixture.example.workers.dev', 'published=false',
+    'deployCmd=bun run --cwd server deploy', 'deployExit=0', 'deployMs=1200',
+    'verifyCmd=bun server/probe/converge-live.ts https://fixture.example.workers.dev', 'verifyExit=1', 'verifyMs=300',
+    'rollbackCmd=bunx --cwd server wrangler rollback --yes', 'rollbackExit=0',
+  ])
+  assert.equal(r4.status, 0, '(h) [M3] publish-json for the red/rolled-back case exits 0')
+  assert.deepEqual(
+    JSON.parse(r4.stdout),
+    {
+      url: 'https://fixture.example.workers.dev',
+      published: false,
+      deploy: { cmd: 'bun run --cwd server deploy', exit: 0, ms: 1200 },
+      verify: { cmd: 'bun server/probe/converge-live.ts https://fixture.example.workers.dev', exit: 1, ms: 300 },
+      rollback: { cmd: 'bunx --cwd server wrangler rollback --yes', exit: 0 },
+    },
+    '(h) [M3] publish-json for the red/rolled-back case carries a rollback object with cmd and exit only'
+  )
+
+  const r5 = run([
+    'publish-json',
+    'url=null', 'published=false',
+    'deployCmd=bun run --cwd server deploy', 'deployExit=1', 'deployMs=50',
+  ])
+  assert.equal(r5.status, 0, '(h) [M4] publish-json for the deploy-failed case exits 0')
+  assert.deepEqual(
+    JSON.parse(r5.stdout),
+    {
+      url: null,
+      published: false,
+      deploy: { cmd: 'bun run --cwd server deploy', exit: 1, ms: 50 },
+      verify: null,
+      rollback: null,
+    },
+    '(h) [M4] publish-json for the deploy-failed case is url null, verify null, rollback null'
+  )
+}
+
 console.log('ALL TESTS PASSED')
