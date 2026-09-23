@@ -230,7 +230,7 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
 
   // ── fact 6: new — no positionals, a spaced --comment survives whole ──────
   const comment6 = `probe exe facts ${runStamp}`
-  const newT = await send(`new --name ${T} --cpu 1 --memory 1GB --comment '${comment6}'`)
+  const newT = await send(`new --name ${T} --cpu 1 --memory 2GB --comment '${comment6}'`)
   let tCreated = false
   let fact6
   if (newT.code === null) {
@@ -361,7 +361,7 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
   } else if (leftBehind.includes(T)) {
     fact11 = unreadable(`${T} was not removed`)
   } else {
-    const again = await send(`new --name ${T} --cpu 1 --memory 1GB`)
+    const again = await send(`new --name ${T} --cpu 1 --memory 2GB`)
     if (again.code === null) {
       fact11 = unreadable(`new --name ${T} gave no answer`)
     } else if (again.code !== 0) {
