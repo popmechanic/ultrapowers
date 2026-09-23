@@ -580,3 +580,23 @@
 {"ts":"2026-09-23T02:54:46.434Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
 {"ts":"2026-09-23T02:54:49.902Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
 {"ts":"2026-09-23T02:54:52.286Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:54:56.041Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:54:59.303Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:55:02.735Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"sed -n '1429,1709p' /home/exedev/run/impl-1-1/factory/engine.mjs > /tmp/land_old.txt; wc -l /tmp/land_old.txt; tail -5 /tmp/land_old.txt"}
+{"ts":"2026-09-23T02:55:04.041Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:55:06.695Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"export default\\|runExam\\|runProof\\|factoryTools\" factory/engine.mjs"}
+{"ts":"2026-09-23T02:55:09.316Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:55:14.006Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:55:17.126Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:55:21.681Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:55:25.979Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"examExit\\|examTail\\|examRuns\\|examAssertions\\|examSelectionRow\\|examsTouched\\|redKind\\|rigRound\\|run_exam\\|TEST COMMAND\\|hasExam\\|hasTestCmd\\|examine\\b\\|testCmdsOf\\|copyMissingFiles\\|runTaskE"}
+{"ts":"2026-09-23T02:55:28.941Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"runExam\\b\\|redkind\\|roles/exam\" factory/engine.mjs"}
+{"ts":"2026-09-23T02:55:31.122Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"node --check factory/engine.mjs && echo OK"}
+{"ts":"2026-09-23T02:55:31.912Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Write","target":"/tmp/land_new.txt"}
+{"ts":"2026-09-23T02:55:33.919Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"for f in factory/*.mjs; do node --check \"$f\" || echo \"FAIL: $f\"; done; echo done"}
+{"ts":"2026-09-23T02:55:37.409Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/commands.mjs"}
+{"ts":"2026-09-23T02:55:38.489Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/tmp/land_old.txt"}
+{"ts":"2026-09-23T02:55:45.938Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/commands.mjs"}
+{"ts":"2026-09-23T02:55:49.506Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/commands.mjs"}
+{"ts":"2026-09-23T02:55:52.624Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/commands.mjs"}
+{"ts":"2026-09-23T02:55:55.812Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"exam\\|testCmd\" factory/commands.mjs"}
