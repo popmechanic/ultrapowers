@@ -102,7 +102,7 @@ FROZEN_VENDOR_FILES = [
     "skills/ultrapowers/kernel/vendor/manyana.py",
 ]
 FROZEN_VENDOR_DIGEST = \
-    "70139b6a7c9e322ba6ade1574fe82c498fca6ce2a8c641fde83fb6824e90f819"
+    "11a51dc8d8e582498f2f090aa8efd799b679b76adc6337eaaf0d15f68f0aa1d7"
 
 
 # ---------------------------------------------------------------------------

@@ -90,34 +90,14 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   person — the sandbox publishes it and does not merge it. Written once by `new --comment`; the sandbox
   reads it ONCE from `https://reflection.int.exe.xyz/comment` (`{"comment": "..."}`) and fails the run
   if it is absent or malformed. Nobody rewrites it.
-- **Exam environment:** the four variables a task's exam reads, set by the driver and by nothing
-  else. Every `Run:` and `Check:` command and every exam command runs with `ULTRA_BASE` set to the
-  base the tree was cut at. The two exam sites and the per-task `Run:`/`Check:` sites also receive
-  `ULTRA_TASK` (the task id), `ULTRA_RUN_DIR` (`<target>/.claude/ultrapowers/run-<N>`, the same
-  directory as `FLEET_RUN_DIR`) and `ULTRA_EXAM_PASS`, whose values are
-  `base`, `0`, `2` and `integrated`: `base` at the at-BASE probe, `0` at the pre-review pass and at the
-  repeat that follows the pre-review repair round, and one numbered pass above `0` for the
-  exam-rejected round's run (#1037) — taken on the graded tree after a review round's blocking
-  finding named the exam's own landing path and the examiner rewrote it, and numbered `2` for the
-  review round that reads it. `1` is emitted by
-  nothing: review round 1 reads the pre-review pass's evidence and dispatches no fix worker of its
-  own, so nothing edits the tree between that pass and that round. The
-  numbers stay in the vocabulary a reader of an older run's record meets. Whether that round is
-  dispatched at all is `reviewOnStateExams` (#836), a run argument that is off by default: with it
-  off, a task whose pre-review pass was green and whose state-exam record holds at least one stem
-  with every mutant killed gets no reviewer, and `true` in the run's arguments is the rollback that
-  restores the one reviewer every task gets without it. The record a task is read on holds that
-  task's OWN stems and no others: the stems of its Proof `Test:` paths under `tests/state-exams/`
-  (basename, less a `.test.ts`/`.test.tsx` suffix or else its last extension), so a helper's own
-  self-tests, which drive the same exam machinery under the same `ULTRA_TASK` and write their rows
-  into the same directory, are never that task's survivors — on the record, in the reviewer's
-  `STATE EXAM` block, in the hollow finding or on the pull request card; a task whose Proof names no
-  path under `tests/state-exams/` reads every stem in its directory, exactly as before this scoping
-  existed. A task merged that way carries the verdict
-  `skipped-mutant-killed` and is gated exactly as a reviewed one — the wave's fold, the candidate
-  suite, the integrated `Run:`/`Check:` pass and the pre-merge gate all run on it unchanged. The integrated `Run:` receives `ULTRA_TASK` and
-  `ULTRA_EXAM_PASS=integrated` and no `ULTRA_RUN_DIR` — the run directory is the driver's, not the
-  fold's; the integrated `Check:` receives only `ULTRA_BASE`; and the suite receives none of the four.
+- **Exam environment:** one variable, set by the engine and by nothing else. A plan's `Check:`
+  lines run at every fold check with `ULTRA_BASE` set to the run's base sha — never the anchor,
+  never a candidate's own base — under `proofs.run_lines` in `factory/policy.json`. A task's exam
+  command and its `Run:` lines run with the engine's own environment and nothing added: no
+  `ULTRA_BASE`, no `ULTRA_TASK`, no `ULTRA_RUN_DIR`, no `ULTRA_EXAM_PASS`. Those three, the numbered
+  exam passes, the pre-review pass, the review rounds and `reviewOnStateExams` (#836) were the wave
+  engine's and left at cut two (2026-09-21); an exam that wants a base to compare against carries a
+  frozen literal (ultrawrite §Proof), and a comparison against BASE is a `Check:`.
 - **State handshake:** a task that reaches a state its consumers are examined against posts it on
   its own kata issue, as the single metadata key `state.reached` with
   `{"expected":"<path under state-exams/expected/>","content":[tables, values]}` — the pair
