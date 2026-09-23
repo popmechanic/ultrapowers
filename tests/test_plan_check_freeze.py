@@ -1,11 +1,11 @@
 """`plan_check.py` refuses a run-wide `Check:` freeze that covers a task's own
-Files or `Test:` path (#1202).
+Files (#1202).
 
 Machine, restated, and where each clause is graded here:
 
   * M1 — a signed one-task plan whose `## Global Constraints` carries
     `- Check: git diff --quiet $ULTRA_BASE -- fleet/`, with task 1 naming
-    `fleet/tests/test_x.mjs` as its `Test:` path and `src/prover.ts` as its
+    `fleet/tests/test_x.mjs` as its `Create:` path and `src/prover.ts` as its
     `Modify:` path, exits 2 under a bare `plan_check.py <plan>` (no `--base`),
     prints no `PLAN OK`, and prints exactly one line carrying `freezes` — that
     line also carries the check's whole command, the pathspec `fleet/`,
@@ -77,7 +77,7 @@ TASK = """
 
 **Files:**
 - Modify: `src/prover.ts`
-- Test: `fleet/tests/test_x.mjs`
+- Create: `fleet/tests/test_x.mjs`
 
 **Claim:** An operator's patch lands without the run-wide freeze going red. (derived)
 Machine: M1. The freeze check does not cover the task's own paths.
@@ -91,7 +91,6 @@ Machine: M1. The freeze check does not cover the task's own paths.
 **Context:** The prover is a standalone module with no registry to update.
 
 **Proof:**
-- Test: `fleet/tests/test_x.mjs`
 - (a) The suite asserts the prover compiles. [M1]
 
 **Stale-if:**
@@ -196,11 +195,10 @@ def test_c_a_pathspec_equal_to_the_modify_path_is_refused(tmp_path):
 SOURCE = COMPILER.read_text()
 
 
-def fake_task(id_, modifies=(), test_files=(), creates=(), deletes=(),
+def fake_task(id_, modifies=(), creates=(), deletes=(),
              type_="implementation"):
     return {"id": id_, "type": type_, "creates": list(creates),
-            "modifies": list(modifies), "deletes": list(deletes),
-            "test_files": list(test_files)}
+            "modifies": list(modifies), "deletes": list(deletes)}
 
 
 def fake_check(cmd):
@@ -208,7 +206,7 @@ def fake_check(cmd):
 
 
 TASK1 = fake_task("1", modifies=["src/prover.ts"],
-                  test_files=["fleet/tests/test_x.mjs"])
+                  creates=["fleet/tests/test_x.mjs"])
 
 
 def test_d_freeze_violations_is_defined_at_module_level():

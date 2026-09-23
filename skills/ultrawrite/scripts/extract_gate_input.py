@@ -78,7 +78,7 @@ EXCERPT_TOTAL_CAP = 24000
 # A carrier line rides with the two lines before it and the two after.
 EXCERPT_MARGIN = 2
 
-_FILES_BULLET = re.compile(r"^-\s*(Create|Modify|Delete|Test):\s*(.+)$")
+_FILES_BULLET = re.compile(r"^-\s*(Create|Modify|Delete):\s*(.+)$")
 _RUN_PATH_TOKEN = re.compile(r"^[^\s]*/[^\s]*\.[A-Za-z0-9]{1,8}$")
 
 
@@ -119,9 +119,9 @@ def gate_input(plan_path, task_id):
 
 
 def _files_in_block_order(body):
-    """The task's Files paths as the block lists them — `Create:`, `Modify:`,
-    `Delete:` and `Test:` bullets in their written order, first mention wins.
-    The reader is shown the author's order."""
+    """The task's Files paths as the block lists them — `Create:`, `Modify:`
+    and `Delete:` bullets in their written order, first mention wins. The
+    reader is shown the author's order."""
     paths = []
     in_files = False
     for line in body.splitlines():

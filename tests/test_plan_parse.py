@@ -9,13 +9,6 @@ assertion below runs it as a subprocess and reads stdout/stderr/the exit
 code, exactly as `factory/engine.mjs` would.
 
 Every assertion is tagged with the Machine clause (M1-M6) it proves.
-
-A later task, "The parser names a plan's unguarded exam files", adds the
-`proofGuards` field and the `--unguarded` flag; its own legs live in a
-dedicated section near the end of this file and are tagged `guard-M1`,
-`guard-M2`, `guard-M3` (that task's own Machine clauses) to keep them
-distinct from the M1-M6 tags above, which belong to the grammar-parser
-clauses this file already covered.
 """
 import json
 import subprocess
@@ -41,16 +34,12 @@ RECORD_FIXTURES = [
 RECORDLESS_FIXTURES = sorted(
     (ROOT / "tests/fixtures/plans/2026-09-07").glob("*.md"))
 
-# The eight fields the old compiler's wave entries also carry: the oracle set
-# the M6 agreement tests compare over.
-ORACLE_FIELDS = {"id", "title", "files", "depends_on", "proofTests",
-                 "testCmd", "interfaces", "proofGuards"}
-# Every field a task object prints: the oracle's eight plus the parser's own
-# `runOnlyClauses` (run-195), `proofRuns`/`testCmds` and `proofRunClauses`
-# (the Run-line clause-tag task), none of which the old compiler ever
-# emitted.
-TASK_FIELDS = ORACLE_FIELDS | {"runOnlyClauses", "proofRuns", "testCmds",
-                               "proofRunClauses"}
+# Every field a task object prints (M1): a `- Test:`/`- Guard:` bullet or an
+# `**Exam command:**` header adds no field here -- cut three (2026-09-22)
+# retired the examiner they fed, and `plan_check.py` refuses a plan that
+# still carries one instead.
+TASK_FIELDS = {"id", "title", "files", "depends_on", "proofRuns",
+               "proofRunClauses", "interfaces"}
 
 
 # --------------------------------------------------------------------------- #
@@ -59,12 +48,6 @@ TASK_FIELDS = ORACLE_FIELDS | {"runOnlyClauses", "proofRuns", "testCmds",
 
 def run_parser(plan_path):
     return subprocess.run([sys.executable, str(PARSER), str(plan_path)],
-                          capture_output=True, text=True)
-
-
-def run_parser_unguarded(plan_path):
-    return subprocess.run([sys.executable, str(PARSER), "--unguarded",
-                           str(plan_path)],
                           capture_output=True, text=True)
 
 
@@ -201,23 +184,17 @@ def test_m2_task_and_wave_shape_on_widget_plan():
     expected = {
         "1": dict(
             title="The widget constructor",
-            files=["tests/test_widget.py", "widgetkit/widget.py"],
-            proofTests=["tests/test_widget.py"],
-            testCmd="python3 -m pytest -q tests/test_widget.py",
+            files=["widgetkit/widget.py"],
             interfaces={"consumes": ["nothing (first task)"],
                         "produces": ["`make_widget(n: int) -> Widget`"]}),
         "2": dict(
             title="The widget catalog",
-            files=["tests/test_catalog.py", "widgetkit/catalog.py"],
-            proofTests=["tests/test_catalog.py"],
-            testCmd="python3 -m pytest -q tests/test_catalog.py",
+            files=["widgetkit/catalog.py"],
             interfaces={"consumes": ["`make_widget(n: int) -> Widget`"],
                         "produces": ["`catalog(sizes: list[int]) -> list[Widget]`"]}),
         "3": dict(
             title="Size formatting",
-            files=["tests/test_format.py", "widgetkit/format.py"],
-            proofTests=["tests/test_format.py"],
-            testCmd="python3 -m pytest -q tests/test_format.py",
+            files=["widgetkit/format.py"],
             interfaces={"consumes": ["nothing"],
                         "produces": ["`format_size(n: int) -> str`"]}),
     }
@@ -229,10 +206,10 @@ def test_m2_task_and_wave_shape_on_widget_plan():
         assert t["depends_on"] == []  # [M2]
         exp = expected[t["id"]]
         assert t["title"] == exp["title"]  # [M2]
+        # A task's `files` is `Create:` and `Modify:` paths only -- its own
+        # `- Test:` bullet adds no path (cut three, 2026-09-22). [M2]
         assert t["files"] == exp["files"]  # [M2]
         assert t["files"] == sorted(t["files"])  # [M2]
-        assert t["proofTests"] == exp["proofTests"]  # [M2]
-        assert t["testCmd"] == exp["testCmd"]  # [M2]
         assert t["interfaces"] == exp["interfaces"]  # [M2]
 
     for wave in obj["launch_waves"]:
@@ -240,42 +217,19 @@ def test_m2_task_and_wave_shape_on_widget_plan():
             assert set(t.keys()) == TASK_FIELDS  # [M2]
 
 
-def test_m2_testcmd_uses_declared_exam_command_template(tmp_path):
+def test_m2_test_bullet_and_exam_command_add_no_field_or_path(tmp_path):
+    # A task built with `tests=[...]` under both Files and Proof, and an
+    # `**Exam command:**` template declared at the header -- cut three
+    # (2026-09-22) retired the examiner both fed. [M2]
     tasks = [task_block("1", "Vitest task", creates=["src/a.ts"],
                         tests=["tests/a.test.ts", "tests/b.test.ts"])]
     obj = build_and_run(tmp_path, tasks, exam_command="npx vitest run {paths}")
     t = obj["tasks"][0]
-    assert t["proofTests"] == ["tests/a.test.ts", "tests/b.test.ts"]  # [M2]
-    assert t["testCmd"] == "npx vitest run tests/a.test.ts tests/b.test.ts"  # [M2]
-
-
-def test_m2_testcmd_builtin_derivation_groups_by_shape(tmp_path):
-    # Proof order names the .py path first; the built-in derivation still
-    # emits the .mjs `node` command first, then the pytest command.
-    tasks = [task_block("1", "Mixed shapes task", creates=["src/b.py"],
-                        tests=["tests/x.py", "fleet/tests/test_y.mjs"])]
-    obj = build_and_run(tmp_path, tasks)
-    t = obj["tasks"][0]
-    assert t["proofTests"] == ["tests/x.py", "fleet/tests/test_y.mjs"]  # [M2]
-    assert t["testCmd"] == ("node fleet/tests/test_y.mjs && "
-                            "python3 -m pytest -q tests/x.py")  # [M2]
-
-
-def test_m2_testcmd_null_for_unknown_shape(tmp_path):
-    tasks = [task_block("1", "Doc-proof task", creates=["src/c.py"],
-                        tests=["docs/x.md"])]
-    obj = build_and_run(tmp_path, tasks)
-    t = obj["tasks"][0]
-    assert t["proofTests"] == ["docs/x.md"]  # [M2]
-    assert t["testCmd"] is None  # [M2]
-
-
-def test_m2_testcmd_null_for_no_test_path(tmp_path):
-    tasks = [task_block("1", "No-proof-test task", creates=["src/d.py"])]
-    obj = build_and_run(tmp_path, tasks)
-    t = obj["tasks"][0]
-    assert t["proofTests"] == []  # [M2]
-    assert t["testCmd"] is None  # [M2]
+    assert "testCmd" not in t  # [M2]
+    assert "proofTests" not in t  # [M2]
+    assert "testCmds" not in t  # [M2]
+    # The Test: bullet's path never joins `files`. [M2]
+    assert t["files"] == ["src/a.ts"]
 
 
 def test_m2_gate_release_manual_excluded_absent_type_included(tmp_path):
@@ -508,152 +462,22 @@ def test_m6_fixture_inventory_sanity():
 
 
 # --------------------------------------------------------------------------- #
-# Task: "The parser names a plan's unguarded exam files".                    #
-#                                                                             #
-# guard-M1 -- every task object gains `proofGuards` (backticked `- Guard:`   #
-#             paths, in order, deduplicated, `[]` when none) in both `tasks` #
-#             and `launch_waves`; the seven pre-existing fields are          #
-#             unchanged.                                                    #
-# guard-M2 -- `--unguarded <plan.md>` prints, one per line and nothing else  #
-#             on stdout, every implementation task's `proofTests` path not  #
-#             among that task's `proofGuards`, in document order,           #
-#             deduplicated, exit 0; a refused plan exits 2 with the same    #
-#             refusal on stderr as without the flag.                        #
-# guard-M3 -- any argv that is neither `<plan.md>` nor `--unguarded          #
-#             <plan.md>` prints the usage line on stderr and exits 2.       #
+# guard-M3 -- any argv that is not exactly one `<plan.md>` prints the usage   #
+#             line on stderr and exits 2 -- an unrecognized flag such as     #
+#             `--unguarded` included, since the parser reads none such any   #
+#             more (cut three, 2026-09-22).                                  #
 # --------------------------------------------------------------------------- #
-
-def test_guard_m1_proofguards_field_guarded_and_unguarded_tasks(tmp_path):
-    tasks = [
-        task_block("1", "Guarded", creates=["ga/impl.py"],
-                   tests=["tests/test_a.py"], guards=["tests/test_a.py"]),
-        task_block("2", "Unguarded", creates=["ga/impl2.py"],
-                   tests=["tests/test_b.py"]),
-    ]
-    obj = build_and_run(tmp_path, tasks)
-
-    # proofGuards present and correct in `tasks`. [guard-M1]
-    by_id = {t["id"]: t for t in obj["tasks"]}
-    assert by_id["1"]["proofGuards"] == ["tests/test_a.py"]
-    assert by_id["2"]["proofGuards"] == []
-
-    # ...and in `launch_waves` alike. [guard-M1]
-    wave_by_id = {t["id"]: t for wave in obj["launch_waves"] for t in wave}
-    assert wave_by_id["1"]["proofGuards"] == ["tests/test_a.py"]
-    assert wave_by_id["2"]["proofGuards"] == []
-
-    # Every task object's key set is exactly the eight named fields, and the
-    # seven pre-existing fields carry the values the grammar always derived
-    # for them -- the new field changes nothing about them. [guard-M1]
-    expected = {
-        "1": dict(title="Guarded", files=["ga/impl.py", "tests/test_a.py"],
-                  depends_on=[], proofTests=["tests/test_a.py"],
-                  testCmd="python3 -m pytest -q tests/test_a.py",
-                  interfaces={"consumes": ["none"], "produces": ["none"]}),
-        "2": dict(title="Unguarded", files=["ga/impl2.py", "tests/test_b.py"],
-                  depends_on=[], proofTests=["tests/test_b.py"],
-                  testCmd="python3 -m pytest -q tests/test_b.py",
-                  interfaces={"consumes": ["none"], "produces": ["none"]}),
-    }
-    for view in (obj["tasks"], [t for wave in obj["launch_waves"] for t in wave]):
-        for t in view:
-            assert set(t.keys()) == TASK_FIELDS  # [guard-M1]
-            exp = expected[t["id"]]
-            for key, val in exp.items():
-                assert t[key] == val  # [guard-M1]
-
-
-def test_guard_m1_proofguards_dedup_and_order(tmp_path):
-    tasks = [
-        task_block("1", "Multi-guard", creates=["gb/impl.py"],
-                   tests=["tests/test_x.py", "tests/test_y.py"],
-                   guards=["tests/test_y.py", "tests/test_x.py",
-                           "tests/test_y.py"]),
-    ]
-    obj = build_and_run(tmp_path, tasks)
-    t = obj["tasks"][0]
-    # Written order preserved, the repeat of tests/test_y.py dropped on its
-    # second occurrence (first occurrence kept). [guard-M1]
-    assert t["proofGuards"] == ["tests/test_y.py", "tests/test_x.py"]
-
-
-def test_guard_m2_unguarded_prints_only_unguarded_paths(tmp_path):
-    tasks = [
-        task_block("1", "Guarded", creates=["gc/impl.py"],
-                   tests=["tests/test_a.py"], guards=["tests/test_a.py"]),
-        task_block("2", "Unguarded", creates=["gc/impl2.py"],
-                   tests=["tests/test_b.py"]),
-    ]
-    plan_path = tmp_path / "plan.md"
-    plan_path.write_text(make_plan(tasks))
-    proc = run_parser_unguarded(plan_path)
-    assert proc.returncode == 0, proc.stdout + proc.stderr  # [guard-M2]
-    # Exactly the one unguarded path, one per line, nothing else. [guard-M2]
-    assert proc.stdout == "tests/test_b.py\n"
-
-
-def test_guard_m2_unguarded_empty_when_every_test_path_guarded(tmp_path):
-    tasks = [
-        task_block("1", "Fully guarded", creates=["gd/impl.py"],
-                   tests=["tests/test_a.py"], guards=["tests/test_a.py"]),
-    ]
-    plan_path = tmp_path / "plan.md"
-    plan_path.write_text(make_plan(tasks))
-    proc = run_parser_unguarded(plan_path)
-    assert proc.returncode == 0, proc.stdout + proc.stderr  # [guard-M2]
-    assert proc.stdout == ""  # [guard-M2]
-
-
-def test_guard_m2_unguarded_dedup_document_order_and_impl_only(tmp_path):
-    tasks = [
-        task_block("1", "First unguarded", creates=["ge/a.py"],
-                   tests=["tests/shared.py", "tests/only1.py"]),
-        task_block("2", "Gate task", ttype="gate", creates=["ge/gate.txt"],
-                   tests=["tests/gate_only.py"]),
-        task_block("3", "Second unguarded", creates=["ge/b.py"],
-                   tests=["tests/shared.py"]),
-    ]
-    plan_path = tmp_path / "plan.md"
-    plan_path.write_text(make_plan(tasks))
-    proc = run_parser_unguarded(plan_path)
-    assert proc.returncode == 0, proc.stdout + proc.stderr  # [guard-M2]
-    # Document order across tasks 1 then 3 (the gate task's own unguarded
-    # path is never printed -- only implementation tasks count), and task
-    # 3's repeat of tests/shared.py deduplicated against task 1's. [guard-M2]
-    assert proc.stdout == "tests/shared.py\ntests/only1.py\n"
-
-
-def test_guard_m2_unguarded_refusal_matches_plain_refusal(tmp_path):
-    plan_path = tmp_path / "plan.md"
-    plan_path.write_text(make_header())  # no '### Task' heading at all
-
-    proc_flag = run_parser_unguarded(plan_path)
-    assert_is_the_scripts_own_refusal(proc_flag)
-    assert proc_flag.returncode == 2  # [guard-M2]
-    assert proc_flag.stdout == ""  # [guard-M2]
-    assert proc_flag.stderr.strip() != ""  # [guard-M2]
-
-    proc_plain = run_parser(plan_path)
-    assert proc_plain.returncode == 2
-    # The same refusal on stderr as without the flag. [guard-M2]
-    assert proc_flag.stderr == proc_plain.stderr
-
 
 def test_guard_m3_bad_argv_variants_exit_2_with_usage(tmp_path):
     plan_path = tmp_path / "plan.md"
     plan_path.write_text(make_plan([task_block("1", "Solo", creates=["gf/a.py"])]))
 
-    # `assert_is_the_scripts_own_refusal` is not used here: it guards against
-    # mistaking an absent plan_parse.py for a genuine refusal, but a bare
-    # `--unguarded` (no plan.md) is a real M3 case whose CURRENT, unfixed
-    # behavior is to treat "--unguarded" as a plan path and fail to open it
-    # -- a real OSError message that also happens to contain "No such file
-    # or directory", which that helper would misread as the interpreter
-    # itself being missing.
     usage_lines = []
-    for argv_tail in ([], ["--unguarded"], ["--frobnicate", str(plan_path)]):
+    for argv_tail in ([], ["--unguarded", str(plan_path)],
+                      ["--frobnicate", str(plan_path)]):
         proc = subprocess.run([sys.executable, str(PARSER)] + argv_tail,
                               capture_output=True, text=True)
+        assert_is_the_scripts_own_refusal(proc)
         assert proc.returncode == 2, argv_tail  # [guard-M3]
         assert proc.stdout == ""  # [guard-M3]
         lines = [l for l in proc.stderr.splitlines() if l.strip()]
@@ -740,7 +564,7 @@ def test_pairs_m1_paths_sorted_for_multiple_shared_files(tmp_path):
     ]
 
 
-def test_pairs_m1_files_intersection_includes_test_paths(tmp_path):
+def test_pairs_m1_files_intersection_excludes_test_paths(tmp_path):
     tasks = [
         task_block("1", "A", creates=["src/a.py"],
                    tests=["tests/shared_test.py"]),
@@ -748,12 +572,9 @@ def test_pairs_m1_files_intersection_includes_test_paths(tmp_path):
                    tests=["tests/shared_test.py"]),
     ]
     obj = build_and_run(tmp_path, tasks)
-    # A task's `files` includes its Test: paths, so a Test:-only overlap
-    # still draws a "files" pair. [pairs-M1]
-    assert obj["pairs"] == [
-        {"a": "1", "b": "2", "why": ["files"], "paths": ["tests/shared_test.py"],
-         "symbol": None, "producer": None, "consumer": None},
-    ]
+    # A `- Test:` bullet adds no path to a task's `files`, so a Test:-only
+    # overlap draws no "files" pair. [pairs-M1]
+    assert obj["pairs"] == []
 
 
 def test_pairs_m1_symbol_tie_break_uses_consumers_bullet_order(tmp_path):
@@ -840,111 +661,6 @@ def test_pairs_m2_dag_edges_and_launch_waves_unchanged(tmp_path):
     assert wave_ids == [["1", "3"], ["2"]]  # [pairs-M2]
 
 
-def test_pairs_m3_unguarded_flag_output_unchanged(tmp_path):
-    tasks = [
-        task_block("1", "Guarded", creates=["pc/impl.py"],
-                   tests=["tests/test_a.py"], guards=["tests/test_a.py"]),
-        task_block("2", "Unguarded", creates=["pc/impl2.py"],
-                   tests=["tests/test_b.py"]),
-    ]
-    plan_path = tmp_path / "plan.md"
-    plan_path.write_text(make_plan(tasks))
-    proc = run_parser_unguarded(plan_path)
-    assert proc.returncode == 0, proc.stdout + proc.stderr  # [pairs-M3]
-    # Exactly the one unguarded path, one per line, nothing else -- the same
-    # as before "pairs" existed. [pairs-M3]
-    assert proc.stdout == "tests/test_b.py\n"
-
-
-# --------------------------------------------------------------------------- #
-# Task: "A green exam settles it -- the re-attempt floor reads only what Jev #
-# can see".                                                                   #
-#                                                                             #
-# This task's own Machine clauses are M1-M5, colliding by number with the    #
-# grammar-parser's M1-M6 tags already used above -- its legs are tagged      #
-# floor-M1..floor-M5 to stay unambiguous, mirroring guard-M*/pairs-M*.       #
-#                                                                             #
-# floor-M1 -- every task object gains `runOnlyClauses`: the ascending clause #
-#             numbers `n` such that every `- Legs:` leg citing `[M<n>]`      #
-#             contains the text `Run:` (a leg is the text from one          #
-#             `(<letter>)` marker to the next); `[]` when no such clause;    #
-#             present the same way in `tasks` and in `launch_waves`; the     #
-#             earlier field set, the top-level key set and `--unguarded`     #
-#             are unchanged.                                                 #
-# floor-M2..floor-M5 -- the engine's re-attempt floor decision and its       #
-#             `floor` event; proved in fleet/tests/test_factory_floor.mjs,   #
-#             not in this file.                                             #
-# --------------------------------------------------------------------------- #
-
-TASK_FIELDS_WITH_RUN_ONLY = TASK_FIELDS | {"runOnlyClauses"}
-
-
-def test_floor_m1_run_only_clauses_field(tmp_path):
-    # Leg (a) containing `Run:` and citing only [M1]; leg (b) citing only
-    # [M2] and never saying `Run:`; leg (c) containing `Run:` and citing
-    # both [M2] and [M3]. Clause 1 is cited only by a Run:-bearing leg (a)
-    # -> included. Clause 2 is cited by leg (b), which is not a Run: leg
-    # -> excluded even though leg (c) also cites it and does say Run:.
-    # Clause 3 is cited only by leg (c), which does say Run: -> included.
-    # Expected runOnlyClauses: [1, 3].
-    legs_text = ("(a) `Run: python3 check_one.py` prints the count [M1]; "
-                 "(b) f() equals 3, read straight from the diff [M2]; "
-                 "(c) `Run: python3 check_two.py` prints the count again "
-                 "[M2][M3]")
-    tasks = [
-        task_block("1", "Legged task", creates=["floor1/impl.py"],
-                   tests=["tests/floor_legged.py"], legs=legs_text),
-        task_block("2", "No legs task", creates=["floor1/other.py"],
-                   tests=["tests/floor_nolegs.py"]),
-    ]
-    obj = build_and_run(tmp_path, tasks)
-
-    by_id = {t["id"]: t for t in obj["tasks"]}
-    assert by_id["1"]["runOnlyClauses"] == [1, 3]  # [floor-M1]
-    # A task with no `- Legs:` line at all prints `[]`. [floor-M1]
-    assert by_id["2"]["runOnlyClauses"] == []
-
-    # ...and the same values in `launch_waves` alike. [floor-M1]
-    wave_by_id = {t["id"]: t for wave in obj["launch_waves"] for t in wave}
-    assert wave_by_id["1"]["runOnlyClauses"] == [1, 3]
-    assert wave_by_id["2"]["runOnlyClauses"] == []
-
-    # Every task object's key set is the earlier set plus `runOnlyClauses`
-    # and nothing else, in both views, and the values of the earlier fields
-    # are undisturbed. [floor-M1]
-    expected = {
-        "1": dict(title="Legged task",
-                  files=["floor1/impl.py", "tests/floor_legged.py"],
-                  depends_on=[], proofTests=["tests/floor_legged.py"],
-                  testCmd="python3 -m pytest -q tests/floor_legged.py",
-                  interfaces={"consumes": ["none"], "produces": ["none"]},
-                  proofGuards=[]),
-        "2": dict(title="No legs task",
-                  files=["floor1/other.py", "tests/floor_nolegs.py"],
-                  depends_on=[], proofTests=["tests/floor_nolegs.py"],
-                  testCmd="python3 -m pytest -q tests/floor_nolegs.py",
-                  interfaces={"consumes": ["none"], "produces": ["none"]},
-                  proofGuards=[]),
-    }
-    for view in (obj["tasks"], [t for wave in obj["launch_waves"] for t in wave]):
-        for t in view:
-            assert set(t.keys()) == TASK_FIELDS_WITH_RUN_ONLY
-            exp = expected[t["id"]]
-            for key, val in exp.items():
-                assert t[key] == val
-
-    # The top-level key set is unchanged by the new task-level field (beyond
-    # the `checks`/`bootstrapCmd` pair added by this task). [floor-M1] [cmds-M2]
-    assert set(obj.keys()) == {"tasks", "dag_edges", "launch_waves",
-                               "pairs", "checks", "bootstrapCmd"}
-
-    # `--unguarded` on this plan (one unguarded Test path per task, neither
-    # guarded) still prints exactly those paths, one per line. [floor-M1]
-    proc = run_parser_unguarded(tmp_path / "plan.md")
-    assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert proc.stdout == "tests/floor_legged.py\ntests/floor_nolegs.py\n"
-
-
 # --------------------------------------------------------------------------- #
 # Task: "The parser says what a plan wants run -- its proof lines, its       #
 # checks, its bootstrap, and its test commands one by one".                  #
@@ -952,26 +668,24 @@ def test_floor_m1_run_only_clauses_field(tmp_path):
 # This task's own Machine clauses are M1-M3, colliding by number with the    #
 # grammar-parser's M1-M6 tags used at the top of this file -- its legs are   #
 # tagged cmds-M1, cmds-M2, cmds-M3 to stay unambiguous, mirroring            #
-# guard-M*/pairs-M*/floor-M*.                                                #
+# guard-M*/pairs-M*.                                                         #
 #                                                                             #
 # cmds-M1 -- every task object gains `proofRuns` (the task's Proof           #
 #            `- Run:` commands in order, a whole-value backtick wrapper      #
-#            removed, `[]` when none) and `testCmds` (the list of commands   #
-#            whose ` && `-join is `testCmd`, `[]` when `testCmd` is `null`). #
+#            removed, `[]` when none).                                      #
 # cmds-M2 -- the printed object gains `checks` (one `{"cmd", "minor"}` per   #
 #            `- Check:` bullet of `## Global Constraints`, in order, with    #
 #            `minor` true exactly when the bullet ends with `(minor)`,       #
 #            which is not part of `cmd`) and `bootstrapCmd` (the text of a   #
 #            `**Bootstrap:**` header line above the first task, `null` when  #
 #            the plan has none).                                            #
-# cmds-M3 -- `testCmd`, the other task fields, `dag_edges`, `launch_waves`,  #
-#            `pairs` and `--unguarded` are unchanged; the task-object key    #
-#            set is the earlier set plus `proofRuns`/`testCmds`, the         #
-#            top-level key set is the earlier set plus                      #
+# cmds-M3 -- the other task fields, `dag_edges`, `launch_waves` and `pairs`  #
+#            are unchanged; the task-object key set is the earlier set plus #
+#            `proofRuns`, the top-level key set is the earlier set plus     #
 #            `checks`/`bootstrapCmd`, both and nothing else.                #
 # --------------------------------------------------------------------------- #
 
-def test_cmds_m1_proofruns_and_testcmds_fields(tmp_path):
+def test_cmds_m1_proofruns_field(tmp_path):
     tasks = [
         task_block("1", "Mixed", creates=["cm1/a.py"],
                    tests=["fleet/tests/test_a.mjs", "tests/test_b.py"],
@@ -980,38 +694,10 @@ def test_cmds_m1_proofruns_and_testcmds_fields(tmp_path):
     ]
     obj = build_and_run(tmp_path, tasks)
     t = obj["tasks"][0]
-    # testCmds is the list whose " && "-join is testCmd. [cmds-M1]
-    assert t["testCmds"] == ["node fleet/tests/test_a.mjs",
-                             "python3 -m pytest -q tests/test_b.py"]
-    assert t["testCmd"] == " && ".join(t["testCmds"])  # [cmds-M1]
-    assert t["testCmd"] == ("node fleet/tests/test_a.mjs && "
-                            "python3 -m pytest -q tests/test_b.py")  # [cmds-M1]
     # proofRuns: the two `- Run:` commands in order, the second's whole-value
     # backtick wrapper removed (the first carried none to begin with). [cmds-M1]
     assert t["proofRuns"] == ["python3 checks/one.py",
                               "python3 checks/two.py"]
-
-
-def test_cmds_m1_proofruns_and_testcmds_empty_when_absent(tmp_path):
-    tasks = [task_block("1", "No proof", creates=["cm1b/a.py"])]
-    obj = build_and_run(tmp_path, tasks)
-    t = obj["tasks"][0]
-    # No Test path -> testCmds [] and testCmd null; no Run: bullets ->
-    # proofRuns []. [cmds-M1]
-    assert t["testCmds"] == []
-    assert t["testCmd"] is None
-    assert t["proofRuns"] == []
-
-
-def test_cmds_m1_testcmds_single_item_under_exam_command_template(tmp_path):
-    tasks = [task_block("1", "Vitest task", creates=["cm1c/a.ts"],
-                        tests=["tests/a.test.ts", "tests/b.test.ts"])]
-    obj = build_and_run(tmp_path, tasks, exam_command="npx vitest run {paths}")
-    t = obj["tasks"][0]
-    # Under an **Exam command:** template, testCmds is a list of exactly one
-    # command -- that command being the whole (templated) testCmd. [cmds-M1]
-    assert t["testCmds"] == ["npx vitest run tests/a.test.ts tests/b.test.ts"]
-    assert t["testCmd"] == t["testCmds"][0]
 
 
 def test_cmds_m2_checks_and_bootstrap_fields(tmp_path):
@@ -1049,8 +735,7 @@ def test_cmds_m3_key_sets_and_other_fields_unchanged(tmp_path):
         tmp_path, tasks,
         checks=["echo check"], bootstrap="echo boot")
 
-    # The task-object key set is the earlier set plus `proofRuns` and
-    # `testCmds`, nothing else -- TASK_FIELDS already carries that pin. [cmds-M3]
+    # The task-object key set is exactly TASK_FIELDS, in both views. [cmds-M3]
     for t in obj["tasks"]:
         assert set(t.keys()) == TASK_FIELDS
     for wave in obj["launch_waves"]:
@@ -1062,26 +747,15 @@ def test_cmds_m3_key_sets_and_other_fields_unchanged(tmp_path):
     assert set(obj.keys()) == {"tasks", "dag_edges", "launch_waves",
                                "pairs", "checks", "bootstrapCmd"}
 
-    # testCmd, the other task fields, dag_edges, launch_waves and pairs are
-    # what they were: the write-after-create edge (task "1" creates
-    # cm3/a.py, task "2" modifies it) still fires with its own "why", and the
-    # pair still carries "files". [cmds-M3]
+    # dag_edges and pairs are what they were: the write-after-create edge
+    # (task "1" creates cm3/a.py, task "2" modifies it) still fires with its
+    # own "why", and the pair still carries "files". [cmds-M3]
     assert obj["dag_edges"] == [
         {"from": "1", "to": "2", "why": "write-after-create"}]
     assert obj["pairs"] == [
         {"a": "1", "b": "2", "why": ["files"], "paths": ["cm3/a.py"],
          "symbol": None, "producer": None, "consumer": None},
     ]
-    by_id = {t["id"]: t for t in obj["tasks"]}
-    assert by_id["1"]["testCmd"] == "python3 -m pytest -q tests/cm3_test.py"  # [cmds-M3]
-    assert by_id["2"]["testCmd"] is None  # [cmds-M3]
-
-    # --unguarded on a plan with one unguarded Test path still prints
-    # exactly that path and a newline. [cmds-M3]
-    plan_path = tmp_path / "plan.md"
-    proc = run_parser_unguarded(plan_path)
-    assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert proc.stdout == "tests/cm3_test.py\n"
 
 
 # --------------------------------------------------------------------------- #

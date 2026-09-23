@@ -17,8 +17,11 @@ What refuses:
   * a `- Check:` or Proof `Run:` command carrying a backtick, and a `Check:`
     naming a path one implementation task's Files own;
   * a `- Check:` that freezes a `git diff … $ULTRA_BASE -- <pathspecs>` whose
-    pathspec covers any task's `Create:`, `Modify:`, `Delete:` or `Test:`
-    path (run-199);
+    pathspec covers any task's `Create:`, `Modify:` or `Delete:` path (run-199);
+  * a `- Test:` or `- Guard:` bullet under a task's Files or Proof, and an
+    `**Exam command:**` header line — cut three (2026-09-22) retired the
+    examiner these fed; the parser reads none of them any more, and this is
+    the one reader left to say so;
   * with `--base`: a Stale-if predicate that already holds at BASE, and a
     `--base` that is neither a checkout directory nor a 40-hex sha.
 
@@ -264,10 +267,9 @@ def command_names_path(command, path):
 
 
 def task_files(t):
-    """Every path a task's Files block claims, `Test:` included: a task owns
-    the exam it names as surely as the code."""
-    return (set(t["creates"]) | set(t["modifies"]) | set(t["deletes"])
-            | set(t["test_files"]))
+    """Every path a task's Files block claims: `Create:`, `Modify:` and
+    `Delete:` paths."""
+    return set(t["creates"]) | set(t["modifies"]) | set(t["deletes"])
 
 
 def _is_implementation(t):
@@ -343,6 +345,80 @@ def freeze_violations(checks, tasks):
                             "own patch lands (run-199); freeze files, not the "
                             "directory they sit in."
                             % (t["id"], cmd, raw, path, t["id"]))
+    return violations
+
+
+# --------------------------------------------------------------------------- #
+# Retired slots (cut three, 2026-09-22): a `- Test:` or `- Guard:` bullet,     #
+# or an `**Exam command:**` header line                                       #
+# --------------------------------------------------------------------------- #
+_RETIRED_TEST_BULLET_RE = re.compile(r'^-\s*Test\s*:', re.I)
+_RETIRED_GUARD_BULLET_RE = re.compile(r'^-\s*Guard\s*:', re.I)
+_EXAM_CMD_HEADER_RE = re.compile(r'^\*\*Exam command:\*\*', re.I)
+_RETIRED_SUFFIX = ("a plan's proof is its Run: probes; a test file is not "
+                   "written for a task since cut three (2026-09-22)")
+
+
+def _unfenced_lines(text):
+    """`text`'s own lines, fence-tracked the same way `plan_parse.py` tracks
+    them -- a fence's content is never read as structure, here either."""
+    return [line for line, fenced in plan_parse._fence_aware_lines(text)
+            if not fenced]
+
+
+def _pre_slot_lines(body):
+    """The unfenced lines of a task body before its first named slot label
+    (`**Claim:**`, `**Proof:**`, ...) -- the same span the parser's own
+    Files-bullet scan reads, heading line included (it matches no bullet
+    shape anyway)."""
+    out = []
+    for line in _unfenced_lines(body):
+        if plan_parse.SLOT_RE.match(line.strip()):
+            break
+        out.append(line)
+    return out
+
+
+def retired_slot_violations(text_or_tasks):
+    """One `grammar:` line per retired slot the plan still carries: a
+    `- Test:` bullet under a task's Files or Proof, a `- Guard:` bullet
+    under Proof, or an `**Exam command:**` header line -- cut three
+    (2026-09-22) retired the examiner all three fed, and `plan_parse.py`
+    reads none of them any more. A fenced occurrence of any shape is never
+    read as one, the same as the parser's own scan.
+
+    Called with the plan's raw TEXT for the header check (the lines above
+    the first `### Task` heading), or with the TASKS list
+    (`parse_plan_full`'s per-task dicts, each carrying `body` and `proof`)
+    for the bullet check -- `parse_plan_full` answers neither slot any
+    more, so this reads the plan's own strings directly."""
+    if isinstance(text_or_tasks, str):
+        violations = []
+        for line, fenced in plan_parse._header_lines(text_or_tasks):
+            if not fenced and _EXAM_CMD_HEADER_RE.match(line.strip()):
+                violations.append(
+                    "grammar: header: Exam command is not read since cut "
+                    "three (2026-09-22) — a task's probes are its own "
+                    "Run: lines")
+        return violations
+
+    violations = []
+    for t in text_or_tasks:
+        for line in _pre_slot_lines(t["body"]):
+            if _RETIRED_TEST_BULLET_RE.match(line.strip()):
+                violations.append(
+                    "grammar: task %s: Files carries a Test: bullet — %s"
+                    % (t["id"], _RETIRED_SUFFIX))
+        for line in _unfenced_lines(t["proof"]):
+            s = line.strip()
+            if _RETIRED_TEST_BULLET_RE.match(s):
+                violations.append(
+                    "grammar: task %s: Proof carries a Test: bullet — %s"
+                    % (t["id"], _RETIRED_SUFFIX))
+            elif _RETIRED_GUARD_BULLET_RE.match(s):
+                violations.append(
+                    "grammar: task %s: Proof carries a Guard: bullet — %s"
+                    % (t["id"], _RETIRED_SUFFIX))
     return violations
 
 
@@ -817,8 +893,9 @@ def main(argv=None):
             return 2
         base_tree = BaseTree.from_flag(args.base, args.plan)
 
+    plan_text = args.plan.read_text()
     try:
-        result, tasks = plan_parse.parse_plan_full(args.plan.read_text())
+        result, tasks = plan_parse.parse_plan_full(plan_text)
     except plan_parse.Refusal as exc:
         print("%s\n\n1 violation(s)" % exc)
         return 2
@@ -826,7 +903,9 @@ def main(argv=None):
     violations = (gate_verdict_violations(args.plan, tasks)
                   + authoring_record_violations(args.plan)
                   + command_violations(result["checks"], tasks)
-                  + freeze_violations(result["checks"], tasks))
+                  + freeze_violations(result["checks"], tasks)
+                  + retired_slot_violations(tasks)
+                  + retired_slot_violations(plan_text))
     advisories = []
     if base_tree is not None:
         refusals, advisories = evaluate_stale_if(tasks, base_tree)
