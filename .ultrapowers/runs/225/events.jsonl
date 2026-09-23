@@ -268,3 +268,8 @@
 {"ts":"2026-09-23T02:24:56.033Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/fleet/tests/test_factory_watch.mjs"}
 {"ts":"2026-09-23T02:24:58.402Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"examExit\" /home/exedev/run/impl-1-0/fleet/tests/test_factory_record.mjs"}
 {"ts":"2026-09-23T02:25:00.871Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/fleet/tests/test_factory_record.mjs"}
+{"ts":"2026-09-23T02:25:05.012Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/fleet/tests/test_factory_record.mjs"}
+{"ts":"2026-09-23T02:25:09.997Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/fleet/tests/test_factory_boot.mjs"}
+{"ts":"2026-09-23T02:25:14.642Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/reverify.mjs"}
+{"ts":"2026-09-23T02:25:40.682Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/fleet/tests/test_factory_reverify.mjs"}
+{"ts":"2026-09-23T02:26:03.343Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Write","target":"/home/exedev/run/impl-1-0/factory/reverify.mjs"}
