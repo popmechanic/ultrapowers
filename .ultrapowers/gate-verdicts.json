@@ -1,0 +1,78 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "9a47a1d47e3e1f1477885d6ec8950b5d6b93dde2b585f98514b5e83fd5ccaa45",
+   "verdict": "pass",
+   "reason": "the pinned fact-line ending, the absent-as-0 sum and the -1 refusal, the census header/row/totals cells and the four test counts each have a falsifying Run: line"
+  },
+  "2": {
+   "hash": "0ba0c2873b02b7ec207d5e5521b539ec5d1e260bba36e4889b71f76b49750b1c",
+   "verdict": "pass",
+   "reason": "the paragraph's parts in order, the record example row, the queue sentence and both CLAUDE.md bullets are grepped; the pinned gate sentences and the doc tests still match"
+  }
+ },
+ "tally": {
+  "dispatched": 2,
+  "rejected": 0,
+  "rounds": [
+   {
+    "round": 1,
+    "dispatched": 2,
+    "rejected": 0
+   }
+  ],
+  "base": "8b9e67978dfdc090a509c75128b810948509b41a",
+  "question": "facts-only (experiment, rollback the old sentence)"
+ },
+ "authoring": {
+  "minutes": 30,
+  "probes": 0,
+  "routing": {
+   "branch": "inline",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Claim and summary (first draft)",
+    "options": [
+     "Confirm as drafted",
+     "Quote #526's own sentence",
+     "Please explain"
+    ],
+    "recommended": "Confirm as drafted",
+    "picked": "Please explain",
+    "explain_rounds": 1
+   },
+   {
+    "question": "Explain shape (after the brainstorm)",
+    "options": [
+     "Escalating rounds, re-asked in place",
+     "One explanation, then the same question",
+     "Explain first, always",
+     "Please explain"
+    ],
+    "recommended": "Escalating rounds, re-asked in place",
+    "picked": "Escalating rounds, re-asked in place"
+   },
+   {
+    "question": "Claim and summary (with the escalation)",
+    "options": [
+     "Confirm as drafted",
+     "Please explain"
+    ],
+    "recommended": "Confirm as drafted",
+    "picked": "Confirm as drafted"
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Inline",
+     "Please explain"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers"
+   }
+  ]
+ }
+}
