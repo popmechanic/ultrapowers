@@ -309,3 +309,6 @@
 {"ts":"2026-09-23T00:17:49.016Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"sed -n '440,545p' /home/exedev/run/impl-2-0/fleet/claude-token.mjs"}
 {"ts":"2026-09-23T00:18:10.158Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"node -e \"\nconst { defaultReadUsage, USAGE_REFUSE_PCT } = await import('./launch.mjs');\nconsole.log('USAGE_REFUSE_PCT', USAGE_REFUSE_PCT);\nfunction spy(result) { const calls=[]; const fn=(...a)=>{calls"}
 {"ts":"2026-09-23T00:18:15.230Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"node -e \"\nimport('./tests/_lobby_helpers.mjs').then(async (helpers) => {\n  const { answer, cleanup, cmdRule, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmsPayload } = helpers;\n  const { defau"}
+{"ts":"2026-09-23T00:18:49.314Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Write","target":"/tmp/verify_usage.mjs"}
+{"ts":"2026-09-23T00:18:52.903Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"ls /home/exedev/run/impl-2-0"}
+{"ts":"2026-09-23T00:19:26.588Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Write","target":"/home/exedev/run/impl-2-0/fleet/_verify_tmp.mjs"}
