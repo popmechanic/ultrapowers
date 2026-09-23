@@ -61,7 +61,7 @@ import { settledCoverage, observedFacts, examAssertions, clauseFacts } from './f
 import { observedWork, supervisorTick, makeObservedWatch } from './watch.mjs'
 import { kFor, probeRecord } from './kprobe.mjs'
 import { refereeTrigger } from './referee.mjs'
-import { retrying } from './retry.mjs'
+import { retrying, isRateLimited } from './retry.mjs'
 // Amendment (undeclared by the task's own M1-M6, needed only to reach them):
 // this module now creates a missing parent directory once, on the one error
 // that means "the directory a write was aimed at doesn't exist yet", and
@@ -1536,7 +1536,8 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     // the task parks on the worker's own words, and the run goes on.
     const bytes = best.patch && fs.existsSync(best.patch) ? fs.statSync(best.patch).size : 0
     if (best.error && bytes === 0) {
-      return { task, k, anchor, best, dead: 'worker ended without a patch: ' + best.error, wall_ms: Date.now() - t0 }
+      const dead = (isRateLimited(best.error) ? 'rate-limited: ' : 'worker ended without a patch: ') + best.error
+      return { task, k, anchor, best, dead, wall_ms: Date.now() - t0 }
     }
 
     // M2/M3: the few existing tests the patch touches, run in the candidate's

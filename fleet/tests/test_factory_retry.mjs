@@ -47,8 +47,9 @@
  */
 
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
 
-import { shouldRetry } from '../../factory/retry.mjs'
+import { isRateLimited, shouldRetry, retrying } from '../../factory/retry.mjs'
 import { makeRefoldDispatch } from '../../factory/engine.mjs'
 
 const GATEWAY_ERROR =
@@ -227,6 +228,124 @@ const BASE_OPTS = {
     assert.equal(sleepCalls.length, 1, '(c) [M3] a worker that throws the gateway string on both calls calls sleep exactly once')
     assert.equal(typeof answer.error, 'string', "(c) [M3] the resulting answer's error has typeof 'string'")
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Task: "A rate-limited worker is named, never retried, and halts every
+// later dispatch" (Authorized-by #1114 desired state 2; #1219; map #1131).
+//
+// Legs below, each naming the Machine clause it comes from:
+//
+//   (e) [M1] `isRateLimited` is exactly `true` for the edge's 429 body and
+//       the CLI's weekly-limit line, and exactly `false` for the gateway's
+//       529 string, `'boom'` and `null`.
+//   (f) [M2] `shouldRetry` with the 429 string, `turns: 0` and a 60000
+//       backoff cell is exactly `false` — a 429 is not a gateway shape.
+//   (g) [M3] `retrying(once, …)`: after `once` answers rate-limited on its
+//       first call, the returned function's later calls resolve the halted
+//       object without calling `once` again, and `sleep` is never called;
+//       a run whose answers are never rate-limited calls `once` every time.
+//   (h) [M4] `factory/engine.mjs`'s source carries the `'rate-limited: '`
+//       literal and imports/uses `isRateLimited` — the same two greps the
+//       plan's own `Run:` lines pin, read here so the clause is asserted
+//       inside the exam rather than only outside it.
+// ─────────────────────────────────────────────────────────────────────────
+
+const RATE_LIMIT_429 =
+  'API Error: 429 {"type":"error","error":{"type":"rate_limit_error","message":"This request would exceed your account\'s rate limit"}}'
+const RATE_LIMIT_WEEKLY = "You've hit your weekly limit · resets Sep 20, 11pm (UTC)"
+
+// ── e. [M1] isRateLimited: true on the two edge/CLI shapes, false on the three negatives ──
+{
+  assert.equal(
+    isRateLimited(RATE_LIMIT_429),
+    true,
+    '(e) [M1] isRateLimited is exactly true for the edge\'s 429 rate_limit_error body',
+  )
+  assert.equal(
+    isRateLimited(RATE_LIMIT_WEEKLY),
+    true,
+    "(e) [M1] isRateLimited is exactly true for the CLI's weekly-limit line",
+  )
+  assert.equal(
+    isRateLimited('API Error: 529 Overloaded'),
+    false,
+    '(e) [M1] isRateLimited is exactly false for the gateway 529 Overloaded string',
+  )
+  assert.equal(
+    isRateLimited('boom'),
+    false,
+    "(e) [M1] isRateLimited is exactly false for 'boom'",
+  )
+  assert.equal(
+    isRateLimited(null),
+    false,
+    '(e) [M1] isRateLimited is exactly false for null',
+  )
+}
+
+// ── f. [M2] shouldRetry: false for the 429 string even with turns 0 and a 60000 cell ──
+{
+  assert.equal(
+    shouldRetry({ error: RATE_LIMIT_429, turns: 0, policy: BACKOFF_POLICY }),
+    false,
+    '(f) [M2] shouldRetry is exactly false for the 429 string with turns 0 and backoff 60000',
+  )
+}
+
+// ── g. [M3] retrying: halts every later call once once answers rate-limited ──
+{
+  const sleepCalls = []
+  const sleep = async (ms) => { sleepCalls.push(ms) }
+  const calls = []
+  const once = async (opts) => {
+    calls.push(opts)
+    if (calls.length === 1) {
+      return { result: null, denials: [], turns: 0, error: RATE_LIMIT_429 }
+    }
+    throw new Error('(g) [M3] once must not be called again after a rate-limited answer')
+  }
+
+  const dispatch = retrying(once, { policy: BACKOFF_POLICY, sleep })
+
+  await dispatch({})
+  const second = await dispatch({})
+  const third = await dispatch({})
+
+  assert.equal(calls.length, 1, '(g) [M3] once was called exactly once over three calls')
+  assert.equal(sleepCalls.length, 0, '(g) [M3] sleep was called exactly zero times over three calls')
+
+  const halted = { result: null, denials: [], turns: 0, error: 'rate-limited: ' + RATE_LIMIT_429, halted: true }
+  assert.deepEqual(second, halted, '(g) [M3] the second call resolves the halted object by deep equality')
+  assert.deepEqual(third, halted, '(g) [M3] the third call resolves the halted object by deep equality')
+
+  // a run whose answers are never rate-limited: once is called every time
+  const neverCalls = []
+  const neverOnce = async (opts) => {
+    neverCalls.push(opts)
+    return { result: null, denials: [], turns: 0, error: null }
+  }
+  const neverDispatch = retrying(neverOnce, { policy: BACKOFF_POLICY, sleep: async () => {} })
+  await neverDispatch({})
+  await neverDispatch({})
+  await neverDispatch({})
+  assert.equal(neverCalls.length, 3, '(g) [M3] a run whose answers are never rate-limited calls once three times over three calls')
+}
+
+// ── h. [M4] factory/engine.mjs parks a rate-limited dead patch with the 'rate-limited: ' reason ──
+{
+  const engineSrc = fs.readFileSync(new URL('../../factory/engine.mjs', import.meta.url), 'utf8')
+
+  assert.equal(
+    engineSrc.includes("'rate-limited: '"),
+    true,
+    "(h) [M4] factory/engine.mjs contains the 'rate-limited: ' literal",
+  )
+  assert.equal(
+    engineSrc.includes('isRateLimited'),
+    true,
+    '(h) [M4] factory/engine.mjs imports/uses isRateLimited',
+  )
 }
 
 console.log('ALL TESTS PASSED')
