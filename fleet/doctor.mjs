@@ -691,7 +691,7 @@ export async function verbDrift ({ help, recordPath } = {}) {
 
   const detail = segments.length === 0
     ? `${names.length} verbs match fleet/exe-verbs.json (captured ${capturedAt})`
-    : `drift since ${capturedAt}: ${segments.join('; ')}`
+    : `drift since ${capturedAt}: ${segments.join('; ')} — re-measure the behaviours with node fleet/tests/probe_exe_facts.mjs`
   return { readable: true, capturedAt, findings, detail }
 }
 

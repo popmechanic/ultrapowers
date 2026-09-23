@@ -477,6 +477,25 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   - events-page — `GET /projects/<id>/events?after_id=N&limit=K` answers `{reset_required, events, next_after_id}`, `next_after_id` being the last event's `event_id`: a `limit` of 2 answered 100 events, so the limit is no bound and the cursor is the whole of the walk, and an empty `events` is its end. A comment event is `type` `issue.commented` with `issue_uid`, `actor` (`impl:3@run-170`) and `payload: {comment_uid, author, body, created_at}` (v0.17.2, 2026-09-17; #1095).
   - cli-next-unowned — hand, read by a person and not the probe: #979 read the CLI's `next` as having no `--unowned`, and `kata next --help` on the hub lists one — both readings stand (v0.17.2, 2026-09-15; #979).
   - int-hosts-https — hand, read by a person and not the probe and readable only from a VM: every `*.int.exe.xyz` host is https, http 301s, and a followed 301 turns a POST into a GET (v0.17.2, 2026-09-11; run-110, CLAUDE.md's kata seams).
+- **exe.dev facts (measured):** every exe.dev lobby behaviour the fleet leans on, read once and
+  written down here rather than restated from memory — the readings `node fleet/tests/probe_exe_facts.mjs`
+  takes against the lobby, one row per probe fact in the probe's own order, stamped with the digest
+  of `help all --json` because exe.dev exposes no version marker (Shelley, 2026-09-23). It is
+  re-read after any verb-drift finding and before any plan touching `fleet/launch.mjs` or
+  `fleet/lobby.mjs`; a reading that moves is one edited row, and a document or an issue comment
+  cites the row instead of repeating what it says.
+  - help-all-digest — `help all --json` is JSON with a `commands` array, and its sha256 is the only version marker exe.dev exposes (2026-09-23; Shelley cKAZXHW).
+  - ls-json-shape — `ls --json` is `{shared_vms, vms}`; read `.vms[]` only; rows carry `vm_name`, `ssh_dest`, `ssh_host`, `status` (2026-09-03; Traps).
+  - billing-plan-json — `billing plan --json` carries `max_cpus`, `max_memory_gb`, `tier` and `plan`, the pool the launcher sizes against (2026-09-05; RUNBOOK §Capacity).
+  - help-verb-flags — `help <verb>` prints an `Options:` block one flag per line, the set the doctor's verb-drift row diffs (2026-09-05; fleet/doctor.mjs).
+  - error-on-stdout — a lobby error comes back on stdout with exit 1 and no envelope (2026-09-03; Traps).
+  - new-no-positionals — `new` takes no positionals; a spaced `--comment` travels inside one ssh argument with its quotes intact (2026-09-12; the ultraviz deploy, Traps).
+  - comment-200-bytes — the VM comment holds 200 bytes (2026-09-04; Traps, `COMMENT_MAX_BYTES`).
+  - share-port-single — `share port` sets the VM's single `proxy_port` and a second call replaces it (2026-09-12; Traps).
+  - tag-add-remove — `tag` adds and `tag -d` removes a tag; `tag -d` of a policy-named tag detaches that integration at once, not re-measured by the probe (2026-09-04; Traps).
+  - cp-copies-tags — `cp` copies tags by default and `--copy-tags=false` makes a copy with none (2026-09-04; Traps).
+  - rm-reserves-name — exe.dev reserves a deleted VM's name for good (2026-09-04; Traps).
+  - refused-verbs — `new --integration`, `integrations attach` and `integrations detach` are refused since 2026-09-11; the policy is the only grant (2026-09-11; Traps, #1036).
 - **SDK and edge-auth facts (measured 2026-09-17, one hand-stood `--tag fleet` box):** the readings
   the Agent SDK worker layer rests on, taken on `jev-probe-09172119` (node 24.20.0, SDK 0.3.274,
   image CLI 2.1.272) under the boot's own engine env, one row per probe. A reading that moves is one

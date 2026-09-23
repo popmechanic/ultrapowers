@@ -32,6 +32,23 @@ The current probes:
   removes its `probe-kata-facts-*` project with the very purge ladder its last
   fact measures. Exit 0 every fact holds, 1 at least one drift, 2 the hub was
   unreachable or the project was left behind.
+- `probe_exe_facts.mjs` — whether exe.dev's lobby still behaves the way
+  `fleet/RUNBOOK.md`'s §Traps (*Tags, keys and names*, *Reading the lobby*)
+  and `fleet/CONTRACT.md`'s `exe.dev facts (measured)` list say it does: the
+  twelve lobby facts, re-read one line per fact against the laptop's own ssh
+  seam (`ssh exe.dev`), each line stamped with the sha256 of `help all
+  --json` — exe.dev exposes no version verb, no `--version` and no
+  changelog, so that digest is the only version marker there is — and the
+  UTC date. It creates three throwaway VMs (`probe-exe-facts-<stamp>` and two
+  copies of it) and removes every one of them as its last mutating verbs, and
+  it refuses outright, issuing no `new`, when a `fleet-r*` VM is already
+  listed — a live run's VM, never to be created beside. Run it on a
+  verb-drift finding from the doctor's `verb-drift` row or the launch line,
+  and before any plan touching `fleet/launch.mjs` or `fleet/lobby.mjs` — the
+  facts here are what those files' shape is argued from. Its exit codes:
+  exit 0 every fact holds, 1 at least one drift or unreadable fact, 2 the
+  lobby was unreachable, a live run's VM was listed, or a throwaway was left
+  behind.
 - `probe_readiness_fold_order.mjs` — the fold-order gate (#832, #810 Phase C):
   that for every fixture patch set, every sequential adoption order folds to
   the tree the simultaneous fold lands. The design gate of this list, not a
