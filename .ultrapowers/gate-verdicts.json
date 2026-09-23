@@ -1,0 +1,83 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "0f3dd1df55b669670fcc68e4655831e2ab68b75f0e0778d36df9a9f6bcb06a0e",
+   "verdict": "pass",
+   "reason": "Every clause is cited and falsified by a leg \u2014 M1's four outcomes by leg (a), M2's non-string out by leg (b), M3's base call and four one-at-a-time variations by leg (c), and the absence in M4 by the Run: grep count in leg (d); both files absent at BASE are this task's to create."
+  },
+  "2": {
+   "hash": "0157552940031f2fc619382f9971b6515d1032ee08e87b3033927ba6b096cf1c",
+   "verdict": "pass",
+   "reason": "Every clause M1\u2013M5 is cited by a leg that would fail were its fact false (the red cell values in (a), the exam reattempt row, single call and FOLD EXAM-RIG first line in (b), the implement routing with and without rigToExam in (c), the sibling routing in (d), the five policy cells via the Run: line in (e)); the base pins nothing opposite \u2014 foldRound merely lacks rigToExam today."
+  },
+  "3": {
+   "hash": "bc4222aef70ed9b60e772dc558aaa6e4fbbefa0f71de2f91b5a23b05144ab011",
+   "verdict": "pass",
+   "reason": "Every computable clause has a falsifying leg \u2014 (a) pins M1's single run, zero dispatch and the exact row; (b) pins M2's ['row','dispatch','run','row'] order, the EXAM RIG-RED first line and the two-run/one-dispatch/two-row totals; (c) pins M3's absence of dispatch under enabled: false \u2014 while M4 is code shape left to the diff reader with its Run: greps."
+  },
+  "4": {
+   "hash": "7d1e693217f130ea0f19b03466eebb2cb2126dc746210d2045999215475528d2",
+   "verdict": "pass",
+   "reason": "M1, M2 and M3 are each cited by one grep leg that fails if the pinned strings or their order are absent (M3's absence-guard matches the base excerpt, which already carries run_exam, simEnv(), COVERED: and Do not run git commands); the uncited wc -w leg is a reported size, not a gate."
+  }
+ },
+ "tally": {
+  "dispatched": 5,
+  "rejected": 1,
+  "rounds": [
+   {
+    "round": 1,
+    "dispatched": 4,
+    "rejected": 1,
+    "failed": [
+     "3"
+    ]
+   },
+   {
+    "round": 2,
+    "dispatched": 1,
+    "rejected": 0
+   }
+  ],
+  "base": "237cf16dbbf25614ef1976bfee66ce99616f0bb5",
+  "history": [
+   {
+    "round": 1,
+    "task": "3",
+    "hash": "e9ce782342b08bdc4f1df0a524f4810a24f433f20e9775c41a8d0e4ef3af3975",
+    "verdict": "fail",
+    "reason": "Every leg for M1 and M2 is a grep -q for a substring, which cannot falsify the computable facts the Claim rests on \u2014 the self-check row's ordering and cells and that a rig red is re-dispatched exactly once with no third round."
+   }
+  ],
+  "base_at_launch": "f156a08e85cdf0b6845004e5a5cdfe036b55f4fa"
+ },
+ "authoring": {
+  "minutes": 34,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Elicited draft",
+     "Narrow to routing only"
+    ],
+    "recommended": "Elicited draft",
+    "picked": "Elicited draft"
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers"
+   }
+  ]
+ }
+}
