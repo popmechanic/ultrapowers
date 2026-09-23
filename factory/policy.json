@@ -276,7 +276,11 @@
     },
     "max_candidates": 8,
     "needles": {
-      "kinds": ["path", "import", "symbol"],
+      "kinds": [
+        "path",
+        "import",
+        "symbol"
+      ],
       "n": 4,
       "window": "runs 204-207: 344 M__t answers, max 0.38, 11 of 12 landings selected []",
       "basis": "census",
@@ -335,7 +339,8 @@
       "window": "none",
       "basis": "judgment",
       "experiment": true,
-      "rollback": "enabled = false"
+      "rollback": "enabled = false",
+      "unread": "every adopted task's probes and selected tests re-run on every fold since 2026-09-22 (run-225's seam: a file-disjoint sibling's sim pinned the folded task's rendering and was never re-run; hotfix #1250). Pre-registered reading per release: fold checks per run, reds caught by a non-overlapping sibling's probe, and fold-check seconds per landing against max_run"
     },
     "attribution": {
       "enabled": true,

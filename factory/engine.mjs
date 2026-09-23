@@ -53,7 +53,7 @@ import { literalsOf, hunksCarrying, filesShown } from './hunks.mjs'
 import { unionReply } from './union.mjs'
 import { makeBoard, patchWithRevision } from './board.mjs'
 import { candidateTests, symbolsOf, commandFor, excerptFor } from './select.mjs'
-import { proofsTouched, foldRound } from './reverify.mjs'
+import { proofsAdopted, foldRound } from './reverify.mjs'
 import { waitsFor } from './dispatch.mjs'
 import { runLines } from './proofs.mjs'
 import { checksAtBase } from './checks-at-base.mjs'
@@ -755,7 +755,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const adopted = []
   // M6: `{ [taskId]: [paths] }`, filled in on every landing — the tests
   // `measure` selected and ran for that task's own best candidate — so a
-  // later fold's own re-verify (`proofsTouched`, `runProofsAndChecks`) knows
+  // later fold's own re-verify (`proofsAdopted`, `runProofsAndChecks`) knows
   // which tests, beyond a task's own probes, belong on the folded tree.
   const selectedByTask = {}
   const parked = new Set()
@@ -1693,8 +1693,9 @@ export async function runEngine (rawArgs = {}, deps = {}) {
 
   /**
    * M2-M4/M6: directly after a task's fold, the probes and selected tests of
-   * every adopted task the fold touched (the folded task's own included),
-   * plus the plan's own `checks`, run once on the folded tree; every red
+   * every adopted task (the folded task's own first — no file-overlap filter,
+   * since run-225's seam: a probe reads what it reads, not only what its task
+   * wrote), plus the plan's own `checks`, run once on the folded tree; every red
    * goes through one `foldRound` (`./reverify.mjs`) — attributed, judged,
    * re-attempted by the right worker, verified once more. Still red forces
    * `done` to false without unadopting anything. A minor check's own
@@ -1709,7 +1710,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const timeoutSeconds = reverifyPolicy.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS
 
     const tasksToRun = reverifyPolicy.enabled === true
-      ? proofsTouched({ folded: task.id, touched, adopted, tasks, selected: selectedByTask, cap })
+      ? proofsAdopted({ folded: task.id, adopted, tasks, selected: selectedByTask, cap })
       : []
     const checksNamed = proofsEnabled && Array.isArray(compiled.checks) ? compiled.checks : []
     if (!tasksToRun.length && !checksNamed.length) return
