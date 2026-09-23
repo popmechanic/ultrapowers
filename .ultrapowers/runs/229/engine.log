@@ -1,0 +1,11 @@
+Running as unit: fleet-engine-229.service
+adopted task 2 -> 5dfb8325  facts=0 k=1
+impl:1:1: 1 denied edit(s)
+adopted task 1 -> 325093b4  facts=0 k=2
+{"done":true,"adopted":["2","1"],"head":"325093b4be2e3d735379e07b366b275d93f3cf88","wall_ms":1253376,"cost_usd":7.4744088}
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 20min 53.452s
+CPU time consumed: 3min 43.153s
+Memory peak: 1.7M
+Memory swap peak: 0B
