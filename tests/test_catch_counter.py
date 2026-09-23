@@ -169,8 +169,16 @@ ANSWERS = {
     contents_path(9, "status.json"): STATUS_9,
 }
 
+def plan_path(number):
+    """The fifth read of a run: the plan at the repository root of the same
+    evidence ref, since the factory keeps what a task wrote in its Files."""
+    return ("repos/%s/contents/.ultrapowers/plan.md?ref=ultra/evidence/run-%d"
+            % (TARGET, number))
+
+
 EXPECTED_PATHS = {contents_path(n, name)
-                  for n in (7, 8, 9) for name in RUN_FILES}
+                  for n in (7, 8, 9) for name in RUN_FILES} | {
+                      plan_path(n) for n in (7, 8, 9)}
 
 
 # --- driving the script ----------------------------------------------------
@@ -274,11 +282,13 @@ def test_leg_a_every_call_is_api_plus_the_contents_path_and_nothing_else(
         assert argv[1] in EXPECTED_PATHS, (
             "(a) [M1] every call reads "
             "`repos/o/r/contents/.ultrapowers/runs/<N>/<name>"
-            f"?ref=ultra/evidence/run-<N>`, got {argv[1]!r}")
+            "?ref=ultra/evidence/run-<N>` or the run's plan at "
+            f"`.ultrapowers/plan.md` on the same ref, got {argv[1]!r}")
         for owner_repo in re.findall(r"repos/([^/]+/[^/?]+)", argv[1]):
             assert owner_repo == TARGET, argv
     made = {argv[1] for argv in argvs}
     for required in [contents_path(7, name) for name in RUN_FILES] + [
+            plan_path(7),
             contents_path(8, "events.jsonl"),
             contents_path(9, "events.jsonl"),
             contents_path(9, "receipt.json")]:

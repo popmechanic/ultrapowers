@@ -13,6 +13,15 @@ with two disqualifications read off the run's own record — the exam was edited
 (`receipt.json`'s `compile.tasks[].writes`) — and two ways a red simply never
 became a catch (it stayed red, or nothing ran it again).
 
+Since #1259 the factory's record (`factory/engine.mjs`, every run from 202)
+is read by the same sentence: its runs are `run:line`, `check:line`, the
+entries of `select:landing.ran[]` and `fold:verify.ran[]`, and `refold:red`;
+its fix round is a `dispatch:end` labelled `fix:<task>`; a `catch` row is the
+engine's own verdict that a selected test caught a candidate, and credits on
+its own; and what a task wrote is its Files block in the run's `plan.md`,
+which `--fetch` lands beside the log, since the factory writes no
+`receipt.json`. The row's shape is unchanged.
+
 Read-only and advisory: no model call, no git write. The one file it writes is
 the ledger named by `--ledger`, and only by appending — beside, under `--fetch`,
 the run directories it pulls off the evidence tags into the `--into` directory
@@ -45,6 +54,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _outcome import (FailedLookup, report_looked_empty,  # noqa: E402
                       swallow)
 from fleet_events import read_events  # noqa: E402
+from plan_parse import parse_plan_full  # noqa: E402
 
 ROW_KIND = "catch-count"
 
@@ -53,10 +63,38 @@ ROW_KIND = "catch-count"
 # run that is still red.
 DRIVER_RUN_KINDS = ("driver:exam-run", "driver:proof-run", "driver:check-run")
 
+# The factory's runs (`factory/engine.mjs`, every run since 202), which writes
+# none of the three above: a task's probe is a `run:line` row, a run-wide check
+# a `check:line` row, a selected existing test one entry of a `select:landing`
+# row's `ran[]`, a fold re-run one entry of a `fold:verify` row's `ran[]` (its
+# `exit` a string), and a refold's red a `refold:red` row. `_facts` flattens
+# the two `ran[]` shapes into one entry each so the loop below reads every kind
+# alike; a selected test's entry carries `path` where the rest carry `cmd`.
+FACTORY_RUN_KINDS = ("run:line", "check:line", "select:landing", "fold:verify",
+                     "refold:red")
+RUN_KINDS = DRIVER_RUN_KINDS + FACTORY_RUN_KINDS
+
+# The factory's own verdicts on a selected test, read beside its red: a `catch`
+# row is the engine saying the test was red in the candidate and green at the
+# anchor; a `select:red-at-base` row says it was red in both.
+CATCH_KIND = "catch"
+RED_AT_BASE_KIND = "select:red-at-base"
+
 # A fix round for task K is the `worker:end` of a worker labelled `fix:K:<i>`
 # — `fix:2:0` is the proof-driven round, `fix:2:1` the review-driven one, so
-# the prefix is what identifies the task, not the whole label.
+# the prefix is what identifies the task, not the whole label — or, on the
+# factory, the `dispatch:end` of the worker labelled exactly `fix:K` (no round
+# suffix). `fix:1` must not match `fix:10`, so the test is equality or the
+# colon-terminated prefix, never a bare `startswith`.
 FIX_LABEL = "fix:%s:"
+FIX_END_KINDS = ("worker:end", "dispatch:end")
+
+
+def _is_fix_round(event, task):
+    if event.get("kind") not in FIX_END_KINDS:
+        return False
+    label = str(event.get("label") or "")
+    return label == "fix:%s" % task or label.startswith(FIX_LABEL % task)
 
 # M8: a test path is a token of the command matched by this expression, in
 # order of appearance. The lookarounds keep it from biting into a longer word
@@ -81,6 +119,12 @@ RUN_FILE = "events.jsonl"
 # `status.json`'s `startedAt`). `--fetch` pulls these four names and no other
 # — a fifth file on the tag is another reader's business.
 RUN_NAMES = (RUN_FILE, "report.json", "receipt.json", "status.json")
+
+# The factory writes no `receipt.json`: what a task wrote is its Files block in
+# the plan, which the evidence ref carries at the repository root — a fifth
+# read at another path, landed in the run directory under this name.
+PLAN_FILE = "plan.md"
+PLAN_PATH = ".ultrapowers/plan.md"
 
 # The tag a run's directory lives on. The plan tag carries the plan; the
 # evidence tag carries `.ultrapowers/runs/<N>/`.
@@ -135,6 +179,30 @@ def _writes(receipt):
     return out
 
 
+def _plan_writes(run_dir):
+    """`task id -> files`, over the run directory's `plan.md` as
+    `plan_parse.py` reads it, or None when there is no readable plan.
+
+    None, not `{}`: a plan that is absent is no record, where a plan whose
+    tasks list no files is a record that says nothing was written."""
+    path = Path(run_dir) / PLAN_FILE
+    if not os.path.isfile(path):
+        return None
+    try:
+        text = path.read_text(encoding="utf-8")
+        parsed = parse_plan_full(text)
+    except Exception as exc:  # noqa: BLE001 — advisory: an unreadable plan is no plan
+        swallow("plan unreadable; the run counts as having no plan", exc)
+        return None
+    record = parsed[0] if isinstance(parsed, tuple) else parsed
+    tasks = record.get("tasks") if isinstance(record, dict) else None
+    out = {}
+    for task in tasks if isinstance(tasks, list) else []:
+        if isinstance(task, dict) and task.get("id") is not None:
+            out[str(task["id"])] = _str_list(task.get("files"))
+    return out
+
+
 # --- the log ---------------------------------------------------------------
 
 def test_paths_of(cmd):
@@ -146,8 +214,58 @@ def test_paths_of(cmd):
     return [m.group(1) for m in TEST_PATH_RE.finditer(str(cmd or ""))]
 
 
+def _exit_int(value):
+    """An `exit` as an integer, or None when it is absent or not a number —
+    a `fold:verify` entry spells its exit as a string."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _facts(events):
+    """The log with the factory's two `ran[]` shapes flattened: one entry per
+    selected test of a `select:landing` row and per re-run of a `fold:verify`
+    row, each carrying the row's `kind` and `task`, in the row's own place;
+    every other row passes through as it is, so the order is still the log's.
+    A flattened entry's `exit` is an integer or None."""
+    out = []
+    for event in events:
+        kind = event.get("kind")
+        if kind == "select:landing":
+            for entry in event.get("ran") if isinstance(event.get("ran"), list) else []:
+                if isinstance(entry, dict):
+                    out.append({"kind": kind, "task": event.get("task"),
+                                "path": entry.get("path"),
+                                "exit": _exit_int(entry.get("exit"))})
+        elif kind == "fold:verify":
+            for entry in event.get("ran") if isinstance(event.get("ran"), list) else []:
+                if isinstance(entry, dict):
+                    out.append({"kind": kind, "task": event.get("task"),
+                                "cmd": entry.get("cmd"),
+                                "exit": _exit_int(entry.get("exit"))})
+        else:
+            out.append(event)
+    return out
+
+
 def _is_driver_run(event):
-    return event.get("kind") in DRIVER_RUN_KINDS
+    return event.get("kind") in RUN_KINDS
+
+
+def _is_selected_test(event):
+    return event.get("kind") == "select:landing"
+
+
+def _paths_of(event):
+    """The test paths one run entry names: a selected test's entry names its
+    one `path`; every other entry names what its `cmd` names."""
+    if _is_selected_test(event):
+        path = event.get("path")
+        return [str(path)] if path else []
+    return test_paths_of(event.get("cmd"))
 
 
 def _is_red(event):
@@ -162,7 +280,8 @@ def _same_run(a, b):
     same task — the pair M1 reads a red and its green out of."""
     return (a.get("kind") == b.get("kind")
             and str(a.get("task")) == str(b.get("task"))
-            and a.get("cmd") == b.get("cmd"))
+            and a.get("cmd") == b.get("cmd")
+            and a.get("path") == b.get("path"))
 
 
 def _next_same_run(events, start, red):
@@ -183,12 +302,36 @@ def _fix_round_between(events, start, stop, task):
     `fix:1:0` credit their path once (M6)."""
     label = None
     for pos in range(start + 1, stop):
-        event = events[pos]
-        if event.get("kind") != "worker:end":
-            continue
-        if str(event.get("label") or "").startswith(FIX_LABEL % task):
-            label = str(event.get("label"))
+        if _is_fix_round(events[pos], task):
+            label = str(events[pos].get("label"))
     return label
+
+
+def _verdict_after(events, pos, kind, task, path):
+    """Whether a row of `kind` for `task` naming `path` follows position
+    `pos` — the engine's own verdict on a selected test, which it writes
+    right after the test's red."""
+    for event in events[pos + 1:]:
+        if (event.get("kind") == kind and str(event.get("task")) == task
+                and event.get("path") == path):
+            return True
+    return False
+
+
+def _selected_outcome(events, pos, task, path, writes):
+    """One of `OUTCOMES` for a selected test that was red in the candidate.
+    The engine judged it already, so nothing here pairs it with a later
+    green: a `catch` row is `caught` (unless the test was the task's own to
+    write), a `select:red-at-base` row is `stayed-red`, and a red the engine
+    wrote no verdict for is `no-green`."""
+    if _verdict_after(events, pos, CATCH_KIND, task, path) \
+            and path not in writes.get(task, []):
+        return CAUGHT
+    if path in writes.get(task, []):
+        return TASK_WRITES
+    if _verdict_after(events, pos, RED_AT_BASE_KIND, task, path):
+        return STAYED_RED
+    return NO_GREEN
 
 
 def _outcome_of(events, pos, red, task, path, exam_edited, writes,
@@ -238,9 +381,10 @@ def derive_catches(run_dir):
     about: `catch_report.py`'s tree walk over the repository is the only source
     of `unobserved` rows."""
     run_dir = Path(run_dir)
-    events = read_events(run_dir)
+    events = _facts(read_events(run_dir))
     report = _read_json(run_dir / "report.json")
     receipt = _read_json(run_dir / "receipt.json")
+    plan_writes = _plan_writes(run_dir)
     # When the run started, as its own status page says — the clock the
     # report's per-test window is measured against (first ratchet, task 2).
     # A run with no page, or a page with no `startedAt`, carries null, and the
@@ -252,40 +396,67 @@ def derive_catches(run_dir):
     # "Neither readable" means neither file is a JSON object: `_read_json`
     # returns None for a missing, unreadable or malformed file, and a bare
     # string or list is no record either (#860).
-    have_record = isinstance(report, dict) or isinstance(receipt, dict)
+    have_record = (isinstance(report, dict) or isinstance(receipt, dict)
+                   or plan_writes is not None)
     exam_edited = _exam_edited(report)
-    writes = _writes(receipt)
+    # The receipt is the wave engine's record of what each task wrote and the
+    # plan's Files the factory's; a run that carries both answers with the
+    # receipt, the record the engine itself compiled.
+    writes = _writes(receipt) if isinstance(receipt, dict) else (plan_writes or {})
 
     opened = next((e for e in events if e.get("kind") == "run:open"), None)
+    # The wave engine opened its log with a `runId`; the factory writes no
+    # `run:open`, and its `status.json` carries the number as `run`, so the
+    # id is spelled `run-<N>` there — the shape the ledger already holds.
+    run_id = opened.get("runId") if isinstance(opened, dict) else None
+    if run_id is None and isinstance(status, dict) \
+            and isinstance(status.get("run"), (str, int)) \
+            and not isinstance(status.get("run"), bool):
+        run_id = "run-%s" % status["run"]
 
     driver_runs = 0
     exercised = {}                      # test path -> set of writes paths
     reds = []
     credits = {}                        # test path -> set of crediting rounds
     for pos, event in enumerate(events):
+        task = str(event.get("task"))
+        if event.get("kind") in (CATCH_KIND, RED_AT_BASE_KIND):
+            # The engine's verdict rows name the test too (M4), and a `catch`
+            # is a credit in its own right (M3): one per row, keyed on the
+            # row's place in the log, unless the test was the task's to write.
+            path = event.get("path")
+            if path:
+                exercised.setdefault(str(path), set()).update(writes.get(task, []))
+                if event.get("kind") == CATCH_KIND \
+                        and str(path) not in writes.get(task, []):
+                    credits.setdefault(str(path), set()).add("catch:%d" % pos)
+            continue
         if not _is_driver_run(event):
             continue
         driver_runs += 1
-        task = str(event.get("task"))
-        paths = test_paths_of(event.get("cmd"))
+        paths = _paths_of(event)
         for path in dict.fromkeys(paths):
             # M7: a task exercises every test path its runs name, red or green.
             exercised.setdefault(path, set()).update(writes.get(task, []))
         if not _is_red(event):
             continue
         for path in dict.fromkeys(paths):
-            outcome, label = _outcome_of(events, pos, event, task, path,
-                                         exam_edited, writes, have_record)
+            if _is_selected_test(event):
+                outcome, label = _selected_outcome(events, pos, task, path,
+                                                   writes), None
+            else:
+                outcome, label = _outcome_of(events, pos, event, task, path,
+                                             exam_edited, writes, have_record)
             reds.append({"task": task, "kind": event.get("kind"),
                          "path": path, "cmd": event.get("cmd"),
                          "outcome": outcome})
-            if outcome == CAUGHT:
+            if outcome == CAUGHT and label is not None:
                 credits.setdefault(path, set()).add(label)
 
     touched = sorted({path for paths in writes.values() for path in paths})
     return {
         "kind": ROW_KIND,
-        "runId": opened.get("runId") if isinstance(opened, dict) else None,
+        "runId": run_id,
         "startedAt": started_at,
         "driverRuns": driver_runs,
         "catches": {path: len(rounds) for path, rounds in credits.items()},
@@ -443,6 +614,12 @@ def fetch_runs(target, first, last, into, gh="gh"):
             body = _fetch_file(command, target, root + name, ref)
             if body is not None:
                 (directory / name).write_bytes(body)
+        # The plan sits at the repository root on the same ref, and lands in
+        # the run directory as `plan.md`; one that does not answer is simply
+        # absent, like the three above.
+        plan = _fetch_file(command, target, PLAN_PATH, ref)
+        if plan is not None:
+            (directory / PLAN_FILE).write_bytes(plan)
         written.append(number)
     return written
 
