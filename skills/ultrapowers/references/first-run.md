@@ -140,6 +140,10 @@ Three things this command hides:
   carries `claude-token`'s own status line too — a laptop with no refresh token
   in its keychain is a warning inside a green row, because the bearer already
   lives at the edge and only the next refresh needs the keychain.
+- **The row also carries the account's usage windows.** Beside the token
+  status line, the detail shows the configured account's seven-day and
+  five-hour utilization and reset times, read with `claude-token.mjs usage
+  --json --no-rotate` — a read that never rotates the token.
 
 ## accounts
 

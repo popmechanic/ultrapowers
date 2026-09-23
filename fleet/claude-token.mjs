@@ -447,12 +447,18 @@ export function accounts (deps) {
 
 // One row per entry. An entry whose record already holds an unexpired access
 // token is read with it; any other is rotated first — under the lock, one grant,
-// and never installed at the edge (see the header).
-async function usageRow (deps, name) {
+// and never installed at the edge (see the header) — unless `rotate` is false,
+// in which case an expired (or accessToken-less) record answers `unread`
+// without ever touching `refresh`: no lock, no grant, no keychain write.
+async function usageRow (deps, name, { rotate = true } = {}) {
   const unread = (reason) => ({ name, fiveHour: null, sevenDay: null, unread: true, reason })
   const rec = readRecord(deps, name)
-  let accessToken = rec?.accessToken && rec.expiresAt > deps.now() ? rec.accessToken : null
+  const now = deps.now()
+  let accessToken = rec?.accessToken && rec.expiresAt > now ? rec.accessToken : null
   if (!accessToken) {
+    if (!rotate) {
+      return unread(`access token expired ${iso(rec?.expiresAt ?? now)}; not rotated (--no-rotate)`)
+    }
     try {
       await refresh(deps, { force: true, account: name, install: false })
     } catch (err) {
@@ -478,11 +484,15 @@ async function usageRow (deps, name) {
   return { name, fiveHour, sevenDay, unread: false, reason: null }
 }
 
-export async function usage (deps) {
+export async function usage (deps, { account = null, rotate = true } = {}) {
   const rows = []
+  // `account` given: meter only that name, whether or not `keychainList()`
+  // lists it (an account added with `login --no-install` still meters).
+  // `account` null: every listed name, today's behaviour.
+  const names = account != null ? [account] : (deps.keychainList() ?? [])
   // Serial, not parallel: the rotation legs share one lock, and a row that
   // cannot be read is still answered, so no failure takes the table down.
-  for (const name of deps.keychainList() ?? []) rows.push(await usageRow(deps, name))
+  for (const name of names) rows.push(await usageRow(deps, name, { rotate }))
   return rows
 }
 
@@ -502,12 +512,12 @@ export function renderUsage (rows) {
 // ---- the command line ---------------------------------------------------------
 
 const VERBS = ['login', 'refresh', 'status', 'accounts', 'usage']
-const USAGE_LINE = 'usage: node fleet/claude-token.mjs login [--code-from-clipboard] [--account <name>] [--no-install] | refresh [--force] [--account <name>] [--no-install] | status [--account <name>] | accounts [--json] | usage [--json]'
+const USAGE_LINE = 'usage: node fleet/claude-token.mjs login [--code-from-clipboard] [--account <name>] [--no-install] | refresh [--force] [--account <name>] [--no-install] | status [--account <name>] | accounts [--json] | usage [--json] [--account <name>] [--no-rotate]'
 
 // `--account` takes the token after the flag; the rest are bare. Every value is
 // checked here, which is before any keychain read, token request or lobby verb.
 function parseArgs (rest) {
-  const opts = { account: DEFAULT_ACCOUNT, install: true, force: false, codeFromClipboard: false, json: false }
+  const opts = { account: DEFAULT_ACCOUNT, accountGiven: false, install: true, force: false, codeFromClipboard: false, json: false, rotate: true }
   for (let i = 0; i < rest.length; i += 1) {
     const arg = rest[i]
     if (arg === '--account') {
@@ -516,10 +526,12 @@ function parseArgs (rest) {
       if (value === undefined) throw new Error('--account needs a name: --account <name>')
       if (!ACCOUNT_RE.test(value)) throw new Error(`--account ${JSON.stringify(value)} is not a name matching ${ACCOUNT_RE.source}`)
       opts.account = value
+      opts.accountGiven = true
     } else if (arg === '--no-install') opts.install = false
     else if (arg === '--force') opts.force = true
     else if (arg === '--code-from-clipboard') opts.codeFromClipboard = true
     else if (arg === '--json') opts.json = true
+    else if (arg === '--no-rotate') opts.rotate = false
     else throw new Error(USAGE_LINE)
   }
   return opts
@@ -539,7 +551,7 @@ export async function main (argv, deps = defaultDeps()) {
     else for (const row of rows) deps.log(`${row.name} expires ${row.expiresAt} (${minutes(Date.parse(row.expiresAt) - deps.now())} min)`)
     return rows
   }
-  const rows = await usage(deps)
+  const rows = await usage(deps, { account: opts.accountGiven ? opts.account : null, rotate: opts.rotate })
   write(opts.json ? `${JSON.stringify(rows)}\n` : `${renderUsage(rows)}\n`)
   return rows
 }

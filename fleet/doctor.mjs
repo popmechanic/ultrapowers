@@ -108,6 +108,7 @@ const READS = Object.freeze({
   list: 'ssh exe.dev "integrations list --json"',
   github: 'ssh exe.dev "integrations setup github --list"',
   token: `node ${CLAUDE_TOKEN} status`,
+  usage: `node ${CLAUDE_TOKEN} usage --json --no-rotate`,
   accounts: `node ${CLAUDE_TOKEN} accounts --json`,
   kataPolicy: 'ssh exe.dev "integrations policy get kata --json"',
   kataVm: 'ssh exe.dev "ls kata-hub --json"'
@@ -468,28 +469,58 @@ export function parsePolicy (stdout) {
 // ── claude ───────────────────────────────────────────────────────────────────
 
 /**
+ * `usage --json --no-rotate`'s first row, read for its own detail suffix: the
+ * account's seven-day and five-hour windows when the row reads clean, or
+ * `usage unread — <reason>` when it does not — a non-zero exit reads as
+ * `usage answered code <code>`, an `unread: true` row as its own `reason`.
+ * A read never rotates the token; that is the point of `--no-rotate`.
+ */
+function usageSuffix (usageRes) {
+  if (usageRes.code !== 0) {
+    return `; usage unread — usage answered code ${usageRes.code}`
+  }
+  let parsed
+  try {
+    parsed = JSON.parse(usageRes.stdout)
+  } catch {
+    parsed = null
+  }
+  const first = Array.isArray(parsed) ? parsed[0] : undefined
+  if (first === undefined || first.unread) {
+    const reason = first?.reason ?? 'no readable JSON'
+    return `; usage unread — ${reason}`
+  }
+  const { sevenDay, fiveHour } = first
+  return `; 7d ${sevenDay.utilization}% resets ${sevenDay.resetsAt}` +
+    `; 5h ${fiveHour.utilization}% resets ${fiveHour.resetsAt}`
+}
+
+/**
  * The bearer has to exist at the edge. Whether the object reaches a fleet VM
  * is the `integrations` row's question (its policy), not this one's.
  *
  * claude-token's status line only decorates the row. Either outcome leaves the
  * status alone — the bearer is injected at the edge whether or not this laptop
- * still holds the refresh token — and only the detail differs.
+ * still holds the refresh token — and only the detail differs. The usage
+ * window reading rides beside it, appended to `detail` either way, so the
+ * reading is visible whether or not the bearer is found.
  */
-function claudeRow (found, tokenRes) {
+function claudeRow (found, tokenRes, usageRes) {
+  const suffix = usageSuffix(usageRes)
   if (found === null) {
-    return row('claude', 'missing', 'integrations list printed no readable JSON')
+    return row('claude', 'missing', `integrations list printed no readable JSON${suffix}`)
   }
   const have = found.get(OAUTH_INTEGRATION)
   if (have === undefined || !have.bearer) {
     const why = have === undefined
       ? `no ${OAUTH_INTEGRATION} integration at the edge`
       : `${OAUTH_INTEGRATION} carries no ${BEARER} header`
-    return row('claude', 'missing', `${why} — node fleet/claude-token.mjs login`)
+    return row('claude', 'missing', `${why} — node fleet/claude-token.mjs login${suffix}`)
   }
   const status = tokenRes.code === 0 && firstLine(tokenRes.stdout) !== ''
     ? firstLine(tokenRes.stdout)
     : 'no refresh token in the keychain — the bearer will not be refreshed before a run'
-  return row('claude', 'ok', `${OAUTH_INTEGRATION} carries the bearer at the edge; ${status}`)
+  return row('claude', 'ok', `${OAUTH_INTEGRATION} carries the bearer at the edge; ${status}${suffix}`)
 }
 
 // ── accounts ─────────────────────────────────────────────────────────────────
@@ -865,6 +896,11 @@ export async function doctor ({
   // The status read names the configured account (`fleet.json` `account`), never
   // the code's default: the keychain entries are named by email since 2026-09-11.
   const token = await run(wantAccount ? `${READS.token} --account ${wantAccount}` : READS.token)
+  // The usage read carries `--account` before `--no-rotate`, unlike the token
+  // read's trailing clause, and never rotates the token it reads.
+  const usage = await run(wantAccount
+    ? `node ${CLAUDE_TOKEN} usage --json --account ${wantAccount} --no-rotate`
+    : READS.usage)
   const accounts = await run(READS.accounts)
   // The hub's two reads: the policy that grants it, then the VM behind it.
   const kataPolicy = await run(READS.kataPolicy)
@@ -882,7 +918,7 @@ export async function doctor ({
   const rows = [
     exeDevRow(whoami),
     capacityRow(billing, cfg, configKeys),
-    claudeRow(found, token),
+    claudeRow(found, token, usage),
     accountsRow(accounts, found, wantAccount),
     githubRow(github),
     integrationsRow(found, want, policies),

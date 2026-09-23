@@ -162,6 +162,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `ultra/*-run-*` branches and `ultra/{plan,evidence}/run-*` tags for N → refuse when `integrations list --json` has no `gh-<owner>-<repo>` (the fix
   named is `node fleet/target.mjs <owner>/<repo>`; a public target would still clone from github.com
   but could not push or open its PR, so it is not launched) → `node fleet/claude-token.mjs refresh` →
+  read the account's usage windows (`node fleet/claude-token.mjs usage --json --account <account>
+  --no-rotate`) and refuse a reading at or past 95% of either window, naming the account and the
+  reset time, before any push (#1114); under the wall, the launch line carries
+  `usage: <account> 7d <n>% resets <iso>; 5h <n>% resets <iso>` →
   kata: the run filed on the hub, for each push attempt's N and before that attempt's plan commit is
   built — `plan_parse.py <plan>` (the launch's second call; the old compiler's per-task `factsheet`
   left with it at cut B, 2026-09-21 — nothing in the factory read it), one project `<owner>-<repo>` (slashes in the

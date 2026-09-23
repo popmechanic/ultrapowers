@@ -14,6 +14,12 @@ export function isGatewayError (error) {
   return /API Error: 5\d\d/.test(s) || /\b529\b/.test(s) || /Overloaded/i.test(s)
 }
 
+export function isRateLimited (error) {
+  if (error === null || error === undefined) return false
+  const s = String(error)
+  return /\b429\b/.test(s) || /rate_limit_error/i.test(s) || /rate limit/i.test(s) || /weekly limit/i.test(s)
+}
+
 export function infraBackoffMs (policy) {
   return Number(policy?.dispatch?.infra_backoff_ms?.value) || 0
 }
@@ -25,8 +31,16 @@ export function shouldRetry ({ error, turns, policy }) {
 const defaultSleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 export function retrying (once, { policy, sleep = defaultSleep } = {}) {
+  let halted = null
   return async (opts) => {
+    if (halted !== null) {
+      return { result: null, denials: [], turns: 0, error: 'rate-limited: ' + halted, halted: true }
+    }
     const first = await once(opts)
+    if (isRateLimited(first.error)) {
+      halted = first.error
+      return first
+    }
     if (opts.retry_of || !shouldRetry({ error: first.error, turns: first.turns, policy })) {
       return first
     }
@@ -35,4 +49,4 @@ export function retrying (once, { policy, sleep = defaultSleep } = {}) {
   }
 }
 
-export default { isGatewayError, infraBackoffMs, shouldRetry, retrying }
+export default { isGatewayError, isRateLimited, infraBackoffMs, shouldRetry, retrying }
