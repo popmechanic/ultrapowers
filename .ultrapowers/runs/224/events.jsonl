@@ -52,3 +52,62 @@
 {"ts":"2026-09-23T01:28:44.308Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Write","target":"/home/exedev/run/exam-1/fleet/tests/test_factory_redkind.mjs"}
 {"ts":"2026-09-23T01:28:46.042Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__run_exam"}
 {"ts":"2026-09-23T01:28:46.081Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"node fleet/tests/test_factory_redkind.mjs","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-23T01:28:46.886Z","kind":"check:line","task":"4","cmd":"git diff --quiet $ULTRA_BASE -- factory/union.mjs factory/worker.mjs factory/judge.mjs factory/questions.json factory/boot.sh fleet/fleet-bootstrap.sh skills/ultrapowers/kernel","exit":0,"minor":false}
+{"ts":"2026-09-23T01:28:46.886Z","kind":"fold:verify","task":"4","ran":[],"attempt":1}
+{"ts":"2026-09-23T01:28:48.969Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"Bash","target":"node fleet/tests/test_factory_redkind.mjs 2>&1 | head -20"}
+{"ts":"2026-09-23T01:28:49.042Z","kind":"worker:test-run","task":"1","label":"exam:1","cmd":"node fleet/tests/test_factory_redkind.mjs 2>&1 | head -20","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-23T01:28:49.203Z","kind":"jev","site":"supervisor","task":"1","label":"exam:1","keys":["stuck","off_track","needs_human","done_not_exited"],"values":{"stuck":{"type":"noul","noul":0.18},"off_track":{"type":"noul","noul":0.23},"needs_human":{"type":"noul","noul":0.13},"done_not_exited":{"type":"noul","noul":0.16}},"state_bytes":156,"ms":234,"answered":true}
+{"ts":"2026-09-23T01:28:49.203Z","kind":"supervisor","task":"1","label":"exam:1","answers":{"stuck":{"type":"noul","noul":0.18},"off_track":{"type":"noul","noul":0.23},"needs_human":{"type":"noul","noul":0.13},"done_not_exited":{"type":"noul","noul":0.16}}}
+{"ts":"2026-09-23T01:28:58.610Z","kind":"worker:tool","task":"1","label":"exam:1","tool":"mcp__factory__note"}
+{"ts":"2026-09-23T01:29:03.055Z","kind":"supervisor:observed","task":"1","label":"exam:1","skipped":"under floor","elapsed_ms":75099,"min_elapsed_ms":120000}
+{"ts":"2026-09-23T01:29:03.191Z","kind":"dispatch:end","task":"1","label":"exam:1","role":"exam","wall_ms":75235,"cost_usd":0.21100419999999998,"error":null,"model":"claude-sonnet-5","models":["claude-sonnet-5"]}
+{"ts":"2026-09-23T01:29:03.325Z","kind":"dispatch:start","task":"1","label":"impl:1:0","role":"implement"}
+{"ts":"2026-09-23T01:29:04.328Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"grep -n \"redKind\\|rigRound\" -r /home/exedev/run/exam-3/factory 2>/dev/null; ls /home/exedev/run/exam-3/factory | grep -i redkind"}
+{"ts":"2026-09-23T01:29:06.304Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"ls -la /home/exedev/run/impl-1-0/fleet/tests/ 2>/dev/null | grep redkind; cat /home/exedev/run/impl-1-0/fleet/tests/test_factory_redkind.mjs 2>/dev/null"}
+{"ts":"2026-09-23T01:29:06.372Z","kind":"worker:test-run","task":"1","label":"impl:1:0","cmd":"ls -la /home/exedev/run/impl-1-0/fleet/tests/ 2>/dev/null | grep redkind; cat /home/exedev/run/impl-1-0/fleet/tests/test_factory_redkind.mjs 2>/dev/null","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-23T01:29:07.343Z","kind":"jev","site":"supervisor","task":"3","label":"exam:3","keys":["stuck","off_track","needs_human","done_not_exited"],"values":{"stuck":{"type":"noul","noul":0.11},"off_track":{"type":"noul","noul":0.28},"needs_human":{"type":"noul","noul":0.09},"done_not_exited":{"type":"noul","noul":0.07}},"state_bytes":323,"ms":220,"answered":true}
+{"ts":"2026-09-23T01:29:07.343Z","kind":"supervisor","task":"3","label":"exam:3","answers":{"stuck":{"type":"noul","noul":0.11},"off_track":{"type":"noul","noul":0.28},"needs_human":{"type":"noul","noul":0.09},"done_not_exited":{"type":"noul","noul":0.07}}}
+{"ts":"2026-09-23T01:29:12.114Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Write","target":"/home/exedev/run/impl-1-0/factory/redkind.mjs"}
+{"ts":"2026-09-23T01:29:12.220Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Write","target":"/home/exedev/run/exam-2/fleet/tests/test_factory_reverify.mjs"}
+{"ts":"2026-09-23T01:29:12.895Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-23T01:29:12.935Z","kind":"worker:test-run","task":"1","label":"impl:1:0","cmd":"node fleet/tests/test_factory_redkind.mjs","exit":0,"red":false,"via":"run_exam"}
+{"ts":"2026-09-23T01:29:13.202Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-23T01:29:13.253Z","kind":"worker:test-run","task":"2","label":"exam:2","cmd":"node fleet/tests/test_factory_reverify.mjs","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-23T01:29:13.473Z","kind":"jev","site":"supervisor","task":"2","label":"exam:2","keys":["stuck","off_track","needs_human","done_not_exited"],"values":{"stuck":{"type":"noul","noul":0.21},"off_track":{"type":"noul","noul":0.22},"needs_human":{"type":"noul","noul":0.11},"done_not_exited":{"type":"noul","noul":0.12}},"state_bytes":151,"ms":276,"answered":true}
+{"ts":"2026-09-23T01:29:13.473Z","kind":"supervisor","task":"2","label":"exam:2","answers":{"stuck":{"type":"noul","noul":0.21},"off_track":{"type":"noul","noul":0.22},"needs_human":{"type":"noul","noul":0.11},"done_not_exited":{"type":"noul","noul":0.12}}}
+{"ts":"2026-09-23T01:29:13.978Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__settled"}
+{"ts":"2026-09-23T01:29:16.644Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"Bash","target":"node fleet/tests/test_factory_reverify.mjs; echo \"EXIT:$?\""}
+{"ts":"2026-09-23T01:29:16.723Z","kind":"worker:test-run","task":"2","label":"exam:2","cmd":"node fleet/tests/test_factory_reverify.mjs; echo \"EXIT:$?\"","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-23T01:29:18.592Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__note"}
+{"ts":"2026-09-23T01:29:20.067Z","kind":"supervisor:observed","task":"1","label":"impl:1:0","skipped":"under floor","elapsed_ms":16741,"min_elapsed_ms":120000}
+{"ts":"2026-09-23T01:29:20.224Z","kind":"dispatch:end","task":"1","label":"impl:1:0","role":"implement","wall_ms":16898,"cost_usd":0.0926758,"error":null,"model":"claude-sonnet-5","models":["claude-sonnet-5"]}
+{"ts":"2026-09-23T01:29:20.280Z","kind":"run:line","task":"1","cmd":"test 0 -eq $(grep -c '^import ' factory/redkind.mjs)","exit":0}
+{"ts":"2026-09-23T01:29:20.497Z","kind":"jev","site":"landing","task":"1","label":"impl:1:0","keys":["claim_established","claim_established_given_assertions","M1__facts","M2__facts","M3__facts","M4__facts","M1__f0","M1__f1","M2__f0","M2__f1","M3__f0","M3__f1"],"values":{"claim_established":{"type":"noul","noul":0.87},"claim_established_given_assertions":{"type":"noul","noul":0.75},"M1__facts":{"type":"noul","noul":0.9},"M2__facts":{"type":"noul","noul":0.93},"M3__facts":{"type":"noul","noul":0.9},"M4__facts":{"type":"noul","noul":0.96},"M1__f0":{"type":"noul","noul":0.96},"M1__f1":{"type":"noul","noul":0.21},"M2__f0":{"type":"noul","noul":0.95},"M2__f1":{"type":"noul","noul":0.55},"M3__f0":{"type":"noul","noul":0.92},"M3__f1":{"type":"noul","noul":0.54}},"state_bytes":15733,"ms":205,"answered":true}
+{"ts":"2026-09-23T01:29:20.497Z","kind":"landing:facts","task":"1","settled":[null,null,null,1],"claim":0.87,"claimGivenFacts":0.75,"perClause":[0.9,0.93,0.9,0.96],"assertionChars":465,"facts":2}
+{"ts":"2026-09-23T01:29:20.556Z","kind":"dispatch:on-candidate","task":"2","from":"1","anchor":"640041532dbc7ea9c7d7c9ff870e1cbea5111225"}
+{"ts":"2026-09-23T01:29:20.556Z","kind":"dispatch:on-candidate","task":"3","from":"1","anchor":"640041532dbc7ea9c7d7c9ff870e1cbea5111225"}
+{"ts":"2026-09-23T01:29:20.717Z","kind":"jev","site":"pair.candidate","task":"1","label":null,"keys":["changes_consumer"],"values":{"changes_consumer":{"type":"noul","noul":0.16}},"state_bytes":6996,"ms":219,"answered":true}
+{"ts":"2026-09-23T01:29:20.717Z","kind":"pair:candidate","a":"1","b":"2","changes":false,"score":0.16}
+{"ts":"2026-09-23T01:29:20.871Z","kind":"jev","site":"pair.candidate","task":"1","label":null,"keys":["changes_consumer"],"values":{"changes_consumer":{"type":"noul","noul":0.15}},"state_bytes":6996,"ms":153,"answered":true}
+{"ts":"2026-09-23T01:29:20.871Z","kind":"pair:candidate","a":"1","b":"3","changes":false,"score":0.15}
+{"ts":"2026-09-23T01:29:21.120Z","kind":"jev","site":"select.guards","task":"1","label":"impl:1:0","keys":["g0"],"values":{"g0":{"type":"noul","noul":0.05}},"state_bytes":10056,"ms":201,"answered":true}
+{"ts":"2026-09-23T01:29:21.121Z","kind":"select:landing","task":"1","candidates":["fleet/tests/test_sims_are_hermetic.mjs"],"selected":[],"ran":[],"why":{"fleet/tests/test_sims_are_hermetic.mjs":"hermetic"}}
+{"ts":"2026-09-23T01:29:21.121Z","kind":"floor","task":"1","exam":0,"lowest":0.92,"excluded":[],"fired":false}
+{"ts":"2026-09-23T01:29:21.121Z","kind":"referee:trigger","task":"1","trigger":"none","clause":{"m":3,"text":"`rigRound({ attempt, red, enabled })` returns exactly `true` only when `attempt` is `1`, `red` is `'rig'` and `enabled` is `true`; each of `attempt: 2`, `red: 'leg'`, `red: null` and `enabled: false`, varied one at a time off that base call, returns exactly `false`.","score":0.92},"min_coverage":0.8}
+{"ts":"2026-09-23T01:29:21.405Z","kind":"landing","task":"1","k":1,"examExit":0,"claim":0.87,"coverage":[0.96,0.95,0.92,1],"candidateSha":"906a1fadcccd52a11f1b42eabba90c2d0b10eaae","candidates":[{"index":0,"examExit":0,"claim":0.87,"coverage":[0.96,0.95,0.92,1],"score":11.8275}],"chosen":0,"margin":null,"wall_ms":92329}
+{"ts":"2026-09-23T01:29:21.674Z","kind":"check:line","task":"1","cmd":"git diff --quiet $ULTRA_BASE -- factory/union.mjs factory/worker.mjs factory/judge.mjs factory/questions.json factory/boot.sh fleet/fleet-bootstrap.sh skills/ultrapowers/kernel","exit":0,"minor":false}
+{"ts":"2026-09-23T01:29:21.674Z","kind":"fold:verify","task":"1","ran":[{"task":"1","exit":0}],"attempt":1}
+{"ts":"2026-09-23T01:29:30.854Z","kind":"worker:tool","task":"2","label":"exam:2","tool":"mcp__factory__note"}
+{"ts":"2026-09-23T01:29:32.675Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Write","target":"/home/exedev/run/exam-3/fleet/tests/test_factory_exam_selfcheck.mjs"}
+{"ts":"2026-09-23T01:29:34.166Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-23T01:29:34.241Z","kind":"worker:test-run","task":"3","label":"exam:3","cmd":"node fleet/tests/test_factory_exam_selfcheck.mjs","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-23T01:29:36.221Z","kind":"supervisor:observed","task":"2","label":"exam:2","skipped":"under floor","elapsed_ms":108287,"min_elapsed_ms":120000}
+{"ts":"2026-09-23T01:29:36.347Z","kind":"dispatch:end","task":"2","label":"exam:2","role":"exam","wall_ms":108412,"cost_usd":0.3070452,"error":null,"model":"claude-sonnet-5","models":["claude-sonnet-5"]}
+{"ts":"2026-09-23T01:29:36.549Z","kind":"dispatch:start","task":"2","label":"impl:2:0","role":"implement"}
+{"ts":"2026-09-23T01:29:38.134Z","kind":"worker:tool","task":"3","label":"exam:3","tool":"Bash","target":"node fleet/tests/test_factory_exam_selfcheck.mjs 2>&1 | head -30"}
+{"ts":"2026-09-23T01:29:38.245Z","kind":"worker:test-run","task":"3","label":"exam:3","cmd":"node fleet/tests/test_factory_exam_selfcheck.mjs 2>&1 | head -30","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-23T01:29:38.445Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"cat factory/reverify.mjs"}
+{"ts":"2026-09-23T01:29:39.027Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"cat factory/redkind.mjs 2>/dev/null; echo \"---policy---\"; cat factory/policy.json"}
+{"ts":"2026-09-23T01:29:40.466Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"ls fleet/tests/ | grep -i reverify; cat fleet/tests/test_factory_reverify.mjs 2>/dev/null; echo \"---\"; ls fleet/tests | head -20"}
+{"ts":"2026-09-23T01:29:40.516Z","kind":"worker:test-run","task":"2","label":"impl:2:0","cmd":"ls fleet/tests/ | grep -i reverify; cat fleet/tests/test_factory_reverify.mjs 2>/dev/null; echo \"---\"; ls fleet/tests | head -20","exit":null,"red":null,"via":"bash"}
+{"ts":"2026-09-23T01:29:42.147Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/factory/reverify.mjs"}
