@@ -225,13 +225,14 @@ function workspace () {
 }
 
 const argvFor = (ws) => [ws.planPath, '--target', TARGET, '--base', ws.repo.base, '--repo', ws.repo.dir, '--engine', ENGINE]
-const launchIn = (ws, { exec, refreshCredential }) => launch({
+const launchIn = (ws, { exec, refreshCredential, readUsage }) => launch({
   argv: argvFor(ws),
   exec,
   config: CAPPED,
   now: () => NOW,
   sleep: async () => {},
   refreshCredential,
+  ...(readUsage === undefined ? {} : { readUsage }),
   kata: null
 })
 

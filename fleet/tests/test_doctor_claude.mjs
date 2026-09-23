@@ -50,7 +50,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { execSync } from 'node:child_process'
+import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -164,11 +164,15 @@ const claudeRowOf = (result) => result.rows.find((r) => r.id === 'claude')
 
 // ── (d) [M4] first-run.md §claude, via the task's own Run: guard ───────────
 {
-  const guard = "sed -n '/^## claude/,/^## /p' skills/ultrapowers/references/first-run.md | grep -q 'seven-day'"
-  assert.doesNotThrow(
-    () => execSync(guard, { cwd: REPO_ROOT, shell: '/bin/bash' }),
-    `(d) [M4] first-run.md §claude names the seven-day reading — guard failed: ${guard}`
-  )
+  // Read in-process, never a spawned shell: the hermetic rule
+  // (test_sims_are_hermetic.mjs M2) wants every spawn under simEnv.
+  const doc = fs.readFileSync(path.join(REPO_ROOT, 'skills/ultrapowers/references/first-run.md'), 'utf8')
+  const start = doc.indexOf('\n## claude\n')
+  assert.ok(start !== -1, '(d) [M4] first-run.md carries a `## claude` section')
+  const rest = doc.slice(start + 1)
+  const next = rest.indexOf('\n## ', 1)
+  const section = next === -1 ? rest : rest.slice(0, next)
+  assert.ok(section.includes('seven-day'), '(d) [M4] first-run.md §claude names the seven-day reading')
 }
 
 console.log('ALL TESTS PASSED')
