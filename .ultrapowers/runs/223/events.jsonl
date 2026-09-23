@@ -281,3 +281,12 @@
 {"ts":"2026-09-23T00:15:15.113Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/fleet/tests/test_launch_credential.mjs"}
 {"ts":"2026-09-23T00:15:17.461Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"mcp__factory__run_exam"}
 {"ts":"2026-09-23T00:15:17.527Z","kind":"worker:test-run","task":"2","label":"impl:2:0","cmd":"node fleet/tests/test_launch_credential.mjs","exit":1,"red":true,"via":"run_exam"}
+{"ts":"2026-09-23T00:15:33.129Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/fleet/CONTRACT.md"}
+{"ts":"2026-09-23T00:15:36.516Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Read","target":"/home/exedev/run/impl-2-0/fleet/CONTRACT.md"}
+{"ts":"2026-09-23T00:15:42.174Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"claude-token.mjs refresh\\`\\) →\" /home/exedev/run/impl-2-0/fleet/CONTRACT.md"}
+{"ts":"2026-09-23T00:15:44.322Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"claude-token.mjs refresh\" /home/exedev/run/impl-2-0/fleet/CONTRACT.md"}
+{"ts":"2026-09-23T00:15:47.558Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"launch line\\|account=\\|token:\\|compiler=\\|kata=\\|verb-drift\" /home/exedev/run/impl-2-0/fleet/CONTRACT.md | head -40"}
+{"ts":"2026-09-23T00:15:53.033Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"run-<N>\\`, its VM\\|prints\\|renderLaunch\\|reaped \\|again run-\\|the launch text\\|status URL\\|launch prints\" /home/exedev/run/impl-2-0/fleet/CONTRACT.md | head -40"}
+{"ts":"2026-09-23T00:15:57.174Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"the launch line\\|launch's result\\|print[s]* the\\|holds the run's record\\|the lines\" /home/exedev/run/impl-2-0/fleet/CONTRACT.md"}
+{"ts":"2026-09-23T00:16:01.324Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Bash","target":"grep -n \"not rotated\\|token: fresh\\|fresh until\\|held\\b\" /home/exedev/run/impl-2-0/fleet/CONTRACT.md"}
+{"ts":"2026-09-23T00:16:13.155Z","kind":"worker:tool","task":"2","label":"impl:2:0","tool":"Edit","target":"/home/exedev/run/impl-2-0/fleet/CONTRACT.md"}
