@@ -49,7 +49,7 @@ file — `suite-total-pin`, `directory-absence-pin` and, since the compiler left
   dispatches on 2026-09-04, 18 of 25 on 2026-09-05, every rejection correct): an
   enumerated clause ("X, Y and Z are gone") needs one leg per row — a
   count-and-pass pin lets one row survive; a universal sentence ("no file under
-  tests/…") with a per-file exam is rejected — sweep the whole tree using
+  tests/…") with a per-file probe is rejected — sweep the whole tree using
   named exclusions, or narrow the derived Claim to the files the task owns; `node
   sim.mjs` exiting 0 is not the sentinel — pipe it into
   `grep -q 'ALL TESTS PASSED'`; "finishes quickly" needs a clock
@@ -123,14 +123,12 @@ file — `suite-total-pin`, `directory-absence-pin` and, since the compiler left
   rather than per round. And the provenance quote is trusted to no eyeball
   check: a `quoted from #NNN` claim is a verbatim substring of the raw issue
   body, markdown asterisks and backticks included (run-45, 2026-09-01).
-- **A `Run:` grep inside a guarded exam pins another file's wording, and
-  wording folds.** On run-13, `set-filter.test.ts` leg (g) grepped
-  `lint-cli.test.ts` for the literal `toContain('setFilter')`, and run-12's
-  publish fold had already merged that file semantically, so the literal was
-  gone. A guarded exam asserts behaviour through imports and calls; a text
-  pin on a sibling file belongs in a `Run:` line of the plan, and
-  never in the merged exam (run-13 and run-12, popmechanic/tinyapp-fixture,
-  2026-09-15; #1019).
+- **A `Run:` grep pins another file's wording, and wording folds.** On run-13,
+  `set-filter.test.ts` leg (g) grepped `lint-cli.test.ts` for the literal
+  `toContain('setFilter')`, and run-12's publish fold had already merged that file
+  semantically, so the literal was gone. A text pin on a sibling file belongs in a
+  `Run:` line of the plan, and wording folds (run-13 and run-12,
+  popmechanic/tinyapp-fixture, 2026-09-15; #1019).
 - **A `Run:` that names two exams at once is a sweep; do not write one.** A Proof
   `Run:` naming two or more paths under `tests/state-exams/` — or the bare
   `tests/state-exams` directory, which names all of them — was the old compiler's
@@ -172,41 +170,47 @@ file — `suite-total-pin`, `directory-absence-pin` and, since the compiler left
   fold checks red, and bought two repair attempts that could change nothing
   (fixture run-36, popmechanic/tinyapp-fixture, 2026-09-21; #1173).
 
-- **A `Check:` that freezes a path must not cover any task's own Files or `Test:` path.**
+- **A `Check:` that freezes a path must not cover any task's own Files.**
   A run-wide `git diff --quiet $ULTRA_BASE -- <paths>` is green at BASE by construction: it
-  goes red the moment a task's own patch lands under a frozen path — and on the factory an
-  exam file rides the patch into the folded tree even when it is unguarded and stripped at
-  publish. `plan_check.py` refuses such a plan outright — one line naming the check, the
+  goes red the moment a task's own patch lands under a frozen path. `plan_check.py` refuses
+  such a plan outright — one line naming the check, the
   pathspec, the task and the path, exit 2 (#1202) — so freeze files, not the directory they
-  sit in. Run-199 froze `fleet/` while its one task's exam was
+  sit in. Run-199 froze `fleet/` while its one task's probe was
   `fleet/tests/test_factory_select_dirs.mjs`: the check exited 1 on both fold passes, the
   repair could change nothing, and a task adopted green parked as `done: false` with a draft
   pull request (n=1 run, 2026-09-21) — the gate fix of #1172 working exactly as designed on a
   plan defect.
 
-- **An exam of a record other tasks also write must assert that the record carries these keys,
+- **A clause about a record other tasks also write says the record carries these keys,
   never that it has exactly these keys.** A whole-row deep-equal is lawful only over
-  a row the exam's own fake received from the one function under test — never over a row
+  a row the probe's own fake received from the one function under test — never over a row
   read back from a shared log or a shared JSON file that another task's own leg also
   writes. On run-195 (2026-09-18) one task added `ts` to every row of the run's event log
-  and the exams of two sibling tasks, each asserting a row's exact key list, went red on
+  and the probes of two sibling tasks, each asserting a row's exact key list, went red on
   the folded tree with both features right; the gate now refuses such a leg before
   dispatch.
 
-- **An end-to-end exam cannot pass in a lone clone at BASE when it drives a sibling's
-  region, and its stub must be able to answer.** A task whose exam boots the whole
-  system exercises every sibling's lines, so an assertion that only a sibling's edit
-  satisfies is red in that task's own clone whatever the task does — the author's
-  "passes at BASE" assumption is the thing to check, clause by clause, against the Files
-  of every sibling. Either the clause names only what this task's Files can change, or
-  the exam is one only the fold runs. And a rig that starts its subject with `spawnSync`
-  beside an in-process `http.createServer` stub deadlocks on itself: the stub never
-  answers while the loop is blocked, the child aborts, and the leg reads the fallback
-  value as a defect. On run-215 (2026-09-22) task 3 paid both at once — two implementers
-  and a re-dispatch, 90 worker-minutes, every one red on a `ts` a sibling wrote and on a
-  preflight stub that could not reply — where task 2's examiner had hit the same rig bug
-  in its own draft and fixed it with an async `spawn`. The retry (#1225) fixed the exam,
-  not the boot.
+- **A probe cannot pass in a lone clone at BASE when it drives a sibling's region.** A
+  task whose probe boots the whole system exercises every sibling's lines, so an
+  assertion that only a sibling's edit satisfies is red in that task's own clone
+  whatever the task does — the author's "passes at BASE" assumption is the thing to
+  check, clause by clause, against the Files of every sibling. Either the clause names
+  only what this task's Files can change, or the fold check is its measurement. On
+  run-215 (2026-09-22) task 3 was red on a `ts` a sibling wrote — two implementers and a
+  re-dispatch, 90 worker-minutes — before the clause was narrowed to what its own Files
+  could change.
+
+- **An untagged `Run:` settles nothing.** The engine settles a clause only through a
+  probe that cites it; on run-225 every landing's `settled` read null (n=1 run, 3 tasks,
+  2026-09-22) because the plan's nine probes carried no tag, and Jev read every clause
+  from the diff alone. Tag every prover.
+
+- **A probe reads what it reads, not only what its task wrote.** On run-225 task 2
+  pinned how task 1's `record.mjs` rendered a cell, the two tasks shared no file, the
+  fold check skipped the sim, and the merged tree was red by hand (#1250); since #1251
+  the fold check re-runs every adopted task's probes on every fold, so the rule for an
+  author is only to expect it: a probe green in its own clone can be red on the folded
+  tree, and that is the fold check's finding, not the task's.
 
 ## Three older lessons of the same kind
 
@@ -214,12 +218,12 @@ file — `suite-total-pin`, `directory-absence-pin` and, since the compiler left
   "today X happens" taken as the Claim is rendered false by a passing exam; the
   skill's elicitation section says so, and the instinct to quote the vivid line
   is strong (run-45, 2026-09-01).
-- **The exam's quantifier matches the claim's.** "Some swallows stay" needs an
-  exam asserting at least one survives, and an exam broader than the claim — any
+- **The probe's quantifier matches the claim's.** "Some swallows stay" needs a
+  probe asserting at least one survives, and a probe broader than the claim — any
   `raise` where the claim names `FailedLookup` — fails the same way; loosen the
-  claim or tighten the exam, deliberately (run-45, 2026-09-01).
-- **Two plan-defect species of run-45 recur:** an exam/Files enumeration
-  mismatch, where a glob exam quantifies over a directory the Files block
+  claim or tighten the probe, deliberately (run-45, 2026-09-01).
+- **Two plan-defect species of run-45 recur:** a probe/Files enumeration
+  mismatch, where a glob probe quantifies over a directory the Files block
   under-enumerates, and a contract that assumes a consumed function's behaviour
   — raising where it only advises — so read the consumed symbol before writing
   the clause that depends on it (run-45, 2026-09-01).

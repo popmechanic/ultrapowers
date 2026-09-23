@@ -11,7 +11,7 @@ description: Use when writing ANY implementation plan — this plugin's owned au
 
 A task says **what will be true** and **how that is examined**. It never says how to do
 the work: there is no Steps slot, so procedure has nowhere to live. The implementer
-derives it from a contract and an exam, against real code the plan never saw.
+derives it from a contract and its probes, against real code the plan never saw.
 
 **Announce at start:** "I'm using ultrawrite to author this plan."
 
@@ -32,14 +32,7 @@ request the run opens quotes them verbatim, so what a reader meets is what the o
 signed. It is one paragraph running to the next blank line, no markdown inside; like
 `**Closes:**` it is free prose to the compiler — nothing parses it.
 
-Beside `**Tech Stack:**`, an optional `**Exam command:**` line names how this project's
-tests are run, as a template whose `{paths}` token — exactly one — stands for a task's own
-Proof `Test:` paths (`npx vitest run {paths}`). Without it the compiler derives each task's
-command from the paths alone, and it knows only pytest, `node fleet/tests/test_*.mjs` and
-`bun test`; a `**Review:** peer` task whose Proof names some other shape is refused at
-`--check` until one of the two is true.
-
-Beside it, an optional `**Dependencies:**` line declares every package the run installs:
+Beside `**Tech Stack:**`, an optional `**Dependencies:**` line declares every package the run installs:
 one line, space-separated specs, each `name` or `name@range`, with the single word `dev:`
 marking where the development-only group begins — `**Dependencies:** tailwindcss@^4
 @tailwindcss/vite dev: eslint @shadcn/lint` declares two packages for the app and two for
@@ -89,7 +82,7 @@ conflict. Keep both markers in the contiguous run directly under the heading.
   a command cannot run a file nobody has written yet.
   An operator who does not read diffs cannot verify an edge, so no edge is signed.
 
-The Files block carries canonical `Create:` / `Modify:` / `Delete:` / `Test:` bullets, backticked
+The Files block carries canonical `Create:` / `Modify:` / `Delete:` bullets, backticked
 paths, no globs and no open write sets. It is doubly load-bearing: wave shape *and* edge
 derivation.
 
@@ -122,11 +115,10 @@ where this plan's Files sets were wrong.
   nothing refuses on its length. Steps prose smuggled in here is
   caught structurally instead: fences are illegal outside Proof, and a task-reference
   ordering phrase (`after Task 2`) orders nothing at all.
-- **Proof:** the exam — tests, golden pairs, fixtures, executable probes. The only slot
-  where code fences are legal. Its `Test:` paths must be **disjoint** from this task's
-  `Create:`/`Modify:` paths: the exam is a distinct artifact. Its legs — `(a) … (b) …` —
+- **Proof:** the plan's `Run:` probes, citing clauses, and nothing else. The only slot
+  where code fences are legal. Its legs — `(a) … (b) …` —
   **each cite the clause they establish, `[M2]`**; the compiler refuses a clause no leg
-  cites, a leg citing nothing, or a citation of a clause that does not exist. **An exam
+  cites, a leg citing nothing, or a citation of a clause that does not exist. **A probe
   computes facts and nothing else**: an exit code, a recorded argv, a byte-exact string, a
   count, an ordering of events, agreement with an oracle. A clause, or the part of one, that
   only says what the code says or how it is shaped is Jev's to read against the hunk at
@@ -147,7 +139,11 @@ where this plan's Files sets were wrong.
   paired with the clause it names: the compiler strips the tag before the driver runs the
   command, refuses a tag naming a clause the Machine line does not number, and never counts
   the tag as a citing leg (the legs still cite). A `Run:` with no tag is a *guard* — a
-  `bash -n`, a sim that must stay green. Under `--base <sha>` `plan_check.py` cuts a
+  `bash -n`, a sim that must stay green. **An untagged prover settles nothing**: the
+  engine's `settled` read null on every clause of every landing on run-225 because no probe
+  carried a tag, so Jev read every clause from the diff alone (n=1 run, 3 tasks,
+  2026-09-22) — tag every prover.
+  Under `--base <sha>` `plan_check.py` cuts a
   clean worktree at BASE and runs every `Run:` there, printing one line per command that
   exits 0 at BASE: a `GREEN-AT-BASE fact:` line naming the task and the command, ending for
   a prover `this line cannot falsify its clause` and for a guard `a guard, no leg cites it`.
@@ -158,36 +154,18 @@ where this plan's Files sets were wrong.
   runs each one once at base before the first dispatch and records it as a `check:line` row
   carrying `base: true`, so a check red before any task landed is a fact on the run's record.
   Without `--base` nothing is run.
-  A `- Guard:` bullet in this slot names **one of this Proof's own `Test:` paths**, and it
-  is the one way an exam file reaches the pull request: the peer examiner still writes the
-  exam, but the file it names is written at that path and is merged with the task. An exam
-  with no `Guard:` lives instead on the run's evidence tag `ultra/evidence/run-<N>`, and
-  publish strips it from the pull request. The examiner writes an unguarded exam under
-  `tests/exams/<run>/` — a node exam under `fleet/tests/exams/<run>/` — so a `.mjs` exam's
-  relative imports are written for that depth, two levels deeper than `fleet/tests/`, not
-  for the directory a guarded copy would sit in. Guard the claim a *later run* could break
-  — run-8's `runner_for` pin is that class, and a `Guard:` is what protects it; a claim
-  only this run's own diff can break needs none.
-  Name **one exam file per behaviour surface**, named for it (`test_fold_wave.py`, not
-  `test_<task-noun>`): a later task on that surface — a later wave or a later plan —
-  extends that file instead of opening a second one, and its legs sit under a comment
-  naming the task. Under the reserved directory an unguarded exam is a new file per run by
-  construction, so *extending the existing file* is now exactly what a `Guard:` on that
-  path buys — only a guarded exam sits at a stable path a later task can extend. Five
-  plans on 2026-09-03 each left one `fleet/tests/test_<task-noun>.mjs`
-  behind, which is the shape this replaces; two *same-wave* tasks appending to one file are
-  the adjacent-insert shape rule 3 names, not this one.
   A `byte-identical to BASE` or `git show HEAD:` comparison is a **tautology at the
-  integration head**, where HEAD already carries the edit — so the exam carries the value
-  measured *before* it: a **frozen pre-edit literal**, such as a `git hash-object` sha
-  written into the exam, or a full **40-hex sha** fetched with
+  integration head**, where HEAD already carries the edit — so a BASE comparison is a
+  `Check:` with `$ULTRA_BASE`, which the driver sets in the environment of every `Check:`
+  and `Run:` it executes, or a probe carries the value measured *before* the edit: a
+  **frozen pre-edit literal**, such as a `git hash-object` sha
+  written into it, or a full **40-hex sha** fetched with
   `git fetch --depth=1 origin <sha>`, because `actions/checkout` leaves the clone at
   depth 1 and a short or unfetched sha is not in it.
-  That frozen literal is the *only* lawful sha in an exam: a committed exam
-  **never reads ULTRA_BASE** and never **freezes a commit sha** of this repository, because
-  a BASE comparison is a `Run:` — the driver hands that command the sha, and a depth-1
-  clone holds no other commit to compare against. A `Test:` file that does either draws
-  `base-sha-in-suite`.
+  That frozen literal is the *only* lawful sha a probe carries: a committed probe
+  **never reads ULTRA_BASE** and never **freezes a commit sha** of the plan's own
+  repository, because a BASE comparison is a `Check:` or `Run:` — the driver hands that
+  command the sha, and a depth-1 clone holds no other commit to compare against.
 - **Stale-if:** predicates, one per line — `path-exists:` / `path-absent:` /
   `sha-matches: <path>@<sha>` / `issue-open: #NNN` / `issue-closed: #NNN`. A free sentence
   is a refusal; an undecidable staleness test is inert prose.
@@ -200,7 +178,6 @@ where this plan's Files sets were wrong.
 
 **Files:**
 - Create: `widgetkit/catalog.py`
-- Test: `tests/test_catalog.py`
 
 **Claim:** An operator lists the sizes they want and gets one widget per size, in the
 order they asked. (quoted from #489)
@@ -217,7 +194,8 @@ M2. `catalog([])` returns an empty list.
 sizes nor caches, so a bad size surfaces as the constructor's own `ValueError`.
 
 **Proof:**
-- Test: `tests/test_catalog.py`
+- Run: python3 -c "from widgetkit.catalog import catalog; ws = catalog([1, 3]); assert [w.size for w in ws] == [1, 3] and len(ws) == 2" [M1]
+- Run: python3 -c "from widgetkit.catalog import catalog; assert catalog([]) == []" [M2]
 - Legs: (a) `catalog([1, 3])` yields exactly two widgets with sizes `[1, 3]` in that
   order [M1]; (b) `catalog([])` is exactly `[]` [M2].
 
@@ -310,7 +288,7 @@ One fresh-context subagent per task, asked the facts-only question, word for wor
 > (compute it); or a leg contradicts its clause; or the `base` excerpts show a file already
 > pinning the opposite; or a leg pins exactly these keys on a record other tasks also
 > write — a row of a shared log, a cell of a shared JSON file — where the clause needs
-> only that the record carries these keys.
+> only that the record carries these keys. A computable fact wants a probe, and a probe is one command with its clause tag.
 
 The question it replaced — *if this exam passes, is the sentence necessarily true* — can
 only be satisfied by enumeration, so its readers asked for a leg per variant: on the
@@ -323,10 +301,10 @@ made impossible, a leg pinning a sha where its clause pinned `HEAD:` — and eac
 cost a fleet run. **An author who answers a rejection by adding legs is answering the wrong
 question: narrow the clause first.** A mismatch means no compile until the task is revised.
 The exactly-these-keys clause exists because on run-195 (2026-09-18) one task added `ts`
-to every row of the run's event log and the exams of two sibling tasks, each asserting a
-row's exact key list, went red on the folded tree with both features right (n=2 exams on
-1 run, read by hand against the folded head); the engine now sends such an exam back to
-its examiner, and the gate's job is that it is never written.
+to every row of the run's event log and the probes of two sibling tasks, each asserting a
+row's exact key list, went red on the folded tree with both features right (n=2 probes on
+1 run, read by hand against the folded head); the fold check now re-runs every adopted
+task's probes, and the gate's job is that such a leg is never written.
 The literal-computing half is there because on walk run-10 a
 Claim pinned `4` vowels in `Ada Lovelace` — `6` under its own M1 and M2 — and the reader
 passed the legs on shape without ever computing the number, where a reader asked exactly
@@ -412,11 +390,11 @@ Then resolve provenance and check:
 `plan_check.py` sits on `plan_parse.py`, the parser the sandbox runs, and refuses only
 what a parser cannot see: a gate record that is missing, stale or `fail`, a malformed
 authoring record, a `Check:` carrying a backtick or naming a path one task owns, a
-`Check:` that freezes a pathspec covering a task's own Files or `Test:` path, and a
-Stale-if predicate that already holds at BASE. It is not a grammar check — the old
+`Check:` that freezes a pathspec covering a task's own Files, a Stale-if predicate that
+already holds at BASE — and, since a plan's proof is its `Run:` probes and nothing else, a `Test:` or `Guard:` bullet or an `Exam command` header is refused outright. It is not a grammar check — the old
 compiler's grammar refusals left with it at cut B (2026-09-21), so read `plan_parse.py`'s
-own output for the plan before launching (`proofTests`, `testCmd`, `proofRuns`, `checks`,
-`dag_edges`): what it prints is what the engine will do.
+own output for the plan before launching (`proofRuns`, `proofRunClauses`, `checks`,
+`dag_edges`, `pairs`): what it prints is what the engine will do.
 
 `check_provenance.py` (needs `gh`) resolves every anchor and string-matches every
 `quoted from #NNN` claim against its issue body at signing time. The plan is done when
@@ -480,10 +458,11 @@ Every `implementation` task is a pure diff against the integration branch:
    bootstrap, `bunx tsc --noEmit && bun test` as the suite, one TinyBase store as the
    app's state; the synced shape (store → WsSynchronizer → Durable Object) is a *TinyApp*.
    Both knobs verbatim, the `@types/bun` tsconfig gotcha, the TinyApp shape, and where the
-   restriction stops: `references/greenfield-stack.md`. In a TinyApp plan every `peer` task
-   names a state exam as its Proof `Test:` path, with seeds under `state-exams/seeds/` and
-   expected states under `state-exams/expected/` (`references/greenfield-stack.md`
-   §State exams).
+   restriction stops: `references/greenfield-stack.md`. State exams — a Bun test over a
+   seed and an expected store state, once named as a test-file path — are deferred since
+   cut three (2026-09-22): a TinyApp task is proven like any other, by `Run:` probes and
+   the stack's `Check:` line, until state exams return as probes (owed on map #1248;
+   `references/greenfield-stack.md` §State exams carries the shape for that day).
 
 ## Decomposition judgment
 
@@ -500,7 +479,7 @@ Independence is a property of contracts, not of files.
    sequence, not one mind holding a design — so a chain buys no coherence, only the wait.
 2. **Write no ordering.** On the factory an author writes no ordering: the engine reads
    every overlapping or consuming pair itself, with Jev, starts every task at once unless
-   a pair reads as a chain by that reading, and runs the touched exams after every fold.
+   a pair reads as a chain by that reading, and runs every adopted task's probes after every fold.
    `Consumes:`/`Produces:` bullets are still written exactly, one symbol per bullet,
    because they are how a pair is found — but the chain they imply is derived, never
    authored, and there is no width to state and no rationale line to write. An edge an
@@ -554,7 +533,7 @@ in the owning task's `Run:` is paid once: put it there, and keep this section fo
 single task owns. That is not only advice: a `Check:` whose command names a file one task's
 Files own is refused at `--check`, naming the task and the path, because a check a single
 task would turn green was never run-wide. A `Check:` that freezes a pathspec covering any
-task's `Create:`, `Modify:`, `Delete:` or `Test:` path is refused by `plan_check.py` the
+task's `Create:`, `Modify:` or `Delete:` path is refused by `plan_check.py` the
 same way, because it goes red the moment that task's own patch lands (run-199, n=1 run,
 2026-09-21) — freeze files, not the directory they sit in.
 ## Execution handoff — analyze, then recommend
@@ -603,19 +582,18 @@ check — nothing prints them.
   layer, and its gate verdict is recorded and fresh.
 - The plan carries one `**Summary:**` paragraph of three sentences directly under that
   Claim, in the operator's register — what this is, why it exists, how it benefits them.
-- Every Stale-if entry is a predicate; every Proof `Test:` path is disjoint from the
-  task's own writes; every fence sits in Proof.
+- Every Stale-if entry is a predicate; every Proof `Run:` prover ends in the tag of a
+  clause the Machine line numbers, and no test-file or guard bullet is written; every
+  fence sits in Proof.
 - No Proof pins a sentence of a document as its evidence; a prose task's Proof is a
   `Run:`.
-- Every exam file is named for its behaviour surface, and a task that extends one groups
-  its legs under a comment naming the task.
 - Every Machine clause is numbered and cited by a leg; every computable fact a clause states
   has the one leg that would catch it false, and no behaviour has a leg per variant.
 - Every cross-task edge is derivable — Interfaces symbols match a sibling's `Produces:`,
   or the Files blocks overlap. Nothing rides on prose.
 - No edge is written to keep same-file edits apart; every ordering left standing is a
   fact the engine can derive — a `Consumes:` matching a sibling's `Produces:`, or a
-  `Create:` a sibling later `Modify:`s — and any exam that quantifies over a directory was
+  `Create:` a sibling later `Modify:`s — and any probe that quantifies over a directory was
   checked against BASE for pre-existing violators (#536).
 - Global Constraints state results, not process.
 - The `**Closes:**` line, when present, sits directly under `**Goal:**` and names only the
