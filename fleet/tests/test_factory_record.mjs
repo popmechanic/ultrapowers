@@ -211,7 +211,7 @@ function lines (text) {
   const landingEvents = path.join(FIXTURES, 'pr-body-events.jsonl')
   fs.writeFileSync(
     landingEvents,
-    JSON.stringify({ kind: 'landing', task: 1, k: 1, examExit: 0, candidateSha: 'abc' }) + '\n'
+    JSON.stringify({ kind: 'landing', task: 1, k: 1, factsExit: 0, candidateSha: 'abc' }) + '\n'
   )
 
   const r1 = run(['pr-body', planWithCloses, '--events', landingEvents])

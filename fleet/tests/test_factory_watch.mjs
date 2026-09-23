@@ -250,8 +250,10 @@ const TASK = '1'
   })
   assert.equal(rowsENull.length, 0, '(e) [M5] a null-answering read appends zero rows')
 
-  const ow = observedWork({ tools: [], examRuns: [], taskFiles: [], startedAt: 1000, now: 10400 })
+  const proofRuns = [{ cmd: 'node factory/watch.mjs', exit: 0 }]
+  const ow = observedWork({ tools: [], proofRuns, taskFiles: [], startedAt: 1000, now: 10400 })
   assert.equal(ow.elapsed_ms, 9400, '(e) [M5] observedWork elapsed_ms is now - startedAt')
+  assert.deepEqual(ow.proof_runs, proofRuns, '(e) [M5] observedWork answers proof_runs verbatim off proofRuns')
 }
 
 console.log('ALL TESTS PASSED')

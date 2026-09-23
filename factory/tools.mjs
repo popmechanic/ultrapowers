@@ -64,11 +64,11 @@ const load = async (spec, relative) => {
 }
 
 // Top-level await, so `factoryTools` below stays an ordinary synchronous call:
-// an importer of this module awaits its evaluation for free, and the exam's
+// an importer of this module awaits its evaluation for free, and a caller's
 // `factoryTools({…}).name` is a property and not a promise. Loaded forgivingly,
 // the way `factory/worker.mjs` loads the SDK: a clone with no `fleet/node_modules`
-// (this task's own exam clone, measured 2026-09-22) must still be able to
-// import this module and call `makeHandlers`, which needs neither dependency.
+// must still be able to import this module and call `makeHandlers`, which
+// needs neither dependency.
 // A real dispatch with no SDK is loud about it — `factoryTools` throws below,
 // naming the same three failures `load` collected.
 let sdk = null
@@ -116,7 +116,7 @@ const commentUid = (answer) => {
 
 /**
  * The six handlers themselves — `note`, `hand`, `settled`, `sibling_fact`,
- * `task_facts`, `run_exam` — built and returned as plain async functions,
+ * `task_facts`, `run_proof` — built and returned as plain async functions,
  * needing neither the SDK nor zod: `factoryTools` below wraps each in a
  * `tool(…)` definition (its zod input schema, description), but the handler
  * a call actually runs is exactly the function this makes.
@@ -130,7 +130,7 @@ const commentUid = (answer) => {
  * candidate and nothing here holds a credential: the client was built
  * before the worker existed.
  */
-export const makeHandlers = ({ kata, projectId, task, candidates, board, runExam } = {}) => {
+export const makeHandlers = ({ kata, projectId, task, candidates, board, runProof } = {}) => {
   const uid = task && task.uid
   const taskId = task && task.id
 
@@ -196,18 +196,19 @@ export const makeHandlers = ({ kata, projectId, task, candidates, board, runExam
     return say(facts ? facts : 'no facts yet')
   })
 
-  const runExamTool = async () => {
-    if (typeof runExam !== 'function') return say('run_exam unavailable')
+  const runProofTool = async () => {
+    const lines = (task && task.proofRuns) || []
+    if (!lines.length || typeof runProof !== 'function') return say('run_proof unavailable')
     try {
-      const { exit, tail } = await runExam()
-      return say('exit ' + exit + '\n' + tail)
+      const results = await runProof()
+      return say(results.map((r) => 'exit ' + r.exit + '\n' + r.tail).join('\n\n'))
     } catch (err) {
-      return say('run_exam failed: ' + reason(err))
+      return say('run_proof failed: ' + reason(err))
     }
   }
 
   return {
-    note, hand, settled, sibling_fact: siblingFact, task_facts: taskFacts, run_exam: runExamTool,
+    note, hand, settled, sibling_fact: siblingFact, task_facts: taskFacts, run_proof: runProofTool,
   }
 }
 
@@ -220,7 +221,7 @@ export const makeHandlers = ({ kata, projectId, task, candidates, board, runExam
  *
  * Returns `createSdkMcpServer`'s own value — `{ type: 'sdk', name: 'factory',
  * instance }` — with the tool definitions and their handlers hung off it
- * non-enumerably, so a caller (the exam, or an engine that wants to drive a
+ * non-enumerably, so a caller (a test, or an engine that wants to drive a
  * tool without a model) can invoke one directly without reaching into the MCP
  * server's private registry.
  */
@@ -276,18 +277,18 @@ export const factoryTools = (opts = {}) => {
     handlers.task_facts,
   )
 
-  const runExamTool = tool(
-    'run_exam',
-    'Run this task\'s exam and get back its real exit code and output — the way ' +
-    'to know whether the task is green or red. Prefer this over shelling the test ' +
-    'command out yourself: a command piped through `tail` or followed by `echo ' +
-    'EXIT:$?` can look clean in your own shell while the record behind it stays ' +
-    'unable to say what actually happened.',
+  const runProofTool = tool(
+    'run_proof',
+    'Run this task\'s own Proof `Run:` lines and get back their real exit codes ' +
+    'and output — the way to know whether the task is green or red. Prefer this ' +
+    'over shelling the commands out yourself: a command piped through `tail` or ' +
+    'followed by `echo EXIT:$?` can look clean in your own shell while the record ' +
+    'behind it stays unable to say what actually happened.',
     {},
-    handlers.run_exam,
+    handlers.run_proof,
   )
 
-  const tools = [note, hand, settled, siblingFact, taskFacts, runExamTool]
+  const tools = [note, hand, settled, siblingFact, taskFacts, runProofTool]
   const server = createSdkMcpServer({ name: 'factory', tools })
   return Object.defineProperties(server, {
     tools: { value: tools },

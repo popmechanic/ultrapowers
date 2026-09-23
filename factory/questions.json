@@ -119,7 +119,7 @@
         "facts",
         "clause_facts"
       ],
-      "provenance": "borne_out, actor, claim_false, fixable_in_files: fleet/run-engine.mjs JEV_FINDING_QUESTIONS, verbatim (#1093). defect_visible, status, subject, process_only, scope_only: #1127. settled_by_fact: #1127's 2026-09-17 amendment. claim_established and the M<i>__f<j> pair: factory/proto/loop.mjs, the 2026-09-17 prototype. claim_established_given_facts: #1167 (desired state 1 and 3), 2026-09-21. claim_established_given_assertions and the M<i>__facts per_clause_facts template: #1210, the per-leg reading over each clause's own assertion lines.",
+      "provenance": "borne_out, actor, claim_false, fixable_in_files: fleet/run-engine.mjs JEV_FINDING_QUESTIONS, verbatim (#1093). defect_visible, status, subject, process_only, scope_only: #1127. settled_by_fact: #1127's 2026-09-17 amendment. claim_established and the M<i>__f<j> pair: factory/proto/loop.mjs, the 2026-09-17 prototype. claim_established_given_facts and the M<i>__facts per_clause_facts template: #1167 (desired state 1 and 3), 2026-09-21, read over each clause's own probes and selected tests.",
       "calibrated": "borne_out, actor, claim_false, fixable_in_files were replayed over 1,157 residuals at these strings",
       "questions": {
         "borne_out": {
@@ -137,12 +137,11 @@
           "type": "choice",
           "instructions": {
             "question": "Who would have to act to resolve `finding.text`?",
-            "context": "The implementer can only edit paths in `task.files`. The plan author owns the task text (Claim, Machine clauses, Files, Proof). The examiner owns the exam file."
+            "context": "The implementer can only edit paths in `task.files`. The plan author owns the task text (Claim, Machine clauses, Files, Proof)."
           },
           "criteria": {
             "implementer": "An edit inside `task.files` by the implementer resolves it",
             "plan": "Only a change to the task text, its Files set, or its Proof resolves it; no edit inside `task.files` can",
-            "examiner": "Only a change to the exam or a Proof leg resolves it",
             "nobody": "It is an observation, a deferral, or already resolved; nothing needs doing"
           }
         },
@@ -197,7 +196,6 @@
           "criteria": {
             "plan_text": "The task text: a Claim, a Machine clause, a Files set or a literal in it",
             "proof_leg": "A Proof leg or a Run: line",
-            "exam_file": "The exam file a peer wrote",
             "implementation": "The code the implementer wrote",
             "footprint": "Where the change landed: a path outside Files, a deletion, an edit to a sibling's file",
             "quality": "Style, naming, structure or a comment, with no behaviour at stake"
@@ -252,26 +250,14 @@
         "claim_established_given_facts": {
           "type": "noul",
           "instructions": {
-            "question": "Given `patch` (a unified diff) and `facts` (results the engine measured after applying it: the task's exam exit code and the exit codes of the plan's own proof commands, each with the clauses it cites), is every clause in `clauses` established as delivered?",
-            "context": "`clauses` are the task's numbered Machine clauses (M1, M2, ...), which restate its signed Claim mechanically. `facts` are measured, not asserted: a passing exit code is evidence a command actually produced, not a claim someone wrote down."
+            "question": "Given `patch` (a unified diff) and `facts` (results the engine measured after applying it: the task's own proof `Run:` lines and the selected tests run against the candidate, each with the clauses it cites, and their exit codes), is every clause in `clauses` established as delivered?",
+            "context": "`clauses` are the task's numbered Machine clauses (M1, M2, ...), which restate its signed Claim mechanically. `facts` are measured, not asserted: a passing exit code is evidence a probe or test actually ran and actually passed, not a claim someone wrote down. When `clause_facts` is also given (per Machine clause, in order: the probe runs and selected tests that cite that clause, each with its exit code), read it alongside `facts` for the same clause."
           },
           "criteria": {
             "true": "Every clause is satisfied by code in the patch or by a measured fact that proves it",
             "false": "At least one clause is unmet by the patch and unproved by any fact"
           },
           "note": "Record-only: read alongside claim_established for the record, never in place of it (#1167)."
-        },
-        "claim_established_given_assertions": {
-          "type": "noul",
-          "instructions": {
-            "question": "Given `patch` (a unified diff), `facts` (results the engine measured after applying it: the task's exam exit code and the exit codes of the plan's own proof commands, each with the clauses it cites) and `clause_facts` (per Machine clause, in order: the exam's test names and assertion lines that cite that clause with the exam's exit code, and each proof command that cites it with its exit code), is every clause in `clauses` established as delivered?",
-            "context": "`clauses` are the task's numbered Machine clauses (M1, M2, ...), which restate its signed Claim mechanically. `facts` and `clause_facts` are measured, not asserted: an assertion line under a passing exit code is a check the exam actually made and the run actually passed, not a claim someone wrote down; a clause whose `clause_facts` entry carries no assertion line and no proof command was measured by nothing."
-          },
-          "criteria": {
-            "true": "Every clause is satisfied by code in the patch or by a measured assertion or command that proves it",
-            "false": "At least one clause is unmet by the patch and unproved by any measured assertion or command"
-          },
-          "note": "Record-only (#1210): read beside claim_established, never in place of it; claim_established_given_facts is its rollback."
         }
       },
       "pairwise": {
@@ -293,14 +279,14 @@
         "type": "noul",
         "over": "every clauses[i], filed under M<i+1>__facts",
         "instructions": {
-          "question": "Given `patch` (a unified diff) and `clause_facts[<i>]` (what the engine measured for clause `clauses[<i>]` after applying it: the exam's test names and assertion lines that cite this clause, the exam's exit code, and each proof command that cites it with its exit code), is clause `clauses[<i>]` established as delivered?",
-          "context": "`clauses` are the task's numbered Machine clauses (M1, M2, ...), which restate its signed Claim mechanically. `clause_facts[<i>]` is measured, not asserted: an assertion line under exit 0 is a check the exam made and the run passed; an entry with no assertion line and no command means nothing measured this clause, and the patch alone must carry it."
+          "question": "Given `patch` (a unified diff) and `clause_facts[<i>]` (what the engine measured for clause `clauses[<i>]` after applying it: the plan's own proof `Run:` lines that cite this clause, the selected tests that cite it, and each one's exit code), is clause `clauses[<i>]` established as delivered?",
+          "context": "`clauses` are the task's numbered Machine clauses (M1, M2, ...), which restate its signed Claim mechanically. `clause_facts[<i>]` is measured, not asserted: a probe run or a selected test under exit 0 is a check the engine actually made and the run actually passed; an entry with no run and no test means nothing measured this clause, and the patch alone must carry it."
         },
         "criteria": {
-          "true": "This clause is satisfied by code in the patch, or by a measured assertion or command that proves it",
+          "true": "This clause is satisfied by code in the patch, or by a measured run or test that proves it",
           "false": "This clause is unmet by the patch and unproved by anything measured"
         },
-        "note": "Record-only (#1210): #1167's per-leg step, read beside claim_established and never in place of it."
+        "note": "Record-only: #1167's per-leg step, read beside claim_established and never in place of it."
       }
     },
     "supervisor": {
@@ -316,7 +302,7 @@
         "observed.paths_touched",
         "observed.task_files",
         "observed.suite_runs",
-        "observed.exam_exit",
+        "observed.proof_exit",
         "observed.prior_tick",
         "observed.elapsed_ms"
       ],
@@ -331,7 +317,7 @@
           "type": "noul",
           "instructions": {
             "question": "Given `observed` and `inferred`, is the worker looping or otherwise unable to advance?",
-            "context": "A worker (an implementer, examiner or fix session) is RUNNING on a fleet task right now. `inferred` is the worker's own words: its last notes, its attention cell, the blocked-by edges it filed. `observed` is the driver's own facts about it: elapsed against the role's median on the record, the diff stat of its clone against its anchor, the paths it has touched against `task.files`, whole-suite runs counted so far, exam and proof exits if any, and the previous tick's reading. Prefer `observed` wherever it speaks: a worker that says it is done is not evidence that it is. `observed.elapsed_ms` is how long the worker has been running, in milliseconds; a worker in its first minutes with few or no edits is reading, not stuck, so a short elapsed time argues against `true` — nothing is stuck under a floor of minutes."
+            "context": "A worker (an implementer or fix session) is RUNNING on a fleet task right now. `inferred` is the worker's own words: its last notes, its attention cell, the blocked-by edges it filed. `observed` is the driver's own facts about it: elapsed against the role's median on the record, the diff stat of its clone against its anchor, the paths it has touched against `task.files`, whole-suite runs counted so far, proof exits if any, and the previous tick's reading. Prefer `observed` wherever it speaks: a worker that says it is done is not evidence that it is. `observed.elapsed_ms` is how long the worker has been running, in milliseconds; a worker in its first minutes with few or no edits is reading, not stuck, so a short elapsed time argues against `true` — nothing is stuck under a floor of minutes."
           },
           "criteria": {
             "true": "It is repeating work, retrying the same failure, or its diff has stopped growing while it keeps going",
@@ -342,7 +328,7 @@
           "type": "noul",
           "instructions": {
             "question": "Do the paths touched and the notes describe work the Claim did not ask for?",
-            "context": "A worker (an implementer, examiner or fix session) is RUNNING on a fleet task right now. `inferred` is the worker's own words: its last notes, its attention cell, the blocked-by edges it filed. `observed` is the driver's own facts about it: elapsed against the role's median on the record, the diff stat of its clone against its anchor, the paths it has touched against `task.files`, whole-suite runs counted so far, exam and proof exits if any, and the previous tick's reading. Prefer `observed` wherever it speaks: a worker that says it is done is not evidence that it is."
+            "context": "A worker (an implementer or fix session) is RUNNING on a fleet task right now. `inferred` is the worker's own words: its last notes, its attention cell, the blocked-by edges it filed. `observed` is the driver's own facts about it: elapsed against the role's median on the record, the diff stat of its clone against its anchor, the paths it has touched against `task.files`, whole-suite runs counted so far, proof exits if any, and the previous tick's reading. Prefer `observed` wherever it speaks: a worker that says it is done is not evidence that it is."
           },
           "criteria": {
             "true": "It is building something outside the Claim and its clauses",
@@ -353,7 +339,7 @@
           "type": "noul",
           "instructions": {
             "question": "Do the notes name a decision only the operator can make?",
-            "context": "A worker (an implementer, examiner or fix session) is RUNNING on a fleet task right now. `inferred` is the worker's own words: its last notes, its attention cell, the blocked-by edges it filed. `observed` is the driver's own facts about it: elapsed against the role's median on the record, the diff stat of its clone against its anchor, the paths it has touched against `task.files`, whole-suite runs counted so far, exam and proof exits if any, and the previous tick's reading. Prefer `observed` wherever it speaks: a worker that says it is done is not evidence that it is."
+            "context": "A worker (an implementer or fix session) is RUNNING on a fleet task right now. `inferred` is the worker's own words: its last notes, its attention cell, the blocked-by edges it filed. `observed` is the driver's own facts about it: elapsed against the role's median on the record, the diff stat of its clone against its anchor, the paths it has touched against `task.files`, whole-suite runs counted so far, proof exits if any, and the previous tick's reading. Prefer `observed` wherever it speaks: a worker that says it is done is not evidence that it is."
           },
           "criteria": {
             "true": "It is blocked on a choice no reading of the task text settles",
@@ -364,7 +350,7 @@
           "type": "noul",
           "instructions": {
             "question": "Do the notes and the diff describe finished work the worker is still polishing?",
-            "context": "A worker (an implementer, examiner or fix session) is RUNNING on a fleet task right now. `inferred` is the worker's own words: its last notes, its attention cell, the blocked-by edges it filed. `observed` is the driver's own facts about it: elapsed against the role's median on the record, the diff stat of its clone against its anchor, the paths it has touched against `task.files`, whole-suite runs counted so far, exam and proof exits if any, and the previous tick's reading. Prefer `observed` wherever it speaks: a worker that says it is done is not evidence that it is."
+            "context": "A worker (an implementer or fix session) is RUNNING on a fleet task right now. `inferred` is the worker's own words: its last notes, its attention cell, the blocked-by edges it filed. `observed` is the driver's own facts about it: elapsed against the role's median on the record, the diff stat of its clone against its anchor, the paths it has touched against `task.files`, whole-suite runs counted so far, proof exits if any, and the previous tick's reading. Prefer `observed` wherever it speaks: a worker that says it is done is not evidence that it is."
           },
           "criteria": {
             "true": "The clauses appear satisfied and it is now tidying, re-reading, or re-running what already passed",
@@ -474,7 +460,7 @@
           "type": "noul",
           "instructions": {
             "question": "Does `note` say the worker cannot proceed, is blocked, or needs a person to decide something?",
-            "context": "A worker (an implementer, examiner or fix session) on a fleet task posted this note on the task's issue while working. The task's Claim is given."
+            "context": "A worker (an implementer or fix session) on a fleet task posted this note on the task's issue while working. The task's Claim is given."
           },
           "criteria": {
             "true": "It reports a blocker, a question it cannot settle, or asks for a human",
@@ -485,7 +471,7 @@
           "type": "noul",
           "instructions": {
             "question": "Does `note` say the task text itself is wrong: a clause, leg, path or literal that is contradictory, absent at base, or impossible to satisfy?",
-            "context": "A worker (an implementer, examiner or fix session) on a fleet task posted this note on the task's issue while working. The task's Claim is given."
+            "context": "A worker (an implementer or fix session) on a fleet task posted this note on the task's issue while working. The task's Claim is given."
           },
           "criteria": {
             "true": "It names a defect in the task text or proof, not in its own work",
@@ -496,7 +482,7 @@
           "type": "noul",
           "instructions": {
             "question": "Does `note` disclose that the worker did something the task text did not ask for or forbade: an edit outside its Files, a changed clause, a substituted approach?",
-            "context": "A worker (an implementer, examiner or fix session) on a fleet task posted this note on the task's issue while working. The task's Claim is given."
+            "context": "A worker (an implementer or fix session) on a fleet task posted this note on the task's issue while working. The task's Claim is given."
           },
           "criteria": {
             "true": "It discloses a divergence from the task as written",
@@ -507,7 +493,7 @@
           "type": "choice",
           "instructions": {
             "question": "What kind of note is `note`?",
-            "context": "A worker (an implementer, examiner or fix session) on a fleet task posted this note on the task's issue while working. The task's Claim is given."
+            "context": "A worker (an implementer or fix session) on a fleet task posted this note on the task's issue while working. The task's Claim is given."
           },
           "criteria": {
             "approach": "A plan of attack before or at the start of work",
@@ -515,7 +501,7 @@
             "handin": "A completion report: what landed, its commit, its evidence",
             "blocker": "A problem that stops the work",
             "disclosure": "An explanation of a divergence or a judgment call already made",
-            "reading": "An examiner's reading of the legs or the base before writing",
+            "reading": "A worker's reading of the codebase or the plan before writing",
             "other": "None of these"
           }
         },
@@ -523,7 +509,7 @@
           "type": "score",
           "instructions": {
             "question": "Should the operator, who never reads code, be shown `note`?",
-            "context": "A worker (an implementer, examiner or fix session) on a fleet task posted this note on the task's issue while working. The task's Claim is given."
+            "context": "A worker (an implementer or fix session) on a fleet task posted this note on the task's issue while working. The task's Claim is given."
           },
           "criteria": [
             {
@@ -729,7 +715,7 @@
               "what": "The two tasks touch the same construct in `shared`, or `producer`'s or `consumer`'s text does not say where one of them edits"
             },
             {
-              "what": "`consumer`'s exam or implementation has to run code `producer` builds, so `consumer` cannot be finished until `producer`'s code exists"
+              "what": "`consumer`'s own proof or implementation has to run code `producer` builds, so `consumer` cannot be finished until `producer`'s code exists"
             }
           ]
         },
@@ -786,30 +772,6 @@
           "criteria": {
             "true": "`hunks` changes a name, a call signature or a data format `consumer.machine` or `consumer.context` states or assumes",
             "false": "`hunks` leaves every name, signature and format `consumer.machine` or `consumer.context` relies on exactly as the consumer's text assumed"
-          }
-        }
-      }
-    },
-    "fold_red": {
-      "when": "after a fold, once per red exam that belongs to a task other than the one that folded and that was green at the head before the fold",
-      "reader": "readFoldRed: whether the red exam asserts an exact shape that the folding patch's added field breaks",
-      "rollback": "no answer -> not an exam defect: the re-attempt goes to the exam's own task as an implementer",
-      "state": [
-        "assertion",
-        "hunks"
-      ],
-      "provenance": "#1164, drafted at this sitting; no corpus has been read at this string",
-      "calibrated": false,
-      "questions": {
-        "exact_shape_broken": {
-          "type": "noul",
-          "instructions": {
-            "question": "Does `assertion` fail because it requires a record to have exactly a fixed set of keys or an exact shape, and do `hunks` add a field to that record?",
-            "context": "An exam that passed before a sibling task's patch was folded fails after it. `assertion` is the tail of the failing exam's output. `hunks` are the folded patch's hunks."
-          },
-          "criteria": {
-            "true": "The assertion is an equality over a whole record or its key list, and the hunks add a key or field to that same record",
-            "false": "The assertion fails for any other reason, or the hunks change or remove what the assertion reads"
           }
         }
       }

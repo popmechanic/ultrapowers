@@ -1,31 +1,40 @@
-// factory/reverify.mjs — which adopted exams a fold's own touched paths put
+// factory/reverify.mjs — which adopted tasks a fold's own touched paths put
 // back in play.
 //
 // `factory/engine.mjs` folds one candidate at a time and, with
 // `policy.fold.reverify.enabled` true, wants to know — right after that fold
 // — which already-adopted tasks have a stake in the paths the fold just
-// touched: the folded task's own exam always, plus any sibling whose `files`
-// overlap. `examsTouched` is that reading, kept pure and separate from the
-// engine so M1 stands as one small answer a caller can check with no clone,
-// no `sh`, and no fold at all.
-
-import { redKind } from './redkind.mjs'
+// touched: the folded task's own probes/selected tests always, plus any
+// sibling whose `files` overlap. `proofsTouched` is that reading, kept pure
+// and separate from the engine so M1 stands as one small answer a caller can
+// check with no clone, no `sh`, and no fold at all.
 
 /**
- * The adopted tasks whose exam belongs on the folded tree: `folded` itself
- * first, then the rest of `adopted` in their own (adoption) order, filtered
- * to a task that both shares at least one path with `touched` and carries a
- * non-empty string `testCmd` — a task with nothing to run is not an exam —
- * and capped at `cap` entries overall.
+ * The adopted tasks whose measurement belongs on the folded tree: `folded`
+ * itself first, then the rest of `adopted` in their own (adoption) order,
+ * filtered to a task that both shares at least one path with `touched` and
+ * qualifies — its own `proofRuns` is non-empty, or `selected[task.id]` (the
+ * `{ [taskId]: [paths] }` map of each landing's own selected tests) is a
+ * non-empty array — and capped at `cap` entries overall.
  */
-export function examsTouched ({ folded, touched, adopted, tasks, cap }) {
+export function proofsTouched ({ folded, touched, adopted, tasks, selected, cap }) {
   const byId = new Map((tasks || []).map((t) => [String(t.id), t]))
   const touchedSet = new Set(touched || [])
   const foldedId = String(folded)
+  const selectedMap = selected || {}
+
+  const selectedFor = (id) => {
+    const direct = selectedMap[id]
+    if (Array.isArray(direct)) return direct
+    const byString = selectedMap[String(id)]
+    return Array.isArray(byString) ? byString : []
+  }
 
   const qualifies = (task) => {
     if (!task) return false
-    if (typeof task.testCmd !== 'string' || task.testCmd.trim() === '') return false
+    const hasProofRuns = Array.isArray(task.proofRuns) && task.proofRuns.length > 0
+    const hasSelected = selectedFor(task.id).length > 0
+    if (!hasProofRuns && !hasSelected) return false
     return (task.files || []).some((f) => touchedSet.has(f))
   }
 
@@ -42,37 +51,23 @@ export function examsTouched ({ folded, touched, adopted, tasks, cap }) {
 }
 
 /** The last 2000 characters of a red's captured output — what stands as its
- * "assertion" for judging and for the hand-off fact. */
+ * "assertion" for the hand-off fact. */
 function assertionOf (red) {
   const out = typeof red.out === 'string' ? red.out : ''
   return out.slice(-2000)
 }
 
-/** `{ exam, cmd }` per red kind — an exam red carries its id as `exam` with
- * `cmd: null`, a check red carries its `cmd` with `exam: null`. */
+/** `{ probe, test, cmd }` per red kind — a probe red carries its owning
+ *  task's id as `probe`, a test red carries its path as `test`, a check red
+ *  carries its `cmd`; the other two of the three are `null`. */
 function subjectOf (red) {
-  return red.kind === 'exam' ? { exam: red.id, cmd: null } : { exam: null, cmd: red.cmd }
+  if (red.kind === 'probe') return { probe: red.id, test: null, cmd: null }
+  if (red.kind === 'test') return { probe: null, test: red.path, cmd: null }
+  return { probe: null, test: null, cmd: red.cmd }
 }
 
-function factFor (role, assertions, hunks, rig) {
-  const rigRoute = role === 'exam' && rig === true
-  const heading = rigRoute ? 'FOLD EXAM-RIG' : (role === 'exam' ? 'FOLD EXAM-DEFECT' : 'FOLD RED')
-  const lines = [heading, '']
-  if (rigRoute) {
-    lines.push(
-      "This exam is red for a reason none of its legs names — an exception " +
-      'outside an assertion, a timeout, or a helper that never reaches the ' +
-      "seam — so the exam's own rig is what to fix, not the implementation."
-    )
-    lines.push('')
-  } else if (role === 'exam') {
-    lines.push(
-      'The fold widened a shape this exam checks against; the row now ' +
-      'carries these keys the exam did not expect before. Judge whether ' +
-      'the exam itself needs to widen — this is not an implementation defect.'
-    )
-    lines.push('')
-  }
+function factFor (assertions, hunks) {
+  const lines = ['FOLD RED', '']
   lines.push('Assertions:')
   for (const a of assertions) lines.push(a)
   lines.push('')
@@ -82,43 +77,41 @@ function factFor (role, assertions, hunks, rig) {
 }
 
 /**
- * One round on a fold's reds: attribute each to its owner and cause, judge
- * the sibling reds whose exam was green before the fold, collapse the
- * outcome to one re-attempt per (role, task), run that round once, and
- * verify. See the task's Machine clauses for the exact shape; this function
- * touches nothing but its arguments — no `fs`, no `sh`, no clone.
+ * One round on a fold's reds: attribute each to its owner and cause, read
+ * `green_before` for a sibling red under `enabled`, collapse the outcome to
+ * one re-attempt per task (always `{ role: 'implement', task }` — the owner
+ * for `own`/`sibling`, the folded task for `check`), run that round once,
+ * and verify. See the task's Machine clauses for the exact shape; this
+ * function touches nothing but its arguments — no `fs`, no `sh`, no clone.
  */
-export async function foldRound ({ reds, folded, headBefore, head, enabled, hunks, runExamAt, read, appendEvent, reattempt, verify, rigToExam }) {
+export async function foldRound ({ reds, folded, headBefore, head, enabled, hunks, runProofsAt, appendEvent, reattempt, verify }) {
   const on = enabled === true
   const actionOrder = []
   const actionsByKey = new Map()
 
-  const noteAction = (role, task, assertion, rig) => {
-    const key = role + '|' + task
+  const noteAction = (task, assertion) => {
+    const key = 'implement|' + task
     let entry = actionsByKey.get(key)
     if (!entry) {
-      entry = { role, task, assertions: [], rig: false }
+      entry = { task, assertions: [] }
       actionsByKey.set(key, entry)
       actionOrder.push(key)
     }
     entry.assertions.push(assertion)
-    if (rig === true) entry.rig = true
   }
 
   for (const red of reds) {
-    const { exam, cmd } = subjectOf(red)
+    const { probe, test, cmd } = subjectOf(red)
     let owner = null
     let cause = 'check'
-    if (red.kind === 'exam') {
+    if (red.kind === 'probe' || red.kind === 'test') {
       if (String(red.id) === String(folded)) { owner = folded; cause = 'own' } else { owner = red.id; cause = 'sibling' }
     }
-
-    const redCell = red.kind === 'exam' ? redKind({ exit: red.exit, out: red.out }) : null
 
     let greenBefore = null
     if (on && cause === 'sibling') {
       try {
-        const exit = await runExamAt(red.id, headBefore)
+        const exit = await runProofsAt(red.id, headBefore)
         greenBefore = exit === 0
       } catch {
         greenBefore = null
@@ -126,66 +119,38 @@ export async function foldRound ({ reds, folded, headBefore, head, enabled, hunk
     }
 
     const assertion = assertionOf(red)
-    let kind = 'fold:red'
-    let reattemptFor = { role: 'implement', task: folded }
-    let score
-    let rigRouted = false
-
-    if (cause === 'own' && redCell === 'rig' && rigToExam === true) {
-      reattemptFor = { role: 'exam', task: folded }
-      rigRouted = true
-    } else if (!on) {
-      reattemptFor = { role: 'implement', task: folded }
-    } else if (cause !== 'sibling') {
-      reattemptFor = { role: 'implement', task: folded }
-    } else if (greenBefore === true) {
-      let answer = null
-      try {
-        answer = await read('readFoldRed', { assertion, hunks, who: { task: owner, label: 'fold:' + folded } })
-      } catch {
-        answer = null
-      }
-      if (answer && answer.examDefect === true) {
-        kind = 'fold:exam-defect'
-        score = answer.score
-        reattemptFor = { role: 'exam', task: owner }
-      } else {
-        reattemptFor = { role: 'implement', task: owner }
-      }
-    } else {
-      reattemptFor = { role: 'implement', task: owner }
-    }
+    const reattemptTask = cause === 'check' ? folded : owner
+    const reattemptFor = { role: 'implement', task: reattemptTask }
 
     const row = {
-      kind,
+      kind: 'fold:red',
       task: folded,
       fold: folded,
       head_before: headBefore,
       head,
       exit: red.exit,
-      exam,
+      probe,
+      test,
       cmd,
       owner,
       cause,
-      red: redCell,
       green_before: greenBefore,
-      reattempt: reattemptFor
+      reattempt: reattemptFor,
     }
-    if (score !== undefined) row.score = score
 
     appendEvent(row)
-    noteAction(reattemptFor.role, reattemptFor.task, assertion, rigRouted)
+    noteAction(reattemptFor.task, assertion)
   }
 
   const actions = actionOrder.map((key) => {
     const entry = actionsByKey.get(key)
-    return { role: entry.role, task: entry.task, fact: factFor(entry.role, entry.assertions, hunks, entry.rig) }
+    return { role: 'implement', task: entry.task, fact: factFor(entry.assertions, hunks) }
   })
 
   const appendUnresolved = (list) => {
     for (const red of list) {
-      const { exam, cmd } = subjectOf(red)
-      appendEvent({ kind: 'fold:unresolved', task: folded, exam, cmd })
+      const { probe, test, cmd } = subjectOf(red)
+      appendEvent({ kind: 'fold:unresolved', task: folded, probe, test, cmd })
     }
   }
 
@@ -219,4 +184,4 @@ export async function foldRound ({ reds, folded, headBefore, head, enabled, hunk
   return { unresolved: remaining.length > 0, actions }
 }
 
-export default { examsTouched, foldRound }
+export default { proofsTouched, foldRound }

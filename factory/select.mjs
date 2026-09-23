@@ -157,19 +157,6 @@ export async function candidateTests ({ files, read, paths = [], symbols = [], e
   return offered
 }
 
-/** The `select:exam` event row: `candidates` the paths of `found`, in order,
- *  `covered` as given, and `why` a per-path map of the reason each candidate
- *  was found, or the string `'none'` when nothing was found. */
-export function examSelectionRow ({ task, found = [], covered = [] }) {
-  return {
-    kind: 'select:exam',
-    task,
-    candidates: found.map((c) => c.path),
-    covered,
-    why: found.length > 0 ? Object.fromEntries(found.map((c) => [c.path, c.why])) : 'none',
-  }
-}
-
 /** The maximal run of `lines`, joined with `\n`, that still fits `cap`
  *  characters — never a mid-line cut. */
 function wholeLinePrefix (lines, cap) {

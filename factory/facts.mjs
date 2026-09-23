@@ -1,12 +1,12 @@
-// factory/facts.mjs — the facts an exam and a task's own proof Run: lines
-// already establish, read once and handed to Jev instead of guessed at from
-// the diff: what a cited command's exit already settled for its clause
-// (`settledCoverage`), and the observed facts themselves, capped to a byte
-// budget (`observedFacts`).
+// factory/facts.mjs — the facts a task's own proof Run: lines and its
+// selected tests already establish, read once and handed to Jev instead of
+// guessed at from the diff: what a cited command's exit already settled for
+// its clause (`settledCoverage`), and the observed facts themselves, capped
+// to a byte budget (`observedFacts`).
 //
 // Pure: no board, no note, no worker text — `factory/engine.mjs`'s `measure`
-// is the one caller, holding the exam's own exit and the task's own
-// `proofRuns`/`runLines` before Jev is ever asked.
+// is the one caller, holding the task's own `proofRuns`/`runLines` and its
+// selected tests before Jev is ever asked.
 
 import { literalsOf } from './hunks.mjs'
 
@@ -31,18 +31,18 @@ export function settledCoverage ({ clauses, proofRunClauses, runLines }) {
   })
 }
 
-/** M2/M3: the observed facts for this landing — the exam's own exit first
- *  (when `hasExam`), then one `{ kind: 'run:line', cmd, exit, cites }` per
- *  proof `Run:` line that either cites a clause (per `proofRunClauses`) or
- *  whose command contains one of the clauses' own backticked literals (>= 3
- *  characters, via `literalsOf`) — a line that does neither is left out
- *  entirely. Facts are then dropped from the end until the array's own
- *  `JSON.stringify` fits within `capBytes`. Takes exactly these seven keys:
- *  no note, no worker text, no board reading ever reaches this function. */
-export function observedFacts ({ clauses, hasExam, examExit, proofRuns, proofRunClauses, runLines, capBytes }) {
+/** M2/M3: the observed facts for this landing — one `{ kind: 'run:line',
+ *  cmd, exit, cites }` per proof `Run:` line that either cites a clause (per
+ *  `proofRunClauses`) or whose command contains one of the clauses' own
+ *  backticked literals (>= 3 characters, via `literalsOf`) — a line that
+ *  does neither is left out entirely — followed by one `{ kind: 'test',
+ *  path, exit }` per entry of `tests` (the selected tests that ran, in the
+ *  order they ran). Facts are then dropped from the end until the array's
+ *  own `JSON.stringify` fits within `capBytes`. No note, no worker text, no
+ *  board reading ever reaches this function. */
+export function observedFacts ({ clauses, proofRuns, proofRunClauses, runLines, tests, capBytes }) {
   const literals = literalsOf(clauses)
   const out = []
-  if (hasExam) out.push({ kind: 'exam', exit: examExit })
   const lines = proofRuns || []
   for (let k = 0; k < lines.length; k += 1) {
     const cites = (Array.isArray((proofRunClauses || [])[k])) ? proofRunClauses[k] : []
@@ -54,79 +54,30 @@ export function observedFacts ({ clauses, hasExam, examExit, proofRuns, proofRun
       out.push({ kind: 'run:line', cmd, exit, cites })
     }
   }
+  for (const t of (tests || [])) {
+    out.push({ kind: 'test', path: t.path, exit: t.exit })
+  }
   while (out.length && Buffer.byteLength(JSON.stringify(out), 'utf8') > capBytes) {
     out.pop()
   }
   return out
 }
 
-/** #1210: which clause(s) a line of exam text cites, and which of those
- *  lines "count" as evidence. A line's OWN citations are every `M<digits>`
- *  token found inside any `[...]` span of the line — `[M1]`, `[M2, M3]`,
- *  `(a) [M1] …` all cite; a line with none inherits the most recent line
- *  above it that had its own (none before the first citing line). A line
- *  COUNTS when its trimmed text opens one of the assertion-shaped prefixes,
- *  or opens `//`/`#` and has its own citations (a section heading). Answers
- *  `{ M1: '', …, M<n>: '' }` for `n = clauses.length`, each key its counting
- *  lines, trimmed, joined by `\n` — a citation past `n` attributes nothing. */
-export function examAssertions ({ text, clauses }) {
+/** The per-clause facts `readLanding` is asked over — one entry per clause,
+ *  index `i` for `M<i+1>`: `runs` is, in proof-line order, one `{ cmd, exit }`
+ *  per line whose `proofRunClauses` entry cites that clause — the same
+ *  `cmd`/`exit` read `observedFacts` makes; `tests` is the entries of `tests`
+ *  (the selected tests that ran) whose path is named under that clause's key
+ *  in `covers` (the `{ M1: [paths], ... }` map `measure`'s selection round
+ *  built), each `{ path, exit }`. */
+export function clauseFacts ({ clauses, proofRuns, proofRunClauses, runLines, tests, covers }) {
   const n = (clauses || []).length
-  const keys = []
-  const collected = {}
-  for (let i = 1; i <= n; i += 1) {
-    const key = 'M' + i
-    keys.push(key)
-    collected[key] = []
-  }
-  const countPrefixes = [
-    'assert', 'await assert', 'expect(', 'self.assert', 'with pytest.raises',
-    'def test_', 'test(', 'it(', 'describe(',
-  ]
-  const bracketRe = /\[[^\]]*\]/g
-  const mTokenRe = /\bM\d+\b/g
-  let lastCites = []
-  const lines = String(text).split('\n')
-  for (const rawLine of lines) {
-    const trimmed = rawLine.trim()
-    const ownCites = []
-    let bm
-    bracketRe.lastIndex = 0
-    while ((bm = bracketRe.exec(rawLine))) {
-      const span = bm[0]
-      let mm
-      mTokenRe.lastIndex = 0
-      while ((mm = mTokenRe.exec(span))) ownCites.push(mm[0])
-    }
-    const cites = ownCites.length ? ownCites : lastCites
-    if (ownCites.length) lastCites = ownCites
-    const isHeading = (trimmed.startsWith('//') || trimmed.startsWith('#')) && ownCites.length > 0
-    const counts = countPrefixes.some((p) => trimmed.startsWith(p)) || isHeading
-    if (!counts) continue
-    for (const c of cites) {
-      if (Object.prototype.hasOwnProperty.call(collected, c)) collected[c].push(trimmed)
-    }
-  }
-  const out = {}
-  for (const key of keys) out[key] = collected[key].join('\n')
-  return out
-}
-
-/** #1210: the per-clause facts `readLanding` is asked over — one entry per
- *  clause, index `i` for `M<i+1>`: `exam` is `{ exit: examExit, text }` off
- *  `examAsserts` when `hasExam === true`, else exactly `null`; `runs` is,
- *  in proof-line order, one `{ cmd, exit }` per line whose `proofRunClauses`
- *  entry cites that clause — the same `cmd`/`exit` read `observedFacts`
- *  makes. Then, while the summed `exam.text.length` exceeds `capChars`
- *  (a character count, not a byte one), the entry with the longest `text`
- *  (lowest index on a tie) loses its last line, repeated until it fits. */
-export function clauseFacts ({ clauses, examAsserts, hasExam, examExit, proofRuns, proofRunClauses, runLines, capChars }) {
-  const n = (clauses || []).length
-  const asserts = examAsserts || {}
   const lines = proofRuns || []
+  const testsByPath = new Map((tests || []).map((t) => [t.path, t]))
+  const coversMap = covers || {}
   const out = []
   for (let i = 0; i < n; i += 1) {
     const key = 'M' + (i + 1)
-    const exam = hasExam === true ? { exit: examExit, text: asserts[key] || '' } : null
     const runs = []
     for (let k = 0; k < lines.length; k += 1) {
       const cites = (proofRunClauses || [])[k]
@@ -137,22 +88,13 @@ export function clauseFacts ({ clauses, examAsserts, hasExam, examExit, proofRun
         runs.push({ cmd, exit })
       }
     }
-    out.push({ exam, runs })
-  }
-  const totalLen = () => out.reduce((s, e) => s + (e.exam ? e.exam.text.length : 0), 0)
-  while (totalLen() > capChars) {
-    let longestIdx = 0
-    let longestLen = out[0] && out[0].exam ? out[0].exam.text.length : -1
-    for (let i = 1; i < out.length; i += 1) {
-      const len = out[i].exam ? out[i].exam.text.length : -1
-      if (len > longestLen) { longestLen = len; longestIdx = i }
-    }
-    if (longestLen <= 0) break
-    const e = out[longestIdx].exam
-    const idx = e.text.lastIndexOf('\n')
-    e.text = idx === -1 ? '' : e.text.slice(0, idx)
+    const clauseTests = (Array.isArray(coversMap[key]) ? coversMap[key] : []).map((p) => {
+      const t = testsByPath.get(p)
+      return { path: p, exit: t ? t.exit : undefined }
+    })
+    out.push({ runs, tests: clauseTests })
   }
   return out
 }
 
-export default { settledCoverage, observedFacts, examAssertions, clauseFacts }
+export default { settledCoverage, observedFacts, clauseFacts }

@@ -148,10 +148,10 @@ export const makeJudge = ({ ask, emit, now = Date.now, questionsPath, policyPath
    *  entry verbatim. When `facts` is given, the whole-claim reading is also
    *  taken with those measured facts in front of it, at the record-only
    *  `claim_established_given_facts` question — a missing answer to it never
-   *  fails the reading. When `clauseFacts` is given (#1210), that record-only
-   *  question is replaced by `claim_established_given_assertions` plus one
-   *  `M<i>__facts` question per clause, each asked over that clause's own
-   *  `clause_facts[i-1]` entry — still never gating the reading. */
+   *  fails the reading. When `clauseFacts` is given, that same record-only
+   *  question is asked alongside one `M<i>__facts` question per clause, each
+   *  asked over that clause's own `clause_facts[i-1]` entry — still never
+   *  gating the reading. */
   const readLanding = async ({ clauses = [], patch, files = {}, facts, settled, clauseFacts, who } = {}) => {
     const template = (sets.landing || {}).pairwise || {}
     const perClauseTemplate = (sets.landing || {}).per_clause_facts || {}
@@ -160,9 +160,12 @@ export const makeJudge = ({ ask, emit, now = Date.now, questionsPath, policyPath
     const factsKeyOf = (i) => 'M' + (i + 1) + '__facts'
     const isSettled = (i) => Array.isArray(settled) && settled[i] !== null && settled[i] !== undefined
     const hasCF = Array.isArray(clauseFacts) && clauseFacts.length > 0
+    const hasFacts = Array.isArray(facts) && facts.length > 0
     const questions = { claim_established: landingQuestions.claim_established }
+    if (hasCF || hasFacts) {
+      questions.claim_established_given_facts = landingQuestions.claim_established_given_facts
+    }
     if (hasCF) {
-      questions.claim_established_given_assertions = landingQuestions.claim_established_given_assertions
       for (let i = 0; i < clauses.length; i += 1) {
         questions[factsKeyOf(i)] = {
           type: perClauseTemplate.type,
@@ -170,8 +173,6 @@ export const makeJudge = ({ ask, emit, now = Date.now, questionsPath, policyPath
           criteria: fill(perClauseTemplate.criteria, i),
         }
       }
-    } else if (Array.isArray(facts) && facts.length > 0) {
-      questions.claim_established_given_facts = landingQuestions.claim_established_given_facts
     }
     for (let i = 0; i < clauses.length; i += 1) {
       if (isSettled(i)) continue
@@ -189,7 +190,7 @@ export const makeJudge = ({ ask, emit, now = Date.now, questionsPath, policyPath
     return askOnce('landing', state, questions, (answers) => {
       const claim = noulOf(answers.claim_established)
       if (claim === undefined) return undefined
-      const givenFactsKey = hasCF ? 'claim_established_given_assertions' : 'claim_established_given_facts'
+      const givenFactsKey = 'claim_established_given_facts'
       const claimGivenFacts = questions[givenFactsKey]
         ? (noulOf(answers[givenFactsKey]) ?? null)
         : undefined
@@ -286,21 +287,6 @@ export const makeJudge = ({ ask, emit, now = Date.now, questionsPath, policyPath
       if (settlesInterface === undefined || which === undefined) return undefined
       if (settlesInterface < tSettles || which === 'none' || !candidates.includes(which)) return null
       return { symbol: which }
-    }, who)
-  }
-
-  /** The fold-red reading: whether a red exam that turned red only after a
-   *  fold is an exam defect — an exact-shape assertion broken by a field the
-   *  folding patch added — graded against `policy.fold.attribution.t_exam_defect`
-   *  (never a literal here; absent, the comparison is false). */
-  const foldRedQuestions = setQuestions('fold_red')
-  const tExamDefect = num(((((policy.fold || {}).attribution || {}).t_exam_defect) || {}).value)
-  const readFoldRed = async ({ assertion, hunks, who } = {}) => {
-    const questions = { exact_shape_broken: foldRedQuestions.exact_shape_broken }
-    return askOnce('fold_red', { assertion, hunks }, questions, (answers) => {
-      const score = noulOf(answers.exact_shape_broken)
-      if (score === undefined) return undefined
-      return { examDefect: score >= tExamDefect, score }
     }, who)
   }
 
@@ -494,7 +480,6 @@ export const makeJudge = ({ ask, emit, now = Date.now, questionsPath, policyPath
     readSupervisor: flatReader('supervisor'),
     readSupervisorObserved,
     readSettled,
-    readFoldRed,
     readCovering,
     readGuards,
     readPair,
