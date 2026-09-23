@@ -728,3 +728,12 @@
 {"ts":"2026-09-23T03:05:00.499Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"find . -iname \"*exam*\" -not -path \"./.git/*\" 2>/dev/null | head -50"}
 {"ts":"2026-09-23T03:05:03.702Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -rln \"fixtures/hermetic/tree/exams\\|tree/exams\\b\" fleet/tests/*.mjs 2>/dev/null"}
 {"ts":"2026-09-23T03:05:10.233Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"find . -maxdepth 2 -iname \"*.json\" -not -path \"./fleet/node_modules/*\" | xargs grep -l \"exam\" 2>/dev/null; echo ---; ls -la; echo ---; env | grep -i exam"}
+{"ts":"2026-09-23T03:05:17.128Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-23T03:05:22.906Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -rln \"examExit\\|runExamAt\\|runExamsAndChecks\\|examsTouched\\|rigToExam\\|redKind\\|rigRound\\|runTaskExams\\|selfCheckExam\\|examine(\\|EXAM_MD\" fleet/tests/*.mjs tests/*.py 2>/dev/null"}
+{"ts":"2026-09-23T03:05:26.832Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"python3 -m pytest -q tests/test_fleet_suite.py tests/test_jev_census.py 2>&1 | tail -20"}
+{"ts":"2026-09-23T03:05:37.210Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__settled"}
+{"ts":"2026-09-23T03:05:43.784Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -rn \"export function proofsTouched\\|export const proofsTouched\" factory/*.mjs"}
+{"ts":"2026-09-23T03:05:46.012Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__settled"}
+{"ts":"2026-09-23T03:05:48.058Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__run_exam"}
+{"ts":"2026-09-23T03:06:07.528Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__note"}
+{"ts":"2026-09-23T03:06:10.913Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"mcp__factory__hand"}
