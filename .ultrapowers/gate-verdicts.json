@@ -1,0 +1,79 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "9eb5847cf303afb904095d6da2f1b53b65bc5da966494a90cbdfb27aa8aa386f",
+   "verdict": "pass",
+   "reason": "round 2: the block output, the six silent allows, the frontmatter fixed-string match, both validators, the manifest and the test each have a falsifying Run: line"
+  }
+ },
+ "tally": {
+  "dispatched": 2,
+  "rejected": 1,
+  "rounds": [
+   {
+    "round": 1,
+    "dispatched": 1,
+    "rejected": 1
+   },
+   {
+    "round": 2,
+    "dispatched": 1,
+    "rejected": 0
+   }
+  ],
+  "base": "527897657fef21d785cd918d14dc6468662e7907",
+  "question": "facts-only (experiment, rollback the old sentence)",
+  "history": [
+   {
+    "round": 1,
+    "task": "1",
+    "verdict": "fail",
+    "reason": "the frontmatter regex under python -c double quotes was unsatisfiable once bash unescaped it"
+   }
+  ]
+ },
+ "authoring": {
+  "minutes": 22,
+  "probes": 0,
+  "routing": {
+   "branch": "inline",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Next run",
+    "options": [
+     "#685: the Stop hook",
+     "#835: publish-as-probe",
+     "#888: codemod species",
+     "Please explain"
+    ],
+    "recommended": "#685: the Stop hook",
+    "picked": "#685: the Stop hook",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Confirm as drafted",
+     "Quote #685's own sentence",
+     "Please explain"
+    ],
+    "recommended": "Confirm as drafted",
+    "picked": "Confirm as drafted",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Inline",
+     "Please explain"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
