@@ -764,3 +764,16 @@
 {"ts":"2026-09-23T03:09:10.215Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/fleet/tests/test_factory_facts.mjs"}
 {"ts":"2026-09-23T03:09:16.187Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/judge.mjs"}
 {"ts":"2026-09-23T03:09:25.585Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"literalsOf\" -A 15 /home/exedev/run/impl-1-1/factory/hunks.mjs | head -30"}
+{"ts":"2026-09-23T03:10:26.706Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Write","target":"/home/exedev/run/impl-1-1/fleet/tests/test_factory_facts.mjs"}
+{"ts":"2026-09-23T03:10:33.040Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"node --check fleet/tests/test_factory_facts.mjs && node fleet/tests/test_factory_facts.mjs"}
+{"ts":"2026-09-23T03:10:36.400Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/select.mjs"}
+{"ts":"2026-09-23T03:10:40.662Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/fleet/tests/test_factory_select.mjs"}
+{"ts":"2026-09-23T03:10:45.131Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"select:landing\\|candidateTests\\|readGuards\\|readCovering\\|select\\.max_run\\|selectPolicy\" /home/exedev/run/impl-1-1/factory/engine.mjs | head -60"}
+{"ts":"2026-09-23T03:10:47.906Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T03:11:02.026Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/fleet/tests/test_factory_select.mjs"}
+{"ts":"2026-09-23T03:11:07.657Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/fleet/tests/test_factory_select.mjs"}
+{"ts":"2026-09-23T03:11:10.683Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"node --check fleet/tests/test_factory_select.mjs && node fleet/tests/test_factory_select.mjs"}
+{"ts":"2026-09-23T03:11:13.506Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/record.mjs"}
+{"ts":"2026-09-23T03:11:18.696Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"examExit\\|factsExit\" /home/exedev/run/impl-1-1/fleet/tests/test_factory_record.mjs"}
+{"ts":"2026-09-23T03:11:21.526Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/fleet/tests/test_factory_record.mjs"}
+{"ts":"2026-09-23T03:11:26.001Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/fleet/tests/test_factory_record.mjs"}
