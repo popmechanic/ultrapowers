@@ -461,3 +461,8 @@
 {"ts":"2026-09-23T02:41:58.636Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"readCovering\\|readGuards\\|covers\\b\\|selected\\b\" /home/exedev/run/impl-1-0/factory/judge.mjs | head -50"}
 {"ts":"2026-09-23T02:42:01.343Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/judge.mjs"}
 {"ts":"2026-09-23T02:42:06.338Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/reverify.mjs"}
+{"ts":"2026-09-23T02:42:44.599Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n '\"select\"\\|\"proofs\"\\|\"facts\"\\|\"exam\"\\|\"speculate\"\\|\"referee\"\\|\"attribution\"\\|\"jev_claim\"\\|\"gate\"' -A 15 /home/exedev/run/impl-1-0/factory/policy.json | head -200"}
+{"ts":"2026-09-23T02:42:48.518Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/policy.json"}
+{"ts":"2026-09-23T02:42:53.336Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"^import\\|exitOf\\|outOf\\b\" /home/exedev/run/impl-1-0/factory/engine.mjs | head -60"}
+{"ts":"2026-09-23T02:42:58.822Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:43:26.108Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"readLanding\" -A 80 /home/exedev/run/impl-1-0/factory/judge.mjs | head -140"}
