@@ -106,7 +106,9 @@ constraint (§Capacity: read the meter, never sum the allocation), and a floor
 charged to runs that open no browser would spend it on nothing. For a fleet that
 runs TinyApp plans the recommended `memory` ceiling in `fleet.json` is `12GB`,
 which is what an eight-browser wave asks for and the most this formula ever
-wants.
+wants. Since cut three (2026-09-22) no plan can name a state exam, so
+C reads 0 for every plan and this rule has no reader until state exams
+return as probes (owed on #1248).
 
 The `capacity` doctor row is a report of those two facts and of nothing else:
 the pool the account has, beside the `cpu` and `memory` ceiling a run is bounded
