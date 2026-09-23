@@ -103,3 +103,4 @@
 {"ts":"2026-09-23T16:22:02.775Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -q \"probe_exe_facts.mjs\" fleet/tests/PROBES.md && sed -n '/probe_exe_facts.mjs/,/^- /p' fleet/tests/PROBES.md | tr '\\n' ' ' | grep -q \"throwaway.*fleet-r.*launch.mjs.*exit\" && echo PASS || echo F"}
 {"ts":"2026-09-23T16:22:06.941Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"EXE_HOST\" fleet/lobby.mjs"}
 {"ts":"2026-09-23T16:22:10.940Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Write","target":"/home/exedev/run/impl-1-1/fleet/tests/probe_exe_facts.mjs"}
+{"ts":"2026-09-23T16:24:21.531Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Write","target":"/home/exedev/run/impl-1-0/fleet/tests/test_probe_exe_facts.mjs"}
