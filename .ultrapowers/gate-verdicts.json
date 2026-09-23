@@ -1,0 +1,111 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "f2a806961490e060a6334906c687825af2bb3895323ecbd112534732ef47e88f",
+   "verdict": "pass",
+   "reason": "every negation has a falsifying Run: line; M2-M6 row shapes and signatures are diff-read with the re-aimed facts and reverify sims riding the bridge"
+  },
+  "2": {
+   "hash": "9f5b3a42a3778e759b5de8b6028ccf9ca3c0af4283b5638df6097b431e7ea263",
+   "verdict": "pass",
+   "reason": "round 2: M3 re-aimed so the bridge runs the sim's own exams/ absence assertion instead of a grep that contradicted it"
+  },
+  "3": {
+   "hash": "5ff2228bf5ea4e04c014951645ee88eaf8f5c45e2731b8eff7e20ce6f98a5fd6",
+   "verdict": "pass",
+   "reason": "round 3: the exams/ pattern spares state-exams/, and the history sentence is written without the words M1 forbids"
+  }
+ },
+ "tally": {
+  "dispatched": 6,
+  "rejected": 3,
+  "rounds": [
+   {
+    "round": 1,
+    "dispatched": 3,
+    "rejected": 2
+   },
+   {
+    "round": 2,
+    "dispatched": 2,
+    "rejected": 1
+   },
+   {
+    "round": 3,
+    "dispatched": 1,
+    "rejected": 0
+   }
+  ],
+  "base": "d412149a8c7150096d33642cb3f02f869ef87001",
+  "question": "facts-only (experiment, rollback the old sentence)",
+  "history": [
+   {
+    "round": 1,
+    "task": "2",
+    "verdict": "fail",
+    "reason": "leg (c)'s grep forbade exams/ in the sim while M3 required the sim to assert it"
+   },
+   {
+    "round": 1,
+    "task": "3",
+    "verdict": "fail",
+    "reason": "the exams/ alternative matched state-exams/, which M1 itself keeps"
+   },
+   {
+    "round": 2,
+    "task": "3",
+    "verdict": "fail",
+    "reason": "M2's dated sentence named the examiner and exams/, which M1 forbids in the same file"
+   }
+  ]
+ },
+ "authoring": {
+  "minutes": 6,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Next step",
+    "options": [
+     "Author the engine cut plan",
+     "Drain #645 first",
+     "Read run-224's baseline first"
+    ],
+    "recommended": "Author the engine cut plan",
+    "picked": "Author the engine cut plan"
+   },
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Confirm as drafted",
+     "Quote #1248's Destination sentence"
+    ],
+    "recommended": "Confirm as drafted",
+    "picked": "Confirm as drafted"
+   },
+   {
+    "question": "Worker tool",
+    "options": [
+     "run_proof: the task's own Run: probes",
+     "No tool; the worker shells the probes itself",
+     "run_proof runs probes and the plan's Check: lines"
+    ],
+    "recommended": "run_proof: the task's own Run: probes",
+    "picked": "run_proof: the task's own Run: probes"
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers"
+   }
+  ]
+ }
+}
