@@ -368,7 +368,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `typesafe` **http-proxy** (`https://typesafe.int.exe.xyz`, the engine's `TYPESAFE_BASE_URL`),
   both created with `--policy 'tag:fleet'` like the rest. What the `- **Publish:**` rule still forbids is
   the *attachment*: no GitHub integration is attached to the tag, because nothing is attached at all.
-- **Doctor (`fleet/doctor.mjs`) — eight rows, this order, `ROW_IDS`:**
+- **Doctor (`fleet/doctor.mjs`) — nine rows, this order, `ROW_IDS`:**
   | id | what it reads | green when |
   |---|---|---|
   | `exe-dev` | `ssh exe.dev whoami` | the alias answers with a username |
@@ -379,6 +379,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   | `integrations` | `integrations list --json` + `integrations policy get <name> --json` for `claude-max` and `gh-<owner>-<repo>` (with `--target`) | with `--target <owner>/<repo>`, `gh-<owner>-<repo>` exists; every one of those objects' `policy.selector` is `tag:fleet` — the red names the first that is not and the get/set two-step that fixes it |
   | `verb-drift` | `help <verb>` for every verb in `fleet/exe-verbs.json` | the record is readable; a flag that appeared or vanished is a finding in a green row, and only an unreadable record is red |
   | `kata` | `integrations list --json` + `ssh exe.dev "integrations policy get kata --json"` + `ssh exe.dev "ls kata-hub --json"` | the `kata` http-proxy exists and carries a bearer, its `policy.selector` is exactly `tag:fleet` (the listing's `attachments` are never consulted for this row), and `.vms[]` has a `kata-hub` row; the red says which of the four is absent, and names `node fleet/kata-hub.mjs` — or, for a wrong policy, the get/set two-step |
+  | `cloudflare` | `integrations list --json` + `ssh exe.dev "integrations policy get cloudflare --json"` (asked only when the listing names a `cloudflare` object) | green when the object is absent (only a plan with a `**Publish:**` line needs it) or its `policy.selector` is `tag:fleet`; red for a present object off that policy, naming the get/set two-step |
 
   The doctor imports only `node:`-prefixed specifiers and no other fleet module, and every row id is a
   `## ` heading in `skills/ultrapowers/references/first-run.md`.

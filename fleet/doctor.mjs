@@ -7,7 +7,7 @@
  * ever existed. Hence the built-ins-only rule: every specifier here is
  * `node:`-prefixed, and the doctor imports no other fleet module.
  *
- * Eight rows, all reads, every one of them answered by exe.dev's own truth or
+ * Nine rows, all reads, every one of them answered by exe.dev's own truth or
  * by this laptop's own keychain:
  *
  *   exe-dev       `ssh exe.dev whoami` names an account.
@@ -36,6 +36,10 @@
  *                 listing's `attachments`, which name the VMs the policy
  *                 currently resolves to), and `ls kata-hub --json` answers a
  *                 `kata-hub` row. All three, or the row says which is absent.
+ *   cloudflare    the deploy's credential, needed only by a plan with a
+ *                 `**Publish:**` line. Absent is green — most plans never
+ *                 publish — and a present object is green on the fleet's
+ *                 policy, `tag:fleet`, and red off it.
  *
  * Running the doctor twice is the same as running it once: nothing here
  * creates, copies or removes a VM, and nothing writes a file. A red row names
@@ -71,10 +75,10 @@ const execFileAsync = promisify(execFile)
  *  would certify a fleet the launcher never looks at. */
 export const DOCTOR_DEFAULTS = Object.freeze({ cpu: '8', memory: '16GB' })
 
-/** The eight rows, in the order the doctor reports them. Each id is also a
+/** The nine rows, in the order the doctor reports them. Each id is also a
  *  `## ` heading in skills/ultrapowers/references/first-run.md. */
 export const ROW_IDS = Object.freeze([
-  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift', 'kata'
+  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift', 'kata', 'cloudflare'
 ])
 
 /** Each row's `fix` is the `## ` heading in first-run.md that repairs it, and
@@ -861,6 +865,46 @@ function kataRow (found, policyRes, vmsRes) {
   )
 }
 
+// ── cloudflare ───────────────────────────────────────────────────────────────
+
+/** The deploy's credential: an http-proxy integration that forwards a
+ *  Cloudflare API token, named the same as every other fleet integration. */
+const CLOUDFLARE_INTEGRATION = 'cloudflare'
+
+/**
+ * The ninth row: cloudflare carries the deploy's credential at the edge, and
+ * only a plan with a `**Publish:**` line needs it — so unlike every other row,
+ * absent is `ok`. Present is judged exactly as `kata`'s policy question is:
+ * the listing's own attachment tag first, then the policy read (asked only
+ * when the object exists at all — `doctor()` skips the read otherwise), red
+ * for the first selector that is not `tag:fleet`.
+ */
+function cloudflareRow (found, policyRes) {
+  const have = found === null ? undefined : found.get(CLOUDFLARE_INTEGRATION)
+  if (have === undefined) {
+    return row(
+      'cloudflare',
+      'ok',
+      'cloudflare integration absent — only a plan with a **Publish:** line needs it; ' +
+      'first-run.md §cloudflare walks the token'
+    )
+  }
+  const attached = have.tags.has('fleet')
+  const readable = Boolean(policyRes) && policyRes.code === 0
+  const policy = readable ? parsePolicy(policyRes.stdout) : null
+  if (attached || (policy !== null && policy.selector === FLEET_POLICY)) {
+    return row('cloudflare', 'ok', `${CLOUDFLARE_INTEGRATION} http-proxy on the policy ${FLEET_POLICY}`)
+  }
+  const selector = policy === null || policy.selector === null ? 'none' : policy.selector
+  return row(
+    'cloudflare',
+    'missing',
+    `${CLOUDFLARE_INTEGRATION} carries the attachment policy ${selector} rather than ${FLEET_POLICY}, ` +
+    `so no fleet VM is granted it — ssh exe.dev "integrations policy get ${CLOUDFLARE_INTEGRATION} --json" ` +
+    `then integrations policy set ${CLOUDFLARE_INTEGRATION} '${FLEET_POLICY}' --permanent --if-revision=<revision>`
+  )
+}
+
 // ── the doctor ───────────────────────────────────────────────────────────────
 
 /**
@@ -892,6 +936,7 @@ export async function doctor ({
   const whoami = await run(READS.whoami)
   const billing = await run(READS.billing)
   const list = await run(READS.list)
+  const found = list.code === 0 ? parseIntegrations(list.stdout) : null
   const github = await run(READS.github)
   // The status read names the configured account (`fleet.json` `account`), never
   // the code's default: the keychain entries are named by email since 2026-09-11.
@@ -909,12 +954,16 @@ export async function doctor ({
   for (const name of policyNames(want)) {
     policies.set(name, await run(policyRead(name)))
   }
+  // The ninth read: only when `found` names a cloudflare object at all — an
+  // absent one needs no policy read, and most fleets never publish.
+  const cloudflarePolicy = found !== null && found.has(CLOUDFLARE_INTEGRATION)
+    ? await run(policyRead(CLOUDFLARE_INTEGRATION))
+    : null
   const drift = await verbDrift({
     help: (verb) => run(`ssh exe.dev "help ${verb}"`),
     recordPath: verbsPath
   })
 
-  const found = list.code === 0 ? parseIntegrations(list.stdout) : null
   const rows = [
     exeDevRow(whoami),
     capacityRow(billing, cfg, configKeys),
@@ -923,7 +972,8 @@ export async function doctor ({
     githubRow(github),
     integrationsRow(found, want, policies),
     verbDriftRow(drift),
-    kataRow(found, kataPolicy, kataVms)
+    kataRow(found, kataPolicy, kataVms),
+    cloudflareRow(found, cloudflarePolicy)
   ]
   const verdict = rows.every((r) => r.status === 'ok') ? 'ready' : 'not-ready'
   return { config: cfg, rows, verdict }

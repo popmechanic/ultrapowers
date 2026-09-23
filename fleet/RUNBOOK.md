@@ -198,6 +198,19 @@ two targets' objects on one VM name two repositories, which the edge routes
 apart. A target with no `gh-<owner>-<repo>` object is a launch refusal, public
 or not — a public repo would clone from github.com but could not publish.
 
+The doctor's ninth row, `cloudflare`, is not part of this one-time walk: it is
+the deploy's credential, needed only by a plan that carries a `**Publish:**`
+line, and an absent object is green. When one exists it is judged by the same
+policy the rest of this section reads, and it is built the same way, an
+`http-proxy` on the fleet's policy:
+
+```bash
+ssh exe.dev "integrations add http-proxy --name cloudflare --target https://api.cloudflare.com --bearer - --policy 'tag:fleet'"
+```
+
+`skills/ultrapowers/references/first-run.md` §cloudflare walks the token that
+goes on its stdin.
+
 **6. `kata` — the hub.** One persistent VM, `kata-hub`, running the kata issue
 daemon, plus the one `http-proxy --peer` integration every sandbox reaches it
 through. Built by one command, which is idempotent — on a built hub it prints
