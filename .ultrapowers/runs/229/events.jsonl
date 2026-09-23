@@ -104,3 +104,6 @@
 {"ts":"2026-09-23T16:22:06.941Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"EXE_HOST\" fleet/lobby.mjs"}
 {"ts":"2026-09-23T16:22:10.940Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Write","target":"/home/exedev/run/impl-1-1/fleet/tests/probe_exe_facts.mjs"}
 {"ts":"2026-09-23T16:24:21.531Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Write","target":"/home/exedev/run/impl-1-0/fleet/tests/test_probe_exe_facts.mjs"}
+{"ts":"2026-09-23T16:25:24.093Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"cd /home/exedev/run/impl-1-1/fleet && grep -n \"^export\" lobby.mjs"}
+{"ts":"2026-09-23T16:25:28.341Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/fleet/lobby.mjs"}
+{"ts":"2026-09-23T16:25:31.561Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/fleet/lobby.mjs"}
