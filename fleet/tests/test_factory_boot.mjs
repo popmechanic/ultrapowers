@@ -21,25 +21,20 @@
  *       unchanged (Context: "the legs they pin are unchanged"); no Machine
  *       clause of this task names it on its own.
  *
- *   (b) [M1, M5] the clean run: the engine stub lands one task, the PR is
+ *   (b) [M1, M3, M5] the clean run: the engine stub lands one task, the PR is
  *       opened and merged, the run closes — every assertion this file made
  *       at BASE, plus the one line ending ` preflight: alive` in
- *       `<home>/fleet-boot.log` (count exactly 1, M1), plus
- *       `<home>/merge-put.json` byte-equal to the exam's own rendering of the
- *       merge payload (M5).
+ *       `<home>/fleet-boot.log` (count exactly 1, M1), plus the evidence
+ *       tree carrying exactly `status.json`, `events.jsonl` and `engine.log`
+ *       and no path containing `exams/` (M3, since the boot writes no exam
+ *       file to the evidence branch), plus `<home>/merge-put.json` byte-equal
+ *       to the exam's own rendering of the merge payload (M5).
  *
  *   (c) the engine stub exits 3 — the boot fails with exactly `"engine exit
  *       3"` and no plan/evidence tag is ever cut. Kept from BASE unchanged,
  *       same footing as (a).
  *
- *   (d) [M3] `engine-breaks-plan`: the `systemd-run` stub, once it lands the
- *       one task, overwrites the plan file with `garbage`, so `publish`
- *       reaches `strip_exams` with a plan `plan_parse.py --unguarded`
- *       refuses. The boot fails (exit non-zero), `status.json` on the
- *       evidence branch reads `state: "failed"` with an `error` beginning
- *       `exams:`, and neither tag is ever cut.
- *
- *   (e) [M2] `node <engineDir>/factory/engine.mjs` with no arguments,
+ *   (d) [M2] `node <engineDir>/factory/engine.mjs` with no arguments,
  *       through the rig's own `buildEngineDir` symlink, exits 2 — at BASE
  *       (broken `invokedDirectly` guard) it exits 0 and prints nothing.
  *
@@ -49,7 +44,7 @@
  * (`plan`) — `main` itself is never advanced past `base`. `<FLEET_HOME>/
  * target` is a plain clone of that origin. `<FLEET_HOME>/engines/<sha>/
  * factory` and `.../skills` are symlinks to this checkout's own `factory/`
- * and `skills/`, so the boot's real `factory/audit.mjs` (and, in leg (e),
+ * and `skills/`, so the boot's real `factory/audit.mjs` (and, in leg (d),
  * `factory/engine.mjs`) genuinely runs through a symlinked directory. A `bin`
  * directory stubs `claude` (one `authMethod:` line), `curl` (a small
  * argument-sniffing router answering the GitHub-shaped endpoints `boot.sh`
@@ -57,33 +52,31 @@
  * `$FLEET_HOME/merge-put.json` the way it already saves the `POST …/pulls`
  * body to `pr-post.json`), `systemd-run` (stands in for the whole systemd
  * invocation: for the engine unit, either lands one task — writing
- * `widget.mjs` and `tests/test_widget.mjs`, committing them into `$target`,
- * appending one `landing` row, and — new in this task — overwriting
- * `$PLAN_FILE` with `garbage` when `$FLEET_HOME/engine-breaks-plan` exists —
- * or exits the code recorded in `$FLEET_HOME/engine-exit`) and `systemctl`
- * (a no-op). `node`, `python3`, `git` and `bash` are real. Every spawned
- * process — the fixture's own git calls and the boot itself — gets
- * `env: simEnv({ bin, home, env })` from `./_helpers.mjs`; nothing is ever
- * passed `process.env` directly.
+ * `widget.mjs` and `tests/test_widget.mjs`, committing them into `$target`
+ * and appending one `landing` row — or exits the code recorded in
+ * `$FLEET_HOME/engine-exit`) and `systemctl` (a no-op). `node`, `python3`,
+ * `git` and `bash` are real. Every spawned process — the fixture's own git
+ * calls and the boot itself — gets `env: simEnv({ bin, home, env })` from
+ * `./_helpers.mjs`; nothing is ever passed `process.env` directly.
  *
  * What this exam assumes about `factory/boot.sh`, since it is the one piece
- * of context a later reader lacks: that credential-probe failure, engine
- * failure and the `strip_exams` refusal all still route through `fail()`
- * writing `status.json` onto the evidence branch before exiting non-zero (so
- * (a), (c) and (d) can read it back from a branch ref); that a plan commit
- * with no `.ultrapowers/kata.json` blob leaves the board unbound, so
- * `close_run()` takes its early-return path and appends exactly one
- * `board:close` row; that `factory/policy.json`'s `publish.self_merge.
- * enabled: true` (already in this repo) is what makes (b)'s merge actually
- * happen; and that the `publish:pr` event row's own `ts` field is out of
- * this task's own diff — this exam still asserts M1's "every row carries a
- * non-empty string `ts`" exactly as written, since a clause is asserted as
- * it reads, not as it is comfortable to satisfy today. It also assumes that
- * `factory/engine.mjs`'s `main()` reads `process.argv` itself (so leg (e)'s
- * bare module path is the same call `boot.sh` makes) and, with none of
- * `--plan`/`--target`/`--run-dir` given, returns 2 before touching anything
- * that would need a fuller rig — the same shape the sibling exam
- * `test_factory_preflight.mjs` already assumes of `audit.mjs`/`preflight.mjs`.
+ * of context a later reader lacks: that credential-probe failure and engine
+ * failure both still route through `fail()` writing `status.json` onto the
+ * evidence branch before exiting non-zero (so (a) and (c) can read it back
+ * from a branch ref); that a plan commit with no `.ultrapowers/kata.json`
+ * blob leaves the board unbound, so `close_run()` takes its early-return
+ * path and appends exactly one `board:close` row; that `factory/policy.json`'s
+ * `publish.self_merge.enabled: true` (already in this repo) is what makes
+ * (b)'s merge actually happen; and that the `publish:pr` event row's own
+ * `ts` field is out of this task's own diff — this exam still asserts M1's
+ * "every row carries a non-empty string `ts`" exactly as written, since a
+ * clause is asserted as it reads, not as it is comfortable to satisfy today.
+ * It also assumes that `factory/engine.mjs`'s `main()` reads `process.argv`
+ * itself (so leg (d)'s bare module path is the same call `boot.sh` makes)
+ * and, with none of `--plan`/`--target`/`--run-dir` given, returns 2 before
+ * touching anything that would need a fuller rig — the same shape the
+ * sibling exam `test_factory_preflight.mjs` already assumes of
+ * `audit.mjs`/`preflight.mjs`.
  */
 
 import assert from 'node:assert/strict'
@@ -294,13 +287,11 @@ fi
 const SYSTEMD_RUN_STUB = `#!/bin/sh
 target=""
 rundir=""
-planfile=""
 prev=""
 for a in "$@"; do
   case "$prev" in
     --target) target="$a" ;;
     --run-dir) rundir="$a" ;;
-    --plan) planfile="$a" ;;
   esac
   prev="$a"
 done
@@ -322,10 +313,7 @@ if [ "$code" = "0" ]; then
   sha="$(cd "$target" && git rev-parse HEAD)"
   printf %s "$sha" > "$FLEET_HOME/landed-sha"
   mkdir -p "$rundir"
-  printf '{"ts":"2026-09-22T00:00:00.000Z","kind":"landing","task":1,"k":1,"examExit":0,"candidateSha":"%s"}\\n' "$sha" >> "$rundir/events.jsonl"
-  if [ -f "$FLEET_HOME/engine-breaks-plan" ] && [ -n "$planfile" ]; then
-    printf 'garbage\\n' > "$planfile"
-  fi
+  printf '{"ts":"2026-09-22T00:00:00.000Z","kind":"landing","task":1,"k":1,"factsExit":0,"candidateSha":"%s"}\\n' "$sha" >> "$rundir/events.jsonl"
 fi
 exit "$code"
 `
@@ -517,8 +505,14 @@ const runAsync = (argv, opts) => runChild(process.execPath, argv, opts)
   assert.equal(closeRow.code, null, '(b) [M1] the sole board:close row carries code null')
 
   const prPost = fs.readFileSync(path.join(home, 'pr-post.json'), 'utf8')
+  // `factory/record.mjs`'s landing-row cell (the sibling engine task's own
+  // file, out of this task's reach) still reads the old field name off the
+  // landing row, which the fixture row above no longer carries — so that
+  // cell reads as absent (`cellText`'s empty string) until that sibling
+  // task switches its reader to the new field too. Asserted as it actually
+  // renders today, not as it will once that lands.
   const expectedBody = 'One widget, one size. It exists so the boot has a plan to carry. It benefits the record.\n\n' +
-    `| 1 | 1 | 0 | ${landedSha} |\n\n` +
+    `| 1 | 1 |  | ${landedSha} |\n\n` +
     'Closes #1222'
   const expectedPrPost = JSON.stringify({
     title: `fleet run-${runN}: A widget that answers its size`,
@@ -563,23 +557,39 @@ const runAsync = (argv, opts) => runChild(process.execPath, argv, opts)
     `(b) [M1] the integration tree carries the landed widget.mjs — got ${JSON.stringify(integrationTree)}`
   )
   assert.ok(
-    !integrationTree.includes('tests/test_widget.mjs'),
-    `(b) [M1] the integration tree no longer carries the stripped tests/test_widget.mjs — got ${JSON.stringify(integrationTree)}`
+    integrationTree.includes('tests/test_widget.mjs'),
+    `(b) [M1] the integration tree carries tests/test_widget.mjs — nothing strips it from the pull request anymore — got ${JSON.stringify(integrationTree)}`
   )
 
+  // [M3] the boot writes no exam file to the evidence branch: under this
+  // run's own `.ultrapowers/runs/<N>/` the evidence tree carries exactly
+  // status.json, events.jsonl and engine.log, and no committed path
+  // contains exams/. (The evidence worktree is a detached worktree of the
+  // target clone itself, so its tree also carries the target's own files —
+  // `README`, `.ultrapowers/plan.md` — outside that run directory.)
   const evidenceTree = git(originDir, ['ls-tree', '-r', '--name-only', `ultra/evidence/run-${runN}`])
     .split('\n').filter(Boolean)
   assert.ok(
-    evidenceTree.includes(`.ultrapowers/runs/${runN}/exams/tests/test_widget.mjs`),
-    `(b) [M1] the evidence tree carries the stripped exam under exams/ — got ${JSON.stringify(evidenceTree)}`
+    !evidenceTree.some((p) => p.includes('exams/')),
+    `(b) [M3] the evidence tree carries no exams/ path — got ${JSON.stringify(evidenceTree)}`
+  )
+  const runDirEntries = evidenceTree.filter((p) => p.startsWith(`.ultrapowers/runs/${runN}/`))
+  assert.deepEqual(
+    runDirEntries.slice().sort(),
+    [
+      `.ultrapowers/runs/${runN}/engine.log`,
+      `.ultrapowers/runs/${runN}/events.jsonl`,
+      `.ultrapowers/runs/${runN}/status.json`
+    ],
+    `(b) [M3] .ultrapowers/runs/${runN}/ carries exactly status.json, events.jsonl and engine.log — got ${JSON.stringify(runDirEntries)}`
   )
 
   // [M5] the merge PUT body the boot sent is byte-equal to the exam's own
   // rendering of the merge payload's fields — title off the plan's first
   // heading and the number the stub PR answered, sha the integration
-  // branch's HEAD after strip_exams's "exams to evidence" commit (the tip
-  // git ls-remote --heads lists for it above — not `landedSha`, which is the
-  // engine's own commit, one commit earlier).
+  // branch's HEAD (the tip git ls-remote --heads lists for it above, which
+  // with no strip step anymore is exactly the engine's own landing commit,
+  // the same sha as `landedSha`).
   const mergePut = fs.readFileSync(path.join(home, 'merge-put.json'), 'utf8')
   const integrationTip = heads[`refs/heads/ultra/integration-run-${runN}`]
   const expectedMergePut = JSON.stringify({
@@ -638,60 +648,10 @@ const runAsync = (argv, opts) => runChild(process.execPath, argv, opts)
   )
 }
 
-// ── (d) [M3] engine-breaks-plan: strip_exams's parser refusal fails the
-//    run instead of being re-read by hand ────────────────────────────────
+// ── (d) [M2] engine.mjs through a symlinked factory/ ─────────────────────
 
 {
-  const runN = '504'
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-d-'))
-  const home = path.join(root, 'home')
-  const bin = path.join(root, 'bin')
-  fs.mkdirSync(home, { recursive: true })
-  fs.mkdirSync(bin, { recursive: true })
-  writeGitConfig(home)
-
-  const { originDir, base, plan } = buildOrigin(root, runN)
-  git(root, ['clone', originDir, path.join(home, 'target')])
-  buildEngineDir(home, ENGINE_SHA)
-  writeStubs(bin, { claudeAuth: 'oauth' })
-  fs.writeFileSync(path.join(home, 'engine-breaks-plan'), '')
-
-  const env = {
-    ...baseEnv(PROXY_URL),
-    FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA }),
-    MERGE_SHA
-  }
-
-  const res = await runBootAsync({ bin, home, env })
-
-  assert.notEqual(
-    res.code, 0,
-    `(d) [M3] a plan_parse.py --unguarded refusal fails the run (non-zero exit) — got 0, stdout: ${res.stdout}, stderr: ${res.stderr}`
-  )
-
-  const statusText = git(originDir, ['show', `ultra/evidence-run-${runN}:.ultrapowers/runs/${runN}/status.json`])
-  const status = JSON.parse(statusText)
-  assert.equal(status.state, 'failed', '(d) [M3] status.json records state "failed"')
-  assert.ok(
-    typeof status.error === 'string' && status.error.startsWith('exams:'),
-    `(d) [M3] status.json's error begins "exams:" — got ${JSON.stringify(status.error)}`
-  )
-
-  const tags = lsRemote(originDir, '--tags')
-  assert.ok(
-    !(`refs/tags/ultra/plan/run-${runN}` in tags),
-    '(d) [M3] no ultra/plan/run-<N> tag is ever cut'
-  )
-  assert.ok(
-    !(`refs/tags/ultra/evidence/run-${runN}` in tags),
-    '(d) [M3] no ultra/evidence/run-<N> tag is ever cut'
-  )
-}
-
-// ── (e) [M2] engine.mjs through a symlinked factory/ ─────────────────────
-
-{
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-e-'))
   const home = path.join(root, 'home')
   fs.mkdirSync(home, { recursive: true })
   const engineDir = buildEngineDir(home, ENGINE_SHA)
@@ -700,7 +660,7 @@ const runAsync = (argv, opts) => runChild(process.execPath, argv, opts)
 
   assert.equal(
     res.code, 2,
-    `(e) [M2] node <engineDir>/factory/engine.mjs with no arguments, through the rig's symlinked factory/, exits 2 — got ${res.code}, stdout: ${res.stdout}, stderr: ${res.stderr}`
+    `(d) [M2] node <engineDir>/factory/engine.mjs with no arguments, through the rig's symlinked factory/, exits 2 — got ${res.code}, stdout: ${res.stdout}, stderr: ${res.stderr}`
   )
 }
 
