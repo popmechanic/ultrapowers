@@ -330,3 +330,18 @@
 {"ts":"2026-09-23T02:32:01.938Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
 {"ts":"2026-09-23T02:32:05.864Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/proofs.mjs"}
 {"ts":"2026-09-23T02:32:11.548Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Edit","target":"/home/exedev/run/impl-1-0/factory/proofs.mjs"}
+{"ts":"2026-09-23T02:32:17.130Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"copyMissingFiles\\|examsDir\\|runTaskExams\\|EXAM_MD\\|examine(\\|selfCheckExam\\|examFiles\\|examPromises\\|examAtZero\\|examPrompt\" /home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:32:21.065Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:32:26.040Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:32:29.191Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:32:33.423Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:32:38.864Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:32:50.889Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"claim_established_given_assertions\\|hasCF\\|readFoldRed\\|foldRedQuestions\\|tExamDefect\\|readLanding\" /home/exedev/run/impl-1-1/factory/judge.mjs"}
+{"ts":"2026-09-23T02:32:53.191Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/judge.mjs"}
+{"ts":"2026-09-23T02:32:54.607Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Read","target":"/home/exedev/run/impl-1-0/factory/commands.mjs"}
+{"ts":"2026-09-23T02:33:02.591Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"runAll(\" /home/exedev/run/impl-1-0/factory/engine.mjs"}
+{"ts":"2026-09-23T02:33:05.178Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/judge.mjs"}
+{"ts":"2026-09-23T02:33:07.943Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/judge.mjs"}
+{"ts":"2026-09-23T02:33:10.980Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/judge.mjs"}
+{"ts":"2026-09-23T02:33:16.090Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/judge.mjs"}
+{"ts":"2026-09-23T02:33:18.093Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"readFoldRed\" /home/exedev/run/impl-1-1/factory/judge.mjs"}
