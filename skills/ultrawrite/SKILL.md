@@ -218,6 +218,20 @@ honest drafts and no preference between them. Then the register row for that que
 its `recommended` as `null`, and the pick carries information: an untagged question is the one
 place where what the operator chose is data rather than assent.
 
+**Every question carries a Please explain option.** Every AskUserQuestion of a sitting — the
+Claim, the execute question, every sitting-level pick — lists `Please explain` as one of its
+options beside the 2–3 choices, never as the `Other` path. On that pick the author asks the
+same question again, in place, with the explanation written into the question's own text above
+the Claim, the same options and the same `(Recommended)` tag, and `Please explain` still listed.
+The explanation escalates by round: round one in plain words — what the sentence means, what
+they will see or do differently after the run, and what each option costs them, all inside the
+re-asked question's text; round two a concrete before-and-after — one thing they see today and
+the same thing after the run, not more words; round three the author says the sentence itself
+is the problem, rewrites the Claim simpler, and offers the rewrite as a new option, and that
+pick is the operator's edit. Each round adds 1 to that question's `explain_rounds` in the record
+and is not a second touch of the ceremony. A question that took two or more rounds is a sentence
+to rewrite at the release census, not a question to retire (#526, #239).
+
 A question whose recommended option is **picked on every plan** of a release is not a question.
 At the release census it is **retired** — its default written down here, the sitting one touch
 shorter (#727) — and what stays in the register is only what a pick can still move.
@@ -263,8 +277,8 @@ quoted rather than drafted, exactly as the elicitation path above has it.
 Grill an issue only when its ticket carries the `wayfinder:grilling` label; an undecided
 choice found mid-authoring comes back as a question, not as a guess.
 
-Hold the operator to one Claim confirmation and one execute choice per plan, each asked
-with AskUserQuestion. Launches stay serial: N plans are N launches back to back, because
+Hold the operator to one Claim confirmation and one execute choice per plan — an explain
+round is part of the same touch, not a third — each asked with AskUserQuestion. Launches stay serial: N plans are N launches back to back, because
 concurrent launches race on the run number (#667). The clock census (n=3 runs, runs
 10–12, 2026-09-05) found authoring throughput, not the sandbox, was the first bound on
 how many runs could be live at once — a queue authored in parallel is what lifts it.
@@ -346,14 +360,16 @@ fields, `verdict` one of `pass`/`fail`, `tally` a free-form count object (`dispa
 key, such as a `history` array of every round's verdicts, is tolerated. One such key is
 reserved: beside `tasks` and `tally` the record carries the sitting's own `authoring` object,
 
-    {"authoring": {"minutes": 118, "probes": 12, "routing": {"branch": "risk", "lane": "ultrapowers"}, "questions": [{"question": "Claim and summary", "options": ["A", "B"], "recommended": "A", "picked": "A"}]}}
+    {"authoring": {"minutes": 118, "probes": 12, "routing": {"branch": "risk", "lane": "ultrapowers"}, "questions": [{"question": "Claim and summary", "options": ["A", "B"], "recommended": "A", "picked": "A", "explain_rounds": 0}]}}
 
 where `minutes` is the sitting's wall-clock minutes to `PLAN OK`, `probes` the hub probes made,
 `routing` the handoff rule's own verdict (§Execution handoff), and `questions` one row per
 AskUserQuestion of the sitting — the execute question included, `recommended` null when no
-option carried the tag. The author writes the whole object once, at the execution handoff after
+option carried the tag, and `explain_rounds` the number of Please explain rounds that question
+took (absent reads 0). The author writes the whole object once, at the execution handoff after
 `PLAN OK` and before the launch; the compiler prints it as one `AUTHORING fact:` line under
-`--check --base`, and the launcher carries that line onto the launch line. A release reads a run
+`--check --base`, ending with the explain count, and the launcher carries that line onto the
+launch line. A release reads a run
 range with `python3 $UW/authoring_census.py --fetch <owner>/<repo> --runs <A>..<B> --into <dir>`,
 and its last `totals:` line is what the release notes carry. A missing task, a
 stale hash, or a `fail` is a compile refusal. The verdict is an artifact, not

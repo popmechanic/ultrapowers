@@ -205,10 +205,13 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
 - **No local scheduled process, ever** — the rule is `skills/ultrapowers/SKILL.md` §Client step 5:
   the launcher reaps, by hand after a sleep, no scheduled job on this machine.
 - **Every choice is an AskUserQuestion** — 2–3 concrete options with their consequences and a
-  `(Recommended)` tag, never a bare open question; the operator adjudicates, they do not author
-  (see §Working with the operator). And every sitting-level question is recorded with its pick in
-  the plan's `authoring` record, so the Recommended `pick rate` is read per release and a
-  recommendation taken every time is retired into a written default rather than asked again.
+  `(Recommended)` tag, never a bare open question; the options always include `Please explain`,
+  and picking it re-asks the same question in place with the explanation written into it,
+  escalating round by round from plain words to a concrete before-and-after to a rewrite of the
+  sentence itself; the operator adjudicates, they do not author (see §Working with the operator).
+  And every sitting-level question is recorded with its pick in the plan's `authoring` record, so
+  the record's `explain_rounds` and the Recommended `pick rate` are read together at each release,
+  and a recommendation taken every time is retired into a written default rather than asked again.
 - **Test doctrine (operator, 2026-09-09; rewritten for cut three, 2026-09-22).** The implementer
   never does TDD: it iterates against the plan's probes and the target's suite and writes no test of
   its own — nothing is written on the fleet to prove a task. The plan's `Run:` probes plus the
@@ -262,7 +265,9 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   their consequences and a `(Recommended)` tag, through AskUserQuestion; never a bare open
   question. A signed Claim is drafted by the author and confirmed by the operator in one touch —
   the draft, its machine restatement and its summary in a single question; their edit is the Claim.
-  Explain an idea; do not state it in the technical register and leave them to decode it.
+  Explain an idea; do not state it in the technical register and leave them to decode it. A
+  Please explain is always on the list, and taking it is the ceremony working, not a detour
+  from it.
 - **They never read code or tests.** The trust chain is plan → probes → gate receipt → smoke.
   Quote receipts; never narrate a green.
 - **Priorities, in tie-break order: quality, then tokens, then clock.** The simpler design wins
