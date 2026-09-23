@@ -146,6 +146,17 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   words: "if it doesn't work, we can always roll back" — #589 shipped as one lift in a day where
   four gated slices had been planned, and the old fleet stayed up as the rollback until the new
   one had driven runs.
+- **The values, reordered for the factory (map #1131, 2026-09-17).** In tie-break order:
+  the exam is the invariant, never traded; then clock speed; then simplicity of the factory, in
+  lines and roles — what "code quality" means for ultrapowers itself; then tokens, last and
+  deliberately, because search spends generation where judgment is nearly free. Three rules
+  added with it: **a judgment is a question, never a sentence or a regex** (every one lives in
+  `factory/questions.json` with its reader and rollback); **speculate, then select** (`k`
+  implementers per task, the exam exit first and Jev's reading as the tie-break); **fold on every
+  landing** (no wave, no fold rule — every adoption folds through the kernel and is checked on
+  the folded tree). Reason: the reading behind the reorder is on #1131; it stands beside, not
+  over, the operator's own tie-break for hand work (§Working with the operator: quality, tokens,
+  clock).
 - **Don't vendor the vendor** — before building a mechanism, ask whether exe.dev already provides
   it (identity, credentials at the edge, the VM comment, tags, the first-boot setup script, cold
   start). Reason: a custom OCI base image was rejected on exactly this ground on 2026-09-04
