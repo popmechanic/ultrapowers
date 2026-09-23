@@ -691,3 +691,18 @@
 {"ts":"2026-09-23T03:00:33.255Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
 {"ts":"2026-09-23T03:00:39.094Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"node --check factory/engine.mjs && echo OK_SYNTAX\ngrep -rnE \"EXAM_MD|examine|selfCheckExam|examPrompt|examFiles|examPromises|examAtZero|exam_at_zero|rig_red|examsDir|copyMissingFiles|runTaskExams|test"}
 {"ts":"2026-09-23T03:00:49.608Z","kind":"worker:tool","task":"1","label":"impl:1:0","tool":"Bash","target":"grep -n \"Closes #\\|draft\\|table\\||.*|.*|\" factory/record.mjs | head -50"}
+{"ts":"2026-09-23T03:01:08.304Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -rnowE \"EXAM_MD|examine|selfCheckExam|examPrompt|examFiles|examPromises|examAtZero|exam_at_zero|rig_red|examsDir|copyMissingFiles|runTaskExams|testCmdsOf|examAssertions|examSelectionRow|examsTouc"}
+{"ts":"2026-09-23T03:01:11.587Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/pairs.mjs"}
+{"ts":"2026-09-23T03:01:15.839Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Edit","target":"/home/exedev/run/impl-1-1/factory/pairs.mjs"}
+{"ts":"2026-09-23T03:01:21.913Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -rnowE \"EXAM_MD|examine|selfCheckExam|examPrompt|examFiles|examPromises|examAtZero|exam_at_zero|rig_red|examsDir|copyMissingFiles|runTaskExams|testCmdsOf|examAssertions|examSelectionRow|examsTouc"}
+{"ts":"2026-09-23T03:01:26.319Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"for f in factory/commands.mjs factory/engine.mjs factory/facts.mjs factory/judge.mjs factory/kprobe.mjs factory/pairs.mjs factory/proofs.mjs factory/record.mjs factory/referee.mjs factory/reverify.mjs"}
+{"ts":"2026-09-23T03:01:30.100Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"runProof\\|run_proof\\|factoryTools\" factory/tools.mjs | head -40"}
+{"ts":"2026-09-23T03:01:34.343Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/tools.mjs"}
+{"ts":"2026-09-23T03:01:38.848Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"sed -n '1,80p' factory/proofs.mjs"}
+{"ts":"2026-09-23T03:01:43.021Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"const runProof =\" -A 15 factory/engine.mjs"}
+{"ts":"2026-09-23T03:01:46.899Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/tools.mjs"}
+{"ts":"2026-09-23T03:01:50.484Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"const server = await tools(\" -A 5 factory/engine.mjs"}
+{"ts":"2026-09-23T03:01:54.642Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Read","target":"/home/exedev/run/impl-1-1/factory/engine.mjs"}
+{"ts":"2026-09-23T03:01:58.014Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"parseArgv\\|'plan'\\|'target'\\|'base'\\|'onto'\\|'runDir'\\|required\" factory/engine.mjs | sed -n '1,40p'"}
+{"ts":"2026-09-23T03:02:02.876Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"readLanding\\|readCovering\\|readGuards\" factory/judge.mjs | head -30"}
+{"ts":"2026-09-23T03:02:06.081Z","kind":"worker:tool","task":"1","label":"impl:1:1","tool":"Bash","target":"grep -n \"const read = \\|async function read\\|read = async\" factory/engine.mjs | head"}
