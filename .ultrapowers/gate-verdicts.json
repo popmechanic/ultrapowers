@@ -1,0 +1,71 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "42ba2a3e5226744305e0657622cc3108f8cd7a061e6a2b4432cf34c9128edd7c",
+   "verdict": "pass",
+   "reason": "key sets, the Test:-path exclusion, the --unguarded usage exit, the grammar: refusals and the suite exits each have a falsifying Run: line"
+  },
+  "2": {
+   "hash": "67a5eb0aa821905d19fcf2e7acb5759de8b1176ba011f2521c47324bf81cc7a4",
+   "verdict": "pass",
+   "reason": "retired-name absences, the settled reading, the gate sentence, the deferral, the two gotcha rows, the two notes and the four pinned sentences each have a Run: line; byte-identity of the deferred sections rests on the line count"
+  },
+  "3": {
+   "hash": "bb77a173c269ce309ed27e63df8d1babfb035942fddf40c07ccafb1677fb3519",
+   "verdict": "pass",
+   "reason": "absences and literals by grep, the two rewrite markers counted, the dated sentences and surviving pins by grep, the launch-size sim and the Per-run sed"
+  }
+ },
+ "tally": {
+  "dispatched": 3,
+  "rejected": 0,
+  "rounds": [
+   {
+    "round": 1,
+    "dispatched": 3,
+    "rejected": 0
+   }
+  ],
+  "base": "c9f49e112fceda838b198cd9cc91282570e72c7c",
+  "question": "facts-only (experiment, rollback the old sentence)"
+ },
+ "authoring": {
+  "minutes": 35,
+  "probes": 0,
+  "routing": {
+   "branch": "width",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Confirm as drafted",
+     "Quote #1248's step 2 sentence"
+    ],
+    "recommended": "Confirm as drafted",
+    "picked": "Confirm as drafted"
+   },
+   {
+    "question": "State exams",
+    "options": [
+     "Retire them with the exam",
+     "Keep them as author-committed probes",
+     "Defer: mark the sections owed"
+    ],
+    "recommended": "Retire them with the exam",
+    "picked": "Defer: mark the sections owed"
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers"
+   }
+  ]
+ }
+}
