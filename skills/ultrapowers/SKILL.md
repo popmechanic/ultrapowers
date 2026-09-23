@@ -9,10 +9,11 @@ allowed-tools: Skill Read Grep Glob Bash AskUserQuestion
 
 This skill is the CLIENT only. Since 0.3.0 there is no LLM engine session:
 on the sandbox, a boot unit (`factory/boot.sh`) spawns the engine
-(`factory/engine.mjs`), which compiles the plan, dispatches an exam worker and
-`k` implementers per task, folds the winner in with the kernel, and decides
-the merge by its own exit code — code, not prose. Nothing in this skill runs a
-plan locally; every dispatch happens on the sandbox.
+(`factory/engine.mjs`), which compiles the plan, dispatches `k` implementers
+per task, measures each one by its `Run:` probes, the tests it selects for
+the patch and the plan's `Check:` lines, folds the winner in with the kernel,
+and decides the merge by its own exit code — code, not prose. Nothing in this
+skill runs a plan locally; every dispatch happens on the sandbox.
 
 The argument decides the mode. A plan path is the client below; the bare word
 `setup` is the guided first run. The client falls into setup by itself when the

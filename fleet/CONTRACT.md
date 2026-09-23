@@ -90,25 +90,31 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   person — the sandbox publishes it and does not merge it. Written once by `new --comment`; the sandbox
   reads it ONCE from `https://reflection.int.exe.xyz/comment` (`{"comment": "..."}`) and fails the run
   if it is absent or malformed. Nobody rewrites it.
-- **Exam environment:** one variable, set by the engine and by nothing else. A plan's `Check:`
+- **Proof environment:** one variable, set by the engine and by nothing else. A plan's `Check:`
   lines run at every fold check with `ULTRA_BASE` set to the run's base sha — never the anchor,
-  never a candidate's own base — under `proofs.run_lines` in `factory/policy.json`. A task's exam
-  command and its `Run:` lines run with the engine's own environment and nothing added: no
-  `ULTRA_BASE`, no `ULTRA_TASK`, no `ULTRA_RUN_DIR`, no `ULTRA_EXAM_PASS`. Those three, the numbered
-  exam passes, the pre-review pass, the review rounds and `reviewOnStateExams` (#836) were the wave
-  engine's and left at cut two (2026-09-21); an exam that wants a base to compare against carries a
-  frozen literal (ultrawrite §Proof), and a comparison against BASE is a `Check:`.
+  never a candidate's own base — under `proofs.run_lines` in `factory/policy.json`, and it rides no
+  other line. A task is measured by its `Run:` probes, run in the candidate's own clone; by the
+  existing tests the engine selects for the patch; and by the plan's `Check:` lines on the folded
+  tree — no file is written for it anywhere on the fleet. A task's `Run:` probes run with the
+  engine's own environment and nothing added: no `ULTRA_BASE` (that rides `Check:` lines and
+  nothing else), no `ULTRA_TASK`, no `ULTRA_RUN_DIR`, no `ULTRA_EXAM_PASS`. Those three, the
+  numbered exam passes, the pre-review pass, the review rounds and `reviewOnStateExams` (#836) were
+  the wave engine's and left at cut two (2026-09-21); a probe that wants a base to compare against
+  carries a frozen literal (ultrawrite §Proof), and a comparison against BASE is a `Check:`. The
+  peer exam role, its files and their
+  evidence copy left the engine at cut three (2026-09-22); `--engine d412149a` runs the engine from
+  before it.
 - **State handshake:** a task that reaches a state its consumers are examined against posts it on
   its own kata issue, as the single metadata key `state.reached` with
   `{"expected":"<path under state-exams/expected/>","content":[tables, values]}` — the pair
   `getContent()` answers, beside the snapshot the task left in its tree. The driver reads that post
-  twice and writes nothing to it. Once for each consumer, before that consumer's exam command first
-  runs: for every producer the run's dependency edges point from, one `getIssue` of the producer's
-  recorded uid (a fresh read — the Setup pass's read predates every worker, so it cannot carry a
-  fact a worker wrote), and a well-formed value's `content` is written as JSON to
-  `state-exams/posted/<producer id>.json` in both the consumer's task clone and its examiner's
-  clone, each clone's `.git/info/exclude` first taking `state-exams/posted/` so a seed never rides
-  the captured patch. A producer carrying no post seeds nothing and is one
+  twice and writes nothing to it. Once for each consumer, before that consumer's `Run:` probes
+  first run: for every producer the run's dependency edges point from, one `getIssue` of the
+  producer's recorded uid (a fresh read — the Setup pass's read predates every worker, so it cannot
+  carry a fact a worker wrote), and a well-formed value's `content` is written as JSON to
+  `state-exams/posted/<producer id>.json` in the consumer's task clone — the handshake seeds that
+  clone only now — whose `.git/info/exclude` first takes `state-exams/posted/` so a seed never
+  rides the captured patch. A producer carrying no post seeds nothing and is one
   `handshake:absent {task, producer}` event. Once more at the producer's own pre-review pass, after
   its `Run:`/`Check:` commands: the file `expected` names is read from the tree the captured patch
   describes and compared with `content` — equal is one `handshake:settled {task, expected}` event
@@ -307,7 +313,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   task's own `folded` must never sit above the run's — and it is a projection of `events.jsonl` and
   nothing else: one key per task id the plan's waves or the log names, each carrying the wave it
   belongs to, one of the nine states above, the label of the worker open for it, its last proof run
-  (`driver:proof-run`, `driver:check-run` or `driver:exam-run`), the detail it was parked with,
+  (`driver:proof-run` or `driver:check-run`), the detail it was parked with,
   its `attention` cell — `{value, msg, ts}` read off that task's latest `driver:attention` event,
   `null` for a task that never raised a hand — and its `blockedBy` cell, the LAST key of the cell.
   A task the driver re-edged reads `waiting` with `blockedBy` the siblings that `driver:re-edged`
@@ -334,7 +340,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `fleet run-<N>: <plan H1>`, head `ultra/integration-run-<N>`, base the target's default branch,
   `draft` true unless the engine exited 0, and no `authorization` header — the edge injects the
   credential. Its body is the plan's `**Summary:**` paragraph, a blank line, one
-  `| <task> | <k> | <examExit> | <candidateSha> |` row per `landing` row of the run's own
+  `| <task> | <k> | <factsExit> | <candidateSha> |` row per `landing` row of the run's own
   `events.jsonl`, a blank line, and one `Closes #<n>` line per number on the plan's `**Closes:**`
   line, all rendered by `factory/record.mjs pr-body`. The `publish:pr` row it leaves —
   `{ts, kind, url, number, draft}` — is written through the same writer as every other
