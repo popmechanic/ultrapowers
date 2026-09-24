@@ -37,6 +37,7 @@
 import assert from 'node:assert/strict'
 
 import { makeRefoldDispatch } from '../../factory/engine.mjs'
+import { hardEdgePreds } from '../../factory/dispatch.mjs'
 
 const BASE_OPTS = {
   taskId: undefined,
@@ -197,6 +198,31 @@ const BASE_OPTS = {
     ['claude-haiku-5', 'claude-opus-5-5'],
     '(e) [M2] the second row\'s models deep-equals the modelUsage keys sorted ascending, not insertion order'
   )
+}
+
+// ── f. `hardEdgePreds`: a proof-run edge is hard under live pairs only when the cell is enabled ──
+{
+  const dagEdges = [
+    { from: '1', to: '2', why: 'write-after-create' },
+    { from: '1', to: '3', why: 'proof-run' },
+    { from: '2', to: '4', why: 'interface' },
+  ]
+  const sorted = (m, id) => [...(m.get(id) || [])].sort()
+
+  const enabled = hardEdgePreds({ dagEdges, pairsLive: true, proofRunHard: true })
+  assert.deepEqual(sorted(enabled, '2'), ['1'], '(f) live+enabled: task 2 waits on {1}')
+  assert.deepEqual(sorted(enabled, '3'), ['1'], '(f) live+enabled: task 3 (proof-run) waits on {1}')
+  assert.deepEqual(sorted(enabled, '4'), [], '(f) live+enabled: task 4 (interface) waits on {}')
+
+  const disabled = hardEdgePreds({ dagEdges, pairsLive: true, proofRunHard: false })
+  assert.deepEqual(sorted(disabled, '2'), ['1'], '(f) live+disabled: task 2 waits on {1}')
+  assert.deepEqual(sorted(disabled, '3'), [], '(f) live+disabled: task 3 (proof-run) waits on {}')
+  assert.deepEqual(sorted(disabled, '4'), [], '(f) live+disabled: task 4 (interface) waits on {}')
+
+  const rolledBack = hardEdgePreds({ dagEdges, pairsLive: false, proofRunHard: true })
+  assert.deepEqual(sorted(rolledBack, '2'), ['1'], '(f) pairs off: task 2 waits on {1}')
+  assert.deepEqual(sorted(rolledBack, '3'), ['1'], '(f) pairs off: task 3 waits on {1}')
+  assert.deepEqual(sorted(rolledBack, '4'), ['2'], '(f) pairs off: task 4 waits on {2}')
 }
 
 console.log('ALL TESTS PASSED')
