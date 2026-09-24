@@ -98,14 +98,14 @@ export function makeGitHook ({ task, label, onDenied }) {
 }
 
 /** The options literal every dispatch shares, built once per worker. */
-export function workerOptions ({ cwd, systemPrompt, model, files, schema, mcpServers, task, label, onDenied }, denials) {
+export function workerOptions ({ cwd, systemPrompt, model, files, schema, mcpServers, task, label, onDenied, readOnly }, denials) {
   const options = {
     cwd,
     systemPrompt,
     model,
     settingSources: [],
     permissionMode: 'bypassPermissions',
-    disallowedTools: [...DISALLOWED_TOOLS],
+    disallowedTools: readOnly ? [...new Set([...DISALLOWED_TOOLS, ...EDIT_TOOLS, 'Bash'])] : [...DISALLOWED_TOOLS],
     hooks: { PreToolUse: [{ hooks: [makeConfineHook({ cwd, files, denials }), makeGitHook({ task, label, onDenied })] }] },
   }
   if (schema !== undefined && schema !== null) options.outputFormat = { type: 'json_schema', schema }

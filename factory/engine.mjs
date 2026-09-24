@@ -60,30 +60,6 @@ import { settledCoverage, observedFacts, clauseFacts } from './facts.mjs'
 import { observedWork, supervisorTick, makeObservedWatch } from './watch.mjs'
 import { kFor, probeRecord } from './kprobe.mjs'
 import { retrying, isRateLimited } from './retry.mjs'
-// Amendment (undeclared by the task's own M1-M6, needed only to reach them):
-// this module now creates a missing parent directory once, on the one error
-// that means "the directory a write was aimed at doesn't exist yet", and
-// retries the write exactly once — every other failure still throws
-// untouched. `runEngine` below already treats a run directory as its own to
-// create (`fs.mkdirSync(runDir, ...)`, a few lines in) and several call
-// sites already mkdir defensively right before a write of their own; this
-// just makes that same defense hold for a write aimed at the run directory
-// from OUTSIDE `runEngine` — before it has had its first chance to run, and
-// therefore before its own mkdir has happened — rather than leaving a bare
-// ENOENT for a caller that writes a policy document into a run directory
-// ahead of the call that would otherwise have made it.
-const _rawWriteFileSync = fs.writeFileSync.bind(fs)
-fs.writeFileSync = (file, data, options) => {
-  try {
-    return _rawWriteFileSync(file, data, options)
-  } catch (err) {
-    if (err && err.code === 'ENOENT' && typeof file === 'string') {
-      fs.mkdirSync(path.dirname(file), { recursive: true })
-      return _rawWriteFileSync(file, data, options)
-    }
-    throw err
-  }
-}
 // ── where everything lives ───────────────────────────────────────────────────
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -1294,7 +1270,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     }
     try {
       const server = await tools({
-        task: { id: taskId, uid: uidFor(taskId), files: task && task.files },
+        task: { id: taskId, uid: uidFor(taskId), files: task && task.files, proofRuns: lines },
         candidates: candidatesFor, board, runProof,
       })
       return server ? { factory: server } : null
@@ -1537,7 +1513,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     foldOrder.push(id)
   }
 
-  const foldIn = async (landing) => {
+  const foldIn = async (landing, { reattempt = false } = {}) => {
     waveNumber += 1
     const id = landing.task.id
     const common = ['--repo', target, '--run-dir', runDir, '--wave', String(waveNumber)]
@@ -1553,17 +1529,21 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     }
     if (!fold || fold.complete !== true) {
       const reason = 'fold did not complete: ' + JSON.stringify(fold || null).slice(0, 300)
-      await board.post(id, 'conflict', reason)
-      appendEvent({ kind: 'parked', task: id, reason })
-      setFoldOutcome(id, 'parked')
+      if (!reattempt) {
+        await board.post(id, 'conflict', reason)
+        appendEvent({ kind: 'parked', task: id, reason })
+        setFoldOutcome(id, 'parked')
+      }
       return { sha: null, reason }
     }
     const mat = kernel(['materialize', ...common, '--prev-head', head, '--patch', patchArg,
       '--subject', 'task ' + id])
     if (!mat || typeof mat.candidateSha !== 'string') {
       const reason = 'materialize answered no candidate: ' + JSON.stringify(mat || null).slice(0, 300)
-      appendEvent({ kind: 'parked', task: id, reason })
-      setFoldOutcome(id, 'parked')
+      if (!reattempt) {
+        appendEvent({ kind: 'parked', task: id, reason })
+        setFoldOutcome(id, 'parked')
+      }
       return { sha: null, reason }
     }
     git(['reset', '-q', '--hard', mat.candidateSha], target)
@@ -1720,7 +1700,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
           action.task),
       })
       const patch = capture(dir, anchor, path.join(runDir, `patch-${action.task}-fold-${task.id}.diff`))
-      const folded = await foldIn({ task: actionTask, anchor, best: { patch } })
+      const folded = await foldIn({ task: actionTask, anchor, best: { patch } }, { reattempt: true })
       return folded.sha !== null
     }
 
