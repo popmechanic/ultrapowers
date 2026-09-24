@@ -205,7 +205,7 @@ policy the rest of this section reads, and it is built the same way, an
 `http-proxy` on the fleet's policy:
 
 ```bash
-ssh exe.dev "integrations add http-proxy --name cloudflare --target https://api.cloudflare.com --bearer - --policy 'tag:fleet'"
+ssh exe.dev "integrations add http-proxy --name cloudflare --target https://api.cloudflare.com --bearer - --attach tag:fleet"
 ```
 
 `skills/ultrapowers/references/first-run.md` §cloudflare walks the token that
