@@ -215,6 +215,17 @@ file — `suite-total-pin`, `directory-absence-pin` and, since the compiler left
   that carries the shared shape as a literal is still right, because the literal is for
   the shape and the edge is for the file.
 
+- **A backgrounded server inside a `Run:` chain goes in its own parentheses.** In
+  `cd server && … && p=$((…)) && (sleep 5; exec celld …) & out=$(bun probe …)` the `&`
+  binds the whole `cd … && … &&` chain, not the subshell: the chain runs in the
+  background, the foreground never entered `server/`, `$p` is empty, and every rehearsal
+  is red on a probe that passes by hand. Write the background as a subshell inside a
+  grouping — `… && ( (sleep 5; exec celld …) >"$log" 2>&1 & echo $! >"$pid" ); out=$(…)` —
+  and rehearse the exact line on a box that has the binary before launching. Fixture
+  run-41 (popmechanic/tinyapp-fixture, 2026-09-24): three red rehearsals, two
+  implementers and a repair round on a correct probe; run-42 with the regrouped line
+  landed on the first try (n=1 pair of runs).
+
 - **A probe reads what it reads, not only what its task wrote.** On run-225 task 2
   pinned how task 1's `record.mjs` rendered a cell, the two tasks shared no file, the
   fold check skipped the sim, and the merged tree was red by hand (#1250); since #1251
