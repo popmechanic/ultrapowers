@@ -139,7 +139,7 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   (measured on run-194, 2026-09-18), and the credential helper administers through
   `kata.int.exe.xyz`, where the edge injects the hub's. The record is rows in `events.jsonl`.
 - `fleet/tests/` — what cut one of the mow left (2026-09-18): the launcher sims
-  `test_launch_*.mjs`, `test_setup_script.mjs`, `test_worker_kata_env.mjs`, the Jev client's two,
+  `test_launch_*.mjs` (less `test_launch_vm_size.mjs`, deleted on #1264), `test_worker_kata_env.mjs`, the Jev client's two,
   `test_probe_kata_facts.mjs` and `test_sims_are_hermetic.mjs`, which forbids a sim naming a
   sibling sim — plus the rig (`_helpers.mjs` and the per-family helpers, which the factory's
   sims build on) and the live `probe_*.mjs` (see `PROBES.md`), run by hand. The 47 sims of the

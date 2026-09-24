@@ -17,10 +17,10 @@ operator's licence that a frozen subject's sims can catch nothing new. The code 
 examined goes at cut two. Git history holds every one of them.
 
 - `test_launch_duplicate.mjs` — the launcher refuses a plan already live on the
-  target, names the run, and takes `--again`.
-- `test_launch_vm_size.mjs` — the launch's `--cpu` and `--memory` come from
-  `~/.ultrapowers/fleet.json`.
-- `test_setup_script.mjs` — the generated first-boot setup script.
+  target, names the run, and takes `--again`. Kept at zero catches over 29 runs
+  (#1264, 2026-09-24): the run-number check runs on the laptop before any sandbox
+  exists, and no fleet probe can launch twice, so this sim is the only alarm for the
+  race that killed run-10 (2026-09-15).
 - `test_worker_kata_env.mjs` — every worker session is a kata actor with its
   issue in hand.
 - `test_probe_kata_facts.mjs` — the shape of `probe_kata_facts.mjs`: one line
