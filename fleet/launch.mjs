@@ -939,7 +939,7 @@ export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planT
       `re-pin them first: python3 ${PIN_SCRIPT_REL} --write --base ${base} ${planPath}`
     )
   }
-  const res = await exec('python3', [compilerPath, '--base', base, planPath], { cwd: repoDir })
+  const res = await exec('python3', [compilerPath, '--base', base, '--repo', repoDir, planPath], { cwd: repoDir })
   if (res.code !== 0) {
     throw new Refusal(
       `launch: plan_check.py --base ${base} refused ${planPath} (exit ${res.code}):\n${output(res)}`

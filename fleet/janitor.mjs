@@ -174,6 +174,21 @@ export const DEFAULT_AGE = '1h'
 /** No status update for this long is a stale run, reported and left alone. */
 export const STALE_MS = 6 * 60 * 60 * 1000
 /**
+ * The hour is for the operator to read a status page before the run is
+ * reaped: `reapPlan({finished, updatedAt, nowMs, ageMs})` names the moment a
+ * finished run crosses it, without mutating anything. `updatedAt` that does
+ * not parse, or a run not yet `finished`, answers `none` — there is nothing
+ * to name a time for.
+ */
+export const reapPlan = ({ finished, updatedAt, nowMs, ageMs }) => {
+  const updated = Date.parse(String(updatedAt))
+  if (!Number.isFinite(updated) || finished !== true) return { action: 'none', reapableAt: null }
+  const at = updated + ageMs
+  return nowMs >= at
+    ? { action: 'rm', reapableAt: new Date(at).toISOString() }
+    : { action: 'pending', reapableAt: new Date(at).toISOString() }
+}
+/**
  * The comment that takes a VM out of the reap. The hub's own comment is
  * `kata hub — persistent service, do not reap`, and `fleet/kata-hub.mjs` writes
  * it; the guard matches this substring, case-sensitively, so any row someone
@@ -695,6 +710,7 @@ export async function janitor ({
 
   // ── Read first, every row, whatever the verdict: --dry-run reads the same. ─
   const actions = []
+  const pending = []
   const stale = []
   const unknown = []
   const deaths = []
@@ -758,7 +774,8 @@ export async function janitor ({
     // An age nobody recorded is not six hours; it is unknown, and left alone.
     if (!Number.isFinite(updated)) continue
 
-    if (reading.finished && nowMs - updated >= ageMs) {
+    const plan = reapPlan({ finished: reading.finished, updatedAt: reading.updatedAt, nowMs, ageMs })
+    if (plan.action === 'rm') {
       actions.push({
         kind: 'rm',
         vm: row.name,
@@ -769,6 +786,9 @@ export async function janitor ({
         applied: !dryRun
       })
       continue
+    }
+    if (plan.action === 'pending') {
+      pending.push({ vm: row.name, run, state: reading.state, reapableAt: plan.reapableAt })
     }
     if (nowMs - updated >= STALE_MS) {
       stale.push({
@@ -795,7 +815,7 @@ export async function janitor ({
   const hubReport = hub.client === null && hub.host === null && hub.dark === null
     ? null
     : { host: hub.host, dark: hub.dark }
-  return { dryRun, age, actions, stale, unknown, deaths, branches, kept, hub: hubReport, runs }
+  return { dryRun, age, actions, stale, unknown, deaths, branches, kept, pending, hub: hubReport, runs }
 }
 
 const renderAction = (a, dryRun) =>
@@ -837,6 +857,7 @@ export const renderJanitor = (result) => {
     // never will be, then what wants a look.
     ...(result.kept ?? []).map(renderKept),
     ...(result.stale ?? []).map((s) => `stale ${s.vm}  run=${s.run} state=${s.state ?? 'none'} last update ${s.lastUpdate} (${s.from}) — look before you rm`),
+    ...(result.pending ?? []).map((p) => `pending ${p.vm}  run=${p.run} state=${p.state ?? 'none'} reapable at ${p.reapableAt}`),
     ...(result.unknown ?? []).map((u) => `unknown ${u.vm}  no readable assignment — look before you rm`),
     // Last, after every rm, stale and unknown line: the reap is the pass's
     // work, and the branch report is what the operator does next.
