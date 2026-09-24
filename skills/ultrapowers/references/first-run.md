@@ -411,7 +411,7 @@ the Workers template. Give it exactly three scopes: `Workers Scripts:Edit`,
 argv:
 
 ```bash
-ssh exe.dev "integrations add http-proxy --name cloudflare --target https://api.cloudflare.com --bearer - --policy 'tag:fleet'"
+ssh exe.dev "integrations add http-proxy --name cloudflare --target https://api.cloudflare.com --bearer - --attach tag:fleet"
 ```
 
 Three things a newcomer would not know:

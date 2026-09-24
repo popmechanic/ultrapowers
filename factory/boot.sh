@@ -53,6 +53,22 @@ log() {
   printf '%s\n' "$line" >>"$BOOT_LOG"; printf '%s\n' "$line" >&2
 }
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+# Milliseconds since the epoch. `date +%N` is GNU-only (macOS prints a literal
+# `3N`), and python3 is on every fleet VM and on the laptop bridge's PATH.
+now_ms() { fleet_python3 -c 'import time; print(int(time.time() * 1000))'; }
+# `bounded_run <seconds> <command>`: the command under `bash -lc`, killed after
+# the budget, exit 124 then — the shape coreutils' `timeout` has, without the
+# binary, which macOS lacks and the bridge's PATH never carries (hotfix on
+# run-230, 2026-09-23: the publish sim died on `timeout: command not found`).
+bounded_run() {
+  local secs="$1" cmd="$2" pid watchdog rc
+  bash -lc "$cmd" & pid=$!
+  ( sleep "$secs"; kill "$pid" 2>/dev/null ) & watchdog=$!
+  wait "$pid" 2>/dev/null; rc=$?
+  kill "$watchdog" 2>/dev/null; wait "$watchdog" 2>/dev/null || true
+  if [ "$rc" -eq 143 ] || [ "$rc" -eq 137 ]; then rc=124; fi
+  return "$rc"
+}
 # No jq: every value read is one flat field of a small document, and an ABSENT field is an answer, not an error; both take the field in $1, the document on stdin.
 json_field() { { grep -o "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" || true; } | head -n 1 | sed 's/.*:[[:space:]]*"\(.*\)"$/\1/'; }
 json_int()   { { grep -o "\"$1\"[[:space:]]*:[[:space:]]*-\?[0-9]\+" || true; } | head -n 1 | sed 's/.*[:[:space:]]//'; }
@@ -372,11 +388,11 @@ run_publish_probe() {
   local rollback_raw="$RUN_DIR/.publish-rollback-raw.log" rollback_log="$pub_dir/publish-rollback.log"
   local start_ms end_ms deploy_exit deploy_ms verify_exit verify_ms rollback_exit url json_args
 
-  start_ms="$(date +%s%3N)"
+  start_ms="$(now_ms)"
   if (cd "$TARGET_DIR" && CLOUDFLARE_API_BASE_URL="https://cloudflare.int.exe.xyz/client/v4" CLOUDFLARE_API_TOKEN="placeholder" \
-      timeout "$timeout_seconds" bash -lc "$deploy_cmd") >"$deploy_raw" 2>&1
+      bounded_run "$timeout_seconds" "$deploy_cmd") >"$deploy_raw" 2>&1
   then deploy_exit=0; else deploy_exit=$?; fi
-  end_ms="$(date +%s%3N)"; deploy_ms=$(( end_ms - start_ms ))
+  end_ms="$(now_ms)"; deploy_ms=$(( end_ms - start_ms ))
   url="$(grep -oE 'https://[A-Za-z0-9.-]*\.workers\.dev' "$deploy_raw" | head -n 1 || true)"
   tail -c 4000 "$deploy_raw" >"$deploy_log"; rm -f "$deploy_raw"
   event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" publish:deploy cmd="$deploy_cmd" exit="$deploy_exit" ms="$deploy_ms" url="${url:-null}"
@@ -388,11 +404,11 @@ run_publish_probe() {
     return 0
   fi
 
-  start_ms="$(date +%s%3N)"
+  start_ms="$(now_ms)"
   if (cd "$TARGET_DIR" && CLOUDFLARE_API_BASE_URL="https://cloudflare.int.exe.xyz/client/v4" CLOUDFLARE_API_TOKEN="placeholder" \
-      ULTRA_PUBLISH_URL="$url" timeout "$timeout_seconds" bash -lc "$verify_cmd") >"$verify_raw" 2>&1
+      ULTRA_PUBLISH_URL="$url" bounded_run "$timeout_seconds" "$verify_cmd") >"$verify_raw" 2>&1
   then verify_exit=0; else verify_exit=$?; fi
-  end_ms="$(date +%s%3N)"; verify_ms=$(( end_ms - start_ms ))
+  end_ms="$(now_ms)"; verify_ms=$(( end_ms - start_ms ))
   tail -c 4000 "$verify_raw" >"$verify_log"; rm -f "$verify_raw"
   event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" publish:verify cmd="$verify_cmd" exit="$verify_exit" ms="$verify_ms" url="$url"
 
@@ -413,7 +429,7 @@ run_publish_probe() {
   fi
 
   if (cd "$TARGET_DIR" && CLOUDFLARE_API_BASE_URL="https://cloudflare.int.exe.xyz/client/v4" CLOUDFLARE_API_TOKEN="placeholder" \
-      timeout "$timeout_seconds" bash -lc "$rollback_cmd") >"$rollback_raw" 2>&1
+      bounded_run "$timeout_seconds" "$rollback_cmd") >"$rollback_raw" 2>&1
   then rollback_exit=0; else rollback_exit=$?; fi
   tail -c 4000 "$rollback_raw" >"$rollback_log"; rm -f "$rollback_raw"
   event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" publish:rollback cmd="$rollback_cmd" exit="$rollback_exit"
