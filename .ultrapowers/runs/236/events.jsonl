@@ -361,3 +361,11 @@
 {"ts":"2026-09-24T22:04:36.462Z","kind":"refold","ok":true}
 {"ts":"2026-09-24T22:04:39.273Z","kind":"merge","code":405}
 {"ts":"2026-09-24T22:04:42.542Z","kind":"merge","code":200}
+{"ts":"2026-09-24T22:04:44.390Z","kind":"board:leave","rc":0}
+{"ts":"2026-09-24T22:04:44.574Z","kind":"board:close","what":"task 2","code":200}
+{"ts":"2026-09-24T22:04:44.620Z","kind":"board:close","what":"task 3","code":200}
+{"ts":"2026-09-24T22:04:44.656Z","kind":"board:close","what":"task 4","code":200}
+{"ts":"2026-09-24T22:04:44.694Z","kind":"board:close","what":"task 5","code":200}
+{"ts":"2026-09-24T22:04:44.732Z","kind":"board:close","what":"task 8","code":200}
+{"ts":"2026-09-24T22:04:44.778Z","kind":"board:close","what":"run","code":200}
+{"ts":"2026-09-24T22:04:44.825Z","kind":"run:audit","state":"done","missing":[]}
