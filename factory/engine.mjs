@@ -1475,7 +1475,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       if (answer && answer.error) {
         refereeDied = true
         appendEvent({
-          kind: 'referee', task: task.id, died: true, error: answer.error, trigger: trig.trigger,
+          kind: 'referee', task: task.id, died: true, error: answer.error, trigger: 'rung',
         })
       } else {
         const findings = findingsOf(answer)
@@ -1496,7 +1496,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         }
         appendEvent({
           kind: 'referee', task: task.id, findings: findings.length,
-          blocking: blocking.length, grades, trigger: trig.trigger,
+          blocking: blocking.length, grades, trigger: 'rung',
         })
         if (blocking.length) {
           const fixLabel = 'fix:' + task.id
