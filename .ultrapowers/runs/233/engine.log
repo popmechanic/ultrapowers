@@ -1,0 +1,10 @@
+Running as unit: fleet-engine-233.service; invocation ID: faf2bfad49654b6e8036ee6b82d6398a
+adopted task 1 -> 14adc6eb  facts=0 k=2
+adopted task 2 -> 8bfd4481  facts=0 k=1
+{"done":true,"adopted":["1","2"],"head":"8bfd4481f861822a27f634da54a51165a3827f6c","wall_ms":81246,"cost_usd":0.9108372000000001}
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 1min 21.329s
+CPU time consumed: 29.886s
+Memory peak: 1.5M
+Memory swap peak: 0B
