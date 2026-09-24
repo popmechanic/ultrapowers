@@ -3,7 +3,7 @@
  * knob that only the old engine read" (the launcher's `--tier` and
  * `--implementer-effort`, cut with the old engine).
  *
- * A hermetic sim in the shape of `test_launch_vm_size.mjs` and
+ * A hermetic sim in the shape of
  * `test_launch_duplicate.mjs`: a stubbed lobby (`makeExec`), a real temporary
  * target repository with a bare origin (`makeTargetRepo`), and `simEnv()` for
  * every child process a launch spawns. It imports only `./_helpers.mjs` and
