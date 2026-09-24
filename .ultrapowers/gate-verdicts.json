@@ -1,0 +1,81 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "7d2943b23c61dbbabbd2fc797abdea02487f71ad2a4b592b15875f2973fa262f",
+      "verdict": "pass",
+      "reason": "M1 exit 2 plus both strings; M2 grep fails at BASE where the null list is skipped silently; M3's sed range at BASE holds only the bare lobby call; M4 is the regression sensor."
+    },
+    "2": {
+      "hash": "c084c2b2027e77d2d39df1d6cefe3d277b996e7e2160b3a51d97611d8aa5ad46",
+      "verdict": "pass",
+      "reason": "the malformed-heading plan exits 0 at BASE and 2 after; the Delete-only sibling draws no edge at BASE; M3 is the preservation guard (round 2 after the fixtures lost their backticks)."
+    },
+    "3": {
+      "hash": "c38b412311a08c5b6ee3185bf7626cc1d5f03547a71564cd8eb9419b6ddd2ae7",
+      "verdict": "pass",
+      "reason": "two whole-tree lines and exit 2, red at BASE; UTF-8 stderr line with no Traceback; Depends-on, unknown clause and prose Stale-if each red at BASE; the ULTRA_BASE literal survives the chr(36) write (round 3: round 1 mistook a test constant for the checker's output, round 2 caught the shell expanding ULTRA_BASE)."
+    },
+    "4": {
+      "hash": "ccbeae77bd007d1165a5298eb88c45ae9ebc805ea3dabcde25f041a3a8710d67",
+      "verdict": "pass",
+      "reason": "every negation is red at BASE (line 570's --check, line 26's legacy grammar, line 94 without plan_check.py, gotchas line 11's Test:) (round 2 after the probe's backticks were replaced with wildcards)."
+    },
+    "5": {
+      "hash": "6d8b9479a9d16db390df4b82baac741a0dab7f40115e6a7a40b2ab8113999300",
+      "verdict": "pass",
+      "reason": "a 2,000,000-character description breaks an argv-passed input at BASE; the matcher and quoting checks exit 1 at BASE; M3 is its own exit code."
+    }
+  },
+  "tally": {
+    "dispatched": 9,
+    "rejected": 2,
+    "rounds": {
+      "1": {
+        "dispatched": 5,
+        "rejected": 2,
+        "reason": "task 3: the reader read a test constant as the checker emitting the unknown-clause line (wrong, but the wording was adopted); task 4: the probe carried backticks, which plan_check refuses"
+      },
+      "2": {
+        "dispatched": 3,
+        "rejected": 1,
+        "reason": "task 3:  inside a double-quoted python -c expanded in the shell"
+      },
+      "3": {
+        "dispatched": 1,
+        "rejected": 0
+      }
+    },
+    "base": "b891ddd9fa1805262ed23d8b831cc76bbe1e5103"
+  },
+  "authoring": {
+    "minutes": 15,
+    "probes": 0,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Sign it as written",
+          "Sign without the skill-text task"
+        ],
+        "recommended": "Sign it as written",
+        "picked": "Sign it as written",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Execute",
+        "options": [
+          "Ultrapowers",
+          "Ultrapowers, after run-234 merges",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers",
+        "explain_rounds": 0
+      }
+    ]
+  }
+}
