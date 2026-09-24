@@ -530,21 +530,25 @@ class BaseTree:
         self._peeled = {}
 
     @classmethod
-    def from_flag(cls, value, plan_path):
+    def from_flag(cls, value, plan_path, repo=None):
         """The reader a `--base` VALUE names. A sha that names no commit of
         the plan's repository — or a plan outside any checkout — exits with
-        one `error:` line rather than reading a tree nobody asked for."""
+        one `error:` line rather than reading a tree nobody asked for.
+
+        `repo`, when given, names the repository a 40-hex `--base` is
+        resolved and peeled in, in place of `default_base(plan_path)`; a
+        directory `--base` is unaffected by it."""
         text = str(value)
         if Path(text).is_dir() or not _SHA40_RE.fullmatch(text):
             return cls(text)
-        repo = default_base(plan_path)
-        if repo is None:
+        repo_path = Path(repo) if repo is not None else default_base(plan_path)
+        if repo_path is None:
             sys.exit("error: --base %s: no git checkout found for %s to "
                      "resolve the sha in"
                      % (text, Path(plan_path).resolve().parent))
-        tree = cls(repo, text)
+        tree = cls(repo_path, text)
         if not tree._peel(text):
-            sys.exit("error: --base %s names no commit of %s" % (text, repo))
+            sys.exit("error: --base %s names no commit of %s" % (text, repo_path))
         return tree
 
     @property
@@ -930,6 +934,11 @@ def main(argv=None):
                     help="a checkout directory, or a 40-hex commit of the "
                          "plan's own repository (read with git show/ls-tree, "
                          "never checked out)")
+    ap.add_argument("--repo", default=None, metavar="DIR",
+                    help="the repository a 40-hex --base is resolved and "
+                         "peeled in, in place of the plan's own checkout "
+                         "(for a plan sitting outside any git checkout); "
+                         "a directory --base is unaffected")
     args = ap.parse_args(argv)
 
     # An input error prints no verdict line at all.
@@ -939,7 +948,7 @@ def main(argv=None):
         if refusal is not None:
             print("error: " + refusal, file=sys.stderr)
             return 2
-        base_tree = BaseTree.from_flag(args.base, args.plan)
+        base_tree = BaseTree.from_flag(args.base, args.plan, repo=args.repo)
 
     plan_text = args.plan.read_text()
     try:
