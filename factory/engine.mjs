@@ -1513,7 +1513,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     foldOrder.push(id)
   }
 
-  const foldIn = async (landing) => {
+  const foldIn = async (landing, { reattempt = false } = {}) => {
     waveNumber += 1
     const id = landing.task.id
     const common = ['--repo', target, '--run-dir', runDir, '--wave', String(waveNumber)]
@@ -1529,17 +1529,21 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     }
     if (!fold || fold.complete !== true) {
       const reason = 'fold did not complete: ' + JSON.stringify(fold || null).slice(0, 300)
-      await board.post(id, 'conflict', reason)
-      appendEvent({ kind: 'parked', task: id, reason })
-      setFoldOutcome(id, 'parked')
+      if (!reattempt) {
+        await board.post(id, 'conflict', reason)
+        appendEvent({ kind: 'parked', task: id, reason })
+        setFoldOutcome(id, 'parked')
+      }
       return { sha: null, reason }
     }
     const mat = kernel(['materialize', ...common, '--prev-head', head, '--patch', patchArg,
       '--subject', 'task ' + id])
     if (!mat || typeof mat.candidateSha !== 'string') {
       const reason = 'materialize answered no candidate: ' + JSON.stringify(mat || null).slice(0, 300)
-      appendEvent({ kind: 'parked', task: id, reason })
-      setFoldOutcome(id, 'parked')
+      if (!reattempt) {
+        appendEvent({ kind: 'parked', task: id, reason })
+        setFoldOutcome(id, 'parked')
+      }
       return { sha: null, reason }
     }
     git(['reset', '-q', '--hard', mat.candidateSha], target)
@@ -1696,7 +1700,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
           action.task),
       })
       const patch = capture(dir, anchor, path.join(runDir, `patch-${action.task}-fold-${task.id}.diff`))
-      const folded = await foldIn({ task: actionTask, anchor, best: { patch } })
+      const folded = await foldIn({ task: actionTask, anchor, best: { patch } }, { reattempt: true })
       return folded.sha !== null
     }
 
