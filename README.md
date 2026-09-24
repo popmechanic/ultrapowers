@@ -94,9 +94,10 @@ work-in-progress was restored byte-for-byte.
 
 ultrapowers runs on an exe.dev fleet you provision — the plugin is the client, and the engine is
 `factory/engine.mjs`. `/ultrapowers <plan-path>` publishes your approved plan and starts a run on
-a disposable sandbox of its own; every wave, per-task review, fold and test suite executes there.
-Nothing builds, tests, or merges on your machine. When you approve the finished result at the gate,
-the sandbox opens the pull request on the repository you ran in, with the gate receipt in its body.
+a disposable sandbox of its own; every implementer, every probe, every fold and the test suite
+execute there. Nothing builds, tests, or merges on your machine. When the run ends, the sandbox
+opens the pull request on the repository you ran in — ready if its own checks ended green, a draft
+otherwise — with the evidence linked in its body.
 
 The clearest way to see what it does is to zoom in — the whole plan, then one task.
 
@@ -122,44 +123,43 @@ your plan stops being a list and becomes a map. Tasks with no path between them 
 The depth of the graph is how long the work really takes; its width is how much can happen at once.
 
 <p align="center">
-  <img src="docs/assets/dag.gif" width="840" alt="An approved plan drawn as a directed acyclic graph. A single plan node fans out into Wave 1's parallel tasks; dependency arrows cross between Waves 2 and 3, each task waiting only for what it needs; everything fans back into one merged pull request. Arrows point from a task to the work that depends on it.">
+  <img src="docs/assets/dag.gif" width="840" alt="An approved plan drawn as a directed acyclic graph. A single plan node fans out into independent tasks; dependency arrows cross between them, each task waiting only for what it needs; everything fans back into one merged pull request. Arrows point from a task to the work that depends on it.">
 </p>
 
-ultrapowers reads your approved plan and builds exactly this graph — one starting point, fanning out
-into independent work and back into a single result — then cuts the middle into **waves**: each wave a
-set of tasks with nothing left to wait for, launched together. Three tasks that don't touch each other
-run as three agents at once; a task that needs them waits one wave and starts the moment they land.
+ultrapowers reads your approved plan and derives exactly this graph — from the files each task
+touches and the probes each task runs, not from a list you write — then runs it as a **pool**: every
+task whose dependencies have landed is started at once, and a task that needs another starts the
+moment that one lands. There is no round to wait for; the shape of the work is the only clock.
 
 ### Zoom in: one task's life
 
-Pick any one of those circles. Up close, it isn't a dot — it's a task with a life of its own.
+Pick any one of those circles. Up close, it isn't a dot — it's a small search.
 
-<p align="center">
-  <img src="docs/assets/task.gif" width="720" alt="One task's git history: it forks a worktree branch off the integration trunk, an agent adds commits, an independent review gates it, a fix round follows if the review asks, and it merges back onto the integration branch with two parents.">
-</p>
+The task is handed to **more than one implementer**, each in its own fresh clone of the repository at
+the run's base. Each one works only from the task's contract — what must be true afterwards, and the
+proof that decides it — and each produces a patch. Then the patches are **measured**, not reviewed:
+the task's own `Run:` probes execute in each candidate's clone, the existing tests that touch what the
+patch touches run beside them, and the run-wide `Check:` lines run on the result. The candidate whose
+facts come out best is adopted; a judge reads the patches only to break ties and to grade what a
+probe cannot see.
 
-It **forks its own git worktree** — a second, complete checkout of the repository that shares its
-history, a private workshop cut from the same cloth. That's the quiet corner of git that makes the
-whole thing safe: a dozen agents build "the same project" at once without ever fighting over a file on
-disk. One agent builds the task there, commit by commit. Then an **independent review** checks the
-result against *exactly the point it forked from* — not the latest state of everything — so it can't
-mistake another wave's work for this task's. If the
-review asks for a fix, the task loops until it passes, then **merges back** onto the one integration
-branch.
+Every adoption **folds** at once onto the run's integration tree through a content-level merge
+kernel — no waiting for siblings — and the folded tree is re-checked with every adopted task's probes,
+so a task that reads what another task wrote is proven against the tree it will actually ship in.
 
-The model each task runs on is the whole idea in miniature: the builder is a cheap model, the
-reviewer is your frontier one — cheap models do the building, your frontier model does the judging —
-multiplied across every task a wave holds at once. When a wave's tasks have all passed their
-reviews, the engine folds them onto the integration branch and the next wave starts.
+The model each task runs on is the whole idea in miniature: the implementers are cheap and several,
+the judgment is your frontier model's and small — generation is where the tokens go, judgment is
+nearly free — multiplied across every task the pool holds at once.
 
 ### It doesn't improvise
 
-The engine that orchestrates all of this is committed and frozen; it never writes a fresh version of
-itself at runtime. Same plan in, same structure out. And every run happens in a sandbox that exists
-only for that run — nothing it does can touch your checkout, and nothing it leaves behind survives it.
+The engine that runs all of this is committed and frozen at the sha the launch names; it never writes
+a fresh version of itself at runtime. Same plan in, same structure out. And every run happens in a
+sandbox that exists only for that run — nothing it does can touch your checkout, and nothing it
+leaves behind survives it except the evidence it pushed.
 
 None of this is magic, exactly. It's all premised on a handful of older, sturdy ideas —
-dependency graphs, git worktrees, disposable sandboxes — each doing one small job well.
+dependency graphs, clean clones, content merges, disposable sandboxes — each doing one small job well.
 
 ## Get started
 
@@ -181,7 +181,7 @@ alongside it if you want its brainstorming and practice skills as companions.
 ### 2. `/ultrapowers setup`
 
 Run `/ultrapowers setup` and answer what it asks. The agent runs the doctor, reads its rows —
-`exe-dev`, `capacity`, `claude`, `github`, `integrations` — and fixes every red row with you,
+`exe-dev`, `capacity`, `claude`, `accounts`, `github`, `integrations`, `verb-drift`, `kata`, `cloudflare` — and fixes every red row with you,
 offering each choice as options rather than asking you to invent an answer. Setup is safe to
 re-run: the doctor (`fleet/doctor.mjs`) only reports, and setup only touches what is still red.
 
@@ -215,8 +215,8 @@ two checkpoints.
 ### 4. Build
 
 In the repository you want built, run `/ultrapowers <plan-path>`. The plan rides to the sandbox on
-that repository's `ultra/plan-run-<N>` branch, and the run happens there: waves, per-task reviews,
-folds, the suite. Watch it or walk away.
+that repository's `ultra/plan-run-<N>` branch, and the run happens there: the implementers, the probes,
+the folds, the suite. Watch it or walk away.
 
 At the end you get the finished result: the sandbox opens the pull request on that repository —
 ultrapowers itself is just one such repository. Its body carries the gate receipt and links the
