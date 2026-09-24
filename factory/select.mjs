@@ -207,34 +207,6 @@ export function excerptFor (text, hits, cap) {
   return wholeLinePrefix(outLines, cap)
 }
 
-export function symbolsOf (clauses) {
-  const raw = []
-  const spanRe = /`([^`]*)`/g
-  for (const clause of clauses) {
-    let m
-    spanRe.lastIndex = 0
-    while ((m = spanRe.exec(clause)) !== null) {
-      const span = m[1]
-      let value = null
-      if (span.includes('/') && /\.[A-Za-z0-9]+$/.test(span)) {
-        value = span
-      } else {
-        const idMatch = span.match(/^[A-Za-z_$][A-Za-z0-9_$]*/)
-        value = idMatch ? idMatch[0] : null
-      }
-      if (value && value.length >= 4) raw.push(value)
-    }
-  }
-
-  const seen = new Set()
-  const result = []
-  for (const v of raw) {
-    if (seen.has(v)) continue
-    seen.add(v)
-    result.push(v)
-  }
-  return result
-}
 
 export function commandFor (path, seconds) {
   if (path.endsWith('.test.ts')) return ['timeout', String(seconds), 'bun', 'test', path]

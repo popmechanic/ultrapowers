@@ -49,7 +49,7 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "skills/ultrapowers/scripts/autoresearch.py"
+SCRIPT = ROOT / "evals/readings/autoresearch.py"
 
 TABLE_HEADER = "outcome\tmodel\tauroc\tdelta"
 LAST_LINE = "tasks: n=40 train=20 held_out=20 fix=16 parked=5 dropped=0"

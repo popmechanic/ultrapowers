@@ -31,6 +31,11 @@
  * lobby verb and `gh api` is answered by the seam, and the compiler is stubbed
  * — both its fetch at `engine=` (`COMPILER_FETCH`) and its every `python3` run
  * (`compilerRule`).
+ *
+ * Kept at zero catches over 29 runs (#1264, 2026-09-24): the run-number check
+ * runs on the laptop before any sandbox exists, and no fleet probe can launch
+ * twice, so this sim is the only alarm for the race that killed run-10
+ * (2026-09-15).
  */
 
 import assert from 'node:assert/strict'

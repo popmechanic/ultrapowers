@@ -184,13 +184,11 @@ def spec(task_id, patch, anchor=None):
     return "%s=%s@%s" % (task_id, patch, anchor)
 
 
-def fold(repo, run_dir, wave, base, patches=(), branches=()):
+def fold(repo, run_dir, wave, base, patches=()):
     args = ["fold", "--repo", str(repo), "--run-dir", str(run_dir),
             "--wave", str(wave), "--base", base]
     for s in patches:
         args += ["--patch", s]
-    for s in branches:
-        args += ["--branch", s]
     return cli(*args)
 
 
@@ -248,20 +246,6 @@ def candidate_text(repo, candidate, path):
 def candidate_carries(repo, candidate, path):
     return git_try(repo, "rev-parse", "--verify", "-q",
                    "%s:%s" % (candidate, path)).returncode == 0
-
-
-def unrelated_root_commit(repo):
-    """A root commit of the empty tree — a head the base is no ancestor of."""
-    empty_tree = subprocess.run(["git", "-C", str(repo), "mktree"], input="",
-                                capture_output=True, text=True, env=GIT_ENV,
-                                check=True).stdout.strip()
-    return subprocess.run(["git", "-C", str(repo), "commit-tree", empty_tree,
-                           "-m", "unrelated root"], capture_output=True,
-                          text=True, env=GIT_ENV, check=True).stdout.strip()
-
-
-# ---------------------------------------------------------------------------
-# (a) [M1] the anchor is what changed the answer
 
 
 def test_m1_leg_a_anchor_decides_where_the_patch_applies(tmp_path):
@@ -632,26 +616,6 @@ def test_m6_leg_f_patch_that_does_not_apply_over_its_anchor(tmp_path):
         % (wave_base[:7], refused.stderr))
     assert not wave_dir(run_dir, 1).exists(), (
         "M6 leg (f): the refusal comes before anything is written, but %s "
-        "exists" % wave_dir(run_dir, 1))
-
-
-def test_m6_leg_f_undescended_task_head_is_still_refused(tmp_path):
-    """Leg (f) [M6]: a task head the base is not an ancestor of is still
-    refused (exit 2, nothing written) — the anchor changes nothing here.
-    """
-    repo, base = base_repo(tmp_path)
-    root = unrelated_root_commit(repo)
-    run_dir = tmp_path / "run"
-
-    refused = fold(repo, run_dir, 1, base, branches=["t=x:%s" % root])
-    assert refused.returncode == 2, (
-        "M6 leg (f): an undescended task head is still the exit-2 refusal:\n%s"
-        % shows(refused))
-    assert "not descended from base" in refused.stderr, (
-        "M6 leg (f): the refusal keeps its stderr line, got %r"
-        % refused.stderr)
-    assert not wave_dir(run_dir, 1).exists(), (
-        "M6 leg (f): nothing is written on the undescended refusal, but %s "
         "exists" % wave_dir(run_dir, 1))
 
 

@@ -30,9 +30,7 @@ import repo_weave as rw
 
 def sampled_orders(n, seed=42):
     """All permutations of range(n) up to 4 elements; 20 seeded samples (the
-    identity order plus 19 shuffles) above that. Moved from the eval-only
-    schedule_model module: this is a generic fold-order sampler, not modeling
-    logic, so the kernel owns it and schedule_model imports it back."""
+    identity order plus 19 shuffles) above that."""
     if n <= 4:
         return [list(p) for p in permutations(range(n))]
     rng = random.Random(seed)
@@ -114,19 +112,6 @@ class FrontierEngine:
         self._touched_at[path] = len(self.events) - 1
         return True
 
-    def state_strings(self):
-        """Per-path serialized weave states of the current frontier.
-
-        The raw manyana state strings — the persistence unit Tier 1 writes as
-        content-addressed blobs (spec 2026-09-01 §2.1), NOT the visible text
-        `manifest` renders. A copy: the weave dir is written from a snapshot
-        of the frontier, and no caller may reach in and edit the live map.
-
-        Binary paths are absent by construction — `RepoState.files` holds text
-        weaves only, and only a weave has a state to persist.
-        """
-        return dict(self.frontier.files)
-
     def manifest(self):
         return rw.manifest(self.frontier)
 
@@ -161,23 +146,14 @@ def _apply_events(eng, states, events):
     return eng
 
 
-def _union_touched(repo, base_sha, heads):
-    """The union of every head's touched paths, derived BEFORE any fold.
+def union_touched_anchored(repo, base_sha, refs):
+    """The union of every task's touched paths over `[(ref, anchor or None)]`,
+    derived BEFORE any fold, each task's set read against its OWN anchor.
 
     The ordering contract (spec 2026-08-12 §2): a per-task streaming scope
     would misclassify a path another task later touches as an add/add instead
     of a modify, because `task_state_from_contents` branches on membership in
     the base.
-    """
-    touched = set()
-    for head in heads:
-        touched.update(rw.diff_paths(repo, base_sha, head))
-    return touched
-
-
-def union_touched_anchored(repo, base_sha, refs):
-    """`_union_touched` over `[(ref, anchor or None)]` — each task's touched
-    set read against its OWN anchor.
 
     An anchored task's tree descends from an older head, so diffing it against
     the wave's base would list every path the base gained since — paths the

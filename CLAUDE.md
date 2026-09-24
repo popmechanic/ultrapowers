@@ -71,8 +71,10 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   plan reaches the fleet only as `.ultrapowers/plan.md`, one commit on the run's base that
   `fleet/launch.mjs` pushes to the TARGET repository before any VM exists. A plan may not ask
   a worker to read a spec path — the sandbox has none.
-- `evals/` — the A/B harness (`ab_runner.py`, `judge.py`, `frontier/`) and its recorded
-  results. `evals/fixtures/claims/` is the one sample plan left: the compiler's probe fixture.
+- `evals/` — recorded readings and results only (the A/B harness and the frontier scripts left on
+  2026-09-24 with the kernel legs they exercised); `evals/readings/` holds `autoresearch.py` and
+  `jev_census.py`, readings tools no skill invokes, moved out of `skills/` the same day.
+  `evals/fixtures/claims/` is the one sample plan left: the parser's probe fixture.
   **Untracked since #544 step 4 (2026-09-08):** `evals/frontier/corpus/` and
   `evals/frontier/results/` are ignored by `.gitignore`, `evals/frontier/README.md` is the
   tracked stub, and the durable copy is the laptop.
@@ -139,7 +141,7 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   (measured on run-194, 2026-09-18), and the credential helper administers through
   `kata.int.exe.xyz`, where the edge injects the hub's. The record is rows in `events.jsonl`.
 - `fleet/tests/` — what cut one of the mow left (2026-09-18): the launcher sims
-  `test_launch_*.mjs` (less `test_launch_vm_size.mjs`, deleted on #1264), `test_worker_kata_env.mjs`, the Jev client's two,
+  `test_launch_*.mjs` (less `test_launch_vm_size.mjs`, deleted on #1264), the Jev client's two,
   `test_probe_kata_facts.mjs` and `test_sims_are_hermetic.mjs`, which forbids a sim naming a
   sibling sim — plus the rig (`_helpers.mjs` and the per-family helpers, which the factory's
   sims build on) and the live `probe_*.mjs` (see `PROBES.md`), run by hand. The 47 sims of the

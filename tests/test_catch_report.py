@@ -1,29 +1,9 @@
-"""tests/test_catch_report.py — the exam for task 2: the fold-order gate is a
-probe run by hand, and the catch counter keeps a design gate.
+"""tests/test_catch_report.py — the exam for the catch counter's design gate.
 
 Written against the task's Machine clauses, leg by leg. Every assertion names
 the leg it belongs to and the clause it comes from, so a reader can map this
 file back to the contract:
 
-  M1  `fleet/tests/probe_readiness_fold_order.mjs` is #832's sim as `2f327c6f`
-      added it — five corpus waves, the negative control, the soft-edges pair
-      and the fixture sets, one stdout line per set and `ALL TESTS PASSED`
-      last, importing `./_readiness_helpers.mjs` unchanged — with one change:
-      a fixture set whose manifest's `project` tree exists at neither of the
-      helper's two resolutions is SKIPPED with one stderr line naming the set
-      and no stdout line, instead of throwing. Its `import` lines name only
-      `node:assert/strict`, `node:fs`, `node:path` and
-      `./_readiness_helpers.mjs`.
-  M2  `node fleet/tests/probe_readiness_fold_order.mjs` at BASE exits 0 and
-      prints exactly five lines beginning `wave-` and ending
-      `ok steps=<n> kernelCalls=<n>`, one line beginning `negative-control`
-      carrying ` caught `, and `ALL TESTS PASSED` last; it is never collected
-      by `tests/test_fleet_suite.py` and never swept by
-      `test_sims_are_hermetic.mjs`, because its name begins `probe_`.
-  M3  `fleet/tests/PROBES.md` lists the probe with the sentence that it is run
-      by hand before any change to the fold kernel or the ready-set scheduler,
-      and its opening paragraph says a probe is either a live measurement or a
-      design gate.
   M4  in `catch_report.py`, a test file whose text carries the line
       `# catch-counter: gate` has status `gate`: never a deletion candidate,
       never a point on the zero-catch curve, and listed in the table with its
@@ -33,15 +13,13 @@ file back to the contract:
 
 Legs: (a) M4 the three statuses, the deletion input and the curve; (b) M4 the
 gate's row in the report but not under the deletion heading; (c) M4 a gate
-with catches, and `tree_gates`; (d) M1 the probe read as text (and M2's
-"never collected"); (e) M2 the probe run; (f) M3 `PROBES.md`; (g) M1 the
-unresolvable fixture set skipped rather than thrown.
+with catches, and `tree_gates`. The task's other legs, (d)-(g), examined
+`fleet/tests/probe_readiness_fold_order.mjs` — the hand-run fold-order gate
+that left the tree on 2026-09-24 with the corpus tools it shelled.
 
-The script is imported the way `tests/test_ultra_run.py:16` does it, and the
-names this task PRODUCES (`tree_gates`, `catch_table`'s `gates=`) are reached
-as attributes of the module rather than imported at the top, so at BASE each
-M4 leg reds on its own missing name while the M1/M2/M3 legs red on the absent
-probe.
+The names this task PRODUCES (`tree_gates`, `catch_table`'s `gates=`) are
+reached as attributes of the module rather than imported at the top, so each
+M4 leg reds on its own missing name.
 
 A second task's legs live at the end of this file, under their own banner:
 "the catch-counter ratchet — the zero-catch reading per release" (`--zero-over`,
@@ -63,24 +41,12 @@ SCRIPTS = ROOT / "skills/ultrapowers/scripts"
 sys.path.insert(0, str(SCRIPTS))
 import catch_report  # noqa: E402
 
-# The bridge's own collector, so M2's "never collected" is read off the real
-# glob rather than a copy of it.
-sys.path.insert(0, str(ROOT / "tests"))
-from test_fleet_suite import collect_sims  # noqa: E402
-
-PROBE_REL = "fleet/tests/probe_readiness_fold_order.mjs"
-PROBE = ROOT / PROBE_REL
-PROBES_MD = ROOT / "fleet/tests/PROBES.md"
-
 GATE_LINE = "# catch-counter: gate"
 RUNNER_LINE = "# catch-counter: runner"
 
 GATE_FILE = "fleet/tests/test_gate.mjs"
 RUNNER_FILE = "tests/test_runner.py"
 PLAIN_FILE = "tests/test_plain.py"
-
-# A hang detector, not a budget: the sim measures ~10-26 s of real kernel work.
-PROBE_TIMEOUT = 600
 
 
 # --- the tree and the ledger the M4 legs are read over ---------------------
@@ -226,120 +192,6 @@ def test_leg_c_produced_signatures():
         f"(c) [Produces] `tree_gates(tree, tests)`, got {gates_sig}")
 
 
-# --- (d) [M1] the probe read as text ---------------------------------------
-
-def _probe_text():
-    assert PROBE.is_file(), (
-        f"(d) [M1] the probe is created at {PROBE_REL}")
-    return PROBE.read_text(encoding="utf-8")
-
-
-def test_leg_d_probe_imports_and_text():
-    text = _probe_text()
-    specifiers = set(re.findall(r"""\bfrom\s+['"]([^'"]+)['"]""", text))
-    specifiers |= set(re.findall(r"""\bimport\s+['"]([^'"]+)['"]""", text))
-    specifiers |= set(re.findall(r"""\bimport\s*\(\s*['"]([^'"]+)['"]""", text))
-    assert specifiers == {"node:assert/strict", "node:fs", "node:path",
-                          "./_readiness_helpers.mjs"}, (
-        "(d) [M1] the probe's `import` lines name exactly the four "
-        f"specifiers M1 lists, got {sorted(specifiers)}")
-
-    for name in ("negativeControlSpec", "softEdgesSpec", "discoverFixtureSets",
-                 "ALL TESTS PASSED"):
-        assert name in text, (
-            f"(d) [M1] the probe's text carries {name!r} — it is #832's sim, "
-            "control, soft-edges pair and sentinel included")
-
-
-def test_leg_d_probe_is_no_suite_test():
-    assert PROBE.is_file(), f"(d) [M1] the probe is created at {PROBE_REL}"
-    assert PROBE_REL not in catch_report.tree_test_files(ROOT), (
-        "(d) [M1] `tree_test_files` over this repository does not list the "
-        "probe — a `probe_*.mjs` is not a test file")
-    collected = [os.path.relpath(p, ROOT)
-                 for p in collect_sims(str(ROOT / "fleet"))]
-    assert PROBE_REL not in collected, (
-        "(d) [M2] and `tests/test_fleet_suite.py` never collects it, because "
-        "its name begins `probe_`")
-
-
-# --- (e) [M2] and (g) [M1] the probe run -----------------------------------
-
-def _run_probe(env_extra=None):
-    # No existence check here: an absent probe is `node`'s own
-    # `Cannot find module` on stderr, which is what the caller reports.
-    env = dict(os.environ)
-    env.pop("READINESS_FIXTURES_DIR", None)
-    env.update(env_extra or {})
-    return subprocess.run(["node", PROBE_REL], cwd=str(ROOT), env=env,
-                          capture_output=True, text=True,
-                          timeout=PROBE_TIMEOUT)
-
-
-def _stdout_lines(proc):
-    return [line for line in proc.stdout.splitlines() if line.strip()]
-
-
-def _assert_census(lines, where):
-    """M2's stdout shape: five `wave-` lines, the control, the sentinel last —
-    and, because M1 makes stdout one line per set, nothing else."""
-    waves = [line for line in lines
-             if re.fullmatch(r"wave-\S+ .* ok steps=\d+ kernelCalls=\d+", line)]
-    assert len(waves) == 5, (
-        f"[M2] {where}: exactly five lines beginning `wave-` and ending "
-        f"`ok steps=<n> kernelCalls=<n>`, got {waves!r}")
-    control = [line for line in lines if line.startswith("negative-control")]
-    assert len(control) == 1 and " caught " in control[0], (
-        f"[M2] {where}: one line beginning `negative-control` carrying "
-        f"` caught `, got {control!r}")
-    assert lines[-1] == "ALL TESTS PASSED", (
-        f"[M2] {where}: `ALL TESTS PASSED` is the last line, got {lines!r}")
-    assert len(lines) == 7, (
-        f"[M2] {where}: one stdout line per set and the sentinel, nothing "
-        f"else, got {lines!r}")
-
-
-@pytest.fixture(scope="module")
-def plain_run():
-    return _run_probe()
-
-
-def test_leg_e_probe_run(plain_run):
-    assert plain_run.returncode == 0, (
-        "(e) [M2] `node fleet/tests/probe_readiness_fold_order.mjs` at BASE "
-        f"exits 0, got {plain_run.returncode}\n{plain_run.stderr}")
-    _assert_census(_stdout_lines(plain_run), "the plain run")
-
-
-def test_leg_g_unresolvable_fixture_set_is_skipped(tmp_path):
-    # The set directory is named `ghost`; this test function deliberately is
-    # not, because the helper writes one `fixture root <root>` stderr line and
-    # pytest derives `tmp_path` from the test's name.
-    root = tmp_path / "fixtures"
-    (root / "ghost").mkdir(parents=True)
-    (root / "ghost" / "manifest.json").write_text(
-        json.dumps({"fixture": "ghost", "project": "no/such/tree",
-                    "tasks": []}) + "\n", encoding="utf-8")
-
-    proc = _run_probe({"READINESS_FIXTURES_DIR": str(root)})
-    assert proc.returncode == 0, (
-        "(g) [M1] a fixture set whose `project` tree exists at neither "
-        "resolution is skipped, not thrown: the run exits 0, got "
-        f"{proc.returncode}\n{proc.stderr}")
-
-    lines = _stdout_lines(proc)
-    assert not [line for line in lines if line.startswith("ghost")], (
-        f"(g) [M1] the skipped set prints no stdout line, got {lines!r}")
-    _assert_census(lines, "the run over the unresolvable set")
-
-    named = [line for line in proc.stderr.splitlines() if "ghost" in line]
-    assert len(named) == 1, (
-        "(g) [M1] its stderr carries exactly one line naming the skipped set, "
-        f"got {named!r}")
-
-
-# --- (f) [M3] `PROBES.md` --------------------------------------------------
-
 def _sed_range(text, start, end=None):
     """`sed -n '/start/,/end/p'` — from the first line matching `start` to the
     first line after it matching `end`, or to the end of the file."""
@@ -354,28 +206,6 @@ def _sed_range(text, start, end=None):
         if end is not None and re.search(end, line):
             break
     return " ".join(begun)
-
-
-def test_leg_f_probes_md_opening_paragraph():
-    text = PROBES_MD.read_text(encoding="utf-8")
-    opening = _sed_range(text, r"^# fleet.tests probes", r"^The current probes:")
-    assert re.search(r"live measurement.*design gate", opening), (
-        "(f) [M3] the opening paragraph says a probe is either a live "
-        "measurement or a design gate, so a model-free probe is what the file "
-        f"describes: {opening!r}")
-
-
-def test_leg_f_probes_md_lists_the_probe():
-    text = PROBES_MD.read_text(encoding="utf-8")
-    entry = _sed_range(text, r"probe_readiness_fold_order\.mjs", r"^$")
-    assert entry, (
-        "(f) [M3] `fleet/tests/PROBES.md` lists "
-        "`probe_readiness_fold_order.mjs`")
-    assert re.search(
-        r"every.*order.*by hand.*before any change.*scheduler", entry), (
-        "(f) [M3] with the sentence that it is run by hand before any change "
-        "to the fold kernel or the ready-set scheduler: "
-        f"{entry!r}")
 
 
 # ===========================================================================

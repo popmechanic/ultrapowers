@@ -51,7 +51,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+# A readings tool under `evals/readings/`; `catch_counter` lives in the
+# plugin's own `scripts/`.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]
+                       / "skills" / "ultrapowers" / "scripts"))
 from catch_counter import fetch_runs  # noqa: E402
 
 RUN_FILE = "events.jsonl"

@@ -23,8 +23,7 @@ own order:
   * (d)/[M4] `--register` over the same root prints byte for byte what the same
     records print with no `report.json` beside them — which is what BASE's
     fixture records printed, no `jev` field reaching the register — the row
-    order and every cell before `amendments` are unchanged, and both sibling
-    exams still define exactly 19 `def test_` functions.
+    order and every cell before `amendments` are unchanged.
 
 The script is driven as a subprocess over directories built under `tmp_path`,
 exactly as the two sibling census exams do; their helpers are copied here,
@@ -62,8 +61,6 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 CENSUS = ROOT / "skills/ultrawrite/scripts/authoring_census.py"
-SIBLINGS = (ROOT / "tests/test_authoring_census.py",
-            ROOT / "tests/test_authoring_census_amendments.py")
 
 
 def tsv(*cells):
@@ -593,16 +590,3 @@ def test_d_the_row_order_and_every_cell_before_amendments_are_unchanged(
         before
 
 
-def test_d_both_sibling_exams_still_define_nineteen_tests():
-    """(d)/[M4]: the Proof's third and fourth `Run:` lines — `tests/
-    test_authoring_census.py` and `tests/test_authoring_census_amendments.py`,
-    both edited by this task so their header and totals pins move, each "still
-    defining exactly 19 `def test_` functions, the counts they have at BASE".
-    The pin is on `^def test_`, as the Context says: a bare `def test_` grep
-    counts the docstring mentions too."""
-    for sibling in SIBLINGS:
-        assert sibling.is_file(), "the sibling exam is missing: %s" % sibling
-        defs = [line for line in lines(sibling.read_text(encoding="utf-8"))
-                if line.startswith("def test_")]
-        assert len(defs) == 19, "%s defines %d:\n%s" % (
-            sibling.name, len(defs), "\n".join(defs))

@@ -3,9 +3,9 @@
 2026-08-12 component 3; incremental protocol per spec 2026-08-18 §1b).
 
 The wave's task list is re-supplied on every call as the same
-`<taskId>=<branch>:<headSha>` triples, and **the fold log is the authority
-for what has folded**: its `fold` events must be an `(id, headSha)` prefix of
-that list over the same `base`, else the CLI refuses (`log/list
+`--patch <taskId>=<file>[@<anchorSha>]` specs, and **the fold log is the
+authority for what has folded**: its `fold` events must be an `(id, headSha)`
+prefix of that list over the same `base`, else the CLI refuses (`log/list
 disagreement`). `remaining` is the supplied list minus that prefix;
 `complete` is DERIVED, never recorded — every task folded and no narrated
 path left unresolved.
@@ -21,20 +21,6 @@ opens a conflict, narrating that fold's conflicts (`conflict-<i>.txt`, the
 kernel's annotated truth, plus the hunk-scoped brief
 `conflict-<i>.hunks.txt`) into `conflicts.json` and stopping there.
 
-A `fold` that ends CLEAN and COMPLETE then runs one more time in memory, over
-a base whose weave states were seeded from the last adopted wave's persisted
-blobs (Tier 1, spec 2026-09-01 §2.2). This pass is SHADOW: it is folded after
-the self-checks, it writes nothing but `frontier/weave/weave-events.jsonl`,
-and its only output is a record of how the two passes agreed — `seeded` per
-seeded path, `drift` for a manifest entry that no longer describes what git
-holds, `divergence` when the seeded pass narrated a conflict the fresh one
-did not or ended on a different visible tree (carrying both tree sha256s),
-and `shadow-skipped` for a wave it declines to measure (one that completed
-through `resolve`, or whose fresh pass narrated conflicts) or for ANY failure
-of its own. A missing, corrupt or unreadable weave dir is therefore worth
-exactly nothing to a wave: no seed is offered, no event is written, and the
-fold is byte-for-byte the fold it would have been with no weave dir at all.
-
 `resolve --conflict <i> --reply-dir D` locates the narration by its index
 `i`, grammar-checks and splices the per-hunk replies into the whole-file line
 list `FrontierEngine.apply_resolution` has always taken, and applies it at
@@ -43,44 +29,26 @@ re-narration: the epoch check is the idempotency guard against a re-issued
 command. Once every entry of the current stop is applied, the same call
 CONTINUES folding to the next stop or to completion; the two live self-checks
 (K1 raw-shuffle order-independence and log-replay-reproduces-manifest) run
-inside whichever call completes the wave.
-
-`fold`/`resolve --commutes <taskId>=<path,...>` (repeatable) carries the
-plan's `Commutes:` declarations (spec 2026-08-18 §2b). A conflict on a path
-EVERY writer declared gets the one-line `contract:` header in its hunks brief,
-and — when every segment of every hunk is `added` — is resolved in process to
-the kernel's own merged body with no resolver dispatch, so the fold does not
-stop on it. `conflicts.json` marks that entry `"autoResolved": true` (it stays
-`dispatchable`), and every reply carrying `conflicts` carries the call's
-`autoResolved` count.
+inside whichever call completes the wave. Every reply carrying `conflicts`
+carries an `autoResolved` count, always 0: the in-process union that once
+filled it left with the `Commutes:` grammar (2026-09-24).
 
 `materialize` refuses anything short of a complete fold, then turns the wave
 into a candidate commit through a TEMPORARY INDEX, so the worktree and every
 branch ref are untouched by construction; adoption is the engine's job.
 
-`emit-weave --adopt-head SHA` runs AFTER the engine adopts, and is the only
-subcommand that writes outside the wave dir: each folded path's manyana state
-string goes to `frontier/weave/blobs/<sha256(state)>` with a wholesale-replaced
-`manifest.json` and an append-only `weave-events.jsonl` sidecar (Tier 1, spec
-2026-09-01 §2.1). It reads the fold log and never writes to it — the log's
-three event types are untouched — and a path the reconcile leg edited or
-deleted is recorded `superseded` instead of being persisted. Its refusals cost
-the next wave its seed and nothing else, so the engine notes them and moves on.
-
-**Patch input (One Driver Amendment 9, 2026-08-29).** A task may arrive as
-`--patch <taskId>=<file>` instead of `--branch`: `<file>` is a `git diff
---binary --full-index --no-renames <BASE>` captured in the worker's own tree.
-Folding is a function of CONTENT; only this adapter ever made it a function
-of git, and with patch input it needs no ref the kernel can see — no shared
-object store, no shared branches, no fetch, so the worker's substrate
+**Patch input (One Driver Amendment 9, 2026-08-29).** A task arrives as
+`--patch <taskId>=<file>`: `<file>` is a `git diff --binary --full-index
+--no-renames <BASE>` captured in the worker's own tree. Folding is a function
+of CONTENT, and with patch input it needs no ref the kernel can see — no
+shared object store, no shared branches, no fetch, so the worker's substrate
 (worktree, clone, anything) stops mattering. `repo_weave.apply_patch_tree`
 turns each patch into a tree sha inside a temporary index of `--repo`
 (deterministic: same patch over the same base, same sha), and everything
 downstream reads that tree-ish exactly as it read a commit. The fold log
 records `headSha` (the tree) AND `patch` (the file), so `rehydrate` can
 re-derive the task from the run directory alone and refuse if the patch has
-changed since it folded. A patch that does not apply is the exit-2 refusal —
-the patch-side analogue of an undescended head, which a patch cannot be.
+changed since it folded. A patch that does not apply is the exit-2 refusal.
 A patch carries the head it was CAPTURED against when that is not the wave's
 base: `--patch <taskId>=<file>@<anchorSha>` on `fold`, `resolve` and
 `materialize` alike. The patch is applied over its anchor — never over
@@ -88,20 +56,19 @@ base: `--patch <taskId>=<file>@<anchorSha>` on `fold`, `resolve` and
 merge over that anchor: the base and every anchor the wave carries are
 snapshotted as one chain, so the task's weave and the frontier's meet at the
 anchor's own file, and disjoint edits fold clean where edits that meet narrate
-one ordinary conflict. The `fold` event records the
-anchor whenever it differs from the base, and a patch that does not apply over
-its OWN anchor is still the exit-2 refusal.
-`materialize --patch` builds the candidate with the previous integration head
-as its ONLY parent: there is no task commit to parent. `--branch` and
-`--task-head` remain as the pre-cutover path (spec §10 stage 2) and are
-deleted with it, on measurement.
+one ordinary conflict. The `fold` event records the anchor whenever it
+differs from the base, and a patch that does not apply over its OWN anchor is
+still the exit-2 refusal. `materialize` builds the candidate with the
+previous integration head as its ONLY parent: there is no task commit to
+parent. (The commit-input path, the declared-commutative auto-union and the
+weave shadow leg were deleted on 2026-09-24: the engine never called them.)
 
 Every invocation is a fresh process: no subcommand carries anything in
 memory from the last one, per the fold log's self-sufficiency contract.
 
 Exit codes: 0 success, 2 precondition refusal (a pre-existing log, a missing
-log, a log/list disagreement, a stale resolution, a task head not descended
-from the base), 3 self-check failure
+log, a log/list disagreement, a stale resolution, a patch that does not
+apply), 3 self-check failure
 (which includes a kernel recursion limit the fold thread could not absorb —
 recorded as a named kernel-limit park in the conflicts index, never a crash),
 4 a rejected resolver reply. For `materialize` the non-zero codes carry its
@@ -109,12 +76,8 @@ named outcomes: 2 is a park (`{"park": reason}` on stdout — a mode change on
 a folded path, two creators disagreeing on a mode, or a missing fold log) and
 3 a fallback (`{"fallback": reason}` — an incomplete fold, a folded path that
 cannot be a regular blob, or a kernel recursion limit while rehydrating).
-`emit-weave` has one non-zero code, 2 on stderr (missing log, incomplete
-fold, unrehydratable wave); stdout is reserved for its `{"emitted",
-"superseded"}` counts.
 """
 import argparse
-import hashlib
 import json
 import os
 import subprocess
@@ -144,11 +107,6 @@ import hunks
 # named kernel-limit park.
 STACK_BYTES = 1 << 30
 THREAD_RECURSION_LIMIT = 1_000_000
-
-# The one-line composition contract written under every hunk header of a path
-# every writer declared commutative (spec §1a wording; §2b consumer 2).
-CONTRACT_LINE = ("contract: both sides declared these edits commutative — union, "
-                 "preserve each side's internal order, do not reorder existing lines")
 
 # The only modes a folded text/bytes path can carry into the candidate tree:
 # `hash-object` writes a blob, and a blob is either executable or not.
@@ -247,36 +205,6 @@ def _wave_dir(run_dir, wave):
     return Path(run_dir) / "frontier" / ("wave-%d" % wave)
 
 
-def _weave_dir(run_dir):
-    """The run's ONE weave dir — wave-scoped state, run-scoped location.
-
-    Unlike `_wave_dir` there is no per-wave directory: the manifest describes
-    the newest ADOPTED wave and nothing else, so wave N+1's emit replaces
-    wave N's rather than accumulating beside it (spec 2026-09-01 §2.1). The
-    blobs are content-addressed and so shared across waves for free.
-    """
-    return Path(run_dir) / "frontier" / "weave"
-
-
-def load_weave_manifest(run_dir):
-    """`<run_dir>/frontier/weave/manifest.json`, or None when there is none.
-
-    None covers every "no seed offered" shape at once — no weave dir, a run
-    whose first wave has not been adopted, an evidence pull that dropped the
-    sidecar, or a manifest that is not readable JSON. Tier 1's seeding is
-    shadow-only, so a caller that gets None simply derives fresh, which is
-    today's behavior: a corrupt weave dir must never fail or park a wave.
-    """
-    path = _weave_dir(run_dir) / "manifest.json"
-    if not path.exists():
-        return None
-    try:
-        manifest = json.loads(path.read_text())
-    except ValueError:
-        return None
-    return manifest if isinstance(manifest, dict) else None
-
-
 def _git_env(repo, env, *args, stdin=None):
     """`repo_weave._git` with an environment (the temporary `GIT_INDEX_FILE`)
     and optional stdin. Kept here rather than in the kernel: the temporary
@@ -286,38 +214,16 @@ def _git_env(repo, env, *args, stdin=None):
 
 
 class TaskRef(NamedTuple):
-    """One supplied task, whatever shape it arrived in.
+    """One supplied task.
 
-    `ref` is the tree-ish the pipeline reads (a commit sha for `--branch` /
-    `--task-head`, the derived tree sha for `--patch`); `patch` is the patch
-    path or None; `anchor` is the commit the patch was CAPTURED against when
-    that is not the wave's base, and None otherwise — so the three-field
-    constructor still names a branch or head task, and a patch anchored at
-    the base is the same TaskRef it was before anchors existed.
+    `ref` is the tree-ish the pipeline reads (the tree sha derived from the
+    patch); `patch` is the patch path; `anchor` is the commit the patch was
+    CAPTURED against when that is not the wave's base, and None otherwise.
     """
     task_id: str
     ref: str
     patch: Optional[str]
     anchor: Optional[str] = None
-
-
-def _parse_task_head(spec):
-    """`<taskId>=<headSha>` -> (taskId, headSha)."""
-    task_id, eq, head_sha = spec.partition("=")
-    if not eq or not task_id or not head_sha:
-        raise argparse.ArgumentTypeError(
-            "--task-head must be <taskId>=<headSha>, got %r" % spec)
-    return task_id, head_sha
-
-
-def _parse_branch(spec):
-    """`<taskId>=<branchName>:<headSha>` -> (taskId, branchName, headSha)."""
-    task_id, eq, rest = spec.partition("=")
-    branch_name, colon, head_sha = rest.partition(":")
-    if not eq or not colon or not task_id or not branch_name or not head_sha:
-        raise argparse.ArgumentTypeError(
-            "--branch must be <taskId>=<branchName>:<headSha>, got %r" % spec)
-    return task_id, branch_name, head_sha
 
 
 def _split_anchor(patch):
@@ -364,20 +270,9 @@ def _parse_patch(spec):
     return task_id, str(Path(patch).absolute()), anchor
 
 
-# `--branch` / `--patch` / `--task-head` append `(kind, parsed)` into ONE
-# shared dest, so the interleaving survives: argv order is the fold order,
-# and the log's prefix check is against exactly that order. argparse's own
-# `append` preserves it across different options sharing a dest.
-def _branch_arg(spec):
-    return ("branch", _parse_branch(spec))
-
-
-def _patch_arg(spec):
-    return ("patch", _parse_patch(spec))
-
-
-def _head_arg(spec):
-    return ("head", _parse_task_head(spec))
+# `--patch` appends into `tasks` in argv order: that order is the fold order,
+# and the log's prefix check is against exactly that order.
+_patch_arg = _parse_patch
 
 
 def _full_sha(repo, rev):
@@ -394,7 +289,7 @@ def _full_sha(repo, rev):
 
 
 def _resolve_tasks(repo, base_sha, specs):
-    """`[(kind, parsed)]` -> `[TaskRef]`, in argv order.
+    """`[(taskId, patchFile, anchor)]` -> `[TaskRef]`, in argv order.
 
     The one place patch content becomes a tree-ish: each `--patch` is applied
     over its ANCHOR — `@<anchorSha>` when the spec named one, `base_sha`
@@ -410,88 +305,19 @@ def _resolve_tasks(repo, base_sha, specs):
     """
     tasks = []
     base_full = _full_sha(repo, base_sha)
-    for kind, parsed in specs:
-        if kind == "branch":
-            task_id, _branch_name, sha = parsed
-            tasks.append(TaskRef(task_id, sha, None))
-        elif kind == "head":
-            task_id, sha = parsed
-            tasks.append(TaskRef(task_id, sha, None))
-        else:
-            task_id, patch, anchor = parsed
-            if anchor is not None:
-                anchor = _full_sha(repo, anchor)
-                if anchor == base_full:
-                    anchor = None
-            try:
-                tree = rw.apply_patch_tree(repo, anchor or base_sha, patch)
-            except rw.PatchError as e:
-                raise rw.PatchError("patch for task %s (%s) does not apply "
-                                    "against base %s: %s"
-                                    % (task_id, patch,
-                                       (anchor or base_sha)[:7], e))
-            tasks.append(TaskRef(task_id, tree, patch, anchor))
+    for task_id, patch, anchor in specs:
+        if anchor is not None:
+            anchor = _full_sha(repo, anchor)
+            if anchor == base_full:
+                anchor = None
+        try:
+            tree = rw.apply_patch_tree(repo, anchor or base_sha, patch)
+        except rw.PatchError as e:
+            raise rw.PatchError("patch for task %s (%s) does not apply "
+                                "against base %s: %s"
+                                % (task_id, patch, (anchor or base_sha)[:7], e))
+        tasks.append(TaskRef(task_id, tree, patch, anchor))
     return tasks
-
-
-def _parse_commutes(spec):
-    """`<taskId>=<path1,path2,...>` -> (taskId, [paths])."""
-    task_id, eq, rest = spec.partition("=")
-    paths = [p for p in rest.split(",") if p]
-    if not eq or not task_id or not paths:
-        raise argparse.ArgumentTypeError(
-            "--commutes must be <taskId>=<path1,path2,...>, got %r" % spec)
-    return task_id, paths
-
-
-class Contracts:
-    """One CLI call's `--commutes` declarations, and what they license.
-
-    Two consumers hang off `eligible()` (spec §2b): the `contract:` hunk
-    header on the resolver brief, and the assume rung's in-process union.
-    Both need the same both-sides condition, so it exists once.
-
-    `touched` is derived from git LAZILY — a call with no declarations never
-    pays for it, which is why the empty-map short circuit comes first.
-    """
-
-    def __init__(self, repo, base_sha, branches, commutes_map, folded_ids):
-        self.repo = repo
-        self.base_sha = base_sha
-        self.branches = branches
-        self.map = commutes_map
-        self.folded = list(folded_ids)   # tasks folded before the next fold
-        self.auto = 0                    # conflicts auto-resolved in this call
-        self._touched = None
-
-    def _touched_map(self):
-        if self._touched is None:
-            self._touched = {
-                t.task_id: set(rw.diff_paths(self.repo,
-                                             t.anchor or self.base_sha, t.ref))
-                for t in self.branches}
-        return self._touched
-
-    def eligible(self, path, incoming):
-        """True iff EVERY writer of `path` declared it commutative.
-
-        Rev 7's unit is every writer, not a pair: the incoming task, plus
-        every already-folded task whose `base..head` diff touches the path.
-        For three writers of whom two declare, the path is undeclared.
-        """
-        if not self.map or path not in self.map.get(incoming, ()):
-            return False
-        touched = self._touched_map()
-        return all(path in self.map.get(tid, ())
-                   for tid in self.folded if path in touched.get(tid, ()))
-
-
-def _commutes_map(pairs):
-    """[(taskId, [paths])] -> {taskId: {paths}}; a repeated task unions."""
-    out = {}
-    for task_id, paths in pairs:
-        out.setdefault(task_id, set()).update(paths)
-    return out
 
 
 def _write_jsonl(path, events):
@@ -528,7 +354,7 @@ def _log_base(recorded):
 
 
 def _fold_prefix_check(recorded, branches, base_sha):
-    """(ok, remaining_triples) against the supplied `--branch` list.
+    """(ok, remaining tasks) against the supplied `--patch` list.
 
     The log is the authority for what has folded, and the supplied list is
     the authority for what the wave IS: the recorded `fold` events must be an
@@ -561,18 +387,17 @@ def _record_max_lines(wave_dir, max_lines):
     path.write_text(json.dumps(stats, indent=2) + "\n")
 
 
-def _verdict(conflict, manifest, contract=None):
+def _verdict(conflict, manifest):
     """(dispatchable, reason, hunks text, hunk count) for one conflict.
 
     `dispatchable` owns the routing predicate; derivation is what turns an
     eligible narration into the resolver's brief, so a narration the hunk
     grammar cannot delimit (a repo whose sources quote kernel marker forms)
-    parks with a named reason rather than being guessed at. `contract` only
-    adds a line to the brief — it can neither park nor unpark.
+    parks with a named reason rather than being guessed at.
     """
     ok, reason = ff.dispatchable(conflict, manifest)
     try:
-        text, blocks = hunks.derive(conflict.narration, contract=contract)
+        text, blocks = hunks.derive(conflict.narration)
     except hunks.HunkError as exc:
         return False, "%s in %s" % (exc.reason, conflict.path), "", 0
     if ok and not blocks:
@@ -580,7 +405,7 @@ def _verdict(conflict, manifest, contract=None):
     return ok, reason, text, len(blocks)
 
 
-def _narrate(wave_dir, index, conflict, epoch, manifest, contract=None):
+def _narrate(wave_dir, index, conflict, epoch, manifest):
     """Write one conflict's narration + hunks brief; append its index entry.
 
     `<i>` is monotonic across every CLI call of the wave — the index is the
@@ -589,7 +414,7 @@ def _narrate(wave_dir, index, conflict, epoch, manifest, contract=None):
     """
     i = max((e["i"] for e in index), default=0) + 1
     (wave_dir / ("conflict-%d.txt" % i)).write_text(conflict.narration)
-    ok, reason, text, count = _verdict(conflict, manifest, contract=contract)
+    ok, reason, text, count = _verdict(conflict, manifest)
     hunks_file = ""
     if ok:
         path = wave_dir / ("conflict-%d.hunks.txt" % i)
@@ -611,59 +436,15 @@ def _open_view(entry):
             ("i", "path", "kind", "epoch", "hunksFile", "hunkCount")}
 
 
-def _auto_union(eng, wave_dir, entry, log_path):
-    """The assume rung (spec §2b consumer 3): resolve one declared-commutative
-    all-`added` conflict in process, with no resolver dispatch.
-
-    The resolution is the KERNEL's own merged block body, applied through the
-    same splice + `apply_resolution` path a resolver reply takes — so the log
-    records an ordinary `resolve` event and rehydrate, replay, the K-gates and
-    the epoch idempotency guard are all untouched.
-
-    The safety ground is weave-inertness, not the self-checks: the union reply
-    byte-equals the frontier's current visible lines for the path, and
-    `update_state` is the identity on visible-equal lines, so the live fold
-    sequence stays equal to the raw one the completion self-checks gate. That
-    ground is only held while the body is `union_replies`' output — a caller
-    that reshaped it (reordering, say) would lose it silently.
-
-    False on every non-eligible shape — a `deleted` segment, a park, a
-    presence/binary kind, a stale epoch — and the caller falls through to an
-    ordinary open entry. No new refusal path.
-    """
-    if not entry["dispatchable"] or entry["kind"] not in ("lines", "add/add"):
-        return False
-    annotated = (wave_dir / ("conflict-%d.txt" % entry["i"])).read_text()
-    # `dispatchable` is what `_verdict` sets after deriving this same text, so
-    # the grammar has already passed here.
-    _text, blocks = hunks.derive(annotated)
-    replies = hunks.union_replies(annotated, blocks)
-    if replies is None:
-        return False
-    lines = hunks.splice(annotated, replies, blocks)
-    if not eng.apply_resolution(entry["path"], entry["epoch"], lines):
-        return False
-    _append_event(log_path, eng.events[-1])
-    entry["autoResolved"] = True        # `dispatchable` stays True (rev 7, B2)
-    return True
-
-
-def _fold_until_stop(eng, states, remaining, log_path, wave_dir, index,
-                     contracts=None):
+def _fold_until_stop(eng, states, remaining, log_path, wave_dir, index):
     """Fold `remaining` in order, stopping at the first fold that opens a
-    conflict no contract auto-resolved. Returns `(stop entries, remaining
-    after, kernel park)`.
+    conflict. Returns `(stop entries, remaining after, kernel park)`.
 
     The stop is signalled by NARRATION, not by dispatchability: a stop whose
     entries all parked is still a stop, and reporting it as "nothing opened"
     would claim a wave complete while tasks are still unfolded. Every fold
     that returns is recorded before the stop is narrated, so the log always
     describes exactly the frontier the narration was read off.
-
-    The assume rung is the one exception to "narration stops the fold": a
-    conflict every writer declared commutative is resolved here and never
-    appears in `open`, so a fold whose conflicts ALL auto-resolve keeps going
-    (spec §2b consumer 3). Dispatch stops and parks are unchanged.
     """
     for k, task in enumerate(remaining):
         task_id = task.task_id
@@ -689,20 +470,9 @@ def _fold_until_stop(eng, states, remaining, log_path, wave_dir, index,
         if conflicts:
             epoch = eng.epoch()
             manifest = eng.manifest()
-            open_entries = []
-            for conflict in conflicts:
-                eligible = (contracts is not None
-                            and contracts.eligible(conflict.path, task_id))
-                entry = _narrate(wave_dir, index, conflict, epoch, manifest,
-                                 contract=CONTRACT_LINE if eligible else None)
-                if eligible and _auto_union(eng, wave_dir, entry, log_path):
-                    contracts.auto += 1
-                    continue
-                open_entries.append(entry)
-            if open_entries:
-                return open_entries, list(remaining[k + 1:]), None
-        if contracts is not None:
-            contracts.folded.append(task_id)
+            open_entries = [_narrate(wave_dir, index, conflict, epoch, manifest)
+                            for conflict in conflicts]
+            return open_entries, list(remaining[k + 1:]), None
     return [], [], None
 
 
@@ -760,48 +530,6 @@ def _write_kernel_park(wave_dir, index, epoch, park):
     return entry
 
 
-def _undescended(repo, base_sha, branches):
-    """The task heads the base is NOT an ancestor of: `[(taskId, headSha)]`.
-
-    `rw.publish` diffs each head two-point against the base, so a head cut
-    from a stale ref (a worktree the implementer never re-anchored) reads as
-    "revert everything the base gained since" — folded, that reverted 3,472
-    lines of an integration line on a green suite (#246). Such a head is the
-    one input the fold cannot interpret; the caller refuses before writing
-    anything, and the engine's fallback (an ordinary three-way merge) handles
-    the stale parent correctly.
-
-    Patch tasks are not checked: a patch is against the base by construction
-    (it was applied over it to exist as a tree at all), and a tree has no
-    ancestry for `merge-base` to test. The patch-side refusal is "does not
-    apply", raised in `_resolve_tasks` before this runs.
-    """
-    stale = []
-    for task in branches:
-        if task.patch is not None:
-            continue
-        r = subprocess.run(["git", "-C", str(repo), "merge-base",
-                            "--is-ancestor", base_sha, task.ref],
-                           capture_output=True)
-        if r.returncode != 0:
-            stale.append((task.task_id, task.ref))
-    return stale
-
-
-def _refuse_undescended(repo, base_sha, branches, wave):
-    """Exit-2 refusal path shared by `fold` and `resolve`: True when refused."""
-    stale = _undescended(repo, base_sha, branches)
-    if not stale:
-        return False
-    print("refusing wave %d: task head(s) not descended from base %s: %s — "
-          "the worktree was cut from a stale ref; rebase or cherry-pick onto "
-          "the base before folding (#246)"
-          % (wave, base_sha[:7],
-             ", ".join("%s=%s" % (t, h[:7]) for t, h in stale)),
-          file=sys.stderr)
-    return True
-
-
 def _prepare(repo, base_sha, branches):
     """(base state, published task states, largest folded text file).
 
@@ -847,227 +575,6 @@ def _pre_scan(base, states, branches):
     return parks, None
 
 
-def _append_weave_events(run_dir, events):
-    """Append `events` to the weave sidecar — and ONLY if the weave dir is
-    already there. The shadow never creates the weave dir: a run with no
-    adopted wave, or one whose sidecar was dropped by an evidence pull, must
-    come out of a fold with exactly the files it went in with.
-    """
-    weave_dir = _weave_dir(run_dir)
-    if not events or not weave_dir.is_dir():
-        return
-    with (weave_dir / "weave-events.jsonl").open("a") as f:
-        for e in events:
-            f.write(json.dumps(e) + "\n")
-
-
-def _shadow_skipped(run_dir, wave, reason):
-    """The one event for a wave the shadow declines to measure.
-
-    Its own failure shape too: the shadow must never fail, park or alter a
-    wave, so every exception it can raise lands here instead (spec 2026-09-01
-    §2.2). A skip that cannot even be written is simply dropped — the sidecar
-    is not worth a wave.
-    """
-    try:
-        _append_weave_events(run_dir, [{"event": "shadow-skipped",
-                                        "wave": wave, "reason": reason}])
-    except Exception:                                    # noqa: BLE001
-        pass
-
-
-def _drift(wave, path, reason):
-    return {"event": "drift", "wave": wave, "path": path, "reason": reason}
-
-
-def _base_blob_shas(repo, base_sha):
-    """path -> blob sha at `base_sha`, in ONE read.
-
-    `git ls-tree -r` rather than a `rev-parse <base>:<path>` per manifest
-    entry: the seed check is a whole-manifest question, and a wave that seeds
-    50 paths should not pay 50 processes for a shadow measurement.
-    """
-    out = subprocess.run(["git", "-C", str(repo), "ls-tree", "-r", "-z",
-                          base_sha], check=True, capture_output=True).stdout
-    shas = {}
-    for record in filter(None, out.decode().split("\0")):
-        meta, _tab, path = record.partition("\t")
-        fields = meta.split()
-        if len(fields) >= 3:
-            shas[path] = fields[2]
-    return shas
-
-
-def _visible_text(content):
-    """One path's visible bytes as a comparable string.
-
-    Text is re-split and rejoined on `\\n` so the comparison is over the
-    kernel's own line list — the unit a weave state actually holds. Binary
-    paths (never seeded: `RepoState.files` is text-only) compare by digest so
-    a raw path can still move the tree sha.
-    """
-    if isinstance(content, bytes):
-        return "\0binary:" + hashlib.sha256(content).hexdigest()
-    return "\n".join(rw.split_lines(content))
-
-
-def _visible_tree_sha(manifest, paths=None):
-    """sha256 over the sorted `(path, visible text)` pairs of `paths`.
-
-    Length-prefixed framing, so no pair of (path, text) values can pun into
-    another's bytes. `paths` defaults to this manifest's own paths; the
-    shadow passes the UNION of both engines' manifests, which is what makes a
-    path present in one tree and absent from the other a difference rather
-    than an invisible one.
-    """
-    h = hashlib.sha256()
-    for path in sorted(manifest if paths is None else paths):
-        if path not in manifest:
-            h.update(b"absent\0")
-            continue
-        text = _visible_text(manifest[path])
-        h.update(("%d\0%s\0%d\0%s\0" % (len(path), path, len(text), text))
-                 .encode())
-    return h.hexdigest()
-
-
-def _same_visible(fresh, seeded, path):
-    """Do the two manifests hold the same visible bytes at `path`?
-
-    Presence is part of the answer: a path one pass materializes and the
-    other deletes differs, and no sentinel content can stand in for that.
-    """
-    if (path in fresh) != (path in seeded):
-        return False
-    return path not in fresh or _visible_text(fresh[path]) == _visible_text(seeded[path])
-
-
-def _seed_paths(repo, run_dir, wave, base_sha, entries, touched, events):
-    """`{path: state string}` for the manifest entries still worth seeding.
-
-    Two independent equalities have to hold, and each failure is `drift` on
-    that path alone — never on the wave: the recorded `visibleSha` must still
-    be the blob git holds at the base (else the reconcile leg, or another
-    wave, moved the file out from under the seed), and the blob's bytes must
-    still be their own sha256 name.
-    """
-    base_blobs = _base_blob_shas(repo, base_sha)
-    blobs = _weave_dir(run_dir) / "blobs"
-    seeds = {}
-    for path in sorted(set(entries) & set(touched)):
-        entry = entries[path] if isinstance(entries[path], dict) else {}
-        # `path not in base_blobs` is a real shape, not a guard: a wave may
-        # RE-ADD a path a reconcile deleted, and a manifest entry for a path
-        # git no longer holds at the base describes nothing.
-        if path not in base_blobs or entry.get("visibleSha") != base_blobs[path]:
-            events.append(_drift(wave, path,
-                                 "manifest visibleSha is not the base blob"))
-            continue
-        # A blob this cannot read (a manifest naming none, a pulled-away
-        # sidecar) raises into the caller's catch-all: a broken weave dir is
-        # a skipped measurement, not a drift claim about the path.
-        state_blob = entry.get("stateBlob")
-        state = (blobs / state_blob).read_text()
-        if hashlib.sha256(state.encode()).hexdigest() != state_blob:
-            events.append(_drift(wave, path,
-                                 "blob content is not its own sha256 name"))
-            continue
-        seeds[path] = state
-    return seeds
-
-
-def _shadow_events(repo, run_dir, wave, base_sha, branches, eng, manifest):
-    """Re-fold this wave over a SEEDED base and say how the two passes agree.
-
-    The fresh pass has already folded, clean and complete; this one differs
-    from it in exactly one input — the base weave state of each seeded path,
-    which comes from the adopted wave's persisted blob instead of a fresh
-    `initial_state` of the same bytes. Everything downstream is the identical
-    call shape `_prepare` uses, so a difference in the outcome is a
-    difference the SEED made and nothing else.
-    """
-    entries = manifest.get("entries")
-    if not isinstance(entries, dict) or not entries:
-        return []
-    touched = ff._union_touched(repo, base_sha, [t.ref for t in branches])
-    events = []
-    seeds = _seed_paths(repo, run_dir, wave, base_sha, entries, touched, events)
-    if not seeds:
-        return events                # an expected miss: nothing left to measure
-
-    fresh = rw.snapshot_scoped(repo, base_sha, touched)
-    files = dict(fresh.files)
-    files.update(seeds)
-    seeded_base = rw.RepoState(files=files, deleted_marks=fresh.deleted_marks,
-                               raw=dict(fresh.raw),
-                               raw_candidates=dict(fresh.raw_candidates))
-    states = {t.task_id: rw.publish(seeded_base, repo, base_sha, t.ref,
-                                    task_id=t.task_id)
-              for t in branches}
-
-    eng2 = ff.FrontierEngine(seeded_base)
-    conflicts = []
-    for task in branches:            # argv order, exactly as the live pass folded
-        conflicts.extend(eng2.fold(states[task.task_id]))
-    if conflicts:
-        # The fresh pass was clean by construction here, so a conflict the
-        # seeded pass narrates was opened by the seed: a divergence, not a
-        # wave the engine has to do anything about.
-        events.append({"event": "divergence", "wave": wave,
-                       "paths": sorted({c.path for c in conflicts})})
-        return events
-
-    fresh_manifest, seeded_manifest = eng.manifest(), eng2.manifest()
-    paths = sorted(set(fresh_manifest) | set(seeded_manifest))
-    fresh_tree = _visible_tree_sha(fresh_manifest, paths)
-    seeded_tree = _visible_tree_sha(seeded_manifest, paths)
-    if fresh_tree != seeded_tree:
-        differing = [p for p in paths
-                     if not _same_visible(fresh_manifest, seeded_manifest, p)]
-        events.append({"event": "divergence", "wave": wave, "paths": differing,
-                       "freshTree": fresh_tree, "seededTree": seeded_tree})
-        return events
-    events.extend({"event": "seeded", "wave": wave, "path": p}
-                  for p in sorted(seeds))
-    return events
-
-
-def _shadow_seed(repo, run_dir, wave, base_sha, branches, eng):
-    """Tier 1's whole seeding leg: measure, record, and never do anything else.
-
-    Called on the clean-complete path of `cmd_fold` AFTER the self-checks and
-    before the reply is printed, so nothing it computes can reach the reply,
-    the fold log or the conflicts index. `load_weave_manifest` returning None
-    is the no-seed-offered case (no weave dir, an unadopted first wave, a
-    dropped or corrupt manifest): nothing is written at all, not even an
-    event, because that is not a skip — there was nothing to skip.
-    """
-    try:
-        manifest = load_weave_manifest(Path(run_dir))
-        if manifest is None:
-            return
-        if any(t.anchor for t in branches):
-            # The seeded pass publishes every task over the wave's base by
-            # construction, which is not the fold an anchored task got. Rather
-            # than measure a different fold and read the difference as a
-            # divergence, decline: the skip costs the next wave its seed and
-            # nothing else.
-            _shadow_skipped(run_dir, wave, "wave carries an anchored patch task")
-            return
-        events = _shadow_events(repo, run_dir, wave, base_sha, branches, eng,
-                                manifest)
-    except Exception as e:                               # noqa: BLE001
-        # ANY failure — an unreadable blob, a manifest of the wrong shape, a
-        # kernel limit in the second fold — is a skipped measurement. The wave
-        # already folded and is not touched by whatever happened here.
-        _shadow_skipped(run_dir, wave, "%s: %s" % (type(e).__name__, e))
-        return
-    try:
-        _append_weave_events(run_dir, events)
-    except Exception:                                    # noqa: BLE001
-        pass
-
-
 def cmd_fold(args):
     wave_dir = _wave_dir(args.run_dir, args.wave)
     log_path = wave_dir / "fold_log.jsonl"
@@ -1084,14 +591,10 @@ def cmd_fold(args):
         return 2
     all_ids = [t.task_id for t in branches]
 
-    if _refuse_undescended(repo, base_sha, branches, args.wave):
-        return 2
     base, states, max_lines = _prepare(repo, base_sha, branches)
     wave_dir.mkdir(parents=True, exist_ok=True)
     _record_max_lines(wave_dir, max_lines)
     index = []
-    contracts = Contracts(repo, base_sha, branches,
-                          _commutes_map(args.commutes), [])
 
     parks, kernel_park = _pre_scan(base, states, branches)
 
@@ -1101,7 +604,7 @@ def cmd_fold(args):
         _write_jsonl(log_path, [{"type": "base", "sha": base_sha}])
         print(json.dumps({"clean": False, "conflicts": 1, "dispatchable": 0,
                           "parked": 1, "open": [], "remaining": all_ids,
-                          "autoResolved": contracts.auto,
+                          "autoResolved": 0,
                           "complete": False,
                           "selfChecks": "failed: kernel recursion limit "
                                         "folding task %s" % task_id}))
@@ -1117,14 +620,14 @@ def cmd_fold(args):
         print(json.dumps({"clean": False, "conflicts": len(parks),
                           "dispatchable": 0, "parked": len(parks),
                           "open": [], "remaining": all_ids,
-                          "autoResolved": contracts.auto,
+                          "autoResolved": 0,
                           "complete": False}))
         return 0
 
     eng = ff.FrontierEngine(base)
     _write_jsonl(log_path, [{"type": "base", "sha": base_sha}])
     stop, remaining, kernel_park = _fold_until_stop(
-        eng, states, branches, log_path, wave_dir, index, contracts)
+        eng, states, branches, log_path, wave_dir, index)
     _write_index(wave_dir / "conflicts.json", index)
 
     if kernel_park is not None:
@@ -1132,7 +635,7 @@ def cmd_fold(args):
         print(json.dumps({"clean": False, "conflicts": len(index),
                           "dispatchable": 0, "parked": len(index),
                           "open": [], "remaining": [t.task_id for t in remaining],
-                          "autoResolved": contracts.auto,
+                          "autoResolved": 0,
                           "complete": False,
                           "selfChecks": "failed: kernel recursion limit "
                                         "folding task %s" % kernel_park[0]}))
@@ -1149,7 +652,7 @@ def cmd_fold(args):
                           "parked": len(stop) - len(open_entries),
                           "open": [_open_view(e) for e in open_entries],
                           "remaining": [t.task_id for t in remaining],
-                          "autoResolved": contracts.auto,
+                          "autoResolved": 0,
                           "complete": False}))
         return 0
 
@@ -1161,18 +664,9 @@ def cmd_fold(args):
     unresolved = _unresolved_paths(wave_dir, _read_log(log_path))
     if unresolved:
         self_checks = "failed: %d narrated path(s) unresolved" % len(unresolved)
-    elif index:
-        # An auto-unioned wave completed, but its fresh pass DID narrate
-        # conflicts, so the shadow's "a conflict here is a divergence" reading
-        # does not hold. This tier measures clean folds only.
-        _shadow_skipped(args.run_dir, args.wave, "fold narrated conflicts")
-    else:
-        _shadow_seed(repo, args.run_dir, args.wave, base_sha, branches, eng)
-    # `clean` stays a raw-fold fact: an auto-unioned wave narrated a conflict,
-    # so its index is non-empty and it is not clean.
     print(json.dumps({"clean": not index, "conflicts": 0, "dispatchable": 0,
                       "parked": 0, "open": [], "remaining": [],
-                      "autoResolved": contracts.auto,
+                      "autoResolved": 0,
                       "complete": not unresolved, "selfChecks": self_checks}))
     return 0 if self_checks == "ok" else 3
 
@@ -1201,15 +695,6 @@ def cmd_resolve(args):
         print("log/list disagreement for wave %d: the recorded folds are not a "
               "prefix of the supplied task list" % args.wave, file=sys.stderr)
         return 2
-    if _refuse_undescended(repo, base_sha, branches, args.wave):
-        return 2
-
-    # The already-folded prefix is the log's own fold events, in order — the
-    # both-sides condition counts every writer that has landed so far.
-    contracts = Contracts(repo, base_sha, branches,
-                          _commutes_map(args.commutes),
-                          [e["task"] for e in recorded if e.get("type") == "fold"])
-
     index = _read_index(wave_dir / "conflicts.json")
     entry = next((e for e in index if e["i"] == args.conflict), None)
     if entry is None:
@@ -1260,7 +745,7 @@ def cmd_resolve(args):
     if remaining:
         _record_max_lines(wave_dir, max_lines)
         stop, remaining, kernel_park = _fold_until_stop(
-            eng, states, remaining, log_path, wave_dir, index, contracts)
+            eng, states, remaining, log_path, wave_dir, index)
         _write_index(wave_dir / "conflicts.json", index)
 
         if kernel_park is not None:
@@ -1286,7 +771,7 @@ def cmd_resolve(args):
                               "dispatchable": len(open_entries),
                               "open": [_open_view(e) for e in open_entries],
                               "remaining": [t.task_id for t in remaining],
-                              "autoResolved": contracts.auto,
+                              "autoResolved": 0,
                               "complete": False}))
             return 0
 
@@ -1300,12 +785,8 @@ def cmd_resolve(args):
         print("wave %d folded every task but left %d narrated path(s) "
               "unresolved" % (args.wave, len(unresolved)), file=sys.stderr)
         return 3
-    # A wave that completed HERE was a conflicted fold, and the shadow only
-    # measures clean folds this tier: the seeded pass would have to replay the
-    # resolver's replies to be comparable at all.
-    _shadow_skipped(args.run_dir, args.wave, "wave completed via resolve")
     print(json.dumps({"applied": True, "open": [], "remaining": [],
-                      "autoResolved": contracts.auto,
+                      "autoResolved": 0,
                       "complete": True, "selfChecks": self_checks}))
     return 0 if self_checks == "ok" else 3
 
@@ -1396,17 +877,16 @@ def _observe_modes(repo, prev_head, task_heads, paths):
     return modes, None, None
 
 
-def _build_candidate(repo, prev_head, parents, wave, touched, manifest, modes,
+def _build_candidate(repo, prev_head, wave, touched, manifest, modes,
                      subject=None):
     """The temporary-index route: seed from `prev_head`, apply the touched set,
     write the tree, commit it. Nothing here names a worktree path or a ref, so
     the checkout cannot move; the blobs land in the object store unreferenced
     until the engine adopts the candidate.
 
-    `parents` are the task COMMITS to record beside `prev_head` — the
-    `--task-head` shas. A `--patch` task has no commit, so it contributes no
-    parent: under patch input the candidate is a plain commit on the
-    integration line, and the task's provenance is the fold log, not the DAG.
+    `prev_head` is the candidate's ONLY parent: a patch task has no commit to
+    parent, so the candidate is a plain commit on the integration line and the
+    task's provenance is the fold log, not the DAG.
 
     `subject`, when given, titles the commit and demotes `frontier fold wave
     <N>` to the body: `commit-tree` joins its several `-m` values as
@@ -1431,9 +911,7 @@ def _build_candidate(repo, prev_head, parents, wave, touched, manifest, modes,
                 # resurrect the path from the seeded index.
                 _git_env(repo, env, "update-index", "--force-remove", "--", p)
         tree = _git_env(repo, env, "write-tree").decode().strip()
-        parent_args = []
-        for sha in [prev_head] + list(parents):
-            parent_args += ["-p", sha]
+        parent_args = ["-p", prev_head]
         wave_line = "frontier fold wave %d" % wave
         message_args = ["-m", wave_line] if subject is None else \
             ["-m", subject, "-m", wave_line]
@@ -1527,121 +1005,9 @@ def cmd_materialize(args):
     if park is not None:
         return _park(park)
 
-    candidate = _build_candidate(repo, args.prev_head,
-                                 [t.ref for t in tasks if t.patch is None],
-                                 args.wave, touched, manifest, modes,
-                                 subject=args.subject)
+    candidate = _build_candidate(repo, args.prev_head, args.wave, touched,
+                                 manifest, modes, subject=args.subject)
     print(json.dumps({"candidateSha": candidate}))
-    return 0
-
-
-def _refuse_weave(reason):
-    """emit-weave's only failure shape: exit 2, stderr, nothing written.
-
-    Deliberately not `_park`/`_fallback`: those speak the materialize
-    protocol on stdout, and stdout here is reserved for the counts reply.
-    The engine treats any non-zero as a judgment-call note and moves on — the
-    weave dir is a sidecar, so a refusal costs the next wave its seed and
-    nothing else.
-    """
-    print("emit-weave: %s" % reason, file=sys.stderr)
-    return 2
-
-
-def _blob_sha(repo, text):
-    """git's own blob sha for `text` — `hash-object` without `-w`, so nothing
-    enters the object store; this is a comparison, not a write."""
-    return _git_env(repo, None, "hash-object", "--stdin",
-                    stdin=text.encode()).decode().strip()
-
-
-def _blob_sha_at(repo, ref, path):
-    """The blob sha `ref` holds at `path`, or None when the path is absent
-    there (a reconcile deletion, or a path the candidate never carried)."""
-    out = subprocess.run(["git", "-C", str(repo), "rev-parse", "--verify", "-q",
-                          "%s:%s" % (ref, path)], capture_output=True)
-    if out.returncode != 0:
-        return None
-    return out.stdout.decode().strip() or None
-
-
-def cmd_emit_weave(args):
-    """Persist the ADOPTED wave's per-path weave states (Tier 1, spec
-    2026-09-01 §2.1). Called by the engine's adopt leg, never by fold.
-
-    A path is emitted only when the frontier's visible bytes still ARE what
-    git holds at the adopt head. Anything else — the reconcile leg edited the
-    file, or deleted it — is recorded `superseded` and kept out of the
-    manifest, so next wave's seed miss is an expected miss rather than drift.
-
-    Nothing here touches the fold log or the wave dir: the log stays the sole
-    durable merge record (three event types, no weave record), and this
-    subcommand only ever adds files under `frontier/weave/`.
-    """
-    wave_dir = _wave_dir(args.run_dir, args.wave)
-    log_path = wave_dir / "fold_log.jsonl"
-    if not log_path.exists():
-        return _refuse_weave("fold log missing for wave %d" % args.wave)
-
-    repo = Path(args.repo)
-    recorded = _read_log(log_path)
-    if _log_base(recorded) is None:
-        return _refuse_weave("incomplete fold: wave %d carries no base"
-                             % args.wave)
-    # The completeness leg `cmd_materialize` can check without a task list:
-    # its unfolded-task term needs the supplied `(id, headSha)` pairs, which
-    # the adopt leg no longer has, but an adopted wave materialized, and
-    # materialize already refused every unfolded shape.
-    unresolved = _unresolved_paths(wave_dir, recorded)
-    if unresolved:
-        return _refuse_weave("incomplete fold: %d path(s) unresolved in wave "
-                             "%d (%s)" % (len(unresolved), args.wave,
-                                          ", ".join(unresolved)))
-
-    try:
-        eng = ff.rehydrate(repo, log_path)
-    except RecursionError:
-        return _refuse_weave("kernel recursion limit rehydrating wave %d"
-                             % args.wave)
-    except (rw.PatchError, ValueError) as e:
-        return _refuse_weave("rehydrating wave %d: %s" % (args.wave, e))
-
-    entries, events = {}, []
-    weave_dir = _weave_dir(args.run_dir)
-    blobs = weave_dir / "blobs"
-    blobs.mkdir(parents=True, exist_ok=True)
-    for path in sorted(eng.state_strings()):
-        state = eng.state_strings()[path]
-        # `join_lines` — the same renderer `rw.manifest` uses, so the bytes
-        # hashed here are exactly the bytes the candidate was built from
-        # (`split_lines`/`join_lines` are inverses, so a file with no final
-        # newline compares equal instead of being silently rewritten).
-        visible = rw.join_lines(manyana.current_lines(state))
-        adopted = _blob_sha_at(repo, args.adopt_head, path)
-        if adopted is None or adopted != _blob_sha(repo, visible):
-            events.append({"event": "superseded", "wave": args.wave,
-                           "path": path,
-                           "reason": ("absent at adopt head" if adopted is None
-                                      else "adopt head blob differs from the "
-                                           "folded weave")})
-            continue
-        state_blob = hashlib.sha256(state.encode()).hexdigest()
-        target = blobs / state_blob
-        if not target.exists():       # content addressing: same name, same bytes
-            target.write_text(state)
-        entries[path] = {"stateBlob": state_blob, "visibleSha": adopted}
-        events.append({"event": "emitted", "wave": args.wave, "path": path,
-                       "stateBlob": state_blob, "visibleSha": adopted})
-
-    # REPLACED wholesale: the newest adopted wave owns the manifest.
-    (weave_dir / "manifest.json").write_text(
-        json.dumps({"wave": args.wave, "entries": entries}, indent=2) + "\n")
-    with (weave_dir / "weave-events.jsonl").open("a") as f:
-        for e in events:
-            f.write(json.dumps(e) + "\n")
-
-    print(json.dumps({"emitted": len(entries),
-                      "superseded": len(events) - len(entries)}))
     return 0
 
 
@@ -1654,22 +1020,15 @@ def main(argv=None):
     p_fold.add_argument("--run-dir", required=True)
     p_fold.add_argument("--wave", required=True, type=int)
     p_fold.add_argument("--base", required=True)
-    p_fold.add_argument("--branch", dest="tasks", action="append",
-                        type=_branch_arg, default=[],
-                        help="<taskId>=<branchName>:<headSha>; repeatable")
     p_fold.add_argument("--patch", dest="tasks", action="append",
                         type=_patch_arg, default=[],
                         help="<taskId>=<patchFile>, a `git diff --binary "
                              "--full-index --no-renames <BASE>`; repeatable, "
-                             "in task-index order, mixable with --branch. "
+                             "in task-index order. "
                              "<taskId>=<patchFile>@<anchorSha> names the head "
                              "the patch was captured against when that is not "
                              "--base; the patch is applied over its anchor and "
                              "merged three-way onto the base")
-    p_fold.add_argument("--commutes", dest="commutes", action="append",
-                        type=_parse_commutes, default=[],
-                        help="a task's declared-commutative paths, "
-                             "<taskId>=<path1,path2,...>; repeatable")
     p_fold.set_defaults(func=cmd_fold)
 
     p_resolve = sub.add_parser("resolve")
@@ -1681,20 +1040,12 @@ def main(argv=None):
                                 "this reply answers")
     p_resolve.add_argument("--reply-dir", required=True,
                            help="directory holding one h<k>.txt per hunk")
-    p_resolve.add_argument("--branch", dest="tasks", action="append",
-                           type=_branch_arg, default=[],
-                           help="the wave's full task list, re-supplied on "
-                                "every call in task-index order")
     p_resolve.add_argument("--patch", dest="tasks", action="append",
                            type=_patch_arg, default=[],
-                           help="the patch-input form of --branch; same list, "
-                                "same order, every call. The "
+                           help="the wave's full task list, re-supplied on "
+                                "every call in task-index order. The "
                                 "<taskId>=<patchFile>@<anchorSha> form carries "
                                 "the same anchor the fold was given")
-    p_resolve.add_argument("--commutes", dest="commutes", action="append",
-                           type=_parse_commutes, default=[],
-                           help="a task's declared-commutative paths, "
-                                "<taskId>=<path1,path2,...>; repeatable")
     p_resolve.set_defaults(func=cmd_resolve)
 
     p_mat = sub.add_parser("materialize")
@@ -1702,14 +1053,10 @@ def main(argv=None):
     p_mat.add_argument("--run-dir", required=True)
     p_mat.add_argument("--wave", required=True, type=int)
     p_mat.add_argument("--prev-head", required=True)
-    p_mat.add_argument("--task-head", dest="tasks", action="append",
-                       type=_head_arg, default=[],
-                       help="<taskId>=<headSha>; repeatable")
     p_mat.add_argument("--patch", dest="tasks", action="append",
                        type=_patch_arg, default=[],
-                       help="the patch-input form of --task-head: the same "
-                            "patch files the fold was given, in the same "
-                            "<taskId>=<patchFile>@<anchorSha> form (the "
+                       help="the same patch files the fold was given, in the "
+                            "same <taskId>=<patchFile>@<anchorSha> form (the "
                             "anchor defaults to the log's base)")
     p_mat.add_argument("--subject", default=None,
                        help="title the candidate with this text and body it "
@@ -1723,26 +1070,10 @@ def main(argv=None):
                             "alone: an unfolded task still refuses.")
     p_mat.set_defaults(func=cmd_materialize)
 
-    p_weave = sub.add_parser("emit-weave")
-    p_weave.add_argument("--repo", required=True)
-    p_weave.add_argument("--run-dir", required=True)
-    p_weave.add_argument("--wave", required=True, type=int)
-    p_weave.add_argument("--adopt-head", required=True,
-                         help="the commit the engine ADOPTED for this wave; "
-                              "a folded path whose blob there differs from "
-                              "the fold's own visible bytes is superseded")
-    p_weave.set_defaults(func=cmd_emit_weave)
-
     args = parser.parse_args(argv)
-    # `emit-weave` names no tasks — the fold log is its whole input — so the
-    # shared at-least-one-task check applies only to the subcommands that
-    # declare the flags.
-    if hasattr(args, "tasks") and not args.tasks:
-        # One shared destination, so neither flag can be `required` on its
-        # own: the wave must name at least one task, in either shape.
-        parser.error("%s needs at least one task: --branch or --patch%s"
-                     % (args.command,
-                        " (or --task-head)" if args.command == "materialize" else ""))
+    if not args.tasks:
+        # `append` cannot be `required`: the wave must name at least one task.
+        parser.error("%s needs at least one task: --patch" % args.command)
     # Every subcommand drives the kernel's recursive merge walk, so the whole
     # body runs on the big-stack thread; the result (and any exception) comes
     # straight back, leaving the exit contract untouched.

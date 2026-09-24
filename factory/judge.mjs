@@ -228,8 +228,10 @@ export const makeJudge = ({ ask, emit, now = Date.now, questionsPath, policyPath
    *  confidence. A plan route needs the actor answered `plan` at confidence
    *  AND a fixable answer low enough not to contradict it; else minor. */
   const gradeFinding = async ({ task, finding, hunks, siblingFacts, who } = {}) => {
-    const questions = { ...landingQuestions }
-    delete questions.claim_established
+    const questions = {}
+    for (const key of ['borne_out', 'claim_false', 'fixable_in_files', 'process_only', 'actor', 'status']) {
+      questions[key] = landingQuestions[key]
+    }
     const state = { task, finding, hunks, sibling_facts: siblingFacts }
     return askOnce('landing.finding', state, questions, (answers) => {
       const borneOut = noulOf(answers.borne_out)
@@ -256,7 +258,7 @@ export const makeJudge = ({ ask, emit, now = Date.now, questionsPath, policyPath
     }, who)
   }
 
-  /** The three readings whose row is the answers themselves: the set's
+  /** The reading whose row is the answers themselves: the set's
    *  questions out, the flat answers object back. `who` never reaches Jev —
    *  the state sent to `ask` is the argument minus `who`, every other key
    *  unchanged. */
@@ -475,8 +477,6 @@ export const makeJudge = ({ ask, emit, now = Date.now, questionsPath, policyPath
     readTask,
     readLanding,
     gradeFinding,
-    readNote: flatReader('note'),
-    readAmendment: flatReader('amendment'),
     readSupervisor: flatReader('supervisor'),
     readSupervisorObserved,
     readSettled,

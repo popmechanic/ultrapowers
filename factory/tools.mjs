@@ -29,7 +29,7 @@ const reason = (err) => (err && err.message) || String(err)
 
 /**
  * The SDK and its zod both live in `fleet/node_modules` — the install
- * `fleet/sandbox-boot.sh` performs against `fleet/package.json`. A bare
+ * `factory/boot.sh` performs (`npm ci` in `fleet/`) against `fleet/package.json`. A bare
  * specifier from THIS file does not find them: node walks `factory/` upward to
  * the repository root and stops, and the root has no `node_modules`. So each
  * import is tried three ways — the bare specifier (a hoisted or root install),
@@ -59,7 +59,7 @@ const load = async (spec, relative) => {
     try { return await import(attempt()) } catch (err) { failures.push(reason(err)) }
   }
   throw new Error('factory/tools.mjs cannot resolve "' + spec + '" — it is installed into ' +
-    'fleet/node_modules by fleet/sandbox-boot.sh against fleet/package.json. Tried: ' +
+    'fleet/node_modules by factory/boot.sh (npm ci) against fleet/package.json. Tried: ' +
     failures.join(' ‖ '))
 }
 

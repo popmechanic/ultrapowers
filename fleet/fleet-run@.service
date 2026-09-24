@@ -17,8 +17,8 @@ After=network-online.target
 #
 # %i is the run number. The bootstrap still reads the assignment from
 # Reflection; the argument only lets it assert that the comment's run= agrees.
-# The status page and the engine are transient services of their own, so no
-# KillMode games are needed to keep the page up after this exits.
+# The engine is a transient service of its own, so no KillMode games are
+# needed to keep it up after this exits.
 #
 # LimitNOFILE: a shell here inherits soft 1024, what bites Chromium, bun and
 # pytest; the image's hard limit is 524288. These bytes ride the setup script.

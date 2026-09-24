@@ -34,49 +34,15 @@
  *            --cpu <cpu> --memory <memory> --setup-script /dev/stdin --json
  *
  *      with the rendered setup script on that call's stdin, carrying a
- *      `# fleet: width=<W>` header the launcher stamps on it. The verb carries
- *      no `--integration`: exe.dev refuses that flag since 2026-09-11 ("new
- *      --integration cannot safely rewrite a singular attachment policy"), and
- *      the run's credentials reach the VM by policy instead — each integration
- *      (`claude-max`, `gh-<owner>-<repo>`) carries the attachment policy
- *      `tag:fleet`, so `--tag fleet` is what grants them.
+ *      `# fleet: width=<W>` header the launcher stamps on it. `--tag fleet` is
+ *      what grants the run's integrations (each carries the policy
+ *      `tag:fleet`); the verb carries no `--integration`.
  *
- * `<cpu>` and `<memory>` are the PLAN's, not the fleet's: the launcher compiles
- * the plan under the run number it is pushing — once, before the verb, unless
- * the push is bumped and it compiles again under the number it got — takes W,
- * the task count of the widest wave of the compile whose number won, and asks
- * for `vmSizeFor(W, cap, C)`, where `cap` is the `cpu`/`memory` pair
- * `~/.ultrapowers/fleet.json` names (or `FLEET_DEFAULTS`) read as a CEILING and
- * C is the number of browsers that compile may hold open at once
- * (`browsersFor`). A one-task plan gets a small box and a ten-task plan a
- * bigger one; `--cpu` or `--memory` on the launch line wins outright.
- *
- * Nothing schedules the janitor, so the launcher runs it: one `janitor()` pass
- * before the run number is read, whose reaped VMs the result carries as
- * `reaped`. A reap that fails says so in `reapError` and stops nothing — the
- * run being launched is worth more than the ballast the janitor came for.
- *
- * Nothing waits for ssh and nothing starts the unit: the setup script does
- * both, on the VM. A `new` that answers non-zero is retried — three attempts in
- * all, a freshly minted name each time, because exe.dev reserves a refused name
- * forever — and the failure after the third carries every attempt's output.
- *
- * A `--base` the target's default branch has never seen is a refusal, before
- * the plan is pushed: run-27 was launched off a parked branch and every merge
- * after it was a hand rebase. The read is the origin's own — one `ls-remote
- * --symref origin HEAD` for the branch's name and tip, one `fetch` of that
- * branch, one `merge-base --is-ancestor` — and a shallow checkout, which cannot
- * answer the question at all, is refused before even that.
- *
- * A target with no `gh-<owner>-<repo>` object is a refusal, before the plan is
- * pushed: a public repo would still clone from github.com, but nothing could
- * push its branch or open its PR, and a run that cannot publish is a run nobody
- * asked for. `node fleet/target.mjs <owner>/<repo>` builds the object once.
- *
- * A refusal (exit 2) happens before anything is created, so the account and the
- * target are exactly as they were. A failure after that (exit 1) prints the
- * lobby's own words: exe.dev documents no error envelope, so a refused name or
- * a full account is shown verbatim rather than paraphrased.
+ * `<cpu>` and `<memory>` are the PLAN's, sized by `vmSizeFor` from W, the task
+ * count of the parse's widest wave, under the ceiling `~/.ultrapowers/fleet.json`
+ * names. A refusal (exit 2) happens before anything is created; a failure after
+ * that (exit 1) prints the lobby's own words. Each phase's section comment
+ * below says the rest.
  */
 
 import crypto from 'node:crypto'
@@ -121,7 +87,6 @@ import {
   planBranchFor,
   readPlanCapacity,
   runCli,
-  statusUrlFor,
   vmNameFor
 } from './lobby.mjs'
 import { fleetConfigAccount, verbDrift } from './doctor.mjs'
@@ -230,85 +195,6 @@ export const BASE_OFF_MAIN_FIX =
 export const SHALLOW_FIX = 'is a shallow clone — unshallow it by hand and relaunch'
 
 /**
- * What a word of a plan's `**Exam command:**` template may be spelled with
- * (#716). The sandbox reads that template as ONE RUNNER AND ITS ARGUMENTS —
- * the first word is the runner, probed with `command -v` when no table knows it
- * (the rule the wave engine's sandbox driver set, kept since) — so the class admits what a
- * runner and its flags are spelled with (`-q`, `--tb=short`, `./...`,
- * `pkg:test`, `a,b`) and excludes every shell operator, quote and expansion
- * character. The rule was `compile_plan.py`'s `EXAM_RUNNER_WORD`; since the
- * compiler left (cut B) this copy is the only one.
- */
-export const EXAM_RUNNER_WORD = /^[A-Za-z0-9_.+/=:@,-]+$/
-
-const EXAM_PATHS_TOKEN = '{paths}'
-const EXAM_COMMAND_LABEL = /^\*\*\s*exam[-\s]?command\s*(?::\s*\*\*|\*\*\s*:)\s*(.*)$/i
-const FENCE_LINE = /^(`{3,}|~{3,})/
-const TASK_HEAD_LINE = /^ {0,3}### Task [A-Za-z0-9]+:/
-
-/**
- * The plan header's `**Exam command:**` value: the first matching line before the first task heading and outside
- * any fence, wrapped lines joined on a space, whitespace collapsed.
- */
-function examCommandValue (planText) {
-  const stack = []
-  let value = null
-  for (const line of String(planText ?? '').split('\n')) {
-    const stripped = line.trim()
-    const fence = FENCE_LINE.exec(stripped)
-    if (fence) {
-      if (value !== null) break
-      const run = fence[1]
-      const inner = stack[stack.length - 1]
-      if (inner && run[0] === inner[0] && run.length >= inner.length && stripped === run) stack.pop()
-      else stack.push(run)
-      continue
-    }
-    if (stack.length > 0) {
-      if (value !== null) break
-      continue
-    }
-    if (TASK_HEAD_LINE.test(line)) break // the header ends at the first task heading
-    if (value === null) {
-      const match = EXAM_COMMAND_LABEL.exec(stripped)
-      if (match) value = [match[1].trim()]
-      continue
-    }
-    if (stripped === '' || stripped.startsWith('**')) break
-    value.push(stripped)
-  }
-  if (value === null) return null
-  return value.join(' ').replace(/\s+/g, ' ').trim()
-}
-
-/**
- * The plan header's exam-command template, refused when the sandbox would not
- * read it as a runner and its arguments (#716). A backtick surviving to the
- * driver's shell is a command substitution, and a word carrying a shell
- * operator, a quote or an expansion means the first word is not necessarily
- * what runs the suite — both were `PLAN OK` before, and a launch is the last
- * place either can still be caught for free. Answers the value (or null when
- * the header declares none) when the template is well shaped.
- */
-export function examCommandShapeOf (planText) {
-  const value = examCommandValue(planText)
-  if (value === null) return null
-  if (value.includes('`')) {
-    throw new Refusal(
-      `launch: **Exam command:** carries a backtick — ${value}; the driver's shell reads it as a command substitution (run-74)`
-    )
-  }
-  const words = value.split(/\s+/).filter((word) => word !== '')
-  for (const [index, word] of words.entries()) {
-    if (word === EXAM_PATHS_TOKEN && index > 0) continue
-    if (word === EXAM_PATHS_TOKEN || !EXAM_RUNNER_WORD.test(word)) {
-      throw new Refusal(`launch: **Exam command:** ${word} is not a command word — ${value}`)
-    }
-  }
-  return value
-}
-
-/**
  * How many `new` lines a launch may issue, and the window it sleeps in between
  * them. A name exe.dev refused stays reserved, so each attempt mints its own.
  */
@@ -329,52 +215,13 @@ const isPositiveInt = (value) => isRunNumber(value)
  */
 const isMemorySize = (value) => /^[1-9][0-9]*GB$/.test(String(value))
 
-/** Where a state exam's `Test:` path lives — the one kind of proof that opens a browser. */
-const STATE_EXAM_DIR = 'tests/state-exams/'
-
-/**
- * C, the number of browsers a compiled plan may hold open at once: the largest
- * number of tasks in any one wave whose Proof names a state exam. Pure, and
- * total — `compiled` is the launcher's compiled object, whose `waves` is the
- * compiler's `launch_waves`, an array of arrays of task objects each carrying
- * `proofTests` (the task's Proof `Test:` paths). An entry that is not an object
- * with a `proofTests` array — an id string, as `payload.waves` spells the same
- * waves — counts as no exam, and an object with no `waves` array gives `0`.
- *
- * Why the widest wave and not the plan's task count: the engine dispatches one
- * wave at a time, each state exam's render move opens one Chromium, and a
- * Chromium with a real page on it is 0.7–1 GB (#1087, fixture run-24's box). So
- * the browsers alive at the worst moment are the exam-carrying tasks of one
- * wave, which for a TinyApp plan — where every `peer` task names a state exam —
- * is simply its width.
- */
-export function browsersFor (compiled) {
-  const waves = compiled?.waves
-  if (!Array.isArray(waves)) return 0
-  let widest = 0
-  for (const wave of waves) {
-    if (!Array.isArray(wave)) continue
-    let open = 0
-    for (const task of wave) {
-      const tests = task?.proofTests
-      if (!Array.isArray(tests)) continue
-      if (tests.some((path) => String(path ?? '').includes(STATE_EXAM_DIR))) open += 1
-    }
-    widest = Math.max(widest, open)
-  }
-  return widest
-}
-
 /**
  * The box one plan needs, clamped by the fleet's ceiling. Pure: `widestWave` is
  * W, the task count of the compiled plan's widest wave, `cap` is the
- * `cpu`/`memory` pair the laptop's `fleet.json` names (or `FLEET_DEFAULTS`),
- * and `browsers` is C, the browsers that plan may hold open at once
- * (`browsersFor`).
+ * `cpu`/`memory` pair the laptop's `fleet.json` names (or `FLEET_DEFAULTS`).
  *
  *   cpu    = min(cap.cpu,    2 + ceil(W / 3))
- *   memory = min(cap.memory, 2 + W) GB                        when C is 0
- *   memory = min(cap.memory, max(6, ceil(2 + 1.25 × C))) GB   when C is 1 or more
+ *   memory = min(cap.memory, 2 + W) GB
  *
  * The two constants of the width formula are the run's own floor: an engine, a
  * fold and a publish live on the box whatever the plan is, and every
@@ -383,24 +230,14 @@ export function browsersFor (compiled) {
  * ten-task plan `--cpu 6 --memory 8GB` under the caps 6 and 8GB — the ceiling
  * is what a run may ask for, never the size every run gets.
  *
- * Memory leaves that formula when the plan has state exams, because then the
- * tight dimension is not the implementers but the browsers: 6 GB floor, 1.25 GB
- * per browser on top of the same 2 GB base (#1087; #1094 operator decision 10,
- * 2026-09-17, 6 GB for a two-task TinyApp run). CPU keeps the width formula
- * under every C — the fixture box read about 1 % steal and 50 % idle, so cores
- * were never what ran out. A plan with no state exam keeps `2 + W` outright:
- * pool RAM is the shared constraint, and a floor charged to runs that open no
- * browser would spend it on nothing.
- *
  * `memory` comes back spelled `<int>GB`, the spelling the lobby's `--memory`
  * takes verbatim; `cpu` is a decimal string for the same reason.
  */
-export function vmSizeFor (widestWave, cap = FLEET_DEFAULTS, browsers = 0) {
+export function vmSizeFor (widestWave, cap = FLEET_DEFAULTS) {
   const w = Math.max(0, Math.floor(Number(widestWave) || 0))
-  const c = Math.max(0, Math.floor(Number(browsers) || 0))
   const capCpu = Number(cap?.cpu ?? FLEET_DEFAULTS.cpu)
   const capGb = cap?.memoryGb ?? parseMemoryGb(cap?.memory ?? FLEET_DEFAULTS.memory)
-  const wantGb = c < 1 ? 2 + w : Math.max(6, Math.ceil(2 + 1.25 * c))
+  const wantGb = 2 + w
   return {
     cpu: String(Math.min(capCpu, 2 + Math.ceil(w / 3))),
     memory: `${Math.min(Number(capGb), wantGb)}GB`
@@ -423,36 +260,31 @@ export function sizeFromCompile (compiled, { cpuCap, memoryCap, cpu, memory } = 
   const w = Math.max(1, waves.reduce(
     (widest, wave) => Math.max(widest, Array.isArray(wave) ? wave.length : 0), 0
   ))
-  const browsers = browsersFor(compiled)
-  const sized = vmSizeFor(w, { cpu: cpuCap, memory: memoryCap }, browsers)
+  const sized = vmSizeFor(w, { cpu: cpuCap, memory: memoryCap })
   return {
     width: w,
     cpu: cpu === undefined ? sized.cpu : cpuCap,
-    memory: memory === undefined ? sized.memory : memoryCap,
-    browsers
+    memory: memory === undefined ? sized.memory : memoryCap
   }
 }
 
 /**
  * The launcher's own header on the setup script the `new` verb carries on
- * stdin: W, the widest wave of the plan this box was cut for, C, the browsers
- * that wave may hold open at once, and the size it was cut to. Pure — the
- * script comes back with one comment line inserted under its shebang, nothing
- * else moved.
+ * stdin: W, the widest wave of the plan this box was cut for, and the size it
+ * was cut to. Pure — the script comes back with one comment line inserted
+ * under its shebang, nothing else moved.
  *
  * Why the script and not the assignment: the comment's keys are enumerated
  * twice, by `COMMENT_KEYS` in `fleet/lobby.mjs` and by `parse_assignment` in
- * `fleet/sandbox-boot.sh`, which fails the boot outright on a key it does not
- * know — so a tenth key has to land in both files in the same change or every
+ * `factory/boot.sh`, which fails the boot outright on a key it does not
+ * know — so a seventh key has to land in both files in the same change or every
  * launch after it refuses to boot. Until one does, `width=` rides the other
  * half of the same verb, where it costs nothing: a comment in a first-boot
  * script, on the box, for whoever asks why this VM has these cores. The engine
- * does not read it — `fleet/run-main.mjs` derives the same W from the widest
- * wave of the box's own compile (`args.json`), one plan compiled twice off the
- * same base, and falls back to 12 only when that compile answers no waves.
+ * does not read it.
  */
-export function stampWidth (script, { width, browsers, cpu, memory }) {
-  const note = `# fleet: width=${width} browsers=${browsers} — the compiled plan's widest wave and the browsers it may hold open at once, which this box was cut to: --cpu ${cpu} --memory ${memory}.`
+export function stampWidth (script, { width, cpu, memory }) {
+  const note = `# fleet: width=${width} — the parsed plan's widest wave, which this box was cut to: --cpu ${cpu} --memory ${memory}.`
   const text = String(script ?? '')
   const firstLine = text.indexOf('\n')
   return firstLine < 0
@@ -1263,10 +1095,6 @@ async function launchBody ({
     throw new Refusal(`launch: cannot read plan ${planPath}: ${error?.message ?? error}`)
   }
   if (planText.trim() === '') throw new Refusal(`launch: plan ${planPath} is empty`)
-  // Before the comment-length probe and before anything is executed: a plan
-  // whose declared exam command the sandbox would not read as a runner and its
-  // arguments is refused here, not discovered on the VM.
-  examCommandShapeOf(planText)
   let verdictsText = null
   try {
     verdictsText = await fsp.readFile(`${planPath.replace(/\.md$/, '')}.gate-verdicts.json`, 'utf8')
@@ -1423,7 +1251,6 @@ async function launchBody ({
   // ── The reap. Nothing schedules the janitor, so every launch is where it
   //    runs — before the run number is read, so the fleet a launch joins is
   //    already clear of the VMs of runs that finished over an hour ago.
-  //    `settings` is the config loaded above, so the file is read once, and
   //    `hub` is the client built above, so the janitor asks the hub this
   //    launch already reached — or, with no hub, reads the target. A reap
   //    that fails is reported and not fatal: the run being launched is worth
@@ -1432,7 +1259,7 @@ async function launchBody ({
   let reapError = null
   let fleetRuns = null
   try {
-    const reap = await janitor({ argv: [], exec, config: settings, now, kata: hub })
+    const reap = await janitor({ argv: [], exec, now, kata: hub })
     fleetRuns = Array.isArray(reap.runs) ? reap.runs : []
     for (const action of reap.actions) {
       if (action.kind === 'rm' && action.applied === true) reaped.push(action.vm)
@@ -1467,20 +1294,14 @@ async function launchBody ({
   // the push; the push is where it is settled.
   const firstRun = opts.run ? Number(opts.run) : await highestRunOnTarget(exec, repoDir) + 1
 
-  // ── The parse. One per run number the launch ATTEMPTS, and for a launch
-  //    that is not bumped that is exactly one, here, before the `new` verb —
-  //    everything downstream reads it: the VM's size, the width the engine
-  //    dispatches at, and the tasks and edges `fileRunOnHub` files on the hub.
-  //    `plan_parse.py`'s output does not move with the number (the old
-  //    compiler's fact sheets did, which is why a bump parses again — see
-  //    `pushPlan`); the flow is kept, the stamp is now only a label.
-  const compileFor = (n) => compilePlanForRun({
-    exec, repoDir, planPath, stamp: `run-${n}`, compilerPath: compiler.parserPath
+  // ── The parse. Exactly one, here, before the `new` verb — everything
+  //    downstream reads it: the VM's size, and the tasks and edges
+  //    `fileRunOnHub` files on the hub. `plan_parse.py`'s output does not move
+  //    with the run number, so a bumped push files the same parse under N+1;
+  //    the stamp is only a label.
+  const firstCompiled = await compilePlanForRun({
+    exec, repoDir, planPath, stamp: `run-${firstRun}`, compilerPath: compiler.parserPath
   })
-  // The box one compiled payload asks for: `sizeFromCompile` above, the pure
-  // export, reading the compiled object's own waves for W and for C, the
-  // browsers it may hold open at once.
-  const firstCompiled = await compileFor(firstRun)
   // The credential a publishing plan needs at the edge — checked as soon as a
   // real `compiled` object exists (a plan with no `**Publish:**` line, the
   // common case, carries no `publish` key and is never refused here), against
@@ -1506,9 +1327,8 @@ async function launchBody ({
   // exe.dev refuses nothing by sum, so this is never a sum over live VMs:
   // contention bounds concurrency, and two plans at once is by design. Still
   // before the credential, the push and the verb, so a refusal here has
-  // mutated nothing — which is why it reads the first compile's size and not
-  // the bumped one's: a stamp names exam directories and nothing else, so the
-  // widest wave, and the box it asks for, are the same under every N.
+  // mutated nothing — and the parse does not move with N, so the widest wave,
+  // and the box it asks for, are the same under every N.
   const capacity = await readPlanCapacity(exec)
   if (capacity.maxCpus < Number(firstSize.cpu)) {
     throw new Refusal(
@@ -1599,22 +1419,20 @@ async function launchBody ({
     reread: opts.run ? null : () => highestRunOnTarget(exec, repoDir),
     kataStep,
     kataBump,
-    compiled: firstCompiled,
-    recompile: compileFor
+    compiled: firstCompiled
   })
   const run = plan.run
   const planBranch = plan.branch
   const planSha = plan.sha
-  // The size and the width the verb carries are read off the compile for the
-  // number the push got — the first one when nothing bumped, the recompile
-  // when something did.
-  const { width, browsers, cpu, memory } = sizeFromCompile(plan.compiled, { cpuCap, memoryCap, cpu: opts.cpu, memory: opts.memory })
+  // The size and the width the verb carries, read off the parse the push
+  // filed — the same parse under every N.
+  const { width, cpu, memory } = sizeFromCompile(plan.compiled, { cpuCap, memoryCap, cpu: opts.cpu, memory: opts.memory })
 
   // ── The one mutating lobby verb. ──────────────────────────────────────────
   const comment = buildComment({ ...fields, run: String(run), plan: planSha, engine })
   const script = stampWidth(
     renderSetupScript({ run: String(run), ...readFleetFiles() }),
-    { width, browsers, cpu, memory }
+    { width, cpu, memory }
   )
   // No `--integration` on the verb: the run's credentials — `claude-max` and the
   // target's object — reach the box by the
@@ -1662,7 +1480,6 @@ async function launchBody ({
     run,
     runId: `run-${run}`,
     vm,
-    statusUrl: statusUrlFor(vm),
     comment,
     plan: planSha,
     planBranch,
@@ -1696,19 +1513,11 @@ async function launchBody ({
     github: githubName,
     cpu,
     memory,
-    // C, the browsers this plan may hold open at once — the exam-carrying tasks
-    // of its widest wave (`browsersFor`), and what `memory` was sized by when
-    // it is one or more. Like `width` it rides the setup script's header, not
-    // the assignment.
-    browsers,
-    // W, the widest wave of the compiled plan: what `cpu` and `memory` were
-    // sized to, and the width the run's engine would dispatch at. It is not an
-    // assignment key — `COMMENT_KEYS` in `fleet/lobby.mjs` spells nine and
-    // `parse_assignment` on the VM fails on a tenth — so it rides the setup
-    // script's header instead (`stampWidth`), where it is a record and not a
-    // switch: the box arrives at the same W itself, off the widest wave of its
-    // own compile (`widestWaveOf` in `fleet/run-main.mjs`, 12 only when that
-    // compile answers no waves).
+    // W, the widest wave of the parsed plan: what `cpu` and `memory` were
+    // sized to. It is not an assignment key — `COMMENT_KEYS` in
+    // `fleet/lobby.mjs` spells six and `parse_assignment` on the VM fails on a
+    // seventh — so it rides the setup script's header instead (`stampWidth`),
+    // where it is a record and not a switch.
     width,
     launchedAt: now().toISOString(),
     commands,
@@ -1837,12 +1646,9 @@ export const PUSH_ATTEMPTS = 3
  * `--run N` names an N the operator chose, so it is pushed once and refused if
  * that is refused: `reread` is null and no re-read is made at all.
  *
- * The parse follows the number. `compiled` is the launch's parse for the N it
- * came in asking for, and `recompile(n)` is run once per N it goes on to try —
- * a flow kept from the old compiler, whose fact sheets named the run; the
- * parse itself no longer moves with N. So a launch that is not bumped parses
- * exactly once, and the parse the winning N was filed under rides back out on
- * `compiled` for the verb to size the box from.
+ * The parse does not move with the number: `compiled` is the launch's one
+ * parse, filed on the hub under whichever N the push wins, and it rides back
+ * out on `compiled` for the verb to size the box from.
  *
  * At most `PUSH_ATTEMPTS` pushes in all. The refusal is the push's own — the
  * text a single refused push has always carried — with ` after <n> tries` when
@@ -1850,16 +1656,15 @@ export const PUSH_ATTEMPTS = 3
  */
 async function pushPlan ({
   exec, repoDir, base, run, planText, verdictsText, commands, reread,
-  kataStep = null, kataBump = null, compiled = null, recompile = null
+  kataStep = null, kataBump = null, compiled = null
 }) {
   let n = run
-  let payload = compiled
   for (let attempt = 1; attempt <= PUSH_ATTEMPTS; attempt += 1) {
     const branch = planBranchFor(n)
     // The hub is filed for THIS N before the commit is built: a bump closes
     // the run issue it filed and files N+1's instead. The project is the
     // target's and outlives every number, so a bump destroys nothing.
-    const filed = kataStep === null ? null : await kataStep(n, payload)
+    const filed = kataStep === null ? null : await kataStep(n, compiled)
     const sha = await commitPlan({
       exec, repoDir, base, run: n, planText, verdictsText, kataText: filed === null ? null : filed.text
     })
@@ -1867,7 +1672,7 @@ async function pushPlan ({
     commands.push(`git ${pushArgv.join(' ')}`)
     const push = await exec('git', pushArgv)
     if (push.code === 0) {
-      return { run: n, sha, branch, compiled: payload, kata: filed === null ? null : filed.record }
+      return { run: n, sha, branch, compiled, kata: filed === null ? null : filed.record }
     }
 
     const refusal = () =>
@@ -1881,7 +1686,6 @@ async function pushPlan ({
     const taken = n
     n = highest + 1
     if (filed !== null) await kataBump(filed.record, taken, n)
-    if (recompile !== null) payload = await recompile(n)
   }
 }
 
@@ -1948,10 +1752,9 @@ const planBlobSha = (text) => {
  *
  * Every hub call goes through `call`, which turns a throw into the launch's
  * LobbyError naming the method; the missing `short_id` is the launch's own
- * refusal. The sheets are `compiled` — the stamped compile for THIS `n`,
- * handed in rather than run again here, so a launch that is not bumped
- * compiles the plan once whether or not it reaches a hub, and a bumped one
- * files the payload stamped with the number it got.
+ * refusal. The sheets are `compiled` — the launch's one parse, handed in
+ * rather than run again here; a bumped push files the same parse under the
+ * number it got.
  */
 async function fileRunOnHub ({ hub, call, planText, target, base, n, compiled }) {
   const stamp = `run-${n}`
@@ -2030,19 +1833,14 @@ async function fileRunOnHub ({ hub, call, planText, target, base, n, compiled })
   return record
 }
 
-// The record writer under both of its names — `fileRunOnHub` is what this
-// module calls it, `buildKataRecord` what #963 names. Exported so a sim can
-// drive it against a fake hub without a whole launch; the launcher itself
-// still calls it directly.
-export { fileRunOnHub, fileRunOnHub as buildKataRecord }
+export { fileRunOnHub }
 
 /**
  * An unpinned engine, named as the tip it is. Only the unpinned case is
  * annotated: a pinned sha is one the operator typed, and the assignment comment
  * already prints `engine=<sha>` either way, so there is nothing a `(pinned)`
  * line would tell them. #636 asks for exactly this — that the tip stop passing
- * for a choice — and `fleet/tests/test_launch.mjs` pins a pinned launch's
- * rendering at its four lines, so an annotation there would break it.
+ * for a choice.
  *
  * The annotation is a rendered line, never part of the comment: the comment's
  * text is pinned byte-for-byte, and a run reading it must not have to strip
@@ -2074,7 +1872,6 @@ const engineLine = (result) =>
 export const renderLaunch = (result) => [
   result.runId,
   result.vm,
-  result.statusUrl,
   result.comment,
   ...(result.reaped ?? []).map((vm) => `reaped ${vm}`),
   ...(result.again ?? []).map((d) => `again run-${d.run} ${d.vm}`),
