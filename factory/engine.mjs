@@ -54,7 +54,7 @@ import { unionReply } from './union.mjs'
 import { makeBoard, patchWithRevision } from './board.mjs'
 import { candidateTests, symbolsOf, commandFor, excerptFor } from './select.mjs'
 import { proofsAdopted, foldRound } from './reverify.mjs'
-import { waitsFor } from './dispatch.mjs'
+import { waitsFor, hardEdgePreds } from './dispatch.mjs'
 import { runLines } from './proofs.mjs'
 import { checksAtBase } from './checks-at-base.mjs'
 import { settledCoverage, observedFacts, clauseFacts } from './facts.mjs'
@@ -713,17 +713,22 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const pairsLive = pairsPolicy.mode === 'live'
   const pairsList = pairsLive && Array.isArray(compiled.pairs) ? compiled.pairs : []
 
-  // What a task waits on: `depends_on` as the plan declares it, plus — with
-  // `pairs.mode` `live` — only the parser's `write-after-create` edges (every
-  // other edge the parser printed is instead a `pairs` entry M2 reads for
-  // itself, below); with `pairs.mode` off, every edge the parser printed, as
-  // before this task (M6). No launch-wave barrier — the spec's loop folds on
-  // every adoption with no epoch, and a task's interface edge is already an
-  // edge.
+  // What a task waits on: `depends_on` as the plan declares it, plus —
+  // through `hardEdgePreds` (`factory/dispatch.mjs`) — with `pairs.mode`
+  // `live`, only the parser's `write-after-create` edges, and `proof-run`
+  // edges too when `pairs.proof_run_hard.enabled` is true (a probe that
+  // imports a sibling's file can only run once that file lands, so that edge
+  // is a fact, not a judgment `pairs` alone should carry); every other edge
+  // the parser printed is instead a `pairs` entry M2 reads for itself, below.
+  // With `pairs.mode` off, every edge the parser printed, as before this task
+  // (M6). No launch-wave barrier — the spec's loop folds on every adoption
+  // with no epoch, and a task's interface edge is already an edge.
+  const proofRunHard = (pairsPolicy.proof_run_hard || {}).enabled === true
   const edgePreds = new Map(tasks.map((t) => [t.id, new Set(t.depends_on || [])]))
-  for (const edge of compiled.dag_edges || []) {
-    if (pairsLive && edge.why !== 'write-after-create') continue
-    if (edgePreds.has(edge.to)) edgePreds.get(edge.to).add(edge.from)
+  const hardEdges = hardEdgePreds({ dagEdges: compiled.dag_edges || [], pairsLive, proofRunHard })
+  for (const [to, from] of hardEdges) {
+    if (!edgePreds.has(to)) continue
+    for (const id of from) edgePreds.get(to).add(id)
   }
   // M2's chain orderings, one hard-predecessor-shaped set per task, filled in
   // by `resolvePairs()` below (live mode only) before `settleReadiness` is

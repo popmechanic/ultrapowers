@@ -16,6 +16,38 @@
  * first, deduplicated so the first occurrence of an id wins; `candidate` is
  * always `[]`.
  */
+/**
+ * hardEdgePreds({ dagEdges, pairsLive, proofRunHard }) -> Map<id, Set<id>>
+ *
+ * Which of the parser's dag_edges become a hard predecessor (an edge
+ * `waitsFor` folds into `hardPreds`, not a `chain` ordering a pair verdict
+ * merely measured). With `pairsLive` false, every edge the parser printed is
+ * kept — the reading this file gave before `pairs.mode` existed. With
+ * `pairsLive` true, only `write-after-create` edges are kept, plus
+ * `proof-run` edges when `proofRunHard` is true: a probe that imports a
+ * sibling's file can only run once that file lands, so a `proof-run` edge is
+ * a fact, not a judgment `pairs` alone should carry — `interface` edges (and
+ * `proof-run` ones when the cell is off) stay the reader's, read as a `pairs`
+ * entry instead (M2's `t_changes_consumer` and, when `proof_run_hard.enabled`
+ * is false, the `proof-run` label too).
+ *
+ * Pure: no disk. Seeding a task's own `depends_on` into the answer is the
+ * caller's job — this function only ever adds the parser's dag_edges.
+ */
+export function hardEdgePreds ({ dagEdges = [], pairsLive, proofRunHard } = {}) {
+  const preds = new Map()
+  for (const edge of dagEdges || []) {
+    if (pairsLive) {
+      const isHardWhy = edge.why === 'write-after-create' ||
+        (edge.why === 'proof-run' && proofRunHard === true)
+      if (!isHardWhy) continue
+    }
+    if (!preds.has(edge.to)) preds.set(edge.to, new Set())
+    preds.get(edge.to).add(edge.from)
+  }
+  return preds
+}
+
 export function waitsFor ({ taskId, hardPreds = [], chainPreds = [], policy } = {}) {
   const onCandidate = Boolean(policy && policy.speculate && policy.speculate.on_candidate)
   const hard = [...(hardPreds || [])]

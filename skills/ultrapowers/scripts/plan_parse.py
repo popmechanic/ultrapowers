@@ -434,6 +434,67 @@ def _interface_token(text):
 
 _RUN_SPLIT_RE = re.compile(r'&&|\|\||[;()|\s]+')
 
+# Python `from <dotted> import ...` -- captures the dotted module only; the
+# whole match (including the imported names) is later blanked out of the
+# command before the bare-`import` regex runs, so `x` in `from pkg import x`
+# is never mistaken for a module of its own.
+_PY_FROM_IMPORT_RE = re.compile(
+    r'\bfrom\s+([\w.]+)\s+import\s+[\w.]+(?:\s*,\s*[\w.]+)*'
+)
+# Python bare `import <dotted>[, <dotted> ...]`.
+_PY_IMPORT_RE = re.compile(r'\bimport\s+([\w.]+(?:\s*,\s*[\w.]+)*)')
+
+# JavaScript/TypeScript import forms: `import ... from '<spec>'`,
+# `import('<spec>')`, `require('<spec>')` -- single or double quotes.
+_JS_SPEC_RE = re.compile(
+    r"""\bimport\s+[^'";]*?\bfrom\s+(['"])(?P<spec1>[^'"]+)\1"""
+    r"""|\bimport\(\s*(['"])(?P<spec2>[^'"]+)\3\s*\)"""
+    r"""|\brequire\(\s*(['"])(?P<spec3>[^'"]+)\5\s*\)"""
+)
+
+_JS_EXTS = ('.ts', '.mjs', '.js', '.tsx')
+_JS_INDEXES = ('/index.ts', '/index.mjs', '/index.js')
+
+
+def _py_module_candidates(dotted):
+    path = dotted.replace('.', '/')
+    return [path + '.py', path + '/__init__.py']
+
+
+def _js_spec_candidates(spec):
+    stripped = spec[2:] if spec.startswith('./') else spec
+    candidates = [stripped]
+    base = stripped.rsplit('/', 1)[-1]
+    if '.' not in base:
+        candidates.extend(stripped + ext for ext in _JS_EXTS)
+        candidates.extend(stripped + idx for idx in _JS_INDEXES)
+    return candidates
+
+
+def _import_paths(cmd):
+    """Candidate module/file paths named by any import in `cmd`, Python or
+    JavaScript. A candidate that no task's Files carry costs nothing --
+    `_build_edges` only fires on an actual intersection."""
+    out = []
+
+    for m in _PY_FROM_IMPORT_RE.finditer(cmd):
+        out.extend(_py_module_candidates(m.group(1)))
+
+    stripped_cmd = _PY_FROM_IMPORT_RE.sub(' ', cmd)
+    for m in _PY_IMPORT_RE.finditer(stripped_cmd):
+        for dotted in m.group(1).split(','):
+            out.extend(_py_module_candidates(dotted.strip()))
+
+    for m in _JS_SPEC_RE.finditer(cmd):
+        spec = m.group('spec1') or m.group('spec2') or m.group('spec3')
+        if spec is None:
+            continue
+        if not (spec.startswith('./') or spec.startswith('../')):
+            continue
+        out.extend(_js_spec_candidates(spec))
+
+    return out
+
 
 def _run_tokens(cmd):
     toks = [t for t in _RUN_SPLIT_RE.split(cmd) if t]
@@ -442,6 +503,7 @@ def _run_tokens(cmd):
         if t.startswith("./"):
             t = t[2:]
         out.append(t)
+    out.extend(_import_paths(cmd))
     return out
 
 

@@ -509,6 +509,10 @@ Independence is a property of contracts, not of files.
    literal orders neither, so prefer the literal wherever the consumer only needs the
    shape. Workers have no shared memory — a chain of two tasks is two strangers in
    sequence, not one mind holding a design — so a chain buys no coherence, only the wait.
+   One thing a literal cannot stand in for is the file itself: a probe that imports a sibling's created module
+   (`from tests.trends_fixtures import …`, `import('./lib/a.mjs')`) is a `proof-run` edge
+   the parser derives and the engine keeps hard under live pairs (#1265), so write the
+   probe as it is and list nothing under `Modify:` to force the wait — the wait is derived.
 2. **Write no ordering.** On the factory an author writes no ordering: the engine reads
    every overlapping or consuming pair itself, with Jev, starts every task at once unless
    a pair reads as a chain by that reading, and runs every adopted task's probes after every fold.

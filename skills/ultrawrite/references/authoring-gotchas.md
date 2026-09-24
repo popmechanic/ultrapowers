@@ -205,6 +205,16 @@ file — `suite-total-pin`, `directory-absence-pin` and, since the compiler left
   2026-09-22) because the plan's nine probes carried no tag, and Jev read every clause
   from the diff alone. Tag every prover.
 
+- **A probe that imports the producer's created module is a proof-run edge, kept hard.**
+  On run-1 of vibecoding-analyzer (2026-09-23, 17 tasks) four consumers whose probes
+  imported a file a sibling was creating were dispatched at second zero because the pair
+  reader was asked about them; eleven folds were red on a module that did not exist and
+  two implementers were re-dispatched (~50 min, n=1 run, #1265); since this plan the
+  parser reads the import as the path it names and the engine keeps a `proof-run` edge as
+  a hard predecessor, so the author writes the import and no ordering — and a Context
+  that carries the shared shape as a literal is still right, because the literal is for
+  the shape and the edge is for the file.
+
 - **A probe reads what it reads, not only what its task wrote.** On run-225 task 2
   pinned how task 1's `record.mjs` rendered a cell, the two tasks shared no file, the
   fold check skipped the sim, and the merged tree was red by hand (#1250); since #1251
