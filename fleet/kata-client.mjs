@@ -173,6 +173,63 @@ const project = (source, keys) => {
 }
 
 /**
+ * The run's own issue, found by run and plan — open first, so a colliding
+ * launch's abandoned issue (closed `wontfix` when its number was taken from
+ * under it, #1036) is never read as the live run's (derived).
+ *
+ * Over the elements of `issues` whose `metadata.run` reads as the number
+ * `run` and whose `metadata.task` is `undefined` (a task issue's own `run` is
+ * never this), the first is answered by this preference, lowest tier first,
+ * ties kept in listing order:
+ *
+ *   1. when `plan` is a string, an element whose `metadata.plan === plan`
+ *      over every other element — a mismatched plan and an absent one tie at
+ *      the next tier, so an element that names no plan is never excluded by
+ *      this preference, only left where listing order and the tiers below
+ *      put it;
+ *   2. `status === 'open'` over `'closed'`;
+ *   3. a closed element whose `closed_reason !== 'wontfix'` over one whose
+ *      `closed_reason === 'wontfix'`.
+ *
+ * `null` when no element qualifies.
+ */
+export const runIssueOf = (issues, run, plan) => {
+  const list = Array.isArray(issues) ? issues : []
+  const runNum = Number(run)
+  const planStr = typeof plan === 'string' ? plan : null
+  let best = null
+  let bestScore = null
+  for (const issue of list) {
+    if (!issue || typeof issue !== 'object') continue
+    const meta = issue.metadata
+    if (!meta || typeof meta !== 'object') continue
+    if (meta.task !== undefined) continue
+    if (Number(meta.run) !== runNum) continue
+    const planScore = (planStr !== null && meta.plan === planStr) ? 0 : 1
+    const open = issue.status === 'open'
+    const statusScore = open ? 0 : 1
+    const closedReasonScore = (!open && issue.closed_reason === 'wontfix') ? 1 : 0
+    const score = [planScore, statusScore, closedReasonScore]
+    if (best === null || scoreLess(score, bestScore)) {
+      best = issue
+      bestScore = score
+    }
+  }
+  return best
+}
+
+/** Lexicographic "strictly better" over the fixed-length tier arrays
+ *  `runIssueOf` scores candidates with — used, rather than `<=`, so a tie
+ *  keeps the earliest candidate in listing order. */
+const scoreLess = (a, b) => {
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] < b[i]) return true
+    if (a[i] > b[i]) return false
+  }
+  return false
+}
+
+/**
  * The client. Every method issues EXACTLY ONE request — nothing here polls,
  * retries or reads an issue back to confirm a write, because the driver's own
  * ordering is what the record is for: a step is on the hub before the driver

@@ -130,7 +130,7 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { KataError, makeKataClient, sshTransport } from './kata-client.mjs'
+import { KataError, makeKataClient, runIssueOf, sshTransport } from './kata-client.mjs'
 import {
   KATA_HUB_FIX,
   Refusal,
@@ -139,6 +139,7 @@ import {
   evidenceBranchFor,
   evidenceTagFor,
   integrationBranchFor,
+  isFullSha,
   isRunNumber,
   isSafeTarget,
   isVmName,
@@ -335,7 +336,7 @@ function hubReader (hub) {
   const darken = (error) => {
     if (hub.dark === null) hub.dark = reasonOf(error)
   }
-  return async (target, run) => {
+  return async (target, run, plan) => {
     if (hub.client === null || hub.dark !== null) return null
     try {
       if (byName === null) {
@@ -349,7 +350,7 @@ function hubReader (hub) {
       if (project === undefined) return null
       const json = await hub.client.listIssues(project.id)
       const issues = Array.isArray(json?.issues) ? json.issues : []
-      const issue = issues.find((i) => i && typeof i === 'object' && Number(i.metadata?.run) === run) ?? null
+      const issue = runIssueOf(issues, run, plan ?? null)
       return issue === null ? null : readingOfIssue({ id: project.id, uid: project.uid, name: project.name }, issue)
     } catch (error) {
       darken(error)
@@ -435,10 +436,13 @@ const ghPut = (exec, apiPath, { branch, message, content, sha = null }) => {
 }
 
 /**
- * A row's assignment: the run and the target its comment carries, or null when
- * the comment is absent or says nothing this tool can read. The comment's
- * `run=` is the run; the name's is the fallback, since the name is only where
- * the run is running this time.
+ * A row's assignment: the run, the target, and the plan its comment carries
+ * (`null` when the comment names none, or names something other than a
+ * 40-hex sha), or null when the comment is absent or says nothing this tool
+ * can read. The comment's `run=` is the run; the name's is the fallback,
+ * since the name is only where the run is running this time. The plan is how
+ * the janitor tells a colliding launch's abandoned run issue from the run
+ * that actually won the number (#1036, `runIssueOf`).
  */
 function assignmentOf (row) {
   if (!isVmName(row.name)) return null
@@ -446,7 +450,8 @@ function assignmentOf (row) {
   const run = isRunNumber(fields.run) ? Number(fields.run) : runOfVmName(row.name)
   const target = isSafeTarget(fields.target) ? fields.target : null
   if (run === null || target === null) return null
-  return { run, target }
+  const plan = isFullSha(fields.plan) ? fields.plan : null
+  return { run, target, plan }
 }
 
 /**
@@ -736,16 +741,16 @@ export async function janitor ({
       unknown.push({ vm: row.name, comment: row.comment })
       continue
     }
-    const { run, target } = assignment
+    const { run, target, plan: planSha } = assignment
     targets.add(target)
 
     // The hub first; the target's evidence when the hub cannot answer this row.
-    const reading = await fromHub(target, run) ?? await evidenceReading(exec, target, run)
+    const reading = await fromHub(target, run, planSha) ?? await evidenceReading(exec, target, run)
     runs.push({
       vm: row.name,
       run,
       target,
-      plan: parseComment(row.comment).plan ?? null,
+      plan: planSha,
       live: reading?.live ?? null,
       state: reading?.state ?? null
     })
