@@ -1,0 +1,64 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "7d76800b0aef16781958518067195071fdac3b8fdbef70b319f77e6ed6c44b14",
+      "verdict": "pass",
+      "reason": "M1-M4's exact dag_edges each asserted against the parser's stdout, the absence and unchanged-at-BASE halves covered, M5 the pytest exit; nothing at BASE pins the opposite."
+    },
+    "2": {
+      "hash": "61d7a9378f45ded4de2b8dd0680a9c828466b814e096412f97cee0f51bbb8bc7",
+      "verdict": "pass",
+      "reason": "The three predecessor tables computed by one probe from a literal edge list and matching BASE's rule for the rolled-back case; the cell's keys, the call-site grep and the two sim sentinels each tagged."
+    },
+    "3": {
+      "hash": "b3a2c7754722d58d828fd34d382d6798ea6d7054656ee82e858413625cf1b0d0",
+      "verdict": "pass",
+      "reason": "Both clauses are byte-exact presence facts read from a heading-scoped section or the pinned bullet; placement is the run-time reader's."
+    }
+  },
+  "tally": {
+    "dispatched": 3,
+    "rejected": 0,
+    "rounds": {
+      "1": {
+        "dispatched": 3,
+        "rejected": 0
+      }
+    },
+    "base": "e89b63c2372a2bbf0fdc323675cd266481b01b88",
+    "question": "facts-only (2026-09-18)"
+  },
+  "authoring": {
+    "minutes": 27,
+    "probes": 0,
+    "routing": {
+      "branch": "width",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Author now or wait",
+        "options": [
+          "Author now, launch after run-38",
+          "Wait for run-38's reading first",
+          "Comment the reading on #1265 only",
+          "Please explain"
+        ],
+        "recommended": "Author now, launch after run-38",
+        "picked": "Author now, launch after run-38",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Sign as drafted",
+          "Sign, parser only",
+          "Please explain"
+        ],
+        "recommended": "Sign as drafted",
+        "picked": "Sign as drafted",
+        "explain_rounds": 0
+      }
+    ]
+  }
+}
