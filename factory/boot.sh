@@ -154,7 +154,12 @@ evidence_commit() { # $1 = commit subject
     if [ -f "$EVIDENCE_DIR/$EVIDENCE_REL/$p" ]; then paths+=("$EVIDENCE_REL/$p"); fi
   done
   [ "${#paths[@]}" -gt 0 ] || return 0
-  fleet_git -C "$EVIDENCE_DIR" add -- "${paths[@]}" || log "evidence: add refused"
+  # `-f`: the evidence worktree is a worktree of the TARGET, whose own
+  # `.gitignore` may ignore `*.log` — tinyapp-fixture's does, and run-38 and
+  # run-39 tagged no engine.log and no publish-deploy.log (2026-09-24). The
+  # record is the run's, not the target's, so its files are added whatever
+  # the target ignores.
+  fleet_git -C "$EVIDENCE_DIR" add -f -- "${paths[@]}" || log "evidence: add refused"
   fleet_git -C "$EVIDENCE_DIR" commit -m "$1" || log "evidence: nothing to commit"
   while :; do
     if fleet_git -C "$EVIDENCE_DIR" push origin "HEAD:refs/heads/$EVIDENCE_BRANCH"; then return 0; fi
