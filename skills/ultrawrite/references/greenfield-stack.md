@@ -306,7 +306,11 @@ for — not how the engine runs it.
   object. A build without that flag serves `/sync/<module>` and nothing else.
 - **Its config.** The config file is `wrangler.jsonc`, since celld rejects
   `wrangler.toml`; a scaffold that writes the TOML form is converted before the
-  first exam runs.
+  first exam runs. celld 0.5 also refuses the deploy-only keys `account_id` and
+  `workers_dev` in it (`celld deploy does not support these config keys`, run-38
+  on tinyapp-fixture, 2026-09-24 — every fold red, the run parked), so a target
+  that deploys names its account in a committed env file wrangler reads with
+  `--env-file` (`CLOUDFLARE_ACCOUNT_ID=…`) and never in the config celld starts from.
 - **How an exam stops it.** Teardown is a `SIGTERM` to the supervisor and then a
   wait for the port to clear — it drains in about a second — because a hard kill
   leaves the port held and the next task starts on `Address already in use`.
