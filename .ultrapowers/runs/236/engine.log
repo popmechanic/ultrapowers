@@ -1,0 +1,13 @@
+Running as unit: fleet-engine-236.service
+adopted task 3 -> 6e200c6d  facts=0 k=1
+adopted task 5 -> 3a1f70c2  facts=0 k=1
+adopted task 8 -> 27b6d96d  facts=0 k=1
+adopted task 4 -> 0d080bfa  facts=0 k=1
+adopted task 2 -> 0155497c  facts=0 k=2
+{"done":true,"adopted":["3","5","8","4","2"],"head":"0155497c46d145e36d5493b992a9b5fb9e6be116","wall_ms":387571,"cost_usd":3.8355172000000004}
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 6min 27.668s
+CPU time consumed: 2min 24.502s
+Memory peak: 2.5G
+Memory swap peak: 0B
