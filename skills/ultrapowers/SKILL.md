@@ -1,6 +1,6 @@
 ---
 name: ultrapowers
-description: Use when the user runs "/ultrapowers <plan-path>", asks to "execute this plan", "go ultra", or wants an approved plan built autonomously in parallel waves — on the exe.dev fleet, never on this machine. Also use when the user runs "/ultrapowers setup", asks whether they have a fleet yet, or asks to build one.
+description: Use when the user runs "/ultrapowers <plan-path>", asks to "execute this plan", "go ultra", or wants an approved plan built autonomously and in parallel — on the exe.dev fleet, never on this machine. Also use when the user runs "/ultrapowers setup", asks whether they have a fleet yet, or asks to build one.
 argument-hint: <plan-path> | setup
 allowed-tools: Skill Read Grep Glob Bash AskUserQuestion
 hooks:
@@ -238,5 +238,5 @@ approved plan, **is** the authorization to execute — no further approval pause
   command that builds it.
 - `references/design-rationale.md` — why each surviving guard exists.
 - `references/report-format.md`, `references/finishing-notes.md` — report schema; finishing checks.
-- `kernel/FOLD_LOG.md` — the fold-log schema (contended-wave state a parked run's evidence carries).
+- `kernel/FOLD_LOG.md` — the fold-log schema the kernel writes in its run directory on the sandbox (the evidence branch carries `events.jsonl` and `engine.log`, not the fold dir).
 - `scripts/plan_parse.py` (the one parser — the sandbox runs it), `scripts/plan_check.py` (the laptop's check of the records and the base, on that parser).

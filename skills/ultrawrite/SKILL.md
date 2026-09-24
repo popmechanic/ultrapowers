@@ -1,6 +1,6 @@
 ---
 name: ultrawrite
-description: Use when writing ANY implementation plan — this plugin's owned authoring skill. Elicits the operator's claim, shapes the decomposition into signed contracts, runs the proof gate, and emits a claims-v1 plan that /ultrapowers compiles into waves. Replaces the marker-layering skill and the external writing-plans dependency for plan bodies.
+description: Use when writing ANY implementation plan — this plugin's owned authoring skill. Elicits the operator's claim, shapes the decomposition into signed contracts, runs the proof gate, and emits a claims-v1 plan that /ultrapowers runs as a pool of tasks on the fleet. Replaces the marker-layering skill and the external writing-plans dependency for plan bodies.
 hooks:
   Stop:
     - hooks:
@@ -578,7 +578,7 @@ Offer three options, parallel first, and do **not** default to the parallel lane
 three signals off the plan:
 
 - **T** — the number of `implementation` tasks.
-- **parallel width** — is there a wave with ≥2 independent tasks, after treating non-text same-file edits between tasks as dependencies (text overlap folds at merge)? Compute it from derived edges plus the Files blocks.
+- **parallel width** — are there ≥2 tasks with no edge between them, after treating non-text same-file edits between tasks as dependencies (text overlap folds at merge)? Compute it from derived edges plus the Files blocks.
 - **risk** — a high-stakes surface (auth, payments, migrations, data integrity, public
   API, loops/cursors/pagination/budgets/termination logic), or behavior hard to verify by
   reading.
@@ -589,8 +589,8 @@ else → Subagent-Driven. Show a one-line analysis, then the three options, tagg
 winner **(recommended)**:
 
 1. **Ultrapowers** — `/ultrapowers <plan-path>`: commits the plan and drives it on the
-   exe.dev fleet (parallel waves in a sandbox, per-task review, the orchestrator opens the
-   PR). Selecting it authorizes execution: the plan is committed and the fleet run
+   exe.dev fleet (a pool of tasks in a sandbox, several implementers per task, the plan's
+   probes and checks as the proof, the sandbox opens the PR). Selecting it authorizes execution: the plan is committed and the fleet run
    launches immediately, without a further approval pause.
 2. **Subagent-Driven** — sequential, fresh context and review between tasks.
 3. **Inline** — continuous inline execution.
