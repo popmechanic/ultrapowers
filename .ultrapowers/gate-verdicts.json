@@ -1,0 +1,96 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "f34174d376431d83c105ec6d6a675c969fcfae340e0771af0d41ec1432cd6c2b",
+      "verdict": "pass",
+      "reason": "M1's probe greps the tools() call for the literal it pins, red at BASE; M2 is a regression guard."
+    },
+    "2": {
+      "hash": "4862d43150a028f56700637487b769108a3f204af7665569b12f11f385eb3b9d",
+      "verdict": "pass",
+      "reason": "every computable fact has a leg red at BASE; the M1 fixture rows are consistent with M1's own ranking."
+    },
+    "3": {
+      "hash": "782be3afa43d6b32eef0d405da11f34b1561a07bc825c42bb0d24c5cb5c4ec7b",
+      "verdict": "pass",
+      "reason": "the absence of throw err and the landing threw prefix are red at BASE; the bootstrap prefix is an unchanged-shape clause."
+    },
+    "4": {
+      "hash": "14de78ab9e8b2f3f2705ecc3f3ce395153f024c8f665f0817f419c00759f84d6",
+      "verdict": "pass",
+      "reason": "the single-resolve count and the wantsReferee < finally < resolve ordering are red at BASE; the .catch text is absent at BASE."
+    },
+    "5": {
+      "hash": "e7118c600247912663605b344072e514d3f57f1b7ce4bd7fde724174b9a760f9",
+      "verdict": "pass",
+      "reason": "M1 fails on runAll still exported and the split present; M2 fails on the runAll call at line 424."
+    },
+    "6": {
+      "hash": "f2e6f780cd8eea3325b264b32b5b0f4de15328f0634d8e3fa91b0a9a2fa1a27c",
+      "verdict": "pass",
+      "reason": "M1's probe is red at BASE (readOnly ignored, four names against nine); M2 is a regression guard."
+    },
+    "7": {
+      "hash": "2b03273b7d96de5a717060d9a1ea0c8b5d1107288479022ae2e3566bbf17b9e1",
+      "verdict": "pass",
+      "reason": "signature and guard greps, the exact re-attempt call, and the unchanged main-loop call all fail at BASE."
+    },
+    "8": {
+      "hash": "c6315c9b46d45ee7a83b65bd88c165c58cdb7a5e4803f14a00e58e2ebfb124c7",
+      "verdict": "pass",
+      "reason": "buildDeps is unexported at BASE so M1 and M2 are red there; M3 is a regression sensor on the tools sim."
+    },
+    "9": {
+      "hash": "7056d4a01d48f4c338a78eb72c7783d674c5b2c45582139e47bf058d870d1af6",
+      "verdict": "pass",
+      "reason": "M1's three negated greps fail at BASE (lines 63, 75-76 present); M2 runs the three engine-importing sims (round 2: the sim list was corrected after round 1 named a sim that does not import the engine)."
+    }
+  },
+  "tally": {
+    "dispatched": 10,
+    "rejected": 0,
+    "rounds": {
+      "1": {
+        "dispatched": 9,
+        "rejected": 0
+      },
+      "2": {
+        "dispatched": 1,
+        "rejected": 0,
+        "reason": "task 9 re-read after its M2 sim list was corrected; the round-1 reader had passed it with the blemish noted"
+      }
+    },
+    "base": "b891ddd9fa1805262ed23d8b831cc76bbe1e5103"
+  },
+  "authoring": {
+    "minutes": 12,
+    "probes": 0,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Sign it as written",
+          "Sign the two Criticals only"
+        ],
+        "recommended": "Sign it as written",
+        "picked": "Sign it as written",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Execute",
+        "options": [
+          "Ultrapowers",
+          "Subagent-Driven",
+          "Inline"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers",
+        "explain_rounds": 0
+      }
+    ]
+  }
+}
