@@ -9,13 +9,11 @@
 # in flight, is allowed silently.
 set -euo pipefail
 
-input="$(cat || true)"
-
-python3 - "$input" <<'PYEOF' || true
+python3 -c "$(cat <<'PY'
 import json
 import sys
 
-raw = sys.argv[1] if len(sys.argv) > 1 else ""
+raw = sys.stdin.read()
 
 try:
     d = json.loads(raw)
@@ -65,6 +63,7 @@ print(json.dumps({
         "additionalContext": reason,
     },
 }))
-PYEOF
+PY
+)" || true
 
 exit 0
