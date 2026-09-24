@@ -372,6 +372,79 @@ def test_m4_shared_modify_with_no_other_relation_draws_no_edge(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# import-M1..M4 -- a probe's import draws the same proof-run edge a Run:     #
+# that names the sibling's file by path draws.                               #
+# --------------------------------------------------------------------------- #
+
+def test_import_python_from_import_edge(tmp_path):
+    tasks = [
+        task_block("1", "Fixture owner", creates=["tests/trends_fixtures.py"]),
+        task_block("2", "Probe", creates=["app/x.py"],
+                   run_cmds=['python3 -c "from tests.trends_fixtures import '
+                             'make_canon_fixture; make_canon_fixture()"']),
+    ]
+    obj = build_and_run(tmp_path, tasks)
+    assert obj["dag_edges"] == [
+        {"from": "1", "to": "2", "why": "proof-run"}]  # [import-M1]
+
+
+def test_import_python_bare_import_dotted_module_edge(tmp_path):
+    tasks = [
+        task_block("1", "Module owner", creates=["pkg/mod.py"]),
+        task_block("2", "Probe", creates=["app/x.py"],
+                   run_cmds=['python3 -c "import pkg.mod; pkg.mod.go()"']),
+    ]
+    obj = build_and_run(tmp_path, tasks)
+    assert obj["dag_edges"] == [
+        {"from": "1", "to": "2", "why": "proof-run"}]  # [import-M2]
+
+
+def test_import_python_from_import_package_init_edge(tmp_path):
+    tasks = [
+        task_block("1", "Package owner", creates=["pkg/__init__.py"]),
+        task_block("2", "Probe", creates=["app/x.py"],
+                   run_cmds=['python3 -c "from pkg import x"']),
+    ]
+    obj = build_and_run(tmp_path, tasks)
+    assert obj["dag_edges"] == [
+        {"from": "1", "to": "2", "why": "proof-run"}]  # [import-M2]
+
+
+def test_import_js_dynamic_import_edge(tmp_path):
+    tasks = [
+        task_block("1", "Module owner", creates=["lib/a.mjs"]),
+        task_block("2", "Probe", creates=["app/x.mjs"],
+                   run_cmds=["node -e \"import('./lib/a.mjs')"
+                             ".then(m => m.a())\""]),
+    ]
+    obj = build_and_run(tmp_path, tasks)
+    assert obj["dag_edges"] == [
+        {"from": "1", "to": "2", "why": "proof-run"}]  # [import-M3]
+
+
+def test_import_js_extensionless_specifier_edge(tmp_path):
+    tasks = [
+        task_block("1", "Module owner", creates=["lib/b.ts"]),
+        task_block("2", "Probe", creates=["app/x.mjs"],
+                   run_cmds=["bun -e \"import {b} from './lib/b'; b()\""]),
+    ]
+    obj = build_and_run(tmp_path, tasks)
+    assert obj["dag_edges"] == [
+        {"from": "1", "to": "2", "why": "proof-run"}]  # [import-M3]
+
+
+def test_import_of_module_no_sibling_creates_draws_no_edge(tmp_path):
+    tasks = [
+        task_block("1", "Fixture owner", creates=["tests/trends_fixtures.py"]),
+        task_block("2", "Probe", creates=["app/x.py"],
+                   run_cmds=['python3 -c "from tests.absent_fixture '
+                             'import make"']),
+    ]
+    obj = build_and_run(tmp_path, tasks)
+    assert obj["dag_edges"] == []  # [import-M4]
+
+
+# --------------------------------------------------------------------------- #
 # M5 — Kahn layering, and the three loud refusals.                            #
 # --------------------------------------------------------------------------- #
 
