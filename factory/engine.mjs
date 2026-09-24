@@ -1270,7 +1270,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     }
     try {
       const server = await tools({
-        task: { id: taskId, uid: uidFor(taskId), files: task && task.files },
+        task: { id: taskId, uid: uidFor(taskId), files: task && task.files, proofRuns: lines },
         candidates: candidatesFor, board, runProof,
       })
       return server ? { factory: server } : null
