@@ -2,7 +2,7 @@
 /**
  * fleet/janitor.mjs — reap finished runs; write the deaths; report stale ones.
  *
- *   node fleet/janitor.mjs [--age 1h] [--dry-run] [--config <path>] [--json] [--help]
+ *   node fleet/janitor.mjs [--age 1h] [--dry-run] [--json] [--help]
  *
  * The janitor is the expiry. One `ls 'fleet-r*' --json` through the lobby gives
  * the fleet, and every row carries its own assignment comment, so `run=` and
@@ -145,7 +145,6 @@ import {
   kataHostOf,
   kataProjectFor,
   listVms,
-  loadFleetConfig,
   lobby,
   parseArgs,
   parseComment,
@@ -157,7 +156,7 @@ import {
   runOfVmName
 } from './lobby.mjs'
 
-export const USAGE = 'usage: node fleet/janitor.mjs [--age 1h] [--dry-run] [--config <path>] [--json] [--help]'
+export const USAGE = 'usage: node fleet/janitor.mjs [--age 1h] [--dry-run] [--json] [--help]'
 
 export const usage = () => USAGE
 
@@ -220,7 +219,7 @@ export const DEATH_ATTENTION = 'needs-human'
  * (the ssh destination, for the report) and `dark` — null while the hub is
  * answering, else the first reason it could not, kept for the pass. An
  * injected `kata` is the client (`null` for "no hub" outright — a sim's, or the
- * launcher's when it was handed a config); with none, `~/.ultrapowers/kata-hub.env`
+ * launcher's); with none, `~/.ultrapowers/kata-hub.env`
  * is read and the client built on its host, exactly as the launcher builds
  * its own. An env file that is absent or names no host is not a refusal here:
  * a reaper with no hub reads the target, and says so.
@@ -690,18 +689,16 @@ async function closedUnmergedBranches (exec, targets) {
  * builds one.
  */
 export async function janitor ({
-  argv = [], exec = defaultExec, config, now = () => new Date(), kata, kataEnvPath
+  argv = [], exec = defaultExec, now = () => new Date(), kata, kataEnvPath
 }) {
   const { opts } = parseArgs(argv, { flags: ['dry-run', 'json', 'help'] })
   const dryRun = opts['dry-run'] === true
   const age = opts.age === undefined || opts.age === true ? DEFAULT_AGE : String(opts.age)
   const ageMs = parseDuration(age)
   if (ageMs === null) throw new Refusal(`janitor: --age must look like 1h or 30m, got ${JSON.stringify(age)}`)
-  // The janitor sizes nothing, so it wants no setting; it still reads the
-  // config the other CLIs read, because a `--config` it silently ignored would
-  // be a lie. `fleet.json` and `kata-hub.env` are the only files under
-  // `~/.ultrapowers/` it opens — the run's state lives on the hub and the target.
-  if (config === undefined) await loadFleetConfig({ path: opts.config })
+  // The janitor sizes nothing, so it reads no `fleet.json`; `kata-hub.env` is
+  // the only file under `~/.ultrapowers/` it opens — the run's state lives on
+  // the hub and the target.
   const hub = await openHub({ exec, kata, kataEnvPath })
   const fromHub = hubReader(hub)
 

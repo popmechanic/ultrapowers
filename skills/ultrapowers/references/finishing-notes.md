@@ -66,7 +66,7 @@ phase's slice), gated before the PR. Findings that span phase seams — a caller
 left dangling by another phase's rename, duplicated or diverging state, behavior
 that only breaks once every phase is present — are exactly what this review
 exists to catch, and they land in the report's `completenessFindings` alongside
-the single-run critic's (see `references/report-format.md`).
+the single-run critic's.
 
 This is a new *invocation* of the existing completeness-critic role at the
 finishing handoff, not a new harness or subsystem; a single-run pipeline already

@@ -18,10 +18,6 @@ cannot file a throwaway project:
 
 The current probes:
 
-- `probe_substitution_in_allowed_tail.mjs` — whether `$(...)` inside an allowed
-  command's argument tail executes. **Answered 2026-08-31: it does not** (#457
-  gap 1) — the `*` tail is not an execution channel, matching the documented
-  operator parsing for `&&`, `;`, `|`.
 - `probe_kata_facts.mjs` — whether the hub still behaves the way the fleet's
   contract says it does: the 24 kata facts (#978, #979, #993, #1023 and CLAUDE.md's
   seams paragraph), re-read one line per fact against a throwaway project, each
@@ -49,15 +45,3 @@ The current probes:
   exit 0 every fact holds, 1 at least one drift or unreadable fact, 2 the
   lobby was unreachable, a live run's VM was listed, or a throwaway was left
   behind.
-- `probe_readiness_fold_order.mjs` — the fold-order gate (#832, #810 Phase C):
-  that for every fixture patch set, every sequential adoption order folds to
-  the tree the simultaneous fold lands. The design gate of this list, not a
-  live measurement — the kernel is the real one, every reply is a committed
-  file, no model runs and no token is spent, so it costs about half a minute
-  and needs no credential. Run it by hand before any change to the fold kernel
-  or to the ready-set scheduler (`node fleet/tests/probe_readiness_fold_order.mjs`):
-  five `wave-` lines, one `negative-control` line carrying `caught`, and
-  `ALL TESTS PASSED` last is the pass. A fixture set under
-  `fleet/tests/fixtures/readiness/` whose manifest names a `project` tree at
-  neither resolution is skipped with one stderr line and no stdout line — at
-  BASE all three are, and they read again the day their project trees return.

@@ -16,8 +16,9 @@
  * `settingSources: []` turns CLAUDE.md, skills and project hooks off, so a
  * worker reads only the prompt and system prompt it was handed.
  *
- * `deps` is the second argument and defaults to `{ query }` from the SDK, so an
- * exam can drive a fake iterator with no network and no install.
+ * `deps.query` is the second argument's one member and is required: the engine
+ * resolves the SDK where it is installed and hands it in, and an exam drives a
+ * fake iterator with no network and no install.
  */
 
 import path from 'node:path'
@@ -28,16 +29,6 @@ export const EDIT_TOOLS = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit']
 
 /** Models never run git, never browse, and never spawn sub-agents. */
 export const DISALLOWED_TOOLS = ['Bash(git *)', 'WebFetch', 'WebSearch', 'Agent']
-
-// The SDK is the default `deps.query`, loaded lazily and forgivingly: a clone
-// without `fleet/node_modules` must still be able to import this module and
-// drive it with a fake iterator. A real dispatch with no SDK throws, loudly.
-let sdkQuery = null
-try {
-  ({ query: sdkQuery } = await import('@anthropic-ai/claude-agent-sdk'))
-} catch {
-  sdkQuery = null
-}
 
 /**
  * Build the `PreToolUse` callback that fences one worker into one clone.
@@ -107,7 +98,7 @@ export function makeGitHook ({ task, label, onDenied }) {
 }
 
 /** The options literal every dispatch shares, built once per worker. */
-export function workerOptions ({ cwd, systemPrompt, model, files, schema, mcpServers, maxTurns, maxBudgetUsd, task, label, onDenied }, denials) {
+export function workerOptions ({ cwd, systemPrompt, model, files, schema, mcpServers, task, label, onDenied }, denials) {
   const options = {
     cwd,
     systemPrompt,
@@ -117,8 +108,6 @@ export function workerOptions ({ cwd, systemPrompt, model, files, schema, mcpSer
     disallowedTools: [...DISALLOWED_TOOLS],
     hooks: { PreToolUse: [{ hooks: [makeConfineHook({ cwd, files, denials }), makeGitHook({ task, label, onDenied })] }] },
   }
-  if (maxTurns !== undefined && maxTurns !== null) options.maxTurns = maxTurns
-  if (maxBudgetUsd !== undefined && maxBudgetUsd !== null) options.maxBudgetUsd = maxBudgetUsd
   if (schema !== undefined && schema !== null) options.outputFormat = { type: 'json_schema', schema }
   if (mcpServers !== undefined && mcpServers !== null) options.mcpServers = mcpServers
   return options
@@ -141,16 +130,11 @@ async function drain (iterator, { denials, onMessage, startedAt }) {
   return { result, denials, turns, wall_ms: Date.now() - startedAt }
 }
 
-/**
- * Start one worker and answer its promise beside the handle that interrupts it.
- *
- * The handle is the object `query()` returned — the SDK's `Query`, whose
- * `interrupt()` is what `interruptWorker` calls.
- */
-export function startWorker (opts = {}, deps = {}) {
-  const run = deps.query ?? sdkQuery
+/** One dispatch: one worker, one clone, one answer. */
+export function runWorker (opts = {}, deps = {}) {
+  const run = deps.query
   if (typeof run !== 'function') {
-    throw new Error('factory/worker: no query() — pass deps.query or install @anthropic-ai/claude-agent-sdk')
+    throw new Error('factory/worker: no query() — pass deps.query')
   }
   const startedAt = Date.now()
   const denials = []
@@ -158,23 +142,8 @@ export function startWorker (opts = {}, deps = {}) {
   // The real SDK's `query()` answers the iterator synchronously; a fake
   // `query` driving an exam may be declared `async` and so answer a promise
   // of one instead — `Promise.resolve` reads either the same way.
-  const promise = Promise.resolve(handle)
+  return Promise.resolve(handle)
     .then((iterator) => drain(iterator, { denials, onMessage: opts.onMessage, startedAt }))
-  // The caller owns this rejection; this arm only keeps a handle-only caller
-  // (one that interrupts and never awaits) from tripping unhandledRejection.
-  promise.catch(() => {})
-  return { promise, handle }
 }
 
-/** One dispatch: one worker, one clone, one answer. */
-export function runWorker (opts = {}, deps = {}) {
-  return startWorker(opts, deps).promise
-}
-
-/** Interrupt a started worker exactly once, and resolve what the SDK resolves. */
-export async function interruptWorker (handle) {
-  if (!handle || typeof handle.interrupt !== 'function') return undefined
-  return await handle.interrupt()
-}
-
-export default { runWorker, startWorker, interruptWorker, makeConfineHook, makeGitHook, workerOptions, EDIT_TOOLS, DISALLOWED_TOOLS }
+export default { runWorker, makeConfineHook, makeGitHook, workerOptions, EDIT_TOOLS, DISALLOWED_TOOLS }

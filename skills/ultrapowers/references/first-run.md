@@ -35,7 +35,7 @@ Three things a stranger will not know:
   this one.
 - The `*.exe.xyz` pattern matters as much as `exe.dev` itself: a run VM is
   reached over ssh at the `ssh_dest` that `ls --json` reports, and its status
-  page is `https://<vm>.exe.xyz/status.json`.
+  record is `.ultrapowers/runs/<N>/status.json` on the evidence branch; there is no page.
 - **This key launches.** A second key registered with `ssh-key add --tag=fleet`
   sees and reaps only fleet-tagged VMs, and cannot bind a credential; that is
   the one for a machine that only reaps by hand, never the one that launches.
@@ -68,18 +68,10 @@ The only other name the file may carry is the account key of the `accounts`
 row below; anything else is stale.
 
 **What one run actually asks for.** The ceiling is not the size: the launcher
-compiles the plan and sizes the box to it. CPU is `min(cpu, 2 + ceil(W / 3))`
-off W, the widest wave. Memory is `min(memory, 2 + W)` GB for a plan with no
-state exam, but a plan **with** state exams is sized by the **browsers** its
-widest wave may hold open at once — C, the tasks in one wave whose Proof names a
-`tests/state-exams/` path, each of whose render moves opens one Chromium — and
-asks for `max(6, 2 + 1.25 × C)` GB instead. A page-carrying Chromium is 0.7–1 GB,
-so a two-task TinyApp run wants 6 GB and an eight-task one 12. If this fleet
-runs TinyApp plans, set the `memory` ceiling to `12GB`: that is the most the
-browser formula ever asks for, and a lower ceiling silently clamps a wide run
-back onto a box its browsers will not fit in. Since cut three (2026-09-22) no
-plan can name a state exam, so C reads 0 for every plan and this rule has no
-reader until state exams return as probes (owed on #1248).
+parses the plan and sizes the box to it. CPU is `min(cpu, 2 + ceil(W / 3))`
+off W, the widest set of tasks with no edge between them, and memory is
+`min(memory, 2 + W)` GB. (A browser term sized TinyApp runs by their state
+exams until cut three, 2026-09-22; it left with them and is owed on #1248.)
 
 **In a browser:** nothing, unless the answer is a bigger plan.
 

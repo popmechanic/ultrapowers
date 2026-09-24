@@ -119,7 +119,7 @@
         "facts",
         "clause_facts"
       ],
-      "provenance": "borne_out, actor, claim_false, fixable_in_files: fleet/run-engine.mjs JEV_FINDING_QUESTIONS, verbatim (#1093). defect_visible, status, subject, process_only, scope_only: #1127. settled_by_fact: #1127's 2026-09-17 amendment. claim_established and the M<i>__f<j> pair: factory/proto/loop.mjs, the 2026-09-17 prototype. claim_established_given_facts and the M<i>__facts per_clause_facts template: #1167 (desired state 1 and 3), 2026-09-21, read over each clause's own probes and selected tests.",
+      "provenance": "borne_out, actor, claim_false, fixable_in_files: fleet/run-engine.mjs JEV_FINDING_QUESTIONS, verbatim (#1093). status, process_only: #1127. claim_established and the M<i>__f<j> pair: factory/proto/loop.mjs, the 2026-09-17 prototype. claim_established_given_facts and the M<i>__facts per_clause_facts template: #1167 (desired state 1 and 3), 2026-09-21, read over each clause's own probes and selected tests.",
       "calibrated": "borne_out, actor, claim_false, fixable_in_files were replayed over 1,157 residuals at these strings",
       "questions": {
         "borne_out": {
@@ -164,17 +164,6 @@
             "false": "It needs a file outside `task.files`, a change to the task text, or more than one round"
           }
         },
-        "defect_visible": {
-          "type": "noul",
-          "instructions": {
-            "question": "Reading `hunks` alone, is the defect `finding.text` describes actually visible in the code?",
-            "context": "A discovery referee wrote `finding` about the patch `task` produced. You are shown `hunks`, unified diffs of the files the finding names, or the whole patch when it names none. Judge from the code, not from a path name that may appear in the finding."
-          },
-          "criteria": {
-            "true": "The code in these hunks has the property the finding says it has",
-            "false": "The hunks do not show it; the finding asserts something the code does not do"
-          }
-        },
         "status": {
           "type": "choice",
           "instructions": {
@@ -187,20 +176,6 @@
             "deferred": "It defers the point to a later task, a follow-up, or another reader"
           }
         },
-        "subject": {
-          "type": "choice",
-          "instructions": {
-            "question": "What is `finding.text` about?",
-            "context": "A discovery referee wrote `finding` about the patch `task` produced. You are shown `hunks`, unified diffs of the files the finding names, or the whole patch when it names none. Judge from the code, not from a path name that may appear in the finding."
-          },
-          "criteria": {
-            "plan_text": "The task text: a Claim, a Machine clause, a Files set or a literal in it",
-            "proof_leg": "A Proof leg or a Run: line",
-            "implementation": "The code the implementer wrote",
-            "footprint": "Where the change landed: a path outside Files, a deletion, an edit to a sibling's file",
-            "quality": "Style, naming, structure or a comment, with no behaviour at stake"
-          }
-        },
         "process_only": {
           "type": "noul",
           "instructions": {
@@ -210,30 +185,6 @@
           "criteria": {
             "true": "It faults the process: the order of work, a missing note, an undeclared step, how it was tested",
             "false": "It faults the result: what the tree now does or does not do"
-          }
-        },
-        "scope_only": {
-          "type": "noul",
-          "instructions": {
-            "question": "Is `finding.text` only about work the task did not ask for?",
-            "context": "A discovery referee wrote `finding` about the patch `task` produced. You are shown `hunks`, unified diffs of the files the finding names, or the whole patch when it names none. Judge from the code, not from a path name that may appear in the finding."
-          },
-          "criteria": {
-            "true": "It asks for something outside the Claim and clauses as signed",
-            "false": "It is about what the task asked for"
-          }
-        },
-        "settled_by_fact": {
-          "type": "choice",
-          "instructions": {
-            "question": "Do `sibling_facts` settle what `finding.text` says it could not verify?",
-            "context": "A discovery referee wrote `finding` about the patch `task` produced. You are shown `hunks`, unified diffs of the files the finding names, or the whole patch when it names none. Judge from the code, not from a path name that may appear in the finding. `sibling_facts` are facts the owning sibling task posted about the paths or symbols this finding names outside `task.files`: its reached-state cells, its added exports, and its declared amendments, as the record holds them."
-          },
-          "criteria": {
-            "verified": "A fact confirms what the finding could not verify: the concern does not hold",
-            "contradicted": "A fact contradicts it: the defect the finding suspected is real",
-            "not_settled": "There are facts about this symbol or path, and none of them settles the question",
-            "no_fact": "No sibling fact covers what the finding names"
           }
         },
         "claim_established": {
@@ -360,16 +311,14 @@
       }
     },
     "resolve": {
-      "when": "at a conflict: the union pair before any dispatch, the reply gate after a resolver replies",
-      "reader": "skip the resolver dispatch entirely (union), or accept / re-prompt the reply (gate)",
-      "rollback": "no answer -> dispatch the resolver, and accept its reply on the kernel's grammar check alone, which is today's shape",
+      "when": "at a conflict: the union pair before any dispatch",
+      "reader": "skip the resolver dispatch entirely (union)",
+      "rollback": "no answer -> dispatch the resolver, which is today's shape",
       "state": [
         "task_side",
-        "frontier_side",
-        "reply.content",
-        "reply.narration"
+        "frontier_side"
       ],
-      "provenance": "#1125 P1 and P2. THAT TICKET IS STAGED FOG and says in terms that no question key there is settled wording; these strings are a first drafting of it, not an adopted set.",
+      "provenance": "#1125 P1. THAT TICKET IS STAGED FOG and says in terms that no question key there is settled wording; these strings are a first drafting of it, not an adopted set.",
       "calibrated": false,
       "unsettled": true,
       "n_warning": "Ten resolver dispatches have ever been recorded, across runs 36, 44 and 183. That is far under the floor of 5 runs / 20 tasks and may flip no default.",
@@ -405,213 +354,6 @@
           "criteria": {
             "true": "The order carries meaning here: a sequence, a precedence, a first-match rule, a narrative",
             "false": "Either order reads the same"
-          }
-        },
-        "carries_both": {
-          "type": "noul",
-          "instructions": {
-            "question": "Does `reply` carry every line that both sides had in common?",
-            "context": "A resolver was dispatched over a conflict and returned `reply`: proposed hunk content and a narration. `task_side` and `frontier_side` are the two sides it was given. The kernel checks hunk grammar and the epoch and nothing semantic, so these are the only checks of the three rules the resolver role states in prose."
-          },
-          "criteria": {
-            "true": "Every line common to both sides survives in the proposed content",
-            "false": "A line both sides kept is missing from the reply"
-          }
-        },
-        "drops_side": {
-          "type": "noul",
-          "instructions": {
-            "question": "Does `reply` drop one side's change without its narration saying so?",
-            "context": "A resolver was dispatched over a conflict and returned `reply`: proposed hunk content and a narration. `task_side` and `frontier_side` are the two sides it was given. The kernel checks hunk grammar and the epoch and nothing semantic, so these are the only checks of the three rules the resolver role states in prose."
-          },
-          "criteria": {
-            "true": "One side's intent is absent from the content and unmentioned in the narration",
-            "false": "Both sides survive, or a dropped side is named and justified in the narration"
-          }
-        },
-        "invents": {
-          "type": "noul",
-          "instructions": {
-            "question": "Does `reply` contain content that appears in neither side and that its narration does not account for?",
-            "context": "A resolver was dispatched over a conflict and returned `reply`: proposed hunk content and a narration. `task_side` and `frontier_side` are the two sides it was given. The kernel checks hunk grammar and the epoch and nothing semantic, so these are the only checks of the three rules the resolver role states in prose."
-          },
-          "criteria": {
-            "true": "There is material in the proposed content with no source in either side and no mention in the narration",
-            "false": "Everything in the content comes from one side, the other, or the narration's stated reasoning"
-          }
-        }
-      }
-    },
-    "note": {
-      "when": "on each note the poll reads",
-      "reader": "attention, the run issue's plan-defect route, and interface.settled",
-      "rollback": "no answer -> the note carries no reading and is mirrored as prose, which is the pre-#1095 shape",
-      "state": [
-        "title",
-        "claim",
-        "role",
-        "note",
-        "candidates"
-      ],
-      "provenance": "stuck, plan_defect, divergence, kind, operator_should_read: fleet/jev-questions.mjs NOTE_QUESTIONS, verbatim (#1095, jev_notes.py). settles_interface and which: #1130.",
-      "calibrated": "the five NOTE_QUESTIONS were calibrated at these exact strings (#1095)",
-      "questions": {
-        "stuck": {
-          "type": "noul",
-          "instructions": {
-            "question": "Does `note` say the worker cannot proceed, is blocked, or needs a person to decide something?",
-            "context": "A worker (an implementer or fix session) on a fleet task posted this note on the task's issue while working. The task's Claim is given."
-          },
-          "criteria": {
-            "true": "It reports a blocker, a question it cannot settle, or asks for a human",
-            "false": "It reports progress, an approach, or a hand-in"
-          }
-        },
-        "plan_defect": {
-          "type": "noul",
-          "instructions": {
-            "question": "Does `note` say the task text itself is wrong: a clause, leg, path or literal that is contradictory, absent at base, or impossible to satisfy?",
-            "context": "A worker (an implementer or fix session) on a fleet task posted this note on the task's issue while working. The task's Claim is given."
-          },
-          "criteria": {
-            "true": "It names a defect in the task text or proof, not in its own work",
-            "false": "It does not fault the task text"
-          }
-        },
-        "divergence": {
-          "type": "noul",
-          "instructions": {
-            "question": "Does `note` disclose that the worker did something the task text did not ask for or forbade: an edit outside its Files, a changed clause, a substituted approach?",
-            "context": "A worker (an implementer or fix session) on a fleet task posted this note on the task's issue while working. The task's Claim is given."
-          },
-          "criteria": {
-            "true": "It discloses a divergence from the task as written",
-            "false": "It stays within the task as written, or says nothing about scope"
-          }
-        },
-        "kind": {
-          "type": "choice",
-          "instructions": {
-            "question": "What kind of note is `note`?",
-            "context": "A worker (an implementer or fix session) on a fleet task posted this note on the task's issue while working. The task's Claim is given."
-          },
-          "criteria": {
-            "approach": "A plan of attack before or at the start of work",
-            "progress": "A mid-work status with no decision needed",
-            "handin": "A completion report: what landed, its commit, its evidence",
-            "blocker": "A problem that stops the work",
-            "disclosure": "An explanation of a divergence or a judgment call already made",
-            "reading": "A worker's reading of the codebase or the plan before writing",
-            "other": "None of these"
-          }
-        },
-        "operator_should_read": {
-          "type": "score",
-          "instructions": {
-            "question": "Should the operator, who never reads code, be shown `note`?",
-            "context": "A worker (an implementer or fix session) on a fleet task posted this note on the task's issue while working. The task's Claim is given."
-          },
-          "criteria": [
-            {
-              "what": "No: routine narration"
-            },
-            {
-              "what": "Maybe: a judgment call worth knowing after the run"
-            },
-            {
-              "what": "Yes, after the run: a decision or divergence that affects the plan"
-            },
-            {
-              "what": "Yes, now: the worker needs a person"
-            }
-          ]
-        },
-        "settles_interface": {
-          "type": "noul",
-          "instructions": {
-            "question": "Does `note` say an export of this task is finished and safe for a sibling to build against?",
-            "context": "A worker posted this hand-in note on its task's issue. `candidates` are the task's own added top-level exports, as the driver read them off the captured patch, plus its plan `Produces:` entries. The candidates come from the code; you only choose among them."
-          },
-          "criteria": {
-            "true": "It declares a named export done and stable, not in progress",
-            "false": "It says nothing of the kind, or says the export may still move"
-          }
-        },
-        "which": {
-          "type": "choice",
-          "instructions": {
-            "question": "Which candidate does `note` say is settled?",
-            "context": "A worker posted this hand-in note on its task's issue. `candidates` are the task's own added top-level exports, as the driver read them off the captured patch, plus its plan `Produces:` entries. The candidates come from the code; you only choose among them."
-          },
-          "criteria": {
-            "_candidates": "one key per entry of `candidates`, plus `none`"
-          },
-          "dynamic": "candidates"
-        }
-      }
-    },
-    "amendment": {
-      "when": "on each driver:amendment row",
-      "reader": "the reviewer's lens, the PR card's list, the release census, and the re-edge of an unclaimed sibling",
-      "rollback": "no answer -> the amendment carries no reading and files no edge; the row itself stands, which is #1095's shape",
-      "state": [
-        "amendment.what",
-        "amendment.why",
-        "amendment.clause_before",
-        "amendment.clause_after",
-        "sibling.claim",
-        "sibling.machine",
-        "sibling.consumes"
-      ],
-      "provenance": "compelled, plan_fault, magnitude: fleet/jev-questions.mjs AMENDMENT_QUESTIONS, verbatim (#1095). changes_consumer: #1129.",
-      "calibrated": "the three AMENDMENT_QUESTIONS were calibrated at these exact strings (#1095)",
-      "code_not_jev": {
-        "files_overlap": "amendment.files intersect sibling.files != empty -> file the blocked-by edge, no Jev (#1129)"
-      },
-      "questions": {
-        "compelled": {
-          "type": "noul",
-          "instructions": "Does `amendment.why` show the change was forced: the task as written could not pass its own proof, contradicted the base, or contradicted a sibling?",
-          "criteria": {
-            "true": "No implementation of the task as written could have merged",
-            "false": "The worker preferred a different shape; the task as written was passable"
-          }
-        },
-        "plan_fault": {
-          "type": "noul",
-          "instructions": "Is the root cause in `amendment` a defect in the task text that its author should have caught, rather than a fact only visible while implementing?",
-          "criteria": {
-            "true": "A careful author reading the base would have written it right",
-            "false": "It only became visible in the tree, or it is a preference"
-          }
-        },
-        "magnitude": {
-          "type": "score",
-          "instructions": "How far does `amendment.what` move the task from what was signed?",
-          "criteria": [
-            {
-              "what": "Cosmetic: a path spelling, a line number, a comment"
-            },
-            {
-              "what": "Local: one clause or one extra file, same intent"
-            },
-            {
-              "what": "Substantive: a clause's meaning, a leg dropped or changed"
-            },
-            {
-              "what": "Reframed: the task now does something else"
-            }
-          ]
-        },
-        "changes_consumer": {
-          "type": "noul",
-          "instructions": {
-            "question": "Does `amendment` change what `sibling.machine` assumes about the amending task's output?",
-            "context": "`amendment` is a divergence a worker declared on the task it is implementing. `sibling` is another task in the same run that has NOT been claimed by any worker yet, and that either shares a file with the amending task or `Consumes:` a symbol it `Produces:`."
-          },
-          "criteria": {
-            "true": "A Machine clause of the sibling assumes something this amendment has changed",
-            "false": "The sibling's assumptions survive the amendment unchanged"
           }
         }
       }

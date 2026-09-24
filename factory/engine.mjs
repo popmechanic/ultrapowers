@@ -4,16 +4,15 @@
  *
  *   node factory/engine.mjs --plan <plan.md> --target <repo> --base <sha> --run-dir <dir>
  *
- * This is `factory/proto/loop.mjs` with its four inlined pieces pulled out to
- * the modules that own them: the worker is `factory/worker.mjs`, every judgment
- * is `factory/judge.mjs` over `factory/questions.json` and `factory/policy.json`,
- * the worker's in-process record tools are `factory/tools.mjs`, and the fold is
- * the kernel's own `fold_wave.py`. What the prototype forced — `k`, and whether
- * a referee is hired — the judge now reads off the task.
+ * The worker is `factory/worker.mjs`, every judgment is `factory/judge.mjs` over
+ * `factory/questions.json` and `factory/policy.json`, the worker's in-process
+ * record tools are `factory/tools.mjs`, the fold is the kernel's own
+ * `fold_wave.py`, and `k` — and whether a referee is hired — the judge reads off
+ * the task.
  *
  * The shape of a run:
  *
- *   compile the plan  ->  for every wave, for every ready task, in parallel:
+ *   parse the plan  ->  for every ready task in the pool, in parallel:
  *     readTask             how many candidates, and does this one want a referee
  *     k implementers       each in its own clone at the current head
  *     measure              the task's own Proof `Run:` lines, then the tests the
@@ -52,7 +51,7 @@ import { makeJudge } from './judge.mjs'
 import { literalsOf, hunksCarrying, filesShown } from './hunks.mjs'
 import { unionReply } from './union.mjs'
 import { makeBoard, patchWithRevision } from './board.mjs'
-import { candidateTests, symbolsOf, commandFor, excerptFor } from './select.mjs'
+import { candidateTests, commandFor, excerptFor } from './select.mjs'
 import { proofsAdopted, foldRound } from './reverify.mjs'
 import { waitsFor, hardEdgePreds, speculationFor } from './dispatch.mjs'
 import { runLines } from './proofs.mjs'
@@ -60,7 +59,6 @@ import { checksAtBase } from './checks-at-base.mjs'
 import { settledCoverage, observedFacts, clauseFacts } from './facts.mjs'
 import { observedWork, supervisorTick, makeObservedWatch } from './watch.mjs'
 import { kFor, probeRecord } from './kprobe.mjs'
-import { refereeTrigger } from './referee.mjs'
 import { retrying, isRateLimited } from './retry.mjs'
 // Amendment (undeclared by the task's own M1-M6, needed only to reach them):
 // this module now creates a missing parent directory once, on the one error
@@ -93,9 +91,9 @@ const REPO = path.resolve(HERE, '..')
 const KERNEL = path.join(REPO, 'skills/ultrapowers/kernel/fold_wave.py')
 const COMPILER = path.join(REPO, 'skills/ultrapowers/scripts/plan_parse.py')
 
-/** The judge's two documents, named absolutely so `buildDeps` can be read. */
-export const QUESTIONS_PATH = path.join(HERE, 'questions.json')
-export const POLICY_PATH = path.join(HERE, 'policy.json')
+/** The judge's two documents, named absolutely. */
+const QUESTIONS_PATH = path.join(HERE, 'questions.json')
+const POLICY_PATH = path.join(HERE, 'policy.json')
 
 const rolePath = (name) => path.join(HERE, 'roles', name + '.md')
 const roleText = (name) => fs.readFileSync(rolePath(name), 'utf8')
@@ -103,8 +101,6 @@ const roleText = (name) => fs.readFileSync(rolePath(name), 'utf8')
 /** Every producer runs on this; the discovery referee on the other. */
 export const DEFAULT_MODEL = 'claude-sonnet-5'
 export const DEFAULT_REFEREE_MODEL = 'claude-opus-5-5'
-
-/** One dispatch's ceiling. Not a judgment: a stop, so a wedged worker ends. */
 
 /** How many assistant turns a dispatch runs before the supervisor reads it
  *  once. A cadence, not a threshold — nothing is compared against it. */
@@ -178,7 +174,7 @@ const camel = (s) => String(s).replace(/-+([a-z0-9])/g, (_, c) => c.toUpperCase(
 
 /** `--a b`, `--a=b` and bare `--flag`, in the one shape the rest of the file
  *  reads: camel-cased keys. */
-export function parseArgv (argv = []) {
+function parseArgv (argv = []) {
   const out = {}
   for (let i = 0; i < argv.length; i += 1) {
     const token = String(argv[i])
@@ -195,7 +191,7 @@ export function parseArgv (argv = []) {
 }
 
 /** An argv array, or an object keyed either `run-dir` or `runDir`: one shape. */
-export function normalizeArgs (given) {
+function normalizeArgs (given) {
   if (Array.isArray(given)) return parseArgv(given)
   const out = {}
   for (const [k, v] of Object.entries(given || {})) out[camel(k)] = v
@@ -253,61 +249,12 @@ const lastJson = (text) => {
   return null
 }
 
-// ── M3: the union's own reader, built from `deps.ask` when no `deps.readUnion`
-// is injected ─────────────────────────────────────────────────────────────
-
-/** A number, whether the answer is a bare number or the `{ noul }` shape the
- *  rest of the judge reads; `undefined` otherwise. */
-const noulNum = (v) => {
-  if (typeof v === 'number' && Number.isFinite(v)) return v
-  if (v && typeof v.noul === 'number' && Number.isFinite(v.noul)) return v.noul
-  return undefined
-}
-
-/**
- * M3: `readUnion` built straight from `deps.ask`, reading the resolve set's
- * `independent_additions`, `shared_anchor` and `ordering_matters` questions
- * off `QUESTIONS_PATH` once, and putting all three to `ask` together with
- * state `{ hunks }`. `union: true` only when the first is at or above
- * `unionPolicy.independent_additions` and the other two are at or below
- * their `_max` ceilings; a missing answer, a thrown `ask`, or no `ask` at
- * all is `null` — the same "no judgment, no guess" shape every other reader
- * in this file keeps.
- */
-function buildReadUnion (ask, unionPolicy) {
-  if (typeof ask !== 'function') return null
-  let resolveQuestions = {}
-  try {
-    const doc = JSON.parse(fs.readFileSync(QUESTIONS_PATH, 'utf8'))
-    resolveQuestions = ((doc.sets || {}).resolve || {}).questions || {}
-  } catch { /* no questions document: ask with whatever this leaves */ }
-  const questions = {}
-  for (const key of ['independent_additions', 'shared_anchor', 'ordering_matters']) {
-    if (resolveQuestions[key]) questions[key] = resolveQuestions[key]
-  }
-  return async ({ hunks }) => {
-    let answers
-    try {
-      answers = await ask({ state: { hunks }, questions })
-    } catch { return null }
-    if (!answers || typeof answers !== 'object') return null
-    const independent = noulNum(answers.independent_additions)
-    const sharedAnchor = noulNum(answers.shared_anchor)
-    const orderingMatters = noulNum(answers.ordering_matters)
-    if ([independent, sharedAnchor, orderingMatters].includes(undefined)) return null
-    const union = independent >= Number(unionPolicy.independent_additions) &&
-      sharedAnchor <= Number(unionPolicy.shared_anchor_max) &&
-      orderingMatters <= Number(unionPolicy.ordering_matters_max)
-    return { union }
-  }
-}
-
 // ── the SDK, found where it is actually installed ────────────────────────────
 
 /**
  * `query()`, resolved once and lazily.
  *
- * The SDK lives in `fleet/node_modules` — the install `fleet/sandbox-boot.sh`
+ * The SDK lives in `fleet/node_modules` — the install `factory/boot.sh` (`npm ci` in `fleet/`)
  * performs against `fleet/package.json` — and a bare specifier from a file
  * under `factory/` does not find it: node walks `factory/` upward to the
  * repository root and stops, and the root has no `node_modules`. So the
@@ -345,14 +292,14 @@ export const sdkQuery = () => {
 // ── the plan, sliced the way the prototype sliced it ─────────────────────────
 
 /** The verbatim body of one task, from `### Task <id>:` to the next heading. */
-export function bodyOf (planText, id) {
+function bodyOf (planText, id) {
   const slice = String(planText).split(/^### Task /m).find((s) => s.startsWith(id + ':'))
   return slice ? slice.replace(/^[^:]*:\s*/, '').split(/\n### /)[0] : ''
 }
 
 /** The Machine clauses, by their own `M<n>.` numbering; a `;`-separated line
  *  that carries no numbering is split on the semicolons instead. */
-export function clausesOf (body) {
+function clausesOf (body) {
   const line = (String(body).match(/^Machine:\s*([\s\S]*?)\n\n/m) || [])[1] || ''
   const numbered = [...line.matchAll(/M(\d+)\.\s*([^]*?)(?=\s*M\d+\.|$)/g)].map((m) => m[2].trim())
   return numbered.length ? numbered : line.split(/;\s*/).map((s) => s.trim()).filter(Boolean)
@@ -381,7 +328,7 @@ const SELECT_TESTS_BUDGET_BYTES = 60000
  * result is at most 60,000 bytes (M3). `kept`/`dropped` describe the trim
  * whether or not one actually happened.
  */
-export function excerptTests (found, readFile, cap) {
+function excerptTests (found, readFile, cap) {
   const entryFor = (c) => ({ path: c.path, text: excerptFor(readFile(c.path), c.hits, cap) })
   let kept = found
   let tests = kept.map(entryFor)
@@ -427,7 +374,7 @@ export function candidatesOf (task, patchText) {
 /** The newest `[note]` fact out of `board.factsFor`'s rendering — the facts
  *  render oldest first, newest last, so the last `[note]` block wins. `null`
  *  when the rendering carries no `[note]` fact at all. */
-export function newestNoteFact (factsText) {
+function newestNoteFact (factsText) {
   const blocks = String(factsText || '').split(/\n\n(?=\[[^\]]*\]\n)/)
   let newest = null
   for (const block of blocks) {
@@ -827,12 +774,11 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   }
 
   // M5: `readUnion` is `deps.readUnion` when a caller injects one; else the
-  // judge's own `readUnion` when the judge has one; else the engine builds it
-  // from `deps.ask` (M3), over `policy.resolve.union`'s own thresholds.
+  // judge's own `readUnion`, over `policy.resolve.union`'s own thresholds.
   const unionPolicy = (policyDoc.resolve || {}).union || {}
   const readUnion = typeof deps.readUnion === 'function' ? deps.readUnion
     : typeof judge.readUnion === 'function' ? judge.readUnion
-      : buildReadUnion(deps.ask, unionPolicy)
+      : null
   /** A judge reader that never throws and never is required to exist: Jev
    *  answers no fact, and a reading that did not happen is simply absent. */
   const read = async (name, arg) => {
@@ -1512,9 +1458,8 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     // 4. the discovery referee, exactly when the judge's task reading asks for
     //    one. Each finding is graded by the judge; a blocking grade buys the
     //    candidate one re-dispatch with the finding in hand, before the fold.
-    const trig = refereeTrigger({ rung: wantsReferee })
-    appendEvent({ kind: 'referee:trigger', task: task.id, trigger: trig.trigger })
-    if (trig.dispatch) {
+    appendEvent({ kind: 'referee:trigger', task: task.id, trigger: wantsReferee ? 'rung' : 'none' })
+    if (wantsReferee) {
       const patchText = fs.existsSync(best.patch) ? fs.readFileSync(best.patch, 'utf8') : ''
       const refereePrompt = 'TASK:\n' + task.body +
           '\n\nFILES: ' + (task.files || []).join(', ') +
@@ -2162,7 +2107,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
 // The dispatched model id and the models the SDK reports it actually used,
 // for a `dispatch:end` row: `models` is the sorted keys of the result's
 // `modelUsage`, or `null` when there is none to report.
-export function modelCells ({ model, result }) {
+function modelCells ({ model, result }) {
   const usage = result && typeof result === 'object' ? result.modelUsage : null
   const keys = usage && typeof usage === 'object' ? Object.keys(usage) : []
   return { model: model ?? null, models: keys.length ? keys.sort() : null }
@@ -2237,7 +2182,7 @@ export async function runRefold (rawArgs = {}, deps = {}) {
   const judge = deps.judge || {}
   const readUnion = typeof deps.readUnion === 'function' ? deps.readUnion
     : typeof judge.readUnion === 'function' ? judge.readUnion
-      : buildReadUnion(deps.ask, unionPolicy)
+      : null
 
   const kernel = (argv) => {
     const r = sh('python3', [KERNEL, ...argv], REPO)
@@ -2354,7 +2299,7 @@ export async function runRefold (rawArgs = {}, deps = {}) {
  * one place it is added. The variable is read at CALL time, never captured, so
  * an environment that changes mid-run is followed rather than remembered.
  */
-export function buildDeps (rawArgs = {}, overrides = {}) {
+function buildDeps (rawArgs = {}, overrides = {}) {
   const args = normalizeArgs(rawArgs)
   const env = overrides.env || process.env
   const log = overrides.log || ((s) => process.stderr.write(String(s) + '\n'))
@@ -2410,9 +2355,6 @@ export function buildDeps (rawArgs = {}, overrides = {}) {
     worker: overrides.worker ||
       (async (opts) => runWorker(opts, { query: overrides.query || await sdkQuery() })),
     judge,
-    // M3: the same function the judge was built on, exposed so `runEngine`
-    // can build `readUnion` from it when no `deps.readUnion` is injected.
-    ask: (x) => client.ask(x),
     sh: overrides.sh || defaultSh,
     git: overrides.git || defaultGit,
     tools,
@@ -2457,5 +2399,3 @@ export async function main (argv = process.argv.slice(2)) {
 }
 
 if (import.meta.main) { process.exitCode = await main() }
-
-export default { runEngine, runRefold, makeRefoldDispatch, modelCells, buildDeps, main, parseArgv, normalizeArgs, bodyOf, clausesOf, splitDiff }

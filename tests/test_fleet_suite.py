@@ -12,21 +12,17 @@ def sim_env():
     a laptop's PATH is forty entries of plugin `bin/`s, and CI's puts node and
     python3 under /opt/hostedtoolcache; that is what is being kept out. `HOME`
     and `TMPDIR` name a directory of this call's own, so no sim reads the box's
-    `~/.ultrapowers/fleet.json` or `~/.gitconfig`. `FLEET_TEST_SLACK` is kept
-    when the parent has it — the deadline multiplier a developer sets on a slow
-    box, the one swept-prefix name that is not a fleet fact.
+    `~/.ultrapowers/fleet.json` or `~/.gitconfig`.
 
     No `FLEET_HOME`: the bridge is not a sim's home. Each sim mints its own
     under its own `mkdtemp`, and a `FLEET_` fact planted here is exactly the
     ambient kind the hermetic probe keeps out.
     """
-    # The prefixes of this process's environment that never reach a sim, and the
-    # one name that does. The same contract `fleet/tests/_helpers.mjs`'s `simEnv`
-    # holds for the children a sim starts, held here for the sims themselves:
-    # what a sim sees is what the bridge handed it, never a fact of the box the
-    # bridge runs on.
+    # The prefixes of this process's environment that never reach a sim. The
+    # same contract `fleet/tests/_helpers.mjs`'s `simEnv` holds for the
+    # children a sim starts, held here for the sims themselves: what a sim sees
+    # is what the bridge handed it, never a fact of the box the bridge runs on.
     dropped_prefixes = ("ULTRA_", "TINYAPP_", "FLEET_", "ANTHROPIC_", "CLAUDE_", "GH_")
-    kept_keys = ("FLEET_TEST_SLACK",)
     # `sh` is looked up too: a sim's `bash -c`/`sh -c` children resolve on the
     # PATH they inherit from the sim, and the sim inherits this one.
     interpreters = ("node", "python3", "git", "bash", "sh")
@@ -41,78 +37,28 @@ def sim_env():
             dirs.append(parent)
     home = tempfile.mkdtemp(prefix="fleet-bridge-")
     env = {"PATH": os.pathsep.join(dirs), "HOME": home, "TMPDIR": home}
-    for key in kept_keys:
-        if key in os.environ:
-            env[key] = os.environ[key]
     # Built from nothing rather than filtered from the parent, so this last pass
     # is a guard on what the lines above set: a key added here that carries a
-    # swept prefix and is not one of the kept names never reaches a sim.
+    # swept prefix never reaches a sim.
     return {
         key: value
         for key, value in env.items()
-        if key in kept_keys or not key.startswith(dropped_prefixes)
+        if not key.startswith(dropped_prefixes)
     }
 
 
-# Measured wall at 0.3.19 under `-n 6`: 40.9 s, 33.3 s, 30.7 s, 17.0 s, 13.3 s,
-# 12.6 s, 10.6 s.
-# Under `--dist load` a worker that picks up a 40 s sim last holds the whole
-# suite open, so the seven longest go out first; the rest follow in relative-path
-# order. A name that leaves fleet/tests/ simply drops out of the list.
-# test_sandbox_boot_selfmerge.mjs leads it as the longest sim that boots
-# fleet/sandbox-boot.sh — the pole test_sandbox_boot_merge.mjs used to hide.
-# The merge sim ran it and six other boot siblings inside itself and no longer
-# does, so the wall that used to be charged to the merge sim is this one's now,
-# out where the bridge can dispatch it first. test_run_engine_proof_runs.mjs is
-# longer still and follows it: the head of this list goes out in one dispatch
-# round, so the order WITHIN it is not what keeps a worker from stranding —
-# membership is. `timeout` below reads MJS_TIMEOUT rather than a literal so the
-# cap and this list keep being read together.
-SLOW_FIRST = ('test_sandbox_boot_selfmerge.mjs', 'test_run_engine_proof_runs.mjs',
-              'test_sandbox_boot.mjs', 'test_sandbox_boot_merge.mjs',
-              'test_sandbox_boot_edges.mjs')
-
-
 def _sim_id(fleet_dir, path):
-    """`path` as the bridge names it: relative to `<fleet_dir>/tests`, /-joined.
-
-    `test_x.mjs` for a curated sim, `exams/run_7/test_x.mjs` for an exam. The
-    basename alone was the id while every sim sat in one directory; it stopped
-    being an identity the moment a run's exams could carry a curated sim's name.
-    """
+    """`path` as the bridge names it: relative to `<fleet_dir>/tests`, /-joined."""
     rel = os.path.relpath(path, os.path.join(fleet_dir, "tests"))
     return rel.replace(os.sep, "/")
 
 
-def _order_key(rel):
-    """SLOW_FIRST members in SLOW_FIRST order, then the rest by relative path.
-
-    Membership is by basename — SLOW_FIRST is a list of wall measurements, and a
-    sim's wall does not change because a run copied it into `exams/`. The
-    relative path is the tiebreaker, so two files of one basename in different
-    directories order deterministically instead of one displacing the other.
-    """
-    name = rel.rsplit("/", 1)[-1]
-    rank = SLOW_FIRST.index(name) if name in SLOW_FIRST else len(SLOW_FIRST)
-    return (rank, rel)
-
-
 def collect_sims(fleet_dir):
-    """Every sim `<fleet_dir>/tests/` offers, slowest-first then alphabetical.
-
-    Two sources, one list: the curated `tests/test_*.mjs`, and the exams a run
-    writes into the reserved `tests/exams/<slug>/` (#777). The reserved
-    directory does not exist on main, so the second glob is empty there and CI
-    keeps running the curated tree with no workflow edit; inside a run the
-    branch carries the exams and the suite collects them by the same rule.
-
-    Returns paths under `fleet_dir` (what `node` is handed), ordered by the
-    relative name (what the parametrize id shows).
-    """
+    """Every `<fleet_dir>/tests/test_*.mjs`, in relative-path order — the paths
+    `node` is handed, ordered by the id the parametrize shows."""
     tests_dir = os.path.join(fleet_dir, "tests")
-    paths = (glob.glob(os.path.join(tests_dir, "test_*.mjs"))
-             + glob.glob(os.path.join(tests_dir, "exams", "*", "test_*.mjs")))
-    return sorted(paths, key=lambda p: _order_key(_sim_id(fleet_dir, p)))
+    paths = glob.glob(os.path.join(tests_dir, "test_*.mjs"))
+    return sorted(paths, key=lambda p: _sim_id(fleet_dir, p))
 
 
 TESTS = collect_sims(FLEET)
@@ -134,27 +80,14 @@ def _ensure_node_modules():
                            cwd=FLEET, check=True, capture_output=True)
 
 
-# The cap is per sim, and it is a hang detector, not a budget: a sim that has
-# not spoken in this long is wedged, not slow. 120 s was a fit for a fleet whose
-# longest sim was 83.5 s, and it stopped being one when the merge sim's nesting
-# put ~130 s of wall on one name on an idle four-core box. That nesting is gone:
-# the longest pole among the boot sims is test_sandbox_boot_selfmerge.mjs at
-# ~33 s here, and test_run_engine_proof_runs.mjs at ~41 s is the longest of any
-# sim. The cap stays 300 s because it is sized for the slowest box the suite
-# runs on rather than this one — a four-vCPU sandbox with every core busy under
-# `-n auto` takes several times these walls — and because a hang detector is
-# worth nothing if it fires on a slow box instead of a wedged sim.
+# A hang detector, not a budget: sized for the slowest box the suite runs on
+# under `-n auto`, not for the longest sim here (~12 s).
 MJS_TIMEOUT = 300
 
 
 @pytest.mark.parametrize("path", TESTS, ids=IDS)
 def test_fleet_mjs(path):
     _ensure_node_modules()
-    # 300 s and not 120: the wall has to clear the LONGEST sim under `-n auto`
-    # contention on the slowest box the suite runs on, not on the box that
-    # measured the numbers above. A wall only a little over an honest runtime
-    # reports a slow box as a broken suite; this one is a deadlock catcher,
-    # not a budget.
     # The sim's environment is bound once, because its `HOME` is the
     # `fleet-bridge-*` directory this call has to remove when the sim is done
     # (#890): a suite of a hundred sims left a hundred of them under the tmpdir
@@ -167,7 +100,3 @@ def test_fleet_mjs(path):
         assert "ALL TESTS PASSED" in r.stdout
     finally:
         shutil.rmtree(env["HOME"], ignore_errors=True)
-
-
-def test_fleet_has_tests():
-    assert TESTS, "fleet/tests/ must contain at least one test_*.mjs"

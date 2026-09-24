@@ -73,7 +73,7 @@ hand.
 **2. `capacity` — the ceiling a run may ask for.** `ssh exe.dev "billing plan
 --json"` is the account's pool; `~/.ultrapowers/fleet.json` is the **ceiling**
 one run may ask for — not the size every run gets. The file is optional, has
-exactly two keys, and an unknown key is ignored:
+exactly three keys (`cpu`, `memory`, `account`), and an unknown key is ignored:
 
 ```json
 {
@@ -93,22 +93,11 @@ one-task plan gets `--cpu 3 --memory 3GB` and a ten-task plan `--cpu 6 --memory
 line overrides the formula outright, and either way the number is still checked
 against `billing plan --json` before a VM exists.
 
-Memory leaves that formula when the plan has state exams. Then the run is sized
-by the **browsers** its widest wave may hold open at once — C, the number of
-tasks in one wave whose Proof names a `tests/state-exams/` path, since each
-state exam's render move opens one Chromium — and it asks for `max(6, 2 + 1.25 ×
-C)` GB, still clamped by the ceiling. A Chromium with a real page on it is
-0.7–1 GB, so a two-task TinyApp run wants 6 GB where `2 + W` would have bought
-it 4, and an eight-task one wants 12. CPU is unchanged by C: the fixture box
-that prompted this read about 1 % steal and 50 % idle, so cores were never what
-ran out. A plan with **no** state exam keeps `2 + W` — pool RAM is the shared
-constraint (§Capacity: read the meter, never sum the allocation), and a floor
-charged to runs that open no browser would spend it on nothing. For a fleet that
-runs TinyApp plans the recommended `memory` ceiling in `fleet.json` is `12GB`,
-which is what an eight-browser wave asks for and the most this formula ever
-wants. Since cut three (2026-09-22) no plan can name a state exam, so
-C reads 0 for every plan and this rule has no reader until state exams
-return as probes (owed on #1248).
+The old state exams added a browser term to memory (`max(6, 2 + 1.25 × C)` GB,
+one Chromium per exam-carrying task of the widest wave; #1087, #1094). It left
+with them at cut three (2026-09-22) — no plan can name a state exam, so the
+launcher sizes by `2 + W` alone until state exams return as probes (owed on
+#1248).
 
 The `capacity` doctor row is a report of those two facts and of nothing else:
 the pool the account has, beside the `cpu` and `memory` ceiling a run is bounded
@@ -205,7 +194,7 @@ policy the rest of this section reads, and it is built the same way, an
 `http-proxy` on the fleet's policy:
 
 ```bash
-ssh exe.dev "integrations add http-proxy --name cloudflare --target https://api.cloudflare.com --bearer - --attach tag:fleet"
+ssh exe.dev "integrations add http-proxy --name cloudflare --target https://api.cloudflare.com --bearer - --policy 'tag:fleet'"
 ```
 
 `skills/ultrapowers/references/first-run.md` §cloudflare walks the token that
@@ -262,7 +251,7 @@ plan as one commit on `<sha>` to `ultra/plan-run-<N>`; then issues one `new`
 with the run's name, `--tag fleet` (which grants every integration on the
 policy `tag:fleet` — the line names none), the assignment as `--comment`,
 `--cpu`/`--memory` from the config, and the generated setup script
-on stdin. It prints the run number, the VM name and the status URL. A refusal
+on stdin. It prints the run number and the VM name. A refusal
 exits before the plan branch is pushed and before any lobby verb runs.
 
 `--engine <sha>` pins the engine; the default is the public tip of this
@@ -367,7 +356,7 @@ For any fleet VM whose run has had no update in six hours it prints a line,
 once, naming where it read the age. The only ssh into a fleet VM is the unit
 read of a run the record says is in flight; a unit that has died is written as
 the death — the journal and the page on the evidence branch, the run issue
-closed `wontfix` on the hub — and reaped an hour later. A VM that has to go now:
+marked `failed` on the hub (its metadata patched; the janitor closes nothing) — and reaped an hour later. A VM that has to go now:
 `ssh exe.dev "rm <vm> --json"` — `rm` takes several names.
 
 The launcher runs it before every launch; nothing schedules it. Run it by hand
@@ -480,8 +469,8 @@ Four logs, in the order a run writes them:
 2. `/home/exedev/fleet-boot.log` — the bootstrap: the comment read, the
    `engine=` parse, the clone into `/home/exedev/engines/<sha>`. A run that
    never reached `booting` on the target is here.
-3. `/home/exedev/www/engine.log` — the engine's stdout and stderr, also served
-   at `https://<vm>.exe.xyz/engine.log` and committed to the evidence branch.
+3. `engine.log` — the engine's stdout and stderr, committed to the evidence branch
+   beside `status.json` and `events.jsonl`.
    The `claude auth status` line before the engine starts has to show
    `oauth_token`, and the line after it is the bearer probe: `bearer probe:
    alive` is the credential answering and the engine unit starting, `bearer
@@ -509,7 +498,7 @@ Over ssh, the user bus needs its runtime directory named:
 
 ```bash
 ssh <ssh_dest> 'XDG_RUNTIME_DIR=/run/user/$(id -u) journalctl --user -u fleet-engine-<N> --no-pager'
-ssh <ssh_dest> 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user status fleet-run@<N>.service fleet-status'
+ssh <ssh_dest> 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user status fleet-run@<N>.service'
 ```
 
 `<ssh_dest>` is the row's `ssh_dest` from `ssh exe.dev "ls '<vm>' --json"`,
@@ -777,9 +766,10 @@ an exe VM with 2 vCPU / 4 GB)
   boot still waited its whole 120 s on a string Kata never prints, then ran the engine without its board
   (2026-09-18; #1155). The same document answered the open measurement: `pull_cursor_event_id` moved and
   `last_successful_sync_at` was set, so the edge passes the spoke's own bearer through `kata-sync`.
-- A finished factory run's VM is reported `stale … state=open — look before you rm` by the janitor, because
-  the factory boot does not close the hub's run issue yet (#1150). Verify `ultra/evidence/run-<N>` with
-  `git ls-remote --tags origin`, then `ssh exe.dev rm <vm>` by hand.
+- A factory run that ended `parked` or `failed` has its VM reported `stale … state=open — look before you
+  rm` by the janitor, because the factory boot closes the hub's run issue only on `done` (#1150; `close_run`
+  in `factory/boot.sh`). Verify `ultra/evidence/run-<N>` with `git ls-remote --tags origin`, then
+  `ssh exe.dev rm <vm>` by hand.
 
 ## Capacity
 

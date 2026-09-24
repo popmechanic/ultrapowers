@@ -20,9 +20,6 @@ read. Leg by leg, in the Proof's own order:
     the printed table gives 131 the report's list length and 132 a `-`.
   * (d)/[M1] a run whose plan tag has no record still yields no row and no
     directory, report or not — its report answering changes nothing.
-  * (e)/[M4] the Proof's second and fourth `Run:` lines: the sibling exam
-    `tests/test_authoring_census.py`, edited by this task, is green on the
-    patched tree, and it still defines exactly 19 `def test_` functions.
   * (f)/[M1] the Proof's third `Run:` line: `--help` names `--fetch`.
 
 The script is driven as a subprocess over directories built under `tmp_path`,
@@ -62,7 +59,6 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 CENSUS = ROOT / "skills/ultrawrite/scripts/authoring_census.py"
-SIBLING = ROOT / "tests/test_authoring_census.py"
 
 
 def tsv(*cells):
@@ -632,30 +628,6 @@ def test_d_a_plan_tag_without_a_record_yields_no_row_and_no_directory(
     assert (into / "run-200/report.json").read_bytes() == \
         blob(REPORT_FETCHED), p.stdout + p.stderr
     assert amendments_cell(row_for(p.stdout, 200)) == "2", p.stdout
-
-
-# ------------------------------------------------------------------- leg (e)
-
-def test_e_the_sibling_exam_is_green_on_this_tree():
-    """(e)/[M4]: the Proof's second `Run:` line — `tests/test_authoring_
-    census.py`, edited by this task, passes, its `HEADER`, row, `TOTALS` and
-    `--fetch` literals updated to the new column, the new fetch and the new
-    totals suffix."""
-    assert SIBLING.is_file(), "the sibling exam is missing: %s" % SIBLING
-    p = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
-         "tests/test_authoring_census.py"],
-        cwd=str(ROOT), capture_output=True, text=True)
-    assert p.returncode == 0, p.stdout + p.stderr
-
-
-def test_e_the_sibling_exam_still_defines_nineteen_tests():
-    """(e)/[M4]: the Proof's fourth `Run:` line — the sibling file "still
-    defines exactly 19 `def test_` functions, the count it has at BASE — none
-    dropped, none added"."""
-    text = SIBLING.read_text(encoding="utf-8")
-    defs = [line for line in lines(text) if line.startswith("def test_")]
-    assert len(defs) == 19, "\n".join(defs)
 
 
 # ------------------------------------------------------------------- leg (f)

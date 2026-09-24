@@ -29,7 +29,7 @@ const isFact = (body) => {
 }
 
 /** The empty value M4 names for each of the five methods. */
-const EMPTY = { post: null, factsFor: '', setState: null, states: {}, settled: null }
+const EMPTY = { post: null, factsFor: '', setState: null, settled: null }
 
 /**
  * The five methods a driver or a worker needs to reach Kata. `kata` is
@@ -127,31 +127,6 @@ export const makeBoard = ({ kata, projectId, tasks, log } = {}) => {
     }
   }
 
-  const states = async () => {
-    if (!kata) return { ...EMPTY.states }
-    try {
-      const issues = (await kata.listIssues(projectId)) || []
-      const byUid = new Map()
-      for (const issue of issues) {
-        if (issue && issue.uid !== undefined) byUid.set(issue.uid, issue)
-      }
-      const out = {}
-      for (const taskId of Object.keys(tasks || {})) {
-        const uid = uidFor(taskId)
-        const issue = uid === undefined ? undefined : byUid.get(uid)
-        const metadata = (issue && issue.metadata) || {}
-        const state = Object.prototype.hasOwnProperty.call(metadata, 'factory.state')
-          ? metadata['factory.state']
-          : null
-        out[taskId] = state === undefined ? null : state
-      }
-      return out
-    } catch (error) {
-      noise('states', undefined, error)
-      return { ...EMPTY.states }
-    }
-  }
-
   const settled = async (taskId) => {
     if (!kata) return EMPTY.settled
     try {
@@ -169,7 +144,7 @@ export const makeBoard = ({ kata, projectId, tasks, log } = {}) => {
     }
   }
 
-  return { post, factsFor, setState, states, settled }
+  return { post, factsFor, setState, settled }
 }
 
 // ═══════════════════════════════════════════════════════════════════════

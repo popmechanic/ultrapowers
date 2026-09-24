@@ -1,2 +1,0 @@
-d alpha rewritten and tuned at step one
-d beta rewritten

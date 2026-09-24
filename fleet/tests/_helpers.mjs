@@ -24,13 +24,6 @@ import path from 'node:path'
 /** Prefixes of the parent's environment that never reach a child. */
 export const DROPPED_PREFIXES = ['ULTRA_', 'TINYAPP_', 'FLEET_', 'ANTHROPIC_', 'CLAUDE_', 'GH_']
 
-/**
- * The one name kept by name from the parent: the deadline multiplier
- * `fleet/tests/deadline-slack.mjs` reads in-process, a rig knob a developer
- * sets on a slow box rather than a fact of the fleet.
- */
-export const KEPT_KEYS = ['FLEET_TEST_SLACK']
-
 /** The interpreters a sim's children resolve on the `PATH` this builds. */
 const INTERPRETERS = ['python3', 'git', 'bash', 'sh']
 
@@ -108,9 +101,6 @@ export function simEnv ({ bin, home, env } = {}) {
     HOME: root,
     TMPDIR: root,
     FLEET_HOME: root,
-  }
-  for (const key of KEPT_KEYS) {
-    if (process.env[key] !== undefined) out[key] = process.env[key]
   }
   return { ...out, ...env }
 }

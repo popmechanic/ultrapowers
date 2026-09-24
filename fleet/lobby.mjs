@@ -78,9 +78,7 @@ export const runOfVmName = (name) => {
   return match ? Number(match[1]) : null
 }
 
-/** Every incarnation of run N, as the server-side `ls` pattern. */
-export const vmPatternFor = (run) => `fleet-r${run}-*`
-/** The whole fleet. */
+/** The whole fleet, as the server-side `ls` pattern. */
 export const FLEET_PATTERN = 'fleet-r*'
 
 /** `<owner>/<repo>` → `<owner>-<repo>`, the slash-free half of an integration name. */
@@ -95,9 +93,6 @@ export const targetSlug = (target) => String(target).replace('/', '-')
  * documents no tie-break between two integrations covering the same repo).
  */
 export const githubIntegrationFor = (target) => `gh-${targetSlug(target)}`
-
-/** The run's status page, served by `busybox httpd` on the VM's port 8000. */
-export const statusUrlFor = (vmName) => `https://${vmName}.exe.xyz/status.json`
 
 // ── The refs a run has on the target ────────────────────────────────────────
 
@@ -152,8 +147,6 @@ export const EXE_HOST = 'exe.dev'
 export const FLEET_TAG = 'fleet'
 export const ENGINE_REPO = 'popmechanic/ultrapowers'
 export const ENGINE_URL = `https://github.com/${ENGINE_REPO}.git`
-/** The http-proxy integration that injects the Claude OAuth token at the edge. */
-export const CLAUDE_INTEGRATION = 'claude-max'
 /** The assignment comment's hard ceiling — exe.dev's `comment` field. */
 export const COMMENT_MAX_BYTES = 200
 
@@ -212,14 +205,6 @@ export const kataHostOf = (url) => {
  * the janitor looks it up by it, so both spell it here.
  */
 export const kataProjectFor = (target) => String(target).replace(/\//g, '-')
-/** `~/x` → `<home>/x`. The config file is hand-edited, so it may hold either. */
-export const expandHome = (value) => {
-  const text = String(value ?? '')
-  if (text === '~') return os.homedir()
-  if (text.startsWith('~/')) return path.join(os.homedir(), text.slice(2))
-  return text
-}
-
 /**
  * Read `~/.ultrapowers/fleet.json` (or `path`) over the defaults. An absent
  * file means all defaults; an unknown key is ignored; a key the file omits
@@ -484,12 +469,12 @@ export async function listIntegrations (exec) {
 
 /** The comment's keys, in the order the contract spells them. */
 export const COMMENT_KEYS = Object.freeze([
-  'run', 'plan', 'target', 'base', 'engine', 'tier', 'effort', 'hold'
+  'run', 'plan', 'target', 'base', 'engine', 'hold'
 ])
 
 /**
  * Build the assignment comment: single line, space-separated `key=value`, keys
- * in contract order, optional `tier=`/`effort=`/`hold=` last. Every
+ * in contract order, optional `hold=` last. Every
  * value has already been validated by the caller; nothing here can introduce a
  * quote or a space.
  */

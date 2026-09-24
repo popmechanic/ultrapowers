@@ -13,8 +13,8 @@
  *   M1  `fleet/tests/_helpers.mjs` exports `simEnv({ bin, home, env } = {})`.
  *       The object it returns carries no key of the parent's environment whose
  *       name begins `ULTRA_`, `TINYAPP_`, `FLEET_`, `ANTHROPIC_`, `CLAUDE_` or
- *       `GH_` except `FLEET_TEST_SLACK`, copied when the parent has it; the
- *       keys it sets itself are `PATH`, `HOME`, `TMPDIR` and `FLEET_HOME`, the
+ *       `GH_`; the keys it sets itself are `PATH`, `HOME`, `TMPDIR` and
+ *       `FLEET_HOME`, the
  *       last three under `home`, which defaults to a fresh `mkdtemp` under
  *       `os.tmpdir()`; the caller's `env` entries are laid over all of that
  *       last, so a caller-supplied key of any name wins; and its `PATH` is
@@ -42,9 +42,7 @@
  *
  * The sweep (legs b, c, d) is a static read of source, never an execution: it
  * reads every `fleet/tests/test_*.mjs` and `fleet/tests/_*.mjs` except this
- * file, plus every `fleet/tests/exams/<slug>/test_*.mjs` and `_*.mjs` a run
- * leaves in the reserved directory (#890 — the same globs the bridge
- * collects; leg (j) proves the reach), and never `probe_*.mjs` (those are
+ * file, and never `probe_*.mjs` (those are
  * live probes, `fleet/tests/PROBES.md`, outside every sweep here) and never
  * `fixtures/`. Reading source is also why this file needs no child process of
  * its own — leg (f) holds it to that.
@@ -511,25 +509,12 @@ const named = (offenders) => offenders.map((o) => `${o.where} (${o.why}) ${o.tex
 const isSwept = (n) => n.endsWith('.mjs') && (n.startsWith('test_') || n.startsWith('_'))
 
 /**
- * The names the sweep reads under `dir`, relative and `/`-joined: the flat
- * `test_*.mjs` and `_*.mjs`, and — the same globs the bridge collects (#890,
- * `tests/test_fleet_suite.py`'s `collect_sims`) — every `exams/<slug>/test_*.mjs`
- * a run leaves in the reserved directory, with the `_*.mjs` helpers beside
- * them. An exam is held to the three rules exactly as a curated sim is; a
- * probe that swept only the flat directory would let a run's own exam inherit
- * the box. The reserved directory does not exist on main, so the second list is
- * empty there.
+ * The names the sweep reads under `dir`: the flat `test_*.mjs` and `_*.mjs` —
+ * the same glob the bridge collects (`tests/test_fleet_suite.py`'s
+ * `collect_sims`), plus the helpers beside them.
  */
-const sweptNames = (dir, self = SELF) => {
-  const flat = fs.readdirSync(dir).filter((n) => isSwept(n) && n !== self)
-  const exams = path.join(dir, 'exams')
-  const nested = !fs.existsSync(exams) ? [] : fs.readdirSync(exams)
-    .filter((slug) => fs.statSync(path.join(exams, slug)).isDirectory())
-    .flatMap((slug) => fs.readdirSync(path.join(exams, slug))
-      .filter(isSwept)
-      .map((n) => `exams/${slug}/${n}`))
-  return [...flat, ...nested].sort()
-}
+const sweptNames = (dir, self = SELF) =>
+  fs.readdirSync(dir).filter((n) => isSwept(n) && n !== self).sort()
 
 const SWEPT = sweptNames(TESTS_DIR)
 
@@ -543,9 +528,7 @@ const sourceOf = (name) => {
 }
 
 /** ident -> the sibling `_*.mjs` source it is imported from, resolved against
- *  the importing file's own directory: `./_x.mjs` beside a flat sim, and for an
- *  exam in `exams/<slug>/` either `../../_x.mjs` (the rig at the top) or
- *  `./_x.mjs` (a helper the run left beside it). */
+ *  the importing file's own directory (`./_x.mjs` beside a flat sim). */
 const importerFor = (src, file = '') => {
   const map = new Map()
   const base = path.posix.dirname(file)
@@ -636,7 +619,7 @@ const simEnvOrThrow = () => {
 
 test('simEnv() hands on no key of a planted parent  [M1 / leg (a)]', () => {
   const simEnv = simEnvOrThrow()
-  withPlant({ FLEET_TEST_SLACK: '7' }, () => {
+  withPlant({}, () => {
     const e = simEnv()
     for (const key of Object.keys(PLANT)) {
       assert.equal(key in e, false,
@@ -645,16 +628,13 @@ test('simEnv() hands on no key of a planted parent  [M1 / leg (a)]', () => {
     }
     // The clause is about keys OF THE PARENT: `FLEET_HOME` begins with a swept
     // prefix and is still the rig's own, minted under the case's own home.
-    const own = new Set(['PATH', 'HOME', 'TMPDIR', 'FLEET_HOME', 'FLEET_TEST_SLACK'])
+    const own = new Set(['PATH', 'HOME', 'TMPDIR', 'FLEET_HOME'])
     const leaked = Object.keys(e).filter((k) => DROPPED.some((p) => k.startsWith(p)) && !own.has(k))
     assert.deepEqual(leaked, [],
-      `(a) [M1] no key of the parent beginning ${DROPPED.join(', ')} survives except ` +
-      `FLEET_TEST_SLACK: ${JSON.stringify(leaked)}`)
-    assert.equal(e.FLEET_TEST_SLACK, '7',
-      '(a) [M1] FLEET_TEST_SLACK is the one swept name kept from the parent, copied when the parent has it')
-    assert.deepEqual(Object.keys(e).sort(), ['FLEET_HOME', 'FLEET_TEST_SLACK', 'HOME', 'PATH', 'TMPDIR'],
-      `(a) [M1] the keys simEnv() sets itself are PATH, HOME, TMPDIR and FLEET_HOME, plus the kept ` +
-      `FLEET_TEST_SLACK — no other key of the parent reaches a child: ${JSON.stringify(Object.keys(e).sort())}`)
+      `(a) [M1] no key of the parent beginning ${DROPPED.join(', ')} survives: ${JSON.stringify(leaked)}`)
+    assert.deepEqual(Object.keys(e).sort(), ['FLEET_HOME', 'HOME', 'PATH', 'TMPDIR'],
+      `(a) [M1] the keys simEnv() sets itself are PATH, HOME, TMPDIR and FLEET_HOME — ` +
+      `no key of the parent reaches a child: ${JSON.stringify(Object.keys(e).sort())}`)
   })
 })
 
@@ -670,17 +650,6 @@ test('a planted FLEET_HOME is the parent\'s, and never the child\'s  [M1 / leg (
     assert.notEqual(e.HOME, '/planted/home', '(a) [M1] and so is HOME')
     assert.ok(e.HOME.startsWith(fs.realpathSync(TMP)) || e.HOME.startsWith(TMP),
       `(a) [M1] under os.tmpdir(): ${e.HOME}`)
-  })
-})
-
-test('a parent without FLEET_TEST_SLACK gives a child without it  [M1 / leg (a)]', () => {
-  const simEnv = simEnvOrThrow()
-  withPlant({ FLEET_TEST_SLACK: undefined }, () => {
-    const e = simEnv()
-    assert.equal('FLEET_TEST_SLACK' in e, false,
-      '(a) [M1] FLEET_TEST_SLACK is copied when the parent has it, and only then')
-    assert.deepEqual(Object.keys(e).sort(), ['FLEET_HOME', 'HOME', 'PATH', 'TMPDIR'],
-      `(a) [M1] and the four keys it sets itself are all that is left: ${JSON.stringify(Object.keys(e).sort())}`)
   })
 })
 
@@ -770,15 +739,9 @@ test('the sweep names zero inheriting spawns in fleet/tests/  [M2 / leg (b)]', (
   // set says the one thing that matters, that every file the rules are defined
   // over was read.
   const definedOver = fs.readdirSync(TESTS_DIR).filter((n) => isSwept(n) && n !== SELF)
-  const examsDir = path.join(TESTS_DIR, 'exams')
-  const nested = !fs.existsSync(examsDir) ? [] : fs.readdirSync(examsDir)
-    .filter((slug) => fs.statSync(path.join(examsDir, slug)).isDirectory())
-    .flatMap((slug) => fs.readdirSync(path.join(examsDir, slug))
-      .filter(isSwept)
-      .map((n) => `exams/${slug}/${n}`))
-  assert.deepEqual(SWEPT, [...definedOver, ...nested].sort(),
-    `(b) [M2] the sweep reads every fleet/tests/test_*.mjs and _*.mjs but this file, and every ` +
-    `exams/<slug>/ one beside them — not a file fewer: ${JSON.stringify(SWEPT)}`)
+  assert.deepEqual(SWEPT, [...definedOver].sort(),
+    `(b) [M2] the sweep reads every fleet/tests/test_*.mjs and _*.mjs but this file — ` +
+    `not a file fewer: ${JSON.stringify(SWEPT)}`)
   const offenders = treeOffenders('inherit')
   assert.deepEqual(named(offenders), [],
     `(b) [M2] every spawn in fleet/tests/test_*.mjs and fleet/tests/_*.mjs takes an env derived ` +
@@ -955,50 +918,6 @@ test('the fixture is swept to exactly three offenders, one per rule  [M7 / leg (
     '(g) [M7] nor swept as a sim of the tree')
 })
 
-// ── (j) the reserved exams directory is swept like the flat one  [#890] ──────
-
-/** The fixture tree leg (j) sweeps: one flat sim, one exam under `exams/run_7/`. */
-const TREE_FIXTURE = path.join(TESTS_DIR, 'fixtures', 'hermetic', 'tree')
-const EXAM_FIXTURE = 'exams/run_7/test_leaky_exam.mjs'
-
-test('the sweep reaches exams/<slug>/test_*.mjs and holds an exam to the same rules  [#890 / leg (j)]', () => {
-  // The names, from one root: the flat sim and the exam two levels down.
-  assert.deepEqual(sweptNames(TREE_FIXTURE, '<none>'), [EXAM_FIXTURE, 'test_clean_sim.mjs'],
-    '(j) [#890] sweptNames lists the flat test_*.mjs and every exams/<slug>/test_*.mjs, relative and /-joined')
-
-  // The exam is swept by the rules — its one inheriting spawn is named, and
-  // its `../../_helpers.mjs` import resolves so the hermetic spawn beside it
-  // is not.
-  const text = fs.readFileSync(path.join(TREE_FIXTURE, EXAM_FIXTURE), 'utf8')
-  const src = scan(text)
-  const r = sweep(text, { file: EXAM_FIXTURE, resolveImport: importerFor(src, EXAM_FIXTURE) })
-  assert.equal(r.inherit.length, 1,
-    `(j) [#890] the exam's one inheriting spawn is named: ${JSON.stringify(named(r.inherit))}`)
-  assert.match(r.inherit[0].where, /^exams\/run_7\/test_leaky_exam\.mjs:/,
-    `(j) [#890] by its path under exams/: ${r.inherit[0].where}`)
-  assert.equal(r.absolute.length + r.siblings.length, 0,
-    '(j) [#890] and nothing else — a fixture with one leak is named once')
-
-  // The live tree: every exams/*/test_*.mjs present under fleet/tests/ — the
-  // bridge's second glob, read here independently — is in SWEPT. Empty on
-  // main, where the reserved directory does not exist; inside a run it is the
-  // run's own exams.
-  const examsDir = path.join(TESTS_DIR, 'exams')
-  const present = !fs.existsSync(examsDir) ? [] : fs.readdirSync(examsDir)
-    .filter((slug) => fs.statSync(path.join(examsDir, slug)).isDirectory())
-    .flatMap((slug) => fs.readdirSync(path.join(examsDir, slug))
-      .filter((n) => n.startsWith('test_') && n.endsWith('.mjs'))
-      .map((n) => `exams/${slug}/${n}`))
-  for (const name of present) {
-    assert.ok(SWEPT.includes(name), `(j) [#890] ${name} is collected by the bridge and must be swept`)
-  }
-
-  // And the bridge collects exactly that second glob, so the two lists are one.
-  const bridge = fs.readFileSync(BRIDGE, 'utf8')
-  assert.ok(bridge.includes('"exams", "*", "test_*.mjs"'),
-    '(j) [#890] tests/test_fleet_suite.py collects exams/*/test_*.mjs — the glob this sweep mirrors')
-})
-
 // ── (h) the bridge hands each sim its environment  [M6] ──────────────────────
 
 test('tests/test_fleet_suite.py binds env=sim_env() on the node it runs  [M6 / leg (h)]', () => {
@@ -1043,8 +962,6 @@ test('tests/test_fleet_suite.py binds env=sim_env() on the node it runs  [M6 / l
     assert.ok(fn.includes(prefix),
       `(h) [M6] sim_env() drops the same six prefixes as the rig, ${prefix} among them`)
   }
-  assert.ok(fn.includes('FLEET_TEST_SLACK'),
-    '(h) [M6] and keeps FLEET_TEST_SLACK by name — the one FLEET_ name that is a rig knob and not a fleet fact')
   for (const tool of TOOLS) {
     assert.ok(fn.includes(tool),
       `(h) [M6] and builds PATH from the same interpreters, ${tool} among them`)

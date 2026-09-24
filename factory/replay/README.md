@@ -111,7 +111,7 @@ Where Jev was wrong, three shapes, each of which moved a threshold:
 eight unambiguous defects in FILES (a missing probe-arm case; `from_tag`'s silent
 zero; a second issue filed on re-entry; an uncaught `UnicodeDecodeError`; a
 substring grep over a shared log; `--untracked-files=normal` losing a manifest; a
-deleted judgment call still taught at `report-format.md:112`; `failingPaths` not
+deleted judgment call once taught at `report-format.md:112` (deleted 2026-09-24); `failingPaths` not
 deduplicated) and two trivial-but-correct doc rows. Two wrong: run-127/3, a plan
 defect Jev mis-actored at `fixable = 0.60`, which `t₃ = 0.7` removes; and
 run-115/1, a worker's `concern:` disclosure of a budget bump — a note, which the

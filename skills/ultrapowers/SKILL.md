@@ -237,6 +237,6 @@ approved plan, **is** the authorization to execute — no further approval pause
 - `references/first-run.md` — one section per doctor row: what it means and the
   command that builds it.
 - `references/design-rationale.md` — why each surviving guard exists.
-- `references/report-format.md`, `references/finishing-notes.md` — report schema; finishing checks.
+- `references/finishing-notes.md` — finishing checks.
 - `kernel/FOLD_LOG.md` — the fold-log schema the kernel writes in its run directory on the sandbox (the evidence branch carries `events.jsonl` and `engine.log`, not the fold dir).
 - `scripts/plan_parse.py` (the one parser — the sandbox runs it), `scripts/plan_check.py` (the laptop's check of the records and the base, on that parser).

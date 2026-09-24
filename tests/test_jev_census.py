@@ -66,7 +66,7 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "skills/ultrapowers/scripts/jev_census.py"
+SCRIPT = ROOT / "evals/readings/jev_census.py"
 
 TARGET = "o/r"
 

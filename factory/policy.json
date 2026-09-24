@@ -4,7 +4,7 @@
   "chosen": "2026-09-17, on Fable, from the 2026-09-17 landing replay and a hand read of 62 rows (the stratified fifty plus the twelve the policy would promote)",
   "landing": {
     "severity": {
-      "rule": "blocking <=> borne_out >= t1 AND claim_false >= t2 AND actor = implementer AND fixable_in_files >= t3 AND process_only < t4 AND NOT (status = unverified AND status.confidence >= t_status); plan-routed <=> actor = plan at confidence >= t5 AND fixable_in_files < t5_fixable, else today's routeToPlan regex decides; minor otherwise, carrying status and subject for the card",
+      "rule": "blocking <=> borne_out >= t1 AND claim_false >= t2 AND actor = implementer AND fixable_in_files >= t3 AND process_only < t4 AND NOT (status = unverified AND status.confidence >= t_status); plan-routed <=> actor = plan at confidence >= t5 AND fixable_in_files < t5_fixable, else today's routeToPlan regex decides; minor otherwise",
       "t1_borne_out": {
         "value": 0.8,
         "n": 0,
@@ -62,15 +62,6 @@
         "window": "1,157 reviewer residuals over 84 runs (evidence + evidence-tinyapp tags through run-183), built 2026-09-16, replayed 2026-09-17",
         "basis": "the question's own criterion",
         "detail": "`plan` is defined as `no edit inside task.files can` resolve it, so a plan route with fixable_in_files >= 0.5 contradicts the answer that produced it. Excludes the one wrong route in the ten read (fix = 0.88); every right route read <= 0.27"
-      },
-      "t6_settled_by_fact": {
-        "value": 0.9,
-        "n": 0,
-        "window": "none",
-        "basis": "judgment",
-        "unread": "needs `sibling_facts`; the corpus predates them (#1127's 2026-09-17 amendment). A `contradicted` verdict PROMOTES a finding to blockable, so it is set high on judgment. First live reading: coverage — of the 118 + 61 unverified cross-task rows, how many carry a sibling fact on the tag at all",
-        "rollback": 1.01,
-        "rollback_note": "1.01 = never promotes; unverified stays minor"
       }
     },
     "adopt": {
@@ -100,15 +91,6 @@
       "basis": "judgment",
       "experiment": true,
       "rollback": "enabled = false"
-    },
-    "card": {
-      "subject_footprint_min_conf": {
-        "value": 0.8,
-        "n": 1157,
-        "window": "1,157 reviewer residuals over 84 runs (evidence + evidence-tinyapp tags through run-183), built 2026-09-16, replayed 2026-09-17",
-        "basis": "label agreement",
-        "detail": "against the `outside_files:` prefix: precision 45%, recall 66% at conf >= 0.8 (28% / 92% unthresholded). Informational — the card's `Act on these` — gates nothing. `scope_only` does NOT track that prefix (precision <= 16% at every threshold) and a hand read of ten says why: a required out-of-FILES edit is footprint, not unrequested work; Jev was right ten of ten"
-      }
     }
   },
   "task": {
@@ -193,58 +175,11 @@
       "ordering_matters_max": 0.2,
       "mode": "live"
     },
-    "reply_gate": {
-      "carries_both": 0.8,
-      "drops_side_max": 0.3,
-      "invents_max": 0.3,
-      "mode": "record-only"
-    },
     "n": 0,
     "window": "none",
     "basis": "judgment",
-    "unread": "#1125 is staged fog and its keys are unsettled wording; ten resolver dispatches exist on the whole record (runs 36, 44, 183). Two vetoes and one positive term because a union silently corrupts the case it gets wrong",
+    "unread": "#1125 is staged fog and its keys are unsettled wording; ten resolver dispatches exist on the whole record (runs 36, 44, 183). Two vetoes and one positive term on the union because it silently corrupts the case it gets wrong",
     "rollback": "dispatch the resolver; accept its reply on the kernel's grammar check alone"
-  },
-  "note": {
-    "stuck": {
-      "value": 0.7,
-      "n": 779,
-      "window": "notes over 69 runs, both targets, through run-170, read 2026-09-16",
-      "basis": "fleet/run-engine.mjs NOTE_STUCK_THRESHOLD, carried verbatim (#1095)",
-      "detail": "of 13 real hand-raises the notes read 10 as stuck >= 0.5; an examiner's note raises a hand only when stuck >= 0.7 AND kind = blocker (a red suite at BASE is its resting state); an implementer's or fix session's on the threshold alone",
-      "examiner_needs_kind": "blocker"
-    },
-    "plan_defect": {
-      "value": 0.7,
-      "n": 779,
-      "window": "notes over 69 runs, through run-170, read 2026-09-16",
-      "basis": "fleet/run-engine.mjs PLAN_DEFECT_THRESHOLD, carried verbatim (#1095)",
-      "detail": "of parked tasks 47% carried plan_defect >= 0.7; of clean merges 10%; AUROC 0.68"
-    },
-    "settles_interface": {
-      "value": 0.8,
-      "which_min_conf": 0.8,
-      "mode": "record-only",
-      "n": 0,
-      "window": "none",
-      "basis": "judgment",
-      "unread": "#1130 as filed: below 0.8 no tuple; the first reading is coverage — how many hand-in notes name an added export at all",
-      "rollback": "no interface.settled cell is minted"
-    }
-  },
-  "amendment": {
-    "changes_consumer": {
-      "value": 0.8,
-      "mode": "record-only",
-      "n": 0,
-      "window": "none",
-      "basis": "judgment",
-      "unread": "#1129 as filed: jev:amendment-edge rows, no edge written, until the record's 80 amendments are read for how many would have edged a sibling that later collided",
-      "rollback": "no edge is filed; the amendment row and its three readings stand"
-    },
-    "files_overlap": {
-      "rule": "code, not Jev: amendment.files ∩ sibling.files ≠ ∅ files the blocked-by edge (#1129)"
-    }
   },
   "settled": {
     "t_settles": {

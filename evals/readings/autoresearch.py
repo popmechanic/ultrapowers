@@ -41,7 +41,12 @@ import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+# This is a readings tool under `evals/readings/`, beside `jev_census.py` and
+# `ab_auth.py`; the scripts it reuses live in the plugin's own `scripts/`.
+HERE = Path(__file__).resolve().parent
+SCRIPTS = HERE.parents[1] / "skills" / "ultrapowers" / "scripts"
+sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(SCRIPTS))
 from catch_counter import fetch_runs  # noqa: E402
 from jev_census import numeric_of  # noqa: E402
 
@@ -457,7 +462,6 @@ def _sample_tasks(entries, limit=8):
     """Up to `limit` tasks, title+body (body cut at 3000 characters) with
     their `fix`/`parked` labels, read off each run's fetched `plan.md` and
     `events.jsonl` -- the proposer's own sample, not the fit's."""
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
     import plan_parse  # noqa: E402 (local import: only the proposer needs it)
 
     sample = []
@@ -521,7 +525,7 @@ def _propose_prompt(sample):
 def _extract_json_list(text):
     """The last complete JSON list in `text` -- `claude -p`'s reply is told
     to be ONLY a JSON list, but a model may preface or fence it (the same
-    tolerance `evals/judge.py`'s `_extract_json` gives a JSON object)."""
+    tolerance the retired A/B judge's `_extract_json` gave a JSON object)."""
     try:
         data = json.loads(text)
         if isinstance(data, list):
@@ -557,9 +561,7 @@ def propose_questions(entries):
     config_dir = tempfile.mkdtemp(prefix="autoresearch-claude-config-")
     env["CLAUDE_CONFIG_DIR"] = config_dir
     try:
-        ab_auth_path = Path(__file__).resolve().parents[2] / "evals"
-        sys.path.insert(0, str(ab_auth_path))
-        import ab_auth  # noqa: E402
+        import ab_auth  # noqa: E402 (beside this file under evals/readings/)
         env = ab_auth.seed_worker_auth(env)
     except SystemExit:
         raise
@@ -654,7 +656,6 @@ def fetch_answers(entries, candidate_names, questions_entries, base_url=
     questions_by_name = {q["name"]: {k: v for k, v in q.items()
                                      if k != "name"}
                          for q in questions_entries}
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
     import plan_parse  # noqa: E402
 
     answers = {}

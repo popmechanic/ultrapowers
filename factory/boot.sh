@@ -15,7 +15,6 @@ PLAN_BLOB_PATH=".ultrapowers/plan.md"
 KATA_BLOB_PATH=".ultrapowers/kata.json"
 KATA_VERSION="0.18.0"
 KATA_RELEASE_BASE="https://github.com/kenn-io/kata/releases/download/v$KATA_VERSION/"
-KATA_HUB_URL="https://kata-sync.int.exe.xyz"
 # The helper administers through the host where the edge injects the hub's bearer; the spoke syncs through the other.
 KATA_ADMIN_URL="https://kata.int.exe.xyz"
 KATA_URL="http://127.0.0.1:7777"

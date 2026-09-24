@@ -4,9 +4,11 @@ it into the bundle's `events` field, and render it as a flat timeline.
 Read-only and advisory: malformed or missing input is skipped with a
 diagnostic, never raised.
 
-Events sort by `id`, never by `ts`. `fleet/run-waves.mjs:272-284` stamps both
-from one `Date.now()`; when the monotonic clamp fires on a backwards clock step
-"the id stays the sort key, ts stays the wall clock"."""
+Events sort by `id`, never by `ts`: the wave engine stamped both from one
+`Date.now()`, and when its monotonic clamp fired on a backwards clock step
+"the id stays the sort key, ts stays the wall clock". That engine left at cut
+two (2026-09-21); the rows this reads now are written by `factory/engine.mjs`'s
+`appendEvent` and `factory/boot.sh`'s `event_row`."""
 from __future__ import annotations
 
 import json
@@ -17,9 +19,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _outcome import swallow  # noqa: E402  (marks every deliberate skip)
 
-# The engine's emitted vocabulary, read off the sources that emit it:
-# fleet/run-worker.mjs:468-552, fleet/run-main.mjs:358-548,
-# fleet/run-waves.mjs:215-293. An unlisted kind still parses and still renders
+# The vocabulary as it was read off the wave engine's sources, which left at
+# cut two (2026-09-21). The emitters today are the `appendEvent` kinds in
+# `factory/engine.mjs` and `event_row` in `factory/boot.sh`; this set has not
+# been re-read against them. An unlisted kind still parses and still renders
 # — this set names what is known, it does not filter.
 EVENT_KINDS = frozenset({
     "run:open", "engine:log", "engine:phase", "worker:start", "worker:end",

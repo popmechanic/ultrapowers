@@ -616,15 +616,3 @@ def manifest(state):
         elif p in state.raw and p not in state.deleted_marks:
             out[p] = state.raw[p]               # untouched base bytes
     return out
-
-
-def materialize(state, dest):
-    """Failure-artifact dump only — never on a comparison path."""
-    dest = Path(dest)
-    for p, content in manifest(state).items():
-        target = dest / p
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if isinstance(content, bytes):
-            target.write_bytes(content)
-        else:
-            target.write_text(content, encoding="utf-8")
