@@ -124,6 +124,12 @@ def _split_plan(text):
         if _leading_spaces(line) > 3:
             continue
         s = line.strip()
+        if s.startswith('### Task') and not TASK_HEAD.match(s):
+            raise Refusal(
+                "plan_parse: a '### Task' line is not a task heading -- "
+                "write '### Task <id>: <title>' with the colon right after "
+                "the id: " + s
+            )
         m = TASK_HEAD.match(s)
         if m:
             heads.append((m.group(1), m.group(2).strip(), i))
@@ -565,7 +571,7 @@ def _build_edges(impl):
             add(a, b, "interface")
 
     # Tier 3: proof-run -- fully after tier 2 completes.
-    files_of = {t["id"]: set(t["files"]) for t in impl}
+    files_of = {t["id"]: set(t["files"]) | set(t.get("deletes", [])) for t in impl}
     for b in ids:
         b_files = files_of[b]
         for cmd in by_id[b]["proof_runs"]:
