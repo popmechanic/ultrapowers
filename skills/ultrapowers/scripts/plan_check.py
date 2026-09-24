@@ -355,11 +355,20 @@ def publish_violations(publish):
 _SHELL_OPERATORS = ("&&", "||", "|", ";")
 
 
+_WHOLE_TREE_TOKENS = (".", "", "*")
+
+
 def freeze_violations(checks, tasks):
     """A `- Check:` that freezes a `git diff … $ULTRA_BASE -- <pathspecs>` is
     green at BASE by construction — it goes red the moment a task's own patch
     lands under the frozen path (run-199). Reads only the strings the parser
-    printed: no worktree, no git, no subprocess."""
+    printed: no worktree, no git, no subprocess.
+
+    A `- Check:` with no ` -- ` pathspec after `$ULTRA_BASE` at all, or whose
+    first pathspec normalizes to `.`, `''` or `*`, freezes the WHOLE tree
+    against BASE — every implementation task's Files sit under it, so it goes
+    red the moment any task's patch lands. One violation per such check, not
+    per task."""
     violations = []
     for check in checks:
         cmd = check["cmd"]
@@ -371,6 +380,11 @@ def freeze_violations(checks, tasks):
             continue
         idx_sep = cmd.find(" -- ", idx_base)
         if idx_sep == -1:
+            violations.append(
+                "grammar: run-wide `- Check: %s` freezes the whole tree "
+                "against $ULTRA_BASE, which covers every task's Files — the "
+                "check goes red the moment any task's patch lands (run-199); "
+                "freeze files, never the tree." % cmd)
             continue
         rest = cmd[idx_sep + len(" -- "):]
         pathspecs = []
@@ -382,6 +396,13 @@ def freeze_violations(checks, tasks):
                 raw = raw[1:-1]
             normalized = raw[:-1] if len(raw) > 1 and raw.endswith("/") else raw
             pathspecs.append((raw, normalized))
+        if pathspecs and pathspecs[0][1] in _WHOLE_TREE_TOKENS:
+            violations.append(
+                "grammar: run-wide `- Check: %s` freezes the whole tree "
+                "against $ULTRA_BASE, which covers every task's Files — the "
+                "check goes red the moment any task's patch lands (run-199); "
+                "freeze files, never the tree." % cmd)
+            continue
         for raw, normalized in pathspecs:
             for t in tasks:
                 for path in sorted(task_files(t)):
@@ -393,6 +414,64 @@ def freeze_violations(checks, tasks):
                             "own patch lands (run-199); freeze files, not the "
                             "directory they sit in."
                             % (t["id"], cmd, raw, path, t["id"]))
+    return violations
+
+
+# --------------------------------------------------------------------------- #
+# Three shapes the authoring skill already says it refuses, but              #
+# `plan_parse.py` only ignores: a Depends-on/Commutes bullet, a Run: tag     #
+# citing a clause the Machine line does not number, a Stale-if entry that    #
+# is not a predicate (review 2026-09-24 findings S2/S3/S5).                  #
+# --------------------------------------------------------------------------- #
+_DEPENDS_ON_RE = re.compile(r'^\s*[-*+]\s*(Depends-on|Commutes)\s*:', re.I)
+_MACHINE_NUM_RE = re.compile(r'\bM(\d+)\.')
+
+
+def _run_cite_span(numbers):
+    """The span `<Mn>` or `<Mn>–<Mm>` a Machine line's own numbers print, in
+    the wording the old compiler used and `tests/test_plan_check_rehearsal.py`
+    still documents."""
+    if not numbers:
+        return "(no clauses)"
+    if len(numbers) == 1:
+        return "M%d" % numbers[0]
+    return "M%d–M%d" % (min(numbers), max(numbers))
+
+
+def promised_violations(tasks):
+    """One `grammar:` violation for each of three shapes the authoring skill
+    already tells an author are refused, but that `plan_parse.py` only
+    ignores rather than refusing: a `- Depends-on:`/`- Commutes:` bullet (no
+    such edge is ever derived from it), a Proof `Run:` tag citing a clause
+    the task's Machine line does not number, and a `**Stale-if:**` entry
+    that matches no predicate head."""
+    violations = []
+    for t in tasks:
+        for line in _unfenced_lines(t["body"]):
+            if _DEPENDS_ON_RE.match(line.strip()):
+                violations.append(
+                    "grammar: task %s: `%s` is not read — ordering is "
+                    "derived from Interfaces and Files, never written"
+                    % (t["id"], line.strip()))
+
+        numbers = [int(n) for n in _MACHINE_NUM_RE.findall(
+            machine_restatement(t["claim"]))]
+        span = _run_cite_span(sorted(set(numbers)))
+        for cmd, clauses in zip(t["proofRuns"], t["proofRunClauses"]):
+            for tag in clauses:
+                num = int(tag[1:])
+                if num not in numbers:
+                    violations.append(
+                        "grammar: Run: cites an unknown clause — task %s: "
+                        "%s cites %s; the Machine line numbers %s"
+                        % (t["id"], cmd[:80], tag, span))
+
+        for entry in t["stale_if_entries"]:
+            if not _STALE_ENTRY_RE.match(entry):
+                violations.append(
+                    "grammar: task %s: Stale-if entry `%s` is not a "
+                    "predicate — path-exists:, path-absent:, sha-matches:, "
+                    "issue-open: or issue-closed:" % (t["id"], entry))
     return violations
 
 
@@ -950,7 +1029,11 @@ def main(argv=None):
             return 2
         base_tree = BaseTree.from_flag(args.base, args.plan, repo=args.repo)
 
-    plan_text = args.plan.read_text()
+    try:
+        plan_text = args.plan.read_text()
+    except UnicodeDecodeError as exc:
+        print("error: plan is not UTF-8: " + str(exc), file=sys.stderr)
+        return 2
     try:
         result, tasks = plan_parse.parse_plan_full(plan_text)
     except plan_parse.Refusal as exc:
@@ -961,6 +1044,7 @@ def main(argv=None):
                   + authoring_record_violations(args.plan)
                   + command_violations(result["checks"], tasks, result["publish"])
                   + freeze_violations(result["checks"], tasks)
+                  + promised_violations(tasks)
                   + retired_slot_violations(tasks)
                   + retired_slot_violations(plan_text)
                   + publish_violations(result["publish"]))

@@ -8,7 +8,7 @@ last sitting got from one agent's memory.
 
 Two of these rules are refused outright: a `Run:`/`Check:` command carrying a
 backtick is `command carries a backtick` from `plan_check.py`, and a `Check:` that
-freezes a path covering a task's own Files or `Test:` path is refused the same way
+freezes a path covering a task's own Files is refused the same way
 (below). Every other species below is the author's own to check, here, against this
 file — `suite-total-pin`, `directory-absence-pin` and, since the compiler left at cut B
 (2026-09-21), the `one Run, one exam` sweep included. Nothing prints them.

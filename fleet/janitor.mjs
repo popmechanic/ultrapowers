@@ -146,6 +146,7 @@ import {
   kataProjectFor,
   listVms,
   lobby,
+  LobbyError,
   parseArgs,
   parseComment,
   parseDuration,
@@ -804,7 +805,16 @@ export async function janitor ({
 
   // ── Then the one mutation there is: the reap, through the lobby. ──────────
   if (!dryRun) {
-    for (const action of actions) await lobby(exec, action.command)
+    for (const action of actions) {
+      try {
+        await lobby(exec, action.command)
+        action.applied = true
+      } catch (error) {
+        if (!(error instanceof LobbyError)) throw error
+        action.applied = false
+        action.error = String(error.message ?? error)
+      }
+    }
   }
 
   // `hub` is null for a pass that was told there is no hub; otherwise the host
@@ -816,7 +826,8 @@ export async function janitor ({
 }
 
 const renderAction = (a, dryRun) =>
-  `${dryRun ? 'would ' : ''}rm ${a.vm}  run=${a.run} ${a.state} since ${a.updatedAt}`
+  `${dryRun ? 'would ' : ''}rm ${a.vm}  run=${a.run} ${a.state} since ${a.updatedAt}` +
+  (a.error === undefined ? '' : ` (failed: ${a.error})`)
 
 /** A hub-read death also names the hub: marked, would be marked, or refused. */
 const renderDeathHub = (d, dryRun) => {
