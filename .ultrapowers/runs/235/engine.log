@@ -1,0 +1,18 @@
+Running as unit: fleet-engine-235.service
+adopted task 2 -> 194297d1  facts=0 k=1
+adopted task 5 -> 7e66cd42  facts=0 k=1
+file:///home/exedev/engines/b891ddd9fa1805262ed23d8b831cc76bbe1e5103/factory/engine.mjs:1499
+          blocking: blocking.length, grades, trigger: trig.trigger,
+                                                      ^
+
+ReferenceError: trig is not defined
+    at land (file:///home/exedev/engines/b891ddd9fa1805262ed23d8b831cc76bbe1e5103/factory/engine.mjs:1499:55)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+Node.js v24.20.0
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 2min 23.898s
+CPU time consumed: 1min 13.909s
+Memory peak: 1.0G
+Memory swap peak: 0B
