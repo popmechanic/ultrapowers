@@ -364,10 +364,27 @@ def _outcome_of(events, pos, red, task, path, exam_edited, writes,
     return CAUGHT, label
 
 
-def derive_catches(run_dir):
-    """The run's `catch-count` row: exactly `kind`, `runId`, `startedAt`,
-    `driverRuns`, `catches`, `reds`, `touched`, `exercises` (M7; `startedAt`
-    since the first ratchet).
+_PR_URL_RE = re.compile(r"^https://github\.com/([^/\s]+/[^/\s]+)/pull/\d+/?$")
+
+
+def _target_of(status):
+    """`owner/repo` off the run's own `status.json` `pr` URL, or None: the
+    factory writes no target cell, but the pull request it opened is on the
+    target and nowhere else."""
+    pr = status.get("pr") if isinstance(status, dict) else None
+    match = _PR_URL_RE.match(pr) if isinstance(pr, str) else None
+    return match.group(1) if match else None
+
+
+def derive_catches(run_dir, target=None):
+    """The run's `catch-count` row: exactly `kind`, `runId`, `target`,
+    `startedAt`, `driverRuns`, `catches`, `reds`, `touched`, `exercises` (M7;
+    `startedAt` since the first ratchet, `target` since #1271).
+
+    `target` is the repository the run belongs to, `owner/repo`: the one
+    `--fetch` named, or else the one the run's own `status.json` `pr` URL
+    points at, or else None — two targets number their runs independently,
+    so `run-38` alone names nothing (#1271).
 
     `catches[T]` counts the distinct fix rounds that turned a red naming `T`
     green without editing `T`; `reds` carries every judged red, credited or
@@ -413,6 +430,8 @@ def derive_catches(run_dir):
             and isinstance(status.get("run"), (str, int)) \
             and not isinstance(status.get("run"), bool):
         run_id = "run-%s" % status["run"]
+    if not isinstance(target, str):
+        target = _target_of(status)
 
     driver_runs = 0
     exercised = {}                      # test path -> set of writes paths
@@ -457,6 +476,7 @@ def derive_catches(run_dir):
     return {
         "kind": ROW_KIND,
         "runId": run_id,
+        "target": target,
         "startedAt": started_at,
         "driverRuns": driver_runs,
         "catches": {path: len(rounds) for path, rounds in credits.items()},
@@ -473,9 +493,16 @@ def derive_catches(run_dir):
 
 def row_id(row):
     """The row's ledger identity (M9): the first 16 hex digits of the SHA-256
-    of `runId + "\\n" + "catch-count"`. One row per run, so re-counting a run
-    is a skip, not a second line."""
-    key = "%s\n%s" % (row.get("runId"), ROW_KIND)
+    of `target + "\\n" + runId + "\\n" + "catch-count"` when the row names its
+    target, else of `runId + "\\n" + "catch-count"` — the key every row written
+    before #1271 carries, so those rows keep their ids. One row per run per
+    target, so re-counting a run is a skip, not a second line, and two
+    targets' `run-38` are two rows."""
+    target = row.get("target")
+    if isinstance(target, str):
+        key = "%s\n%s\n%s" % (target, row.get("runId"), ROW_KIND)
+    else:
+        key = "%s\n%s" % (row.get("runId"), ROW_KIND)
     return hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
 
 
@@ -711,7 +738,8 @@ def main(argv=None):
               "--runs <A>..<B> and --into <dir>", file=sys.stderr)
         return 2
 
-    rows = [derive_catches(run_dir) for run_dir in find_run_dirs(paths)]
+    rows = [derive_catches(run_dir, args.fetch or None)
+            for run_dir in find_run_dirs(paths)]
     counts = (append_rows(rows, args.ledger) if args.ledger
               else {"added": 0, "skipped": 0})
     print("%d run(s) counted, %d row(s) appended, %d already recorded"
