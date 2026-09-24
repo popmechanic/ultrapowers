@@ -54,7 +54,7 @@ import { unionReply } from './union.mjs'
 import { makeBoard, patchWithRevision } from './board.mjs'
 import { candidateTests, symbolsOf, commandFor, excerptFor } from './select.mjs'
 import { proofsAdopted, foldRound } from './reverify.mjs'
-import { waitsFor, hardEdgePreds } from './dispatch.mjs'
+import { waitsFor, hardEdgePreds, speculationFor } from './dispatch.mjs'
 import { runLines } from './proofs.mjs'
 import { checksAtBase } from './checks-at-base.mjs'
 import { settledCoverage, observedFacts, clauseFacts } from './facts.mjs'
@@ -1859,8 +1859,17 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   // predecessor just adopted — is dispatched before the next wait.
   const inflightLandings = new Map()
 
+  // Where each dispatched task's implementers were cloned from — the run
+  // head at plain `launch` time, or the producer's candidate commit at
+  // `launchOnCandidate` time. `settleReadiness` hands a would-be consumer's
+  // producer's own anchor to `speculationFor` as `producerAnchor`, since
+  // that is the tree the producer's candidate sits on, whether the producer
+  // itself launched plainly or on a candidate.
+  const anchorOf = new Map()
+
   const launch = (task) => {
     const anchor = head
+    anchorOf.set(task.id, anchor)
     inflight.add(task.id)
     inflightLandings.set(task.id, land(task, anchor).then((landing) => ({ id: task.id, landing })))
   }
@@ -1878,6 +1887,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const launchOnCandidate = (task, producerId) => {
     inflight.add(task.id)
     inflightLandings.set(task.id, candidateCommitFor(producerId).then(async (anchor) => {
+      anchorOf.set(task.id, anchor)
       appendEvent({ kind: 'dispatch:on-candidate', task: task.id, from: producerId, anchor })
       const landing = await land(task, anchor)
       return { id: task.id, landing }
@@ -1894,6 +1904,8 @@ export async function runEngine (rawArgs = {}, deps = {}) {
    *  carries it) once it is done. With two or more, M4 says the switch is off
    *  for this task: both lists are folded into one adoption wait, as if
    *  `on_candidate` were false here. */
+  const waitedAt = new Set()
+
   const settleReadiness = async () => {
     let changed = true
     while (changed) {
@@ -1923,8 +1935,30 @@ export async function runEngine (rawArgs = {}, deps = {}) {
           continue
         }
         const producerId = effectiveCandidate[0]
-        if (done.has(producerId)) launch(t)
-        else launchOnCandidate(t, producerId)
+        const { mode, reason } = speculationFor({
+          producerDone: done.has(producerId),
+          head,
+          producerAnchor: anchorOf.get(producerId)
+        })
+        if (mode === 'launch') {
+          launch(t)
+        } else if (mode === 'on-candidate') {
+          launchOnCandidate(t, producerId)
+        } else {
+          const key = t.id + '@' + head
+          if (!waitedAt.has(key)) {
+            waitedAt.add(key)
+            appendEvent({
+              kind: 'speculate:wait',
+              task: t.id,
+              from: producerId,
+              head,
+              anchor: anchorOf.get(producerId) ?? null,
+              reason
+            })
+          }
+          continue
+        }
         changed = true
       }
     }

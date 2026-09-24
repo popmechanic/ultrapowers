@@ -48,6 +48,30 @@ export function hardEdgePreds ({ dagEdges = [], pairsLive, proofRunHard } = {}) 
   return preds
 }
 
+/**
+ * speculationFor({ producerDone, head, producerAnchor }) -> { mode, reason }
+ *
+ * Whether a consumer may start on a candidate producer, or must wait for the
+ * run head to catch back up to the tree the producer's implementers were
+ * cloned from. Pure and total.
+ *
+ * `producerDone` true answers `launch` — the producer is adopted, nothing
+ * speculative about it. Otherwise, a `producerAnchor` that isn't a string
+ * means the producer hasn't been dispatched at all yet, so `wait`. Otherwise,
+ * `head === producerAnchor` answers `on-candidate` — the run head hasn't
+ * moved since that candidate was cut, so the consumer's own tree still
+ * matches it. Otherwise the head has moved on since, so `wait`, naming both
+ * shas in the reason.
+ */
+export function speculationFor ({ producerDone, head, producerAnchor } = {}) {
+  if (producerDone === true) return { mode: 'launch', reason: 'producer adopted' }
+  if (typeof producerAnchor !== 'string') return { mode: 'wait', reason: 'producer not yet dispatched' }
+  if (head === producerAnchor) {
+    return { mode: 'on-candidate', reason: 'head unchanged since the candidate anchor ' + head }
+  }
+  return { mode: 'wait', reason: 'head moved from ' + producerAnchor + ' to ' + head + ' since the candidate was cut' }
+}
+
 export function waitsFor ({ taskId, hardPreds = [], chainPreds = [], policy } = {}) {
   const onCandidate = Boolean(policy && policy.speculate && policy.speculate.on_candidate)
   const hard = [...(hardPreds || [])]
