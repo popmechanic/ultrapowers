@@ -23,8 +23,8 @@ derives it from a contract and its probes, against real code the plan never saw.
 
 ## The document
 
-Above the first task: `**Grammar:** claims-v1` (absent, the compiler parses the legacy
-grammar — that is the rollback path, not a choice), one `**Claim:**` line — the operator's
+Above the first task: `**Grammar:** claims-v1` (absent, `plan_parse.py` refuses the plan —
+there is no legacy grammar to fall back to), one `**Claim:**` line — the operator's
 own do:/see: sentence about what they will see after the run, closed `(elicited)` when they
 said it to you and `(quoted from #NNN)` when an issue already carries that sentence
 verbatim; those two tags and no third — then `**Goal:**`, `**Tech Stack:**`, the spec path,
@@ -42,10 +42,10 @@ Beside `**Tech Stack:**`, an optional `**Dependencies:**` line declares every pa
 one line, space-separated specs, each `name` or `name@range`, with the single word `dev:`
 marking where the development-only group begins — `**Dependencies:** tailwindcss@^4
 @tailwindcss/vite dev: eslint @shadcn/lint` declares two packages for the app and two for
-development. The range alphabet is closed to what a shell may be handed as one quoted
-word: `^4`, `~1.2`, `4.x` and `==1.0` are specs, `>=1.2` is refused at `--check` with a
-sentence naming the offending word, and so is a second `dev:` or a line naming no package
-at all. A package is declared here and never discovered later: no task of the plan adds
+development. The range alphabet is conventionally what a shell may be handed as one quoted
+word: `^4`, `~1.2`, `4.x` and `==1.0` are specs; nothing today reads this line to refuse a
+wider range, a second `dev:`, or a line naming no package — the alphabet is the author's own
+to keep. A package is declared here and never discovered later: no task of the plan adds
 one by editing `package.json`, `pyproject.toml` or a lockfile. A manifest on a task's
 Files list is edited for a script or a config field, not for a dependency — the driver
 reds a manifest edit outside a task's Files, so a package that is not on this line is a
@@ -91,7 +91,8 @@ conflict. Keep both markers in the contiguous run directly under the heading.
   n=71 runs through 2026-09-13, #964).
 - There is no `Tier` plan marker. Tier is a signed field of the *intent document* (One
   Driver spec §7), a spend authority — never written on a task here.
-- `Depends-on` and `Commutes` lines are refused outright. Ordering is derived from
+- `Depends-on` and `Commutes` lines are refused by `plan_check.py` as a `grammar:`
+  violation; `plan_parse.py` reads neither. Ordering is derived from
   Interfaces token-matching and Files overlap; same-path overlap is derived from Files.
   A Proof `Run:` whose command names a path in a sibling's Files — and not in the running
   task's own — is derived the same way: the sibling that owns the file goes first, because
@@ -129,12 +130,15 @@ where this plan's Files sets were wrong.
   a typo and a prose sentence are both silently missing edges, and nothing warns on one.
 - **Context:** what the implementer must know that the repo cannot tell it. Keep it short;
   nothing refuses on its length. Steps prose smuggled in here is
-  caught structurally instead: fences are illegal outside Proof, and a task-reference
+  caught structurally instead: fences belong in Proof, and a fence elsewhere is the
+  author's own to catch — nothing enforces it. A task-reference
   ordering phrase (`after Task 2`) orders nothing at all.
 - **Proof:** the plan's `Run:` probes, citing clauses, and nothing else. The only slot
   where code fences are legal. Its legs — `(a) … (b) …` —
-  **each cite the clause they establish, `[M2]`**; the compiler refuses a clause no leg
-  cites, a leg citing nothing, or a citation of a clause that does not exist. **A probe
+  **each cite the clause they establish, `[M2]`**; nothing mechanical closes an uncited
+  clause, a leg citing nothing, or a citation of a clause that does not exist — the gate
+  reader names those on the read (see the Gate section below), and `plan_check.py`
+  refuses a `Run:` tag naming a clause the Machine line does not number. **A probe
   computes facts and nothing else**: an exit code, a recorded argv, a byte-exact string, a
   count, an ordering of events, agreement with an oracle. A clause, or the part of one, that
   only says what the code says or how it is shaped is Jev's to read against the hunk at
@@ -152,7 +156,7 @@ where this plan's Files sets were wrong.
   every sim belongs to the one task that owns the sims, as one line, or nowhere.
   A `Run:` whose command ends in a citation tag of the same shape a leg carries —
   `- Run: grep -q 'kata 0.17.2' fleet/CONTRACT.md [M2]`, or `[M1, M3]` — is a *prover*,
-  paired with the clause it names: the compiler strips the tag before the driver runs the
+  paired with the clause it names: `plan_check.py` strips the tag before the driver runs the
   command, refuses a tag naming a clause the Machine line does not number, and never counts
   the tag as a citing leg (the legs still cite). A `Run:` with no tag is a *guard* — a
   `bash -n`, a sim that must stay green. **An untagged prover settles nothing**: the
@@ -183,8 +187,9 @@ where this plan's Files sets were wrong.
   repository, because a BASE comparison is a `Check:` or `Run:` — the driver hands that
   command the sha, and a depth-1 clone holds no other commit to compare against.
 - **Stale-if:** predicates, one per line — `path-exists:` / `path-absent:` /
-  `sha-matches: <path>@<sha>` / `issue-open: #NNN` / `issue-closed: #NNN`. A free sentence
-  is a refusal; an undecidable staleness test is inert prose.
+  `sha-matches: <path>@<sha>` / `issue-open: #NNN` / `issue-closed: #NNN`.
+  A free sentence is a `grammar:` refusal from `plan_check.py`; an undecidable staleness
+  test is inert prose.
 
 ```markdown
 ### Task 2: The widget catalog
@@ -384,7 +389,7 @@ AskUserQuestion of the sitting — the execute question included, `recommended` 
 option carried the tag, and `explain_rounds` the number of Please explain rounds that question
 took (absent reads 0). The author writes the whole object once, at the execution handoff after
 `PLAN OK` and before the launch; the compiler prints it as one `AUTHORING fact:` line under
-`--check --base`, ending with the explain count, and the launcher carries that line onto the
+`plan_check.py --base`, ending with the explain count, and the launcher carries that line onto the
 launch line. A release reads a run
 range with `python3 $UW/authoring_census.py --fetch <owner>/<repo> --runs <A>..<B> --into <dir>`,
 and its last `totals:` line is what the release notes carry. A missing task, a
@@ -455,8 +460,8 @@ exits 2 and prints no `PLAN OK`. An issue predicate the laptop cannot read is un
 not false: no `gh` on PATH, a non-zero exit, or an answer that is neither `OPEN` nor
 `CLOSED` prints `STALE fact: task <id>: <entry> unreadable at BASE — <reason>` as an
 advisory line after the verdict, beside the `BASE fact:` lines, so an offline laptop still
-prints `PLAN OK` and exits 0. Only `--check --base` asks: a bare `--check` and a plain
-compile evaluate no predicate at all.
+prints `PLAN OK` and exits 0. Only `plan_check.py --base` asks: a plain compile with no
+`--base` evaluates no predicate at all.
 
 The launcher
 runs this same compile at `--base` before it pushes anything and prints the same
@@ -567,7 +572,7 @@ knowing the sha, where a frozen `git hash-object` literal is the shape for a sin
 And a `Check:` that runs a sim is paid by every task on every pass, where the same command
 in the owning task's `Run:` is paid once: put it there, and keep this section for what no
 single task owns. That is not only advice: a `Check:` whose command names a file one task's
-Files own is refused at `--check`, naming the task and the path, because a check a single
+Files own is refused by `plan_check.py`, naming the task and the path, because a check a single
 task would turn green was never run-wide. A `Check:` that freezes a pathspec covering any
 task's `Create:`, `Modify:` or `Delete:` path is refused by `plan_check.py` the
 same way, because it goes red the moment that task's own patch lands (run-199, n=1 run,
