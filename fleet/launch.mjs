@@ -1268,6 +1268,16 @@ async function launchBody ({
     reapError = String(error?.message ?? error) || 'launch: the reap failed'
   }
 
+  // A reap that failed leaves no fleet list for the duplicate guard (#1036) to
+  // read — refuse rather than launch with the guard silently skipped, unless
+  // the operator passed `--again` to launch without it.
+  if (fleetRuns === null && opts.again !== true) {
+    throw new Refusal(
+      `launch: the reap did not answer, so the duplicate guard (#1036) cannot run — ${reapError}; ` +
+      'pass --again to launch without it'
+    )
+  }
+
   // ── The duplicate check (#1036). A plan that is already live on this target
   //    is refused here, before the run number is read and before anything is
   //    pushed: a second launch of the same plan re-answers the live run's task
@@ -1354,9 +1364,9 @@ async function launchBody ({
   // wall on either window is a refusal before any push; an unread row is
   // never a refusal (#1114).
   const usageRow = readUsage(account)
-  let usage
+  let usageLine
   if (usageRow.unread) {
-    usage = `usage: ${account} unread — ${usageRow.reason}`
+    usageLine = `usage: ${account} unread — ${usageRow.reason}`
   } else {
     const { sevenDay, fiveHour } = usageRow
     if (sevenDay.utilization >= USAGE_REFUSE_PCT) {
@@ -1365,7 +1375,7 @@ async function launchBody ({
     if (fiveHour.utilization >= USAGE_REFUSE_PCT) {
       throw new Refusal(usageRefusal(account, 'five-hour', fiveHour))
     }
-    usage = `usage: ${account} 7d ${sevenDay.utilization}% resets ${sevenDay.resetsAt}; ` +
+    usageLine = `usage: ${account} 7d ${sevenDay.utilization}% resets ${sevenDay.resetsAt}; ` +
       `5h ${fiveHour.utilization}% resets ${fiveHour.resetsAt}`
   }
 
@@ -1500,7 +1510,7 @@ async function launchBody ({
     account,
     // The usage line, read after the refresh and before any push (#1114) —
     // carried on `renderLaunch` directly after `account=`.
-    usage,
+    usage: usageLine,
     // The hold line from `defaultRefreshCredential`, when the credential tool
     // held rather than rotated because a listed fleet VM is still live — carried
     // onto the launch line so a launch beside live runs says so.
