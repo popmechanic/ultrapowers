@@ -1,0 +1,66 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "7ae55292cb3c86883f92723876a9d5d6856ccd4a4509d2fc59c1009b699c2fa2",
+   "verdict": "pass",
+   "reason": "Every computable fact has a tagged probe; the row's field names and the on-candidate guard are code shape for the run-time reader; base pins nothing opposite."
+  }
+ },
+ "tally": {
+  "dispatched": 2,
+  "rejected": 1,
+  "rounds": {
+   "1": {
+    "dispatched": 1,
+    "rejected": 1,
+    "reason": "M3's once-per-head guard was a count fact with no leg; the clause was narrowed and the guard moved to Context"
+   },
+   "2": {
+    "dispatched": 1,
+    "rejected": 0
+   }
+  },
+  "base": "acb7d31555b1a2a76db9f4f4c6f06c5808ced1cd"
+ },
+ "authoring": {
+  "minutes": 35,
+  "probes": 4,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Next",
+    "options": [
+     "Fix #1272 on the fleet",
+     "Fix #1271 inline, here",
+     "Housekeeping and handoff, then stop"
+    ],
+    "recommended": "Fix #1272 on the fleet",
+    "picked": "Fix #1272 on the fleet",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Sign it as written",
+     "Sign a stronger version: fold the candidate onto the moved head"
+    ],
+    "recommended": "Sign it as written",
+    "picked": "Sign it as written",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
