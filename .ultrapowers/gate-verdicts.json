@@ -1,0 +1,69 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "ea15527f275ff29ce6a2b8f97a0b3b43b059ede30cc2ccfde4f47926ea687973",
+   "verdict": "pass",
+   "reason": "Exit codes, the violation(s) and no-checkout strings, the argv literal plus sim sentinel, and the help text each have a tagged one-command probe; base pins nothing opposite."
+  },
+  "2": {
+   "hash": "1194651cd98aa618a0258e8fbfc45fa114683f1a30555f8878afbfa9740db677",
+   "verdict": "pass",
+   "reason": "The reap time computes to 19:53:00Z as pinned; four cases and the exact key set, the single-line render and the empty case, export/call-count/pending, exit code and --age are all probed."
+  }
+ },
+ "tally": {
+  "dispatched": 2,
+  "rejected": 0,
+  "rounds": {
+   "1": {
+    "dispatched": 2,
+    "rejected": 0
+   }
+  },
+  "base": "a0cfa6d7049859db0cb99feebb48f6d09acbfc79"
+ },
+ "authoring": {
+  "minutes": 30,
+  "probes": 7,
+  "routing": {
+   "branch": "width",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Meanwhile",
+    "options": [
+     "Write today's traps into the RUNBOOK",
+     "Make the stop hook hold for timed waits too",
+     "Retire the two stale fixture branches",
+     "A deterministic fix in code instead (operator's edit)"
+    ],
+    "recommended": "Write today's traps into the RUNBOOK",
+    "picked": "A deterministic fix in code instead (operator's edit)",
+    "explain_rounds": 1
+   },
+   {
+    "question": "Deterministic",
+    "options": [
+     "Both fixes as one fleet plan",
+     "The launcher fix only, inline",
+     "Neither now"
+    ],
+    "recommended": "Both fixes as one fleet plan",
+    "picked": "Both fixes as one fleet plan",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
