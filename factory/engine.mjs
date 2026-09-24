@@ -45,7 +45,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { cloneAtBase } from './clone.mjs'
 import { makeJevClient } from '../fleet/jev-client.mjs'
-import { runAll, bootstrapFor } from './commands.mjs'
+import { bootstrapFor } from './commands.mjs'
+import { makeKataClient, httpTransport } from '../fleet/kata-client.mjs'
 import { runWorker } from './worker.mjs'
 import { makeJudge } from './judge.mjs'
 import { literalsOf, hunksCarrying, filesShown } from './hunks.mjs'
@@ -281,9 +282,9 @@ function clausesOf (body) {
   return numbered.length ? numbered : line.split(/;\s*/).map((s) => s.trim()).filter(Boolean)
 }
 
-/** The timeout every command `runAll` runs gets, wherever no more specific
- *  policy field applies (`policy.fold.reverify.timeout_seconds` and
- *  `policy.select.timeout_seconds` are the two that do). */
+/** The timeout every command a proof or bootstrap runs gets, wherever no
+ *  more specific policy field applies (`policy.fold.reverify.timeout_seconds`
+ *  and `policy.select.timeout_seconds` are the two that do). */
 const DEFAULT_TIMEOUT_SECONDS = 300
 
 /** One patch, split into its per-file diffs, keyed by path. */
@@ -397,11 +398,12 @@ function makeCloner ({ target, runDir, git, sh, bootstrapCmd, timeoutSeconds, ap
       try { files = git(['ls-files'], clone).split('\n').map((s) => s.trim()).filter(Boolean) } catch { /* none tracked (or not a repo) reads as no evidence */ }
       const cmd = bootstrapFor({ planCmd: bootstrapCmd, files })
       if (cmd) {
-        const r = runAll({ cmds: [cmd], cwd: clone, sh, timeoutSeconds: timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS })
-        if (r.exit !== 0) {
-          if (appendEvent) appendEvent({ kind: 'bootstrap:red', clone, exit: r.exit })
-          const err = new Error('bootstrap failed in ' + clone + ': exit ' + r.exit)
-          err.bootstrapRed = { clone, exit: r.exit, tail: r.out.slice(-1500) }
+        const r = sh('timeout', [String(timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS), 'bash', '-lc', cmd], clone)
+        const exit = exitOf(r)
+        if (exit !== 0) {
+          if (appendEvent) appendEvent({ kind: 'bootstrap:red', clone, exit })
+          const err = new Error('bootstrap failed in ' + clone + ': exit ' + exit)
+          err.bootstrapRed = { clone, exit, tail: outOf(r).slice(-1500) }
           throw err
         }
       }
@@ -527,10 +529,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const kata = deps.kata || null
   const board = deps.board || (args.kataUrl
     ? makeBoard({
-        kata: deps.kata || await (async () => {
-          const { makeKataClient, httpTransport } = await import('../fleet/kata-client.mjs')
-          return makeKataClient({ transport: httpTransport({ url: String(args.kataUrl) }), actor: args.kataActor })
-        })(),
+        kata: deps.kata,
         projectId: args.kataProject,
         tasks: kataTasks,
         log,
@@ -738,6 +737,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const candidateCommitFor = (producerId) => {
     if (!candidateCommitCache.has(producerId)) {
       candidateCommitCache.set(producerId, candidateDeferred(producerId).promise.then((best) => {
+        if (!best) throw new Error('no candidate: task ' + producerId + ' landed without one')
         git(['add', '-A'], best.dir)
         git(['-c', 'user.name=factory', '-c', 'user.email=factory@localhost',
           'commit', '-m', 'candidate: task ' + producerId], best.dir)
@@ -1323,6 +1323,10 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       (await read('readTask', { id: task.id, title: task.title, body: task.body, who: { task: task.id, label: null } })) || {}
     const k = kPlan.k[task.id] || 1
     const wantsReferee = reading.referee === true
+    // M1: the deferred this task's consumers wait on resolves once, in the
+    // `finally` below, off whichever candidate is last assigned here — never
+    // off a tree a re-dispatch or referee-fix worker is still editing.
+    let best = null
 
     // M4: everything past here makes at least one clone (an implementer
     // clone, or — inside `measure`'s own base-clone cache, below — the lazy
@@ -1368,7 +1372,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     //    is readable against its rivals and not merely asserted.
     const scores = candidates.map(scoreOf)
     let refereeDied = false
-    let best = candidates[0]
+    best = candidates[0]
     for (const c of candidates) if (scoreOf(c) > scoreOf(best)) best = c
     if (k > 1) {
       appendEvent({ kind: 'select', task: task.id, scores, chosen: best.dir })
@@ -1376,11 +1380,6 @@ export async function runEngine (rawArgs = {}, deps = {}) {
         if (c !== best) fs.rmSync(c.dir, { recursive: true, force: true })
       }
     }
-
-    // This task's own: this task's best candidate, measured, for whichever
-    // sibling's `waitsOn` has it in `candidate` rather than `adoption` — a
-    // one-shot resolution, unmoved by any later re-dispatch or fix.
-    candidateDeferred(task.id).resolve({ dir: best.dir, patch: best.patch })
 
     // M4: this task's best candidate, first measured — the moment a sibling
     // that consumes what it produces might want to know about it.
@@ -1494,10 +1493,21 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       ...(refereeDied ? { referee: 'died' } : {}),
     }
     } catch (err) {
-      if (!(err && err.bootstrapRed)) throw err
-      const { clone, exit, tail } = err.bootstrapRed
-      const reason = 'bootstrap failed in ' + clone + ': exit ' + exit + (tail ? '\n' + tail : '')
-      return { task, k, anchor, dead: reason, wall_ms: Date.now() - t0 }
+      if (err && err.bootstrapRed) {
+        const { clone, exit, tail } = err.bootstrapRed
+        const reason = 'bootstrap failed in ' + clone + ': exit ' + exit + (tail ? '\n' + tail : '')
+        return { task, k, anchor, dead: reason, wall_ms: Date.now() - t0 }
+      }
+      const text = err && typeof err.stack === 'string' ? err.stack : String((err && err.message) || err)
+      return { task, k, anchor, dead: ('landing threw: ' + text).slice(0, 1500), wall_ms: Date.now() - t0 }
+    } finally {
+      // M1: this task's best candidate, measured, for whichever sibling's
+      // `waitsOn` has it in `candidate` rather than `adoption` — resolved
+      // once, off the final `best` a re-dispatch or referee-fix worker left
+      // behind, never off a tree still being edited; `null` when no
+      // candidate was ever selected (e.g. a bootstrap-red park), so a
+      // consumer waiting on a dead producer parks instead of hanging.
+      candidateDeferred(task.id).resolve(best ? { dir: best.dir, patch: best.patch } : null)
     }
   }
 
@@ -1816,7 +1826,14 @@ export async function runEngine (rawArgs = {}, deps = {}) {
       appendEvent({ kind: 'dispatch:on-candidate', task: task.id, from: producerId, anchor })
       const landing = await land(task, anchor)
       return { id: task.id, landing }
-    }))
+    }).catch((err) => ({
+      id: task.id,
+      landing: {
+        task, k: 1, anchor: null,
+        dead: ('no candidate from task ' + producerId + ': ' + String((err && err.message) || err)).slice(0, 1500),
+        wall_ms: 0,
+      },
+    })))
   }
 
   /** One fixed-point pass: a task whose predecessors are all adopted starts
@@ -2279,7 +2296,7 @@ export async function runRefold (rawArgs = {}, deps = {}) {
  * one place it is added. The variable is read at CALL time, never captured, so
  * an environment that changes mid-run is followed rather than remembered.
  */
-function buildDeps (rawArgs = {}, overrides = {}) {
+export function buildDeps (rawArgs = {}, overrides = {}) {
   const args = normalizeArgs(rawArgs)
   const env = overrides.env || process.env
   const log = overrides.log || ((s) => process.stderr.write(String(s) + '\n'))
@@ -2315,18 +2332,21 @@ function buildDeps (rawArgs = {}, overrides = {}) {
   // Readable after the fact: which two documents this judge was built on.
   try { Object.assign(judge, { questionsPath, policyPath }) } catch { /* frozen is fine */ }
 
+  // The one Kata client `buildDeps` ever makes: `board`, `tools` and the
+  // `kata` this answers all close over this same object (M2), so the
+  // `interface.settled` write in `runEngine` reaches the same place the
+  // worker's own `settled` tool does.
+  const kata = overrides.kata || (args.kataUrl
+    ? makeKataClient({ transport: httpTransport({ url: String(args.kataUrl) }), actor: args.kataActor })
+    : null)
+
   // `factory/tools.mjs` is imported only where it is used. It resolves the SDK
   // and zod out of `fleet/node_modules` at module evaluation, so a static
   // import here would make a run with no kata — the common one — depend on an
   // install it never needs.
   const tools = args.kataUrl
     ? async ({ task, candidates, board, runProof }) => {
-      const { makeKataClient, httpTransport } = await import('../fleet/kata-client.mjs')
       const { factoryTools } = await import('./tools.mjs')
-      const kata = overrides.kata || makeKataClient({
-        transport: httpTransport({ url: String(args.kataUrl) }),
-        actor: args.kataActor,
-      })
       return factoryTools({ kata, projectId: args.kataProject, task, candidates, board, runProof })
     }
     : null
@@ -2338,6 +2358,7 @@ function buildDeps (rawArgs = {}, overrides = {}) {
     sh: overrides.sh || defaultSh,
     git: overrides.git || defaultGit,
     tools,
+    kata,
     questionsPath,
     policyPath,
     fetchImpl,

@@ -20,7 +20,7 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { makeKataClient, sshTransport } from './kata-client.mjs'
+import { makeKataClient, runIssueOf, sshTransport } from './kata-client.mjs'
 import {
   KATA_HUB_FIX,
   Refusal,
@@ -170,14 +170,6 @@ export function renderBoard (projection) {
  *  the feed's end. */
 const HUB_PAGE_SIZE = 100
 
-/** The run issue of run `n`: `metadata.run` is `n` and `metadata` carries no
- *  `task` (a task issue's run arrives on the feed, not on the issue itself). */
-const isRunIssueFor = (issue, n) => {
-  const meta = issue && issue.metadata
-  if (!meta || meta.task !== undefined) return false
-  return meta.run !== undefined && meta.run !== null && Number(meta.run) === n
-}
-
 /**
  * `client.events(projectId, after)`, memoized on `after` for the lifetime of
  * one `readBoard` call — the bisection below asks about the same `after`
@@ -248,7 +240,7 @@ export async function readBoard ({ client, projectId, runs, since }) {
     const runList = (runs || []).map(Number)
     const candidates = []
     for (const n of runList) {
-      const issue = issues.find((iss) => isRunIssueFor(iss, n))
+      const issue = runIssueOf(issues, n, null)
       if (issue) candidates.push(issue)
     }
     if (candidates.length === 0) {

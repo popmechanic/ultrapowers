@@ -1779,7 +1779,7 @@ async function fileRunOnHub ({ hub, call, planText, target, base, n, compiled })
   const runIssue = await call('createIssue', () => hub.createIssue(project.id, {
     title: `${stamp}: ${planTitleOf(planText)}`,
     body: planClaimOf(planText),
-    metadata: { run: n, target, base, closes: planClosesOf(planText) },
+    metadata: { run: n, target, base, closes: planClosesOf(planText), plan: planSha },
     idempotencyKey: keyFor(`run-${n}`),
     // A relaunch of a plan the fleet already drove differs from that run's
     // open issue only by N in the title, and the hub's duplicate scorer refuses
