@@ -91,6 +91,15 @@
       "basis": "judgment",
       "experiment": true,
       "rollback": "enabled = false"
+    },
+    "requeue_missing_producer": {
+      "enabled": true,
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "experiment": true,
+      "unread": "flock-baseline run-1: task 2 adopted with factsExit 1 after both candidates and a re-dispatch failed on `No module named 'widgetkit.widget'` -- task 1's file, not yet adopted. No run has yet been read with the requeue on; the first run where a landing waits on a sibling is the reading",
+      "rollback": "enabled = false"
     }
   },
   "task": {
@@ -232,6 +241,15 @@
   },
   "pairs": {
     "mode": "live",
+    "verdict_read": {
+      "value": "most-likely",
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "experiment": true,
+      "rollback": "value = mean",
+      "unread": "#1292: flock-baseline run-1 and run-215 are the two recorded readings (of n=42 pair readings) where the probability-weighted mean flipped a most-likely chain to look. Pre-registered reading per release: pair verdicts where the most-likely level and the mean's cut-point level disagree, and how each disagreement landed"
+    },
     "t_changes_consumer": {
       "value": 0.8,
       "n": 0,
@@ -248,6 +266,15 @@
       "experiment": true,
       "rollback": "enabled = false",
       "unread": "#1265: run-1 on vibecoding-analyzer (2026-09-23, 17 tasks) started four consumers whose probes imported a sibling's created module at second zero — 11 red folds, 2 redispatches, ~50 min; a probe cannot import a file nobody has written, so a proof-run edge is a fact and stays hard. Pre-registered reading per release: red folds whose cause is a missing sibling file, and consumers held by this cell that Jev's pair label also read as chain"
+    },
+    "interface_hard": {
+      "enabled": true,
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "experiment": true,
+      "rollback": "enabled = false",
+      "unread": "#1292: flock-baseline run-1 (operator's pick 2026-09-25) — a consumer cannot call a symbol nobody has written, so a Consumes: whose symbol is absent at BASE is chained by code and the consumer starts on the producer's measured candidate. Pre-registered reading per release: pairs decided chain by this cell that Jev's reading would have called fold, and red folds on consumers whose consumed symbol was absent at BASE"
     },
     "n": 0,
     "window": "none",

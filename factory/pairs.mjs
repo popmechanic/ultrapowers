@@ -188,14 +188,39 @@ export async function pairState({ pair, tasks, read }) {
     statedInConsumer = bulletText ? consumerTask.body.includes(bulletText) : false
   }
 
-  const state = { producer, consumer, shared, shape: { symbol, stated_in_consumer: statedInConsumer } }
+  // Whether the consumed symbol already exists at BASE: a whole-word hit in
+  // any of the producer's Files as read at BASE (an absent file reads `''`).
+  let symbolAtBase = false
+  if (symbol) {
+    const wordRe = new RegExp('\\b' + escapeRegExp(symbol) + '\\b')
+    for (const path of producerTask.files || []) {
+      if (wordRe.test((await read(path)) || '')) {
+        symbolAtBase = true
+        break
+      }
+    }
+  }
+
+  const state = {
+    producer,
+    consumer,
+    shared,
+    shape: { symbol, stated_in_consumer: statedInConsumer, symbol_at_base: symbolAtBase },
+  }
   return capToByteBudget(state)
 }
 
 // ── M3: decideByCode ─────────────────────────────────────────────────────
 
-export function decideByCode(state) {
-  if (state.shape && state.shape.symbol) return null
+// A consumed symbol absent at BASE is a chain by code: the consumer cannot
+// meet a name nobody has written yet. `opts.interfaceHard === false` (the
+// `pairs.interface_hard` switch off) leaves that pair to the reader.
+export function decideByCode(state, opts = {}) {
+  const interfaceHard = !opts || opts.interfaceHard !== false
+  if (state.shape && state.shape.symbol) {
+    if (interfaceHard && state.shape.symbol_at_base === false) return 'chain'
+    return null
+  }
   if (!state.shared || state.shared.length === 0) return null
   for (const s of state.shared) {
     if (s.producer_hits.length === 0 || s.consumer_hits.length === 0) return null
