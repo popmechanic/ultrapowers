@@ -186,10 +186,11 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   (#715), read on the 8-wide drain of 2026-09-08 — four kernel-seen pairs all folded green with zero
   conflicts (n=4 pairs, 8 runs, 2026-09-08), which met the pre-registered condition and retired the
   earlier rule ("run in parallel wherever file sets are disjoint"). Caveat on the record: every one
-  of those joins was line-disjoint; the resolver's only real folds are run-36 (2 resolvers, merged)
-  and run-44 (4 resolvers, 2 misses, suite red, caught), both 2026-09-07 —
-  6 dispatches, 2 misses, both caught (n=6 dispatches, runs 36 and 44); the next drain that produces
-  a conflict is the resolver's measurement, not a reason to serialize. Allocated vCPU stays
+  of those joins was line-disjoint. The resolver's real folds on the record are at least 17
+  dispatches with 3 known misses (n≥17 dispatches, runs 36, 44, 115, fixture 12, 157, 167 and 194,
+  2026-09-07 → 2026-09-18, tallied on maps #810 and #1131 and on #359): run-44's two misses were
+  caught by a red suite and fixture run-12's lost wording pin was restored by hand; a conflict is
+  the resolver's measurement, not a reason to serialize. Allocated vCPU stays
   over-committable (48 on a 16-vCPU plan during that drain), so contention, not allocation, bounds
   concurrent runs.
 - **One merge, one writer.** Manyana merges file *content* at the fold, and that is the only
@@ -202,6 +203,12 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   fixtures, `evals/results/2026-08-30-one-driver-fold-ab.md`), so same-file concurrent writes are
   the shipped default: a substrate that isolates harder than the kernel needs is buying nothing and
   costing width.
+  **Under question since 2026-09-25 (map #1292, the Flock):** the fold rebuilds each path's weave
+  from BASE on every landing (`repo_weave.chained_snapshots`), so Manyana runs today as a
+  two-sided, three-way merge and its memory is discarded per fold. #1292 proposes a weave replica
+  per agent, merged continuously, with beliefs on the board and the facts kept at one edge — which
+  retires this rule. The rule stands until #1292's prototype earns the engine; its first reading is
+  the offline weave replay (its ticket 1).
 - **Handoffs are opt-in** — a session starts from the operator's intention, never from the last
   session's agenda; read `.claude/ultrapowers/handoffs/` only when asked to resume (operator,
   2026-08-31). When you do read them, **sort by mtime, never by filename** — they are named for
