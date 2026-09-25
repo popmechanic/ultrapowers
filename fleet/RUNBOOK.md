@@ -766,10 +766,13 @@ an exe VM with 2 vCPU / 4 GB)
   boot still waited its whole 120 s on a string Kata never prints, then ran the engine without its board
   (2026-09-18; #1155). The same document answered the open measurement: `pull_cursor_event_id` moved and
   `last_successful_sync_at` was set, so the edge passes the spoke's own bearer through `kata-sync`.
-- A factory run that ended `parked` or `failed` has its VM reported `stale … state=open — look before you
-  rm` by the janitor, because the factory boot closes the hub's run issue only on `done` (#1150; `close_run`
-  in `factory/boot.sh`). Verify `ultra/evidence/run-<N>` with `git ls-remote --tags origin`, then
-  `ssh exe.dev rm <vm>` by hand.
+- A factory run that ended `parked` or `failed` leaves its hub run issue open but marks it: the boot
+  (`close_run` and the nothing-ahead park in `boot()`, and `fail()` once its evidence is ready in
+  `factory/boot.sh`) runs `board.mjs mark-run`, which writes `work.state` = `parked`|`failed` on the run
+  issue's metadata, and the janitor reaps the VM an hour on by its ordinary rule (#1150, #1288). A VM
+  still reported `stale … state=open — look before you rm` is a run whose mark never reached the hub
+  (its `events.jsonl` `board:mark` row says what the hub answered): verify `ultra/evidence/run-<N>`
+  with `git ls-remote --tags origin`, then `ssh exe.dev rm <vm>` by hand.
 
 ## Capacity
 

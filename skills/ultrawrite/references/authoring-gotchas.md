@@ -233,6 +233,15 @@ file — `suite-total-pin`, `directory-absence-pin` and, since the compiler left
   author is only to expect it: a probe green in its own clone can be red on the folded
   tree, and that is the fold check's finding, not the task's.
 
+- **Inside `python3 -c "…"`, a literal dollar sign is `chr(36)` and a backtick is
+  `chr(96)`.** The double-quoted program reaches bash first: a `$ULTRA_BASE` written
+  there is expanded by the shell before Python sees it, so a fixture meant to carry the
+  literal carries the base sha or nothing — build it as `chr(36)+'ULTRA_BASE'`. A
+  backtick a fixture needs cannot be typed at all, because `plan_check.py` refuses any
+  backtick in a `Run:` as `command carries a backtick` — build it as `chr(96)`. Both
+  slips were caught by the proof gate, not by a run: one gate rejection each on
+  2026-09-24.
+
 ## Three older lessons of the same kind
 
 - **Quote desired-state sentences, never diagnosis sentences.** An issue's

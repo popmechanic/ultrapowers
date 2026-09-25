@@ -924,7 +924,31 @@ GREEN_AT_BASE_TIMEOUT_S = 30
 GREEN_FACT = "GREEN-AT-BASE fact:"
 
 
-def _run_at_base(command, worktree, sha, timeout_s):
+def _timeout_shim_env(tmp):
+    """The environment the rehearsed commands run in: the inherited one, with
+    a directory holding a `timeout` shim prepended to `PATH` when no real
+    `timeout` is on it (macOS ships none). The shim drops the duration and
+    runs the rest (not `exec`'d, so a shell builtin runs too) — `timeout
+    SECONDS CMD...`, the argv shape the engine builds; the rehearsal's own
+    clock still bounds the command. With a real
+    `timeout` on PATH the environment is the inherited one, unchanged."""
+    env = dict(os.environ)
+    if shutil.which("timeout") is not None:
+        return env
+    shim_dir = os.path.join(tmp, "shim")
+    os.makedirs(shim_dir, exist_ok=True)
+    shim = os.path.join(shim_dir, "timeout")
+    with open(shim, "w") as f:
+        # No `exec`: a builtin (`true`) is not a file exec can find on a
+        # bare PATH, and `sh` running `"$@"` answers its exit code the same.
+        f.write('#!/bin/sh\nshift; "$@"\n')
+    os.chmod(shim, 0o755)
+    path = env.get("PATH")
+    env["PATH"] = shim_dir + (os.pathsep + path if path else "")
+    return env
+
+
+def _run_at_base(command, worktree, sha, timeout_s, env=None):
     """One command in the worktree at BASE: `(exit code or None, seconds)`.
 
     `bash -lc <command>` with `ULTRA_BASE` ADDED to the inherited environment.
@@ -934,7 +958,8 @@ def _run_at_base(command, worktree, sha, timeout_s):
     alone."""
     started = time.monotonic()
     proc = subprocess.Popen(["bash", "-lc", command], cwd=worktree,
-                            env={**os.environ, "ULTRA_BASE": sha},
+                            env={**(os.environ if env is None else env),
+                                 "ULTRA_BASE": sha},
                             start_new_session=True,
                             stdin=subprocess.DEVNULL,
                             stdout=subprocess.DEVNULL,
@@ -966,7 +991,8 @@ def _rehearse(commands, base_tree, timeout_s):
     try:
         ok, _ = _git_run(base_tree.repo, "worktree", "add", "--detach",
                          worktree, sha)
-        return [_run_at_base(c, worktree, sha, timeout_s)
+        env = _timeout_shim_env(tmp)
+        return [_run_at_base(c, worktree, sha, timeout_s, env)
                 for c in (commands if ok else [])]
     finally:
         _git_run(base_tree.repo, "worktree", "remove", "--force", worktree)

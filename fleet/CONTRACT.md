@@ -425,7 +425,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   a marked open one's `work.state` is the state and its `updated_at` the age (kata stores the dotted
   key flat, so it is read as `metadata["work.state"]` and never as `metadata.work.state`), and a
   parked run — whose issue stays open for the operator to read — is reaped an hour on like any
-  other; an `open` issue with no such key is a run in flight, aged from `updated_at` →
+  other (the factory boot, `factory/boot.sh` through `board.mjs mark-run`, is the writer of that
+  `work.state` key when a run parks or fails); an `open` issue with no such key is a run in flight, aged from `updated_at` →
   `rm <vm> --json` for a finished run older than 1 h. The hub is reached exactly as the launcher
   reaches it, `fleet/kata-client.mjs`'s `sshTransport`: `ssh <KATA_URL host>` running `curl` against
   `localhost:8000`, the bearer sourced from `/etc/kata/kata.env` ON the hub, the laptop's argv

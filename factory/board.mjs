@@ -327,11 +327,11 @@ async function cmdWait (flags) {
   return 1
 }
 
-/** One events row: `{ ts, kind: 'board:close', ...cells }`, appended as a
- *  JSON line; creates the file's directory when needed. */
-function appendEventRow (eventsPath, cells) {
+/** One events row: `{ ts, kind, ...cells }` (kind `board:close` unless
+ *  given), appended as a JSON line; creates the file's directory when needed. */
+function appendEventRow (eventsPath, cells, kind = 'board:close') {
   mkdirSync(path.dirname(eventsPath), { recursive: true })
-  const row = { ts: new Date().toISOString(), kind: 'board:close', ...cells }
+  const row = { ts: new Date().toISOString(), kind, ...cells }
   appendFileSync(eventsPath, JSON.stringify(row) + '\n')
 }
 
@@ -452,6 +452,64 @@ async function cmdCloseRun (flags) {
 }
 
 /**
+ * `mark-run --kata-json <k> --run <run> --state <s> --admin-url <url> --events <e>`:
+ * writes `work.state` = `<s>` (`parked` or `failed`) onto the run issue's
+ * metadata on the hub — the janitor's own `metadataPatch` shape, the key
+ * stored flat — so `fleet/janitor.mjs` reaps the run's VM by its ordinary
+ * rule. One `board:mark` row on `--events` whatever the hub answers. Never
+ * fails the run: a missing/unreadable kata.json is one skip row and exit 0;
+ * a dark hub is still exit 0.
+ */
+async function cmdMarkRun (flags) {
+  const kataJsonPath = flags['kata-json']
+  const run = flags.run
+  const state = flags.state
+  const adminUrl = flags['admin-url']
+  const eventsPath = flags.events
+
+  try {
+    const doc = readJsonFile(kataJsonPath)
+    if (doc === undefined) {
+      appendEventRow(eventsPath, { what: 'run', state, code: null, skipped: 'no kata.json to read' }, 'board:mark')
+      return 0
+    }
+    const projectId = doc.project && doc.project.id
+    const runUid = doc.run && doc.run.uid
+    if (!Number.isInteger(projectId) || typeof runUid !== 'string' || runUid.length === 0) {
+      appendEventRow(eventsPath, { what: 'run', state, code: null, skipped: 'no readable project.id/run.uid' }, 'board:mark')
+      return 0
+    }
+
+    let code = null
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 20000)
+    try {
+      const res = await fetch(adminUrl + '/api/v1/projects/' + projectId + '/issues/' + runUid + '/metadata', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'Idempotency-Key': run + ':run:mark:' + state },
+        body: JSON.stringify({ actor: 'sandbox:' + run, patch: { 'work.state': state } }),
+        signal: controller.signal,
+      })
+      code = res.status
+      if (code < 200 || code >= 300) {
+        process.stderr.write('board: mark ' + runUid + ' answered ' + code + '\n')
+      }
+    } catch (error) {
+      const detail = error && error.message ? error.message : String(error)
+      process.stderr.write('board: mark ' + runUid + ' failed: ' + detail + '\n')
+    } finally {
+      clearTimeout(timer)
+    }
+    appendEventRow(eventsPath, { what: 'run', state, code }, 'board:mark')
+    return 0
+  } catch (error) {
+    const detail = error && error.message ? error.message : String(error)
+    process.stderr.write('board: mark-run: unexpected failure — ' + detail + '\n')
+    return 0
+  }
+}
+
+/**
  * `install --version <v> --release-base <U> --home <H>`: fetches
  * `<U>SHA256SUMS` and `<U>kata_<v>_linux_amd64.tar.gz`, checks the archive's
  * bytes against the digest `SHA256SUMS` names beside that asset, extracts
@@ -555,8 +613,9 @@ async function main (argv) {
   if (cmd === 'spoke-config') return cmdSpokeConfig(flags)
   if (cmd === 'wait') return cmdWait(flags)
   if (cmd === 'close-run') return cmdCloseRun(flags)
+  if (cmd === 'mark-run') return cmdMarkRun(flags)
   if (cmd === 'install') return cmdInstall(flags)
-  process.stderr.write('board: usage: board.mjs spoke-config|wait|close-run|install ...\n')
+  process.stderr.write('board: usage: board.mjs spoke-config|wait|close-run|mark-run|install ...\n')
   return 2
 }
 
