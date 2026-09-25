@@ -1,0 +1,75 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "dd86df19de9175d6f3384415da29f560a0ad45a2eba4801547ba29b841e9d234",
+      "verdict": "pass",
+      "reason": "One Run asserts dag_edges equals exactly the one 1->2 interface edge, falsifying an added or lost edge."
+    },
+    "2": {
+      "hash": "f082b3f729724c28d82cd7e0086ad3cfe633961eb2215099fe92fb661f5fa1c5",
+      "verdict": "pass",
+      "reason": "With PATH holding only bash and git the rehearsal of timeout 5 true must read exits 0 at BASE; absent at BASE."
+    },
+    "3": {
+      "hash": "7c618f0f661cf65d44552e10f9847b28ea12c5e9a8bbddc4384cd694e84b005b",
+      "verdict": "pass",
+      "reason": "M1 and M2 carry tagged probes; M3 is shape, read against the hunk at landing."
+    },
+    "4": {
+      "hash": "c2fcb499a159bedcbafe4ac3b7dcee85d69f6b7205a8ccc7d1e79c703635e46f",
+      "verdict": "pass",
+      "reason": "Two greps falsify either missing literal."
+    }
+  },
+  "tally": {
+    "dispatched": 5,
+    "rejected": 1,
+    "rounds": {
+      "1": {
+        "dispatched": 4,
+        "rejected": 1
+      },
+      "2": {
+        "dispatched": 1,
+        "rejected": 0
+      }
+    },
+    "base": "3c7cd199e41e47e9d346498153e456ae6e03fcd4",
+    "rejections": [
+      "task 3 r1: M3's 'a done run is not marked' is a negation with no leg \u2014 narrowed, clause dropped"
+    ]
+  },
+  "authoring": {
+    "minutes": 45,
+    "probes": 0,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Sign as drafted",
+          "Drop the guide note",
+          "Please explain"
+        ],
+        "recommended": "Sign as drafted",
+        "picked": "Sign as drafted",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Execute",
+        "options": [
+          "Ultrapowers",
+          "Subagent-Driven",
+          "Inline",
+          "Please explain"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers",
+        "explain_rounds": 0
+      }
+    ]
+  }
+}
