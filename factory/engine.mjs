@@ -61,6 +61,7 @@ import { settledCoverage, observedFacts, clauseFacts } from './facts.mjs'
 import { observedWork, supervisorTick, makeObservedWatch } from './watch.mjs'
 import { kFor, probeRecord } from './kprobe.mjs'
 import { retrying, isRateLimited } from './retry.mjs'
+import { baseReader } from './baseread.mjs'
 // ── where everything lives ───────────────────────────────────────────────────
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -1938,6 +1939,9 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   const judgedK = Object.fromEntries(tasks.map((t) => [t.id, taskReadings.get(t.id).k]))
   kPlan = kFor({ tasks, difficulties, judged: judgedK, policy: policyDoc })
   appendEvent({ kind: 'dispatch:k', probe: kPlan.probe, k: kPlan.k, difficulties })
+  // The pair builder reads each shared file as it stood at the run's BASE;
+  // a file absent there reads as ''.
+  const readAtBase = baseReader({ git, target, base: runBase })
   if (pairsLive && pairsMod) {
     // A cycle guard shaped exactly like `plan_parse.py`'s own: an adjacency
     // seeded with the hard-predecessor graph already built above, so a chain
@@ -1966,7 +1970,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     const wouldCycle = (from, to) => reaches(to, from)
 
     for (const pair of pairsList) {
-      const state = await pairsMod.pairState({ pair, tasks, read })
+      const state = await pairsMod.pairState({ pair, tasks, read: readAtBase })
       pairStates.set(pair.a + '>' + pair.b, state)
       const codeVerdict = typeof pairsMod.decideByCode === 'function' ? pairsMod.decideByCode(state, { interfaceHard }) : null
       let verdict, by, score
@@ -2079,7 +2083,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   if (pairsLive && pairsMod && pairsList.length) {
     const folds = Object.fromEntries(foldOutcomes)
     for (const pair of pairsList) {
-      const label = await pairsMod.labelPair({ pair, tasks, read, folds, foldOrder })
+      const label = await pairsMod.labelPair({ pair, tasks, read: readAtBase, folds, foldOrder })
       appendEvent({
         kind: 'pair:label',
         a: pair.a,
