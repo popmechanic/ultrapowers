@@ -146,18 +146,41 @@ export function missingProducer ({ runLines = [], tasks = [], taskId, adopted = 
 }
 
 /**
- * requeueDecision({ landing, tasks, taskId, adopted, requeued, enabled }) -> string | null
+ * requeueDecision({ landing, tasks, taskId, adopted, requeued, enabled, parked, predsOf }) -> string | null
  *
  * The whole requeue decision, so the engine only acts on its answer: with the
  * switch on, a landing whose best candidate's facts are red (`factsExit` not
  * 0), for a task not already requeued once, answers the `missingProducer`
  * sibling its failing run lines name. A dead landing (no `best`) answers
  * `null`. Pure.
+ *
+ * The sibling is waited on only when it can still land first: a sibling in
+ * `parked` (array or Set of task ids) answers `null`, and so does one that
+ * waits — directly or through other tasks, read through `predsOf` (Map or
+ * plain object from task id to an iterable of the ids it waits on) — on
+ * `taskId` itself. Absent `parked`/`predsOf` mean no such check.
  */
-export function requeueDecision ({ landing, tasks = [], taskId, adopted = [], requeued = [], enabled } = {}) {
+export function requeueDecision ({ landing, tasks = [], taskId, adopted = [], requeued = [], enabled, parked, predsOf } = {}) {
   if (enabled !== true) return null
   if (!landing || !landing.best) return null
   if (landing.best.factsExit === 0) return null
   if (new Set(requeued || []).has(taskId)) return null
-  return missingProducer({ runLines: landing.best.runLines || [], tasks, taskId, adopted })
+  const sibling = missingProducer({ runLines: landing.best.runLines || [], tasks, taskId, adopted })
+  if (sibling === null || sibling === undefined) return sibling
+  if (parked && new Set(parked).has(sibling)) return null
+  if (predsOf) {
+    const predsFor = (id) => {
+      const preds = predsOf instanceof Map ? predsOf.get(id) : predsOf[id]
+      return preds ? [...preds] : []
+    }
+    const seen = new Set([sibling])
+    const stack = [sibling]
+    while (stack.length > 0) {
+      for (const pred of predsFor(stack.pop())) {
+        if (pred === taskId) return null
+        if (!seen.has(pred)) { seen.add(pred); stack.push(pred) }
+      }
+    }
+  }
+  return sibling
 }
