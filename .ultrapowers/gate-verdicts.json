@@ -1,0 +1,64 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "73252e29ac3776ffd575a4b1f3776bf4e7630fa333c1010501aadae805db6ede",
+   "verdict": "pass",
+   "reason": "M1-M3 each have a probe that fails when false; M4 is call-site shape read at landing."
+  },
+  "2": {
+   "hash": "d2d5b338637b8f0953aa1c9675fc06c99a52f8d17204ae5581ecb06834a8de7f",
+   "verdict": "pass",
+   "reason": "M1-M3 each have a tagged probe that fails if false; M4 is a call-site clause."
+  }
+ },
+ "tally": {
+  "dispatched": 2,
+  "rejected": 0,
+  "rounds": 1,
+  "base": "71c10cc8bae840fc1d44a481130abd2a264c27e5"
+ },
+ "authoring": {
+  "minutes": 20,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Follow-up scope",
+    "options": [
+     "One plan, both fixes",
+     "Only the file reader",
+     "Record them, fix later",
+     "Please explain"
+    ],
+    "recommended": "One plan, both fixes",
+    "picked": "One plan, both fixes",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Sign as written",
+     "Shorter Claim",
+     "Please explain"
+    ],
+    "recommended": "Sign as written",
+    "picked": "Sign as written",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Inline",
+     "Please explain"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
