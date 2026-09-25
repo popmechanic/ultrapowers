@@ -232,6 +232,15 @@
   },
   "pairs": {
     "mode": "live",
+    "verdict_read": {
+      "value": "most-likely",
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "experiment": true,
+      "rollback": "value = mean",
+      "unread": "#1292: flock-baseline run-1 and run-215 are the two recorded readings (of n=42 pair readings) where the probability-weighted mean flipped a most-likely chain to look. Pre-registered reading per release: pair verdicts where the most-likely level and the mean's cut-point level disagree, and how each disagreement landed"
+    },
     "t_changes_consumer": {
       "value": 0.8,
       "n": 0,

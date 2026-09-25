@@ -394,6 +394,27 @@ export const makeJudge = ({ ask, emit, now = Date.now, questionsPath, policyPath
     .map(Number).sort((a, b) => a - b)
   const midFoldLook = (verdictLevels[0] + verdictLevels[1]) / 2
   const midLookChain = (verdictLevels[1] + verdictLevels[2]) / 2
+  const verdictNames = ['fold', 'look', 'chain']
+  const verdictRead = (pairsPolicy.verdict_read || {}).value || 'most-likely'
+
+  /** The verdict by the mean against the two cut points (the `"mean"` read). */
+  const byMean = (score) => score < midFoldLook ? 'fold' : score >= midLookChain ? 'chain' : 'look'
+
+  /** The verdict by the level with the highest probability, the higher level
+   *  winning a tie (the `"most-likely"` read); `undefined` when the answer
+   *  carries no usable probabilities. */
+  const byMostLikely = (answer) => {
+    const probs = answer && answer.probabilities
+    if (!probs || typeof probs !== 'object') return undefined
+    let best
+    let bestP = -Infinity
+    verdictLevels.forEach((level, i) => {
+      const pr = num(probs[level])
+      if (pr === undefined) return
+      if (pr >= bestP) { bestP = pr; best = i }
+    })
+    return best === undefined ? undefined : verdictNames[best]
+  }
 
   /** The names a `where_` question may answer: every name in `shared`'s own
    *  outlines, in order, followed by the three fixed options. */
@@ -420,7 +441,8 @@ export const makeJudge = ({ ask, emit, now = Date.now, questionsPath, policyPath
       return { score, where: { producer, consumer }, answers }
     }, who)
     if (row === null) return { verdict: 'look', score: null, where: null, answers: null }
-    const verdict = row.score < midFoldLook ? 'fold' : row.score >= midLookChain ? 'chain' : 'look'
+    const verdict = (verdictRead === 'mean' ? undefined : byMostLikely(row.answers && row.answers.verdict))
+      || byMean(row.score)
     return { verdict, score: row.score, where: row.where, answers: row.answers }
   }
 
