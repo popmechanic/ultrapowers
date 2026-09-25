@@ -1,0 +1,90 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "c78b48886854e20b064f89fc2908301790341f1cc266bbc1a8ba93d540adc44e",
+   "verdict": "pass",
+   "reason": "Every computable fact in M1-M5 has a tagged probe that fails if false; nothing at BASE pins the opposite."
+  },
+  "2": {
+   "hash": "102b63231e0c5d5ca5b5d86cc9bb853dde60a380f5337680386441c5d642e6c4",
+   "verdict": "pass",
+   "reason": "M1-M3's resolved verdicts and M4's cell and rollback each have a tagged probe; literals are consistent."
+  },
+  "3": {
+   "hash": "cc4f3580e97695ef9b9dabcebef81f6b0758c47d9afafc73beee5344011eb112",
+   "verdict": "pass",
+   "reason": "M1-M5 each have a tagged probe; M6 is a call-site clause judged against the diff."
+  }
+ },
+ "tally": {
+  "dispatched": 4,
+  "rejected": 1,
+  "rounds": 2,
+  "base": "2faf7a82e9255a36cbeabcc54d7b5c69db840c8a",
+  "history": [
+   {
+    "task": "3",
+    "round": 1,
+    "verdict": "fail",
+    "reason": "M5 stated a negation, a count and an event row with no leg; narrowed into a probed pure requeueDecision plus a call-site clause."
+   }
+  ]
+ },
+ "authoring": {
+  "minutes": 40,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "How to act on the pair-reading fixes",
+    "options": [
+     "Plan fixes 1-3 now",
+     "Plan all six",
+     "Record it, change nothing yet",
+     "Please explain",
+     "Other: make the ordering deterministic"
+    ],
+    "recommended": "Plan fixes 1-3 now",
+    "picked": "Other: make the ordering deterministic",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Plan scope",
+    "options": [
+     "Plan all four",
+     "Only 1 and 2",
+     "Please explain"
+    ],
+    "recommended": "Plan all four",
+    "picked": "Plan all four",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Sign as written",
+     "Shorter Claim",
+     "Please explain"
+    ],
+    "recommended": "Sign as written",
+    "picked": "Sign as written",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline",
+     "Please explain"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
