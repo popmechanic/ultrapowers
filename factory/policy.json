@@ -91,6 +91,15 @@
       "basis": "judgment",
       "experiment": true,
       "rollback": "enabled = false"
+    },
+    "requeue_missing_producer": {
+      "enabled": true,
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "experiment": true,
+      "unread": "flock-baseline run-1: task 2 adopted with factsExit 1 after both candidates and a re-dispatch failed on `No module named 'widgetkit.widget'` -- task 1's file, not yet adopted. No run has yet been read with the requeue on; the first run where a landing waits on a sibling is the reading",
+      "rollback": "enabled = false"
     }
   },
   "task": {

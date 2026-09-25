@@ -104,3 +104,60 @@ export function waitsFor ({ taskId, hardPreds = [], chainPreds = [], policy } = 
   }
   return { adoption, candidate: [] }
 }
+
+/**
+ * missingProducer({ runLines, tasks, taskId, adopted }) -> string | null
+ *
+ * Which sibling task a failing probe was waiting on. For every run line with
+ * a non-zero `exit`, the module or path its `tail` names — Python's
+ * `No module named '<dotted>'` (`a.b` read as `a/b.py` or `a/b/__init__.py`),
+ * Node's `Cannot find module '<path>'` and `No such file or directory:
+ * '<path>'` (both matched on their ending, since the path is absolute in the
+ * worker's clone) — is matched against every other task's `files`. Answers
+ * the id of the first task other than `taskId`, not in `adopted`, owning a
+ * matching file; else `null`. Pure.
+ */
+export function missingProducer ({ runLines = [], tasks = [], taskId, adopted = [] } = {}) {
+  const adoptedSet = new Set(adopted || [])
+  const wanted = [] // { exact: [paths] } | { suffix: path }
+  for (const line of runLines || []) {
+    if (!line || line.exit === 0 || line.exit === undefined || line.exit === null) continue
+    const tail = String(line.tail || '')
+    for (const m of tail.matchAll(/No module named ['"]([\w.]+)['"]/g)) {
+      const base = m[1].split('.').join('/')
+      wanted.push({ exact: [base + '.py', base + '/__init__.py'] })
+    }
+    for (const m of tail.matchAll(/Cannot find module ['"]([^'"]+)['"]/g)) wanted.push({ suffix: m[1] })
+    for (const m of tail.matchAll(/No such file or directory: ['"]([^'"]+)['"]/g)) wanted.push({ suffix: m[1] })
+  }
+  if (wanted.length === 0) return null
+  const norm = (p) => String(p).replace(/\\/g, '/').replace(/^\.\//, '')
+  const matches = (file) => {
+    const f = norm(file)
+    return wanted.some((w) => w.exact
+      ? w.exact.includes(f)
+      : (() => { const s = norm(w.suffix); return s === f || s.endsWith('/' + f) })())
+  }
+  for (const t of tasks || []) {
+    if (!t || t.id === taskId || adoptedSet.has(t.id)) continue
+    if ((t.files || []).some(matches)) return t.id
+  }
+  return null
+}
+
+/**
+ * requeueDecision({ landing, tasks, taskId, adopted, requeued, enabled }) -> string | null
+ *
+ * The whole requeue decision, so the engine only acts on its answer: with the
+ * switch on, a landing whose best candidate's facts are red (`factsExit` not
+ * 0), for a task not already requeued once, answers the `missingProducer`
+ * sibling its failing run lines name. A dead landing (no `best`) answers
+ * `null`. Pure.
+ */
+export function requeueDecision ({ landing, tasks = [], taskId, adopted = [], requeued = [], enabled } = {}) {
+  if (enabled !== true) return null
+  if (!landing || !landing.best) return null
+  if (landing.best.factsExit === 0) return null
+  if (new Set(requeued || []).has(taskId)) return null
+  return missingProducer({ runLines: landing.best.runLines || [], tasks, taskId, adopted })
+}

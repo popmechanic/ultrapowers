@@ -54,7 +54,7 @@ import { unionReply } from './union.mjs'
 import { makeBoard, patchWithRevision } from './board.mjs'
 import { candidateTests, commandFor, excerptFor } from './select.mjs'
 import { proofsAdopted, foldRound } from './reverify.mjs'
-import { waitsFor, hardEdgePreds, speculationFor } from './dispatch.mjs'
+import { waitsFor, hardEdgePreds, speculationFor, requeueDecision } from './dispatch.mjs'
 import { runLines } from './proofs.mjs'
 import { checksAtBase } from './checks-at-base.mjs'
 import { settledCoverage, observedFacts, clauseFacts } from './facts.mjs'
@@ -1997,10 +1997,27 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   }
 
   await settleReadiness()
+  const requeueEnabled = ((policyDoc.landing || {}).requeue_missing_producer || {}).enabled === true
+  const requeuedTasks = new Set()
   while (inflightLandings.size > 0) {
     const { id, landing } = await Promise.race([...inflightLandings.values()])
     inflight.delete(id)
     inflightLandings.delete(id)
+    // #1292: a landing whose red facts name a sibling's not-yet-adopted file
+    // waits for that sibling and runs again (once per task), instead of being
+    // accepted broken.
+    const waitsOnSibling = requeueDecision({
+      landing, tasks, taskId: id, adopted, requeued: requeuedTasks, enabled: requeueEnabled,
+    })
+    if (waitsOnSibling !== null) {
+      if (!edgePreds.has(id)) edgePreds.set(id, new Set())
+      edgePreds.get(id).add(waitsOnSibling)
+      requeuedTasks.add(id)
+      appendEvent({ kind: 'requeue', task: id, waits_on: waitsOnSibling })
+      log('requeued task ' + id + ' behind unadopted sibling ' + waitsOnSibling)
+      await settleReadiness()
+      continue
+    }
     done.add(id)
     if (landing.dead) {
       appendEvent({ kind: 'parked', task: id, reason: landing.dead })
