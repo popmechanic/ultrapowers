@@ -424,6 +424,8 @@ def _interface_token(text):
         cuts = [i for i in (first.find('('), first.find(':')) if i != -1]
         if cuts:
             first = first[:min(cuts)]
+        if first.lower() in ("none", "nothing"):
+            return None
         return first or None
     tokens = text.split()
     if len(tokens) != 1:
