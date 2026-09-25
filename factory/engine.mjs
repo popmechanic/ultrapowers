@@ -2012,6 +2012,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     // accepted broken.
     const waitsOnSibling = requeueDecision({
       landing, tasks, taskId: id, adopted, requeued: requeuedTasks, enabled: requeueEnabled,
+      parked, predsOf: Object.fromEntries(tasks.map((t) => [t.id, allPreds(t)])),
     })
     if (waitsOnSibling !== null) {
       if (!edgePreds.has(id)) edgePreds.set(id, new Set())
