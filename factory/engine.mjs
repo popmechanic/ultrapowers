@@ -646,6 +646,9 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   // (M6). No launch-wave barrier — the spec's loop folds on every adoption
   // with no epoch, and a task's interface edge is already an edge.
   const proofRunHard = (pairsPolicy.proof_run_hard || {}).enabled === true
+  // `pairs.interface_hard.enabled`: a consumed symbol absent at BASE is
+  // chained by code (`decideByCode`), not left to the reader.
+  const interfaceHard = (pairsPolicy.interface_hard || {}).enabled === true
   const edgePreds = new Map(tasks.map((t) => [t.id, new Set(t.depends_on || [])]))
   const hardEdges = hardEdgePreds({ dagEdges: compiled.dag_edges || [], pairsLive, proofRunHard })
   for (const [to, from] of hardEdges) {
@@ -1965,7 +1968,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     for (const pair of pairsList) {
       const state = await pairsMod.pairState({ pair, tasks, read })
       pairStates.set(pair.a + '>' + pair.b, state)
-      const codeVerdict = typeof pairsMod.decideByCode === 'function' ? pairsMod.decideByCode(state) : null
+      const codeVerdict = typeof pairsMod.decideByCode === 'function' ? pairsMod.decideByCode(state, { interfaceHard }) : null
       let verdict, by, score
       if (codeVerdict) {
         verdict = codeVerdict

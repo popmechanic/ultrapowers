@@ -521,6 +521,8 @@ Independence is a property of contracts, not of files.
 2. **Write no ordering.** On the factory an author writes no ordering: the engine reads
    every overlapping or consuming pair itself, with Jev, starts every task at once unless
    a pair reads as a chain by that reading, and runs every adopted task's probes after every fold.
+   A `Consumes:` whose symbol is absent at BASE is chained by code, not read: the consumer
+   starts on the producer's measured candidate.
    `Consumes:`/`Produces:` bullets are still written exactly, one symbol per bullet,
    because they are how a pair is found — but the chain they imply is derived, never
    authored, and there is no width to state and no rationale line to write. An edge an
