@@ -84,7 +84,10 @@ event_row() {
 fail() { # $1 = message, $2 = exit code (default 1)
   ERROR="$1"; log "FAILED: $1"
   if [ -n "${EVIDENCE_READY:-}" ] && [ -z "${FAILING:-}" ]; then
-    FAILING=1; collect_evidence; write_status failed "$PHASE"; evidence_commit "$RUN_ID: failed"; fi
+    FAILING=1; collect_evidence; write_status failed "$PHASE"; evidence_commit "$RUN_ID: failed"
+    # The hub hears the failure too (#1288): the spoke leaves, then `work.state=failed` on the run issue, so the janitor reaps the VM by its ordinary rule.
+    board_down || true
+    fleet_node "${ENGINE_REPO_DIR:-}/factory/board.mjs" mark-run --kata-json "${FLEET_HOME:-}/plans/${RUN_ID:-}.kata.json" --run "${RUN_ID:-}" --state failed --admin-url "${KATA_ADMIN_URL:-}" --events "${EVIDENCE_DIR:-}/${EVIDENCE_REL:-}/events.jsonl" || true; fi
   exit "${2:-1}"
 }
 read_assignment() { if [ -n "${FLEET_ASSIGNMENT:-}" ]; then printf '%s\n' "$FLEET_ASSIGNMENT"; else fleet_curl -fsS "$REFLECTION_URL/comment" 2>/dev/null | json_field comment || true; fi; }
@@ -503,11 +506,16 @@ record_tags() {
 # The run's close: the spoke leaves first — the three closes measured to work (runs
 # 36, 197 and 37, by hand, 2026-09-21) were sent after `leave`, and `board_down` is
 # idempotent — then `board.mjs close-run` itself, the one module that talks to Kata
-# and never fails a run (CLAUDE.md).
+# and never fails a run (CLAUDE.md). A parked run is not closed but marked:
+# `mark-run` writes `work.state=parked` on the run issue, which the janitor reaps (#1288).
 close_run() { # $1 = the run's final state (done|parked)
   local args
-  [ "$1" = done ] || return 0
   board_down
+  if [ "$1" != done ]; then
+    fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" mark-run --kata-json "$FLEET_HOME/plans/$RUN_ID.kata.json" --run "$RUN_ID" --state parked \
+      --admin-url "$KATA_ADMIN_URL" --events "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" || true
+    return 0
+  fi
   args=(--kata-json "$FLEET_HOME/plans/$RUN_ID.kata.json" --run "$RUN_ID" --pr "$PR_URL" \
     --admin-url "$KATA_ADMIN_URL" --events "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" --title "$(plan_title)")
   [ -n "$MERGED_SHA" ] && args+=(--merged "$MERGED_SHA")
@@ -525,7 +533,10 @@ boot() {
   head="$(fleet_git -C "$TARGET_DIR" rev-parse HEAD 2>/dev/null || true)"
   if [ "$head" = "$BASE_SHA" ]; then
     if [ "$code" != 0 ]; then board_down; fail "engine exit $code" "$code"; fi
-    write_status parked "nothing ahead of base"; evidence_commit "$RUN_ID: parked"; record_tags; board_down; exit 0; fi
+    write_status parked "nothing ahead of base"; evidence_commit "$RUN_ID: parked"; board_down
+    fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" mark-run --kata-json "$FLEET_HOME/plans/$RUN_ID.kata.json" --run "$RUN_ID" --state parked \
+      --admin-url "$KATA_ADMIN_URL" --events "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" || true
+    record_tags; exit 0; fi
   publish "$code"; board_down; exit 0
 }
 case "${1:-}" in
