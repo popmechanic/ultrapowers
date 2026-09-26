@@ -14,7 +14,8 @@ const SHELL_WORDS = Object.freeze([
   'for', 'in', 'do', 'done', 'if', 'then', 'else', 'elif', 'fi', 'while', 'until',
   'case', 'esac', 'test', '[', '[[', 'export', 'set', 'cd', 'exit', 'return', 'read',
   'shift', 'local', 'eval', 'exec', 'source', '.', ':', 'command', 'type', 'wait',
-  'trap', 'unset', 'let', 'declare', 'true', 'false', 'echo', 'printf'
+  'trap', 'unset', 'let', 'declare', 'true', 'false', 'echo', 'printf', 'break', 'continue',
+  'kill'
 ])
 
 /**
