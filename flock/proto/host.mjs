@@ -332,7 +332,7 @@ async function sameSpot (p, flags, between, agent) {
     if (agent) (spotNotes[agent] = spotNotes[agent] || new Set()).add(text)
     if (spots.has(key)) continue
     spots.set(key, { p, f, t: now() })
-    ev('same-anchor', { path: p, kind: f.kind, anchor: f.anchor, lines: f.lines, authors: f.authors, between })
+    ev('same-anchor', { path: p, flag: f.kind, anchor: f.anchor, lines: f.lines, authors: f.authors, between })
     await board.post({ by: 'host', claim: text, confidence: 1 })
   }
 }

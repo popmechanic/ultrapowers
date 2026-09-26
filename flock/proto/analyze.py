@@ -93,8 +93,9 @@ def second_pass(by, summ):
         "outcome": (summ.get("outcome") or {}).get("why"),
         "stalls": dict(collections.Counter(s["kind"] for s in by["stall"])),
         "conflict_reflags": len(by["conflict:reflag"]),
-        "same_spot_facts": len(by["same-anchor"]),
-        "same_spot_kinds": dict(collections.Counter(s["kind"] for s in by["same-anchor"])),
+        # runs before 2026-09-26 01:30 UTC wrote these rows with kind = the flag itself
+        "same_spot_facts": len(by["same-anchor"]) + len(by["siblings"]) + len(by["unified"]),
+        "same_spot_kinds": dict(collections.Counter([s["flag"] for s in by["same-anchor"]] + ["siblings"] * len(by["siblings"]) + ["unified"] * len(by["unified"]))),
         "peer_lines_text_keyed": sum(e.get("peer_lines_text", 0) or 0 for e in by["edit"]),
         "edits_outside_own_files": sum(1 for e in by["edit"] if e.get("outside")),
         "outside_edits_on_peer_lines": sum(e["peer_lines"] for e in by["edit"] if e.get("outside")),
