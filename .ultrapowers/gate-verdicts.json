@@ -1,0 +1,54 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "f8e62802ca17aa098ccc55591b4a2efc656413e062e123752ee97155bbf0cda4",
+   "verdict": "pass",
+   "reason": "the one PUT and its cells, and both no-PUT refusals, each carry a falsifying probe"
+  },
+  "2": {
+   "hash": "66d327c518d1a01038cd08fb1421529f7312fe598a279fd7cbba9cb4152838cf",
+   "verdict": "pass",
+   "reason": "exactly one PUT on run 3's branch with run 3 listed, and none under --dry-run, each have a tagged probe"
+  }
+ },
+ "tally": {
+  "dispatched": 2,
+  "rejected": 0,
+  "rounds": 1,
+  "base": "feec6cf542cfd6d1230e7305db101c6b4d499a2f",
+  "probes_prevalidated": "5/5 green against a throwaway implementation, discarded"
+ },
+ "authoring": {
+  "minutes": 25,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Sign as drafted",
+     "Close out, no sweep",
+     "Please explain"
+    ],
+    "recommended": "Sign as drafted",
+    "picked": "Sign as drafted",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute (asked as the sitting's next-step pick: plan #1314 and launch it on the Flock default)",
+    "options": [
+     "Plan #1314, then release",
+     "Release 0.3.39 now",
+     "Write a handoff and stop",
+     "Please explain"
+    ],
+    "recommended": "Plan #1314, then release",
+    "picked": "Plan #1314, then release",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
