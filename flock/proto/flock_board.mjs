@@ -49,6 +49,8 @@ class Timed {
   }
 
   allDone () { return [...this.tasks.values()].every((t) => t.state === 'done') }
+  // the host's own view of what is claimable (the mirror its writes keep), for the settle rule
+  readyNow () { return [...this.tasks.values()].filter((t) => t.state === 'ready' && t.depends_on.every((d) => this.tasks.get(d).state === 'done')) }
 }
 
 // ── the stand-in (first pass, unchanged in behaviour) ─────────────────────────
