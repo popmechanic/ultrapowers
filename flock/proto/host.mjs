@@ -3,6 +3,7 @@
 //
 //   node flock/proto/host.mjs --workload widgetkit|inventory|ledger|ledger2|atlas [--agents 3]
 //        [--model claude-opus-5-5] [--clock 1800] [--quiet 45] [--tag r1]
+//        [--early-close held|off] [--order chain|rotate]   (off / rotate: the rollbacks)
 //
 // Question it answers: with N agents working one plan together, each on its own
 // copy, merging with each other between tool batches, does the swarm settle on
@@ -41,6 +42,14 @@ const dirty = {}
 // session, nothing ready or claimed) and the edge has tested the latest hash, after D =
 // max(1 s, 2 x this run's p90 publish->edge latency). `quiet` is the rollback: the fixed window.
 const SETTLE = arg('settle', 'debounce')
+// the final atlas race (operator 2026-09-25), two fixes, each with today's behaviour as its rollback:
+// `--early-close held` closes an open conflict as a fact the moment a publish shows its merged text
+// is an agent's own writing over both sides (see earlyClose); `off` waits for resolve_conflict or an
+// idle-time resolve task, as before. Proven offline: readings/early_close_replay.py.
+const EARLY_CLOSE = arg('early-close', 'held')
+// `--order chain` offers the ready set longest remaining chain first (flock_board.mjs); `rotate`,
+// each claimer starting its walk at its own offset, is the rollback.
+const ORDER = arg('order', 'chain')
 const MAX_REOPEN = 3
 const NAMES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].slice(0, N)   // up to 8 (the scale pass, atlas)
 const STAMP = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
@@ -86,7 +95,7 @@ const known = Object.fromEntries(NAMES.map((a) => [a, new Set(BASE_PATHS)]))
 
 // ── the board: the stand-in (default) or real Kata (--board kata); every op timed for gap 7 ──
 const BOARD = arg('board', 'standin')
-const board = await makeBoard(BOARD, { tasks: W.tasks, now, runName: path.basename(OUT), url: arg('kata-url', 'http://127.0.0.1:7777') })
+const board = await makeBoard(BOARD, { tasks: W.tasks, now, runName: path.basename(OUT), url: arg('kata-url', 'http://127.0.0.1:7777'), order: ORDER })
 const READS = new Set(['ping', 'ready', 'list', 'beliefs', 'read'])
 
 // ── edit-location errors (gap 3 at scale): an Edit the tool refused, by why ──
@@ -145,6 +154,7 @@ async function syncFromDisk (agent) {
     if (text === null && !hasWeave) continue
     if (text === view) continue
     const r = await must({ op: 'rewrite', agent, path: p, content: text })
+    edited(agent, p)
     drift += 1
     ev('fallback', { agent, path: p, peer_lines: r.peer_lines_touched, deleted: text === null })
   }
@@ -189,7 +199,7 @@ async function openConflict (p, info) {
   const e = ledger.get(p + '\u0000' + reg)
   if (e) { e.seen += 1; if (!e.open) ev('conflict:reflag', { path: p, region: reg }); return }   // a stale re-flag never reopens
   if (info.addsOnly) { ev('conflict:union', { path: p, ...info, annotated: undefined }); return }
-  ledger.set(p + '\u0000' + reg, { path: p, region: reg, open: true, t: now(), seen: 1, annotated: info.annotated, between: info.between })
+  ledger.set(p + '\u0000' + reg, { path: p, region: reg, open: true, t: now(), seen: 1, annotated: info.annotated, between: info.between, party: info.party })
   lastChange = now()
   ev('conflict:open', { path: p, region: reg, between: info.between })
   await board.post({ by: 'host', claim: `open conflict in ${p} between ${info.between.join(' and ')}; whoever next works there should make it say what both sides meant and call resolve_conflict`, confidence: 1 })
@@ -202,6 +212,48 @@ function closeEntries (p, by, note, via) {
     ev('conflict:close', { path: p, region: e.region, by, note: e.note, via })
   }
   lastChange = now()
+}
+
+// ── early close (`--early-close held`, the final atlas race). On atlas every resolve task changed
+// nothing (n=5 runs): the conflicts were already resolved by the agents, and ~25 s went to handing
+// them out once everyone was idle. The fact that closes one early, per open conflict on path p, at
+// every edge: some agent S published p, S's last edit to p came after the last time a peer's side
+// of p reached S's copy with conflict marks (S wrote with both sides in view), and S's published
+// text of p is byte for byte the merged text of p. The merged text is then S's own writing over
+// both sides. A conflict seen first in one copy's pull also waits for that copy's next publish,
+// since its side of the conflict may not be published yet. `unflagged` (Manyana no longer marks the
+// region) is recorded as evidence only: it stops marking a blind conflict once one side pulls and
+// republishes, with nobody having looked (the control in readings/early_close_replay.py).
+const lastEditT = {}        // agent -> path -> t
+const lastMarkedT = {}      // agent -> path -> t: a peer's side arrived with conflict marks
+const lastPubT = {}         // agent -> t
+const pubHeld = {}          // agent -> path -> { text, held, t } as of its last publish
+function edited (agent, p) { (lastEditT[agent] = lastEditT[agent] || {})[p] = now() }
+async function publishCopy (agent) {
+  await must({ op: 'publish', agent })
+  lastPublish = now(); lastPubT[agent] = now()
+  if (EARLY_CLOSE === 'off') return
+  for (const [p, te] of Object.entries(lastEditT[agent] || {})) {
+    const text = (await must({ op: 'view', agent, path: p })).text
+    ;(pubHeld[agent] = pubHeld[agent] || {})[p] = { text, held: te >= ((lastMarkedT[agent] || {})[p] ?? -1), t: now() }
+  }
+}
+function earlyClose (m, snap) {
+  if (EARLY_CLOSE === 'off') return
+  for (const e of [...ledger.values()].filter((x) => x.open)) {
+    if (e.party && (lastPubT[e.party] ?? -1) < e.t) continue
+    const text = m.files[e.path]
+    if (text === undefined) continue
+    const holders = Object.entries(pubHeld).filter(([, ps]) => ps[e.path] && ps[e.path].held && ps[e.path].text === text).map(([a]) => a)
+    if (!holders.length) continue
+    const unflagged = !(m.conflicts.includes(e.path) && region(m.annotated[e.path]) === e.region)
+    e.open = false; e.closed_by = 'host'; e.closed_t = now()
+    e.note = `the merged text of ${e.path} is ${holders.join(' and ')}'s own published writing over both sides`
+    const evidence = { snap, holders: holders.map((a) => ({ agent: a, published_t: pubHeld[a][e.path].t, last_edit_t: lastEditT[a][e.path], last_marked_t: (lastMarkedT[a] || {})[e.path] ?? null })), unflagged }
+    ev('conflict:close', { path: e.path, region: e.region, by: 'host', note: e.note, via: 'early:held', evidence })
+    log('early close', e.path, e.region, 'held by', holders.join(','))
+    lastChange = now()
+  }
 }
 let lastChange = 0          // the last time the merged code's hash, a session, or the ledger changed
 const live = new Set()      // agents with a session open right now
@@ -228,6 +280,7 @@ function edge (reason) {
       // text change). Recompute the verdict from the ledger now: a cached `blocking` was the
       // answer after 5 of 9 closes on the record, masked each time by a later content change.
       for (const p of m.conflicts) await openConflict(p, { addsOnly: !!m.addsOnly[p], annotated: m.annotated[p], between: ['published copies'] })
+      earlyClose(m, snap)
       const blocking = openConflicts()
       const factsGreen = Object.values(lastEdge.perTask).every((xs) => xs.every((x) => x === 0))
       lastEdge = { ...lastEdge, t: now(), reason, blocking, green: factsGreen && lastEdge.check === 0 && !blocking.length }
@@ -248,6 +301,7 @@ function edge (reason) {
     // let a NEW conflict on a once-closed path pass the edge unexamined.
     for (const p of m.conflicts) await openConflict(p, { addsOnly: !!m.addsOnly[p], annotated: m.annotated[p], between: ['published copies'] })
     for (const [p, fl] of Object.entries(m.sameAnchor || {})) await sameSpot(p, fl, ['published copies'], null)
+    earlyClose(m, snap)
     const blocking = openConflicts()
     lastEdge = { snap, t: now(), reason, perTask, check: chk.status, checkTail: ((chk.stdout || '') + (chk.stderr || '')).slice(-600), conflicts: m.conflicts, blocking, annotated: m.annotated, green: factsGreen && chk.status === 0 && !blocking.length }
     snapshots.push({ snap, t: now(), files: m.files })
@@ -290,7 +344,8 @@ async function pullInto (agent) {
     if (c.exists) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, c.text) } else fs.rmSync(f, { force: true })
   }
   if (r.changed.length) ev('pull', { agent, changed: r.changed.map((c) => ({ path: c.path, from: c.from, added: c.added, removed: c.removed, conflict: c.conflict })) })
-  for (const c of r.changed.filter((x) => x.conflict)) await openConflict(c.path, { addsOnly: c.addsOnly, annotated: c.annotated, between: [agent, c.from] })
+  for (const c of r.changed.filter((x) => x.conflict)) (lastMarkedT[agent] = lastMarkedT[agent] || {})[c.path] = now()
+  for (const c of r.changed.filter((x) => x.conflict)) await openConflict(c.path, { addsOnly: c.addsOnly, annotated: c.annotated, between: [agent, c.from], party: agent })
   for (const s of r.sameAnchor || []) await sameSpot(s.path, s.flags, [agent, s.from], agent)
   return r.changed
 }
@@ -385,12 +440,12 @@ async function session (agent, task) {
           (spotted.length ? '\nSame-spot insertions in your copy: ' + spotted.join('; ') : ''))
       }),
     tool('publish', "Publish your copy's changes so the other agents receive them.", {},
-      async () => { await syncFromDisk(agent); await must({ op: 'publish', agent }); lastPublish = now(); ev('publish', { agent, task: task.id }); await board.publish(agent, task.id); edge('publish ' + agent); return say('published') }),
+      async () => { await syncFromDisk(agent); await publishCopy(agent); ev('publish', { agent, task: task.id }); await board.publish(agent, task.id); edge('publish ' + agent); return say('published') }),
     tool('resolve_conflict', 'Close an open conflict in a file: the text in your copy now says what both sides meant (edit it first with Edit if it did not).',
       { path: z.string(), note: z.string() },
       async (a) => {
         if (!openEntries(a.path).length) return say('no open conflict in ' + a.path)
-        await syncFromDisk(agent); await must({ op: 'publish', agent }); lastPublish = now()
+        await syncFromDisk(agent); await publishCopy(agent)
         closeEntries(a.path, agent, a.note, 'resolve_conflict'); edge('resolve ' + agent)
         return say('conflict in ' + a.path + ' closed and your copy published')
       }),
@@ -445,6 +500,7 @@ async function session (agent, task) {
         // gap 9 (open, but declared): an edit outside the editing task's own Files is an amendment
         const own = task.files || (String(task.id).startsWith('R:') ? [task.id.slice(2)] : null)
         const outside = own ? !own.includes(rel) : false
+        edited(agent, rel)
         ev('edit', { agent, task: task.id, tool: name, path: rel, how, peer_lines: rec.peer, peers: rec.peers, peer_lines_text: rec.peerText, outside })
         dirty[agent] = true
         if (rec.peer) await board.post({ by: 'host', claim: `${agent} changed ${rec.peer} line(s) written by ${rec.peers.join(', ')} in ${rel}`, confidence: 1, task: task.id })
@@ -472,8 +528,8 @@ async function session (agent, task) {
     }] }],
     PostToolBatch: [{ hooks: [async () => {
       if (PUBLISH === 'batch' && dirty[agent]) {
-        await syncFromDisk(agent); await must({ op: 'publish', agent }); dirty[agent] = false
-        lastPublish = now(); ev('publish', { agent, task: task.id, auto: 'batch' }); await board.publish(agent, task.id); edge('batch ' + agent)
+        await syncFromDisk(agent); await publishCopy(agent); dirty[agent] = false
+        ev('publish', { agent, task: task.id, auto: 'batch' }); await board.publish(agent, task.id); edge('batch ' + agent)
       }
       const changed = await pullInto(agent)
       const spotted = [...(spotNotes[agent] || [])]; delete spotNotes[agent]
@@ -501,7 +557,7 @@ async function session (agent, task) {
   try { for await (const m of q) if (m.type === 'result') result = m } catch (e) { ev('session:error', { agent, error: String(e).slice(0, 300) }) }
   clearTimeout(killer)
   await syncFromDisk(agent)
-  await must({ op: 'publish', agent }); lastPublish = now(); edge('session end ' + agent)
+  await publishCopy(agent); edge('session end ' + agent)
   usage.push({ agent, task: task.id, turns: result?.num_turns, usage: result?.usage, subtype: result?.subtype, cost_usd: result?.total_cost_usd || 0, wall_ms: now() - (usage.startT = usage.startT || 0) })
   ev('session:end', { agent, task: task.id, released: st.released, done: st.done, redRuns: st.redRuns, turns: result?.num_turns, usage: result?.usage })
   // ticket 5: a resolve task that ends done closes its path's regions even when the resolver
@@ -595,12 +651,12 @@ async function settle () {
 
 // ── run ───────────────────────────────────────────────────────────────────────
 await must({ op: 'base', root: BASE_DIR, paths: BASE_PATHS })
-ev('start', { workload: W.name, agents: N, model: MODEL, clock_ms: CLOCK_MS, quiet_ms: QUIET_MS, board: BOARD, publish: PUBLISH })
+ev('start', { workload: W.name, agents: N, model: MODEL, clock_ms: CLOCK_MS, quiet_ms: QUIET_MS, board: BOARD, publish: PUBLISH, early_close: EARLY_CLOSE, order: ORDER, chain: board.cp ? Object.fromEntries(board.cp) : undefined })
 log(`workload ${W.name}, ${N} agents, ${MODEL}, out ${OUT}`)
 await Promise.all([...NAMES.map(agentLoop), settle()])
 await edgeChain
 const summary = {
-  workload: W.name, agents: N, model: MODEL, settled, wall_ms: now(), publish: PUBLISH,
+  workload: W.name, agents: N, model: MODEL, settled, wall_ms: now(), publish: PUBLISH, early_close: EARLY_CLOSE, order: ORDER,
   final: lastEdge && { snap: lastEdge.snap, green: lastEdge.green, perTask: lastEdge.perTask, check: lastEdge.check, conflicts: lastEdge.conflicts },
   snapshots: snapshots.length, beliefs: board.beliefCount,
   // ticket 5: the terminal outcome. `ready` only from a settled green hash; anything else is a

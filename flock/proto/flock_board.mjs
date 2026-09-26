@@ -35,12 +35,38 @@ export async function makeBoard (kind, opts) {
   return new StandInBoard(opts)
 }
 
+// The final atlas race: each task's remaining chain, the longest run of dependent tasks from it to
+// the end, itself included (atlas: 1, 4 and 10 head chains of 3). A task added later (a resolve or
+// check task) has no consumers and counts 1.
+export function chainLengths (tasks) {
+  const consumers = new Map(tasks.map((t) => [t.id, []]))
+  for (const t of tasks) for (const d of t.depends_on) consumers.get(d).push(t.id)
+  const cp = new Map()
+  const walk = (id) => {
+    if (!cp.has(id)) cp.set(id, 1 + Math.max(0, ...consumers.get(id).map(walk)))
+    return cp.get(id)
+  }
+  for (const t of tasks) walk(t.id)
+  return cp
+}
+
 class Timed {
   constructor (opts) {
     this.now = opts.now
     this.ops = []
     this.tasks = new Map(opts.tasks.map((t) => [t.id, { ...t, state: 'ready', owner: null, notes: [], reopen: 0 }]))
     this.beliefCount = 0
+    // `chain` (the default): the ready set is offered longest remaining chain first, each claimer's
+    // own rotation kept only among equals. `rotate` (the rollback): the rotation alone.
+    this.orderMode = opts.order || 'chain'
+    this.cp = this.orderMode === 'chain' ? chainLengths(opts.tasks) : null
+  }
+
+  offer (list, who, idOf = (t) => t.id) {
+    const r = rotate(list, who)
+    if (!this.cp) return r
+    const len = (x) => this.cp.get(idOf(x)) || 1
+    return r.map((x, i) => [x, i]).sort((a, b) => len(b[0]) - len(a[0]) || a[1] - b[1]).map(([x]) => x)
   }
 
   async op (name, fn) {
@@ -59,7 +85,7 @@ class StandInBoard extends Timed {
   readyNow () { return [...this.tasks.values()].filter((t) => t.state === 'ready' && t.depends_on.every((d) => this.tasks.get(d).state === 'done')) }
   async claim (agent) {
     const list = await this.op('ready', () => this.readyNow())
-    for (const t of rotate(list, agent)) {
+    for (const t of this.offer(list, agent)) {
       const won = await this.op('claim', () => { if (t.state !== 'ready') return null; t.state = 'claimed'; t.owner = agent; return t })
       if (won) return won
       this.ops.push({ name: 'claim:lost', us: 0, t: this.now() })
@@ -120,7 +146,7 @@ export class KataBoard extends Timed {
   async claim (agent) {
     const ready = await this.req('ready', 'GET', `/projects/${this.pid}/ready?unowned=true`)
     const list = Array.isArray(ready) ? ready : (ready.issues || ready.ready || ready.items || [])
-    for (const row of rotate(list, agent)) {
+    for (const row of this.offer(list, agent, (r) => this.byUid.get(r.uid))) {
       const id = this.byUid.get(row.uid)
       if (!id) continue
       try {
