@@ -43,17 +43,13 @@ import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { cloneAtBase } from './clone.mjs'
 import { makeJevClient } from '../fleet/jev-client.mjs'
-import { bootstrapFor } from './commands.mjs'
 import { makeKataClient, httpTransport } from '../fleet/kata-client.mjs'
 import { runWorker } from './worker.mjs'
 import { makeJudge } from './judge.mjs'
 import { hunksCarrying } from './hunks.mjs'
-import { unionReply } from './union.mjs'
 import { makeBoard, patchWithRevision } from './board.mjs'
 import { commandFor } from './select.mjs'
-import { proofsAdopted, foldRound } from './reverify.mjs'
 import { waitsFor, hardEdgePreds, speculationFor, requeueDecision } from './dispatch.mjs'
 import { runLines } from './proofs.mjs'
 import { checksAtBase } from './checks-at-base.mjs'
@@ -61,6 +57,7 @@ import { observedWork, supervisorTick, makeObservedWatch } from './watch.mjs'
 import { kFor, probeRecord } from './kprobe.mjs'
 import { retrying, isRateLimited } from './retry.mjs'
 import { baseReader } from './baseread.mjs'
+import { makeKernel, makeCloner, resolveConflicts, makeFold } from './fold.mjs'
 import { makeMeasure, candidatesOf, splitDiff } from './measure.mjs'
 
 export { candidatesOf, splitDiff } from './measure.mjs'
@@ -127,24 +124,6 @@ const FINDINGS_SCHEMA = {
         },
       },
     },
-  },
-}
-
-/** What one resolver answers; the kernel's reply grammar, verbatim. */
-const RESOLVER_SCHEMA = {
-  type: 'object',
-  required: ['status', 'hunks', 'notes'],
-  properties: {
-    status: { enum: ['RESOLVED', 'BLOCKED'] },
-    hunks: {
-      type: 'array',
-      items: {
-        type: 'object',
-        required: ['id', 'content'],
-        properties: { id: { type: 'string' }, content: { type: 'string' } },
-      },
-    },
-    notes: { type: 'string' },
   },
 }
 
@@ -301,131 +280,6 @@ function newestNoteFact (factsText) {
     if (m) newest = m[1]
   }
   return newest
-}
-
-// ── shared by a task's own fold (`runEngine`'s `foldIn`) and a re-fold
-// (`runRefold`): cloning, the resolver pass, and the proof run ──────────────
-
-/** A `cloneAt(name, sha)` over one `target`: a fresh clone under `runDir`,
- *  detached at `sha`, its own private exclude so a candidate's bytecode
- *  cache never rides a captured patch. The one place either entry makes a
- *  clone, so both make it the same way.
- *
- *  M4: directly after the clone is made, and before anything else runs
- *  there, this installs whatever the target needs — `bootstrapFor`'s
- *  command over `planCmd: bootstrapCmd` and this clone's own tracked files
- *  — through `sh`, under the same `timeout` an exam command runs under. A
- *  non-zero exit there is not this clone's caller's problem to notice on
- *  its own: `appendEvent` (when given) gets a `bootstrap:red` row naming
- *  this clone and that exit, and `cloneAt` THROWS — an `Error` carrying a
- *  `bootstrapRed: { clone, exit, tail }` field — rather than answering a
- *  clone whose dependencies never installed as if it were ready. Every
- *  caller either lets that propagate (a re-fold, where no per-task park
- *  exists to route it to) or catches `err.bootstrapRed` to park the one
- *  task that clone was made for. `sh` absent (no caller left needs this,
- *  but a direct unit test of `makeCloner` alone might) skips bootstrapping
- *  entirely, exactly as before this task. */
-function makeCloner ({ target, runDir, git, sh, bootstrapCmd, timeoutSeconds, appendEvent }) {
-  return (name, sha) => {
-    const dest = path.join(runDir, name)
-    fs.rmSync(dest, { recursive: true, force: true })
-    const clone = cloneAtBase({ repo: target, dest, base: sha, git })
-    try {
-      fs.appendFileSync(path.join(clone, '.git', 'info', 'exclude'),
-        '\n__pycache__/\n*.pyc\n.pytest_cache/\n')
-    } catch { /* a clone shape without .git/info is still a clone */ }
-
-    if (sh) {
-      let files = []
-      try { files = git(['ls-files'], clone).split('\n').map((s) => s.trim()).filter(Boolean) } catch { /* none tracked (or not a repo) reads as no evidence */ }
-      const cmd = bootstrapFor({ planCmd: bootstrapCmd, files })
-      if (cmd) {
-        const r = sh('timeout', [String(timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS), 'bash', '-lc', cmd], clone)
-        const exit = exitOf(r)
-        if (exit !== 0) {
-          if (appendEvent) appendEvent({ kind: 'bootstrap:red', clone, exit })
-          const err = new Error('bootstrap failed in ' + clone + ': exit ' + exit)
-          err.bootstrapRed = { clone, exit, tail: outOf(r).slice(-1500) }
-          throw err
-        }
-      }
-    }
-
-    return clone
-  }
-}
-
-/**
- * One pass of the resolver over whatever a fold left open — the union first
- * (M3, gated by `unionPolicy.mode`), then one resolver dispatch per
- * still-open conflict. Shared by a task's own landing (`runEngine`'s
- * `foldIn`, which hands in `withHandoff` and its task's id) and a re-fold
- * (`runRefold`, which has neither) — "the union and the resolver included",
- * exactly the same for both.
- */
-async function resolveConflicts ({
-  fold, common, patchArg, runDir, unionPolicy, readUnion, dispatch, model,
-  RESOLVE_MD, appendEvent, taskId, labelId, kernel, withHandoff,
-}) {
-  const open = Array.isArray(fold.open) ? fold.open : []
-  if (!open.length) return { fold, dispatchedResolver: false }
-  const suffix = withHandoff || (async (p) => p)
-  let latest = fold
-  let dispatchedResolver = false
-  for (const conflict of open) {
-    if (unionPolicy.mode === 'live' && typeof readUnion === 'function') {
-      let hunksFileText = null
-      try { hunksFileText = fs.readFileSync(conflict.hunksFile, 'utf8') } catch { /* unreadable: no union */ }
-      const union = hunksFileText !== null ? unionReply(hunksFileText) : null
-      if (union) {
-        const verdict = await readUnion({ hunks: union.hunks, who: { task: taskId ?? null, label: null } })
-        if (verdict && verdict.union === true) {
-          const replyDir = path.join(runDir, `reply-${labelId}-${conflict.i}`)
-          fs.mkdirSync(replyDir, { recursive: true })
-          for (const h of union.hunks) {
-            const safeId = String((h && h.id) || '').replace(/[^A-Za-z0-9]/g, '')
-            if (!safeId) continue
-            const content = String((h && h.content) || '')
-            fs.writeFileSync(path.join(replyDir, safeId + '.txt'),
-              content === '' ? '' : (content.endsWith('\n') ? content : content + '\n'))
-          }
-          fs.writeFileSync(path.join(replyDir, 'notes.txt'),
-            'union: both sides only added, read as independent; kept in order, no resolver dispatched.\n')
-          latest = kernel(['resolve', ...common, '--conflict', String(conflict.i),
-            '--reply-dir', replyDir, '--patch', patchArg]) || latest
-          appendEvent({ kind: 'union', task: taskId, path: conflict.path, hunks: union.hunks.length })
-          if (latest && latest.complete === true) return { fold: latest, dispatchedResolver }
-          continue
-        }
-      }
-    }
-    dispatchedResolver = true
-    const answer = await dispatch({
-      role: 'resolve', label: 'resolve:' + labelId + ':' + conflict.i,
-      taskId, cwd: path.dirname(String(conflict.hunksFile || runDir)),
-      model, systemPrompt: RESOLVE_MD, files: [], readOnly: true, schema: RESOLVER_SCHEMA,
-      prompt: await suffix(
-        'HUNKS FILE: ' + conflict.hunksFile + ' (conflicted path: ' + conflict.path + ')' +
-        '\n\nRead that file and resolve every block it carries.',
-        taskId),
-    })
-    const reply = (answer && answer.result && answer.result.structured_output) || null
-    if (!reply || reply.status !== 'RESOLVED') return { fold: latest, dispatchedResolver }
-    const replyDir = path.join(runDir, `reply-${labelId}-${conflict.i}`)
-    fs.mkdirSync(replyDir, { recursive: true })
-    for (const h of reply.hunks || []) {
-      const safeId = String((h && h.id) || '').replace(/[^A-Za-z0-9]/g, '')
-      if (!safeId) continue
-      const content = String((h && h.content) || '')
-      fs.writeFileSync(path.join(replyDir, safeId + '.txt'),
-        content === '' ? '' : (content.endsWith('\n') ? content : content + '\n'))
-    }
-    fs.writeFileSync(path.join(replyDir, 'notes.txt'), String(reply.notes || '') + '\n')
-    latest = kernel(['resolve', ...common, '--conflict', String(conflict.i),
-      '--reply-dir', replyDir, '--patch', patchArg]) || latest
-    if (latest && latest.complete === true) return { fold: latest, dispatchedResolver }
-  }
-  return { fold: latest, dispatchedResolver }
 }
 
 // ── the engine ───────────────────────────────────────────────────────────────
@@ -865,13 +719,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   }
 
   // fold.single_task_fast off → the kernel's old four-pass fold (#1278).
-  const foldFullChecks = ((policyDoc.fold || {}).single_task_fast || {}).enabled === false
-  const kernel = (argv) => {
-    const r = sh('env', [...(foldFullChecks ? ['ULTRA_FOLD_FULL_CHECKS=1'] : []), 'python3', KERNEL, ...argv], REPO)
-    const answer = lastJson(outOf(r))
-    if (!answer) log('kernel ' + argv[0] + ': exit ' + exitOf(r) + ' ' + String((r && r.stderr) || '').slice(-300))
-    return answer
-  }
+  const kernel = makeKernel({ sh, log, policy: policyDoc })
 
   const interfacesBlock = (task) => {
     const io = task.interfaces || {}
@@ -1240,220 +1088,23 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     }
   }
 
-  /**
-   * One landing, folded. The kernel answers `fold` with `complete`; a fold that
-   * is not complete is a conflict, and one resolver pass is what it gets — a
-   * second would be a loop, and the task is parked instead.
-   */
-  // M5: records both the outcome and the order it was set in, so `labelPair`
-  // can tell which of two tasks folded later.
-  const setFoldOutcome = (id, outcome) => {
-    foldOutcomes.set(id, outcome)
-    foldOrder.push(id)
-  }
-
-  const foldIn = async (landing, { reattempt = false } = {}) => {
-    waveNumber += 1
-    const id = landing.task.id
-    const common = ['--repo', target, '--run-dir', runDir, '--wave', String(waveNumber)]
-    const patchArg = id + '=' + landing.best.patch + '@' + landing.anchor
-    let neededResolveConflicts = false
-    let dispatchedResolver = false
-    let fold = kernel(['fold', ...common, '--base', head, '--patch', patchArg])
-    if (fold && fold.complete !== true) {
-      neededResolveConflicts = true
-      const result = await resolve({ fold, common, patchArg, landing })
-      fold = result.fold
-      dispatchedResolver = result.dispatchedResolver
-    }
-    if (!fold || fold.complete !== true) {
-      const reason = 'fold did not complete: ' + JSON.stringify(fold || null).slice(0, 300)
-      if (!reattempt) {
-        await board.post(id, 'conflict', reason)
-        appendEvent({ kind: 'parked', task: id, reason })
-        setFoldOutcome(id, 'parked')
-      }
-      return { sha: null, reason }
-    }
-    const mat = kernel(['materialize', ...common, '--prev-head', head, '--patch', patchArg,
-      '--subject', 'task ' + id])
-    if (!mat || typeof mat.candidateSha !== 'string') {
-      const reason = 'materialize answered no candidate: ' + JSON.stringify(mat || null).slice(0, 300)
-      if (!reattempt) {
-        appendEvent({ kind: 'parked', task: id, reason })
-        setFoldOutcome(id, 'parked')
-      }
-      return { sha: null, reason }
-    }
-    git(['reset', '-q', '--hard', mat.candidateSha], target)
-    head = mat.candidateSha
-    // M5's `labelPair` reads this back as `folds`: `clean` when the kernel's
-    // own three-way merge completed with no conflict, `resolved` when a
-    // resolver was dispatched for this fold, `union` when `resolveConflicts`
-    // settled it without ever dispatching one.
-    const outcome = dispatchedResolver ? 'resolved' : (neededResolveConflicts ? 'union' : 'clean')
-    setFoldOutcome(id, outcome)
-    return { sha: mat.candidateSha }
-  }
-
-  /** One pass of the resolver over whatever the fold left open — the union
-   *  and the resolver dispatch, both shared with `runRefold` through
-   *  `resolveConflicts`. */
-  const resolve = async ({ fold, common, patchArg, landing }) =>
-    resolveConflicts({
-      fold, common, patchArg, runDir, unionPolicy, readUnion, dispatch, model,
-      RESOLVE_MD, appendEvent, taskId: landing.task.id, labelId: landing.task.id,
-      kernel, withHandoff,
-    })
-
-  /**
-   * The fold check's own runner: every `exam` task's test command, and — with
-   * `policy.proofs.run_lines` on — every entry of the plan's own `checks`,
-   * run once in `dir`. Kept callable with any list of tasks and any
-   * directory (never closing over a single task) so a `--refold` entry can
-   * run it over every task at once, not only the one just folded.
-   *
-   * M3: a check's command runs with `ULTRA_BASE` in its own environment, set
-   * to the run's base sha — never the anchor, never the candidate's own
-   * base — and every check runs, minor or not; only a non-minor failure is
-   * folded into `reds` alongside a red exam.
-   */
-  const runProofsAndChecks = async ({ dir, tasksToRun, foldedTaskId, timeoutSeconds, includeChecks = true }) => {
-    const ran = []
-    const reds = []
-    // Every touched task's own probes and selected tests, through the one
-    // runner the fold check and `--refold` both use: the fold check had kept
-    // its own whitespace split through two same-file folds (run-196), so a
-    // joined command's second program never ran here — the defect #1163
-    // names, caught on the folded tree by the commands task's own probe.
-    for (const t of tasksToRun) {
-      const lines = Array.isArray(t.proofRuns) ? t.proofRuns : []
-      if (lines.length) {
-        const results = await runLines({ lines, cwd: dir, sh, env: undefined, timeoutSeconds })
-        for (const r of results) {
-          ran.push({ id: t.id, kind: 'probe', cmd: r.cmd, exit: r.exit })
-          if (r.exit !== 0) reds.push({ kind: 'probe', id: t.id, exit: r.exit, out: r.tail })
-        }
-      }
-      const testPaths = selectedByTask[t.id] || selectedByTask[String(t.id)] || []
-      for (const p of testPaths) {
-        const argv = commandFor(p, selectPolicy.timeout_seconds)
-        if (!argv) continue
-        const r = sh(argv[0], argv.slice(1), dir)
-        const exit = exitOf(r)
-        ran.push({ id: t.id, kind: 'test', path: p, exit })
-        if (exit !== 0) reds.push({ kind: 'test', id: t.id, path: p, exit, out: outOf(r) })
-      }
-    }
-    const checks = includeChecks && proofsEnabled && Array.isArray(compiled.checks) ? compiled.checks : []
-    if (checks.length) {
-      const results = await runLines({
-        lines: checks.map((c) => c.cmd), cwd: dir, sh,
-        env: { ULTRA_BASE: runBase }, timeoutSeconds: proofTimeoutSeconds,
-      })
-      results.forEach((r, i) => {
-        const minor = Boolean(checks[i] && checks[i].minor)
-        appendEvent({ kind: 'check:line', task: foldedTaskId, cmd: r.cmd, exit: r.exit, minor })
-        if (r.exit !== 0 && !minor) reds.push({ kind: 'check', cmd: r.cmd, exit: r.exit, out: r.tail })
-      })
-    }
-    return { ran, reds }
-  }
-
-  /**
-   * M2-M4/M6: directly after a task's fold, the probes and selected tests of
-   * every adopted task (the folded task's own first — no file-overlap filter,
-   * since run-225's seam: a probe reads what it reads, not only what its task
-   * wrote), plus the plan's own `checks`, run once on the folded tree; every red
-   * goes through one `foldRound` (`./reverify.mjs`) — attributed, judged,
-   * re-attempted by the right worker, verified once more. Still red forces
-   * `done` to false without unadopting anything. A minor check's own
-   * failure is recorded (`check:line`) and buys neither a red row nor a
-   * re-attempt.
-   */
-  const reverifyAfterFold = async (task, best, headBefore) => {
-    const patchText = best.patch && fs.existsSync(best.patch) ? fs.readFileSync(best.patch, 'utf8') : ''
-    const touched = Object.keys(splitDiff(patchText))
-    if (!touched.length) return
-    const cap = Number.isInteger(reverifyPolicy.max_run) ? reverifyPolicy.max_run : 6
-    const timeoutSeconds = reverifyPolicy.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS
-
-    const tasksToRun = reverifyPolicy.enabled === true
-      ? proofsAdopted({ folded: task.id, adopted, tasks, selected: selectedByTask, cap })
-      : []
-    const checksNamed = proofsEnabled && Array.isArray(compiled.checks) ? compiled.checks : []
-    if (!tasksToRun.length && !checksNamed.length) return
-
-    // A `bootstrapRed` here is not this landing's own park: read as "this fold's re-verify could not run".
-    let first
-    try {
-      first = await runProofsAndChecks({
-        dir: cloneAt('fold-verify-' + task.id, head), tasksToRun, foldedTaskId: task.id, timeoutSeconds,
-      })
-    } catch (err) {
-      if (!(err && err.bootstrapRed)) throw err
-      first = { ran: [], reds: [], bootstrapRed: err.bootstrapRed }
-    }
-    appendEvent({ kind: 'fold:verify', task: task.id, ran: first.ran, attempt: 1 })
-    if (first.bootstrapRed) { foldUnresolved = true; return }
-    if (!first.reds.length) return
-
-    for (const red of first.reds) {
-      await board.post(task.id, 'fold-red',
-        (red.kind === 'probe' ? ('probe ' + red.id) : red.kind === 'test' ? ('test ' + red.path) : ('check ' + red.cmd)) +
-        ' exit ' + red.exit + '\n' + red.out.slice(-1500))
-    }
-
-    const hunks = hunksCarrying(patchText, [],
-      Number.isInteger(attributionPolicy.hunks_cap) ? attributionPolicy.hunks_cap : 4000)
-
-    // A `cloneAt` throw here rejects, which `foldRound` reads as `null`.
-    const runProofsAt = async (id, sha) => {
-      const t = tasks.find((tk) => tk.id === id)
-      if (!t) return 0
-      const dir = cloneAt('fold-before-' + id + '-' + task.id, sha)
-      const { reds } = await runProofsAndChecks({
-        dir, tasksToRun: [t], foldedTaskId: task.id, timeoutSeconds, includeChecks: false,
-      })
-      return reds.length ? reds[0].exit : 0
-    }
-
-    // A fresh clone, the implementer dispatched with the fact riding its own prompt, folded as any landing.
-    const reattempt = async (action) => {
-      const actionTask = tasks.find((t) => t.id === action.task)
-      if (!actionTask) return false
-      const anchor = head
-      let dir
-      try {
-        dir = cloneAt('fold-fix-' + action.role + '-' + action.task + '-' + task.id, anchor)
-      } catch (err) {
-        if (err && err.bootstrapRed) return false
-        throw err
-      }
-      await dispatch({
-        role: 'implement', label: 'impl:' + action.task + ':fold',
-        taskId: action.task, cwd: dir, model, mcpServers: null,
-        systemPrompt: IMPL_MD, files: actionTask.files || [],
-        prompt: await withHandoff(
-          (await implPrompt(actionTask)) + '\n\n' + action.fact,
-          action.task),
-      })
-      const patch = capture(dir, anchor, path.join(runDir, `patch-${action.task}-fold-${task.id}.diff`))
-      const folded = await foldIn({ task: actionTask, anchor, best: { patch } }, { reattempt: true })
-      return folded.sha !== null
-    }
-
-    const verify = () => runProofsAndChecks({
-      dir: cloneAt('fold-verify-' + task.id, head), tasksToRun, foldedTaskId: task.id, timeoutSeconds,
-    })
-
-    const { unresolved } = await foldRound({
-      reds: first.reds, folded: task.id, headBefore, head,
-      enabled: attributionPolicy.enabled === true, hunks,
-      runProofsAt, appendEvent, reattempt, verify,
-    })
-    if (unresolved) foldUnresolved = true
-  }
+  // The fold seam lives in `./fold.mjs`: `foldIn` and `reverifyAfterFold`,
+  // over this run's own head, wave counter and `foldUnresolved`.
+  const { foldIn, reverifyAfterFold } = makeFold({
+    target, runDir, git, sh, kernel, board, appendEvent, dispatch, model, IMPL_MD, RESOLVE_MD,
+    unionPolicy, readUnion, withHandoff, implPrompt, capture, cloneAt, tasks, adopted,
+    reverifyPolicy, attributionPolicy, foldOutcomes, foldOrder, selectedByTask,
+    selectTimeoutSeconds: selectPolicy.timeout_seconds, proofsEnabled,
+    checks: compiled.checks, runBase, proofTimeoutSeconds,
+    state: {
+      get head () { return head },
+      set head (v) { head = v },
+      get wave () { return waveNumber },
+      set wave (v) { waveNumber = v },
+      get foldUnresolved () { return foldUnresolved },
+      set foldUnresolved (v) { foldUnresolved = v },
+    },
+  })
 
   /**
    * M2: does this adoption settle an interface for a sibling. The task's
