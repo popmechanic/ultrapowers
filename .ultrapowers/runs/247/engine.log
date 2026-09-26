@@ -1,0 +1,18 @@
+Running as unit: fleet-engine-247.service; invocation ID: c8c8fd8c39b54280a31deee58864ecf4
+[   0.8s] workload run-247, 0 agents, claude-opus-5-5, out /home/exedev/run
+[   0.8s] opens builder A (pool 1)
+[   0.8s] A claims task 1
+[  34.4s] A done 1
+[  34.8s] edge 9f09e7063b red {"1":[0,0,0],"2":[1,1]} check 0 
+[  41.6s] A claims task 2
+[ 105.8s] A done 2
+[ 106.2s] edge b3c55f0c0b GREEN {"1":[0,0,0],"2":[0,0]} check 0 
+[ 106.4s] SETTLED on b3c55f0c0b
+[ 106.4s] TERMINAL ready settled green
+[ 114.5s] summary {"workload":"run-247","agents":"elastic","builders_max":1,"cap":16,"model":"claude-opus-5-5","settled":{"t":106431,"snap":"b3c55f0c0b"},"wall_ms":114495,"publish":"explicit","early_close":"held","order":"chain","final":{"snap":"b3c55f0c0b","green":true,"perTask":{"1":[0,0,0],"2":[0,0]},"check":0,"conflicts":[]},"snapshots":2,"beliefs":0,"outcome":{"pr":"ready","why":"settled green","snap":"b3c55f0c0b","t":106431},"settle_mode":"tested","debounce_ms":1000,"board_ops":8,"board_op_us_p50":20,"board_op_us_p90":703,"board":"standin","board_by_op":{"ready":{"n":2,"p50_us":703,"p90_us":703,"max_us":703},"claim":{"n":2,"p50_us":38,"p90_us":38,"max_us":38},"publish":{"n":2,"p50_us":38,"p90_us":38,"max_us":38},"done":{"n":2,"p50_us":18,"p90_us":18,"max_us":18}},"board_writes":6,"board_writes_per_s":0.05,"board_peak_writes_per_s":2,"edit_failures":{"not_unique":0,"not_found":0,"stale":0,"other":0},"tokens":{"input":44,"output":9684,"cache_read":860553,"cache_write":69304},"sessions":2,"cost_usd":0.953}
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 1min 54.881s
+CPU time consumed: 19.229s
+Memory peak: 395.1M
+Memory swap peak: 0B
