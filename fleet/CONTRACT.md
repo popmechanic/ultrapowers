@@ -85,7 +85,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   record compiles to nothing and its commit is a `no plan` line in the contending block.
 - **Comment** (≤200 bytes, one line, space-separated `key=value`, this order, nothing else):
   `run=<N> plan=<40-hex> target=<owner>/<repo> base=<40-hex> engine=<40-hex>` then
-  optional `hold=1`.
+  optional `kind=flock|factory` then optional `hold=1`. `kind=flock` runs the Flock
+  (`factory/flock/engine.mjs`), `kind=factory` the factory (`factory/engine.mjs`); absent means `factory`.
   `plan=` is the tip of `ultra/plan-run-<N>` on the target; `hold=1` keeps the pull request open for a
   person — the sandbox publishes it and does not merge it. Written once by `new --comment`; the sandbox
   reads it ONCE from `https://reflection.int.exe.xyz/comment` (`{"comment": "..."}`) and fails the run
