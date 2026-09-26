@@ -47,6 +47,16 @@ const dirty = {}
 // session, nothing ready or claimed) and the edge has tested the latest hash, after D =
 // max(1 s, 2 x this run's p90 publish->edge latency). `quiet` is the rollback: the fixed window.
 const SETTLE = arg('settle', 'debounce')
+// round 3 (operator 2026-09-26, #1292), each with today's behaviour as its rollback:
+// --done-ends on|off   a builder's `done` publishes, marks the task done and ends its code
+//                      changes (later edits refused, no session-end publish); off: done only marks
+// --tool-search off|on the builder's own tools load up front (no ToolSearch step)
+// --brief digest|board the opening message carries a digest instead of "Start with board_read"
+// --stdin closed|open  every Bash command runs with stdin closed, so a stdin read fails fast
+const DONE_ENDS = arg('done-ends', 'off') === 'on'
+const TOOL_SEARCH = arg('tool-search', 'on')
+const BRIEF = arg('brief', 'board')
+const STDIN = arg('stdin', 'open')
 // the final atlas race (operator 2026-09-25), two fixes, each with today's behaviour as its rollback:
 // `--early-close held` closes an open conflict as a fact the moment a publish shows its merged text
 // is an agent's own writing over both sides (see earlyClose); `off` waits for resolve_conflict or an
@@ -340,7 +350,7 @@ function edge (reason) {
 const usage = []
 let lastPublish = 0
 let settled = null
-const SYSTEM = `You are one of ${N} agents working on the same repository at the same time, with no one directing you.
+const SYSTEM = `You are one of ${ELASTIC ? 'several' : N} agents working on the same repository at the same time, with no one directing you.
 Each agent works in its own copy. Other agents' published work is merged into your copy between your tool calls; when that happens you receive a note naming the files that changed. Re-read a file before editing it if a note says it changed.
 Rules:
 - Change an existing file only with the Edit tool. New files may be created any way you like. Shell commands must not overwrite, move or delete existing files.
@@ -351,7 +361,7 @@ Rules:
 ${PUBLISH === 'batch' ? '- Your changes are published to the others automatically after each of your tool batches, finished or not; publish is still there when you want to be sure.' : '- Publish whenever your change is coherent, so the others build on it.'}
 - If something fails because of another agent's unfinished work, prefer not to rewrite their lines: post a belief saying what you saw, and carry on with your own part.
 - If a note says a file merged with conflict marks, look at that part of the file. When it says what both sides meant (edit it if not), call resolve_conflict for that file.
-- When your task's facts pass on your copy, publish, then call done.`
+${DONE_ENDS ? "- When your task's facts pass on your copy, call done: it publishes your copy for you and closes it." : "- When your task's facts pass on your copy, publish, then call done."}`
 
 async function pullInto (agent) {
   const r = await must({ op: 'pull', agent })
@@ -386,6 +396,15 @@ async function sameSpot (p, flags, between, agent) {
   }
 }
 
+// the round-3 brief: what a builder would have fetched with board_read, cut to what concerns it
+function brief (task) {
+  const deps = task.depends_on.map((d) => `task ${d} ${board.tasks.get(d)?.state ?? '?'}`)
+  const mine = new Set(task.files || [])
+  const bel = (board.beliefs || []).filter((b) => b.task === task.id || [...mine].some((f) => String(b.claim).includes(f)))
+  return `\nBoard digest: ${deps.length ? 'the tasks you depend on: ' + deps.join(', ') + '.' : 'your task depends on no other task.'} ` +
+    (bel.length ? 'Beliefs about your task or files:\n- ' + bel.slice(-5).map((b) => `${b.by} (${b.confidence}): ${b.claim}`).join('\n- ') : 'No beliefs concern your task or files.') +
+    ' board_read shows the whole board if you need it.'
+}
 async function session (agent, task) {
   const cwd = agentDir(agent)
   const st = { released: false, done: false, redRuns: 0 }
@@ -469,13 +488,22 @@ async function session (agent, task) {
       }),
     tool('release', 'Give your task back to the board because you are blocked. Say why.', { reason: z.string() },
       async (a) => { st.released = a.reason; return say('released; end your turn now') }),
-    tool('done', 'Your task is finished: its facts pass on your copy and you have published.', { summary: z.string() },
-      async (a) => { st.done = a.summary; return say('marked done; end your turn now') }),
+    tool('done', DONE_ENDS ? 'Your task is finished: its facts pass on your copy. This publishes your copy and closes it.' : 'Your task is finished: its facts pass on your copy and you have published.', { summary: z.string() },
+      async (a) => {
+        if (!DONE_ENDS) { st.done = a.summary; return say('marked done; end your turn now') }
+        await syncFromDisk(agent); await publishCopy(agent); ev('publish', { agent, task: task.id, by: 'done' }); await board.publish(agent, task.id)
+        st.done = a.summary; st.closed = true
+        await board.done(task); live.delete(agent); edge('done ' + agent); log(agent, 'done', task.id)
+        return say('published and marked done; your copy is closed to edits. End your turn now.')
+      }),
   ]
   const hooks = {
     PreToolUse: [{ hooks: [async (input) => {
       const ti = input.tool_input || {}
       ev('tool', { agent, task: task.id, tool: input.tool_name, target: String(ti.file_path || ti.command || '').slice(0, 120) })
+      if (st.closed && ['Edit', 'MultiEdit', 'Write', 'Bash'].includes(input.tool_name)) {
+        return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'your task is done and your copy is closed; end your turn' } }
+      }
       if (input.tool_name === 'Bash' && /(^|[;&|(\s])git(\s|$)/.test(ti.command || '')) {
         return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'agents never run git' } }
       }
@@ -494,6 +522,9 @@ async function session (agent, task) {
         if (!fp.startsWith(cwd + '/')) return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'outside your copy' } }
         await syncFromDisk(agent)
         pre.set(input.tool_use_id, readOr(fp))
+      }
+      if (input.tool_name === 'Bash' && STDIN === 'closed') {
+        return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow', updatedInput: { ...ti, command: '{ ' + (ti.command || '') + '\n} < /dev/null' } } }
       }
       return {}
     }] }],
@@ -560,7 +591,7 @@ async function session (agent, task) {
   }
   const prompt = `You are agent ${agent}. You claimed task ${task.id}: ${task.title}.\n\n${task.body}\n` +
     (task.notes.length ? `\nNotes on this task from earlier attempts:\n- ${task.notes.slice(-3).join('\n- ')}\n` : '') +
-    `\nStart with board_read.`
+    (BRIEF === 'board' ? `\nStart with board_read.` : brief(task))
   ev('session:start', { agent, task: task.id })
   log(agent, 'claims task', task.id)
   const q = query({ prompt, options: {
@@ -568,21 +599,21 @@ async function session (agent, task) {
     maxTurns: 80, systemPrompt: { type: 'preset', preset: 'claude_code', append: SYSTEM },
     mcpServers: { flock: createSdkMcpServer({ name: 'flock', tools }) },
     disallowedTools: ['WebFetch', 'WebSearch', 'Task', 'Agent', 'NotebookEdit'], hooks,
+    ...(TOOL_SEARCH === 'off' ? { env: { ...process.env, ENABLE_TOOL_SEARCH: 'false' } } : {}),
   } })
   let result = null
   live.add(agent)
   const killer =setTimeout(() => { q.interrupt().catch(() => {}) }, Math.max(1000, CLOCK_MS - now()))
   try { for await (const m of q) if (m.type === 'result') result = m } catch (e) { ev('session:error', { agent, error: String(e).slice(0, 300) }) }
   clearTimeout(killer)
-  await syncFromDisk(agent)
-  await publishCopy(agent); edge('session end ' + agent)
+  if (!st.closed) { await syncFromDisk(agent); await publishCopy(agent); edge('session end ' + agent) }
   usage.push({ agent, task: task.id, turns: result?.num_turns, usage: result?.usage, subtype: result?.subtype, cost_usd: result?.total_cost_usd || 0, wall_ms: now() - (usage.startT = usage.startT || 0) })
   ev('session:end', { agent, task: task.id, released: st.released, done: st.done, redRuns: st.redRuns, turns: result?.num_turns, usage: result?.usage })
   // ticket 5: a resolve task that ends done closes its path's regions even when the resolver
   // changed nothing ("the merged text already says what both meant": run n1, 2 of 2 attempts)
   if (String(task.id).startsWith('R:') && st.done) closeEntries(task.id.slice(2), agent, st.done, 'resolve task done')
-  live.delete(agent); lastChange = now()
-  if (st.released) { await board.release(task, `${agent} released: ${st.released}`); log(agent, 'releases', task.id, '—', st.released) } else { await board.done(task); log(agent, 'done', task.id) }
+  live.delete(agent); if (!st.closed) lastChange = now()
+  if (st.closed) { /* done, published and marked at the done call */ } else if (st.released) { await board.release(task, `${agent} released: ${st.released}`); log(agent, 'releases', task.id, '—', st.released) } else { await board.done(task); log(agent, 'done', task.id) }
 }
 
 async function agentLoop (agent) {
@@ -619,7 +650,10 @@ async function settle () {
         await stall('deadlock', { left: all.filter((t) => t.state !== 'done').map((t) => ({ id: t.id, state: t.state, depends_on: t.depends_on })) })
         terminal('draft', 'deadlock: work left and nothing claimable', lastEdge); break
       }
-      if (live.size || !board.allDone() || now() - lastChange < debounceMs()) continue
+      // round 3, `tested`: once the last tested hash is green and nothing was published after it,
+      // nothing can change the code, so the debounce buys nothing; it still guards an untested publish
+      const tested = SETTLE === 'tested' && lastEdge && lastEdge.green && lastEdge.t >= lastPublish
+      if (live.size || !board.allDone() || (!tested && now() - lastChange < debounceMs())) continue
     }
     const r = await edge('settle check')
     if (r.green) { settled = { t: now(), snap: r.snap }; ev('settled', settled); log('SETTLED on', r.snap); terminal('ready', 'settled green', r); break }
