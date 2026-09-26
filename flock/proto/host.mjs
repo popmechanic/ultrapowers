@@ -22,6 +22,7 @@ import path from 'node:path'
 import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import { WORKLOADS, writeBase } from './workloads.mjs'
+import { makeBoard } from './flock_board.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d }
@@ -73,22 +74,16 @@ const agentDir = (a) => path.join(OUT, 'agents', a)
 for (const a of NAMES) { fs.cpSync(BASE_DIR, agentDir(a), { recursive: true }) }
 const known = Object.fromEntries(NAMES.map((a) => [a, new Set(BASE_PATHS)]))
 
-// ── the board (stand-in with Kata's verbs; every op timed for gap 7) ──────────
-const board = {
-  tasks: new Map(W.tasks.map((t) => [t.id, { ...t, state: 'ready', owner: null, notes: [], reopen: 0 }])),
-  beliefs: [],
-  ops: [],
-  op (name, fn) { const t = process.hrtime.bigint(); const r = fn(); this.ops.push({ name, us: Number(process.hrtime.bigint() - t) / 1000, t: now() }); return r },
-  ready () { return [...this.tasks.values()].filter((t) => t.state === 'ready' && t.depends_on.every((d) => this.tasks.get(d).state === 'done')) },
-  claim (agent) { return this.op('claim', () => { const t = this.ready()[0]; if (!t) return null; t.state = 'claimed'; t.owner = agent; return t }) },
-  release (t, why) { this.op('release', () => { t.state = 'ready'; t.owner = null; t.notes.push(why) }) },
-  done (t) { this.op('done', () => { t.state = 'done' }) },
-  post (b) { return this.op('post', () => { const x = { id: this.beliefs.length + 1, t: now(), ...b }; this.beliefs.push(x); return x }) },
-  read () { return this.op('read', () => ({
-    tasks: [...this.tasks.values()].map((t) => ({ id: t.id, title: t.title, state: t.state, owner: t.owner, depends_on: t.depends_on, notes: t.notes.slice(-2) })),
-    beliefs: this.beliefs.slice(-15),
-  })) },
-}
+// ── the board: the stand-in (default) or real Kata (--board kata); every op timed for gap 7 ──
+const BOARD = arg('board', 'standin')
+const board = await makeBoard(BOARD, { tasks: W.tasks, now, runName: path.basename(OUT), url: arg('kata-url', 'http://127.0.0.1:7777') })
+const READS = new Set(['ping', 'ready', 'list', 'beliefs', 'read'])
+
+// ── edit-location errors (gap 3 at scale): an Edit the tool refused, by why ──
+const editFailures = { not_unique: 0, not_found: 0, stale: 0, other: 0 }
+const failKind = (err) => /Found \d+ matches|multiple|not unique/i.test(err) ? 'not_unique'
+  : /not found|did not match|no match/i.test(err) ? 'not_found'
+    : /modified since|has not been read|read it first/i.test(err) ? 'stale' : 'other'
 
 // ── facts ─────────────────────────────────────────────────────────────────────
 function runFacts (cwd, task) {
@@ -171,13 +166,13 @@ async function recordEditCall (agent, rel, before, edits) {
 // host keeps them: a conflict opens when a merge flags it and closes only when an agent
 // says so (resolve_conflict), or at once when both sides only added lines (the union) ──
 const ledger = new Map()
-function openConflict (p, info) {
+async function openConflict (p, info) {
   const e = ledger.get(p)
   if (e && e.open) { e.seen += 1; return }
   if (info.addsOnly) { ev('conflict:union', { path: p, ...info, annotated: undefined }); return }
   ledger.set(p, { open: true, t: now(), seen: 1, annotated: info.annotated, between: info.between })
   ev('conflict:open', { path: p, between: info.between })
-  board.post({ by: 'host', claim: `open conflict in ${p} between ${info.between.join(' and ')}; whoever next works there should make it say what both sides meant and call resolve_conflict`, confidence: 1 })
+  await board.post({ by: 'host', claim: `open conflict in ${p} between ${info.between.join(' and ')}; whoever next works there should make it say what both sides meant and call resolve_conflict`, confidence: 1 })
 }
 const openConflicts = () => [...ledger.entries()].filter(([, e]) => e.open).map(([p]) => p)
 
@@ -200,7 +195,7 @@ function edge (reason) {
     for (const t of board.tasks.values()) perTask[t.id] = runFacts(dir, t).map((r) => r.exit)
     const chk = spawnSync(W.check[0], W.check.slice(1), { cwd: dir, encoding: 'utf8', timeout: 120000, env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } })
     const factsGreen = Object.values(perTask).every((xs) => xs.every((x) => x === 0))
-    for (const p of m.conflicts) if (!ledger.has(p)) openConflict(p, { addsOnly: !!m.addsOnly[p], annotated: m.annotated[p], between: ['published copies'] })
+    for (const p of m.conflicts) if (!ledger.has(p)) await openConflict(p, { addsOnly: !!m.addsOnly[p], annotated: m.annotated[p], between: ['published copies'] })
     const blocking = openConflicts()
     lastEdge = { snap, t: now(), reason, perTask, check: chk.status, checkTail: ((chk.stdout || '') + (chk.stderr || '')).slice(-600), conflicts: m.conflicts, blocking, annotated: m.annotated, green: factsGreen && chk.status === 0 && !blocking.length }
     snapshots.push({ snap, t: now(), files: m.files })
@@ -236,7 +231,7 @@ async function pullInto (agent) {
     if (c.exists) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, c.text) } else fs.rmSync(f, { force: true })
   }
   if (r.changed.length) ev('pull', { agent, changed: r.changed.map((c) => ({ path: c.path, from: c.from, added: c.added, removed: c.removed, conflict: c.conflict })) })
-  for (const c of r.changed.filter((x) => x.conflict)) openConflict(c.path, { addsOnly: c.addsOnly, annotated: c.annotated, between: [agent, c.from] })
+  for (const c of r.changed.filter((x) => x.conflict)) await openConflict(c.path, { addsOnly: c.addsOnly, annotated: c.annotated, between: [agent, c.from] })
   return r.changed
 }
 
@@ -247,10 +242,10 @@ async function session (agent, task) {
   await pullInto(agent)
   const say = (text) => ({ content: [{ type: 'text', text }] })
   const tools = [
-    tool('board_read', 'Read the board: every task with its state and owner, and the latest beliefs.', {}, async () => say(JSON.stringify(board.read(), null, 1))),
+    tool('board_read', 'Read the board: every task with its state and owner, and the latest beliefs.', {}, async () => say(JSON.stringify(await board.read(), null, 1))),
     tool('post_belief', 'Post a belief for the other agents: something you believe is true, how sure you are (0 to 1), and which task it concerns.',
       { claim: z.string(), confidence: z.number(), task: z.string().optional() },
-      async (a) => { const b = board.post({ by: agent, claim: a.claim, confidence: a.confidence, task: a.task }); ev('belief', b); return say('posted belief ' + b.id) }),
+      async (a) => { const b = await board.post({ by: agent, claim: a.claim, confidence: a.confidence, task: a.task }); ev('belief', b); return say('posted belief ' + b.id) }),
     tool('run_proof', "Run a task's facts on your copy (default: your own task). Each fact is a command; exit 0 means it holds.",
       { task: z.string().optional() },
       async (a) => {
@@ -259,11 +254,11 @@ async function session (agent, task) {
         const red = res.filter((r) => r.exit !== 0)
         const causes = []
         for (const r of red) causes.push(await blame(agent, cwd, r.tail))
-        ev('proof', { agent, task: t.id, exits: res.map((r) => r.exit), causes })
+        ev('proof', { agent, task: t.id, exits: res.map((r) => r.exit), causes, errs: red.map((r) => (r.tail.match(/^\w*(Error|Exception)\b.*$/gm) || ['']).pop().slice(0, 160)) })
         return say(res.map((r, i) => `fact ${i + 1}: exit ${r.exit}${r.exit ? '\n' + r.tail : ''}`).join('\n'))
       }),
     tool('publish', "Publish your copy's changes so the other agents receive them.", {},
-      async () => { await syncFromDisk(agent); await must({ op: 'publish', agent }); lastPublish = now(); ev('publish', { agent, task: task.id }); edge('publish ' + agent); return say('published') }),
+      async () => { await syncFromDisk(agent); await must({ op: 'publish', agent }); lastPublish = now(); ev('publish', { agent, task: task.id }); edge('publish ' + agent); await board.publish(agent, task.id); return say('published') }),
     tool('resolve_conflict', 'Close an open conflict in a file: the text in your copy now says what both sides meant (edit it first with Edit if it did not).',
       { path: z.string(), note: z.string() },
       async (a) => {
@@ -322,7 +317,7 @@ async function session (agent, task) {
           if (view !== readOr(fp)) { await must({ op: 'rewrite', agent, path: rel, content: readOr(fp) }); how = 'edit-call-mismatch' }
         }
         ev('edit', { agent, task: task.id, tool: name, path: rel, how, peer_lines: rec.peer, peers: rec.peers })
-        if (rec.peer) board.post({ by: 'host', claim: `${agent} changed ${rec.peer} line(s) written by ${rec.peers.join(', ')} in ${rel}`, confidence: 1, task: task.id })
+        if (rec.peer) await board.post({ by: 'host', claim: `${agent} changed ${rec.peer} line(s) written by ${rec.peers.join(', ')} in ${rel}`, confidence: 1, task: task.id })
       } else if (name === 'Bash') {
         const drift = await syncFromDisk(agent)
         const cmd = ti.command || ''
@@ -332,6 +327,15 @@ async function session (agent, task) {
           ev('test', { agent, task: task.id, red, drift, cause: red ? await blame(agent, cwd, out.replace(/\\n/g, '\n').replace(/\\"/g, '"')) : null })
           if (red) st.redRuns += 1
         }
+      }
+      return {}
+    }] }],
+    PostToolUseFailure: [{ hooks: [async (input) => {
+      if (['Edit', 'MultiEdit'].includes(input.tool_name) && !input.is_interrupt) {
+        const kind = failKind(String(input.error || ''))
+        editFailures[kind] += 1
+        const ti = input.tool_input || {}
+        ev('edit:fail', { agent, task: task.id, tool: input.tool_name, kind, path: String(ti.file_path || '').slice(cwd.length + 1), error: String(input.error || '').slice(0, 200), old_lines: String(ti.old_string || '').split('\n').length })
       }
       return {}
     }] }],
@@ -362,12 +366,12 @@ async function session (agent, task) {
   await must({ op: 'publish', agent }); lastPublish = now(); edge('session end ' + agent)
   usage.push({ agent, task: task.id, turns: result?.num_turns, usage: result?.usage, subtype: result?.subtype, cost_usd: result?.total_cost_usd || 0, wall_ms: now() - (usage.startT = usage.startT || 0) })
   ev('session:end', { agent, task: task.id, released: st.released, done: st.done, redRuns: st.redRuns, turns: result?.num_turns, usage: result?.usage })
-  if (st.released) { board.release(task, `${agent} released: ${st.released}`); log(agent, 'releases', task.id, '—', st.released) } else { board.done(task); log(agent, 'done', task.id) }
+  if (st.released) { await board.release(task, `${agent} released: ${st.released}`); log(agent, 'releases', task.id, '—', st.released) } else { await board.done(task); log(agent, 'done', task.id) }
 }
 
 async function agentLoop (agent) {
   while (!settled && now() < CLOCK_MS) {
-    const t = board.claim(agent)
+    const t = await board.claim(agent)
     if (!t) { await sleep(1500); continue }
     await session(agent, t)
   }
@@ -378,7 +382,7 @@ async function settle () {
   while (!settled && now() < CLOCK_MS) {
     await sleep(3000)
     const all = [...board.tasks.values()]
-    if (!all.every((t) => t.state === 'done') || now() - lastPublish < QUIET_MS) continue
+    if (!board.allDone() || now() - lastPublish < QUIET_MS) continue
     const r = await edge('settle check')
     if (r.green) { settled = { t: now(), snap: r.snap }; ev('settled', settled); log('SETTLED on', r.snap); break }
     for (const t of all) {
@@ -386,8 +390,8 @@ async function settle () {
       if (!bad) continue
       if (t.reopen >= MAX_REOPEN) continue
       t.reopen += 1
-      board.release(t, `edge snapshot ${r.snap} is red on this task's facts ${JSON.stringify(r.perTask[t.id])}; check exit ${r.check}`)
-      board.post({ by: 'host', claim: `edge red on task ${t.id} at snapshot ${r.snap}`, confidence: 1, task: t.id })
+      await board.reopen(t, `edge snapshot ${r.snap} is red on this task's facts ${JSON.stringify(r.perTask[t.id])}; check exit ${r.check}`)
+      await board.post({ by: 'host', claim: `edge red on task ${t.id} at snapshot ${r.snap}`, confidence: 1, task: t.id })
       ev('reopen', { task: t.id, snap: r.snap, n: t.reopen }); log('reopen task', t.id, 'at', r.snap)
     }
     for (const p of r.blocking || []) {
@@ -396,7 +400,7 @@ async function settle () {
       const prev = board.tasks.get(id)
       if (prev && prev.reopen >= MAX_REOPEN) continue
       const ann = (ledger.get(p) || {}).annotated || (r.annotated || {})[p]
-      board.tasks.set(id, { id, title: 'Resolve conflict marks in ' + p, depends_on: [], state: 'ready', owner: null, notes: [], reopen: prev ? prev.reopen + 1 : 0, facts: [],
+      await board.addTask({ id, title: 'Resolve conflict marks in ' + p, depends_on: [], state: 'ready', owner: null, notes: [], reopen: prev ? prev.reopen + 1 : 0, facts: [],
         body: `Two agents changed the same part of \`${p}\` and the merge marked it as a conflict. Here is the merged file with the conflict sections marked (<<<<<<< begin … / ======= begin … / >>>>>>> end conflict; "left" and "right" are the two sides):\n\n\`\`\`\n${ann || '(annotation unavailable)'}\n\`\`\`\n\nYour copy holds the merged text WITHOUT the markers. Make that part of \`${p}\` say what both sides meant (edit with Edit if it does not already), run the tests, then call resolve_conflict for \`${p}\` and then done.` })
       ev('resolve-task', { path: p, snap: r.snap }); log('resolve task for', p)
     }
@@ -415,17 +419,29 @@ await edgeChain
 const summary = {
   workload: W.name, agents: N, model: MODEL, settled, wall_ms: now(),
   final: lastEdge && { snap: lastEdge.snap, green: lastEdge.green, perTask: lastEdge.perTask, check: lastEdge.check, conflicts: lastEdge.conflicts },
-  snapshots: snapshots.length, beliefs: board.beliefs.length,
+  snapshots: snapshots.length, beliefs: board.beliefCount,
   board_ops: board.ops.length, board_op_us_p50: pct(board.ops.map((o) => o.us), 0.5), board_op_us_p90: pct(board.ops.map((o) => o.us), 0.9),
+  board: BOARD, board_by_op: byOp(board.ops),
+  board_writes: board.ops.filter((o) => !READS.has(o.name)).length,
+  board_writes_per_s: Math.round(board.ops.filter((o) => !READS.has(o.name)).length / (now() / 1000) * 100) / 100,
+  board_peak_writes_per_s: peakPerSecond(board.ops.filter((o) => !READS.has(o.name))),
+  edit_failures: editFailures,
   tokens: usage.reduce((a, u) => ({ input: a.input + (u.usage?.input_tokens || 0), output: a.output + (u.usage?.output_tokens || 0), cache_read: a.cache_read + (u.usage?.cache_read_input_tokens || 0), cache_write: a.cache_write + (u.usage?.cache_creation_input_tokens || 0) }), { input: 0, output: 0, cache_read: 0, cache_write: 0 }),
   sessions: usage.length,
   cost_usd: Math.round(usage.reduce((a, u) => a + (u.cost_usd || 0), 0) * 1000) / 1000,
 }
 fs.writeFileSync(path.join(OUT, 'summary.json'), JSON.stringify(summary, null, 1))
 fs.writeFileSync(path.join(OUT, 'snapshots.json'), JSON.stringify(snapshots))
-fs.writeFileSync(path.join(OUT, 'board.json'), JSON.stringify(board.read(), null, 1))
+fs.writeFileSync(path.join(OUT, 'board.json'), JSON.stringify(await board.read(), null, 1))
+fs.writeFileSync(path.join(OUT, 'board-ops.json'), JSON.stringify(board.ops))
 log('summary', JSON.stringify(summary))
 wp.stdin.end()
 process.exit(0)
 
+function byOp (ops) {
+  const g = {}
+  for (const o of ops) (g[o.name] = g[o.name] || []).push(o.us)
+  return Object.fromEntries(Object.entries(g).map(([k, xs]) => [k, { n: xs.length, p50_us: pct(xs, 0.5), p90_us: pct(xs, 0.9), max_us: pct(xs, 1) }]))
+}
+function peakPerSecond (ops) { const c = {}; for (const o of ops) { const s = Math.floor(o.t / 1000); c[s] = (c[s] || 0) + 1 } return Math.max(0, ...Object.values(c)) }
 function pct (xs, p) { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); return Math.round(s[Math.min(s.length - 1, Math.floor(p * s.length))]) }

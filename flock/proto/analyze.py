@@ -59,6 +59,39 @@ def one(run):
         "pulls": len(by["pull"]), "pull_conflicts": sum(1 for p in by["pull"] for c in p["changed"] if c["conflict"]),
         "beliefs": summ["beliefs"], "board_ops": summ["board_ops"],
         "tokens": summ["tokens"],
+        **second_pass(by, summ),
+    }
+
+
+def err_class(e):
+    """A red proof's last exception line, reduced to what kind of wait it was."""
+    if not e:
+        return "assert/exit"
+    if "NotImplementedError" in e:
+        return "stub not yet written"
+    if "has no attribute 'amount'" in e or "has no attribute 'quantity'" in e or "unexpected keyword argument 'amount'" in e:
+        return "rename not yet landed"
+    if "ImportError" in e or "cannot import name" in e:
+        return "symbol not yet written"
+    return e.split(":")[0]
+
+
+def second_pass(by, summ):
+    """Ticket 4, second pass (additive): conflicts, edit-location errors, red kinds, board."""
+    red = [p for p in by["proof"] if any(x != 0 for x in p["exits"])]
+    return {
+        "conflicts_opened": len(by["conflict:open"]), "conflicts_closed": len(by["conflict:close"]),
+        "conflict_unions": len(by["conflict:union"]), "resolve_tasks": len(by["resolve-task"]),
+        "edit_failures": len(by["edit:fail"]),
+        "edit_fail_kinds": dict(collections.Counter(e["kind"] for e in by["edit:fail"])),
+        "peer_lines_touched": sum(e["peer_lines"] for e in by["edit"]),
+        "shell_write_denied": len(by["deny:shell-write"]),
+        "proof_red_kinds": dict(collections.Counter(err_class(e) for p in red for e in p.get("errs", []))),
+        "output_tokens": summ["tokens"]["output"],
+        "board": summ.get("board", "standin"),
+        "board_writes_per_s": summ.get("board_writes_per_s"),
+        "board_peak_writes_per_s": summ.get("board_peak_writes_per_s"),
+        "board_by_op": summ.get("board_by_op"),
     }
 
 
