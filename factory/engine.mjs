@@ -2128,11 +2128,25 @@ export async function runEngine (rawArgs = {}, deps = {}) {
 
 // The dispatched model id and the models the SDK reports it actually used,
 // for a `dispatch:end` row: `models` is the sorted keys of the result's
-// `modelUsage`, or `null` when there is none to report.
+// `modelUsage`, or `null` when there is none to report. The four token
+// counts are summed over every model the result reports (#1298): `null`
+// when there is none, never `0`, so "not reported" and "zero" stay apart.
+const TOKEN_CELLS = [
+  ['input_tokens', 'inputTokens'],
+  ['output_tokens', 'outputTokens'],
+  ['cache_read_input_tokens', 'cacheReadInputTokens'],
+  ['cache_creation_input_tokens', 'cacheCreationInputTokens'],
+]
 function modelCells ({ model, result }) {
   const usage = result && typeof result === 'object' ? result.modelUsage : null
   const keys = usage && typeof usage === 'object' ? Object.keys(usage) : []
-  return { model: model ?? null, models: keys.length ? keys.sort() : null }
+  const counts = {}
+  for (const [cell, field] of TOKEN_CELLS) {
+    counts[cell] = keys.length
+      ? keys.reduce((sum, k) => sum + (Number((usage[k] || {})[field]) || 0), 0)
+      : null
+  }
+  return { model: model ?? null, models: keys.length ? keys.sort() : null, ...counts }
 }
 
 // M4: no board, no examiner, no implementer — the one worker role a
