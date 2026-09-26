@@ -1,0 +1,79 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "88495252b0e849f5ea0a3bc3fdde0a6811bd4a3be9d765e4fdf822549b24c9df",
+   "verdict": "pass",
+   "reason": "each of M1-M3 has a tagged probe that fails if its fact is false; literals recomputed"
+  },
+  "2": {
+   "hash": "8b3d28e142bc7f44434d743528509413d4ddc1cebe971dcd28f51aabe5decc12",
+   "verdict": "pass",
+   "reason": "both clauses' facts are probed exactly, ordering and counts included; 850 recomputed"
+  },
+  "3": {
+   "hash": "c9704f729ec6db3cae273c11687f6e486a0767747fa6c54b51c7c29b274bfff4",
+   "verdict": "pass",
+   "reason": "the absence clause M1 has its whole-word probe; M2's four literals recomputed"
+  },
+  "4": {
+   "hash": "8300fb6d9e73769cbad6aae84142aaea4b7097055d3b8657ace5dbe19dad5bd8",
+   "verdict": "pass",
+   "reason": "each clause has a tagged probe; BASE's list and missing savings are what the task changes"
+  },
+  "5": {
+   "hash": "93e76377d5ff4395821971b0991634a4ae94469f7624523f958c716cfcf9d56c",
+   "verdict": "pass",
+   "reason": "each clause has a tagged probe; the -50001/-50000 cut agrees with the 50000 limit"
+  },
+  "6": {
+   "hash": "b98d8ddb5472bc7b414b6e68ac67fa085c918d8f7abe02096cd8d96617207d94",
+   "verdict": "pass",
+   "reason": "the one fact is probed with both totals, key order and the empty case; 200 recomputed"
+  },
+  "7": {
+   "hash": "4391060ee2ed89da0778a2e28f8cd49442374ab7016c978bf7dafe094788f050",
+   "verdict": "pass",
+   "reason": "both byte-exact strings are probed and recomputed, the trailing newline included"
+  }
+ },
+ "tally": {
+  "dispatched": 7,
+  "rejected": 0,
+  "rounds": 1,
+  "base": "520dd9d39c4f01700d0afa1ca770af0718b202f7",
+  "note": "zero rejections; the probes were already checked red at BASE and green on a reference solution by the ticket-4 agent"
+ },
+ "authoring": {
+  "minutes": 25,
+  "probes": 0,
+  "routing": {
+   "branch": "width",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Claim and summary: ledger",
+    "options": [
+     "Sign as written",
+     "Shorter Claim",
+     "Please explain"
+    ],
+    "recommended": "Sign as written",
+    "picked": "Sign as written",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute (asked as the sitting's next step: file it, then baseline n=3 on the fleet)",
+    "options": [
+     "File it, then baseline",
+     "File it, decide now",
+     "File it, stop here",
+     "Please explain"
+    ],
+    "recommended": "File it, then baseline",
+    "picked": "File it, then baseline",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
