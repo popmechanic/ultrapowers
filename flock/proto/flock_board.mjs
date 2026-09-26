@@ -18,8 +18,17 @@
 //   publish      POST /issues/<uid>/comments  ("published <snap>")
 //   add task     POST /projects/<id>/issues {force_new:true}  (a resolve task)
 import { httpTransport } from '../../fleet/kata-client.mjs'
+import { fileURLToPath } from 'node:url'
 
 const API = '/api/v1'
+
+// Each claimer starts its walk of the ready list at its own offset, so N claimers
+// do not all race for the first row.
+const rotate = (xs, who) => {
+  if (!xs.length) return xs
+  const k = [...String(who)].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) % xs.length
+  return [...xs.slice(k), ...xs.slice(0, k)]
+}
 
 export async function makeBoard (kind, opts) {
   if (kind === 'kata') { const b = new KataBoard(opts); await b.init(); return b }
@@ -47,9 +56,13 @@ class StandInBoard extends Timed {
   constructor (opts) { super(opts); this.kind = 'standin'; this.beliefs = [] }
   readyNow () { return [...this.tasks.values()].filter((t) => t.state === 'ready' && t.depends_on.every((d) => this.tasks.get(d).state === 'done')) }
   async claim (agent) {
-    const t = await this.op('ready', () => this.readyNow()[0])
-    if (!t) return null
-    return this.op('claim', () => { if (t.state !== 'ready') return null; t.state = 'claimed'; t.owner = agent; return t })
+    const list = await this.op('ready', () => this.readyNow())
+    for (const t of rotate(list, agent)) {
+      const won = await this.op('claim', () => { if (t.state !== 'ready') return null; t.state = 'claimed'; t.owner = agent; return t })
+      if (won) return won
+      this.ops.push({ name: 'claim:lost', us: 0, t: this.now() })
+    }
+    return null
   }
   release (t, why) { return this.op('release', () => { t.state = 'ready'; t.owner = null; t.notes.push(why) }) }
   reopen (t, why) { return this.release(t, why) }
@@ -105,7 +118,7 @@ export class KataBoard extends Timed {
   async claim (agent) {
     const ready = await this.req('ready', 'GET', `/projects/${this.pid}/ready?unowned=true`)
     const list = Array.isArray(ready) ? ready : (ready.issues || ready.ready || ready.items || [])
-    for (const row of list) {
+    for (const row of rotate(list, agent)) {
       const id = this.byUid.get(row.uid)
       if (!id) continue
       try {
@@ -178,4 +191,38 @@ export class KataBoard extends Timed {
   }
 
   close () {}
+}
+
+// ── the 30-client burst (gap 7): `node flock/proto/flock_board.mjs burst --board kata|standin
+//    [--clients 30] [--rounds 5] [--kata-url http://127.0.0.1:7777]`. Every client, every round:
+//    claim a task (racing the others), post a belief, read the board, publish, close the task. ──
+if (process.argv[1] === fileURLToPath(import.meta.url) && process.argv[2] === 'burst') {
+  const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d }
+  const clients = Number(arg('clients', 30)); const rounds = Number(arg('rounds', 5))
+  const T0 = Date.now(); const now = () => Date.now() - T0
+  const tasks = Array.from({ length: clients * rounds }, (_, i) => ({ id: String(i + 1), title: 'burst task ' + (i + 1), depends_on: [], body: 'burst' }))
+  const b = await makeBoard(arg('board', 'standin'), { tasks, now, runName: 'burst-' + new Date().toISOString().replace(/[:.]/g, '-'), url: arg('kata-url', 'http://127.0.0.1:7777') })
+  const setupOps = b.ops.length
+  const t0 = process.hrtime.bigint()
+  let lost = 0, got = 0
+  await Promise.all(Array.from({ length: clients }, async (_, c) => {
+    const agent = 'c' + c
+    for (let r = 0; r < rounds; r++) {
+      const t = await b.claim(agent)
+      if (!t) { lost += 1; continue }
+      got += 1
+      await b.post({ by: agent, claim: `client ${c} round ${r} holds task ${t.id}`, confidence: 0.5, task: t.id })
+      await b.read()
+      await b.publish(agent, t.id, 'snap' + r)
+      await b.done(t)
+    }
+  }))
+  const secs = Number(process.hrtime.bigint() - t0) / 1e9
+  const ops = b.ops.slice(setupOps)
+  const g = {}
+  for (const o of ops) (g[o.name] = g[o.name] || []).push(o.us)
+  const q = (xs, p) => { const s = [...xs].sort((x, y) => x - y); return Math.round(s[Math.min(s.length - 1, Math.floor(p * s.length))]) }
+  console.log(JSON.stringify({ board: b.kind, clients, rounds, seconds: Math.round(secs * 100) / 100, ops: ops.length, ops_per_s: Math.round(ops.length / secs), claims_won: got, claim_rounds_empty: lost,
+    claims_lost_races: (g['claim:lost'] || []).length, setup_ops: setupOps,
+    by_op: Object.fromEntries(Object.entries(g).map(([k, xs]) => [k, { n: xs.length, p50_ms: q(xs, 0.5) / 1000, p90_ms: q(xs, 0.9) / 1000, p99_ms: q(xs, 0.99) / 1000, max_ms: q(xs, 1) / 1000 }])) }, null, 1))
 }
