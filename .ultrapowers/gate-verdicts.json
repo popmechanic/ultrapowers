@@ -1,0 +1,58 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "8db0d667631ebf966ae7fb944937a3af4a37e0791ed41b13c8660e69f58135a7",
+   "verdict": "pass",
+   "reason": "Each clause has a probe that fails if its fact is false: 2 folds (M1), 4 under ULTRA_FOLD_FULL_CHECKS=1 (M2), 10 for two tasks (M3), byte-exact reply and frozen tree sha (M4); the untagged pytest line is a guard."
+  },
+  "2": {
+   "hash": "6627222bbb289836fb1fc802260c932019201c63425567b47633705cb5a7d9ea",
+   "verdict": "pass",
+   "reason": "All three clauses are cited and each computable fact (the policy cell's values, the flag on every runEngine kernel call when off and none when on, the flag on every runRefold kernel call) has a probe that would fail if false."
+  }
+ },
+ "tally": {
+  "dispatched": 2,
+  "rejected": 0,
+  "rounds": {
+   "1": {
+    "dispatched": 2,
+    "rejected": 0
+   }
+  },
+  "base": "be39d27ae5891bd5632a2534ae2db1da73f08481"
+ },
+ "authoring": {
+  "minutes": 9,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Claim and summary: #1278",
+    "options": [
+     "Sign as written",
+     "Shorter Claim",
+     "Please explain"
+    ],
+    "recommended": "Sign as written",
+    "picked": "Sign as written",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute: #1278",
+    "options": [
+     "Ultrapowers",
+     "Inline",
+     "Subagent-Driven",
+     "Please explain"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
