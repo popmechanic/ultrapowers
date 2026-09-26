@@ -104,6 +104,8 @@ The draft questions for `contract_holds` and `more_work_admit` follow `questions
    - An agent calls `publish` when it believes its change hangs together. The host also publishes on session end and on release, so nothing is stranded.
    - Ticket 4's second pass runs a `--publish batch` arm (publish after every tool batch) on the ledger workload, n=3 beside the explicit arm. It reads peer-caused reds, wall and conflicts, and the default follows the reading.
 
+5. **Confinement (gap 9): open, but declared.** Any agent may edit any file. An edit outside its task's `Files` set is recorded by code as an `amendment` fact (who, which lines, which task), shown to the lines' owners through line provenance, and counted per run, in keeping with #990. The facts at the edge still decide what ships.
+
 ## Owed before the engine plan
 - Ticket 4's ledger readings: both publish arms, and the real board.
 - The host changes ticket 2 named:
@@ -131,5 +133,6 @@ The draft questions for `contract_holds` and `more_work_admit` follow `questions
 | M3 | main as a weave | later / in scope now | Other: worried "later" drifts into papercut errands; asked agree or disagree. This led to M3-rev | 0 |
 | M3-rev | main as a weave | design now, build second / fully now / later | design now, build second (Recommended) | 0 |
 | M4 | publish cadence | coherent + measure / every edit / coherent only | coherent + measure (Recommended) | 0 |
+| G9 | confinement | open but declared / fenced | open but declared (Recommended) | 0 |
 
-Recommended pick rate: 12 of 12 decided questions (the three `Other` answers redirected the question and were not decisions); explain rounds 0.
+Recommended pick rate: 13 of 13 decided questions (the three `Other` answers redirected the question and were not decisions); explain rounds 0.
