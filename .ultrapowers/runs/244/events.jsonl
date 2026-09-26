@@ -512,3 +512,6 @@
 {"ts":"2026-09-26T08:40:28.759Z","kind":"pair:label","a":"5","b":"6","calls":null,"fold":"resolved"}
 {"ts":"2026-09-26T08:40:28.759Z","kind":"pair:label","a":"5","b":"7","calls":null,"fold":"resolved"}
 {"ts":"2026-09-26T08:40:28.759Z","kind":"pair:label","a":"6","b":"7","calls":null,"fold":"clean"}
+{"ts":"2026-09-26T08:40:33.908Z","kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1309","number":1309,"draft":false}
+{"ts":"2026-09-26T08:40:52.281Z","kind":"refold","ok":true}
+{"ts":"2026-09-26T08:40:55.390Z","kind":"merge","code":200}
