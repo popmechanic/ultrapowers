@@ -537,7 +537,10 @@ async function settle () {
     if (SETTLE === 'quiet') { if (!board.allDone() || now() - lastPublish < QUIET_MS) continue } else {
       // rule S1: nothing can change the code any more. (`quiet`, the rollback, waits a fixed
       // window from the last publish CALL, which a no-change session-end publish restarts.)
-      if (!live.size && !board.allDone() && !board.readyNow().length && now() - lastChange > debounceMs()) {
+      // a claimed task is work in progress even before its session goes live (atlas AE5: a resolve
+      // task claimed 0.5 s after it was added read as a deadlock, and the run ended a draft on green code)
+      const claimed = all.some((t) => t.state === 'claimed')
+      if (!live.size && !claimed && !board.allDone() && !board.readyNow().length && now() - lastChange > debounceMs()) {
         // deadlock: no agent working, nothing claimable, work left. Nobody will publish again.
         await stall('deadlock', { left: all.filter((t) => t.state !== 'done').map((t) => ({ id: t.id, state: t.state, depends_on: t.depends_on })) })
         terminal('draft', 'deadlock: work left and nothing claimable', lastEdge); break
