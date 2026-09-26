@@ -89,8 +89,21 @@ const readOr = (f) => { try { return fs.readFileSync(f, 'utf8') } catch { return
 const BASE_DIR = path.join(OUT, 'base')
 writeBase(W, BASE_DIR)
 const BASE_PATHS = walk(BASE_DIR)
+// a workload with `setup` (runroom: bun install) installs once into DEPS_DIR, and every copy the
+// host makes (each agent's, the edge's) gets that install's node_modules dirs as symlinks, so the
+// weave never sees them (walk skips node_modules) and no copy pays a second install
+const DEPS_DIR = path.join(OUT, 'deps')
+let DEP_DIRS = []
+if (W.setup) {
+  fs.cpSync(BASE_DIR, DEPS_DIR, { recursive: true })
+  const r = spawnSync(W.setup[0], W.setup.slice(1), { cwd: DEPS_DIR, encoding: 'utf8', timeout: 300000 })
+  if (r.status !== 0) throw new Error('setup failed: ' + ((r.stdout || '') + (r.stderr || '')).slice(-800))
+  DEP_DIRS = ['node_modules', ...fs.readdirSync(DEPS_DIR, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name !== 'node_modules')
+    .map((e) => path.join(e.name, 'node_modules'))].filter((d) => fs.existsSync(path.join(DEPS_DIR, d)))
+}
+const linkDeps = (dir) => { for (const d of DEP_DIRS) { fs.rmSync(path.join(dir, d), { recursive: true, force: true }); fs.symlinkSync(path.join(DEPS_DIR, d), path.join(dir, d)) } }
 const agentDir = (a) => path.join(OUT, 'agents', a)
-for (const a of NAMES) { fs.cpSync(BASE_DIR, agentDir(a), { recursive: true }) }
+for (const a of NAMES) { fs.cpSync(BASE_DIR, agentDir(a), { recursive: true }); linkDeps(agentDir(a)) }
 const known = Object.fromEntries(NAMES.map((a) => [a, new Set(BASE_PATHS)]))
 
 // ── the board: the stand-in (default) or real Kata (--board kata); every op timed for gap 7 ──
@@ -288,7 +301,7 @@ function edge (reason) {
     }
     lastChange = now()
     const dir = path.join(OUT, 'edge')
-    fs.rmSync(dir, { recursive: true, force: true }); fs.cpSync(BASE_DIR, dir, { recursive: true })
+    fs.rmSync(dir, { recursive: true, force: true }); fs.cpSync(BASE_DIR, dir, { recursive: true }); linkDeps(dir)
     for (const [p, text] of Object.entries(m.files)) {
       const f = path.join(dir, p)
       if (m.exists[p]) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text) } else fs.rmSync(f, { force: true })

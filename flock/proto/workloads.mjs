@@ -929,3 +929,50 @@ const atlas = {
 }
 fromPlan(atlas, '2026-09-25-flock-baseline-atlas.md')
 WORKLOADS.atlas = atlas
+
+// ── 6. runroom (operator 2026-09-26, the pre-registered A/B on #1292): the signed Run Room plan,
+// twelve tasks, run like-for-like against the factory's runroom run-1. BASE is
+// popmechanic/runroom@d28312f2, read byte for byte from the local clone; the run-wide check is the
+// plan's own three `Check:` lines. A TypeScript workload: `setup` installs once, and the host links
+// the installed node_modules into every copy (host.mjs, linkDeps). ──
+import { spawnSync as spawnSyncW } from 'node:child_process'
+import os from 'node:os'
+const RUNROOM_REPO = process.env.RUNROOM_REPO ?? path.join(os.homedir(), 'Websites', 'runroom')
+const RUNROOM_BASE = 'd28312f2bbf03d7a1881754912c3423f49442a96'
+function treeAt (repo, sha) {
+  const ls = spawnSyncW('git', ['-C', repo, 'ls-tree', '-r', '-z', '--name-only', sha], { encoding: 'utf8' })
+  if (ls.status !== 0) throw new Error(`git ls-tree ${sha} in ${repo}: ${ls.stderr}`)
+  const out = {}
+  for (const p of ls.stdout.split('\0').filter(Boolean)) {
+    out[p] = spawnSyncW('git', ['-C', repo, 'show', `${sha}:${p}`], { encoding: 'utf8', maxBuffer: 64 << 20 }).stdout
+  }
+  return out
+}
+try {
+  const planText = fs.readFileSync(path.join(HERE_W, 'plans', '2026-09-26-run-room.md'), 'utf8')
+  const checks = [...planText.matchAll(/^- Check: (.*)$/gm)].map((m) => m[1])
+  const runroom = {
+    name: 'runroom',
+    base: treeAt(RUNROOM_REPO, RUNROOM_BASE),
+    check: ['bash', '-lc', checks.join(' && ')],
+    setup: ['bun', 'install', '--frozen-lockfile'],
+    tasks: [
+      { id: '1', title: 'The GitHub reader', depends_on: [] },
+      { id: '2', title: 'The plan parser', depends_on: [] },
+      { id: '3', title: 'The event digester', depends_on: [] },
+      { id: '4', title: 'The scan loop', depends_on: [] },
+      { id: '5', title: 'The run list', depends_on: [] },
+      { id: '6', title: 'The run header', depends_on: [] },
+      { id: '7', title: 'The task timeline', depends_on: [] },
+      { id: '8', title: 'The step detail', depends_on: [] },
+      { id: '9', title: 'The checks strip', depends_on: [] },
+      { id: '10', title: 'The empty-fleet and legacy states', depends_on: [] },
+      { id: '11', title: 'The Durable Object wiring', depends_on: ['1', '2', '3', '4'] },
+      { id: '12', title: 'The app shell', depends_on: ['5', '6', '7', '8', '9', '10'] },
+    ],
+  }
+  fromPlan(runroom, '2026-09-26-run-room.md')
+  WORKLOADS.runroom = runroom
+} catch (e) {
+  if (process.env.FLOCK_DEBUG) console.error('runroom workload unavailable:', e.message)
+}
