@@ -1,0 +1,4 @@
+run | arm | green | wall_s | last_session_to_settled_s | conflicts | same_spot | red_from_peer | red_waiting_rename | peer_lines | refusals | flipbacks | out_tokens | bash_over_60s | wait_for | replay_mismatch | order
+ledger2 FE1 | explicit | True | 63 | 2.7 | 0->0 unions=1 | 1 | 0 | 1 | 1 | 0 | 0 | 11.7k | - | 2 (C 14s held,B 1s held) | 0 | ['check_date', 'check_known_account', 'check_amount', 'check_memo']
+ledger2 FE2 | explicit | True | 96 | 2.8 | 1->1 (+1 resolve task) unions=7 | 2 | 0 | 1 | 1 | 0 | 0 | 13.7k | - | 2 (C 15s held,B 1s held) | 0 | ['check_date', 'check_known_account', 'check_amount', 'check_memo']
+ledger2 FE3 | explicit | True | 105 | 2.7 | 1->1 (+1 resolve task) unions=8 | 2 | 0 | 0 | 1 | 0 | 0 | 13.6k | - | 1 (C 5s held) | 0 | ['check_date', 'check_known_account', 'check_amount', 'check_memo']

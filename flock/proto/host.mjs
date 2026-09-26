@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // PROTOTYPE — throwaway (map #1292, ticket 4). The Flock on the laptop.
 //
-//   node flock/proto/host.mjs --workload widgetkit|inventory|ledger [--agents 3]
+//   node flock/proto/host.mjs --workload widgetkit|inventory|ledger|ledger2 [--agents 3]
 //        [--model claude-opus-5-5] [--clock 1800] [--quiet 45] [--tag r1]
 //
 // Question it answers: with N agents working one plan together, each on its own

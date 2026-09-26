@@ -537,3 +537,16 @@ const ledger = {
 }
 fromPlan(ledger, '2026-09-25-flock-baseline-ledger.md')
 WORKLOADS.ledger = ledger
+
+// ── 4. ledger2 (ticket 4 follow-up): ledger, except task 4's validator is `check_known_account`
+// (its BASE stub, its body and its probes renamed), so the intended VALIDATORS order
+// (check_date, check_known_account, check_amount, check_memo) is NOT the merge's text order,
+// which puts `    check_amount,` before `    check_known_account,`. Everything else is ledger's. ──
+const KNOWN = (s) => s.replaceAll('check_account', 'check_known_account')
+const ledger2 = {
+  ...ledger,
+  name: 'ledger2',
+  base: { ...ledger.base, 'ledger/core.py': KNOWN(ledger.base['ledger/core.py']) },
+  tasks: ledger.tasks.map((t) => ({ ...t, body: KNOWN(t.body), facts: t.facts.map((f) => f.map(KNOWN)) })),
+}
+WORKLOADS.ledger2 = ledger2
