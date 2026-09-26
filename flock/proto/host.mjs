@@ -29,7 +29,12 @@ import { editSpans } from './edit_spans.mjs'
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d }
 const W = WORKLOADS[arg('workload', 'widgetkit')]
-const N = Number(arg('agents', 3))
+// `--agents elastic` (operator 2026-09-26, the Run Room retune): no forecast. A builder opens
+// whenever a ready task has no free builder to take it, up to `--cap`; an idle builder holds no
+// session, so it costs no tokens. `--agents <n>`, a fixed pool, is the rollback.
+const ELASTIC = arg('agents', '3') === 'elastic'
+const CAP = Number(arg('cap', 16))
+const N = ELASTIC ? 0 : Number(arg('agents', 3))
 const MODEL = arg('model', 'claude-opus-5-5')
 const CLOCK_MS = Number(arg('clock', 1800)) * 1000
 const QUIET_MS = Number(arg('quiet', 45)) * 1000
@@ -51,7 +56,7 @@ const EARLY_CLOSE = arg('early-close', 'held')
 // each claimer starting its walk at its own offset, is the rollback.
 const ORDER = arg('order', 'chain')
 const MAX_REOPEN = 3
-const NAMES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].slice(0, N)   // up to 8 (the scale pass, atlas)
+const NAMES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].slice(0, N)   // up to 8 (the scale pass, atlas); [] when elastic
 const STAMP = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
 const OUT = path.join(HERE, 'runs', `${W.name}-${arg('tag', 'r')}-${STAMP}`)
 const T0 = Date.now()
@@ -664,12 +669,35 @@ async function settle () {
 
 // ── run ───────────────────────────────────────────────────────────────────────
 await must({ op: 'base', root: BASE_DIR, paths: BASE_PATHS })
-ev('start', { workload: W.name, agents: N, model: MODEL, clock_ms: CLOCK_MS, quiet_ms: QUIET_MS, board: BOARD, publish: PUBLISH, early_close: EARLY_CLOSE, order: ORDER, chain: board.cp ? Object.fromEntries(board.cp) : undefined })
+ev('start', { workload: W.name, agents: ELASTIC ? 'elastic' : N, cap: ELASTIC ? CAP : undefined, model: MODEL, clock_ms: CLOCK_MS, quiet_ms: QUIET_MS, board: BOARD, publish: PUBLISH, early_close: EARLY_CLOSE, order: ORDER, chain: board.cp ? Object.fromEntries(board.cp) : undefined })
 log(`workload ${W.name}, ${N} agents, ${MODEL}, out ${OUT}`)
-await Promise.all([...NAMES.map(agentLoop), settle()])
+const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+const pool = [...NAMES]
+const loops = NAMES.map(agentLoop)
+let buildersMax = pool.length
+// a builder is busy while it has a session open or a task claimed in its name
+const busy = (a) => live.has(a) || [...board.tasks.values()].some((t) => t.state === 'claimed' && t.owner === a)
+function openBuilder () {
+  const a = pool.length < 26 ? LETTERS[pool.length] : LETTERS[pool.length % 26] + Math.floor(pool.length / 26)
+  fs.cpSync(BASE_DIR, agentDir(a), { recursive: true }); linkDeps(agentDir(a))
+  known[a] = new Set(BASE_PATHS)   // its first session pulls every published change (session -> pullInto)
+  pool.push(a); buildersMax = Math.max(buildersMax, pool.length)
+  ev('builder:open', { agent: a, pool: pool.length, ready: board.readyNow().length, busy: pool.filter(busy).length })
+  log('opens builder', a, '(pool ' + pool.length + ')')
+  loops.push(agentLoop(a))
+}
+async function spawner () {
+  while (!settled && !outcome && now() < CLOCK_MS) {
+    const want = board.readyNow().length - pool.filter((a) => !busy(a)).length
+    for (let i = 0; i < want && pool.length < CAP; i++) openBuilder()
+    await sleep(500)
+  }
+}
+await Promise.all([ELASTIC ? spawner() : Promise.resolve(), settle()])
+await Promise.all(loops)
 await edgeChain
 const summary = {
-  workload: W.name, agents: N, model: MODEL, settled, wall_ms: now(), publish: PUBLISH, early_close: EARLY_CLOSE, order: ORDER,
+  workload: W.name, agents: ELASTIC ? 'elastic' : N, builders_max: buildersMax, cap: ELASTIC ? CAP : undefined, model: MODEL, settled, wall_ms: now(), publish: PUBLISH, early_close: EARLY_CLOSE, order: ORDER,
   final: lastEdge && { snap: lastEdge.snap, green: lastEdge.green, perTask: lastEdge.perTask, check: lastEdge.check, conflicts: lastEdge.conflicts },
   snapshots: snapshots.length, beliefs: board.beliefCount,
   // ticket 5: the terminal outcome. `ready` only from a settled green hash; anything else is a
