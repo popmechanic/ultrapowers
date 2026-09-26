@@ -321,6 +321,15 @@
       "basis": "judgment",
       "experiment": true,
       "rollback": "enabled = false"
+    },
+    "single_task_fast": {
+      "enabled": true,
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "experiment": true,
+      "rollback": "enabled = false",
+      "unread": "a one-task wave folds on the kernel's fast path instead of the four-pass fold since #1278; enabled = false sets ULTRA_FOLD_FULL_CHECKS=1 on every fold_wave.py call (landing and re-fold). Pre-registered reading: fold wall per landing on a large-file fold, before and after, over five runs"
     }
   },
   "proofs": {

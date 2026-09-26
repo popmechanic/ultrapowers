@@ -10,7 +10,8 @@ disagreement`). `remaining` is the supplied list minus that prefix;
 `complete` is DERIVED, never recorded — every task folded and no narrated
 path left unresolved.
 
-`fold` runs twice over the wave. First a **park pre-scan**: the whole wave is
+`fold` runs twice over a wave of two or more tasks (or any wave under
+`ULTRA_FOLD_FULL_CHECKS=1`). First a **park pre-scan**: the whole wave is
 folded once in memory, with no log written, so a wave that is going to park
 is reported before a single resolver is dispatched (the pre-scan's park set
 is conservatively a superset of the incremental pass's — a text resolution
@@ -29,7 +30,14 @@ re-narration: the epoch check is the idempotency guard against a re-issued
 command. Once every entry of the current stop is applied, the same call
 CONTINUES folding to the next stop or to completion; the two live self-checks
 (K1 raw-shuffle order-independence and log-replay-reproduces-manifest) run
-inside whichever call completes the wave. Every reply carrying `conflicts`
+inside whichever call completes the wave. The pre-scan and the raw-shuffle leg
+run only for a wave of two or more tasks, or under `ULTRA_FOLD_FULL_CHECKS=1`:
+a one-task wave has a single identity order that cannot disagree with itself,
+and its incremental pass meets the same conflicts on its first and only fold
+(a stop holding an undispatchable entry answers with no dispatchable `open`
+entry, so the engine parks it exactly as it would the pre-scan's reply). The
+rehydrate leg always runs — it is what catches a patch edited after it
+folded. Every reply carrying `conflicts`
 carries an `autoResolved` count, always 0: the in-process union that once
 filled it left with the `Commutes:` grammar (2026-09-24).
 
@@ -496,10 +504,24 @@ def _current_stop(index, recorded):
     return stop, [e for e in stop if resolved_at.get(e["path"], -1) < e["epoch"]]
 
 
+FULL_CHECKS_ENV = "ULTRA_FOLD_FULL_CHECKS"
+
+
+def _full_checks(task_count):
+    """Run the pre-scan and the raw-shuffle leg? Always for two or more tasks;
+    for one task only when `ULTRA_FOLD_FULL_CHECKS=1`."""
+    return task_count != 1 or os.environ.get(FULL_CHECKS_ENV) == "1"
+
+
 def _self_checks(repo, base, eng, folded, log_path):
-    """Both live self-checks, run by whichever call completes the wave."""
+    """Both live self-checks, run by whichever call completes the wave.
+
+    The raw-shuffle leg is skipped for a one-task wave (see `_full_checks`):
+    a single identity order cannot disagree with itself.
+    """
     try:
-        if len(ff.raw_shuffle_outcomes(base, folded, sample_seed=42)) != 1:
+        if (_full_checks(len(folded))
+                and len(ff.raw_shuffle_outcomes(base, folded, sample_seed=42)) != 1):
             return "failed: raw shuffle order-independence"
         if ff.rehydrate(repo, log_path).manifest() != eng.manifest():
             return "failed: rehydrate manifest replay"
@@ -596,7 +618,9 @@ def cmd_fold(args):
     _record_max_lines(wave_dir, max_lines)
     index = []
 
-    parks, kernel_park = _pre_scan(base, states, branches)
+    full = _full_checks(len(branches))
+    parks, kernel_park = (_pre_scan(base, states, branches) if full
+                          else ([], None))
 
     if kernel_park is not None:
         epoch, task_id, state = kernel_park
@@ -647,6 +671,11 @@ def cmd_fold(args):
         # engine reads order-first: the wave parks rather than dispatching
         # against a stop it can never drain.
         open_entries = [e for e in stop if e["dispatchable"]]
+        if not full and len(open_entries) != len(stop):
+            # No pre-scan ran: a stop holding an undispatchable entry can
+            # never complete, so no resolver is paid for it — answer with no
+            # dispatchable entry, as the pre-scan's park reply would have.
+            open_entries = []
         print(json.dumps({"clean": False, "conflicts": len(open_entries),
                           "dispatchable": len(open_entries),
                           "parked": len(stop) - len(open_entries),
