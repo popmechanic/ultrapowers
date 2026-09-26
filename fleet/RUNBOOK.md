@@ -242,7 +242,7 @@ The launcher checks the plan against `--base` itself (`plan_check.py --base`, on
 
 The launcher, in this order: validates the plan, the target and the base;
 reads every command word of every `Run:` probe and `Check:` line against the
-sandbox toolchain (`SANDBOX_TOOLCHAIN` in `fleet/launch.mjs`) and refuses one
+sandbox toolchain (`SANDBOX_TOOLCHAIN` in `fleet/toolchain.mjs`) and refuses one
 the box lacks, naming the task, the word and the line (#645);
 reads the pool; computes N from the target's `ultra/*-run-*` branches and its
 `ultra/{plan,evidence}/run-<N>` tags; refuses when `gh-<owner>-<repo>` does not

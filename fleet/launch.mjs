@@ -45,16 +45,16 @@
  * below says the rest.
  */
 
-import crypto from 'node:crypto'
 import fsp from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
+import { fileRunOnHub } from './kata-file.mjs'
+
 import {
   COMMENT_MAX_BYTES,
-  ENGINE_REPO,
   ENGINE_URL,
   EXE_HOST,
   FLEET_DEFAULTS,
@@ -76,7 +76,6 @@ import {
   KATA_HUB_FIX,
   defaultKataEnvPath,
   kataHostOf,
-  kataProjectFor,
   listIntegrations,
   loadFleetConfig,
   lobby,
@@ -93,7 +92,9 @@ import { fleetConfigAccount, verbDrift } from './doctor.mjs'
 import { makeKataClient, sshTransport } from './kata-client.mjs'
 import { janitor } from './janitor.mjs'
 import { readFleetFiles, renderSetupScript } from './setup-script.mjs'
-
+import { compilePlanForRun, fetchCompilerAt, verifyPlanCompiles } from './compiler.mjs'
+import { verifyPlanPins } from './plan-pins.mjs'
+import { toolchainViolations } from './toolchain.mjs'
 /** One string, so a docs check that reads the first `usage` literal sees every
  *  flag the launch line may carry. */
 export const USAGE = `usage: node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <40-hex>
@@ -110,7 +111,7 @@ export const usage = () => USAGE
  * imported: the launcher refuses a name the credential tool would refuse, and
  * it refuses it before anything is executed.
  */
-export const DEFAULT_ACCOUNT = 'ultrapowers'
+const DEFAULT_ACCOUNT = 'ultrapowers'
 const ACCOUNT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 
 /** The flag `new` may never carry: exe.dev refuses it, and the policy
@@ -121,21 +122,15 @@ const NEW_INTEGRATION_FLAG = /(^|\s)--integration(=|\s|$)/
 const VERBS_PATH = new URL('./exe-verbs.json', import.meta.url).pathname
 
 /** Where the plan lands in the commit the launcher pushes. */
-export const PLAN_PATH = '.ultrapowers/plan.md'
-export const VERDICTS_PATH = '.ultrapowers/gate-verdicts.json'
+const PLAN_PATH = '.ultrapowers/plan.md'
+const VERDICTS_PATH = '.ultrapowers/gate-verdicts.json'
 /** The third path of the plan commit: the run's kata record — the project, the
  *  run issue and one issue per task on the hub, each with the revision it had
  *  when the launcher last read it (#913). Written only when a hub is reached. */
-export const KATA_PATH = '.ultrapowers/kata.json'
-/** The url the SANDBOX reaches the hub at — the `kata` http-proxy attached by
- *  `tag:fleet` — written into the record regardless of the laptop's own route,
- *  because the record's reader is the engine on the sandbox and never the
- *  laptop. */
-export const KATA_SANDBOX_URL = 'https://kata.int.exe.xyz'
+const KATA_PATH = '.ultrapowers/kata.json'
 /** The one command that builds the hub, and where `fleet/kata-hub.mjs` leaves
  *  the hub's address and bearer — both `fleet/lobby.mjs`'s, since the janitor
- *  reads the same file; re-exported so the launcher's callers see them here. */
-export { KATA_HUB_FIX, defaultKataEnvPath }
+ *  reads the same file. */
 
 /**
  * `~/.ultrapowers/kata-hub.env`, read: `{ url, token }` from its `KATA_URL=`
@@ -147,7 +142,7 @@ export { KATA_HUB_FIX, defaultKataEnvPath }
  * launcher never sends it. Every laptop request rides `ssh <hub> curl …` and
  * sources the bearer from the hub's own `/etc/kata/kata.env` there.
  */
-export async function readKataEnv (envPath) {
+async function readKataEnv (envPath) {
   let text
   try {
     text = await fsp.readFile(envPath, 'utf8')
@@ -163,44 +158,25 @@ export async function readKataEnv (envPath) {
   return env
 }
 
-/** The plan's H1: the text after `# ` on the first such line, `''` when none. */
-export const planTitleOf = (planText) => /^# (.*)$/m.exec(planText)?.[1]?.trim() ?? ''
-/** The plan's `**Claim:**` line, whole — the run issue's body. `''` when none. */
-export const planClaimOf = (planText) =>
-  planText.split('\n').find((line) => line.startsWith('**Claim:**'))?.trim() ?? ''
-/**
- * The numbers of the plan's one `**Closes:**` line — the first such line
- * before the first `### ` heading, which is the line the sandbox's
- * `plan_closes` reads — as integers, `[]` when the plan has none.
- */
-export const planClosesOf = (planText) => {
-  for (const line of planText.split('\n')) {
-    if (line.startsWith('### ')) break
-    if (!line.startsWith('**Closes:**')) continue
-    return [...line.matchAll(/#(\d+)/g)].map((m) => Number(m[1]))
-  }
-  return []
-}
-
 /**
  * What a base off the default branch is told to do. The parked branch is not
  * lost and nothing here takes a patch: decision 5 of #715 asks the operator to
  * re-drive that work as a plan on `main`, which is procedure and not a flag.
  */
-export const BASE_OFF_MAIN_FIX =
+const BASE_OFF_MAIN_FIX =
   'relaunch from main; a parked branch is re-driven as a plan on main, not as a base'
 
 /** What a shallow launch checkout is told to do — by hand, never by the
  *  launcher: unshallowing an operator's clone is not a launch's business. */
-export const SHALLOW_FIX = 'is a shallow clone — unshallow it by hand and relaunch'
+const SHALLOW_FIX = 'is a shallow clone — unshallow it by hand and relaunch'
 
 /**
  * How many `new` lines a launch may issue, and the window it sleeps in between
  * them. A name exe.dev refused stays reserved, so each attempt mints its own.
  */
-export const NEW_ATTEMPTS = 3
-export const RETRY_MIN_MS = 1_000
-export const RETRY_MAX_MS = 3_000
+const NEW_ATTEMPTS = 3
+const RETRY_MIN_MS = 1_000
+const RETRY_MAX_MS = 3_000
 
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -233,7 +209,7 @@ const isMemorySize = (value) => /^[1-9][0-9]*GB$/.test(String(value))
  * `memory` comes back spelled `<int>GB`, the spelling the lobby's `--memory`
  * takes verbatim; `cpu` is a decimal string for the same reason.
  */
-export function vmSizeFor (widestWave, cap = FLEET_DEFAULTS) {
+function vmSizeFor (widestWave, cap = FLEET_DEFAULTS) {
   const w = Math.max(0, Math.floor(Number(widestWave) || 0))
   const capCpu = Number(cap?.cpu ?? FLEET_DEFAULTS.cpu)
   const capGb = cap?.memoryGb ?? parseMemoryGb(cap?.memory ?? FLEET_DEFAULTS.memory)
@@ -255,7 +231,7 @@ export function vmSizeFor (widestWave, cap = FLEET_DEFAULTS) {
  * below the one-task size would be a smaller answer than the smallest real
  * plan's.
  */
-export function sizeFromCompile (compiled, { cpuCap, memoryCap, cpu, memory } = {}) {
+function sizeFromCompile (compiled, { cpuCap, memoryCap, cpu, memory } = {}) {
   const waves = Array.isArray(compiled?.waves) ? compiled.waves : []
   const w = Math.max(1, waves.reduce(
     (widest, wave) => Math.max(widest, Array.isArray(wave) ? wave.length : 0), 0
@@ -283,156 +259,13 @@ export function sizeFromCompile (compiled, { cpuCap, memoryCap, cpu, memory } = 
  * script, on the box, for whoever asks why this VM has these cores. The engine
  * does not read it.
  */
-export function stampWidth (script, { width, cpu, memory }) {
+function stampWidth (script, { width, cpu, memory }) {
   const note = `# fleet: width=${width} — the parsed plan's widest wave, which this box was cut to: --cpu ${cpu} --memory ${memory}.`
   const text = String(script ?? '')
   const firstLine = text.indexOf('\n')
   return firstLine < 0
     ? `${text}\n${note}\n`
     : `${text.slice(0, firstLine + 1)}${note}\n${text.slice(firstLine + 1)}`
-}
-
-/**
- * The shell's own words — keywords and builtins — that stand at command
- * position without naming a program the sandbox must have. `probeWordsOf`
- * skips them; a `Run:` line's `test`, `echo` and `for` are bash's, not the
- * box's.
- */
-export const SHELL_WORDS = Object.freeze([
-  'for', 'in', 'do', 'done', 'if', 'then', 'else', 'elif', 'fi', 'while', 'until',
-  'case', 'esac', 'test', '[', '[[', 'export', 'set', 'cd', 'exit', 'return', 'read',
-  'shift', 'local', 'eval', 'exec', 'source', '.', ':', 'command', 'type', 'wait',
-  'trap', 'unset', 'let', 'declare', 'true', 'false', 'echo', 'printf'
-])
-
-/**
- * What a fresh sandbox can run, by name (#645). Two groups: what the exeuntu
- * image ships — `claude`, `gh`, `git`, `jq`, `python3`, `curl`, bash and the
- * coreutils — and the delta `fleet/setup-script.mjs` installs, exactly node
- * (with npm and npx), bun (with bunx), celld and pytest. A `Run:` probe or a
- * `Check:` line runs on that box under `timeout <s> bash -lc <line>`, so a
- * command word missing here exits 127 in its first second, after the plan was
- * pushed and a VM created; `toolchainViolations` refuses it on the laptop
- * instead, by name — never by language (the operator's shape, 2026-09-05).
- * A word this list lacks is a refusal until someone adds it here beside the
- * setup-script rung that installs it.
- */
-export const SANDBOX_TOOLCHAIN = Object.freeze([
-  // the setup script's delta
-  'node', 'npm', 'npx', 'bun', 'bunx', 'celld', 'python3', 'pytest',
-  // the image
-  'claude', 'gh', 'git', 'jq', 'curl', 'bash', 'sh', 'env', 'sudo', 'install',
-  'apt-get', 'timeout', 'xargs', 'find', 'grep', 'egrep', 'fgrep', 'sed', 'awk', 'tr',
-  'cut', 'sort', 'uniq', 'head', 'tail', 'wc', 'cat', 'tee', 'diff', 'cmp', 'comm',
-  'paste', 'seq', 'expr', 'date', 'sleep', 'basename', 'dirname', 'readlink',
-  'realpath', 'mkdir', 'rmdir', 'rm', 'cp', 'mv', 'ln', 'ls', 'touch', 'chmod',
-  'chown', 'stat', 'tar', 'gzip', 'gunzip', 'unzip', 'zip', 'md5sum', 'sha256sum',
-  'base64', 'od', 'xxd', 'hexdump', 'tac', 'rev', 'nl', 'fold', 'column', 'yes',
-  'which', 'pwd', 'whoami', 'id', 'hostname', 'uname', 'ps', 'kill', 'pkill',
-  'nohup', 'mktemp', 'truncate', 'split', 'join', 'shuf', 'tsort', 'du', 'df',
-  'nproc', 'free', 'ss', 'nc', 'ssh'
-])
-
-/**
- * The command words of one shell line: the first word of the line and of
- * every segment after `|`, `||`, `&&`, `;`, `$(` or `(`, and the word after
- * each of `do`, `then`, `else`, `elif` — skipping `!`, a `NAME=value`
- * assignment and every `SHELL_WORDS` entry, and dropping a word that carries
- * a `/` (a path in the target, not a program by name) or opens with `$`, a
- * quote, `-` or a digit (an expansion, a string, a flag, a redirection).
- * Quote-aware: an operator inside a single- or double-quoted span splits
- * nothing (`grep -E "a|b"` names one program), and a `$(` inside double
- * quotes still opens a segment, because bash runs what is inside it.
- * Duplicates are kept; the caller deduplicates per task.
- */
-export function probeWordsOf (line) {
-  const text = String(line ?? '')
-  // Segments: split on the operators outside quotes, and on `$(` outside
-  // single quotes; each segment is a list of whitespace-split tokens with
-  // quoted spans kept whole.
-  const segments = [[]]
-  let token = ''
-  let quote = null
-  // The quote state to restore when a `$(` … `)` substitution closes.
-  const substitutions = []
-  const endToken = () => { if (token !== '') { segments[segments.length - 1].push(token); token = '' } }
-  const newSegment = () => { endToken(); segments.push([]) }
-  for (let i = 0; i < text.length; i += 1) {
-    const ch = text[i]
-    const next = text[i + 1]
-    if (quote === "'") {
-      token += ch
-      if (ch === "'") quote = null
-      continue
-    }
-    if (quote === '"') {
-      if (ch === '\\' && next !== undefined) { token += ch + next; i += 1; continue }
-      if (ch === '$' && next === '(') { substitutions.push('"'); quote = null; newSegment(); i += 1; continue }
-      token += ch
-      if (ch === '"') quote = null
-      continue
-    }
-    if (ch === "'" || ch === '"') { quote = ch; token += ch; continue }
-    if (ch === '\\' && next !== undefined) { token += ch + next; i += 1; continue }
-    if ((ch === '|' && next === '|') || (ch === '&' && next === '&')) { newSegment(); i += 1; continue }
-    if (ch === '|' || ch === ';' || ch === '(') { newSegment(); continue }
-    if (ch === '$' && next === '(') { substitutions.push(null); newSegment(); i += 1; continue }
-    if (ch === ')') { endToken(); quote = substitutions.length ? substitutions.pop() : null; segments.push([]); continue }
-    if (/\s/.test(ch)) { endToken(); continue }
-    token += ch
-  }
-  endToken()
-  const words = []
-  for (const tokens of segments) {
-    let atCommand = true
-    for (const raw of tokens) {
-      const t = raw.replace(/[}\]]+$/, '')
-      if (!atCommand) {
-        if (['do', 'then', 'else', 'elif'].includes(t)) atCommand = true
-        continue
-      }
-      if (t === '' || t === '!' || t === '{' || /^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) continue
-      if (SHELL_WORDS.includes(t)) {
-        atCommand = ['do', 'then', 'else', 'elif', 'command', 'exec', 'eval'].includes(t)
-        continue
-      }
-      atCommand = false
-      if (t.includes('/') || /^[$"'\-0-9<>]/.test(t)) continue
-      words.push(t)
-    }
-  }
-  return words
-}
-
-/**
- * Every command word of every task's `proofRuns` across `compiled.waves`, and
- * of every `compiled.payload.checks[].cmd` (task `check`), that
- * `SANDBOX_TOOLCHAIN` lacks — one `{ task, word, cmd }` per (task, word), in
- * document order. Pure; empty means every probe and check can run on the box.
- */
-export function toolchainViolations (compiled) {
-  const out = []
-  const seen = new Set()
-  const note = (task, cmd) => {
-    for (const word of probeWordsOf(cmd)) {
-      if (SANDBOX_TOOLCHAIN.includes(word)) continue
-      const key = `${task}\u0000${word}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      out.push({ task: String(task), word, cmd: String(cmd) })
-    }
-  }
-  const waves = Array.isArray(compiled?.waves) ? compiled.waves : []
-  for (const wave of waves) {
-    if (!Array.isArray(wave)) continue
-    for (const task of wave) {
-      const runs = Array.isArray(task?.proofRuns) ? task.proofRuns : []
-      for (const cmd of runs) note(task?.id ?? '?', cmd)
-    }
-  }
-  const checks = Array.isArray(compiled?.payload?.checks) ? compiled.payload.checks : []
-  for (const check of checks) if (check && typeof check.cmd === 'string') note('check', check.cmd)
-  return out
 }
 
 /**
@@ -446,7 +279,7 @@ const ORIGIN_SPELLINGS = Object.freeze([
   /^ssh:\/\/git@github\.com\/(.+?)(?:\.git)?\/?$/
 ])
 
-export function targetOfOriginUrl (url) {
+function targetOfOriginUrl (url) {
   const text = String(url ?? '').trim()
   for (const pattern of ORIGIN_SPELLINGS) {
     const match = pattern.exec(text)
@@ -456,369 +289,12 @@ export function targetOfOriginUrl (url) {
 }
 
 /**
- * A hash pin is a fact about BASE, and BASE is chosen at launch and not at
- * authoring — so every `git hash-object` literal a plan carries is checked
- * against the tree at `--base` before the plan is pushed, with nothing but
- * local git reads made. A stale pin found here costs seconds on the laptop; the
- * same pin found on the sandbox costs a run.
- *
- * A pin lives on a `- Check:` bullet of `## Global Constraints` or a `- Run:`
- * bullet of a task's Proof — the launcher reads a line by its stripped form and
- * not by where in the plan it sits, so a pin on any other kind of line (a
- * `**Context:**` sentence quoting one, say) is prose and is not read. Two
- * shapes are pins:
- *
- *   test "$(git hash-object <path>)" = <40-hex>
- *   test "$(<command> | git hash-object --stdin)" = <40-hex>
- *
- * A `Run:` may chain several with `&&`, so one line can carry several.
- */
-
-/** A pin-bearing bullet, by its stripped form. */
-const PIN_LINE = /^-\s*(?:Check|Run):\s*(.*)$/
-
-/**
- * `plan_parse.py`'s whole-value backtick rule, copied rather than imported: a
- * whole-value backtick wrapper is decoration and comes off before the value is
- * matched. A value with backticks INSIDE it does not match and rides
- * untouched, exactly as it does there.
- */
-const WHOLLY_BACKTICKED = /^`([^`]+)`$/
-
-/**
- * The two shapes, each ending in a sha that is 40 hex characters and no more:
- * the lookahead is why a 41-hex literal is not a pin, and the exact `{40}` is
- * why a 39-hex one is not either. A pin the launcher cannot read is not a pin
- * it guesses at.
- */
-const PATH_PIN = /test\s+"\$\(\s*git\s+hash-object\s+([^\s)"|]+)\s*\)"\s*=\s*([0-9a-f]{40})(?![0-9a-fA-F])/g
-/**
- * The slice command may not span a `)"`: that boundary closes the substitution
- * of an earlier pin on the same `&&`-chained line, and a capture crossing it
- * would swallow that pin whole — a path pin chained before a slice pin would be
- * read as one slice pin whose command is the two halves joined, handed to
- * `/bin/sh` as one command, hashed as the empty blob, and a plan whose pins all
- * match would be refused. Only that two-character boundary is forbidden, so a
- * command that quotes (`grep "^set -e" f`) or pipes several times still matches.
- */
-const SLICE_PIN = /test\s+"\$\(\s*((?:(?!\)")[^\n])+?)\s*\|\s*git\s+hash-object\s+--stdin\s*\)"\s*=\s*([0-9a-f]{40})(?![0-9a-fA-F])/g
-
-/** How a slice pin names itself in a refusal: one line, at most 80 characters. */
-const clipCommand = (command) => String(command).replace(/\s+/g, ' ').trim().slice(0, 80)
-
-/** One stale pin, one line — the path (or clipped command), the pinned sha and
- *  what the base really carries, so the operator can see the fix without
- *  running anything. */
-const pinRefusalLine = (subject, pinned, base, real) =>
-  `launch: plan pin ${subject}: pinned ${pinned} but --base ${base} has ${real ?? 'no such path'}`
-
-/** Every pin the plan text carries, in the order the plan writes them. */
-export function planPins (planText) {
-  const pins = []
-  for (const rawLine of String(planText ?? '').split('\n')) {
-    const bullet = PIN_LINE.exec(rawLine.trim())
-    if (!bullet) continue
-    const value = bullet[1].trim()
-    const unwrapped = WHOLLY_BACKTICKED.exec(value)
-    const text = unwrapped ? unwrapped[1].trim() : value
-    const found = []
-    for (const m of text.matchAll(PATH_PIN)) {
-      found.push({ at: m.index, kind: 'path', path: m[1], pinned: m[2] })
-    }
-    for (const m of text.matchAll(SLICE_PIN)) {
-      found.push({ at: m.index, kind: 'slice', command: m[1], pinned: m[2] })
-    }
-    found.sort((a, b) => a.at - b.at)
-    pins.push(...found)
-  }
-  return pins
-}
-
-/**
- * The tree at `<base>`, in a throwaway directory, built with git plumbing
- * against a temporary index: `read-tree` fills that index and `checkout-index
- * --prefix` writes the files out. The operator's own index, `HEAD` and working
- * tree are never read and never written — a launch that verifies a slice pin
- * leaves the checkout exactly as a launch that verifies none.
- *
- * Answers `{ dir, tree }`: `dir` is what the caller removes, `tree` is the
- * working directory a slice command runs in.
- */
-async function basePinCheckout ({ exec, repoDir, base }) {
-  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'fleet-pin-'))
-  const tree = path.join(dir, 'tree')
-  const env = { ...process.env, GIT_INDEX_FILE: path.join(dir, 'index') }
-  try {
-    await fsp.mkdir(tree, { recursive: true })
-    for (const argv of [['read-tree', base], ['checkout-index', '-a', '-f', `--prefix=${tree}${path.sep}`]]) {
-      const res = await exec('git', ['-C', repoDir, ...argv], { env })
-      if (res.code !== 0) {
-        throw new Refusal(`launch: git ${argv.join(' ')} failed (exit ${res.code}):\n${output(res)}`)
-      }
-    }
-  } catch (error) {
-    await fsp.rm(dir, { recursive: true, force: true })
-    throw error
-  }
-  return { dir, tree }
-}
-
-/**
- * What a slice pin's command really hashes to at `--base`: the command under
- * `/bin/sh -c` with the extracted tree as its working directory, its stdout
- * hashed with `git hash-object --stdin`. The shell runs outside the exec seam
- * because it is not a lobby verb and not a git read — it is the plan's own
- * command, and it must really run for its sha to mean anything.
- */
-async function slicePinSha ({ exec, repoDir, tree, command }) {
-  const ran = spawnSync('/bin/sh', ['-c', command], { cwd: tree, maxBuffer: 32 * 1024 * 1024 })
-  const res = await exec('git', ['-C', repoDir, 'hash-object', '--stdin'], {
-    input: ran.stdout ?? Buffer.alloc(0)
-  })
-  if (res.code !== 0) {
-    throw new Refusal(
-      `launch: git hash-object --stdin failed (exit ${res.code}) for plan pin ${clipCommand(command)}:\n${output(res)}`
-    )
-  }
-  return String(res.stdout ?? '').trim()
-}
-
-/**
- * Every pin the plan carries, verified against `<base>`, or a `Refusal` (exit
- * 2) carrying one line per stale pin — so two stale pins are two lines and an
- * operator fixes both in one pass. A path absent at `--base` is stale, not
- * skipped: a pin naming a file the base does not have is a pin about some other
- * tree.
- *
- * The base's blob for a path is `git rev-parse <base>:<path>`, which is what
- * `git hash-object <path>` answers in a checkout of `<base>` — no clean filter
- * is configured in this repository. A slice pin needs the files themselves, so
- * it gets a throwaway checkout that is removed in a `finally`, whether this
- * answers or throws.
- */
-export async function verifyPlanPins ({ exec, repoDir, base, planText }) {
-  const pins = planPins(planText)
-  if (pins.length === 0) return
-  const checkout = pins.some((pin) => pin.kind === 'slice')
-    ? await basePinCheckout({ exec, repoDir, base })
-    : null
-  const stale = []
-  try {
-    for (const pin of pins) {
-      if (pin.kind === 'path') {
-        const res = await git(exec, repoDir, ['rev-parse', `${base}:${pin.path}`])
-        const real = res.code === 0 ? String(res.stdout ?? '').trim() : null
-        if (real !== pin.pinned) stale.push(pinRefusalLine(pin.path, pin.pinned, base, real))
-        continue
-      }
-      const real = await slicePinSha({ exec, repoDir, tree: checkout.tree, command: pin.command })
-      if (real !== pin.pinned) {
-        stale.push(pinRefusalLine(clipCommand(pin.command), pin.pinned, base, real))
-      }
-    }
-  } finally {
-    if (checkout !== null) await fsp.rm(checkout.dir, { recursive: true, force: true })
-  }
-  if (stale.length > 0) throw new Refusal(stale.join('\n'))
-}
-
-/**
- * The check's and the parser's paths inside the engine tree, at every sha —
- * never resolved against this checkout. The copies a launch runs are the ones
- * it fetches at `engine=`; see `fetchCompilerAt`. `plan_parse.py` is the file
- * the sandbox runs, and `plan_check.py` imports it from its own directory, so
- * the two are fetched together and land side by side.
- */
-const CHECKER_REL = 'skills/ultrapowers/scripts/plan_check.py'
-const PARSER_REL = 'skills/ultrapowers/scripts/plan_parse.py'
-/**
  * The checkout this file sits in. On the laptop that is the plugin cache
  * (`~/.claude/plugins/cache/ultrapowers/ultrapowers/<version>/`), whose `.git`
  * may or may not hold the engine sha — a cache without it is exactly the
- * `gh api` case below.
+ * `gh api` case of `fetchCompilerAt` (`./compiler.mjs`).
  */
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-
-/**
- * What the launch's check and parse run: `plan_check.py` and `plan_parse.py`
- * AT THE ENGINE SHA, in a directory of their own.
- *
- * The trap this closes (run-26, 2026-09-17): the launcher used to run the
- * compiler of the plugin build it was invoked from, while the sandbox's
- * preflight runs the engine checkout cloned at `engine=`. A plan that compiled
- * `PLAN OK` on the laptop was refused an hour later by a compile rule that had
- * landed on main after the installed build — the two compilers were different
- * files. Fetching the engine's own copy makes the laptop's verdict the
- * sandbox's verdict by construction.
- *
- * Two reads, in order, both through the exec seam:
- *
- *   1. `git -C <pluginRoot> show <engine>:<path>` — free, offline, and right
- *      whenever the checkout has the sha;
- *   2. `gh api -H 'Accept: application/vnd.github.raw' repos/<ENGINE_REPO>/
- *      contents/<path>?ref=<engine>` — the raw media type makes stdout the
- *      file body.
- *
- * A read that exits non-zero OR prints an empty stdout has not answered a
- * file, so the second is tried; when neither answers, this is a `Refusal`
- * naming the sha — never a fall back to the copy beside this file, because
- * that copy is the bug.
- *
- * Two files are enough: both import only the standard library and each other.
- * Copies under `os.tmpdir()`, at their real depth, read the plan, its gate
- * record and the `--base` tree exactly as the cache copies do.
- *
- * Answers `{ dir, scriptPath, parserPath, source }`: `dir` is what the caller
- * removes, `scriptPath` is `plan_check.py`, `parserPath` is `plan_parse.py`,
- * `source` is `git-show` or `gh-api` (the check's).
- */
-export async function fetchCompilerAt ({ exec, engine, pluginRoot }) {
-  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'fleet-compiler-'))
-  const fetchOne = async (rel) => {
-    const tried = []
-    for (const attempt of [
-      { source: 'git-show', read: () => git(exec, pluginRoot, ['show', `${engine}:${rel}`]) },
-      {
-        source: 'gh-api',
-        read: () => exec('gh', [
-          'api', '-H', 'Accept: application/vnd.github.raw',
-          `repos/${ENGINE_REPO}/contents/${rel}?ref=${engine}`
-        ])
-      }
-    ]) {
-      const res = await attempt.read()
-      const body = String(res.stdout ?? '')
-      if (res.code === 0 && body !== '') {
-        const filePath = path.join(dir, rel)
-        await fsp.mkdir(path.dirname(filePath), { recursive: true })
-        await fsp.writeFile(filePath, body)
-        return { filePath, source: attempt.source }
-      }
-      tried.push(`  ${attempt.source}: exit ${res.code}${output(res) === '' ? ' (no output)' : `\n${output(res)}`}`)
-    }
-    throw new Refusal(
-      `launch: could not fetch ${rel} at engine ${engine} — the launch reads the plan with the ` +
-      'parser the sandbox will use or it does not launch:\n' + tried.join('\n')
-    )
-  }
-  try {
-    const parser = await fetchOne(PARSER_REL)
-    const checker = await fetchOne(CHECKER_REL)
-    return { dir, scriptPath: checker.filePath, parserPath: parser.filePath, source: checker.source }
-  } catch (error) {
-    await fsp.rm(dir, { recursive: true, force: true })
-    throw error
-  }
-}
-
-/**
- * Neither compile has a compiler of its own to fall back on: a caller that
- * names none is refused before any subprocess, rather than quietly compiling
- * with whatever copy happens to sit beside this file.
- */
-const requireCompilerPath = (compilerPath, which) => {
-  if (typeof compilerPath === 'string' && compilerPath !== '') return
-  throw new Refusal(
-    `launch: ${which} was asked for without a compilerPath — the copy fetched at ` +
-    'engine= is the only one a launch runs (fetchCompilerAt)'
-  )
-}
-
-/** The pinning script, as the re-pin command names it. */
-const PIN_SCRIPT_REL = 'skills/ultrawrite/scripts/pin_base_facts.py'
-/** The stamp a generated `**BASE facts:**` block carries: the sha it was read at. */
-const BASE_FACTS_STAMP = /\*\*BASE facts:\*\*\s*\(generated at ([0-9a-f]{7,40})\)/g
-
-/**
- * The plan compiles against the tree at `--base`, or it is a refusal — before
- * any lobby verb, any push, any `ls-remote`. Two reads, in order:
- *
- *  1. A `**BASE facts:**` block stamped `(generated at <sha>)` was generated
- *     from some tree; when that sha is not a prefix of `--base`, the block is a
- *     fact about another commit and every worker would read stale Context
- *     (#865). The refusal carries the exact re-pin command.
- *  2. `plan_check.py --base <base> <plan>` — the gate record, the authoring
- *     record and, since #896, the tree's own facts about the plan (what a
- *     deleted file holds; which files outside a task's Files carry a literal
- *     its clauses pin). A non-zero exit is a refusal carrying the compiler's
- *     text verbatim — including a `STALE fact:` line for a Stale-if predicate
- *     that holds at BASE, which is what the operator reads on the laptop; the
- *     `BASE fact:`, `STALE fact:`, `GREEN-AT-BASE fact:`, `RED-AT-BASE fact:`
- *     and `AUTHORING fact:` lines of a clean check ride the result so the launch line prints them,
- *     in the order the compiler printed them (a `STALE fact:` there is the
- *     advisory kind: a predicate the compiler could not read at BASE, never a
- *     refusal; a `GREEN-AT-BASE fact:` line is a Proof `Run:` line the compiler
- *     found already green at BASE, plus the one line totalling what those runs
- *     cost — this release every one of them is a fact and the compile still
- *     exits 0, so dropping them on the laptop is the only way the operator
- *     could fail to read them; the `AUTHORING fact:` line is what the plan's
- *     authoring cost, or `AUTHORING fact: none recorded` when the gate record
- *     carries none).
- *
- * The compiler runs through the exec seam like every other subprocess, so a sim
- * that answers `python3` decides what the compiler said. `compilerPath` is the
- * file `fetchCompilerAt` wrote and is required: there is no default, because a
- * default is how a launch ends up compiling with a compiler the sandbox does
- * not have.
- */
-export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planText, compilerPath }) {
-  requireCompilerPath(compilerPath, 'plan_check.py')
-  const stamps = [...String(planText).matchAll(BASE_FACTS_STAMP)].map((m) => m[1])
-  const stale = [...new Set(stamps.filter((sha) => !base.startsWith(sha)))]
-  if (stale.length > 0) {
-    throw new Refusal(
-      `launch: the plan's **BASE facts:** blocks were generated at ${stale.join(', ')}, not at --base ${base} — ` +
-      `re-pin them first: python3 ${PIN_SCRIPT_REL} --write --base ${base} ${planPath}`
-    )
-  }
-  const res = await exec('python3', [compilerPath, '--base', base, '--repo', repoDir, planPath], { cwd: repoDir })
-  if (res.code !== 0) {
-    throw new Refusal(
-      `launch: plan_check.py --base ${base} refused ${planPath} (exit ${res.code}):\n${output(res)}`
-    )
-  }
-  return String(res.stdout ?? '').split('\n').filter(
-    (line) =>
-      line.startsWith('BASE fact:') ||
-      line.startsWith('STALE fact:') ||
-      line.startsWith('GREEN-AT-BASE fact:') ||
-      line.startsWith('RED-AT-BASE fact:') ||
-      line.startsWith('AUTHORING fact:')
-  )
-}
-
-/**
- * The launch's parse: `plan_parse.py <plan>` — the sandbox's own parser, so
- * what the laptop sizes the box from is what the engine will read. Run once
- * per run number the launch attempts and read by everything that needs to know
- * what the plan IS: how wide its widest wave is (which is what the VM is sized
- * to and what the engine's dispatch bound becomes), and the tasks and edges the
- * hub is filed with. `stamp` names the run the parse was made for and nothing
- * in the parse itself: the output is the same under every number.
- *
- * Answers `{ stamp, payload, waves, edges }`. `compilerPath` is
- * `fetchCompilerAt`'s `parserPath` and is required, for the reason
- * `verifyPlanCompiles` gives.
- */
-export async function compilePlanForRun ({ exec, repoDir, planPath, stamp, compilerPath }) {
-  requireCompilerPath(compilerPath, `plan_parse.py for ${stamp}`)
-  const res = await exec('python3', [compilerPath, planPath], { cwd: repoDir })
-  if (res.code !== 0) {
-    throw new Refusal(`launch: plan_parse.py for ${stamp} failed (exit ${res.code}):\n${output(res)}`)
-  }
-  let payload
-  try {
-    payload = JSON.parse(String(res.stdout ?? ''))
-  } catch (error) {
-    throw new Refusal(`launch: plan_parse.py for ${stamp} printed no JSON: ${error?.message ?? error}`)
-  }
-  return {
-    stamp,
-    payload,
-    waves: Array.isArray(payload?.launch_waves) ? payload.launch_waves : [],
-    edges: Array.isArray(payload?.dag_edges) ? payload.dag_edges : []
-  }
-}
 
 /**
  * The engine sha, when `--engine` was not given: the tip of the PUBLIC
@@ -905,7 +381,7 @@ export function defaultReadUsage (account = DEFAULT_ACCOUNT, spawn = spawnSync) 
  * it was parsed by a `plan_parse.py` from before that key existed — is not a
  * publishing plan and is never refused here, whatever `integrations` carries.
  */
-export function publishRefusal ({ compiled, integrations }) {
+function publishRefusal ({ compiled, integrations }) {
   const publish = compiled?.publish
   if (publish === null || publish === undefined || typeof publish !== 'object') return null
   const rows = Array.isArray(integrations) ? integrations : []
@@ -933,7 +409,7 @@ function usageRefusal (account, label, window) {
  * branch is gone — the run is publishing or has published, and no engine reads
  * its task issues any more — so that row is not a duplicate.
  */
-export async function liveDuplicatesOf ({ exec, repoDir, target, planText, runs }) {
+async function liveDuplicatesOf ({ exec, repoDir, target, planText, runs }) {
   const candidates = runs.filter((r) => r.target === target && r.live !== false && isRunNumber(r.run))
   if (candidates.length === 0) return []
   const hashed = await exec('git', ['-C', repoDir, 'hash-object', '--stdin'], { input: planText })
@@ -1633,7 +1109,7 @@ async function commitPlan ({ exec, repoDir, base, run, planText, verdictsText, k
 }
 
 /** How many plan pushes one launch makes before it refuses. */
-export const PUSH_ATTEMPTS = 3
+const PUSH_ATTEMPTS = 3
 
 /**
  * The plan commit, pushed — and the run number, reserved by that push rather
@@ -1698,152 +1174,6 @@ async function pushPlan ({
     if (filed !== null) await kataBump(filed.record, taken, n)
   }
 }
-
-/**
- * The 40 hex `git hash-object` prints for a text — computed in-process, so
- * nothing here has to exec git to learn the identity of a plan. A blob's sha1
- * is taken over the header `blob <byte length>\0` and then the bytes; the
- * length is the BYTE length, which is why `Buffer.byteLength` and not `.length`.
- *
- * It is the plan's identity in an `Idempotency-Key`: the same plan text is the
- * same sha is the same key is the same issue, and a plan whose text changed is
- * a new sha and a new set of issues.
- */
-const planBlobSha = (text) => {
-  const s = String(text ?? '')
-  return crypto.createHash('sha1')
-    .update('blob ' + Buffer.byteLength(s) + '\0')
-    .update(s)
-    .digest('hex')
-}
-
-/**
- * The run, filed on the hub for one run number: the tasks of the parse made
- * for `run-<n>` (`compilePlanForRun`), one project `<owner>-<repo>` —
- * the TARGET's, not this number's, so every run against one repository files
- * into one project and a name the hub already holds answers the project that is
- * there — one run issue carrying the plan's title, Claim line and Closes
- * numbers, one issue per task in wave order whose run and wave are PATCHED on
- * after the create and whose `parent` is the run issue, one `blocks` link per
- * dependency edge created ON the task that blocks, and then one `getIssue` per
- * task and one for the run — the revisions THOSE answer are the record's,
- * because nothing here assumes which side of a link kata re-revisions. The
- * answer is the `.ultrapowers/kata.json` object, keys in the order the contract
- * spells: `url`, `project`, `run`, `tasks`.
- *
- * FILING THE SAME PLAN TWICE FILES IT ONCE. Every create carries an
- * `Idempotency-Key` — `<target>:<plan sha>:task-<id>` for a task, `…:run-<n>`
- * for the run — and kata fingerprints that key together with the create's
- * fields, so the create body must be the same on every launch of one plan
- * text or the replay is a 409 `idempotency_mismatch`. That is why a task's
- * create carries only `{task, plan}` and no links: `run` and `wave`
- * move with the run number, and initial links are in the
- * fingerprint too. They arrive instead as the metadata patch and the `parent`
- * link that follow, which a second launch simply re-applies to the issue the
- * key answered. The patch reads the issue first because an idempotent replay
- * answers the ORIGINAL revision (the issue is already past it, linked), and a
- * stale `If-Match` is a 412; the metadata endpoint merges per key, so a patch
- * of `{run, wave}` leaves `{task, plan}` where they are. The
- * `parent` link carries `replace: true` because a second parent is otherwise a
- * 409 `parent_already_set` — a refiled task moves under the new run issue
- * rather than refusing. Hub behaviour measured against kata v0.17.2 on
- * 2026-09-14.
- *
- * A task row is `{uid, short_id, revision}`, in that order (#963). The
- * `short_id` is the create answer's — `MUTATION_KEYS` in `fleet/kata-client.mjs`
- * projects it, so the launcher already holds it here — and it is the ONLY place
- * it can come from: the dispatch `getIssue` the engine makes projects
- * `ISSUE_KEYS`, which has no `short_id`, so a row that does not carry one leaves
- * every worker of that task with no `KATA_REF` and no issue to write to. Hence
- * the refusal below rather than a row without it: a run whose workers cannot
- * name their issue is not a run this launcher files. The run's own row stays
- * `{uid, revision}` — no label resolves to it, so nothing reads a short id
- * there.
- *
- * Every hub call goes through `call`, which turns a throw into the launch's
- * LobbyError naming the method; the missing `short_id` is the launch's own
- * refusal. The sheets are `compiled` — the launch's one parse, handed in
- * rather than run again here; a bumped push files the same parse under the
- * number it got.
- */
-async function fileRunOnHub ({ hub, call, planText, target, base, n, compiled }) {
-  const stamp = `run-${n}`
-  const waves = compiled?.waves ?? []
-  const edges = compiled?.edges ?? []
-
-  const planSha = planBlobSha(planText)
-  const keyFor = (suffix) => `${target}:${planSha}:${suffix}`
-
-  const name = kataProjectFor(target)
-  const project = await call('createProject', () => hub.createProject(name))
-  const runIssue = await call('createIssue', () => hub.createIssue(project.id, {
-    title: `${stamp}: ${planTitleOf(planText)}`,
-    body: planClaimOf(planText),
-    metadata: { run: n, target, base, closes: planClosesOf(planText), plan: planSha },
-    idempotencyKey: keyFor(`run-${n}`),
-    // A relaunch of a plan the fleet already drove differs from that run's
-    // open issue only by N in the title, and the hub's duplicate scorer refuses
-    // it (#1008). Run numbers make the title distinct by construction, so the
-    // create says so; the task creates below stay byte-identical, since theirs
-    // is the body the idempotency key is fingerprinted with.
-    forceNew: true
-  }))
-  const tasks = []
-  for (const [index, wave] of waves.entries()) {
-    for (const entry of wave) {
-      const id = String(entry.id)
-      const issue = await call('createIssue', () => hub.createIssue(project.id, {
-        title: `task ${id}: ${entry.title ?? ''}`,
-        body: '',
-        metadata: { task: id, plan: planSha },
-        idempotencyKey: keyFor(`task-${id}`)
-      }))
-      const shortId = issue?.short_id
-      if (typeof shortId !== 'string' || shortId === '') {
-        throw new Refusal(
-          `launch: kata createIssue for task ${id} answered no short_id — ` +
-          'the worker reference `<project>#<short id>` cannot be written and no ' +
-          'record was filed'
-        )
-      }
-      // This number's half of the issue, applied rather than created: read for
-      // the revision the patch needs (a replay answers the create's, not the
-      // issue's), merge the run's own metadata on, and move the parent.
-      const read = await call('getIssue', () => hub.getIssue(issue.uid))
-      await call('patchMetadata', () => hub.patchMetadata(project.id, issue.uid, {
-        run: n, wave: index + 1
-      }, read.revision))
-      await call('link', () => hub.link(project.id, issue.uid, {
-        type: 'parent', to_ref: runIssue.uid, replace: true
-      }))
-      tasks.push({ id, uid: issue.uid, shortId })
-    }
-  }
-  const uidOf = new Map(tasks.map((t) => [t.id, t.uid]))
-  for (const edge of edges) {
-    const from = uidOf.get(String(edge.from))
-    const to = uidOf.get(String(edge.to))
-    if (!from || !to) {
-      throw new Refusal(`launch: plan_parse.py for ${stamp} names an edge ${edge.from} -> ${edge.to} between tasks it did not list`)
-    }
-    await call('link', () => hub.link(project.id, from, { type: 'blocks', to_ref: to }))
-  }
-  const record = {
-    url: KATA_SANDBOX_URL,
-    project: { id: project.id, uid: project.uid, name: project.name },
-    run: null,
-    tasks: {}
-  }
-  for (const t of tasks) {
-    const read = await call('getIssue', () => hub.getIssue(t.uid))
-    record.tasks[t.id] = { uid: t.uid, short_id: t.shortId, revision: read.revision }
-  }
-  const readRun = await call('getIssue', () => hub.getIssue(runIssue.uid))
-  record.run = { uid: runIssue.uid, revision: readRun.revision }
-  return record
-}
-
-export { fileRunOnHub }
 
 /**
  * An unpinned engine, named as the tip it is. Only the unpinned case is

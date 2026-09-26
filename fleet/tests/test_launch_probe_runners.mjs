@@ -3,7 +3,7 @@
  * `Run:` probe or `Check:` line calls a program the sandbox does not have,
  * before anything is pushed (#645, the 2026-09-22 plan).
  *
- * Three pure exports of `fleet/launch.mjs` and one launch:
+ * Three pure exports of `fleet/toolchain.mjs` and one launch:
  *
  *   (a) [M1] `probeWordsOf(line)` answers the command words of one shell
  *       line — the two example lines the plan pins, a regex alternation inside
@@ -30,17 +30,18 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import * as launchModule from '../launch.mjs'
+import { probeWordsOf, toolchainViolations, SANDBOX_TOOLCHAIN } from '../toolchain.mjs'
 import { Refusal, defaultExec } from '../lobby.mjs'
 import { simEnv } from './_helpers.mjs'
 import {
   answer, cleanup, cmdRule, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmsPayload
 } from './_lobby_helpers.mjs'
 
-const { probeWordsOf, toolchainViolations, SANDBOX_TOOLCHAIN, launch } = launchModule
+const { launch } = launchModule
 
 const isFunction = (leg, name, value) => assert.equal(
   typeof value, 'function',
-  `${leg} \`${name}\` must be exported by fleet/launch.mjs — the task's Produces: names it`
+  `${leg} \`${name}\` must be exported by ${name === 'launch' ? 'fleet/launch.mjs' : 'fleet/toolchain.mjs'} — the task's Produces: names it`
 )
 
 // ══════════════════════════════════════════════════════════════════════════
