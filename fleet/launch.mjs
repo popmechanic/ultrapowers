@@ -74,14 +74,13 @@ import {
   isSafeTarget,
   isVmName,
   KATA_HUB_FIX,
+  hubFromEnv,
   defaultKataEnvPath,
-  kataHostOf,
   listIntegrations,
   loadFleetConfig,
   lobby,
   output,
   parseArgs,
-  parseKataEnv,
   parseMemoryGb,
   planBranchFor,
   readPlanCapacity,
@@ -89,7 +88,6 @@ import {
   vmNameFor
 } from './lobby.mjs'
 import { fleetConfigAccount, verbDrift } from './doctor.mjs'
-import { makeKataClient, sshTransport } from './kata-client.mjs'
 import { janitor } from './janitor.mjs'
 import { readFleetFiles, renderSetupScript } from './setup-script.mjs'
 import { compilePlanForRun, fetchCompilerAt, verifyPlanCompiles } from './compiler.mjs'
@@ -131,32 +129,6 @@ const KATA_PATH = '.ultrapowers/kata.json'
 /** The one command that builds the hub, and where `fleet/kata-hub.mjs` leaves
  *  the hub's address and bearer — both `fleet/lobby.mjs`'s, since the janitor
  *  reads the same file. */
-
-/**
- * `~/.ultrapowers/kata-hub.env`, read: `{ url, token }` from its `KATA_URL=`
- * and `KATA_TOKEN=` lines. An absent file, or one missing either line, is a
- * refusal naming the path and the command that writes it — before any command
- * has run, so a laptop with no hub has touched neither exe.dev nor the target.
- *
- * The token is the laptop's RECORD of the bearer the hub was given; the
- * launcher never sends it. Every laptop request rides `ssh <hub> curl …` and
- * sources the bearer from the hub's own `/etc/kata/kata.env` there.
- */
-async function readKataEnv (envPath) {
-  let text
-  try {
-    text = await fsp.readFile(envPath, 'utf8')
-  } catch (error) {
-    throw new Refusal(`launch: no kata hub env at ${envPath} (${error?.code ?? error?.message ?? error}) — build the hub once: ${KATA_HUB_FIX}`)
-  }
-  const env = parseKataEnv(text)
-  for (const [key, value] of [['KATA_URL', env.url], ['KATA_TOKEN', env.token]]) {
-    if (!value) {
-      throw new Refusal(`launch: ${envPath} has no ${key}= line — build the hub once: ${KATA_HUB_FIX}`)
-    }
-  }
-  return env
-}
 
 /**
  * What a base off the default branch is told to do. The parked branch is not
@@ -527,17 +499,15 @@ async function launchBody ({
   // is made and the result's `kata` is null, which is what keeps every sim that
   // hands `launch` a config at its BASE behaviour. The env read is a refusal
   // that precedes every command.
-  let kataEnv = null
+  let kataHost = null
   let hub = kata === undefined ? null : kata
   if (kata === undefined && (config === undefined || config === null)) {
-    kataEnv = await readKataEnv(kataEnvPath)
-    const sshHost = kataHostOf(kataEnv.url)
-    if (sshHost === null) {
-      throw new Refusal(`launch: ${kataEnvPath} names KATA_URL ${JSON.stringify(kataEnv.url)}, not a url with a host — rebuild the hub: ${KATA_HUB_FIX}`)
-    }
-    hub = makeKataClient({ transport: sshTransport({ sshHost, exec }), actor: 'launch' })
+    const opened = await hubFromEnv({ exec, actor: 'launch', kataEnvPath })
+    if (opened.dark !== null) throw new Refusal(`launch: ${opened.dark}`)
+    hub = opened.client
+    kataHost = opened.host
   }
-  const kataUrl = hub === null ? null : (hub.url ?? kataEnv?.url ?? null)
+  const kataUrl = hub === null ? null : (hub.url ?? kataHost)
 
   // The ceiling this run is sized under: `--cpu`/`--memory` when the launch
   // line carries them — an explicit value wins outright, and is then its own
