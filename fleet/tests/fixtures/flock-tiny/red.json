@@ -1,0 +1,4 @@
+{
+  "1": { "calc.py": "def add(a, b):\n    return a - b\n" },
+  "2": { "report.py": "from functools import reduce\n\nfrom calc import add\n\n\ndef total(xs):\n    return reduce(add, xs, 0)\n" }
+}
