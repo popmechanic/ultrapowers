@@ -1,6 +1,6 @@
 {
   "name": "ultrapowers",
-  "version": "0.3.37",
+  "version": "0.3.38",
   "description": "The client for ultrapowers: /ultrapowers <plan-path> commits an approved plan and runs on an exe.dev fleet you provision \u2014 a disposable sandbox runs the plan as a pool of tasks, several implementers per task, the plan's own probes and checks as the proof, and opens its own PR. No local engine.",
   "author": {
     "name": "Marcus Estes",

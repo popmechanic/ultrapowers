@@ -10,7 +10,7 @@
       "name": "ultrapowers",
       "source": "./",
       "description": "ultrapowers client — owns plan authoring (ultrawrite) and runs on an exe.dev fleet you provision (a sandbox runs the plan as a pool of tasks, several implementers per task, the plan's probes and checks as the proof, and opens its own PR); no local engine",
-      "version": "0.3.37"
+      "version": "0.3.38"
     }
   ]
 }
