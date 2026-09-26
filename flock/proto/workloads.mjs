@@ -550,3 +550,382 @@ const ledger2 = {
   tasks: ledger.tasks.map((t) => ({ ...t, body: KNOWN(t.body), facts: t.facts.map((f) => f.map(KNOWN)) })),
 }
 WORKLOADS.ledger2 = ledger2
+
+// ── 5. atlas (ticket 4, the scale pass, operator 2026-09-25): fifteen tasks for eight agents
+// across six modules and their tests. Three producer→consumer chains three deep (1 → 2 → 14,
+// 10 → 11 → 14, 4 → 6 → 7), a rename across six files (3: the Place field pop → population,
+// read by 9 and 10, with a `words.pop(0)` that must survive it), a same-spot pair whose intended
+// order is NOT the merge's text order (12 and 13: RULES wants check_range before check_country),
+// hot files (index.py: 3, 8, 9; cli.py: 14, 15 both add to COMMANDS), and nine tasks ready at
+// once. BASE is flock-baseline@520dd9d3 (its files below, byte for byte) plus these files, one
+// seed commit that touches nothing that exists. ──
+const MAIN_520 = {
+  'README.md': `# flock-baseline
+
+The starting code for the two Flock prototype workloads (map popmechanic/ultrapowers#1292, ticket 4), used as the target of today's factory for a like-for-like baseline.
+
+- \`widgetkit/\`: the parser fixture (a constructor, a catalog that consumes it, size formatting).
+- \`inventory/\`: built to collide (three tasks in one module).
+
+Run the suite with \`python3 -m pytest -q\`.
+`,
+  '.gitignore': '__pycache__/\n.pytest_cache/\n*.pyc\n',
+  'inventory/core.py': `from dataclasses import dataclass, replace
+from typing import Optional
+
+@dataclass
+class Item:
+    name: str
+    quantity: int
+    price: float
+    sku: Optional[str] = None
+
+
+def parse_line(line: str) -> Item:
+    parts = [p.strip() for p in line.split(",")]
+    if len(parts) < 3:
+        raise ValueError("bad line")
+    try:
+        quantity = int(parts[1])
+        price = float(parts[2])
+    except ValueError:
+        raise ValueError("bad line") from None
+    sku = parts[3] if len(parts) > 3 else None
+    return Item(parts[0], quantity, price, sku)
+
+
+def total_value(items) -> float:
+    return sum(item.quantity * item.price for item in items)
+
+
+def load(text: str) -> list[Item]:
+    return [parse_line(line) for line in text.splitlines() if line.strip()]
+
+
+def restock(items, name, amount):
+    if amount <= 0:
+        raise ValueError("amount must be positive")
+    if not any(item.name == name for item in items):
+        raise KeyError(name)
+    return [
+        replace(item, quantity=item.quantity + amount) if item.name == name else item
+        for item in items
+    ]
+`,
+  'widgetkit/catalog.py': `"""The widget catalog: one widget per requested size, in request order."""
+
+from widgetkit.widget import Widget, make_widget
+
+
+def catalog(sizes: list[int]) -> list[Widget]:
+    """Return one Widget per size in \`\`sizes\`\`, preserving order.
+
+    Sizes are not validated here; an invalid size surfaces as the
+    \`\`ValueError\`\` raised by \`\`make_widget\`\`.
+    """
+    return [make_widget(n) for n in sizes]
+`,
+  'widgetkit/format.py': `"""Human-readable formatting for widget sizes."""
+
+
+def format_size(n: int) -> str:
+    """Return a size in millimetres spelled out, e.g. \`\`format_size(3) == "3 mm"\`\`."""
+    return f"{n} mm"
+`,
+  'widgetkit/widget.py': `"""The widget constructor."""
+
+from dataclasses import dataclass
+
+
+@dataclass
+class Widget:
+    size: int
+
+
+def make_widget(n: int) -> Widget:
+    """Return a Widget of size \`\`n\`\`; raise ValueError unless \`\`n\`\` is a positive whole number."""
+    if isinstance(n, bool) or not isinstance(n, int) or n <= 0:
+        raise ValueError("size must be positive")
+    return Widget(size=n)
+`,
+}
+const ATLAS_SEED = {
+  'atlas/__init__.py': '',
+  'atlas/places.py': `"""Places on the map: a name, a two-letter country code, a position in degrees and a head count."""
+from dataclasses import dataclass
+
+
+@dataclass
+class Place:
+    name: str
+    country: str
+    lat: float
+    lon: float
+    pop: int
+
+
+def place_key(place):
+    """How places sort: by country, then by name."""
+    return (place.country, place.name)
+
+
+def same_place(a, b):
+    """True when a and b are the same place: the same country and the same name."""
+    return place_key(a) == place_key(b)
+
+
+def parse_place(line):
+    """One place from a line of text."""
+    raise NotImplementedError
+
+
+def load_places(text):
+    """Every place in a block of text."""
+    raise NotImplementedError
+`,
+  'atlas/geo.py': `"""Distances and directions on a round Earth. A position is degrees: lat north, lon east."""
+import math
+
+EARTH_RADIUS_KM = 6371.0
+
+
+def radians(deg):
+    """Degrees to radians."""
+    return deg * math.pi / 180
+
+
+def degrees(rad):
+    """Radians to degrees."""
+    return rad * 180 / math.pi
+
+
+def distance_km(a, b):
+    """The great-circle distance from place a to place b, in kilometres."""
+    raise NotImplementedError
+
+
+def bearing_deg(a, b):
+    """The compass bearing to set out on from place a towards place b, in degrees."""
+    raise NotImplementedError
+`,
+  'atlas/routes.py': `"""Routes: places visited in order."""
+from atlas.geo import distance_km
+from atlas.places import same_place
+
+
+def route_length(stops):
+    """The distance of visiting the stops in order, in kilometres."""
+    raise NotImplementedError
+
+
+def nearest(origin, places):
+    """The place closest to origin, other than origin itself."""
+    raise NotImplementedError
+
+
+def plan_route(start, places):
+    """A route from start that always goes on to the closest place not yet visited."""
+    raise NotImplementedError
+`,
+  'atlas/index.py': `"""Looking places up: by country, by name, by size."""
+from atlas.places import place_key
+
+
+def total_population(places):
+    """How many people live in all of the places together."""
+    t = 0
+    for p in places:
+        t += p.pop
+    return t
+
+
+def sorted_places(places):
+    """The places in place_key order."""
+    return sorted(places, key=place_key)
+
+
+def by_country(places):
+    """Every country's place names."""
+    raise NotImplementedError
+
+
+def search(places, prefix):
+    """The places whose name starts with prefix."""
+    raise NotImplementedError
+
+
+def largest(places, n):
+    """The n places where the most people live."""
+    raise NotImplementedError
+`,
+  'atlas/render.py': `"""Text for people to read."""
+
+
+def format_pop(place):
+    """A place's head count, short: 709000 is '709k', 1250000 is '1.2M', 950 is '950'."""
+    n = place.pop
+    if n >= 1000000:
+        return "%.1fM" % (n / 1000000)
+    if n >= 1000:
+        return "%dk" % (n // 1000)
+    return str(n)
+
+
+def wrap(text, width):
+    """The words of text in lines no longer than width (a longer word gets a line of its own)."""
+    words = text.split()
+    lines = []
+    line = ""
+    while words:
+        word = words.pop(0)
+        if line and len(line) + 1 + len(word) > width:
+            lines.append(line)
+            line = word
+        else:
+            line = word if not line else line + " " + word
+    if line:
+        lines.append(line)
+    return lines
+
+
+def format_place(place):
+    """One place as a table row."""
+    raise NotImplementedError
+
+
+def table(places):
+    """Every place as a table row, with a total at the bottom."""
+    raise NotImplementedError
+`,
+  'atlas/validate.py': `"""Checking that a place makes sense. Each rule answers a problem as text, or None."""
+
+
+def check_name(place):
+    """A problem with the place's name, or None."""
+    if not place.name.strip():
+        return "empty name"
+    return None
+
+
+def check_range(place):
+    """A problem with the place's position, or None."""
+    raise NotImplementedError
+
+
+def check_country(place):
+    """A problem with the place's country code, or None."""
+    raise NotImplementedError
+
+
+def check_people(place):
+    """A problem with the place's head count, or None."""
+    if place.pop < 0:
+        return "negative population"
+    return None
+
+
+RULES = [
+    check_name,
+    check_people,
+]
+
+
+def validate(place):
+    """Every problem with one place, in RULES order."""
+    problems = []
+    for rule in RULES:
+        p = rule(place)
+        if p is not None:
+            problems.append(p)
+    return problems
+`,
+  'atlas/cli.py': `"""The atlas command line: a command and its arguments, run over the places in a text."""
+from atlas.places import load_places
+
+
+def cmd_count(args, places):
+    """How many places there are."""
+    return str(len(places))
+
+
+COMMANDS = {
+    "count": cmd_count,
+}
+
+
+def main(argv, text):
+    """Run the command argv[0], with the arguments argv[1:], over the places in text."""
+    if not argv or argv[0] not in COMMANDS:
+        return "unknown command"
+    return COMMANDS[argv[0]](argv[1:], load_places(text))
+`,
+  'tests/test_atlas_places.py': `from atlas.places import Place, place_key, same_place
+from atlas.validate import validate
+
+
+def oslo():
+    return Place("Oslo", "NO", 59.91, 10.75, pop=709000)
+
+
+def test_place_key_sorts_by_country_then_name():
+    b = Place("Bergen", "NO", 60.39, 5.32, pop=285000)
+    s = Place("Stockholm", "SE", 59.33, 18.07, pop=984000)
+    assert sorted([s, oslo(), b], key=place_key) == [b, oslo(), s]
+    assert same_place(oslo(), oslo()) and not same_place(oslo(), b)
+
+
+def test_a_good_place_has_no_problems():
+    assert validate(oslo()) == []
+`,
+  'tests/test_atlas_geo.py': `import math
+
+from atlas.geo import degrees, radians
+
+
+def test_radians_and_degrees_round_trip():
+    assert radians(180) == math.pi
+    assert round(degrees(radians(59.91)), 9) == 59.91
+`,
+  'tests/test_atlas_render.py': `from atlas.index import total_population
+from atlas.places import Place
+from atlas.render import format_pop, wrap
+
+
+def test_format_pop():
+    assert format_pop(Place("a", "NO", 0, 0, pop=709000)) == "709k"
+    assert format_pop(Place("b", "NO", 0, 0, pop=1250000)) == "1.2M"
+    assert format_pop(Place("c", "NO", 0, 0, pop=950)) == "950"
+
+
+def test_total_population():
+    assert total_population([Place("a", "NO", 0, 0, pop=1), Place("b", "SE", 0, 0, pop=2)]) == 3
+
+
+def test_wrap():
+    assert wrap("a bb ccc dddd", 6) == ["a bb", "ccc", "dddd"]
+`,
+}
+const atlas = {
+  name: 'atlas',
+  base: { ...ledger.base, ...MAIN_520, ...ATLAS_SEED },
+  check: ['python3', '-m', 'pytest', '-q', '-p', 'no:cacheprovider'],
+  tasks: [
+    { id: '1', title: 'Parse a place', depends_on: [] },
+    { id: '2', title: 'Load places', depends_on: ['1'] },
+    { id: '3', title: 'Rename pop to population', depends_on: [] },
+    { id: '4', title: 'Distance between two places', depends_on: [] },
+    { id: '5', title: 'Bearing from one place to another', depends_on: [] },
+    { id: '6', title: 'Route length and the nearest place', depends_on: ['4'] },
+    { id: '7', title: 'Plan a route', depends_on: ['6'] },
+    { id: '8', title: 'Places by country, and search by name', depends_on: [] },
+    { id: '9', title: 'The largest places', depends_on: [] },
+    { id: '10', title: 'Format a place', depends_on: [] },
+    { id: '11', title: 'A table of places', depends_on: ['10'] },
+    { id: '12', title: 'Position rule', depends_on: [] },
+    { id: '13', title: 'Country rule', depends_on: [] },
+    { id: '14', title: 'The list command', depends_on: ['2', '11'] },
+    { id: '15', title: 'The dist command', depends_on: ['2', '4'] },
+  ],
+}
+fromPlan(atlas, '2026-09-25-flock-baseline-atlas.md')
+WORKLOADS.atlas = atlas
