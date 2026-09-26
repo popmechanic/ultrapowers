@@ -242,7 +242,7 @@ engine_deps() {
   then ( cd "$ENGINE_REPO_DIR/fleet" && fleet_npm ci --no-audit --no-fund ) || fail "npm ci: engine deps"
   else ( cd "$ENGINE_REPO_DIR/fleet" && fleet_npm install --no-audit --no-fund ) || fail "npm install: engine deps"; fi
 }
-# A transient SERVICE, not a scope: `--wait` hands back the exit code and `--collect` unloads the unit; while it runs, the boot relays events every FLEET_COMMIT_SECONDS.
+# A transient SERVICE, not a scope: `--wait` hands back the exit code and `--collect` unloads the unit; while it runs, the boot relays events every FLEET_COMMIT_SECONDS and looks for its exit every second.
 run_engine() {
   local pid board_args=()
   [ -n "$BOARD_BOUND" ] && board_args=(--kata-url "$KATA_URL" --kata-project "$BOARD_PROJECT_ID" --kata-json "$BOARD_KATA_JSON" --kata-actor "engine:$RUN_ID")
@@ -257,7 +257,14 @@ run_engine() {
         ${board_args[@]+"${board_args[@]}"} >>"$ENGINE_LOG" 2>&1
     printf '%s\n' "$?" >"$DONE_MARKER" ) &
   pid=$!
-  while [ ! -f "$DONE_MARKER" ]; do sleep "$FLEET_COMMIT_SECONDS"; tick_events; done
+  # The exit is looked for every second and the events relayed every FLEET_COMMIT_SECONDS: one
+  # sleep for both left publish waiting up to a whole tick after the engine had exited (runs 4–6
+  # on flock-baseline, 13–58 s, 2026-09-26).
+  local waited=0
+  while [ ! -f "$DONE_MARKER" ]; do
+    sleep 1; waited=$((waited + 1))
+    if [ "$waited" -ge "$FLEET_COMMIT_SECONDS" ]; then waited=0; tick_events; fi
+  done
   wait "$pid" 2>/dev/null || true
   log "engine: exited $(cat "$DONE_MARKER") (output in $ENGINE_LOG)"
 }
