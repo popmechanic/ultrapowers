@@ -1,0 +1,7 @@
+run | arm | green | wall_s | last_session_to_settled_s | sessions | red_from_peer | red_waiting_producer | red_waiting_rename | conflicts | same_spot | order_ok | bash_over_60s | wait_for | out_tokens | idle_unclaimed_s | idle_wait_for_s | busy_share
+AE1 | explicit | True | 122 | 3.9 | 17 | 0 | 0 | 0 | 2->2 (+2 resolve task) unions=9 | 2 | True | - | 2 (2 held, 43s total) | 25.1k | A35 B93 C80 D13 E91 F88 G26 H78 | A0 B0 C22 D21 E0 F0 G0 H0 | 48%
+AE2 | explicit | True | 121 | 4.1 | 17 | 0 | 0 | 0 | 2->2 (+2 resolve task) unions=12 | 2 | True | - | 2 (2 held, 36s total) | 24.2k | A38 B77 C57 D9 E87 F86 G78 H79 | A0 B0 C17 D19 E0 F0 G0 H0 | 46%
+AE3 | explicit | True | 124 | 4.1 | 17 | 0 | 0 | 0 | 3->3 (+2 resolve task) unions=11 | 2 | True | - | 2 (2 held, 41s total) | 24.1k | A12 B97 C82 D13 E87 F76 G54 H82 | A0 B0 C19 D22 E0 F0 G0 H0 | 49%
+AE4 | explicit | True | 115 | 4.0 | 17 | 0 | 0 | 0 | 2->2 (+2 resolve task) unions=10 | 2 | True | - | 2 (2 held, 41s total) | 23.3k | A13 B92 C73 D10 E70 F76 G44 H71 | A0 B0 C19 D21 E0 F0 G0 H0 | 51%
+AE5 | explicit | True | 115 | None | 16 | 0 | 0 | 0 | 2->2 (+1 resolve task) unions=11 | 2 | True | - | 2 (2 held, 36s total) | 23.0k | A0 B69 C56 D5 E63 F61 G25 H56 | A0 B0 C17 D19 E0 F0 G0 H0 | 58%
+AE6 | explicit | True | 115 | 3.7 | 16 | 0 | 0 | 0 | 1->1 (+1 resolve task) unions=12 | 2 | True | - | 2 (2 held, 50s total) | 23.0k | A88 B27 C69 D13 E84 F83 G41 H66 | A0 B0 C24 D26 E0 F0 G0 H0 | 49%
