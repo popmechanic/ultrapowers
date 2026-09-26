@@ -1,0 +1,126 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "cb55c628919b15d96628c2a7d7945506bd3d8479350915583c5c79ebcca2a109",
+   "verdict": "pass",
+   "reason": "every computable fact the clauses state has a tagged probe that fails if it is false; pinned literals recomputed by the reader"
+  },
+  "2": {
+   "hash": "dc1c9c7b433bf6ddc8faaf013597c3b2af92cc22b0b782614b42db8c934b5fa6",
+   "verdict": "pass",
+   "reason": "every computable fact the clauses state has a tagged probe that fails if it is false; pinned literals recomputed by the reader"
+  },
+  "3": {
+   "hash": "d62db5794322be274dd417b2d4bc1e5ce41974d47119fb0ae00bab17bb2e4e23",
+   "verdict": "pass",
+   "reason": "every computable fact the clauses state has a tagged probe that fails if it is false; pinned literals recomputed by the reader"
+  },
+  "4": {
+   "hash": "e0079e23014c30e82c4a09cce9910047d5d7916657883a6fb07bd99be8789201",
+   "verdict": "pass",
+   "reason": "every computable fact the clauses state has a tagged probe that fails if it is false; pinned literals recomputed by the reader"
+  },
+  "5": {
+   "hash": "034415e7d8f94b9241bf7ede23f45a80b2e9f64b704ef8a36471b16ba506d892",
+   "verdict": "pass",
+   "reason": "every computable fact the clauses state has a tagged probe that fails if it is false; pinned literals recomputed by the reader"
+  },
+  "6": {
+   "hash": "9ecc7583602134b469857456c4375d4e2ccb37f74575048e17198a5b961b7c9e",
+   "verdict": "pass",
+   "reason": "every computable fact the clauses state has a tagged probe that fails if it is false; pinned literals recomputed by the reader"
+  },
+  "7": {
+   "hash": "24604db6af0c66fd0b5b295c2a69e84981dc8aa09cfefebeceb44086b2d74d4c",
+   "verdict": "pass",
+   "reason": "narrowed in round 2: the route is pinned exactly; the nearest-from-each-stop rule is Context, read by Jev at landing"
+  },
+  "8": {
+   "hash": "876d7248f012c569721d13228421d7dcdc764db18f190e51e796b2c36607cbae",
+   "verdict": "pass",
+   "reason": "every computable fact the clauses state has a tagged probe that fails if it is false; pinned literals recomputed by the reader"
+  },
+  "9": {
+   "hash": "adacf2e41a0a5c5106abc0c3c090240e815f622fe0c991a684a00fd15bf2dc33",
+   "verdict": "pass",
+   "reason": "every computable fact the clauses state has a tagged probe that fails if it is false; pinned literals recomputed by the reader"
+  },
+  "10": {
+   "hash": "252dc182a4ea9c261584c2b76ef5d7fec561c6a044626adb23da4658b6567bd5",
+   "verdict": "pass",
+   "reason": "every computable fact the clauses state has a tagged probe that fails if it is false; pinned literals recomputed by the reader"
+  },
+  "11": {
+   "hash": "b1b54c934c3a6322c56eefedd90e89be57d4fcf62b44fb494745c1f736727fab",
+   "verdict": "pass",
+   "reason": "every computable fact the clauses state has a tagged probe that fails if it is false; pinned literals recomputed by the reader"
+  },
+  "12": {
+   "hash": "8cb56e85857b2615a2e2e29f002cd2cec4c6c63a3e5aa49588b434e4db9be15b",
+   "verdict": "pass",
+   "reason": "every computable fact the clauses state has a tagged probe that fails if it is false; pinned literals recomputed by the reader"
+  },
+  "13": {
+   "hash": "47718a8f4af7348bb14f6abf735be04869f697affd300c6467204a241d150e55",
+   "verdict": "pass",
+   "reason": "every computable fact the clauses state has a tagged probe that fails if it is false; pinned literals recomputed by the reader"
+  },
+  "14": {
+   "hash": "551e926545b1e2696c152eeedf6cb75fca4f97d9509b8489ec87c2bcbdeb4e78",
+   "verdict": "pass",
+   "reason": "every computable fact the clauses state has a tagged probe that fails if it is false; pinned literals recomputed by the reader"
+  },
+  "15": {
+   "hash": "dab815b1557136af45877627fd6f0304fe03d5922d0267a113199c5c004b0cbd",
+   "verdict": "pass",
+   "reason": "every computable fact the clauses state has a tagged probe that fails if it is false; pinned literals recomputed by the reader"
+  }
+ },
+ "tally": {
+  "dispatched": 16,
+  "rejected": 1,
+  "rounds": 2,
+  "base": "0761fd3335466e19cf5855ce503a90111f6c9c07",
+  "history": [
+   {
+    "task": "7",
+    "round": 1,
+    "verdict": "fail",
+    "reason": "the M1 route cannot tell nearest-from-each-stop from sorted-by-distance-from-start on its data; narrowed rather than a new probe, to keep the laptop Flock's probes identical"
+   }
+  ]
+ },
+ "authoring": {
+  "minutes": 30,
+  "probes": 0,
+  "routing": {
+   "branch": "width",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Scale pass or engine plan (the decision point)",
+    "options": [
+     "One scale pass first",
+     "Write the engine plan now",
+     "File and pause",
+     "Please explain"
+    ],
+    "recommended": "One scale pass first",
+    "picked": "One scale pass first",
+    "explain_rounds": 1
+   },
+   {
+    "question": "Claim and summary: atlas",
+    "options": [
+     "Sign as written",
+     "Shorter Claim",
+     "Please explain"
+    ],
+    "recommended": "Sign as written",
+    "picked": "Sign as written",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
