@@ -55,7 +55,7 @@ import os from 'node:os'
 import path from 'node:path'
 import readline from 'node:readline'
 
-export const OAUTH = Object.freeze({
+const OAUTH = Object.freeze({
   clientId: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
   authorizeUrl: 'https://claude.ai/oauth/authorize',
   tokenUrl: 'https://platform.claude.com/v1/oauth/token',
@@ -63,13 +63,13 @@ export const OAUTH = Object.freeze({
   scopes: 'user:profile user:inference user:sessions:claude_code user:mcp_servers'
 })
 
-export const INTEGRATION = 'claude-max'
+const INTEGRATION = 'claude-max'
 export const TARGET = 'https://api.anthropic.com'
 export const DEFAULT_ACCOUNT = 'ultrapowers'
-export const KEYCHAIN = Object.freeze({ service: 'ultrapowers-claude-oauth', account: DEFAULT_ACCOUNT })
+const KEYCHAIN = Object.freeze({ service: 'ultrapowers-claude-oauth', account: DEFAULT_ACCOUNT })
 export const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
-export const LOCK_PATH = path.join(os.homedir(), '.ultrapowers', 'claude-token.lock')
-export const LOCK_STALE_MS = 2 * 60 * 1000
+const LOCK_PATH = path.join(os.homedir(), '.ultrapowers', 'claude-token.lock')
+const LOCK_STALE_MS = 2 * 60 * 1000
 // A launch rotates the access token when fewer than this remain. Four hours,
 // not thirty minutes: the token lives eight hours and nothing refreshes it
 // mid-run, so a run launched with thirty-one minutes left dies at minute
@@ -83,7 +83,7 @@ export const LOCK_STALE_MS = 2 * 60 * 1000
 // LIVE_FLOOR_MS): the refresh grant revokes the previous access token at
 // once and the edge carries one bearer for every run, so rotating while a
 // run is in flight kills it on its next call with a 401.
-export const REFRESH_AHEAD_MS = 4 * 60 * 60 * 1000
+const REFRESH_AHEAD_MS = 4 * 60 * 60 * 1000
 // Below REFRESH_AHEAD_MS, a listed fleet VM changes what `refresh` will do:
 // with at least this much left on the cached access token, the rotation is
 // held (the cached token is installed, nothing is spent); under it, `refresh`
@@ -91,10 +91,10 @@ export const REFRESH_AHEAD_MS = 4 * 60 * 60 * 1000
 // Ninety minutes is the longest run on record (see REFRESH_AHEAD_MS above) —
 // runs 92, 100, 103 and 178 (2026-09-11 to 2026-09-17) were all killed by a
 // rotation landing while a run was up.
-export const LIVE_FLOOR_MS = 90 * 60 * 1000
+const LIVE_FLOOR_MS = 90 * 60 * 1000
 // `login --code-from-clipboard` reads the clipboard every POLL and gives up after WAIT.
-export const CLIPBOARD_POLL_MS = 2 * 1000
-export const CLIPBOARD_WAIT_MS = 10 * 60 * 1000
+const CLIPBOARD_POLL_MS = 2 * 1000
+const CLIPBOARD_WAIT_MS = 10 * 60 * 1000
 
 // An account name is the keychain item's `acct` and rides `--comment account=`
 // into a lobby verb, so it is checked before anything else happens.
@@ -102,14 +102,14 @@ const ACCOUNT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 
 const b64url = (buf) => buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 
-export function pkce (random = randomBytes) {
+function pkce (random = randomBytes) {
   const verifier = b64url(random(32))
   const challenge = b64url(createHash('sha256').update(verifier).digest())
   const state = random(32).toString('hex')
   return { verifier, challenge, state }
 }
 
-export function authorizeUrlFor ({ challenge, state }) {
+function authorizeUrlFor ({ challenge, state }) {
   const q = new URLSearchParams({
     client_id: OAUTH.clientId,
     code_challenge: challenge,
@@ -123,7 +123,7 @@ export function authorizeUrlFor ({ challenge, state }) {
 }
 
 // The callback page shows `code#state`; the fragment is not part of the code.
-export const cleanCode = (pasted) => String(pasted).trim().split('#')[0].trim()
+const cleanCode = (pasted) => String(pasted).trim().split('#')[0].trim()
 
 // Matching on the state is what makes polling safe: nothing already on the
 // clipboard can carry a state minted milliseconds ago, and neither can a code
@@ -134,7 +134,7 @@ export const cleanCode = (pasted) => String(pasted).trim().split('#')[0].trim()
 // waits on until a matching value appears or CLIPBOARD_WAIT_MS elapses, where
 // exchanging a value we cannot vouch for would spend the login on a stray code.
 // `cleanCode` keeps the looser first-`#` split, and that difference is deliberate.
-export function codeForState (pasted, state) {
+function codeForState (pasted, state) {
   const [code, fragment, ...rest] = String(pasted).trim().split('#')
   if (rest.length || fragment === undefined) return null
   if (fragment.trim() !== state) return null
@@ -146,7 +146,7 @@ export function codeForState (pasted, state) {
 // of items, each opened by a `class: "genp"` line and carrying attribute lines
 // like `    "acct"<blob>="ultrapowers"` and `    "svce"<blob>="…"`; the `svce`
 // line may follow the `acct` line, so an item is only judged when it ends.
-export function parseKeychainDump (out, service = KEYCHAIN.service) {
+function parseKeychainDump (out, service = KEYCHAIN.service) {
   const names = []
   let acct = null
   let svce = null
@@ -168,7 +168,7 @@ export function parseKeychainDump (out, service = KEYCHAIN.service) {
 
 // ---- seams: everything that touches the world goes through `deps` ------------
 
-export function defaultDeps () {
+function defaultDeps () {
   return {
     fetch: globalThis.fetch,
     now: () => Date.now(),
@@ -254,7 +254,7 @@ async function tokenRequest (deps, body) {
   }
 }
 
-export const exchange = (deps, { code, verifier, state }) => tokenRequest(deps, {
+const exchange = (deps, { code, verifier, state }) => tokenRequest(deps, {
   grant_type: 'authorization_code',
   code,
   redirect_uri: OAUTH.redirectUri,
@@ -263,7 +263,7 @@ export const exchange = (deps, { code, verifier, state }) => tokenRequest(deps, 
   state
 })
 
-export const refreshGrant = (deps, refreshToken) => tokenRequest(deps, {
+const refreshGrant = (deps, refreshToken) => tokenRequest(deps, {
   grant_type: 'refresh_token',
   refresh_token: refreshToken,
   client_id: OAUTH.clientId,
@@ -272,7 +272,7 @@ export const refreshGrant = (deps, refreshToken) => tokenRequest(deps, {
 
 // ---- the edge ---------------------------------------------------------------
 
-export function integrationExists (deps) {
+function integrationExists (deps) {
   const r = deps.lobby('integrations list --json')
   if (r.code !== 0) throw new Error(`exe.dev integrations list failed (exit ${r.code}):\n${r.out}`)
   let payload
@@ -315,7 +315,7 @@ function listLiveFleet (deps) {
 
 // ---- keychain record ----------------------------------------------------------
 
-export function readRecord (deps, account = DEFAULT_ACCOUNT) {
+function readRecord (deps, account = DEFAULT_ACCOUNT) {
   const raw = deps.keychainRead(account)
   if (!raw) return null
   try {
@@ -325,7 +325,7 @@ export function readRecord (deps, account = DEFAULT_ACCOUNT) {
   return null
 }
 
-export function writeRecord (deps, rec, account = DEFAULT_ACCOUNT) {
+function writeRecord (deps, rec, account = DEFAULT_ACCOUNT) {
   const value = JSON.stringify({ refreshToken: rec.refreshToken, accessToken: rec.accessToken, expiresAt: rec.expiresAt })
   if (!deps.keychainWrite(account, value)) {
     throw new Error('keychain write failed (security add-generic-password)')
@@ -498,7 +498,7 @@ export async function usage (deps, { account = null, rotate = true } = {}) {
 
 const USAGE_HEADER = 'account | 5h % | 5h resets | 7d % | 7d resets'
 
-export function renderUsage (rows) {
+function renderUsage (rows) {
   const lines = [USAGE_HEADER]
   for (const row of rows ?? []) {
     const cells = row.unread

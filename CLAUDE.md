@@ -115,7 +115,7 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   (2026-09-21)** — `cloneAtBase` now lives in `factory/clone.mjs`, and the rest of the
   engine is `factory/engine.mjs` and its own modules (see below). Past this point `fleet/`
   is laptop tools and the bootstrap only, not an engine: no orchestrator, no control VM, no
-  token on any VM and none in any argv. Own npm deps in `fleet/package.json`. Not plugin
+  token on any VM and none in any argv. The engine's npm deps are `factory/package.json`'s. Not plugin
   machinery — the sandbox clones the engine at the sha the assignment names, so changes
   here never require a plugin release.
 - `factory/` — the Jev factory (map #1131): the engine a launch gets when `--engine` names a sha

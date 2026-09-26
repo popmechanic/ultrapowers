@@ -12,9 +12,10 @@
  *
  * This module is what the three laptop CLIs (`launch`, `janitor`, `target`)
  * share: the exec seam, the config file, the name validators, the branch
- * names, and the lobby readers. It runs from the installed plugin cache, so —
- * like `doctor.mjs` — every specifier is `node:`-prefixed and there are no npm
- * dependencies.
+ * names, the lobby readers, and the hub opened from its env file (`hubFromEnv`).
+ * It runs from the installed plugin cache, so every specifier is
+ * `node:`-prefixed or `./kata-client.mjs` (itself import-free), and there are
+ * no npm dependencies.
  *
  * ## The exec seam
  *
@@ -34,6 +35,8 @@ import { randomBytes } from 'node:crypto'
 import fsp from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+
+import { makeKataClient, sshTransport } from './kata-client.mjs'
 
 // ── Names and shas ──────────────────────────────────────────────────────────
 
@@ -155,8 +158,8 @@ export const COMMENT_MAX_BYTES = 200
 /**
  * The config file's two keys and their defaults — the size a run asks of the
  * plan's pool, and nothing else. An operator who followed the RUNBOOK needs no
- * `~/.ultrapowers/fleet.json` at all. `doctor.mjs` pins the same literal by
- * copy, because it imports nothing so that it runs when nothing else does.
+ * `~/.ultrapowers/fleet.json` at all. `doctor.mjs` imports this literal, so
+ * the doctor and the launcher read one config file with one set of defaults.
  */
 export const FLEET_DEFAULTS = Object.freeze({
   cpu: '8',
@@ -205,11 +208,37 @@ export const kataHostOf = (url) => {
  * the janitor looks it up by it, so both spell it here.
  */
 export const kataProjectFor = (target) => String(target).replace(/\//g, '-')
+
+/**
+ * The hub, opened from its env file: read `kataEnvPath` (default
+ * `defaultKataEnvPath()`), take its `KATA_URL`'s host, and build a kata client
+ * for `actor` over `sshTransport` on that host. Resolves
+ * `{ client, host, transport, dark }` and never throws on a missing or hostless
+ * env: then `client`, `host` and `transport` are null and `dark` is the reason,
+ * in the words every caller refuses or reports with.
+ */
+export async function hubFromEnv ({ exec, actor, kataEnvPath } = {}) {
+  const envPath = kataEnvPath ?? defaultKataEnvPath()
+  const none = (dark) => ({ client: null, host: null, transport: null, dark })
+  let text
+  try {
+    text = await fsp.readFile(envPath, 'utf8')
+  } catch (error) {
+    return none(`no kata hub env at ${envPath} (${error?.code ?? error?.message ?? error}) — ${KATA_HUB_FIX}`)
+  }
+  const env = parseKataEnv(text)
+  const host = kataHostOf(env.url)
+  if (host === null) {
+    return none(`${envPath} names KATA_URL ${JSON.stringify(env.url)}, not a url with a host — ${KATA_HUB_FIX}`)
+  }
+  const transport = sshTransport({ sshHost: host, exec })
+  return { client: makeKataClient({ transport, actor }), host, transport, dark: null }
+}
+
 /**
  * Read `~/.ultrapowers/fleet.json` (or `path`) over the defaults. An absent
  * file means all defaults; an unknown key is ignored; a key the file omits
- * stays at its default. Same shape as `doctor.mjs`'s — copied, not imported,
- * because the doctor imports nothing so that it runs when nothing else does.
+ * stays at its default. The doctor reads the config through this function too.
  */
 export async function loadFleetConfig ({ path: configPath } = {}) {
   const target = configPath ?? DEFAULT_CONFIG_PATH()
@@ -526,6 +555,27 @@ export async function highestRunOnTarget (exec, repoDir) {
     if (run !== null && run > best) best = run
   }
   return best
+}
+
+// ── Integration policy ──────────────────────────────────────────────────────
+
+/**
+ * `integrations policy get <name> --json` → `{ selector, revision }`, read
+ * defensively: the selector is `policy.selector`, or `policy.wire` when a
+ * listing spells it that way alone; `revision` is the top-level string. Either
+ * field is null when absent; the whole answer is null when the stdout is not
+ * JSON or carries neither. A caller that writes under `--if-revision` refuses
+ * a null `revision` itself.
+ */
+export function parsePolicy (stdout) {
+  let parsed
+  try { parsed = JSON.parse(String(stdout ?? '')) } catch { return null }
+  const policy = parsed?.policy
+  const selector = typeof policy?.selector === 'string' ? policy.selector
+    : typeof policy?.wire === 'string' ? policy.wire : null
+  const revision = typeof parsed?.revision === 'string' ? parsed.revision : null
+  if (selector === null && revision === null) return null
+  return { selector, revision }
 }
 
 // ── The plan's capacity ─────────────────────────────────────────────────────

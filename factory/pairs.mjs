@@ -75,7 +75,7 @@ const jsonOutline = (text) => {
   return []
 }
 
-export function outlineOf(text, path) {
+function outlineOf(text, path) {
   const ext = extensionOf(path)
   let entries
   if (ext === 'mjs' || ext === 'js' || ext === 'ts') entries = codeOutline(text)

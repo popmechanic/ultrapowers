@@ -1,4 +1,4 @@
-// fleet/jev-client.mjs — the Jev client: one POST, no key, `null` on anything
+// factory/jev-client.mjs — the Jev client: one POST, no key, `null` on anything
 // that is not an answer.
 //
 // Jev is an exe.dev `http-proxy` integration named `typesafe` on the fleet

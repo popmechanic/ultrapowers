@@ -429,7 +429,7 @@ _MACHINE_NUM_RE = re.compile(r'\bM(\d+)\.')
 
 def _run_cite_span(numbers):
     """The span `<Mn>` or `<Mn>–<Mm>` a Machine line's own numbers print, in
-    the wording the old compiler used and `tests/test_plan_check_rehearsal.py`
+    the wording the old compiler used and `tests/test_plan_check.py`
     still documents."""
     if not numbers:
         return "(no clauses)"

@@ -21,7 +21,7 @@ this script instead REACHES for a process are both off the exam (Context,
 M7): `--fetch` pulls runs and plans through `catch_counter.fetch_runs` and
 `gh api`; without `--questions` a single `claude -p` proposes candidates;
 without `--answers` one `node` child per task asks Jev through
-`fleet/jev-client.mjs`. None of the three runs when both `--questions` and
+`factory/jev-client.mjs`. None of the three runs when both `--questions` and
 `--answers` are given.
 
 Sibling scripts this one reuses rather than reimplements: `catch_counter`'s
@@ -650,7 +650,7 @@ def fetch_answers(entries, candidate_names, questions_entries, base_url=
     exam. Never called when `--answers` is given. A task the fan-out
     cannot answer is simply absent from the returned table (dropped, and
     counted, by the caller)."""
-    jev_client_path = Path(__file__).resolve().parents[2] / "fleet" / \
+    jev_client_path = Path(__file__).resolve().parents[2] / "factory" / \
         "jev-client.mjs"
     api_key = _typesafe_key()
     questions_by_name = {q["name"]: {k: v for k, v in q.items()

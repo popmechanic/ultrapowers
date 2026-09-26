@@ -16,19 +16,17 @@
  * hub reads (list the projects, then the feed) through `fleet/kata-client.mjs`'s
  * transport, built exactly as the janitor builds it.
  */
-import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { makeKataClient, runIssueOf, sshTransport } from './kata-client.mjs'
+import { runIssueOf } from './kata-client.mjs'
 import {
   KATA_HUB_FIX,
   Refusal,
   defaultExec,
   defaultKataEnvPath,
-  kataHostOf,
+  hubFromEnv,
   kataProjectFor,
-  parseKataEnv,
   runCli
 } from './lobby.mjs'
 
@@ -322,20 +320,8 @@ export function parseBoardArgs (argv) {
 export async function main (argv, { exec = defaultExec, kataEnvPath = defaultKataEnvPath(), write = (s) => process.stdout.write(s) } = {}) {
   const args = parseBoardArgs(argv)
 
-  let text
-  try {
-    text = await fsp.readFile(kataEnvPath, 'utf8')
-  } catch (error) {
-    fail(`no kata hub env at ${kataEnvPath} (${error?.code ?? error?.message ?? error}) — ${KATA_HUB_FIX}`)
-  }
-  const env = parseKataEnv(text)
-  const host = kataHostOf(env.url)
-  if (host === null) {
-    fail(`${kataEnvPath} names KATA_URL ${JSON.stringify(env.url)}, not a url with a host — ${KATA_HUB_FIX}`)
-  }
-
-  const transport = sshTransport({ sshHost: host, exec })
-  const client = makeKataClient({ transport, actor: 'board-read' })
+  const { client, dark } = await hubFromEnv({ exec, actor: 'board-read', kataEnvPath })
+  if (dark !== null) fail(dark)
 
   const projectName = kataProjectFor(args.target)
   const listing = await client.listProjects()

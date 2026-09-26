@@ -48,6 +48,7 @@ import {
   listIntegrations,
   lobby,
   parseArgs,
+  parsePolicy,
   runCli
 } from './lobby.mjs'
 
@@ -62,35 +63,21 @@ export const FLEET_POLICY = 'tag:fleet'
 
 /** The one `integrations add` line, verbatim, for a target. No `--attach`, no `--readonly`;
  *  the complete policy at creation, so a fresh object never needs a second write. */
-export const addCommand = (target) =>
+const addCommand = (target) =>
   `integrations add github --name ${githubIntegrationFor(target)} --repository ${target} --act-as-user --policy '${FLEET_POLICY}'`
 
 /** The same creation on the attach-model lobby, and the attach verb for an existing object. */
-export const addCommandAttach = (target) =>
+const addCommandAttach = (target) =>
   `integrations add github --name ${githubIntegrationFor(target)} --repository ${target} --act-as-user --attach ${FLEET_POLICY}`
-export const attachCommand = (name) => `integrations attach ${name} ${FLEET_POLICY}`
+const attachCommand = (name) => `integrations attach ${name} ${FLEET_POLICY}`
 
 /** The read and the write that bring an existing object onto the policy. */
-export const policyGetCommand = (name) => `integrations policy get ${name} --json`
-export const policySetCommand = (name, revision) =>
+const policyGetCommand = (name) => `integrations policy get ${name} --json`
+const policySetCommand = (name, revision) =>
   `integrations policy set ${name} '${FLEET_POLICY}' --permanent --if-revision=${revision}`
 
 /** Is this one of the per-target objects? `gh-<slug>`. */
 const isTargetIntegration = (name) => /^gh-.+/.test(name)
-
-/** `integrations policy get <name> --json` → `{ selector, revision }`, or null when
- *  the answer is not that shape. The selector is `policy.selector`; a listing that
- *  spells it `policy.wire` alone says the same thing. */
-export function parsePolicy (stdout) {
-  let parsed
-  try { parsed = JSON.parse(String(stdout ?? '')) } catch { return null }
-  const policy = parsed?.policy
-  const selector = typeof policy?.selector === 'string' ? policy.selector
-    : typeof policy?.wire === 'string' ? policy.wire : null
-  const revision = typeof parsed?.revision === 'string' ? parsed.revision : null
-  if (revision === null) return null
-  return { selector, revision }
-}
 
 /** Read the object's policy and, unless it already is `tag:fleet`, replace it
  *  under the revision the read answered. Answers `kept` or `set`. */
@@ -112,8 +99,10 @@ async function ensurePolicy ({ exec, name, rows = null }) {
     await lobby(exec, command)
     return { policy: 'set', command }
   }
+  // The write is conditional on the revision the read answered, so a read
+  // with no revision is refused rather than written blind.
   const policy = parsePolicy(res.stdout)
-  if (policy === null) {
+  if (policy === null || policy.revision === null) {
     throw new LobbyError(`exe.dev integrations policy get ${name} --json answered no policy and revision:\n${res.stdout}`)
   }
   if (policy.selector === FLEET_POLICY) return { policy: 'kept', command: null }
@@ -189,7 +178,7 @@ export async function target ({ argv, exec = defaultExec }) {
 const attachedTo = (attachments) =>
   attachments.length === 0 ? 'unattached' : attachments.map((a) => `${a.kind}:${a.value}`).join(' ')
 
-export const renderTarget = (result) => {
+const renderTarget = (result) => {
   if (result.verb === 'add') {
     return result.results.map((r) => `${r.action} ${r.name} (policy ${FLEET_POLICY} ${r.policy})`).join('\n')
   }

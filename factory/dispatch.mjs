@@ -117,7 +117,7 @@ export function waitsFor ({ taskId, hardPreds = [], chainPreds = [], policy } = 
  * the id of the first task other than `taskId`, not in `adopted`, owning a
  * matching file; else `null`. Pure.
  */
-export function missingProducer ({ runLines = [], tasks = [], taskId, adopted = [] } = {}) {
+function missingProducer ({ runLines = [], tasks = [], taskId, adopted = [] } = {}) {
   const adoptedSet = new Set(adopted || [])
   const wanted = [] // { exact: [paths] } | { suffix: path }
   for (const line of runLines || []) {

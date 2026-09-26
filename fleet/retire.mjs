@@ -82,7 +82,7 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { REAPABLE_STATES } from './janitor.mjs'
+import { REAPABLE_STATES, decidingPull, ghApi, readContentsAt } from './janitor.mjs'
 import {
   Refusal,
   defaultExec,
@@ -92,7 +92,6 @@ import {
   isSafeTarget,
   output,
   parseArgs,
-  parseJson,
   planBranchFor,
   planTagFor,
   runCli,
@@ -154,29 +153,13 @@ export function runsOf (refs) {
 /** A POST that says the reference is already there did what was asked. */
 const alreadyExists = (res) => /reference already exists/i.test(output(res))
 
-/** One `gh api` read, parsed; null when `gh` answered non-zero. */
-async function ghRead (exec, apiPath) {
-  const res = await exec('gh', ['api', apiPath])
-  return res.code === 0 ? parseJson(res.stdout) : null
-}
-
 /**
- * The run's status page, off its evidence branch. The answer is the contents
- * envelope — base64 under `content` — and nothing else is accepted: a bare
- * status document would mean `gh` answered something other than the contents
- * API, and a pair swept on a payload nobody read is a live run deleted. An
- * absent file is exit 1 with `HTTP 404`, which `ghRead` already turns into
- * `null`; every other unreadable shape lands here as `null` too, and `null` is
- * "no page", which is a skip and never a sweep.
+ * The run's status page, off its evidence branch, through the janitor's
+ * contents reader: only the contents envelope is accepted, and an absent or
+ * unreadable page is `null`, which is "no page" — a skip and never a sweep.
  */
 async function readStatusPage (exec, target, run) {
-  const payload = await ghRead(
-    exec,
-    `repos/${target}/contents/.ultrapowers/runs/${run}/status.json?ref=${evidenceBranchFor(run)}`
-  )
-  if (!payload || typeof payload.content !== 'string') return null
-  const decoded = parseJson(Buffer.from(payload.content, 'base64').toString('utf8'))
-  return decoded && typeof decoded === 'object' ? decoded : null
+  return (await readContentsAt(exec, target, run, evidenceBranchFor(run)))?.page ?? null
 }
 
 /**
@@ -209,7 +192,7 @@ const PULLS_UNREADABLE = 'unreadable (pulls)'
  */
 async function openPullOf (exec, target, run) {
   const owner = String(target).split('/')[0]
-  const payload = await ghRead(
+  const payload = await ghApi(
     exec,
     `repos/${target}/pulls?state=open&head=${owner}:${integrationBranchFor(run)}`
   )
@@ -267,7 +250,7 @@ export const rewriteBody = (body, run) =>
  */
 async function pullsToPatch (exec, target, run) {
   const owner = String(target).split('/')[0]
-  const payload = await ghRead(
+  const payload = await ghApi(
     exec,
     `repos/${target}/pulls?state=closed&head=${owner}:${integrationBranchFor(run)}`
   )
@@ -306,19 +289,9 @@ async function patchPull (exec, target, patch) {
  * one case that retires it: closed, and not merged.
  */
 async function integrationFate (exec, target, run) {
-  const owner = String(target).split('/')[0]
-  const payload = await ghRead(
-    exec,
-    `repos/${target}/pulls?state=all&head=${owner}:${integrationBranchFor(run)}`
-  )
-  const rows = Array.isArray(payload) ? payload : []
-  let deciding = null
-  for (const row of rows) {
-    if (typeof row?.number !== 'number') continue
-    if (deciding === null || row.number > deciding.number) deciding = row
-  }
+  const deciding = await decidingPull(exec, target, run)
   if (deciding === null) return { number: null, why: 'no pull request', deletable: false }
-  if (typeof deciding.merged_at === 'string') {
+  if (typeof deciding.mergedAt === 'string') {
     return { number: deciding.number, why: 'merged', deletable: false }
   }
   if (deciding.state === 'closed') return { number: deciding.number, deletable: true }

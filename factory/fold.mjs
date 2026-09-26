@@ -26,7 +26,7 @@ import { runLines } from './proofs.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO = path.resolve(HERE, '..')
-export const KERNEL = path.join(REPO, 'skills/ultrapowers/kernel/fold_wave.py')
+const KERNEL = path.join(REPO, 'skills/ultrapowers/kernel/fold_wave.py')
 
 const DEFAULT_TIMEOUT_SECONDS = 300
 

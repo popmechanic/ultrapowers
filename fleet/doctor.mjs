@@ -5,7 +5,9 @@
  * The one piece of `fleet/` that runs on a user's laptop, straight out of the
  * installed plugin cache, where no `node_modules` directory under `fleet/` has
  * ever existed. Hence the built-ins-only rule: every specifier here is
- * `node:`-prefixed, and the doctor imports no other fleet module.
+ * `node:`-prefixed or a sibling fleet module that is itself built-ins-only —
+ * the config and policy readers come from `./lobby.mjs`, one copy for both
+ * the doctor and the launcher.
  *
  * Nine rows, all reads, every one of them answered by exe.dev's own truth or
  * by this laptop's own keychain:
@@ -58,22 +60,19 @@
 
 import { execFile } from 'node:child_process'
 import fsp from 'node:fs/promises'
-import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 
-const execFileAsync = promisify(execFile)
+import {
+  DEFAULT_CONFIG_PATH,
+  FLEET_DEFAULTS,
+  loadFleetConfig,
+  parseMemoryGb,
+  parsePolicy
+} from './lobby.mjs'
 
-/** The config file's keys and their defaults — an operator who followed the
- *  first-run walk needs no `~/.ultrapowers/fleet.json` at all.
- *
- *  These are byte-identical to `FLEET_DEFAULTS` in fleet/lobby.mjs, and copied
- *  rather than imported on purpose: the doctor is the one file that has to run
- *  when nothing else in the fleet does, so it imports nothing. Both exams pin
- *  this literal — two readers of one config file that disagree about a default
- *  would certify a fleet the launcher never looks at. */
-export const DOCTOR_DEFAULTS = Object.freeze({ cpu: '8', memory: '16GB' })
+const execFileAsync = promisify(execFile)
 
 /** The nine rows, in the order the doctor reports them. Each id is also a
  *  `## ` heading in skills/ultrapowers/references/first-run.md. */
@@ -132,8 +131,6 @@ const OAUTH_INTEGRATION = 'claude-max'
  *  out because no file under `fleet/` may carry that literal any more. */
 const LEGACY_RUNS = ['fleet', 'runs'].join('-')
 
-const DEFAULT_CONFIG_PATH = () => path.join(os.homedir(), '.ultrapowers', 'fleet.json')
-
 /** `owner/repo`, the only shape that may be interpolated into an ssh string. */
 const TARGET = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?\/[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/
 
@@ -146,43 +143,7 @@ const firstLine = (stdout) => String(stdout ?? '').split('\n')[0].trim()
 /** `owner/repo` → the target's one integration object, `gh-<owner>-<repo>`. */
 const targetIntegration = (target) => `gh-${String(target).replace(/\//g, '-')}`
 
-/** lobby.mjs's `parseMemoryGb` rule, copied: `<int>GB` or `<int>G` is that many
- *  gigabytes, anything else is unreadable. */
-const MEMORY_GB = /^(\d+)GB?$/
-
-export function parseMemoryGb (value) {
-  const m = MEMORY_GB.exec(String(value ?? '').trim())
-  return m === null ? null : Number(m[1])
-}
-
 const parseCpus = (value) => (/^\d+$/.test(String(value ?? '').trim()) ? Number(value) : null)
-
-/**
- * Read `~/.ultrapowers/fleet.json` (or `path`) over the defaults. An absent
- * file means all defaults; an unknown key is ignored; a key the file omits
- * stays at its default.
- */
-export async function loadFleetConfig ({ path: configPath } = {}) {
-  const target = configPath ?? DEFAULT_CONFIG_PATH()
-  const config = { ...DOCTOR_DEFAULTS }
-  let text
-  try {
-    text = await fsp.readFile(target, 'utf8')
-  } catch {
-    return config
-  }
-  let parsed
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    return config
-  }
-  if (!parsed || typeof parsed !== 'object') return config
-  for (const key of Object.keys(DOCTOR_DEFAULTS)) {
-    if (typeof parsed[key] === 'string' && parsed[key] !== '') config[key] = parsed[key]
-  }
-  return config
-}
 
 /**
  * The config file's own top-level key names, in file order — `loadFleetConfig`
@@ -194,7 +155,7 @@ export async function loadFleetConfig ({ path: configPath } = {}) {
  * two keys, so a name the doctor does not read reaches the `capacity` row on
  * `configKeys` and never through the config.
  */
-export async function fleetConfigKeys ({ path: configPath } = {}) {
+async function fleetConfigKeys ({ path: configPath } = {}) {
   const target = configPath ?? DEFAULT_CONFIG_PATH()
   let text
   try {
@@ -309,7 +270,7 @@ function poolRow (res, config) {
 }
 
 /** The two key names the doctor reads, as the row's detail spells them. */
-const READ_KEYS = Object.keys(DOCTOR_DEFAULTS)
+const READ_KEYS = Object.keys(FLEET_DEFAULTS)
 
 /** The names something outside the doctor reads, as the row's detail spells
  *  them: `account` picks the keychain entry a run signs in with. It is the
@@ -352,7 +313,7 @@ function capacityRow (res, config, configKeys = null) {
 
   const lacking = READ_KEYS.filter((key) => !keys.includes(key))
   const notes = lacking.map(
-    (key) => ` (${key} not in ~/.ultrapowers/fleet.json — the default ${DOCTOR_DEFAULTS[key]})`
+    (key) => ` (${key} not in ~/.ultrapowers/fleet.json — the default ${FLEET_DEFAULTS[key]})`
   )
   return notes.length === 0 ? base : row('capacity', 'ok', `${base.detail}${notes.join('')}`)
 }
@@ -383,7 +344,7 @@ function readJson (stdout) {
  * string or null: the credential tool writes `account=<name>` into `claude-max`'s
  * on every install, and the `accounts` row reads the edge's account off it.
  */
-export function parseIntegrations (stdout) {
+function parseIntegrations (stdout) {
   const parsed = readJson(stdout)
   const list = Array.isArray(parsed)
     ? parsed
@@ -456,20 +417,36 @@ const policyFix = (name) =>
   `ssh exe.dev "integrations policy set ${name} '${FLEET_POLICY}' --permanent --if-revision=<revision>")`
 
 /**
- * `integrations policy get <name> --json` read defensively: `policy.selector`
- * (or `policy.wire`) and `revision`. Null when the stdout is not that shape.
+ * The one policy question every integration row asks: is the object `name`
+ * granted to fleet VMs? The listing is served by both lobby models (#924): an
+ * attachment `tag:fleet` in `integrations list --json` is the grant whichever
+ * verb set the edge has; only an unattached object is judged by its policy
+ * read (`policyRes`, the answer of `integrations policy get <name> --json`).
+ *
+ * Resolves null when the object is on the policy, otherwise the row `id`
+ * reports: an absent object is `ok` with `absentIsOk` (and `absentDetail`),
+ * `missing` without; an unreadable or off-policy one is `missing`, naming
+ * `policyFix(name)`.
  */
-export function parsePolicy (stdout) {
-  const parsed = readJson(stdout)
-  const policy = parsed?.policy
-  const selector = typeof policy?.selector === 'string'
-    ? policy.selector
-    : (typeof policy?.wire === 'string' ? policy.wire : null)
-  const revision = typeof parsed?.revision === 'string' ? parsed.revision : null
-  if (selector === null && revision === null) return null
-  return { selector, revision }
+export function policyRowFor (name, { id, found, policyRes, absentIsOk = false, absentDetail = null } = {}) {
+  const have = found === null || found === undefined ? undefined : found.get(name)
+  if (have === undefined) {
+    return row(id, absentIsOk ? 'ok' : 'missing', absentDetail ?? `no ${name} integration at the edge`)
+  }
+  if (have.tags.has('fleet')) return null
+  const policy = policyRes && policyRes.code === 0 ? parsePolicy(policyRes.stdout) : null
+  if (policy === null) {
+    const seen = policyRes && policyRes.code === 0 ? 'printed no readable policy' : `exited ${policyRes?.code ?? 1}`
+    return row(id, 'missing', `integrations policy get ${name} --json ${seen} — ${policyFix(name)}`)
+  }
+  if (policy.selector === FLEET_POLICY) return null
+  return row(
+    id,
+    'missing',
+    `${name} carries the attachment policy ${policy.selector === null ? 'none' : JSON.stringify(policy.selector)} ` +
+    `rather than ${FLEET_POLICY}, so no fleet VM is granted it — ${policyFix(name)}`
+  )
 }
-
 // ── claude ───────────────────────────────────────────────────────────────────
 
 /**
@@ -775,26 +752,8 @@ function integrationsRow (found, target, policies) {
   const names = policyNames(target)
   for (const name of names) {
     if (!found.has(name)) continue // the claude row names a missing object
-    // The listing is served by both lobby models (2026-09-11 exe.dev shipped a
-    // policy model at noon and rolled it back by 3 PM): an attachment `tag:fleet`
-    // in `integrations list --json` is the grant whichever verb set the edge has.
-    if (found.get(name).tags.has('fleet')) continue
-    const res = policies.get(name)
-    const policy = res && res.code === 0 ? parsePolicy(res.stdout) : null
-    if (policy === null) {
-      return row(
-        'integrations',
-        'missing',
-        `integrations policy get ${name} --json printed no readable policy — ${policyFix(name)}`
-      )
-    }
-    if (policy.selector !== FLEET_POLICY) {
-      return row(
-        'integrations',
-        'missing',
-        `${name} carries the attachment policy ${policy.selector === null ? 'none' : JSON.stringify(policy.selector)} rather than ${FLEET_POLICY}, so no fleet VM is granted it — ${policyFix(name)}`
-      )
-    }
+    const off = policyRowFor(name, { id: 'integrations', found, policyRes: policies.get(name) })
+    if (off !== null) return off
   }
   return row('integrations', 'ok', `${names.filter((n) => found.has(n)).join(', ')} on the policy ${FLEET_POLICY}`)
 }
@@ -834,25 +793,8 @@ function kataRow (found, policyRes, vmsRes) {
   if (!have.bearer) {
     return row('kata', 'missing', `${KATA_INTEGRATION} carries no ${BEARER} header — ${KATA_FIX}`)
   }
-  // The listing is served by both lobby models (#924): an attachment `tag:fleet`
-  // there is the grant whichever verb set the edge has; only an unattached
-  // object is judged by its policy read.
-  const attached = have.tags.has('fleet')
-  const readable = Boolean(policyRes) && policyRes.code === 0
-  const policy = readable ? parsePolicy(policyRes.stdout) : null
-  if (!attached && (policy === null || policy.selector !== FLEET_POLICY)) {
-    const seen = !readable
-      ? `the read exited ${policyRes?.code ?? 1}`
-      : policy === null
-        ? 'it printed no readable policy'
-        : JSON.stringify(policy.selector)
-    return row(
-      'kata',
-      'missing',
-      `${KATA_INTEGRATION}'s policy is not ${FLEET_POLICY} (${seen}), so no fleet VM is granted it — ` +
-      policyFix(KATA_INTEGRATION)
-    )
-  }
+  const off = policyRowFor(KATA_INTEGRATION, { id: 'kata', found, policyRes })
+  if (off !== null) return off
   const vm = kataVmRow(vmsRes)
   if (vm === null) {
     return row('kata', 'missing', `no ${KATA_VM} VM — ${KATA_FIX}`)
@@ -880,29 +822,15 @@ const CLOUDFLARE_INTEGRATION = 'cloudflare'
  * for the first selector that is not `tag:fleet`.
  */
 function cloudflareRow (found, policyRes) {
-  const have = found === null ? undefined : found.get(CLOUDFLARE_INTEGRATION)
-  if (have === undefined) {
-    return row(
-      'cloudflare',
-      'ok',
-      'cloudflare integration absent — only a plan with a **Publish:** line needs it; ' +
+  const off = policyRowFor(CLOUDFLARE_INTEGRATION, {
+    id: 'cloudflare',
+    found,
+    policyRes,
+    absentIsOk: true,
+    absentDetail: 'cloudflare integration absent — only a plan with a **Publish:** line needs it; ' +
       'first-run.md §cloudflare walks the token'
-    )
-  }
-  const attached = have.tags.has('fleet')
-  const readable = Boolean(policyRes) && policyRes.code === 0
-  const policy = readable ? parsePolicy(policyRes.stdout) : null
-  if (attached || (policy !== null && policy.selector === FLEET_POLICY)) {
-    return row('cloudflare', 'ok', `${CLOUDFLARE_INTEGRATION} http-proxy on the policy ${FLEET_POLICY}`)
-  }
-  const selector = policy === null || policy.selector === null ? 'none' : policy.selector
-  return row(
-    'cloudflare',
-    'missing',
-    `${CLOUDFLARE_INTEGRATION} carries the attachment policy ${selector} rather than ${FLEET_POLICY}, ` +
-    `so no fleet VM is granted it — ssh exe.dev "integrations policy get ${CLOUDFLARE_INTEGRATION} --json" ` +
-    `then integrations policy set ${CLOUDFLARE_INTEGRATION} '${FLEET_POLICY}' --permanent --if-revision=<revision>`
-  )
+  })
+  return off ?? row('cloudflare', 'ok', `${CLOUDFLARE_INTEGRATION} http-proxy on the policy ${FLEET_POLICY}`)
 }
 
 // ── the doctor ───────────────────────────────────────────────────────────────
@@ -925,7 +853,7 @@ function cloudflareRow (found, policyRes) {
 export async function doctor ({
   config, exec, target = null, configKeys = null, account = null, verbsPath = null
 } = {}) {
-  const cfg = { ...DOCTOR_DEFAULTS, ...(config ?? {}) }
+  const cfg = { ...FLEET_DEFAULTS, ...(config ?? {}) }
   const run = exec ?? defaultExec
   const want = target === null || target === undefined ? null : String(target)
   if (want !== null && !TARGET.test(want)) {
@@ -999,7 +927,7 @@ export function parseArgs (argv) {
 
 const PAD = Math.max(...['ok', 'missing'].map((s) => s.length))
 
-export function renderRows (rows) {
+function renderRows (rows) {
   const out = []
   for (const r of rows) {
     out.push(`${r.status.padEnd(PAD)} ${r.id}  ${r.detail}`)
