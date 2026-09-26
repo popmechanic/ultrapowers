@@ -1,0 +1,84 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "e1f5473d58e30fd88e93cd3960bed349967494e2eaed0ac44815ad14b28e2328",
+      "verdict": "pass",
+      "reason": "M1-M4 each carry a tagged probe that would go red if false; M2 literals hold under the BASE pin regexes and refusal wording."
+    },
+    "2": {
+      "hash": "aec087d5ecea9f1ed3618bd075f5e260c74356c5efa357f160a527d638b917e0",
+      "verdict": "pass",
+      "reason": "All five clauses carry tagged probes that would go red if false; the stale doc pointers sit on the SANDBOX_TOOLCHAIN lines at BASE."
+    },
+    "3": {
+      "hash": "a3bb799cb34615da1d12d4c667a2b6f1e40b1a49348eb2e092ad3b43dd65b3ba",
+      "verdict": "pass",
+      "reason": "M1-M4 each carry a tagged probe that would fail if false; kata-file.mjs is legitimately absent at BASE and no file pins the opposite."
+    },
+    "4": {
+      "hash": "00125add908168053e62e309a10cd1974c7e3a6b923e1f0b155df1d7ecfdc66b",
+      "verdict": "pass",
+      "reason": "Each computable fact has a tagged probe; namespace order matches, M3 names all exist at BASE, and 1737 is reachable from 1907."
+    },
+    "5": {
+      "hash": "e9a91fb857a85272539996e5dc26688dec34a33df80b7cd0cda0fed2f9cf247a",
+      "verdict": "pass",
+      "reason": "M1 (nineteen names gone) and M2 (seven kept) each carry a tagged namespace probe; the sims are guards."
+    }
+  },
+  "tally": {
+    "dispatched": 5,
+    "rejected": 0,
+    "rounds": 1,
+    "round1": {
+      "dispatched": 5,
+      "rejected": 0
+    },
+    "base": "37ba289c282845e6f00ab62fa20855a58efcf4ab"
+  },
+  "authoring": {
+    "minutes": 16,
+    "probes": 0,
+    "routing": {
+      "branch": "width",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Bundling #1277/#1279",
+        "options": [
+          "Carve launch.mjs out of #1279",
+          "One plan for both",
+          "Serialize",
+          "Please explain"
+        ],
+        "recommended": "Carve launch.mjs out of #1279",
+        "picked": "Carve launch.mjs out of #1279",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Plain rewrite",
+          "Issue's own words",
+          "Please explain"
+        ],
+        "recommended": "Plain rewrite",
+        "picked": "Plain rewrite",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Execute",
+        "options": [
+          "Ultrapowers",
+          "Subagent-Driven",
+          "Inline",
+          "Please explain"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers",
+        "explain_rounds": 0
+      }
+    ]
+  }
+}
