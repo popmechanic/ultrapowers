@@ -1,0 +1,4 @@
+{
+ "oscillating": false,
+ "why": "identical concurrent edits merge as one"
+}

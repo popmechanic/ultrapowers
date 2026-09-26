@@ -1,0 +1,4 @@
+{
+ "oscillating": true,
+ "why": "30 -> 60 -> 90 -> 30 -> 60 across A, B, C"
+}

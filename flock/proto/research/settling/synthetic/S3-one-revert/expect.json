@@ -1,0 +1,5 @@
+{
+ "oscillating": false,
+ "why": "one revert by a peer, then other work: legal",
+ "reverts": 1
+}

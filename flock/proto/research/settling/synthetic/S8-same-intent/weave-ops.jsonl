@@ -1,0 +1,7 @@
+{"t": 1000, "op": "base", "root": "/Users/marcusestes/Websites/ultrapowers-flock-proto/flock/proto/research/settling/synthetic/S8-same-intent/base", "paths": ["svc/config.py"]}
+{"t": 2000, "op": "edit", "agent": "A", "path": "svc/config.py", "vstart": 2, "vend": 3, "lines": ["TIMEOUT = 60"]}
+{"t": 3000, "op": "edit", "agent": "B", "path": "svc/config.py", "vstart": 2, "vend": 3, "lines": ["TIMEOUT = 60"]}
+{"t": 4000, "op": "publish", "agent": "A"}
+{"t": 5000, "op": "publish", "agent": "B"}
+{"t": 6000, "op": "pull", "agent": "A"}
+{"t": 7000, "op": "pull", "agent": "B"}

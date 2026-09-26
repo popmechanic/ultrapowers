@@ -1,0 +1,1 @@
+[{"snap": "6d73365022", "t": 3000, "files": {"svc/config.py": "import os\n\nTIMEOUT = 60\nRETRIES = 3\n\n\ndef load(x):\n    return x\n"}}]

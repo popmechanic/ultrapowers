@@ -1,0 +1,3 @@
+{"t": 1000, "op": "base", "root": "/Users/marcusestes/Websites/ultrapowers-flock-proto/flock/proto/research/settling/synthetic/S5-conflict-reopen-loop/base", "paths": ["svc/config.py"]}
+{"t": 2000, "op": "edit", "agent": "A", "path": "svc/config.py", "vstart": 2, "vend": 3, "lines": ["TIMEOUT = 60"]}
+{"t": 3000, "op": "publish", "agent": "A"}

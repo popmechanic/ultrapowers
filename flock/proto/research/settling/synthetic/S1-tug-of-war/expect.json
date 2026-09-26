@@ -1,0 +1,4 @@
+{
+ "oscillating": true,
+ "why": "A and B flip TIMEOUT 30<->60 twice"
+}

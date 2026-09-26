@@ -1,0 +1,4 @@
+{"t": 4000, "kind": "publish", "agent": "A"}
+{"t": 7000, "kind": "publish", "agent": "B"}
+{"t": 10000, "kind": "publish", "agent": "C"}
+{"t": 13000, "kind": "publish", "agent": "A"}

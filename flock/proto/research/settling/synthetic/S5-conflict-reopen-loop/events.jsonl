@@ -1,0 +1,7 @@
+{"t": 3000, "kind": "publish", "agent": "A"}
+{"t": 4000, "kind": "conflict:open", "path": "svc/config.py", "region": "r1", "between": ["A", "B"]}
+{"t": 5000, "kind": "conflict:close", "path": "svc/config.py", "region": "r1", "by": "A", "note": "kept mine"}
+{"t": 6000, "kind": "conflict:open", "path": "svc/config.py", "region": "r1", "between": ["A", "B"]}
+{"t": 7000, "kind": "conflict:close", "path": "svc/config.py", "region": "r1", "by": "B", "note": "kept mine"}
+{"t": 8000, "kind": "conflict:open", "path": "svc/config.py", "region": "r1", "between": ["A", "B"]}
+{"t": 9000, "kind": "conflict:close", "path": "svc/config.py", "region": "r1", "by": "A", "note": "kept mine"}

@@ -1,0 +1,4 @@
+{
+ "oscillating": false,
+ "why": "never returns to a content: livelock, which the stall belief reads, not the oscillation detector"
+}

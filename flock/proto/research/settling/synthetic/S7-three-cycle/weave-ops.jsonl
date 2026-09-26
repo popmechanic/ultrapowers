@@ -1,0 +1,13 @@
+{"t": 1000, "op": "base", "root": "/Users/marcusestes/Websites/ultrapowers-flock-proto/flock/proto/research/settling/synthetic/S7-three-cycle/base", "paths": ["svc/config.py"]}
+{"t": 2000, "op": "pull", "agent": "A"}
+{"t": 3000, "op": "edit", "agent": "A", "path": "svc/config.py", "vstart": 2, "vend": 3, "lines": ["TIMEOUT = 60"]}
+{"t": 4000, "op": "publish", "agent": "A"}
+{"t": 5000, "op": "pull", "agent": "B"}
+{"t": 6000, "op": "edit", "agent": "B", "path": "svc/config.py", "vstart": 2, "vend": 3, "lines": ["TIMEOUT = 90"]}
+{"t": 7000, "op": "publish", "agent": "B"}
+{"t": 8000, "op": "pull", "agent": "C"}
+{"t": 9000, "op": "edit", "agent": "C", "path": "svc/config.py", "vstart": 2, "vend": 3, "lines": ["TIMEOUT = 30"]}
+{"t": 10000, "op": "publish", "agent": "C"}
+{"t": 11000, "op": "pull", "agent": "A"}
+{"t": 12000, "op": "edit", "agent": "A", "path": "svc/config.py", "vstart": 2, "vend": 3, "lines": ["TIMEOUT = 60"]}
+{"t": 13000, "op": "publish", "agent": "A"}

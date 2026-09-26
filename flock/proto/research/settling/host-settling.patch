@@ -1,0 +1,241 @@
+--- a/flock/proto/host.mjs
++++ b/flock/proto/host.mjs
+@@ -31,6 +31,10 @@
+ const MODEL = arg('model', 'claude-opus-5-5')
+ const CLOCK_MS = Number(arg('clock', 1800)) * 1000
+ const QUIET_MS = Number(arg('quiet', 45)) * 1000
++// ticket 5 (settling): `debounce` settles once nothing can change the merged code (no live
++// session, nothing ready or claimed) and the edge has tested the latest hash, after D =
++// max(1 s, 2 x this run's p90 publish->edge latency). `quiet` is the rollback: the fixed window.
++const SETTLE = arg('settle', 'debounce')
+ const MAX_REOPEN = 3
+ const NAMES = ['A', 'B', 'C', 'D', 'E'].slice(0, N)
+ const STAMP = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+@@ -165,26 +169,72 @@
+ // ── the conflict ledger: Manyana recomputes conflicts per merge and stores none, so the
+ // host keeps them: a conflict opens when a merge flags it and closes only when an agent
+ // says so (resolve_conflict), or at once when both sides only added lines (the union) ──
+-const ledger = new Map()
++// ticket 5: the ledger is keyed by path AND region, the hash of the marked hunks' two sides
++// (sorted, so a pull's merge and the edge's merge name the same region). Manyana re-flags a
++// region it has already flagged on every merge; a closed region stays closed, and only a
++// DIFFERENT region on the same path opens a new entry. Closing a path closes its regions.
++const ledger = new Map()   // `${path}\u0000${region}` -> entry
++function region (annotated) {
++  const hunks = []
++  let side = null, cur = null
++  for (const l of String(annotated || '').split('\n')) {
++    if (l.startsWith('<<<<<<< begin')) { cur = { a: [], b: [] }; side = 'a'; continue }
++    if (l.startsWith('======= begin')) { side = 'b'; continue }
++    if (l.startsWith('>>>>>>> end')) { if (cur) hunks.push([cur.a.join('\n'), cur.b.join('\n')].sort().join('\u0001')); cur = null; side = null; continue }
++    if (cur && side) cur[side].push(l)
++  }
++  return crypto.createHash('sha1').update(hunks.sort().join('\u0002')).digest('hex').slice(0, 10)
++}
+ async function openConflict (p, info) {
+-  const e = ledger.get(p)
+-  if (e && e.open) { e.seen += 1; return }
++  const reg = region(info.annotated)
++  const e = ledger.get(p + '\u0000' + reg)
++  if (e) { e.seen += 1; if (!e.open) ev('conflict:reflag', { path: p, region: reg }); return }   // a stale re-flag never reopens
+   if (info.addsOnly) { ev('conflict:union', { path: p, ...info, annotated: undefined }); return }
+-  ledger.set(p, { open: true, t: now(), seen: 1, annotated: info.annotated, between: info.between })
+-  ev('conflict:open', { path: p, between: info.between })
++  ledger.set(p + '\u0000' + reg, { path: p, region: reg, open: true, t: now(), seen: 1, annotated: info.annotated, between: info.between })
++  lastChange = now()
++  ev('conflict:open', { path: p, region: reg, between: info.between })
+   await board.post({ by: 'host', claim: `open conflict in ${p} between ${info.between.join(' and ')}; whoever next works there should make it say what both sides meant and call resolve_conflict`, confidence: 1 })
+ }
+-const openConflicts = () => [...ledger.entries()].filter(([, e]) => e.open).map(([p]) => p)
++const openConflicts = () => [...new Set([...ledger.values()].filter((e) => e.open).map((e) => e.path))]
++const openEntries = (p) => [...ledger.values()].filter((e) => e.open && e.path === p)
++function closeEntries (p, by, note, via) {
++  for (const e of openEntries(p)) {
++    e.open = false; e.closed_by = by; e.closed_t = now(); e.note = String(note).slice(0, 200)
++    ev('conflict:close', { path: p, region: e.region, by, note: e.note, via })
++  }
++  lastChange = now()
++}
++let lastChange = 0          // the last time the merged code's hash, a session, or the ledger changed
++const live = new Set()      // agents with a session open right now
++const stalls = []           // stall beliefs the host posted (attached to a draft PR)
++async function stall (kind, evidence) {
++  const b = await board.post({ by: 'host', claim: `stall: ${kind} ${JSON.stringify(evidence).slice(0, 300)}`, confidence: 1 })
++  stalls.push({ kind, evidence, t: now() }); ev('stall', { kind, evidence }); log('STALL', kind, JSON.stringify(evidence).slice(0, 200))
++  return b
++}
+ 
+ // ── the edge: every published snapshot is tested; main takes a green, settled one ──
+ let edgeChain = Promise.resolve()
+ let lastEdge = null
+ const snapshots = []
++let bestGreen = -1, sinceBest = 0
++const edgeLatency = []      // publish -> tested, ms (the propagation delay the debounce covers)
+ function edge (reason) {
++  const asked = now()
+   edgeChain = edgeChain.then(async () => {
+     const m = await must({ op: 'merged' })
+     const snap = crypto.createHash('sha1').update(JSON.stringify(m.files)).digest('hex').slice(0, 10)
+-    if (lastEdge && lastEdge.snap === snap) return lastEdge
++    if (lastEdge && lastEdge.snap === snap) {
++      // ticket 5: the facts on a hash never change, but what blocks it does (a close with no
++      // text change). Recompute the verdict from the ledger now: a cached `blocking` was the
++      // answer after 5 of 9 closes on the record, masked each time by a later content change.
++      for (const p of m.conflicts) await openConflict(p, { addsOnly: !!m.addsOnly[p], annotated: m.annotated[p], between: ['published copies'] })
++      const blocking = openConflicts()
++      const factsGreen = Object.values(lastEdge.perTask).every((xs) => xs.every((x) => x === 0))
++      lastEdge = { ...lastEdge, t: now(), reason, blocking, green: factsGreen && lastEdge.check === 0 && !blocking.length }
++      return lastEdge
++    }
++    lastChange = now()
+     const dir = path.join(OUT, 'edge')
+     fs.rmSync(dir, { recursive: true, force: true }); fs.cpSync(BASE_DIR, dir, { recursive: true })
+     for (const [p, text] of Object.entries(m.files)) {
+@@ -195,10 +245,18 @@
+     for (const t of board.tasks.values()) perTask[t.id] = runFacts(dir, t).map((r) => r.exit)
+     const chk = spawnSync(W.check[0], W.check.slice(1), { cwd: dir, encoding: 'utf8', timeout: 120000, env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } })
+     const factsGreen = Object.values(perTask).every((xs) => xs.every((x) => x === 0))
+-    for (const p of m.conflicts) if (!ledger.has(p)) await openConflict(p, { addsOnly: !!m.addsOnly[p], annotated: m.annotated[p], between: ['published copies'] })
++    // ticket 5: every region the edge sees goes through the ledger. The old `!ledger.has(p)`
++    // let a NEW conflict on a once-closed path pass the edge unexamined.
++    for (const p of m.conflicts) await openConflict(p, { addsOnly: !!m.addsOnly[p], annotated: m.annotated[p], between: ['published copies'] })
+     const blocking = openConflicts()
+     lastEdge = { snap, t: now(), reason, perTask, check: chk.status, checkTail: ((chk.stdout || '') + (chk.stderr || '')).slice(-600), conflicts: m.conflicts, blocking, annotated: m.annotated, green: factsGreen && chk.status === 0 && !blocking.length }
+     snapshots.push({ snap, t: now(), files: m.files })
++    edgeLatency.push(now() - asked)
++    // ticket 5: livelock, record-only. Facts rose on every new snapshot of every recorded run
++    // (0 regressions over 53 edges, n=15 runs), so K snapshots with no new best is unseen: it
++    // posts a stall belief and changes nothing (an experiment; rollback: delete this block).
++    const g = Object.values(perTask).reduce((a, xs) => a + xs.filter((x) => x === 0).length, 0) + (chk.status === 0 ? 1 : 0)
++    if (g > bestGreen) { bestGreen = g; sinceBest = 0 } else if (++sinceBest === 2 * board.tasks.size) await stall('livelock', { snap, snapshots_without_progress: sinceBest, best: bestGreen })
+     ev('edge', { ...lastEdge, checkTail: undefined, annotated: undefined })
+     log('edge', snap, lastEdge.green ? 'GREEN' : 'red', JSON.stringify(perTask), 'check', chk.status, m.conflicts.length ? 'conflicts ' + m.conflicts + ' (blocking: ' + (blocking.join(',') || 'none') + ')' : '')
+     return lastEdge
+@@ -262,11 +320,9 @@
+     tool('resolve_conflict', 'Close an open conflict in a file: the text in your copy now says what both sides meant (edit it first with Edit if it did not).',
+       { path: z.string(), note: z.string() },
+       async (a) => {
+-        const e = ledger.get(a.path)
+-        if (!e || !e.open) return say('no open conflict in ' + a.path)
++        if (!openEntries(a.path).length) return say('no open conflict in ' + a.path)
+         await syncFromDisk(agent); await must({ op: 'publish', agent }); lastPublish = now()
+-        e.open = false; e.closed_by = agent; e.closed_t = now(); e.note = a.note
+-        ev('conflict:close', { path: a.path, by: agent, note: a.note.slice(0, 200) }); edge('resolve ' + agent)
++        closeEntries(a.path, agent, a.note, 'resolve_conflict'); edge('resolve ' + agent)
+         return say('conflict in ' + a.path + ' closed and your copy published')
+       }),
+     tool('release', 'Give your task back to the board because you are blocked. Say why.', { reason: z.string() },
+@@ -359,6 +415,7 @@
+     disallowedTools: ['WebFetch', 'WebSearch', 'Task', 'Agent', 'NotebookEdit'], hooks,
+   } })
+   let result = null
++  live.add(agent)
+   const killer = setTimeout(() => { q.interrupt().catch(() => {}) }, Math.max(1000, CLOCK_MS - now()))
+   try { for await (const m of q) if (m.type === 'result') result = m } catch (e) { ev('session:error', { agent, error: String(e).slice(0, 300) }) }
+   clearTimeout(killer)
+@@ -366,11 +423,15 @@
+   await must({ op: 'publish', agent }); lastPublish = now(); edge('session end ' + agent)
+   usage.push({ agent, task: task.id, turns: result?.num_turns, usage: result?.usage, subtype: result?.subtype, cost_usd: result?.total_cost_usd || 0, wall_ms: now() - (usage.startT = usage.startT || 0) })
+   ev('session:end', { agent, task: task.id, released: st.released, done: st.done, redRuns: st.redRuns, turns: result?.num_turns, usage: result?.usage })
++  // ticket 5: a resolve task that ends done closes its path's regions even when the resolver
++  // changed nothing ("the merged text already says what both meant": run n1, 2 of 2 attempts)
++  if (String(task.id).startsWith('R:') && st.done) closeEntries(task.id.slice(2), agent, st.done, 'resolve task done')
++  live.delete(agent); lastChange = now()
+   if (st.released) { await board.release(task, `${agent} released: ${st.released}`); log(agent, 'releases', task.id, '—', st.released) } else { await board.done(task); log(agent, 'done', task.id) }
+ }
+ 
+ async function agentLoop (agent) {
+-  while (!settled && now() < CLOCK_MS) {
++  while (!settled && !outcome && now() < CLOCK_MS) {
+     const t = await board.claim(agent)
+     if (!t) { await sleep(1500); continue }
+     await session(agent, t)
+@@ -378,17 +439,38 @@
+ }
+ 
+ // ── settling ──────────────────────────────────────────────────────────────────
++let outcome = null   // ticket 5: { pr: 'ready' | 'draft', why, snap }
++function debounceMs () {
++  const xs = [...edgeLatency].sort((a, b) => a - b)
++  const p90 = xs.length ? xs[Math.min(xs.length - 1, Math.floor(0.9 * xs.length))] : 500
++  return Math.max(1000, 2 * p90)
++}
++function terminal (pr, why, r) {
++  outcome = { pr, why, snap: r && r.snap, t: now() }
++  ev('terminal', outcome); log('TERMINAL', pr, why)
++}
+ async function settle () {
+-  while (!settled && now() < CLOCK_MS) {
+-    await sleep(3000)
++  while (!settled && !outcome && now() < CLOCK_MS) {
++    await sleep(SETTLE === 'quiet' ? 3000 : 500)
+     const all = [...board.tasks.values()]
+-    if (!board.allDone() || now() - lastPublish < QUIET_MS) continue
++    if (SETTLE === 'quiet') { if (!board.allDone() || now() - lastPublish < QUIET_MS) continue } else {
++      // rule S1: nothing can change the code any more. (`quiet`, the rollback, waits a fixed
++      // window from the last publish CALL, which a no-change session-end publish restarts.)
++      if (!live.size && !board.allDone() && !board.readyNow().length && now() - lastChange > debounceMs()) {
++        // deadlock: no agent working, nothing claimable, work left. Nobody will publish again.
++        await stall('deadlock', { left: all.filter((t) => t.state !== 'done').map((t) => ({ id: t.id, state: t.state, depends_on: t.depends_on })) })
++        terminal('draft', 'deadlock: work left and nothing claimable', lastEdge); break
++      }
++      if (live.size || !board.allDone() || now() - lastChange < debounceMs()) continue
++    }
+     const r = await edge('settle check')
+-    if (r.green) { settled = { t: now(), snap: r.snap }; ev('settled', settled); log('SETTLED on', r.snap); break }
++    if (r.green) { settled = { t: now(), snap: r.snap }; ev('settled', settled); log('SETTLED on', r.snap); terminal('ready', 'settled green', r); break }
++    let acted = false
+     for (const t of all) {
+       const bad = (r.perTask[t.id] || []).some((x) => x !== 0)
+       if (!bad) continue
+       if (t.reopen >= MAX_REOPEN) continue
++      acted = true
+       t.reopen += 1
+       await board.reopen(t, `edge snapshot ${r.snap} is red on this task's facts ${JSON.stringify(r.perTask[t.id])}; check exit ${r.check}`)
+       await board.post({ by: 'host', claim: `edge red on task ${t.id} at snapshot ${r.snap}`, confidence: 1, task: t.id })
+@@ -399,15 +481,32 @@
+       if (board.tasks.has(id) && board.tasks.get(id).state !== 'done') continue
+       const prev = board.tasks.get(id)
+       if (prev && prev.reopen >= MAX_REOPEN) continue
+-      const ann = (ledger.get(p) || {}).annotated || (r.annotated || {})[p]
++      acted = true
++      const ann = (openEntries(p)[0] || {}).annotated || (r.annotated || {})[p]
+       await board.addTask({ id, title: 'Resolve conflict marks in ' + p, depends_on: [], state: 'ready', owner: null, notes: [], reopen: prev ? prev.reopen + 1 : 0, facts: [],
+         body: `Two agents changed the same part of \`${p}\` and the merge marked it as a conflict. Here is the merged file with the conflict sections marked (<<<<<<< begin … / ======= begin … / >>>>>>> end conflict; "left" and "right" are the two sides):\n\n\`\`\`\n${ann || '(annotation unavailable)'}\n\`\`\`\n\nYour copy holds the merged text WITHOUT the markers. Make that part of \`${p}\` say what both sides meant (edit with Edit if it does not already), run the tests, then call resolve_conflict for \`${p}\` and then done.` })
+       ev('resolve-task', { path: p, snap: r.snap }); log('resolve task for', p)
+     }
+     if (r.check !== 0 && all.every((t) => (r.perTask[t.id] || []).every((x) => x === 0))) {
+-      ev('red-check-only', { snap: r.snap, tail: r.checkTail }); log('check red with every fact green'); lastPublish = now()
++      // ticket 5: the check is red with every fact green. The old loop restarted the quiet
++      // window and told nobody, so the run waited for its clock. Now the check owns a task.
++      ev('red-check-only', { snap: r.snap, tail: r.checkTail }); log('check red with every fact green')
++      const prev = board.tasks.get('C:check')
++      if (!prev || (prev.state === 'done' && prev.reopen < MAX_REOPEN)) {
++        acted = true
++        await stall('check_red', { snap: r.snap, tail: (r.checkTail || '').slice(-300) })
++        await board.addTask({ id: 'C:check', title: 'Make the run-wide check green', depends_on: [], state: 'ready', owner: null, notes: [], reopen: prev ? prev.reopen + 1 : 0, facts: [W.check],
++          body: `Every task's facts pass on the merged code, but the run-wide check does not. Its output ends:\n\n\`\`\`\n${(r.checkTail || '').slice(-600)}\n\`\`\`\n\nFix the cause (prefer not to rewrite a peer's lines; post a belief if the fix is theirs), run the check, publish, then done.` })
++      }
+     }
++    if (!acted && SETTLE !== 'quiet') {
++      // exhausted: red or blocked, and every lever (reopen, resolve task, check task) is spent.
++      // Waiting for the clock buys nothing: publish the draft now with the beliefs attached.
++      await stall('exhausted', { snap: r.snap, perTask: r.perTask, check: r.check, blocking: r.blocking })
++      terminal('draft', 'exhausted: red or blocked with every retry spent', r); break
++    }
+   }
++  if (!outcome) terminal('draft', 'clock', lastEdge)
+ }
+ 
+ // ── run ───────────────────────────────────────────────────────────────────────
+@@ -420,6 +519,10 @@
+   workload: W.name, agents: N, model: MODEL, settled, wall_ms: now(),
+   final: lastEdge && { snap: lastEdge.snap, green: lastEdge.green, perTask: lastEdge.perTask, check: lastEdge.check, conflicts: lastEdge.conflicts },
+   snapshots: snapshots.length, beliefs: board.beliefCount,
++  // ticket 5: the terminal outcome. `ready` only from a settled green hash; anything else is a
++  // draft with what the swarm believed attached, so the operator reads beliefs, not a transcript.
++  outcome, settle_mode: SETTLE, debounce_ms: debounceMs(),
++  attached: outcome && outcome.pr === 'draft' ? { stalls, open_conflicts: [...ledger.values()].filter((e) => e.open).map((e) => ({ path: e.path, region: e.region, between: e.between })), last_edge: lastEdge && { snap: lastEdge.snap, perTask: lastEdge.perTask, check: lastEdge.check } } : undefined,
+   board_ops: board.ops.length, board_op_us_p50: pct(board.ops.map((o) => o.us), 0.5), board_op_us_p90: pct(board.ops.map((o) => o.us), 0.9),
+   board: BOARD, board_by_op: byOp(board.ops),
+   board_writes: board.ops.filter((o) => !READS.has(o.name)).length,

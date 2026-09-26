@@ -1,0 +1,91 @@
+{
+ "about": "PROPOSED (map #1292 ticket 5), in the shape of factory/questions.json `sets`: the stall belief that replaces #1128's supervisor stop verb, and the one belief read rule 7 needs before a run may settle. Nothing here is calibrated; every Jev question is record-only until five Flock runs have joined its rows to how the claim actually ended (the #1128 floor, kept). The code kinds need no Jev: each is computed from the board, the ledger and the edge, and carries confidence 1.",
+ "sets": {
+  "stall": {
+   "when": "per live claim, at a cadence of 2 x the run's median session wall so far (floor 120 s on the fleet, the supervisor's own measured floor, runs 213-220); and once at every edge that brings no new best fact count",
+   "reader": "releaseClaim: the host interrupts the agent's session (SDK interrupt(), with receipt) and releases its claim to the board with this belief as the note, so the next agent that claims it starts from the agent's published weave plus the note. Hysteresis: two consecutive readings at or above policy `stall.stuck` (0.8, carried from #1128). Record-only until the reading below.",
+   "rollback": "no answer -> nothing; a reading that did not happen is a reading that did not act. Setting the mode to record-only restores today's prototype (the clock and maxTurns are the only bounds).",
+   "posted_by": "the host (code) for every code kind; Jev for the questions; an agent's own post_belief never gates anything alone, it reaches a consequence only through `settle.more_work`",
+   "confidence": "code kinds: 1.0 (a count or a state on the record); Jev kinds: Jev's probability; an agent's belief: the agent's number, read as evidence by Jev, never compared to a threshold directly",
+   "state": [
+    "observed.elapsed_ms",
+    "observed.elapsed_vs_median_session",
+    "observed.edits_since_last_publish",
+    "observed.publishes",
+    "observed.proof_exits",
+    "observed.peer_merges_received",
+    "observed.self_thrash",
+    "observed.prior_reading",
+    "inferred.last_beliefs",
+    "inferred.released_before"
+   ],
+   "code_not_jev": {
+    "deadlock": "no session live AND not every task done AND nothing ready, for longer than D -> a draft PR now, beliefs attached (nobody can publish again, so the clock buys nothing)",
+    "exhausted": "idle AND the latest snapshot red or blocked AND every lever spent (each red task at MAX_REOPEN, each resolve task at MAX_REOPEN, the check task at MAX_REOPEN) -> a draft PR now",
+    "stale_block": "idle AND every fact and the check green on the latest hash AND the only blocker is a conflict region -> one resolve task at once (no quiet window); a resolve task that ends done closes the region even when it changed no text",
+    "check_red": "idle AND every task's facts green AND the run-wide check red -> a task the check owns (facts = the check), bounded by MAX_REOPEN",
+    "livelock": "2 x (tasks on the board) new snapshots in a row with no new best count of green facts -> a belief, record-only (unseen: 0 regressions over 54 edges, n=15 runs)",
+    "oscillation": "oscillate.py's span signal on the live weave-ops: a content that comes back and is left again, by two or more agents -> the span becomes a conflict region between those agents (the ledger's usual route); a second oscillation on a region that was closed -> a draft PR now with both agents' beliefs attached",
+    "self_thrash": "the same signal inside one agent -> evidence for `stuck` on that agent, never a swarm consequence on its own"
+   },
+   "calibrated": false,
+   "provenance": "#1128 (the supervisor's questions, record-only, n=8 runs with an empty would-have-stopped set at 0.8) re-phrased for an agent working on its own copy with peers merging in; drafted for ticket 5, no corpus read at these strings",
+   "questions": {
+    "stuck": {
+     "type": "noul",
+     "instructions": {
+      "question": "Given `observed` and `inferred`, is this agent looping or otherwise unable to advance its claimed task?",
+      "context": "An agent in a leaderless swarm holds a claim on one task and works on its own copy of the code; its peers' published work is merged into that copy between its tool calls. `observed` is the host's own record of the agent: elapsed time against the swarm's median session, edits since its last publish, publishes, its proof exits in order, merges it has received, whether the weave shows it undoing its own lines, and the previous reading. `inferred` is the agent's own words: its last beliefs and any earlier release of this task. Prefer `observed` wherever it speaks; an agent that says it is nearly done is not evidence that it is. An agent in its first minutes with few edits is reading, not stuck."
+     },
+     "criteria": {
+      "true": "It repeats work, retries the same failing proof, undoes its own lines, or its edits have stopped while it keeps going",
+      "false": "It advances: edits accrue, proof exits change, its beliefs describe new ground"
+     }
+    },
+    "converging": {
+     "type": "noul",
+     "instructions": {
+      "question": "Across `edges`, is the swarm's merged code getting closer to every fact passing?",
+      "context": "Each entry of `edges` is one tested snapshot of the swarm's merged code, in order: which task facts passed and failed, the run-wide check's exit, the open conflict regions, and the files that changed since the previous snapshot. `beliefs` are what the agents posted over the same span. The count of passing facts is already computed; this question asks about what the count cannot see, such as the same failure moving between files or two agents rewriting each other's work."
+     },
+     "criteria": {
+      "true": "Failures are shrinking or changing toward done; the changes build on each other",
+      "false": "The same failures recur, or changes undo earlier changes"
+     }
+    }
+   }
+  },
+  "settle": {
+   "when": "once, at the moment rule S1-S3 first hold on a hash (idle, green, no open region), before the ready PR is opened",
+   "reader": "settleGate: `more_work` at or above policy `settle.more_work` (0.8) blocks the settle and admits the belief as a task on the board (rule 4: a question admits it); below, the run settles and opens the ready PR",
+   "rollback": "no answer -> settle on the facts alone (today's prototype); a dark Jev never holds a run open",
+   "state": [
+    "beliefs",
+    "tasks"
+   ],
+   "calibrated": false,
+   "provenance": "rule 7's third clause (no belief above a threshold says otherwise); drafted for ticket 5",
+   "questions": {
+    "more_work": {
+     "type": "noul",
+     "instructions": {
+      "question": "Does any belief in `beliefs` say that work remains which no task in `tasks` covers?",
+      "context": "A swarm of agents has finished every task on its board and every fact passes on the merged code. `beliefs` are what the agents posted during the run, each with its author, its confidence and the task it concerned. `tasks` is the board, every one done. A belief that described work in progress and was later covered by a task, or a belief about how to build something already built, is not remaining work."
+     },
+     "criteria": {
+      "true": "A belief names a concrete change still owed that no task covered",
+      "false": "Every belief is satisfied, stale, or informational"
+     }
+    }
+   }
+  }
+ },
+ "policy_cells_proposed": {
+  "settle.mode": {"value": "debounce", "n": 15, "window": "flock-proto runs 2026-09-25 (widgetkit 8, inventory 7)", "experiment": true, "rollback": "value = quiet (the fixed 30 s window)", "read": "replayed on the record: 15/15 settled on the first green snapshot; the window added 14.5-31.0 s, 26-46% of wall"},
+  "settle.debounce": {"value": "max(1 s, 2 x p90 publish->edge)", "n": 15, "window": "same", "experiment": true, "rollback": "value = 30 s", "read": "publish->edge median 0.86 s on the laptop (n=55 publishes); D came to 1.5-2.2 s per run"},
+  "settle.more_work": {"value": 0.8, "n": 0, "window": "none", "experiment": true, "rollback": "settle on facts alone"},
+  "stall.stuck": {"value": 0.8, "hysteresis": 2, "mode": "record-only", "n": 0, "window": "none", "rollback": "record-only", "read": "carried from #1128 (n=8 fleet runs, would-have-stopped set empty at 0.8); a Flock reading is owed over five runs"},
+  "stall.livelock_snapshots": {"value": "2 x tasks", "mode": "record-only", "n": 15, "window": "flock-proto 2026-09-25", "experiment": true, "rollback": "delete", "read": "0 fact regressions over 54 edges; unseen, so the value is a guess"},
+  "stall.max_reopen": {"value": 3, "n": 0, "window": "none", "rollback": "3 (today's MAX_REOPEN)", "read": "0 reopens on the record"}
+ }
+}

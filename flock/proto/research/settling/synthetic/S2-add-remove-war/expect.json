@@ -1,0 +1,4 @@
+{
+ "oscillating": true,
+ "why": "A adds the guard, B deletes it, twice"
+}

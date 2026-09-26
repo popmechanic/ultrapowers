@@ -1,0 +1,5 @@
+{
+ "oscillating": false,
+ "why": "one agent thrashing is a per-agent stall signal, not a swarm oscillation",
+ "self_thrash": 1
+}
