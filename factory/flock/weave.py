@@ -40,7 +40,7 @@ sys.path[:0] = [KERNEL, os.path.join(KERNEL, "vendor")]
 import manyana  # noqa: E402
 import fold_wave  # noqa: E402
 
-SEP = "␟"
+SEP = "
 M = manyana
 
 
