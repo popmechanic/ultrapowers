@@ -470,6 +470,9 @@ async function launchBody ({
   if (opts.kind !== undefined && opts.kind !== 'flock' && opts.kind !== 'factory') {
     throw new Refusal(`launch: --kind must be flock or factory, got ${JSON.stringify(opts.kind)}`)
   }
+  // No `--kind` launches DEFAULT_KIND, and the comment always names the kind it
+  // launched, so a run's record says which engine built it either way.
+  const kind = opts.kind ?? DEFAULT_KIND
   if (opts.run !== undefined && !isRunNumber(opts.run)) {
     throw new Refusal(`launch: --run must be a positive integer, got ${JSON.stringify(opts.run)}`)
   }
@@ -563,7 +566,7 @@ async function launchBody ({
     target,
     base: opts.base,
     engine: opts.engine ?? '0'.repeat(40),
-    kind: opts.kind,
+    kind,
     hold: opts.hold === true ? '1' : undefined
   }
   const probeComment = buildComment(fields)
@@ -1186,6 +1189,15 @@ const engineLine = (result) =>
  * boot. The two launches that differ only in `--account` build the same
  * comment byte for byte and differ on this line.
  */
+/**
+ * The engine a launch with no `--kind` boots. `flock` since map #1292's five-run
+ * reading (2026-09-26: Run Room, n=5 runs, 149 s and $1.82 median against the
+ * factory's 182 s and $2.82, n=3; one workload, the one the Flock was tuned on)
+ * and the operator's call on it. An `experiment`: its rollback is `'factory'`
+ * here, or `--kind factory` on any one launch.
+ */
+export const DEFAULT_KIND = 'flock'
+
 export const renderLaunch = (result) => [
   result.runId,
   result.vm,

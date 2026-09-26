@@ -13,11 +13,13 @@ involved in **planning** (what to build, how it is verified) and barely in
 selection picks and the plan's `Check:` lines — adopts winners through the fold kernel, and
 opens its own PR. No LLM orchestrator, no orchestrator VM; the PR is the one gate.
 
-**The engine is changing (map #1292, operator 2026-09-26):** the Flock — a leaderless swarm,
-a weave replica per agent merged continuously, an elastic builder pool — beat the factory on
-the Run Room plan and is being ported onto the sandbox behind an engine switch. Until it has
-driven five fleet runs the factory (`factory/engine.mjs`) is the default and the rollback.
-The prototype is on branch `flock-runroom` (worktree `../ultrapowers-flock`).
+**Two engines; the Flock is the default (map #1292, operator 2026-09-26).** A plain launch
+boots the Flock (`factory/flock/engine.mjs`): a leaderless swarm, one weave replica per builder
+merged continuously, an elastic builder pool. `--kind factory` boots the factory
+(`factory/engine.mjs`), which is the rollback for any one launch; `DEFAULT_KIND` in
+`fleet/launch.mjs` is the rollback for all of them. The reading behind the flip: Run Room,
+n=5 fleet runs, 149 s and $1.82 median against the factory's 182 s and $2.82 (n=3), all green.
+It is one workload, the one the Flock was tuned on, so the flip is an `experiment`.
 
 ## Commands
 
@@ -27,7 +29,7 @@ python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers      # v
 python3 skills/ultrapowers/scripts/plan_parse.py <plan.md>                   # what the sandbox reads: tasks, edges, waves, checks
 python3 skills/ultrapowers/scripts/plan_check.py --base <sha> <plan.md>      # the laptop's check: records, and the plan against its base
 node fleet/doctor.mjs --json                                                 # which fleet prerequisite is missing
-node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha> --engine <sha>   # one run; launch from this checkout, never the plugin cache
+node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha> --engine <sha>   # one run (the Flock; --kind factory for the factory); from this checkout, never the plugin cache
 python3 skills/ultrapowers/scripts/catch_counter.py --ledger <f> <path...>   # what a test file has ever caught
 python3 skills/ultrapowers/scripts/catch_report.py --ledger <f> --tree .     # the deletion candidates that reading names
 ```
