@@ -138,6 +138,8 @@ export class KataBoard extends Timed {
 
   async reopen (t, why) {
     await this.req('reopen', 'POST', this.issuePath(t.id) + '/actions/reopen', { actor: this.actor })
+    // a reopened issue keeps its old owner, so it would never show on ready?unowned=true
+    if (t.owner) await this.req('unassign', 'POST', this.issuePath(t.id) + '/actions/unassign', { actor: this.actor, expected_owner: 'agent-' + t.owner })
     await this.req('comment', 'POST', this.issuePath(t.id) + '/comments', { actor: this.actor, body: 'reopened: ' + why })
     t.state = 'ready'; t.owner = null; t.notes.push(why)
   }
@@ -174,7 +176,7 @@ export class KataBoard extends Timed {
       const id = this.byUid.get(row.uid)
       if (!id) continue
       const t = this.tasks.get(id)
-      tasks.push({ id, title: t.title, state: row.status === 'closed' ? 'done' : row.owner ? 'claimed' : 'ready', owner: row.owner || null, depends_on: t.depends_on, notes: t.notes.slice(-2) })
+      tasks.push({ id, title: t.title, state: row.status === 'closed' ? 'done' : row.owner ? 'claimed' : 'ready', owner: row.owner ? String(row.owner).replace(/^agent-/, '') : null, depends_on: t.depends_on, notes: t.notes.slice(-2) })
     }
     return { tasks, beliefs: await this.readBeliefs() }
   }
@@ -183,6 +185,8 @@ export class KataBoard extends Timed {
     const prev = this.uid.get(t.id)
     if (prev) {
       await this.req('reopen', 'POST', this.issuePath(t.id) + '/actions/reopen', { actor: this.actor }, [200, 201, 409])
+      const old = this.tasks.get(t.id)
+      if (old && old.owner) await this.req('unassign', 'POST', this.issuePath(t.id) + '/actions/unassign', { actor: this.actor, expected_owner: 'agent-' + old.owner }, [200, 201, 409])
     } else {
       const u = (await this.req('create', 'POST', `/projects/${this.pid}/issues`, { title: t.title, body: t.body, actor: this.actor, metadata: { task: t.id }, force_new: true })).issue.uid
       this.uid.set(t.id, u); this.byUid.set(u, t.id)
