@@ -923,8 +923,10 @@ export async function runEngine (rawArgs = {}, deps = {}) {
     return out
   }
 
+  // fold.single_task_fast off → the kernel's old four-pass fold (#1278).
+  const foldFullChecks = ((policyDoc.fold || {}).single_task_fast || {}).enabled === false
   const kernel = (argv) => {
-    const r = sh('env', ['python3', KERNEL, ...argv], REPO)
+    const r = sh('env', [...(foldFullChecks ? ['ULTRA_FOLD_FULL_CHECKS=1'] : []), 'python3', KERNEL, ...argv], REPO)
     const answer = lastJson(outOf(r))
     if (!answer) log('kernel ' + argv[0] + ': exit ' + exitOf(r) + ' ' + String((r && r.stderr) || '').slice(-300))
     return answer
@@ -2220,8 +2222,12 @@ export async function runRefold (rawArgs = {}, deps = {}) {
     : typeof judge.readUnion === 'function' ? judge.readUnion
       : null
 
+  // fold.single_task_fast off → the kernel's old four-pass fold (#1278).
+  const foldFullChecks = ((policyDoc.fold || {}).single_task_fast || {}).enabled === false
   const kernel = (argv) => {
-    const r = sh('python3', [KERNEL, ...argv], REPO)
+    const r = foldFullChecks
+      ? sh('python3', [KERNEL, ...argv], REPO, undefined, { ULTRA_FOLD_FULL_CHECKS: '1' })
+      : sh('python3', [KERNEL, ...argv], REPO)
     const answer = lastJson(outOf(r))
     if (!answer) log('kernel ' + argv[0] + ': exit ' + exitOf(r) + ' ' + String((r && r.stderr) || '').slice(-300))
     return answer
