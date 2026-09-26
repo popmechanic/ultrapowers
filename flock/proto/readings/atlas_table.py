@@ -17,7 +17,10 @@ import analyze  # noqa: E402
 
 COLS = ['run', 'arm', 'green', 'wall_s', 'last_session_to_settled_s', 'sessions', 'red_from_peer', 'red_waiting_producer',
         'red_waiting_rename', 'conflicts', 'same_spot', 'order_ok', 'bash_over_60s', 'wait_for', 'out_tokens',
-        'idle_unclaimed_s', 'idle_wait_for_s', 'busy_share']
+        'idle_unclaimed_s', 'idle_wait_for_s', 'busy_share',
+        # the final atlas race (additive): the last real task's end, settled, how conflicts closed,
+        # and when each longest-chain head was claimed
+        'work_done_s', 'settled_s', 'closed_early', 'closed_by_agent', 'closed_by_resolve_task', 'resolve_tasks', 'heads_claimed_s']
 PRODUCER = ('stub not yet written', 'symbol not yet written')
 
 
@@ -63,6 +66,28 @@ def row(run):
         v = src.split('RULES = [', 1)[1].split(']', 1)[0] if 'RULES = [' in src else ''
         order = [x.strip().rstrip(',') for x in v.strip().split('\n') if x.strip()]
     agents, unclaimed, waitfor, busy = idle(ev, end)
+    real = [r['t'] for r in ev if r['kind'] == 'session:end' and not str(r['task']).startswith(('R:', 'C:'))]
+    closes = [r for r in ev if r['kind'] == 'conflict:close']
+    # the heads of the longest chains, from the workload's own edges (the same count the board uses)
+    import subprocess
+    tasks = json.loads(subprocess.run(['node', '--input-type=module', '-e',
+                                       "import {WORKLOADS} from './workloads.mjs'; import {chainLengths} from './flock_board.mjs';"
+                                       "console.log(JSON.stringify(Object.fromEntries(chainLengths(WORKLOADS.atlas.tasks))))"],
+                                      cwd=os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'), capture_output=True, text=True).stdout)
+    top = max(tasks.values())
+    heads = sorted(k for k, v in tasks.items() if v == top)
+    first_start, rs_open, rs = {}, {}, []
+    for r in ev:
+        if r['kind'] == 'session:start':
+            first_start.setdefault(str(r['task']), r['t'])
+            if str(r['task']).startswith('R:'):
+                rs_open[r['agent']] = r['t']
+        elif r['kind'] == 'session:end' and r['agent'] in rs_open and str(r['task']).startswith('R:'):
+            rs.append((r['agent'], rs_open.pop(r['agent']), r['t']))
+    rs += [(ag, t0, 1e12) for ag, t0 in rs_open.items()]
+
+    def in_resolve(c):   # a close made from inside a resolve task's session
+        return c.get('via') == 'resolve task done' or any(ag == c['by'] and t0 <= c['t'] <= t1 for ag, t0, t1 in rs)
     kinds = a['proof_red_kinds']
     span = max(1, end - next((r['t'] for r in ev if r['kind'] == 'start'), 0))
     return {
@@ -82,6 +107,13 @@ def row(run):
         'idle_unclaimed_s': ' '.join('%s%.0f' % (x, unclaimed[x] / 1000) for x in agents),
         'idle_wait_for_s': ' '.join('%s%.0f' % (x, waitfor[x] / 1000) for x in agents),
         'busy_share': '%.0f%%' % (100 * sum(busy.values()) / (len(agents) * span)) if agents else None,
+        'work_done_s': round(max(real) / 1000) if real else None,
+        'settled_s': round(st / 1000) if st else None,
+        'closed_early': sum(1 for r in closes if str(r.get('via', '')).startswith('early')),
+        'closed_by_agent': sum(1 for r in closes if not str(r.get('via', '')).startswith('early') and not in_resolve(r)),
+        'closed_by_resolve_task': sum(1 for r in closes if not str(r.get('via', '')).startswith('early') and in_resolve(r)),
+        'resolve_tasks': a['resolve_tasks'],
+        'heads_claimed_s': ' '.join('%s@%.1f' % (h, first_start[h] / 1000) if h in first_start else h + '@-' for h in heads),
         '_other_red_kinds': {k: v for k, v in kinds.items() if k not in PRODUCER and k != 'rename not yet landed'},
     }
 
