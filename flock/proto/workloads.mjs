@@ -127,3 +127,410 @@ fromPlan(inventory, '2026-09-25-flock-baseline-inventory.md')
 // and both start from the same BASE the fleet does: flock-baseline@24397a5a holds both packages
 const BASELINE_README = '# flock-baseline\n'
 widgetkit.base = inventory.base = { ...widgetkit.base, ...inventory.base, 'README.md': BASELINE_README }
+
+// ── 3. the bigger collision (ticket 4, second pass): seven tasks, five agents, one 359-line
+// module full of look-alike lines (gap 3's edit-location errors), two producer/consumer
+// chains (1 → 2 → 7), a cross-cutting rename (3: amt → amount, read by 5, 6 and 7), and two
+// tasks that add a line at the same spot (4 and 5: the ACCOUNTS table, the validator stubs,
+// the VALIDATORS list). BASE is flock-baseline@24397a5a plus these files, one seed commit. ──
+const LEDGER_CORE = `"""A small household ledger: entries, accounts, validation and reports.
+
+Amounts are whole cents (int). A negative amount is money leaving the account.
+"""
+from dataclasses import dataclass
+
+
+@dataclass
+class Entry:
+    date: str
+    account: str
+    amt: int
+    memo: str
+
+
+ACCOUNTS = {
+    "cash": {
+        "kind": "asset",
+        "currency": "USD",
+        "limit": None,
+    },
+    "card": {
+        "kind": "liability",
+        "currency": "USD",
+        "limit": None,
+    },
+    "checking": {
+        "kind": "asset",
+        "currency": "USD",
+        "limit": None,
+    },
+    "rent": {
+        "kind": "expense",
+        "currency": "USD",
+        "limit": None,
+    },
+    "food": {
+        "kind": "expense",
+        "currency": "USD",
+        "limit": None,
+    },
+    "travel": {
+        "kind": "expense",
+        "currency": "USD",
+        "limit": None,
+    },
+    "salary": {
+        "kind": "income",
+        "currency": "USD",
+        "limit": None,
+    },
+    "gifts": {
+        "kind": "income",
+        "currency": "USD",
+        "limit": None,
+    },
+}
+
+
+# ── selecting entries ──
+
+
+def debits(entries):
+    """Entries that take money out."""
+    out = []
+    for e in entries:
+        if e.amt < 0:
+            out.append(e)
+    return out
+
+
+def credits(entries):
+    """Entries that bring money in."""
+    out = []
+    for e in entries:
+        if e.amt > 0:
+            out.append(e)
+    return out
+
+
+def for_account(entries, account):
+    """Entries on one account."""
+    out = []
+    for e in entries:
+        if e.account == account:
+            out.append(e)
+    return out
+
+
+def for_date(entries, date):
+    """Entries on one day."""
+    out = []
+    for e in entries:
+        if e.date == date:
+            out.append(e)
+    return out
+
+
+def between(entries, start, end):
+    """Entries from start to end, both included."""
+    out = []
+    for e in entries:
+        if start <= e.date <= end:
+            out.append(e)
+    return out
+
+
+def larger_than(entries, cents_):
+    """Entries whose size is more than cents_."""
+    out = []
+    for e in entries:
+        if abs(e.amt) > cents_:
+            out.append(e)
+    return out
+
+
+def with_memo(entries, word):
+    """Entries whose memo mentions word."""
+    out = []
+    for e in entries:
+        if word in e.memo:
+            out.append(e)
+    return out
+
+
+# ── summing entries ──
+
+
+def total(entries):
+    """The sum of every amount."""
+    t = 0
+    for e in entries:
+        t += e.amt
+    return t
+
+
+def total_debits(entries):
+    """The sum of the money going out (a negative number)."""
+    t = 0
+    for e in entries:
+        if e.amt < 0:
+            t += e.amt
+    return t
+
+
+def total_credits(entries):
+    """The sum of the money coming in."""
+    t = 0
+    for e in entries:
+        if e.amt > 0:
+            t += e.amt
+    return t
+
+
+def count(entries):
+    """How many entries there are."""
+    t = 0
+    for e in entries:
+        t += 1
+    return t
+
+
+# ── picking one entry ──
+
+
+def largest(entries):
+    """The entry with the biggest size, or None."""
+    if not entries:
+        return None
+    best = entries[0]
+    for e in entries:
+        if abs(e.amt) > abs(best.amt):
+            best = e
+    return best
+
+
+def smallest(entries):
+    """The entry with the smallest size, or None."""
+    if not entries:
+        return None
+    best = entries[0]
+    for e in entries:
+        if abs(e.amt) < abs(best.amt):
+            best = e
+    return best
+
+
+def first(entries):
+    """The first entry, or None."""
+    if not entries:
+        return None
+    return entries[0]
+
+
+def last(entries):
+    """The last entry, or None."""
+    if not entries:
+        return None
+    return entries[-1]
+
+
+def find(entries, memo):
+    """The first entry with this memo, or None."""
+    for e in entries:
+        if e.memo == memo:
+            return e
+    return None
+
+
+def find_on(entries, date):
+    """The first entry on this day, or None."""
+    for e in entries:
+        if e.date == date:
+            return e
+    return None
+
+
+# ── accounts ──
+
+
+def account_kind(account):
+    spec = ACCOUNTS.get(account)
+    if spec is None:
+        return None
+    return spec["kind"]
+
+
+def account_currency(account):
+    spec = ACCOUNTS.get(account)
+    if spec is None:
+        return None
+    return spec["currency"]
+
+
+def account_limit(account):
+    spec = ACCOUNTS.get(account)
+    if spec is None:
+        return None
+    return spec["limit"]
+
+
+# ── text ──
+
+
+def cents(text):
+    """'12.50' -> 1250, '-3' -> -300; None when text is not an amount."""
+    text = text.strip()
+    if not text:
+        return None
+    sign = -1 if text.startswith("-") else 1
+    text = text.lstrip("+-")
+    whole, _, frac = text.partition(".")
+    if whole and not whole.isdigit():
+        return None
+    if frac and (not frac.isdigit() or len(frac) > 2):
+        return None
+    if not whole and not frac:
+        return None
+    return sign * (int(whole or "0") * 100 + int((frac + "00")[:2]))
+
+
+def dollars(n):
+    """1250 -> '12.50', -300 -> '-3.00'."""
+    sign = "-" if n < 0 else ""
+    n = abs(n)
+    return "%s%d.%02d" % (sign, n // 100, n % 100)
+
+
+def is_date(text):
+    """True for a YYYY-MM-DD date with a real month and a day from 1 to 31."""
+    parts = text.split("-")
+    if len(parts) != 3:
+        return False
+    if not all(p.isdigit() for p in parts):
+        return False
+    if len(parts[0]) != 4:
+        return False
+    y, m, d = (int(p) for p in parts)
+    if not 1 <= m <= 12:
+        return False
+    if not 1 <= d <= 31:
+        return False
+    return True
+
+
+# ── validation ──
+
+
+def check_date(entry):
+    """A problem with the entry's date, or None."""
+    if not is_date(entry.date):
+        return "bad date"
+    return None
+
+
+def check_account(entry):
+    """A problem with the entry's account, or None."""
+    raise NotImplementedError
+
+
+def check_amount(entry):
+    """A problem with the entry's amount, or None."""
+    raise NotImplementedError
+
+
+def check_memo(entry):
+    """A problem with the entry's memo, or None."""
+    if len(entry.memo) > 40:
+        return "memo too long"
+    return None
+
+
+VALIDATORS = [
+    check_date,
+    check_memo,
+]
+
+
+def validate(entry):
+    """Every problem with one entry, in VALIDATORS order."""
+    problems = []
+    for check in VALIDATORS:
+        p = check(entry)
+        if p is not None:
+            problems.append(p)
+    return problems
+
+
+# ── parsing and reports ──
+
+
+def parse_entry(line):
+    """One entry from a line of text."""
+    raise NotImplementedError
+
+
+def load(text):
+    """Every entry in a block of text."""
+    raise NotImplementedError
+
+
+def balance(entries, account):
+    """The sum of one account's amounts."""
+    raise NotImplementedError
+
+
+def monthly_totals(entries):
+    """The sum of every month's amounts."""
+    raise NotImplementedError
+
+
+def format_entry(entry):
+    """One entry as a report line."""
+    raise NotImplementedError
+
+
+def report(text):
+    """A report of every entry in a block of text, with its total."""
+    raise NotImplementedError
+`
+const LEDGER_TESTS = `from ledger.core import Entry, cents, debits, dollars, is_date, largest, total, validate
+
+
+def es():
+    return [Entry("2026-09-01", "cash", -150, "a"), Entry("2026-09-02", "card", 900, "b")]
+
+
+def test_cents_and_dollars_round_trip():
+    assert cents("12.50") == 1250 and cents("-3") == -300 and cents("x") is None
+    assert dollars(1250) == "12.50" and dollars(-300) == "-3.00"
+
+
+def test_is_date():
+    assert is_date("2026-09-01") and not is_date("2026-13-01") and not is_date("nope")
+
+
+def test_selecting_and_summing():
+    assert [e.memo for e in debits(es())] == ["a"]
+    assert total(es()) == 750
+    assert largest(es()).memo == "b"
+
+
+def test_a_good_entry_has_no_problems():
+    assert validate(Entry("2026-09-01", "cash", -1250, "coffee")) == []
+`
+const ledger = {
+  name: 'ledger',
+  base: { ...inventory.base, 'ledger/__init__.py': '', 'ledger/core.py': LEDGER_CORE, 'tests/test_ledger.py': LEDGER_TESTS },
+  check: ['python3', '-m', 'pytest', '-q', '-p', 'no:cacheprovider'],
+  tasks: [
+    { id: '1', title: 'Parse a ledger line', depends_on: [] },
+    { id: '2', title: 'Load a ledger and balance an account', depends_on: ['1'] },
+    { id: '3', title: 'Rename amt to amount', depends_on: [] },
+    { id: '4', title: 'Account rules, and a savings account', depends_on: [] },
+    { id: '5', title: 'Amount rules, and limits on cash and card', depends_on: [] },
+    { id: '6', title: 'Monthly totals', depends_on: [] },
+    { id: '7', title: 'Format an entry and print a report', depends_on: ['2'] },
+  ],
+}
+fromPlan(ledger, '2026-09-25-flock-baseline-ledger.md')
+WORKLOADS.ledger = ledger
