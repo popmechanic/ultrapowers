@@ -101,8 +101,8 @@
  *
  * The reap is the only removal. The janitor merges nothing — an approved run
  * merges its own pull request from the sandbox — and it deletes no branch and
- * no tag, so every action it records is an `rm` and its writes are the
- * death's; the rest of its `gh` surface is reads: the contents API for a
+ * no tag of its own, so every action it records is an `rm` and its writes are
+ * the death's and the close-out's (below; its sweep is retire's); the rest of its `gh` surface is reads: the contents API for a
  * fallback page, and #724's two —
  *
  *   gh api repos/<target>/git/matching-refs/heads/ultra/integration-run-
@@ -117,6 +117,19 @@
  * learns a target from — a branch whose every VM is already gone is the sweep's
  * to find.
  *
+ * The one write beyond the death's is the close-out (#1314). Beside that
+ * report, each target the rows named is read once more for orphans —
+ *
+ *   gh api repos/<target>/git/matching-refs/heads/ultra/evidence-run-
+ *
+ * — and every run there that no row of this pass carries has its branch page
+ * read (`?ref=ultra/evidence-run-<N>`). A page still saying `booting`,
+ * `running` or `publishing`, last updated longer ago than `--age`, is a run
+ * whose VM is gone and which will never record its own end, so the janitor
+ * hands it to `fleet/close-out.mjs`'s `closeOut`: the page put back on the
+ * evidence branch with `state` `failed`, then retire's sweep for the target.
+ * A finished page, or a live one younger than `--age`, is left alone.
+ *
  * Nothing schedules it: `fleet/launch.mjs` runs it before every launch, handing
  * it the hub client the launch already built, and it is run by hand after the
  * laptop has been asleep.
@@ -129,6 +142,7 @@ import { Buffer } from 'node:buffer'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { closeOut } from './close-out.mjs'
 import { KataError, runIssueOf } from './kata-client.mjs'
 import {
   Refusal,
@@ -600,6 +614,10 @@ async function writeDeath ({ exec, dryRun, row, run, target, reading, unit, at, 
 const matchingRefsPath = (target) =>
   `repos/${target}/git/matching-refs/heads/${integrationBranchFor('')}`
 
+/** The same prefix match for the evidence branches (#1314). */
+const evidenceRefsPath = (target) =>
+  `repos/${target}/git/matching-refs/heads/${evidenceBranchFor('')}`
+
 /**
  * The runs those heads name, ascending. A 404 or an answer that is not an
  * array is no branches — an absence is an answer here, as everywhere else the
@@ -672,6 +690,42 @@ async function closedUnmergedBranches (exec, targets) {
   return branches
 }
 
+// ── #1314: the runs no VM carries, whose page still says live ──────────────
+
+/**
+ * One `matching-refs` read per target for its evidence branches; for every
+ * run no row of this pass carries on that target, its branch page. A live
+ * page older than `ageMs` is closed out — `closed` false under `--dry-run`.
+ */
+async function closeOutOrphans ({ exec, targets, carried, nowMs, ageMs, now, dryRun }) {
+  const closed = []
+  for (const target of [...targets].sort()) {
+    const payload = await ghApi(exec, evidenceRefsPath(target))
+    if (!Array.isArray(payload)) continue
+    const orphans = []
+    for (const entry of payload) {
+      const run = runOfBranch(entry?.ref)
+      if (run === null || orphans.includes(run) || carried.has(`${target}#${run}`)) continue
+      orphans.push(run)
+    }
+    for (const run of orphans.sort((a, b) => a - b)) {
+      const found = await readContentsAt(exec, target, run, evidenceBranchFor(run))
+      const page = found?.page ?? null
+      if (page === null) continue
+      const state = typeof page.state === 'string' ? page.state : null
+      if (!LIVE_STATES.includes(state)) continue
+      const updated = Date.parse(String(page.updatedAt))
+      if (!Number.isFinite(updated) || nowMs - updated < ageMs) continue
+      const out = await closeOut({ exec, target, run, now, dryRun })
+      // A VM that came up between the listing and the close-out is not an
+      // orphan: closeOut said so, and there is nothing to report.
+      if (out.state === null) continue
+      closed.push({ target, run, state: out.state, closed: out.closed })
+    }
+  }
+  return closed
+}
+
 /**
  * Everything the janitor does, with the exec seam, the clock and the hub
  * injected. `kata` is the hub client (`null`: no hub, read the target);
@@ -711,12 +765,17 @@ export async function janitor ({
   // The only targets there are: a row's assignment comment is where the
   // janitor learns of one, so a target no row names is nobody's here.
   const targets = new Set()
+  // Every `<target>#<run>` a row of this pass carries, kept rows included:
+  // the close-out is only for a run no VM carries.
+  const carried = new Set()
   const nowIso = new Date(nowMs).toISOString()
   for (const row of rows) {
     // Before anything is parsed and before a single read is issued: a comment
     // that says do not reap ends this row's pass. Nothing is read about it, so
     // it cannot be aged, cannot be probed, and cannot be removed.
     if (saysNeverReap(row)) {
+      const held = assignmentOf(row)
+      if (held !== null) carried.add(`${held.target}#${held.run}`)
       kept.push({ vm: row.name, comment: row.comment })
       continue
     }
@@ -727,6 +786,7 @@ export async function janitor ({
     }
     const { run, target, plan: planSha } = assignment
     targets.add(target)
+    carried.add(`${target}#${run}`)
 
     // The hub first; the target's evidence when the hub cannot answer this row.
     const reading = await fromHub(target, run, planSha) ?? await evidenceReading(exec, target, run)
@@ -791,6 +851,8 @@ export async function janitor ({
   // ── #724 Task 2: the last of the reads — the branches nothing merged. ─────
   //    They come after the row loop, so every read order above is unchanged.
   const branches = await closedUnmergedBranches(exec, targets)
+  // ── #1314: beside it, the orphans — the runs no VM carries, still live. ───
+  const closedOut = await closeOutOrphans({ exec, targets, carried, nowMs, ageMs, now, dryRun })
 
   // ── Then the one mutation there is: the reap, through the lobby. ──────────
   if (!dryRun) {
@@ -811,7 +873,7 @@ export async function janitor ({
   const hubReport = hub.client === null && hub.host === null && hub.dark === null
     ? null
     : { host: hub.host, dark: hub.dark }
-  return { dryRun, age, actions, stale, unknown, deaths, branches, kept, pending, hub: hubReport, runs }
+  return { dryRun, age, actions, stale, unknown, deaths, branches, closedOut, kept, pending, hub: hubReport, runs }
 }
 
 const renderAction = (a, dryRun) =>
@@ -838,6 +900,10 @@ const renderBranch = (b) =>
   `branch ${b.branch}  target=${b.target} PR #${b.pr} closed, not merged — ` +
   `node fleet/retire.mjs --target ${b.target}`
 
+/** #1314: a run no VM carried, whose page said live, written (or not) as failed. */
+const renderClosedOut = (c, dryRun) =>
+  `${dryRun ? 'would close out' : 'closed out'} run=${c.run} target=${c.target} ${c.state} → failed`
+
 /** A row the reap never touches, and why — the comment itself said so. */
 const renderKept = (k) => `kept ${k.vm}  comment says do not reap — never removed`
 
@@ -858,7 +924,8 @@ const renderJanitor = (result) => {
     ...(result.unknown ?? []).map((u) => `unknown ${u.vm}  no readable assignment — look before you rm`),
     // Last, after every rm, stale and unknown line: the reap is the pass's
     // work, and the branch report is what the operator does next.
-    ...(result.branches ?? []).map(renderBranch)
+    ...(result.branches ?? []).map(renderBranch),
+    ...(result.closedOut ?? []).map((c) => renderClosedOut(c, result.dryRun))
   ]
   return lines.length === 0 ? 'nothing to do' : lines.join('\n')
 }
