@@ -1,0 +1,11 @@
+{
+ "adopt / no real conflict": 300,
+ "adopt / right": 300,
+ "rehide / no real conflict": 300,
+ "rehide / right": 300,
+ "select / no real conflict": 300,
+ "select / no shadow": 3,
+ "select / order-free": 300,
+ "select / right": 300,
+ "select / shadow conflict": 297
+}

@@ -1,0 +1,58 @@
+{
+ "b1 private until published": {
+  "A sees base+peer only": true,
+  "c1's author sees its own candidate": true
+ },
+ "b2 published hidden": {
+  "peers hold the candidate lines": true,
+  "peers still see base + peer": true,
+  "a pending delete is withheld (base line 1 still visible)": true,
+  "no conflict": true,
+  "order-free": true
+ },
+ "b3 the author's view survives a pull": {
+  "c1 sees C1": true
+ },
+ "s1 select c2 on one copy": {
+  "text exactly as intended": true,
+  "conflict": false,
+  "shadow conflict (hidden-only)": true,
+  "order-free (120 orders)": true
+ },
+ "s2 re-hide on another copy": {
+  "base restored exactly": true
+ },
+ "s3 re-select": {
+  "c2 back exactly": true,
+  "conflict": false
+ },
+ "a1 adopt c1's guard between c2's lines (re-insert)": {
+  "placed exactly where chosen": true,
+  "conflict": false,
+  "order-free (720 orders)": true
+ },
+ "a0 the count-move adoption (gap 5's shape)": {
+  "result": [
+   "function importCsv(text) {",
+   "  const rows = parse(text, { strict: true })",
+   "  return rows.map(toWidget)",
+   "  if (!rows.length) throw new Error('empty')",
+   "}",
+   "",
+   "function exportCsv(rows) {",
+   "  return rows.join('\\n')",
+   "}"
+  ],
+  "guard lands before the return": false
+ },
+ "a2 the same adoption twice, concurrently": {
+  "adopted line appears once": true,
+  "conflict": false
+ },
+ "t1 identical lines in two candidates": {
+  "select x shows exactly one": true
+ },
+ "t2 two different selections at once": {
+  "conflict flagged": true
+ }
+}
