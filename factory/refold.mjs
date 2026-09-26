@@ -45,7 +45,7 @@ const RESOLVE_ROLE = path.join(HERE, 'roles', 'resolve.md')
 // counts are summed over every model the result reports (#1298): `null`
 // when there is none, never `0`, so "not reported" and "zero" stay apart.
 // Shared with `runEngine`'s own dispatch, which imports both from here.
-export const TOKEN_CELLS = [
+const TOKEN_CELLS = [
   ['input_tokens', 'inputTokens'],
   ['output_tokens', 'outputTokens'],
   ['cache_read_input_tokens', 'cacheReadInputTokens'],

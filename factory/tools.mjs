@@ -21,76 +21,13 @@
 //   answers what fell over. A rejected tool call would end the worker's run on
 //   a transient 5xx, which is the one thing the record cannot afford.
 
-import { createRequire } from 'node:module'
 import { patchWithRevision } from './board.mjs'
-import { pathToFileURL } from 'node:url'
 
 const reason = (err) => (err && err.message) || String(err)
 
-/**
- * The SDK and its zod both live in `fleet/node_modules` — the install
- * `factory/boot.sh` performs (`npm ci` in `fleet/`) against `fleet/package.json`. A bare
- * specifier from THIS file does not find them: node walks `factory/` upward to
- * the repository root and stops, and the root has no `node_modules`. So each
- * import is tried three ways — the bare specifier (a hoisted or root install),
- * then node's own algorithm rooted at `fleet/package.json`, and last the path
- * the task's Context names.
- *
- * The middle attempt is the one that answers in practice, and it is deliberately
- * ahead of the spelled path because it reads the dependency's own `exports`/
- * `main`: zod 4 has no `index.js` at all (its `main` is `index.cjs`), so a path
- * pinned to a particular entry file is a guess that a major bump invalidates.
- *
- * When all three fail, the throw names all three. The first version reported
- * only the bare specifier's `ERR_MODULE_NOT_FOUND`, which reads as "the code
- * imports it wrong" when the truth is "nothing is installed" — the two failures
- * that would have distinguished them were swallowed.
- */
-const fleetRequire = createRequire(new URL('../fleet/package.json', import.meta.url))
-
-const load = async (spec, relative) => {
-  const attempts = [
-    () => spec,
-    () => pathToFileURL(fleetRequire.resolve(spec)).href,
-    () => new URL(relative, import.meta.url).href,
-  ]
-  const failures = []
-  for (const attempt of attempts) {
-    try { return await import(attempt()) } catch (err) { failures.push(reason(err)) }
-  }
-  throw new Error('factory/tools.mjs cannot resolve "' + spec + '" — it is installed into ' +
-    'fleet/node_modules by factory/boot.sh (npm ci) against fleet/package.json. Tried: ' +
-    failures.join(' ‖ '))
-}
-
-// Top-level await, so `factoryTools` below stays an ordinary synchronous call:
-// an importer of this module awaits its evaluation for free, and a caller's
-// `factoryTools({…}).name` is a property and not a promise. Loaded forgivingly,
-// the way `factory/worker.mjs` loads the SDK: a clone with no `fleet/node_modules`
-// must still be able to import this module and call `makeHandlers`, which
-// needs neither dependency.
-// A real dispatch with no SDK is loud about it — `factoryTools` throws below,
-// naming the same three failures `load` collected.
-let sdk = null
-let sdkLoadError = null
-try {
-  sdk = await load('@anthropic-ai/claude-agent-sdk',
-    '../fleet/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs')
-} catch (err) { sdkLoadError = err; sdk = null }
-
-let zodModule = null
-let zodLoadError = null
-try {
-  zodModule = await load('zod', '../fleet/node_modules/zod/index.cjs')
-} catch (err) { zodLoadError = err; zodModule = null }
-
-/** The message a call with no SDK/zod gets — `sdkLoadError`'s or `zodLoadError`'s
- *  own text, whichever tripped first, unchanged from what `load` threw. */
-const noSdkMessage = () => (sdkLoadError || zodLoadError).message
-
-const { createSdkMcpServer, tool } = sdk || {}
-/** zod ships CJS and ESM; a resolved-by-path CJS build arrives under `default`. */
-const z = zodModule && (zodModule.z || (zodModule.default && zodModule.default.z) || zodModule.default)
+// This module resolves no dependency itself. The SDK and zod are loaded once,
+// by `loadSdk` in `factory/engine.mjs`, and handed to `factoryTools` as `sdk`
+// — so `makeHandlers`, which needs neither, imports with no install at all.
 
 /** The shape every handler answers. */
 const say = (text) => ({ content: [{ type: 'text', text }] })
@@ -226,7 +163,13 @@ export const makeHandlers = ({ kata, projectId, task, candidates, board, runProo
  * server's private registry.
  */
 export const factoryTools = (opts = {}) => {
-  if (!sdk || !zodModule) throw new Error(noSdkMessage())
+  const { sdk } = opts
+  if (!sdk || !sdk.createSdkMcpServer || !sdk.tool || !sdk.z) {
+    throw new Error('factoryTools: no agent SDK — @anthropic-ai/claude-agent-sdk and zod are ' +
+      'installed in factory/node_modules by factory/boot.sh against factory/package.json; ' +
+      'pass them as `sdk` ({ createSdkMcpServer, tool, z }, from loadSdk in factory/engine.mjs)')
+  }
+  const { createSdkMcpServer, tool, z } = sdk
   const handlers = makeHandlers(opts)
 
   const note = tool(

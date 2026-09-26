@@ -126,24 +126,21 @@
  */
 
 import { Buffer } from 'node:buffer'
-import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { KataError, makeKataClient, runIssueOf, sshTransport } from './kata-client.mjs'
+import { KataError, runIssueOf } from './kata-client.mjs'
 import {
-  KATA_HUB_FIX,
   Refusal,
   defaultExec,
-  defaultKataEnvPath,
   evidenceBranchFor,
   evidenceTagFor,
+  hubFromEnv,
   integrationBranchFor,
   isFullSha,
   isRunNumber,
   isSafeTarget,
   isVmName,
-  kataHostOf,
   kataProjectFor,
   listVms,
   lobby,
@@ -152,7 +149,6 @@ import {
   parseComment,
   parseDuration,
   parseJson,
-  parseKataEnv,
   runCli,
   runOfBranch,
   runOfVmName
@@ -169,11 +165,11 @@ export const usage = () => USAGE
  */
 export const REAPABLE_STATES = Object.freeze(['done', 'parked', 'failed'])
 /** Page states that claim the run is still in flight — the ones worth a probe. */
-export const LIVE_STATES = Object.freeze(['booting', 'running', 'publishing'])
+const LIVE_STATES = Object.freeze(['booting', 'running', 'publishing'])
 /** How long a finished run keeps its VM, so its status page can still be read. */
-export const DEFAULT_AGE = '1h'
+const DEFAULT_AGE = '1h'
 /** No status update for this long is a stale run, reported and left alone. */
-export const STALE_MS = 6 * 60 * 60 * 1000
+const STALE_MS = 6 * 60 * 60 * 1000
 /**
  * The hour is for the operator to read a status page before the run is
  * reaped: `reapPlan({finished, updatedAt, nowMs, ageMs})` names the moment a
@@ -181,7 +177,7 @@ export const STALE_MS = 6 * 60 * 60 * 1000
  * not parse, or a run not yet `finished`, answers `none` — there is nothing
  * to name a time for.
  */
-export const reapPlan = ({ finished, updatedAt, nowMs, ageMs }) => {
+const reapPlan = ({ finished, updatedAt, nowMs, ageMs }) => {
   const updated = Date.parse(String(updatedAt))
   if (!Number.isFinite(updated) || finished !== true) return { action: 'none', reapableAt: null }
   const at = updated + ageMs
@@ -195,11 +191,11 @@ export const reapPlan = ({ finished, updatedAt, nowMs, ageMs }) => {
  * it; the guard matches this substring, case-sensitively, so any row someone
  * marks by hand is kept the same way.
  */
-export const NEVER_REAP = 'do not reap'
+const NEVER_REAP = 'do not reap'
 /** The actor every hub write of the janitor's carries. */
-export const HUB_ACTOR = 'janitor'
+const HUB_ACTOR = 'janitor'
 /** The idempotency key of the one hub write: a re-driven death is the same patch. */
-export const deathKeyFor = (run) => `janitor:run-${run}:death`
+const deathKeyFor = (run) => `janitor:run-${run}:death`
 
 /**
  * The three keys a run's issue carries about itself, spelled as kata stores
@@ -207,12 +203,12 @@ export const deathKeyFor = (run) => `janitor:run-${run}:death`
  * there is no `work` object — so every read and every write here goes through
  * `metadata['work.state']`.
  */
-export const STATE_KEY = 'work.state'
-export const ATTENTION_KEY = 'work.attention'
-export const ATTENTION_MSG_KEY = 'work.attention_msg'
+const STATE_KEY = 'work.state'
+const ATTENTION_KEY = 'work.attention'
+const ATTENTION_MSG_KEY = 'work.attention_msg'
 /** What a death writes into those keys: the state, and the hand it raises. */
-export const DEATH_STATE = 'failed'
-export const DEATH_ATTENTION = 'needs-human'
+const DEATH_STATE = 'failed'
+const DEATH_ATTENTION = 'needs-human'
 
 // ── The hub: the run's state, asked of kata ─────────────────────────────────
 
@@ -228,22 +224,11 @@ export const DEATH_ATTENTION = 'needs-human'
  */
 async function openHub ({ exec, kata, kataEnvPath }) {
   if (kata !== undefined) return { client: kata, host: kata?.host ?? null, dark: null }
-  const envPath = kataEnvPath ?? defaultKataEnvPath()
-  let text
-  try {
-    text = await fsp.readFile(envPath, 'utf8')
-  } catch (error) {
-    return { client: null, host: null, dark: `no kata hub env at ${envPath} (${error?.code ?? error?.message ?? error}) — ${KATA_HUB_FIX}` }
-  }
-  const env = parseKataEnv(text)
-  const host = kataHostOf(env.url)
-  if (host === null) {
-    return { client: null, host: null, dark: `${envPath} names KATA_URL ${JSON.stringify(env.url)}, not a url with a host — ${KATA_HUB_FIX}` }
-  }
-  const transport = sshTransport({ sshHost: host, exec })
+  const hub = await hubFromEnv({ exec, actor: HUB_ACTOR, kataEnvPath })
+  if (hub.client === null) return { client: null, host: null, dark: hub.dark }
   return {
-    client: { ...makeKataClient({ transport, actor: HUB_ACTOR }), patchMetadata: metadataPatch(transport) },
-    host,
+    client: { ...hub.client, patchMetadata: metadataPatch(hub.transport) },
+    host: hub.host,
     dark: null
   }
 }
@@ -366,7 +351,7 @@ function hubReader (hub) {
  * exit 1 with `HTTP 404`, which is an answer and not a failure — every reader
  * here gets `null` for it and decides for itself what an absence means.
  */
-const ghApi = async (exec, apiPath) => {
+export const ghApi = async (exec, apiPath) => {
   const res = await exec('gh', ['api', apiPath])
   return res.code === 0 ? parseJson(res.stdout) : null
 }
@@ -384,7 +369,7 @@ const contentsPath = (target, run, file) =>
  * envelope whose content is not a JSON object is an answer all the same, and
  * carries a null `page` so no second ref is read behind a ref that spoke.
  */
-async function readContentsAt (exec, target, run, ref) {
+export async function readContentsAt (exec, target, run, ref) {
   const payload = await ghApi(exec, `${contentsPath(target, run, 'status.json')}?ref=${ref}`)
   if (!payload || typeof payload.content !== 'string') return null
   const decoded = parseJson(Buffer.from(payload.content, 'base64').toString('utf8'))
@@ -643,7 +628,7 @@ async function integrationRunsOf (exec, target) {
  * `#463 closed, merged_at 2026-08-31T03:03:48Z`; only #720 is about the branch
  * that is there now.
  */
-async function decidingPull (exec, target, run) {
+export async function decidingPull (exec, target, run) {
   const owner = String(target).split('/')[0]
   const payload = await ghApi(
     exec,
@@ -660,8 +645,7 @@ async function decidingPull (exec, target, run) {
 }
 
 /**
- * The rule, carried here by literal and never by an import of the sweep — both
- * tools spell it, neither owns it: the highest-numbered pull request decides;
+ * The rule, shared with the sweep through `decidingPull`: the highest-numbered pull request decides;
  * `state` `"open"` keeps the branch; `state` `"closed"` with `merged_at` `null`
  * retires it; `merged_at` a string keeps it (delete-on-merge's own); no rows
  * keeps it. The list endpoint's rows carry `merged_at` and no `merged` boolean,
@@ -861,7 +845,7 @@ const renderKept = (k) => `kept ${k.vm}  comment says do not reap — never remo
 const renderHub = (h) =>
   `hub ${h.host ?? 'none'} unreachable (${h.dark}) — every run read from the target's evidence instead`
 
-export const renderJanitor = (result) => {
+const renderJanitor = (result) => {
   const lines = [
     ...(result.hub?.dark ? [renderHub(result.hub)] : []),
     ...(result.deaths ?? []).map((d) => renderDeath(d, result.dryRun)),

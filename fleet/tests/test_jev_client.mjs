@@ -12,13 +12,13 @@
  * rig, the old engine, `run-main` or `sandbox-boot.sh`, all of which left the
  * tree with the old engine (*the old engine leaves the tree, and the factory
  * clones at base with its own code*). What is left is what examines
- * `fleet/jev-client.mjs` alone: its exports, its constants, its one call, and
+ * `factory/jev-client.mjs` alone: its exports, its constants, its one call, and
  * that every failure is `null` and one log line.
  *
  * The Machine clauses under test, restated so a reader can map every assertion
  * back to the contract:
  *
- *   M1 — `fleet/jev-client.mjs` exports `JEV_PATH` = `/v1/systemone`,
+ *   M1 — `factory/jev-client.mjs` exports `JEV_PATH` = `/v1/systemone`,
  *        `JEV_MODEL` = `jev-latest`, `JEV_TIMEOUT_MS` = `10000`,
  *        `JEV_STATE_MAX_BYTES` = `120000`, and `makeJevClient({ baseUrl,
  *        fetchImpl = globalThis.fetch, timeoutMs = JEV_TIMEOUT_MS, log = () =>
@@ -56,12 +56,12 @@ import assert from 'node:assert/strict'
 let jev = null
 let jevImportError = null
 try {
-  jev = await import('../jev-client.mjs')
+  jev = await import('../../factory/jev-client.mjs')
 } catch (error) {
   jevImportError = error
 }
 assert.ok(jevImportError === null,
-  '(a) [M1] `fleet/jev-client.mjs` is importable — the module this task creates. Got: ' +
+  '(a) [M1] `factory/jev-client.mjs` is importable — the module this task creates. Got: ' +
   String(jevImportError && (jevImportError.message || jevImportError)))
 assert.equal(typeof jev.makeJevClient, 'function',
   '(a) [M1] it exports `makeJevClient({ baseUrl, fetchImpl, timeoutMs, log })`; got ' +

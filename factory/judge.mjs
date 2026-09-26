@@ -5,7 +5,7 @@
 // regular expression over model prose, and no threshold literal — the source
 // of this file carries no decimal at all, which is the Proof's own grep.
 //
-// `ask` is `fleet/jev-client.mjs`'s `makeJevClient({ ... }).ask`
+// `ask` is `factory/jev-client.mjs`'s `makeJevClient({ ... }).ask`
 // (`{ state, questions } -> answers | null`), which sends no authorization
 // header of its own: the edge injects the bearer and the engine hands in the
 // `fetchImpl` that carries it. Nothing here sees a credential, opens a socket

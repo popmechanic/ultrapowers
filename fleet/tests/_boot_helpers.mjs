@@ -143,9 +143,17 @@ function buildOrigin (root, runN, planText) {
 function buildEngineDir (home, engineSha) {
   const engineDir = path.join(home, 'engines', engineSha)
   fs.mkdirSync(engineDir, { recursive: true })
-  fs.symlinkSync(FACTORY_DIR, path.join(engineDir, 'factory'), 'dir')
+  // `factory` is a real directory of symlinks to the real files, plus its own
+  // `node_modules`, so the boot's `engine_deps` returns without running npm and
+  // nothing is written into the checkout's own `factory/`.
+  const factoryDir = path.join(engineDir, 'factory')
+  fs.mkdirSync(factoryDir)
+  for (const entry of fs.readdirSync(FACTORY_DIR)) {
+    if (entry === 'node_modules') continue
+    fs.symlinkSync(path.join(FACTORY_DIR, entry), path.join(factoryDir, entry))
+  }
+  fs.mkdirSync(path.join(factoryDir, 'node_modules'))
   fs.symlinkSync(SKILLS_DIR, path.join(engineDir, 'skills'), 'dir')
-  fs.mkdirSync(path.join(engineDir, 'fleet', 'node_modules'), { recursive: true })
   return engineDir
 }
 

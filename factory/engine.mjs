@@ -40,10 +40,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { createRequire } from 'node:module'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 
-import { makeJevClient } from '../fleet/jev-client.mjs'
+import { makeJevClient } from './jev-client.mjs'
 import { makeKataClient, httpTransport } from '../fleet/kata-client.mjs'
 import { runWorker } from './worker.mjs'
 import { makeJudge } from './judge.mjs'
@@ -77,7 +76,7 @@ const roleText = (name) => fs.readFileSync(rolePath(name), 'utf8')
 
 /** Every producer runs on this; the discovery referee on the other. */
 export const DEFAULT_MODEL = 'claude-opus-5-5'
-export const DEFAULT_REFEREE_MODEL = 'claude-opus-5-5'
+const DEFAULT_REFEREE_MODEL = 'claude-opus-5-5'
 
 /** How many assistant turns a dispatch runs before the supervisor reads it
  *  once. A cadence, not a threshold — nothing is compared against it. */
@@ -211,41 +210,30 @@ export const lastJson = (text) => {
 // ── the SDK, found where it is actually installed ────────────────────────────
 
 /**
- * `query()`, resolved once and lazily.
+ * The agent SDK and its zod, imported once, lazily, and cached.
  *
- * The SDK lives in `fleet/node_modules` — the install `factory/boot.sh` (`npm ci` in `fleet/`)
- * performs against `fleet/package.json` — and a bare specifier from a file
- * under `factory/` does not find it: node walks `factory/` upward to the
- * repository root and stops, and the root has no `node_modules`. So the
- * specifier is tried three ways, exactly as `factory/tools.mjs` tries its two
- * imports: bare (a hoisted or root install), then node's own algorithm rooted
- * at `fleet/package.json`, and last the path the install writes.
+ * Both are installed in `factory/node_modules` — `factory/boot.sh`'s
+ * `engine_deps` installs against `factory/package.json` — so a bare specifier
+ * from any file under `factory/` resolves on node's own walk. This is the one
+ * place the engine resolves them: `buildDeps` hands `query` to `runWorker` and
+ * `{ createSdkMcpServer, tool, z }` to `factoryTools` as its `sdk`.
  *
- * `factory/worker.mjs` names `deps.query` as the injection point for precisely
- * this, so the resolution lives here, in the caller that knows where the run's
- * install is, and the worker stays a module a sim can drive with no install at
- * all. A failure to resolve is not thrown here: it is `undefined`, and
- * `runWorker`'s own message is the one the operator reads.
+ * A failure to resolve is not thrown here: it answers `null`, and
+ * `runWorker`'s own `no query()` message is the one the operator reads.
  */
-const fleetRequire = createRequire(new URL('../fleet/package.json', import.meta.url))
-let sdkQueryPromise = null
-export const sdkQuery = () => {
-  if (sdkQueryPromise) return sdkQueryPromise
-  sdkQueryPromise = (async () => {
-    const attempts = [
-      () => '@anthropic-ai/claude-agent-sdk',
-      () => pathToFileURL(fleetRequire.resolve('@anthropic-ai/claude-agent-sdk')).href,
-      () => new URL('../fleet/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs', import.meta.url).href,
-    ]
-    for (const attempt of attempts) {
-      try {
-        const mod = await import(attempt())
-        if (typeof mod.query === 'function') return mod.query
-      } catch { /* the next spelling */ }
-    }
-    return undefined
+let sdkPromise = null
+export const loadSdk = () => {
+  if (sdkPromise) return sdkPromise
+  sdkPromise = (async () => {
+    try {
+      const mod = await import('@anthropic-ai/claude-agent-sdk')
+      const zod = await import('zod')
+      const z = zod.z || zod.default
+      if (!z) return null
+      return { query: mod.query, createSdkMcpServer: mod.createSdkMcpServer, tool: mod.tool, z }
+    } catch { return null }
   })()
-  return sdkQueryPromise
+  return sdkPromise
 }
 
 // ── the plan, sliced the way the prototype sliced it ─────────────────────────
@@ -1495,13 +1483,13 @@ export { runRefold, makeRefoldDispatch }
  * the other three — the worker's seam, and the only way the Jev wiring below
  * can be read without opening a socket.
  *
- * The Jev bearer: `fleet/jev-client.mjs` sends no authorization header of its
+ * The Jev bearer: `factory/jev-client.mjs` sends no authorization header of its
  * own, because on a fleet VM the edge injects it. Off the edge — a laptop, a
  * CI box — `TYPESAFE_API_KEY` is what stands in, and this `fetchImpl` is the
  * one place it is added. The variable is read at CALL time, never captured, so
  * an environment that changes mid-run is followed rather than remembered.
  */
-export function buildDeps (rawArgs = {}, overrides = {}) {
+function buildDeps (rawArgs = {}, overrides = {}) {
   const args = normalizeArgs(rawArgs)
   const env = overrides.env || process.env
   const log = overrides.log || ((s) => process.stderr.write(String(s) + '\n'))
@@ -1545,20 +1533,20 @@ export function buildDeps (rawArgs = {}, overrides = {}) {
     ? makeKataClient({ transport: httpTransport({ url: String(args.kataUrl) }), actor: args.kataActor })
     : null)
 
-  // `factory/tools.mjs` is imported only where it is used. It resolves the SDK
-  // and zod out of `fleet/node_modules` at module evaluation, so a static
-  // import here would make a run with no kata — the common one — depend on an
-  // install it never needs.
+  // `factory/tools.mjs` is imported only where it is used, and handed the SDK
+  // `loadSdk` resolved — a run with no kata, the common one, never needs it.
   const tools = args.kataUrl
     ? async ({ task, candidates, board, runProof }) => {
       const { factoryTools } = await import('./tools.mjs')
-      return factoryTools({ kata, projectId: args.kataProject, task, candidates, board, runProof })
+      const loaded = await loadSdk()
+      const sdk = loaded && { createSdkMcpServer: loaded.createSdkMcpServer, tool: loaded.tool, z: loaded.z }
+      return factoryTools({ kata, projectId: args.kataProject, task, candidates, board, runProof, sdk })
     }
     : null
 
   return {
     worker: overrides.worker ||
-      (async (opts) => runWorker(opts, { query: overrides.query || await sdkQuery() })),
+      (async (opts) => runWorker(opts, { query: overrides.query || (await loadSdk())?.query })),
     judge,
     sh: overrides.sh || defaultSh,
     git: overrides.git || defaultGit,

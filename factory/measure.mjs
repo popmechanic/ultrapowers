@@ -30,7 +30,7 @@ const SELECT_TESTS_BUDGET_BYTES = 60000
  * result is at most 60,000 bytes (M3). `kept`/`dropped` describe the trim
  * whether or not one actually happened.
  */
-export function excerptTests (found, readFile, cap) {
+function excerptTests (found, readFile, cap) {
   const entryFor = (c) => ({ path: c.path, text: excerptFor(readFile(c.path), c.hits, cap) })
   let kept = found
   let tests = kept.map(entryFor)

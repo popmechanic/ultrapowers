@@ -237,10 +237,10 @@ board_down() {
   return 0
 }
 engine_deps() {
-  [ -d "$ENGINE_REPO_DIR/fleet/node_modules" ] && return 0
-  if [ -f "$ENGINE_REPO_DIR/fleet/package-lock.json" ]
-  then ( cd "$ENGINE_REPO_DIR/fleet" && fleet_npm ci --no-audit --no-fund ) || fail "npm ci: engine deps"
-  else ( cd "$ENGINE_REPO_DIR/fleet" && fleet_npm install --no-audit --no-fund ) || fail "npm install: engine deps"; fi
+  [ -d "$ENGINE_REPO_DIR/factory/node_modules" ] && return 0
+  if [ -f "$ENGINE_REPO_DIR/factory/package-lock.json" ]
+  then ( cd "$ENGINE_REPO_DIR/factory" && fleet_npm ci --no-audit --no-fund ) || fail "npm ci: engine deps"
+  else ( cd "$ENGINE_REPO_DIR/factory" && fleet_npm install --no-audit --no-fund ) || fail "npm install: engine deps"; fi
 }
 # A transient SERVICE, not a scope: `--wait` hands back the exit code and `--collect` unloads the unit; while it runs, the boot relays events every FLEET_COMMIT_SECONDS and looks for its exit every second.
 run_engine() {

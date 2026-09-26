@@ -44,7 +44,7 @@ that remaining language with fixtures small enough to carry one fact each:
       the printed cell is 0.20.
 
 Driven as a subprocess, exactly as `tests/test_catch_counter.py` and
-`tests/test_authoring_census_jev.py` drive their scripts: `census()` asserts
+`tests/test_authoring_census.py` drive their scripts: `census()` asserts
 the script exists before spawning it, so a script that doesn't exist yet reds
 on that assertion rather than on a coincidental exit code (an absent script
 makes Python itself exit 2 with a stderr line, which would otherwise be
