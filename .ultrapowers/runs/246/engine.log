@@ -1,0 +1,17 @@
+Running as unit: fleet-engine-246.service; invocation ID: 9e7ccb196d1c4e16b7169238089e1727
+file:///home/exedev/engines/feec6cf542cfd6d1230e7305db101c6b4d499a2f/factory/flock/engine.mjs:132
+const must = async (o) => { const r = await weave(o); if (!r.ok) throw new Error('weave ' + o.op + ': ' + r.error); return r }
+                                                                       ^
+
+Error: weave base: UnicodeDecodeError: 'utf-8' codec can't decode byte 0xf7 in position 10: invalid start byte
+    at must (file:///home/exedev/engines/feec6cf542cfd6d1230e7305db101c6b4d499a2f/factory/flock/engine.mjs:132:72)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async file:///home/exedev/engines/feec6cf542cfd6d1230e7305db101c6b4d499a2f/factory/flock/engine.mjs:801:1
+
+Node.js v24.20.0
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 882ms
+CPU time consumed: 1.068s
+Memory peak: 79.6M
+Memory swap peak: 0B
