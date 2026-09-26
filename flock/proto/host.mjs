@@ -23,6 +23,7 @@ import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import { WORKLOADS, writeBase } from './workloads.mjs'
 import { makeBoard } from './flock_board.mjs'
+import { editSpans } from './edit_spans.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d }
@@ -150,33 +151,7 @@ async function syncFromDisk (agent) {
   return drift
 }
 
-function editSpans (before, old, neu, all) {
-  const idxs = []
-  let i = before.indexOf(old)
-  while (i >= 0) { idxs.push(i); if (!all) break; i = before.indexOf(old, i + old.length) }
-  return idxs.reverse().map((idx) => {
-    const endc = idx + old.length
-    const ls = before.slice(0, idx).split('\n').length - 1
-    const lineStart = before.lastIndexOf('\n', idx - 1) + 1
-    let lineEnd = before.indexOf('\n', endc); if (lineEnd < 0) lineEnd = before.length
-    const prefix = before.slice(lineStart, idx)
-    let oldLines, newLines
-    if (old.endsWith('\n') && (neu.endsWith('\n') || (neu === '' && prefix === ''))) {
-      oldLines = before.slice(lineStart, endc).split('\n'); oldLines.pop()
-      const s = prefix + neu
-      newLines = s === '' ? [] : s.split('\n'); if (s.endsWith('\n')) newLines.pop()
-    } else {
-      oldLines = before.slice(lineStart, lineEnd).split('\n')
-      newLines = (prefix + neu + before.slice(endc, lineEnd)).split('\n')
-    }
-    let h = 0
-    while (h < oldLines.length && h < newLines.length && oldLines[h] === newLines[h]) h++
-    let t = 0
-    while (t < oldLines.length - h && t < newLines.length - h && oldLines[oldLines.length - 1 - t] === newLines[newLines.length - 1 - t]) t++
-    return { vstart: ls + h, vend: ls + oldLines.length - t, lines: newLines.slice(h, newLines.length - t) }
-  })
-}
-
+// editSpans lives in edit_spans.mjs since the replace-all fix (pinned by readings/replace_all_check.mjs)
 async function recordEditCall (agent, rel, before, edits) {
   let text = before, peerText = 0
   const owners0 = await keyedOwners(agent, rel)
