@@ -29,6 +29,7 @@ import { makeBoard } from './flock_board.mjs'
 import { editSpans } from './edit_spans.mjs'
 import { pullScope } from './pulls.mjs'
 import { findGit } from '../gitblock.mjs'
+import { bootstrapFor } from '../commands.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d }
@@ -167,9 +168,15 @@ const BASE_FILES = Object.fromEntries(BASE_PATHS.map((p) => [p, readOr(path.join
 // them (walk skips node_modules) and no copy pays a second install
 const DEPS_DIR = path.join(WORK, 'deps')
 let DEP_DIRS = []
-if (W.setup) {
+// the plan's own bootstrap wins; without one, the factory's rule reads the target's tracked files
+// (a bun lockfile -> bun install, package-lock.json -> npm ci), so the Flock installs exactly what a
+// factory run of the same plan would (runroom-ab run-3: no install, the check exited 127 on every edge)
+const SETUP = W.setup || ((cmd) => cmd ? ['bash', '-lc', cmd] : null)(bootstrapFor({ planCmd: null, files: BASE_PATHS }))
+if (SETUP) {
   fs.cpSync(BASE_DIR, DEPS_DIR, { recursive: true })
-  const r = spawnSync(W.setup[0], W.setup.slice(1), { cwd: DEPS_DIR, encoding: 'utf8', timeout: 300000, env: RUN_ENV })
+  const t0 = Date.now()
+  const r = spawnSync(SETUP[0], SETUP.slice(1), { cwd: DEPS_DIR, encoding: 'utf8', timeout: 300000, env: RUN_ENV })
+  ev('setup', { cmd: SETUP[SETUP.length - 1], exit: r.status, ms: Date.now() - t0 })
   if (r.status !== 0) throw new Error('setup failed: ' + ((r.stdout || '') + (r.stderr || '')).slice(-800))
   DEP_DIRS = ['node_modules', ...fs.readdirSync(DEPS_DIR, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name !== 'node_modules')
     .map((e) => path.join(e.name, 'node_modules'))].filter((d) => fs.existsSync(path.join(DEPS_DIR, d)))
