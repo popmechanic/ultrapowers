@@ -128,11 +128,6 @@ const VERDICTS_PATH = '.ultrapowers/gate-verdicts.json'
  *  run issue and one issue per task on the hub, each with the revision it had
  *  when the launcher last read it (#913). Written only when a hub is reached. */
 const KATA_PATH = '.ultrapowers/kata.json'
-/** The url the SANDBOX reaches the hub at — the `kata` http-proxy attached by
- *  `tag:fleet` — written into the record regardless of the laptop's own route,
- *  because the record's reader is the engine on the sandbox and never the
- *  laptop. */
-export const KATA_SANDBOX_URL = 'https://kata.int.exe.xyz'
 /** The one command that builds the hub, and where `fleet/kata-hub.mjs` leaves
  *  the hub's address and bearer — both `fleet/lobby.mjs`'s, since the janitor
  *  reads the same file. */
