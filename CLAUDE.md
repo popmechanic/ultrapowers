@@ -308,7 +308,7 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
 - **Versioning:** 0.x.y — minor bumps for architectural releases (0.1.0 = the subtraction
   release), patch bumps otherwise — the 0.3.5 lift stayed a patch on the operator's call ("we're
   still fixing the features that .3 was meant to deliver"). A release bumps **both** `plugin.json`
-  **and** `marketplace.json` to the same value — `.claude-plugin/plugin.json` carries `0.3.36`
+  **and** `marketplace.json` to the same value — `.claude-plugin/plugin.json` carries `0.3.37`
   today — `plugin.json` wins silently if they drift, and they have. **A release is the bump on
   main and nothing more (operator, 2026-09-22):** one hand PR titled `chore: version 0.x.y — …`
   that bumps both manifests and edits this bullet's version, squash-merged, then a bare git tag
