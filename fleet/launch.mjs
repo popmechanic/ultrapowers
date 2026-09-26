@@ -110,7 +110,7 @@ export const usage = () => USAGE
  * imported: the launcher refuses a name the credential tool would refuse, and
  * it refuses it before anything is executed.
  */
-export const DEFAULT_ACCOUNT = 'ultrapowers'
+const DEFAULT_ACCOUNT = 'ultrapowers'
 const ACCOUNT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 
 /** The flag `new` may never carry: exe.dev refuses it, and the policy
@@ -121,12 +121,12 @@ const NEW_INTEGRATION_FLAG = /(^|\s)--integration(=|\s|$)/
 const VERBS_PATH = new URL('./exe-verbs.json', import.meta.url).pathname
 
 /** Where the plan lands in the commit the launcher pushes. */
-export const PLAN_PATH = '.ultrapowers/plan.md'
-export const VERDICTS_PATH = '.ultrapowers/gate-verdicts.json'
+const PLAN_PATH = '.ultrapowers/plan.md'
+const VERDICTS_PATH = '.ultrapowers/gate-verdicts.json'
 /** The third path of the plan commit: the run's kata record — the project, the
  *  run issue and one issue per task on the hub, each with the revision it had
  *  when the launcher last read it (#913). Written only when a hub is reached. */
-export const KATA_PATH = '.ultrapowers/kata.json'
+const KATA_PATH = '.ultrapowers/kata.json'
 /** The url the SANDBOX reaches the hub at — the `kata` http-proxy attached by
  *  `tag:fleet` — written into the record regardless of the laptop's own route,
  *  because the record's reader is the engine on the sandbox and never the
@@ -134,8 +134,7 @@ export const KATA_PATH = '.ultrapowers/kata.json'
 export const KATA_SANDBOX_URL = 'https://kata.int.exe.xyz'
 /** The one command that builds the hub, and where `fleet/kata-hub.mjs` leaves
  *  the hub's address and bearer — both `fleet/lobby.mjs`'s, since the janitor
- *  reads the same file; re-exported so the launcher's callers see them here. */
-export { KATA_HUB_FIX, defaultKataEnvPath }
+ *  reads the same file. */
 
 /**
  * `~/.ultrapowers/kata-hub.env`, read: `{ url, token }` from its `KATA_URL=`
@@ -147,7 +146,7 @@ export { KATA_HUB_FIX, defaultKataEnvPath }
  * launcher never sends it. Every laptop request rides `ssh <hub> curl …` and
  * sources the bearer from the hub's own `/etc/kata/kata.env` there.
  */
-export async function readKataEnv (envPath) {
+async function readKataEnv (envPath) {
   let text
   try {
     text = await fsp.readFile(envPath, 'utf8')
@@ -187,20 +186,20 @@ export const planClosesOf = (planText) => {
  * lost and nothing here takes a patch: decision 5 of #715 asks the operator to
  * re-drive that work as a plan on `main`, which is procedure and not a flag.
  */
-export const BASE_OFF_MAIN_FIX =
+const BASE_OFF_MAIN_FIX =
   'relaunch from main; a parked branch is re-driven as a plan on main, not as a base'
 
 /** What a shallow launch checkout is told to do — by hand, never by the
  *  launcher: unshallowing an operator's clone is not a launch's business. */
-export const SHALLOW_FIX = 'is a shallow clone — unshallow it by hand and relaunch'
+const SHALLOW_FIX = 'is a shallow clone — unshallow it by hand and relaunch'
 
 /**
  * How many `new` lines a launch may issue, and the window it sleeps in between
  * them. A name exe.dev refused stays reserved, so each attempt mints its own.
  */
-export const NEW_ATTEMPTS = 3
-export const RETRY_MIN_MS = 1_000
-export const RETRY_MAX_MS = 3_000
+const NEW_ATTEMPTS = 3
+const RETRY_MIN_MS = 1_000
+const RETRY_MAX_MS = 3_000
 
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -233,7 +232,7 @@ const isMemorySize = (value) => /^[1-9][0-9]*GB$/.test(String(value))
  * `memory` comes back spelled `<int>GB`, the spelling the lobby's `--memory`
  * takes verbatim; `cpu` is a decimal string for the same reason.
  */
-export function vmSizeFor (widestWave, cap = FLEET_DEFAULTS) {
+function vmSizeFor (widestWave, cap = FLEET_DEFAULTS) {
   const w = Math.max(0, Math.floor(Number(widestWave) || 0))
   const capCpu = Number(cap?.cpu ?? FLEET_DEFAULTS.cpu)
   const capGb = cap?.memoryGb ?? parseMemoryGb(cap?.memory ?? FLEET_DEFAULTS.memory)
@@ -255,7 +254,7 @@ export function vmSizeFor (widestWave, cap = FLEET_DEFAULTS) {
  * below the one-task size would be a smaller answer than the smallest real
  * plan's.
  */
-export function sizeFromCompile (compiled, { cpuCap, memoryCap, cpu, memory } = {}) {
+function sizeFromCompile (compiled, { cpuCap, memoryCap, cpu, memory } = {}) {
   const waves = Array.isArray(compiled?.waves) ? compiled.waves : []
   const w = Math.max(1, waves.reduce(
     (widest, wave) => Math.max(widest, Array.isArray(wave) ? wave.length : 0), 0
@@ -283,7 +282,7 @@ export function sizeFromCompile (compiled, { cpuCap, memoryCap, cpu, memory } = 
  * script, on the box, for whoever asks why this VM has these cores. The engine
  * does not read it.
  */
-export function stampWidth (script, { width, cpu, memory }) {
+function stampWidth (script, { width, cpu, memory }) {
   const note = `# fleet: width=${width} — the parsed plan's widest wave, which this box was cut to: --cpu ${cpu} --memory ${memory}.`
   const text = String(script ?? '')
   const firstLine = text.indexOf('\n')
@@ -446,7 +445,7 @@ const ORIGIN_SPELLINGS = Object.freeze([
   /^ssh:\/\/git@github\.com\/(.+?)(?:\.git)?\/?$/
 ])
 
-export function targetOfOriginUrl (url) {
+function targetOfOriginUrl (url) {
   const text = String(url ?? '').trim()
   for (const pattern of ORIGIN_SPELLINGS) {
     const match = pattern.exec(text)
@@ -905,7 +904,7 @@ export function defaultReadUsage (account = DEFAULT_ACCOUNT, spawn = spawnSync) 
  * it was parsed by a `plan_parse.py` from before that key existed — is not a
  * publishing plan and is never refused here, whatever `integrations` carries.
  */
-export function publishRefusal ({ compiled, integrations }) {
+function publishRefusal ({ compiled, integrations }) {
   const publish = compiled?.publish
   if (publish === null || publish === undefined || typeof publish !== 'object') return null
   const rows = Array.isArray(integrations) ? integrations : []
@@ -933,7 +932,7 @@ function usageRefusal (account, label, window) {
  * branch is gone — the run is publishing or has published, and no engine reads
  * its task issues any more — so that row is not a duplicate.
  */
-export async function liveDuplicatesOf ({ exec, repoDir, target, planText, runs }) {
+async function liveDuplicatesOf ({ exec, repoDir, target, planText, runs }) {
   const candidates = runs.filter((r) => r.target === target && r.live !== false && isRunNumber(r.run))
   if (candidates.length === 0) return []
   const hashed = await exec('git', ['-C', repoDir, 'hash-object', '--stdin'], { input: planText })
@@ -1633,7 +1632,7 @@ async function commitPlan ({ exec, repoDir, base, run, planText, verdictsText, k
 }
 
 /** How many plan pushes one launch makes before it refuses. */
-export const PUSH_ATTEMPTS = 3
+const PUSH_ATTEMPTS = 3
 
 /**
  * The plan commit, pushed — and the run number, reserved by that push rather
