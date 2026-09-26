@@ -88,6 +88,13 @@ def second_pass(by, summ):
         "shell_write_denied": len(by["deny:shell-write"]),
         "proof_red_kinds": dict(collections.Counter(err_class(e) for p in red for e in p.get("errs", []))),
         "output_tokens": summ["tokens"]["output"],
+        "publish_arm": summ.get("publish", "explicit"),
+        "auto_publishes": sum(1 for r in by["publish"] if r.get("auto")),
+        "red_from_peer": sum(1 for p in red if any(c["cause"].startswith("peer") for c in p["causes"]))
+        + sum(1 for t in by["test"] if t["red"] and (t.get("cause") or {}).get("cause", "").startswith("peer")),
+        "red_broken_code": sum(1 for p in red for e in p.get("errs", []) if "SyntaxError" in e or "IndentationError" in e or "NameError" in e),
+        "edge_snapshots_suite_red": sum(1 for e in by["edge"] if e["check"] != 0),
+        "edge_green_but_blocked": sum(1 for e in by["edge"] if e["check"] == 0 and e.get("blocking") and all(x == 0 for xs in e["perTask"].values() for x in xs)),
         "board": summ.get("board", "standin"),
         "board_writes_per_s": summ.get("board_writes_per_s"),
         "board_peak_writes_per_s": summ.get("board_peak_writes_per_s"),

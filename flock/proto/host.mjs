@@ -31,6 +31,11 @@ const N = Number(arg('agents', 3))
 const MODEL = arg('model', 'claude-opus-5-5')
 const CLOCK_MS = Number(arg('clock', 1800)) * 1000
 const QUIET_MS = Number(arg('quiet', 45)) * 1000
+// explicit: an agent publishes when it calls publish (and the host publishes at session end,
+// released or done); batch: the host also publishes the agent's copy after every tool batch
+// in which it changed (map Q4, operator 2026-09-25)
+const PUBLISH = arg('publish', 'explicit')
+const dirty = {}
 const MAX_REOPEN = 3
 const NAMES = ['A', 'B', 'C', 'D', 'E'].slice(0, N)
 const STAMP = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
@@ -217,7 +222,7 @@ Rules:
 - Never run git.
 - Run tests with: python3 -m pytest -q -p no:cacheprovider
 - Use the flock tools: board_read (tasks and beliefs), post_belief (tell the others something true and useful, with how sure you are), run_proof (your task's facts, on your copy), publish (share your copy's changes), release (give the task back if you are blocked), done (your task is finished).
-- Publish whenever your change is coherent, so the others build on it.
+${PUBLISH === 'batch' ? '- Your changes are published to the others automatically after each of your tool batches, finished or not; publish is still there when you want to be sure.' : '- Publish whenever your change is coherent, so the others build on it.'}
 - If something fails because of another agent's unfinished work, prefer not to rewrite their lines: post a belief saying what you saw, and carry on with your own part.
 - If a note says a file merged with conflict marks, look at that part of the file. When it says what both sides meant (edit it if not), call resolve_conflict for that file.
 - When your task's facts pass on your copy, publish, then call done.`
@@ -317,9 +322,11 @@ async function session (agent, task) {
           if (view !== readOr(fp)) { await must({ op: 'rewrite', agent, path: rel, content: readOr(fp) }); how = 'edit-call-mismatch' }
         }
         ev('edit', { agent, task: task.id, tool: name, path: rel, how, peer_lines: rec.peer, peers: rec.peers })
+        dirty[agent] = true
         if (rec.peer) await board.post({ by: 'host', claim: `${agent} changed ${rec.peer} line(s) written by ${rec.peers.join(', ')} in ${rel}`, confidence: 1, task: task.id })
       } else if (name === 'Bash') {
         const drift = await syncFromDisk(agent)
+        if (drift) dirty[agent] = true
         const cmd = ti.command || ''
         if (/pytest/.test(cmd)) {
           const out = JSON.stringify(input.tool_response || '')
@@ -340,6 +347,10 @@ async function session (agent, task) {
       return {}
     }] }],
     PostToolBatch: [{ hooks: [async () => {
+      if (PUBLISH === 'batch' && dirty[agent]) {
+        await syncFromDisk(agent); await must({ op: 'publish', agent }); dirty[agent] = false
+        lastPublish = now(); ev('publish', { agent, task: task.id, auto: 'batch' }); edge('batch ' + agent); await board.publish(agent, task.id)
+      }
       const changed = await pullInto(agent)
       if (!changed.length) return {}
       const note = 'Peers\' published work was merged into your copy just now: ' +
@@ -412,12 +423,12 @@ async function settle () {
 
 // ── run ───────────────────────────────────────────────────────────────────────
 await must({ op: 'base', root: BASE_DIR, paths: BASE_PATHS })
-ev('start', { workload: W.name, agents: N, model: MODEL, clock_ms: CLOCK_MS, quiet_ms: QUIET_MS })
+ev('start', { workload: W.name, agents: N, model: MODEL, clock_ms: CLOCK_MS, quiet_ms: QUIET_MS, board: BOARD, publish: PUBLISH })
 log(`workload ${W.name}, ${N} agents, ${MODEL}, out ${OUT}`)
 await Promise.all([...NAMES.map(agentLoop), settle()])
 await edgeChain
 const summary = {
-  workload: W.name, agents: N, model: MODEL, settled, wall_ms: now(),
+  workload: W.name, agents: N, model: MODEL, settled, wall_ms: now(), publish: PUBLISH,
   final: lastEdge && { snap: lastEdge.snap, green: lastEdge.green, perTask: lastEdge.perTask, check: lastEdge.check, conflicts: lastEdge.conflicts },
   snapshots: snapshots.length, beliefs: board.beliefCount,
   board_ops: board.ops.length, board_op_us_p50: pct(board.ops.map((o) => o.us), 0.5), board_op_us_p90: pct(board.ops.map((o) => o.us), 0.9),
