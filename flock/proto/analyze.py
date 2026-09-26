@@ -69,7 +69,8 @@ def err_class(e):
         return "assert/exit"
     if "NotImplementedError" in e:
         return "stub not yet written"
-    if "has no attribute 'amount'" in e or "has no attribute 'quantity'" in e or "unexpected keyword argument 'amount'" in e:
+    if ("has no attribute 'amount'" in e or "has no attribute 'quantity'" in e or "unexpected keyword argument 'amount'" in e
+            or "has no attribute 'population'" in e or "has no attribute 'pop'" in e or "unexpected keyword argument 'population'" in e):
         return "rename not yet landed"
     if "ImportError" in e or "cannot import name" in e:
         return "symbol not yet written"

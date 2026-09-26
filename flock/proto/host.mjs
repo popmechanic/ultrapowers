@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // PROTOTYPE — throwaway (map #1292, ticket 4). The Flock on the laptop.
 //
-//   node flock/proto/host.mjs --workload widgetkit|inventory|ledger|ledger2 [--agents 3]
+//   node flock/proto/host.mjs --workload widgetkit|inventory|ledger|ledger2|atlas [--agents 3]
 //        [--model claude-opus-5-5] [--clock 1800] [--quiet 45] [--tag r1]
 //
 // Question it answers: with N agents working one plan together, each on its own
@@ -42,7 +42,7 @@ const dirty = {}
 // max(1 s, 2 x this run's p90 publish->edge latency). `quiet` is the rollback: the fixed window.
 const SETTLE = arg('settle', 'debounce')
 const MAX_REOPEN = 3
-const NAMES = ['A', 'B', 'C', 'D', 'E'].slice(0, N)
+const NAMES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].slice(0, N)   // up to 8 (the scale pass, atlas)
 const STAMP = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
 const OUT = path.join(HERE, 'runs', `${W.name}-${arg('tag', 'r')}-${STAMP}`)
 const T0 = Date.now()
