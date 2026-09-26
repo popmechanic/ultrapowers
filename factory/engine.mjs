@@ -57,7 +57,8 @@ import { observedWork, supervisorTick, makeObservedWatch } from './watch.mjs'
 import { kFor, probeRecord } from './kprobe.mjs'
 import { retrying, isRateLimited } from './retry.mjs'
 import { baseReader } from './baseread.mjs'
-import { makeKernel, makeCloner, resolveConflicts, makeFold } from './fold.mjs'
+import { makeKernel, makeCloner, makeFold } from './fold.mjs'
+import { runRefold, makeRefoldDispatch, modelCells } from './refold.mjs'
 import { makeMeasure, candidatesOf, splitDiff } from './measure.mjs'
 
 export { candidatesOf, splitDiff } from './measure.mjs'
@@ -65,7 +66,6 @@ export { candidatesOf, splitDiff } from './measure.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO = path.resolve(HERE, '..')
-const KERNEL = path.join(REPO, 'skills/ultrapowers/kernel/fold_wave.py')
 const COMPILER = path.join(REPO, 'skills/ultrapowers/scripts/plan_parse.py')
 
 /** The judge's two documents, named absolutely. */
@@ -150,7 +150,7 @@ function parseArgv (argv = []) {
 }
 
 /** An argv array, or an object keyed either `run-dir` or `runDir`: one shape. */
-function normalizeArgs (given) {
+export function normalizeArgs (given) {
   if (Array.isArray(given)) return parseArgv(given)
   const out = {}
   for (const [k, v] of Object.entries(given || {})) out[camel(k)] = v
@@ -195,7 +195,7 @@ const outOf = (r) => String((r && typeof r === 'object' && (r.stdout ?? r.out)) 
  *  line and the compiler a pretty document, so the whole of stdout is tried
  *  first and its last JSON line second; a stray warning on either side of the
  *  document is then a `null` rather than an exception. */
-const lastJson = (text) => {
+export const lastJson = (text) => {
   const whole = String(text || '').trim()
   if (whole.startsWith('{')) {
     try { return JSON.parse(whole) } catch { /* not one document */ }
@@ -705,7 +705,7 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   // The test command runs in this clone, and `capture` is an `add -A`: without
   // the clone's own private exclude, the interpreter's own bytecode cache
   // would ride the patch into the adopted tree. `makeCloner` is shared with
-  // `runRefold`, below, so both entries make a clone the same way.
+  // `runRefold` (`./refold.mjs`), so both entries make a clone the same way.
   const cloneAt = makeCloner({ target, runDir, git, sh, bootstrapCmd, timeoutSeconds: DEFAULT_TIMEOUT_SECONDS, appendEvent })
   // `exclude` is kept as a parameter for a caller with its own reason to drop
   // paths back out of the index before the diff is cut; no call site in this
@@ -1482,223 +1482,9 @@ export async function runEngine (rawArgs = {}, deps = {}) {
   }
 }
 
-// ── the re-fold: a finished run's whole work, folded onto a main that moved ─
+// ── the re-fold lives in ./refold.mjs; re-exported here for its callers ──
 
-/**
- * `--refold`: the same fold a task's own landing goes through (`foldIn`,
- * above — the union and the resolver included, through `resolveConflicts`),
- * asked once for the whole of a finished run's own work rather than for one
- * task's patch.
- *
- * The patch is the target's own `HEAD` (before this touches anything) against
- * `--base` — the run's own base — and the moving head the kernel folds it
- * onto is `--onto`, the new tip. A completed fold is re-verified before this
- * answers at all: every task's own Proof `Run:` lines, in a clone of the new
- * head — no exam file, no `--exams-dir` (M1). A red line there undoes the
- * reset; an unresolved conflict never touches the target to begin with.
- *
- * Resolves the one JSON object `main` prints verbatim: `{ refolded, head,
- * onto }` on success, `{ refolded: false, reason: 'red' | 'conflict', head?,
- * onto }` otherwise.
- */
-
-// The dispatched model id and the models the SDK reports it actually used,
-// for a `dispatch:end` row: `models` is the sorted keys of the result's
-// `modelUsage`, or `null` when there is none to report. The four token
-// counts are summed over every model the result reports (#1298): `null`
-// when there is none, never `0`, so "not reported" and "zero" stay apart.
-const TOKEN_CELLS = [
-  ['input_tokens', 'inputTokens'],
-  ['output_tokens', 'outputTokens'],
-  ['cache_read_input_tokens', 'cacheReadInputTokens'],
-  ['cache_creation_input_tokens', 'cacheCreationInputTokens'],
-]
-function modelCells ({ model, result }) {
-  const usage = result && typeof result === 'object' ? result.modelUsage : null
-  const keys = usage && typeof usage === 'object' ? Object.keys(usage) : []
-  const counts = {}
-  for (const [cell, field] of TOKEN_CELLS) {
-    counts[cell] = keys.length
-      ? keys.reduce((sum, k) => sum + (Number((usage[k] || {})[field]) || 0), 0)
-      : null
-  }
-  return { model: model ?? null, models: keys.length ? keys.sort() : null, ...counts }
-}
-
-// M4: no board, no examiner, no implementer — the one worker role a
-// re-fold ever dispatches is the resolver, exactly as a task's own fold.
-export function makeRefoldDispatch ({ worker, appendEvent, policy, sleep }) {
-  const dispatchOnce = async (opts) => {
-    appendEvent({
-      kind: 'dispatch:start', task: opts.taskId, label: opts.label, role: opts.role,
-      ...(opts.retry_of ? { retry_of: opts.retry_of } : {}),
-    })
-    let answer
-    let turns = 0
-    try {
-      answer = await worker({
-        cwd: opts.cwd, prompt: opts.prompt, systemPrompt: opts.systemPrompt, model: opts.model,
-        files: opts.files, schema: opts.schema ?? null, mcpServers: opts.mcpServers ?? null,
-        onMessage: (m) => { if (m && m.type === 'assistant') turns += 1 },
-        readOnly: Boolean(opts.readOnly), role: opts.role, label: opts.label,
-        task: opts.taskId,
-        onDenied: (row) => appendEvent(row),
-      })
-    } catch (e) {
-      answer = { result: null, denials: [], error: String((e && e.message) || e).slice(0, 500), turns }
-    }
-    appendEvent({
-      kind: 'dispatch:end', task: opts.taskId, label: opts.label, role: opts.role,
-      error: (answer && answer.error) || null,
-      ...modelCells({ model: opts.model, result: answer && answer.result }),
-      ...(opts.retry_of ? { retry_of: opts.retry_of } : {}),
-    })
-    return answer
-  }
-  return retrying(dispatchOnce, { policy, sleep })
-}
-
-export async function runRefold (rawArgs = {}, deps = {}) {
-  const args = normalizeArgs(rawArgs)
-  const target = path.resolve(String(args.target))
-  const runDir = path.resolve(String(args.runDir ?? '.'))
-  const base = String(args.base)
-  const onto = String(args.onto)
-  const model = args.model || DEFAULT_MODEL
-
-  const worker = deps.worker || runWorker
-  const sh = deps.sh || defaultSh
-  const git = deps.git || defaultGit
-  const log = deps.log || ((s) => process.stderr.write(String(s) + '\n'))
-
-  fs.mkdirSync(runDir, { recursive: true })
-  // Appended to, never truncated: `runDir` is the run's own directory, and the
-  // file already holds every row the engine wrote. run-198 (2026-09-21) lost
-  // its live `events.jsonl` to a `writeFileSync(eventsPath, '')` here — the
-  // tagged evidence survived only because the boot had copied it first.
-  const eventsPath = path.join(runDir, 'events.jsonl')
-  const appendEvent = (row) => fs.appendFileSync(eventsPath, JSON.stringify({ ts: new Date().toISOString(), ...row }) + '\n')
-
-  const RESOLVE_MD = roleText('resolve')
-
-  const policyDoc = (() => {
-    try {
-      const policyFile = args.policy ? path.resolve(String(args.policy)) : POLICY_PATH
-      return JSON.parse(fs.readFileSync(policyFile, 'utf8'))
-    } catch { return {} }
-  })()
-  const unionPolicy = (policyDoc.resolve || {}).union || {}
-  const reverifyPolicy = (policyDoc.fold || {}).reverify || {}
-  const timeoutSeconds = reverifyPolicy.timeout_seconds ?? 300
-  // M5: same fallback chain as `runEngine`'s.
-  const judge = deps.judge || {}
-  const readUnion = typeof deps.readUnion === 'function' ? deps.readUnion
-    : typeof judge.readUnion === 'function' ? judge.readUnion
-      : null
-
-  // fold.single_task_fast off → the kernel's old four-pass fold (#1278).
-  const foldFullChecks = ((policyDoc.fold || {}).single_task_fast || {}).enabled === false
-  const kernel = (argv) => {
-    const r = foldFullChecks
-      ? sh('python3', [KERNEL, ...argv], REPO, undefined, { ULTRA_FOLD_FULL_CHECKS: '1' })
-      : sh('python3', [KERNEL, ...argv], REPO)
-    const answer = lastJson(outOf(r))
-    if (!answer) log('kernel ' + argv[0] + ': exit ' + exitOf(r) + ' ' + String((r && r.stderr) || '').slice(-300))
-    return answer
-  }
-
-  // M4: no board, no examiner, no implementer — the one worker role a
-  // re-fold ever dispatches is the resolver, exactly as a task's own fold.
-  const dispatch = makeRefoldDispatch({ worker, appendEvent, policy: policyDoc })
-
-  // The plan, compiled only for the tasks' own test commands — every one of
-  // them is what M2's re-verify runs.
-  const compiledOut = spawnSync('python3', [COMPILER, String(args.plan)], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
-  const compiled = lastJson(compiledOut.stdout)
-  if (!compiled || !Array.isArray(compiled.launch_waves)) {
-    throw new Error('plan_parse.py did not answer a plan: ' + String(compiledOut.stderr || '').slice(0, 400))
-  }
-  const tasks = compiled.launch_waves.flat()
-  // M4: same bootstrap-command resolution as runEngine's — the plan's own
-  // `bootstrapCmd` when the parser printed one, else each clone's own
-  // tracked files decide.
-  const bootstrapCmd = typeof compiled.bootstrapCmd === 'string' && compiled.bootstrapCmd !== ''
-    ? compiled.bootstrapCmd
-    : null
-
-  const cloneAt = makeCloner({ target, runDir, git, sh, bootstrapCmd, timeoutSeconds, appendEvent })
-
-  // M1: the run's whole patch is the target's own HEAD, as it stands before
-  // any of this touches it, against `--base`.
-  const startHead = git(['rev-parse', 'HEAD'], target).trim()
-  const patchFile = path.join(runDir, 'refold.diff')
-  git(['diff', '--binary', '--full-index', '--no-renames', '--output=' + patchFile, base, startHead], target)
-  const patchArg = 'refold=' + patchFile + '@' + base
-
-  // The kernel's `--wave` is an integer and its fold log is per (run dir,
-  // wave). run-198 passed `--wave refold`: argparse refused it, the kernel
-  // answered no JSON, and the null was reported as a conflict — so no re-fold
-  // had ever worked. Each re-fold gets a kernel directory of its own under the
-  // run's, at wave 1, so neither the engine's waves nor an earlier re-fold's
-  // log can collide with it (measured on run-198's sandbox with the real
-  // kernel: `--wave 1` in a fresh directory folds clean and materializes).
-  let attempt = 1
-  while (fs.existsSync(path.join(runDir, 'refold-' + attempt))) attempt += 1
-  const kernelDir = path.join(runDir, 'refold-' + attempt)
-  fs.mkdirSync(kernelDir, { recursive: true })
-  const common = ['--repo', target, '--run-dir', kernelDir, '--wave', '1']
-  let fold = kernel(['fold', ...common, '--base', onto, '--patch', patchArg])
-  if (!fold) {
-    // A kernel that answered nothing is not a conflict: say so, and stop.
-    appendEvent({ kind: 'refold:kernel-error', step: 'fold', onto })
-    return { refolded: false, reason: 'kernel', onto }
-  }
-  if (fold && fold.complete !== true) {
-    const result = await resolveConflicts({
-      fold, common, patchArg, runDir, unionPolicy, readUnion, dispatch, model,
-      RESOLVE_MD, appendEvent, taskId: undefined, labelId: 'refold', kernel,
-    })
-    fold = result.fold
-  }
-  if (!fold || fold.complete !== true) {
-    // M3: never touches the target — it is still exactly where it was.
-    const openPath = (Array.isArray(fold && fold.open) && fold.open[0] && fold.open[0].path) || null
-    appendEvent({ kind: 'refold:conflict', path: openPath })
-    return { refolded: false, reason: 'conflict', onto }
-  }
-
-  const mat = kernel(['materialize', ...common, '--prev-head', onto, '--patch', patchArg,
-    '--subject', 'refold onto ' + onto])
-  if (!mat || typeof mat.candidateSha !== 'string') {
-    appendEvent({ kind: 'refold:conflict', path: null })
-    return { refolded: false, reason: 'conflict', onto }
-  }
-
-  // M1: resets the target to the resulting commit.
-  git(['reset', '-q', '--hard', mat.candidateSha], target)
-
-  // M2/M6: before answering, verify the new head in its own clone — every
-  // task's own Proof `Run:` lines, run there directly (no `--exams-dir`,
-  // no exam file to overlay back in).
-  const verifyDir = cloneAt('refold-verify', mat.candidateSha)
-  const reds = []
-  for (const t of tasks) {
-    const lines = Array.isArray(t.proofRuns) ? t.proofRuns : []
-    if (!lines.length) continue
-    const results = await runLines({ lines, cwd: verifyDir, sh, env: undefined, timeoutSeconds })
-    for (const r of results) {
-      if (r.exit !== 0) reds.push({ task: t.id, cmd: r.cmd, exit: r.exit })
-    }
-  }
-  if (reds.length) {
-    for (const red of reds) appendEvent({ kind: 'refold:red', task: red.task, cmd: red.cmd, exit: red.exit })
-    // M2: a red re-verify resets the target back to the head it had.
-    git(['reset', '-q', '--hard', startHead], target)
-    return { refolded: false, reason: 'red', head: mat.candidateSha, onto }
-  }
-
-  return { refolded: true, head: mat.candidateSha, onto }
-}
+export { runRefold, makeRefoldDispatch }
 
 // ── the CLI's own deps ───────────────────────────────────────────────────────
 
