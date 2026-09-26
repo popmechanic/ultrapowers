@@ -1,0 +1,70 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "dac6c5cbf90bfd8e5fce73f09205a1dbb37c5646e43d1c31a9cccfec17d904a9",
+   "verdict": "pass",
+   "reason": "Both computable facts have a tagged probe that would exit non-zero if false; the only path is one this task creates."
+  },
+  "2": {
+   "hash": "f8c9d861f74e0e579a52f90f694d7c3a149821b6232b132c841f9e24ecd95bb4",
+   "verdict": "pass",
+   "reason": "Sizes, count and order for [1, 3] and the empty result each have a tagged probe that fails if false."
+  },
+  "3": {
+   "hash": "c46d2efe7926f9f8776754f6d14161cdba3aa84e9caec182f87bf19819f60a7d",
+   "verdict": "pass",
+   "reason": "Both byte-exact return values are checked by one tagged probe."
+  }
+ },
+ "tally": {
+  "dispatched": 3,
+  "rejected": 0,
+  "rounds": 1,
+  "base": "24397a5a40493eff2389f7aa9ff6034170a912b0",
+  "note": "zero rejections: per the gotchas, a zero-streak indicts the gate, not the plan"
+ },
+ "authoring": {
+  "minutes": 45,
+  "probes": 0,
+  "routing": {
+   "branch": "width",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Target repo",
+    "options": [
+     "New repo flock-baseline",
+     "Reuse ultrapowers-walk",
+     "Please explain"
+    ],
+    "recommended": "New repo flock-baseline",
+    "picked": "New repo flock-baseline",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Claim and summary: widgetkit",
+    "options": [
+     "Sign as written",
+     "Shorter Claim",
+     "Please explain"
+    ],
+    "recommended": "Sign as written",
+    "picked": "Sign as written",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline",
+     "Please explain"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}

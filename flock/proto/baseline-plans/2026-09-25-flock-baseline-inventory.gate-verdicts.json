@@ -1,0 +1,59 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "01f33deeeacd258b185613afe5fbfa35be0828c6e313914f86b98787057d5dca",
+   "verdict": "pass",
+   "reason": "All three clauses state computable facts and each has a probe that would fail if false."
+  },
+  "2": {
+   "hash": "fb295591a0bebc0c8e615f8760c2bbd2e5729b64e9287cde749494cf3773aed6",
+   "verdict": "pass",
+   "reason": "Both totals and the ordered quantities each have a tagged probe; the named path exists at BASE."
+  },
+  "3": {
+   "hash": "4b8900dc947317dd10757ac32f4d7122a95a28de843c428106dd91c39ed0664a",
+   "verdict": "pass",
+   "reason": "M1, M2 and the M3 absence each have a one-command tagged probe that fails if false."
+  }
+ },
+ "tally": {
+  "dispatched": 3,
+  "rejected": 0,
+  "rounds": 1,
+  "base": "24397a5a40493eff2389f7aa9ff6034170a912b0",
+  "note": "zero rejections: per the gotchas, a zero-streak indicts the gate, not the plan"
+ },
+ "authoring": {
+  "minutes": 45,
+  "probes": 0,
+  "routing": {
+   "branch": "width",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Claim and summary: inventory",
+    "options": [
+     "Sign as written",
+     "Shorter Claim",
+     "Please explain"
+    ],
+    "recommended": "Sign as written",
+    "picked": "Sign as written",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline",
+     "Please explain"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}

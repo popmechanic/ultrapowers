@@ -1,0 +1,1172 @@
+<title>The Flock, Drawn</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+:root{
+  --bg:#EDF0F3; --panel:#F8FAFB; --ink:#18202B; --muted:#5A6676; --rule:#C6CFD9; --soft:#DDE3EA;
+  --today:#2F64A3; --flock:#A4447E;
+  --a:#23806F; --b:#C2641F; --c:#6552C4; --d:#7A7F1E;
+  --pass:#2E8A4F; --fail:#C23B34; --jev:#B07D0A; --onacc:#FFFFFF;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --cond:'IBM Plex Sans Condensed','Arial Narrow',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#11151B; --panel:#181E26; --ink:#E3E8EF; --muted:#94A1B3; --rule:#2E3845; --soft:#232B36;
+    --today:#6FA3E0; --flock:#E07FB8;
+    --a:#4FC2AC; --b:#EE9A5A; --c:#9C8CF0; --d:#C3C85A;
+    --pass:#5CC98A; --fail:#F0716A; --jev:#E3B64A; --onacc:#11151B;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#11151B; --panel:#181E26; --ink:#E3E8EF; --muted:#94A1B3; --rule:#2E3845; --soft:#232B36;
+  --today:#6FA3E0; --flock:#E07FB8;
+  --a:#4FC2AC; --b:#EE9A5A; --c:#9C8CF0; --d:#C3C85A;
+  --pass:#5CC98A; --fail:#F0716A; --jev:#E3B64A; --onacc:#11151B;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:400 16px/1.6 var(--sans);padding-inline:16px;padding-block:32px 64px}
+.wrap{max-width:940px;margin:0 auto;display:flex;flex-direction:column;gap:56px}
+h1,h2,h3{font-family:var(--cond);text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(34px,6vw,54px);font-weight:600;letter-spacing:-.01em}
+h2{font-size:clamp(26px,4vw,34px);font-weight:600}
+h3{font-size:clamp(21px,3vw,25px);font-weight:600}
+p{margin:0;max-width:68ch}
+.eyebrow{font:500 12px/1 var(--sans);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.eyebrow.today{color:var(--today)} .eyebrow.flock{color:var(--flock)}
+header{display:flex;flex-direction:column;gap:16px}
+.lede{font-size:18px}
+.howto{color:var(--muted);font-size:14px}
+section{display:flex;flex-direction:column;gap:14px}
+.part{border-top:2px solid var(--rule);padding-top:24px;display:flex;flex-direction:column;gap:12px}
+.part.today{border-color:var(--today)} .part.flock{border-color:var(--flock)}
+figure{margin:0;background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px}
+.figbar{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.figbar .eyebrow{font-size:11px}
+.play{font:500 13px/1 var(--sans);color:var(--ink);background:var(--bg);border:1px solid var(--rule);border-radius:999px;padding:8px 14px;cursor:pointer;display:inline-flex;gap:8px;align-items:center}
+.play:hover{border-color:var(--muted)}
+.play:focus-visible{outline:2px solid var(--today);outline-offset:2px}
+.play::before{content:"";width:0;height:0;border-left:8px solid currentColor;border-top:5px solid transparent;border-bottom:5px solid transparent}
+.sv{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.sv svg{display:block;width:100%;min-width:660px;height:auto}
+ol.steps{margin:0;padding:0;list-style:none;display:grid;gap:6px;counter-reset:s}
+ol.steps li{counter-increment:s;display:grid;grid-template-columns:28px 1fr;gap:8px;font-size:14.5px;color:var(--muted);padding:4px 8px;border-radius:6px;transition:background .25s,color .25s}
+ol.steps li::before{content:counter(s);font:600 12px/22px var(--mono);text-align:center;border:1px solid var(--rule);border-radius:50%;width:22px;height:22px}
+ol.steps li.on{background:var(--soft);color:var(--ink)}
+ol.steps li.on::before{border-color:var(--ink)}
+figcaption{font-size:14px;color:var(--muted)}
+code{font:500 .9em var(--mono);background:var(--soft);padding:1px 5px;border-radius:4px}
+.note{border-left:3px solid var(--rule);padding:4px 0 4px 14px;color:var(--muted);font-size:15px}
+.record{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.record div{background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+.record b{font:600 26px/1.1 var(--cond);font-variant-numeric:tabular-nums}
+.record span{font-size:14px;color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:16px;font-size:13.5px;color:var(--muted)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.tbl{overflow-x:auto;border:1px solid var(--rule);border-radius:10px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:620px;font-size:14.5px}
+th,td{text-align:left;vertical-align:top;padding:10px 14px;border-bottom:1px solid var(--rule)}
+tr:last-child td{border-bottom:0}
+thead th{font:600 13px/1.2 var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+thead th.today{color:var(--today)} thead th.flock{color:var(--flock)}
+tbody th{font-weight:600;width:22%}
+ul.plain{margin:0;padding-left:20px;display:grid;gap:8px;max-width:72ch}
+.tickets{display:grid;gap:10px}
+.ticket{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:baseline;background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:10px 14px}
+.ticket .n{font:600 13px var(--mono);color:var(--muted)}
+.pill{font:500 12px/1 var(--sans);padding:5px 9px;border-radius:999px;border:1px solid var(--rule);color:var(--muted);white-space:nowrap}
+.pill.done{border-color:var(--pass);color:var(--pass)}
+footer{font-size:14px;color:var(--muted);border-top:1px solid var(--rule);padding-top:16px;display:grid;gap:6px}
+a{color:var(--today)}
+/* svg vocabulary */
+.t{font:500 13px var(--sans)} .s{font:400 11.5px var(--sans)} .m{font:400 11.5px var(--mono)} .h{font:600 15px var(--cond)} .bold{font-weight:600}
+.ink{fill:var(--ink)} .mut{fill:var(--muted)} .fa{fill:var(--a)} .fb{fill:var(--b)} .fc{fill:var(--c)} .fd{fill:var(--d)}
+.fpass{fill:var(--pass)} .ffail{fill:var(--fail)} .fjev{fill:var(--jev)} .ftoday{fill:var(--today)} .fflock{fill:var(--flock)} .fon{fill:var(--onacc)}
+.box{fill:var(--panel);stroke:var(--rule);stroke-width:1.2}
+.boxbg{fill:var(--bg);stroke:var(--rule);stroke-width:1.2}
+.box-today{fill:var(--panel);stroke:var(--today);stroke-width:1.6}
+.box-flock{fill:var(--panel);stroke:var(--flock);stroke-width:1.6}
+.box-pass{fill:var(--panel);stroke:var(--pass);stroke-width:1.6}
+.edge{stroke:var(--rule);stroke-width:1.5;fill:none}
+.edge-m{stroke:var(--muted);stroke-width:1.4;fill:none}
+.dash{stroke-dasharray:4 4}
+.sa{stroke:var(--a)} .sb{stroke:var(--b)} .sc{stroke:var(--c)} .sd{stroke:var(--d)} .sfail{stroke:var(--fail)} .spass{stroke:var(--pass)} .sjev{stroke:var(--jev)} .stoday{stroke:var(--today)} .sflock{stroke:var(--flock)}
+.tint{fill-opacity:.18}
+.grey{fill:var(--rule)}
+.mk{fill:var(--muted)}
+.grow{transform-box:fill-box;transform-origin:0 50%}
+@media (max-width:520px){ body{font-size:15px} .lede{font-size:16.5px} }
+</style>
+
+<div class="wrap">
+
+<header>
+  <span class="eyebrow">ultrapowers · map #1292 · an illustrated reading</span>
+  <h1>The Flock, drawn</h1>
+  <p class="lede">How ultrapowers combines the work of many agents today, and what map #1292 proposes instead: every agent keeps its own copy of the code, the copies merge with each other in any order, beliefs live on the Kata board, Jev reads alongside, and the facts guard main.</p>
+  <p class="howto">Each figure plays when it scrolls into view. Press Replay to watch it again; the numbered steps under each figure light up as they happen.</p>
+</header>
+
+<figure id="hero" aria-labelledby="hero-cap">
+  <div class="sv">
+  <svg viewBox="0 0 880 360" role="img" aria-label="Left: a hub where every arrow runs through the engine. Right: a flock of agents connected to each other and a shared board, with a facts gate before main.">
+    <defs><marker id="ah-hero" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk"/></marker></defs>
+    <g id="hToday">
+      <text x="210" y="26" text-anchor="middle" class="h ftoday">Today: every path runs through the engine</text>
+      <line x1="210" y1="96" x2="60" y2="192" class="edge"/>
+      <line x1="210" y1="96" x2="150" y2="192" class="edge"/>
+      <line x1="210" y1="96" x2="270" y2="192" class="edge"/>
+      <line x1="210" y1="96" x2="360" y2="192" class="edge"/>
+      <rect x="150" y="56" width="120" height="40" rx="4" class="box-today"/>
+      <text x="210" y="81" text-anchor="middle" class="t ink">engine</text>
+      <line x1="270" y1="76" x2="298" y2="76" class="edge-m" marker-end="url(#ah-hero)"/>
+      <rect x="300" y="56" width="120" height="40" rx="4" class="box"/>
+      <text x="360" y="80" text-anchor="middle" class="s ink">integration head</text>
+      <text x="96" y="132" text-anchor="middle" class="s mut">dispatch ↓ · patch ↑</text>
+      <circle cx="60" cy="210" r="18" class="fa"/><circle cx="150" cy="210" r="18" class="fb"/>
+      <circle cx="270" cy="210" r="18" class="fc"/><circle cx="360" cy="210" r="18" class="fd"/>
+      <text x="60" y="214" text-anchor="middle" class="s fon bold">w1</text><text x="150" y="214" text-anchor="middle" class="s fon bold">w2</text>
+      <text x="270" y="214" text-anchor="middle" class="s fon bold">w3</text><text x="360" y="214" text-anchor="middle" class="s fon bold">w4</text>
+      <text x="210" y="262" text-anchor="middle" class="s mut">workers never exchange a word;</text>
+      <text x="210" y="279" text-anchor="middle" class="s mut">their work meets only when the engine lands it</text>
+    </g>
+    <line x1="440" y1="44" x2="440" y2="336" class="edge dash"/>
+    <text x="665" y="26" text-anchor="middle" class="h fflock">The Flock: agents merge with each other; facts guard main</text>
+    <g id="hFlock">
+      <g class="spokes">
+        <line x1="510" y1="90" x2="665" y2="172" class="edge dash"/><line x1="640" y1="70" x2="665" y2="172" class="edge dash"/>
+        <line x1="790" y1="100" x2="665" y2="172" class="edge dash"/><line x1="500" y1="230" x2="665" y2="172" class="edge dash"/>
+        <line x1="650" y1="270" x2="665" y2="172" class="edge dash"/><line x1="800" y1="230" x2="665" y2="172" class="edge dash"/>
+      </g>
+      <g class="mesh">
+        <line x1="510" y1="90" x2="640" y2="70" class="edge-m"/><line x1="640" y1="70" x2="790" y2="100" class="edge-m"/>
+        <line x1="790" y1="100" x2="800" y2="230" class="edge-m"/><line x1="800" y1="230" x2="650" y2="270" class="edge-m"/>
+        <line x1="650" y1="270" x2="500" y2="230" class="edge-m"/><line x1="500" y1="230" x2="510" y2="90" class="edge-m"/>
+        <line x1="510" y1="90" x2="650" y2="270" class="edge-m"/><line x1="640" y1="70" x2="800" y2="230" class="edge-m"/>
+      </g>
+      <rect x="610" y="150" width="110" height="44" rx="4" class="box-flock"/>
+      <text x="665" y="177" text-anchor="middle" class="s ink bold">board (Kata)</text>
+      <circle cx="510" cy="90" r="16" class="fa"/><circle cx="640" cy="70" r="16" class="fb"/><circle cx="790" cy="100" r="16" class="fc"/>
+      <circle cx="500" cy="230" r="16" class="fd"/><circle cx="650" cy="270" r="16" class="fa"/><circle cx="800" cy="230" r="16" class="fb"/>
+      <line x1="650" y1="286" x2="615" y2="316" class="edge-m" marker-end="url(#ah-hero)"/>
+      <rect x="560" y="318" width="100" height="28" rx="4" class="box-pass"/>
+      <text x="610" y="337" text-anchor="middle" class="s ink bold">facts</text>
+      <line x1="660" y1="332" x2="708" y2="332" class="edge-m" marker-end="url(#ah-hero)"/>
+      <rect x="710" y="318" width="100" height="28" rx="4" class="box"/>
+      <text x="760" y="337" text-anchor="middle" class="s ink bold">main</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption id="hero-cap">Left: today every piece of work goes out from the engine and comes back to it, one landing at a time. Right: in the Flock, agents merge with each other and post to a shared board; only the facts stand between the swarm and main.</figcaption>
+</figure>
+
+<!-- ============================ PART ONE ============================ -->
+<div class="part today">
+  <span class="eyebrow today">Part one</span>
+  <h2>Today's factory</h2>
+  <p>A run takes a signed plan and turns it into one pull request. Five things happen, in this order.</p>
+</div>
+
+<section>
+  <span class="eyebrow today">Today · 1 of 5</span>
+  <h3>One starting point, many isolated clones</h3>
+  <p>The launcher commits the plan on top of main. That commit is BASE. Every task that is ready at the start is cloned from it; a task that starts later is cloned from the combined code as it stands at that moment. While they work, nobody can see anybody else's changes.</p>
+  <figure data-scene="t1">
+    <div class="figbar"><span class="eyebrow">the run begins</span><button class="play" type="button">Play</button></div>
+    <div class="sv">
+    <svg viewBox="0 0 880 290" role="img" aria-label="BASE is copied into six clones, two per task, for the tasks ready at the start; dashed walls separate the tasks.">
+      <g class="base">
+        <rect x="30" y="110" width="150" height="80" rx="5" class="box-today"/>
+        <text x="105" y="142" text-anchor="middle" class="h ink">BASE</text>
+        <text x="105" y="162" text-anchor="middle" class="s mut">plan committed on main</text>
+        <text x="105" y="179" text-anchor="middle" class="m mut">ultra/plan-run-N</text>
+      </g>
+      <text x="262" y="59" class="t ink">Task 1</text><text x="262" y="149" class="t ink">Task 2</text><text x="262" y="239" class="t ink">Task 3</text>
+      <line x1="250" y1="100" x2="860" y2="100" class="edge dash sep"/><line x1="250" y1="190" x2="860" y2="190" class="edge dash sep"/>
+      <text x="860" y="94" text-anchor="end" class="s mut sep">no messages between workers</text>
+      <text x="860" y="184" text-anchor="end" class="s mut sep">no messages between workers</text>
+      <g class="clone"><rect x="330" y="25" width="200" height="60" rx="4" class="box"/><text x="340" y="41" class="s mut">implementer 1 · clone of BASE</text>
+        <rect x="340" y="51" height="5" rx="2" width="120" data-w="120" class="fa bar"/><rect x="340" y="61" height="5" rx="2" width="90" data-w="90" class="fa bar"/><rect x="340" y="71" height="5" rx="2" width="150" data-w="150" class="fa bar"/></g>
+      <g class="clone"><rect x="560" y="25" width="200" height="60" rx="4" class="box"/><text x="570" y="41" class="s mut">implementer 2 · clone of BASE</text>
+        <rect x="570" y="51" height="5" rx="2" width="100" data-w="100" class="fa bar"/><rect x="570" y="61" height="5" rx="2" width="140" data-w="140" class="fa bar"/><rect x="570" y="71" height="5" rx="2" width="70" data-w="70" class="fa bar"/></g>
+      <g class="clone"><rect x="330" y="115" width="200" height="60" rx="4" class="box"/><text x="340" y="131" class="s mut">implementer 1 · clone of BASE</text>
+        <rect x="340" y="141" height="5" rx="2" width="140" data-w="140" class="fb bar"/><rect x="340" y="151" height="5" rx="2" width="110" data-w="110" class="fb bar"/><rect x="340" y="161" height="5" rx="2" width="80" data-w="80" class="fb bar"/></g>
+      <g class="clone"><rect x="560" y="115" width="200" height="60" rx="4" class="box"/><text x="570" y="131" class="s mut">implementer 2 · clone of BASE</text>
+        <rect x="570" y="141" height="5" rx="2" width="90" data-w="90" class="fb bar"/><rect x="570" y="151" height="5" rx="2" width="150" data-w="150" class="fb bar"/><rect x="570" y="161" height="5" rx="2" width="120" data-w="120" class="fb bar"/></g>
+      <g class="clone"><rect x="330" y="205" width="200" height="60" rx="4" class="box"/><text x="340" y="221" class="s mut">implementer 1 · clone of BASE</text>
+        <rect x="340" y="231" height="5" rx="2" width="110" data-w="110" class="fc bar"/><rect x="340" y="241" height="5" rx="2" width="150" data-w="150" class="fc bar"/><rect x="340" y="251" height="5" rx="2" width="60" data-w="60" class="fc bar"/></g>
+      <g class="clone"><rect x="560" y="205" width="200" height="60" rx="4" class="box"/><text x="570" y="221" class="s mut">implementer 2 · clone of BASE</text>
+        <rect x="570" y="231" height="5" rx="2" width="130" data-w="130" class="fc bar"/><rect x="570" y="241" height="5" rx="2" width="70" data-w="70" class="fc bar"/><rect x="570" y="251" height="5" rx="2" width="140" data-w="140" class="fc bar"/></g>
+      <g>
+        <rect x="75" y="132" width="60" height="36" rx="3" class="box-today ghost" style="opacity:0" data-dx="325" data-dy="-95"/>
+        <rect x="75" y="132" width="60" height="36" rx="3" class="box-today ghost" style="opacity:0" data-dx="555" data-dy="-95"/>
+        <rect x="75" y="132" width="60" height="36" rx="3" class="box-today ghost" style="opacity:0" data-dx="325" data-dy="-5"/>
+        <rect x="75" y="132" width="60" height="36" rx="3" class="box-today ghost" style="opacity:0" data-dx="555" data-dy="-5"/>
+        <rect x="75" y="132" width="60" height="36" rx="3" class="box-today ghost" style="opacity:0" data-dx="325" data-dy="85"/>
+        <rect x="75" y="132" width="60" height="36" rx="3" class="box-today ghost" style="opacity:0" data-dx="555" data-dy="85"/>
+      </g>
+    </svg>
+    </div>
+    <ol class="steps">
+      <li>The plan is committed on top of main. That commit is BASE.</li>
+      <li>Each implementer gets its own clone. Tasks ready at the start clone BASE; a task that starts later clones the combined code as it is then. A task can have several implementers racing on it.</li>
+      <li>They work alone. Nothing crosses between them until their work lands.</li>
+    </ol>
+  </figure>
+</section>
+
+<section>
+  <span class="eyebrow today">Today · 2 of 5</span>
+  <h3>Race, measure, keep one</h3>
+  <p>When a task has more than one implementer, the engine measures each version with the plan's own probes and the existing tests that touch it, then keeps one. The facts decide first; Jev's reading only breaks ties.</p>
+  <figure data-scene="t2">
+    <div class="figbar"><span class="eyebrow">inside one task</span><button class="play" type="button">Play</button></div>
+    <div class="sv">
+    <svg viewBox="0 0 880 290" role="img" aria-label="Two candidate versions of one task are each measured by probes and tests; the one with all checks passing is kept and leaves as a patch against BASE; the other is discarded.">
+      <defs><marker id="ah-t2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk"/></marker></defs>
+      <text x="30" y="26" class="t mut">Task 2 · two implementers race</text>
+      <g class="candA">
+        <rect x="30" y="50" width="180" height="80" rx="4" class="box"/><text x="42" y="70" class="t ink">candidate A</text>
+        <rect x="42" y="84" height="6" rx="2" width="130" data-w="130" class="fb cbar"/><rect x="42" y="96" height="6" rx="2" width="100" data-w="100" class="fb cbar"/><rect x="42" y="108" height="6" rx="2" width="145" data-w="145" class="fb cbar"/>
+      </g>
+      <g class="candB" style="opacity:.38">
+        <rect x="30" y="170" width="180" height="80" rx="4" class="box"/><text x="42" y="190" class="t ink">candidate B</text>
+        <rect x="42" y="204" height="6" rx="2" width="110" data-w="110" class="fb cbar"/><rect x="42" y="216" height="6" rx="2" width="150" data-w="150" class="fb cbar"/><rect x="42" y="228" height="6" rx="2" width="90" data-w="90" class="fb cbar"/>
+      </g>
+      <text x="120" y="272" text-anchor="middle" class="s ffail discard">discarded</text>
+      <g class="chips">
+        <rect x="245" y="52" width="160" height="22" rx="11" class="boxbg chip"/><text x="257" y="67" class="m ink chip">Run: probe M1</text>
+        <rect x="245" y="80" width="160" height="22" rx="11" class="boxbg chip"/><text x="257" y="95" class="m ink chip">Run: probe M2</text>
+        <rect x="245" y="108" width="160" height="22" rx="11" class="boxbg chip"/><text x="257" y="123" class="m ink chip">3 selected tests</text>
+        <rect x="245" y="172" width="160" height="22" rx="11" class="boxbg chip"/><text x="257" y="187" class="m ink chip">Run: probe M1</text>
+        <rect x="245" y="200" width="160" height="22" rx="11" class="boxbg chip"/><text x="257" y="215" class="m ink chip">Run: probe M2</text>
+        <rect x="245" y="228" width="160" height="22" rx="11" class="boxbg chip"/><text x="257" y="243" class="m ink chip">3 selected tests</text>
+      </g>
+      <g class="marks">
+        <text x="420" y="68" class="t fpass mark">✓ exit 0</text><text x="420" y="96" class="t fpass mark">✓ exit 0</text><text x="420" y="124" class="t fpass mark">✓ green</text>
+        <text x="420" y="188" class="t fpass mark">✓ exit 0</text><text x="420" y="216" class="t ffail mark">✗ exit 1</text><text x="420" y="244" class="t fpass mark">✓ green</text>
+      </g>
+      <line x1="485" y1="91" x2="538" y2="140" class="edge-m sel"/>
+      <line x1="485" y1="211" x2="538" y2="160" class="edge sel"/>
+      <polygon points="570,115 605,150 570,185 535,150" class="box-today diamond"/>
+      <text x="570" y="154" text-anchor="middle" class="s ink bold diamond">select</text>
+      <text x="570" y="205" text-anchor="middle" class="s mut">facts first,</text>
+      <text x="570" y="220" text-anchor="middle" class="s mut">then Jev's reading</text>
+      <line x1="605" y1="150" x2="638" y2="150" class="edge-m out" marker-end="url(#ah-t2)"/>
+      <g class="envelope">
+        <rect x="640" y="128" width="110" height="44" rx="4" class="box-today"/>
+        <text x="695" y="147" text-anchor="middle" class="t ink">patch</text>
+        <text x="695" y="163" text-anchor="middle" class="m mut">vs its start</text>
+      </g>
+      <line x1="750" y1="150" x2="778" y2="150" class="edge-m out" marker-end="url(#ah-t2)"/>
+      <rect x="780" y="126" width="80" height="48" rx="4" class="box-today out"/>
+      <text x="820" y="155" text-anchor="middle" class="t ink out">engine</text>
+    </svg>
+    </div>
+    <ol class="steps">
+      <li>Two implementers write their own version of the same task.</li>
+      <li>Each version is measured in its own clone: the task's <code>Run:</code> probes, then the existing tests selected for the patch.</li>
+      <li>The facts pick the winner. Jev's reading only breaks a tie.</li>
+      <li>The loser is thrown away. The winner leaves as a patch against the code its clone started from.</li>
+    </ol>
+  </figure>
+</section>
+
+<section>
+  <span class="eyebrow today">Today · 3 of 5</span>
+  <h3>Landings, one at a time, through one writer</h3>
+  <p>Tasks finish whenever they finish, and each one lands the moment it is ready. The engine is the only thing that writes the combined code, so every landing waits its turn through the same checks.</p>
+  <figure data-scene="t3">
+    <div class="figbar"><span class="eyebrow">the landing line</span><button class="play" type="button">Play</button></div>
+    <div class="sv">
+    <svg viewBox="0 0 880 320" role="img" aria-label="Three tasks finish at different times; each patch passes through fold, checks and probes one at a time; the integration head grows BASE, task 2, task 1, task 3. Task 1 went red once and was redone on the folded code.">
+      <text x="30" y="44" class="t ink">task 1</text><rect x="110" y="35" width="300" height="10" rx="5" class="grey"/><rect x="110" y="35" width="300" height="10" rx="5" data-w="300" class="fa pbar" id="t3b1"/>
+      <text x="30" y="74" class="t ink">task 2</text><rect x="110" y="65" width="300" height="10" rx="5" class="grey"/><rect x="110" y="65" width="300" height="10" rx="5" data-w="300" class="fb pbar" id="t3b2"/>
+      <text x="30" y="104" class="t ink">task 3</text><rect x="110" y="95" width="300" height="10" rx="5" class="grey"/><rect x="110" y="95" width="300" height="10" rx="5" data-w="300" class="fc pbar" id="t3b3"/>
+      <text x="110" y="130" class="s mut">implementers working · each bar ends when that task's winner is chosen</text>
+      <rect x="470" y="40" width="180" height="40" rx="4" class="box"/><rect x="470" y="40" width="180" height="40" rx="4" class="ftoday tint ghl" style="opacity:0"/>
+      <text x="560" y="64" text-anchor="middle" class="s ink">fold (Manyana)</text>
+      <rect x="470" y="90" width="180" height="40" rx="4" class="box"/><rect x="470" y="90" width="180" height="40" rx="4" class="ftoday tint ghl" style="opacity:0"/>
+      <rect x="470" y="90" width="180" height="40" rx="4" class="ffail tint" id="t3red" style="opacity:0"/>
+      <text x="560" y="114" text-anchor="middle" class="s ink">Check: lines on the folded code</text>
+      <rect x="470" y="140" width="180" height="40" rx="4" class="box"/><rect x="470" y="140" width="180" height="40" rx="4" class="ftoday tint ghl" style="opacity:0"/>
+      <text x="560" y="164" text-anchor="middle" class="s ink">every landed task's probes again</text>
+      <text x="560" y="200" text-anchor="middle" class="s ftoday bold">engine · the only writer</text>
+      <g id="t3redtxt">
+        <path d="M652,110 C700,110 700,30 652,30" class="edge sfail" fill="none"/>
+        <text x="708" y="66" class="s ffail">red once on task 1:</text>
+        <text x="708" y="82" class="s ffail">redone on top of the</text>
+        <text x="708" y="98" class="s ffail">folded code, then green</text>
+      </g>
+      <line x1="110" y1="270" x2="680" y2="270" class="edge"/>
+      <line x1="110" y1="270" x2="300" y2="270" class="edge-m seg" id="t3s1"/>
+      <line x1="300" y1="270" x2="490" y2="270" class="edge-m seg" id="t3s2"/>
+      <line x1="490" y1="270" x2="680" y2="270" class="edge-m seg" id="t3s3"/>
+      <circle cx="110" cy="270" r="9" class="ftoday"/><text x="110" y="298" text-anchor="middle" class="s ink">BASE</text>
+      <g id="t3n2"><circle cx="300" cy="270" r="9" class="fb"/><text x="300" y="298" text-anchor="middle" class="s ink">+ task 2</text></g>
+      <g id="t3n1"><circle cx="490" cy="270" r="9" class="fa"/><text x="490" y="298" text-anchor="middle" class="s ink">+ task 1</text></g>
+      <g id="t3n3"><circle cx="680" cy="270" r="9" class="fc"/><text x="680" y="298" text-anchor="middle" class="s ink">+ task 3</text></g>
+      <text x="700" y="274" class="s mut">integration head</text>
+      <g id="t3c1" style="opacity:0"><rect x="530" y="4" width="60" height="20" rx="4" class="fa"/><text x="560" y="18" text-anchor="middle" class="s fon bold">T1</text></g>
+      <g id="t3c2" style="opacity:0"><rect x="530" y="4" width="60" height="20" rx="4" class="fb"/><text x="560" y="18" text-anchor="middle" class="s fon bold">T2</text></g>
+      <g id="t3c3" style="opacity:0"><rect x="530" y="4" width="60" height="20" rx="4" class="fc"/><text x="560" y="18" text-anchor="middle" class="s fon bold">T3</text></g>
+    </svg>
+    </div>
+    <ol class="steps">
+      <li>Tasks finish at different times. Whichever is ready first lands first.</li>
+      <li>Each landing is folded into the one integration head. Only the engine writes it.</li>
+      <li>After every fold, the plan's <code>Check:</code> lines and every landed task's probes run again on the combined code.</li>
+      <li>A red costs a re-attempt: the task is redone on top of the folded code. If it stays red, the run parks.</li>
+    </ol>
+  </figure>
+</section>
+
+<section>
+  <span class="eyebrow today">Today · 4 of 5</span>
+  <h3>Inside a fold: a weave built for one use</h3>
+  <p>Manyana merges by knowing which lines are the same line. The kernel does not keep that knowledge between landings. It rebuilds it each time by comparing text against the task's starting point (BASE, for this task), merges once, and throws it away.</p>
+  <figure data-scene="t4">
+    <div class="figbar"><span class="eyebrow">one landing, zoomed in</span><button class="play" type="button">Play</button></div>
+    <div class="sv">
+    <svg viewBox="0 0 880 470" role="img" aria-label="Three columns of code: what has landed, BASE, and the incoming task. Thin lines show the guessed matches between them. Below, the merged result combines task A's new line and task B's changed line.">
+      <text x="20" y="44" class="t ink">landed so far (head)</text>
+      <text x="310" y="44" class="t ftoday bold">BASE</text>
+      <text x="600" y="44" class="t ink">task B's version</text>
+      <g class="m ink">
+        <text x="20" y="80">function land(task) {</text><text x="20" y="100">  const patch = capture(task)</text>
+        <text x="20" y="120" class="fb">  measure(patch)</text><text x="20" y="140">  fold(patch)</text><text x="20" y="160">}</text>
+        <text x="20" y="200">function park(task) {</text><text x="20" y="220">  log('parked')</text><text x="20" y="240">}</text>
+        <text x="310" y="80">function land(task) {</text><text x="310" y="100">  const patch = capture(task)</text><text x="310" y="120">  fold(patch)</text>
+        <text x="310" y="140">}</text><text x="310" y="180">function park(task) {</text><text x="310" y="200">  log('parked')</text><text x="310" y="220">}</text>
+        <text x="600" y="80">function land(task) {</text><text x="600" y="100">  const patch = capture(task)</text><text x="600" y="120">  fold(patch)</text>
+        <text x="600" y="140">}</text><text x="600" y="180">function park(task) {</text><text x="600" y="200" class="fc">  log('parked', task.id)</text><text x="600" y="220">}</text>
+      </g>
+      <text x="236" y="120" class="s fb">task A</text>
+      <text x="800" y="200" class="s fc">task B</text>
+      <g class="connh" style="opacity:.3">
+        <line x1="265" y1="76" x2="305" y2="76" class="edge-m"/><line x1="265" y1="96" x2="305" y2="96" class="edge-m"/>
+        <line x1="265" y1="136" x2="305" y2="116" class="edge-m"/><line x1="265" y1="156" x2="305" y2="136" class="edge-m"/>
+        <line x1="265" y1="176" x2="305" y2="156" class="edge-m"/><line x1="265" y1="196" x2="305" y2="176" class="edge-m"/>
+        <line x1="265" y1="216" x2="305" y2="196" class="edge-m"/><line x1="265" y1="236" x2="305" y2="216" class="edge-m"/>
+      </g>
+      <g class="connt" style="opacity:.3">
+        <line x1="555" y1="76" x2="595" y2="76" class="edge-m"/><line x1="555" y1="96" x2="595" y2="96" class="edge-m"/>
+        <line x1="555" y1="116" x2="595" y2="116" class="edge-m"/><line x1="555" y1="136" x2="595" y2="136" class="edge-m"/>
+        <line x1="555" y1="156" x2="595" y2="156" class="edge-m"/><line x1="555" y1="176" x2="595" y2="176" class="edge-m"/>
+        <line x1="555" y1="196" x2="595" y2="196" class="edge sc dash"/><line x1="555" y1="216" x2="595" y2="216" class="edge-m"/>
+      </g>
+      <text x="438" y="252" text-anchor="middle" class="s mut t4drop">the matches are guesses from comparing text · discarded after this landing</text>
+      <rect x="290" y="266" width="300" height="196" rx="5" class="box-today"/>
+      <text x="306" y="286" class="t ink">merged result → the next head</text>
+      <g class="m ink">
+        <text x="306" y="312" class="res">function land(task) {</text><text x="306" y="330" class="res">  const patch = capture(task)</text>
+        <text x="306" y="348" class="fb res-a">  measure(patch)</text><text x="306" y="366" class="res">  fold(patch)</text><text x="306" y="384" class="res">}</text>
+        <text x="306" y="420" class="res">function park(task) {</text><text x="306" y="438" class="fc res-b">  log('parked', task.id)</text><text x="306" y="456" class="res">}</text>
+      </g>
+    </svg>
+    </div>
+    <ol class="steps">
+      <li>The kernel compares the task's starting point (here BASE) with what has landed, line by line, to guess which lines match.</li>
+      <li>It does the same for the incoming task.</li>
+      <li>Manyana merges both sets of changes into one file: task A's new line and task B's changed line.</li>
+      <li>The weave is thrown away. The next landing starts over from BASE and guesses again.</li>
+    </ol>
+  </figure>
+</section>
+
+<section>
+  <span class="eyebrow today">Today · 5 of 5</span>
+  <h3>One pull request per run</h3>
+  <p>At the end the sandbox opens its own pull request, and merges it if the run ended green. Runs launch in parallel, so main may have moved by then. The sandbox folds its whole run onto the new main and tries again.</p>
+  <figure data-scene="t5">
+    <div class="figbar"><span class="eyebrow">two runs, one main</span><button class="play" type="button">Play</button></div>
+    <div class="sv">
+    <svg viewBox="0 0 880 280" role="img" aria-label="Two runs branch from main. run-237 merges first. run-236's merge is refused because main moved; it is refolded onto the new main and merges.">
+      <defs><marker id="ah-t5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk"/></marker></defs>
+      <line x1="40" y1="230" x2="860" y2="230" class="edge" style="stroke-width:3"/>
+      <circle cx="80" cy="230" r="9" class="ftoday"/><text x="80" y="258" text-anchor="middle" class="s ink">main</text>
+      <polyline points="80,230 160,150 380,150" class="edge-m r237"/>
+      <polyline points="80,230 160,70 470,70" class="edge-m r236"/>
+      <text x="150" y="138" class="s mut">run-237</text><text x="150" y="58" class="s mut">run-236</text>
+      <g class="n237"><circle cx="200" cy="150" r="7" class="fa"/><circle cx="290" cy="150" r="7" class="fb"/><circle cx="380" cy="150" r="7" class="fc"/></g>
+      <g class="n236"><circle cx="200" cy="70" r="7" class="fa"/><circle cx="290" cy="70" r="7" class="fb"/><circle cx="380" cy="70" r="7" class="fc"/><circle cx="470" cy="70" r="7" class="fd"/></g>
+      <polyline points="380,150 470,150 516,220" class="edge-m m237" marker-end="url(#ah-t5)"/>
+      <g class="main1"><circle cx="520" cy="230" r="9" class="ftoday"/><text x="520" y="258" text-anchor="middle" class="s ink">run-237 merged</text></g>
+      <line x1="470" y1="70" x2="540" y2="140" class="edge sfail try"/>
+      <g class="refuse"><text x="545" y="152" class="t ffail">✗ 405: main moved</text></g>
+      <line x1="520" y1="230" x2="636" y2="82" class="edge dash rf"/>
+      <line x1="470" y1="70" x2="632" y2="70" class="edge-m rf"/>
+      <g class="rf"><circle cx="640" cy="70" r="9" class="ftoday"/><text x="656" y="58" class="s ink">refold onto new main</text><text x="656" y="74" class="s mut">(the same kernel fold)</text></g>
+      <polyline points="640,70 740,70 776,220" class="edge-m m236" marker-end="url(#ah-t5)"/>
+      <g class="main2"><circle cx="780" cy="230" r="9" class="ftoday"/><text x="780" y="258" text-anchor="middle" class="s ink">run-236 merged</text></g>
+    </svg>
+    </div>
+    <ol class="steps">
+      <li>Two runs start from the same main, in parallel.</li>
+      <li>run-237 finishes first; its pull request merges.</li>
+      <li>GitHub refuses run-236's merge with a 405: main has moved.</li>
+      <li>The sandbox folds run-236 onto the new main in the kernel, checks it, and merges.</li>
+    </ol>
+  </figure>
+</section>
+
+<!-- ============================ EVIDENCE ============================ -->
+<div class="part">
+  <span class="eyebrow">Between the two</span>
+  <h2>What the replay measured</h2>
+  <p>Ticket 1 of the map asked whether Manyana can carry a swarm. We replayed 29 real runs, then ran 1,800 pairs of edits made at the same time on the repository's six largest files, where the right answer is known in advance.</p>
+</div>
+
+<section>
+  <div class="record">
+    <div><b>111</b><span>landings replayed across 29 factory runs</span></div>
+    <div><b>8 of 8</b><span>files two tasks edited that could be replayed: every method agreed with what landed</span></div>
+    <div><b>8</b><span>more could not be replayed: the record never keeps what each agent actually wrote</span></div>
+    <div><b>2,100 / 2,100</b><span>merges gave the same result in every order</span></div>
+  </div>
+  <figure data-scene="ev">
+    <div class="figbar"><span class="eyebrow">two edits at once, by distance apart</span><button class="play" type="button">Play</button></div>
+    <div class="legend"><span><i style="background:var(--pass)"></i>merged correctly</span><span><i style="background:var(--jev)"></i>flagged as a conflict</span><span><i style="background:var(--fail)"></i>merged wrong, no flag</span></div>
+    <div class="sv">
+    <svg viewBox="0 0 960 300" role="img" aria-label="Bar chart. Far apart: git and Manyana both 100 percent correct. One to three lines apart: git 99.8 percent correct, Manyana 98.7 percent. Touching: git 0.9 percent correct and 99.1 percent conflict; Manyana 18.8 percent correct, 80.8 percent conflict, 0.4 percent wrong.">
+      <text x="20" y="54" class="t ink bold">far apart</text><text x="20" y="72" class="s mut">more than 3 lines · n = 596</text>
+      <text x="20" y="144" class="t ink bold">near</text><text x="20" y="162" class="s mut">1 to 3 lines · n = 980</text>
+      <text x="20" y="234" class="t ink bold">touching</text><text x="20" y="252" class="s mut">no line between · n = 224</text>
+      <g class="s mut" text-anchor="end">
+        <text x="240" y="44">git merge-file</text><text x="240" y="74">Manyana</text>
+        <text x="240" y="134">git merge-file</text><text x="240" y="164">Manyana</text>
+        <text x="240" y="224">git merge-file</text><text x="240" y="254">Manyana</text>
+      </g>
+      <g class="grow barg"><rect x="250" y="30" width="440" height="20" class="fpass"/></g>
+      <g class="grow barg"><rect x="250" y="60" width="440" height="20" class="fpass"/></g>
+      <g class="grow barg"><rect x="250" y="120" width="438" height="20" class="fpass"/><rect x="688" y="120" width="2" height="20" class="fjev"/></g>
+      <g class="grow barg"><rect x="250" y="150" width="434.2" height="20" class="fpass"/><rect x="684.2" y="150" width="5.8" height="20" class="fjev"/></g>
+      <g class="grow barg"><rect x="250" y="210" width="3.9" height="20" class="fpass"/><rect x="253.9" y="210" width="436.1" height="20" class="fjev"/></g>
+      <g class="grow barg"><rect x="250" y="240" width="82.5" height="20" class="fpass"/><rect x="332.5" y="240" width="354.5" height="20" class="fjev"/><rect x="687" y="240" width="3" height="20" class="ffail"/></g>
+      <g class="s ink">
+        <text x="700" y="44">100% right</text><text x="700" y="74">100% right</text>
+        <text x="700" y="134">99.8% right · 0.2% conflict</text><text x="700" y="164">98.7% right · 1.3% conflict</text>
+        <text x="700" y="224">0.9% right · 99.1% conflict</text><text x="700" y="254">18.8% right · 0.4% wrong</text>
+      </g>
+      <text x="250" y="290" class="s mut">Each bar is 100% of that row's pairs. The one wrong merge came from two identical <tspan class="m">}</tspan> lines; figure F2 below replays it.</text>
+    </svg>
+    </div>
+    <figcaption>Where the two edits are more than three lines apart, both mergers were right every time. Where edits touch, which is where agents working side by side collide, git gives up on almost all of them and Manyana merges about one in five correctly. Its one failure is the identity problem the Flock has to solve.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================ PART TWO ============================ -->
+<div class="part flock">
+  <span class="eyebrow flock">Part two · map #1292</span>
+  <h2>The Flock</h2>
+  <p>The map keeps the one thing that must never move, the mechanical facts, and puts them at a single edge in front of main. Everything behind that edge becomes a flock: agents that keep their own copies, share them freely, and post what they believe.</p>
+</div>
+
+<section>
+  <span class="eyebrow flock">Flock · 1 of 6</span>
+  <h3>Every agent keeps its own copy</h3>
+  <p>Each agent edits its own copy of the file, kept as a weave. Copies travel between agents in any order. Because Manyana's merge gives the same result whatever the order, every copy ends up identical without anyone coordinating.</p>
+  <figure data-scene="f1">
+    <div class="figbar"><span class="eyebrow">four agents, one file</span><button class="play" type="button">Play</button></div>
+    <div class="sv">
+    <svg viewBox="0 0 880 360" role="img" aria-label="Four agents each hold a copy of a file. Each adds its own colored line; copies are exchanged pairwise in two rounds; all four copies end identical, with a conflict mark carried along rather than blocking.">
+      <g class="f1edges">
+        <line x1="370" y1="140" x2="510" y2="140" class="edge-m"/><line x1="370" y1="260" x2="510" y2="260" class="edge-m"/>
+        <line x1="370" y1="140" x2="370" y2="260" class="edge-m"/><line x1="510" y1="140" x2="510" y2="260" class="edge-m"/>
+        <line x1="370" y1="140" x2="510" y2="260" class="edge"/><line x1="510" y1="140" x2="370" y2="260" class="edge"/>
+      </g>
+      <text x="440" y="206" text-anchor="middle" class="s mut">any order</text>
+      <g id="f1cards"></g>
+      <circle cx="370" cy="140" r="18" class="fa"/><text x="370" y="145" text-anchor="middle" class="t fon bold">A</text>
+      <circle cx="510" cy="140" r="18" class="fb"/><text x="510" y="145" text-anchor="middle" class="t fon bold">B</text>
+      <circle cx="370" cy="260" r="18" class="fc"/><text x="370" y="265" text-anchor="middle" class="t fon bold">C</text>
+      <circle cx="510" cy="260" r="18" class="fd"/><text x="510" y="265" text-anchor="middle" class="t fon bold">D</text>
+    </svg>
+    </div>
+    <ol class="steps">
+      <li>Each agent edits its own copy.</li>
+      <li>Copies are shared agent to agent, in whatever order they happen to arrive.</li>
+      <li>Every copy converges to the same file. Nobody had to decide who goes first.</li>
+      <li>A conflict stops nothing. It travels as a mark in the file and becomes a belief on the board.</li>
+    </ol>
+  </figure>
+</section>
+
+<section>
+  <span class="eyebrow flock">Flock · 2 of 6</span>
+  <h3>Record the edit; don't guess it</h3>
+  <p>This is the one wrong merge from the stress test. Task A deletes an <code>if</code> block; task B deletes the closing brace just above it. Two of the lines read exactly <code>}</code>.</p>
+  <figure data-scene="f2">
+    <div class="figbar"><span class="eyebrow">fleet/launch.mjs, simplified</span><button class="play" type="button">Play</button></div>
+    <div class="sv">
+    <svg viewBox="0 0 880 450" role="img" aria-label="Left: the kernel guesses task A deleted lines 3 to 5 instead of 4 to 6, so both tasks appear to delete line 3 and the merge keeps a stray brace without flagging it. Right: the edit call names lines 4 to 6 exactly, and the merge is correct.">
+      <text x="30" y="28" class="h ftoday">Today: guessed by comparing text</text>
+      <text x="460" y="28" class="h fflock">The Flock: recorded from the edit call</text>
+      <line x1="440" y1="12" x2="440" y2="438" class="edge dash"/>
+      <g class="f2lh">
+        <rect x="52" y="103" width="360" height="66" rx="3" class="fb tint"/><rect x="42" y="103" width="5" height="66" class="fb"/>
+        <rect x="34" y="103" width="5" height="18" class="fc"/>
+        <text x="410" y="138" text-anchor="end" class="s fb bold">A, as guessed</text>
+        <text x="410" y="116" text-anchor="end" class="s ffail bold">A and B both claim this line</text>
+      </g>
+      <g class="f2rh">
+        <rect x="482" y="127" width="360" height="66" rx="3" class="fb tint"/><rect x="472" y="127" width="5" height="66" class="fb"/>
+        <rect x="464" y="103" width="5" height="18" class="fc"/>
+        <text x="840" y="116" text-anchor="end" class="s fc bold">B deletes this line</text>
+        <text x="840" y="162" text-anchor="end" class="s fb bold">A deletes these</text>
+      </g>
+      <g class="m ink f2code">
+        <text x="60" y="68">  } catch (error) {</text><text x="60" y="92">    return { unread: true }</text><text x="60" y="116">  }</text>
+        <text x="60" y="140">  if (!ok) {</text><text x="60" y="164">    return { bad: true }</text><text x="60" y="188">  }</text><text x="60" y="212">  return parsed[0]</text>
+        <text x="490" y="68">  } catch (error) {</text><text x="490" y="92">    return { unread: true }</text><text x="490" y="116">  }</text>
+        <text x="490" y="140">  if (!ok) {</text><text x="490" y="164">    return { bad: true }</text><text x="490" y="188">  }</text><text x="490" y="212">  return parsed[0]</text>
+      </g>
+      <g class="s mut">
+        <text x="16" y="68">1</text><text x="16" y="92">2</text><text x="16" y="116">3</text><text x="16" y="140">4</text><text x="16" y="164">5</text><text x="16" y="188">6</text><text x="16" y="212">7</text>
+        <text x="448" y="68">1</text><text x="448" y="92">2</text><text x="448" y="116">3</text><text x="448" y="140">4</text><text x="448" y="164">5</text><text x="448" y="188">6</text><text x="448" y="212">7</text>
+      </g>
+      <text x="30" y="244" class="s mut f2lnote">Lines 3 and 6 read the same, so comparing A's finished file</text>
+      <text x="30" y="260" class="s mut f2lnote">with the original can't tell which <tspan class="m">}</tspan> A removed. It picks line 3.</text>
+      <g class="f2lres">
+        <rect x="30" y="276" width="390" height="120" rx="5" class="box"/>
+        <text x="44" y="296" class="t ink">merged result</text>
+        <text x="44" y="320" class="m ink">  } catch (error) {</text><text x="44" y="340" class="m ink">    return { unread: true }</text>
+        <text x="44" y="360" class="m ffail">  }</text><text x="96" y="360" class="s ffail">← one brace too many</text>
+        <text x="44" y="380" class="m ink">  return parsed[0]</text>
+        <text x="30" y="424" class="t ffail">✗ wrong, and merged as clean</text>
+      </g>
+      <g class="f2rres">
+        <rect x="460" y="232" width="390" height="56" rx="5" class="box-flock"/>
+        <text x="474" y="254" class="m ink">Edit  old: "  if (!ok) {…  }"   new: ""</text>
+        <text x="474" y="276" class="s mut">the old text must appear exactly once → position pinned</text>
+        <rect x="460" y="300" width="390" height="100" rx="5" class="box"/>
+        <text x="474" y="320" class="t ink">merged result</text>
+        <text x="474" y="344" class="m ink">  } catch (error) {</text><text x="474" y="364" class="m ink">    return { unread: true }</text>
+        <text x="474" y="384" class="m ink">  return parsed[0]</text>
+        <text x="460" y="424" class="t fpass">✓ correct</text>
+      </g>
+    </svg>
+    </div>
+    <ol class="steps">
+      <li>Two tasks delete neighbouring lines.</li>
+      <li>Today the kernel compares A's finished file with the original. Both <code>}</code> lines look the same, so it guesses A removed the upper one.</li>
+      <li>Now A and B seem to have deleted the same line. The merge keeps a stray <code>}</code> and flags nothing.</li>
+      <li>In the Flock, A's edit call names the exact text, which has to appear once in the file. The position is known, and the merge is right.</li>
+    </ol>
+  </figure>
+  <p class="note">Edits made by rewriting a whole file or by a shell command such as <code>sed</code> are not single edit calls, so those would still fall back to comparing text. How often that happens was measured on 2026-09-25: about 5% of landed file changes. Built from edit calls, the stray-brace case merges correctly, and 2,400 simulated edit pairs merged with no silent wrongs.</p>
+</section>
+
+<section>
+  <span class="eyebrow flock">Flock · 3 of 6</span>
+  <h3>The board holds beliefs; the facts stand apart</h3>
+  <p>Agents post what they believe about the work, how sure they are, and which version of the code they looked at. Jev reads the board continuously and adjusts confidence. Nothing on the board blocks anyone. Facts are kept separate: an exit code on an exact snapshot.</p>
+  <figure data-scene="f3">
+    <div class="figbar"><span class="eyebrow">the Kata board, mid-run</span><button class="play" type="button">Play</button></div>
+    <div class="sv">
+    <svg viewBox="0 0 880 400" role="img" aria-label="A board of four beliefs, each with an author, the code version it was about, and a confidence bar. A Jev reading sweeps across and moves confidences. A belief about an older code version fades. To the right, three facts: exit codes on one snapshot.">
+      <circle cx="50" cy="92" r="18" class="fa"/><text x="50" y="97" text-anchor="middle" class="t fon bold">A</text>
+      <circle cx="50" cy="170" r="18" class="fc"/><text x="50" y="175" text-anchor="middle" class="t fon bold">C</text>
+      <polygon points="50,232 70,252 50,272 30,252" class="fjev"/><text x="50" y="290" text-anchor="middle" class="s fjev bold">Jev</text>
+      <text x="130" y="28" class="t ink bold">board (Kata)</text>
+      <g class="f3ver"><text x="630" y="28" text-anchor="end" class="s mut" id="f3v14" style="opacity:0">the code is at weave v14</text><text x="630" y="28" text-anchor="end" class="s ink bold" id="f3v15">the code is at weave v15</text></g>
+      <rect x="120" y="40" width="520" height="340" rx="6" class="boxbg"/>
+      <g class="card" id="f3c1"><rect x="140" y="58" width="480" height="66" rx="5" class="box"/>
+        <text x="156" y="82" class="t ink">catalog() returns Widget[]</text><text x="156" y="104" class="s mut">agent A · about v15</text>
+        <rect x="440" y="92" width="150" height="8" rx="4" class="grey"/><rect x="440" y="92" width="138" height="8" rx="4" class="fa cf" data-to="0.92" data-from="0.92"/><text x="590" y="84" text-anchor="end" class="m ink num">0.92</text></g>
+      <g class="card" id="f3c2" style="opacity:.55"><rect x="140" y="136" width="480" height="66" rx="5" class="box"/>
+        <text x="156" y="160" class="t ink">task 3 is done</text><text x="156" y="182" class="s mut">agent C · about v14 · <tspan class="ffail f3stale">stale</tspan></text>
+        <rect x="440" y="170" width="150" height="8" rx="4" class="grey"/><rect x="440" y="170" width="52.5" height="8" rx="4" class="fc cf" data-to="0.35" data-from="0.70"/><text x="590" y="162" text-anchor="end" class="m ink num">0.35</text></g>
+      <g class="card" id="f3c3"><rect x="140" y="214" width="480" height="66" rx="5" class="box"/>
+        <text x="156" y="238" class="t ink">line 40 conflicts with task 2's intent</text><text x="156" y="260" class="s mut">Jev · about v15</text>
+        <rect x="440" y="248" width="150" height="8" rx="4" class="grey"/><rect x="440" y="248" width="121.5" height="8" rx="4" class="fjev cf" data-to="0.81" data-from="0.60"/><text x="590" y="240" text-anchor="end" class="m ink num">0.81</text></g>
+      <g class="card" id="f3c4"><rect x="140" y="292" width="480" height="66" rx="5" class="box"/>
+        <text x="156" y="316" class="t ink">agent B is stuck</text><text x="156" y="338" class="s mut">Jev · about v15</text>
+        <rect x="440" y="326" width="150" height="8" rx="4" class="grey"/><rect x="440" y="326" width="33" height="8" rx="4" class="fjev cf" data-to="0.22" data-from="0.30"/><text x="590" y="318" text-anchor="end" class="m ink num">0.22</text></g>
+      <g id="f3scan" style="opacity:0"><line x1="140" y1="48" x2="140" y2="372" class="edge sjev" style="stroke-width:2.5"/><text x="146" y="372" class="s fjev bold">Jev reads</text></g>
+      <text x="670" y="28" class="t ink bold">facts</text>
+      <g class="fact"><rect x="660" y="58" width="200" height="50" rx="5" class="box-pass"/><text x="672" y="80" class="t ink">probe M1 · exit 0</text><text x="672" y="98" class="m mut">on snapshot 9f3e2a</text></g>
+      <g class="fact"><rect x="660" y="118" width="200" height="50" rx="5" class="box" style="stroke:var(--fail)"/><text x="672" y="140" class="t ffail">check C2 · exit 1</text><text x="672" y="158" class="m mut">on snapshot 9f3e2a</text></g>
+      <g class="fact"><rect x="660" y="178" width="200" height="50" rx="5" class="box-pass"/><text x="672" y="200" class="t ink">probe M3 · exit 0</text><text x="672" y="218" class="m mut">on snapshot 9f3e2a</text></g>
+      <text x="660" y="262" class="s mut">A fact is an exit code on an exact</text>
+      <text x="660" y="278" class="s mut">snapshot. Only facts decide what</text>
+      <text x="660" y="294" class="s mut">reaches main. A belief never does.</text>
+    </svg>
+    </div>
+    <ol class="steps">
+      <li>Agents post beliefs, each with a confidence and the code version it was about.</li>
+      <li>Jev reads the board and moves each confidence up or down. It never blocks anyone.</li>
+      <li>The code moves on, so a belief about the old version fades instead of being enforced.</li>
+      <li>Facts are separate: exit codes on an exact snapshot. Only they decide what reaches main.</li>
+    </ol>
+  </figure>
+</section>
+
+<section>
+  <span class="eyebrow flock">Flock · 4 of 6</span>
+  <h3>Nobody dispatches</h3>
+  <p>Kata already lists which tasks are ready, and lets an agent claim one only if nobody owns it. In the Flock, agents pull their own work, let go of it when they are blocked, and can propose work the plan missed.</p>
+  <figure data-scene="f4">
+    <div class="figbar"><span class="eyebrow">the ready list</span><button class="play" type="button">Play</button></div>
+    <div class="sv">
+    <svg viewBox="0 0 880 330" role="img" aria-label="Agents take tasks from Kata's ready list. Agent B releases a task it is blocked on. Agent D takes another. Agent C proposes a new task, which is admitted.">
+      <text x="40" y="30" class="t ink bold">ready (Kata)</text>
+      <rect x="30" y="40" width="280" height="276" rx="6" class="boxbg"/>
+      <text x="600" y="30" class="t ink bold">working on</text>
+      <circle cx="560" cy="70" r="16" class="fa"/><text x="560" y="75" text-anchor="middle" class="t fon bold">A</text>
+      <circle cx="560" cy="140" r="16" class="fb"/><text x="560" y="145" text-anchor="middle" class="t fon bold">B</text>
+      <circle cx="560" cy="210" r="16" class="fc"/><text x="560" y="215" text-anchor="middle" class="t fon bold">C</text>
+      <circle cx="560" cy="280" r="16" class="fd"/><text x="560" y="285" text-anchor="middle" class="t fon bold">D</text>
+      <rect x="600" y="52" width="250" height="36" rx="5" class="edge dash"/><rect x="600" y="122" width="250" height="36" rx="5" class="edge dash"/>
+      <rect x="600" y="192" width="250" height="36" rx="5" class="edge dash"/><rect x="600" y="262" width="250" height="36" rx="5" class="edge dash"/>
+      <text x="612" y="145" class="s mut">free · looking for ready work</text>
+      <g class="tk" id="tk4" data-dx="-555" data-dy="4"><rect x="600" y="52" width="250" height="36" rx="5" class="box"/><text x="614" y="75" class="t ink">task 4 · import CSV</text></g>
+      <g class="tk" id="tk6" data-dx="-555" data-dy="-44"><rect x="600" y="192" width="250" height="36" rx="5" class="box"/><text x="614" y="215" class="t ink">task 6 · empty state</text></g>
+      <g class="tk" id="tk7" data-dx="-555" data-dy="-68"><rect x="600" y="262" width="250" height="36" rx="5" class="box"/><text x="614" y="285" class="t ink">task 7 · sort by due date</text></g>
+      <g id="tk5"><rect x="45" y="102" width="250" height="36" rx="5" class="box"/><text x="59" y="125" class="t ink">task 5 · export</text></g>
+      <g id="tk5tag"><text x="295" y="152" text-anchor="end" class="s fb bold">B: blocked by task 2 · released</text></g>
+      <g id="tk8"><rect x="45" y="240" width="250" height="36" rx="5" class="box" id="tk8solid"/><rect x="45" y="240" width="250" height="36" rx="5" class="edge dash" id="tk8dash" style="opacity:0"/>
+        <text x="59" y="263" class="t ink">task 8 · migrate old rows</text></g>
+      <text x="45" y="296" class="s mut" id="tk8note">proposed by C · admitted by a question</text>
+    </svg>
+    </div>
+    <ol class="steps">
+      <li>Agents claim ready tasks. A claim only succeeds if nobody owns the task.</li>
+      <li>Agent B finds it is blocked by task 2, says so on the board, and releases its task.</li>
+      <li>Agent D picks up other ready work. Nobody assigned it.</li>
+      <li>Agent C proposes a task the plan missed; a question on the board admits it.</li>
+    </ol>
+  </figure>
+</section>
+
+<section>
+  <span class="eyebrow flock">Flock · 5 of 6</span>
+  <h3>Candidates live in the file, hidden</h3>
+  <p>Today each racing implementer needs its own clone, and the losing clone is deleted. With lines that keep their identity, candidates can sit in the same weave as hidden lines, and choosing a winner makes its lines visible. Tested on 2026-09-25: this works for whole candidates. Keeping a single line from the loser also works, but the weave, not us, decides where that line goes.</p>
+  <figure data-scene="f5">
+    <div class="figbar"><span class="eyebrow">one file, one weave</span><button class="play" type="button">Play</button></div>
+    <div class="sv">
+    <svg viewBox="0 0 880 330" role="img" aria-label="A function with two candidates' lines stored as hidden lines, in the order the weave keeps them. Candidate 2 passes its probe and its lines become visible. Adopting candidate 1's guard line makes it visible where the weave put it, after the return, where it never runs.">
+      <text x="40" y="28" class="t ink bold">importCsv, as a weave (in the weave's own order)</text>
+      <rect x="30" y="40" width="540" height="276" rx="6" class="boxbg"/>
+      <text x="56" y="78" class="m ink">function importCsv(text) {</text>
+      <g class="f5l" id="f5c2a" data-c="2">
+        <g class="hid" style="opacity:0"><rect x="44" y="92" width="512" height="28" rx="4" class="edge dash sb" style="fill:none"/><text x="56" y="111" class="m mut">  const rows = parse(text, { strict: true })</text></g>
+        <g class="vis"><rect x="44" y="92" width="512" height="28" rx="4" class="fb tint"/><text x="56" y="111" class="m ink">  const rows = parse(text, { strict: true })</text></g>
+        <text x="548" y="111" text-anchor="end" class="s fb tag">candidate 2 · B</text></g>
+      <g class="f5l" id="f5c2b" data-c="2">
+        <g class="hid" style="opacity:0"><rect x="44" y="128" width="512" height="28" rx="4" class="edge dash sb" style="fill:none"/><text x="56" y="147" class="m mut">  return rows.map(toWidget)</text></g>
+        <g class="vis"><rect x="44" y="128" width="512" height="28" rx="4" class="fb tint"/><text x="56" y="147" class="m ink">  return rows.map(toWidget)</text></g>
+        <text x="548" y="147" text-anchor="end" class="s fb tag">candidate 2 · B</text></g>
+      <g class="f5l" id="f5c1a" data-c="1">
+        <g class="hid"><rect x="44" y="164" width="512" height="28" rx="4" class="edge dash sa" style="fill:none"/><text x="56" y="183" class="m mut" style="opacity:.6">  const rows = text.split('\n')</text></g>
+        <text x="548" y="183" text-anchor="end" class="s fa tag">hidden · candidate 1 · A</text></g>
+      <g class="f5l" id="f5c1b" data-c="1">
+        <g class="hid" style="opacity:0"><rect x="44" y="200" width="512" height="28" rx="4" class="edge dash sa" style="fill:none"/><text x="56" y="219" class="m mut">  if (!rows.length) throw new Error('empty')</text></g>
+        <g class="vis"><rect x="44" y="200" width="512" height="28" rx="4" class="ffail tint"/><text x="56" y="219" class="m ink">  if (!rows.length) throw new Error('empty')</text></g>
+        <text x="548" y="219" text-anchor="end" class="s ffail bold tag">adopted · lands after return</text></g>
+      <text x="56" y="252" class="m ink">}</text>
+      <text x="56" y="282" class="s mut">Solid lines are the file anyone reads. Dashed lines are kept in the weave, unseen.</text>
+      <text x="56" y="300" class="s mut">Lines added at the same spot are ordered by the weave (here, by their text), not by intent.</text>
+      <text x="600" y="28" class="t ink bold">facts</text>
+      <g class="f5fact"><rect x="600" y="44" width="250" height="44" rx="5" class="box" style="stroke:var(--fail)"/><text x="614" y="71" class="t ink">candidate 1 · probe <tspan class="ffail bold">✗ exit 1</tspan></text></g>
+      <g class="f5fact"><rect x="600" y="98" width="250" height="44" rx="5" class="box-pass"/><text x="614" y="125" class="t ink">candidate 2 · probe <tspan class="fpass bold">✓ exit 0</tspan></text></g>
+      <text x="600" y="170" class="s mut">Whole candidates: selecting one spreads</text>
+      <text x="600" y="186" class="s mut">through every merge. Two copies picking</text>
+      <text x="600" y="202" class="s mut">different winners are flagged as a conflict.</text>
+      <text x="600" y="232" class="s ffail bold">One line from the loser: it becomes</text>
+      <text x="600" y="248" class="s ffail bold">visible where the weave put it. Placing</text>
+      <text x="600" y="264" class="s ffail bold">it is unsolved.</text>
+      <text x="600" y="294" class="s fflock bold">Drafts stay in a private copy until</text>
+      <text x="600" y="310" class="s fflock bold">published hidden (tested 2026-09-25).</text>
+    </svg>
+    </div>
+    <ol class="steps">
+      <li>Two candidates are written into the same weave, both hidden. The weave keeps them in its own order.</li>
+      <li>The facts run on each candidate.</li>
+      <li>Candidate 2 passes, so its lines become visible. This spreads correctly through every merge.</li>
+      <li>Adopting candidate 1's empty-input check makes it visible where the weave placed it: after the <code>return</code>, where it never runs, and nothing flags it. Choosing where an adopted line goes is still an open problem.</li>
+    </ol>
+  </figure>
+</section>
+
+<section>
+  <span class="eyebrow flock">Flock · 6 of 6</span>
+  <h3>Facts at the edge</h3>
+  <p>The swarm keeps producing snapshots of its merged code. Each is tested against the plan's facts. Main only takes a snapshot that is green and comes from a swarm that has gone quiet.</p>
+  <figure data-scene="f6">
+    <div class="figbar"><span class="eyebrow">from swarm to main</span><button class="play" type="button">Play</button></div>
+    <div class="sv">
+    <svg viewBox="0 0 880 330" role="img" aria-label="Snapshots leave the swarm and pass a facts gate. Two fail and are held back. A third passes but the swarm is still changing, so it is held back. The fourth passes after the swarm settles and goes to main.">
+      <defs><marker id="ah-f6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk"/></marker></defs>
+      <ellipse cx="130" cy="150" rx="112" ry="92" class="fflock" style="fill-opacity:.1"/>
+      <line x1="80" y1="110" x2="170" y2="100" class="edge-m"/><line x1="80" y1="110" x2="90" y2="200" class="edge-m"/><line x1="170" y1="100" x2="180" y2="190" class="edge-m"/>
+      <line x1="90" y1="200" x2="180" y2="190" class="edge-m"/><line x1="80" y1="110" x2="180" y2="190" class="edge-m"/>
+      <circle cx="80" cy="110" r="13" class="fa"/><circle cx="170" cy="100" r="13" class="fb"/><circle cx="90" cy="200" r="13" class="fc"/><circle cx="180" cy="190" r="13" class="fd"/>
+      <text x="130" y="266" text-anchor="middle" class="s mut">the swarm, merging</text>
+      <line x1="248" y1="150" x2="556" y2="150" class="edge dash"/>
+      <text x="400" y="176" text-anchor="middle" class="s mut">snapshots of the merged code</text>
+      <text x="615" y="66" text-anchor="middle" class="s mut">changes per minute</text>
+      <rect x="560" y="76" width="110" height="8" rx="4" class="grey"/><rect x="560" y="76" width="12" height="8" rx="4" class="fflock" id="f6meter"/>
+      <text x="676" y="84" class="s fpass bold" id="f6quiet">quiet</text>
+      <rect x="560" y="110" width="110" height="80" rx="5" class="box-pass"/>
+      <text x="615" y="138" text-anchor="middle" class="t ink bold">facts</text>
+      <text x="615" y="156" text-anchor="middle" class="s mut">probes · tests</text><text x="615" y="172" text-anchor="middle" class="s mut">· checks</text>
+      <line x1="670" y1="150" x2="738" y2="150" class="edge-m" marker-end="url(#ah-f6)"/><text x="704" y="142" text-anchor="middle" class="s mut">PR</text>
+      <rect x="740" y="126" width="120" height="48" rx="5" class="box-today"/><text x="800" y="155" text-anchor="middle" class="t ink bold">main</text>
+      <rect x="470" y="228" width="240" height="60" rx="5" class="edge dash"/><text x="478" y="222" class="s mut">held back</text>
+      <text x="470" y="310" class="s mut">snap 3 was green, but the swarm was still changing</text>
+      <text x="740" y="220" class="s mut">no quiet before the clock</text>
+      <text x="740" y="236" class="s mut">runs out → a draft PR,</text>
+      <text x="740" y="252" class="s mut">beliefs attached</text>
+      <g class="snap" id="sn1" data-fx="480" data-fy="246"><rect x="480" y="246" width="64" height="24" rx="4" class="box"/><text x="490" y="262" class="s ink">snap 1</text><text x="534" y="262" class="s ffail bold mk2">✗</text></g>
+      <g class="snap" id="sn2" data-fx="558" data-fy="246"><rect x="558" y="246" width="64" height="24" rx="4" class="box"/><text x="568" y="262" class="s ink">snap 2</text><text x="612" y="262" class="s ffail bold mk2">✗</text></g>
+      <g class="snap" id="sn3" data-fx="636" data-fy="246"><rect x="636" y="246" width="64" height="24" rx="4" class="box"/><text x="646" y="262" class="s ink">snap 3</text><text x="690" y="262" class="s fpass bold mk2">✓</text></g>
+      <g class="snap" id="sn4" data-fx="768" data-fy="180"><rect x="768" y="180" width="64" height="24" rx="4" class="box-pass"/><text x="778" y="196" class="s ink">snap 4</text><text x="822" y="196" class="s fpass bold mk2">✓</text></g>
+    </svg>
+    </div>
+    <ol class="steps">
+      <li>The swarm publishes snapshots of its merged code as it works.</li>
+      <li>Every snapshot is tested: probes, tests and checks, on exactly that content.</li>
+      <li>A green snapshot still waits while the code is changing. Main takes the first green one after the swarm settles.</li>
+      <li>If it never settles before the clock runs out, the run opens a draft PR with its beliefs attached.</li>
+    </ol>
+  </figure>
+</section>
+
+<!-- ============================ SUMMARY ============================ -->
+<section>
+  <h2>Side by side</h2>
+  <div class="tbl">
+  <table>
+    <thead><tr><th></th><th class="today">Today</th><th class="flock">The Flock (proposed)</th></tr></thead>
+    <tbody>
+      <tr><th>Who writes the shared code</th><td>The engine alone, one landing at a time</td><td>Every agent, to its own copy; copies merge with each other</td></tr>
+      <tr><th>When work is shared</th><td>Once, when a task lands</td><td>Whenever an agent's change is coherent</td></tr>
+      <tr><th>How the merge learns what changed</th><td>Guesses by comparing text against BASE</td><td>Records each edit call as it was made</td></tr>
+      <tr><th>The weave</th><td>Rebuilt for each landing, then thrown away</td><td>Kept for the whole run; it is the shared code</td></tr>
+      <tr><th>Judgments</th><td>Gates at each landing: select, referee, fold check, re-attempt, park</td><td>Beliefs on the board, each with a confidence, revised as the code moves</td></tr>
+      <tr><th>Jev</th><td>Reads at the gates</td><td>Reads the board continuously and never blocks</td></tr>
+      <tr><th>Who decides what runs</th><td>The engine</td><td>Agents pull ready work from Kata</td></tr>
+      <tr><th>Racing candidates</th><td>Separate clones; the losers are deleted</td><td>Hidden lines in one weave; choosing makes them visible</td></tr>
+      <tr><th>What guards main</th><td>A green run's pull request</td><td>A green, settled snapshot's pull request: the same facts, at one edge</td></tr>
+      <tr><th>Rollback</th><td>—</td><td>Today's factory, kept live until five green Flock runs</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>What could go wrong</h2>
+  <ul class="plain">
+    <li><b>Text that merges cleanly can still be broken code.</b> The facts at the edge catch that, but nothing guarantees the swarm ever reaches green.</li>
+    <li><b>The swarm could oscillate</b>, changing the same lines back and forth. Deciding when a run is settled is the riskiest part, and it is ticket 5.</li>
+    <li><b>Agents would see each other's half-finished work.</b> An edit can fail because the file moved underneath it. The agent re-reads, which costs tokens.</li>
+    <li><b>Manyana's limits become ours.</b> It is one file of Python, text only, with no line identity yet, and its history grows without bound. We never patch it; everything goes in our wrapper.</li>
+    <li><b>Keeping one line from a losing candidate can't choose where it lands.</b> The weave orders lines added at the same spot by itself; in the test, an adopted guard landed after a <code>return</code>, with no flag.</li>
+    <li><b>Two agents inserting at exactly the same line are merged in a fixed order with no conflict flag</b>, where git would flag it.</li>
+    <li><b>Some edits aren't edit calls.</b> Whole-file rewrites and shell edits still need the text-comparison fallback.</li>
+    <li><b>It retires standing doctrine</b>: "one merge, one writer", the Blackboard's strict "facts, never commands", and "fold on every landing". That is the operator's call, made on the prototype's numbers.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>What happens next</h2>
+  <div class="tickets">
+    <div class="ticket"><span class="n">1</span><span>The weave replay: can Manyana carry a swarm?</span><span class="pill done">read 2026-09-25</span></div>
+    <div class="ticket"><span class="n">1b</span><span>Merging mid-session fights no edit; ~95% of changes arrive as edit calls; agent teams can't run headless (#1294)</span><span class="pill done">read 2026-09-25</span></div>
+    <div class="ticket"><span class="n">2</span><span>Line identity from edit calls (#359): 0 silent wrongs in 2,400 pairs; 360/360 multi-agent trials right with unique lines</span><span class="pill done">core tested 2026-09-25</span></div>
+    <div class="ticket"><span class="n">3</span><span>What a belief holds, and how it reaches a consequence</span><span class="pill">to grill</span></div>
+    <div class="ticket"><span class="n">4</span><span>A laptop prototype: three agents on the fixture, against today's factory, three runs each</span><span class="pill">after 2 and 3</span></div>
+    <div class="ticket"><span class="n">5</span><span>Settling: when a swarm counts as done, and how to spot one going in circles</span><span class="pill">before any fleet code</span></div>
+  </div>
+</section>
+
+<footer>
+  <span>Sources: <a href="https://github.com/popmechanic/ultrapowers/issues/1292">map #1292</a> and its <a href="https://github.com/popmechanic/ultrapowers/issues/1292#issuecomment-5838183411">ticket 1 reading</a>; <a href="https://github.com/popmechanic/ultrapowers/issues/359">#359</a> line identity; <a href="https://github.com/popmechanic/ultrapowers/issues/1131">#1131</a> the Jev factory; <a href="https://github.com/popmechanic/ultrapowers/issues/810">#810</a> the Blackboard.</span>
+  <span>Figures in part one follow the factory as of main <code>2faf7a82</code> (2026-09-25). Figures in part two show a proposal; nothing in them is built.</span>
+</footer>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.2/anime.min.js"></script>
+<script>
+(function(){
+  const NS = 'http://www.w3.org/2000/svg';
+  const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const $ = (r, s) => r.querySelector(s);
+  const $$ = (r, s) => Array.from(r.querySelectorAll(s));
+  if (!window.anime) { $$(document, '.play').forEach(b => b.hidden = true); return; }
+
+  function dot(parent, x, y, cls, r) {
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('cx', x); c.setAttribute('cy', y); c.setAttribute('r', r || 5);
+    c.setAttribute('class', cls + ' pk'); c.style.opacity = 0; parent.appendChild(c); return c;
+  }
+  function travel(T, el, from, to, at, dur) {
+    T.add({ targets: el, cx: [from[0], to[0]], cy: [from[1], to[1]], duration: dur, easing: 'easeInOutSine' }, at);
+    T.add({ targets: el, opacity: [{ value: 1, duration: 120 }, { value: 1, duration: Math.max(dur - 240, 0) }, { value: 0, duration: 120 }], duration: dur, easing: 'linear' }, at);
+  }
+  function step(T, mark, i, at) { T.add({ targets: { v: 0 }, v: 1, duration: 1, begin: () => mark(i) }, at); }
+  function draw(T, els, at, dur, stagger) {
+    T.add({ targets: els, strokeDashoffset: [anime.setDashoffset, 0], opacity: [0, 1], duration: dur || 600, delay: anime.stagger(stagger || 0), easing: 'easeInOutQuad' }, at);
+  }
+
+  /* ---------- HERO: loops ---------- */
+  function hero() {
+    const fig = document.getElementById('hero');
+    const svg = $(fig, 'svg'), today = $(fig, '#hToday'), flock = $(fig, '#hFlock');
+    const T = anime.timeline({ loop: true, autoplay: false });
+    const workers = [[60, 192], [150, 192], [270, 192], [360, 192]];
+    const cls = ['fa', 'fb', 'fc', 'fd'];
+    workers.forEach((w, i) => travel(T, dot(today, 210, 96, 'ftoday', 4.5), [210, 96], w, 0, 700));
+    workers.forEach((w, i) => {
+      const at = 1400 + i * 1100;
+      travel(T, dot(today, w[0], w[1], cls[i], 5), w, [210, 96], at, 650);
+      travel(T, dot(today, 270, 76, cls[i], 5), [270, 76], [300, 76], at + 650, 300);
+    });
+    const A = [[510, 90], [640, 70], [790, 100], [500, 230], [650, 270], [800, 230]];
+    const E = [[0, 1], [1, 2], [2, 5], [5, 4], [4, 3], [3, 0], [0, 4], [1, 5]];
+    const ac = ['fa', 'fb', 'fc', 'fd', 'fa', 'fb'];
+    for (let k = 0; k < 26; k++) {
+      const e = E[k % E.length], dir = (k >> 1) % 2, s = dir ? e[1] : e[0], t = dir ? e[0] : e[1];
+      travel(T, dot(flock, A[s][0], A[s][1], ac[s], 4.5), A[s], A[t], (k * 233) % 5600, 900);
+    }
+    A.forEach((a, i) => travel(T, dot(flock, a[0], a[1], ac[i], 4), a, [665, 172], 200 + i * 850, 700));
+    travel(T, dot(flock, 650, 286, 'fpass', 4.5), [650, 286], [610, 318], 5600, 450);
+    travel(T, dot(flock, 660, 332, 'fpass', 4.5), [660, 332], [710, 332], 6050, 350);
+    T.add({ targets: { v: 0 }, v: 1, duration: 600 }, 6400);
+    anime({ targets: flock, translateX: [-5, 5], translateY: [3, -3], direction: 'alternate', loop: true, duration: 3600, easing: 'easeInOutSine' });
+    T.play();
+  }
+
+  /* ---------- scenes ---------- */
+  const B = {};
+
+  B.t1 = (T, mark, f) => {
+    const ghosts = $$(f, '.ghost'), clones = $$(f, '.clone'), bars = $$(f, '.bar'), seps = $$(f, '.sep');
+    anime.set(clones, { opacity: 0 }); anime.set(ghosts, { opacity: 0, translateX: 0, translateY: 0 });
+    anime.set(bars, { width: 0 }); anime.set(seps, { opacity: 0 });
+    step(T, mark, 0, 0);
+    T.add({ targets: $(f, '.base'), opacity: [0.2, 1], duration: 600 }, 0);
+    step(T, mark, 1, 800);
+    T.add({ targets: ghosts, opacity: [{ value: 1, duration: 150 }, { value: 1, duration: 750 }], translateX: el => +el.dataset.dx, translateY: el => +el.dataset.dy, duration: 900, delay: anime.stagger(120), easing: 'easeOutCubic' }, 800);
+    T.add({ targets: clones, opacity: 1, duration: 400, delay: anime.stagger(120) }, 1600);
+    T.add({ targets: ghosts, opacity: 0, duration: 300, delay: anime.stagger(120) }, 1750);
+    step(T, mark, 2, 2600);
+    T.add({ targets: bars, width: el => +el.dataset.w, duration: 900, delay: anime.stagger(50), easing: 'easeOutQuad' }, 2600);
+    T.add({ targets: seps, opacity: 1, duration: 700 }, 2900);
+  };
+
+  B.t2 = (T, mark, f) => {
+    const cbars = $$(f, '.cbar'), chips = $$(f, '.chip'), marks = $$(f, '.mark'), sels = $$(f, '.sel');
+    anime.set(cbars, { width: 0 }); anime.set(chips, { opacity: 0 }); anime.set(marks, { opacity: 0 });
+    anime.set(sels, { opacity: 0 }); anime.set($$(f, '.diamond'), { opacity: 0.25 });
+    anime.set($(f, '.envelope'), { opacity: 0, translateX: -60 }); anime.set($$(f, '.out'), { opacity: 0 });
+    anime.set($(f, '.candB'), { opacity: 1 }); anime.set($(f, '.discard'), { opacity: 0 });
+    step(T, mark, 0, 0);
+    T.add({ targets: cbars, width: el => +el.dataset.w, duration: 900, delay: anime.stagger(60), easing: 'easeOutQuad' }, 0);
+    step(T, mark, 1, 1100);
+    T.add({ targets: chips, opacity: 1, duration: 300, delay: anime.stagger(40) }, 1100);
+    T.add({ targets: marks, opacity: 1, translateY: [-6, 0], duration: 400, delay: anime.stagger(180) }, 1600);
+    step(T, mark, 2, 2900);
+    draw(T, sels, 2900, 600);
+    T.add({ targets: $$(f, '.diamond'), opacity: 1, duration: 500 }, 3300);
+    step(T, mark, 3, 4000);
+    T.add({ targets: $(f, '.candB'), opacity: 0.38, duration: 600 }, 4000);
+    T.add({ targets: $(f, '.discard'), opacity: 1, duration: 400 }, 4200);
+    T.add({ targets: $$(f, '.out'), opacity: 1, duration: 500 }, 4200);
+    T.add({ targets: $(f, '.envelope'), opacity: 1, translateX: 0, duration: 700, easing: 'easeOutCubic' }, 4200);
+  };
+
+  B.t3 = (T, mark, f) => {
+    const b1 = $(f, '#t3b1'), b2 = $(f, '#t3b2'), b3 = $(f, '#t3b3');
+    const c1 = $(f, '#t3c1'), c2 = $(f, '#t3c2'), c3 = $(f, '#t3c3');
+    const g = $$(f, '.ghl'), red = $(f, '#t3red'), redtxt = $(f, '#t3redtxt');
+    const n1 = $(f, '#t3n1'), n2 = $(f, '#t3n2'), n3 = $(f, '#t3n3');
+    anime.set([b1, b2, b3], { width: 0 });
+    anime.set(c1, { opacity: 0, translateX: -110, translateY: 26 });
+    anime.set(c2, { opacity: 0, translateX: -110, translateY: 56 });
+    anime.set(c3, { opacity: 0, translateX: -110, translateY: 86 });
+    anime.set([n1, n2, n3, redtxt], { opacity: 0 }); anime.set(g, { opacity: 0 }); anime.set(red, { opacity: 0 });
+    anime.set($$(f, '.seg'), { opacity: 0 });
+    const flash = (el, at) => T.add({ targets: el, opacity: [{ value: 1, duration: 150 }, { value: 0, duration: 300 }], easing: 'linear' }, at);
+    const through = (c, at, to) => { T.add({ targets: c, translateY: to, duration: 700, easing: 'linear' }, at); flash(g[0], at); flash(g[1], at + 230); flash(g[2], at + 460); };
+    step(T, mark, 0, 0);
+    T.add({ targets: b2, width: 300, duration: 1200, easing: 'linear' }, 0);
+    T.add({ targets: b1, width: 300, duration: 2200, easing: 'linear' }, 0);
+    T.add({ targets: b3, width: 300, duration: 3200, easing: 'linear' }, 0);
+    T.add({ targets: c2, opacity: 1, duration: 150 }, 1200);
+    T.add({ targets: c2, translateX: 0, translateY: 0, duration: 600, easing: 'easeInOutQuad' }, 1200);
+    step(T, mark, 1, 1800);
+    through(c2, 1800, 146);
+    step(T, mark, 2, 2100);
+    T.add({ targets: c2, translateX: -260, translateY: 256, duration: 600, easing: 'easeInOutQuad' }, 2600);
+    draw(T, $(f, '#t3s1'), 2900, 400);
+    T.add({ targets: n2, opacity: 1, duration: 300 }, 3150);
+    T.add({ targets: c2, opacity: 0, duration: 200 }, 3200);
+    T.add({ targets: c1, opacity: 1, duration: 150 }, 2200);
+    T.add({ targets: c1, translateX: 0, translateY: 0, duration: 600, easing: 'easeInOutQuad' }, 2650);
+    T.add({ targets: c1, translateY: 96, duration: 450, easing: 'linear' }, 3250);
+    flash(g[0], 3250);
+    step(T, mark, 3, 3700);
+    T.add({ targets: red, opacity: 1, duration: 200 }, 3700);
+    T.add({ targets: redtxt, opacity: 1, duration: 400 }, 3750);
+    T.add({ targets: c1, translateY: 0, duration: 500, easing: 'easeInOutQuad' }, 4000);
+    T.add({ targets: red, opacity: 0, duration: 300 }, 4400);
+    through(c1, 4550, 146);
+    T.add({ targets: c1, translateX: -70, translateY: 256, duration: 550, easing: 'easeInOutQuad' }, 5300);
+    draw(T, $(f, '#t3s2'), 5550, 400);
+    T.add({ targets: n1, opacity: 1, duration: 300 }, 5800);
+    T.add({ targets: c1, opacity: 0, duration: 200 }, 5850);
+    T.add({ targets: c3, opacity: 1, duration: 150 }, 3200);
+    T.add({ targets: c3, translateX: 0, translateY: 0, duration: 600, easing: 'easeInOutQuad' }, 5850);
+    through(c3, 6450, 146);
+    T.add({ targets: c3, translateX: 120, translateY: 256, duration: 550, easing: 'easeInOutQuad' }, 7150);
+    draw(T, $(f, '#t3s3'), 7400, 400);
+    T.add({ targets: n3, opacity: 1, duration: 300 }, 7650);
+    T.add({ targets: c3, opacity: 0, duration: 200 }, 7700);
+  };
+
+  B.t4 = (T, mark, f) => {
+    const ch = $$(f, '.connh line'), ct = $$(f, '.connt line');
+    const res = $$(f, '.res'), ra = $(f, '.res-a'), rb = $(f, '.res-b'), drop = $(f, '.t4drop');
+    anime.set([$(f, '.connh'), $(f, '.connt')], { opacity: 1 });
+    anime.set(ch.concat(ct), { opacity: 0 });
+    anime.set(res, { opacity: 0 }); anime.set(ra, { opacity: 0, translateX: -286, translateY: -228 });
+    anime.set(rb, { opacity: 0, translateX: 294, translateY: -238 }); anime.set(drop, { opacity: 0 });
+    step(T, mark, 0, 0); draw(T, ch, 0, 450, 90);
+    step(T, mark, 1, 1300); draw(T, ct, 1300, 450, 90);
+    step(T, mark, 2, 2600);
+    T.add({ targets: res, opacity: 1, translateY: [6, 0], duration: 350, delay: anime.stagger(90) }, 2600);
+    T.add({ targets: ra, opacity: 1, translateX: 0, translateY: 0, duration: 1000, easing: 'easeInOutCubic' }, 2800);
+    T.add({ targets: rb, opacity: 1, translateX: 0, translateY: 0, duration: 1000, easing: 'easeInOutCubic' }, 3000);
+    step(T, mark, 3, 4300);
+    T.add({ targets: [$(f, '.connh'), $(f, '.connt')], opacity: 0.3, duration: 900 }, 4300);
+    T.add({ targets: drop, opacity: 1, duration: 500 }, 4500);
+  };
+
+  B.t5 = (T, mark, f) => {
+    const n237 = $$(f, '.n237 circle'), n236 = $$(f, '.n236 circle');
+    anime.set(n237.concat(n236), { opacity: 0 });
+    anime.set($$(f, '.r237, .r236, .m237, .m236, .try'), { opacity: 0 });
+    anime.set($$(f, '.main1, .main2, .refuse, .rf'), { opacity: 0 });
+    step(T, mark, 0, 0);
+    draw(T, $$(f, '.r237, .r236'), 0, 700);
+    T.add({ targets: n237, opacity: 1, duration: 300, delay: anime.stagger(350) }, 500);
+    T.add({ targets: n236, opacity: 1, duration: 300, delay: anime.stagger(450) }, 500);
+    step(T, mark, 1, 2400);
+    draw(T, $(f, '.m237'), 2400, 600);
+    T.add({ targets: $(f, '.main1'), opacity: 1, duration: 300 }, 3000);
+    step(T, mark, 2, 3600);
+    draw(T, $(f, '.try'), 3600, 500);
+    T.add({ targets: $(f, '.refuse'), opacity: 1, translateX: [-6, 0], duration: 400 }, 4100);
+    step(T, mark, 3, 5000);
+    T.add({ targets: $$(f, '.rf'), opacity: 1, duration: 600, delay: anime.stagger(250) }, 5000);
+    draw(T, $(f, '.m236'), 6000, 700);
+    T.add({ targets: $(f, '.main2'), opacity: 1, duration: 300 }, 6700);
+  };
+
+  B.ev = (T, mark, f) => {
+    const bars = $$(f, '.barg');
+    anime.set(bars, { scaleX: 0 });
+    T.add({ targets: bars, scaleX: 1, duration: 900, delay: anime.stagger(160), easing: 'easeOutCubic' }, 0);
+  };
+
+  B.f1 = (T, mark, f) => {
+    const cards = { A: [170, 90], B: [540, 90], C: [170, 210], D: [540, 210] };
+    const agents = { A: [370, 140], B: [510, 140], C: [370, 260], D: [510, 260] };
+    const slot = (card, who) => $(f, '#f1-' + card + '-' + who);
+    const all = $$(f, '.f1slot'), own = ['A', 'B', 'C', 'D'].map(k => slot(k, k));
+    $$(f, '.pk').forEach(n => n.remove());
+    anime.set(all, { opacity: 0 }); anime.set(own, { width: 0 });
+    anime.set($$(f, '.f1ok, .f1flag'), { opacity: 0 });
+    step(T, mark, 0, 0);
+    T.add({ targets: own, opacity: 1, width: el => +el.dataset.w, duration: 700, delay: anime.stagger(150) }, 0);
+    const hold = { A: ['A'], B: ['B'], C: ['C'], D: ['D'] };
+    const layer = $(f, 'svg');
+    const cls = { A: 'fa', B: 'fb', C: 'fc', D: 'fd' };
+    const round = (pairs, at) => {
+      const gain = [];
+      pairs.forEach(([x, y]) => {
+        [[x, y], [y, x]].forEach(([s, t]) => {
+          travel(T, dot(layer, agents[s][0], agents[s][1], cls[s], 7), agents[s], agents[t], at, 1100);
+          hold[s].forEach(w => gain.push([t, w]));
+        });
+      });
+      gain.forEach(([t, w]) => { if (!hold[t].includes(w)) hold[t].push(w); });
+      T.add({ targets: gain.map(([t, w]) => slot(t, w)), opacity: 1, duration: 350 }, at + 1100);
+    };
+    step(T, mark, 1, 1300);
+    round([['A', 'B'], ['C', 'D']], 1300);
+    round([['A', 'C'], ['B', 'D']], 2900);
+    step(T, mark, 2, 4400);
+    T.add({ targets: $$(f, '.f1ok'), opacity: 1, translateY: [6, 0], duration: 450, delay: anime.stagger(120) }, 4400);
+    step(T, mark, 3, 5500);
+    T.add({ targets: $$(f, '.f1flag'), opacity: 1, duration: 450, delay: anime.stagger(100) }, 5500);
+  };
+
+  B.f2 = (T, mark, f) => {
+    const code = $$(f, '.f2code text'), lh = $(f, '.f2lh'), rh = $(f, '.f2rh'), ln = $$(f, '.f2lnote');
+    const lres = $(f, '.f2lres'), rres = $(f, '.f2rres');
+    anime.set(code, { opacity: 0 }); anime.set([lh, rh, lres, rres], { opacity: 0 }); anime.set(ln, { opacity: 0 });
+    step(T, mark, 0, 0);
+    T.add({ targets: code, opacity: 1, duration: 250, delay: anime.stagger(45) }, 0);
+    step(T, mark, 1, 1100);
+    T.add({ targets: ln, opacity: 1, duration: 400 }, 1100);
+    T.add({ targets: lh, opacity: 1, translateX: [-10, 0], duration: 600 }, 1500);
+    step(T, mark, 2, 2700);
+    T.add({ targets: lres, opacity: 1, translateY: [10, 0], duration: 600 }, 2700);
+    step(T, mark, 3, 4200);
+    T.add({ targets: rh, opacity: 1, translateX: [10, 0], duration: 600 }, 4200);
+    T.add({ targets: rres, opacity: 1, translateY: [10, 0], duration: 600 }, 4700);
+  };
+
+  B.f3 = (T, mark, f) => {
+    const cards = $$(f, '.card'), fills = $$(f, '.cf'), nums = $$(f, '.num'), scan = $(f, '#f3scan');
+    const c2 = $(f, '#f3c2'), stale = $(f, '.f3stale'), facts = $$(f, '.fact');
+    const setNum = (i, v) => { nums[i].textContent = v.toFixed(2); };
+    anime.set(cards, { opacity: 0, translateX: -70 });
+    fills.forEach((el, i) => { el.setAttribute('width', 150 * +el.dataset.from); setNum(i, +el.dataset.from); });
+    anime.set(scan, { opacity: 0, translateX: 0 }); anime.set(stale, { opacity: 0 }); anime.set(facts, { opacity: 0 });
+    anime.set($(f, '#f3v14'), { opacity: 1 }); anime.set($(f, '#f3v15'), { opacity: 0 });
+    step(T, mark, 0, 0);
+    T.add({ targets: cards, opacity: 1, translateX: 0, duration: 600, delay: anime.stagger(260), easing: 'easeOutCubic' }, 0);
+    step(T, mark, 1, 1700);
+    T.add({ targets: scan, opacity: [{ value: 1, duration: 200 }, { value: 1, duration: 1600 }, { value: 0, duration: 200 }], translateX: [0, 480], duration: 2000, easing: 'linear' }, 1700);
+    [2, 3].forEach(i => {
+      const o = { v: +fills[i].dataset.from };
+      T.add({ targets: o, v: +fills[i].dataset.to, duration: 700, update: () => { fills[i].setAttribute('width', 150 * o.v); setNum(i, o.v); } }, 2300 + (i - 2) * 400);
+    });
+    step(T, mark, 2, 4000);
+    T.add({ targets: $(f, '#f3v14'), opacity: 0, duration: 300 }, 4000);
+    T.add({ targets: $(f, '#f3v15'), opacity: 1, duration: 300 }, 4150);
+    const o1 = { v: +fills[1].dataset.from };
+    T.add({ targets: o1, v: +fills[1].dataset.to, duration: 900, update: () => { fills[1].setAttribute('width', 150 * o1.v); setNum(1, o1.v); } }, 4400);
+    T.add({ targets: c2, opacity: 0.55, duration: 900 }, 4400);
+    T.add({ targets: stale, opacity: 1, duration: 400 }, 4700);
+    step(T, mark, 3, 5700);
+    T.add({ targets: facts, opacity: 1, translateX: [12, 0], duration: 500, delay: anime.stagger(200) }, 5700);
+  };
+
+  B.f4 = (T, mark, f) => {
+    const t4 = $(f, '#tk4'), t6 = $(f, '#tk6'), t7 = $(f, '#tk7'), t5 = $(f, '#tk5'), tag = $(f, '#tk5tag');
+    const t8 = $(f, '#tk8'), solid = $(f, '#tk8solid'), dashed = $(f, '#tk8dash'), note = $(f, '#tk8note');
+    [t4, t6, t7].forEach(el => anime.set(el, { translateX: +el.dataset.dx, translateY: +el.dataset.dy }));
+    anime.set(t5, { translateX: 0, translateY: 0 }); anime.set(tag, { opacity: 0 });
+    anime.set([t8, note], { opacity: 0 }); anime.set(solid, { opacity: 0 }); anime.set(dashed, { opacity: 1 });
+    step(T, mark, 0, 0);
+    T.add({ targets: t4, translateX: 0, translateY: 0, duration: 900, easing: 'easeInOutCubic' }, 200);
+    T.add({ targets: t5, translateX: 555, translateY: 20, duration: 900, easing: 'easeInOutCubic' }, 500);
+    T.add({ targets: t6, translateX: 0, translateY: 0, duration: 900, easing: 'easeInOutCubic' }, 800);
+    step(T, mark, 1, 2100);
+    T.add({ targets: tag, opacity: 1, duration: 400 }, 2100);
+    T.add({ targets: t5, translateX: 0, translateY: 0, duration: 900, easing: 'easeInOutCubic' }, 2600);
+    step(T, mark, 2, 3700);
+    T.add({ targets: t7, translateX: 0, translateY: 0, duration: 900, easing: 'easeInOutCubic' }, 3700);
+    step(T, mark, 3, 4900);
+    T.add({ targets: t8, opacity: 1, translateX: [40, 0], duration: 600 }, 4900);
+    T.add({ targets: dashed, opacity: 0, duration: 400 }, 5800);
+    T.add({ targets: solid, opacity: 1, duration: 400 }, 5800);
+    T.add({ targets: note, opacity: 1, duration: 400 }, 5900);
+  };
+
+  B.f5 = (T, mark, f) => {
+    const lines = $$(f, '.f5l'), facts = $$(f, '.f5fact');
+    const c2 = [$(f, '#f5c2a'), $(f, '#f5c2b')], c1b = $(f, '#f5c1b');
+    const tags = $$(f, '.tag');
+    lines.forEach(l => { const h = $(l, '.hid'), v = $(l, '.vis'); anime.set(h, { opacity: 0 }); if (v) anime.set(v, { opacity: 0 }); });
+    anime.set(tags, { opacity: 0 }); anime.set(facts, { opacity: 0 });
+    step(T, mark, 0, 0);
+    T.add({ targets: lines.map(l => $(l, '.hid')), opacity: 1, duration: 500, delay: anime.stagger(200) }, 0);
+    T.add({ targets: tags, opacity: [0, 0.9], duration: 400, delay: anime.stagger(200) }, 200);
+    step(T, mark, 1, 1500);
+    T.add({ targets: facts, opacity: 1, translateX: [12, 0], duration: 500, delay: anime.stagger(300) }, 1500);
+    step(T, mark, 2, 2800);
+    T.add({ targets: c2.map(l => $(l, '.hid')), opacity: 0, duration: 500 }, 2800);
+    T.add({ targets: c2.map(l => $(l, '.vis')), opacity: 1, duration: 600 }, 2900);
+    step(T, mark, 3, 4200);
+    T.add({ targets: $(c1b, '.hid'), opacity: 0, duration: 500 }, 4200);
+    T.add({ targets: $(c1b, '.vis'), opacity: 1, duration: 600 }, 4300);
+    T.add({ targets: tags, opacity: 1, duration: 300 }, 4800);
+  };
+
+  B.f6 = (T, mark, f) => {
+    const snaps = $$(f, '.snap'), meter = $(f, '#f6meter'), quiet = $(f, '#f6quiet');
+    const off = (el, x, y) => [x - +el.dataset.fx, y - +el.dataset.fy];
+    snaps.forEach(el => { const [dx, dy] = off(el, 250, 138); anime.set(el, { opacity: 0, translateX: dx, translateY: dy }); anime.set($(el, '.mk2'), { opacity: 0 }); });
+    meter.setAttribute('width', 110); anime.set(quiet, { opacity: 0 });
+    const go = (el, at, final) => {
+      const [gx, gy] = off(el, 585, 138);
+      T.add({ targets: el, opacity: 1, duration: 200 }, at);
+      T.add({ targets: el, translateX: gx, translateY: gy, duration: 900, easing: 'easeInOutQuad' }, at);
+      T.add({ targets: $(el, '.mk2'), opacity: 1, duration: 250 }, at + 950);
+      T.add({ targets: el, translateX: 0, translateY: 0, duration: 600, easing: 'easeInOutQuad' }, at + (final ? 1500 : 1300));
+    };
+    step(T, mark, 0, 0);
+    go(snaps[0], 0);
+    step(T, mark, 1, 950);
+    go(snaps[1], 1500);
+    go(snaps[2], 3000);
+    T.add({ targets: meter, width: 64, duration: 3600, easing: 'linear' }, 0);
+    step(T, mark, 2, 4000);
+    T.add({ targets: meter, width: 12, duration: 1500, easing: 'easeOutQuad' }, 3800);
+    T.add({ targets: quiet, opacity: 1, duration: 400 }, 5300);
+    go(snaps[3], 4600, true);
+    step(T, mark, 3, 6900);
+    T.add({ targets: { v: 0 }, v: 1, duration: 1400 }, 6900);
+  };
+
+  /* F1 cards are generated once so every copy uses identical geometry */
+  (function buildF1() {
+    const host = document.getElementById('f1cards'); if (!host) return;
+    const pos = { A: [170, 90], B: [540, 90], C: [170, 210], D: [540, 210] };
+    const rows = [['base', 110], ['A', 100], ['base', 90], ['B', 80], ['base', 120], ['C', 120], ['D', 70]];
+    const col = { A: 'fa', B: 'fb', C: 'fc', D: 'fd', base: 'grey' };
+    let html = '';
+    Object.entries(pos).forEach(([k, [x, y]]) => {
+      html += `<text x="${x}" y="${y - 8}" class="s mut">agent ${k}'s copy</text>`;
+      html += `<rect x="${x}" y="${y}" width="170" height="100" rx="5" class="box"/>`;
+      rows.forEach(([who, w], r) => {
+        const yy = y + 12 + 12 * r;
+        if (who === 'base') html += `<rect x="${x + 14}" y="${yy}" width="${w}" height="7" rx="3" class="grey"/>`;
+        else html += `<rect id="f1-${k}-${who}" x="${x + 14}" y="${yy}" width="${w}" data-w="${w}" height="7" rx="3" class="${col[who]} f1slot"/>`;
+      });
+      html += `<g class="f1flag"><polygon points="${x + 146},${y + 71} ${x + 156},${y + 75.5} ${x + 146},${y + 80}" class="fjev"/><line x1="${x + 146}" y1="${y + 70}" x2="${x + 146}" y2="${y + 86}" class="edge sjev"/></g>`;
+      html += `<text x="${x}" y="${y + 118}" class="s fpass bold f1ok">✓ identical</text>`;
+    });
+    host.innerHTML = html;
+    const legend = document.createElementNS(NS, 'text');
+    legend.setAttribute('x', 440); legend.setAttribute('y', 346); legend.setAttribute('text-anchor', 'middle'); legend.setAttribute('class', 's mut');
+    legend.textContent = 'the flag on C’s line is a conflict mark: carried along in every copy, blocking nothing';
+    host.appendChild(legend);
+  })();
+
+  /* ---------- controller ---------- */
+  function setup(fig, build) {
+    const btn = $(fig, '.play'), lis = $$(fig, '.steps li');
+    let current = null;
+    const mark = i => lis.forEach((li, j) => li.classList.toggle('on', j === i));
+    function run() {
+      if (current) current.pause();
+      const T = anime.timeline({ autoplay: false, easing: 'easeInOutQuad' });
+      build(T, mark, fig);
+      current = T;
+      btn.textContent = 'Playing';
+      T.finished.then(() => { if (current === T) { mark(-1); btn.textContent = 'Replay'; } });
+      T.play();
+    }
+    btn.addEventListener('click', run);
+    if (!REDUCED && 'IntersectionObserver' in window) {
+      const io = new IntersectionObserver(es => { es.forEach(e => { if (e.isIntersecting) { io.disconnect(); run(); } }); }, { threshold: 0.4 });
+      io.observe(fig);
+    }
+  }
+  $$(document, 'figure[data-scene]').forEach(fig => { const b = B[fig.dataset.scene]; if (b) setup(fig, b); });
+  if (!REDUCED) hero();
+})();
+</script>
