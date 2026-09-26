@@ -203,12 +203,13 @@ bridges every `fleet/tests/test_*.mjs`, the engine sims included.
   fixtures, `evals/results/2026-08-30-one-driver-fold-ab.md`), so same-file concurrent writes are
   the shipped default: a substrate that isolates harder than the kernel needs is buying nothing and
   costing width.
-  **Under question since 2026-09-25 (map #1292, the Flock):** the fold rebuilds each path's weave
-  from BASE on every landing (`repo_weave.chained_snapshots`), so Manyana runs today as a
-  two-sided, three-way merge and its memory is discarded per fold. #1292 proposes a weave replica
-  per agent, merged continuously, with beliefs on the board and the facts kept at one edge — which
-  retires this rule. The rule stands until #1292's prototype earns the engine; its first reading is
-  the offline weave replay (its ticket 1).
+  **Questioned and kept (map #1292, the Flock, parked 2026-09-25):** a leaderless swarm, with a
+  weave replica per agent merged continuously, raced the factory on the same plans. It tied: on
+  atlas (15 tasks, 8 agents) the Flock was ready at 85–101 s (n=5) and the factory at 85–94 s (n=3),
+  because the pool already runs every task it can at once and spends only seconds at a landing.
+  The rule stands. The map reopens on a workload where the landing step is measured as the
+  bottleneck. What it kept (edit-built line identity, #359 answered with option (a); the belief
+  schema; the idle-based settling rule; early close; `wait_for`) lives on branch `flock-proto`.
 - **Handoffs are opt-in** — a session starts from the operator's intention, never from the last
   session's agenda; read `.claude/ultrapowers/handoffs/` only when asked to resume (operator,
   2026-08-31). When you do read them, **sort by mtime, never by filename** — they are named for
