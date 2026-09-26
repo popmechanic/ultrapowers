@@ -1,0 +1,5 @@
+run | arm | green | wall_s | last_session_to_settled_s | conflicts | same_spot | red_from_peer | red_waiting_rename | peer_lines | refusals | flipbacks | out_tokens | bash_over_60s | wait_for | replay_mismatch | order
+ledger WB1 | batch | True | 57 | 2.8 | 0->0 unions=10 | 2 | 0 | 0 | 0 | 0 | 0 | 11.5k | - | 1 (C 11s held) | 0 | ['check_date', 'check_account', 'check_amount', 'check_memo']
+ledger WB2 | batch | True | 64 | 2.7 | 0->0 unions=7 | 2 | 0 | 0 | 0 | 0 | 0 | 11.3k | - | 1 (C 3s held) | 0 | ['check_date', 'check_account', 'check_amount', 'check_memo']
+ledger WE1 | explicit | True | 67 | 3.1 | 0->0 unions=7 | 2 | 0 | 1 | 0 | 0 | 1 | 10.8k | - | 2 (B 6s held,C 14s held) | 0 | ['check_date', 'check_account', 'check_amount', 'check_memo']
+ledger WE2 | explicit | True | 62 | 3.0 | 2->2 unions=5 | 2 | 0 | 1 | 0 | 0 | 1 | 11.3k | - | 2 (B 3s held,C 7s held) | 0 | ['check_date', 'check_account', 'check_amount', 'check_memo']
