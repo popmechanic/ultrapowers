@@ -873,7 +873,13 @@ async function land () {
   if (outcome && outcome.pr === 'ready' && outcome.snap) {
     const sha = commitSnapshot(outcome.snap, `flock: settled ${outcome.snap}`)
     if (!sha) { ev('landing:empty', { snap: outcome.snap }); return 1 }
-    for (const t of W.tasks) ev('landing', { task: t.id, k: sessionsOf(t.id), factsExit: 0, candidateSha: sha })
+    // the settled edge ran every task's facts on the merged tree: the fact the factory records as
+    // `fold:verify`, so the boot's audit reads a Flock run by the same rows (runroom-ab run-4: 12 missing)
+    const exits = (lastEdge && lastEdge.snap === outcome.snap && lastEdge.perTask) || {}
+    for (const t of W.tasks) {
+      ev('fold:verify', { task: t.id, ran: t.facts.map((f, i) => ({ id: t.id, kind: 'probe', cmd: f[f.length - 1], exit: (exits[t.id] || [])[i] ?? null })), attempt: 1, snap: outcome.snap })
+      ev('landing', { task: t.id, k: sessionsOf(t.id), factsExit: 0, candidateSha: sha })
+    }
     return 0
   }
   if (lastEdge) {
