@@ -496,14 +496,16 @@ export async function listIntegrations (exec) {
 
 // ── The assignment comment ──────────────────────────────────────────────────
 
-/** The comment's keys, in the order the contract spells them. */
+/** The comment's seven keys, in the order the contract spells them. `kind`
+ *  (`flock` or `factory`) and `hold` are optional: a launch without `--kind`
+ *  carries no `kind=` and builds the six-key comment byte for byte. */
 export const COMMENT_KEYS = Object.freeze([
-  'run', 'plan', 'target', 'base', 'engine', 'hold'
+  'run', 'plan', 'target', 'base', 'engine', 'kind', 'hold'
 ])
 
 /**
  * Build the assignment comment: single line, space-separated `key=value`, keys
- * in contract order, optional `hold=` last. Every
+ * in contract order, optional `kind=` before optional `hold=` last. Every
  * value has already been validated by the caller; nothing here can introduce a
  * quote or a space.
  */

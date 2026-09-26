@@ -1,82 +1,123 @@
 #!/usr/bin/env node
-// PROTOTYPE — throwaway (map #1292, ticket 4). The Flock on the laptop.
+// The Flock engine (map #1292: adopted as an experiment behind the boot's engine switch; the
+// round-3 arm is the measured shape). Grown from the laptop prototype (flock-runroom's host.mjs).
 //
-//   node flock/proto/host.mjs --workload widgetkit|inventory|ledger|ledger2|atlas [--agents 3]
-//        [--model claude-opus-5-5] [--clock 1800] [--quiet 45] [--tag r1]
-//        [--early-close held|off] [--order chain|rotate]   (off / rotate: the rollbacks)
+//   node factory/flock/engine.mjs --plan <plan.md> --target <dir> --base <sha> --run-dir <dir>
+//        [--builder sdk|scripted:<json>] [--model claude-opus-5-5] [--clock 13800]
+//        [--agents elastic|<n>] [--cap 16] [--settle tested|debounce|quiet] [--done-ends on|off]
+//        [--tool-search off|on] [--brief digest|board] [--stdin closed|open]
+//        [--early-close held|off] [--order chain|rotate]
+//   (--kata-url, --kata-project, --kata-json, --kata-actor are accepted and ignored: the Flock
+//    keeps its stand-in board.)
 //
-// Question it answers: with N agents working one plan together, each on its own
-// copy, merging with each other between tool batches, does the swarm settle on
-// green code; what does half-finished peer work cost (gap 4); how does settling
-// behave (gap 6); what load does the board take (gap 7, stand-in board).
+// With N builders working one plan together, each on its own copy, merging with each other
+// between tool batches, the swarm settles on green code; the engine then leaves the target one
+// commit ahead of --base and writes the rows the pull request card reads (events.jsonl).
 //
-// The host is code, not a model: it seeds the board, runs each agent's session,
-// keeps every copy's weave (flock/proto/weave.py), merges peers after each tool
-// batch, and tests every published snapshot at the edge. Agents pull their own
+// The engine is code, not a model: it seeds the board, runs each builder's session,
+// keeps every copy's weave (factory/flock/weave.py), merges peers after each tool
+// batch, and tests every published snapshot at the edge. Builders pull their own
 // work from the board and never run git.
-import { query, createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
-import { z } from 'zod'
 import { spawn, spawnSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
-import { WORKLOADS, writeBase } from './workloads.mjs'
+import { workloadFromPlan } from './plan.mjs'
 import { makeBoard } from './flock_board.mjs'
 import { editSpans } from './edit_spans.mjs'
+import { pullScope } from './pulls.mjs'
+import { findGit } from '../gitblock.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d }
-const W = WORKLOADS[arg('workload', 'widgetkit')]
-// `--agents elastic` (operator 2026-09-26, the Run Room retune): no forecast. A builder opens
-// whenever a ready task has no free builder to take it, up to `--cap`; an idle builder holds no
-// session, so it costs no tokens. `--agents <n>`, a fixed pool, is the rollback.
-const ELASTIC = arg('agents', '3') === 'elastic'
+const need = (k) => { const v = arg(k); if (!v) { console.error(`engine: --${k} is required`); process.exit(2) } return v }
+const PLAN = path.resolve(need('plan'))
+const TARGET = path.resolve(need('target'))
+const BASE_SHA = need('base')
+if (!/^[0-9a-f]{40}$/.test(BASE_SHA)) { console.error('engine: --base must be a 40-hex sha'); process.exit(2) }
+const RUN_DIR = path.resolve(need('run-dir'))
+// --kata-url / --kata-project / --kata-json / --kata-actor: accepted (the boot passes them to either
+// engine) and ignored; the Flock keeps its stand-in board.
+// `--builder sdk` (default): a model session per claim. `scripted:<json>`: no model; the JSON maps a
+// task id to {path: text}, which the session writes and then finishes as a `done` call would.
+const BUILDER = arg('builder', 'sdk')
+const SCRIPT = BUILDER.startsWith('scripted:') ? JSON.parse(fs.readFileSync(BUILDER.slice('scripted:'.length), 'utf8')) : null
+if (!SCRIPT && BUILDER !== 'sdk') { console.error('engine: --builder is sdk or scripted:<json>'); process.exit(2) }
+// the SDK and zod load only for model builders: a scripted run needs neither
+const { query, createSdkMcpServer, tool } = SCRIPT ? {} : await import('@anthropic-ai/claude-agent-sdk')
+const { z } = SCRIPT ? {} : await import('zod')
+const W = { name: path.basename(PLAN, '.md'), ...workloadFromPlan(PLAN) }
+for (const t of W.tasks) t.id = String(t.id)
+for (const t of W.tasks) t.depends_on = t.depends_on.map(String)
+// Defaults are the round-3 arm (n=3 runs, runroom-r3-1..3, 2026-09-26); each flag's old value is its rollback.
+// `--agents elastic`: no forecast. A builder opens whenever a ready task has no free builder to take
+// it, up to `--cap`; an idle builder holds no session, so it costs no tokens. `--agents <n>`, a fixed
+// pool, is the rollback.
+const ELASTIC = arg('agents', 'elastic') === 'elastic'
 const CAP = Number(arg('cap', 16))
 const N = ELASTIC ? 0 : Number(arg('agents', 3))
 const MODEL = arg('model', 'claude-opus-5-5')
-const CLOCK_MS = Number(arg('clock', 1800)) * 1000
+// under the boot's 14400 s unit limit
+const CLOCK_MS = Number(arg('clock', 13800)) * 1000
 const QUIET_MS = Number(arg('quiet', 45)) * 1000
-// explicit: an agent publishes when it calls publish (and the host publishes at session end,
-// released or done); batch: the host also publishes the agent's copy after every tool batch
+// explicit: a builder publishes when it calls publish (and the engine publishes at session end,
+// released or done); batch: the engine also publishes the builder's copy after every tool batch
 // in which it changed (map Q4, operator 2026-09-25)
 const PUBLISH = arg('publish', 'explicit')
 const dirty = {}
-// ticket 5 (settling): `debounce` settles once nothing can change the merged code (no live
-// session, nothing ready or claimed) and the edge has tested the latest hash, after D =
-// max(1 s, 2 x this run's p90 publish->edge latency). `quiet` is the rollback: the fixed window.
-const SETTLE = arg('settle', 'debounce')
-// round 3 (operator 2026-09-26, #1292), each with today's behaviour as its rollback:
+// settling: `tested` (round 3) settles as soon as the last tested hash is green with nothing
+// published after it; `debounce` waits D = max(1 s, 2 x this run's p90 publish->edge latency);
+// `quiet` waits a fixed window.
+const SETTLE = arg('settle', 'tested')
+// round 3 (operator 2026-09-26, #1292), each with the old behaviour as its rollback:
 // --done-ends on|off   a builder's `done` publishes, marks the task done and ends its code
 //                      changes (later edits refused, no session-end publish); off: done only marks
 // --tool-search off|on the builder's own tools load up front (no ToolSearch step)
 // --brief digest|board the opening message carries a digest instead of "Start with board_read"
 // --stdin closed|open  every Bash command runs with stdin closed, so a stdin read fails fast
-const DONE_ENDS = arg('done-ends', 'off') === 'on'
-const TOOL_SEARCH = arg('tool-search', 'on')
-const BRIEF = arg('brief', 'board')
-const STDIN = arg('stdin', 'open')
-// the final atlas race (operator 2026-09-25), two fixes, each with today's behaviour as its rollback:
+const DONE_ENDS = arg('done-ends', 'on') === 'on'
+const TOOL_SEARCH = arg('tool-search', 'off')
+const BRIEF = arg('brief', 'digest')
+const STDIN = arg('stdin', 'closed')
 // `--early-close held` closes an open conflict as a fact the moment a publish shows its merged text
-// is an agent's own writing over both sides (see earlyClose); `off` waits for resolve_conflict or an
-// idle-time resolve task, as before. Proven offline: readings/early_close_replay.py.
+// is a builder's own writing over both sides (see earlyClose); `off` waits for resolve_conflict or an
+// idle-time resolve task.
 const EARLY_CLOSE = arg('early-close', 'held')
 // `--order chain` offers the ready set longest remaining chain first (flock_board.mjs); `rotate`,
 // each claimer starting its walk at its own offset, is the rollback.
 const ORDER = arg('order', 'chain')
+// `--pulls narrow` (#1292): a builder takes in only the peer changes its work touches (pulls.mjs);
+// `all`, every published change, is the rollback. Absent the flag, the policy cell flock.pulls.mode.
+const PULLS = arg('pulls', (() => { try { return JSON.parse(fs.readFileSync(path.join(HERE, '..', 'policy.json'), 'utf8')).flock?.pulls?.mode } catch { return undefined } })() || 'all')
+if (!['narrow', 'all'].includes(PULLS)) { console.error('engine: --pulls is narrow or all'); process.exit(2) }
+const touched = {}   // per builder: the paths it has read or edited in its copy
+const touch = (agent, rel) => (touched[agent] = touched[agent] || new Set()).add(rel)
 const MAX_REOPEN = 3
-const NAMES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].slice(0, N)   // up to 8 (the scale pass, atlas); [] when elastic
-const STAMP = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-const OUT = path.join(HERE, 'runs', `${W.name}-${arg('tag', 'r')}-${STAMP}`)
+const NAMES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].slice(0, N)   // up to 8; [] when elastic
+const OUT = RUN_DIR
+const WORK = path.join(RUN_DIR, 'work')
 const T0 = Date.now()
 const now = () => Date.now() - T0
+// every fact, the check and setup see the base they are judged against
+const RUN_ENV = { ...process.env, PYTHONDONTWRITEBYTECODE: '1', ULTRA_BASE: BASE_SHA }
 
 fs.mkdirSync(OUT, { recursive: true })
+fs.rmSync(WORK, { recursive: true, force: true })
+fs.mkdirSync(WORK, { recursive: true })
 const EV = fs.openSync(path.join(OUT, 'events.jsonl'), 'a')
-const ev = (kind, o = {}) => fs.writeSync(EV, JSON.stringify({ t: now(), kind, ...o }) + '\n')
+const ev = (kind, o = {}) => fs.writeSync(EV, JSON.stringify({ t: now(), kind, ...o, ts: new Date().toISOString() }) + '\n')
 const log = (...a) => console.log(`[${(now() / 1000).toFixed(1).padStart(6)}s]`, ...a)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+// ── the engine's own git, on the target ───────────────────────────────────────
+function git (args, opts = {}) {
+  const r = spawnSync('git', ['-C', TARGET, ...args], { encoding: opts.encoding === undefined ? 'utf8' : opts.encoding, maxBuffer: 256 * 1024 * 1024 })
+  if (r.error) throw r.error
+  if (r.status !== 0) throw new Error(`git ${args.join(' ')} exited ${r.status}: ${r.stderr}`)
+  return r.stdout
+}
 
 // ── the weave keeper ──────────────────────────────────────────────────────────
 const wp = spawn('python3', [path.join(HERE, 'weave.py')], { stdio: ['pipe', 'pipe', 'inherit'] })
@@ -101,29 +142,46 @@ function walk (dir, rel = '') {
   return out
 }
 const readOr = (f) => { try { return fs.readFileSync(f, 'utf8') } catch { return null } }
-const BASE_DIR = path.join(OUT, 'base')
-writeBase(W, BASE_DIR)
+const BASE_DIR = path.join(WORK, 'base')
+// BASE is the target's tree at --base, read with the engine's own git (not its working tree)
+function writeBase (dir) {
+  fs.mkdirSync(dir, { recursive: true })
+  const rows = git(['ls-tree', '-r', '-z', BASE_SHA]).split('\0').filter(Boolean)
+  for (const row of rows) {
+    const tab = row.indexOf('\t')
+    const [mode, type, sha] = row.slice(0, tab).split(' ')
+    const rel = row.slice(tab + 1)
+    if (type !== 'blob') continue
+    const f = path.join(dir, rel)
+    fs.mkdirSync(path.dirname(f), { recursive: true })
+    if (mode === '120000') { fs.symlinkSync(git(['cat-file', 'blob', sha]), f); continue }
+    fs.writeFileSync(f, git(['show', sha], { encoding: 'buffer' }))
+    if (mode === '100755') fs.chmodSync(f, 0o755)
+  }
+}
+writeBase(BASE_DIR)
 const BASE_PATHS = walk(BASE_DIR)
-// a workload with `setup` (runroom: bun install) installs once into DEPS_DIR, and every copy the
-// host makes (each agent's, the edge's) gets that install's node_modules dirs as symlinks, so the
-// weave never sees them (walk skips node_modules) and no copy pays a second install
-const DEPS_DIR = path.join(OUT, 'deps')
+const BASE_FILES = Object.fromEntries(BASE_PATHS.map((p) => [p, readOr(path.join(BASE_DIR, p))]))
+// a workload with `setup` installs once into DEPS_DIR, and every copy the engine makes (each
+// builder's, the edge's) gets that install's node_modules dirs as symlinks, so the weave never sees
+// them (walk skips node_modules) and no copy pays a second install
+const DEPS_DIR = path.join(WORK, 'deps')
 let DEP_DIRS = []
 if (W.setup) {
   fs.cpSync(BASE_DIR, DEPS_DIR, { recursive: true })
-  const r = spawnSync(W.setup[0], W.setup.slice(1), { cwd: DEPS_DIR, encoding: 'utf8', timeout: 300000 })
+  const r = spawnSync(W.setup[0], W.setup.slice(1), { cwd: DEPS_DIR, encoding: 'utf8', timeout: 300000, env: RUN_ENV })
   if (r.status !== 0) throw new Error('setup failed: ' + ((r.stdout || '') + (r.stderr || '')).slice(-800))
   DEP_DIRS = ['node_modules', ...fs.readdirSync(DEPS_DIR, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name !== 'node_modules')
     .map((e) => path.join(e.name, 'node_modules'))].filter((d) => fs.existsSync(path.join(DEPS_DIR, d)))
 }
 const linkDeps = (dir) => { for (const d of DEP_DIRS) { fs.rmSync(path.join(dir, d), { recursive: true, force: true }); fs.symlinkSync(path.join(DEPS_DIR, d), path.join(dir, d)) } }
-const agentDir = (a) => path.join(OUT, 'agents', a)
+const agentDir = (a) => path.join(WORK, 'agents', a)
 for (const a of NAMES) { fs.cpSync(BASE_DIR, agentDir(a), { recursive: true }); linkDeps(agentDir(a)) }
 const known = Object.fromEntries(NAMES.map((a) => [a, new Set(BASE_PATHS)]))
 
-// ── the board: the stand-in (default) or real Kata (--board kata); every op timed for gap 7 ──
-const BOARD = arg('board', 'standin')
-const board = await makeBoard(BOARD, { tasks: W.tasks, now, runName: path.basename(OUT), url: arg('kata-url', 'http://127.0.0.1:7777'), order: ORDER })
+// ── the board: the stand-in, every op timed. The boot's --kata-* flags are ignored. ──
+const BOARD = 'standin'
+const board = await makeBoard(BOARD, { tasks: W.tasks, now, runName: path.basename(OUT), order: ORDER })
 const READS = new Set(['ping', 'ready', 'list', 'beliefs', 'read'])
 
 // ── edit-location errors (gap 3 at scale): an Edit the tool refused, by why ──
@@ -135,7 +193,7 @@ const failKind = (err) => /Found \d+ matches|multiple|not unique/i.test(err) ? '
 // ── facts ─────────────────────────────────────────────────────────────────────
 function runFacts (cwd, task) {
   return task.facts.map((cmd) => {
-    const r = spawnSync(cmd[0], cmd.slice(1), { cwd, encoding: 'utf8', timeout: 60000, env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } })
+    const r = spawnSync(cmd[0], cmd.slice(1), { cwd, encoding: 'utf8', timeout: 60000, env: RUN_ENV })
     return { exit: r.status ?? 124, tail: ((r.stdout || '') + (r.stderr || '')).slice(-800) }
   })
 }
@@ -315,7 +373,7 @@ function edge (reason) {
       return lastEdge
     }
     lastChange = now()
-    const dir = path.join(OUT, 'edge')
+    const dir = path.join(WORK, 'edge')
     fs.rmSync(dir, { recursive: true, force: true }); fs.cpSync(BASE_DIR, dir, { recursive: true }); linkDeps(dir)
     for (const [p, text] of Object.entries(m.files)) {
       const f = path.join(dir, p)
@@ -323,7 +381,7 @@ function edge (reason) {
     }
     const perTask = {}
     for (const t of board.tasks.values()) perTask[t.id] = runFacts(dir, t).map((r) => r.exit)
-    const chk = spawnSync(W.check[0], W.check.slice(1), { cwd: dir, encoding: 'utf8', timeout: 120000, env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } })
+    const chk = W.check ? spawnSync(W.check[0], W.check.slice(1), { cwd: dir, encoding: 'utf8', timeout: 120000, env: RUN_ENV }) : { status: 0, stdout: '', stderr: '' }
     const factsGreen = Object.values(perTask).every((xs) => xs.every((x) => x === 0))
     // ticket 5: every region the edge sees goes through the ledger. The old `!ledger.has(p)`
     // let a NEW conflict on a once-closed path pass the edge unexamined.
@@ -332,7 +390,7 @@ function edge (reason) {
     earlyClose(m, snap)
     const blocking = openConflicts()
     lastEdge = { snap, t: now(), reason, perTask, check: chk.status, checkTail: ((chk.stdout || '') + (chk.stderr || '')).slice(-600), conflicts: m.conflicts, blocking, annotated: m.annotated, green: factsGreen && chk.status === 0 && !blocking.length }
-    snapshots.push({ snap, t: now(), files: m.files })
+    snapshots.push({ snap, t: now(), files: m.files, exists: m.exists })
     edgeLatency.push(now() - asked)
     // ticket 5: livelock, record-only. Facts rose on every new snapshot of every recorded run
     // (0 regressions over 53 edges, n=15 runs), so K snapshots with no new best is unseen: it
@@ -355,7 +413,7 @@ Each agent works in its own copy. Other agents' published work is merged into yo
 Rules:
 - Change an existing file only with the Edit tool. New files may be created any way you like. Shell commands must not overwrite, move or delete existing files.
 - Never run git.
-- Run tests with: python3 -m pytest -q -p no:cacheprovider
+- Run your task's facts with run_proof: they are the tests that decide whether your task is done.
 - Use the flock tools: board_read (tasks and beliefs), post_belief (tell the others something true and useful, with how sure you are), run_proof (your task's facts, on your copy), publish (share your copy's changes), wait_for (wait for a peer's work: a task done, a text in a file, a proof green), release (give the task back if you are blocked), done (your task is finished).
 - To wait for another agent's work, call wait_for. Never wait with shell sleep or a polling loop: peers' work reaches your copy only between your tool calls, so a shell loop cannot see it arrive.
 ${PUBLISH === 'batch' ? '- Your changes are published to the others automatically after each of your tool batches, finished or not; publish is still there when you want to be sure.' : '- Publish whenever your change is coherent, so the others build on it.'}
@@ -363,8 +421,11 @@ ${PUBLISH === 'batch' ? '- Your changes are published to the others automaticall
 - If a note says a file merged with conflict marks, look at that part of the file. When it says what both sides meant (edit it if not), call resolve_conflict for that file.
 ${DONE_ENDS ? "- When your task's facts pass on your copy, call done: it publishes your copy for you and closes it." : "- When your task's facts pass on your copy, publish, then call done."}`
 
-async function pullInto (agent) {
-  const r = await must({ op: 'pull', agent })
+async function pullInto (agent, task) {
+  // a resolve task (R:<path>) scopes to its own path
+  if (task && !task.files && String(task.id).startsWith('R:')) task = { ...task, files: [task.id.slice(2)] }
+  const scope = task ? pullScope({ task, tasks: W.tasks, touched: [...(touched[agent] || [])], mode: PULLS }) : null
+  const r = await must(scope ? { op: 'pull', agent, paths: [...scope] } : { op: 'pull', agent })
   const dir = agentDir(agent)
   for (const c of r.changed) {
     const f = path.join(dir, c.path)
@@ -405,11 +466,35 @@ function brief (task) {
     (bel.length ? 'Beliefs about your task or files:\n- ' + bel.slice(-5).map((b) => `${b.by} (${b.confidence}): ${b.claim}`).join('\n- ') : 'No beliefs concern your task or files.') +
     ' board_read shows the whole board if you need it.'
 }
+// `--builder scripted:<json>`: no model. The session writes the task's scripted files into its
+// copy, then takes the path a `done` call takes (syncFromDisk -> publish -> board done) and ends.
+// A task the script does not name ends released.
+async function scriptedSession (agent, task) {
+  const cwd = agentDir(agent)
+  const files = SCRIPT[task.id]
+  ev('session:start', { agent, task: task.id, builder: 'scripted' })
+  log(agent, 'claims task', task.id, '(scripted)')
+  live.add(agent)
+  if (files) {
+    for (const [p, text] of Object.entries(files)) {
+      const f = path.join(cwd, p)
+      fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text)
+    }
+    await syncFromDisk(agent); await publishCopy(agent); ev('publish', { agent, task: task.id, by: 'done' }); await board.publish(agent, task.id)
+    await board.done(task); live.delete(agent); edge('done ' + agent); log(agent, 'done', task.id)
+  }
+  usage.push({ agent, task: task.id, turns: 0, subtype: 'scripted', cost_usd: 0 })
+  ev('session:end', { agent, task: task.id, released: files ? false : 'not scripted', done: files ? 'scripted' : false })
+  live.delete(agent); lastChange = now()
+  if (!files) { await board.release(task, `${agent} released: the script names no files for task ${task.id}`); log(agent, 'releases', task.id) }
+}
+
 async function session (agent, task) {
   const cwd = agentDir(agent)
   const st = { released: false, done: false, redRuns: 0 }
   const pre = new Map()
-  await pullInto(agent)
+  await pullInto(agent, task)
+  if (SCRIPT) return scriptedSession(agent, task)
   const say = (text) => ({ content: [{ type: 'text', text }] })
   const tools = [
     tool('board_read', 'Read the board: every task with its state and owner, and the latest beliefs.', {}, async () => say(JSON.stringify(await board.read(), null, 1))),
@@ -463,7 +548,7 @@ async function session (agent, task) {
         let held = holds()
         while (!held && now() - t0 < limit && !outcome) {
           await sleep(1000)
-          const changed = await pullInto(agent)
+          const changed = await pullInto(agent, task)
           for (const c of changed) merged.set(c.path, c)
           if (changed.length) proofChanged = true
           spotted.push(...(spotNotes[agent] || [])); delete spotNotes[agent]
@@ -501,10 +586,14 @@ async function session (agent, task) {
     PreToolUse: [{ hooks: [async (input) => {
       const ti = input.tool_input || {}
       ev('tool', { agent, task: task.id, tool: input.tool_name, target: String(ti.file_path || ti.command || '').slice(0, 120) })
+      if (['Read', 'Edit', 'MultiEdit', 'Write'].includes(input.tool_name) && ti.file_path) {
+        const fp = path.resolve(cwd, ti.file_path)
+        if (fp.startsWith(cwd + '/')) touch(agent, fp.slice(cwd.length + 1))
+      }
       if (st.closed && ['Edit', 'MultiEdit', 'Write', 'Bash'].includes(input.tool_name)) {
         return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'your task is done and your copy is closed; end your turn' } }
       }
-      if (input.tool_name === 'Bash' && /(^|[;&|(\s])git(\s|$)/.test(ti.command || '')) {
+      if (input.tool_name === 'Bash' && findGit(ti.command || '') !== null) {
         return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'agents never run git' } }
       }
       if (input.tool_name === 'Bash') {
@@ -580,7 +669,7 @@ async function session (agent, task) {
         await syncFromDisk(agent); await publishCopy(agent); dirty[agent] = false
         ev('publish', { agent, task: task.id, auto: 'batch' }); await board.publish(agent, task.id); edge('batch ' + agent)
       }
-      const changed = await pullInto(agent)
+      const changed = await pullInto(agent, task)
       const spotted = [...(spotNotes[agent] || [])]; delete spotNotes[agent]
       if (!changed.length && !spotted.length) return {}
       const note = (changed.length ? 'Peers\' published work was merged into your copy just now: ' +
@@ -679,7 +768,7 @@ async function settle () {
         body: `Two agents changed the same part of \`${p}\` and the merge marked it as a conflict. Here is the merged file with the conflict sections marked (<<<<<<< begin … / ======= begin … / >>>>>>> end conflict; "left" and "right" are the two sides):\n\n\`\`\`\n${ann || '(annotation unavailable)'}\n\`\`\`\n\nYour copy holds the merged text WITHOUT the markers. Make that part of \`${p}\` say what both sides meant (edit with Edit if it does not already), run the tests, then call resolve_conflict for \`${p}\` and then done.` })
       ev('resolve-task', { path: p, snap: r.snap }); log('resolve task for', p)
     }
-    if (r.check !== 0 && all.every((t) => (r.perTask[t.id] || []).every((x) => x === 0))) {
+    if (W.check && r.check !== 0 && all.every((t) => (r.perTask[t.id] || []).every((x) => x === 0))) {
       // ticket 5: the check is red with every fact green. The old loop restarted the quiet
       // window and told nobody, so the run waited for its clock. Now the check owns a task.
       ev('red-check-only', { snap: r.snap, tail: r.checkTail }); log('check red with every fact green')
@@ -703,7 +792,7 @@ async function settle () {
 
 // ── run ───────────────────────────────────────────────────────────────────────
 await must({ op: 'base', root: BASE_DIR, paths: BASE_PATHS })
-ev('start', { workload: W.name, agents: ELASTIC ? 'elastic' : N, cap: ELASTIC ? CAP : undefined, model: MODEL, clock_ms: CLOCK_MS, quiet_ms: QUIET_MS, board: BOARD, publish: PUBLISH, early_close: EARLY_CLOSE, order: ORDER, chain: board.cp ? Object.fromEntries(board.cp) : undefined })
+ev('start', { workload: W.name, agents: ELASTIC ? 'elastic' : N, cap: ELASTIC ? CAP : undefined, model: MODEL, clock_ms: CLOCK_MS, quiet_ms: QUIET_MS, board: BOARD, publish: PUBLISH, early_close: EARLY_CLOSE, order: ORDER, pulls: PULLS, chain: board.cp ? Object.fromEntries(board.cp) : undefined })
 log(`workload ${W.name}, ${N} agents, ${MODEL}, out ${OUT}`)
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 const pool = [...NAMES]
@@ -754,7 +843,42 @@ fs.writeFileSync(path.join(OUT, 'board.json'), JSON.stringify(await board.read()
 fs.writeFileSync(path.join(OUT, 'board-ops.json'), JSON.stringify(board.ops))
 log('summary', JSON.stringify(summary))
 wp.stdin.end()
-process.exit(0)
+process.exit(await land())
+
+// ── the ending: one commit on the target, and the rows the pull request card reads ──
+// Writes a snapshot's files into the target's working tree (the ones that exist; deletes the
+// ones that don't) and commits once with the engine's own git. Answers the commit's sha, or
+// null when the snapshot leaves the tree as it is at base.
+function commitSnapshot (snap, message) {
+  const s = snapshots.find((x) => x.snap === snap)
+  if (!s) return null
+  for (const [p, text] of Object.entries(s.files)) {
+    const f = path.join(TARGET, p)
+    if (s.exists[p]) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text) } else fs.rmSync(f, { force: true })
+  }
+  git(['add', '-A'])
+  if (!git(['status', '--porcelain']).trim()) return null
+  git(['-c', 'user.name=flock', '-c', 'user.email=flock@ultrapowers.invalid', 'commit', '-qm', message])
+  return git(['rev-parse', 'HEAD']).trim()
+}
+async function land () {
+  const sessionsOf = (id) => usage.filter((u) => u.task === id).length
+  if (outcome && outcome.pr === 'ready' && outcome.snap) {
+    const sha = commitSnapshot(outcome.snap, `flock: settled ${outcome.snap}`)
+    if (!sha) { ev('landing:empty', { snap: outcome.snap }); return 1 }
+    for (const t of W.tasks) ev('landing', { task: t.id, k: sessionsOf(t.id), factsExit: 0, candidateSha: sha })
+    return 0
+  }
+  if (lastEdge) {
+    const sha = commitSnapshot(lastEdge.snap, `flock: draft ${lastEdge.snap}`)
+    if (sha) {
+      for (const t of W.tasks) {
+        if ((lastEdge.perTask[t.id] || []).some((x) => x !== 0)) ev('parked', { task: t.id, reason: `red at ${lastEdge.snap}` })
+      }
+    }
+  }
+  return 1
+}
 
 function byOp (ops) {
   const g = {}

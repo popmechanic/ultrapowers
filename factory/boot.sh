@@ -96,11 +96,14 @@ is_target() { [[ $1 =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; }
 # `hold` is recorded: `hold=1` is the signal that keeps `publish` from ever sending a merge.
 parse_assignment() { # $1 = the comment line
   local tok key val
+  ENGINE_KIND=factory
   for tok in $1; do
     key="${tok%%=*}"; val="${tok#*=}"
     case "$key" in
       run) RUN_N="$val" ;; plan) PLAN_SHA="$val" ;; target) TARGET_REPO="$val" ;;
       base) BASE_SHA="$val" ;; engine) ENGINE_SHA="$val" ;;
+      kind) case "$val" in flock | factory) ENGINE_KIND="$val" ;;
+              *) fail "assignment: kind is not flock or factory ('$val')" ;; esac ;;
       hold) [ "$val" = 1 ] && HOLD_FLAG=1 ;;
       *) fail "assignment: unknown key '$key' in comment" ;; esac
   done
@@ -113,7 +116,7 @@ parse_assignment() { # $1 = the comment line
   EVIDENCE_BRANCH="ultra/evidence-$RUN_ID"; EVIDENCE_REL=".ultrapowers/runs/$RUN_N"
   PLAN_FILE="$FLEET_HOME/plans/$RUN_ID.md"; ENGINE_REPO_DIR="$FLEET_HOME/engines/$ENGINE_SHA"
   STATUS_FILE="$EVIDENCE_DIR/$EVIDENCE_REL/status.json"
-  log "assignment: $RUN_ID target=$TARGET_REPO base=$BASE_SHA engine=$ENGINE_SHA"
+  log "assignment: $RUN_ID target=$TARGET_REPO base=$BASE_SHA engine=$ENGINE_SHA kind=$ENGINE_KIND"
 }
 # The clone is left AT BASE, the plan checked against the assignment's `plan=` before a model reads a word of it, and the evidence branch a DETACHED WORKTREE OF THE TARGET CLONE so its receipts land on the target and nowhere else.
 prepare() {
@@ -244,7 +247,9 @@ engine_deps() {
 }
 # A transient SERVICE, not a scope: `--wait` hands back the exit code and `--collect` unloads the unit; while it runs, the boot relays events every FLEET_COMMIT_SECONDS and looks for its exit every second.
 run_engine() {
-  local pid board_args=()
+  local pid board_args=() engine_entry="factory/engine.mjs"
+  # `kind=flock` runs the Flock under the same unit, environment, arguments and log; the factory is the rollback.
+  [ "$ENGINE_KIND" = flock ] && engine_entry="factory/flock/engine.mjs"
   [ -n "$BOARD_BOUND" ] && board_args=(--kata-url "$KATA_URL" --kata-project "$BOARD_PROJECT_ID" --kata-json "$BOARD_KATA_JSON" --kata-actor "engine:$RUN_ID")
   mkdir -p "$RUN_DIR"; rm -f "$DONE_MARKER"
   ( set +e
@@ -252,7 +257,7 @@ run_engine() {
       -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288 -p "RuntimeMaxSec=$FLEET_RUN_MAX_SECONDS" -p "WorkingDirectory=$TARGET_DIR" -- \
       env -u CLAUDE_CONFIG_DIR "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
         "TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL" CLAUDE_CODE_OAUTH_TOKEN=placeholder \
-        "ULTRAPOWERS_FLEET_RUN=$RUN_ID" node "$ENGINE_REPO_DIR/factory/engine.mjs" \
+        "ULTRAPOWERS_FLEET_RUN=$RUN_ID" node "$ENGINE_REPO_DIR/$engine_entry" \
         --plan "$PLAN_FILE" --target "$TARGET_DIR" --base "$BASE_SHA" --run-dir "$RUN_DIR" \
         ${board_args[@]+"${board_args[@]}"} >>"$ENGINE_LOG" 2>&1
     printf '%s\n' "$?" >"$DONE_MARKER" ) &
