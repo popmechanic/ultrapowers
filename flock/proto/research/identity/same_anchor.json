@@ -1,0 +1,468 @@
+{
+ "A": {
+  "siblings: two different lines at one spot": {
+   "kernel conflict": true,
+   "host would union (adds only)": true,
+   "the swarm is told": false,
+   "same-anchor flag": [
+    "siblings",
+    "siblings"
+   ],
+   "merged": [
+    "function f() {",
+    "  a()",
+    "}",
+    "  guard()",
+    "  log()",
+    "g()"
+   ],
+   "git clean": false
+  },
+  "unified: one block starts with the other's line": {
+   "kernel conflict": false,
+   "host would union (adds only)": false,
+   "the swarm is told": false,
+   "same-anchor flag": [
+    "unified",
+    "unified"
+   ],
+   "merged": [
+    "function f() {",
+    "  a()",
+    "}",
+    "}",
+    "h()",
+    "g()"
+   ],
+   "git clean": false
+  },
+  "identical blocks (git calls this clean too)": {
+   "kernel conflict": false,
+   "host would union (adds only)": false,
+   "the swarm is told": false,
+   "same-anchor flag": [],
+   "merged": [
+    "function f() {",
+    "  a()",
+    "}",
+    "  log()",
+    "g()"
+   ],
+   "git clean": true
+  }
+ },
+ "B": {
+  "different first lines": 1195,
+  "kernel clean | - | flag unified | git conflict | blocks interleaved or merged": 2,
+  "kernel conflict | adds-only | flag siblings | git clean | both blocks, one order": 17,
+  "kernel conflict | adds-only | flag siblings | git conflict | blocks interleaved or merged": 2,
+  "kernel conflict | adds-only | flag siblings | git conflict | both blocks, one order": 1178,
+  "shared first line": 4,
+  "swarm NOT told by the kernel+union": 1199,
+  "swarm told with the flag": 1199,
+  "total": 1199
+ },
+ "B examples": {
+  "kernel conflict | adds-only | flag siblings | git conflict | both blocks, one order": {
+   "path": "factory/engine.mjs",
+   "at": 1690,
+   "a": [
+    "    const answer = lastJson(outOf(r))",
+    "    if (!answer) log('kernel ' + argv[0] + ': exit ' + exitOf(r) + ' ' + String((r && r.stderr) || '').slice(-300))"
+   ],
+   "b": [
+    "        const candidateSha = folded.sha",
+    "        adopted.push(id)",
+    "        selectedByTask[id] = Array.isArray(landing.best.selected)",
+    "          ? landing.best.selected.map((s) => s.path)",
+    "          : []"
+   ]
+  },
+  "kernel conflict | adds-only | flag siblings | git clean | both blocks, one order": {
+   "path": "factory/engine.mjs",
+   "at": 70,
+   "a": [
+    "",
+    "  /**  // x773",
+    "   * The fold check's own runner: every `exam` task's test command, and \u2014 with  // x453",
+    "   * `policy.proofs.run_lines` on \u2014 every entry of the plan's own `checks`,  // x838",
+    "   * run once in `dir`. Kept callable with any list of tasks and any  // x47",
+    "   * directory (never closing over a single task) so a `--refold` entry can  // x837"
+   ],
+   "b": [
+    "  // its live `events.jsonl` to a `writeFileSync(eventsPath, '')` here \u2014 the",
+    "  // tagged evidence survived only because the boot had copied it first.",
+    "  const eventsPath = path.join(runDir, 'events.jsonl')",
+    "  const appendEvent = (row) => fs.appendFileSync(eventsPath, JSON.stringify({ ts: new Date().toISOString(), ...row }) + '\\n')",
+    "",
+    "  const RESOLVE_MD = roleText('resolve')"
+   ]
+  },
+  "kernel conflict | adds-only | flag siblings | git conflict | blocks interleaved or merged": {
+   "path": "skills/ultrapowers/kernel/fold_wave.py",
+   "at": 995,
+   "a": [
+    "",
+    "    # Grammar first: a rejected reply must cost no kernel work and must never",
+    "    # reach the log. The blocks are re-derived from the narration, which is",
+    "    # the only durable record of the hunk ids the resolver was briefed on.",
+    "    annotated = (wave_dir / (\"conflict-%d.txt\" % entry[\"i\"])).read_text()",
+    "    try:"
+   ],
+   "b": [
+    "",
+    "    p_resolve = sub.add_parser(\"resolve\")",
+    "    p_resolve.add_argument(\"--repo\", required=True)",
+    "    p_resolve.add_argument(\"--run-dir\", required=True)",
+    "    p_resolve.add_argument(\"--wave\", required=True, type=int)"
+   ]
+  },
+  "kernel clean | - | flag unified | git conflict | blocks interleaved or merged": {
+   "path": "skills/ultrapowers/kernel/fold_wave.py",
+   "at": 723,
+   "a": [
+    "",
+    ""
+   ],
+   "b": [
+    ""
+   ]
+  }
+ },
+ "B prefix": {
+  "kernel clean | - | flag unified | git conflict | blocks interleaved or merged": 300,
+  "shared first line": 300,
+  "swarm NOT told by the kernel+union": 300,
+  "swarm told with the flag": 300,
+  "total": 300
+ },
+ "B prefix examples": {
+  "kernel clean | - | flag unified | git conflict | blocks interleaved or merged": {
+   "path": "factory/engine.mjs",
+   "at": 1238,
+   "a": [
+    "const lastJson = (text) => {",
+    "  const whole = String(text || '').trim()",
+    "  if (whole.startsWith('{')) {",
+    "    try { return JSON.parse(whole) } catch { /* not one document */ }",
+    "  }"
+   ],
+   "b": [
+    "const lastJson = (text) => {",
+    "  const whole = String(text || '').trim()",
+    "  if (whole.startsWith('{')) {",
+    "    try { return JSON.parse(whole) } catch { /* not one document */ }",
+    "  }",
+    "        if (done.has(t.id) || inflight.has(t.id)) continue  // x633",
+    "        const { adoption, candidate } = waitsOn(t)  // x688",
+    "        const fallback = candidate.length >= 2  // x69",
+    "        const effectiveAdoption = fallback ? [...adoption, ...candidate] : adoption  // x185"
+   ]
+  }
+ },
+ "C": {
+  "pulls": 544,
+  "pull changes": 86,
+  "conflicts at pull": 24,
+  "conflicts opened for an agent": 11,
+  "runs": 17,
+  "adds-only (unioned by the host)": 13,
+  "adds-only unions that share an anchor": 13,
+  "same-anchor flag: siblings": 16,
+  "same-anchor flag on: adds-only union": 14,
+  "same-anchor flag on: opened conflict": 2,
+  "run names": [
+   "inventory-L1-2026-09-25T22-57-25",
+   "inventory-L2-2026-09-25T22-58-38",
+   "inventory-L3-2026-09-25T23-00-04",
+   "inventory-c2-2026-09-25T21-50-08",
+   "inventory-m1-2026-09-25T21-56-20",
+   "inventory-m2-2026-09-25T21-58-07",
+   "inventory-m3-2026-09-25T21-59-50",
+   "ledger-L1-2026-09-26T00-38-59",
+   "ledger-L2-2026-09-26T00-40-43",
+   "ledger-L3-2026-09-26T00-42-15",
+   "widgetkit-L1-2026-09-25T23-01-29",
+   "widgetkit-L2-2026-09-25T23-02-42",
+   "widgetkit-L3-2026-09-25T23-03-53",
+   "widgetkit-m1-2026-09-25T22-01-37",
+   "widgetkit-m2-2026-09-25T22-02-53",
+   "widgetkit-m3-2026-09-25T22-04-07",
+   "widgetkit-s2smoke-2026-09-26T00-37-15"
+  ]
+ },
+ "C hits": [
+  {
+   "run": "inventory-c2-2026-09-25T21-50-08",
+   "path": "tests/test_core.py",
+   "conflict": true,
+   "addsOnly": true,
+   "kind": "siblings",
+   "anchor": "",
+   "side": "above",
+   "lines": [
+    "def test_parse_line_three_columns():",
+    "def test_restock_increases_quantity_and_leaves_input():"
+   ],
+   "authors": [
+    "A",
+    "B"
+   ]
+  },
+  {
+   "run": "inventory-m1-2026-09-25T21-56-20",
+   "path": "tests/test_core.py",
+   "conflict": true,
+   "addsOnly": false,
+   "kind": "siblings",
+   "anchor": "",
+   "side": "above",
+   "lines": [
+    "from inventory.core import Item, parse_line",
+    "from inventory.core import Item, restock"
+   ],
+   "authors": [
+    "A",
+    "B"
+   ]
+  },
+  {
+   "run": "inventory-m2-2026-09-25T21-58-07",
+   "path": "tests/test_core.py",
+   "conflict": true,
+   "addsOnly": false,
+   "kind": "siblings",
+   "anchor": "",
+   "side": "above",
+   "lines": [
+    "from inventory.core import Item, parse_line",
+    "from inventory.core import Item, restock"
+   ],
+   "authors": [
+    "A",
+    "B"
+   ]
+  },
+  {
+   "run": "inventory-m3-2026-09-25T21-59-50",
+   "path": "tests/test_core.py",
+   "conflict": true,
+   "addsOnly": true,
+   "kind": "siblings",
+   "anchor": "",
+   "side": "above",
+   "lines": [
+    "from inventory.core import Item, parse_line",
+    "from inventory.core import Item, restock"
+   ],
+   "authors": [
+    "A",
+    "B"
+   ]
+  },
+  {
+   "run": "inventory-m3-2026-09-25T21-59-50",
+   "path": "tests/test_core.py",
+   "conflict": true,
+   "addsOnly": true,
+   "kind": "siblings",
+   "anchor": "",
+   "side": "above",
+   "lines": [
+    "def test_parse_line_three_columns():",
+    "def test_restock_increases_quantity_and_leaves_input():"
+   ],
+   "authors": [
+    "A",
+    "B"
+   ]
+  },
+  {
+   "run": "ledger-L1-2026-09-26T00-38-59",
+   "path": "ledger/core.py",
+   "conflict": true,
+   "addsOnly": true,
+   "kind": "siblings",
+   "anchor": "    check_memo,",
+   "side": "below",
+   "lines": [
+    "    check_account,",
+    "    check_amount,"
+   ],
+   "authors": [
+    "C",
+    "D"
+   ]
+  },
+  {
+   "run": "ledger-L1-2026-09-26T00-38-59",
+   "path": "ledger/core.py",
+   "conflict": true,
+   "addsOnly": true,
+   "kind": "siblings",
+   "anchor": "    check_memo,",
+   "side": "below",
+   "lines": [
+    "    check_account,",
+    "    check_amount,"
+   ],
+   "authors": [
+    "C",
+    "D"
+   ]
+  },
+  {
+   "run": "ledger-L1-2026-09-26T00-38-59",
+   "path": "ledger/core.py",
+   "conflict": true,
+   "addsOnly": true,
+   "kind": "siblings",
+   "anchor": "    check_memo,",
+   "side": "below",
+   "lines": [
+    "    check_amount,",
+    "    check_account,"
+   ],
+   "authors": [
+    "C",
+    "D"
+   ]
+  },
+  {
+   "run": "ledger-L1-2026-09-26T00-38-59",
+   "path": "ledger/core.py",
+   "conflict": true,
+   "addsOnly": true,
+   "kind": "siblings",
+   "anchor": "    check_memo,",
+   "side": "below",
+   "lines": [
+    "    check_account,",
+    "    check_amount,"
+   ],
+   "authors": [
+    "C",
+    "D"
+   ]
+  },
+  {
+   "run": "ledger-L1-2026-09-26T00-38-59",
+   "path": "ledger/core.py",
+   "conflict": true,
+   "addsOnly": true,
+   "kind": "siblings",
+   "anchor": "    check_memo,",
+   "side": "below",
+   "lines": [
+    "    check_account,",
+    "    check_amount,"
+   ],
+   "authors": [
+    "C",
+    "D"
+   ]
+  },
+  {
+   "run": "ledger-L2-2026-09-26T00-40-43",
+   "path": "ledger/core.py",
+   "conflict": true,
+   "addsOnly": true,
+   "kind": "siblings",
+   "anchor": "    check_memo,",
+   "side": "below",
+   "lines": [
+    "    check_amount,",
+    "    check_account,"
+   ],
+   "authors": [
+    "A",
+    "B"
+   ]
+  },
+  {
+   "run": "ledger-L3-2026-09-26T00-42-15",
+   "path": "ledger/core.py",
+   "conflict": true,
+   "addsOnly": true,
+   "kind": "siblings",
+   "anchor": "    check_memo,",
+   "side": "below",
+   "lines": [
+    "    check_amount,",
+    "    check_account,"
+   ],
+   "authors": [
+    "A",
+    "B"
+   ]
+  },
+  {
+   "run": "ledger-L3-2026-09-26T00-42-15",
+   "path": "ledger/core.py",
+   "conflict": true,
+   "addsOnly": true,
+   "kind": "siblings",
+   "anchor": "    check_memo,",
+   "side": "below",
+   "lines": [
+    "    check_account,",
+    "    check_amount,"
+   ],
+   "authors": [
+    "A",
+    "B"
+   ]
+  },
+  {
+   "run": "ledger-L3-2026-09-26T00-42-15",
+   "path": "ledger/core.py",
+   "conflict": true,
+   "addsOnly": true,
+   "kind": "siblings",
+   "anchor": "    check_memo,",
+   "side": "below",
+   "lines": [
+    "    check_amount,",
+    "    check_account,"
+   ],
+   "authors": [
+    "A",
+    "B"
+   ]
+  },
+  {
+   "run": "ledger-L3-2026-09-26T00-42-15",
+   "path": "ledger/core.py",
+   "conflict": true,
+   "addsOnly": true,
+   "kind": "siblings",
+   "anchor": "    check_memo,",
+   "side": "below",
+   "lines": [
+    "    check_amount,",
+    "    check_account,"
+   ],
+   "authors": [
+    "A",
+    "B"
+   ]
+  },
+  {
+   "run": "ledger-L3-2026-09-26T00-42-15",
+   "path": "ledger/core.py",
+   "conflict": true,
+   "addsOnly": true,
+   "kind": "siblings",
+   "anchor": "    check_memo,",
+   "side": "below",
+   "lines": [
+    "    check_amount,",
+    "    check_account,"
+   ],
+   "authors": [
+    "A",
+    "B"
+   ]
+  }
+ ]
+}

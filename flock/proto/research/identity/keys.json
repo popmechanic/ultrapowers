@@ -1,0 +1,12 @@
+{
+ "trials": 300,
+ "trials converged": 300,
+ "recorded": 17120,
+ "lost": 0,
+ "base visible": 531880,
+ "base misattributed (keyed)": 0,
+ "base misattributed (text)": 65156,
+ "ranked": 0,
+ "entries": 559220,
+ "trials with a lost key": 0
+}
