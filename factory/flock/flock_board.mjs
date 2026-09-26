@@ -1,6 +1,7 @@
-// PROTOTYPE (map #1292, ticket 4, second pass). The board, two ways, one interface.
+// The Flock's board (map #1292), two ways, one interface. The engine (factory/flock/engine.mjs)
+// uses the stand-in; the Kata board stays for the burst measurement below.
 //
-//   standin  the in-memory board of the first pass (the default): Kata's verbs, no Kata.
+//   standin  the in-memory board (the default, the one the engine uses): Kata's verbs, no Kata.
 //   kata     a real Kata daemon over its REST API (fleet/kata-client.mjs's httpTransport,
 //            no Authorization header), one project per run, one issue per task, the
 //            producer→consumer edges as `blocks` links, beliefs as comments on one
@@ -225,7 +226,7 @@ export class KataBoard extends Timed {
   close () {}
 }
 
-// ── the 30-client burst (gap 7): `node flock/proto/flock_board.mjs burst --board kata|standin
+// ── the 30-client burst (gap 7): `node factory/flock/flock_board.mjs burst --board kata|standin
 //    [--clients 30] [--rounds 5] [--kata-url http://127.0.0.1:7777]`. Every client, every round:
 //    claim a task (racing the others), post a belief, read the board, publish, close the task. ──
 if (process.argv[1] === fileURLToPath(import.meta.url) && process.argv[2] === 'burst') {
