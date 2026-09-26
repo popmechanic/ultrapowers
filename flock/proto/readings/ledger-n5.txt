@@ -1,0 +1,11 @@
+run | arm | green | wall_s | last_session_to_settled_s | conflicts | same_spot | red_from_peer | red_waiting_rename | peer_lines | refusals | flipbacks | out_tokens | bash_over_60s | wait_for | replay_mismatch | order
+ledger FE1 | explicit | True | 68 | 3.0 | 1->1 unions=1 | 1 | 0 | 3 | 0 | 0 | 0 | 12.9k | - | 0 | 1 | ['check_date', 'check_account', 'check_amount', 'check_memo']
+ledger FE2 | explicit | True | 73 | 3.0 | 2->2 unions=6 | 2 | 0 | 3 | 0 | 0 | 1 | 13.9k | - | 0 | 0 | ['check_date', 'check_account', 'check_amount', 'check_memo']
+ledger FE3 | explicit | True | 341 | 3.1 | 0->0 unions=7 | 2 | 0 | 3 | 0 | 0 | 1 | 14.2k | B 300s | 0 | 0 | ['check_date', 'check_account', 'check_amount', 'check_memo']
+ledger FE4 | explicit | True | 333 | 2.8 | 0->0 | 0 | 0 | 1 | 0 | 0 | 0 | 12.6k | C 301s | 0 | 0 | ['check_date', 'check_account', 'check_amount', 'check_memo']
+ledger FE5 | explicit | True | 348 | 3.3 | 0->0 | 0 | 0 | 3 | 0 | 0 | 0 | 13.1k | B 301s | 0 | 0 | ['check_date', 'check_account', 'check_amount', 'check_memo']
+ledger FB1 | batch | True | 86 | 2.9 | 1->1 (+1 resolve task) | 0 | 0 | 1 | 0 | 0 | 0 | 12.8k | - | 0 | 1 | ['check_date', 'check_account', 'check_amount', 'check_memo']
+ledger FB2 | batch | True | 76 | 3.4 | 2->2 unions=6 | 2 | 0 | 1 | 0 | 0 | 0 | 11.7k | - | 0 | 1 | ['check_date', 'check_account', 'check_amount', 'check_memo']
+ledger FB3 | batch | True | 70 | 3.2 | 2->2 | 2 | 0 | 1 | 0 | 0 | 0 | 11.7k | - | 0 | 1 | ['check_date', 'check_account', 'check_amount', 'check_memo']
+ledger FB4 | batch | True | 342 | 3.1 | 0->0 | 0 | 0 | 2 | 0 | 0 | 0 | 12.9k | B 301s | 0 | 0 | ['check_date', 'check_account', 'check_amount', 'check_memo']
+ledger FB5 | batch | True | 91 | 3.2 | 2->2 (+1 resolve task) | 2 | 0 | 1 | 0 | 0 | 0 | 11.8k | - | 0 | 1 | ['check_date', 'check_account', 'check_amount', 'check_memo']
