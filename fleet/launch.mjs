@@ -96,7 +96,7 @@ import { toolchainViolations } from './toolchain.mjs'
 /** One string, so a docs check that reads the first `usage` literal sees every
  *  flag the launch line may carry. */
 export const USAGE = `usage: node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <40-hex>
-                             [--repo <dir>] [--engine <40-hex>] [--hold] [--again]
+                             [--repo <dir>] [--engine <40-hex>] [--kind flock|factory] [--hold] [--again]
                              [--cpu <n>] [--memory <n>GB]
                              [--run <N>] [--config <path>] [--account <name>] [--json]`
 
@@ -225,7 +225,7 @@ function sizeFromCompile (compiled, { cpuCap, memoryCap, cpu, memory } = {}) {
  * Why the script and not the assignment: the comment's keys are enumerated
  * twice, by `COMMENT_KEYS` in `fleet/lobby.mjs` and by `parse_assignment` in
  * `factory/boot.sh`, which fails the boot outright on a key it does not
- * know — so a seventh key has to land in both files in the same change or every
+ * know — so an eighth key has to land in both files in the same change or every
  * launch after it refuses to boot. Until one does, `width=` rides the other
  * half of the same verb, where it costs nothing: a comment in a first-boot
  * script, on the box, for whoever asks why this VM has these cores. The engine
@@ -464,6 +464,12 @@ async function launchBody ({
   if (opts.again !== undefined && opts.again !== true) {
     throw new Refusal(`launch: --again takes no value, got ${JSON.stringify(opts.again)}`)
   }
+  // `--kind` picks the engine the sandbox boots: `flock` or `factory`, the two
+  // values `factory/boot.sh` accepts. Anything else, a bare `--kind` included,
+  // is a refusal before the plan is read.
+  if (opts.kind !== undefined && opts.kind !== 'flock' && opts.kind !== 'factory') {
+    throw new Refusal(`launch: --kind must be flock or factory, got ${JSON.stringify(opts.kind)}`)
+  }
   if (opts.run !== undefined && !isRunNumber(opts.run)) {
     throw new Refusal(`launch: --run must be a positive integer, got ${JSON.stringify(opts.run)}`)
   }
@@ -557,6 +563,7 @@ async function launchBody ({
     target,
     base: opts.base,
     engine: opts.engine ?? '0'.repeat(40),
+    kind: opts.kind,
     hold: opts.hold === true ? '1' : undefined
   }
   const probeComment = buildComment(fields)
@@ -971,8 +978,8 @@ async function launchBody ({
     memory,
     // W, the widest wave of the parsed plan: what `cpu` and `memory` were
     // sized to. It is not an assignment key — `COMMENT_KEYS` in
-    // `fleet/lobby.mjs` spells six and `parse_assignment` on the VM fails on a
-    // seventh — so it rides the setup script's header instead (`stampWidth`),
+    // `fleet/lobby.mjs` spells seven and `parse_assignment` on the VM fails on an
+    // eighth — so it rides the setup script's header instead (`stampWidth`),
     // where it is a record and not a switch.
     width,
     launchedAt: now().toISOString(),
