@@ -263,7 +263,7 @@ async function session (agent, task) {
         return say(res.map((r, i) => `fact ${i + 1}: exit ${r.exit}${r.exit ? '\n' + r.tail : ''}`).join('\n'))
       }),
     tool('publish', "Publish your copy's changes so the other agents receive them.", {},
-      async () => { await syncFromDisk(agent); await must({ op: 'publish', agent }); lastPublish = now(); ev('publish', { agent, task: task.id }); edge('publish ' + agent); await board.publish(agent, task.id); return say('published') }),
+      async () => { await syncFromDisk(agent); await must({ op: 'publish', agent }); lastPublish = now(); ev('publish', { agent, task: task.id }); await board.publish(agent, task.id); edge('publish ' + agent); return say('published') }),
     tool('resolve_conflict', 'Close an open conflict in a file: the text in your copy now says what both sides meant (edit it first with Edit if it did not).',
       { path: z.string(), note: z.string() },
       async (a) => {
@@ -349,7 +349,7 @@ async function session (agent, task) {
     PostToolBatch: [{ hooks: [async () => {
       if (PUBLISH === 'batch' && dirty[agent]) {
         await syncFromDisk(agent); await must({ op: 'publish', agent }); dirty[agent] = false
-        lastPublish = now(); ev('publish', { agent, task: task.id, auto: 'batch' }); edge('batch ' + agent); await board.publish(agent, task.id)
+        lastPublish = now(); ev('publish', { agent, task: task.id, auto: 'batch' }); await board.publish(agent, task.id); edge('batch ' + agent)
       }
       const changed = await pullInto(agent)
       if (!changed.length) return {}
