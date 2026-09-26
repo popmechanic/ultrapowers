@@ -1,0 +1,93 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "57bacc3286955a430b717f42d2578684e1068c2437f67e23c0c89b47578fb85e",
+   "verdict": "pass",
+   "reason": "every computable fact in M1\u2013M3 has a tagged probe that fails if it is false"
+  },
+  "2": {
+   "hash": "78af399d3eae0c9d26c51ccfd77497b4474d22bc1ee10376f9a96aa05ca5ff01",
+   "verdict": "pass",
+   "reason": "exit codes, commit count, landing and parked rows each carry a falsifying leg"
+  },
+  "3": {
+   "hash": "2333c0de443fbc9f0ba5f34829ca2359a3613cf7cecf328db0b8045bad010515",
+   "verdict": "pass",
+   "reason": "kind=flock, default kind=factory and the bogus refusal each have a byte-level probe; the two untagged lines are guards"
+  },
+  "4": {
+   "hash": "49c8c0cdc3542ca5abe2cdb4629e1522067d557d340735bc7986cbc676af0c49",
+   "verdict": "pass",
+   "reason": "both comment strings and the refusal's exit 2 and message are pinned by tagged probes"
+  },
+  "5": {
+   "hash": "5d2e357f50ff56e98109158ca33cde48de5ab10eb32affebbf33c3a0942480fd",
+   "verdict": "pass",
+   "reason": "narrow scope, the off-by-default policy cell and a narrow run settling each have a tagged probe"
+  }
+ },
+ "tally": {
+  "dispatched": 6,
+  "rejected": 0,
+  "rounds": 2,
+  "base": "a02e869f123c22c6b3dce6fe66d695f34dd33c9f",
+  "round2": {
+   "3": "probe env: REFLECTION_URL stub (timeout at base)"
+  }
+ },
+ "authoring": {
+  "minutes": 55,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Sign as drafted",
+     "Claim without the rollback",
+     "Please explain"
+    ],
+    "recommended": "Sign as drafted",
+    "picked": "Sign as drafted",
+    "explain_rounds": 0
+   },
+   {
+    "question": "How the workers get the prototype code",
+    "options": [
+     "Hand-move it first",
+     "Workers write from scratch",
+     "Please explain"
+    ],
+    "recommended": "Hand-move it first",
+    "picked": "Hand-move it first",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Narrow pulls default",
+    "options": [
+     "Off, a policy switch",
+     "On by default",
+     "Please explain"
+    ],
+    "recommended": "Off, a policy switch",
+    "picked": "Off, a policy switch",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline",
+     "Please explain"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
