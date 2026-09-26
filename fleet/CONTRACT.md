@@ -140,7 +140,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   at that sha, `git show` from the laptop's plugin checkout, else `gh api` from popmechanic/ultrapowers,
   into a temp directory — and a launch whose two files cannot be fetched is refused before any push;
   the launch line carries `compiler=<sha>` → read every command word of every task's `Run:`
-  probes and of the plan's `Check:` lines against `SANDBOX_TOOLCHAIN` in `fleet/launch.mjs` (the
+  probes and of the plan's `Check:` lines against `SANDBOX_TOOLCHAIN` in `fleet/toolchain.mjs` (the
   image's tools plus the delta `fleet/setup-script.mjs` installs: node, bun, celld, pytest) and
   refuse a word outside it, one line per word — `launch: task <id>: probe runner '<word>' is not
   in the sandbox toolchain — <line>`, `check` where a task id would be — before anything is
