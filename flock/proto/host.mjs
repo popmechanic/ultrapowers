@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // PROTOTYPE — throwaway (map #1292, ticket 4). The Flock on the laptop.
 //
-//   node flock/proto/host.mjs --workload widgetkit|inventory [--agents 3]
+//   node flock/proto/host.mjs --workload widgetkit|inventory|ledger [--agents 3]
 //        [--model claude-opus-5-5] [--clock 1800] [--quiet 45] [--tag r1]
 //
 // Question it answers: with N agents working one plan together, each on its own
@@ -299,7 +299,8 @@ Rules:
 - Change an existing file only with the Edit tool. New files may be created any way you like. Shell commands must not overwrite, move or delete existing files.
 - Never run git.
 - Run tests with: python3 -m pytest -q -p no:cacheprovider
-- Use the flock tools: board_read (tasks and beliefs), post_belief (tell the others something true and useful, with how sure you are), run_proof (your task's facts, on your copy), publish (share your copy's changes), release (give the task back if you are blocked), done (your task is finished).
+- Use the flock tools: board_read (tasks and beliefs), post_belief (tell the others something true and useful, with how sure you are), run_proof (your task's facts, on your copy), publish (share your copy's changes), wait_for (wait for a peer's work: a task done, a text in a file, a proof green), release (give the task back if you are blocked), done (your task is finished).
+- To wait for another agent's work, call wait_for. Never wait with shell sleep or a polling loop: peers' work reaches your copy only between your tool calls, so a shell loop cannot see it arrive.
 ${PUBLISH === 'batch' ? '- Your changes are published to the others automatically after each of your tool batches, finished or not; publish is still there when you want to be sure.' : '- Publish whenever your change is coherent, so the others build on it.'}
 - If something fails because of another agent's unfinished work, prefer not to rewrite their lines: post a belief saying what you saw, and carry on with your own part.
 - If a note says a file merged with conflict marks, look at that part of the file. When it says what both sides meant (edit it if not), call resolve_conflict for that file.
@@ -358,6 +359,55 @@ async function session (agent, task) {
         for (const r of red) causes.push(await blame(agent, cwd, r.tail))
         ev('proof', { agent, task: t.id, exits: res.map((r) => r.exit), causes, errs: red.map((r) => (r.tail.match(/^\w*(Error|Exception)\b.*$/gm) || ['']).pop().slice(0, 160)) })
         return say(res.map((r, i) => `fact ${i + 1}: exit ${r.exit}${r.exit ? '\n' + r.tail : ''}`).join('\n'))
+      }),
+    // ticket 4 follow-up: waiting for a peer. Peers' work reaches a copy only between tool calls,
+    // so a shell `sleep` loop never sees it (a full 300 s in 4 of 10 ledger runs, n=5 per arm).
+    // This tool keeps merging peers into the copy while it waits, and returns once the fact holds.
+    tool('wait_for', 'Wait until a fact holds, while the other agents\' published work keeps merging into your copy. Use this instead of any shell sleep or polling loop. A fact is one of: a task is done (kind "task_done", task); a text or regular expression appears in a file of your copy (kind "text", path, pattern); a task\'s facts pass on your copy (kind "proof", task). Returns as soon as it holds, or after timeout_s (default 120, at most 300) with what it last saw.',
+      { kind: z.enum(['task_done', 'text', 'proof']), task: z.string().optional(), path: z.string().optional(), pattern: z.string().optional(), timeout_s: z.number().optional() },
+      async (a) => {
+        const limit = Math.min(300, Math.max(1, a.timeout_s || 120)) * 1000
+        const t0 = now()
+        const merged = new Map()
+        let spotted = []
+        let re = null
+        if (a.kind === 'text') {
+          if (!a.path || !a.pattern) return say('kind "text" needs path and pattern')
+          try { re = new RegExp(a.pattern, 'm') } catch { re = null }
+        }
+        const target = a.kind === 'text' ? null : board.tasks.get(a.task || '')
+        if (a.kind !== 'text' && !target) return say('no task ' + JSON.stringify(a.task) + ' on the board')
+        let proofChanged = true, last = ''
+        const holds = () => {
+          if (a.kind === 'task_done') { last = 'task ' + target.id + ' is ' + target.state; return target.state === 'done' }
+          if (a.kind === 'text') {
+            const text = readOr(path.join(cwd, a.path)) || ''
+            const ok = re ? re.test(text) : text.includes(a.pattern)
+            last = a.path + (ok ? ' contains ' : ' does not contain ') + JSON.stringify(a.pattern)
+            return ok
+          }
+          if (!proofChanged) return false
+          proofChanged = false
+          const res = runFacts(cwd, target)
+          last = `task ${target.id}'s facts on your copy: ` + res.map((r, i) => `fact ${i + 1} exit ${r.exit}`).join(', ') + (res.some((r) => r.exit) ? '\n' + res.find((r) => r.exit).tail : '')
+          return res.every((r) => r.exit === 0)
+        }
+        await syncFromDisk(agent)
+        let held = holds()
+        while (!held && now() - t0 < limit && !outcome) {
+          await sleep(1000)
+          const changed = await pullInto(agent)
+          for (const c of changed) merged.set(c.path, c)
+          if (changed.length) proofChanged = true
+          spotted.push(...(spotNotes[agent] || [])); delete spotNotes[agent]
+          held = holds()
+        }
+        spotted = [...new Set(spotted)]
+        const waited = now() - t0
+        ev('wait_for', { agent, task: task.id, fact: { kind: a.kind, task: a.task, path: a.path, pattern: a.pattern }, held, waited_ms: waited, merged: [...merged.keys()] })
+        return say(`${held ? 'The fact holds' : 'Timed out: the fact does not hold yet'} after ${(waited / 1000).toFixed(1)} s. ${last}` +
+          (merged.size ? `\nMerged into your copy while waiting: ${[...merged.values()].map((c) => `${c.path} (from ${c.from}${c.conflict ? ', with conflict marks' : ''})`).join('; ')}. Re-read before editing those files.` : '') +
+          (spotted.length ? '\nSame-spot insertions in your copy: ' + spotted.join('; ') : ''))
       }),
     tool('publish', "Publish your copy's changes so the other agents receive them.", {},
       async () => { await syncFromDisk(agent); await must({ op: 'publish', agent }); lastPublish = now(); ev('publish', { agent, task: task.id }); await board.publish(agent, task.id); edge('publish ' + agent); return say('published') }),
