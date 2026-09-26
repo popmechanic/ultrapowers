@@ -108,9 +108,27 @@ async function blame (agent, cwd, output) {
   if (!hits.length) return { cause: 'unknown' }
   const [f, line] = hits[hits.length - 1]
   const rel = f.startsWith(cwd + '/') ? f.slice(cwd.length + 1) : f
-  const r = await weave({ op: 'authors', agent, path: rel })
+  // ticket 2 fix (a): authorship by identity (authors_keyed), not by text, which names a
+  // repeated BASE line's author wrongly (research/identity/keys.log). "A|B" = both wrote it.
+  const r = await weave({ op: 'authors_keyed', agent, path: rel })
   const who = r.ok ? r.authors[line - 1] : null
-  return { cause: !who ? 'unknown' : who === agent ? 'own' : who === 'base' ? 'base' : 'peer:' + who, path: rel, line }
+  const whoSet = who ? who.split('|') : []
+  return { cause: !who ? 'unknown' : whoSet.includes(agent) ? 'own' : who === 'base' ? 'base' : 'peer:' + who, path: rel, line }
+}
+
+// peer lines an agent's change removed or replaced, by identity: the fall, per peer, in the
+// count of visible lines that peer wrote (an agent's own change never adds a peer's line)
+async function keyedOwners (agent, rel) {
+  const r = await weave({ op: 'authors_keyed', agent, path: rel })
+  const c = {}
+  if (!r.ok) return c
+  for (const a of r.authors) if (a !== 'base' && !a.split('|').includes(agent)) c[a] = (c[a] || 0) + 1
+  return c
+}
+function peerFall (before, after) {
+  let n = 0; const peers = new Set()
+  for (const [who, k] of Object.entries(before)) { const d = k - (after[who] || 0); if (d > 0) { n += d; who.split('|').forEach((x) => peers.add(x)) } }
+  return { peer: n, peers: [...peers] }
 }
 
 // ── keeping a copy's weave in step with its files ─────────────────────────────
@@ -160,15 +178,16 @@ function editSpans (before, old, neu, all) {
 }
 
 async function recordEditCall (agent, rel, before, edits) {
-  let text = before, peer = 0, peers = new Set()
+  let text = before, peerText = 0
+  const owners0 = await keyedOwners(agent, rel)
   for (const e of edits) {
     for (const s of editSpans(text, e.old_string, e.new_string, e.replace_all)) {
       const r = await must({ op: 'edit', agent, path: rel, ...s })
-      peer += r.peer_lines_touched; r.peers.forEach((x) => peers.add(x))
+      peerText += r.peer_lines_touched
     }
     text = e.replace_all ? text.split(e.old_string).join(e.new_string) : text.replace(e.old_string, () => e.new_string)
   }
-  return { peer, peers: [...peers] }
+  return { ...peerFall(owners0, await keyedOwners(agent, rel)), peerText }
 }
 
 // ── the conflict ledger: Manyana recomputes conflicts per merge and stores none, so the
@@ -253,6 +272,7 @@ function edge (reason) {
     // ticket 5: every region the edge sees goes through the ledger. The old `!ledger.has(p)`
     // let a NEW conflict on a once-closed path pass the edge unexamined.
     for (const p of m.conflicts) await openConflict(p, { addsOnly: !!m.addsOnly[p], annotated: m.annotated[p], between: ['published copies'] })
+    for (const [p, fl] of Object.entries(m.sameAnchor || {})) await sameSpot(p, fl, ['published copies'], null)
     const blocking = openConflicts()
     lastEdge = { snap, t: now(), reason, perTask, check: chk.status, checkTail: ((chk.stdout || '') + (chk.stderr || '')).slice(-600), conflicts: m.conflicts, blocking, annotated: m.annotated, green: factsGreen && chk.status === 0 && !blocking.length }
     snapshots.push({ snap, t: now(), files: m.files })
@@ -295,7 +315,26 @@ async function pullInto (agent) {
   }
   if (r.changed.length) ev('pull', { agent, changed: r.changed.map((c) => ({ path: c.path, from: c.from, added: c.added, removed: c.removed, conflict: c.conflict })) })
   for (const c of r.changed.filter((x) => x.conflict)) await openConflict(c.path, { addsOnly: c.addsOnly, annotated: c.annotated, between: [agent, c.from] })
+  for (const s of r.sameAnchor || []) await sameSpot(s.path, s.flags, [agent, s.from], agent)
   return r.changed
+}
+
+// ── ticket 2 fix (b): two agents inserting at one spot. The kernel orders such lines by their
+// text and an adds-only union hid it; the keeper now flags it (`siblings`, or `unified` when
+// one side's block starts with the other's line and the kernel flags nothing). Each distinct
+// spot becomes a fact on the board and a note to the agents whose copies carry it. ──
+const spots = new Map()
+const spotNotes = {}
+async function sameSpot (p, flags, between, agent) {
+  for (const f of flags || []) {
+    const key = [p, f.kind, f.anchor, (f.lines || []).join('\n')].join('\u0000')
+    const text = `${f.kind === 'unified' ? 'one block starts with the other\'s line' : 'two insertions'} at one spot in ${p}, after ${JSON.stringify(f.anchor)}: ${JSON.stringify(f.lines).slice(0, 200)} (by ${(f.authors || between).join(' and ')}); the merge chose their order by text, so check the order says what both meant`
+    if (agent) (spotNotes[agent] = spotNotes[agent] || new Set()).add(text)
+    if (spots.has(key)) continue
+    spots.set(key, { p, f, t: now() })
+    ev('same-anchor', { path: p, kind: f.kind, anchor: f.anchor, lines: f.lines, authors: f.authors, between })
+    await board.post({ by: 'host', claim: text, confidence: 1 })
+  }
 }
 
 async function session (agent, task) {
@@ -371,13 +410,17 @@ async function session (agent, task) {
         const before = pre.get(input.tool_use_id)
         let rec = { peer: 0, peers: [] }, how = 'edit-call'
         if (name === 'Write' || before === null || before === undefined) {
-          const r = await must({ op: 'rewrite', agent, path: rel, content: readOr(fp) }); rec = { peer: r.peer_lines_touched, peers: r.peers }; how = before == null ? 'new-file' : 'write'
+          const owners0 = await keyedOwners(agent, rel)
+          const r = await must({ op: 'rewrite', agent, path: rel, content: readOr(fp) }); rec = { ...peerFall(owners0, await keyedOwners(agent, rel)), peerText: r.peer_lines_touched }; how = before == null ? 'new-file' : 'write'
         } else {
           rec = await recordEditCall(agent, rel, before, name === 'MultiEdit' ? ti.edits : [ti])
           const view = (await must({ op: 'view', agent, path: rel })).text
           if (view !== readOr(fp)) { await must({ op: 'rewrite', agent, path: rel, content: readOr(fp) }); how = 'edit-call-mismatch' }
         }
-        ev('edit', { agent, task: task.id, tool: name, path: rel, how, peer_lines: rec.peer, peers: rec.peers })
+        // gap 9 (open, but declared): an edit outside the editing task's own Files is an amendment
+        const own = task.files || (String(task.id).startsWith('R:') ? [task.id.slice(2)] : null)
+        const outside = own ? !own.includes(rel) : false
+        ev('edit', { agent, task: task.id, tool: name, path: rel, how, peer_lines: rec.peer, peers: rec.peers, peer_lines_text: rec.peerText, outside })
         dirty[agent] = true
         if (rec.peer) await board.post({ by: 'host', claim: `${agent} changed ${rec.peer} line(s) written by ${rec.peers.join(', ')} in ${rel}`, confidence: 1, task: task.id })
       } else if (name === 'Bash') {
@@ -408,9 +451,11 @@ async function session (agent, task) {
         lastPublish = now(); ev('publish', { agent, task: task.id, auto: 'batch' }); await board.publish(agent, task.id); edge('batch ' + agent)
       }
       const changed = await pullInto(agent)
-      if (!changed.length) return {}
-      const note = 'Peers\' published work was merged into your copy just now: ' +
-        changed.map((c) => `${c.path} (+${c.added} −${c.removed}, from ${c.from}${c.conflict ? ', with conflict marks' : ''})`).join('; ') + '. Re-read before editing those files.'
+      const spotted = [...(spotNotes[agent] || [])]; delete spotNotes[agent]
+      if (!changed.length && !spotted.length) return {}
+      const note = (changed.length ? 'Peers\' published work was merged into your copy just now: ' +
+        changed.map((c) => `${c.path} (+${c.added} −${c.removed}, from ${c.from}${c.conflict ? ', with conflict marks' : ''})`).join('; ') + '. Re-read before editing those files.' : '') +
+        (spotted.length ? ' Same-spot insertions in your copy: ' + spotted.join('; ') + '.' : '')
       return { hookSpecificOutput: { hookEventName: 'PostToolBatch', additionalContext: note } }
     }] }],
   }

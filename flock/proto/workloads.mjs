@@ -120,6 +120,9 @@ function fromPlan (w, file) {
     t.body = 'Task ' + s.trim()
     t.facts = [...s.matchAll(/^- Run: (.*?)\s*\[M[\d, M]+\]\s*$/gm)].map((m) => ['bash', '-lc', m[1]])
     if (!t.facts.length) throw new Error(`task ${t.id} of ${file} has no Run lines`)
+    // the task's own Files (gap 9: an edit elsewhere is counted as a declared amendment)
+    const files = s.split(/\*\*Files:\*\*/)[1]
+    t.files = files ? [...files.split(/\n\n\*\*/)[0].matchAll(/^- (?:Modify|Create|Delete): `([^`]+)`/gm)].map((m) => m[1]) : null
   }
 }
 fromPlan(widgetkit, '2026-09-25-flock-baseline-widgetkit.md')
