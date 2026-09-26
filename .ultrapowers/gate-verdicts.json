@@ -1,0 +1,63 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "0f8399befb3290e82eb145cd1fa60cd3ebda9d30c76816a0e8b60e0d39fb62fa",
+   "verdict": "pass",
+   "reason": "Each of M1-M5 has one cited probe that goes red if its fact is false; the BASE excerpts contradict none, and measure.mjs is absent because this task creates it."
+  },
+  "2": {
+   "hash": "c7122d5377b2846927ac7c6de99ceb23b2d99a107ff089f5eeb19f424f4d8d1b",
+   "verdict": "pass",
+   "reason": "M1-M5 each have a tagged leg that would fail if false; the M2 patterns match BASE's own definition shapes and the M4 probe reads the env-argv kernel call BASE already makes."
+  },
+  "3": {
+   "hash": "2c08b2c6ac138f7eb76d7952974ba1fec7ea19994e12a9ed92006b88bf4e614d",
+   "verdict": "pass",
+   "reason": "Every clause M1-M5 has a tagged probe, the absence facts (no engine definitions, KERNEL only in fold.mjs, no runLines/materialize in refold.mjs) included, and no BASE file pins the opposite."
+  }
+ },
+ "tally": {
+  "dispatched": 3,
+  "rejected": 0,
+  "rounds": {
+   "1": {
+    "dispatched": 3,
+    "passed": 3
+   }
+  },
+  "base": "4854fbb050abbc4ce4dc5b8b285a1b8c2ab49465"
+ },
+ "authoring": {
+  "minutes": 17,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Claim and summary: #1276",
+    "options": [
+     "Sign as written",
+     "Shorter Claim",
+     "Please explain"
+    ],
+    "recommended": "Sign as written",
+    "picked": "Sign as written",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute: #1276",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline",
+     "Please explain"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
