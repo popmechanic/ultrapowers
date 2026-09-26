@@ -370,5 +370,16 @@
       "rollback": "enabled = false",
       "unread": "publish-as-probe (#835): deploy, live verify and rollback after the self-merge; pre-registered reading per release: publishes per run, verify reds, rollbacks and deploy seconds against timeout_seconds"
     }
+  },
+  "flock": {
+    "pulls": {
+      "mode": "all",
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "experiment": true,
+      "rollback": "mode = all",
+      "unread": "narrow pulls (#1292): cache reads and wall per run against the round-3 arm"
+    }
   }
 }

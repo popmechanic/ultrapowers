@@ -336,7 +336,9 @@ class Keeper:
         self.kauth_pub[agent] = _copy.deepcopy(self.auth(agent))
         return {"paths": len(self.published[agent])}
 
-    def r_pull(self, agent):
+    def r_pull(self, agent, paths=None):
+        # paths (optional): take in only these paths' published changes; absent, take in all
+        want = None if paths is None else set(paths)
         mine = self.copy(agent)
         changed, flagged = [], []
         for peer, pub in self.published.items():
@@ -344,6 +346,8 @@ class Keeper:
                 continue
             peer_auth = self.kauth_pub.get(peer, {})
             for p, st in pub.items():
+                if want is not None and p not in want:
+                    continue
                 before = mine.get(p)
                 flags = []
                 if before is None:

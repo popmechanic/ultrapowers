@@ -27,6 +27,7 @@ import { fileURLToPath } from 'node:url'
 import { workloadFromPlan } from './plan.mjs'
 import { makeBoard } from './flock_board.mjs'
 import { editSpans } from './edit_spans.mjs'
+import { pullScope } from './pulls.mjs'
 import { findGit } from '../gitblock.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -87,6 +88,12 @@ const EARLY_CLOSE = arg('early-close', 'held')
 // `--order chain` offers the ready set longest remaining chain first (flock_board.mjs); `rotate`,
 // each claimer starting its walk at its own offset, is the rollback.
 const ORDER = arg('order', 'chain')
+// `--pulls narrow` (#1292): a builder takes in only the peer changes its work touches (pulls.mjs);
+// `all`, every published change, is the rollback. Absent the flag, the policy cell flock.pulls.mode.
+const PULLS = arg('pulls', (() => { try { return JSON.parse(fs.readFileSync(path.join(HERE, '..', 'policy.json'), 'utf8')).flock?.pulls?.mode } catch { return undefined } })() || 'all')
+if (!['narrow', 'all'].includes(PULLS)) { console.error('engine: --pulls is narrow or all'); process.exit(2) }
+const touched = {}   // per builder: the paths it has read or edited in its copy
+const touch = (agent, rel) => (touched[agent] = touched[agent] || new Set()).add(rel)
 const MAX_REOPEN = 3
 const NAMES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].slice(0, N)   // up to 8; [] when elastic
 const OUT = RUN_DIR
@@ -414,8 +421,11 @@ ${PUBLISH === 'batch' ? '- Your changes are published to the others automaticall
 - If a note says a file merged with conflict marks, look at that part of the file. When it says what both sides meant (edit it if not), call resolve_conflict for that file.
 ${DONE_ENDS ? "- When your task's facts pass on your copy, call done: it publishes your copy for you and closes it." : "- When your task's facts pass on your copy, publish, then call done."}`
 
-async function pullInto (agent) {
-  const r = await must({ op: 'pull', agent })
+async function pullInto (agent, task) {
+  // a resolve task (R:<path>) scopes to its own path
+  if (task && !task.files && String(task.id).startsWith('R:')) task = { ...task, files: [task.id.slice(2)] }
+  const scope = task ? pullScope({ task, tasks: W.tasks, touched: [...(touched[agent] || [])], mode: PULLS }) : null
+  const r = await must(scope ? { op: 'pull', agent, paths: [...scope] } : { op: 'pull', agent })
   const dir = agentDir(agent)
   for (const c of r.changed) {
     const f = path.join(dir, c.path)
@@ -483,7 +493,7 @@ async function session (agent, task) {
   const cwd = agentDir(agent)
   const st = { released: false, done: false, redRuns: 0 }
   const pre = new Map()
-  await pullInto(agent)
+  await pullInto(agent, task)
   if (SCRIPT) return scriptedSession(agent, task)
   const say = (text) => ({ content: [{ type: 'text', text }] })
   const tools = [
@@ -538,7 +548,7 @@ async function session (agent, task) {
         let held = holds()
         while (!held && now() - t0 < limit && !outcome) {
           await sleep(1000)
-          const changed = await pullInto(agent)
+          const changed = await pullInto(agent, task)
           for (const c of changed) merged.set(c.path, c)
           if (changed.length) proofChanged = true
           spotted.push(...(spotNotes[agent] || [])); delete spotNotes[agent]
@@ -576,6 +586,10 @@ async function session (agent, task) {
     PreToolUse: [{ hooks: [async (input) => {
       const ti = input.tool_input || {}
       ev('tool', { agent, task: task.id, tool: input.tool_name, target: String(ti.file_path || ti.command || '').slice(0, 120) })
+      if (['Read', 'Edit', 'MultiEdit', 'Write'].includes(input.tool_name) && ti.file_path) {
+        const fp = path.resolve(cwd, ti.file_path)
+        if (fp.startsWith(cwd + '/')) touch(agent, fp.slice(cwd.length + 1))
+      }
       if (st.closed && ['Edit', 'MultiEdit', 'Write', 'Bash'].includes(input.tool_name)) {
         return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'your task is done and your copy is closed; end your turn' } }
       }
@@ -655,7 +669,7 @@ async function session (agent, task) {
         await syncFromDisk(agent); await publishCopy(agent); dirty[agent] = false
         ev('publish', { agent, task: task.id, auto: 'batch' }); await board.publish(agent, task.id); edge('batch ' + agent)
       }
-      const changed = await pullInto(agent)
+      const changed = await pullInto(agent, task)
       const spotted = [...(spotNotes[agent] || [])]; delete spotNotes[agent]
       if (!changed.length && !spotted.length) return {}
       const note = (changed.length ? 'Peers\' published work was merged into your copy just now: ' +
@@ -778,7 +792,7 @@ async function settle () {
 
 // ── run ───────────────────────────────────────────────────────────────────────
 await must({ op: 'base', root: BASE_DIR, paths: BASE_PATHS })
-ev('start', { workload: W.name, agents: ELASTIC ? 'elastic' : N, cap: ELASTIC ? CAP : undefined, model: MODEL, clock_ms: CLOCK_MS, quiet_ms: QUIET_MS, board: BOARD, publish: PUBLISH, early_close: EARLY_CLOSE, order: ORDER, chain: board.cp ? Object.fromEntries(board.cp) : undefined })
+ev('start', { workload: W.name, agents: ELASTIC ? 'elastic' : N, cap: ELASTIC ? CAP : undefined, model: MODEL, clock_ms: CLOCK_MS, quiet_ms: QUIET_MS, board: BOARD, publish: PUBLISH, early_close: EARLY_CLOSE, order: ORDER, pulls: PULLS, chain: board.cp ? Object.fromEntries(board.cp) : undefined })
 log(`workload ${W.name}, ${N} agents, ${MODEL}, out ${OUT}`)
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 const pool = [...NAMES]
