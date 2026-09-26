@@ -138,9 +138,29 @@ function walk (dir, rel = '') {
   for (const e of fs.readdirSync(path.join(dir, rel), { withFileTypes: true })) {
     const p = rel ? rel + '/' + e.name : e.name
     if (SKIP.test(p)) continue
-    if (e.isDirectory()) out.push(...walk(dir, p)); else out.push(p)
+    if (e.isDirectory()) out.push(...walk(dir, p)); else if (isText(path.join(dir, p), p)) out.push(p)
   }
   return out
+}
+// The weave merges text, line by line; a file that is not UTF-8 (an image, a .gz) is never handed to
+// it. Every copy and the edge start from BASE_DIR, so such a file stays exactly as it is at base, and
+// a builder's change to one is recorded, never merged (ultrapowers run-246: `docs/assets/dag.gif`
+// stopped the weave's `base` op with a UnicodeDecodeError before any builder opened).
+const UTF8 = new TextDecoder('utf-8', { fatal: true })
+const textSeen = new Map()   // absolute path -> { key: size:mtime, text: boolean }
+const nonText = new Set()    // relative paths set aside, recorded once each
+function isText (abs, rel) {
+  let st
+  try { st = fs.statSync(abs) } catch { return false }
+  if (!st.isFile()) return false
+  const key = st.size + ':' + st.mtimeMs
+  const seen = textSeen.get(abs)
+  if (seen && seen.key === key) return seen.text
+  let text = true
+  try { UTF8.decode(fs.readFileSync(abs)) } catch { text = false }
+  textSeen.set(abs, { key, text })
+  if (!text && !nonText.has(rel)) { nonText.add(rel); if (typeof ev === 'function') ev('non-text', { path: rel }) }
+  return text
 }
 const readOr = (f) => { try { return fs.readFileSync(f, 'utf8') } catch { return null } }
 const BASE_DIR = path.join(WORK, 'base')
