@@ -28,6 +28,7 @@ button,select,input{font:inherit}
   <section>
     <div id="rec">Showing story <select id="story-pick" aria-label="Story being shown"></select>
       <button id="restart" type="button">Start this story from empty</button><span id="rec-count"></span></div>
+    <p class="note" id="now-showing"></p>
     <div id="app" data-mark="app"></div>
     <p class="note" id="save-note"></p>
   </section>
@@ -47,13 +48,37 @@ let session = Math.random().toString(36).slice(2, 10)
 let story = PAGE.stories.length ? PAGE.stories[0].id : 'S1'
 let step = 0
 
-async function save (collection, id, doc) {
-  if (!db) { unsaved.push([collection, id, doc]); return }
-  try { await db.collection(collection).doc(id).set(doc) } catch { unsaved.push([collection, id, doc]) }
+async function save (collection, id, doc, { pendingNote, onOk, onFail } = {}) {
+  if (!db) { unsaved.push({ collection, id, doc, pendingNote, onOk, onFail }); return false }
+  try {
+    await db.collection(collection).doc(id).set(doc)
+    document.getElementById('save-note').textContent = pendingNote || 'Saved'
+    onOk?.()
+    retryUnsaved()
+    return true
+  } catch (err) {
+    unsaved.push({ collection, id, doc, pendingNote, onOk, onFail })
+    const msg = (err && (err.message || err.code)) || String(err)
+    document.getElementById('save-note').textContent = `Not saved: ${msg} — tell Claude`
+    onFail?.(msg)
+    return false
+  }
+}
+async function retryUnsaved () {
+  if (!db) return
+  for (const item of unsaved.splice(0)) {
+    await save(item.collection, item.id, item.doc, { pendingNote: item.pendingNote, onOk: item.onOk, onFail: item.onFail })
+  }
 }
 function note () {
   document.getElementById('rec-count').textContent = step ? `${step} step${step === 1 ? '' : 's'} recorded` : ''
-  document.getElementById('save-note').textContent = db ? '' : 'This view cannot save; your steps stay on this page only.'
+}
+function storySentence (id) {
+  const s = PAGE.stories.find((x) => x.id === id)
+  return s ? s.sentence : ''
+}
+function updateNowShowing () {
+  document.getElementById('now-showing').textContent = `Now showing ${story}: ${storySentence(story)}`
 }
 function call (name, args = {}, ui = null) {
   const tool = TOOLS[name]
@@ -64,14 +89,16 @@ function call (name, args = {}, ui = null) {
   step += 1
   const row = { session, at: Date.now(), story, step, piece: tool.piece, tool: name, args: clone(args),
     layer: ui ? 'ui' : 'store', ui: ui ? clone(ui) : null, before, after, see: [] }
-  save('steps', `${session}-${story}-${step}`, row)
+  save('steps', `${session}-${story}-${step}`, row, { pendingNote: `Saved step ${step}` })
   note()
 }
 function restart () {
   store.setContent([{}, {}])
   session = Math.random().toString(36).slice(2, 10)
   step = 0
+  document.getElementById('save-note').textContent = `Started ${story} from empty`
   note()
+  updateNowShowing()
 }
 function openMark (target, anchor) {
   const old = anchor.parentElement.querySelector('.pop')
@@ -85,7 +112,14 @@ function openMark (target, anchor) {
     const b = document.createElement('button')
     b.type = 'button'
     b.textContent = label
-    b.onclick = () => { save('marks', `${Date.now()}-${target}`, { target, mark, note: text.value, at: Date.now() }); pop.remove(); anchor.textContent = '●' }
+    b.onclick = () => {
+      save('marks', `${Date.now()}-${target}`, { target, mark, note: text.value, at: Date.now() }, {
+        pendingNote: 'Saved your mark',
+        onOk: () => { anchor.textContent = '●'; anchor.title = '' },
+        onFail: (msg) => { anchor.textContent = '⚠'; anchor.title = msg }
+      })
+      pop.remove()
+    }
     pop.append(b)
   }
   pop.append(text)
@@ -125,9 +159,10 @@ sketchMod.render(app, store, call)
 addMarkers(document.body)
 new MutationObserver(() => addMarkers(document.body)).observe(app, { childList: true, subtree: true })
 note()
+updateNowShowing()
+document.getElementById('save-note').textContent = 'This view cannot save; your steps stay on this page only.'
 window.claude?.use?.('db').then((x) => {
   db = x
-  note()
-  for (const [c, id, doc] of unsaved.splice(0)) save(c, id, doc)
+  retryUnsaved()
 })
 </script>

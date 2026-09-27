@@ -104,8 +104,9 @@ until then the flow ends at `PLAN OK`.
    `python3 skills/ultrawrite/preview/build_preview.py <bundle> <out.html>`, then the
    Artifact tool with `capabilities: {db: {}}`. Say in one line what to do: pick a
    story, click through it, tap ◦ on anything that is off.
-7. **Read their marks and recordings:** `ArtifactData list` the `marks` and `steps`
-   collections; `python3 skills/ultrawrite/preview/steps_from_rows.py rows.json
+7. **Read their marks and recordings:** `ArtifactData list` the `steps` and `marks`
+   collections with `out_dir` set to a scratch directory, then `python3
+   skills/ultrawrite/preview/steps_from_rows.py <out_dir>/steps
    <bundle>/steps.jsonl`. Answer every mark with concrete alternatives (never an
    open question); turn a recorded session into a story sentence and ask them to
    confirm it. Chat text counts the same as a mark.

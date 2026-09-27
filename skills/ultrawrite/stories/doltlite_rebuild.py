@@ -25,8 +25,9 @@ def _write_content(cur, content):
 
 
 def rebuild(rows, db_path):
-    import doltlite
-    conn = doltlite.connect(db_path)
+    import doltlite  # noqa: F401 (bootstraps sqlite3)
+    import sqlite3
+    conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     cur.execute("CREATE TABLE cells (tbl TEXT, row TEXT, cell TEXT, value TEXT, PRIMARY KEY (tbl, row, cell))")
     cur.execute("CREATE TABLE vals (name TEXT PRIMARY KEY, value TEXT)")

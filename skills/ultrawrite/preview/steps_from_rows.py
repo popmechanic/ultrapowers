@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""Turn the preview's `steps` db rows (as ArtifactData `list` returned them,
-saved to a JSON file) into steps.jsonl: per story, the latest session wins.
+"""Turn the preview's `steps` db rows (as ArtifactData `list` returned them)
+into steps.jsonl: per story, the latest session wins.
 
-    steps_from_rows.py <rows.json> <steps.jsonl>"""
+`rows` may be a directory — ArtifactData `list ... out_dir=...` writes one
+flat JSON document per row to `<out_dir>/<doc_id>.json` — or a JSON file: a
+list of rows, or an object with a `documents`/`docs` list, as before. A row
+shaped `{"id", "data": {...}, "version", ...}` is unwrapped to its `data`.
+
+    steps_from_rows.py <rows.json|rows-dir> <steps.jsonl>"""
 import json
 import os
 import sys
@@ -11,6 +16,34 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import steps as steps_mod  # noqa: E402
 
 DB_ONLY = ("id", "session", "at")
+
+
+def _unwrap(row):
+    if isinstance(row, dict) and isinstance(row.get("data"), dict):
+        return row["data"]
+    return row
+
+
+def load_rows(path):
+    """Read `rows` (a directory of one-JSON-document-per-row files, or a JSON
+    file holding a list or a `documents`/`docs`-keyed object) into a list of
+    row dicts. Anything else exits 2 with a named error."""
+    if os.path.isdir(path):
+        names = sorted(n for n in os.listdir(path) if n.endswith(".json"))
+        rows = []
+        for name in names:
+            with open(os.path.join(path, name), encoding="utf-8") as fh:
+                rows.append(_unwrap(json.load(fh)))
+        return rows
+    if os.path.isfile(path):
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        if isinstance(data, list):
+            return [_unwrap(r) for r in data]
+        if isinstance(data, dict):
+            return [_unwrap(r) for r in data.get("documents", data.get("docs", []))]
+    print("steps_from_rows: unrecognized rows input %s" % path, file=sys.stderr)
+    sys.exit(2)
 
 
 def rows_to_steps(rows):
@@ -37,10 +70,8 @@ def merge_steps(existing, new_rows):
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        sys.exit("usage: steps_from_rows.py <rows.json> <steps.jsonl>")
-    with open(sys.argv[1], encoding="utf-8") as fh:
-        data = json.load(fh)
-    rows = data if isinstance(data, list) else data.get("documents", data.get("docs", []))
+        sys.exit("usage: steps_from_rows.py <rows.json|rows-dir> <steps.jsonl>")
+    rows = load_rows(sys.argv[1])
     got = rows_to_steps(rows)
     out_path = sys.argv[2]
     if os.path.exists(out_path):

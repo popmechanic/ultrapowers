@@ -29,6 +29,8 @@ def test_build_inlines_both_modules_and_pins_tinybase(tmp_path):
     assert not re.search(r"^export\s", html, re.M)
     assert "__PAGE_JSON__" not in html and '"id": "S1"' in html
     assert html.startswith("<title>Todos</title>")
+    assert "Not saved:" in html
+    assert "Now showing" in html
 
 
 def test_a_module_with_another_import_is_refused():
