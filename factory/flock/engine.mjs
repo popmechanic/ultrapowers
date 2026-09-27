@@ -96,6 +96,11 @@ if (!['narrow', 'all'].includes(PULLS)) { console.error('engine: --pulls is narr
 const touched = {}   // per builder: the paths it has read or edited in its copy
 const touch = (agent, rel) => (touched[agent] = touched[agent] || new Set()).add(rel)
 const MAX_REOPEN = 3
+// A task a builder gives back goes straight back on the ready list, and nothing capped that: on
+// ultrapowers run-252 (2026-09-27) a check task no builder could fix was claimed and given back
+// ~1,150 times over the whole 3.8 h clock, $80.57 of sessions. After MAX_RELEASE give-backs the
+// task parks: it leaves the ready list, a stall is posted, and settling ends the run a draft.
+const MAX_RELEASE = 3
 const NAMES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].slice(0, N)   // up to 8; [] when elastic
 const OUT = RUN_DIR
 const WORK = path.join(RUN_DIR, 'work')
@@ -113,6 +118,20 @@ const log = (...a) => console.log(`[${(now() / 1000).toFixed(1).padStart(6)}s]`,
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 // ── the engine's own git, on the target ───────────────────────────────────────
+// A copy (each builder's, the edge's) is made a git repository at BASE that borrows the target's
+// objects, so a plan's git-based line — `git diff --quiet $ULTRA_BASE -- <file>`, the shape the
+// authoring skill prescribes for "unchanged since base" — reads the base it names. Without it every
+// such check exited non-zero in a plain folder and the check task could never go green
+// (ultrapowers run-252, 2026-09-27). The weave never sees `.git` (SKIP).
+let TARGET_OBJECTS = null
+function gitCopy (dir) {
+  if (TARGET_OBJECTS === null) TARGET_OBJECTS = path.resolve(TARGET, git(['rev-parse', '--git-common-dir']).trim(), 'objects')
+  const run = (args) => { const r = spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8' }); if (r.status !== 0) throw new Error(`git ${args.join(' ')} in ${dir}: ${r.stderr}`) }
+  run(['init', '-q'])
+  fs.writeFileSync(path.join(dir, '.git', 'objects', 'info', 'alternates'), TARGET_OBJECTS + '\n')
+  run(['read-tree', BASE_SHA])
+  run(['update-index', '-q', '--refresh'])
+}
 function git (args, opts = {}) {
   const r = spawnSync('git', ['-C', TARGET, ...args], { encoding: opts.encoding === undefined ? 'utf8' : opts.encoding, maxBuffer: 256 * 1024 * 1024 })
   if (r.error) throw r.error
@@ -132,7 +151,7 @@ const weave = (o) => new Promise((res) => {
 const must = async (o) => { const r = await weave(o); if (!r.ok) throw new Error('weave ' + o.op + ': ' + r.error); return r }
 
 // ── files ─────────────────────────────────────────────────────────────────────
-const SKIP = /(^|\/)(__pycache__|\.pytest_cache|node_modules)(\/|$)|\.pyc$/
+const SKIP = /(^|\/)(__pycache__|\.pytest_cache|node_modules|\.git)(\/|$)|\.pyc$/
 function walk (dir, rel = '') {
   const out = []
   for (const e of fs.readdirSync(path.join(dir, rel), { withFileTypes: true })) {
@@ -203,7 +222,7 @@ if (SETUP) {
 }
 const linkDeps = (dir) => { for (const d of DEP_DIRS) { fs.rmSync(path.join(dir, d), { recursive: true, force: true }); fs.symlinkSync(path.join(DEPS_DIR, d), path.join(dir, d)) } }
 const agentDir = (a) => path.join(WORK, 'agents', a)
-for (const a of NAMES) { fs.cpSync(BASE_DIR, agentDir(a), { recursive: true }); linkDeps(agentDir(a)) }
+for (const a of NAMES) { fs.cpSync(BASE_DIR, agentDir(a), { recursive: true }); linkDeps(agentDir(a)); gitCopy(agentDir(a)) }
 const known = Object.fromEntries(NAMES.map((a) => [a, new Set(BASE_PATHS)]))
 
 // ── the board: the stand-in, every op timed. The boot's --kata-* flags are ignored. ──
@@ -401,7 +420,7 @@ function edge (reason) {
     }
     lastChange = now()
     const dir = path.join(WORK, 'edge')
-    fs.rmSync(dir, { recursive: true, force: true }); fs.cpSync(BASE_DIR, dir, { recursive: true }); linkDeps(dir)
+    fs.rmSync(dir, { recursive: true, force: true }); fs.cpSync(BASE_DIR, dir, { recursive: true }); linkDeps(dir); gitCopy(dir)
     for (const [p, text] of Object.entries(m.files)) {
       const f = path.join(dir, p)
       if (m.exists[p]) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text) } else fs.rmSync(f, { force: true })
@@ -496,6 +515,18 @@ function brief (task) {
 // `--builder scripted:<json>`: no model. The session writes the task's scripted files into its
 // copy, then takes the path a `done` call takes (syncFromDisk -> publish -> board done) and ends.
 // A task the script does not name ends released.
+// Every give-back, scripted or model, goes through here, so MAX_RELEASE caps them all.
+async function giveBack (agent, task, why) {
+  task.released = (task.released || 0) + 1
+  if (task.released >= MAX_RELEASE) {
+    task.state = 'parked'; task.owner = null; task.notes.push(`${agent} released: ${why}`)
+    ev('task:parked', { task: task.id, releases: task.released, reason: String(why).slice(0, 300) })
+    await stall('released', { task: task.id, releases: task.released }); log(agent, 'parks', task.id, 'after', task.released, 'give-backs')
+    return
+  }
+  await board.release(task, `${agent} released: ${why}`); log(agent, 'releases', task.id, '—', why)
+}
+
 async function scriptedSession (agent, task) {
   const cwd = agentDir(agent)
   const files = SCRIPT[task.id]
@@ -513,7 +544,7 @@ async function scriptedSession (agent, task) {
   usage.push({ agent, task: task.id, turns: 0, subtype: 'scripted', cost_usd: 0 })
   ev('session:end', { agent, task: task.id, released: files ? false : 'not scripted', done: files ? 'scripted' : false })
   live.delete(agent); lastChange = now()
-  if (!files) { await board.release(task, `${agent} released: the script names no files for task ${task.id}`); log(agent, 'releases', task.id) }
+  if (!files) await giveBack(agent, task, `the script names no files for task ${task.id}`)
 }
 
 async function session (agent, task) {
@@ -729,7 +760,7 @@ async function session (agent, task) {
   // changed nothing ("the merged text already says what both meant": run n1, 2 of 2 attempts)
   if (String(task.id).startsWith('R:') && st.done) closeEntries(task.id.slice(2), agent, st.done, 'resolve task done')
   live.delete(agent); if (!st.closed) lastChange = now()
-  if (st.closed) { /* done, published and marked at the done call */ } else if (st.released) { await board.release(task, `${agent} released: ${st.released}`); log(agent, 'releases', task.id, '—', st.released) } else { await board.done(task); log(agent, 'done', task.id) }
+  if (st.closed) { /* done, published and marked at the done call */ } else if (st.released) { await giveBack(agent, task, st.released) } else { await board.done(task); log(agent, 'done', task.id) }
 }
 
 async function agentLoop (agent) {
@@ -829,7 +860,7 @@ let buildersMax = pool.length
 const busy = (a) => live.has(a) || [...board.tasks.values()].some((t) => t.state === 'claimed' && t.owner === a)
 function openBuilder () {
   const a = pool.length < 26 ? LETTERS[pool.length] : LETTERS[pool.length % 26] + Math.floor(pool.length / 26)
-  fs.cpSync(BASE_DIR, agentDir(a), { recursive: true }); linkDeps(agentDir(a))
+  fs.cpSync(BASE_DIR, agentDir(a), { recursive: true }); linkDeps(agentDir(a)); gitCopy(agentDir(a))
   known[a] = new Set(BASE_PATHS)   // its first session pulls every published change (session -> pullInto)
   pool.push(a); buildersMax = Math.max(buildersMax, pool.length)
   ev('builder:open', { agent: a, pool: pool.length, ready: board.readyNow().length, busy: pool.filter(busy).length })
