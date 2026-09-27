@@ -362,6 +362,59 @@ function publishRefusal ({ compiled, integrations }) {
     'the deploy would have no credential at the edge; first-run.md §cloudflare walks the token, then launch again'
 }
 
+/**
+ * The path of the first `wrangler.jsonc` in the tree at `base` whose top-level
+ * object carries an `assets` key, or `null` — always `null` for a plan with no
+ * `**Publish:**` line (`compiled.payload.publish` not an object). A config that
+ * does not parse is not a declaration of `assets` and is passed over.
+ */
+async function assetsConfigAtBase ({ exec, repoDir, base, compiled }) {
+  const publish = compiled?.payload?.publish ?? compiled?.publish
+  if (publish === null || publish === undefined || typeof publish !== 'object') return null
+  const listed = await git(exec, repoDir, ['ls-tree', '-r', '--name-only', base])
+  if (listed.code !== 0) return null
+  const paths = String(listed.stdout ?? '').split('\n').map((l) => l.trim())
+    .filter((l) => l === 'wrangler.jsonc' || l.endsWith('/wrangler.jsonc'))
+  for (const p of paths) {
+    const shown = await git(exec, repoDir, ['show', `${base}:${p}`])
+    if (shown.code !== 0) continue
+    let config
+    try {
+      config = JSON.parse(stripJsonc(String(shown.stdout ?? '')))
+    } catch {
+      continue
+    }
+    if (config !== null && typeof config === 'object' && !Array.isArray(config) &&
+        Object.prototype.hasOwnProperty.call(config, 'assets')) return p
+  }
+  return null
+}
+
+// JSONC to JSON: drops `//` and `/* */` comments and trailing commas, leaving
+// string contents (a `"$schema"` path, a URL with `//`) untouched.
+function stripJsonc (text) {
+  let out = ''
+  let i = 0
+  while (i < text.length) {
+    const c = text[i]
+    if (c === '"') {
+      let j = i + 1
+      while (j < text.length && text[j] !== '"') j += text[j] === '\\' ? 2 : 1
+      out += text.slice(i, j + 1)
+      i = j + 1
+    } else if (c === '/' && text[i + 1] === '/') {
+      while (i < text.length && text[i] !== '\n') i++
+    } else if (c === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2)
+      i = end === -1 ? text.length : end + 2
+    } else {
+      out += c
+      i++
+    }
+  }
+  return out.replace(/,(\s*[}\]])/g, '$1')
+}
+
 // The refusal message for a usage window at or past `USAGE_REFUSE_PCT`, named
 // as the Machine spells it: the account, the window's label, its utilization
 // and its reset time, ending the same way every other pre-push refusal ends.
@@ -775,6 +828,19 @@ async function launchBody ({
   const publishRefused = publishRefusal({ compiled: firstCompiled, integrations })
   if (publishRefused !== null) {
     throw new Refusal(publishRefused)
+  }
+  // #1313: exe.dev's edge replaces `Authorization`, so wrangler's asset-upload
+  // JWT is refused 401 (#1312) — a publishing plan against a target whose
+  // `wrangler.jsonc` at --base declares `assets` can only die in
+  // `publish:deploy`, after every task merged. Refused here, before the pool,
+  // the credential and the push. Retires with #1312's pack step.
+  const assetsConfig = await assetsConfigAtBase({ exec, repoDir, base: opts.base, compiled: firstCompiled })
+  if (assetsConfig !== null) {
+    throw new Refusal(
+      `launch: the plan carries a **Publish:** line but ${assetsConfig} at --base declares assets, ` +
+      "and the edge refuses wrangler's asset upload (#1312) — add the pack step that serves the page " +
+      'from the Worker and drop assets; no VM was created and nothing was pushed'
+    )
   }
   // #645: a probe or check whose command word the sandbox lacks would exit 127
   // in its first second on the box, after the push and the `new`; read every
