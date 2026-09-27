@@ -17,7 +17,13 @@ def _load_rows(path):
 
 
 def _split(clause):
+    """<story>.<step> where step is a whole number, or None on anything else
+    (a hand-edited plan may carry a dot-less or non-numeric clause)."""
+    if "." not in clause:
+        return None
     sid, step = clause.rsplit(".", 1)
+    if not step.isdigit():
+        return None
     return sid, int(step)
 
 
@@ -63,11 +69,22 @@ def violations(text, plan_path, stories_path=None):
 
     for t in parsed["tasks"]:
         for p in t["probes"]:
-            sid, step = _split(p["clause"])
-            one(p, plan_id + "/" + sid, step, "task %s probe %s" % (t["id"], p["clause"]), True)
+            label = "task %s probe %s" % (t["id"], p["clause"])
+            split = _split(p["clause"])
+            if split is None:
+                out.append("%s: clause must be <story>.<step>" % label)
+                continue
+            sid, step = split
+            one(p, plan_id + "/" + sid, step, label, True)
     for g in parsed["guards"]:
-        story, step = _split(g["clause"][2:] if g["clause"].startswith("G:") else g["clause"])
-        one(g, story, step, "guard %s" % g["clause"], False)
+        label = "guard %s" % g["clause"]
+        body = g["clause"][2:] if g["clause"].startswith("G:") else g["clause"]
+        split = _split(body)
+        if split is None:
+            out.append("%s: clause must be G:<story>.<step>" % label)
+            continue
+        story, step = split
+        one(g, story, step, label, False)
     for s in parsed["stories"]:
         full = plan_id + "/" + s["id"]
         srows = [r for r in rows if r["story"] == full]

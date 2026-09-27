@@ -70,6 +70,16 @@ def test_a_probe_naming_an_unlisted_tool_is_refused(tmp_path):
     assert "task 1 probe S2.2: names tool addTodo, which no task's Actions list" in res.stdout
 
 
+def test_a_probe_with_a_malformed_clause_is_refused_not_a_traceback(tmp_path):
+    _, plan = compiled(tmp_path)
+    t = plan.read_text(encoding="utf-8").replace('"clause": "S2.2"', '"clause": "S2"', 1)
+    plan.write_text(t, encoding="utf-8")
+    res = check(plan)
+    assert res.returncode == 2
+    assert "task 1 probe S2: clause must be <story>.<step>" in res.stdout
+    assert "Traceback" not in res.stdout and "Traceback" not in res.stderr
+
+
 def test_an_older_story_without_a_guard_is_refused(tmp_path):
     app, plan = compiled(tmp_path)
     export = app / "stories/steps.jsonl"
