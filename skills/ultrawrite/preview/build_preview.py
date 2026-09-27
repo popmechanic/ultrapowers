@@ -34,7 +34,8 @@ def module_body(src, exports):
         if not re.search(r"\b(const|function|let|class)\s+%s\b" % re.escape(e), body):
             raise BuildError("the module does not export %s" % e)
     head = "const { %s } = TB;\n" % ", ".join(names) if names else ""
-    return "(() => {\n%s%s\nreturn { %s };\n})()" % (head, body, ", ".join(exports))
+    out = "(() => {\n%s%s\nreturn { %s };\n})()" % (head, body, ", ".join(exports))
+    return out.replace("</", "<\\/")
 
 
 def build(bundle_dir, out_html):
