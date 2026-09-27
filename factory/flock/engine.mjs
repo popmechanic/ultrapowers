@@ -110,6 +110,9 @@ const now = () => Date.now() - T0
 const RUN_ENV = { ...process.env, PYTHONDONTWRITEBYTECODE: '1', ULTRA_BASE: BASE_SHA }
 
 fs.mkdirSync(OUT, { recursive: true })
+const CHECK_OUT = path.join(OUT, 'checks')
+RUN_ENV.FLOCK_CHECK_OUT = CHECK_OUT
+fs.mkdirSync(CHECK_OUT, { recursive: true })
 fs.rmSync(WORK, { recursive: true, force: true })
 fs.mkdirSync(WORK, { recursive: true })
 const EV = fs.openSync(path.join(OUT, 'events.jsonl'), 'a')
@@ -243,6 +246,9 @@ function runFacts (cwd, task) {
     return { exit: r.status ?? 124, tail: ((r.stdout || '') + (r.stderr || '')).slice(-800) }
   })
 }
+const redOf = (res) => res.map((r, i) => ({ i, ...r })).filter((r) => r.exit !== 0)
+const redText = (task, red) => red.map((r) =>
+  `fact ${r.i + 1}${task.clauses ? ` (${task.clauses[r.i]})` : ''} exit ${r.exit}\n${r.tail}`).join('\n\n')
 const TRACE = /File "([^"]+)", line (\d+)/g
 async function blame (agent, cwd, output) {
   // gap 4: whose line does a red point at? the last in-copy frame of the traceback
@@ -538,6 +544,15 @@ async function scriptedSession (agent, task) {
       const f = path.join(cwd, p)
       fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text)
     }
+    const red = redOf(runFacts(cwd, task))
+    if (red.length) {
+      ev('facts:red', { agent, task: task.id, at: 'scripted', exits: red.map((r) => r.exit) })
+      usage.push({ agent, task: task.id, turns: 0, subtype: 'scripted', cost_usd: 0 })
+      ev('session:end', { agent, task: task.id, released: 'red facts', done: false })
+      live.delete(agent); lastChange = now()
+      await giveBack(agent, task, 'the scripted files leave red facts: ' + redText(task, red).slice(0, 300))
+      return
+    }
     await syncFromDisk(agent); await publishCopy(agent); ev('publish', { agent, task: task.id, by: 'done' }); await board.publish(agent, task.id)
     await board.done(task); live.delete(agent); edge('done ' + agent); log(agent, 'done', task.id)
   }
@@ -633,6 +648,12 @@ async function session (agent, task) {
       async (a) => { st.released = a.reason; return say('released; end your turn now') }),
     tool('done', DONE_ENDS ? 'Your task is finished: its facts pass on your copy. This publishes your copy and closes it.' : 'Your task is finished: its facts pass on your copy and you have published.', { summary: z.string() },
       async (a) => {
+        const red = redOf(runFacts(cwd, task))
+        if (red.length) {
+          st.redRuns++
+          ev('facts:red', { agent, task: task.id, at: 'done', exits: red.map((r) => r.exit) })
+          return say('not done: these facts fail on your copy. Fix them, run run_proof, then call done again.\n\n' + redText(task, red))
+        }
         if (!DONE_ENDS) { st.done = a.summary; return say('marked done; end your turn now') }
         await syncFromDisk(agent); await publishCopy(agent); ev('publish', { agent, task: task.id, by: 'done' }); await board.publish(agent, task.id)
         st.done = a.summary; st.closed = true
@@ -760,7 +781,13 @@ async function session (agent, task) {
   // changed nothing ("the merged text already says what both meant": run n1, 2 of 2 attempts)
   if (String(task.id).startsWith('R:') && st.done) closeEntries(task.id.slice(2), agent, st.done, 'resolve task done')
   live.delete(agent); if (!st.closed) lastChange = now()
-  if (st.closed) { /* done, published and marked at the done call */ } else if (st.released) { await giveBack(agent, task, st.released) } else { await board.done(task); log(agent, 'done', task.id) }
+  if (st.closed) { /* done, published and marked at the done call */ } else if (st.released) { await giveBack(agent, task, st.released) } else {
+    const red = redOf(runFacts(cwd, task))
+    if (red.length) {
+      ev('facts:red', { agent, task: task.id, at: 'session-end', exits: red.map((r) => r.exit) })
+      await giveBack(agent, task, 'the session ended with red facts: ' + redText(task, red).slice(0, 300))
+    } else { await board.done(task); log(agent, 'done', task.id) }
+  }
 }
 
 async function agentLoop (agent) {
@@ -852,6 +879,17 @@ async function settle () {
 await must({ op: 'base', root: BASE_DIR, paths: BASE_PATHS })
 ev('start', { workload: W.name, agents: ELASTIC ? 'elastic' : N, cap: ELASTIC ? CAP : undefined, model: MODEL, clock_ms: CLOCK_MS, quiet_ms: QUIET_MS, board: BOARD, publish: PUBLISH, early_close: EARLY_CLOSE, order: ORDER, pulls: PULLS, chain: board.cp ? Object.fromEntries(board.cp) : undefined })
 log(`workload ${W.name}, ${N} agents, ${MODEL}, out ${OUT}`)
+// a stories-v1 run proves the checker can run here before any builder spends anything:
+// exit 1 on the starting app is expected (nothing is built yet); exit 2 is the sandbox
+if (W.stories) {
+  const first = W.tasks.find((t) => t.facts.length)
+  const r = runFacts(SETUP ? DEPS_DIR : BASE_DIR, { facts: [first.facts[0]] })[0]
+  ev('checker:start', { exit: r.exit })
+  if (r.exit === 2) {
+    await stall('checker', { tail: r.tail.slice(-300) })
+    terminal('draft', 'the checker cannot run on this sandbox: ' + r.tail.slice(-300), null)
+  }
+}
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 const pool = [...NAMES]
 const loops = NAMES.map(agentLoop)

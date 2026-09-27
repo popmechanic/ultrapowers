@@ -2,7 +2,7 @@
 // through the same parser the sandbox uses (skills/ultrapowers/scripts/plan_parse.py).
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -21,6 +21,33 @@ function sectionsById(text) {
   return out;
 }
 
+// A stories-v1 plan's facts are checker calls, one per probe; FLOCK_CHECKER
+// swaps in a stand-in for the engine's own tests.
+const CHECKER = process.env.FLOCK_CHECKER || join(REPO, 'factory', 'stack', 'tinyapp', 'check.ts');
+const sq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+export const checkerArgv = (planPath, clause) =>
+  [...(CHECKER.endsWith('.ts') ? ['bun', CHECKER] : [CHECKER]), '--plan', planPath, '--clause', clause, '--copy', '.'];
+
+function storiesWorkload (parsed, planPath, bodies) {
+  const abs = resolve(planPath);
+  const tasks = parsed.tasks.map((t) => {
+    if (!t.probes.length) throw new Error(`plan task ${t.id} (${t.piece}) has no probes: a task with nothing to check cannot finish`);
+    return {
+      id: t.id, title: t.title, body: bodies.get(String(t.id)) ?? '', files: t.files || [],
+      depends_on: t.depends_on || [],
+      facts: t.probes.map((p) => checkerArgv(abs, p.clause)),
+      clauses: t.probes.map((p) => p.clause),
+    };
+  });
+  const guards = (parsed.guards || []).map((g) => checkerArgv(abs, g.clause).map(sq).join(' '));
+  return {
+    tasks,
+    check: bash(['bun run typecheck', ...guards].join(' && ')),
+    setup: bash(parsed.bootstrapCmd),
+    stories: { planPath: abs, sentences: Object.fromEntries((parsed.stories || []).map((s) => [s.id, s.sentence])) },
+  };
+}
+
 export function workloadFromPlan(planPath) {
   const r = spawnSync('python3', [PARSER, planPath], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   if (r.error) throw r.error;
@@ -29,6 +56,7 @@ export function workloadFromPlan(planPath) {
   }
   const parsed = JSON.parse(r.stdout);
   const bodies = sectionsById(readFileSync(planPath, 'utf8'));
+  if (parsed.grammar === 'stories-v1') return storiesWorkload(parsed, planPath, bodies);
   const edges = parsed.dag_edges || [];
 
   const tasks = (parsed.tasks || []).map((t) => ({
