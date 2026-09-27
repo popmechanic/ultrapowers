@@ -11,9 +11,29 @@ import probe_block
 import stories_parse
 
 
+_REQUIRED_ROW_KEYS = ("story", "step", "before", "after")
+
+
 def _load_rows(path):
+    """`(rows, violations)`: every well-formed line, and one `stories: export
+    line <n> is malformed: <reason>` per line that is not JSON or is missing
+    story/step/before/after — skipped, never a traceback."""
+    rows, errs = [], []
     with open(path, encoding="utf-8") as fh:
-        return [json.loads(l) for l in fh if l.strip()]
+        for i, line in enumerate(fh, 1):
+            if not line.strip():
+                continue
+            try:
+                r = json.loads(line)
+            except ValueError as exc:
+                errs.append("stories: export line %d is malformed: %s" % (i, exc))
+                continue
+            if not isinstance(r, dict) or any(k not in r for k in _REQUIRED_ROW_KEYS):
+                errs.append("stories: export line %d is malformed: missing story, step, before or after"
+                            % i)
+                continue
+            rows.append(r)
+    return rows, errs
 
 
 def _split(clause):
@@ -47,8 +67,12 @@ def violations(text, plan_path, stories_path=None):
     export = stories_path or os.path.join(root, "stories", "steps.jsonl")
     if not os.path.isfile(export):
         return out + ["stories: the stories export %s is missing" % export]
-    rows = _load_rows(export)
+    rows, load_errs = _load_rows(export)
+    out += load_errs
     by_key = {(r["story"], r["step"]): r for r in rows}
+    by_story = {}
+    for r in rows:
+        by_story.setdefault(r["story"], []).append(r)
     plan_id = parsed["plan_id"]
     actions = {a for t in parsed["tasks"] for a in t["actions"]}
     probed = set()
@@ -59,8 +83,16 @@ def violations(text, plan_path, stories_path=None):
             out.append("%s: no recorded step %s.%d in the stories export" % (label, story, step))
             return
         probed.add((story, step))
-        if p["expect"] != probe_block.checks_for(r["before"], r["after"]):
-            out.append("%s: expect differs from the recorded step's diff" % label)
+        prior = sorted((rr for rr in by_story.get(story, []) if rr["step"] < step),
+                       key=lambda rr: rr["step"])
+        expected = probe_block.probe_for(r, prior, p["clause"])
+        if not probe_block.same_value(p, expected):
+            if (not probe_block.same_value(p.get("expect"), expected["expect"])
+                    and probe_block.same_value({k: v for k, v in p.items() if k != "expect"},
+                                               {k: v for k, v in expected.items() if k != "expect"})):
+                out.append("%s: expect differs from the recorded step's diff" % label)
+            else:
+                out.append("%s: probe differs from the recorded step (layer, given or do)" % label)
         if probe_block.hollow(p, r["before"]):
             out.append("%s: hollow — every check already holds before the step" % label)
         if check_tools:
@@ -97,4 +129,13 @@ def violations(text, plan_path, stories_path=None):
         if not r["story"].startswith(plan_id + "/") and (r["story"], r["step"]) not in probed:
             out.append("guard missing: %s.%d is an earlier signed story step with no guard probe"
                        % (r["story"], r["step"]))
+    story_ids = {s["id"] for s in parsed["stories"]}
+    flagged = set()
+    prefix = plan_id + "/"
+    for r in rows:
+        if r["story"].startswith(prefix):
+            sid = r["story"][len(prefix):]
+            if sid not in story_ids and sid not in flagged:
+                flagged.add(sid)
+                out.append("steps recorded for %s, which is not on the plan's Stories list" % sid)
     return out

@@ -8,7 +8,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "ultrapowers", "scripts"))
-from probe_block import EMPTY, is_ui_call  # noqa: E402
+from probe_block import EMPTY, is_ui_call, same_value  # noqa: E402
 
 LAYERS = ("store", "ui", "saved")
 
@@ -71,10 +71,10 @@ def validate_story(rows):
     sid = rows[0]["story"]
     if [r["step"] for r in rows] != list(range(1, len(rows) + 1)):
         return ["story %s: steps must be numbered 1..%d without gaps" % (sid, len(rows))]
-    if rows[0]["before"] != EMPTY:
+    if not same_value(rows[0]["before"], EMPTY):
         errs.append("story %s: step 1 must start from the empty app" % sid)
     for prev, cur in zip(rows, rows[1:]):
-        if cur["before"] != prev["after"]:
+        if not same_value(cur["before"], prev["after"]):
             errs.append("story %s: step %d does not start where step %d ended"
                         % (sid, cur["step"], prev["step"]))
     return errs

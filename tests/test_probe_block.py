@@ -92,3 +92,22 @@ def test_tools_of_reads_given_and_tool_do():
     p = good(); p["given"] = [{"tool": "addTodo", "args": {"text": "a"}},
                               {"tool": "completeTodo", "args": {"id": "0"}}]
     assert pb.tools_of(p) == {"addTodo", "completeTodo"}
+
+
+def test_same_value_is_deep_and_type_strict():  # I1
+    assert pb.same_value(True, 1) is False
+    assert pb.same_value({"a": [1]}, {"a": [1.0]}) is False
+    assert pb.same_value({"a": [True]}, {"a": [True]}) is True
+
+
+def test_probe_for_derives_given_do_and_expect():  # I3
+    prior = [{"tool": "addTodo", "args": {"text": "buy milk"}, "layer": "store",
+              "before": EMPTY, "after": ONE, "see": []}]
+    row = {"tool": "completeTodo", "args": {"id": "0"}, "layer": "store",
+           "before": ONE, "after": DONE, "see": []}
+    p = pb.probe_for(row, prior, "S1.2")
+    assert p == {"clause": "S1.2", "layer": "store",
+                 "given": [{"tool": "addTodo", "args": {"text": "buy milk"}}],
+                 "do": [{"tool": "completeTodo", "args": {"id": "0"}}],
+                 "expect": [{"table": "todos", "row": "0", "cell": "completed", "eq": True}],
+                 "see": [], "judge": None, "holds_before": False}

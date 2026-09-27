@@ -115,8 +115,28 @@ def tools_of(p):
     return names
 
 
-def _same(x, y):
-    return type(x) is type(y) and x == y
+def same_value(a, b):
+    """Deep, type-strict equality: dicts by same keys and pairwise same_value
+    values, lists/tuples by same length and pairwise same_value, everything
+    else by exact type and equality — so True, 1 and 1.0 are three different
+    answers."""
+    if isinstance(a, dict) and isinstance(b, dict):
+        return set(a) == set(b) and all(same_value(v, b[k]) for k, v in a.items())
+    if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
+        return type(a) is type(b) and len(a) == len(b) and all(same_value(x, y) for x, y in zip(a, b))
+    return type(a) is type(b) and a == b
+
+
+def probe_for(row, prior, clause):
+    """The probe a signed step's row derives: `given` from the story's
+    earlier rows, `do` from the step itself, `expect` from its recorded
+    diff."""
+    expect = checks_for(row["before"], row["after"])
+    do = row["ui"] if row["layer"] == "ui" else [{"tool": row["tool"], "args": row.get("args", {})}]
+    return {"clause": clause, "layer": row["layer"],
+            "given": [{"tool": r["tool"], "args": r.get("args", {})} for r in prior],
+            "do": do, "expect": expect, "see": row.get("see", []), "judge": None,
+            "holds_before": expect == [{"unchanged": True}]}
 
 
 def checks_for(before, after):
@@ -137,13 +157,13 @@ def checks_for(before, after):
                 b, a = bcells.get(c, _MISSING), acells.get(c, _MISSING)
                 if a is _MISSING:
                     out.append({"table": t, "row": r, "cell": c, "absent": True})
-                elif b is _MISSING or not _same(a, b):
+                elif b is _MISSING or not same_value(a, b):
                     out.append({"table": t, "row": r, "cell": c, "eq": a})
     for k in sorted(set(bv) | set(av)):
         b, a = bv.get(k, _MISSING), av.get(k, _MISSING)
         if a is _MISSING:
             out.append({"value": k, "absent": True})
-        elif b is _MISSING or not _same(a, b):
+        elif b is _MISSING or not same_value(a, b):
             out.append({"value": k, "eq": a})
     return out or [{"unchanged": True}]
 
@@ -153,11 +173,11 @@ def holds(check, content, before=None):
     `unchanged`)."""
     tables, values = content
     if "unchanged" in check:
-        return before is not None and content == before
+        return before is not None and same_value(content, before)
     if "value" in check:
         if check.get("absent"):
             return check["value"] not in values
-        return check["value"] in values and _same(values[check["value"]], check["eq"])
+        return check["value"] in values and same_value(values[check["value"]], check["eq"])
     row = tables.get(check["table"], {}).get(check["row"])
     if "cell" not in check:
         return row is None
@@ -165,7 +185,7 @@ def holds(check, content, before=None):
         return bool(check.get("absent"))
     if check.get("absent"):
         return False
-    return _same(row[check["cell"]], check["eq"])
+    return same_value(row[check["cell"]], check["eq"])
 
 
 def hollow(p, before):

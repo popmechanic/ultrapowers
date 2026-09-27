@@ -80,6 +80,52 @@ def test_a_probe_with_a_malformed_clause_is_refused_not_a_traceback(tmp_path):
     assert "Traceback" not in res.stdout and "Traceback" not in res.stderr
 
 
+def test_a_hand_edited_eq_true_to_1_is_refused_as_expect_differs(tmp_path):  # I1
+    _, plan = compiled(tmp_path)
+    t = plan.read_text(encoding="utf-8").replace('"eq": true', '"eq": 1', 1)
+    plan.write_text(t, encoding="utf-8")
+    res = check(plan)
+    assert res.returncode == 2
+    assert "task 1 probe S2.2: expect differs from the recorded step's diff" in res.stdout
+
+
+def test_a_hand_edited_layer_and_do_is_refused_as_probe_differs(tmp_path):  # I3
+    _, plan = compiled(tmp_path)
+    lines = plan.read_text(encoding="utf-8").splitlines()
+    i = next(n for n, l in enumerate(lines) if '"clause": "S2.2"' in l)
+    obj = json.loads(lines[i])
+    obj["layer"] = "store"
+    obj["do"] = [{"tool": "completeTodo", "args": {"id": "0"}}]
+    lines[i] = json.dumps(obj, sort_keys=True, ensure_ascii=False)
+    plan.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    res = check(plan)
+    assert res.returncode == 2
+    assert "task 1 probe S2.2: probe differs from the recorded step (layer, given or do)" in res.stdout
+
+
+def test_steps_recorded_for_a_story_not_on_the_plans_list_are_flagged(tmp_path):  # M3
+    app, plan = compiled(tmp_path)
+    export = app / "stories/steps.jsonl"
+    rows = [json.loads(l) for l in export.read_text(encoding="utf-8").splitlines()]
+    extra = dict(rows[0], story="p1/S99", step=1)
+    export.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows + [extra]) + "\n",
+                      encoding="utf-8")
+    res = check(plan)
+    assert "steps recorded for S99, which is not on the plan's Stories list" in res.stdout
+
+
+def test_a_malformed_export_line_is_a_violation_not_a_traceback(tmp_path):  # M4
+    app, plan = compiled(tmp_path)
+    export = app / "stories/steps.jsonl"
+    lines = export.read_text(encoding="utf-8").splitlines()
+    lines.insert(0, "not json at all")
+    export.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    res = check(plan)
+    assert res.returncode == 2
+    assert "stories: export line 1 is malformed:" in res.stdout
+    assert "Traceback" not in res.stdout and "Traceback" not in res.stderr
+
+
 def test_an_older_story_without_a_guard_is_refused(tmp_path):
     app, plan = compiled(tmp_path)
     export = app / "stories/steps.jsonl"

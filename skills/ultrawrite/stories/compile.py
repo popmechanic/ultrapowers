@@ -19,13 +19,7 @@ import steps as steps_mod  # noqa: E402
 import probe_block  # noqa: E402
 
 
-def probe_for(row, prior, clause):
-    expect = probe_block.checks_for(row["before"], row["after"])
-    do = row["ui"] if row["layer"] == "ui" else [{"tool": row["tool"], "args": row.get("args", {})}]
-    return {"clause": clause, "layer": row["layer"],
-            "given": [{"tool": r["tool"], "args": r.get("args", {})} for r in prior],
-            "do": do, "expect": expect, "see": row.get("see", []), "judge": None,
-            "holds_before": expect == [{"unchanged": True}]}
+probe_for = probe_block.probe_for
 
 
 def _fence(p):

@@ -68,7 +68,8 @@ def run_checks(b):
         for a in c["actions"]:
             for sentence in a.get("refuses", []):
                 shown = any(r.get("tool") == a["name"]
-                            and probe_block.checks_for(r["before"], r["after"]) == [{"unchanged": True}]
+                            and probe_block.same_value(probe_block.checks_for(r["before"], r["after"]),
+                                                        [{"unchanged": True}])
                             for r in rows)
                 if not shown:
                     facts.append('CODE fact: piece %s: %s refuses "%s" but no recorded step shows it'
