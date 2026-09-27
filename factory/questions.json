@@ -517,6 +517,35 @@
           }
         }
       }
+    },
+    "flock_step": {
+      "when": "At a builder's done (that task's steps) and at a ready settle (every step), once per green story step",
+      "reader": "factory/flock/step_reading.mjs",
+      "rollback": "factory/policy.json flock.jev_step.mode = off",
+      "state": [
+        "story",
+        "step",
+        "did",
+        "before",
+        "after",
+        "screen_text"
+      ],
+      "provenance": "state-probe runner spec 2026-09-27 §7; TypeSafe citation-check recipe (supports / contradicts / says nothing)",
+      "calibrated": false,
+      "questions": {
+        "delivered": {
+          "type": "choice",
+          "instructions": {
+            "question": "After the user did `did`, do `after` and `screen_text` show that `story` came true?",
+            "context": "`story` is the sentence the operator signed. `before` and `after` are the app's store as [tables, values] before and after the step; row ids are numbered by creation order. `screen_text` is the page's visible text after the step. `did` is what the user clicked or typed."
+          },
+          "criteria": {
+            "supports": "The store or the screen after the step shows the outcome the sentence describes",
+            "contradicts": "The store or the screen shows something the sentence rules out",
+            "says_nothing": "The evidence neither shows nor rules out the sentence's outcome"
+          }
+        }
+      }
     }
   }
 }

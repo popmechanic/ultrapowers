@@ -380,6 +380,15 @@
       "experiment": true,
       "rollback": "mode = all",
       "unread": "narrow pulls (#1292): cache reads and wall per run against the round-3 arm"
+    },
+    "jev_step": {
+      "mode": "record",
+      "n": 0,
+      "window": "none",
+      "basis": "judgment",
+      "experiment": true,
+      "rollback": "mode = off",
+      "unread": "per-step Jev readings joined to the operator's smoke (state-probe runner spec §10)"
     }
   }
 }

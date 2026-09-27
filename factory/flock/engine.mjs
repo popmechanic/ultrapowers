@@ -30,6 +30,8 @@ import { editSpans } from './edit_spans.mjs'
 import { pullScope } from './pulls.mjs'
 import { findGit } from '../gitblock.mjs'
 import { bootstrapFor } from '../commands.mjs'
+import { makeJevClient } from '../jev-client.mjs'
+import { latestResults, readSteps } from './step_reading.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d }
@@ -89,10 +91,14 @@ const EARLY_CLOSE = arg('early-close', 'held')
 // `--order chain` offers the ready set longest remaining chain first (flock_board.mjs); `rotate`,
 // each claimer starting its walk at its own offset, is the rollback.
 const ORDER = arg('order', 'chain')
+const POLICY_FLOCK = (() => { try { return JSON.parse(fs.readFileSync(path.join(HERE, '..', 'policy.json'), 'utf8')).flock } catch { return undefined } })()
 // `--pulls narrow` (#1292): a builder takes in only the peer changes its work touches (pulls.mjs);
 // `all`, every published change, is the rollback. Absent the flag, the policy cell flock.pulls.mode.
-const PULLS = arg('pulls', (() => { try { return JSON.parse(fs.readFileSync(path.join(HERE, '..', 'policy.json'), 'utf8')).flock?.pulls?.mode } catch { return undefined } })() || 'all')
+const PULLS = arg('pulls', POLICY_FLOCK?.pulls?.mode || 'all')
 if (!['narrow', 'all'].includes(PULLS)) { console.error('engine: --pulls is narrow or all'); process.exit(2) }
+// record-only Jev reading per green story step (state-probe runner spec §7): `record` mode and
+// a reachable TypeSafe edge, or it never asks and never writes a `jev:step` row.
+const JEV_STEP = (POLICY_FLOCK?.jev_step?.mode ?? 'off') === 'record' && !!process.env.TYPESAFE_BASE_URL
 const touched = {}   // per builder: the paths it has read or edited in its copy
 const touch = (agent, rel) => (touched[agent] = touched[agent] || new Set()).add(rel)
 const MAX_REOPEN = 3
@@ -119,6 +125,17 @@ const EV = fs.openSync(path.join(OUT, 'events.jsonl'), 'a')
 const ev = (kind, o = {}) => fs.writeSync(EV, JSON.stringify({ t: now(), kind, ...o, ts: new Date().toISOString() }) + '\n')
 const log = (...a) => console.log(`[${(now() / 1000).toFixed(1).padStart(6)}s]`, ...a)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+// record-only Jev reading per green story step (state-probe runner spec §7): never blocks
+// `done` or a PR, and a missing answer is recorded as `null` (step_reading.mjs `readSteps`).
+const STEP_QUESTION = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'questions.json'), 'utf8')).sets.flock_step.questions.delivered
+const jev = JEV_STEP ? makeJevClient({ baseUrl: process.env.TYPESAFE_BASE_URL, log: (m) => log('jev', m) }) : null
+const readAndRecord = (clauses) => {
+  if (!jev || !W.stories) return Promise.resolve()
+  const all = latestResults(CHECK_OUT)
+  const results = clauses ? clauses.map((c) => all.get(c)).filter(Boolean) : [...all.values()]
+  return readSteps({ ask: jev.ask, results, sentences: W.stories.sentences, question: STEP_QUESTION, emit: (row) => ev('jev:step', row) })
+}
 
 // ── the engine's own git, on the target ───────────────────────────────────────
 // A copy (each builder's, the edge's) is made a git repository at BASE that borrows the target's
@@ -654,6 +671,7 @@ async function session (agent, task) {
           ev('facts:red', { agent, task: task.id, at: 'done', exits: red.map((r) => r.exit) })
           return say('not done: these facts fail on your copy. Fix them, run run_proof, then call done again.\n\n' + redText(task, red))
         }
+        readAndRecord(task.clauses).catch(() => {})
         if (!DONE_ENDS) { st.done = a.summary; return say('marked done; end your turn now') }
         await syncFromDisk(agent); await publishCopy(agent); ev('publish', { agent, task: task.id, by: 'done' }); await board.publish(agent, task.id)
         st.done = a.summary; st.closed = true
@@ -969,6 +987,7 @@ async function land () {
       ev('fold:verify', { task: t.id, ran: t.facts.map((f, i) => ({ id: t.id, kind: 'probe', cmd: f[f.length - 1], exit: (exits[t.id] || [])[i] ?? null })), attempt: 1, snap: outcome.snap })
       ev('landing', { task: t.id, k: sessionsOf(t.id), factsExit: 0, candidateSha: sha })
     }
+    await Promise.race([readAndRecord(null).catch(() => {}), sleep(20000)])
     return 0
   }
   if (lastEdge) {

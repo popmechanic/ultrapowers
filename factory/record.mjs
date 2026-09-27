@@ -216,9 +216,31 @@ function landingRowLines (eventsPath) {
   return out
 }
 
+/** `### Jev read each story step (record only)` — a two-column table, one row
+ *  per clause naming the latest `jev:step` row for it (file order breaks a
+ *  tie), sorted by clause; no `jev:step` row at all gives no lines. */
+function jevStepLines (eventsPath) {
+  let text
+  try { text = readFileSync(eventsPath, 'utf8') } catch { return [] }
+  const last = new Map()
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue
+    let row
+    try { row = JSON.parse(line) } catch { continue }
+    if (row.kind === 'jev:step' && typeof row.clause === 'string') last.set(row.clause, row)
+  }
+  if (!last.size) return []
+  const out = ['### Jev read each story step (record only)', '', '| step | reading | confidence |', '|---|---|---|']
+  for (const [clause, r] of [...last].sort(([a], [b]) => a.localeCompare(b))) {
+    out.push(`| ${clause} | ${r.answer ?? 'no reading'} | ${typeof r.confidence === 'number' ? r.confidence.toFixed(2) : '—'} |`)
+  }
+  return out
+}
+
 /** `pr-body <plan.md> --events <file>` — the paragraph, an empty line, the
  *  rows, an empty line, the closes; every line, including the two empty
- *  ones, ends in a newline. */
+ *  ones, ends in a newline. When any `jev:step` row exists, its table
+ *  follows the landing rows. */
 export function renderPrBody (planPath, eventsPath) {
   const planText = readFileSync(planPath, 'utf8')
   const summary = planSummaryLines(planText)
@@ -229,6 +251,9 @@ export function renderPrBody (planPath, eventsPath) {
   out += '\n'
   for (const line of rows) out += line + '\n'
   out += '\n'
+  const readings = jevStepLines(eventsPath)
+  for (const line of readings) out += line + '\n'
+  if (readings.length) out += '\n'
   for (const line of closes) out += line + '\n'
   return out
 }
