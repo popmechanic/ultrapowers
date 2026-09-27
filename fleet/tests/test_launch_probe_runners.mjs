@@ -145,7 +145,7 @@ const isFunction = (leg, name, value) => assert.equal(
 
   const COMPILER_FETCH = {
     when: (cmd, argv) => cmd === 'gh' && argv[0] === 'api' &&
-      argv.some((a) => /contents\/skills\/ultrapowers\/scripts\/plan_(check|parse)\.py/.test(String(a))),
+      argv.some((a) => /contents\/skills\/ultrapowers\/scripts\/(plan_check|plan_parse|stories_parse|stories_check|probe_block)\.py/.test(String(a))),
     answer: answer('# plan_check.py or plan_parse.py, as the seam hands it back\n')
   }
   const pointAtOrigin = (repo, argv) => {

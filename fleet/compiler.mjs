@@ -13,10 +13,22 @@ import { ENGINE_REPO, Refusal, git, output } from './lobby.mjs'
  * never resolved against this checkout. The copies a launch runs are the ones
  * it fetches at `engine=`; see `fetchCompilerAt`. `plan_parse.py` is the file
  * the sandbox runs, and `plan_check.py` imports it from its own directory, so
- * the two are fetched together and land side by side.
+ * the two are fetched together and land side by side. For a stories-v1 plan
+ * both of them import `stories_parse.py`, `stories_check.py` and
+ * `probe_block.py` (`STORIES_RELS`, below) from that same directory, so all
+ * five files are fetched beside each other on every launch.
  */
 const CHECKER_REL = 'skills/ultrapowers/scripts/plan_check.py'
 const PARSER_REL = 'skills/ultrapowers/scripts/plan_parse.py'
+
+/**
+ * `plan_check.py` and `plan_parse.py` import these three for a stories-v1
+ * plan (the stories grammar's own parse and check, and the `Run:` probe
+ * reader), so all five are fetched beside each other or a stories-v1 launch
+ * would compile against a directory missing an import.
+ */
+const STORIES_RELS = ['stories_parse.py', 'stories_check.py', 'probe_block.py']
+  .map((f) => `skills/ultrapowers/scripts/${f}`)
 
 /**
  * What the launch's check and parse run: `plan_check.py` and `plan_parse.py`
@@ -43,9 +55,11 @@ const PARSER_REL = 'skills/ultrapowers/scripts/plan_parse.py'
  * naming the sha — never a fall back to the copy beside this file, because
  * that copy is the bug.
  *
- * Two files are enough: both import only the standard library and each other.
- * Copies under `os.tmpdir()`, at their real depth, read the plan, its gate
- * record and the `--base` tree exactly as the cache copies do.
+ * Two files are fetched for every plan, and three more (`STORIES_RELS`) for a
+ * stories-v1 one, since `plan_check.py`/`plan_parse.py` import them for that
+ * grammar; all five import only the standard library and each other. Copies
+ * under `os.tmpdir()`, at their real depth, read the plan, its gate record
+ * and the `--base` tree exactly as the cache copies do.
  *
  * Answers `{ dir, scriptPath, parserPath, source }`: `dir` is what the caller
  * removes, `scriptPath` is `plan_check.py`, `parserPath` is `plan_parse.py`,
@@ -83,6 +97,7 @@ export async function fetchCompilerAt ({ exec, engine, pluginRoot }) {
   try {
     const parser = await fetchOne(PARSER_REL)
     const checker = await fetchOne(CHECKER_REL)
+    for (const rel of STORIES_RELS) await fetchOne(rel)
     return { dir, scriptPath: checker.filePath, parserPath: parser.filePath, source: checker.source }
   } catch (error) {
     await fsp.rm(dir, { recursive: true, force: true })
