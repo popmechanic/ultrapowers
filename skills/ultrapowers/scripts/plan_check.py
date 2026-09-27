@@ -1060,6 +1060,18 @@ def main(argv=None):
     except UnicodeDecodeError as exc:
         print("error: plan is not UTF-8: " + str(exc), file=sys.stderr)
         return 2
+
+    if plan_parse.plan_grammar(plan_text) == plan_parse.STORIES_GRAMMAR:
+        import stories_check
+        violations = stories_check.violations(plan_text, str(args.plan))
+        if violations:
+            print("\n\n".join(violations))
+            print()
+            print("%d violation(s)" % len(violations))
+            return 2
+        print("PLAN OK")
+        return 0
+
     try:
         result, tasks = plan_parse.parse_plan_full(plan_text)
     except plan_parse.Refusal as exc:
