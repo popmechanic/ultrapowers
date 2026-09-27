@@ -24,6 +24,17 @@ def rows_to_steps(rows):
     return sorted(out, key=lambda r: (r["story"], r["step"]))
 
 
+def merge_steps(existing, new_rows):
+    """`existing`'s stories, with every story `new_rows` carries replaced by
+    `new_rows`'s own lines for that story — every other story's lines untouched.
+    Sorted by (story, step)."""
+    new_by_story = steps_mod.stories_of(new_rows)
+    out = [r for r in existing if r["story"] not in new_by_story]
+    for srows in new_by_story.values():
+        out.extend(srows)
+    return sorted(out, key=lambda r: (r["story"], r["step"]))
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         sys.exit("usage: steps_from_rows.py <rows.json> <steps.jsonl>")
@@ -31,8 +42,11 @@ if __name__ == "__main__":
         data = json.load(fh)
     rows = data if isinstance(data, list) else data.get("documents", data.get("docs", []))
     got = rows_to_steps(rows)
+    out_path = sys.argv[2]
+    if os.path.exists(out_path):
+        got = merge_steps(steps_mod.load_steps(out_path), got)
     errs = [e for srows in steps_mod.stories_of(got).values() for e in steps_mod.validate_story(srows)]
-    steps_mod.dump_steps(got, sys.argv[2])
+    steps_mod.dump_steps(got, out_path)
     for e in errs:
         print(e)
     sys.exit(2 if errs else 0)

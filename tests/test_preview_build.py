@@ -41,6 +41,13 @@ def test_a_missing_export_is_refused():
         bp.module_body("export const TOOLS = []\n", ["TOOLS", "makeStore"])
 
 
+def test_module_body_escapes_closing_script_tags():  # M6
+    src = 'export const TOOLS = []\nconst x = "</script>"\n'
+    body = bp.module_body(src, ["TOOLS"])
+    assert "</script>" not in body
+    assert '<\\/script>' in body
+
+
 def db_row(session, at, story, step, before, after):
     return {"id": "%s-%s-%d" % (session, story, step), "session": session, "at": at, "story": story,
             "step": step, "piece": "todo", "tool": "addTodo", "args": {"text": "a"},
@@ -56,3 +63,16 @@ def test_rows_to_steps_keeps_the_latest_session_per_story():
     assert [(r["story"], r["step"]) for r in got] == [("S1", 1), ("S1", 2), ("S2", 1)]
     assert got[0]["after"] == E
     assert all("session" not in r and "at" not in r and "id" not in r for r in got)
+
+
+def test_merge_steps_keeps_other_stories_and_replaces_the_recorded_one():  # I2
+    existing = [dict(sfr.rows_to_steps([db_row("s0", 1, "S1", 1, E, ONE)])[0]),
+                dict(sfr.rows_to_steps([db_row("s0", 1, "S2", 1, E, ONE)])[0])]
+    new_rows = sfr.rows_to_steps([db_row("s9", 999, "S2", 1, E, ONE),
+                                   db_row("s9", 1000, "S2", 2, ONE, E)])
+    merged = sfr.merge_steps(existing, new_rows)
+    assert [(r["story"], r["step"]) for r in merged] == [("S1", 1), ("S2", 1), ("S2", 2)]
+    s1 = next(r for r in merged if r["story"] == "S1")
+    assert s1 == existing[0]
+    s2_steps = [r for r in merged if r["story"] == "S2"]
+    assert s2_steps == new_rows
