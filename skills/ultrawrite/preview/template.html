@@ -1,0 +1,133 @@
+<title>__TITLE__</title>
+<script type="importmap">{"imports": {"tinybase": "https://cdn.jsdelivr.net/npm/tinybase@10.0.0/+esm"}}</script>
+<style>
+:root{--bg:#F6F7F4;--surface:#FFFFFF;--ink:#1D2320;--muted:#5E6862;--rule:#D9DED9;--accent:#2F6B4F;--accent-soft:#E4EFE8;
+  --sans:system-ui,-apple-system,"Segoe UI",sans-serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141816;--surface:#1B201D;--ink:#E4E8E5;--muted:#9AA59E;--rule:#2C332F;--accent:#7CC3A0;--accent-soft:#1F2E26;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#141816;--surface:#1B201D;--ink:#E4E8E5;--muted:#9AA59E;--rule:#2C332F;--accent:#7CC3A0;--accent-soft:#1F2E26;color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;padding-inline:16px;padding-block:24px 48px}
+main{max-width:980px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:20px}
+@media (max-width:720px){main{grid-template-columns:1fr}}
+section{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:10px}
+h1{grid-column:1/-1;margin:0;font-size:1.5rem}
+h2{margin:0;font-size:1.05rem}
+.summary{grid-column:1/-1;color:var(--muted);margin:0;max-width:70ch}
+#story-list{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:8px}
+#rec{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:.9rem;color:var(--muted)}
+button,select,input{font:inherit}
+.mark{margin-left:6px;border:1px solid var(--rule);background:var(--accent-soft);color:var(--accent);border-radius:99px;padding:0 7px;cursor:pointer}
+.mark:focus-visible{outline:2px solid var(--accent)}
+.pop{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;padding:8px;border:1px solid var(--rule);border-radius:4px;background:var(--bg)}
+.note{color:var(--muted);font-size:.85rem}
+</style>
+<main>
+  <h1 id="title"></h1>
+  <p class="summary" id="summary"></p>
+  <section><h2>Stories</h2><ol id="story-list"></ol>
+    <p class="note">Tap ◦ beside anything to say it is right, wrong, missing something, or uses a confusing word.</p></section>
+  <section>
+    <div id="rec">Showing story <select id="story-pick" aria-label="Story being shown"></select>
+      <button id="restart" type="button">Start this story from empty</button><span id="rec-count"></span></div>
+    <div id="app" data-mark="app"></div>
+    <p class="note" id="save-note"></p>
+  </section>
+</main>
+<script type="module">
+import * as TB from 'tinybase'
+const PAGE = __PAGE_JSON__
+const storeMod = __STORE_MODULE__
+const sketchMod = __SKETCH_MODULE__
+
+const store = storeMod.makeStore()
+const TOOLS = Object.fromEntries(storeMod.TOOLS.map((t) => [t.name, t]))
+const clone = (x) => JSON.parse(JSON.stringify(x))
+let db = null
+const unsaved = []
+let session = Math.random().toString(36).slice(2, 10)
+let story = PAGE.stories.length ? PAGE.stories[0].id : 'S1'
+let step = 0
+
+async function save (collection, id, doc) {
+  if (!db) { unsaved.push([collection, id, doc]); return }
+  try { await db.collection(collection).doc(id).set(doc) } catch { unsaved.push([collection, id, doc]) }
+}
+function note () {
+  document.getElementById('rec-count').textContent = step ? `${step} step${step === 1 ? '' : 's'} recorded` : ''
+  document.getElementById('save-note').textContent = db ? '' : 'This view cannot save; your steps stay on this page only.'
+}
+function call (name, args = {}, ui = null) {
+  const tool = TOOLS[name]
+  if (!tool) throw new Error('no tool ' + name)
+  const before = clone(store.getContent())
+  tool.run(store, args)
+  const after = clone(store.getContent())
+  step += 1
+  const row = { session, at: Date.now(), story, step, piece: tool.piece, tool: name, args: clone(args),
+    layer: ui ? 'ui' : 'store', ui: ui ? clone(ui) : null, before, after, see: [] }
+  save('steps', `${session}-${story}-${step}`, row)
+  note()
+}
+function restart () {
+  store.setContent([{}, {}])
+  session = Math.random().toString(36).slice(2, 10)
+  step = 0
+  note()
+}
+function openMark (target, anchor) {
+  const old = anchor.parentElement.querySelector('.pop')
+  if (old) { old.remove(); return }
+  const pop = document.createElement('div')
+  pop.className = 'pop'
+  const text = document.createElement('input')
+  text.placeholder = 'Say more (optional)'
+  text.setAttribute('aria-label', 'Say more')
+  for (const [mark, label] of [['yes', 'Yes, exactly'], ['wrong', 'Wrong'], ['missing', 'Missing something'], ['confusing', 'Confusing word']]) {
+    const b = document.createElement('button')
+    b.type = 'button'
+    b.textContent = label
+    b.onclick = () => { save('marks', `${Date.now()}-${target}`, { target, mark, note: text.value, at: Date.now() }); pop.remove(); anchor.textContent = '●' }
+    pop.append(b)
+  }
+  pop.append(text)
+  anchor.after(pop)
+}
+function addMarkers (root) {
+  for (const el of root.querySelectorAll('[data-mark]')) {
+    if (el.querySelector(':scope > .mark')) continue
+    const b = document.createElement('button')
+    b.type = 'button'
+    b.className = 'mark'
+    b.textContent = '◦'
+    b.setAttribute('aria-label', 'Mark this')
+    b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); openMark(el.dataset.mark, b) }
+    el.append(b)
+  }
+}
+
+document.getElementById('title').textContent = PAGE.title
+document.getElementById('summary').textContent = PAGE.summary.join(' ')
+const list = document.getElementById('story-list')
+const pick = document.getElementById('story-pick')
+for (const s of PAGE.stories) {
+  const li = document.createElement('li')
+  li.dataset.mark = 'story:' + s.id
+  li.textContent = s.sentence
+  list.append(li)
+  const o = document.createElement('option')
+  o.value = s.id
+  o.textContent = s.id
+  pick.append(o)
+}
+pick.onchange = () => { story = pick.value; restart() }
+document.getElementById('restart').onclick = restart
+const app = document.getElementById('app')
+sketchMod.render(app, store, call)
+addMarkers(document.body)
+new MutationObserver(() => addMarkers(document.body)).observe(app, { childList: true, subtree: true })
+note()
+window.claude?.use?.('db').then((x) => {
+  db = x
+  note()
+  for (const [c, id, doc] of unsaved.splice(0)) save(c, id, doc)
+})
+</script>
