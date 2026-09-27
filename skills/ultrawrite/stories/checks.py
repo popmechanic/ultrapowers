@@ -41,12 +41,14 @@ def run_checks(b):
         setup = s.get("setup")
         if not setup:
             continue
+        if sid not in by_story:
+            continue  # "story %s has no recorded steps" above already covers this
         for sc in setup:
             tool = sc.get("tool")
             if tool not in owner:
                 refusals.append("story %s: setup names tool %s, which is no piece's action"
                                 % (sid, tool))
-        srows = by_story.get(sid, [])
+        srows = by_story[sid]
         matches = (len(srows) >= len(setup)
                    and all(srows[i].get("tool") == setup[i].get("tool")
                            and probe_block.same_value(srows[i].get("args", {}), setup[i].get("args", {}))

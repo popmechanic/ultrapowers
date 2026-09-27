@@ -1,5 +1,7 @@
 """The preview page is built from a bundle; a session's db rows become steps."""
+import json
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -15,6 +17,18 @@ import steps_from_rows as sfr  # noqa: E402
 TODO = ROOT / "skills/ultrawrite/catalog/todo"
 E = [{}, {}]
 ONE = [{"todos": {"0": {"text": "a"}}}, {}]
+
+
+def copy_todo(tmp_path):
+    d = tmp_path / "b"
+    shutil.copytree(TODO, d)
+    return d
+
+
+def edit_json(path, fn):
+    data = json.loads(path.read_text())
+    fn(data)
+    path.write_text(json.dumps(data))
 
 
 def test_build_inlines_both_modules_and_pins_tinybase(tmp_path):
@@ -58,6 +72,24 @@ def test_build_carries_a_storys_setup_and_shows_it(tmp_path):
     html = out.read_text(encoding="utf-8")
     assert "Already done for you:" in html
     assert '"setup":' in html
+    assert "This story's starting point couldn't be set up" in html
+
+
+def test_build_refuses_a_bundle_whose_setup_names_an_unknown_tool(tmp_path):
+    d = copy_todo(tmp_path)
+    edit_json(d / "page.json", lambda p: p["stories"][1].update(
+        setup=[{"tool": "addThing", "args": {"text": "buy milk"}}]))
+    out = tmp_path / "preview.html"
+    res = subprocess.run([sys.executable, str(ROOT / "skills/ultrawrite/preview/build_preview.py"),
+                          str(d), str(out)], capture_output=True, text=True)
+    assert res.returncode == 2, res.stdout + res.stderr
+    assert "story S2: setup names tool addThing, which is no piece's action" in res.stderr
+    assert not out.exists()
+    # the unmodified catalog still builds clean
+    out2 = tmp_path / "preview2.html"
+    res2 = subprocess.run([sys.executable, str(ROOT / "skills/ultrawrite/preview/build_preview.py"),
+                           str(TODO), str(out2)], capture_output=True, text=True)
+    assert res2.returncode == 0, res2.stderr
 
 
 def test_a_module_with_another_import_is_refused():

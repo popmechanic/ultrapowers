@@ -12,6 +12,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "stories"))
 from bundle import load_bundle  # noqa: E402
+import checks as checks_mod  # noqa: E402
 
 IMPORT_RE = re.compile(r"^import\s*\{([^}]*)\}\s*from\s*['\"]tinybase['\"];?[ \t]*$", re.M)
 ANY_IMPORT_RE = re.compile(r"^\s*import\s", re.M)
@@ -20,6 +21,13 @@ EXPORT_RE = re.compile(r"^export\s+(?=(const|function|let|class|async)\b)", re.M
 
 class BuildError(Exception):
     pass
+
+
+class RefusedError(Exception):
+    """The bundle failed its code checks; the caller prints .refusals and exits 2."""
+    def __init__(self, refusals):
+        super().__init__("bundle checks refused it:\n" + "\n".join(refusals))
+        self.refusals = refusals
 
 
 def module_body(src, exports):
@@ -40,6 +48,9 @@ def module_body(src, exports):
 
 def build(bundle_dir, out_html):
     b = load_bundle(bundle_dir)
+    refusals, _ = checks_mod.run_checks(b)
+    if refusals:
+        raise RefusedError(refusals)
     with open(os.path.join(HERE, "template.html"), encoding="utf-8") as fh:
         html = fh.read()
     page = json.dumps(b["page"], indent=1, ensure_ascii=False).replace("</", "<\\/")
@@ -56,5 +67,8 @@ if __name__ == "__main__":
         sys.exit("usage: build_preview.py <bundle> <out.html>")
     try:
         build(sys.argv[1], sys.argv[2])
+    except RefusedError as exc:
+        print("build_preview: " + str(exc), file=sys.stderr)
+        sys.exit(2)
     except BuildError as exc:
         sys.exit("build_preview: " + str(exc))

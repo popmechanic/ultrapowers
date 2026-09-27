@@ -91,3 +91,16 @@ def test_a_setup_naming_an_unknown_tool_is_refused(tmp_path):
         setup=[{"tool": "addThing", "args": {"text": "buy milk"}}]))
     refusals, _ = checks.run_checks(bundle.load_bundle(d))
     assert "story S2: setup names tool addThing, which is no piece's action" in refusals
+
+
+def test_a_setup_with_no_recorded_steps_reports_only_the_missing_steps_refusal(tmp_path):
+    d = copy_todo(tmp_path)
+    edit_json(d / "page.json", lambda p: p["stories"][1].update(
+        setup=[{"tool": "addThing", "args": {"text": "buy milk"}}]))  # also an unknown tool
+    lines = (d / "steps.jsonl").read_text().splitlines()
+    lines = [ln for ln in lines if '"story": "S2"' not in ln]
+    (d / "steps.jsonl").write_text("\n".join(lines) + "\n")
+    refusals, _ = checks.run_checks(bundle.load_bundle(d))
+    assert "story S2 has no recorded steps" in refusals
+    assert not any("setup names tool" in r for r in refusals)
+    assert not any("do not begin with its setup" in r for r in refusals)

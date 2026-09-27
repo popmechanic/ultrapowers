@@ -78,6 +78,7 @@ let selectedChip = null
 let pickClickHandler = null
 let pickKeyHandler = null
 const addedTabIndex = []
+let setupError = null
 
 function sanitizeId (s) {
   return s.replace(/[^A-Za-z0-9_.~:@+-]/g, '_')
@@ -121,16 +122,20 @@ async function retryUnsaved () {
     await save(item.collection, item.id, item.doc, { pendingNote: item.pendingNote, onOk: item.onOk, onFail: item.onFail })
   }
 }
-function call (name, args = {}, ui = null) {
+function runStep (name, args = {}) {
   const tool = TOOLS[name]
   if (!tool) throw new Error('no tool ' + name)
   const before = clone(store.getContent())
   tool.run(store, args)
   const after = clone(store.getContent())
   step += 1
-  const row = { session, at: Date.now(), story, step, piece: tool.piece, tool: name, args: clone(args),
-    layer: ui ? 'ui' : 'store', ui: ui ? clone(ui) : null, before, after, see: [] }
-  save('steps', `${session}-${story}-${step}`, row, { pendingNote: `Saved step ${step}` })
+  return { session, at: Date.now(), story, step, piece: tool.piece, tool: name, args: clone(args),
+    layer: 'store', ui: null, before, after, see: [] }
+}
+function call (name, args = {}, ui = null) {
+  const row = runStep(name, args)
+  if (ui) { row.layer = 'ui'; row.ui = clone(ui) }
+  save('steps', `${session}-${story}-${row.step}`, row, { pendingNote: `Saved step ${row.step}` })
 }
 function restart () {
   store.setContent([{}, {}])
@@ -138,14 +143,26 @@ function restart () {
   step = 0
 }
 function replaySetup (idx) {
+  setupError = null
   const setup = (PAGE.stories[idx] && PAGE.stories[idx].setup) || []
-  for (const s of setup) call(s.tool, s.args, null)
+  if (!setup.length) return
+  const rows = []
+  try {
+    for (const s of setup) rows.push(runStep(s.tool, s.args))
+  } catch (err) {
+    store.setContent([{}, {}])
+    step = 0
+    setupError = (err && err.message) || String(err)
+    return
+  }
+  for (const row of rows) {
+    save('steps', `${session}-${story}-${row.step}`, row, { pendingNote: `Saved step ${row.step}` })
+  }
 }
 function setupLine (s) {
   const tool = TOOLS[s.tool]
-  const desc = tool ? tool.description : s.tool
   const vals = Object.values(s.args || {}).filter((v) => typeof v === 'string').map((v) => `"${v}"`)
-  return vals.length ? `${desc} (${vals.join(', ')})` : desc
+  return vals.length ? `${tool.description} (${vals.join(', ')})` : tool.description
 }
 
 function checkedCount () { return PAGE.stories.filter((s) => verdicts[s.id]).length }
@@ -274,6 +291,23 @@ function saidLine (v) {
   return s
 }
 
+function buildNav () {
+  const nav = document.createElement('div')
+  nav.className = 'nav-links'
+  const prev = document.createElement('a')
+  prev.href = '#'
+  prev.id = 'prev-link'
+  prev.textContent = '← Previous story'
+  const next = document.createElement('a')
+  next.href = '#'
+  next.id = 'next-link'
+  next.textContent = 'Next story →'
+  if (storyIndex === 0) prev.style.visibility = 'hidden'
+  if (storyIndex === PAGE.stories.length - 1) next.style.visibility = 'hidden'
+  nav.append(prev, next)
+  return nav
+}
+
 function renderCard () {
   const body = document.getElementById('card-body')
   body.replaceChildren()
@@ -304,7 +338,16 @@ function renderCard () {
   sentence.textContent = s ? s.sentence : ''
   body.append(label, sentence)
 
-  const setup = (s && s.setup) || []
+  if (setupError) {
+    const msg = document.createElement('p')
+    msg.className = 'hint'
+    msg.textContent = `This story's starting point couldn't be set up. Tell Claude: ${setupError}`
+    body.append(msg)
+    body.append(buildNav())
+    return
+  }
+
+  const setup = ((s && s.setup) || []).filter((entry) => TOOLS[entry.tool])
   if (setup.length) {
     const setupLabel = document.createElement('p')
     setupLabel.className = 'hint'
@@ -340,20 +383,7 @@ function renderCard () {
     not.textContent = 'Not quite'
     buttons.append(yes, not)
     body.append(buttons)
-    const nav = document.createElement('div')
-    nav.className = 'nav-links'
-    const prev = document.createElement('a')
-    prev.href = '#'
-    prev.id = 'prev-link'
-    prev.textContent = '← Previous story'
-    const next = document.createElement('a')
-    next.href = '#'
-    next.id = 'next-link'
-    next.textContent = 'Next story →'
-    if (storyIndex === 0) prev.style.visibility = 'hidden'
-    if (storyIndex === PAGE.stories.length - 1) next.style.visibility = 'hidden'
-    nav.append(prev, next)
-    body.append(nav)
+    body.append(buildNav())
   } else if (walkStep === 'pick-part') {
     const prompt = document.createElement('p')
     prompt.className = 'prompt'
