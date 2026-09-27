@@ -1,0 +1,38 @@
+{
+  "version": "authoring-questions-v1",
+  "about": "The questions ultrawrite puts to Jev before the operator sees a draft. A reworded question is a different question; none is calibrated (n=0).",
+  "ambiguity": {
+    "two_apps": {"type": "noul",
+      "instructions": {"question": "Could `sentence` describe two apps that behave differently in a way the person who wrote `ask` would care about?",
+        "context": "`ask` is everything the person wrote; `sentence` is one sentence of it."},
+      "criteria": {"true": "Two reasonable readings lead to apps that act differently", "false": "Every reasonable reading leads to the same behaviour"}}
+  },
+  "coherence": {
+    "one_need": {"type": "noul",
+      "instructions": "Does `piece.purpose` state one need that a single short sentence covers?",
+      "criteria": {"true": "One need", "false": "Two or more needs joined together"}},
+    "same_people": {"type": "noul",
+      "instructions": "Do all of `piece.actions` serve the same people for the same reason?",
+      "criteria": {"true": "The same people, the same reason", "false": "Some actions serve different people or a different reason"}},
+    "actions_conflict": {"type": "noul",
+      "instructions": "Could using one of `piece.actions` ever defeat the purpose of another of them?",
+      "criteria": {"true": "Two actions can work against each other", "false": "The actions never work against each other"}}
+  },
+  "near_miss": {
+    "story_passes_near_miss": {"type": "noul",
+      "instructions": {"question": "If the app behaved like `near_miss` instead, would `story` still come out exactly as it is written?",
+        "context": "`story` is the main story that should prove `piece` works. `near_miss` is a look-alike that must fail it."},
+      "criteria": {"true": "The story cannot tell the two apart", "false": "The story would come out differently for the look-alike"}}
+  },
+  "content_branch": {
+    "branches_on_text": {"type": "noul",
+      "instructions": {"question": "Does the action named `action.name` in `store_module` behave differently depending on the wording of text the person typed, beyond whether it is empty?",
+        "context": "`store_module` is the app's whole store code. An action that treats a title ending in '?' differently is the kind of thing asked about."},
+      "criteria": {"true": "It inspects the words and changes behaviour", "false": "It stores or compares the text without reading its wording"}}
+  },
+  "redundancy": {
+    "same_need": {"type": "noul",
+      "instructions": "Do `a.purpose` and `b.purpose` describe the same need?",
+      "criteria": {"true": "The same need, twice", "false": "Different needs"}}
+  }
+}

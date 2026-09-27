@@ -816,6 +816,8 @@ def parse_plan_full(text):
 # --------------------------------------------------------------------------- #
 
 CLAIMS_GRAMMAR = "claims-v1"
+STORIES_GRAMMAR = "stories-v1"
+GRAMMARS = (CLAIMS_GRAMMAR, STORIES_GRAMMAR)
 GRAMMAR_RE = re.compile(r'^\*\*Grammar:\*\*\s*(\S+)\s*$')
 MACHINE_LEAD_RE = re.compile(r'^machine\s*:\s*', re.I)
 CLAIM_PROVENANCE_RE = re.compile(
@@ -836,11 +838,11 @@ def _header_lines(text):
 
 
 def plan_grammar(text):
-    """`claims-v1` when the header declares it, else None."""
+    """`claims-v1` or `stories-v1` when the header declares one, else None."""
     for line, fenced in _header_lines(text):
         m = None if fenced else GRAMMAR_RE.match(line.strip())
-        if m and m.group(1) == CLAIMS_GRAMMAR:
-            return CLAIMS_GRAMMAR
+        if m and m.group(1) in GRAMMARS:
+            return m.group(1)
     return None
 
 
@@ -928,7 +930,15 @@ def main(argv):
         return 2
 
     try:
-        result = parse_plan_text(text)
+        if plan_grammar(text) == STORIES_GRAMMAR:
+            import stories_parse
+            try:
+                result = stories_parse.parse_stories_text(text)
+            except stories_parse.StoriesRefusal as exc:
+                sys.stderr.write(str(exc) + "\n")
+                return 2
+        else:
+            result = parse_plan_text(text)
     except Refusal as exc:
         sys.stderr.write(str(exc) + "\n")
         return 2

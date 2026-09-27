@@ -18,6 +18,7 @@ hooks:
 A task says **what will be true** and **how that is examined**. It never says how to do
 the work: there is no Steps slot, so procedure has nowhere to live. The implementer
 derives it from a contract and its probes, against real code the plan never saw.
+A TinyApp target is planned differently: see Story planning below.
 
 **Announce at start:** "I'm using ultrawrite to author this plan."
 
@@ -70,6 +71,56 @@ The sandbox reads exactly that line from `.ultrapowers/plan.md` and appends one
 without the line closes nothing. The line is free prose to the compiler — nothing parses
 it, so a number scraped from `**Goal:**` is never used: the Goal line cites decisions as
 well as tickets, which is why scraping it was rejected.
+
+## Story planning — TinyApp targets (`stories-v1`)
+
+A TinyApp plan is not written; it is compiled from a page the operator signs.
+Spec: `docs/superpowers/specs/2026-09-27-story-planning-design.md`. The fleet
+refuses a `stories-v1` plan until the state-probe runner lands (sub-project 2);
+until then the flow ends at `PLAN OK`.
+
+1. **Read the notebook first:** `python3 skills/ultrawrite/stories/notebook.py show`.
+   Use its words; avoid its failed ones.
+2. **Take the ask as it comes.** Write back five lines: what the app is for, who uses
+   it, what they said, what you are assuming, and the 2–3 things you are least sure
+   of. They correct or say yes.
+3. **Pick the kind** — `behaviour`, `preserve` (nothing they see changes: sign the
+   existing stories plus one measured number), `look`; a request with no way to tell
+   it is done gets 2–3 measurable versions to choose from.
+4. **Draft the bundle** in the scratchpad, starting from
+   `skills/ultrawrite/catalog/<piece>/` wherever a catalog piece fits: `page.json`
+   (title, kind, three summary sentences, stories, links, numbers), `cards.json`
+   (purpose, state, actions with what each refuses, main story, near-miss,
+   misfits), `store.js` and `sketch.js` (the module contracts in the plan's Global
+   Constraints). Links are sentences — "deleting a todo clears its tags" — and a
+   link runs inside the trigger's `store.transaction`.
+5. **Run the checks before they see anything:**
+   `python3 skills/ultrawrite/stories/jev_checks.py <bundle> --ask-file <ask.txt>` —
+   an ambiguous sentence becomes two versions side by side on the page; a purpose,
+   near-miss or redundancy flag means re-cut the pieces before showing them. When two
+   or three options look equally plausible and nothing decides between them,
+   re-check the pieces before asking (inevitability).
+6. **Build and publish the page:**
+   `python3 skills/ultrawrite/preview/build_preview.py <bundle> <out.html>`, then the
+   Artifact tool with `capabilities: {db: {}}`. Say in one line what to do: pick a
+   story, click through it, tap ◦ on anything that is off.
+7. **Read their marks and recordings:** `ArtifactData list` the `steps` and `marks`
+   collections with `out_dir` set to a scratch directory, then `python3
+   skills/ultrawrite/preview/steps_from_rows.py <out_dir>/steps
+   <bundle>/steps.jsonl`. Answer every mark with concrete alternatives (never an
+   open question); turn a recorded session into a story sentence and ask them to
+   confirm it. Chat text counts the same as a mark.
+8. **Repeat until no marks remain; they sign.** Then, with no more questions:
+   `python3 skills/ultrawrite/stories/compile.py <bundle> --app <target checkout>
+   --plan-id <id> --date <YYYY-MM-DD> --out <target>/.ultrapowers/plan.md` and
+   `python3 skills/ultrapowers/scripts/plan_check.py <target>/.ultrapowers/plan.md`
+   to `PLAN OK`.
+9. **Write the notebook:** one `add` line per *Please explain*, edited word or
+   confusing-word mark, and `notebook.py log <plan-id> --rounds … --marks …
+   --explains … --edits …`.
+
+Filing and plumbing details are yours to decide; ask the operator only what the app
+does and how it looks.
 
 ## Task shape — pinned to what the parser actually reads
 

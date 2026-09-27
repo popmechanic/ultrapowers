@@ -163,6 +163,28 @@ const isPositiveInt = (value) => isRunNumber(value)
  */
 const isMemorySize = (value) => /^[1-9][0-9]*GB$/.test(String(value))
 
+const GRAMMAR_LINE_RE = /^\*\*Grammar:\*\*\s*(\S+)\s*$/
+const TASK_HEADING_RE = /^### Task /
+const FENCE_LINE_RE = /^\s*```/
+
+/**
+ * The plan header's own `**Grammar:**` line, read up to the first
+ * `### Task ` heading and skipping anything inside a ``` fence — so a
+ * claims-v1 plan that merely quotes `**Grammar:** stories-v1` in a fenced
+ * example is read for what it is, not refused as one.
+ */
+const planGrammar = (planText) => {
+  let inFence = false
+  for (const line of planText.split('\n')) {
+    if (TASK_HEADING_RE.test(line)) break
+    if (FENCE_LINE_RE.test(line)) { inFence = !inFence; continue }
+    if (inFence) continue
+    const m = GRAMMAR_LINE_RE.exec(line)
+    if (m) return m[1]
+  }
+  return null
+}
+
 /**
  * The box one plan needs, clamped by the fleet's ceiling. Pure: `widestWave` is
  * W, the task count of the compiled plan's widest wave, `cap` is the
@@ -605,6 +627,12 @@ async function launchBody ({
     throw new Refusal(`launch: cannot read plan ${planPath}: ${error?.message ?? error}`)
   }
   if (planText.trim() === '') throw new Refusal(`launch: plan ${planPath} is empty`)
+  // A stories-v1 plan's proof is state probes, and no fleet runner reads them
+  // yet (story-planning sub-project 2): launched now, every task would settle
+  // green on no facts at all.
+  if (planGrammar(planText) === 'stories-v1') {
+    throw new Refusal(`launch: plan ${planPath} is a stories-v1 plan; the fleet cannot run state probes until the state-probe runner lands (story-planning sub-project 2)`)
+  }
   let verdictsText = null
   try {
     verdictsText = await fsp.readFile(`${planPath.replace(/\.md$/, '')}.gate-verdicts.json`, 'utf8')

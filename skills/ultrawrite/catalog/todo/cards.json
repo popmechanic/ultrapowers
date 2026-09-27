@@ -1,0 +1,23 @@
+[
+  {
+    "piece": "todo",
+    "catalog": "todo",
+    "purpose": "Remember the things you mean to do until you have done them.",
+    "depends_on": [],
+    "state": {"tables": {"todos": ["text", "completed"]}, "values": []},
+    "actions": [
+      {"name": "addTodo", "description": "Add a todo with this text; it starts not done.",
+       "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]},
+       "refuses": ["blank text"]},
+      {"name": "completeTodo", "description": "Mark this todo as done.",
+       "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]},
+       "refuses": ["a todo that does not exist"]},
+      {"name": "deleteTodo", "description": "Remove this todo from the list.",
+       "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]},
+       "refuses": ["a todo that does not exist"]}
+    ],
+    "main_story": "S2",
+    "near_miss": "a list where ticking a todo deletes it, so you can never see what you finished",
+    "misfits": ["a long list with no way to clear the finished todos"]
+  }
+]
