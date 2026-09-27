@@ -48,7 +48,12 @@ the engine's exit code is the merge decision.
   `frontier_fold.py`, `hunks.py`, `repo_weave.py` over sha-pinned `vendor/manyana.py`.
 - `skills/ultrawrite/` — plan authoring: the claims-v1 grammar (six body slots, contracts
   signed, edges derived, `- Run:` proofs), `references/` (`greenfield-stack.md`,
-  `authoring-gotchas.md`), `scripts/` (provenance and base-fact pins, `authoring_census.py`).
+  `authoring-gotchas.md`), `scripts/` (provenance and base-fact pins, `authoring_census.py`),
+  `stories/` (story planning for TinyApps: bundle loader, code and Jev checks, the
+  compiler to `stories-v1`, the operator notebook, the DoltLite rebuild),
+  `preview/` (the clickable preview page and its session reader), `catalog/`
+  (ready pieces; `todo` first). The sandbox-facing half is
+  `skills/ultrapowers/scripts/{probe_block,stories_parse,stories_check,stacks}.py`.
 - `factory/` — the engine the sandbox runs (see `.claude/rules/factory.md`). Its npm deps are
   `factory/package.json`'s.
 - `fleet/` — laptop tools (launcher, doctor, token, janitor, board reader) and the VM
@@ -176,6 +181,8 @@ the engine's exit code is the merge decision.
   `CLAUDE_CODE_OAUTH_TOKEN` a placeholder); `claude auth status` must show `oauth_token` — a
   run showing `x-api-key` is billing elsewhere. TypeSafe (`api.typesafe.ai`) is reached the
   same way, by the boot and engine only, for judgments over prose — never generation or facts.
+  ultrawrite's authoring checks (`skills/ultrawrite/stories/jev_checks.py`) also
+  reach TypeSafe, from the laptop, with the key in `~/.ultrapowers/typesafe.env`.
 - **Never force-rotate the Claude token while a run is live.** A refresh revokes the old
   access token at once and every in-flight run dies with `401 OAuth access token has been
   revoked`. While `ssh exe.dev ls` lists a `fleet-r*` VM the token is `not rotated` — by a
