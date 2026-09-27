@@ -58,11 +58,17 @@ def compile_plan(b, plan_id, guard_rows):
             for i, r in enumerate(srows):
                 out += _fence(probe_for(r, srows[:i], "G:%s.%d" % (sid, r["step"])))
 
+    setups = {s["id"]: s.get("setup", []) for s in page.get("stories", [])}
     assigned = {}
     for sid, srows in steps_mod.stories_of(b["steps"]).items():
         for i, r in enumerate(srows):
-            key = "links" if r.get("link") else r["piece"]
-            assigned.setdefault(key, []).append((sid, probe_for(r, srows[:i], "%s.%d" % (sid, r["step"]))))
+            if r["layer"] != "ui":
+                if i >= len(setups.get(sid, [])):
+                    raise SystemExit("compile: story %s step %d was not done on the screen; "
+                                     "do it by clicking in the preview" % (sid, r["step"]))
+                continue
+            assigned.setdefault(r["piece"], []).append(
+                (sid, probe_for(r, srows[:i], "%s.%d" % (sid, r["step"]))))
 
     n = 0
     for c in _piece_order(cards):
@@ -72,27 +78,12 @@ def compile_plan(b, plan_id, guard_rows):
                 "**Piece:** " + c["piece"],
                 "**Depends-on-pieces:** " + (", ".join(c.get("depends_on", [])) or "none"),
                 "**Files:**",
-                "- Create: `client/src/pieces/%s.tsx`" % c["piece"],
-                "- Create: `server/modules/%s.ts`" % c["piece"],
+                "- Create: `client/src/pieces/%s.ts`" % c["piece"],
                 "**Purpose:** " + c["purpose"], "**Actions:**"]
         for a in c["actions"]:
             refuses = "; refuses: " + "; ".join(a["refuses"]) if a.get("refuses") else ""
             out.append("- `%s` — %s%s" % (a["name"], a["description"], refuses))
         out.append("**Stories:**")
-        out += ["- %s: %s" % (sid, sentences[sid]) for sid in sorted({s for s, _ in mine})]
-        out.append("**Proof:**")
-        for _, p in mine:
-            out += _fence(p)
-    if assigned.get("links"):
-        mine = assigned["links"]
-        linked = sorted({p for l in page["links"] for p in l.get("pieces", [])})
-        n += 1
-        out += ["", "### Task %d: The automatic links" % n, "",
-                "**Piece:** links",
-                "**Depends-on-pieces:** " + (", ".join(linked) or "none"),
-                "**Files:**", "- Create: `client/src/links.js`",
-                "**Purpose:** Keep the pieces consistent: " + " ".join(l["sentence"] for l in page["links"]),
-                "**Actions:**", "**Stories:**"]
         out += ["- %s: %s" % (sid, sentences[sid]) for sid in sorted({s for s, _ in mine})]
         out.append("**Proof:**")
         for _, p in mine:

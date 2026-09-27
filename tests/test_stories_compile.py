@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "skills/ultrawrite/stories"))
 import bundle  # noqa: E402
@@ -13,6 +15,18 @@ import steps  # noqa: E402
 
 TODO = ROOT / "skills/ultrawrite/catalog/todo"
 CLI = ROOT / "skills/ultrawrite/stories/compile.py"
+
+
+def copy_todo(tmp_path):
+    d = tmp_path / "b"
+    shutil.copytree(TODO, d)
+    return d
+
+
+def edit_json(path, fn):
+    data = json.loads(path.read_text())
+    fn(data)
+    path.write_text(json.dumps(data))
 
 
 def probes_in(text):
@@ -28,13 +42,37 @@ def test_compile_the_catalog_todo():
     assert "**Grammar:** stories-v1" in text and "**Plan-id:** p1" in text
     assert "### Task 1: The todo piece" in text
     ps = probes_in(text)
-    assert [p["clause"] for p in ps] == ["S1.1", "S2.1", "S2.2", "S3.1", "S4.1", "S4.2"]
-    s22 = ps[2]
+    assert [p["clause"] for p in ps] == ["S1.1", "S2.2", "S3.1", "S4.2"]
+    s22 = ps[1]
     assert s22["given"] == [{"tool": "addTodo", "args": {"text": "buy milk"}}]
     assert s22["do"] == [{"click": {"name": "buy milk", "role": "checkbox"}}]
     assert s22["expect"] == [{"table": "todos", "row": "0", "cell": "completed", "eq": True}]
-    s31 = ps[3]
-    assert s31["expect"] == [{"unchanged": True}] and s31["holds_before"] is True
+    assert {"role": "checkbox", "name": "buy milk", "count": 1} in s22["see"]
+    assert "client/src/pieces/todo.ts" in text and "server/modules" not in text
+
+
+def test_a_link_step_belongs_to_its_piece_and_there_is_no_links_task(tmp_path):
+    d = copy_todo(tmp_path)
+    edit_json(d / "page.json", lambda p: p.update(links=[{"id": "L1", "sentence": "x", "pieces": ["todo"]}]))
+    rows = [json.loads(l) for l in (d / "steps.jsonl").read_text().splitlines()]
+    for r in rows:
+        if r["story"] == "S4" and r["step"] == 2:
+            r["link"] = "L1"
+    (d / "steps.jsonl").write_text("\n".join(json.dumps(r, sort_keys=True) for r in rows) + "\n")
+    text = comp.compile_plan(bundle.load_bundle(d), "p1", [])
+    assert "automatic links" not in text
+    assert "S4.2" in [p["clause"] for p in probes_in(text)]
+
+
+def test_a_step_done_without_the_screen_is_refused(tmp_path):
+    d = copy_todo(tmp_path)
+    rows = [json.loads(l) for l in (d / "steps.jsonl").read_text().splitlines()]
+    for r in rows:
+        if r["story"] == "S1":
+            r["layer"], r["ui"] = "store", None
+    (d / "steps.jsonl").write_text("\n".join(json.dumps(r, sort_keys=True) for r in rows) + "\n")
+    with pytest.raises(SystemExit, match="S1 step 1 was not done on the screen"):
+        comp.compile_plan(bundle.load_bundle(d), "p1", [])
 
 
 def test_quotes_and_unicode_survive_the_fence(tmp_path):  # Review Focus 2
@@ -57,7 +95,7 @@ def test_cli_writes_plan_export_and_store(tmp_path):
     app = tmp_path / "app"; app.mkdir()
     res, out = run_cli(TODO, app, "p1")
     assert res.returncode == 0, res.stdout + res.stderr
-    assert "COMPILED p1: 1 task(s), 6 probe(s), 0 guard(s)" in res.stdout
+    assert "COMPILED p1: 1 task(s), 4 probe(s), 0 guard(s)" in res.stdout
     rows = steps.load_steps(app / "stories/steps.jsonl")
     assert {r["story"] for r in rows} == {"p1/S1", "p1/S2", "p1/S3", "p1/S4"}
     assert all(r["plan"] == "p1" and r["signed"] == "2026-09-27" for r in rows)

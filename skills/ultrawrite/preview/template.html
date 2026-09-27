@@ -50,6 +50,7 @@ button,select,input{font:inherit}
   <section id="card"><div id="card-body"></div></section>
   <section>
     <div id="app" data-mark="app"></div>
+    <p id="problem" role="alert" hidden></p>
   </section>
 </main>
 <script type="module">
@@ -57,6 +58,7 @@ import * as TB from 'tinybase'
 const PAGE = __PAGE_JSON__
 const storeMod = __STORE_MODULE__
 const sketchMod = __SKETCH_MODULE__
+const seeMod = __SEE_MODULE__
 
 const store = storeMod.makeStore()
 const TOOLS = Object.fromEntries(storeMod.TOOLS.map((t) => [t.name, t]))
@@ -132,9 +134,23 @@ function runStep (name, args = {}) {
   return { session, at: Date.now(), story, step, piece: tool.piece, tool: name, args: clone(args),
     layer: 'store', ui: null, before, after, see: [] }
 }
+function showProblem (text) {
+  const p = document.getElementById('problem')
+  p.textContent = text
+  p.hidden = !text
+}
 function call (name, args = {}, ui = null) {
+  const app = document.getElementById('app')
+  for (const g of ui || []) {
+    const loc = Object.values(g)[0]
+    if (!seeMod.findAll(app, loc.role, loc.name).length) {
+      showProblem(`This step was not recorded: the sketch says it used a ${loc.role} named "${loc.name}", and there is none on the page.`)
+      return
+    }
+  }
+  showProblem('')
   const row = runStep(name, args)
-  if (ui) { row.layer = 'ui'; row.ui = clone(ui) }
+  if (ui) { row.layer = 'ui'; row.ui = clone(ui); row.see = seeMod.seeOf(app) }
   save('steps', `${session}-${story}-${row.step}`, row, { pendingNote: `Saved step ${row.step}` })
 }
 function restart () {
