@@ -30,7 +30,21 @@ def test_build_inlines_both_modules_and_pins_tinybase(tmp_path):
     assert "__PAGE_JSON__" not in html and '"id": "S1"' in html
     assert html.startswith("<title>Todos</title>")
     assert "Not saved:" in html
-    assert "Now showing" in html
+
+
+def test_build_is_a_guided_walk_not_the_old_dropdown(tmp_path):
+    out = tmp_path / "preview.html"
+    res = subprocess.run([sys.executable, str(ROOT / "skills/ultrawrite/preview/build_preview.py"),
+                          str(TODO), str(out)], capture_output=True, text=True)
+    assert res.returncode == 0, res.stderr
+    html = out.read_text(encoding="utf-8")
+    assert "Yes, it works like this" in html
+    assert "Not quite" in html
+    assert "Tap the part that's off" in html
+    assert "stories checked" in html
+    assert "Not saved:" in html
+    assert "Start this story from empty" not in html
+    assert 'id="story-pick"' not in html
 
 
 def test_a_module_with_another_import_is_refused():
@@ -78,3 +92,26 @@ def test_merge_steps_keeps_other_stories_and_replaces_the_recorded_one():  # I2
     assert s1 == existing[0]
     s2_steps = [r for r in merged if r["story"] == "S2"]
     assert s2_steps == new_rows
+
+
+def test_load_rows_on_bad_json_file_exits_2_without_a_traceback(tmp_path, capsys):
+    bad = tmp_path / "rows.json"
+    bad.write_text("not json", encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        sfr.load_rows(str(bad))
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert err.startswith("steps_from_rows: unrecognized rows input %s: " % bad)
+    assert "Traceback" not in err
+
+
+def test_load_rows_on_bad_json_inside_a_directory_exits_2_without_a_traceback(tmp_path, capsys):
+    d = tmp_path / "rows"
+    d.mkdir()
+    (d / "0001.json").write_text("not json", encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        sfr.load_rows(str(d))
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert err.startswith("steps_from_rows: unrecognized rows input %s: " % (d / "0001.json"))
+    assert "Traceback" not in err

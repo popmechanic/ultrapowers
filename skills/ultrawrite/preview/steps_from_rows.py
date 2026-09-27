@@ -32,12 +32,21 @@ def load_rows(path):
         names = sorted(n for n in os.listdir(path) if n.endswith(".json"))
         rows = []
         for name in names:
-            with open(os.path.join(path, name), encoding="utf-8") as fh:
-                rows.append(_unwrap(json.load(fh)))
+            item_path = os.path.join(path, name)
+            with open(item_path, encoding="utf-8") as fh:
+                try:
+                    rows.append(_unwrap(json.load(fh)))
+                except json.JSONDecodeError as exc:
+                    print("steps_from_rows: unrecognized rows input %s: %s" % (item_path, exc), file=sys.stderr)
+                    sys.exit(2)
         return rows
     if os.path.isfile(path):
         with open(path, encoding="utf-8") as fh:
-            data = json.load(fh)
+            try:
+                data = json.load(fh)
+            except json.JSONDecodeError as exc:
+                print("steps_from_rows: unrecognized rows input %s: %s" % (path, exc), file=sys.stderr)
+                sys.exit(2)
         if isinstance(data, list):
             return [_unwrap(r) for r in data]
         if isinstance(data, dict):
