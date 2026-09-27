@@ -1,0 +1,53 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "a0df1b1b04b943faacc00dad5a0871ff19ff929de8b20af08445638f2b561ce2",
+   "verdict": "pass",
+   "reason": "M1's leg checks the exit-2 one-line refusal naming the config, #1312 and pack with no push, new or billing call; M2 and M3 each reach the pool refusal."
+  }
+ },
+ "tally": {
+  "dispatched": 1,
+  "rejected": 0,
+  "rounds": {
+   "1": {
+    "dispatched": 1,
+    "passed": 1
+   }
+  },
+  "base": "1636c7897f4224ec4a6c8d46dd92875cc1a5561b"
+ },
+ "authoring": {
+  "minutes": 55,
+  "probes": 0,
+  "routing": {
+   "branch": "inline",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Plan 3 of 3, publishing with page files (#1313): Claim and summary",
+    "options": [
+     "Sign as drafted",
+     "Hold this plan",
+     "Please explain"
+    ],
+    "recommended": "Sign as drafted",
+    "picked": "Sign as drafted",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute (the sitting's queue pick: three plans on the Flock)",
+    "options": [
+     "Queue of 3 on the Flock",
+     "Just the catch counter",
+     "Write a handoff and stop",
+     "Please explain"
+    ],
+    "recommended": "Queue of 3 on the Flock",
+    "picked": "Queue of 3 on the Flock",
+    "explain_rounds": 1
+   }
+  ]
+ }
+}
