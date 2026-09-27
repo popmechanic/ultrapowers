@@ -50,3 +50,9 @@ def test_an_unanswered_call_is_unread_not_a_flag():
 
 def test_sentences_split_on_end_punctuation():
     assert jc.sentences("One. Two? Three!  Four") == ["One.", "Two?", "Three!", "Four"]
+
+
+def test_default_ask_returns_none_on_missing_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("ULTRAPOWERS_HOME", str(tmp_path))
+    result = jc.default_ask({"x": 1}, {})
+    assert result is None

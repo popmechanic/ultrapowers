@@ -31,10 +31,10 @@ def _key():
 
 
 def default_ask(state, questions):
-    body = json.dumps({"state": state, "model": MODEL, "questions": questions}).encode()
-    req = urllib.request.Request(URL, data=body, headers={
-        "Authorization": "Bearer " + _key(), "Content-Type": "application/json"})
     try:
+        body = json.dumps({"state": state, "model": MODEL, "questions": questions}).encode()
+        req = urllib.request.Request(URL, data=body, headers={
+            "Authorization": "Bearer " + _key(), "Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=30) as r:
             return json.loads(r.read()).get("answers")
     except (urllib.error.URLError, OSError, ValueError, KeyError):
