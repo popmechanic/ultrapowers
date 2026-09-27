@@ -28,13 +28,17 @@ python3 -m pytest                                                            # t
 python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers      # validate a skill dir
 python3 skills/ultrapowers/scripts/plan_parse.py <plan.md>                   # what the sandbox reads: tasks, edges, waves, checks
 python3 skills/ultrapowers/scripts/plan_check.py --base <sha> <plan.md>      # the laptop's check: records, and the plan against its base
+python3 skills/ultrawrite/stories/compile.py <bundle> --app <dir> --plan-id <id> --date <YYYY-MM-DD> --out <plan.md>   # a signed story page → a stories-v1 plan
+python3 skills/ultrawrite/stories/jev_checks.py <bundle> [--ask-file <ask.txt>]    # Jev's authoring checks before the operator sees a draft
 node fleet/doctor.mjs --json                                                 # which fleet prerequisite is missing
 node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha> --engine <sha>   # one run (the Flock; --kind factory for the factory); from this checkout, never the plugin cache
 python3 skills/ultrapowers/scripts/catch_counter.py --ledger <f> <path...>   # what a test file has ever caught
 python3 skills/ultrapowers/scripts/catch_report.py --ledger <f> --tree .     # the deletion candidates that reading names
 ```
 
-The Python scripts take positional arguments only (no `--help`). Nothing runs on push or on a
+The plan and census scripts take positional arguments only (no `--help`); the story-planning
+tools under `skills/ultrawrite/stories/` and `preview/` take flags and print their usage.
+Nothing runs on push or on a
 PR: the sandbox opens a ready PR when the engine's run ended green and a draft otherwise, so
 the engine's exit code is the merge decision.
 
@@ -180,9 +184,9 @@ the engine's exit code is the merge decision.
   edge-injected bearer (`ANTHROPIC_BASE_URL` → `claude-max.int.exe.xyz`,
   `CLAUDE_CODE_OAUTH_TOKEN` a placeholder); `claude auth status` must show `oauth_token` — a
   run showing `x-api-key` is billing elsewhere. TypeSafe (`api.typesafe.ai`) is reached the
-  same way, by the boot and engine only, for judgments over prose — never generation or facts.
-  ultrawrite's authoring checks (`skills/ultrawrite/stories/jev_checks.py`) also
-  reach TypeSafe, from the laptop, with the key in `~/.ultrapowers/typesafe.env`.
+  same way by the boot and engine, and from the laptop by ultrawrite's authoring checks
+  (`skills/ultrawrite/stories/jev_checks.py`, key in `~/.ultrapowers/typesafe.env`) — for
+  judgments over prose, never generation or facts.
 - **Never force-rotate the Claude token while a run is live.** A refresh revokes the old
   access token at once and every in-flight run dies with `401 OAuth access token has been
   revoked`. While `ssh exe.dev ls` lists a `fleet-r*` VM the token is `not rotated` — by a
