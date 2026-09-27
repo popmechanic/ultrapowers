@@ -1,0 +1,18 @@
+{
+  "title": "Todos",
+  "kind": "behaviour",
+  "summary": [
+    "A list of things you mean to do.",
+    "It exists so nothing you meant to do gets forgotten.",
+    "You add a thing, tick it when it is done, and delete it when it no longer matters."
+  ],
+  "store": "client/src/store.js",
+  "stories": [
+    {"id": "S1", "sentence": "You type \"buy milk\" and press Add; \"buy milk\" appears in the list, not ticked."},
+    {"id": "S2", "sentence": "You tick \"buy milk\"; it shows as done and stays in the list."},
+    {"id": "S3", "sentence": "You press Add with nothing typed; nothing is added."},
+    {"id": "S4", "sentence": "You delete \"buy milk\"; it is gone from the list."}
+  ],
+  "links": [],
+  "numbers": []
+}
