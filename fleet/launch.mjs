@@ -605,6 +605,12 @@ async function launchBody ({
     throw new Refusal(`launch: cannot read plan ${planPath}: ${error?.message ?? error}`)
   }
   if (planText.trim() === '') throw new Refusal(`launch: plan ${planPath} is empty`)
+  // A stories-v1 plan's proof is state probes, and no fleet runner reads them
+  // yet (story-planning sub-project 2): launched now, every task would settle
+  // green on no facts at all.
+  if (/^\*\*Grammar:\*\*\s*stories-v1\s*$/m.test(planText)) {
+    throw new Refusal(`launch: plan ${planPath} is a stories-v1 plan; the fleet cannot run state probes until the state-probe runner lands (story-planning sub-project 2)`)
+  }
   let verdictsText = null
   try {
     verdictsText = await fsp.readFile(`${planPath.replace(/\.md$/, '')}.gate-verdicts.json`, 'utf8')
