@@ -116,6 +116,10 @@ the engine's exit code is the merge decision.
   its `n=…` and `window`; no default flips under `n = 5 runs` (`20 tasks` per-task). A flip
   under the floor is an `experiment` carrying its `rollback`; a fact read once carries its
   `date` (#994). `gate.jev_claim` is `record-only` until five runs are joined to smoke outcomes.
+  **On the Flock the proof is probes-only (operator, 2026-09-27):** it selects no existing tests,
+  so a run's proof is its `Run:` probes and `Check:` lines alone, and a plan that must keep
+  existing behaviour names the guarding tests in a `Check:` (e.g.
+  `python3 -m pytest -q tests/test_fleet_suite.py -k launch`). Flock runs add no catches.
 - **Verification is mechanical and fast.** A probe computes facts (exit code, argv,
   byte-exact string, count, ordering, oracle agreement); "the code says X" is Jev's, read
   against the hunk at landing. A probe is one `Run:` line, one command, ending in the tag of

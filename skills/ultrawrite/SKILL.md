@@ -579,6 +579,13 @@ task would turn green was never run-wide. A `Check:` that freezes a pathspec cov
 task's `Create:`, `Modify:` or `Delete:` path is refused by `plan_check.py` the
 same way, because it goes red the moment that task's own patch lands (run-199, n=1 run,
 2026-09-21) — freeze files, not the directory they sit in.
+
+The Flock, the default engine since 0.3.39, selects no existing tests: a Flock run's proof is the
+plan's probes and `Check:` lines and nothing else (operator, 2026-09-27). So a plan whose change
+can break behaviour the repository already tests names those tests itself, as one `Check:` that
+runs them (`- Check: python3 -m pytest -q tests/test_fleet_suite.py -k launch` for a launcher
+change) — no single task owns them, so the check is run-wide, and a run that breaks them does not
+settle green.
 ## Execution handoff — analyze, then recommend
 
 Offer three options, parallel first, and do **not** default to the parallel lane. Read
