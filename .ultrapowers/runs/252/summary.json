@@ -1,0 +1,144 @@
+{
+ "workload": "run-252",
+ "agents": "elastic",
+ "builders_max": 2,
+ "cap": 16,
+ "model": "claude-opus-5-5",
+ "settled": null,
+ "wall_ms": 13801097,
+ "publish": "explicit",
+ "early_close": "held",
+ "order": "chain",
+ "final": {
+  "snap": "f3f585d335",
+  "green": false,
+  "perTask": {
+   "1": [
+    0,
+    0,
+    0
+   ],
+   "2": [
+    0,
+    0
+   ],
+   "C:check": [
+    1
+   ]
+  },
+  "check": 1,
+  "conflicts": []
+ },
+ "snapshots": 3,
+ "beliefs": 2,
+ "outcome": {
+  "pr": "draft",
+  "why": "clock",
+  "snap": "f3f585d335",
+  "t": 13800308
+ },
+ "settle_mode": "tested",
+ "debounce_ms": 1726,
+ "attached": {
+  "stalls": [
+   {
+    "kind": "check_red",
+    "evidence": {
+     "snap": "b833c38c04",
+     "tail": "error: Could not access '0cf35ef48b0b7220db38c4dc0693d72f1ff89c9a'\n"
+    },
+    "t": 21545
+   }
+  ],
+  "open_conflicts": [],
+  "last_edge": {
+   "snap": "f3f585d335",
+   "perTask": {
+    "1": [
+     0,
+     0,
+     0
+    ],
+    "2": [
+     0,
+     0
+    ],
+    "C:check": [
+     1
+    ]
+   },
+   "check": 1
+  }
+ },
+ "board_ops": 12645,
+ "board_op_us_p50": 16,
+ "board_op_us_p90": 26,
+ "board": "standin",
+ "board_by_op": {
+  "ready": {
+   "n": 10335,
+   "p50_us": 16,
+   "p90_us": 20,
+   "max_us": 11343
+  },
+  "claim": {
+   "n": 1152,
+   "p50_us": 1,
+   "p90_us": 1,
+   "max_us": 210
+  },
+  "publish": {
+   "n": 2,
+   "p50_us": 23,
+   "p90_us": 23,
+   "max_us": 23
+  },
+  "done": {
+   "n": 2,
+   "p50_us": 14,
+   "p90_us": 14,
+   "max_us": 14
+  },
+  "post": {
+   "n": 2,
+   "p50_us": 32,
+   "p90_us": 32,
+   "max_us": 32
+  },
+  "add": {
+   "n": 1,
+   "p50_us": 19,
+   "p90_us": 19,
+   "max_us": 19
+  },
+  "read": {
+   "n": 1,
+   "p50_us": 107,
+   "p90_us": 107,
+   "max_us": 107
+  },
+  "release": {
+   "n": 1150,
+   "p50_us": 27,
+   "p90_us": 35,
+   "max_us": 262
+  }
+ },
+ "board_writes": 2309,
+ "board_writes_per_s": 0.17,
+ "board_peak_writes_per_s": 2,
+ "edit_failures": {
+  "not_unique": 0,
+  "not_found": 0,
+  "stale": 0,
+  "other": 0
+ },
+ "tokens": {
+  "input": 6948,
+  "output": 730875,
+  "cache_read": 87616754,
+  "cache_write": 4771634
+ },
+ "sessions": 1152,
+ "cost_usd": 80.569
+}
