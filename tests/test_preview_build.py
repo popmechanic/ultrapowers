@@ -43,6 +43,9 @@ def test_build_is_a_guided_walk_not_the_old_dropdown(tmp_path):
     assert "Tap the part that's off" in html
     assert "stories checked" in html
     assert "Not saved:" in html
+    assert "Cancel" in html
+    assert "You said:" in html
+    assert "on the right" not in html
     assert "Start this story from empty" not in html
     assert 'id="story-pick"' not in html
 

@@ -1,10 +1,12 @@
 // A rough sketch of the todo screen. Every gesture goes through call(), so
-// the page records it as a step. data-mark names what the operator can mark.
+// the page records it as a step. data-mark names what the operator can mark;
+// data-label is the plain name shown to the operator for that part.
 export function render (root, store, call) {
   const draw = () => {
     root.replaceChildren()
     const form = document.createElement('form')
     form.dataset.mark = 'todo:add'
+    form.dataset.label = 'The box where you add a todo'
     const input = document.createElement('input')
     input.placeholder = 'What needs doing?'
     input.setAttribute('aria-label', 'New todo')
@@ -22,6 +24,7 @@ export function render (root, store, call) {
     }
     const list = document.createElement('ul')
     list.dataset.mark = 'todo:list'
+    list.dataset.label = 'The list of todos'
     for (const id of store.getRowIds('todos')) {
       const text = store.getCell('todos', id, 'text')
       const done = store.getCell('todos', id, 'completed') === true
