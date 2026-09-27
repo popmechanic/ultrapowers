@@ -50,6 +50,16 @@ def test_build_is_a_guided_walk_not_the_old_dropdown(tmp_path):
     assert 'id="story-pick"' not in html
 
 
+def test_build_carries_a_storys_setup_and_shows_it(tmp_path):
+    out = tmp_path / "preview.html"
+    res = subprocess.run([sys.executable, str(ROOT / "skills/ultrawrite/preview/build_preview.py"),
+                          str(TODO), str(out)], capture_output=True, text=True)
+    assert res.returncode == 0, res.stderr
+    html = out.read_text(encoding="utf-8")
+    assert "Already done for you:" in html
+    assert '"setup":' in html
+
+
 def test_a_module_with_another_import_is_refused():
     with pytest.raises(bp.BuildError, match=re.escape("only `import {…} from 'tinybase'`")):
         bp.module_body("import x from 'lodash'\nexport const TOOLS = []\n", ["TOOLS"])

@@ -75,3 +75,19 @@ def test_a_cell_named_once_in_the_store_is_a_fact(tmp_path):
     _, facts = checks.run_checks(bundle.load_bundle(d))
     assert ("CODE fact: piece todo: todos.dueDate is named fewer than twice in the store "
             "module; no action may use it") in facts
+
+
+def test_a_setup_not_matching_the_first_recorded_step_is_refused(tmp_path):
+    d = copy_todo(tmp_path)
+    edit_json(d / "page.json", lambda p: p["stories"][1].update(
+        setup=[{"tool": "addTodo", "args": {"text": "buy eggs"}}]))
+    refusals, _ = checks.run_checks(bundle.load_bundle(d))
+    assert "story S2: its recorded steps do not begin with its setup" in refusals
+
+
+def test_a_setup_naming_an_unknown_tool_is_refused(tmp_path):
+    d = copy_todo(tmp_path)
+    edit_json(d / "page.json", lambda p: p["stories"][1].update(
+        setup=[{"tool": "addThing", "args": {"text": "buy milk"}}]))
+    refusals, _ = checks.run_checks(bundle.load_bundle(d))
+    assert "story S2: setup names tool addThing, which is no piece's action" in refusals

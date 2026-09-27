@@ -36,6 +36,23 @@ def run_checks(b):
         errs = steps_mod.validate_story(srows)
         chain_ok = chain_ok and not errs
         refusals += errs
+    for s in page.get("stories", []):
+        sid = s["id"]
+        setup = s.get("setup")
+        if not setup:
+            continue
+        for sc in setup:
+            tool = sc.get("tool")
+            if tool not in owner:
+                refusals.append("story %s: setup names tool %s, which is no piece's action"
+                                % (sid, tool))
+        srows = by_story.get(sid, [])
+        matches = (len(srows) >= len(setup)
+                   and all(srows[i].get("tool") == setup[i].get("tool")
+                           and probe_block.same_value(srows[i].get("args", {}), setup[i].get("args", {}))
+                           for i in range(len(setup))))
+        if not matches:
+            refusals.append("story %s: its recorded steps do not begin with its setup" % sid)
     for r in rows:
         where = "step %s.%s" % (r.get("story"), r.get("step"))
         tool = r.get("tool")

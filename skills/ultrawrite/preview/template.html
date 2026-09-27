@@ -137,6 +137,16 @@ function restart () {
   session = Math.random().toString(36).slice(2, 10)
   step = 0
 }
+function replaySetup (idx) {
+  const setup = (PAGE.stories[idx] && PAGE.stories[idx].setup) || []
+  for (const s of setup) call(s.tool, s.args, null)
+}
+function setupLine (s) {
+  const tool = TOOLS[s.tool]
+  const desc = tool ? tool.description : s.tool
+  const vals = Object.values(s.args || {}).filter((v) => typeof v === 'string').map((v) => `"${v}"`)
+  return vals.length ? `${desc} (${vals.join(', ')})` : desc
+}
 
 function checkedCount () { return PAGE.stories.filter((s) => verdicts[s.id]).length }
 function allChecked () { return PAGE.stories.length > 0 && checkedCount() === PAGE.stories.length }
@@ -183,6 +193,7 @@ function goToStory (idx) {
   pendingLabel = null
   selectedChip = null
   restart()
+  replaySetup(idx)
   renderCard()
   renderProgress()
 }
@@ -293,6 +304,20 @@ function renderCard () {
   sentence.textContent = s ? s.sentence : ''
   body.append(label, sentence)
 
+  const setup = (s && s.setup) || []
+  if (setup.length) {
+    const setupLabel = document.createElement('p')
+    setupLabel.className = 'hint'
+    setupLabel.textContent = 'Already done for you:'
+    body.append(setupLabel)
+    for (const entry of setup) {
+      const line = document.createElement('p')
+      line.className = 'hint'
+      line.textContent = setupLine(entry)
+      body.append(line)
+    }
+  }
+
   if (walkStep === 'verdict') {
     const existing = verdicts[story]
     if (existing) {
@@ -395,6 +420,8 @@ document.getElementById('title').textContent = PAGE.title
 document.getElementById('summary').textContent = PAGE.summary.join(' ')
 const app = document.getElementById('app')
 sketchMod.render(app, store, call)
+restart()
+replaySetup(storyIndex)
 renderProgress()
 renderCard()
 document.getElementById('save-note').textContent = 'This view cannot save; your steps stay on this page only.'
