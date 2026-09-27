@@ -30,6 +30,7 @@ python3 skills/ultrapowers/scripts/plan_parse.py <plan.md>                   # w
 python3 skills/ultrapowers/scripts/plan_check.py --base <sha> <plan.md>      # the laptop's check: records, and the plan against its base
 python3 skills/ultrawrite/stories/compile.py <bundle> --app <dir> --plan-id <id> --date <YYYY-MM-DD> --out <plan.md>   # a signed story page → a stories-v1 plan
 python3 skills/ultrawrite/stories/jev_checks.py <bundle> [--ask-file <ask.txt>]    # Jev's authoring checks before the operator sees a draft
+bun factory/stack/tinyapp/check.ts --plan <plan.md> --clause S1.1 --copy <app>   # one story step against one copy (exit 0 pass, 1 finding, 2 could not run)
 node fleet/doctor.mjs --json                                                 # which fleet prerequisite is missing
 node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha> --engine <sha>   # one run (the Flock; --kind factory for the factory); from this checkout, never the plugin cache
 python3 skills/ultrapowers/scripts/catch_counter.py --ledger <f> <path...>   # what a test file has ever caught

@@ -73,11 +73,11 @@ def test_the_stack_registry():
     assert s.detect(["package.json"]) is False
     assert stacks.stack_for("rails") is None
     try:
-        s.run_probe({}, "/tmp")
+        s.state_of("/tmp")
     except NotImplementedError as exc:
         assert "sub-project 2" in str(exc)
     else:
-        raise AssertionError("run_probe must not be implemented yet")
+        raise AssertionError("state_of must not be implemented yet")
 
 
 def test_plan_parse_alone_in_a_temp_dir_still_parses_a_claims_plan(tmp_path):
