@@ -42,6 +42,8 @@ def test_build_inlines_both_modules_and_pins_tinybase(tmp_path):
     assert "return { TOOLS, makeStore };" in html and "return { render };" in html
     assert not re.search(r"^export\s", html, re.M)
     assert "__PAGE_JSON__" not in html and '"id": "S1"' in html
+    assert "__SEE_MODULE__" not in html
+    assert "return { seeOf, findAll };" in html
     assert html.startswith("<title>Todos</title>")
     assert "Not saved:" in html
 

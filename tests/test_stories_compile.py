@@ -51,6 +51,14 @@ def test_compile_the_catalog_todo():
     assert "client/src/pieces/todo.ts" in text and "server/modules" not in text
 
 
+def test_guard_probes_are_ui_steps_only():
+    b = bundle.load_bundle(TODO)
+    guard_rows = [dict(r, story="p0/" + r["story"]) for r in b["steps"]]
+    text = comp.compile_plan(b, "p1", guard_rows)
+    guard_clauses = [p["clause"] for p in probes_in(text) if p["clause"].startswith("G:")]
+    assert guard_clauses == ["G:p0/S1.1", "G:p0/S2.2", "G:p0/S3.1", "G:p0/S4.2"]
+
+
 def test_a_link_step_belongs_to_its_piece_and_there_is_no_links_task(tmp_path):
     d = copy_todo(tmp_path)
     edit_json(d / "page.json", lambda p: p.update(links=[{"id": "L1", "sentence": "x", "pieces": ["todo"]}]))
@@ -108,7 +116,7 @@ def test_a_second_plan_turns_the_first_into_guards(tmp_path):
     run_cli(TODO, app, "p1")
     res, out = run_cli(TODO, app, "p2")
     assert res.returncode == 0
-    assert "6 guard(s)" in res.stdout
+    assert "4 guard(s)" in res.stdout
     text = out.read_text(encoding="utf-8")
     assert "## Guards" in text and '"clause": "G:p1/S2.2"' in text
     stories = {r["story"] for r in steps.load_steps(app / "stories/steps.jsonl")}

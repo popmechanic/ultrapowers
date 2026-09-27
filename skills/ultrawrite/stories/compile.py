@@ -56,6 +56,8 @@ def compile_plan(b, plan_id, guard_rows):
         out += ["", "## Guards", ""]
         for sid, srows in steps_mod.stories_of(guard_rows).items():
             for i, r in enumerate(srows):
+                if r["layer"] != "ui":
+                    continue
                 out += _fence(probe_for(r, srows[:i], "G:%s.%d" % (sid, r["step"])))
 
     setups = {s["id"]: s.get("setup", []) for s in page.get("stories", [])}
@@ -128,7 +130,7 @@ def main(argv=None):
     shutil.copyfile(os.path.join(b["dir"], "store.js"), store_dst)
 
     probes = text.count("```probe")
-    guard_n = sum(len(v) for v in steps_mod.stories_of(guards).values())
+    guard_n = sum(1 for r in guards if r["layer"] == "ui")
     tasks = text.count("\n### Task ")
     print("COMPILED %s: %d task(s), %d probe(s), %d guard(s)"
           % (args.plan_id, tasks, probes - guard_n, guard_n))
