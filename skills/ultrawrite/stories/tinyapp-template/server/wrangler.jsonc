@@ -1,0 +1,7 @@
+{
+  "name": "tinyapp",
+  "main": "index.ts",
+  "compatibility_date": "2026-09-01",
+  "durable_objects": {"bindings": [{"name": "APP_STORE", "class_name": "AppStore"}]},
+  "migrations": [{"tag": "v1", "new_sqlite_classes": ["AppStore"]}]
+}
