@@ -33,14 +33,14 @@ Added for ticket 2 (#359; every earlier request answers as before, plus fields):
   select / rehide {agent, cand}           count moves on agent's copy
   adopt         {agent, path, text, after} a loser's line, placed by the adopter
 """
-import difflib, json, os, sys
+import difflib, json, os, re, sys
 
 KERNEL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "skills", "ultrapowers", "kernel")
 sys.path[:0] = [KERNEL, os.path.join(KERNEL, "vendor")]
 import manyana  # noqa: E402
 import fold_wave  # noqa: E402
 
-SEP = "
+SEP = "␟"
 M = manyana
 
 
@@ -52,12 +52,26 @@ def tag(lines, who):
     return [l + SEP + who for l in lines] if TAG else list(lines)
 
 
+# A stored line is `text + SEP + label`, and only the LAST SEP is ours: the text may carry the
+# character itself (this file's own `SEP = ...` line does), and splitting at the first one cut
+# every such line short (ultrapowers run-247 merged `SEP = "` into this file, 2026-09-27).
+_LABEL = re.compile(r"[A-Za-z0-9:_|.+-]{1,64}")
+
+
+def _split(line):
+    if SEP in line:
+        text, label = line.rsplit(SEP, 1)
+        if _LABEL.fullmatch(label):
+            return text, label
+    return line, None
+
+
 def strip(line):
-    return line.split(SEP, 1)[0]
+    return _split(line)[0]
 
 
 def author(line):
-    return line.split(SEP, 1)[1] if SEP in line else "base"
+    return _split(line)[1] or "base"
 
 
 def visible_raw(state):
