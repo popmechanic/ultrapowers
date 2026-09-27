@@ -346,7 +346,7 @@ export function defaultReadUsage (account = DEFAULT_ACCOUNT, spawn = spawnSync) 
 
 /**
  * The refusal for a publishing plan with no credential at the edge, or `null`
- * when nothing is wrong: a `compiled.publish` object (the plan carries a
+ * when nothing is wrong: a `compiled.payload.publish` object (the plan carries a
  * `**Publish:**` line) with no `cloudflare` row in `integrations`
  * (`listIntegrations`'s own rows, each carrying a `name`) is the one case
  * refused; a `compiled` with no `publish` at all — `null`, or absent because
@@ -354,7 +354,9 @@ export function defaultReadUsage (account = DEFAULT_ACCOUNT, spawn = spawnSync) 
  * publishing plan and is never refused here, whatever `integrations` carries.
  */
 function publishRefusal ({ compiled, integrations }) {
-  const publish = compiled?.publish
+  // The compile answers `{ stamp, payload, waves, edges }`, so the parse's `publish` is under
+  // `payload`; reading `compiled.publish` alone found nothing and this never refused (#1331).
+  const publish = compiled?.payload?.publish ?? compiled?.publish
   if (publish === null || publish === undefined || typeof publish !== 'object') return null
   const rows = Array.isArray(integrations) ? integrations : []
   if (rows.some((row) => row?.name === 'cloudflare')) return null
