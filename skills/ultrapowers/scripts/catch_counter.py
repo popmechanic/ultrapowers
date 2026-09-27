@@ -16,7 +16,8 @@ became a catch (it stayed red, or nothing ran it again).
 Since #1259 the factory's record (`factory/engine.mjs`, every run from 202)
 is read by the same sentence: its runs are `run:line`, `check:line`, the
 entries of `select:landing.ran[]` and `fold:verify.ran[]`, and `refold:red`;
-its fix round is a `dispatch:end` labelled `fix:<task>`; a `catch` row is the
+its fix round is a `dispatch:end` labelled `fix:<task>`, or `impl:<task>:fold`
+for a fold's re-attempt worker; a `catch` row is the
 engine's own verdict that a selected test caught a candidate, and credits on
 its own; and what a task wrote is its Files block in the run's `plan.md`,
 which `--fetch` lands beside the log, since the factory writes no
@@ -66,10 +67,13 @@ DRIVER_RUN_KINDS = ("driver:exam-run", "driver:proof-run", "driver:check-run")
 # The factory's runs (`factory/engine.mjs`, every run since 202), which writes
 # none of the three above: a task's probe is a `run:line` row, a run-wide check
 # a `check:line` row, a selected existing test one entry of a `select:landing`
-# row's `ran[]`, a fold re-run one entry of a `fold:verify` row's `ran[]` (its
-# `exit` a string), and a refold's red a `refold:red` row. `_facts` flattens
-# the two `ran[]` shapes into one entry each so the loop below reads every kind
-# alike; a selected test's entry carries `path` where the rest carry `cmd`.
+# row's `ran[]`, a fold re-run one entry of a `fold:verify` row's `ran[]`, and
+# a refold's red a `refold:red` row. `_facts` flattens the two `ran[]` shapes
+# into one entry each so the loop below reads every kind alike; a selected
+# test's entry carries `path` where the rest carry `cmd`. A `fold:verify`
+# entry is either a task's probe (`kind: 'probe'`, `cmd`) or an existing test
+# the engine selected for a task (`kind: 'test'`, `path`), and belongs to the
+# task its `id` names — usually not the row's `task`, the one just folded.
 FACTORY_RUN_KINDS = ("run:line", "check:line", "select:landing", "fold:verify",
                      "refold:red")
 RUN_KINDS = DRIVER_RUN_KINDS + FACTORY_RUN_KINDS
@@ -84,9 +88,12 @@ RED_AT_BASE_KIND = "select:red-at-base"
 # — `fix:2:0` is the proof-driven round, `fix:2:1` the review-driven one, so
 # the prefix is what identifies the task, not the whole label — or, on the
 # factory, the `dispatch:end` of the worker labelled exactly `fix:K` (no round
-# suffix). `fix:1` must not match `fix:10`, so the test is equality or the
+# suffix), or of the fold's re-attempt worker labelled exactly `impl:K:fold`
+# (`factory/fold.mjs`), dispatched per owning task when a fold's first attempt
+# is red. `fix:1` must not match `fix:10`, so the test is equality or the
 # colon-terminated prefix, never a bare `startswith`.
 FIX_LABEL = "fix:%s:"
+FOLD_FIX_LABEL = "impl:%s:fold"
 FIX_END_KINDS = ("worker:end", "dispatch:end")
 
 
@@ -94,7 +101,8 @@ def _is_fix_round(event, task):
     if event.get("kind") not in FIX_END_KINDS:
         return False
     label = str(event.get("label") or "")
-    return label == "fix:%s" % task or label.startswith(FIX_LABEL % task)
+    return (label == "fix:%s" % task or label.startswith(FIX_LABEL % task)
+            or label == FOLD_FIX_LABEL % task)
 
 # M8: a test path is a token of the command matched by this expression, in
 # order of appearance. The lookarounds keep it from biting into a longer word
@@ -243,9 +251,18 @@ def _facts(events):
         elif kind == "fold:verify":
             for entry in event.get("ran") if isinstance(event.get("ran"), list) else []:
                 if isinstance(entry, dict):
-                    out.append({"kind": kind, "task": event.get("task"),
-                                "cmd": entry.get("cmd"),
-                                "exit": _exit_int(entry.get("exit"))})
+                    # The entry's `id` owns it; the row's `task` is only the
+                    # task just folded, and stands in when `id` is absent.
+                    owner = entry.get("id")
+                    fact = {"kind": kind,
+                            "task": owner if owner is not None
+                            else event.get("task"),
+                            "exit": _exit_int(entry.get("exit"))}
+                    if entry.get("kind") == "test":
+                        fact["path"] = entry.get("path")
+                    else:
+                        fact["cmd"] = entry.get("cmd")
+                    out.append(fact)
         else:
             out.append(event)
     return out
@@ -261,8 +278,10 @@ def _is_selected_test(event):
 
 def _paths_of(event):
     """The test paths one run entry names: a selected test's entry names its
-    one `path`; every other entry names what its `cmd` names."""
-    if _is_selected_test(event):
+    one `path`, as does a fold's re-run of one; every other entry names what
+    its `cmd` names."""
+    if _is_selected_test(event) or (event.get("kind") == "fold:verify"
+                                    and "path" in event):
         path = event.get("path")
         return [str(path)] if path else []
     return test_paths_of(event.get("cmd"))
@@ -307,14 +326,20 @@ def _fix_round_between(events, start, stop, task):
     return label
 
 
-def _verdict_after(events, pos, kind, task, path):
-    """Whether a row of `kind` for `task` naming `path` follows position
-    `pos` — the engine's own verdict on a selected test, which it writes
-    right after the test's red."""
-    for event in events[pos + 1:]:
-        if (event.get("kind") == kind and str(event.get("task")) == task
-                and event.get("path") == path):
+def _verdict_before(events, pos, kind, task, path):
+    """Whether a row of `kind` for `task` naming `path` precedes position
+    `pos` — the engine's own verdict on a selected test. `factory/measure.mjs`
+    re-runs each red at the anchor and writes its verdict before the
+    `select:landing` row it judges (#1259), so the search walks back from the
+    flattened entry and stops at an earlier landing of the same test for the
+    same task: a verdict before that one judged that one's red."""
+    for event in reversed(events[:pos]):
+        if str(event.get("task")) != task or event.get("path") != path:
+            continue
+        if event.get("kind") == kind:
             return True
+        if _is_selected_test(event):
+            return False
     return False
 
 
@@ -324,12 +349,12 @@ def _selected_outcome(events, pos, task, path, writes):
     green: a `catch` row is `caught` (unless the test was the task's own to
     write), a `select:red-at-base` row is `stayed-red`, and a red the engine
     wrote no verdict for is `no-green`."""
-    if _verdict_after(events, pos, CATCH_KIND, task, path) \
+    if _verdict_before(events, pos, CATCH_KIND, task, path) \
             and path not in writes.get(task, []):
         return CAUGHT
     if path in writes.get(task, []):
         return TASK_WRITES
-    if _verdict_after(events, pos, RED_AT_BASE_KIND, task, path):
+    if _verdict_before(events, pos, RED_AT_BASE_KIND, task, path):
         return STAYED_RED
     return NO_GREEN
 
