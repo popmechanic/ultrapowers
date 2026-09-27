@@ -43,6 +43,10 @@ const planClosesOf = (planText) => {
  * same sha is the same key is the same issue, and a plan whose text changed is
  * a new sha and a new set of issues.
  */
+// The janitor's REAPABLE_STATES (fleet/janitor.mjs), copied: a run issue in
+// one of these has ended even while it is still open.
+const FINISHED_STATES = ['done', 'parked', 'failed']
+
 const planBlobSha = (text) => {
   const s = String(text ?? '')
   return crypto.createHash('sha1')
@@ -110,6 +114,24 @@ async function fileRunOnHub ({ hub, call, planText, target, base, n, compiled })
 
   const name = kataProjectFor(target)
   const project = await call('createProject', () => hub.createProject(name))
+  // Task issues are keyed by plan sha, so a byte-identical plan relaunched
+  // while its twin runs would replay and patch that run's task issues (#1308).
+  // Refuse by name instead; run-n itself is skipped, since a bump closes it and
+  // a replay of the same n answers the same issue.
+  const listed = await call('listIssues', () => hub.listIssues(project.id))
+  const live = (listed?.issues ?? []).find((issue) => {
+    const meta = issue?.metadata ?? {}
+    return meta.task === undefined && meta.plan === planSha &&
+      Number(meta.run) !== Number(n) && issue.status === 'open' &&
+      !FINISHED_STATES.includes(meta['work.state'])
+  })
+  if (live !== undefined) {
+    const other = `run-${live.metadata.run}`
+    throw new Refusal(
+      `launch: ${other} is live on ${target} with this plan's task issues on the kata hub — ` +
+      `nothing was filed, no plan branch was pushed and no VM was created; launch again once ${other} has ended`
+    )
+  }
   const runIssue = await call('createIssue', () => hub.createIssue(project.id, {
     title: `${stamp}: ${planTitleOf(planText)}`,
     body: planClaimOf(planText),
@@ -143,10 +165,21 @@ async function fileRunOnHub ({ hub, call, planText, target, base, n, compiled })
       // This number's half of the issue, applied rather than created: read for
       // the revision the patch needs (a replay answers the create's, not the
       // issue's), merge the run's own metadata on, and move the parent.
+      // A 412 revision_conflict means something moved the issue between the
+      // read and the patch: re-read and apply once more (the endpoint merges
+      // per key, so re-applying is safe). The retry lives inside the callback
+      // because `call` rewraps throws and drops the status.
       const read = await call('getIssue', () => hub.getIssue(issue.uid))
-      await call('patchMetadata', () => hub.patchMetadata(project.id, issue.uid, {
-        run: n, wave: index + 1
-      }, read.revision))
+      const patch = { run: n, wave: index + 1 }
+      await call('patchMetadata', async () => {
+        try {
+          return await hub.patchMetadata(project.id, issue.uid, patch, read.revision)
+        } catch (err) {
+          if (err?.status !== 412 || !String(err?.body ?? '').includes('revision_conflict')) throw err
+          const reread = await hub.getIssue(issue.uid)
+          return await hub.patchMetadata(project.id, issue.uid, patch, reread.revision)
+        }
+      })
       await call('link', () => hub.link(project.id, issue.uid, {
         type: 'parent', to_ref: runIssue.uid, replace: true
       }))
