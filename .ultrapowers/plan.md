@@ -1,0 +1,70 @@
+# A kata 412 at launch is retried, and a live twin is refused by name
+
+**Grammar:** claims-v1
+**Claim:** A launch that meets a task-board `412 revision_conflict` on a task's metadata patch re-reads the issue and applies the patch again, instead of refusing the whole launch. (quoted from #1308)
+**Summary:** This teaches the launcher to shrug off a brief clash on the task board: when a task's board entry changes just as the launch writes to it, the launch reads it again and writes once more instead of giving up. It exists because a launch was turned away for exactly that clash and went through untouched on a bare retry, and because relaunching a plan while an identical copy of it is still running collides on the same board entries. You relaunch less by hand, and when an identical plan is still running you get one clear line naming that run instead of a cryptic board error.
+
+**Goal:** In the launcher's filing of a run on the kata hub, retry a task's metadata patch once after a `412 revision_conflict`, re-reading the revision first; and refuse, before anything is filed, a launch whose plan already has a live run on the hub under another run number.
+**Closes:** #1308
+**Tech Stack:** Node 22 ESM; the kata client's injected hub object (no network in any probe).
+Spec: #1308 and its comment of 2026-09-26.
+
+## Global Constraints
+
+- Check: git diff --quiet $ULTRA_BASE -- fleet/kata-client.mjs
+- The kata client keeps its rule that every method issues exactly one request; a retry lives in the filing code, never in the client.
+- No new test file is written; the probes below are the proof.
+- Check: python3 -m pytest -q tests/test_fleet_suite.py -k launch
+
+### Task 1: A metadata patch that meets a 412 is re-read and applied once more
+
+**Type:** implementation
+
+**Files:**
+- Modify: `fleet/kata-file.mjs`
+
+**Claim:** A launch that meets a task-board `412 revision_conflict` on a task's metadata patch re-reads the issue and applies the patch again, instead of refusing the whole launch. (quoted from #1308)
+Machine: M1. When a task's first `patchMetadata` throws a `KataError` with `status` 412 whose body carries `revision_conflict`, `fileRunOnHub` calls `getIssue` for that task and then `patchMetadata` again with the revision that read answered, and resolves with a record carrying the task. M2. When the second `patchMetadata` throws the same 412, `fileRunOnHub` rejects with the `patchMetadata` failure after exactly two patch calls for that task. M3. When the first `patchMetadata` throws a `KataError` with `status` 500, `fileRunOnHub` rejects with the `patchMetadata` failure after exactly one patch call, with no retry.
+
+**Authorized-by:** #1308 (fix shape: on a 412 `revision_conflict` from `patchMetadata`, re-read with `getIssue` and patch once more; any other failure still refuses)
+
+**Interfaces:**
+- Consumes: none
+- Produces: none
+
+**Context:** The patch sits in `fileRunOnHub`'s task loop: `getIssue` for the revision, then `call('patchMetadata', () => hub.patchMetadata(project.id, issue.uid, { run: n, wave: index + 1 }, read.revision))`. `KataError` (`fleet/kata-client.mjs`) carries `status` and `body` (the answer's first 500 characters); a live 412 body reads `{"status":412,"error":{"code":"revision_conflict","message":"issue revision is 2"}}`. The launcher's `call` (`kataCall` in `fleet/launch.mjs`) rewraps every throw into a `LobbyError` carrying only the message, so the status is gone once the throw leaves the callback: the retry belongs inside the function handed to `call('patchMetadata', …)`. The metadata endpoint merges per key, so re-applying `{run, wave}` is safe. Exactly one retry: a second 412, and any other failure the first time, throws as today. Do not change `fleet/kata-client.mjs`. A sibling task in this plan adds one `hub.listIssues(project.id)` call right after `createProject` in the same function; the probes' fake hub answers it with no issues.
+
+**Proof:**
+- Run: node --input-type=module -e "import { fileRunOnHub } from './fleet/kata-file.mjs'; import { KataError } from './fleet/kata-client.mjs'; const log = []; let rev = 1; let tripped = false; const hub = { createProject: async () => ({ id: 31, uid: 'P', name: 'o-r' }), createIssue: async (p, b) => ({ uid: b.metadata.task ? 'T' + b.metadata.task : 'R', short_id: 'S1', revision: 1 }), listIssues: async () => ({ issues: [] }), getIssue: async (uid) => { log.push('get ' + uid); return { uid, revision: rev, metadata: {} } }, patchMetadata: async (p, uid, patch, r) => { log.push('patch ' + uid + ' ' + r); if (tripped === false) { tripped = true; rev = 3; throw new KataError({ method: 'POST', path: '/api/v1/projects/31/issues/T1/metadata', status: 412, body: '{\"status\":412,\"error\":{\"code\":\"revision_conflict\",\"message\":\"issue revision is 3\"}}' }) } return { uid, revision: r + 1 } }, link: async () => ({}) }; const call = async (m, fn) => { try { return await fn() } catch (e) { throw new Error('launch: kata ' + m + ' failed: ' + e.message) } }; const rec = await fileRunOnHub({ hub, call, planText: '# p\n', target: 'o/r', base: 'a'.repeat(40), n: 5, compiled: { waves: [[{ id: '1', title: 't' }]], edges: [] } }); const i = log.indexOf('patch T1 1'); if (i < 0 || log[i + 1] !== 'get T1' || log[i + 2] !== 'patch T1 3' || rec.tasks['1'].uid !== 'T1') { console.error(JSON.stringify(log)); process.exit(1) }" [M1]
+- Run: node --input-type=module -e "import { fileRunOnHub } from './fleet/kata-file.mjs'; import { KataError } from './fleet/kata-client.mjs'; let patches = 0; const hub = { createProject: async () => ({ id: 31, uid: 'P', name: 'o-r' }), createIssue: async (p, b) => ({ uid: b.metadata.task ? 'T' + b.metadata.task : 'R', short_id: 'S1', revision: 1 }), listIssues: async () => ({ issues: [] }), getIssue: async (uid) => ({ uid, revision: 1, metadata: {} }), patchMetadata: async () => { patches += 1; throw new KataError({ method: 'POST', path: '/api/v1/projects/31/issues/T1/metadata', status: 412, body: '{\"status\":412,\"error\":{\"code\":\"revision_conflict\",\"message\":\"issue revision is 2\"}}' }) }, link: async () => ({}) }; const call = async (m, fn) => { try { return await fn() } catch (e) { throw new Error('launch: kata ' + m + ' failed: ' + e.message) } }; let err = null; try { await fileRunOnHub({ hub, call, planText: '# p\n', target: 'o/r', base: 'a'.repeat(40), n: 5, compiled: { waves: [[{ id: '1', title: 't' }]], edges: [] } }) } catch (e) { err = e } if (err === null || err.message.includes('patchMetadata') === false || patches !== 2) { console.error(String(err && err.message), patches); process.exit(1) }" [M2]
+- Run: node --input-type=module -e "import { fileRunOnHub } from './fleet/kata-file.mjs'; import { KataError } from './fleet/kata-client.mjs'; let patches = 0; const hub = { createProject: async () => ({ id: 31, uid: 'P', name: 'o-r' }), createIssue: async (p, b) => ({ uid: b.metadata.task ? 'T' + b.metadata.task : 'R', short_id: 'S1', revision: 1 }), listIssues: async () => ({ issues: [] }), getIssue: async (uid) => ({ uid, revision: 1, metadata: {} }), patchMetadata: async () => { patches += 1; throw new KataError({ method: 'POST', path: '/api/v1/projects/31/issues/T1/metadata', status: 500, body: 'boom' }) }, link: async () => ({}) }; const call = async (m, fn) => { try { return await fn() } catch (e) { throw new Error('launch: kata ' + m + ' failed: ' + e.message) } }; let err = null; try { await fileRunOnHub({ hub, call, planText: '# p\n', target: 'o/r', base: 'a'.repeat(40), n: 5, compiled: { waves: [[{ id: '1', title: 't' }]], edges: [] } }) } catch (e) { err = e } if (err === null || err.message.includes('patchMetadata') === false || patches !== 1) { console.error(String(err && err.message), patches); process.exit(1) }" [M3]
+- Legs: (a) a first 412 is followed by a `getIssue` and a second patch at the revision that read answered, and the record carries task 1 [M1]; (b) a 412 on both patches rejects naming `patchMetadata` after exactly two patch calls [M2]; (c) a 500 rejects naming `patchMetadata` after exactly one patch call [M3].
+
+**Stale-if:**
+- issue-closed: #1308
+
+### Task 2: A launch whose plan is live on the hub under another run is refused by name
+
+**Type:** implementation
+
+**Files:**
+- Modify: `fleet/kata-file.mjs`
+
+**Claim:** A launch of a plan whose task issues belong to a run that is still live refuses with one line naming that run, rather than patching issues that run is writing. (elicited)
+Machine: M1. When `hub.listIssues(project.id)` answers an open run issue (no `metadata.task`) whose `metadata.plan` is this plan text's blob sha and whose `metadata.run` is 7, carrying no `work.state`, a `fileRunOnHub` call for `n: 8` rejects with a `Refusal` of exit code 2 whose message is one line beginning `launch: ` and naming `run-7`, and `createIssue` is never called. M2. When the only run issues of this plan are closed, open with `work.state` `parked`, or numbered `n` itself, and another open run issue names a different plan, the same call files: `createIssue` is called for the run and for task 1, and the record carries task 1.
+
+**Authorized-by:** #1308, its comment of 2026-09-26 ("when the plan's task issues belong to a run that is still live, refuse with one line naming that run")
+
+**Interfaces:**
+- Consumes: none
+- Produces: none
+
+**Context:** Task issues are keyed `<target>:<plan sha>:task-<id>`, so a byte-identical plan relaunched while its twin runs replays that run's task issues and would patch revisions the live run is moving (popmechanic/runroom-ab, 2026-09-26: refused with a 412 while run-1 was live; launched again after run-1 ended it went through as run-2). Retrying there would steal the live run's board, so this case refuses instead. The check goes in `fileRunOnHub` right after `createProject` and before the first `createIssue`: one `hub.listIssues(project.id)` (answers `{ issues: [...] }`, each with `status`, `closed_reason`, `metadata`). A run issue is one with no `metadata.task`; it is live when its `status` is `open` and its flat `metadata['work.state']` is not one of `done`, `parked`, `failed` (the janitor's `REAPABLE_STATES` in `fleet/janitor.mjs` — copy the list, do not import the janitor). Compare `metadata.plan` with the file's own `planBlobSha(planText)`, and skip a run issue numbered `n` itself: a bump closes run-n's issue `wontfix` and refiles under n+1, and a replay of the same n answers the same issue. Throw `Refusal` (from `fleet/lobby.mjs`, already imported) so the launch exits 2; a wording such as `launch: run-7 is live on o/r with this plan's task issues on the kata hub — nothing was filed, no plan branch was pushed and no VM was created; launch again once run-7 has ended` fits. A sibling task in this plan changes the metadata patch in the same function; the probes' fake hub answers every patch.
+
+**Proof:**
+- Run: node --input-type=module -e "import crypto from 'node:crypto'; import { fileRunOnHub } from './fleet/kata-file.mjs'; const text = '# p\n'; const sha = crypto.createHash('sha1').update('blob ' + Buffer.byteLength(text) + '\0' + text).digest('hex'); let creates = 0; const hub = { createProject: async () => ({ id: 31, uid: 'P', name: 'o-r' }), listIssues: async () => ({ issues: [{ uid: 'R7', status: 'open', metadata: { run: 7, plan: sha, target: 'o/r' } }, { uid: 'T7', status: 'open', metadata: { task: '1', plan: sha, run: 7, wave: 1 } }] }), createIssue: async (p, b) => { creates += 1; return { uid: b.metadata.task ? 'T' + b.metadata.task : 'R', short_id: 'S1', revision: 1 } }, getIssue: async (uid) => ({ uid, revision: 1, metadata: {} }), patchMetadata: async (p, uid, patch, r) => ({ uid, revision: r + 1 }), link: async () => ({}) }; const call = async (m, fn) => { try { return await fn() } catch (e) { throw new Error('launch: kata ' + m + ' failed: ' + e.message) } }; let err = null; try { await fileRunOnHub({ hub, call, planText: text, target: 'o/r', base: 'a'.repeat(40), n: 8, compiled: { waves: [[{ id: '1', title: 't' }]], edges: [] } }) } catch (e) { err = e } if (err === null || err.exitCode !== 2 || err.message.startsWith('launch: ') === false || err.message.includes('run-7') === false || err.message.includes('\n') || creates !== 0) { console.error(String(err && err.message), err && err.exitCode, creates); process.exit(1) }" [M1]
+- Run: node --input-type=module -e "import crypto from 'node:crypto'; import { fileRunOnHub } from './fleet/kata-file.mjs'; const text = '# p\n'; const sha = crypto.createHash('sha1').update('blob ' + Buffer.byteLength(text) + '\0' + text).digest('hex'); let creates = 0; const hub = { createProject: async () => ({ id: 31, uid: 'P', name: 'o-r' }), listIssues: async () => ({ issues: [{ uid: 'R6', status: 'closed', closed_reason: 'done', metadata: { run: 6, plan: sha } }, { uid: 'R7', status: 'open', metadata: { run: 7, plan: sha, 'work.state': 'parked' } }, { uid: 'R9', status: 'open', metadata: { run: 9, plan: 'b'.repeat(40) } }, { uid: 'R8', status: 'open', metadata: { run: 8, plan: sha } }] }), createIssue: async (p, b) => { creates += 1; return { uid: b.metadata.task ? 'T' + b.metadata.task : 'R', short_id: 'S1', revision: 1 } }, getIssue: async (uid) => ({ uid, revision: 1, metadata: {} }), patchMetadata: async (p, uid, patch, r) => ({ uid, revision: r + 1 }), link: async () => ({}) }; const call = async (m, fn) => { try { return await fn() } catch (e) { throw new Error('launch: kata ' + m + ' failed: ' + e.message) } }; const rec = await fileRunOnHub({ hub, call, planText: text, target: 'o/r', base: 'a'.repeat(40), n: 8, compiled: { waves: [[{ id: '1', title: 't' }]], edges: [] } }); if (creates !== 2 || rec.tasks['1'].uid !== 'T1') { console.error(creates); process.exit(1) }" [M2]
+- Legs: (a) an open, unfinished run-7 issue of this plan refuses a filing for run 8 with a one-line exit-2 `Refusal` naming `run-7`, before any create [M1]; (b) closed, parked, same-number and other-plan run issues let the filing go ahead, two creates and task 1 on the record [M2].
+
+**Stale-if:**
+- issue-closed: #1308
