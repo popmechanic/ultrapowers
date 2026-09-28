@@ -1,0 +1,98 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "dcd3aced571df6a2bf765efe917d5dee33ae304ba39b37bd88e8d1990f61e5d8",
+   "verdict": "pass",
+   "reason": "Both probes pin the snapshot rows, the texts file, the digest and the truncation case."
+  },
+  "2": {
+   "hash": "ea40c08ed62bd094c6195de31b3e9b516fa4fcdc4cdb5b9f5bf9855acaa9df6c",
+   "verdict": "pass",
+   "reason": "The exact ten-name listing and the pushed tree past a .gitignore pin both clauses."
+  },
+  "3": {
+   "hash": "f266e14864ee10973543c5175fe1f134a02a7de2231873cf13136f28d6d246de",
+   "verdict": "pass",
+   "reason": "Each name has its own tagged grep."
+  },
+  "4": {
+   "hash": "2ae476e12cf8fd67d765b401257120bbc49d6c48cf89e65aa7f0c4f59fb024a0",
+   "verdict": "pass",
+   "reason": "Round 2, after narrowing M1 off the draft exit it did not check."
+  }
+ },
+ "tally": {
+  "base": "899757d3e2355117660a4b163faa7c1cb01e6f18",
+  "dispatched": 5,
+  "rejected": 1,
+  "rounds": {
+   "1": {
+    "dispatched": 4,
+    "rejected": 1
+   },
+   "2": {
+    "dispatched": 1,
+    "rejected": 0
+   }
+  }
+ },
+ "history": [
+  {
+   "task": "4",
+   "round": 1,
+   "verdict": "fail",
+   "reason": "M1 said the run ends a draft; no probe checked it."
+  }
+ ],
+ "authoring": {
+  "minutes": 55,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "How to keep the weave log",
+    "options": [
+     "Keep it, file texts as hashes",
+     "Keep it whole"
+    ],
+    "recommended": "Keep it, file texts as hashes",
+    "picked": "Keep it, file texts as hashes",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Fold in the failure information",
+    "options": [
+     "Fold both in",
+     "Telemetry now, failure info next"
+    ],
+    "recommended": "Fold both in",
+    "picked": "Fold both in",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Sign",
+     "Fix a line"
+    ],
+    "recommended": "Sign",
+    "picked": "Sign",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
