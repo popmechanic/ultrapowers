@@ -93,3 +93,5 @@
 {"t":156707,"kind":"landing","task":"2","k":1,"factsExit":0,"candidateSha":"bb9033d90aff73da6c9c998b37258bfce0ea7743","ts":"2026-09-28T18:55:29.145Z"}
 {"t":156707,"kind":"fold:verify","task":"3","ran":[{"id":"3","kind":"probe","cmd":"python3 -c \"import json; c=json.load(open('factory/policy.json'))['flock']['scope']; assert c['mode']=='enforce' and c['rollback']=='mode = record' and c['experiment'] is True, c\"","exit":0},{"id":"3","kind":"probe","cmd":"grep -q 'scope:outside' fleet/CONTRACT.md","exit":0}],"attempt":1,"snap":"308a192087","ts":"2026-09-28T18:55:29.145Z"}
 {"t":156707,"kind":"landing","task":"3","k":1,"factsExit":0,"candidateSha":"bb9033d90aff73da6c9c998b37258bfce0ea7743","ts":"2026-09-28T18:55:29.145Z"}
+{"ts":"2026-09-28T18:55:35.310Z","kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1346","number":1346,"draft":false}
+{"ts":"2026-09-28T18:55:38.852Z","kind":"merge","code":200}
