@@ -237,10 +237,31 @@ function jevStepLines (eventsPath) {
   return out
 }
 
+/** A draft's reason: the last `terminal` row, when it reads `pr: "draft"`, as one bold line
+ *  naming why, then the `stall:<kind>` rows the run wrote, so the operator reads why the run
+ *  stopped on the PR itself. A ready run, or a log with no `terminal` row, adds nothing. */
+function draftReasonLines (eventsPath) {
+  let text
+  try { text = readFileSync(eventsPath, 'utf8') } catch { return [] }
+  let term = null
+  const stalls = []
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue
+    let row
+    try { row = JSON.parse(line) } catch { continue }
+    if (row.kind === 'terminal') term = row
+    else if (typeof row.kind === 'string' && row.kind.startsWith('stall:')) stalls.push(row.kind)
+  }
+  if (!term || term.pr !== 'draft') return []
+  const out = [`**Draft:** ${term.why || 'the run ended without settling green'}.`]
+  if (stalls.length) out.push(`Stalls recorded: ${[...new Set(stalls)].map((k) => '`' + k + '`').join(', ')}.`)
+  return out
+}
+
 /** `pr-body <plan.md> --events <file>` — the paragraph, an empty line, the
  *  rows, an empty line, the closes; every line, including the two empty
- *  ones, ends in a newline. When any `jev:step` row exists, its table
- *  follows the landing rows. */
+ *  ones, ends in a newline. A draft's reason follows the landing rows, and
+ *  when any `jev:step` row exists, its table follows that. */
 export function renderPrBody (planPath, eventsPath) {
   const planText = readFileSync(planPath, 'utf8')
   const summary = planSummaryLines(planText)
@@ -251,6 +272,9 @@ export function renderPrBody (planPath, eventsPath) {
   out += '\n'
   for (const line of rows) out += line + '\n'
   out += '\n'
+  const draft = draftReasonLines(eventsPath)
+  for (const line of draft) out += line + '\n'
+  if (draft.length) out += '\n'
   const readings = jevStepLines(eventsPath)
   for (const line of readings) out += line + '\n'
   if (readings.length) out += '\n'
