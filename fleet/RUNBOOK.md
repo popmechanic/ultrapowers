@@ -282,6 +282,13 @@ re-answers the live run's task issues on the hub and kills it, #1036).
   the event rows under `== events`, read through the same `ssh <hub> curl`
   door the janitor uses: the bearer is sourced on the hub, and the laptop's
   command line carries no token.
+
+  To watch a run rather than read it once, add `--follow`: it re-reads every
+  10 s, prints each new row once, prints a `!` line when a task has been
+  claimed for `--quiet <minutes>` (default 10) with no `done`, or when no new
+  row has come in for that long, and ends with `== closed` (exit 0) when the
+  run's own issue closes, or `== gave up` (exit 3) after 4 hours. It is a
+  foreground command you run while you wait, never a scheduled job.
 - `.ultrapowers/runs/<N>/status.json` on the target — committed at every
   transition and, while the engine runs, every `FLEET_COMMIT_SECONDS` (default
   60) that `events.jsonl` has changed, so the branch is at most one tick

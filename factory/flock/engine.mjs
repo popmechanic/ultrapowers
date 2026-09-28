@@ -273,7 +273,10 @@ if (KATA_URL && KATA_PROJECT && KATA_JSON) {
 }
 // posts queued or in flight, so the engine can let them land (bounded) before it exits
 const kataPending = new Set()
-const KATA_POST_MS = 3000
+// a post gives up after 10 s (radio-station run-2 lost 1 of 6 notes at 3 s, 2026-09-28, n=1 run);
+// the exit still waits at most 3 s for posts in flight, so Kata never holds the publish longer
+const KATA_POST_MS = 10000
+const KATA_EXIT_MS = 3000
 if (kataRecord) {
   // each request gives up after KATA_POST_MS, so a hung hub costs a post, never the run
   const fetchImpl = (u, init) => fetch(u, { ...init, signal: AbortSignal.timeout(KATA_POST_MS) })
@@ -1044,7 +1047,7 @@ fs.writeFileSync(path.join(OUT, 'board-ops.json'), JSON.stringify(board.ops))
 log('summary', JSON.stringify(summary))
 wp.stdin.end()
 const landed = await land()
-if (kataPending.size) await Promise.race([Promise.all([...kataPending]), new Promise((r) => setTimeout(r, KATA_POST_MS).unref())])
+if (kataPending.size) await Promise.race([Promise.all([...kataPending]), new Promise((r) => setTimeout(r, KATA_EXIT_MS).unref())])
 process.exit(landed)
 
 // ── the ending: one commit on the target, and the rows the pull request card reads ──

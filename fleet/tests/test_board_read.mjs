@@ -399,7 +399,7 @@ const HUB_ISSUES = [
 
 assert.deepEqual(
   parseBoardArgs(['--run', '207', '--run', '208', '--target', 'o/r', '--since', '12', '--json']),
-  { runs: [207, 208], target: 'o/r', since: 12, json: true },
+  { runs: [207, 208], target: 'o/r', since: 12, json: true, follow: false, quietMinutes: 10 },
   '(g) [M7] the five-flag argv parses to `{ runs: [207, 208], target: \'o/r\', since: 12, json: true }`')
 
 const assertBoardRefusal = (thunk, why) => {
@@ -542,6 +542,40 @@ const HUB_PROJECTS = [{ id: 31, uid: 'P', name: 'popmechanic-ultrapowers' }]
   assert.ok(rejection, '(g) [M7] an env file naming no host: `main` rejects')
   assert.ok(String(rejection && rejection.message).startsWith('board-read:'),
     '(g) [M7] its message begins `board-read:`; got ' + JSON.stringify(rejection && rejection.message))
+}
+
+// ── follow: new rows once, one warning per stuck claim and per quiet spell, ends on close ──
+{
+  const T0 = Date.parse('2026-09-28T23:00:00Z')
+  const iso = (ms) => new Date(T0 + ms).toISOString()
+  let clock = 0
+  const claimed = { eventId: 1, at: iso(0), run: 5, issue: 11, name: 'task 1', what: 'claimed by A' }
+  const done = { eventId: 2, at: iso(40000), run: 5, issue: 11, name: 'task 1', what: 'done by A' }
+  const closed = { eventId: 3, at: iso(40000), run: 5, issue: 10, name: 'run-5', what: 'closed done' }
+  const read = async () => clock < 40000
+    ? { tasks: [{ run: 5, issue: 10, name: 'run-5', closed: null, last: null, lastAt: null },
+                { run: 5, issue: 11, name: 'task 1', closed: null, last: 'claimed by A', lastAt: iso(0) }],
+        timeline: [claimed] }
+    : { tasks: [{ run: 5, issue: 10, name: 'run-5', closed: 'done', last: 'closed done', lastAt: iso(40000) },
+                { run: 5, issue: 11, name: 'task 1', closed: null, last: 'done by A', lastAt: iso(40000) }],
+        timeline: [claimed, done, closed] }
+  let out = ''
+  const rc = await mod.follow({ read, write: (x) => { out += x }, runs: [5], everyMs: 10000, quietMs: 30000,
+    now: () => T0 + clock, sleep: async (ms) => { clock += ms } })
+  const lines = out.trim().split('\n')
+  assert.equal(rc, 0, '(follow a) a run whose own issue closes ends with 0; got ' + rc)
+  assert.equal(lines.filter((l) => l.endsWith('claimed by A')).length, 1, '(follow b) the claim row prints once; got\n' + out)
+  assert.equal(lines.filter((l) => l.startsWith('! run-5 task 1 claimed by A') && l.endsWith('no done since')).length, 1, '(follow c) one warning for the stuck claim; got\n' + out)
+  assert.equal(lines.filter((l) => l.startsWith('! no new row for')).length, 1, '(follow d) one warning for the quiet spell; got\n' + out)
+  assert.ok(lines.some((l) => l.endsWith('done by A')) && lines.at(-1) === '== closed', '(follow e) the done row prints and the last line is == closed; got\n' + out)
+
+  clock = 0
+  let out2 = ''
+  const never = async () => ({ tasks: [{ run: 5, issue: 10, name: 'run-5', closed: null, last: null, lastAt: null }], timeline: [] })
+  const rc2 = await mod.follow({ read: never, write: (x) => { out2 += x }, runs: [5], everyMs: 10000, quietMs: 60000, maxMs: 20000,
+    now: () => T0 + clock, sleep: async (ms) => { clock += ms } })
+  assert.ok(rc2 === 3 && out2.trim().endsWith('== gave up'), '(follow f) a run that never closes gives up at maxMs with 3; got ' + rc2 + '\n' + out2)
+  assert.equal(mod.parseBoardArgs(['--run', '5', '--target', 'o/r', '--follow', '--quiet', '7']).quietMinutes, 7, '(follow g) --quiet sets the window')
 }
 
 console.log('ALL TESTS PASSED')

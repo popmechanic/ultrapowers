@@ -310,8 +310,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   one `kata:mirror` event row in `events.jsonl` naming the task, the body and whether it landed; a
   task the record names no issue for posts nothing and its row says it was skipped. Posts are
   fire-and-forget: none is awaited, so a slow, failing or absent Kata never delays or fails the
-  run — a failed post is that row and nothing else (at exit the engine gives posts still in flight
-  at most 10 seconds, then leaves without them). Before this (radio-station run-1,
+  run — a failed post is that row and nothing else. One task's posts go out one after another,
+  in board order; each gives up after 10 seconds, and at exit the engine gives posts still queued
+  or in flight at most 3 seconds, then leaves without them. Before this (radio-station run-1,
   2026-09-28, n=1 run) the Flock posted nothing and the board showed only the launcher's filing
   and the boot's closes.
 - **Scope (Flock, the `scope:outside` and `driver:amendment` rows, #1333):** the Flock's edge
