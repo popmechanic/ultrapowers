@@ -208,7 +208,7 @@ const planGrammar = (planText) => {
  * `memory` comes back spelled `<int>GB`, the spelling the lobby's `--memory`
  * takes verbatim; `cpu` is a decimal string for the same reason.
  */
-export function vmSizeFor (widestWave, cap = FLEET_DEFAULTS, browsers = false) {
+function vmSizeFor (widestWave, cap = FLEET_DEFAULTS, browsers = false) {
   const w = Math.max(0, Math.floor(Number(widestWave) || 0))
   const capCpu = Number(cap?.cpu ?? FLEET_DEFAULTS.cpu)
   const capGb = cap?.memoryGb ?? parseMemoryGb(cap?.memory ?? FLEET_DEFAULTS.memory)
@@ -231,7 +231,7 @@ export function vmSizeFor (widestWave, cap = FLEET_DEFAULTS, browsers = false) {
  * below the one-task size would be a smaller answer than the smallest real
  * plan's.
  */
-export function sizeFromCompile (compiled, { cpuCap, memoryCap, cpu, memory } = {}) {
+function sizeFromCompile (compiled, { cpuCap, memoryCap, cpu, memory } = {}) {
   const waves = Array.isArray(compiled?.waves) ? compiled.waves : []
   const w = Math.max(1, waves.reduce(
     (widest, wave) => Math.max(widest, Array.isArray(wave) ? wave.length : 0), 0

@@ -21,12 +21,11 @@ function sectionsById(text) {
   return out;
 }
 
-// A stories-v1 plan's facts are checker calls, one per probe; FLOCK_CHECKER
-// swaps in a stand-in for the engine's own tests.
-const CHECKER = process.env.FLOCK_CHECKER || join(REPO, 'factory', 'stack', 'tinyapp', 'check.ts');
+// A stories-v1 plan's facts are checker calls, one per probe.
+const CHECKER = join(REPO, 'factory', 'stack', 'tinyapp', 'check.ts');
 const sq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 export const checkerArgv = (planPath, clause) =>
-  [...(CHECKER.endsWith('.ts') ? ['bun', CHECKER] : [CHECKER]), '--plan', planPath, '--clause', clause, '--copy', '.'];
+  ['bun', CHECKER, '--plan', planPath, '--clause', clause, '--copy', '.'];
 
 function storiesWorkload (parsed, planPath, bodies) {
   const abs = resolve(planPath);
