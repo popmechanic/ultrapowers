@@ -259,12 +259,15 @@ let kataRecord = null
 if (KATA_URL && KATA_PROJECT && KATA_JSON) {
   try { kataRecord = JSON.parse(fs.readFileSync(KATA_JSON, 'utf8')) } catch (e) { log('kata record unreadable, not mirroring:', e.message) }
 }
-// posts in flight, so the engine can let them land (bounded) before it exits
+// posts queued or in flight, so the engine can let them land (bounded) before it exits
 const kataPending = new Set()
+const KATA_POST_MS = 3000
 if (kataRecord) {
-  const client = makeKataClient({ transport: httpTransport({ url: KATA_URL }), actor: arg('kata-actor') })
-  const kata = { comment: (...a) => { const p = client.comment(...a); const q = p.catch(() => {}).finally(() => kataPending.delete(q)); kataPending.add(q); return p } }
-  mirrorBoard(board, { kata, projectId: KATA_PROJECT, tasks: (kataRecord && kataRecord.tasks) || {}, onPost: (rec) => ev('kata:mirror', rec) })
+  // each request gives up after KATA_POST_MS, so a hung hub costs a post, never the run
+  const fetchImpl = (u, init) => fetch(u, { ...init, signal: AbortSignal.timeout(KATA_POST_MS) })
+  const kata = makeKataClient({ transport: httpTransport({ url: KATA_URL, fetchImpl }), actor: arg('kata-actor') })
+  const track = (q) => { kataPending.add(q); q.finally(() => kataPending.delete(q)) }
+  mirrorBoard(board, { kata, projectId: KATA_PROJECT, tasks: (kataRecord && kataRecord.tasks) || {}, onPost: (rec) => ev('kata:mirror', rec), track })
 }
 const READS = new Set(['ping', 'ready', 'list', 'beliefs', 'read'])
 
@@ -978,7 +981,7 @@ fs.writeFileSync(path.join(OUT, 'board-ops.json'), JSON.stringify(board.ops))
 log('summary', JSON.stringify(summary))
 wp.stdin.end()
 const landed = await land()
-if (kataPending.size) await Promise.race([Promise.all([...kataPending]), new Promise((r) => setTimeout(r, 10000).unref())])
+if (kataPending.size) await Promise.race([Promise.all([...kataPending]), new Promise((r) => setTimeout(r, KATA_POST_MS).unref())])
 process.exit(landed)
 
 // ── the ending: one commit on the target, and the rows the pull request card reads ──
