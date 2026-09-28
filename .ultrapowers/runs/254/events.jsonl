@@ -83,3 +83,7 @@
 {"t":163815,"kind":"landing","task":"2","k":1,"factsExit":0,"candidateSha":"1e47fe0d297776d6a576447a4710187eafd5a5a9","ts":"2026-09-28T18:32:41.773Z"}
 {"t":163815,"kind":"fold:verify","task":"3","ran":[{"id":"3","kind":"probe","cmd":"grep -q 'kata:mirror' fleet/CONTRACT.md","exit":0},{"id":"3","kind":"probe","cmd":"grep -q 'claimed by' fleet/RUNBOOK.md","exit":0}],"attempt":1,"snap":"ded8b4f5f8","ts":"2026-09-28T18:32:41.773Z"}
 {"t":163815,"kind":"landing","task":"3","k":1,"factsExit":0,"candidateSha":"1e47fe0d297776d6a576447a4710187eafd5a5a9","ts":"2026-09-28T18:32:41.773Z"}
+{"ts":"2026-09-28T18:32:50.791Z","kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1344","number":1344,"draft":false}
+{"ts":"2026-09-28T18:32:57.774Z","kind":"refold","ok":true}
+{"ts":"2026-09-28T18:32:59.752Z","kind":"merge","code":405}
+{"ts":"2026-09-28T18:33:04.463Z","kind":"merge","code":200}
