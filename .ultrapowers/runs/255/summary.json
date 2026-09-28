@@ -1,0 +1,105 @@
+{
+ "workload": "run-255",
+ "agents": "elastic",
+ "builders_max": 2,
+ "cap": 16,
+ "model": "claude-opus-5-5",
+ "settled": {
+  "t": 150531,
+  "snap": "308a192087"
+ },
+ "wall_ms": 156552,
+ "publish": "explicit",
+ "early_close": "held",
+ "order": "chain",
+ "final": {
+  "snap": "308a192087",
+  "green": true,
+  "perTask": {
+   "1": [
+    0
+   ],
+   "2": [
+    0,
+    0
+   ],
+   "3": [
+    0,
+    0
+   ]
+  },
+  "check": 0,
+  "conflicts": [
+   "factory/flock/engine.mjs"
+  ]
+ },
+ "snapshots": 3,
+ "beliefs": 1,
+ "outcome": {
+  "pr": "ready",
+  "why": "settled green",
+  "snap": "308a192087",
+  "t": 150531
+ },
+ "settle_mode": "tested",
+ "debounce_ms": 51684,
+ "board_ops": 52,
+ "board_op_us_p50": 13,
+ "board_op_us_p90": 31,
+ "board": "standin",
+ "board_by_op": {
+  "ready": {
+   "n": 40,
+   "p50_us": 13,
+   "p90_us": 31,
+   "max_us": 40605
+  },
+  "claim": {
+   "n": 4,
+   "p50_us": 22,
+   "p90_us": 82,
+   "max_us": 82
+  },
+  "claim:lost": {
+   "n": 1,
+   "p50_us": 0,
+   "p90_us": 0,
+   "max_us": 0
+  },
+  "publish": {
+   "n": 3,
+   "p50_us": 5,
+   "p90_us": 23,
+   "max_us": 23
+  },
+  "done": {
+   "n": 3,
+   "p50_us": 2,
+   "p90_us": 17,
+   "max_us": 17
+  },
+  "post": {
+   "n": 1,
+   "p50_us": 52,
+   "p90_us": 52,
+   "max_us": 52
+  }
+ },
+ "board_writes": 12,
+ "board_writes_per_s": 0.08,
+ "board_peak_writes_per_s": 4,
+ "edit_failures": {
+  "not_unique": 0,
+  "not_found": 0,
+  "stale": 0,
+  "other": 0
+ },
+ "tokens": {
+  "input": 36,
+  "output": 8362,
+  "cache_read": 606310,
+  "cache_write": 41804
+ },
+ "sessions": 3,
+ "cost_usd": 0.658
+}

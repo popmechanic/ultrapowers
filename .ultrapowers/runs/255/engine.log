@@ -1,0 +1,23 @@
+Running as unit: fleet-engine-255.service
+[   0.6s] workload run-255, 0 agents, claude-opus-5-5, out /home/exedev/run
+[   0.6s] opens builder A (pool 1)
+[   0.6s] opens builder B (pool 2)
+[   0.7s] A claims task 1
+[   0.7s] B claims task 3
+[   8.8s] A done 1
+[  32.6s] edge 6b1ce9caf3 red {"1":[0],"2":[1,1],"3":[1,1]} check 0 
+[  35.5s] B done 3
+[  60.7s] edge 8ca9f71aba red {"1":[0],"2":[1,1],"3":[0,0]} check 0 
+[  60.7s] A claims task 2
+[ 124.0s] A done 2
+[ 149.9s] early close factory/flock/engine.mjs e7205d66e6 held by A
+[ 149.9s] edge 308a192087 GREEN {"1":[0],"2":[0,0],"3":[0,0]} check 0 conflicts factory/flock/engine.mjs (blocking: none)
+[ 150.5s] SETTLED on 308a192087
+[ 150.5s] TERMINAL ready settled green
+[ 156.6s] summary {"workload":"run-255","agents":"elastic","builders_max":2,"cap":16,"model":"claude-opus-5-5","settled":{"t":150531,"snap":"308a192087"},"wall_ms":156552,"publish":"explicit","early_close":"held","order":"chain","final":{"snap":"308a192087","green":true,"perTask":{"1":[0],"2":[0,0],"3":[0,0]},"check":0,"conflicts":["factory/flock/engine.mjs"]},"snapshots":3,"beliefs":1,"outcome":{"pr":"ready","why":"settled green","snap":"308a192087","t":150531},"settle_mode":"tested","debounce_ms":51684,"board_ops":52,"board_op_us_p50":13,"board_op_us_p90":31,"board":"standin","board_by_op":{"ready":{"n":40,"p50_us":13,"p90_us":31,"max_us":40605},"claim":{"n":4,"p50_us":22,"p90_us":82,"max_us":82},"claim:lost":{"n":1,"p50_us":0,"p90_us":0,"max_us":0},"publish":{"n":3,"p50_us":5,"p90_us":23,"max_us":23},"done":{"n":3,"p50_us":2,"p90_us":17,"max_us":17},"post":{"n":1,"p50_us":52,"p90_us":52,"max_us":52}},"board_writes":12,"board_writes_per_s":0.08,"board_peak_writes_per_s":4,"edit_failures":{"not_unique":0,"not_found":0,"stale":0,"other":0},"tokens":{"input":36,"output":8362,"cache_read":606310,"cache_write":41804},"sessions":3,"cost_usd":0.658}
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 2min 36.945s
+CPU time consumed: 2min 5.853s
+Memory peak: 1.3G
+Memory swap peak: 0B
