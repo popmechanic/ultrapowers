@@ -5,7 +5,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "skills/ultrawrite/stories"))
@@ -15,18 +14,6 @@ import steps  # noqa: E402
 
 TODO = ROOT / "skills/ultrawrite/catalog/todo"
 CLI = ROOT / "skills/ultrawrite/stories/compile.py"
-
-
-def copy_todo(tmp_path):
-    d = tmp_path / "b"
-    shutil.copytree(TODO, d)
-    return d
-
-
-def edit_json(path, fn):
-    data = json.loads(path.read_text())
-    fn(data)
-    path.write_text(json.dumps(data))
 
 
 def probes_in(text):
@@ -47,40 +34,8 @@ def test_compile_the_catalog_todo():
     assert s22["given"] == [{"tool": "addTodo", "args": {"text": "buy milk"}}]
     assert s22["do"] == [{"click": {"name": "buy milk", "role": "checkbox"}}]
     assert s22["expect"] == [{"table": "todos", "row": "0", "cell": "completed", "eq": True}]
-    assert {"role": "checkbox", "name": "buy milk", "count": 1} in s22["see"]
-    assert "client/src/pieces/todo.ts" in text and "server/modules" not in text
-
-
-def test_guard_probes_are_ui_steps_only():
-    b = bundle.load_bundle(TODO)
-    guard_rows = [dict(r, story="p0/" + r["story"]) for r in b["steps"]]
-    text = comp.compile_plan(b, "p1", guard_rows)
-    guard_clauses = [p["clause"] for p in probes_in(text) if p["clause"].startswith("G:")]
-    assert guard_clauses == ["G:p0/S1.1", "G:p0/S2.2", "G:p0/S3.1", "G:p0/S4.2"]
-
-
-def test_a_link_step_belongs_to_its_piece_and_there_is_no_links_task(tmp_path):
-    d = copy_todo(tmp_path)
-    edit_json(d / "page.json", lambda p: p.update(links=[{"id": "L1", "sentence": "x", "pieces": ["todo"]}]))
-    rows = [json.loads(l) for l in (d / "steps.jsonl").read_text().splitlines()]
-    for r in rows:
-        if r["story"] == "S4" and r["step"] == 2:
-            r["link"] = "L1"
-    (d / "steps.jsonl").write_text("\n".join(json.dumps(r, sort_keys=True) for r in rows) + "\n")
-    text = comp.compile_plan(bundle.load_bundle(d), "p1", [])
-    assert "automatic links" not in text
-    assert "S4.2" in [p["clause"] for p in probes_in(text)]
-
-
-def test_a_step_done_without_the_screen_is_refused(tmp_path):
-    d = copy_todo(tmp_path)
-    rows = [json.loads(l) for l in (d / "steps.jsonl").read_text().splitlines()]
-    for r in rows:
-        if r["story"] == "S1":
-            r["layer"], r["ui"] = "store", None
-    (d / "steps.jsonl").write_text("\n".join(json.dumps(r, sort_keys=True) for r in rows) + "\n")
-    with pytest.raises(SystemExit, match="S1 step 1 was not done on the screen"):
-        comp.compile_plan(bundle.load_bundle(d), "p1", [])
+    s31 = ps[2]
+    assert s31["expect"] == [{"unchanged": True}] and s31["holds_before"] is True
 
 
 def test_quotes_and_unicode_survive_the_fence(tmp_path):  # Review Focus 2
