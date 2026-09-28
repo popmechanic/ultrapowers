@@ -49,65 +49,11 @@ def test_parse_probe_text_reports_bad_json():
     assert p is None and errs and errs[0].startswith("probe: not JSON")
 
 
-def test_checks_for_added_changed_removed_and_values():
-    assert pb.checks_for(EMPTY, ONE) == [
-        {"table": "todos", "row": "0", "cell": "text", "eq": "buy milk"}]
-    assert pb.checks_for(ONE, DONE) == [
-        {"table": "todos", "row": "0", "cell": "completed", "eq": True}]
-    assert pb.checks_for(DONE, ONE) == [
-        {"table": "todos", "row": "0", "cell": "completed", "absent": True}]
-    assert pb.checks_for(ONE, EMPTY) == [{"table": "todos", "row": "0", "absent": True}]
-    assert pb.checks_for([{}, {"theme": "dark"}], [{}, {}]) == [{"value": "theme", "absent": True}]
-    assert pb.checks_for([{}, {}], [{}, {"theme": "dark"}]) == [{"value": "theme", "eq": "dark"}]
-    assert pb.checks_for(ONE, ONE) == [{"unchanged": True}]
 
 
-def test_types_never_blur():  # Review Focus 4
-    as_str = [{"todos": {"0": {"text": "buy milk", "completed": "true"}}}, {}]
-    as_int = [{"todos": {"0": {"text": "buy milk", "completed": 1}}}, {}]
-    check = {"table": "todos", "row": "0", "cell": "completed", "eq": True}
-    assert pb.holds(check, DONE)
-    assert not pb.holds(check, as_str)
-    assert not pb.holds(check, as_int)
-    assert pb.checks_for(as_int, DONE) == [check]
-
-
-def test_holds_absent_row_absent_cell_and_unchanged():
-    assert pb.holds({"table": "todos", "row": "0", "absent": True}, EMPTY)
-    assert pb.holds({"table": "todos", "row": "0", "cell": "completed", "absent": True}, ONE)
-    assert not pb.holds({"table": "todos", "row": "0", "cell": "text", "absent": True}, ONE)
-    assert pb.holds({"unchanged": True}, ONE, ONE)
-    assert not pb.holds({"unchanged": True}, ONE, None)
-
-
-def test_hollow_when_every_check_already_holds_before():
-    p = good()
-    assert not pb.hollow(p, EMPTY)
-    assert pb.hollow(p, ONE)
-    p["holds_before"] = True
-    assert not pb.hollow(p, ONE)
 
 
 def test_tools_of_reads_given_and_tool_do():
     p = good(); p["given"] = [{"tool": "addTodo", "args": {"text": "a"}},
                               {"tool": "completeTodo", "args": {"id": "0"}}]
     assert pb.tools_of(p) == {"addTodo", "completeTodo"}
-
-
-def test_same_value_is_deep_and_type_strict():  # I1
-    assert pb.same_value(True, 1) is False
-    assert pb.same_value({"a": [1]}, {"a": [1.0]}) is False
-    assert pb.same_value({"a": [True]}, {"a": [True]}) is True
-
-
-def test_probe_for_derives_given_do_and_expect():  # I3
-    prior = [{"tool": "addTodo", "args": {"text": "buy milk"}, "layer": "store",
-              "before": EMPTY, "after": ONE, "see": []}]
-    row = {"tool": "completeTodo", "args": {"id": "0"}, "layer": "store",
-           "before": ONE, "after": DONE, "see": []}
-    p = pb.probe_for(row, prior, "S1.2")
-    assert p == {"clause": "S1.2", "layer": "store",
-                 "given": [{"tool": "addTodo", "args": {"text": "buy milk"}}],
-                 "do": [{"tool": "completeTodo", "args": {"id": "0"}}],
-                 "expect": [{"table": "todos", "row": "0", "cell": "completed", "eq": True}],
-                 "see": [], "judge": None, "holds_before": False}

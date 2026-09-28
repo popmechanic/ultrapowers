@@ -1,7 +1,7 @@
 import { createStore } from 'tinybase'
 
 // The todo-plus-tags store module. The link "deleting a todo clears its tags"
-// is part of deleteTodo, in one transaction, so the preview records it.
+// is part of deleteTodo, in one transaction, so compile.ts derives it.
 const rowOf = (table) => ({ type: 'string', 'x-row-of': table })
 const tagsOf = (store, todoId) => store.getRowIds('tags').filter((t) => store.getCell('tags', t, 'todoId') === todoId)
 

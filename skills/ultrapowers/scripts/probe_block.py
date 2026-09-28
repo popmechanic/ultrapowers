@@ -17,14 +17,13 @@ A check is exactly one of:
     {"table": t, "row": r, "absent": true}             the row is gone
     {"value": k, "eq": v} | {"value": k, "absent": true}
     {"unchanged": true}                                nothing changed
-Equality is by value AND type, so true, "true" and 1 are three answers."""
+Deciding a check (holds, hollow, the diff a step made) is probe.ts's alone
+(factory/stack/tinyapp/probe.ts); this module reads the shape only."""
 import json
 
 LAYERS = ("store", "ui", "saved")
 UI_FORMS = ("click", "type", "key")
 PROBE_KEYS = {"clause", "layer", "given", "do", "expect", "see", "judge", "holds_before"}
-EMPTY = [{}, {}]
-_MISSING = object()
 
 
 def is_tool_call(x):
@@ -113,84 +112,3 @@ def tools_of(p):
     names = {g["tool"] for g in p.get("given", []) if is_tool_call(g)}
     names |= {d["tool"] for d in p.get("do", []) if is_tool_call(d)}
     return names
-
-
-def same_value(a, b):
-    """Deep, type-strict equality: dicts by same keys and pairwise same_value
-    values, lists/tuples by same length and pairwise same_value, everything
-    else by exact type and equality — so True, 1 and 1.0 are three different
-    answers."""
-    if isinstance(a, dict) and isinstance(b, dict):
-        return set(a) == set(b) and all(same_value(v, b[k]) for k, v in a.items())
-    if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
-        return type(a) is type(b) and len(a) == len(b) and all(same_value(x, y) for x, y in zip(a, b))
-    return type(a) is type(b) and a == b
-
-
-def probe_for(row, prior, clause):
-    """The probe a signed step's row derives: `given` from the story's
-    earlier rows, `do` from the step itself, `expect` from its recorded
-    diff."""
-    expect = checks_for(row["before"], row["after"])
-    do = row["ui"] if row["layer"] == "ui" else [{"tool": row["tool"], "args": row.get("args", {})}]
-    return {"clause": clause, "layer": row["layer"],
-            "given": [{"tool": r["tool"], "args": r.get("args", {})} for r in prior],
-            "do": do, "expect": expect, "see": row.get("see", []), "judge": None,
-            "holds_before": expect == [{"unchanged": True}]}
-
-
-def checks_for(before, after):
-    """The closed checks that say exactly how `after` differs from `before`:
-    only rows and cells that changed, so a cell another piece adds later never
-    breaks them. No difference at all is `[{"unchanged": true}]`."""
-    bt, bv = before
-    at, av = after
-    out = []
-    for t in sorted(set(bt) | set(at)):
-        brows, arows = bt.get(t, {}), at.get(t, {})
-        for r in sorted(set(brows) | set(arows)):
-            if r in brows and r not in arows:
-                out.append({"table": t, "row": r, "absent": True})
-                continue
-            bcells, acells = brows.get(r, {}), arows.get(r, {})
-            for c in sorted(set(bcells) | set(acells)):
-                b, a = bcells.get(c, _MISSING), acells.get(c, _MISSING)
-                if a is _MISSING:
-                    out.append({"table": t, "row": r, "cell": c, "absent": True})
-                elif b is _MISSING or not same_value(a, b):
-                    out.append({"table": t, "row": r, "cell": c, "eq": a})
-    for k in sorted(set(bv) | set(av)):
-        b, a = bv.get(k, _MISSING), av.get(k, _MISSING)
-        if a is _MISSING:
-            out.append({"value": k, "absent": True})
-        elif b is _MISSING or not same_value(a, b):
-            out.append({"value": k, "eq": a})
-    return out or [{"unchanged": True}]
-
-
-def holds(check, content, before=None):
-    """Whether one check is true of `content` (`before` is read only by
-    `unchanged`)."""
-    tables, values = content
-    if "unchanged" in check:
-        return before is not None and same_value(content, before)
-    if "value" in check:
-        if check.get("absent"):
-            return check["value"] not in values
-        return check["value"] in values and same_value(values[check["value"]], check["eq"])
-    row = tables.get(check["table"], {}).get(check["row"])
-    if "cell" not in check:
-        return row is None
-    if row is None or check["cell"] not in row:
-        return bool(check.get("absent"))
-    if check.get("absent"):
-        return False
-    return same_value(row[check["cell"]], check["eq"])
-
-
-def hollow(p, before):
-    """A probe tests nothing when every check already holds before its step,
-    unless it says the clause is about something staying the same."""
-    if p.get("holds_before"):
-        return False
-    return all(holds(c, before, before) for c in p["expect"])
