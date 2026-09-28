@@ -1,0 +1,42 @@
+{"t":488,"kind":"non-text","path":"docs/assets/dag.gif","ts":"2026-09-28T18:52:52.926Z"}
+{"t":494,"kind":"non-text","path":"factory/replay/results/landing_out.jsonl.gz","ts":"2026-09-28T18:52:52.932Z"}
+{"t":554,"kind":"start","workload":"run-255","agents":"elastic","cap":16,"model":"claude-opus-5-5","clock_ms":13800000,"quiet_ms":45000,"board":"standin","publish":"explicit","early_close":"held","order":"chain","pulls":"all","chain":{"1":2,"2":1,"3":1},"ts":"2026-09-28T18:52:52.992Z"}
+{"t":602,"kind":"builder:open","agent":"A","pool":1,"ready":2,"busy":0,"ts":"2026-09-28T18:52:53.040Z"}
+{"t":643,"kind":"builder:open","agent":"B","pool":2,"ready":2,"busy":0,"ts":"2026-09-28T18:52:53.081Z"}
+{"t":665,"kind":"session:start","agent":"A","task":"1","ts":"2026-09-28T18:52:53.103Z"}
+{"t":676,"kind":"session:start","agent":"B","task":"3","ts":"2026-09-28T18:52:53.114Z"}
+{"t":709,"kind":"kata:mirror","task":"3","uid":"01M3MNQB19JH6VC3MM8RZKT4DV","what":"claimed by B","ok":true,"ts":"2026-09-28T18:52:53.147Z"}
+{"t":710,"kind":"kata:mirror","task":"1","uid":"01M3MNQ8Q1W14Q7DF0TGA59VKR","what":"claimed by A","ok":true,"ts":"2026-09-28T18:52:53.148Z"}
+{"t":2860,"kind":"tool","agent":"A","task":"1","tool":"Bash","target":"ls factory/flock/ | head; head -20 factory/flock/$(ls factory/flock | grep mjs | head -1)","ts":"2026-09-28T18:52:55.298Z"}
+{"t":2994,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-28T18:52:55.432Z"}
+{"t":3399,"kind":"tool","agent":"B","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; python3 -c \"import json;print(json.dumps(json.load(open('factory/policy.json'))['floc","ts":"2026-09-28T18:52:55.837Z"}
+{"t":3543,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-28T18:52:55.981Z"}
+{"t":5058,"kind":"tool","agent":"B","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; sed -n 295,330p fleet/CONTRACT.md","ts":"2026-09-28T18:52:57.496Z"}
+{"t":5106,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-28T18:52:57.544Z"}
+{"t":6890,"kind":"tool","agent":"A","task":"1","tool":"Bash","target":"cat > factory/flock/scope.mjs <<'EOF'\n// The scope rule (#1333). A snapshot may change only paths some task's Files name","ts":"2026-09-28T18:52:59.328Z"}
+{"t":6931,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-28T18:52:59.369Z"}
+{"t":7084,"kind":"fallback","agent":"A","path":"factory/flock/scope.mjs","peer_lines":0,"deleted":false,"ts":"2026-09-28T18:52:59.522Z"}
+{"t":7090,"kind":"tool","agent":"A","task":"1","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-28T18:52:59.528Z"}
+{"t":7141,"kind":"proof","agent":"A","task":"1","exits":[0],"causes":[],"errs":[],"ts":"2026-09-28T18:52:59.579Z"}
+{"t":7147,"kind":"tool:post","agent":"A","tool":"mcp__flock__run_proof","ts":"2026-09-28T18:52:59.585Z"}
+{"t":8069,"kind":"tool","agent":"B","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/B/factory/policy.json","ts":"2026-09-28T18:53:00.507Z"}
+{"t":8259,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-28T18:53:00.697Z"}
+{"t":8267,"kind":"edit","agent":"B","task":"3","tool":"Edit","path":"factory/policy.json","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-28T18:53:00.705Z"}
+{"t":8551,"kind":"tool","agent":"A","task":"1","tool":"mcp__flock__done","target":"","ts":"2026-09-28T18:53:00.989Z"}
+{"t":8754,"kind":"publish","agent":"A","task":"1","by":"done","ts":"2026-09-28T18:53:01.192Z"}
+{"t":8767,"kind":"kata:mirror","task":"1","uid":"01M3MNQ8Q1W14Q7DF0TGA59VKR","what":"done by A","ok":true,"ts":"2026-09-28T18:53:01.205Z"}
+{"t":8770,"kind":"tool:post","agent":"A","tool":"mcp__flock__done","ts":"2026-09-28T18:53:01.208Z"}
+{"t":32647,"kind":"edge","snap":"6b1ce9caf3","reason":"done A","perTask":{"1":[0],"2":[1,1],"3":[1,1]},"check":0,"conflicts":[],"blocking":[],"green":false,"ts":"2026-09-28T18:53:25.085Z"}
+{"t":32649,"kind":"tool","agent":"B","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/CONTRACT.md","ts":"2026-09-28T18:53:25.087Z"}
+{"t":32855,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-28T18:53:25.293Z"}
+{"t":32869,"kind":"edit","agent":"B","task":"3","tool":"Edit","path":"fleet/CONTRACT.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-28T18:53:25.307Z"}
+{"t":32873,"kind":"tool","agent":"B","task":"3","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-28T18:53:25.311Z"}
+{"t":32907,"kind":"proof","agent":"B","task":"3","exits":[0,0],"causes":[],"errs":[],"ts":"2026-09-28T18:53:25.345Z"}
+{"t":32911,"kind":"tool:post","agent":"B","tool":"mcp__flock__run_proof","ts":"2026-09-28T18:53:25.349Z"}
+{"t":33468,"kind":"pull","agent":"B","changed":[{"path":"factory/flock/scope.mjs","from":"A","added":18,"removed":0,"conflict":false}],"ts":"2026-09-28T18:53:25.906Z"}
+{"t":35313,"kind":"tool","agent":"B","task":"3","tool":"mcp__flock__done","target":"","ts":"2026-09-28T18:53:27.751Z"}
+{"t":35523,"kind":"publish","agent":"B","task":"3","by":"done","ts":"2026-09-28T18:53:27.961Z"}
+{"t":35530,"kind":"tool:post","agent":"B","tool":"mcp__flock__done","ts":"2026-09-28T18:53:27.968Z"}
+{"t":35530,"kind":"kata:mirror","task":"3","uid":"01M3MNQB19JH6VC3MM8RZKT4DV","what":"done by B","ok":true,"ts":"2026-09-28T18:53:27.968Z"}
+{"t":35655,"kind":"session:end","agent":"A","task":"1","released":false,"done":"Added factory/flock/scope.mjs exporting scopeOf({changed, files, written}) -> {outside, amended}, sorted and deduplicated; proof passes.","redRuns":0,"turns":5,"usage":{"input_tokens":8,"cache_creation_input_tokens":6129,"cache_read_input_tokens":106945,"output_tokens":863,"output_tokens_details":{"thinking_tokens":0},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":6129,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[],"speed":"standard"},"ts":"2026-09-28T18:53:28.093Z"}
+{"t":35668,"kind":"kata:mirror","task":"2","uid":"01M3MNQDFPNP0T3NVK99QMC5G9","what":"claimed by A","ok":true,"ts":"2026-09-28T18:53:28.106Z"}
