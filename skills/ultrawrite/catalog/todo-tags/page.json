@@ -1,336 +1,40 @@
-{
- "title": "Todos with tags",
- "kind": "behaviour",
- "summary": [
-  "A list of things you mean to do, each of which you can tag with a word.",
-  "It exists so nothing you meant to do gets forgotten, and so you can see which todos belong together.",
-  "You add a todo, tag it, take a tag off, and deleting a todo takes its tags with it."
- ],
+{"title": "Todos with tags", "kind": "behaviour",
+ "summary": ["A list of things you mean to do, each of which you can tag with a word.", "It exists so nothing you meant to do gets forgotten, and so you can see which todos belong together.", "You add a todo, tag it, take a tag off, and deleting a todo takes its tags with it."],
  "store": "client/src/store.js",
+ "subproject": "sp1",
  "stories": [
-  {
-   "id": "S1",
-   "sentence": "You type \"buy milk\" and press Add; \"buy milk\" appears in the list, not ticked.",
+  {"id": "S1", "sentence": "You type \"buy milk\" and press Add; \"buy milk\" appears in the list, not ticked.",
    "steps": [
-    {
-     "tool": "addTodo",
-     "args": {
-      "text": "buy milk"
-     },
-     "layer": "ui",
-     "ui": [
-      {
-       "type": {
-        "role": "textbox",
-        "name": "New todo",
-        "text": "buy milk"
-       }
-      },
-      {
-       "click": {
-        "role": "button",
-        "name": "Add"
-       }
-      }
-     ],
-     "see": [
-      {
-       "role": "checkbox",
-       "name": "buy milk",
-       "count": 1
-      }
-     ]
-    }
-   ]
-  },
-  {
-   "id": "S2",
-   "sentence": "You tag \"buy milk\" with \"shop\"; the tag \"shop\" shows on \"buy milk\".",
+    {"tool": "addTodo", "args": {"text": "buy milk"}, "layer": "ui",
+     "ui": [{"type": {"role": "textbox", "name": "New todo", "text": "buy milk"}}, {"click": {"role": "button", "name": "Add"}}],
+     "see": [{"role": "checkbox", "name": "buy milk", "count": 1}]}]},
+  {"id": "S2", "sentence": "You tag \"buy milk\" with \"shop\"; the tag \"shop\" shows on \"buy milk\".",
    "steps": [
-    {
-     "tool": "addTodo",
-     "args": {
-      "text": "buy milk"
-     },
-     "layer": "store"
-    },
-    {
-     "tool": "addTag",
-     "args": {
-      "todoId": "0",
-      "name": "shop"
-     },
-     "layer": "ui",
-     "ui": [
-      {
-       "type": {
-        "role": "textbox",
-        "name": "Tag for buy milk",
-        "text": "shop"
-       }
-      },
-      {
-       "click": {
-        "role": "button",
-        "name": "Add tag to buy milk"
-       }
-      }
-     ],
-     "see": [
-      {
-       "role": "button",
-       "name": "Remove shop from buy milk",
-       "count": 1
-      }
-     ]
-    }
-   ]
-  },
-  {
-   "id": "S3",
-   "sentence": "You take the tag \"shop\" off \"buy milk\"; \"buy milk\" has no tags.",
+    {"tool": "addTodo", "args": {"text": "buy milk"}, "layer": "store"},
+    {"tool": "addTag", "args": {"todoId": "0", "name": "shop"}, "layer": "ui",
+     "ui": [{"type": {"role": "textbox", "name": "Tag for buy milk", "text": "shop"}}, {"click": {"role": "button", "name": "Add tag to buy milk"}}],
+     "see": [{"role": "button", "name": "Remove shop from buy milk", "count": 1}]}]},
+  {"id": "S3", "sentence": "You take the tag \"shop\" off \"buy milk\"; \"buy milk\" has no tags.",
    "steps": [
-    {
-     "tool": "addTodo",
-     "args": {
-      "text": "buy milk"
-     },
-     "layer": "store"
-    },
-    {
-     "tool": "addTag",
-     "args": {
-      "todoId": "0",
-      "name": "shop"
-     },
-     "layer": "store"
-    },
-    {
-     "tool": "removeTag",
-     "args": {
-      "id": "0"
-     },
-     "layer": "ui",
-     "ui": [
-      {
-       "click": {
-        "role": "button",
-        "name": "Remove shop from buy milk"
-       }
-      }
-     ],
-     "see": [
-      {
-       "role": "button",
-       "name": "Remove shop from buy milk",
-       "count": 0
-      }
-     ]
-    }
-   ]
-  },
-  {
-   "id": "S4",
-   "sentence": "You delete \"buy milk\", which is tagged \"shop\"; the todo and its tag are both gone.",
+    {"tool": "addTodo", "args": {"text": "buy milk"}, "layer": "store"},
+    {"tool": "addTag", "args": {"todoId": "0", "name": "shop"}, "layer": "store"},
+    {"tool": "removeTag", "args": {"id": "0"}, "layer": "ui",
+     "ui": [{"click": {"role": "button", "name": "Remove shop from buy milk"}}],
+     "see": [{"role": "button", "name": "Remove shop from buy milk", "count": 0}]}]},
+  {"id": "S4", "sentence": "You delete \"buy milk\", which is tagged \"shop\"; the todo and its tag are both gone.",
    "steps": [
-    {
-     "tool": "addTodo",
-     "args": {
-      "text": "buy milk"
-     },
-     "layer": "store"
-    },
-    {
-     "tool": "addTag",
-     "args": {
-      "todoId": "0",
-      "name": "shop"
-     },
-     "layer": "store"
-    },
-    {
-     "tool": "deleteTodo",
-     "args": {
-      "id": "0"
-     },
-     "layer": "ui",
-     "link": "L1",
-     "ui": [
-      {
-       "click": {
-        "role": "button",
-        "name": "Delete buy milk"
-       }
-      }
-     ],
-     "see": [
-      {
-       "role": "checkbox",
-       "name": "buy milk",
-       "count": 0
-      }
-     ]
-    }
-   ]
-  },
-  {
-   "id": "S5",
-   "sentence": "You press Add with nothing typed; nothing is added.",
-   "steps": [
-    {
-     "tool": "addTodo",
-     "args": {
-      "text": ""
-     },
-     "layer": "ui",
-     "refused": "blank text",
-     "ui": [
-      {
-       "click": {
-        "role": "button",
-        "name": "Add"
-       }
-      }
-     ],
-     "see": [
-      {
-       "role": "textbox",
-       "name": "New todo",
-       "count": 1
-      }
-     ]
-    }
-   ]
-  },
-  {
-   "id": "S6",
-   "sentence": "You press Add tag on \"buy milk\" with nothing typed; no tag is added.",
-   "steps": [
-    {
-     "tool": "addTodo",
-     "args": {
-      "text": "buy milk"
-     },
-     "layer": "store"
-    },
-    {
-     "tool": "addTag",
-     "args": {
-      "todoId": "0",
-      "name": ""
-     },
-     "layer": "ui",
-     "refused": "blank tag",
-     "ui": [
-      {
-       "click": {
-        "role": "button",
-        "name": "Add tag to buy milk"
-       }
-      }
-     ],
-     "see": [
-      {
-       "role": "textbox",
-       "name": "Tag for buy milk",
-       "count": 1
-      }
-     ]
-    }
-   ]
-  },
-  {
-   "id": "S7",
-   "sentence": "\"buy milk\" is already tagged \"shop\"; you tag it \"shop\" again, and it still has one \"shop\" tag.",
-   "steps": [
-    {
-     "tool": "addTodo",
-     "args": {
-      "text": "buy milk"
-     },
-     "layer": "store"
-    },
-    {
-     "tool": "addTag",
-     "args": {
-      "todoId": "0",
-      "name": "shop"
-     },
-     "layer": "store"
-    },
-    {
-     "tool": "addTag",
-     "args": {
-      "todoId": "0",
-      "name": "shop"
-     },
-     "layer": "ui",
-     "refused": "the same tag twice on one todo",
-     "ui": [
-      {
-       "type": {
-        "role": "textbox",
-        "name": "Tag for buy milk",
-        "text": "shop"
-       }
-      },
-      {
-       "click": {
-        "role": "button",
-        "name": "Add tag to buy milk"
-       }
-      }
-     ],
-     "see": [
-      {
-       "role": "button",
-       "name": "Remove shop from buy milk",
-       "count": 1
-      }
-     ]
-    }
-   ]
-  }
- ],
- "links": [
-  {
-   "id": "L1",
-   "sentence": "Deleting a todo clears its tags.",
-   "pieces": [
-    "todo",
-    "tag"
-   ]
-  }
- ],
+    {"tool": "addTodo", "args": {"text": "buy milk"}, "layer": "store"},
+    {"tool": "addTag", "args": {"todoId": "0", "name": "shop"}, "layer": "store"},
+    {"tool": "deleteTodo", "args": {"id": "0"}, "layer": "ui", "link": "L1",
+     "ui": [{"click": {"role": "button", "name": "Delete buy milk"}}],
+     "see": [{"role": "checkbox", "name": "buy milk", "count": 0}]}]},
+  {"id": "S5", "sentence": "You press Add with nothing typed; nothing is added.", "steps": [{"tool": "addTodo", "args": {"text": ""}, "layer": "ui", "refused": "blank text", "ui": [{"click": {"role": "button", "name": "Add"}}], "see": [{"role": "textbox", "name": "New todo", "count": 1}]}]},
+  {"id": "S6", "sentence": "You press Add tag on \"buy milk\" with nothing typed; no tag is added.", "steps": [{"tool": "addTodo", "args": {"text": "buy milk"}, "layer": "store"}, {"tool": "addTag", "args": {"todoId": "0", "name": ""}, "layer": "ui", "refused": "blank tag", "ui": [{"click": {"role": "button", "name": "Add tag to buy milk"}}], "see": [{"role": "textbox", "name": "Tag for buy milk", "count": 1}]}]},
+  {"id": "S7", "sentence": "\"buy milk\" is already tagged \"shop\"; you tag it \"shop\" again, and it still has one \"shop\" tag.", "steps": [{"tool": "addTodo", "args": {"text": "buy milk"}, "layer": "store"}, {"tool": "addTag", "args": {"todoId": "0", "name": "shop"}, "layer": "store"}, {"tool": "addTag", "args": {"todoId": "0", "name": "shop"}, "layer": "ui", "refused": "the same tag twice on one todo", "ui": [{"type": {"role": "textbox", "name": "Tag for buy milk", "text": "shop"}}, {"click": {"role": "button", "name": "Add tag to buy milk"}}], "see": [{"role": "button", "name": "Remove shop from buy milk", "count": 1}]}]}],
+ "links": [{"id": "L1", "sentence": "Deleting a todo clears its tags.", "pieces": ["todo", "tag"]}],
  "numbers": [],
  "waivers": [
-  {
-   "piece": "todo",
-   "action": "completeTodo",
-   "refuses": "a todo that does not exist",
-   "arg": "id",
-   "reason": "unreachable-from-screen"
-  },
-  {
-   "piece": "todo",
-   "action": "deleteTodo",
-   "refuses": "a todo that does not exist",
-   "arg": "id",
-   "reason": "unreachable-from-screen"
-  },
-  {
-   "piece": "tag",
-   "action": "addTag",
-   "refuses": "a todo that does not exist",
-   "arg": "todoId",
-   "reason": "unreachable-from-screen"
-  },
-  {
-   "piece": "tag",
-   "action": "removeTag",
-   "refuses": "a tag that does not exist",
-   "arg": "id",
-   "reason": "unreachable-from-screen"
-  }
- ]
-}
+  {"piece": "todo", "action": "completeTodo", "refuses": "a todo that does not exist", "arg": "id", "reason": "unreachable-from-screen"},
+  {"piece": "todo", "action": "deleteTodo", "refuses": "a todo that does not exist", "arg": "id", "reason": "unreachable-from-screen"},
+  {"piece": "tag", "action": "addTag", "refuses": "a todo that does not exist", "arg": "todoId", "reason": "unreachable-from-screen"},
+  {"piece": "tag", "action": "removeTag", "refuses": "a tag that does not exist", "arg": "id", "reason": "unreachable-from-screen"}]}

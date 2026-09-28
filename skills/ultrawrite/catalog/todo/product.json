@@ -1,0 +1,48 @@
+{
+ "version": "product-v1",
+ "intent": {
+  "name": "Todos",
+  "kind": "behaviour",
+  "audience": [
+   "one person keeping their own list"
+  ],
+  "summary": [
+   "A list of things you mean to do.",
+   "It exists so nothing you meant to do gets forgotten.",
+   "You add a thing, tick it when it is done, and delete it when it no longer matters."
+  ],
+  "success": [
+   "Nothing you add is lost, and you can see at a glance what is done"
+  ]
+ },
+ "understanding": {
+  "ask": "A todo list.",
+  "said": [
+   "A todo list."
+  ],
+  "assumed": [],
+  "unsure": []
+ },
+ "concepts": [
+  {
+   "id": "todo",
+   "purpose": "You keep a list of things to do and tick them off",
+   "part": "The list",
+   "status": "keep",
+   "relies_on": []
+  }
+ ],
+ "subprojects": [
+  {
+   "id": "sp1",
+   "title": "The list",
+   "reason": "it is the whole product",
+   "concepts": [
+    "todo"
+   ],
+   "depends_on": [],
+   "status": "next"
+  }
+ ],
+ "readings": []
+}

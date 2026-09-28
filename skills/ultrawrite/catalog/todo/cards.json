@@ -1,6 +1,6 @@
 [
   {
-    "piece": "todo",
+    "piece": "todo", "concept": "todo",
     "catalog": "todo",
     "purpose": "Remember the things you mean to do until you have done them.",
     "depends_on": [],
