@@ -6,7 +6,7 @@
 // Every probe is derived by replaying the real store module: `given` from the
 // story's earlier steps, `do` from the step, `expect` from the diff the step
 // made. The app's older probes (stories/probes.jsonl) become guards.
-import {copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {parseArgs} from 'node:util';
 import {Aliases, checksFor, hollow, type Content, type Probe} from '../../../factory/stack/tinyapp/probe';
@@ -148,6 +148,7 @@ async function main(): Promise<number> {
     return 2;
   }
   const storeDst = join(app, b.page.store);
+  const kept = existsSync(storeDst) ? readFileSync(storeDst) : null;
   mkdirSync(dirname(storeDst), {recursive: true});
   copyFileSync(join(b.dir, 'store.js'), storeDst);
   let mine: Derived[];
@@ -161,6 +162,9 @@ async function main(): Promise<number> {
     mine = probesOf(b, (await import(storeDst)) as StoreModule);
     text = compilePlan(b, planId, mine, guards);
   } catch (e) {
+    // A failed compile leaves the app's store as it was, so its plan's sha still holds.
+    if (kept) writeFileSync(storeDst, kept);
+    else rmSync(storeDst, {force: true});
     console.log(`compile: ${(e as Error).message}`);
     return 2;
   }
