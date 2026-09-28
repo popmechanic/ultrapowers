@@ -322,6 +322,14 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `flock.scope` in `factory/policy.json` (`mode = enforce`); `flock.scope.mode = record` is the
   rollback — the rows are still written and nothing is refused. Before this (run-247, #1322) a
   green run merged a corrupted file no task listed.
+- **Stall (Flock, the `stall:no-progress` row, #1334):** a Flock run whose best-green count has not
+  risen for `flock.stall.minutes` (20) writes one `stall:no-progress` row in `events.jsonl` and ends
+  as a draft, alerting, instead of running to its clock. Every stall row is now named
+  `stall:<kind>`. `--stall-minutes <n>` overrides the cell for one launch. The cell is
+  `flock.stall` in `factory/policy.json`; `flock.stall.minutes = 0` is the rollback — no limit, the
+  run ends only at its clock. Before this (runs 247, 251–255 and radio-station run-1, 2026-09-26..28,
+  n=7) the longest wait for a rise in the green count was 2.0 min, while run-252 ran 229.7 min
+  after its last rise.
 - **Jev (2026-09-16, the `jev:` seam):** three event kinds ride the run's own event log exactly as
   a `driver:` row does — `jev:finding` (a reviewer's blocking finding, beside the task it was raised
   against), `jev:tier` (the tier chosen at a task's dispatch and again at each review round) and

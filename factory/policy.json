@@ -398,6 +398,15 @@
       "experiment": true,
       "rollback": "mode = record",
       "unread": "scope:outside refusals and driver:amendment rows per run (#1322: a green run merged a corrupted file no task listed)"
+    },
+    "stall": {
+      "minutes": 20,
+      "n": 7,
+      "window": "the 7 Flock runs 247, 251–255 and radio-station run-1 (2026-09-26..28)",
+      "basis": "the longest wait for a rise in the green count was 2.0 min; run-252 ran 229.7 min after its last rise",
+      "experiment": true,
+      "rollback": "minutes = 0",
+      "unread": "stall:no-progress rows per run and the wall a stalled run no longer spends (#1334)"
     }
   }
 }
