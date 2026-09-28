@@ -8,12 +8,30 @@
   ],
   "store": "client/src/store.js",
   "stories": [
-    {"id": "S1", "sentence": "You type \"buy milk\" and press Add; \"buy milk\" appears in the list, not ticked."},
+    {"id": "S1", "sentence": "You type \"buy milk\" and press Add; \"buy milk\" appears in the list, not ticked.",
+     "steps": [
+       {"tool": "addTodo", "args": {"text": "buy milk"}, "layer": "ui",
+        "ui": [{"type": {"role": "textbox", "name": "New todo", "text": "buy milk"}}, {"click": {"role": "button", "name": "Add"}}],
+        "see": [{"role": "button", "name": "Add", "count": 1}, {"role": "button", "name": "Delete buy milk", "count": 1},
+                {"role": "checkbox", "name": "buy milk", "count": 1}, {"role": "textbox", "name": "New todo", "count": 1}]}]},
     {"id": "S2", "sentence": "You tick \"buy milk\"; it shows as done and stays in the list.",
-     "setup": [{"tool": "addTodo", "args": {"text": "buy milk"}}]},
-    {"id": "S3", "sentence": "You press Add with nothing typed; nothing is added."},
+     "steps": [
+       {"tool": "addTodo", "args": {"text": "buy milk"}, "layer": "store"},
+       {"tool": "completeTodo", "args": {"id": "0"}, "layer": "ui",
+        "ui": [{"click": {"role": "checkbox", "name": "buy milk"}}],
+        "see": [{"role": "button", "name": "Add", "count": 1}, {"role": "button", "name": "Delete buy milk", "count": 1},
+                {"role": "checkbox", "name": "buy milk", "count": 1}, {"role": "textbox", "name": "New todo", "count": 1}]}]},
+    {"id": "S3", "sentence": "You press Add with nothing typed; nothing is added.",
+     "steps": [
+       {"tool": "addTodo", "args": {"text": ""}, "layer": "ui", "refused": true,
+        "ui": [{"click": {"role": "button", "name": "Add"}}],
+        "see": [{"role": "button", "name": "Add", "count": 1}, {"role": "textbox", "name": "New todo", "count": 1}]}]},
     {"id": "S4", "sentence": "You delete \"buy milk\"; it is gone from the list.",
-     "setup": [{"tool": "addTodo", "args": {"text": "buy milk"}}]}
+     "steps": [
+       {"tool": "addTodo", "args": {"text": "buy milk"}, "layer": "store"},
+       {"tool": "deleteTodo", "args": {"id": "0"}, "layer": "ui",
+        "ui": [{"click": {"role": "button", "name": "Delete buy milk"}}],
+        "see": [{"role": "button", "name": "Add", "count": 1}, {"role": "textbox", "name": "New todo", "count": 1}]}]}
   ],
   "links": [],
   "numbers": []
