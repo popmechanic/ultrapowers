@@ -1,0 +1,105 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "d36fe8b964d338076db5acf26df54f0123da6ddce3cf44602a205889e699c7b1",
+   "verdict": "pass",
+   "reason": "The null, the order, the exact texts and both caps each have a failing case."
+  },
+  "2": {
+   "hash": "3a6e0a6efd1cb3af9d3db3e0b7851c4a319dcdb68567b1ab1e17e1e7a372436d",
+   "verdict": "pass",
+   "reason": "Round 2, with its own part of the Claim: the parked and done probes pin M1 and M2."
+  },
+  "3": {
+   "hash": "34c8373dd5525185e562a42c57e4715302e974b17687152e149d02e28747df1e",
+   "verdict": "pass",
+   "reason": "The copy, the commit past a .gitignore and the contract grep pin M1-M3."
+  }
+ },
+ "tally": {
+  "base": "835d5e8f8efef56235012e974c66af0d43d9a2bb",
+  "dispatched": 4,
+  "rejected": 1,
+  "rounds": {
+   "1": {
+    "dispatched": 3,
+    "rejected": 1
+   },
+   "2": {
+    "dispatched": 1,
+    "rejected": 0
+   }
+  }
+ },
+ "history": [
+  {
+   "task": "2",
+   "round": 1,
+   "verdict": "fail",
+   "reason": "Its Claim carried the ten-item cap, which Task 1 proves."
+  }
+ ],
+ "authoring": {
+  "minutes": 45,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "What the read tool builds",
+    "options": [
+     "Query tool for authors and engine fixes",
+     "Also the in-run builder tool",
+     "Other: more automatic, don't depend on me remembering"
+    ],
+    "recommended": "Query tool for authors and engine fixes",
+    "picked": "Other: more automatic, don't depend on me remembering",
+    "explain_rounds": 1
+   },
+   {
+    "question": "Automatic at every launch",
+    "options": [
+     "Yes, plan it",
+     "Change the window",
+     "Other: is this the simplest thing that could work?"
+    ],
+    "recommended": "Yes, plan it",
+    "picked": "Other: is this the simplest thing that could work?",
+    "explain_rounds": 0
+   },
+   {
+    "question": "The simplest version",
+    "options": [
+     "Yes, plan it",
+     "Keep per-task matching"
+    ],
+    "recommended": "Yes, plan it",
+    "picked": "Yes, plan it",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Sign",
+     "Fix a line"
+    ],
+    "recommended": "Sign",
+    "picked": "Sign",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
