@@ -61,7 +61,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `state-exams/`, `residuals.jsonl`, `kata.jsonl`'s per-event hub export and the fold-again
     receipts directory — and it left with that engine at cut two; what the current engine writes
     to this branch beyond the three files above is not yet described in this contract.
-    **A Flock run (`kind=flock`) adds six files beside them** (with `summary.json` and the
+    **A Flock run (`kind=flock`) adds seven files beside them** (with `summary.json` and the
     publish files), so its record says what went wrong and not only that it did:
     - `board-ops.json` — the board's moves, in order.
     - `board.json` — the board as it stood at the end: every task with its state and owner, and
@@ -74,8 +74,13 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
       524288 bytes in total; `truncated` is `true` when one was left out for the cap.
     - `red-checks.json` — every check red at the last tested snapshot: its task, clause, command,
       exit, output tail and the checker's own result when there is one, at most 65536 bytes.
+    - `past.json` — the previous run's items the builders were briefed with: `{run, items}`, at
+      most 10 items of at most 300 characters each. Written only when the previous run on the
+      target did not end `done`. The previous run is the one with the highest
+      `ultra/evidence/run-<M>` tag below this run's number; a failed read writes no `past.json`
+      and never affects the run.
     Not kept: the whole snapshots, the raw weave log (whose `content` is the files' full texts) and
-    `checks/`. The factory engine (`kind=factory`) writes none of these six.
+    `checks/`. The factory engine (`kind=factory`) writes none of these seven.
   - `ultra/integration-run-<N>` — the work. Pushed only when it is ahead of `base=`; the PR's head.
     It has three fates, decided by the pull request with the highest `number` on that head:
     a merged one goes with the merge (delete-on-merge), a `hold=1` run's stays while its PR is open,
