@@ -1,25 +1,27 @@
 #!/usr/bin/env bun
-// Jev's authoring checks: ambiguity in the operator's words, one purpose per
-// piece, no two pieces with one purpose, a main story that rules out its
-// near-miss, and no action that reads the wording of typed text. The code
-// checks run first. Every Jev check is a live experiment (policy.json); a flag
-// is for the author to act on, and the top three open flags become touch 1's
-// doubt questions.
+// Jev reads the plan at each enrichment stage. It judges; it never generates or
+// decides. A flag is for the author to act on. Only three kinds of flag may
+// become the operator's doubts (DOUBT:), each a product choice in plain words:
+// an ask sentence with two readings, an assumption about what the app does,
+// and a link the audience might not expect. The code checks run first.
 //
-//   bun skills/ultrawrite/stories/jev_checks.ts <bundle> [--ask-file <ask.txt>]
-import {readFileSync} from 'node:fs';
+//   bun skills/ultrawrite/stories/jev_checks.ts <bundle> [--ask-file <ask.txt>] [--stage understanding|map|decompose|bundle]
+import {existsSync, readFileSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {parseArgs} from 'node:util';
 import {loadBundle, type Bundle} from './bundle';
 import {runChecks} from './checks';
+import {checkProduct, saveProduct, type Product} from './product';
 
 const URL_ = 'https://api.typesafe.ai/v1/systemone';
 const MODEL = 'jev-latest';
 const Q = JSON.parse(readFileSync(join(import.meta.dir, 'questions.json'), 'utf8'));
 const POLICY = JSON.parse(readFileSync(join(import.meta.dir, 'policy.json'), 'utf8')).flag_at;
+const STAGES = ['understanding', 'map', 'decompose', 'bundle'];
 
 type Ask = (state: unknown, questions: unknown) => Promise<Record<string, unknown> | null>;
+type Out = {flags: string[]; doubts: string[]; reads: number};
 
 function key(): string {
   const home = process.env.ULTRAPOWERS_HOME ?? join(homedir(), '.ultrapowers');
@@ -49,80 +51,165 @@ function noul(answers: Record<string, unknown> | null, k: string): number | null
 }
 
 export const sentences = (text: string) => text.trim().split(/(?<=[.!?])\s+/).filter(Boolean);
+const f2 = (v: number) => v.toFixed(2);
+const today = () => new Date().toISOString().slice(0, 10);
 
-export async function runJevChecks(b: Bundle, ask: Ask, askText?: string): Promise<{flags: string[]; reads: number}> {
-  const flags: string[] = [];
-  let reads = 0;
-  const stories = new Map(b.page.stories.map((s) => [s.id, s.sentence]));
-  const one = async (state: unknown, questions: unknown, label: string) => {
-    reads += 1;
+function reader(ask: Ask, out: Out, product: Product | null, stage: string) {
+  return async (state: unknown, questions: Record<string, unknown>, label: string, subject: string) => {
+    out.reads += 1;
     const a = await ask(state, questions);
-    if (a === null) flags.push(`JEV unread: ${label}`);
-    return a;
+    if (a === null) out.flags.push(`JEV unread: ${label}`);
+    return (k: string, flagged: (v: number) => boolean): number | null => {
+      const v = noul(a, k);
+      product?.readings.push({stage, question: k, subject, noul: v, flagged: v !== null && flagged(v), operator_pick: null, date: today()});
+      return v !== null && flagged(v) ? v : null;
+    };
   };
-  const f2 = (v: number) => v.toFixed(2);
+}
 
-  if (askText) {
-    for (const s of sentences(askText)) {
-      const v = noul(await one({ask: askText, sentence: s}, Q.ambiguity, `ambiguity of "${s}"`), 'two_apps');
-      if (v !== null && v >= POLICY.two_apps) {
-        flags.push(`JEV flag: ambiguous: "${s}" (two_apps ${f2(v)}) — ask it as a doubt with both readings`);
+async function understanding(p: Product, ask: Ask, out: Out) {
+  const one = reader(ask, out, p, 'understanding');
+  for (const s of sentences(p.understanding.ask)) {
+    const v = (await one({ask: p.understanding.ask, sentence: s}, Q.ambiguity, `ambiguity of "${s}"`, s))('two_apps', (x) => x >= POLICY.two_apps);
+    if (v !== null) out.doubts.push(`DOUBT: "${s}" can mean two different apps; ask which one, with both readings side by side (${f2(v)})`);
+  }
+  for (const a of p.understanding.assumed.filter((x) => x.about === 'product')) {
+    const v = (await one({ask: p.understanding.ask, assumption: a.text}, Q.surprise, `assumption "${a.text}"`, a.text))(
+      'assumption_surprises', (x) => x >= POLICY.assumption_surprises);
+    if (v !== null) out.doubts.push(`DOUBT: ask whether the app should: ${a.text} (${f2(v)})`);
+  }
+}
+
+async function map(p: Product, ask: Ask, out: Out) {
+  if (!p.concepts.length) throw new Error('the map has no concepts yet; list them in product.json first');
+  const one = reader(ask, out, p, 'map');
+  const summary = p.intent.summary.join(' ');
+  const audience = p.intent.audience.join(', ');
+  for (const c of p.concepts) {
+    const get = await one({summary, audience, purpose: c.purpose},
+      {essential: Q.map.essential, serves_summary: Q.map.serves_summary, one_need: Q.coherence.one_need}, `concept ${c.id}`, c.id);
+    const low = get('essential', (x) => x < POLICY.essential_below);
+    const read = p.readings[p.readings.length - 1].noul;
+    out.flags.push(`JEV map: ${c.id}: recommend ${low !== null ? 'Later' : 'First version'} (essential ${read === null ? 'unread' : f2(read)})`);
+    const s = get('serves_summary', (x) => x < POLICY.serves_summary_below);
+    if (s !== null) out.flags.push(`JEV flag: ${c.id}: may not serve what the product is for (serves_summary ${f2(s)}); recommend Not doing`);
+    const n = get('one_need', (x) => x < POLICY.one_need_below);
+    if (n !== null) out.flags.push(`JEV flag: ${c.id}: its purpose reads as more than one need (one_need ${f2(n)}); split it`);
+  }
+  const parts = [...new Set(p.concepts.map((c) => c.part))];
+  for (const part of parts) {
+    const cs = p.concepts.filter((c) => c.part === part && c.status !== 'cut');
+    for (let i = 0; i < cs.length; i++) {
+      for (let j = i + 1; j < cs.length; j++) {
+        const v = (await one({a: {name: cs[i].id, purpose: cs[i].purpose}, b: {name: cs[j].id, purpose: cs[j].purpose}},
+          Q.redundancy, `${cs[i].id} and ${cs[j].id}`, `${cs[i].id}+${cs[j].id}`))('same_need', (x) => x >= POLICY.same_need);
+        if (v !== null) out.flags.push(`JEV flag: ${cs[i].id} and ${cs[j].id} serve the same need (same_need ${f2(v)}); merge them`);
       }
+    }
+  }
+}
+
+async function decompose(p: Product, ask: Ask, out: Out) {
+  if (!p.subprojects.length) throw new Error('no build order yet; list the plans in product.json first');
+  const one = reader(ask, out, p, 'decompose');
+  const audience = p.intent.audience.join(', ');
+  for (const s of p.subprojects) {
+    const does = s.concepts.map((id) => p.concepts.find((c) => c.id === id)?.purpose ?? id);
+    const v = (await one({audience, plan: {title: s.title, does}}, Q.decompose, `plan ${s.id}`, s.id))(
+      'stands_alone', (x) => x < POLICY.stands_alone_below);
+    if (v !== null) out.flags.push(`JEV flag: ${s.id} "${s.title}" may not be usable on its own (stands_alone ${f2(v)}); regroup it`);
+  }
+}
+
+async function bundleStage(b: Bundle, ask: Ask, out: Out, askText?: string) {
+  const one = reader(ask, out, b.product, 'bundle');
+  const stories = new Map(b.page.stories.map((s) => [s.id, s.sentence]));
+  if (askText && !b.product) {
+    for (const s of sentences(askText)) {
+      const v = (await one({ask: askText, sentence: s}, Q.ambiguity, `ambiguity of "${s}"`, s))('two_apps', (x) => x >= POLICY.two_apps);
+      if (v !== null) out.doubts.push(`DOUBT: "${s}" can mean two different apps; ask which one, with both readings side by side (${f2(v)})`);
     }
   }
   for (const c of b.cards) {
     const piece = {name: c.piece, purpose: c.purpose, actions: c.actions.map((a) => ({name: a.name, description: a.description}))};
-    const a = await one({piece}, Q.coherence, `piece ${c.piece} coherence`);
-    let v = noul(a, 'one_need');
-    if (v !== null && v < POLICY.one_need_below) flags.push(`JEV flag: piece ${c.piece}: its purpose reads as more than one need (one_need ${f2(v)})`);
-    v = noul(a, 'same_people');
-    if (v !== null && v < POLICY.same_people_below) flags.push(`JEV flag: piece ${c.piece}: its actions serve different people (same_people ${f2(v)})`);
-    v = noul(a, 'actions_conflict');
-    if (v !== null && v >= POLICY.actions_conflict) flags.push(`JEV flag: piece ${c.piece}: two actions can work against each other (actions_conflict ${f2(v)})`);
-
-    const nm = await one({piece: {name: c.piece, purpose: c.purpose}, story: stories.get(c.main_story ?? '') ?? '', near_miss: c.near_miss ?? ''},
-      Q.near_miss, `piece ${c.piece} near-miss`);
-    v = noul(nm, 'story_passes_near_miss');
-    if (v !== null && v >= POLICY.story_passes_near_miss) {
-      flags.push(`JEV flag: piece ${c.piece}: main story ${c.main_story} does not rule out its near-miss (story_passes_near_miss ${f2(v)})`);
-    }
+    const get = await one({piece}, Q.coherence, `piece ${c.piece} coherence`, c.piece);
+    let v = get('one_need', (x) => x < POLICY.one_need_below);
+    if (v !== null) out.flags.push(`JEV flag: piece ${c.piece}: its purpose reads as more than one need (one_need ${f2(v)})`);
+    v = get('same_people', (x) => x < POLICY.same_people_below);
+    if (v !== null) out.flags.push(`JEV flag: piece ${c.piece}: its actions serve different people (same_people ${f2(v)})`);
+    v = get('actions_conflict', (x) => x >= POLICY.actions_conflict);
+    if (v !== null) out.flags.push(`JEV flag: piece ${c.piece}: two actions can work against each other (actions_conflict ${f2(v)})`);
+    v = (await one({piece: {name: c.piece, purpose: c.purpose}, story: stories.get(c.main_story ?? '') ?? '', near_miss: c.near_miss ?? ''},
+      Q.near_miss, `piece ${c.piece} near-miss`, c.piece))('story_passes_near_miss', (x) => x >= POLICY.story_passes_near_miss);
+    if (v !== null) out.flags.push(`JEV flag: piece ${c.piece}: main story ${c.main_story} does not rule out its near-miss (story_passes_near_miss ${f2(v)})`);
     for (const act of c.actions) {
-      const cb = await one({action: {name: act.name, description: act.description}, store_module: b.storeText.slice(0, 20000)},
-        Q.content_branch, `action ${act.name}`);
-      v = noul(cb, 'branches_on_text');
-      if (v !== null && v >= POLICY.branches_on_text) {
-        flags.push(`JEV flag: piece ${c.piece}: ${act.name} may act on the wording of typed text (branches_on_text ${f2(v)})`);
-      }
+      v = (await one({action: {name: act.name, description: act.description}, store_module: b.storeText.slice(0, 20000)},
+        Q.content_branch, `action ${act.name}`, act.name))('branches_on_text', (x) => x >= POLICY.branches_on_text);
+      if (v !== null) out.flags.push(`JEV flag: piece ${c.piece}: ${act.name} may act on the wording of typed text (branches_on_text ${f2(v)})`);
     }
   }
   for (let i = 0; i < b.cards.length; i++) {
     for (let j = i + 1; j < b.cards.length; j++) {
       const [x, y] = [b.cards[i], b.cards[j]];
-      const v = noul(await one({a: {name: x.piece, purpose: x.purpose}, b: {name: y.piece, purpose: y.purpose}},
-        Q.redundancy, `pieces ${x.piece} and ${y.piece}`), 'same_need');
-      if (v !== null && v >= POLICY.same_need) flags.push(`JEV flag: pieces ${x.piece} and ${y.piece} serve the same need (same_need ${f2(v)})`);
+      const v = (await one({a: {name: x.piece, purpose: x.purpose}, b: {name: y.piece, purpose: y.purpose}},
+        Q.redundancy, `pieces ${x.piece} and ${y.piece}`, `${x.piece}+${y.piece}`))('same_need', (z) => z >= POLICY.same_need);
+      if (v !== null) out.flags.push(`JEV flag: pieces ${x.piece} and ${y.piece} serve the same need (same_need ${f2(v)})`);
     }
   }
-  return {flags, reads};
+  const audience = b.product?.intent.audience.join(', ') ?? 'the people who use the app';
+  for (const l of b.page.links ?? []) {
+    const v = (await one({audience, link: l.sentence}, Q.link, `link ${l.id}`, l.id))('link_expected', (x) => x < POLICY.link_expected_below);
+    if (v !== null) out.doubts.push(`DOUBT: ask whether this should happen: ${l.sentence} (${f2(v)})`);
+  }
 }
 
 async function main(): Promise<number> {
-  const {values, positionals} = parseArgs({allowPositionals: true, options: {'ask-file': {type: 'string'}}});
-  if (positionals.length !== 1) {
-    console.error('usage: jev_checks.ts <bundle> [--ask-file <ask.txt>]');
+  const {values, positionals} = parseArgs({allowPositionals: true,
+    options: {'ask-file': {type: 'string'}, stage: {type: 'string'}}});
+  const stage = values.stage ?? 'bundle';
+  if (positionals.length !== 1 || !STAGES.includes(stage)) {
+    console.error('usage: jev_checks.ts <bundle> [--ask-file <ask.txt>] [--stage understanding|map|decompose|bundle]');
     return 2;
   }
-  const b = loadBundle(positionals[0]);
-  const {refusals, facts} = runChecks(b);
-  for (const l of [...refusals, ...facts]) console.log(l);
-  if (refusals.length) {
-    console.log(`${refusals.length} refusal(s); fix them before Jev reads the draft`);
+  const dir = positionals[0];
+  const productPath = join(dir, 'product.json');
+  const out: Out = {flags: [], doubts: [], reads: 0};
+  let product: Product | null = null;
+  if (existsSync(productPath)) {
+    product = JSON.parse(readFileSync(productPath, 'utf8'));
+    const errs = checkProduct(product);
+    if (errs.length) {
+      console.log(errs.join('\n'));
+      console.log(`${errs.length} problem(s) in product.json`);
+      return 2;
+    }
+  } else if (stage !== 'bundle') {
+    console.log(`jev_checks: stage ${stage} reads ${productPath}, which does not exist; write the product record first`);
     return 2;
   }
-  const askText = values['ask-file'] ? readFileSync(values['ask-file'], 'utf8') : undefined;
-  const {flags, reads} = await runJevChecks(b, defaultAsk, askText);
-  for (const f of flags) console.log(f);
-  console.log(`JEV read: ${reads} call(s), ${flags.filter((f) => f.startsWith('JEV flag')).length} flag(s)`);
+  try {
+    if (stage === 'understanding') await understanding(product!, defaultAsk, out);
+    else if (stage === 'map') await map(product!, defaultAsk, out);
+    else if (stage === 'decompose') await decompose(product!, defaultAsk, out);
+    else {
+      const b = loadBundle(dir);
+      const {refusals, facts} = runChecks(b);
+      for (const l of [...refusals, ...facts]) console.log(l);
+      if (refusals.length) {
+        console.log(`${refusals.length} refusal(s); fix them before Jev reads the draft`);
+        return 2;
+      }
+      const askText = values['ask-file'] ? readFileSync(values['ask-file'], 'utf8') : undefined;
+      await bundleStage(b, defaultAsk, out, askText);
+      product = b.product;
+    }
+  } catch (e) {
+    console.log(`jev_checks: ${(e as Error).message}`);
+    return 2;
+  }
+  for (const f of [...out.flags, ...out.doubts]) console.log(f);
+  if (product) saveProduct(productPath, product);
+  console.log(`JEV read: ${out.reads} call(s), ${out.flags.filter((f) => f.startsWith('JEV flag')).length} flag(s), ${out.doubts.length} doubt(s)`);
   return 0;
 }
 
