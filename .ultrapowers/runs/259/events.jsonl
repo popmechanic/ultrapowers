@@ -1,0 +1,68 @@
+{"t":671,"kind":"non-text","path":"docs/assets/dag.gif","ts":"2026-09-28T23:50:43.839Z"}
+{"t":678,"kind":"non-text","path":"factory/replay/results/landing_out.jsonl.gz","ts":"2026-09-28T23:50:43.846Z"}
+{"t":743,"kind":"start","workload":"run-259","agents":"elastic","cap":16,"model":"claude-opus-5-5","clock_ms":13800000,"quiet_ms":45000,"board":"standin","publish":"explicit","early_close":"held","order":"chain","pulls":"all","chain":{"1":2,"2":1,"3":1},"ts":"2026-09-28T23:50:43.911Z"}
+{"t":788,"kind":"builder:open","agent":"A","pool":1,"ready":2,"busy":0,"ts":"2026-09-28T23:50:43.956Z"}
+{"t":827,"kind":"builder:open","agent":"B","pool":2,"ready":2,"busy":0,"ts":"2026-09-28T23:50:43.995Z"}
+{"t":849,"kind":"session:start","agent":"A","task":"1","ts":"2026-09-28T23:50:44.017Z"}
+{"t":861,"kind":"session:start","agent":"B","task":"3","ts":"2026-09-28T23:50:44.029Z"}
+{"t":890,"kind":"kata:mirror","task":"1","uid":"01M3N6RK3BPM7ACKS6GMNS611D","what":"claimed by A","ok":true,"ts":"2026-09-28T23:50:44.058Z"}
+{"t":893,"kind":"kata:mirror","task":"3","uid":"01M3N6RNFYJMC63PWAPCB5XX76","what":"claimed by B","ok":true,"ts":"2026-09-28T23:50:44.061Z"}
+{"t":3121,"kind":"tool","agent":"B","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; grep -n \"red-checks.json\" factory/boot.sh fleet/CONTRACT.md","ts":"2026-09-28T23:50:46.289Z"}
+{"t":3149,"kind":"tool","agent":"A","task":"1","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; ls factory/flock; head -30 $(ls factory/flock/*.mjs | head -1)","ts":"2026-09-28T23:50:46.317Z"}
+{"t":3218,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-28T23:50:46.386Z"}
+{"t":3256,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-28T23:50:46.424Z"}
+{"t":4725,"kind":"tool","agent":"B","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; sed -n 145,175p factory/boot.sh; sed -n 60,85p fleet/CONTRACT.md","ts":"2026-09-28T23:50:47.893Z"}
+{"t":4762,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-28T23:50:47.930Z"}
+{"t":9770,"kind":"tool","agent":"B","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; sed -i 's/ snapshot-texts.json red-checks.json; do/ snapshot-texts.json red-checks.js","ts":"2026-09-28T23:50:52.938Z"}
+{"t":9771,"kind":"deny:shell-write","agent":"B","task":"3","command":"cd /home/exedev/run/work/agents/B; sed -i 's/ snapshot-texts.json red-checks.json; do/ snapshot-texts.json red-checks.json past.json; do/' factory/boot.sh; grep","ts":"2026-09-28T23:50:52.939Z"}
+{"t":10039,"kind":"tool","agent":"A","task":"1","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; cat > factory/flock/past.mjs <<'EOF'\n// A failed run's record as at most ten short it","ts":"2026-09-28T23:50:53.207Z"}
+{"t":10082,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-28T23:50:53.250Z"}
+{"t":10234,"kind":"fallback","agent":"A","path":"factory/flock/past.mjs","peer_lines":0,"deleted":false,"ts":"2026-09-28T23:50:53.402Z"}
+{"t":10239,"kind":"tool","agent":"A","task":"1","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-28T23:50:53.407Z"}
+{"t":10288,"kind":"proof","agent":"A","task":"1","exits":[0],"causes":[],"errs":[],"ts":"2026-09-28T23:50:53.456Z"}
+{"t":10293,"kind":"tool:post","agent":"A","tool":"mcp__flock__run_proof","ts":"2026-09-28T23:50:53.461Z"}
+{"t":11469,"kind":"tool","agent":"B","task":"3","tool":"Read","target":"/home/exedev/run/work/agents/B/factory/boot.sh","ts":"2026-09-28T23:50:54.637Z"}
+{"t":11485,"kind":"tool:post","agent":"B","tool":"Read","ts":"2026-09-28T23:50:54.653Z"}
+{"t":11636,"kind":"tool","agent":"A","task":"1","tool":"mcp__flock__done","target":"","ts":"2026-09-28T23:50:54.804Z"}
+{"t":11835,"kind":"publish","agent":"A","task":"1","by":"done","ts":"2026-09-28T23:50:55.003Z"}
+{"t":11851,"kind":"tool:post","agent":"A","tool":"mcp__flock__done","ts":"2026-09-28T23:50:55.019Z"}
+{"t":11853,"kind":"kata:mirror","task":"1","uid":"01M3N6RK3BPM7ACKS6GMNS611D","what":"done by A","ok":true,"ts":"2026-09-28T23:50:55.021Z"}
+{"t":24331,"kind":"edge","snap":"0e4f0e4b70","reason":"done A","perTask":{"1":[0],"2":[1,1,0],"3":[1,1,1]},"check":0,"conflicts":[],"blocking":[],"outside":[],"green":false,"ts":"2026-09-28T23:51:07.499Z"}
+{"t":24341,"kind":"tool","agent":"B","task":"3","tool":"Read","target":"/home/exedev/run/work/agents/B/fleet/CONTRACT.md","ts":"2026-09-28T23:51:07.509Z"}
+{"t":24357,"kind":"tool:post","agent":"B","tool":"Read","ts":"2026-09-28T23:51:07.525Z"}
+{"t":24803,"kind":"pull","agent":"B","changed":[{"path":"factory/flock/past.mjs","from":"A","added":31,"removed":0,"conflict":false}],"ts":"2026-09-28T23:51:07.971Z"}
+{"t":26557,"kind":"tool","agent":"B","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/B/factory/boot.sh","ts":"2026-09-28T23:51:09.725Z"}
+{"t":26784,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-28T23:51:09.952Z"}
+{"t":26795,"kind":"edit","agent":"B","task":"3","tool":"Edit","path":"factory/boot.sh","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-28T23:51:09.963Z"}
+{"t":27658,"kind":"tool","agent":"B","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/B/factory/boot.sh","ts":"2026-09-28T23:51:10.826Z"}
+{"t":27877,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-28T23:51:11.045Z"}
+{"t":27888,"kind":"edit","agent":"B","task":"3","tool":"Edit","path":"factory/boot.sh","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-28T23:51:11.056Z"}
+{"t":28004,"kind":"tool","agent":"B","task":"3","tool":"Bash","target":"cat /home/exedev/run/work/agents/B/factory/flock/past.mjs","ts":"2026-09-28T23:51:11.172Z"}
+{"t":28035,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-28T23:51:11.203Z"}
+{"t":28368,"kind":"session:end","agent":"A","task":"1","released":false,"done":"Added factory/flock/past.mjs: pastItems({status,events,redChecks}) returns null for done, else stopped/red-check/belief/stall items, texts cut to 300, list to 10. Proof green.","redRuns":0,"turns":5,"usage":{"input_tokens":8,"cache_creation_input_tokens":30161,"cache_read_input_tokens":87088,"output_tokens":1452,"output_tokens_details":{"thinking_tokens":64},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":30161,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[],"speed":"standard"},"ts":"2026-09-28T23:51:11.536Z"}
+{"t":28382,"kind":"kata:mirror","task":"2","uid":"01M3N6RQTRY9P953Z8YSNEKGRG","what":"claimed by A","ok":true,"ts":"2026-09-28T23:51:11.550Z"}
+{"t":28679,"kind":"session:start","agent":"A","task":"2","ts":"2026-09-28T23:51:11.847Z"}
+{"t":31627,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; grep -rn \"pastItems\" factory | head; wc -l factory/flock/engine.mjs; grep -n \"brief\\|","ts":"2026-09-28T23:51:14.795Z"}
+{"t":31742,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-28T23:51:14.910Z"}
+{"t":32593,"kind":"tool","agent":"B","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/CONTRACT.md","ts":"2026-09-28T23:51:15.761Z"}
+{"t":32837,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-28T23:51:16.005Z"}
+{"t":32856,"kind":"edit","agent":"B","task":"3","tool":"Edit","path":"fleet/CONTRACT.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-28T23:51:16.024Z"}
+{"t":33673,"kind":"tool","agent":"B","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/CONTRACT.md","ts":"2026-09-28T23:51:16.841Z"}
+{"t":33875,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-28T23:51:17.043Z"}
+{"t":33896,"kind":"edit","agent":"B","task":"3","tool":"Edit","path":"fleet/CONTRACT.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-28T23:51:17.064Z"}
+{"t":33899,"kind":"tool","agent":"B","task":"3","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-28T23:51:17.067Z"}
+{"t":33951,"kind":"proof","agent":"B","task":"3","exits":[0,0,0],"causes":[],"errs":[],"ts":"2026-09-28T23:51:17.119Z"}
+{"t":33955,"kind":"tool:post","agent":"B","tool":"mcp__flock__run_proof","ts":"2026-09-28T23:51:17.123Z"}
+{"t":34495,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; cat factory/flock/past.mjs; sed -n 40,140p factory/flock/engine.mjs; sed -n 580,620p ","ts":"2026-09-28T23:51:17.663Z"}
+{"t":34523,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-28T23:51:17.691Z"}
+{"t":36641,"kind":"tool","agent":"B","task":"3","tool":"mcp__flock__done","target":"","ts":"2026-09-28T23:51:19.809Z"}
+{"t":36858,"kind":"publish","agent":"B","task":"3","by":"done","ts":"2026-09-28T23:51:20.026Z"}
+{"t":36863,"kind":"tool:post","agent":"B","tool":"mcp__flock__done","ts":"2026-09-28T23:51:20.031Z"}
+{"t":37256,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; sed -n 140,185p factory/flock/engine.mjs; grep -n \"^const board\\|^await\\|^// main\\|ma","ts":"2026-09-28T23:51:20.424Z"}
+{"t":37299,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-28T23:51:20.467Z"}
+{"t":50065,"kind":"edge","snap":"b9776c7de4","reason":"done B","perTask":{"1":[0],"2":[1,1,0],"3":[0,0,0]},"check":0,"conflicts":[],"blocking":[],"outside":[],"green":false,"ts":"2026-09-28T23:51:33.233Z"}
+{"t":50066,"kind":"kata:mirror","task":"3","uid":"01M3N6RNFYJMC63PWAPCB5XX76","what":"done by B","ok":false,"error":"The operation was aborted due to timeout","ts":"2026-09-28T23:51:33.234Z"}
+{"t":50696,"kind":"pull","agent":"A","changed":[{"path":"factory/boot.sh","from":"B","added":2,"removed":2,"conflict":false},{"path":"fleet/CONTRACT.md","from":"B","added":7,"removed":2,"conflict":false}],"ts":"2026-09-28T23:51:33.864Z"}
+{"t":52419,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; sed -n 990,1037p factory/flock/engine.mjs","ts":"2026-09-28T23:51:35.587Z"}
+{"t":52443,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-28T23:51:35.611Z"}
+{"t":54214,"kind":"session:end","agent":"B","task":"3","released":false,"done":"boot.sh collect_evidence and evidence_commit now include past.json (added with add -f); CONTRACT.md lists past.json in the Flock evidence ({run, items}, ≤10 items ≤300 chars, only when previous run not done, previous run = highest ultra/evidence/run-<M> tag below N, failed read never affects run). All 3 facts pass.","redRuns":0,"turns":13,"usage":{"input_tokens":16,"cache_creation_input_tokens":35381,"cache_read_input_tokens":222526,"output_tokens":2638,"output_tokens_details":{"thinking_tokens":46},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":35381,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[],"speed":"standard"},"ts":"2026-09-28T23:51:37.382Z"}
