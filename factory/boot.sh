@@ -153,14 +153,14 @@ collect_evidence() {
   [ -f "$ENGINE_LOG" ] && cp "$ENGINE_LOG" "$EVIDENCE_DIR/$EVIDENCE_REL/engine.log"
   [ -f "$RUN_DIR/summary.json" ] && cp "$RUN_DIR/summary.json" "$EVIDENCE_DIR/$EVIDENCE_REL/summary.json"
   local f
-  for f in board-ops.json board.json weave-ops.digest.jsonl snapshots.jsonl snapshot-texts.json red-checks.json; do
+  for f in board-ops.json board.json weave-ops.digest.jsonl snapshots.jsonl snapshot-texts.json red-checks.json past.json; do
     [ -f "$RUN_DIR/$f" ] && cp "$RUN_DIR/$f" "$EVIDENCE_DIR/$EVIDENCE_REL/$f"
   done
   return 0
 }
 evidence_commit() { # $1 = commit subject
   local p n=0 paths=()
-  for p in status.json events.jsonl engine.log summary.json publish.json publish-deploy.log publish-verify.log publish-rollback.log board-ops.json board.json weave-ops.digest.jsonl snapshots.jsonl snapshot-texts.json red-checks.json; do
+  for p in status.json events.jsonl engine.log summary.json publish.json publish-deploy.log publish-verify.log publish-rollback.log board-ops.json board.json weave-ops.digest.jsonl snapshots.jsonl snapshot-texts.json red-checks.json past.json; do
     if [ -f "$EVIDENCE_DIR/$EVIDENCE_REL/$p" ]; then paths+=("$EVIDENCE_REL/$p"); fi
   done
   [ "${#paths[@]}" -gt 0 ] || return 0

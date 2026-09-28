@@ -38,6 +38,7 @@ import { makeJevClient } from '../jev-client.mjs'
 import { mirrorBoard } from './kata_mirror.mjs'
 import { makeKataClient, httpTransport } from '../../fleet/kata-client.mjs'
 import { latestResults, readSteps } from './step_reading.mjs'
+import { pastItems } from './past.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d }
@@ -591,7 +592,8 @@ function brief (task) {
   const bel = (board.beliefs || []).filter((b) => b.task === task.id || [...mine].some((f) => String(b.claim).includes(f)))
   return `\nBoard digest: ${deps.length ? 'the tasks you depend on: ' + deps.join(', ') + '.' : 'your task depends on no other task.'} ` +
     (bel.length ? 'Beliefs about your task or files:\n- ' + bel.slice(-5).map((b) => `${b.by} (${b.confidence}): ${b.claim}`).join('\n- ') : 'No beliefs concern your task or files.') +
-    ' board_read shows the whole board if you need it.'
+    ' board_read shows the whole board if you need it.' +
+    (PAST ? `\nThe previous run on this repository, run-${PAST.run}, did not finish green. What it recorded:\n` + PAST.items.map((i) => i.text).join('\n') : '')
 }
 // `--builder scripted:<json>`: no model. The session writes the task's scripted files into its
 // copy, then takes the path a `done` call takes (syncFromDisk -> publish -> board done) and ends.
@@ -998,6 +1000,40 @@ async function settle () {
 await must({ op: 'base', root: BASE_DIR, paths: BASE_PATHS })
 ev('start', { workload: W.name, agents: ELASTIC ? 'elastic' : N, cap: ELASTIC ? CAP : undefined, model: MODEL, clock_ms: CLOCK_MS, quiet_ms: QUIET_MS, board: BOARD, publish: PUBLISH, early_close: EARLY_CLOSE, order: ORDER, pulls: PULLS, chain: board.cp ? Object.fromEntries(board.cp) : undefined })
 log(`workload ${W.name}, ${N} agents, ${MODEL}, out ${OUT}`)
+// the previous run (#1335): when this run follows one on the same repository, read what its
+// evidence tag recorded (status, events, red checks) and brief every builder with it. Any failure
+// (no remote, no tag, a missing file) is logged once and leaves the brief as it was.
+let PAST = null
+{
+  const n = Number((/^run-(\d+)$/.exec(process.env.ULTRAPOWERS_FLEET_RUN || '') || [])[1])
+  if (n > 1) {
+    const g = (args) => {
+      const r = spawnSync('git', ['-C', TARGET, ...args], { encoding: 'utf8', timeout: 30000, maxBuffer: 64 * 1024 * 1024 })
+      if (r.error) throw r.error
+      if (r.status !== 0) throw new Error(`git ${args.join(' ')} exited ${r.status}: ${String(r.stderr).trim()}`)
+      return r.stdout
+    }
+    try {
+      const runs = g(['ls-remote', '--tags', 'origin', 'refs/tags/ultra/evidence/run-*']).split('\n')
+        .map((l) => /refs\/tags\/ultra\/evidence\/run-(\d+)$/.exec(l.trim())).filter(Boolean).map((m) => Number(m[1])).filter((m) => m < n)
+      if (!runs.length) throw new Error(`no evidence tag below run-${n} on origin`)
+      const m = Math.max(...runs)
+      const ref = `refs/tags/ultra/evidence/run-${m}`
+      g(['fetch', '-q', '--depth=1', 'origin', `${ref}:${ref}`])
+      const read = (f) => JSON.parse(g(['show', `${ref}:.ultrapowers/runs/${m}/${f}`]))
+      const status = read('status.json')
+      const events = g(['show', `${ref}:.ultrapowers/runs/${m}/events.jsonl`]).split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))
+      const redChecks = read('red-checks.json')
+      const items = pastItems({ status, events, redChecks })
+      ev('past', { run: m, items: items ? items.length : 0 })
+      if (items) {
+        PAST = { run: m, items }
+        fs.writeFileSync(path.join(OUT, 'past.json'), JSON.stringify(PAST, null, 2) + '\n')
+      }
+      log('past: run-' + m, items ? items.length + ' items' : 'finished green')
+    } catch (e) { log('past: nothing read —', String(e.message || e).split('\n')[0]) }
+  }
+}
 // a stories-v1 run proves the checker can run here before any builder spends anything:
 // exit 0 or 1 on the starting app is expected (a green or red finding); anything else — a
 // missing bun/checker (spawn ENOENT reads as 124/127), a crash, a timeout — is the sandbox,
