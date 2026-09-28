@@ -37,3 +37,25 @@
 {"t":55763,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-28T18:30:53.721Z"}
 {"t":59062,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; sed -n 815,830p factory/flock/engine.mjs; sed -n 945,962p factory/flock/engine.mjs; s","ts":"2026-09-28T18:30:57.020Z"}
 {"t":59113,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-28T18:30:57.071Z"}
+{"t":71976,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; python3 - <<'EOF'\np='factory/flock/engine.mjs'\ns=open(p).read()\ndef rep(a,b):\n    glo","ts":"2026-09-28T18:31:09.934Z"}
+{"t":72039,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-28T18:31:09.997Z"}
+{"t":72162,"kind":"fallback","agent":"A","path":"factory/flock/engine.mjs","peer_lines":0,"deleted":false,"ts":"2026-09-28T18:31:10.120Z"}
+{"t":75064,"kind":"tool","agent":"A","task":"2","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-28T18:31:13.022Z"}
+{"t":78722,"kind":"proof","agent":"A","task":"2","exits":[0,0],"causes":[],"errs":[],"ts":"2026-09-28T18:31:16.680Z"}
+{"t":78734,"kind":"tool:post","agent":"A","tool":"mcp__flock__run_proof","ts":"2026-09-28T18:31:16.692Z"}
+{"t":81346,"kind":"tool","agent":"A","task":"2","tool":"mcp__flock__done","target":"","ts":"2026-09-28T18:31:19.304Z"}
+{"t":85158,"kind":"publish","agent":"A","task":"2","by":"done","ts":"2026-09-28T18:31:23.116Z"}
+{"t":85174,"kind":"tool:post","agent":"A","tool":"mcp__flock__done","ts":"2026-09-28T18:31:23.132Z"}
+{"t":110640,"kind":"edge","snap":"16b0294eef","reason":"done A","perTask":{"1":[0,0,0],"2":[0,0],"3":[1,1]},"check":0,"conflicts":[],"blocking":[],"green":false,"ts":"2026-09-28T18:31:48.598Z"}
+{"t":111104,"kind":"pull","agent":"B","changed":[{"path":"factory/flock/engine.mjs","from":"A","added":26,"removed":6,"conflict":false}],"ts":"2026-09-28T18:31:49.062Z"}
+{"t":111104,"kind":"wait_for","agent":"B","task":"3","fact":{"kind":"text","path":"factory/flock/mirror.mjs","pattern":"claimed by"},"held":false,"waited_ms":96542,"merged":["factory/flock/kata_mirror.mjs","factory/flock/engine.mjs"],"ts":"2026-09-28T18:31:49.062Z"}
+{"t":111110,"kind":"tool:post","agent":"B","tool":"mcp__flock__wait_for","ts":"2026-09-28T18:31:49.068Z"}
+{"t":112909,"kind":"tool","agent":"B","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; cat factory/flock/kata_mirror.mjs","ts":"2026-09-28T18:31:50.867Z"}
+{"t":112938,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-28T18:31:50.896Z"}
+{"t":117129,"kind":"session:end","agent":"A","task":"2","released":false,"done":"Flock engine now mirrors board moves onto Kata when --kata-url/--kata-project/--kata-json are given and the record reads: mirrorBoard over makeKataClient(httpTransport), onPost writes kata:mirror event rows; pending posts get up to 10 s to land before exit. Header/notes updated. Both facts pass.","redRuns":0,"turns":7,"usage":{"input_tokens":14,"cache_creation_input_tokens":17667,"cache_read_input_tokens":241551,"output_tokens":3056,"output_tokens_details":{"thinking_tokens":313},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":17667,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[],"speed":"standard"},"ts":"2026-09-28T18:31:55.087Z"}
+{"t":119094,"kind":"tool","agent":"B","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/CONTRACT.md","ts":"2026-09-28T18:31:57.052Z"}
+{"t":119305,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-28T18:31:57.263Z"}
+{"t":119318,"kind":"edit","agent":"B","task":"3","tool":"Edit","path":"fleet/CONTRACT.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-28T18:31:57.276Z"}
+{"t":121222,"kind":"tool","agent":"B","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/RUNBOOK.md","ts":"2026-09-28T18:31:59.180Z"}
+{"t":121440,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-28T18:31:59.398Z"}
+{"t":121456,"kind":"edit","agent":"B","task":"3","tool":"Edit","path":"fleet/RUNBOOK.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-28T18:31:59.414Z"}
