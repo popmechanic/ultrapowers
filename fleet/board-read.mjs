@@ -276,7 +276,8 @@ const minutesSince = (fromIso, nowMs) => Math.floor((nowMs - Date.parse(fromIso)
  * asked run's own issue is closed (`== closed` and 0) or at `maxMs` (`== gave
  * up` and 3). `read` answers `projectBoard`'s shape; it re-reads from the start
  * each time, since a page read from a cursor cannot tell which run an issue
- * belongs to. `now`, `sleep` and `write` are the test's seams.
+ * belongs to. A row whose text begins `engine belief` prints with `!` in
+ * place of its first space. `now`, `sleep` and `write` are the test's seams.
  */
 export async function follow ({ read, write, runs, everyMs = 10000, quietMs = 10 * 60000, maxMs = 240 * 60000, now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   const start = now()
@@ -288,7 +289,9 @@ export async function follow ({ read, write, runs, everyMs = 10000, quietMs = 10
     const fresh = projection.timeline.filter((r) => !seen.has(r.eventId))
     for (const r of fresh) {
       seen.add(r.eventId)
-      write(`  ${timeOf(r.at)} run-${r.run} ${r.name.padEnd(8)} ${r.what}\n`)
+      // a surfaced engine belief reads like the other warnings
+      const lead = r.what.startsWith('engine belief') ? '! ' : '  '
+      write(`${lead}${timeOf(r.at)} run-${r.run} ${r.name.padEnd(8)} ${r.what}\n`)
     }
     if (fresh.length) lastNewAt = now()
     const t = now()
