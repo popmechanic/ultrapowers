@@ -1,0 +1,56 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "da9147895e9dec9db37af533ea21eb3e739a7dce08485556a4c37db107de1a8f",
+   "verdict": "pass",
+   "reason": "The tagged probe checks the draft, exactly one stall:no-progress row, and a run under 20 s; M2 is read against the hunk."
+  },
+  "2": {
+   "hash": "25fc7bb5dba2a366a2df62bd02ec22ded09d9b8d8e0a84f45a9f8af492165592",
+   "verdict": "pass",
+   "reason": "The policy probe and the contract grep each fail if their literal is absent."
+  }
+ },
+ "tally": {
+  "base": "1d61b762888373db46035dfaa9e704f589a8b913",
+  "dispatched": 2,
+  "rejected": 0,
+  "rounds": {
+   "1": {
+    "dispatched": 2,
+    "rejected": 0
+   }
+  }
+ },
+ "authoring": {
+  "minutes": 25,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Sign",
+     "Fix a line"
+    ],
+    "recommended": "Sign",
+    "picked": "Sign",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
