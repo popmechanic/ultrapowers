@@ -302,6 +302,18 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   task (`integration`, a reconcile worker) carries the first three and no `KATA_REF`. The same
   worker's issue is stamped by two hooks on its session: `kata attention-hook start` and
   `kata attention-hook end`, exiting 0 doing nothing when the worker carries no `KATA_REF`.
+- **Kata record (Flock, the `kata:mirror` row):** the Flock mirrors only when the boot passes
+  `--kata-url`, `--kata-project` and `--kata-json`; it posts to the spoke, which federates to the
+  hub. Each board move becomes one comment on its task's issue, posted after the move has
+  completed: `claimed by <agent>`, `released: <why>`, `reopened: <why>` and `done by <agent>` (a
+  release made on the way to a reopen posts only the `reopened:` body). Every attempted post is
+  one `kata:mirror` event row in `events.jsonl` naming the task, the body and whether it landed; a
+  task the record names no issue for posts nothing and its row says it was skipped. Posts are
+  fire-and-forget: none is awaited, so a slow, failing or absent Kata never delays or fails the
+  run — a failed post is that row and nothing else (at exit the engine gives posts still in flight
+  at most 10 seconds, then leaves without them). Before this (radio-station run-1,
+  2026-09-28, n=1 run) the Flock posted nothing and the board showed only the launcher's filing
+  and the boot's closes.
 - **Jev (2026-09-16, the `jev:` seam):** three event kinds ride the run's own event log exactly as
   a `driver:` row does — `jev:finding` (a reviewer's blocking finding, beside the task it was raised
   against), `jev:tier` (the tier chosen at a task's dispatch and again at each review round) and

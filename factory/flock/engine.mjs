@@ -7,8 +7,10 @@
 //        [--agents elastic|<n>] [--cap 16] [--settle tested|debounce|quiet] [--done-ends on|off]
 //        [--tool-search off|on] [--brief digest|board] [--stdin closed|open]
 //        [--early-close held|off] [--order chain|rotate]
-//   (--kata-url, --kata-project, --kata-json, --kata-actor are accepted and ignored: the Flock
-//    keeps its stand-in board.)
+//        [--kata-url <url> --kata-project <id> --kata-json <record> [--kata-actor engine:<run>]]
+//   (with all of --kata-url, --kata-project and --kata-json, and a record that reads, the board's
+//    claims, releases, reopens and closes are mirrored onto Kata as comments while the run is in
+//    flight; without them the Flock keeps its plain stand-in board and sends nothing.)
 //
 // With N builders working one plan together, each on its own copy, merging with each other
 // between tool batches, the swarm settles on green code; the engine then leaves the target one
@@ -31,6 +33,8 @@ import { pullScope } from './pulls.mjs'
 import { findGit } from '../gitblock.mjs'
 import { bootstrapFor } from '../commands.mjs'
 import { makeJevClient } from '../jev-client.mjs'
+import { mirrorBoard } from './kata_mirror.mjs'
+import { makeKataClient, httpTransport } from '../../fleet/kata-client.mjs'
 import { latestResults, readSteps } from './step_reading.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -41,8 +45,10 @@ const TARGET = path.resolve(need('target'))
 const BASE_SHA = need('base')
 if (!/^[0-9a-f]{40}$/.test(BASE_SHA)) { console.error('engine: --base must be a 40-hex sha'); process.exit(2) }
 const RUN_DIR = path.resolve(need('run-dir'))
-// --kata-url / --kata-project / --kata-json / --kata-actor: accepted (the boot passes them to either
-// engine) and ignored; the Flock keeps its stand-in board.
+// --kata-url / --kata-project / --kata-json / --kata-actor: the boot passes them to either engine.
+// With the first three and a record that reads, each board move is mirrored onto the task's Kata
+// issue as a comment (factory/flock/kata_mirror.mjs), never awaited, never failing the run; each
+// attempt is a `kata:mirror` event row. Otherwise the board is the plain stand-in.
 // `--builder sdk` (default): a model session per claim. `scripted:<json>`: no model; the JSON maps a
 // task id to {path: text}, which the session writes and then finishes as a `done` call would.
 const BUILDER = arg('builder', 'sdk')
@@ -245,9 +251,21 @@ const agentDir = (a) => path.join(WORK, 'agents', a)
 for (const a of NAMES) { fs.cpSync(BASE_DIR, agentDir(a), { recursive: true }); linkDeps(agentDir(a)); gitCopy(agentDir(a)) }
 const known = Object.fromEntries(NAMES.map((a) => [a, new Set(BASE_PATHS)]))
 
-// ── the board: the stand-in, every op timed. The boot's --kata-* flags are ignored. ──
+// ── the board: the stand-in, every op timed; mirrored onto Kata when the boot passes a record. ──
 const BOARD = 'standin'
 const board = await makeBoard(BOARD, { tasks: W.tasks, now, runName: path.basename(OUT), order: ORDER })
+const KATA_URL = arg('kata-url'), KATA_PROJECT = arg('kata-project'), KATA_JSON = arg('kata-json')
+let kataRecord = null
+if (KATA_URL && KATA_PROJECT && KATA_JSON) {
+  try { kataRecord = JSON.parse(fs.readFileSync(KATA_JSON, 'utf8')) } catch (e) { log('kata record unreadable, not mirroring:', e.message) }
+}
+// posts in flight, so the engine can let them land (bounded) before it exits
+const kataPending = new Set()
+if (kataRecord) {
+  const client = makeKataClient({ transport: httpTransport({ url: KATA_URL }), actor: arg('kata-actor') })
+  const kata = { comment: (...a) => { const p = client.comment(...a); const q = p.catch(() => {}).finally(() => kataPending.delete(q)); kataPending.add(q); return p } }
+  mirrorBoard(board, { kata, projectId: KATA_PROJECT, tasks: (kataRecord && kataRecord.tasks) || {}, onPost: (rec) => ev('kata:mirror', rec) })
+}
 const READS = new Set(['ping', 'ready', 'list', 'beliefs', 'read'])
 
 // ── edit-location errors (gap 3 at scale): an Edit the tool refused, by why ──
@@ -959,7 +977,9 @@ fs.writeFileSync(path.join(OUT, 'board.json'), JSON.stringify(await board.read()
 fs.writeFileSync(path.join(OUT, 'board-ops.json'), JSON.stringify(board.ops))
 log('summary', JSON.stringify(summary))
 wp.stdin.end()
-process.exit(await land())
+const landed = await land()
+if (kataPending.size) await Promise.race([Promise.all([...kataPending]), new Promise((r) => setTimeout(r, 10000).unref())])
+process.exit(landed)
 
 // ── the ending: one commit on the target, and the rows the pull request card reads ──
 // Writes a snapshot's files into the target's working tree (the ones that exist; deletes the

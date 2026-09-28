@@ -268,7 +268,11 @@ re-answers the live run's task issues on the hub and kills it, #1036).
 - the hub, when the plan commit carried `.ultrapowers/kata.json` — the run's
   kata project holds a mirror of the run's progress, posted as comments as it
   happens. `fleet/CONTRACT.md` is the authority for what the current engine
-  mirrors there. A run in flight is read off the board:
+  mirrors there: the factory stamps each worker's issue through its hooks; a
+  Flock run posts `claimed by <agent>`, `released: <why>`, `reopened: <why>`
+  and `done by <agent>` on each task's issue as the move happens, so its board
+  shows every claim, release and close in flight, not only the closes at the
+  end. A run in flight is read off the board:
 
   ```bash
   node fleet/board-read.mjs --run <N> --target <owner>/<repo>
