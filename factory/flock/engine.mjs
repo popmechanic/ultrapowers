@@ -142,11 +142,7 @@ fs.rmSync(WORK, { recursive: true, force: true })
 fs.mkdirSync(WORK, { recursive: true })
 const EV = fs.openSync(path.join(OUT, 'events.jsonl'), 'a')
 const ev = (kind, o = {}) => fs.writeSync(EV, JSON.stringify({ t: now(), kind, ...o, ts: new Date().toISOString() }) + '\n')
-const logTail = []   // the last 40 lines log() printed, for a draft's failure.md
-const log = (...a) => {
-  const line = util.format(`[${(now() / 1000).toFixed(1).padStart(6)}s]`, ...a)
-  console.log(line); logTail.push(line); if (logTail.length > 40) logTail.shift()
-}
+const log = (...a) => console.log(util.format(`[${(now() / 1000).toFixed(1).padStart(6)}s]`, ...a))
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 // record-only Jev reading per green story step (state-probe runner spec §7): never blocks
@@ -287,7 +283,7 @@ if (kataRecord) {
   const fetchImpl = (u, init) => fetch(u, { ...init, signal: AbortSignal.timeout(KATA_POST_MS) })
   const kata = makeKataClient({ transport: httpTransport({ url: KATA_URL, fetchImpl }), actor: arg('kata-actor') })
   const track = (q) => { kataPending.add(q); q.finally(() => kataPending.delete(q)) }
-  mirrorBoard(board, { kata, projectId: KATA_PROJECT, tasks: (kataRecord && kataRecord.tasks) || {}, onPost: (rec) => ev('kata:mirror', rec), track })
+  mirrorBoard(board, { kata, projectId: KATA_PROJECT, tasks: (kataRecord && kataRecord.tasks) || {}, onPost: (rec) => ev('kata:mirror', rec), track, runUid: kataRecord.run && kataRecord.run.uid, surfaceAt: POLICY_FLOCK?.surface?.min_confidence ?? 0.8 })
 }
 const READS = new Set(['ping', 'ready', 'list', 'beliefs', 'read'])
 
@@ -468,7 +464,6 @@ const snapshots = []
 let bestGreen = -1, sinceBest = 0, lastRise = 0   // lastRise: when bestGreen last rose (the loops' start before any)
 let lastSessionEnd = -1   // when a builder session last ended: a stop needs one since the last rise, so one long session is never cut off
 const edgeLatency = []      // publish -> tested, ms (the propagation delay the debounce covers)
-let lastOutside = []   // the scope gate's list at the last merged read, in either mode (failure.md)
 const amendedSeen = new Set()  // paths already written as a `driver:amendment` row this run
 // The scope rule at the edge, read from the snapshot against BASE_DIR before any fact or check
 // writes build output. Returns the paths outside every task's Files that no builder wrote.
@@ -481,7 +476,6 @@ function scopeAt (m, snap) {
   const { outside, amended } = scopeOf({ changed, files, written })
   for (const p of amended) if (!amendedSeen.has(p)) { amendedSeen.add(p); ev('driver:amendment', { path: p, snap }) }
   if (outside.length) { ev('scope:outside', { snap, paths: outside }); log('scope', snap, 'outside', outside.join(','), SCOPE_MODE) }
-  lastOutside = outside
   return SCOPE_MODE === 'enforce' ? outside : []
 }
 function edge (reason) {
@@ -547,7 +541,7 @@ Rules:
 - Change an existing file only with the Edit tool. New files may be created any way you like. Shell commands must not overwrite, move or delete existing files.
 - Never run git.
 - Run your task's facts with run_proof: they are the tests that decide whether your task is done.
-- Use the flock tools: board_read (tasks and beliefs), post_belief (tell the others something true and useful, with how sure you are), run_proof (your task's facts, on your copy), publish (share your copy's changes), wait_for (wait for a peer's work: a task done, a text in a file, a proof green), release (give the task back if you are blocked), done (your task is finished).
+- Use the flock tools: board_read (tasks and beliefs), post_belief (tell the others something true and useful, with how sure you are, and what it is about: \`task\` your task, \`app\` the app being built, \`engine\` the engine running this run, such as copies, checks or the board), run_proof (your task's facts, on your copy), publish (share your copy's changes), wait_for (wait for a peer's work: a task done, a text in a file, a proof green), release (give the task back if you are blocked), done (your task is finished).
 - To wait for another agent's work, call wait_for. Never wait with shell sleep or a polling loop: peers' work reaches your copy only between your tool calls, so a shell loop cannot see it arrive.
 ${PUBLISH === 'batch' ? '- Your changes are published to the others automatically after each of your tool batches, finished or not; publish is still there when you want to be sure.' : '- Publish whenever your change is coherent, so the others build on it.'}
 - If something fails because of another agent's unfinished work, prefer not to rewrite their lines: post a belief saying what you saw, and carry on with your own part.
@@ -614,6 +608,14 @@ async function giveBack (agent, task, why) {
   await board.release(task, `${agent} released: ${why}`); log(agent, 'releases', task.id, '—', why)
 }
 
+// A builder's belief: kept on the board and in events.jsonl as a `belief` row, `about` saying who
+// it is for (task, app or engine); kata_mirror surfaces a sure engine belief on the run's issue.
+async function postBelief (agent, a) {
+  const b = await board.post({ by: agent, claim: a.claim, confidence: a.confidence, task: a.task, about: a.about })
+  ev('belief', b)
+  return b
+}
+
 async function scriptedSession (agent, task) {
   const cwd = agentDir(agent)
   const files = SCRIPT[task.id]
@@ -635,6 +637,8 @@ async function scriptedSession (agent, task) {
       live.delete(agent); return
     }
   }
+  // test seam: `@beliefs` lists beliefs; a session posts those whose `task` is its own before it writes
+  for (const b of SCRIPT['@beliefs'] || []) if (String(b.task) === String(task.id)) await postBelief(agent, b)
   if (files) {
     for (const [p, text] of Object.entries(files)) {
       const f = path.join(cwd, p)
@@ -671,9 +675,9 @@ async function session (agent, task) {
   const say = (text) => ({ content: [{ type: 'text', text }] })
   const tools = [
     tool('board_read', 'Read the board: every task with its state and owner, and the latest beliefs.', {}, async () => say(JSON.stringify(await board.read(), null, 1))),
-    tool('post_belief', 'Post a belief for the other agents: something you believe is true, how sure you are (0 to 1), and which task it concerns.',
-      { claim: z.string(), confidence: z.number(), task: z.string().optional() },
-      async (a) => { const b = await board.post({ by: agent, claim: a.claim, confidence: a.confidence, task: a.task }); ev('belief', b); return say('posted belief ' + b.id) }),
+    tool('post_belief', 'Post a belief for the other agents: something you believe is true, how sure you are (0 to 1), which task it concerns, and what it is about: "task" (your task), "app" (the app being built) or "engine" (the engine running this run, such as copies, checks or the board).',
+      { claim: z.string().max(300), confidence: z.number(), task: z.string().optional(), about: z.enum(['task', 'app', 'engine']) },
+      async (a) => { const b = await postBelief(agent, a); return say('posted belief ' + b.id) }),
     tool('run_proof', "Run a task's facts on your copy (default: your own task). Each fact is a command; exit 0 means it holds.",
       { task: z.string().optional() },
       async (a) => {
@@ -1137,7 +1141,7 @@ async function land () {
   return 1
 }
 
-// ── what went wrong: red-checks.json on every run, failure.md on a draft ──────
+// ── what went wrong: red-checks.json on every run ──────
 // red-checks.json holds the last tested snapshot's red facts and the run-wide check when it was
 // red, each with the checker's own result JSON when it wrote one (at most 8 KiB); entries are
 // added in order while the whole stays within 64 KiB, and one that would pass it is left out.
@@ -1158,27 +1162,6 @@ function writeFailureRecord () {
     size += n; rec.red.push(e)
   }
   fs.writeFileSync(path.join(OUT, 'red-checks.json'), JSON.stringify(rec, null, 1))
-  if (!outcome || outcome.pr !== 'draft') return
-  const fence = (t) => '```\n' + String(t || '').replace(/```/g, '` ` `').trimEnd() + '\n```'
-  const open = [...ledger.values()].filter((e) => e.open)
-  const outside = lastOutside
-  const md = [
-    `# Flock run ${W.name}: draft`, '',
-    `**Stopped:** ${outcome.why}`, '',
-    `**Last tested snapshot:** ${rec.snap ?? '(none)'}${lastEdge ? (lastEdge.green ? ' (green)' : ' (red)') : ''}`, '',
-    '## Red checks', '',
-    ...(rec.red.length ? rec.red.flatMap((r) => [`### ${r.task}${r.clause ? ` (${r.clause})` : ''}`, '', `Command: \`${r.cmd}\``, '', `Exit: ${r.exit}`, '', fence(r.tail), '']) : ['None.', '']),
-    ...(rec.truncated ? ['(some red checks were left out: see red-checks.json limit)', ''] : []),
-    '## Stalls', '',
-    ...(stalls.length ? stalls.map((x) => `- ${x.kind} at ${(x.t / 1000).toFixed(1)}s: ${JSON.stringify(x.evidence).slice(0, 400)}`) : ['None.']), '',
-    '## Open conflicts', '',
-    ...(open.length ? open.map((e) => `- ${e.path} ${JSON.stringify(e.region)} between ${(e.between || []).join(' and ')}`) : ['None.']), '',
-    '## Changed outside the plan (no builder wrote them)', '',
-    ...(outside.length ? outside.map((p) => `- ${p}`) : ['None.']), '',
-    '## Engine log (last 40 lines)', '',
-    fence(logTail.join('\n')), '',
-  ].join('\n')
-  fs.writeFileSync(path.join(OUT, 'failure.md'), md)
 }
 
 function byOp (ops) {
