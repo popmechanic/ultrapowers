@@ -1,0 +1,23 @@
+Running as unit: fleet-engine-254.service
+[   0.4s] workload run-254, 0 agents, claude-opus-5-5, out /home/exedev/run
+[   0.5s] opens builder A (pool 1)
+[   0.5s] opens builder B (pool 2)
+[   0.5s] A claims task 1
+[   0.5s] B claims task 3
+[  18.5s] A done 1
+[  44.5s] edge 67b3d2efe7 red {"1":[0,0,0],"2":[1,1],"3":[1,1]} check 0 
+[  49.4s] A claims task 2
+[  85.2s] A done 2
+[ 110.6s] edge 16b0294eef red {"1":[0,0,0],"2":[0,0],"3":[1,1]} check 0 
+[ 131.3s] B done 3
+[ 157.4s] early close fleet/CONTRACT.md f8c2bcb3d4 held by B
+[ 157.4s] edge ded8b4f5f8 GREEN {"1":[0,0,0],"2":[0,0],"3":[0,0]} check 0 conflicts fleet/CONTRACT.md (blocking: none)
+[ 158.1s] SETTLED on ded8b4f5f8
+[ 158.1s] TERMINAL ready settled green
+[ 163.7s] summary {"workload":"run-254","agents":"elastic","builders_max":2,"cap":16,"model":"claude-opus-5-5","settled":{"t":158103,"snap":"ded8b4f5f8"},"wall_ms":163633,"publish":"explicit","early_close":"held","order":"chain","final":{"snap":"ded8b4f5f8","green":true,"perTask":{"1":[0,0,0],"2":[0,0],"3":[0,0]},"check":0,"conflicts":["fleet/CONTRACT.md"]},"snapshots":3,"beliefs":1,"outcome":{"pr":"ready","why":"settled green","snap":"ded8b4f5f8","t":158104},"settle_mode":"tested","debounce_ms":52254,"board_ops":27,"board_op_us_p50":15,"board_op_us_p90":461,"board":"standin","board_by_op":{"ready":{"n":14,"p50_us":16,"p90_us":461,"max_us":40546},"claim":{"n":4,"p50_us":22,"p90_us":715,"max_us":715},"claim:lost":{"n":1,"p50_us":0,"p90_us":0,"max_us":0},"read":{"n":1,"p50_us":49,"p90_us":49,"max_us":49},"publish":{"n":3,"p50_us":10,"p90_us":22,"max_us":22},"done":{"n":3,"p50_us":2,"p90_us":18,"max_us":18},"post":{"n":1,"p50_us":50,"p90_us":50,"max_us":50}},"board_writes":12,"board_writes_per_s":0.07,"board_peak_writes_per_s":4,"edit_failures":{"not_unique":0,"not_found":0,"stale":0,"other":0},"tokens":{"input":50,"output":8192,"cache_read":797851,"cache_write":46382},"sessions":3,"cost_usd":0.738}
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 2min 44.035s
+CPU time consumed: 2min 19.240s
+Memory peak: 1.4G
+Memory swap peak: 0B
