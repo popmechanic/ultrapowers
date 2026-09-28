@@ -389,6 +389,15 @@
       "experiment": true,
       "rollback": "mode = off",
       "unread": "per-step Jev readings joined to the operator's smoke (state-probe runner spec §10)"
+    },
+    "scope": {
+      "mode": "enforce",
+      "n": 0,
+      "window": "none",
+      "basis": "run-247",
+      "experiment": true,
+      "rollback": "mode = record",
+      "unread": "scope:outside refusals and driver:amendment rows per run (#1322: a green run merged a corrupted file no task listed)"
     }
   }
 }
