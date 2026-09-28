@@ -1,0 +1,84 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "20e3c725e726bdadb3491cd5a98425e02a271675e1189a186397c46b383afddf",
+   "verdict": "pass",
+   "reason": "Each of M1-M4 has a probe that fails if its fact is false, including the exact six-comment order that rules out a doubled reopen."
+  },
+  "2": {
+   "hash": "889ba4ca00f528f2c773833390f7eea92b3a5054bbac482fcd4a57c1b4b01f8f",
+   "verdict": "pass",
+   "reason": "The M1 probe pins the two comment posts' method, path, body and order plus two ok kata:mirror rows; the M2 probe pins exit 0 and pr ready against a 500 server."
+  },
+  "3": {
+   "hash": "339a45ea378daaa2ebe42cd0aa4bf05c9898911813d139e6361fc8dc2b2f97e1",
+   "verdict": "pass",
+   "reason": "Round 2, after narrowing: each clause's grep fails if its literal is absent, and the wording is read against the diff."
+  }
+ },
+ "tally": {
+  "base": "27b970ebf9e04195020dce4290ee6c1ea217a6f6",
+  "dispatched": 4,
+  "rejected": 1,
+  "rounds": {
+   "1": {
+    "dispatched": 3,
+    "rejected": 1
+   },
+   "2": {
+    "dispatched": 1,
+    "rejected": 0
+   }
+  }
+ },
+ "history": [
+  {
+   "task": "3",
+   "round": 1,
+   "verdict": "fail",
+   "reason": "M1 pinned four bodies and a never-delays promise with only a kata:mirror grep; M2 cited a \u00a7Watch heading that does not exist."
+  }
+ ],
+ "authoring": {
+  "minutes": 40,
+  "probes": 0,
+  "routing": {
+   "branch": "width",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "What next",
+    "options": [
+     "Radio app, round 2",
+     "Kata progress for the Flock",
+     "Wait for story 6"
+    ],
+    "recommended": "Radio app, round 2",
+    "picked": "Kata progress for the Flock",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Sign",
+     "Fix a line"
+    ],
+    "recommended": "Sign",
+    "picked": "Sign",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
