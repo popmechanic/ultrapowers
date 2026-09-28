@@ -1,0 +1,39 @@
+{"t":375,"kind":"non-text","path":"docs/assets/dag.gif","ts":"2026-09-28T18:29:58.333Z"}
+{"t":379,"kind":"non-text","path":"factory/replay/results/landing_out.jsonl.gz","ts":"2026-09-28T18:29:58.337Z"}
+{"t":427,"kind":"start","workload":"run-254","agents":"elastic","cap":16,"model":"claude-opus-5-5","clock_ms":13800000,"quiet_ms":45000,"board":"standin","publish":"explicit","early_close":"held","order":"chain","pulls":"all","chain":{"1":2,"2":1,"3":1},"ts":"2026-09-28T18:29:58.385Z"}
+{"t":455,"kind":"builder:open","agent":"A","pool":1,"ready":2,"busy":0,"ts":"2026-09-28T18:29:58.413Z"}
+{"t":495,"kind":"builder:open","agent":"B","pool":2,"ready":2,"busy":0,"ts":"2026-09-28T18:29:58.453Z"}
+{"t":499,"kind":"session:start","agent":"A","task":"1","ts":"2026-09-28T18:29:58.457Z"}
+{"t":519,"kind":"session:start","agent":"B","task":"3","ts":"2026-09-28T18:29:58.477Z"}
+{"t":2901,"kind":"tool","agent":"A","task":"1","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; grep -n \"claim\\|release\\|reopen\\|done\\|owner\\|export\" factory/flock/flock_board.mjs |","ts":"2026-09-28T18:30:00.859Z"}
+{"t":2994,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-28T18:30:00.952Z"}
+{"t":3379,"kind":"tool","agent":"B","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; grep -n 'Kata record' -A6 fleet/CONTRACT.md; grep -n '\\*\\*Watch.\\*\\*' -A3 fleet/RUNBO","ts":"2026-09-28T18:30:01.337Z"}
+{"t":3483,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-28T18:30:01.441Z"}
+{"t":5564,"kind":"tool","agent":"B","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; sed -n 296,320p fleet/CONTRACT.md; sed -n 262,290p fleet/RUNBOOK.md; grep -rln 'kata:","ts":"2026-09-28T18:30:03.522Z"}
+{"t":5606,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-28T18:30:03.564Z"}
+{"t":7736,"kind":"tool","agent":"B","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; grep -n 'kata:mirror\\|claimed by\\|released\\|kata-url\\|kataPost\\|mirror' factory/flock","ts":"2026-09-28T18:30:05.694Z"}
+{"t":7769,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-28T18:30:05.727Z"}
+{"t":8979,"kind":"tool","agent":"B","task":"3","tool":"mcp__flock__board_read","target":"","ts":"2026-09-28T18:30:06.937Z"}
+{"t":8995,"kind":"tool:post","agent":"B","tool":"mcp__flock__board_read","ts":"2026-09-28T18:30:06.953Z"}
+{"t":10797,"kind":"tool","agent":"B","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; ls .ultrapowers 2>/dev/null; grep -rln 'kata:mirror' . 2>/dev/null | grep -v node_mod","ts":"2026-09-28T18:30:08.755Z"}
+{"t":10830,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-28T18:30:08.788Z"}
+{"t":13521,"kind":"tool","agent":"A","task":"1","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; sed -n 1,10p factory/flock/flock_board.mjs; cat > factory/flock/kata_mirror.mjs <<'EO","ts":"2026-09-28T18:30:11.479Z"}
+{"t":13638,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-28T18:30:11.596Z"}
+{"t":13814,"kind":"fallback","agent":"A","path":"factory/flock/kata_mirror.mjs","peer_lines":0,"deleted":false,"ts":"2026-09-28T18:30:11.772Z"}
+{"t":14559,"kind":"tool","agent":"B","task":"3","tool":"mcp__flock__wait_for","target":"","ts":"2026-09-28T18:30:12.517Z"}
+{"t":15424,"kind":"tool","agent":"A","task":"1","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-28T18:30:13.382Z"}
+{"t":15846,"kind":"proof","agent":"A","task":"1","exits":[0,0,0],"causes":[],"errs":[],"ts":"2026-09-28T18:30:13.804Z"}
+{"t":15854,"kind":"tool:post","agent":"A","tool":"mcp__flock__run_proof","ts":"2026-09-28T18:30:13.812Z"}
+{"t":17853,"kind":"tool","agent":"A","task":"1","tool":"mcp__flock__done","target":"","ts":"2026-09-28T18:30:15.811Z"}
+{"t":18485,"kind":"publish","agent":"A","task":"1","by":"done","ts":"2026-09-28T18:30:16.443Z"}
+{"t":18492,"kind":"tool:post","agent":"A","tool":"mcp__flock__done","ts":"2026-09-28T18:30:16.450Z"}
+{"t":44492,"kind":"edge","snap":"67b3d2efe7","reason":"done A","perTask":{"1":[0,0,0],"2":[1,1],"3":[1,1]},"check":0,"conflicts":[],"blocking":[],"green":false,"ts":"2026-09-28T18:30:42.450Z"}
+{"t":44983,"kind":"pull","agent":"B","changed":[{"path":"factory/flock/kata_mirror.mjs","from":"A","added":46,"removed":0,"conflict":false}],"ts":"2026-09-28T18:30:42.941Z"}
+{"t":49423,"kind":"session:end","agent":"A","task":"1","released":false,"done":"Added factory/flock/kata_mirror.mjs: mirrorBoard wraps claim/release/reopen/done in place, posts fire-and-forget Kata comments (claimed by X / released: why / reopened: why / done by X), suppresses the inner release comment during reopen, skips tasks without uid, reports each attempt to onPost. All three facts pass.","redRuns":0,"turns":5,"usage":{"input_tokens":10,"cache_creation_input_tokens":12868,"cache_read_input_tokens":146240,"output_tokens":2008,"output_tokens_details":{"thinking_tokens":320},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":12868,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[],"speed":"standard"},"ts":"2026-09-28T18:30:47.381Z"}
+{"t":49424,"kind":"session:start","agent":"A","task":"2","ts":"2026-09-28T18:30:47.382Z"}
+{"t":52523,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; sed -n 1,80p factory/flock/engine.mjs; grep -n \"makeBoard\\|const ev\\|function ev\\|kat","ts":"2026-09-28T18:30:50.481Z"}
+{"t":52628,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-28T18:30:50.586Z"}
+{"t":55705,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; sed -n 240,256p factory/flock/engine.mjs; grep -n \"process.exit\\|'terminal'\" factory/","ts":"2026-09-28T18:30:53.663Z"}
+{"t":55763,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-28T18:30:53.721Z"}
+{"t":59062,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; sed -n 815,830p factory/flock/engine.mjs; sed -n 945,962p factory/flock/engine.mjs; s","ts":"2026-09-28T18:30:57.020Z"}
+{"t":59113,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-28T18:30:57.071Z"}
