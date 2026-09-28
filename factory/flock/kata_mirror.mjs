@@ -3,19 +3,29 @@
 //
 // mirrorBoard wraps claim, release, reopen and done on the board object in place and returns it.
 // Each comment starts after the board operation it mirrors has completed and is never awaited:
-// a slow or failing Kata never holds up or breaks the board. `onPost` hears every attempted post.
+// a slow or failing Kata never holds up or breaks the board. One task's comments go out one after
+// another, so Kata records them in board order. `onPost` hears every attempted post; `track`, when
+// given, receives each post's promise (settled or not, it never rejects) so a caller can let the
+// queue drain before it exits.
 
-export function mirrorBoard (board, { kata, projectId, tasks = {}, onPost } = {}) {
+export function mirrorBoard (board, { kata, projectId, tasks = {}, onPost, track } = {}) {
   const orig = { claim: board.claim, release: board.release, reopen: board.reopen, done: board.done }
   const reopening = new Set()
+  const tails = new Map()   // uid -> the last queued post for that issue
   const report = (rec) => { if (onPost) try { onPost(rec) } catch {} }
   const post = (t, what) => {
     const task = t && t.id
     const uid = task != null && Object.hasOwn(tasks, task) ? tasks[task] && tasks[task].uid : null
     if (!uid) { report({ task, what, ok: false, skipped: true }); return }
-    let p
-    try { p = Promise.resolve(kata.comment(projectId, uid, what)) } catch (e) { p = Promise.reject(e) }
-    p.then(() => report({ task, uid, what, ok: true }), (e) => report({ task, uid, what, ok: false, error: String(e && e.message || e) }))
+    const send = () => {
+      let p
+      try { p = Promise.resolve(kata.comment(projectId, uid, what)) } catch (e) { p = Promise.reject(e) }
+      return p.then(() => report({ task, uid, what, ok: true }), (e) => report({ task, uid, what, ok: false, error: String(e && e.message || e) }))
+    }
+    const q = (tails.get(uid) || Promise.resolve()).then(send)
+    tails.set(uid, q)
+    q.then(() => { if (tails.get(uid) === q) tails.delete(uid) })
+    if (track) try { track(q) } catch {}
   }
 
   board.claim = async function (agent, ...rest) {
