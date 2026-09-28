@@ -114,3 +114,5 @@
 {"t":125007,"kind":"landing","task":"3","k":1,"factsExit":0,"candidateSha":"3ce30f492408473a6207fae64d63cfae082d5709","ts":"2026-09-28T23:38:05.580Z"}
 {"t":125007,"kind":"fold:verify","task":"4","ran":[{"id":"4","kind":"probe","cmd":"bash -c '! grep -q failure.md factory/boot.sh'","exit":0},{"id":"4","kind":"probe","cmd":"grep -q 'engine belief' fleet/CONTRACT.md","exit":0},{"id":"4","kind":"probe","cmd":"bash -c '! grep -q failure.md fleet/CONTRACT.md'","exit":0},{"id":"4","kind":"probe","cmd":"python3 -c \"import json; c=json.load(open('factory/policy.json'))['flock']['surface']; assert c['min_confidence']==0.8 and c['rollback']=='min_confidence = 2' and c['experiment'] is True, c\"","exit":0}],"attempt":1,"snap":"f8e7d9c7b2","ts":"2026-09-28T23:38:05.580Z"}
 {"t":125007,"kind":"landing","task":"4","k":1,"factsExit":0,"candidateSha":"3ce30f492408473a6207fae64d63cfae082d5709","ts":"2026-09-28T23:38:05.580Z"}
+{"ts":"2026-09-28T23:38:13.955Z","kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1353","number":1353,"draft":false}
+{"ts":"2026-09-28T23:38:17.070Z","kind":"merge","code":200}
