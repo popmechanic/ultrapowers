@@ -1,0 +1,81 @@
+{"t":642,"kind":"non-text","path":"docs/assets/dag.gif","ts":"2026-09-28T23:19:22.943Z"}
+{"t":650,"kind":"non-text","path":"factory/replay/results/landing_out.jsonl.gz","ts":"2026-09-28T23:19:22.951Z"}
+{"t":734,"kind":"start","workload":"run-257","agents":"elastic","cap":16,"model":"claude-opus-5-5","clock_ms":13800000,"quiet_ms":45000,"board":"standin","publish":"explicit","early_close":"held","order":"chain","pulls":"all","chain":{"1":1,"2":1,"3":1,"4":1},"ts":"2026-09-28T23:19:23.035Z"}
+{"t":793,"kind":"builder:open","agent":"A","pool":1,"ready":4,"busy":0,"ts":"2026-09-28T23:19:23.094Z"}
+{"t":845,"kind":"builder:open","agent":"B","pool":2,"ready":4,"busy":0,"ts":"2026-09-28T23:19:23.146Z"}
+{"t":897,"kind":"builder:open","agent":"C","pool":3,"ready":4,"busy":0,"ts":"2026-09-28T23:19:23.198Z"}
+{"t":945,"kind":"builder:open","agent":"D","pool":4,"ready":4,"busy":0,"ts":"2026-09-28T23:19:23.246Z"}
+{"t":981,"kind":"session:start","agent":"A","task":"3","ts":"2026-09-28T23:19:23.282Z"}
+{"t":993,"kind":"session:start","agent":"B","task":"4","ts":"2026-09-28T23:19:23.294Z"}
+{"t":997,"kind":"session:start","agent":"C","task":"1","ts":"2026-09-28T23:19:23.298Z"}
+{"t":1004,"kind":"session:start","agent":"D","task":"2","ts":"2026-09-28T23:19:23.305Z"}
+{"t":1066,"kind":"kata:mirror","task":"3","uid":"01M3N4Z8EWMHSZQWH11NQP4NS1","what":"claimed by A","ok":true,"ts":"2026-09-28T23:19:23.367Z"}
+{"t":1067,"kind":"kata:mirror","task":"2","uid":"01M3N4Z5WHGGMH0TCNFDTXXY6J","what":"claimed by D","ok":true,"ts":"2026-09-28T23:19:23.368Z"}
+{"t":1067,"kind":"kata:mirror","task":"4","uid":"01M3N4ZAWC34Z8DFZWF7CM7WWP","what":"claimed by B","ok":true,"ts":"2026-09-28T23:19:23.368Z"}
+{"t":1067,"kind":"kata:mirror","task":"1","uid":"01M3N4Z3MC26Y5E9SEQFX4C67H","what":"claimed by C","ok":true,"ts":"2026-09-28T23:19:23.368Z"}
+{"t":3363,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; grep -n 'events.jsonl\\|summary.json\\|engine.log\\|status.json\\|evidence' fleet/CONTRAC","ts":"2026-09-28T23:19:25.665Z"}
+{"t":3461,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-28T23:19:25.762Z"}
+{"t":3580,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd factory/flock; wc -l engine.mjs; grep -n \"runFacts\\|lastEdge\\|perTask\\|checkTail\\|board.json\\|outcome\\|stall\\|conflic","ts":"2026-09-28T23:19:25.881Z"}
+{"t":3586,"kind":"tool","agent":"D","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/D; grep -n \"collect_evidence()\\|evidence_commit()\" factory/boot.sh; sed -n \"/^collect_ev","ts":"2026-09-28T23:19:25.887Z"}
+{"t":3657,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-28T23:19:25.958Z"}
+{"t":3668,"kind":"tool:post","agent":"D","tool":"Bash","ts":"2026-09-28T23:19:25.969Z"}
+{"t":4998,"kind":"tool","agent":"C","task":"1","tool":"Bash","target":"cd factory/flock; wc -l engine.mjs; grep -n \"snapshots\\|OUT\\|BASE_DIR\\|weave-ops\\|writeFileSync\\|^import\" engine.mjs | h","ts":"2026-09-28T23:19:27.299Z"}
+{"t":5101,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-28T23:19:27.402Z"}
+{"t":5782,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B/factory/flock; sed -n 130,160p engine.mjs; sed -n 290,330p engine.mjs; sed -n 460,530p","ts":"2026-09-28T23:19:28.083Z"}
+{"t":5833,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-28T23:19:28.134Z"}
+{"t":5952,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; sed -n 50,66p fleet/CONTRACT.md; echo ----; sed -n 412,425p fleet/CONTRACT.md; grep -","ts":"2026-09-28T23:19:28.253Z"}
+{"t":5996,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-28T23:19:28.297Z"}
+{"t":7564,"kind":"tool","agent":"D","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/D/factory/boot.sh","ts":"2026-09-28T23:19:29.865Z"}
+{"t":7792,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-28T23:19:30.093Z"}
+{"t":7810,"kind":"edit","agent":"D","task":"2","tool":"Edit","path":"factory/boot.sh","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-28T23:19:30.111Z"}
+{"t":7820,"kind":"tool","agent":"C","task":"1","tool":"Bash","target":"cd /home/exedev/run/work/agents/C/factory/flock; sed -n 180,200p engine.mjs; sed -n 225,245p engine.mjs; sed -n 490,520p","ts":"2026-09-28T23:19:30.121Z"}
+{"t":7868,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-28T23:19:30.169Z"}
+{"t":8726,"kind":"tool","agent":"D","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/D/factory/boot.sh","ts":"2026-09-28T23:19:31.027Z"}
+{"t":8913,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-28T23:19:31.214Z"}
+{"t":8923,"kind":"edit","agent":"D","task":"2","tool":"Edit","path":"factory/boot.sh","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-28T23:19:31.224Z"}
+{"t":8927,"kind":"tool","agent":"D","task":"2","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-28T23:19:31.228Z"}
+{"t":9061,"kind":"proof","agent":"D","task":"2","exits":[0,0,0],"causes":[],"errs":[],"ts":"2026-09-28T23:19:31.362Z"}
+{"t":9069,"kind":"tool:post","agent":"D","tool":"mcp__flock__run_proof","ts":"2026-09-28T23:19:31.370Z"}
+{"t":9904,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B/factory/flock; sed -n 1,40p engine.mjs | grep -n import","ts":"2026-09-28T23:19:32.205Z"}
+{"t":9939,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-28T23:19:32.240Z"}
+{"t":11259,"kind":"tool","agent":"D","task":"2","tool":"mcp__flock__done","target":"","ts":"2026-09-28T23:19:33.560Z"}
+{"t":11543,"kind":"publish","agent":"D","task":"2","by":"done","ts":"2026-09-28T23:19:33.844Z"}
+{"t":11554,"kind":"tool:post","agent":"D","tool":"mcp__flock__done","ts":"2026-09-28T23:19:33.855Z"}
+{"t":11557,"kind":"kata:mirror","task":"2","uid":"01M3N4Z5WHGGMH0TCNFDTXXY6J","what":"done by D","ok":true,"ts":"2026-09-28T23:19:33.858Z"}
+{"t":27968,"kind":"edge","snap":"76fae991c7","reason":"done D","perTask":{"1":[1,1],"2":[0,0,0],"3":[1,1],"4":[1,1]},"check":0,"conflicts":[],"blocking":[],"outside":[],"green":false,"ts":"2026-09-28T23:19:50.269Z"}
+{"t":27974,"kind":"tool","agent":"C","task":"1","tool":"Edit","target":"/home/exedev/run/work/agents/C/factory/flock/engine.mjs","ts":"2026-09-28T23:19:50.275Z"}
+{"t":27975,"kind":"tool","agent":"A","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/A/fleet/CONTRACT.md","ts":"2026-09-28T23:19:50.276Z"}
+{"t":27979,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B/factory/flock; python3 - <<'EOF'\np='engine.mjs'; s=open(p).read()\ndef rep(a,b):\n    gl","ts":"2026-09-28T23:19:50.280Z"}
+{"t":28043,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-28T23:19:50.344Z"}
+{"t":28187,"kind":"fallback","agent":"B","path":"factory/flock/engine.mjs","peer_lines":0,"deleted":false,"ts":"2026-09-28T23:19:50.488Z"}
+{"t":28390,"kind":"tool:post","agent":"C","tool":"Edit","ts":"2026-09-28T23:19:50.691Z"}
+{"t":28401,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-28T23:19:50.702Z"}
+{"t":28419,"kind":"edit","agent":"C","task":"1","tool":"Edit","path":"factory/flock/engine.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-28T23:19:50.720Z"}
+{"t":28424,"kind":"edit","agent":"A","task":"3","tool":"Edit","path":"fleet/CONTRACT.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-28T23:19:50.725Z"}
+{"t":28430,"kind":"tool","agent":"A","task":"3","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-28T23:19:50.731Z"}
+{"t":28430,"kind":"tool","agent":"C","task":"1","tool":"Edit","target":"/home/exedev/run/work/agents/C/factory/flock/engine.mjs","ts":"2026-09-28T23:19:50.731Z"}
+{"t":28457,"kind":"proof","agent":"A","task":"3","exits":[0,0],"causes":[],"errs":[],"ts":"2026-09-28T23:19:50.758Z"}
+{"t":28464,"kind":"tool:post","agent":"A","tool":"mcp__flock__run_proof","ts":"2026-09-28T23:19:50.765Z"}
+{"t":28880,"kind":"pull","agent":"B","changed":[{"path":"factory/boot.sh","from":"D","added":5,"removed":1,"conflict":false}],"ts":"2026-09-28T23:19:51.181Z"}
+{"t":29338,"kind":"pull","agent":"A","changed":[{"path":"factory/boot.sh","from":"D","added":5,"removed":1,"conflict":false}],"ts":"2026-09-28T23:19:51.639Z"}
+{"t":29480,"kind":"tool:post","agent":"C","tool":"Edit","ts":"2026-09-28T23:19:51.781Z"}
+{"t":29502,"kind":"edit","agent":"C","task":"1","tool":"Edit","path":"factory/flock/engine.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-28T23:19:51.803Z"}
+{"t":29984,"kind":"pull","agent":"C","changed":[{"path":"factory/boot.sh","from":"D","added":5,"removed":1,"conflict":false}],"ts":"2026-09-28T23:19:52.285Z"}
+{"t":31831,"kind":"session:end","agent":"D","task":"2","released":false,"done":"collect_evidence copies and evidence_commit force-adds board-ops.json, board.json, weave-ops.digest.jsonl, snapshots.jsonl, snapshot-texts.json, red-checks.json, failure.md; raw weave log, snapshots.json, checks/ excluded. All 3 facts pass.","redRuns":0,"turns":6,"usage":{"input_tokens":8,"cache_creation_input_tokens":10984,"cache_read_input_tokens":110618,"output_tokens":1217,"output_tokens_details":{"thinking_tokens":0},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":10984,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[],"speed":"standard"},"ts":"2026-09-28T23:19:54.132Z"}
+{"t":32293,"kind":"tool","agent":"C","task":"1","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-28T23:19:54.594Z"}
+{"t":35897,"kind":"proof","agent":"C","task":"1","exits":[0,0],"causes":[],"errs":[],"ts":"2026-09-28T23:19:58.198Z"}
+{"t":35897,"kind":"tool","agent":"A","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/A/fleet/CONTRACT.md","ts":"2026-09-28T23:19:58.198Z"}
+{"t":35902,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B/factory/flock; python3 - <<'EOF'\np='engine.mjs'; s=open(p).read()\na=\"\"\"  if (outside.l","ts":"2026-09-28T23:19:58.203Z"}
+{"t":35910,"kind":"tool:post","agent":"C","tool":"mcp__flock__run_proof","ts":"2026-09-28T23:19:58.211Z"}
+{"t":35997,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-28T23:19:58.298Z"}
+{"t":36475,"kind":"fallback","agent":"B","path":"factory/flock/engine.mjs","peer_lines":0,"deleted":false,"ts":"2026-09-28T23:19:58.776Z"}
+{"t":36627,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-28T23:19:58.928Z"}
+{"t":37079,"kind":"edit","agent":"A","task":"3","tool":"Edit","path":"fleet/CONTRACT.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-28T23:19:59.380Z"}
+{"t":37085,"kind":"tool","agent":"A","task":"3","tool":"mcp__flock__done","target":"","ts":"2026-09-28T23:19:59.386Z"}
+{"t":37250,"kind":"publish","agent":"A","task":"3","by":"done","ts":"2026-09-28T23:19:59.551Z"}
+{"t":37257,"kind":"tool:post","agent":"A","tool":"mcp__flock__done","ts":"2026-09-28T23:19:59.558Z"}
+{"t":37261,"kind":"kata:mirror","task":"3","uid":"01M3N4Z8EWMHSZQWH11NQP4NS1","what":"done by A","ok":true,"ts":"2026-09-28T23:19:59.562Z"}
+{"t":37831,"kind":"tool","agent":"B","task":"4","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-28T23:20:00.132Z"}
+{"t":43366,"kind":"proof","agent":"B","task":"4","exits":[0,0],"causes":[],"errs":[],"ts":"2026-09-28T23:20:05.667Z"}
+{"t":43367,"kind":"tool","agent":"C","task":"1","tool":"mcp__flock__done","target":"","ts":"2026-09-28T23:20:05.668Z"}
+{"t":43372,"kind":"tool:post","agent":"B","tool":"mcp__flock__run_proof","ts":"2026-09-28T23:20:05.673Z"}
