@@ -1,0 +1,31 @@
+{
+ "tasks": [
+  {
+   "id": "1",
+   "title": "A failed run's record as ten short items",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "2",
+   "title": "The engine reads the previous run and briefs its builders",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [
+    "1"
+   ],
+   "notes": []
+  },
+  {
+   "id": "3",
+   "title": "The record keeps what builders were told",
+   "state": "done",
+   "owner": "B",
+   "depends_on": [],
+   "notes": []
+  }
+ ],
+ "beliefs": []
+}
