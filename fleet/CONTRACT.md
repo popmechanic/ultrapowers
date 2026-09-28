@@ -61,6 +61,24 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `state-exams/`, `residuals.jsonl`, `kata.jsonl`'s per-event hub export and the fold-again
     receipts directory — and it left with that engine at cut two; what the current engine writes
     to this branch beyond the three files above is not yet described in this contract.
+    **A Flock run (`kind=flock`) adds seven files beside them** (with `summary.json` and the
+    publish files), so its record says what went wrong and not only that it did:
+    - `board-ops.json` — the board's moves, in order.
+    - `board.json` — the board as it stood at the end: every task with its state and owner, and
+      the beliefs.
+    - `weave-ops.digest.jsonl` — every merge the weave made, one operation per line, with each
+      `content` replaced by `content_sha1` and `content_bytes`, so file texts are fingerprints.
+    - `snapshots.jsonl` — one row per tested snapshot: its hash, time and the paths changed or
+      deleted against base, each changed text with its sha1 and bytes.
+    - `snapshot-texts.json` — those changed texts, each distinct text once (keyed by sha1), at most
+      524288 bytes in total; `truncated` is `true` when one was left out for the cap.
+    - `red-checks.json` — every check red at the last tested snapshot: its task, clause, command,
+      exit, output tail and the checker's own result when there is one, at most 65536 bytes.
+    - `failure.md` — on a draft only: the one-page brief for the next agent to read first — why the
+      run stopped, the red checks with their output, stalls, open conflicts, paths changed outside
+      the plan by nobody, and the engine's last 40 log lines.
+    Not kept: the whole snapshots, the raw weave log (whose `content` is the files' full texts) and
+    `checks/`. The factory engine (`kind=factory`) writes none of these seven.
   - `ultra/integration-run-<N>` — the work. Pushed only when it is ahead of `base=`; the PR's head.
     It has three fates, decided by the pull request with the highest `number` on that head:
     a merged one goes with the merge (delete-on-merge), a `hold=1` run's stays while its PR is open,
