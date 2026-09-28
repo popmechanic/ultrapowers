@@ -79,3 +79,40 @@
 {"t":43366,"kind":"proof","agent":"B","task":"4","exits":[0,0],"causes":[],"errs":[],"ts":"2026-09-28T23:20:05.667Z"}
 {"t":43367,"kind":"tool","agent":"C","task":"1","tool":"mcp__flock__done","target":"","ts":"2026-09-28T23:20:05.668Z"}
 {"t":43372,"kind":"tool:post","agent":"B","tool":"mcp__flock__run_proof","ts":"2026-09-28T23:20:05.673Z"}
+{"t":62809,"kind":"conflict:open","path":"fleet/CONTRACT.md","region":"7cb977b374","between":["published copies"],"ts":"2026-09-28T23:20:25.110Z"}
+{"t":62809,"kind":"conflict:close","path":"fleet/CONTRACT.md","region":"7cb977b374","by":"host","note":"the merged text of fleet/CONTRACT.md is A's own published writing over both sides","via":"early:held","evidence":{"snap":"b485e0ef53","holders":[{"agent":"A","published_t":37250,"last_edit_t":37079,"last_marked_t":null}],"unflagged":false},"ts":"2026-09-28T23:20:25.110Z"}
+{"t":62810,"kind":"edge","snap":"b485e0ef53","reason":"done A","perTask":{"1":[1,1],"2":[0,0,0],"3":[0,0],"4":[1,1]},"check":0,"conflicts":["fleet/CONTRACT.md"],"blocking":[],"outside":[],"green":false,"ts":"2026-09-28T23:20:25.111Z"}
+{"t":62813,"kind":"pull","agent":"B","changed":[{"path":"fleet/CONTRACT.md","from":"A","added":18,"removed":0,"conflict":true}],"ts":"2026-09-28T23:20:25.114Z"}
+{"t":62814,"kind":"conflict:reflag","path":"fleet/CONTRACT.md","region":"7cb977b374","ts":"2026-09-28T23:20:25.115Z"}
+{"t":62973,"kind":"publish","agent":"C","task":"1","by":"done","ts":"2026-09-28T23:20:25.274Z"}
+{"t":62981,"kind":"tool:post","agent":"C","tool":"mcp__flock__done","ts":"2026-09-28T23:20:25.282Z"}
+{"t":80465,"kind":"conflict:reflag","path":"fleet/CONTRACT.md","region":"7cb977b374","ts":"2026-09-28T23:20:42.766Z"}
+{"t":80465,"kind":"edge","snap":"f56336bb44","reason":"done C","perTask":{"1":[0,0],"2":[0,0,0],"3":[0,0],"4":[1,1]},"check":0,"conflicts":["fleet/CONTRACT.md"],"blocking":[],"outside":[],"green":false,"ts":"2026-09-28T23:20:42.766Z"}
+{"t":80467,"kind":"kata:mirror","task":"1","uid":"01M3N4Z3MC26Y5E9SEQFX4C67H","what":"done by C","ok":false,"error":"The operation was aborted due to timeout","ts":"2026-09-28T23:20:42.768Z"}
+{"t":80468,"kind":"pull","agent":"C","changed":[{"path":"fleet/CONTRACT.md","from":"A","added":18,"removed":0,"conflict":true}],"ts":"2026-09-28T23:20:42.769Z"}
+{"t":80468,"kind":"conflict:reflag","path":"fleet/CONTRACT.md","region":"7cb977b374","ts":"2026-09-28T23:20:42.769Z"}
+{"t":80469,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; grep -n \"<<<<<<<\\|>>>>>>>\" fleet/CONTRACT.md | head","ts":"2026-09-28T23:20:42.770Z"}
+{"t":80492,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-28T23:20:42.793Z"}
+{"t":80599,"kind":"session:end","agent":"A","task":"3","released":false,"done":"fleet/CONTRACT.md evidence-branch bullet now lists the Flock's seven evidence files (board-ops.json, board.json, weave-ops.digest.jsonl, snapshots.jsonl, snapshot-texts.json, red-checks.json, failure.md) with contents and caps, what is not kept, and that the factory engine writes none.","redRuns":0,"turns":7,"usage":{"input_tokens":10,"cache_creation_input_tokens":10273,"cache_read_input_tokens":143935,"output_tokens":2069,"output_tokens_details":{"thinking_tokens":83},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":10273,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[],"speed":"standard"},"ts":"2026-09-28T23:20:42.900Z"}
+{"t":82009,"kind":"pull","agent":"B","changed":[{"path":"factory/flock/engine.mjs","from":"C","added":33,"removed":0,"conflict":true}],"ts":"2026-09-28T23:20:44.310Z"}
+{"t":82010,"kind":"conflict:open","path":"factory/flock/engine.mjs","region":"23a98fb8c8","between":["B","C"],"ts":"2026-09-28T23:20:44.311Z"}
+{"t":82010,"kind":"same-anchor","path":"factory/flock/engine.mjs","flag":"siblings","anchor":"log('summary', JSON.stringify(summary))","lines":["writeFailureRecord()","writeCompactRecord()"],"authors":["B","C"],"between":["B","C"],"ts":"2026-09-28T23:20:44.311Z"}
+{"t":83532,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B/factory/flock; grep -n \"writeFailureRecord\\|writeCompactRecord\\|<<<<<<<\\|>>>>>>>\" engi","ts":"2026-09-28T23:20:45.833Z"}
+{"t":83562,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-28T23:20:45.863Z"}
+{"t":86542,"kind":"session:end","agent":"C","task":"1","released":false,"done":"engine.mjs now writes snapshots.jsonl (changed/deleted vs BASE_DIR per tested snapshot), snapshot-texts.json (512 KB-limited distinct changed texts, truncated flag) and weave-ops.digest.jsonl (content → content_sha1/content_bytes) beside the existing files, via writeCompactRecord() after board-ops.json. Both proofs pass.","redRuns":0,"turns":7,"usage":{"input_tokens":12,"cache_creation_input_tokens":19045,"cache_read_input_tokens":198124,"output_tokens":2706,"output_tokens_details":{"thinking_tokens":552},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":19045,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[],"speed":"standard"},"ts":"2026-09-28T23:20:48.843Z"}
+{"t":86636,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B/factory/flock; node --check engine.mjs && echo ok","ts":"2026-09-28T23:20:48.937Z"}
+{"t":86713,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-28T23:20:49.014Z"}
+{"t":87579,"kind":"tool","agent":"B","task":"4","tool":"mcp__flock__resolve_conflict","target":"","ts":"2026-09-28T23:20:49.880Z"}
+{"t":87749,"kind":"conflict:close","path":"factory/flock/engine.mjs","region":"23a98fb8c8","by":"B","note":"writeCompactRecord() and writeFailureRecord() are independent end-of-run writers; both kept, order irrelevant.","via":"resolve_conflict","ts":"2026-09-28T23:20:50.050Z"}
+{"t":87753,"kind":"tool:post","agent":"B","tool":"mcp__flock__resolve_conflict","ts":"2026-09-28T23:20:50.054Z"}
+{"t":87757,"kind":"tool","agent":"B","task":"4","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-28T23:20:50.058Z"}
+{"t":93258,"kind":"proof","agent":"B","task":"4","exits":[0,0],"causes":[],"errs":[],"ts":"2026-09-28T23:20:55.559Z"}
+{"t":109245,"kind":"conflict:open","path":"factory/flock/engine.mjs","region":"9a79048068","between":["published copies"],"ts":"2026-09-28T23:21:11.546Z"}
+{"t":109245,"kind":"conflict:reflag","path":"fleet/CONTRACT.md","region":"7cb977b374","ts":"2026-09-28T23:21:11.546Z"}
+{"t":109245,"kind":"edge","snap":"a7cb059735","reason":"resolve B","perTask":{"1":[0,0],"2":[0,0,0],"3":[0,0],"4":[0,0]},"check":0,"conflicts":["factory/flock/engine.mjs","fleet/CONTRACT.md"],"blocking":["factory/flock/engine.mjs"],"outside":[],"green":false,"ts":"2026-09-28T23:21:11.546Z"}
+{"t":109246,"kind":"tool:post","agent":"B","tool":"mcp__flock__run_proof","ts":"2026-09-28T23:21:11.547Z"}
+{"t":112727,"kind":"tool","agent":"B","task":"4","tool":"mcp__flock__done","target":"","ts":"2026-09-28T23:21:15.028Z"}
+{"t":118527,"kind":"publish","agent":"B","task":"4","by":"done","ts":"2026-09-28T23:21:20.828Z"}
+{"t":118533,"kind":"tool:post","agent":"B","tool":"mcp__flock__done","ts":"2026-09-28T23:21:20.834Z"}
+{"t":118542,"kind":"kata:mirror","task":"4","uid":"01M3N4ZAWC34Z8DFZWF7CM7WWP","what":"done by B","ok":true,"ts":"2026-09-28T23:21:20.843Z"}
+{"t":120105,"kind":"conflict:reflag","path":"fleet/CONTRACT.md","region":"7cb977b374","ts":"2026-09-28T23:21:22.406Z"}
