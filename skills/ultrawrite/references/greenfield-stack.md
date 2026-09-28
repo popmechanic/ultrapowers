@@ -100,7 +100,7 @@ facets keeps them behind a flag, and only for verbs that are not sockets. How an
 exam starts, budgets and stops that server is `## The runtime host`, below.
 
 A **stories-v1** plan does not scaffold with the generator: its launch base is
-`skills/ultrawrite/stories/tinyapp-template/` written by `stories/scaffold.py`
+`skills/ultrawrite/stories/tinyapp-template/` written by `stories/scaffold.ts`
 (plain DOM, `bun build`, one `AppStore` Durable Object with the SQLite
 persister). It is still a TinyApp; builders write one screen per piece and
 nothing else (state-probe runner spec, 2026-09-27).

@@ -74,53 +74,54 @@ well as tickets, which is why scraping it was rejected.
 
 ## Story planning — TinyApp targets (`stories-v1`)
 
-A TinyApp plan is not written; it is compiled from a page the operator signs.
-Spec: `docs/superpowers/specs/2026-09-27-story-planning-design.md`. The fleet
-refuses a `stories-v1` plan until the state-probe runner lands (sub-project 2);
-until then the flow ends at `PLAN OK`.
+A TinyApp plan is not written; it is compiled from a bundle the author drafts and
+the operator signs in one question. Spec:
+`docs/superpowers/specs/2026-09-28-coarse-input-planning-design.md`. There is no
+preview and no UI to build: the operator agrees to sentences before the run and
+judges the real app after it.
 
-1. **Read the notebook first:** `python3 skills/ultrawrite/stories/notebook.py show`.
+1. **Read the notebook first:** `bun skills/ultrawrite/stories/notebook.ts show`.
    Use its words; avoid its failed ones.
-2. **Take the ask as it comes.** Write back five lines: what the app is for, who uses
-   it, what they said, what you are assuming, and the 2–3 things you are least sure
-   of. They correct or say yes.
-3. **Pick the kind** — `behaviour`, `preserve` (nothing they see changes: sign the
-   existing stories plus one measured number), `look`; a request with no way to tell
-   it is done gets 2–3 measurable versions to choose from.
-4. **Draft the bundle** in the scratchpad, starting from
-   `skills/ultrawrite/catalog/<piece>/` wherever a catalog piece fits: `page.json`
-   (title, kind, three summary sentences, stories, links, numbers), `cards.json`
-   (purpose, state, actions with what each refuses, main story, near-miss,
-   misfits), `store.js` and `sketch.js` (the module contracts in the plan's Global
-   Constraints). Links are sentences — "deleting a todo clears its tags" — and a
-   link runs inside the trigger's `store.transaction`.
-5. **Run the checks before they see anything:**
-   `python3 skills/ultrawrite/stories/jev_checks.py <bundle> --ask-file <ask.txt>` —
-   an ambiguous sentence becomes two versions side by side on the page; a purpose,
-   near-miss or redundancy flag means re-cut the pieces before showing them. When two
-   or three options look equally plausible and nothing decides between them,
-   re-check the pieces before asking (inevitability).
-6. **Build and publish the page:**
-   `python3 skills/ultrawrite/preview/build_preview.py <bundle> <out.html>`, then the
-   Artifact tool with `capabilities: {db: {}}`. Say in one line what to do: pick a
-   story, click through it, tap ◦ on anything that is off.
-7. **Read their marks and recordings:** `ArtifactData list` the `steps` and `marks`
-   collections with `out_dir` set to a scratch directory, then `python3
-   skills/ultrawrite/preview/steps_from_rows.py <out_dir>/steps
-   <bundle>/steps.jsonl`. Answer every mark with concrete alternatives (never an
-   open question); turn a recorded session into a story sentence and ask them to
-   confirm it. Chat text counts the same as a mark.
-8. **Repeat until no marks remain; they sign.** Then, with no more questions:
-   `python3 skills/ultrawrite/stories/compile.py <bundle> --app <target checkout>
-   --plan-id <id> --date <YYYY-MM-DD> --out <target>/.ultrapowers/plan.md` and
-   `python3 skills/ultrapowers/scripts/plan_check.py <target>/.ultrapowers/plan.md`
-   to `PLAN OK`.
-9. **Write the notebook:** one `add` line per *Please explain*, edited word or
-   confusing-word mark, and `notebook.py log <plan-id> --rounds … --marks …
-   --explains … --edits …`.
-
-Filing and plumbing details are yours to decide; ask the operator only what the app
-does and how it looks.
+2. **Take the ask as it comes**, in any form. Save it verbatim to `<bundle>/ask.txt`.
+3. **Draft the bundle** in the scratchpad, starting from
+   `skills/ultrawrite/catalog/<piece>/` wherever a catalog piece fits:
+   - `page.json`: title; kind (`behaviour`, `preserve`, `look`); three summary
+     sentences; links as sentences ("deleting a todo clears its tags", run inside
+     the trigger's `store.transaction`); numbers; and stories, each with its
+     `steps`. A step is `{tool, args, layer}`, where layer is `store`, `ui` or
+     `saved`. A `ui` step adds `ui` (click/type/key by role and name) and `see`,
+     and a step whose tool must refuse adds `"refused": true` (last step only).
+     Every story has at least one `ui` or `saved` step. The accessible names you
+     choose are the builder's contract.
+   - `cards.json` holds purpose, state, actions with what each refuses, main
+     story, near-miss and misfits.
+   - `store.js` exports `TOOLS` and `makeStore`.
+4. **Run the checks before they see anything:**
+   `bun skills/ultrawrite/stories/jev_checks.ts <bundle> --ask-file <bundle>/ask.txt`.
+   - Fix every code refusal.
+   - A purpose, near-miss or redundancy flag means re-cut the pieces.
+   - An ambiguity flag you can settle from the catalog or the ask is closed and
+     noted in the plan's `authoring` record.
+5. **Touch 1: one AskUserQuestion call.**
+   - The first question is the draft: the one-line summary, the stories as
+     numbered sentences, and the links as sentences. Its options are
+     *Sign (Recommended)*, *Fix a line* and *Please explain*.
+   - Up to three more questions are the highest-scored open flags, each a
+     concrete choice with your pick tagged (Recommended).
+   - Nothing else is asked; filing, plumbing, names and store shape are yours.
+   - A fixed line is the new sentence. Re-ask only if a probe changed.
+6. **Make the target app:**
+   1. `bun skills/ultrawrite/stories/scaffold.ts <bundle> <checkout>`
+   2. `bun install` in the checkout
+   3. Compile: `bun skills/ultrawrite/stories/compile.ts <bundle> --app <checkout>
+      --plan-id <id> --date <YYYY-MM-DD> --out <checkout>/.ultrapowers/plan.md`
+   4. `python3 skills/ultrapowers/scripts/plan_check.py --base <sha>
+      <checkout>/.ultrapowers/plan.md` to `PLAN OK`
+7. **Touch 2 is the real app at the PR smoke.** Anything wrong is one line in chat
+   and becomes the next ask, for a small change plan; the older stories come
+   forward as guards on their own.
+8. **Write the notebook:** one `add` line per *Please explain* or fixed word, and
+   `notebook.ts log <plan-id> --rounds … --explains … --fixes …`.
 
 ## Task shape — pinned to what the parser actually reads
 

@@ -40,10 +40,10 @@ def run(cmd, **kw):
 
 
 def make_base(dst):
-    run([sys.executable, os.path.join(ROOT, "skills/ultrawrite/stories/scaffold.py"), TODO, dst])
-    run([sys.executable, os.path.join(ROOT, "skills/ultrawrite/stories/compile.py"), TODO, "--app", dst,
-         "--plan-id", "p1", "--date", "2026-09-27", "--out", os.path.join(dst, ".ultrapowers/plan.md")])
+    run(["bun", os.path.join(ROOT, "skills/ultrawrite/stories/scaffold.ts"), TODO, dst])
     run(["bun", "install"], cwd=dst, timeout=300)
+    run(["bun", os.path.join(ROOT, "skills/ultrawrite/stories/compile.ts"), TODO, "--app", dst,
+         "--plan-id", "p1", "--date", "2026-09-27", "--out", os.path.join(dst, ".ultrapowers/plan.md")])
 
 
 def make_copy(base, dst, screen, server, edit):
@@ -56,7 +56,7 @@ def make_copy(base, dst, screen, server, edit):
     if edit == "hollow":
         plan = os.path.join(dst, ".ultrapowers/plan.md")
         lines = open(plan).read().splitlines()
-        i = next(n for n, l in enumerate(lines) if l.startswith("{") and '"clause": "S1.1"' in l)
+        i = next(n for n, l in enumerate(lines) if l.startswith("{") and '"clause":"S1.1"' in l)
         p = json.loads(lines[i])
         p["given"] = [{"tool": "addTodo", "args": {"text": "buy milk"}}]
         lines[i] = json.dumps(p, sort_keys=True)

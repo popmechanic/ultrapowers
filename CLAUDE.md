@@ -28,8 +28,8 @@ python3 -m pytest                                                            # t
 python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers      # validate a skill dir
 python3 skills/ultrapowers/scripts/plan_parse.py <plan.md>                   # what the sandbox reads: tasks, edges, waves, checks
 python3 skills/ultrapowers/scripts/plan_check.py --base <sha> <plan.md>      # the laptop's check: records, and the plan against its base
-python3 skills/ultrawrite/stories/compile.py <bundle> --app <dir> --plan-id <id> --date <YYYY-MM-DD> --out <plan.md>   # a signed story page → a stories-v1 plan
-python3 skills/ultrawrite/stories/jev_checks.py <bundle> [--ask-file <ask.txt>]    # Jev's authoring checks before the operator sees a draft
+bun skills/ultrawrite/stories/compile.ts <bundle> --app <dir> --plan-id <id> --date <YYYY-MM-DD> --out <plan.md>   # a bundle → a stories-v1 plan (the app needs bun install first)
+bun skills/ultrawrite/stories/jev_checks.ts <bundle> [--ask-file <ask.txt>]    # code checks, then Jev's, before the operator sees a draft
 bun factory/stack/tinyapp/check.ts --plan <plan.md> --clause S1.1 --copy <app>   # one story step against one copy (exit 0 pass, 1 finding, 2 could not run)
 python3 evals/readings/checker_kit.py                                        # score the checker against a good todo app and broken copies (run when factory/stack/tinyapp/ changes)
 node fleet/doctor.mjs --json                                                 # which fleet prerequisite is missing
@@ -39,7 +39,7 @@ python3 skills/ultrapowers/scripts/catch_report.py --ledger <f> --tree .     # t
 ```
 
 The plan and census scripts take positional arguments only (no `--help`); the story-planning
-tools under `skills/ultrawrite/stories/` and `preview/` take flags and print their usage.
+tools under `skills/ultrawrite/stories/` (Bun) take flags and print their usage.
 Nothing runs on push or on a
 PR: the sandbox opens a ready PR when the engine's run ended green and a draft otherwise, so
 the engine's exit code is the merge decision.
@@ -55,9 +55,8 @@ the engine's exit code is the merge decision.
 - `skills/ultrawrite/` — plan authoring: the claims-v1 grammar (six body slots, contracts
   signed, edges derived, `- Run:` proofs), `references/` (`greenfield-stack.md`,
   `authoring-gotchas.md`), `scripts/` (provenance and base-fact pins, `authoring_census.py`),
-  `stories/` (story planning for TinyApps: bundle loader, code and Jev checks, the
-  compiler to `stories-v1`, the operator notebook, the DoltLite rebuild),
-  `preview/` (the clickable preview page and its session reader), `catalog/`
+  `stories/` (story planning for TinyApps in TypeScript: bundle loader, code and Jev
+  checks, the compiler to `stories-v1`, the scaffold, the operator notebook), `catalog/`
   (ready pieces; `todo` first). The sandbox-facing half is
   `skills/ultrapowers/scripts/{probe_block,stories_parse,stories_check,stacks}.py`.
 - `factory/` — the engine the sandbox runs (see `.claude/rules/factory.md`). Its npm deps are
@@ -187,7 +186,7 @@ the engine's exit code is the merge decision.
   `CLAUDE_CODE_OAUTH_TOKEN` a placeholder); `claude auth status` must show `oauth_token` — a
   run showing `x-api-key` is billing elsewhere. TypeSafe (`api.typesafe.ai`) is reached the
   same way by the boot and engine, and from the laptop by ultrawrite's authoring checks
-  (`skills/ultrawrite/stories/jev_checks.py`, key in `~/.ultrapowers/typesafe.env`) — for
+  (`skills/ultrawrite/stories/jev_checks.ts`, key in `~/.ultrapowers/typesafe.env`) — for
   judgments over prose, never generation or facts.
 - **Never force-rotate the Claude token while a run is live.** A refresh revokes the old
   access token at once and every in-flight run dies with `401 OAuth access token has been
