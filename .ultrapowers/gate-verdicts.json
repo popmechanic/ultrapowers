@@ -1,0 +1,99 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "3a96a7ba5ef5958c28448bafc52227d0a8af80be546d4fcd3ddbe91b5542b6f4",
+   "verdict": "pass",
+   "reason": "One exact-equality probe falsifies each of M1-M3."
+  },
+  "2": {
+   "hash": "d840ea6cd9f243791a279585f0ef20ed69c31b7bf71ea1489162e4e25435f02d",
+   "verdict": "pass",
+   "reason": "Round 2: the amendment probe pins M1, and the planted-change probe pins the draft and the scope:outside row for M2 and M3."
+  },
+  "3": {
+   "hash": "3cc2502a7e139e6ea48be883c1bf6c991331f8d2193994d7732cb0e70cd2efe3",
+   "verdict": "pass",
+   "reason": "Round 2, after narrowing M1 to the keys its probe checks."
+  }
+ },
+ "tally": {
+  "base": "568c8b888f3a77e674c2490a13fbd38369a11fee",
+  "dispatched": 5,
+  "rejected": 2,
+  "rounds": {
+   "1": {
+    "dispatched": 3,
+    "rejected": 2
+   },
+   "2": {
+    "dispatched": 2,
+    "rejected": 0
+   }
+  }
+ },
+ "history": [
+  {
+   "task": "2",
+   "round": 1,
+   "verdict": "fail",
+   "reason": "No leg forced the engine's red path; the Claim rests on it."
+  },
+  {
+   "task": "3",
+   "round": 1,
+   "verdict": "fail",
+   "reason": "M1 named n/window/basis keys its probe did not check."
+  }
+ ],
+ "authoring": {
+  "minutes": 45,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "How to verify Kata",
+    "options": [
+     "Watch the #1333 run",
+     "Tiny run now"
+    ],
+    "recommended": "Watch the #1333 run",
+    "picked": "Watch the #1333 run",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Sign",
+     "Fix a line"
+    ],
+    "recommended": "Sign",
+    "picked": "Sign",
+    "explain_rounds": 0
+   },
+   {
+    "question": "What counts as declared",
+    "options": [
+     "Any change a builder made",
+     "Only a stated reason"
+    ],
+    "recommended": "Any change a builder made",
+    "picked": "Any change a builder made",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
