@@ -544,6 +544,11 @@ const pageOn = (
       live();
       if ('click' in action) {
         const node = await nodeFor(connection, sessionId, action.click);
+        // A box below the fold is off the viewport, and a mouse event aimed at
+        // it lands on nothing — so the element is scrolled into view first.
+        await connection
+          .send('DOM.scrollIntoViewIfNeeded', {...node}, sessionId)
+          .catch(() => undefined);
         const centre = await centreOf(connection, sessionId, node);
         if (centre === null) {
           await clickInPage(connection, sessionId, node);
