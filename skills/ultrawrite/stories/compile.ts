@@ -79,9 +79,9 @@ export function probesOf(b: Bundle, mod: StoreModule): Derived[] {
           expect,
           see: st.see ?? [],
           judge: null,
-          holds_before: expect.length === 1 && 'unchanged' in expect[0],
+          holds_before: Boolean(st.refused),
         };
-        if (hollow(probe, before)) throw new Error(`${where}: hollow, every check already holds before the step`);
+        if (hollow(probe, before)) throw new Error(`${where}: hollow, the step changes nothing; mark it "refused": true if it must refuse`);
         out.push({story: s.id, step: i + 1, piece: owner.get(st.tool)!, probe});
       }
       before = after;

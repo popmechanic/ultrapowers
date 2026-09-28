@@ -45,8 +45,8 @@ export function runChecks(b: Bundle): {refusals: string[]; facts: string[]} {
         refusals.push(`${where}: a ui step needs ui = a list of click/type/key gestures`);
       }
       if (st.layer !== 'ui' && st.ui !== undefined) refusals.push(`${where}: only a ui step carries ui`);
-      if (st.refused && (i !== steps.length - 1 || st.layer === 'store')) {
-        refusals.push(`${where}: a refused step must be the story's last, and on the screen or after a reload`);
+      if (st.refused && (i !== steps.length - 1 || st.layer !== 'ui')) {
+        refusals.push(`${where}: a refused step must be the story's last, and done on the screen (ui)`);
       }
       if (st.link !== undefined) {
         if (linkIds.includes(st.link)) linked.add(st.link);

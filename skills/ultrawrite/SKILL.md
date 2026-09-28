@@ -90,7 +90,7 @@ judges the real app after it.
      the trigger's `store.transaction`); numbers; and stories, each with its
      `steps`. A step is `{tool, args, layer}`, where layer is `store`, `ui` or
      `saved`. A `ui` step adds `ui` (click/type/key by role and name) and `see`,
-     and a step whose tool must refuse adds `"refused": true` (last step only).
+     and a step whose tool must refuse adds `"refused": true` (a `ui` step, and the story's last).
      Every story has at least one `ui` or `saved` step. The accessible names you
      choose are the builder's contract.
    - `cards.json` holds purpose, state, actions with what each refuses, main
