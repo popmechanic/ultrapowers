@@ -323,9 +323,14 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   rollback — the rows are still written and nothing is refused. Before this (run-247, #1322) a
   green run merged a corrupted file no task listed.
 - **Stall (Flock, the `stall:no-progress` row, #1334):** a Flock run whose best-green count has not
-  risen for `flock.stall.minutes` (20) writes one `stall:no-progress` row in `events.jsonl` and ends
-  as a draft, alerting, instead of running to its clock. Every stall row is now named
-  `stall:<kind>`. `--stall-minutes <n>` overrides the cell for one launch. The cell is
+  risen for `flock.stall.minutes` (20), with at least one builder session ended since it last rose
+  (one long session is never cut off), and whose queued snapshots are all tested, writes one
+  `stall:no-progress` row in `events.jsonl` and ends as a draft, alerting, instead of running to its
+  clock. The window opens when the builders start, not before setup. The stop interrupts every live
+  session, starts no new one, and counts none of them as a give-back. Every stall row is named
+  `stall:<kind>`. `--stall-minutes <n>` is an engine flag for a hand run (the launcher and boot do
+  not pass it; a fleet run reads the cell), and a value that is not a number of minutes, 0 or more,
+  refuses with exit 2. The cell is
   `flock.stall` in `factory/policy.json`; `flock.stall.minutes = 0` is the rollback — no limit, the
   run ends only at its clock. Before this (runs 247, 251–255 and radio-station run-1, 2026-09-26..28,
   n=7) the longest wait for a rise in the green count was 2.0 min, while run-252 ran 229.7 min
