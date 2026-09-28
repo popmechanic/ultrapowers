@@ -264,6 +264,55 @@ export async function readBoard ({ client, projectId, runs, since }) {
   return { ...projection, cursor: projection.cursor === null ? since : projection.cursor }
 }
 
+// ── Following a run ──────────────────────────────────────────────────────
+
+const minutesSince = (fromIso, nowMs) => Math.floor((nowMs - Date.parse(fromIso)) / 60000)
+
+/**
+ * `--follow`: re-read the run every `everyMs`, print each timeline row not yet
+ * printed, and print one `!` line when something looks wrong — a task claimed
+ * `quietMs` ago with no `done` since, or a run with no new row for `quietMs`.
+ * Each warning prints once until the thing it names changes. Ends when every
+ * asked run's own issue is closed (`== closed` and 0) or at `maxMs` (`== gave
+ * up` and 3). `read` answers `projectBoard`'s shape; it re-reads from the start
+ * each time, since a page read from a cursor cannot tell which run an issue
+ * belongs to. `now`, `sleep` and `write` are the test's seams.
+ */
+export async function follow ({ read, write, runs, everyMs = 10000, quietMs = 10 * 60000, maxMs = 240 * 60000, now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+  const start = now()
+  const seen = new Set()
+  const warned = new Set()
+  let lastNewAt = start
+  for (;;) {
+    const projection = await read()
+    const fresh = projection.timeline.filter((r) => !seen.has(r.eventId))
+    for (const r of fresh) {
+      seen.add(r.eventId)
+      write(`  ${timeOf(r.at)} run-${r.run} ${r.name.padEnd(8)} ${r.what}\n`)
+    }
+    if (fresh.length) lastNewAt = now()
+    const t = now()
+    // a task whose last row is a claim, older than the quiet window
+    for (const task of projection.tasks) {
+      if (task.closed || !task.last || !task.last.startsWith('claimed by ') || !task.lastAt) continue
+      const key = `claim ${task.issue} ${task.lastAt}`
+      if (t - Date.parse(task.lastAt) >= quietMs && !warned.has(key)) {
+        warned.add(key)
+        write(`! run-${task.run} ${task.name} ${task.last} ${minutesSince(task.lastAt, t)} min ago, and no done since\n`)
+      }
+    }
+    const quietKey = `quiet ${lastNewAt}`
+    if (t - lastNewAt >= quietMs && !warned.has(quietKey)) {
+      warned.add(quietKey)
+      write(`! no new row for ${Math.floor((t - lastNewAt) / 60000)} min\n`)
+    }
+    const runIssues = projection.tasks.filter((x) => x.name === `run-${x.run}` && runs.includes(x.run))
+    if (runIssues.length === runs.length && runIssues.every((x) => x.closed)) { write('== closed\n'); return 0 }
+    if (t - start >= maxMs) { write('== gave up\n'); return 3 }
+    await sleep(everyMs)
+  }
+}
+
 // ── The CLI ──────────────────────────────────────────────────────────────
 
 const POSITIVE_INT = /^[1-9][0-9]*$/
@@ -271,7 +320,8 @@ const NON_NEGATIVE_INT = /^[0-9]+$/
 
 /**
  * `--run <N>` (repeats, and also takes `207,208`), `--target <owner>/<repo>`,
- * `--since <event_id>` (default `0`) and `--json`. A missing `--run` or
+ * `--since <event_id>` (default `0`), `--json`, `--follow` and `--quiet <minutes>`
+ * (default 10, what `--follow` calls too long without a done or a new row). A missing `--run` or
  * `--target`, a run that is not a positive integer, or a `--since` that is
  * not a non-negative integer is a `Refusal` beginning `board-read:`.
  */
@@ -280,6 +330,8 @@ export function parseBoardArgs (argv) {
   let target = null
   let since = 0
   let json = false
+  let followOn = false
+  let quietMinutes = 10
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
@@ -303,13 +355,20 @@ export function parseBoardArgs (argv) {
       since = Number(value)
     } else if (arg === '--json') {
       json = true
+    } else if (arg === '--follow') {
+      followOn = true
+    } else if (arg === '--quiet') {
+      const value = argv[i + 1]
+      i += 1
+      if (!POSITIVE_INT.test(String(value ?? ''))) fail(`--quiet must be a positive number of minutes, got ${JSON.stringify(value)}`)
+      quietMinutes = Number(value)
     }
   }
 
   if (runs.length === 0) fail('--run is required')
   if (!target) fail('--target is required')
 
-  return { runs, target, since, json }
+  return { runs, target, since, json, follow: followOn, quietMinutes }
 }
 
 /**
@@ -330,6 +389,13 @@ export async function main (argv, { exec = defaultExec, kataEnvPath = defaultKat
     fail(`no hub project named ${JSON.stringify(projectName)} for target ${JSON.stringify(args.target)} — ${KATA_HUB_FIX}`)
   }
 
+  if (args.follow) {
+    const read = () => readBoard({ client, projectId: project.id, runs: args.runs, since: 0 })
+    write('== following (every 10 s; ! lines flag trouble)\n')
+    const rc = await follow({ read, write, runs: args.runs, quietMs: args.quietMinutes * 60000 })
+    if (rc) process.exitCode = rc
+    return rc
+  }
   const projection = await readBoard({ client, projectId: project.id, runs: args.runs, since: args.since })
   write(args.json ? `${JSON.stringify(projection, null, 2)}\n` : `${renderBoard(projection)}\n`)
 }
