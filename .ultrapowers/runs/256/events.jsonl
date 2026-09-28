@@ -76,3 +76,5 @@
 {"t":120423,"kind":"landing","task":"1","k":1,"factsExit":0,"candidateSha":"e2083b9747398d991194d0a8de83def884d99312","ts":"2026-09-28T19:10:21.310Z"}
 {"t":120423,"kind":"fold:verify","task":"2","ran":[{"id":"2","kind":"probe","cmd":"python3 -c \"import json; c=json.load(open('factory/policy.json'))['flock']['stall']; assert c['minutes']==20 and c['rollback']=='minutes = 0' and c['experiment'] is True, c\"","exit":0},{"id":"2","kind":"probe","cmd":"grep -q 'stall:no-progress' fleet/CONTRACT.md","exit":0}],"attempt":1,"snap":"4c6e27ff7d","ts":"2026-09-28T19:10:21.310Z"}
 {"t":120423,"kind":"landing","task":"2","k":1,"factsExit":0,"candidateSha":"e2083b9747398d991194d0a8de83def884d99312","ts":"2026-09-28T19:10:21.310Z"}
+{"ts":"2026-09-28T19:10:31.386Z","kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1347","number":1347,"draft":false}
+{"ts":"2026-09-28T19:10:35.210Z","kind":"merge","code":200}
