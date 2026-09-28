@@ -28,6 +28,7 @@ import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import { workloadFromPlan } from './plan.mjs'
 import { makeBoard } from './flock_board.mjs'
+import { scopeOf } from './scope.mjs'
 import { editSpans } from './edit_spans.mjs'
 import { pullScope } from './pulls.mjs'
 import { findGit } from '../gitblock.mjs'
@@ -105,6 +106,10 @@ if (!['narrow', 'all'].includes(PULLS)) { console.error('engine: --pulls is narr
 // record-only Jev reading per green story step (state-probe runner spec §7): `record` mode and
 // a reachable TypeSafe edge, or it never asks and never writes a `jev:step` row.
 const JEV_STEP = (POLICY_FLOCK?.jev_step?.mode ?? 'off') === 'record' && !!process.env.TYPESAFE_BASE_URL
+// the scope rule (#1333, scope.mjs): `enforce` folds a change outside every task's Files that no
+// builder wrote into the edge's verdict; `record` only writes the `scope:outside` row. Absent, enforce.
+const SCOPE_MODE = POLICY_FLOCK?.scope?.mode ?? 'enforce'
+if (!['enforce', 'record'].includes(SCOPE_MODE)) { console.error('engine: policy flock.scope.mode is enforce or record'); process.exit(2) }
 const touched = {}   // per builder: the paths it has read or edited in its copy
 const touch = (agent, rel) => (touched[agent] = touched[agent] || new Set()).add(rel)
 const MAX_REOPEN = 3
@@ -446,11 +451,26 @@ let lastEdge = null
 const snapshots = []
 let bestGreen = -1, sinceBest = 0
 const edgeLatency = []      // publish -> tested, ms (the propagation delay the debounce covers)
+const amendedSeen = new Set()  // paths already written as a `driver:amendment` row this run
+// The scope rule at the edge, read from the snapshot against BASE_DIR before any fact or check
+// writes build output. Returns the paths outside every task's Files that no builder wrote.
+function scopeAt (m, snap) {
+  // the weave reads an empty file as absent, so an empty base file is compared as absent too
+  const text = (p) => p in m.files ? (m.exists[p] ? m.files[p] : '') : (BASE_FILES[p] ?? '')
+  const changed = [...new Set([...Object.keys(m.files), ...BASE_PATHS])].filter((p) => text(p) !== (BASE_FILES[p] ?? ''))
+  const files = [...board.tasks.values()].flatMap((t) => t.files || (String(t.id).startsWith('R:') ? [t.id.slice(2)] : []))
+  const written = Object.values(lastEditT).flatMap((ps) => Object.keys(ps))
+  const { outside, amended } = scopeOf({ changed, files, written })
+  for (const p of amended) if (!amendedSeen.has(p)) { amendedSeen.add(p); ev('driver:amendment', { path: p, snap }) }
+  if (outside.length) { ev('scope:outside', { snap, paths: outside }); log('scope', snap, 'outside', outside.join(','), SCOPE_MODE) }
+  return SCOPE_MODE === 'enforce' ? outside : []
+}
 function edge (reason) {
   const asked = now()
   edgeChain = edgeChain.then(async () => {
     const m = await must({ op: 'merged' })
     const snap = crypto.createHash('sha1').update(JSON.stringify(m.files)).digest('hex').slice(0, 10)
+    const outside = scopeAt(m, snap)
     if (lastEdge && lastEdge.snap === snap) {
       // ticket 5: the facts on a hash never change, but what blocks it does (a close with no
       // text change). Recompute the verdict from the ledger now: a cached `blocking` was the
@@ -459,7 +479,7 @@ function edge (reason) {
       earlyClose(m, snap)
       const blocking = openConflicts()
       const factsGreen = Object.values(lastEdge.perTask).every((xs) => xs.every((x) => x === 0))
-      lastEdge = { ...lastEdge, t: now(), reason, blocking, green: factsGreen && lastEdge.check === 0 && !blocking.length }
+      lastEdge = { ...lastEdge, t: now(), reason, blocking, outside, green: factsGreen && lastEdge.check === 0 && !blocking.length && !outside.length }
       return lastEdge
     }
     lastChange = now()
@@ -479,7 +499,7 @@ function edge (reason) {
     for (const [p, fl] of Object.entries(m.sameAnchor || {})) await sameSpot(p, fl, ['published copies'], null)
     earlyClose(m, snap)
     const blocking = openConflicts()
-    lastEdge = { snap, t: now(), reason, perTask, check: chk.status, checkTail: ((chk.stdout || '') + (chk.stderr || '')).slice(-600), conflicts: m.conflicts, blocking, annotated: m.annotated, green: factsGreen && chk.status === 0 && !blocking.length }
+    lastEdge = { snap, t: now(), reason, perTask, check: chk.status, checkTail: ((chk.stdout || '') + (chk.stderr || '')).slice(-600), conflicts: m.conflicts, blocking, outside, annotated: m.annotated, green: factsGreen && chk.status === 0 && !blocking.length && !outside.length }
     snapshots.push({ snap, t: now(), files: m.files, exists: m.exists })
     edgeLatency.push(now() - asked)
     // ticket 5: livelock, record-only. Facts rose on every new snapshot of every recorded run
@@ -591,7 +611,11 @@ async function scriptedSession (agent, task) {
       await giveBack(agent, task, 'the scripted files leave red facts: ' + redText(task, red).slice(0, 300))
       return
     }
-    await syncFromDisk(agent); await publishCopy(agent); ev('publish', { agent, task: task.id, by: 'done' }); await board.publish(agent, task.id)
+    await syncFromDisk(agent)
+    // test seam (#1333): `@unwritten` puts text into the weave that no builder wrote (no edited()
+    // call), standing in for a weave fault like run-247's.
+    for (const [p, text] of Object.entries(SCRIPT['@unwritten'] || {})) await must({ op: 'rewrite', agent, path: p, content: text })
+    await publishCopy(agent); ev('publish', { agent, task: task.id, by: 'done' }); await board.publish(agent, task.id)
     await board.done(task); live.delete(agent); edge('done ' + agent); log(agent, 'done', task.id)
   }
   usage.push({ agent, task: task.id, turns: 0, subtype: 'scripted', cost_usd: 0 })

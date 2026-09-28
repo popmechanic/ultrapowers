@@ -314,6 +314,14 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   at most 10 seconds, then leaves without them). Before this (radio-station run-1,
   2026-09-28, n=1 run) the Flock posted nothing and the board showed only the launcher's filing
   and the boot's closes.
+- **Scope (Flock, the `scope:outside` and `driver:amendment` rows, #1333):** the Flock's edge
+  refuses to settle on a snapshot that changes a path outside every task's Files when no builder
+  wrote that change; each such path is one `scope:outside` row in `events.jsonl` and the snapshot
+  does not settle. A builder's own change to a path outside every task's Files is let through and
+  recorded as a `driver:amendment` row naming the builder and the path. The switch is
+  `flock.scope` in `factory/policy.json` (`mode = enforce`); `flock.scope.mode = record` is the
+  rollback — the rows are still written and nothing is refused. Before this (run-247, #1322) a
+  green run merged a corrupted file no task listed.
 - **Jev (2026-09-16, the `jev:` seam):** three event kinds ride the run's own event log exactly as
   a `driver:` row does — `jev:finding` (a reviewer's blocking finding, beside the task it was raised
   against), `jev:tier` (the tier chosen at a task's dispatch and again at each review round) and
