@@ -24,7 +24,7 @@ def plan_text():
     return comp.compile_plan(bundle.load_bundle(os.path.join(ROOT, "skills/ultrawrite/catalog/todo")), "p1", [])
 
 
-def run(tmp_path, script, base_files=None, text=None):
+def run(tmp_path, script, base_files=None, text=None, checker=None):
     base = tmp_path / "base"
     base.mkdir()
     (base / "package.json").write_text(json.dumps({"name": "t", "private": True, "scripts": {"typecheck": "true"}}))
@@ -39,7 +39,7 @@ def run(tmp_path, script, base_files=None, text=None):
     sfile.write_text(json.dumps(script))
     r = subprocess.run(["node", os.path.join(ROOT, "factory/flock/engine.mjs"), "--plan", str(plan), "--target", str(base),
                         "--base", sha, "--run-dir", str(tmp_path / "run"), "--builder", "scripted:" + str(sfile)],
-                       capture_output=True, text=True, timeout=280, env={**os.environ, "FLOCK_CHECKER": FAKE})
+                       capture_output=True, text=True, timeout=280, env={**os.environ, "FLOCK_CHECKER": checker or FAKE})
     events = [json.loads(l) for l in (tmp_path / "run" / "events.jsonl").read_text().splitlines()] \
         if (tmp_path / "run" / "events.jsonl").exists() else []
     return r, events, base, sha
@@ -71,6 +71,17 @@ def test_a_checker_that_cannot_run_stops_the_run_before_any_builder(tmp_path):
     # ev('stall', {kind, evidence}) spreads its payload last, so a stall row's kind is the stall's own
     stalls = kinds(events, "checker")
     assert stalls and "the environment is broken" in stalls[0]["evidence"]["tail"]
+    assert not kinds(events, "session:start")
+
+
+def test_a_missing_checker_stops_the_run_before_any_builder(tmp_path):
+    missing = os.path.join(str(tmp_path), "no-such-checker")
+    r, events, _, _ = run(tmp_path, {"1": {"ok": "1"}}, checker=missing)
+    assert r.returncode == 1
+    exit_code = kinds(events, "checker:start")[0]["exit"]
+    assert exit_code not in (0, 1), exit_code
+    stalls = kinds(events, "checker")
+    assert stalls
     assert not kinds(events, "session:start")
 
 

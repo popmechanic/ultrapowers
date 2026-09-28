@@ -219,7 +219,10 @@ async function run(probe: Probe): Promise<Result> {
 }
 
 function write(r: Result) {
-  const out = arg('out') ?? (process.env.FLOCK_CHECK_OUT ? join(process.env.FLOCK_CHECK_OUT, `${r.clause}@${basename(COPY)}.json`) : undefined);
+  // A guard clause's id (e.g. `G:p0/S2.3`) carries a `/`; a result file is one
+  // path segment, so every `/` in the clause becomes `_`.
+  const safeClause = r.clause.replace(/\//g, '_');
+  const out = arg('out') ?? (process.env.FLOCK_CHECK_OUT ? join(process.env.FLOCK_CHECK_OUT, `${safeClause}@${basename(COPY)}.json`) : undefined);
   if (out) { mkdirSync(dirname(out), {recursive: true}); writeFileSync(out, JSON.stringify(r)); }
   console.log(`CHECK ${r.clause} exit ${r.exit} at ${r.stage}: ${r.message}`);
   if (process.argv.includes('--json')) console.log(JSON.stringify(r));
@@ -237,18 +240,28 @@ async function main() {
     ? {clause, exit: 1, stage: e.stage, message: e.message, did: probe?.do ?? [], ...ctx} as Result
     : {clause, exit: 2, stage: 'env', message: String((e as Error)?.message ?? e), did: probe?.do ?? [], ...ctx} as Result;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const budget = new Promise<Result>((done) => {
-    timer = setTimeout(() => {
-      aborted = true;
-      done({clause, exit: 2, stage: 'env', message: `the check ran past its ${BUDGET_MS} ms budget`, did: probe?.do ?? [], ...ctx} as Result);
-    }, BUDGET_MS);
-  });
+  let resolveStopped!: (r: Result) => void;
+  const stopped = new Promise<Result>((res) => { resolveStopped = res; });
+  // The budget timeout and a SIGTERM/SIGINT (the Flock's 60 s runFacts timeout
+  // sends SIGTERM) both stop the run the same way: mark aborted so in-flight
+  // starts are owned before cleanup, then resolve the race with an exit-2 env
+  // finding, never leaving a celld or browser running past the process.
+  const stopWith = (message: string) => {
+    aborted = true;
+    resolveStopped({clause, exit: 2, stage: 'env', message, did: probe?.do ?? [], ...ctx} as Result);
+  };
+  timer = setTimeout(() => stopWith(`the check ran past its ${BUDGET_MS} ms budget`), BUDGET_MS);
+  const onSignal = () => stopWith('the check was stopped');
+  process.on('SIGTERM', onSignal);
+  process.on('SIGINT', onSignal);
   const work = (async () => {
     probe = probeFromPlan(readFileSync(PLAN, 'utf8'), clause);
     return run(probe);
   })().catch(failed);
-  const r = await Promise.race([work, budget]);
+  const r = await Promise.race([work, stopped]);
   clearTimeout(timer);
+  process.off('SIGTERM', onSignal);
+  process.off('SIGINT', onSignal);
   if (aborted) {
     // Whatever the run was starting when the budget ran out is owned once it
     // settles; each start is itself bounded by the budget (readyMs) or a

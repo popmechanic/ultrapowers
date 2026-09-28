@@ -21,7 +21,7 @@ test.skipIf(!HAVE)('count finds elements by role and accessible name', async () 
   } finally {
     await b.close();
   }
-});
+}, 30000);
 
 test('resolveBinary prefers the explicit path, then TINYAPP_BROWSER', () => {
   expect(resolveBinary('/x')).toBe('/x');

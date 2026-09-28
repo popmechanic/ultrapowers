@@ -59,7 +59,7 @@ def build(bundle_dir, out_html):
                 .replace("__PAGE_JSON__", page)
                 .replace("__STORE_MODULE__", module_body(b["store_text"], ["TOOLS", "makeStore"]))
                 .replace("__SKETCH_MODULE__", module_body(b["sketch_text"], ["render"]))
-                .replace("__SEE_MODULE__", module_body(see_text, ["seeOf", "findAll"])))
+                .replace("__SEE_MODULE__", module_body(see_text, ["seeOf", "seeOfPiece", "findAll"])))
     with open(out_html, "w", encoding="utf-8") as fh:
         fh.write(html)
 

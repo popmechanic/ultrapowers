@@ -898,12 +898,14 @@ await must({ op: 'base', root: BASE_DIR, paths: BASE_PATHS })
 ev('start', { workload: W.name, agents: ELASTIC ? 'elastic' : N, cap: ELASTIC ? CAP : undefined, model: MODEL, clock_ms: CLOCK_MS, quiet_ms: QUIET_MS, board: BOARD, publish: PUBLISH, early_close: EARLY_CLOSE, order: ORDER, pulls: PULLS, chain: board.cp ? Object.fromEntries(board.cp) : undefined })
 log(`workload ${W.name}, ${N} agents, ${MODEL}, out ${OUT}`)
 // a stories-v1 run proves the checker can run here before any builder spends anything:
-// exit 1 on the starting app is expected (nothing is built yet); exit 2 is the sandbox
+// exit 0 or 1 on the starting app is expected (a green or red finding); anything else — a
+// missing bun/checker (spawn ENOENT reads as 124/127), a crash, a timeout — is the sandbox,
+// not the app, and stops the run before it starts.
 if (W.stories) {
   const first = W.tasks.find((t) => t.facts.length)
   const r = runFacts(SETUP ? DEPS_DIR : BASE_DIR, { facts: [first.facts[0]] })[0]
   ev('checker:start', { exit: r.exit })
-  if (r.exit === 2) {
+  if (r.exit !== 0 && r.exit !== 1) {
     await stall('checker', { tail: r.tail.slice(-300) })
     terminal('draft', 'the checker cannot run on this sandbox: ' + r.tail.slice(-300), null)
   }

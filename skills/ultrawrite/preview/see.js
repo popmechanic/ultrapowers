@@ -29,9 +29,9 @@ export function findAll (root, role, name) {
   return [...root.querySelectorAll('*')].filter((el) => roleOf(el) === role && nameOf(el) === name)
 }
 
-export function seeOf (root) {
+function countRoles (els) {
   const counts = new Map()
-  for (const el of root.querySelectorAll('*')) {
+  for (const el of els) {
     const role = roleOf(el)
     const name = role && nameOf(el)
     if (!role || !name) continue
@@ -40,4 +40,25 @@ export function seeOf (root) {
   }
   return [...counts].map(([k, count]) => { const [role, name] = k.split('\u0000'); return { role, name, count } })
     .sort((a, b) => (a.role < b.role ? -1 : a.role > b.role ? 1 : a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+}
+
+export function seeOf (root) {
+  return countRoles(root.querySelectorAll('*'))
+}
+
+// What a person can see and use inside one piece of the sketch: only the
+// elements inside a container whose data-mark starts with `<piece>:` (the
+// sketch convention — catalog sketches mark `todo:add`, `todo:list`,
+// `tag:panel`). A control outside every one of that piece's containers is not
+// included, so a builder's screen never inflates or borrows another piece's
+// count.
+export function seeOfPiece (root, piece) {
+  const prefix = piece + ':'
+  const containers = [...root.querySelectorAll('[data-mark]')]
+    .filter((el) => (el.getAttribute('data-mark') || '').startsWith(prefix))
+  const seen = new Set()
+  for (const container of containers) {
+    for (const el of container.querySelectorAll('*')) seen.add(el)
+  }
+  return countRoles(seen)
 }

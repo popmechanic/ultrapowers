@@ -707,7 +707,7 @@ async function launchBody ({
   //    operator chose this engine or the launcher caught it.
   const engineSource = opts.engine === undefined ? 'main-tip' : 'pinned'
   const engine = opts.engine ?? await defaultEngineSha(exec)
-  const compiler = await fetchCompilerAt({ exec, engine, pluginRoot: PLUGIN_ROOT })
+  const compiler = await fetchCompilerAt({ exec, engine, pluginRoot: PLUGIN_ROOT, stories: planGrammar(planText) === 'stories-v1' })
   if (held !== undefined) held.compilerDir = compiler.dir
 
   // ... and the plan compiles against that same tree, or nothing is launched.

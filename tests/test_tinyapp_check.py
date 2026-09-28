@@ -3,8 +3,10 @@ Needs bun, celld and a browser; skips naming whichever is missing."""
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -115,6 +117,24 @@ def test_no_browser_is_the_sandbox_not_the_app(base, tmp_path):
     assert (code, res["stage"]) == (2, "env")
 
 
+def test_a_guard_clauses_slash_becomes_an_underscore_in_the_result_filename(base, tmp_path):
+    # A guard clause's id (e.g. G:p0/S2.3) carries a '/'; FLOCK_CHECK_OUT's
+    # derived filename is one path segment, not a nested directory.
+    app = variant(base, tmp_path)
+    check_out = tmp_path / "check-out"
+    check_out.mkdir()
+    r = subprocess.run(
+        ["bun", CHECK, "--plan", str(app / ".ultrapowers/plan.md"), "--clause", "G:p0/S2.3", "--copy", str(app)],
+        capture_output=True, text=True, timeout=120,
+        env={**os.environ, "FLOCK_CHECK_OUT": str(check_out)})
+    assert not (check_out / "G:p0").exists()
+    files = list(check_out.iterdir())
+    assert len(files) == 1, files
+    assert files[0].name == "G:p0_S2.3@app.json", files[0].name
+    res = json.loads(files[0].read_text())
+    assert res["clause"] == "G:p0/S2.3"
+
+
 def test_a_timed_out_check_leaves_nothing_running(base, tmp_path):
     # The check's own temp dir, so a celld or browser of a test running beside
     # this one under xdist is not counted; both carry that dir in their argv.
@@ -122,6 +142,36 @@ def test_a_timed_out_check_leaves_nothing_running(base, tmp_path):
     tmp.mkdir()
     code, res, _ = check(variant(base, tmp_path), "S1.1", "--budget-ms", "1000", env={"TMPDIR": str(tmp)})
     assert (code, res["stage"]) == (2, "env")
+    left = subprocess.run(["pgrep", "-f", str(tmp)], capture_output=True, text=True).stdout.split()
+    assert left == []
+    assert [p.name for p in tmp.iterdir()] == []
+
+
+def test_a_sigterm_stops_the_check_cleanly(base, tmp_path):
+    # The Flock's 60 s runFacts timeout sends SIGTERM, not SIGKILL: the check
+    # must own its own cleanup on the way out, the same as the budget timeout
+    # (same own-its-temp-dir isolation as the timeout test above).
+    tmp = tmp_path / "tmp"
+    tmp.mkdir()
+    out = tmp_path / "S1.1.json"
+    app = variant(base, tmp_path)
+    proc = subprocess.Popen(
+        ["bun", CHECK, "--plan", str(app / ".ultrapowers/plan.md"), "--clause", "S1.1",
+         "--copy", str(app), "--out", str(out)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        env={**os.environ, "TMPDIR": str(tmp)})
+    try:
+        time.sleep(3)
+        proc.send_signal(signal.SIGTERM)
+        stdout, _ = proc.communicate(timeout=30)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.communicate()
+    assert proc.returncode == 2, stdout
+    res = json.loads(out.read_text())
+    assert res["stage"] == "env"
+    assert "stopped" in res["message"]
     left = subprocess.run(["pgrep", "-f", str(tmp)], capture_output=True, text=True).stdout.split()
     assert left == []
     assert [p.name for p in tmp.iterdir()] == []

@@ -150,13 +150,14 @@ function call (name, args = {}, ui = null) {
   }
   showProblem('')
   const row = runStep(name, args)
-  if (ui) { row.layer = 'ui'; row.ui = clone(ui); row.see = seeMod.seeOf(app) }
+  if (ui) { row.layer = 'ui'; row.ui = clone(ui); row.see = seeMod.seeOfPiece(app, row.piece) }
   save('steps', `${session}-${story}-${row.step}`, row, { pendingNote: `Saved step ${row.step}` })
 }
 function restart () {
   store.setContent([{}, {}])
   session = Math.random().toString(36).slice(2, 10)
   step = 0
+  showProblem('')
 }
 function replaySetup (idx) {
   setupError = null

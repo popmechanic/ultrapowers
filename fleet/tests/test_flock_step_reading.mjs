@@ -21,9 +21,14 @@ test('the newest result per clause wins', () => {
   assert.equal(latestResults(d).get('S1.1').exit, 0)
 })
 
-test('the state names the story sentence, guard clauses included', () => {
+test('the state names the story sentence', () => {
+  const s = stepState({ clause: 'S2.3', did: [1], before: [{}, {}], after: [{}, {}], screen_text: 'x' }, { S2: 'tag it' })
+  assert.deepEqual(s, { story: 'tag it', step: 'S2.3', did: [1], before: [{}, {}], after: [{}, {}], screen_text: 'x' })
+})
+
+test('a guard clause gets no story sentence — it belongs to an earlier plan', () => {
   const s = stepState({ clause: 'G:p0/S2.3', did: [1], before: [{}, {}], after: [{}, {}], screen_text: 'x' }, { S2: 'tag it' })
-  assert.deepEqual(s, { story: 'tag it', step: 'G:p0/S2.3', did: [1], before: [{}, {}], after: [{}, {}], screen_text: 'x' })
+  assert.deepEqual(s, { story: '', step: 'G:p0/S2.3', did: [1], before: [{}, {}], after: [{}, {}], screen_text: 'x' })
 })
 
 test('only green steps are read, and an unanswered one records null', async () => {

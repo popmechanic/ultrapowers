@@ -20,9 +20,14 @@ export function latestResults (dir) {
 }
 
 export function stepState (result, sentences) {
-  const story = String(result.clause).replace(/^G:/, '').split('/').pop().split('.')[0]
+  // A guard clause (e.g. `G:p0/S2.3`) proves an earlier plan's setup still
+  // holds; its sentence belongs to that earlier plan, not this one, so it
+  // gets no story sentence at all rather than a wrong or coincidental one.
+  const clause = String(result.clause)
+  const isGuard = /^G:/.test(clause)
+  const story = isGuard ? '' : (sentences[clause.split('/').pop().split('.')[0]] ?? '')
   return {
-    story: sentences[story] ?? '',
+    story,
     step: result.clause,
     did: result.did ?? [],
     before: result.before ?? null,

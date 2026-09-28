@@ -15,8 +15,9 @@ import { ENGINE_REPO, Refusal, git, output } from './lobby.mjs'
  * the sandbox runs, and `plan_check.py` imports it from its own directory, so
  * the two are fetched together and land side by side. For a stories-v1 plan
  * both of them import `stories_parse.py`, `stories_check.py` and
- * `probe_block.py` (`STORIES_RELS`, below) from that same directory, so all
- * five files are fetched beside each other on every launch.
+ * `probe_block.py` (`STORIES_RELS`, below) from that same directory, so those
+ * three are fetched beside the first two only when the caller says `stories:
+ * true` — a claims-v1 launch never asks for them.
  */
 const CHECKER_REL = 'skills/ultrapowers/scripts/plan_check.py'
 const PARSER_REL = 'skills/ultrapowers/scripts/plan_parse.py'
@@ -55,17 +56,19 @@ const STORIES_RELS = ['stories_parse.py', 'stories_check.py', 'probe_block.py']
  * naming the sha — never a fall back to the copy beside this file, because
  * that copy is the bug.
  *
- * Two files are fetched for every plan, and three more (`STORIES_RELS`) for a
- * stories-v1 one, since `plan_check.py`/`plan_parse.py` import them for that
- * grammar; all five import only the standard library and each other. Copies
- * under `os.tmpdir()`, at their real depth, read the plan, its gate record
- * and the `--base` tree exactly as the cache copies do.
+ * Two files are fetched for every plan, and three more (`STORIES_RELS`) when
+ * the caller passes `stories: true` — the plan's own grammar line, read by
+ * the caller before this is called — since `plan_check.py`/`plan_parse.py`
+ * import them only for that grammar; all five import only the standard
+ * library and each other. Copies under `os.tmpdir()`, at their real depth,
+ * read the plan, its gate record and the `--base` tree exactly as the cache
+ * copies do.
  *
  * Answers `{ dir, scriptPath, parserPath, source }`: `dir` is what the caller
  * removes, `scriptPath` is `plan_check.py`, `parserPath` is `plan_parse.py`,
  * `source` is `git-show` or `gh-api` (the check's).
  */
-export async function fetchCompilerAt ({ exec, engine, pluginRoot }) {
+export async function fetchCompilerAt ({ exec, engine, pluginRoot, stories = false }) {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'fleet-compiler-'))
   const fetchOne = async (rel) => {
     const tried = []
@@ -97,7 +100,7 @@ export async function fetchCompilerAt ({ exec, engine, pluginRoot }) {
   try {
     const parser = await fetchOne(PARSER_REL)
     const checker = await fetchOne(CHECKER_REL)
-    for (const rel of STORIES_RELS) await fetchOne(rel)
+    if (stories) for (const rel of STORIES_RELS) await fetchOne(rel)
     return { dir, scriptPath: checker.filePath, parserPath: parser.filePath, source: checker.source }
   } catch (error) {
     await fsp.rm(dir, { recursive: true, force: true })
