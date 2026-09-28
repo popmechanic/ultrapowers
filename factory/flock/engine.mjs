@@ -30,6 +30,8 @@ import { editSpans } from './edit_spans.mjs'
 import { pullScope } from './pulls.mjs'
 import { findGit } from '../gitblock.mjs'
 import { bootstrapFor } from '../commands.mjs'
+import { makeJevClient } from '../jev-client.mjs'
+import { latestResults, readSteps } from './step_reading.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d }
@@ -89,10 +91,14 @@ const EARLY_CLOSE = arg('early-close', 'held')
 // `--order chain` offers the ready set longest remaining chain first (flock_board.mjs); `rotate`,
 // each claimer starting its walk at its own offset, is the rollback.
 const ORDER = arg('order', 'chain')
+const POLICY_FLOCK = (() => { try { return JSON.parse(fs.readFileSync(path.join(HERE, '..', 'policy.json'), 'utf8')).flock } catch { return undefined } })()
 // `--pulls narrow` (#1292): a builder takes in only the peer changes its work touches (pulls.mjs);
 // `all`, every published change, is the rollback. Absent the flag, the policy cell flock.pulls.mode.
-const PULLS = arg('pulls', (() => { try { return JSON.parse(fs.readFileSync(path.join(HERE, '..', 'policy.json'), 'utf8')).flock?.pulls?.mode } catch { return undefined } })() || 'all')
+const PULLS = arg('pulls', POLICY_FLOCK?.pulls?.mode || 'all')
 if (!['narrow', 'all'].includes(PULLS)) { console.error('engine: --pulls is narrow or all'); process.exit(2) }
+// record-only Jev reading per green story step (state-probe runner spec §7): `record` mode and
+// a reachable TypeSafe edge, or it never asks and never writes a `jev:step` row.
+const JEV_STEP = (POLICY_FLOCK?.jev_step?.mode ?? 'off') === 'record' && !!process.env.TYPESAFE_BASE_URL
 const touched = {}   // per builder: the paths it has read or edited in its copy
 const touch = (agent, rel) => (touched[agent] = touched[agent] || new Set()).add(rel)
 const MAX_REOPEN = 3
@@ -110,12 +116,26 @@ const now = () => Date.now() - T0
 const RUN_ENV = { ...process.env, PYTHONDONTWRITEBYTECODE: '1', ULTRA_BASE: BASE_SHA }
 
 fs.mkdirSync(OUT, { recursive: true })
+const CHECK_OUT = path.join(OUT, 'checks')
+RUN_ENV.FLOCK_CHECK_OUT = CHECK_OUT
+fs.mkdirSync(CHECK_OUT, { recursive: true })
 fs.rmSync(WORK, { recursive: true, force: true })
 fs.mkdirSync(WORK, { recursive: true })
 const EV = fs.openSync(path.join(OUT, 'events.jsonl'), 'a')
 const ev = (kind, o = {}) => fs.writeSync(EV, JSON.stringify({ t: now(), kind, ...o, ts: new Date().toISOString() }) + '\n')
 const log = (...a) => console.log(`[${(now() / 1000).toFixed(1).padStart(6)}s]`, ...a)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+// record-only Jev reading per green story step (state-probe runner spec §7): never blocks
+// `done` or a PR, and a missing answer is recorded as `null` (step_reading.mjs `readSteps`).
+const STEP_QUESTION = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'questions.json'), 'utf8')).sets.flock_step.questions.delivered
+const jev = JEV_STEP ? makeJevClient({ baseUrl: process.env.TYPESAFE_BASE_URL, log: (m) => log('jev', m) }) : null
+const readAndRecord = (clauses) => {
+  if (!jev || !W.stories) return Promise.resolve()
+  const all = latestResults(CHECK_OUT)
+  const results = clauses ? clauses.map((c) => all.get(c)).filter(Boolean) : [...all.values()]
+  return readSteps({ ask: jev.ask, results, sentences: W.stories.sentences, question: STEP_QUESTION, emit: (row) => ev('jev:step', row) })
+}
 
 // ── the engine's own git, on the target ───────────────────────────────────────
 // A copy (each builder's, the edge's) is made a git repository at BASE that borrows the target's
@@ -243,6 +263,9 @@ function runFacts (cwd, task) {
     return { exit: r.status ?? 124, tail: ((r.stdout || '') + (r.stderr || '')).slice(-800) }
   })
 }
+const redOf = (res) => res.map((r, i) => ({ i, ...r })).filter((r) => r.exit !== 0)
+const redText = (task, red) => red.map((r) =>
+  `fact ${r.i + 1}${task.clauses ? ` (${task.clauses[r.i]})` : ''} exit ${r.exit}\n${r.tail}`).join('\n\n')
 const TRACE = /File "([^"]+)", line (\d+)/g
 async function blame (agent, cwd, output) {
   // gap 4: whose line does a red point at? the last in-copy frame of the traceback
@@ -538,6 +561,15 @@ async function scriptedSession (agent, task) {
       const f = path.join(cwd, p)
       fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text)
     }
+    const red = redOf(runFacts(cwd, task))
+    if (red.length) {
+      ev('facts:red', { agent, task: task.id, at: 'scripted', exits: red.map((r) => r.exit) })
+      usage.push({ agent, task: task.id, turns: 0, subtype: 'scripted', cost_usd: 0 })
+      ev('session:end', { agent, task: task.id, released: 'red facts', done: false })
+      live.delete(agent); lastChange = now()
+      await giveBack(agent, task, 'the scripted files leave red facts: ' + redText(task, red).slice(0, 300))
+      return
+    }
     await syncFromDisk(agent); await publishCopy(agent); ev('publish', { agent, task: task.id, by: 'done' }); await board.publish(agent, task.id)
     await board.done(task); live.delete(agent); edge('done ' + agent); log(agent, 'done', task.id)
   }
@@ -633,6 +665,13 @@ async function session (agent, task) {
       async (a) => { st.released = a.reason; return say('released; end your turn now') }),
     tool('done', DONE_ENDS ? 'Your task is finished: its facts pass on your copy. This publishes your copy and closes it.' : 'Your task is finished: its facts pass on your copy and you have published.', { summary: z.string() },
       async (a) => {
+        const red = redOf(runFacts(cwd, task))
+        if (red.length) {
+          st.redRuns++
+          ev('facts:red', { agent, task: task.id, at: 'done', exits: red.map((r) => r.exit) })
+          return say('not done: these facts fail on your copy. Fix them, run run_proof, then call done again.\n\n' + redText(task, red))
+        }
+        readAndRecord(task.clauses).catch(() => {})
         if (!DONE_ENDS) { st.done = a.summary; return say('marked done; end your turn now') }
         await syncFromDisk(agent); await publishCopy(agent); ev('publish', { agent, task: task.id, by: 'done' }); await board.publish(agent, task.id)
         st.done = a.summary; st.closed = true
@@ -760,7 +799,13 @@ async function session (agent, task) {
   // changed nothing ("the merged text already says what both meant": run n1, 2 of 2 attempts)
   if (String(task.id).startsWith('R:') && st.done) closeEntries(task.id.slice(2), agent, st.done, 'resolve task done')
   live.delete(agent); if (!st.closed) lastChange = now()
-  if (st.closed) { /* done, published and marked at the done call */ } else if (st.released) { await giveBack(agent, task, st.released) } else { await board.done(task); log(agent, 'done', task.id) }
+  if (st.closed) { /* done, published and marked at the done call */ } else if (st.released) { await giveBack(agent, task, st.released) } else {
+    const red = redOf(runFacts(cwd, task))
+    if (red.length) {
+      ev('facts:red', { agent, task: task.id, at: 'session-end', exits: red.map((r) => r.exit) })
+      await giveBack(agent, task, 'the session ended with red facts: ' + redText(task, red).slice(0, 300))
+    } else { await board.done(task); log(agent, 'done', task.id) }
+  }
 }
 
 async function agentLoop (agent) {
@@ -852,6 +897,19 @@ async function settle () {
 await must({ op: 'base', root: BASE_DIR, paths: BASE_PATHS })
 ev('start', { workload: W.name, agents: ELASTIC ? 'elastic' : N, cap: ELASTIC ? CAP : undefined, model: MODEL, clock_ms: CLOCK_MS, quiet_ms: QUIET_MS, board: BOARD, publish: PUBLISH, early_close: EARLY_CLOSE, order: ORDER, pulls: PULLS, chain: board.cp ? Object.fromEntries(board.cp) : undefined })
 log(`workload ${W.name}, ${N} agents, ${MODEL}, out ${OUT}`)
+// a stories-v1 run proves the checker can run here before any builder spends anything:
+// exit 0 or 1 on the starting app is expected (a green or red finding); anything else — a
+// missing bun/checker (spawn ENOENT reads as 124/127), a crash, a timeout — is the sandbox,
+// not the app, and stops the run before it starts.
+if (W.stories) {
+  const first = W.tasks.find((t) => t.facts.length)
+  const r = runFacts(SETUP ? DEPS_DIR : BASE_DIR, { facts: [first.facts[0]] })[0]
+  ev('checker:start', { exit: r.exit })
+  if (r.exit !== 0 && r.exit !== 1) {
+    await stall('checker', { tail: r.tail.slice(-300) })
+    terminal('draft', 'the checker cannot run on this sandbox: ' + r.tail.slice(-300), null)
+  }
+}
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 const pool = [...NAMES]
 const loops = NAMES.map(agentLoop)
@@ -931,6 +989,7 @@ async function land () {
       ev('fold:verify', { task: t.id, ran: t.facts.map((f, i) => ({ id: t.id, kind: 'probe', cmd: f[f.length - 1], exit: (exits[t.id] || [])[i] ?? null })), attempt: 1, snap: outcome.snap })
       ev('landing', { task: t.id, k: sessionsOf(t.id), factsExit: 0, candidateSha: sha })
     }
+    await Promise.race([readAndRecord(null).catch(() => {}), sleep(20000)])
     return 0
   }
   if (lastEdge) {

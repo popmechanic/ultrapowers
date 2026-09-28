@@ -21,7 +21,7 @@ export const TOOLS = [
     name: 'completeTodo',
     piece: 'todo',
     description: 'Mark this todo as done.',
-    inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+    inputSchema: { type: 'object', properties: { id: { type: 'string', 'x-row-of': 'todos' } }, required: ['id'] },
     run: (store, { id }) => {
       if (!store.hasRow('todos', id)) return false
       store.setCell('todos', id, 'completed', true)
@@ -32,7 +32,7 @@ export const TOOLS = [
     name: 'deleteTodo',
     piece: 'todo',
     description: 'Remove this todo from the list.',
-    inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+    inputSchema: { type: 'object', properties: { id: { type: 'string', 'x-row-of': 'todos' } }, required: ['id'] },
     run: (store, { id }) => {
       if (!store.hasRow('todos', id)) return false
       store.delRow('todos', id)

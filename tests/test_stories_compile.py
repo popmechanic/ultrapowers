@@ -5,6 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "skills/ultrawrite/stories"))
 import bundle  # noqa: E402
@@ -28,12 +29,12 @@ def test_compile_the_catalog_todo():
     assert "**Grammar:** stories-v1" in text and "**Plan-id:** p1" in text
     assert "### Task 1: The todo piece" in text
     ps = probes_in(text)
-    assert [p["clause"] for p in ps] == ["S1.1", "S2.1", "S2.2", "S3.1", "S4.1", "S4.2"]
-    s22 = ps[2]
+    assert [p["clause"] for p in ps] == ["S1.1", "S2.2", "S3.1", "S4.2"]
+    s22 = ps[1]
     assert s22["given"] == [{"tool": "addTodo", "args": {"text": "buy milk"}}]
     assert s22["do"] == [{"click": {"name": "buy milk", "role": "checkbox"}}]
     assert s22["expect"] == [{"table": "todos", "row": "0", "cell": "completed", "eq": True}]
-    s31 = ps[3]
+    s31 = ps[2]
     assert s31["expect"] == [{"unchanged": True}] and s31["holds_before"] is True
 
 
@@ -57,7 +58,7 @@ def test_cli_writes_plan_export_and_store(tmp_path):
     app = tmp_path / "app"; app.mkdir()
     res, out = run_cli(TODO, app, "p1")
     assert res.returncode == 0, res.stdout + res.stderr
-    assert "COMPILED p1: 1 task(s), 6 probe(s), 0 guard(s)" in res.stdout
+    assert "COMPILED p1: 1 task(s), 4 probe(s), 0 guard(s)" in res.stdout
     rows = steps.load_steps(app / "stories/steps.jsonl")
     assert {r["story"] for r in rows} == {"p1/S1", "p1/S2", "p1/S3", "p1/S4"}
     assert all(r["plan"] == "p1" and r["signed"] == "2026-09-27" for r in rows)
@@ -70,7 +71,7 @@ def test_a_second_plan_turns_the_first_into_guards(tmp_path):
     run_cli(TODO, app, "p1")
     res, out = run_cli(TODO, app, "p2")
     assert res.returncode == 0
-    assert "6 guard(s)" in res.stdout
+    assert "4 guard(s)" in res.stdout
     text = out.read_text(encoding="utf-8")
     assert "## Guards" in text and '"clause": "G:p1/S2.2"' in text
     stories = {r["story"] for r in steps.load_steps(app / "stories/steps.jsonl")}

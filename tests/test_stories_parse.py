@@ -34,8 +34,8 @@ def test_plan_parse_dispatches_a_stories_plan(tmp_path):
     assert [s["id"] for s in got["stories"]] == ["S1", "S2", "S3", "S4"]
     t = got["tasks"][0]
     assert t["piece"] == "todo" and t["actions"] == ["addTodo", "completeTodo", "deleteTodo"]
-    assert len(t["probes"]) == 6 and t["proofRuns"] == []
-    assert t["files"] == ["client/src/pieces/todo.tsx", "server/modules/todo.ts"]
+    assert len(t["probes"]) == 4 and t["proofRuns"] == []
+    assert t["files"] == ["client/src/pieces/todo.ts"]
     assert got["launch_waves"][0][0]["id"] == "1" and got["bootstrapCmd"] == "bun install"
 
 
@@ -50,7 +50,7 @@ def test_depends_on_pieces_becomes_edges(tmp_path):
 
 
 def test_a_malformed_probe_is_refused(tmp_path):
-    text = plan_text().replace('"layer": "store"', '"layer": "db"', 1)
+    text = plan_text().replace('"layer": "ui"', '"layer": "db"', 1)
     res = parse(tmp_path, text)
     assert res.returncode == 2 and "layer must be store, ui or saved" in res.stderr
 
@@ -73,11 +73,11 @@ def test_the_stack_registry():
     assert s.detect(["package.json"]) is False
     assert stacks.stack_for("rails") is None
     try:
-        s.run_probe({}, "/tmp")
+        s.state_of("/tmp")
     except NotImplementedError as exc:
         assert "sub-project 2" in str(exc)
     else:
-        raise AssertionError("run_probe must not be implemented yet")
+        raise AssertionError("state_of must not be implemented yet")
 
 
 def test_plan_parse_alone_in_a_temp_dir_still_parses_a_claims_plan(tmp_path):

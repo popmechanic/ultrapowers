@@ -200,14 +200,20 @@ const planGrammar = (planText) => {
  * ten-task plan `--cpu 6 --memory 8GB` under the caps 6 and 8GB — the ceiling
  * is what a run may ask for, never the size every run gets.
  *
+ * `browsers` is true for a stories-v1 plan: a builder's checker runs Chromium
+ * to prove its probes (state-probe runner, 2026-09-27), and a page costs
+ * 0.7-1 GB on top of the implementer (#1087), so the memory term becomes
+ * `max(6, ceil(2 + 1.25 * W))` GB instead of `2 + W`; `cpu` is unchanged.
+ *
  * `memory` comes back spelled `<int>GB`, the spelling the lobby's `--memory`
  * takes verbatim; `cpu` is a decimal string for the same reason.
  */
-function vmSizeFor (widestWave, cap = FLEET_DEFAULTS) {
+function vmSizeFor (widestWave, cap = FLEET_DEFAULTS, browsers = false) {
   const w = Math.max(0, Math.floor(Number(widestWave) || 0))
   const capCpu = Number(cap?.cpu ?? FLEET_DEFAULTS.cpu)
   const capGb = cap?.memoryGb ?? parseMemoryGb(cap?.memory ?? FLEET_DEFAULTS.memory)
-  const wantGb = 2 + w
+  // a stories-v1 builder runs its checks in Chromium (0.7-1 GB with a page, #1087)
+  const wantGb = browsers ? Math.max(6, Math.ceil(2 + 1.25 * w)) : 2 + w
   return {
     cpu: String(Math.min(capCpu, 2 + Math.ceil(w / 3))),
     memory: `${Math.min(Number(capGb), wantGb)}GB`
@@ -230,7 +236,7 @@ function sizeFromCompile (compiled, { cpuCap, memoryCap, cpu, memory } = {}) {
   const w = Math.max(1, waves.reduce(
     (widest, wave) => Math.max(widest, Array.isArray(wave) ? wave.length : 0), 0
   ))
-  const sized = vmSizeFor(w, { cpu: cpuCap, memory: memoryCap })
+  const sized = vmSizeFor(w, { cpu: cpuCap, memory: memoryCap }, compiled?.payload?.grammar === 'stories-v1')
   return {
     width: w,
     cpu: cpu === undefined ? sized.cpu : cpuCap,
@@ -627,11 +633,10 @@ async function launchBody ({
     throw new Refusal(`launch: cannot read plan ${planPath}: ${error?.message ?? error}`)
   }
   if (planText.trim() === '') throw new Refusal(`launch: plan ${planPath} is empty`)
-  // A stories-v1 plan's proof is state probes, and no fleet runner reads them
-  // yet (story-planning sub-project 2): launched now, every task would settle
-  // green on no facts at all.
-  if (planGrammar(planText) === 'stories-v1') {
-    throw new Refusal(`launch: plan ${planPath} is a stories-v1 plan; the fleet cannot run state probes until the state-probe runner lands (story-planning sub-project 2)`)
+  // A stories-v1 plan's proof is state probes, run by factory/stack/tinyapp/check.ts
+  // (state-probe runner, 2026-09-27); a Numbers probe has no checker yet.
+  if (planGrammar(planText) === 'stories-v1' && /^## Numbers\s*$/m.test(planText)) {
+    throw new Refusal(`launch: plan ${planPath} has a Numbers section; the fleet has no Numbers checker yet (story-planning, after sub-project 2)`)
   }
   let verdictsText = null
   try {
@@ -702,7 +707,7 @@ async function launchBody ({
   //    operator chose this engine or the launcher caught it.
   const engineSource = opts.engine === undefined ? 'main-tip' : 'pinned'
   const engine = opts.engine ?? await defaultEngineSha(exec)
-  const compiler = await fetchCompilerAt({ exec, engine, pluginRoot: PLUGIN_ROOT })
+  const compiler = await fetchCompilerAt({ exec, engine, pluginRoot: PLUGIN_ROOT, stories: planGrammar(planText) === 'stories-v1' })
   if (held !== undefined) held.compilerDir = compiler.dir
 
   // ... and the plan compiles against that same tree, or nothing is launched.

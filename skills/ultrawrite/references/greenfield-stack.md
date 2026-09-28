@@ -99,6 +99,12 @@ works in the same fleet (denoland/celld#210, 2026-09-17). A plan that wants
 facets keeps them behind a flag, and only for verbs that are not sockets. How an
 exam starts, budgets and stops that server is `## The runtime host`, below.
 
+A **stories-v1** plan does not scaffold with the generator: its launch base is
+`skills/ultrawrite/stories/tinyapp-template/` written by `stories/scaffold.py`
+(plain DOM, `bun build`, one `AppStore` Durable Object with the SQLite
+persister). It is still a TinyApp; builders write one screen per piece and
+nothing else (state-probe runner spec, 2026-09-27).
+
 ## State exams
 
 *Deferred since cut three (2026-09-22): no plan can name a `Test:` path, so nothing in this section has a reader until state exams return as probes — owed on map #1248. The text below is the shape for that day, kept as it was.*

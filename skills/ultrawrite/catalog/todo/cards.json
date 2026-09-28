@@ -10,10 +10,10 @@
        "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]},
        "refuses": ["blank text"]},
       {"name": "completeTodo", "description": "Mark this todo as done.",
-       "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]},
+       "inputSchema": {"type": "object", "properties": {"id": {"type": "string", "x-row-of": "todos"}}, "required": ["id"]},
        "refuses": ["a todo that does not exist"]},
       {"name": "deleteTodo", "description": "Remove this todo from the list.",
-       "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]},
+       "inputSchema": {"type": "object", "properties": {"id": {"type": "string", "x-row-of": "todos"}}, "required": ["id"]},
        "refuses": ["a todo that does not exist"]}
     ],
     "main_story": "S2",

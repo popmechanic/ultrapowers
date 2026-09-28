@@ -123,10 +123,11 @@ def violations(text, plan_path, stories_path=None):
         if not srows:
             out.append("story %s has no recorded steps" % s["id"])
         for r in sorted(srows, key=lambda r: r["step"]):
-            if (full, r["step"]) not in probed:
+            if r.get("layer") == "ui" and (full, r["step"]) not in probed:
                 out.append("story %s step %d has no probe" % (s["id"], r["step"]))
     for r in rows:
-        if not r["story"].startswith(plan_id + "/") and (r["story"], r["step"]) not in probed:
+        if (r.get("layer") == "ui" and not r["story"].startswith(plan_id + "/")
+                and (r["story"], r["step"]) not in probed):
             out.append("guard missing: %s.%d is an earlier signed story step with no guard probe"
                        % (r["story"], r["step"]))
     story_ids = {s["id"] for s in parsed["stories"]}

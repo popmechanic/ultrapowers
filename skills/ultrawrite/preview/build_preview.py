@@ -53,11 +53,13 @@ def build(bundle_dir, out_html):
         raise RefusedError(refusals)
     with open(os.path.join(HERE, "template.html"), encoding="utf-8") as fh:
         html = fh.read()
+    see_text = open(os.path.join(HERE, "see.js"), encoding="utf-8").read()
     page = json.dumps(b["page"], indent=1, ensure_ascii=False).replace("</", "<\\/")
     html = (html.replace("__TITLE__", b["page"]["title"])
                 .replace("__PAGE_JSON__", page)
                 .replace("__STORE_MODULE__", module_body(b["store_text"], ["TOOLS", "makeStore"]))
-                .replace("__SKETCH_MODULE__", module_body(b["sketch_text"], ["render"])))
+                .replace("__SKETCH_MODULE__", module_body(b["sketch_text"], ["render"]))
+                .replace("__SEE_MODULE__", module_body(see_text, ["seeOf", "seeOfPiece", "findAll"])))
     with open(out_html, "w", encoding="utf-8") as fh:
         fh.write(html)
 

@@ -1,0 +1,41 @@
+[
+  {
+    "piece": "todo",
+    "catalog": "todo",
+    "purpose": "Remember the things you mean to do until you have done them.",
+    "depends_on": [],
+    "state": {"tables": {"todos": ["text", "completed"]}, "values": []},
+    "actions": [
+      {"name": "addTodo", "description": "Add a todo with this text; it starts not done.",
+       "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]},
+       "refuses": ["blank text"]},
+      {"name": "completeTodo", "description": "Mark this todo as done.",
+       "inputSchema": {"type": "object", "properties": {"id": {"type": "string", "x-row-of": "todos"}}, "required": ["id"]},
+       "refuses": ["a todo that does not exist"]},
+      {"name": "deleteTodo", "description": "Remove this todo from the list, and its tags with it.",
+       "inputSchema": {"type": "object", "properties": {"id": {"type": "string", "x-row-of": "todos"}}, "required": ["id"]},
+       "refuses": ["a todo that does not exist"]}
+    ],
+    "main_story": "S2",
+    "near_miss": "a list where ticking a todo deletes it, so you can never see what you finished",
+    "misfits": ["a long list with no way to clear the finished todos"]
+  },
+  {
+    "piece": "tag",
+    "catalog": "tag",
+    "purpose": "Group todos by a word you choose, so you can see which belong together.",
+    "depends_on": [],
+    "state": {"tables": {"tags": ["todoId", "name"]}, "values": []},
+    "actions": [
+      {"name": "addTag", "description": "Tag this todo with a word.",
+       "inputSchema": {"type": "object", "properties": {"todoId": {"type": "string", "x-row-of": "todos"}, "name": {"type": "string"}}, "required": ["todoId", "name"]},
+       "refuses": ["blank tag", "a todo that does not exist", "the same tag twice on one todo"]},
+      {"name": "removeTag", "description": "Take this tag off its todo.",
+       "inputSchema": {"type": "object", "properties": {"id": {"type": "string", "x-row-of": "tags"}}, "required": ["id"]},
+       "refuses": ["a tag that does not exist"]}
+    ],
+    "main_story": "S2",
+    "near_miss": "a tag you can only set when the todo is made, so you can never regroup a todo",
+    "misfits": ["a tag with a typo cannot be renamed, only removed and added again"]
+  }
+]
