@@ -26,6 +26,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
+import util from 'node:util'
 import { workloadFromPlan } from './plan.mjs'
 import { makeBoard } from './flock_board.mjs'
 import { scopeOf } from './scope.mjs'
@@ -141,7 +142,11 @@ fs.rmSync(WORK, { recursive: true, force: true })
 fs.mkdirSync(WORK, { recursive: true })
 const EV = fs.openSync(path.join(OUT, 'events.jsonl'), 'a')
 const ev = (kind, o = {}) => fs.writeSync(EV, JSON.stringify({ t: now(), kind, ...o, ts: new Date().toISOString() }) + '\n')
-const log = (...a) => console.log(`[${(now() / 1000).toFixed(1).padStart(6)}s]`, ...a)
+const logTail = []   // the last 40 lines log() printed, for a draft's failure.md
+const log = (...a) => {
+  const line = util.format(`[${(now() / 1000).toFixed(1).padStart(6)}s]`, ...a)
+  console.log(line); logTail.push(line); if (logTail.length > 40) logTail.shift()
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 // record-only Jev reading per green story step (state-probe runner spec §7): never blocks
@@ -463,6 +468,7 @@ const snapshots = []
 let bestGreen = -1, sinceBest = 0, lastRise = 0   // lastRise: when bestGreen last rose (the loops' start before any)
 let lastSessionEnd = -1   // when a builder session last ended: a stop needs one since the last rise, so one long session is never cut off
 const edgeLatency = []      // publish -> tested, ms (the propagation delay the debounce covers)
+let lastOutside = []   // the scope gate's list at the last merged read, in either mode (failure.md)
 const amendedSeen = new Set()  // paths already written as a `driver:amendment` row this run
 // The scope rule at the edge, read from the snapshot against BASE_DIR before any fact or check
 // writes build output. Returns the paths outside every task's Files that no builder wrote.
@@ -475,6 +481,7 @@ function scopeAt (m, snap) {
   const { outside, amended } = scopeOf({ changed, files, written })
   for (const p of amended) if (!amendedSeen.has(p)) { amendedSeen.add(p); ev('driver:amendment', { path: p, snap }) }
   if (outside.length) { ev('scope:outside', { snap, paths: outside }); log('scope', snap, 'outside', outside.join(','), SCOPE_MODE) }
+  lastOutside = outside
   return SCOPE_MODE === 'enforce' ? outside : []
 }
 function edge (reason) {
@@ -501,8 +508,12 @@ function edge (reason) {
       const f = path.join(dir, p)
       if (m.exists[p]) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text) } else fs.rmSync(f, { force: true })
     }
-    const perTask = {}
-    for (const t of board.tasks.values()) perTask[t.id] = runFacts(dir, t).map((r) => r.exit)
+    const perTask = {}, red = []   // red: the facts that did not exit 0, kept for red-checks.json
+    for (const t of board.tasks.values()) {
+      const res = runFacts(dir, t)
+      perTask[t.id] = res.map((r) => r.exit)
+      res.forEach((r, i) => { if (r.exit !== 0) red.push({ task: t.id, clause: t.clauses ? t.clauses[i] : undefined, cmd: t.facts[i].join(' '), exit: r.exit, tail: r.tail }) })
+    }
     const chk = W.check ? spawnSync(W.check[0], W.check.slice(1), { cwd: dir, encoding: 'utf8', timeout: 120000, env: RUN_ENV }) : { status: 0, stdout: '', stderr: '' }
     const factsGreen = Object.values(perTask).every((xs) => xs.every((x) => x === 0))
     // ticket 5: every region the edge sees goes through the ledger. The old `!ledger.has(p)`
@@ -511,7 +522,7 @@ function edge (reason) {
     for (const [p, fl] of Object.entries(m.sameAnchor || {})) await sameSpot(p, fl, ['published copies'], null)
     earlyClose(m, snap)
     const blocking = openConflicts()
-    lastEdge = { snap, t: now(), reason, perTask, check: chk.status, checkTail: ((chk.stdout || '') + (chk.stderr || '')).slice(-600), conflicts: m.conflicts, blocking, outside, annotated: m.annotated, green: factsGreen && chk.status === 0 && !blocking.length && !outside.length }
+    lastEdge = { snap, t: now(), reason, perTask, red, check: chk.status, checkTail: ((chk.stdout || '') + (chk.stderr || '')).slice(-600), conflicts: m.conflicts, blocking, outside, annotated: m.annotated, green: factsGreen && chk.status === 0 && !blocking.length && !outside.length }
     snapshots.push({ snap, t: now(), files: m.files, exists: m.exists })
     edgeLatency.push(now() - asked)
     // ticket 5: livelock, record-only. Facts rose on every new snapshot of every recorded run
@@ -519,7 +530,7 @@ function edge (reason) {
     // posts a stall belief and changes nothing (an experiment; rollback: delete this block).
     const g = Object.values(perTask).reduce((a, xs) => a + xs.filter((x) => x === 0).length, 0) + (chk.status === 0 ? 1 : 0)
     if (g > bestGreen) { bestGreen = g; sinceBest = 0; lastRise = now() } else if (++sinceBest === 2 * board.tasks.size) await stall('livelock', { snap, snapshots_without_progress: sinceBest, best: bestGreen })
-    ev('edge', { ...lastEdge, checkTail: undefined, annotated: undefined })
+    ev('edge', { ...lastEdge, checkTail: undefined, annotated: undefined, red: undefined })
     log('edge', snap, lastEdge.green ? 'GREEN' : 'red', JSON.stringify(perTask), 'check', chk.status, m.conflicts.length ? 'conflicts ' + m.conflicts + ' (blocking: ' + (blocking.join(',') || 'none') + ')' : '')
     return lastEdge
   })
@@ -1044,11 +1055,45 @@ fs.writeFileSync(path.join(OUT, 'summary.json'), JSON.stringify(summary, null, 1
 fs.writeFileSync(path.join(OUT, 'snapshots.json'), JSON.stringify(snapshots))
 fs.writeFileSync(path.join(OUT, 'board.json'), JSON.stringify(await board.read(), null, 1))
 fs.writeFileSync(path.join(OUT, 'board-ops.json'), JSON.stringify(board.ops))
+writeCompactRecord()
+writeFailureRecord()
 log('summary', JSON.stringify(summary))
 wp.stdin.end()
 const landed = await land()
 if (kataPending.size) await Promise.race([Promise.all([...kataPending]), new Promise((r) => setTimeout(r, KATA_EXIT_MS).unref())])
 process.exit(landed)
+
+// ── the compact record: what each tested snapshot changed against base, the changed texts once
+// each up to a limit, and the weave's ops with file texts as fingerprints. The 512 KB limit is
+// about ten times the largest changed text measured (54,027 bytes, n=2 runs, 2026-09-28).
+function writeCompactRecord () {
+  const LIMIT = 524288
+  const sha1 = (x) => crypto.createHash('sha1').update(x).digest('hex')
+  const texts = {}
+  let bytes = 0; let truncated = false
+  const rows = snapshots.map((s) => {
+    const changed = []; const deleted = []
+    for (const p of Object.keys(s.files).sort()) {
+      if (!s.exists[p]) continue
+      const text = s.files[p]
+      if (p in BASE_FILES && BASE_FILES[p] === text) continue
+      const h = sha1(text); const n = Buffer.byteLength(text, 'utf8')
+      changed.push({ path: p, sha1: h, bytes: n })
+      if (!(h in texts)) { if (bytes + n <= LIMIT) { texts[h] = text; bytes += n } else truncated = true }
+    }
+    for (const p of Object.keys(BASE_FILES).sort()) if (!s.exists[p]) deleted.push(p)
+    return JSON.stringify({ snap: s.snap, t: s.t, changed, deleted })
+  })
+  fs.writeFileSync(path.join(OUT, 'snapshots.jsonl'), rows.map((r) => r + '\n').join(''))
+  fs.writeFileSync(path.join(OUT, 'snapshot-texts.json'), JSON.stringify({ limit_bytes: LIMIT, bytes, truncated, texts }))
+  const ops = fs.readFileSync(path.join(OUT, 'weave-ops.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => {
+    const o = JSON.parse(l)
+    if (typeof o.content !== 'string') return l
+    const { content, ...rest } = o
+    return JSON.stringify({ ...rest, content_sha1: sha1(content), content_bytes: Buffer.byteLength(content, 'utf8') })
+  })
+  fs.writeFileSync(path.join(OUT, 'weave-ops.digest.jsonl'), ops.map((r) => r + '\n').join(''))
+}
 
 // ── the ending: one commit on the target, and the rows the pull request card reads ──
 // Writes a snapshot's files into the target's working tree (the ones that exist; deletes the
@@ -1090,6 +1135,50 @@ async function land () {
     }
   }
   return 1
+}
+
+// ── what went wrong: red-checks.json on every run, failure.md on a draft ──────
+// red-checks.json holds the last tested snapshot's red facts and the run-wide check when it was
+// red, each with the checker's own result JSON when it wrote one (at most 8 KiB); entries are
+// added in order while the whole stays within 64 KiB, and one that would pass it is left out.
+function writeFailureRecord () {
+  const LIMIT = 65536
+  const rec = { snap: lastEdge ? lastEdge.snap : null, limit_bytes: LIMIT, truncated: false, red: [] }
+  const cands = lastEdge ? [...(lastEdge.red || [])] : []
+  if (lastEdge && W.check && lastEdge.check !== 0) cands.push({ task: 'check', cmd: W.check.join(' '), exit: lastEdge.check, tail: lastEdge.checkTail || '' })
+  let size = Buffer.byteLength(JSON.stringify(rec))
+  for (const c of cands) {
+    const e = { ...c }
+    if (c.clause) {
+      const f = path.join(CHECK_OUT, `${String(c.clause).replaceAll('/', '_')}@edge.json`)
+      try { if (fs.statSync(f).size <= 8192) e.checker = JSON.parse(fs.readFileSync(f, 'utf8')) } catch { /* no checker result */ }
+    }
+    const n = Buffer.byteLength(JSON.stringify(e)) + 1
+    if (size + n > LIMIT) { rec.truncated = true; continue }
+    size += n; rec.red.push(e)
+  }
+  fs.writeFileSync(path.join(OUT, 'red-checks.json'), JSON.stringify(rec, null, 1))
+  if (!outcome || outcome.pr !== 'draft') return
+  const fence = (t) => '```\n' + String(t || '').replace(/```/g, '` ` `').trimEnd() + '\n```'
+  const open = [...ledger.values()].filter((e) => e.open)
+  const outside = lastOutside
+  const md = [
+    `# Flock run ${W.name}: draft`, '',
+    `**Stopped:** ${outcome.why}`, '',
+    `**Last tested snapshot:** ${rec.snap ?? '(none)'}${lastEdge ? (lastEdge.green ? ' (green)' : ' (red)') : ''}`, '',
+    '## Red checks', '',
+    ...(rec.red.length ? rec.red.flatMap((r) => [`### ${r.task}${r.clause ? ` (${r.clause})` : ''}`, '', `Command: \`${r.cmd}\``, '', `Exit: ${r.exit}`, '', fence(r.tail), '']) : ['None.', '']),
+    ...(rec.truncated ? ['(some red checks were left out: see red-checks.json limit)', ''] : []),
+    '## Stalls', '',
+    ...(stalls.length ? stalls.map((x) => `- ${x.kind} at ${(x.t / 1000).toFixed(1)}s: ${JSON.stringify(x.evidence).slice(0, 400)}`) : ['None.']), '',
+    '## Open conflicts', '',
+    ...(open.length ? open.map((e) => `- ${e.path} ${JSON.stringify(e.region)} between ${(e.between || []).join(' and ')}`) : ['None.']), '',
+    '## Changed outside the plan (no builder wrote them)', '',
+    ...(outside.length ? outside.map((p) => `- ${p}`) : ['None.']), '',
+    '## Engine log (last 40 lines)', '',
+    fence(logTail.join('\n')), '',
+  ].join('\n')
+  fs.writeFileSync(path.join(OUT, 'failure.md'), md)
 }
 
 function byOp (ops) {
