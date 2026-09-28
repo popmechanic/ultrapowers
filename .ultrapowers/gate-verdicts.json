@@ -1,0 +1,103 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "c86410ad609771bc9c403fd91de408a00153044ac76f618718a7d31c1523ab63",
+   "verdict": "pass",
+   "reason": "Round 3 (round 2 had read the wrong base, 1d61b762): the ordered two-comment comparison pins M1."
+  },
+  "2": {
+   "hash": "e01bb1e2d9e445daa454f7b8badae17c3a087b835f7f6999d3b38307241a478f",
+   "verdict": "pass",
+   "reason": "The e2e probe pins the belief row and the surfaced comment; the red-check probe pins no failure.md."
+  },
+  "3": {
+   "hash": "23b046d8b8043dae88d848690643778f2d7031866f48279a1ad662a314f3c144",
+   "verdict": "pass",
+   "reason": "The follow probe pins the ! prefix and the unchanged row."
+  },
+  "4": {
+   "hash": "f5b142ab510e130c20c32eb095a564dd2d05734fd68f4b154945573eec424659",
+   "verdict": "pass",
+   "reason": "Negated greps, a grep and a policy assert pin M1-M3."
+  }
+ },
+ "tally": {
+  "base": "1d1cffe4282a2d36c8dd666ad0468343980de09a",
+  "dispatched": 6,
+  "rejected": 1,
+  "rounds": {
+   "1": {
+    "dispatched": 4,
+    "rejected": 1
+   },
+   "2": {
+    "dispatched": 1,
+    "rejected": 0
+   },
+   "3": {
+    "dispatched": 1,
+    "rejected": 0
+   }
+  }
+ },
+ "history": [
+  {
+   "task": "1",
+   "round": 1,
+   "verdict": "fail",
+   "reason": "It carried the whole Claim; the record and --follow halves are siblings'."
+  }
+ ],
+ "authoring": {
+  "minutes": 50,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "What to build first",
+    "options": [
+     "Tag beliefs, surface engine ones",
+     "The read tool first",
+     "Write it up first"
+    ],
+    "recommended": "Tag beliefs, surface engine ones",
+    "picked": "Tag beliefs, surface engine ones",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Author the plan, removing failure.md",
+    "options": [
+     "Yes, author it",
+     "Keep failure.md for now"
+    ],
+    "recommended": "Yes, author it",
+    "picked": "Yes, author it",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Sign",
+     "Fix a line"
+    ],
+    "recommended": "Sign",
+    "picked": "Sign",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
