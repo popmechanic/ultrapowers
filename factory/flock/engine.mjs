@@ -118,6 +118,11 @@ const MAX_REOPEN = 3
 // ~1,150 times over the whole 3.8 h clock, $80.57 of sessions. After MAX_RELEASE give-backs the
 // task parks: it leaves the ready list, a stall is posted, and settling ends the run a draft.
 const MAX_RELEASE = 3
+// no progress (#1334): a run whose best-green count has not risen for this many minutes ends a
+// draft and interrupts every live session, instead of running to its clock. `--stall-minutes`, else
+// the policy cell flock.stall.minutes, else 20; 0 is off. Readings: over 7 runs (247, 251-255,
+// radio-station run-1) the longest wait for a rise was 2.0 min; run-252 ran 229.7 min past its last.
+const STALL_MS = Number(arg('stall-minutes', POLICY_FLOCK?.stall?.minutes ?? 20)) * 60000
 const NAMES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].slice(0, N)   // up to 8; [] when elastic
 const OUT = RUN_DIR
 const WORK = path.join(RUN_DIR, 'work')
@@ -438,10 +443,11 @@ function earlyClose (m, snap) {
 }
 let lastChange = 0          // the last time the merged code's hash, a session, or the ledger changed
 const live = new Set()      // agents with a session open right now
+const stops = new Map()     // agent -> interrupt() of its live session (the no-progress stop calls each)
 const stalls = []           // stall beliefs the host posted (attached to a draft PR)
 async function stall (kind, evidence) {
   const b = await board.post({ by: 'host', claim: `stall: ${kind} ${JSON.stringify(evidence).slice(0, 300)}`, confidence: 1 })
-  stalls.push({ kind, evidence, t: now() }); ev('stall', { kind, evidence }); log('STALL', kind, JSON.stringify(evidence).slice(0, 200))
+  stalls.push({ kind, evidence, t: now() }); ev('stall:' + kind, { evidence }); log('STALL', kind, JSON.stringify(evidence).slice(0, 200))
   return b
 }
 
@@ -449,7 +455,7 @@ async function stall (kind, evidence) {
 let edgeChain = Promise.resolve()
 let lastEdge = null
 const snapshots = []
-let bestGreen = -1, sinceBest = 0
+let bestGreen = -1, sinceBest = 0, lastRise = 0   // lastRise: when bestGreen last rose (run start before any)
 const edgeLatency = []      // publish -> tested, ms (the propagation delay the debounce covers)
 const amendedSeen = new Set()  // paths already written as a `driver:amendment` row this run
 // The scope rule at the edge, read from the snapshot against BASE_DIR before any fact or check
@@ -506,7 +512,7 @@ function edge (reason) {
     // (0 regressions over 53 edges, n=15 runs), so K snapshots with no new best is unseen: it
     // posts a stall belief and changes nothing (an experiment; rollback: delete this block).
     const g = Object.values(perTask).reduce((a, xs) => a + xs.filter((x) => x === 0).length, 0) + (chk.status === 0 ? 1 : 0)
-    if (g > bestGreen) { bestGreen = g; sinceBest = 0 } else if (++sinceBest === 2 * board.tasks.size) await stall('livelock', { snap, snapshots_without_progress: sinceBest, best: bestGreen })
+    if (g > bestGreen) { bestGreen = g; sinceBest = 0; lastRise = now() } else if (++sinceBest === 2 * board.tasks.size) await stall('livelock', { snap, snapshots_without_progress: sinceBest, best: bestGreen })
     ev('edge', { ...lastEdge, checkTail: undefined, annotated: undefined })
     log('edge', snap, lastEdge.green ? 'GREEN' : 'red', JSON.stringify(perTask), 'check', chk.status, m.conflicts.length ? 'conflicts ' + m.conflicts + ' (blocking: ' + (blocking.join(',') || 'none') + ')' : '')
     return lastEdge
@@ -597,6 +603,20 @@ async function scriptedSession (agent, task) {
   ev('session:start', { agent, task: task.id, builder: 'scripted' })
   log(agent, 'claims task', task.id, '(scripted)')
   live.add(agent)
+  // test seam (#1334): `@hold_ms` holds the session that long before it writes, standing in for a
+  // builder that makes no progress; the no-progress stop cuts it short, and it ends writing nothing.
+  if (SCRIPT['@hold_ms']) {
+    let wake
+    const held = new Promise((r) => { wake = r; setTimeout(r, SCRIPT['@hold_ms']) })
+    stops.set(agent, () => wake())
+    await held
+    stops.delete(agent)
+    if (outcome) {
+      usage.push({ agent, task: task.id, turns: 0, subtype: 'scripted', cost_usd: 0 })
+      ev('session:end', { agent, task: task.id, released: 'run ended', done: false })
+      live.delete(agent); return
+    }
+  }
   if (files) {
     for (const [p, text] of Object.entries(files)) {
       const f = path.join(cwd, p)
@@ -835,8 +855,9 @@ async function session (agent, task) {
   let result = null
   live.add(agent)
   const killer =setTimeout(() => { q.interrupt().catch(() => {}) }, Math.max(1000, CLOCK_MS - now()))
+  stops.set(agent, () => q.interrupt().catch(() => {}))
   try { for await (const m of q) if (m.type === 'result') result = m } catch (e) { ev('session:error', { agent, error: String(e).slice(0, 300) }) }
-  clearTimeout(killer)
+  clearTimeout(killer); stops.delete(agent)
   if (!st.closed) { await syncFromDisk(agent); await publishCopy(agent); edge('session end ' + agent) }
   usage.push({ agent, task: task.id, turns: result?.num_turns, usage: result?.usage, subtype: result?.subtype, cost_usd: result?.total_cost_usd || 0, wall_ms: now() - (usage.startT = usage.startT || 0) })
   ev('session:end', { agent, task: task.id, released: st.released, done: st.done, redRuns: st.redRuns, turns: result?.num_turns, usage: result?.usage })
@@ -875,6 +896,13 @@ function terminal (pr, why, r) {
 async function settle () {
   while (!settled && !outcome && now() < CLOCK_MS) {
     await sleep(SETTLE === 'quiet' ? 3000 : 500)
+    if (STALL_MS > 0 && now() - lastRise > STALL_MS) {
+      // no progress (#1334): the best-green count has not risen within the limit
+      await stall('no-progress', { since_rise_ms: now() - lastRise, limit_ms: STALL_MS, best: bestGreen, live: [...live] })
+      terminal('draft', `no progress: the green count has not risen for ${Math.round((now() - lastRise) / 1000)} s`, lastEdge)
+      for (const stop of stops.values()) stop()
+      break
+    }
     const all = [...board.tasks.values()]
     if (SETTLE === 'quiet') { if (!board.allDone() || now() - lastPublish < QUIET_MS) continue } else {
       // rule S1: nothing can change the code any more. (`quiet`, the rollback, waits a fixed
