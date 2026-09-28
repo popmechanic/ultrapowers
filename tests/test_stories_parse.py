@@ -5,15 +5,12 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "skills/ultrawrite/stories"))
 sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
-import bundle  # noqa: E402
-import compile as comp  # noqa: E402
 import stacks  # noqa: E402
 import plan_parse  # noqa: E402
 
 PARSER = ROOT / "skills/ultrapowers/scripts/plan_parse.py"
-TODO = ROOT / "skills/ultrawrite/catalog/todo"
+FIXTURE = ROOT / "evals/fixtures/stories/todo/.ultrapowers/plan.md"
 
 
 def parse(tmp_path, text):
@@ -23,7 +20,7 @@ def parse(tmp_path, text):
 
 
 def plan_text():
-    return comp.compile_plan(bundle.load_bundle(TODO), "p1", [])
+    return FIXTURE.read_text(encoding="utf-8")
 
 
 def test_plan_parse_dispatches_a_stories_plan(tmp_path):
@@ -50,7 +47,7 @@ def test_depends_on_pieces_becomes_edges(tmp_path):
 
 
 def test_a_malformed_probe_is_refused(tmp_path):
-    text = plan_text().replace('"layer": "ui"', '"layer": "db"', 1)
+    text = plan_text().replace('"layer":"ui"', '"layer":"db"', 1)
     res = parse(tmp_path, text)
     assert res.returncode == 2 and "layer must be store, ui or saved" in res.stderr
 
