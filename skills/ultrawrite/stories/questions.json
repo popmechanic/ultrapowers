@@ -34,5 +34,9 @@
     "same_need": {"type": "noul",
       "instructions": "Do `a.purpose` and `b.purpose` describe the same need?",
       "criteria": {"true": "The same need, twice", "false": "Different needs"}}
-  }
+  },
+  "surprise": {"assumption_surprises": {"type": "noul", "instructions": {"question": "Would the person who wrote `ask` be surprised to learn that the app `assumption`?", "context": "`ask` is everything the person wrote; `assumption` is something the author assumed the app does, about what it does, who uses it or how it looks."}, "criteria": {"true": "They would be surprised; it goes beyond or against what they asked", "false": "It is what they would expect from what they asked"}}},
+  "map": {"essential": {"type": "noul", "instructions": {"question": "Is `purpose` part of the core of what `summary` describes, rather than an extra?", "context": "`summary` says what the product is, why it exists and how it is used. `purpose` is one thing the product could do; `audience` are the people who use it."}, "criteria": {"true": "Core", "false": "An extra"}}, "serves_summary": {"type": "noul", "instructions": {"question": "Does `purpose` serve what `summary` says the product is for?", "context": "`summary` says what the product is, why it exists and how it is used."}, "criteria": {"true": "It serves that purpose", "false": "It serves something else"}}},
+  "decompose": {"stands_alone": {"type": "noul", "instructions": {"question": "Could `audience` use `plan` on its own and judge whether it works?", "context": "`plan` is one part of the product, built before the rest: its title and the things it lets people do."}, "criteria": {"true": "Usable and judgeable on its own", "false": "Nothing to use or judge until other parts exist"}}},
+  "link": {"link_expected": {"type": "noul", "instructions": {"question": "Would `audience` expect this to happen: `link`?", "context": "`link` is a rule the app follows when something is deleted or changed."}, "criteria": {"true": "They would expect it", "false": "It would surprise or upset them"}}}
 }

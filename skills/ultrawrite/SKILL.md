@@ -74,54 +74,67 @@ well as tickets, which is why scraping it was rejected.
 
 ## Story planning — TinyApp targets (`stories-v1`)
 
-A TinyApp plan is not written; it is compiled from a bundle the author drafts and
-the operator signs in one question. Spec:
-`docs/superpowers/specs/2026-09-28-coarse-input-planning-design.md`. There is no
+A TinyApp plan is not written; it is compiled from a bundle the author drafts
+after enriching the ask with the operator, who then signs it in one question. Specs:
+`docs/superpowers/specs/2026-09-28-coarse-input-planning-design.md` and
+`docs/superpowers/specs/2026-09-28-enrich-the-ask-design.md`. There is no
 preview and no UI to build: the operator agrees to sentences before the run and
 judges the real app after it.
 
 1. **Read the notebook first:** `bun skills/ultrawrite/stories/notebook.ts show`.
    Use its words; avoid its failed ones.
 2. **Take the ask as it comes**, in any form. Save it verbatim to `<bundle>/ask.txt`.
-3. **Draft the bundle** in the scratchpad, starting from
-   `skills/ultrawrite/catalog/<piece>/` wherever a catalog piece fits:
-   - `page.json`: title; kind (`behaviour`, `preserve`, `look`); three summary
-     sentences; links as sentences ("deleting a todo clears its tags", run inside
-     the trigger's `store.transaction`); numbers; and stories, each with its
-     `steps`. A step is `{tool, args, layer}`, where layer is `store`, `ui` or
-     `saved`. A `ui` step adds `ui` (click/type/key by role and name) and `see`,
-     and a step whose tool must refuse adds `"refused": true` (a `ui` step, and the story's last).
-     Every story has at least one `ui` or `saved` step. The accessible names you
-     choose are the builder's contract.
-   - `cards.json` holds purpose, state, actions with what each refuses, main
-     story, near-miss and misfits.
+3. **Enrich the ask — every plan, never skipped:** follow
+   `skills/ultrawrite/references/enrich.md` (intent, understanding, the whole
+   product's map, the build order) into `<bundle>/product.json`. Draft no story
+   until the operator has confirmed which plan comes first. A small, clear ask
+   passes through quickly; it still gets the understanding and a one-line map.
+4. **Draft the bundle for that plan**, starting from `skills/ultrawrite/catalog/<piece>/`
+   wherever one fits:
+   - `page.json`: its title, kind, three summary sentences, `subproject`, links as
+     sentences (run inside the trigger's `store.transaction`), numbers, and stories,
+     each with its `steps`. A step is `{tool, args, layer}` (`store`, `ui` or
+     `saved`); a `ui` step adds `ui` (click/type/key by role and name) and `see`.
+     The accessible names you choose are the builder's contract.
+   - `cards.json`, each card with its `concept`.
    - `store.js` exports `TOOLS` and `makeStore`.
-4. **Run the checks before they see anything:**
-   `bun skills/ultrawrite/stories/jev_checks.ts <bundle> --ask-file <bundle>/ask.txt`.
+5. **Write the stories the coverage rule requires**, not ones you invent:
+   - every card's main story
+   - one story per refusal, ending in a `ui` step with `"refused": "<the refusal sentence>"`
+   - one story per link
+
+   The only alternative to a refusal story is a waiver
+   `{piece, action, refuses, arg, "reason": "unreachable-from-screen"}`, where `arg`
+   is a row id the screen can't invent. The operator never sees waivers; they
+   appear on the PR card.
+6. **Run the checks before they see anything:**
+   `bun skills/ultrawrite/stories/jev_checks.ts <bundle>`.
    - Fix every code refusal.
-   - A purpose, near-miss or redundancy flag means re-cut the pieces.
-   - An ambiguity flag you can settle from the catalog or the ask is closed and
-     noted in the plan's `authoring` record.
-5. **Touch 1: one AskUserQuestion call.**
-   - The first question is the draft: the one-line summary, the stories as
-     numbered sentences, and the links as sentences. Its options are
-     *Sign (Recommended)*, *Fix a line* and *Please explain*.
-   - Up to three more questions are the highest-scored open flags, each a
-     concrete choice with your pick tagged (Recommended).
-   - Nothing else is asked; filing, plumbing, names and store shape are yours.
-   - A fixed line is the new sentence. Re-ask only if a probe changed.
-6. **Make the target app:**
+   - Act on every `JEV flag` yourself.
+   - `DOUBT:` lines (at most three, highest first) go into the sign question.
+7. **Touch 1, sign:** render `product.md`
+   (`bun skills/ultrawrite/stories/product.ts render <bundle>/product.json --bundle <bundle> --out <bundle>/product.md`)
+   and ask one AskUserQuestion call:
+   - The first question is this plan's stories as numbered sentences, with the
+     product's first line and the build order. Its options are *Sign (Recommended)*,
+     *Fix a line* and *Please explain*.
+   - Up to three more questions come from the `DOUBT:` lines, each a concrete
+     product choice.
+
+   A fixed line is the new sentence. Re-ask only if a check changed.
+8. **Make the target app:**
    1. `bun skills/ultrawrite/stories/scaffold.ts <bundle> <checkout>`
    2. `bun install` in the checkout
    3. Compile: `bun skills/ultrawrite/stories/compile.ts <bundle> --app <checkout>
-      --plan-id <id> --date <YYYY-MM-DD> --out <checkout>/.ultrapowers/plan.md`
+      --plan-id <id> --date <YYYY-MM-DD> --out <checkout>/.ultrapowers/plan.md`.
+      Compile also writes `stories/product.json` and `.ultrapowers/product.md`.
    4. `python3 skills/ultrapowers/scripts/plan_check.py --base <sha>
       <checkout>/.ultrapowers/plan.md` to `PLAN OK`
-7. **Touch 2 is the real app at the PR smoke.** Anything wrong is one line in chat
-   and becomes the next ask, for a small change plan; the older stories come
-   forward as guards on their own.
-8. **Write the notebook:** one `add` line per *Please explain* or fixed word, and
-   `notebook.ts log <plan-id> --rounds … --explains … --fixes …`.
+9. **Touch 2 is the real app at the PR smoke.** Anything wrong is one line in chat
+   and becomes the next ask, which starts at `enrich.md`'s "A later plan for the
+   same product".
+10. **Write the notebook:** one `add` line per *Please explain* or fixed word, and
+    `notebook.ts log <plan-id> --rounds … --explains … --fixes …`.
 
 ## Task shape — pinned to what the parser actually reads
 

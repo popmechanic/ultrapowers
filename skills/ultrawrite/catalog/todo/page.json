@@ -7,6 +7,7 @@
     "You add a thing, tick it when it is done, and delete it when it no longer matters."
   ],
   "store": "client/src/store.js",
+  "subproject": "sp1",
   "stories": [
     {"id": "S1", "sentence": "You type \"buy milk\" and press Add; \"buy milk\" appears in the list, not ticked.",
      "steps": [
@@ -23,7 +24,7 @@
                 {"role": "checkbox", "name": "buy milk", "count": 1}, {"role": "textbox", "name": "New todo", "count": 1}]}]},
     {"id": "S3", "sentence": "You press Add with nothing typed; nothing is added.",
      "steps": [
-       {"tool": "addTodo", "args": {"text": ""}, "layer": "ui", "refused": true,
+       {"tool": "addTodo", "args": {"text": ""}, "layer": "ui", "refused": "blank text",
         "ui": [{"click": {"role": "button", "name": "Add"}}],
         "see": [{"role": "button", "name": "Add", "count": 1}, {"role": "textbox", "name": "New todo", "count": 1}]}]},
     {"id": "S4", "sentence": "You delete \"buy milk\"; it is gone from the list.",
@@ -34,5 +35,9 @@
         "see": [{"role": "button", "name": "Add", "count": 1}, {"role": "textbox", "name": "New todo", "count": 1}]}]}
   ],
   "links": [],
-  "numbers": []
+  "numbers": [],
+  "waivers": [
+    {"piece": "todo", "action": "completeTodo", "refuses": "a todo that does not exist", "arg": "id", "reason": "unreachable-from-screen"},
+    {"piece": "todo", "action": "deleteTodo", "refuses": "a todo that does not exist", "arg": "id", "reason": "unreachable-from-screen"}
+  ]
 }

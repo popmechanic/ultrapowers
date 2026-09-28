@@ -1,6 +1,6 @@
 [
   {
-    "piece": "todo",
+    "piece": "todo", "concept": "todo",
     "catalog": "todo",
     "purpose": "Remember the things you mean to do until you have done them.",
     "depends_on": [],
@@ -21,7 +21,7 @@
     "misfits": ["a long list with no way to clear the finished todos"]
   },
   {
-    "piece": "tag",
+    "piece": "tag", "concept": "tag",
     "catalog": "tag",
     "purpose": "Group todos by a word you choose, so you can see which belong together.",
     "depends_on": [],

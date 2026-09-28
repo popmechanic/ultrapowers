@@ -1,6 +1,7 @@
 // The code checks a bundle meets before compile. A refusal stops compile; a
 // fact is printed for the author to act on and stops nothing.
 import {KINDS, type Bundle} from './bundle';
+import {checkProduct} from './product';
 
 const GESTURES = new Set(['click', 'type', 'key']);
 const isGesture = (g: unknown) =>
@@ -72,11 +73,50 @@ export function runChecks(b: Bundle): {refusals: string[]; facts: string[]} {
     }
     for (const a of c.actions) {
       for (const r of a.refuses ?? []) {
-        if (!stories.some((s) => (s.steps ?? []).some((st) => st.tool === a.name && st.refused))) {
-          facts.push(`CODE fact: piece ${c.piece}: ${a.name} refuses "${r}" but no step shows it`);
+        const shown = stories.some((s) => (s.steps ?? []).some((st) => st.tool === a.name && st.refused === r));
+        const waiver = (page.waivers ?? []).find((w) => w.action === a.name && w.refuses === r);
+        if (shown) continue;
+        if (!waiver) {
+          refusals.push(`piece ${c.piece}: ${a.name} refuses "${r}" but no story shows it; add a story ending in a step with "refused": "${r}", or a waiver if it cannot happen from the screen`);
+          continue;
+        }
+        const prop = (a.inputSchema as {properties?: Record<string, Record<string, unknown>>})?.properties?.[waiver.arg];
+        if (waiver.reason !== 'unreachable-from-screen') {
+          refusals.push(`waiver ${a.name} "${r}": reason must be unreachable-from-screen`);
+        } else if (!prop || typeof prop['x-row-of'] !== 'string') {
+          refusals.push(`waiver ${a.name} "${r}": ${waiver.arg} is not a row id, so the screen can pass it; show it with a story instead`);
         }
       }
     }
+  }
+  const actionsByName = new Map(cards.flatMap((c) => c.actions.map((a) => [a.name, a] as const)));
+  for (const w of page.waivers ?? []) {
+    const a = actionsByName.get(w.action);
+    if (!a || !(a.refuses ?? []).includes(w.refuses)) {
+      refusals.push(`waiver ${w.action} "${w.refuses}": no action refuses that`);
+    }
+  }
+  const productErrs = b.product ? checkProduct(b.product) : [];
+  for (const e of productErrs) refusals.push(`product.json: ${e}`);
+  if (b.product && page.subproject && !productErrs.length) {
+    const sp = b.product.subprojects.find((s) => s.id === page.subproject);
+    if (!sp) {
+      refusals.push(`page: subproject ${page.subproject} is not in product.json`);
+    } else {
+      for (const c of cards) {
+        if (!c.concept || !sp.concepts.includes(c.concept)) {
+          refusals.push(`piece ${c.piece}: its concept ${c.concept ?? '(none)'} is not one this plan builds`);
+        }
+      }
+      // A change to a built plan carries cards only for what it changes.
+      if (sp.status !== 'built') {
+        for (const id of sp.concepts) {
+          if (!cards.some((c) => c.concept === id)) refusals.push(`concept ${id}: this plan builds it, but no card has it`);
+        }
+      }
+    }
+  } else if (b.product && !page.subproject) {
+    refusals.push('page: product.json is present, so page.json must name its subproject');
   }
   return {refusals, facts};
 }

@@ -29,7 +29,8 @@ python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers      # v
 python3 skills/ultrapowers/scripts/plan_parse.py <plan.md>                   # what the sandbox reads: tasks, edges, waves, checks
 python3 skills/ultrapowers/scripts/plan_check.py --base <sha> <plan.md>      # the laptop's check: records, and the plan against its base
 bun skills/ultrawrite/stories/compile.ts <bundle> --app <dir> --plan-id <id> --date <YYYY-MM-DD> --out <plan.md>   # a bundle → a stories-v1 plan (the app needs bun install first)
-bun skills/ultrawrite/stories/jev_checks.ts <bundle> [--ask-file <ask.txt>]    # code checks, then Jev's, before the operator sees a draft
+bun skills/ultrawrite/stories/jev_checks.ts <bundle> [--ask-file <ask.txt>]    # code checks, then Jev's; --stage understanding|map|decompose reads product.json
+bun skills/ultrawrite/stories/product.ts check|render|record <product.json> …   # the product record: its shape, its page in the operator's words, the operator's picks
 bun factory/stack/tinyapp/check.ts --plan <plan.md> --clause S1.1 --copy <app>   # one story step against one copy (exit 0 pass, 1 finding, 2 could not run)
 python3 evals/readings/checker_kit.py                                        # score the checker against a good todo app and broken copies (run when factory/stack/tinyapp/ changes)
 node fleet/doctor.mjs --json                                                 # which fleet prerequisite is missing
@@ -112,6 +113,11 @@ the engine's exit code is the merge decision.
 - **Author plans concurrently from the issues:** `skills/ultrawrite/SKILL.md` §Authoring a
   queue — partition by files, one author per bundle, the issue's sentence as the Claim, two
   operator touches per plan, launches serial.
+- **Enrich before drafting (2026-09-28).** Every TinyApp plan runs ultrawrite's own
+  enrichment (`skills/ultrawrite/references/enrich.md`): intent, understanding, the
+  whole product's map and the build order, into `product.json`, before any story.
+  superpowers is never called for it. The operator is asked only what the app does,
+  who uses it and how it looks.
 - **No local scheduled process, ever** (`skills/ultrapowers/SKILL.md` §Client step 5): the
   launcher reaps by hand after a sleep.
 - **Every choice is an AskUserQuestion:** 2–3 concrete options with consequences and a
