@@ -17,7 +17,7 @@ export type Assumption = {text: string; about: 'product' | 'technical'; state: '
 export type Concept = {id: string; purpose: string; part: string; status: 'keep' | 'defer' | 'cut'; relies_on: string[]};
 export type Subproject = {
   id: string; title: string; reason: string; concepts: string[]; depends_on: string[];
-  status: 'next' | 'planned' | 'built'; plan?: string;
+  status: 'next' | 'planned' | 'built'; plan?: string; history?: string[];
 };
 export type Reading = {
   stage: string; question: string; subject: string; noul: number | null; flagged: boolean;
@@ -36,6 +36,8 @@ const TOP = ['version', 'intent', 'understanding', 'concepts', 'subprojects', 'r
 const isStr = (v: unknown) => typeof v === 'string' && v.trim() !== '';
 const strs = (v: unknown) => Array.isArray(v) && v.every(isStr);
 const extra = (o: object, keys: string[]) => Object.keys(o).filter((k) => !keys.includes(k));
+const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []);
+const isObj = (v: unknown) => !!v && typeof v === 'object' && !Array.isArray(v);
 
 function cycle(ids: string[], edges: (id: string) => string[]): string | null {
   const state = new Map<string, number>();
@@ -89,7 +91,10 @@ export function checkProduct(p: unknown): string[] {
     if (!['author', 'operator'].includes(a.by)) errs.push(`${at}: by must be author or operator`);
   }
 
-  const concepts: any[] = Array.isArray(o.concepts) ? o.concepts : [];
+  const concepts: any[] = (Array.isArray(o.concepts) ? o.concepts : []).filter((c: unknown, n: number) => {
+    if (!isObj(c)) errs.push(`concept ${n + 1}: must be an object`);
+    return isObj(c);
+  });
   if (!Array.isArray(o.concepts)) errs.push('product: concepts must be a list');
   const cids = new Set<string>();
   for (const c of concepts) {
@@ -103,18 +108,21 @@ export function checkProduct(p: unknown): string[] {
     if (!['keep', 'defer', 'cut'].includes(c?.status)) errs.push(`${at}: status must be keep, defer or cut`);
     if (!strs(c?.relies_on ?? null)) errs.push(`${at}: relies_on must be a list of concept ids`);
   }
-  for (const c of concepts) for (const r of c?.relies_on ?? []) if (!cids.has(r)) errs.push(`concept ${c.id}: relies on ${r}, which is no concept`);
+  for (const c of concepts) for (const r of list(c.relies_on)) if (!cids.has(r)) errs.push(`concept ${c.id}: relies on ${r}, which is no concept`);
   const byId = new Map(concepts.map((c) => [c.id, c]));
-  const cc = cycle([...cids], (id) => byId.get(id)?.relies_on ?? []);
+  const cc = cycle([...cids], (id) => list(byId.get(id)?.relies_on));
   if (cc) errs.push(`concepts rely on each other in a circle: ${cc}`);
 
-  const subs: any[] = Array.isArray(o.subprojects) ? o.subprojects : [];
+  const subs: any[] = (Array.isArray(o.subprojects) ? o.subprojects : []).filter((x: unknown, n: number) => {
+    if (!isObj(x)) errs.push(`plan ${n + 1}: must be an object`);
+    return isObj(x);
+  });
   if (!Array.isArray(o.subprojects)) errs.push('product: subprojects must be a list');
   const sids = new Set<string>();
   const home = new Map<string, string[]>();
   for (const s of subs) {
     const at = `plan ${s?.id ?? '?'}`;
-    for (const k of extra(s ?? {}, ['id', 'title', 'reason', 'concepts', 'depends_on', 'status', 'plan'])) errs.push(`${at}: unknown field ${k}`);
+    for (const k of extra(s ?? {}, ['id', 'title', 'reason', 'concepts', 'depends_on', 'status', 'plan', 'history'])) errs.push(`${at}: unknown field ${k}`);
     if (!isStr(s?.id)) errs.push('plan: every plan needs an id');
     else if (sids.has(s.id)) errs.push(`${at}: the id is used twice`);
     else sids.add(s.id);
@@ -124,15 +132,16 @@ export function checkProduct(p: unknown): string[] {
     if (!strs(s?.depends_on ?? null)) errs.push(`${at}: depends_on must be a list of plan ids`);
     if (!['next', 'planned', 'built'].includes(s?.status)) errs.push(`${at}: status must be next, planned or built`);
     if (s?.status === 'built' && !isStr(s?.plan)) errs.push(`${at}: a built plan names its plan id`);
-    for (const c of s?.concepts ?? []) {
+    if (s?.history !== undefined && !strs(s.history)) errs.push(`${at}: history must be a list of plan ids`);
+    for (const c of list(s?.concepts)) {
       if (!cids.has(c)) errs.push(`${at}: builds ${c}, which is no concept`);
       else if (byId.get(c).status !== 'keep') errs.push(`${at}: builds ${c}, which is not kept for the first version`);
       home.set(c, [...(home.get(c) ?? []), s.id]);
     }
   }
-  for (const s of subs) for (const d of s?.depends_on ?? []) if (!sids.has(d)) errs.push(`plan ${s.id}: depends on ${d}, which is no plan`);
+  for (const s of subs) for (const d of list(s.depends_on)) if (!sids.has(d)) errs.push(`plan ${s.id}: depends on ${d}, which is no plan`);
   const sById = new Map(subs.map((s) => [s.id, s]));
-  const sc = cycle([...sids], (id) => sById.get(id)?.depends_on ?? []);
+  const sc = cycle([...sids], (id) => list(sById.get(id)?.depends_on));
   if (sc) errs.push(`plans depend on each other in a circle: ${sc}`);
   for (const c of concepts) {
     if (c?.status !== 'keep') continue;
@@ -247,4 +256,12 @@ function main(argv: string[]): number {
   return 0;
 }
 
-if (import.meta.main) process.exit(main(process.argv.slice(2)));
+if (import.meta.main) {
+  let code = 2;
+  try {
+    code = main(process.argv.slice(2));
+  } catch (e) {
+    console.log(`product: ${(e as Error).message}`);
+  }
+  process.exit(code);
+}

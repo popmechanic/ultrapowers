@@ -67,7 +67,7 @@ export function probesOf(b: Bundle, mod: StoreModule): Derived[] {
       if (ran === Boolean(st.refused)) {
         throw new Error(st.refused
           ? `${where}: ${st.tool} was to refuse ${json(args)}, but it ran`
-          : `${where}: ${st.tool} refused ${json(args)}; fix the step, or mark it "refused": true`);
+          : `${where}: ${st.tool} refused ${json(args)}; fix the step, or end it with "refused": "<the refusal sentence>"`);
       }
       const after = read();
       if (st.layer !== 'store') {
@@ -82,7 +82,7 @@ export function probesOf(b: Bundle, mod: StoreModule): Derived[] {
           judge: null,
           holds_before: Boolean(st.refused),
         };
-        if (hollow(probe, before)) throw new Error(`${where}: hollow, the step changes nothing; mark it "refused": true if it must refuse`);
+        if (hollow(probe, before)) throw new Error(`${where}: hollow, the step changes nothing; end it with "refused": "<the refusal sentence>" if it must refuse`);
         out.push({story: s.id, step: i + 1, piece: owner.get(st.tool)!, probe});
       }
       before = after;
@@ -189,7 +189,9 @@ async function main(): Promise<number> {
         s.status = 'built';
         s.plan = before.plan;
       }
+      if (before?.history) s.history = before.history;
       if (s.id === b.page.subproject) {
+        if (s.plan && s.plan !== planId) s.history = [...(s.history ?? []), s.plan];
         s.status = 'built';
         s.plan = planId;
       }

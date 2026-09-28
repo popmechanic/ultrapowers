@@ -18,7 +18,13 @@ with (Recommended) and *Please explain*, and opens by naming what it touches
 
 If the target app has `stories/product.json`, copy it into the bundle and start at
 stage 4: the map and the understanding are already signed. Add to the map only
-what the new ask brings (stage 3 for those concepts alone).
+what the new ask brings (stage 3 for those concepts alone). Pass the new ask with
+`--ask-file` to the bundle stage; Jev reads its sentences because they are new.
+
+**A change to something already built** (touch 2 said "delete should ask first"):
+name the built plan that owns it as `page.json`'s `subproject`, and carry cards
+only for the concepts the change touches. Compile keeps the plan's earlier plan
+ids in its `history`.
 
 ## 1. Intent
 
@@ -53,8 +59,12 @@ such as "who may edit a show page" is listed, in those words. Run:
     bun skills/ultrawrite/stories/jev_checks.ts <bundle> --stage map
 
 Split any concept flagged as two needs; merge any pair flagged as one need. Then
-ask one AskUserQuestion call with one multi-select per heading: which belong in the
-**First version**, with Jev's `recommend` lines setting (Recommended). Unticked
+ask which belong in the **First version**: one multi-select question per heading,
+at most three things per question (the fourth option is *Please explain*), at most
+four questions per call, and as many calls as the map needs, headings with the
+most First-version recommendations first. Jev's `recommend` lines set
+(Recommended). A heading with more than three things is split into two questions
+("Back office, 1 of 2"). Unticked
 ones become **Later** unless flagged "may not serve what the product is for", which
 you offer as **Not doing**. Record the answer as `status` (keep / defer / cut) and
 run `bun skills/ultrawrite/stories/product.ts record <bundle>/product.json`.

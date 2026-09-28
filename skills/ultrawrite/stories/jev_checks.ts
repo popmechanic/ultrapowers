@@ -71,12 +71,13 @@ async function understanding(p: Product, ask: Ask, out: Out) {
   const one = reader(ask, out, p, 'understanding');
   for (const s of sentences(p.understanding.ask)) {
     const v = (await one({ask: p.understanding.ask, sentence: s}, Q.ambiguity, `ambiguity of "${s}"`, s))('two_apps', (x) => x >= POLICY.two_apps);
-    if (v !== null) out.doubts.push(`DOUBT: "${s}" can mean two different apps; ask which one, with both readings side by side (${f2(v)})`);
+    if (v !== null) out.doubts.push(`DOUBT: "${s}" can mean two different apps; ask which one, with both readings side by side`);
   }
-  for (const a of p.understanding.assumed.filter((x) => x.about === 'product')) {
+  // Only what the author decided alone; a choice the operator already made is never re-asked.
+  for (const a of p.understanding.assumed.filter((x) => x.about === 'product' && x.by === 'author')) {
     const v = (await one({ask: p.understanding.ask, assumption: a.text}, Q.surprise, `assumption "${a.text}"`, a.text))(
       'assumption_surprises', (x) => x >= POLICY.assumption_surprises);
-    if (v !== null) out.doubts.push(`DOUBT: ask whether the app should: ${a.text} (${f2(v)})`);
+    if (v !== null) out.doubts.push(`DOUBT: ask whether the app should: ${a.text}`);
   }
 }
 
@@ -86,7 +87,7 @@ async function map(p: Product, ask: Ask, out: Out) {
   const summary = p.intent.summary.join(' ');
   const audience = p.intent.audience.join(', ');
   for (const c of p.concepts) {
-    const get = await one({summary, audience, purpose: c.purpose},
+    const get = await one({summary, audience, purpose: c.purpose, piece: {name: c.id, purpose: c.purpose}},
       {essential: Q.map.essential, serves_summary: Q.map.serves_summary, one_need: Q.coherence.one_need}, `concept ${c.id}`, c.id);
     const low = get('essential', (x) => x < POLICY.essential_below);
     const read = p.readings[p.readings.length - 1].noul;
@@ -124,10 +125,11 @@ async function decompose(p: Product, ask: Ask, out: Out) {
 async function bundleStage(b: Bundle, ask: Ask, out: Out, askText?: string) {
   const one = reader(ask, out, b.product, 'bundle');
   const stories = new Map(b.page.stories.map((s) => [s.id, s.sentence]));
-  if (askText && !b.product) {
+  // A later plan's ask is new words: read them too. The first plan's ask was read at stage 2.
+  if (askText && askText.trim() !== (b.product?.understanding.ask ?? '').trim()) {
     for (const s of sentences(askText)) {
       const v = (await one({ask: askText, sentence: s}, Q.ambiguity, `ambiguity of "${s}"`, s))('two_apps', (x) => x >= POLICY.two_apps);
-      if (v !== null) out.doubts.push(`DOUBT: "${s}" can mean two different apps; ask which one, with both readings side by side (${f2(v)})`);
+      if (v !== null) out.doubts.push(`DOUBT: "${s}" can mean two different apps; ask which one, with both readings side by side`);
     }
   }
   for (const c of b.cards) {
@@ -159,7 +161,7 @@ async function bundleStage(b: Bundle, ask: Ask, out: Out, askText?: string) {
   const audience = b.product?.intent.audience.join(', ') ?? 'the people who use the app';
   for (const l of b.page.links ?? []) {
     const v = (await one({audience, link: l.sentence}, Q.link, `link ${l.id}`, l.id))('link_expected', (x) => x < POLICY.link_expected_below);
-    if (v !== null) out.doubts.push(`DOUBT: ask whether this should happen: ${l.sentence} (${f2(v)})`);
+    if (v !== null) out.doubts.push(`DOUBT: ask whether this should happen: ${l.sentence}`);
   }
 }
 

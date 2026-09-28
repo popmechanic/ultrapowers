@@ -1,6 +1,7 @@
 // The code checks a bundle meets before compile. A refusal stops compile; a
 // fact is printed for the author to act on and stops nothing.
 import {KINDS, type Bundle} from './bundle';
+import {checkProduct} from './product';
 
 const GESTURES = new Set(['click', 'type', 'key']);
 const isGesture = (g: unknown) =>
@@ -95,7 +96,9 @@ export function runChecks(b: Bundle): {refusals: string[]; facts: string[]} {
       refusals.push(`waiver ${w.action} "${w.refuses}": no action refuses that`);
     }
   }
-  if (b.product && page.subproject) {
+  const productErrs = b.product ? checkProduct(b.product) : [];
+  for (const e of productErrs) refusals.push(`product.json: ${e}`);
+  if (b.product && page.subproject && !productErrs.length) {
     const sp = b.product.subprojects.find((s) => s.id === page.subproject);
     if (!sp) {
       refusals.push(`page: subproject ${page.subproject} is not in product.json`);
@@ -105,8 +108,11 @@ export function runChecks(b: Bundle): {refusals: string[]; facts: string[]} {
           refusals.push(`piece ${c.piece}: its concept ${c.concept ?? '(none)'} is not one this plan builds`);
         }
       }
-      for (const id of sp.concepts) {
-        if (!cards.some((c) => c.concept === id)) refusals.push(`concept ${id}: this plan builds it, but no card has it`);
+      // A change to a built plan carries cards only for what it changes.
+      if (sp.status !== 'built') {
+        for (const id of sp.concepts) {
+          if (!cards.some((c) => c.concept === id)) refusals.push(`concept ${id}: this plan builds it, but no card has it`);
+        }
       }
     }
   } else if (b.product && !page.subproject) {
