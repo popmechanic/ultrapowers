@@ -115,6 +115,10 @@ async function main(): Promise<number> {
   const b = loadBundle(positionals[0]);
   const {refusals, facts} = runChecks(b);
   for (const l of [...refusals, ...facts]) console.log(l);
+  if (refusals.length) {
+    console.log(`${refusals.length} refusal(s); fix them before Jev reads the draft`);
+    return 2;
+  }
   const askText = values['ask-file'] ? readFileSync(values['ask-file'], 'utf8') : undefined;
   const {flags, reads} = await runJevChecks(b, defaultAsk, askText);
   for (const f of flags) console.log(f);
