@@ -43,9 +43,10 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { launch } from '../launch.mjs'
-import { Refusal, defaultExec } from '../lobby.mjs'
+import { Refusal } from '../lobby.mjs'
 import {
-  answer, cleanup, cmdRule, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmsPayload
+  BILLING_OK, COMPILER_FETCH, NEW_OK, NO_NETWORK_GIT, NO_REMOTE_OPS, ONE_TASK,
+  answer, cleanup, cmdRule, engineRule, localRemote, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmsPayload
 } from './_lobby_helpers.mjs'
 
 const TARGET = 'acme/widgets'
@@ -55,63 +56,11 @@ const ENGINE = 'd'.repeat(40)
 const BASE_40HEX = 'e'.repeat(40)
 const NOW = new Date('2026-09-21T12:00:00.000Z')
 const CAPPED = { cpu: '6', memory: '8GB' }
-const BILLING_OK = { max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'Individual' }
 const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n' }
 const PLAN = '# a plan\n\nOne plan, and a trailing newline.\n'
 
-// ── The compiled plan the stubbed compiler answers ──────────────────────────
+// ── The seam's rules (the shared ones live in _lobby_helpers.mjs) ───────────
 
-const task = (id) => ({
-  id: String(id),
-  title: `task ${id}`,
-  factsheet: {
-    files: [`f${id}.txt`], deletes: [], guards: [], proofTests: [], landing: {},
-    driverOwned: [], siblingOwned: [], produces: [], consumes: []
-  }
-})
-const ONE_TASK = { launch_waves: [[task(1)]], dag_edges: [] }
-
-// ── The seam's rules — copied from test_launch_one_engine.mjs's rig rather
-//    than imported: a sim may not name a sibling sim. ────────────────────────
-
-const NEW_OK = (cmd, argv) =>
-  answer({ vm_name: /--name (\S+)/.exec(String(argv[1] ?? ''))?.[1] ?? '', status: 'running' })
-const ENGINE_RULE = {
-  when: (cmd, argv) =>
-    cmd === 'git' && argv.includes('ls-remote') && argv.some((a) => /ultrapowers/.test(String(a))),
-  answer: answer(`${ENGINE}\tHEAD\n`)
-}
-const COMPILER_FETCH = {
-  when: (cmd, argv) => cmd === 'gh' && argv[0] === 'api' &&
-    argv.some((a) => /contents\/skills\/ultrapowers\/scripts\/plan_(check|parse)\.py/.test(String(a))),
-  answer: answer('# plan_check.py or plan_parse.py, as the seam hands it back\n')
-}
-const pointAtOrigin = (repo, argv) => {
-  const pointed = argv.map((a) => (a === 'origin' || /github\.com/.test(String(a)) ? repo.origin : a))
-  const fetchAt = argv.indexOf('fetch')
-  if (fetchAt < 0) return pointed
-  const remoteAt = argv.indexOf('origin', fetchAt)
-  const branch = String(argv[remoteAt + 1] ?? '')
-  if (remoteAt < 0 || branch === '' || branch.startsWith('-') || branch.includes(':')) return pointed
-  pointed[remoteAt + 1] = `+refs/heads/${branch}:refs/remotes/origin/${branch}`
-  return pointed
-}
-const localRemote = (repo) => ({
-  when: (cmd, argv) => cmd === 'git' &&
-    (argv.includes('push') || argv.includes('ls-remote') || argv.includes('fetch')) &&
-    !argv.includes('--get-url') &&
-    !argv.some((a) => /ultrapowers/.test(String(a))),
-  answer: (cmd, argv, options) => defaultExec('git', pointAtOrigin(repo, argv), options ?? {})
-})
-const OFFLINE = answer('', { code: 128, stderr: 'exam: this exam opens no network socket\n' })
-const NO_REMOTE_OPS = {
-  when: (cmd, argv) => cmd === 'git' && argv.some((a) => a === 'clone' || a === 'pull' || a === 'fetch'),
-  answer: OFFLINE
-}
-const NO_NETWORK_GIT = {
-  when: (cmd, argv) => cmd === 'git' && argv.some((a) => /:\/\/|github\.com/.test(String(a))),
-  answer: OFFLINE
-}
 const compilerRule = (compiled) => ({
   when: (cmd) => cmd === 'python3',
   answer: (cmd, argv) =>
@@ -125,7 +74,7 @@ const NO_RECORD = answer('')
 const recordRule = (res) => cmdRule('gh', 'api', res)
 
 const readRules = ({ repo }) => [
-  ENGINE_RULE,
+  engineRule(ENGINE),
   COMPILER_FETCH,
   localRemote(repo),
   compilerRule(ONE_TASK),

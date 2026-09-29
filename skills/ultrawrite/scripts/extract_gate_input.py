@@ -53,13 +53,14 @@ from plan_check import (  # noqa: E402
     _RULE_RE,
     _path_referent,
     BaseTree,
-    PATH_RE,
     base_flag_refusal,
     gate_input_hash,
     verdicts_path,
 )
 from plan_parse import (  # noqa: E402
+    BACKTICK_PATH_RE as PATH_RE,
     CLAIMS_GRAMMAR,
+    FILE_BULLET,
     Refusal,
     machine_restatement,
     parse_plan_claim,
@@ -78,7 +79,6 @@ EXCERPT_TOTAL_CAP = 24000
 # A carrier line rides with the two lines before it and the two after.
 EXCERPT_MARGIN = 2
 
-_FILES_BULLET = re.compile(r"^-\s*(Create|Modify|Delete):\s*(.+)$")
 _RUN_PATH_TOKEN = re.compile(r"^[^\s]*/[^\s]*\.[A-Za-z0-9]{1,8}$")
 
 
@@ -132,7 +132,7 @@ def _files_in_block_order(body):
             break
         if not in_files:
             continue
-        m = _FILES_BULLET.match(line.strip())
+        m = FILE_BULLET.match(line.strip())
         if not m:
             continue
         for tok in PATH_RE.findall(m.group(2)):

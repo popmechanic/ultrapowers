@@ -14,7 +14,7 @@
  * file it can't read at all.
  */
 
-import { readFileSync } from 'node:fs'
+import { readEventRows } from './record.mjs'
 
 /** The `landing` rows' tasks, each task's id kept exactly once and in the
  *  order its first `landing` row arrived. */
@@ -92,30 +92,6 @@ export function auditRows (rows, { state, bound } = {}) {
   return { kind: 'run:audit', state, missing }
 }
 
-/** `events.jsonl`'s lines, parsed as JSON and skipping any line that fails
- *  to parse; an unreadable file reads as no rows at all — the audit is a
- *  fact for the record and must never cost a run over a bad path. */
-function readRows (eventsPath) {
-  let text
-  try {
-    text = readFileSync(eventsPath, 'utf8')
-  } catch {
-    return []
-  }
-  const rows = []
-  for (const line of text.split('\n')) {
-    const trimmed = line.trim()
-    if (trimmed === '') continue
-    try {
-      rows.push(JSON.parse(trimmed))
-    } catch {
-      // Skip a line that doesn't parse — the record is a fact even when one
-      // of its own lines is broken.
-    }
-  }
-  return rows
-}
-
 /** `node factory/audit.mjs <events.jsonl> <state> [--bound]` — one stdout
  *  line, `JSON.stringify` of `auditRows`'s answer, and exit 0 always. */
 function main (argv) {
@@ -124,7 +100,7 @@ function main (argv) {
   const state = args[1]
   const bound = args.includes('--bound')
 
-  const rows = eventsPath ? readRows(eventsPath) : []
+  const rows = eventsPath ? readEventRows(eventsPath) : []
   const result = auditRows(rows, { state, bound })
   const line = { ts: new Date().toISOString(), ...result }
   process.stdout.write(JSON.stringify(line) + '\n')

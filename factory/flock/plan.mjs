@@ -1,7 +1,6 @@
 // The plan reader: turns a signed plan into the Flock's workload, reading it
 // through the same parser the sandbox uses (skills/ultrapowers/scripts/plan_parse.py).
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -10,29 +9,18 @@ const PARSER = join(REPO, 'skills', 'ultrapowers', 'scripts', 'plan_parse.py');
 
 const bash = (cmd) => ['bash', '-lc', cmd];
 
-// Each task's own section of the plan text, keyed by task id:
-// 'Task ' + everything after its '### Task ' marker up to the next, trimmed.
-function sectionsById(text) {
-  const out = new Map();
-  for (const part of text.split(/^### Task /m).slice(1)) {
-    const m = /^([^:\s]+)\s*:/.exec(part);
-    if (m && !out.has(m[1])) out.set(m[1], ('Task ' + part).trim());
-  }
-  return out;
-}
-
 // A stories-v1 plan's facts are checker calls, one per probe.
 const CHECKER = join(REPO, 'factory', 'stack', 'tinyapp', 'check.ts');
 const sq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 export const checkerArgv = (planPath, clause) =>
   ['bun', CHECKER, '--plan', planPath, '--clause', clause, '--copy', '.'];
 
-function storiesWorkload (parsed, planPath, bodies) {
+function storiesWorkload (parsed, planPath) {
   const abs = resolve(planPath);
   const tasks = parsed.tasks.map((t) => {
     if (!t.probes.length) throw new Error(`plan task ${t.id} (${t.piece}) has no probes: a task with nothing to check cannot finish`);
     return {
-      id: t.id, title: t.title, body: bodies.get(String(t.id)) ?? '', files: t.files || [],
+      id: t.id, title: t.title, body: t.body ?? '', files: t.files || [],
       depends_on: t.depends_on || [],
       facts: t.probes.map((p) => checkerArgv(abs, p.clause)),
       clauses: t.probes.map((p) => p.clause),
@@ -57,14 +45,13 @@ export function workloadFromPlan(planPath) {
     throw new Error(`plan_parse.py exited ${r.status} on ${planPath}: ${r.stderr}`);
   }
   const parsed = JSON.parse(r.stdout);
-  const bodies = sectionsById(readFileSync(planPath, 'utf8'));
-  if (parsed.grammar === 'stories-v1') return storiesWorkload(parsed, planPath, bodies);
+  if (parsed.grammar === 'stories-v1') return storiesWorkload(parsed, planPath);
   const edges = parsed.dag_edges || [];
 
   const tasks = (parsed.tasks || []).map((t) => ({
     id: t.id,
     title: t.title,
-    body: bodies.get(String(t.id)) ?? '',
+    body: t.body ?? '',
     files: t.files || [],
     depends_on: edges.filter((e) => e.to === t.id).map((e) => e.from),
     facts: (t.proofRuns || []).map(bash),

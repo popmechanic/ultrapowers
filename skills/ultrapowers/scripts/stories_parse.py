@@ -5,6 +5,7 @@ bootstrapCmd, publish) are kept. proofRuns stays empty: each task's facts are
 its probes, which factory/flock/plan.mjs turns into check.ts calls itself."""
 import re
 
+from plan_parse import task_sections
 from probe_block import parse_probe_text
 
 
@@ -146,6 +147,9 @@ def parse_stories_text(text):
         t["depends_on"] = [e["from"] for e in edges if e["to"] == t["id"]]
         t["proofRuns"], t["proofRunClauses"] = [], []
         t["interfaces"] = {"consumes": [], "produces": []}
+    sections = task_sections(text)
+    for t in tasks:
+        t["body"] = sections.get(t["id"], "")
     by_id = {t["id"]: t for t in tasks}
     # A TinyApp plan that publishes carries the same three header lines a claims plan does;
     # the boot deploys after the self-merge and verifies with ULTRA_PUBLISH_URL set.

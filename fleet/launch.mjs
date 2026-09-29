@@ -14,7 +14,7 @@
  *      target's one GitHub object must exist), `billing plan --json` (one run
  *      must fit the plan's pool), the target's `ultra/*` refs (the run number
  *      is one past the highest N they carry) and the engine tip, and asks
- *      `help <verb>` for every verb of `fleet/exe-verbs.json` — a drift there
+ *      `help <verb>` for every verb of the verb record — a drift there
  *      is a line on the launch, never a refusal. Its check and its parse run
  *      `plan_check.py` and `plan_parse.py` FETCHED AT `engine=` (`git show`
  *      from this checkout, else `gh api`, into a temp directory), so the
@@ -60,6 +60,8 @@ import {
   FLEET_DEFAULTS,
   FLEET_TAG,
   LobbyError,
+  VERBS_PATH,
+  VERBS_RECORD,
   Refusal,
   buildComment,
   defaultExec,
@@ -88,6 +90,7 @@ import {
   vmNameFor
 } from './lobby.mjs'
 import { fleetConfigAccount, verbDrift } from './doctor.mjs'
+import { ACCOUNT_RE } from './claude-token.mjs'
 import { janitor } from './janitor.mjs'
 import { readFleetFiles, renderSetupScript } from './setup-script.mjs'
 import { compilePlanForRun, fetchCompilerAt, verifyPlanCompiles } from './compiler.mjs'
@@ -105,19 +108,15 @@ export const usage = () => USAGE
 /**
  * The keychain entry a run signs in with when neither `--account` nor the
  * config names one — the entry every laptop that walked the first run has.
- * `ACCOUNT_NAME` is `fleet/claude-token.mjs`'s own rule, copied rather than
- * imported: the launcher refuses a name the credential tool would refuse, and
- * it refuses it before anything is executed.
+ * `ACCOUNT_RE` is `fleet/claude-token.mjs`'s own rule, imported: the launcher
+ * refuses a name the credential tool would refuse, and it refuses it before
+ * anything is executed.
  */
 const DEFAULT_ACCOUNT = 'ultrapowers'
-const ACCOUNT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 
 /** The flag `new` may never carry: exe.dev refuses it, and the policy
  *  `tag:fleet` on each integration is what grants a fleet VM its credentials. */
 const NEW_INTEGRATION_FLAG = /(^|\s)--integration(=|\s|$)/
-
-/** The lobby-verb record the preflight compares the live lobby against. */
-const VERBS_PATH = new URL('./exe-verbs.json', import.meta.url).pathname
 
 /** Where the plan lands in the commit the launcher pushes. */
 const PLAN_PATH = '.ultrapowers/plan.md'
@@ -555,9 +554,9 @@ async function launchBody ({
   // keychain as an item's account, so a name it would refuse is refused here,
   // before the first read — a launch that cannot name its entry has not yet
   // touched exe.dev or the target.
-  if (opts.account !== undefined && (opts.account === true || !ACCOUNT_NAME.test(opts.account))) {
+  if (opts.account !== undefined && (opts.account === true || !ACCOUNT_RE.test(opts.account))) {
     throw new Refusal(
-      `launch: --account must be a name matching ${ACCOUNT_NAME.source}, got ${JSON.stringify(opts.account === true ? null : opts.account)}`
+      `launch: --account must be a name matching ${ACCOUNT_RE.source}, got ${JSON.stringify(opts.account === true ? null : opts.account)}`
     )
   }
 
@@ -774,7 +773,7 @@ async function launchBody ({
       readable: false,
       capturedAt: null,
       findings: [],
-      detail: `fleet/exe-verbs.json could not be compared against the lobby: ${error?.message ?? error}`
+      detail: `${VERBS_RECORD} could not be compared against the lobby: ${error?.message ?? error}`
     }
   }
 

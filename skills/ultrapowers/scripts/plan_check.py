@@ -55,7 +55,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import plan_parse  # noqa: E402
 from plan_parse import machine_restatement  # noqa: E402
 
-PATH_RE = re.compile(r"`([^`]+)`")
 EXT_RE = re.compile(r"\.([A-Za-z0-9]{1,8})$")
 
 
@@ -286,10 +285,6 @@ def task_files(t):
     return set(t["creates"]) | set(t["modifies"]) | set(t["deletes"])
 
 
-def _is_implementation(t):
-    return t["type"] is None or t["type"] == "implementation"
-
-
 def type_violations(tasks):
     """The parser keeps only implementation tasks and the engine runs only
     what it keeps, so a `gate`, `release` or `manual` task would be dropped
@@ -298,7 +293,7 @@ def type_violations(tasks):
         "grammar: task %s: Type `%s` is never run — only `implementation` "
         "tasks run; publishing goes through the plan's `**Publish:**` header."
         % (t["id"], t["type"])
-        for t in tasks if not _is_implementation(t)]
+        for t in tasks if not plan_parse._is_implementation(t["type"])]
 
 
 def command_violations(checks, tasks, publish=None):
@@ -323,7 +318,7 @@ def command_violations(checks, tasks, publish=None):
         for kind, where, cmd in commands if "`" in cmd]
     for check in checks:
         for t in tasks:
-            if not _is_implementation(t):
+            if not plan_parse._is_implementation(t["type"]):
                 continue
             for path in sorted(task_files(t)):
                 if command_names_path(check["cmd"], path):
@@ -813,7 +808,6 @@ _REFERENT_EXTS = frozenset(
     "py js mjs cjs ts tsx jsx md json jsonl sh yml yaml toml txt html css "
     "sql csv lock cfg ini env tgz log".split())
 _MIME_RE = re.compile(r"^(text|application|image|audio|video|multipart)/")
-_FENCE_MARK_RE = re.compile(r"^(`{3,}|~{3,})")
 _FILES_BULLET_RE = re.compile(
     r"^\s*[-*+]\s*(Create|Modify|Delete|Test|Test fixture\(s\)|Fixture\(s\))\s*:")
 
@@ -840,9 +834,9 @@ def _path_referent(tok):
 def _referent_scan_lines(task):
     """Body lines whose backticked tokens are referents: every line, fenced
     content included, minus the fence markers themselves (their backtick runs
-    mis-pair PATH_RE) and the Files bullets."""
+    mis-pair BACKTICK_PATH_RE) and the Files bullets."""
     return [line for line in task["body"].splitlines()
-            if not _FENCE_MARK_RE.match(line.strip())
+            if not plan_parse._FENCE_RE.match(line.strip())
             and not _FILES_BULLET_RE.match(line)]
 
 
@@ -880,7 +874,7 @@ def _machine_literals(t, base_tree):
     pinning script's business; a path the tree LACKS is a literal like any
     other, and the files that still say it are the fact — run-88)."""
     out = []
-    for tok in PATH_RE.findall(machine_restatement(t["claim"])):
+    for tok in plan_parse.BACKTICK_PATH_RE.findall(machine_restatement(t["claim"])):
         tok = tok.strip()
         if len(tok) < _LITERAL_MIN or "\n" in tok or tok in out:
             continue
@@ -896,7 +890,7 @@ def base_fact_lines(tasks, base_tree):
     say."""
     lines = []
     for t in tasks:
-        if not _is_implementation(t):
+        if not plan_parse._is_implementation(t["type"]):
             continue
         for rel in t["deletes"]:
             shape = _file_shape(base_tree, rel)

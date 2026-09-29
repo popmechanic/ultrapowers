@@ -1,7 +1,7 @@
 /**
  * fleet/tests/_lobby_helpers.mjs — the fixture the four laptop CLIs' exams share.
  *
- * Two pieces:
+ * Two pieces, and the launch sims' shared rig (at the bottom):
  *
  *   `makeExec` — a recording seam over `cmd`, `argv`, `options`. Every call is
  *   appended to `exec.calls`, options included, so a leg can read the stdin a
@@ -192,4 +192,78 @@ export async function thrown (body) {
     return error
   }
   return null
+}
+
+// ── The launch sims' shared rig ─────────────────────────────────────────────
+// test_launch_credential/duplicate/one_engine/plan_path all drive `launch()`
+// over the same seam; what they share lives here, once.
+
+/** An account whose billing caps clear every launch. */
+export const BILLING_OK = { max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'Individual' }
+
+const task = (id) => ({
+  id: String(id),
+  title: `task ${id}`,
+  factsheet: {
+    files: [`f${id}.txt`], deletes: [], guards: [], proofTests: [], landing: {},
+    driverOwned: [], siblingOwned: [], produces: [], consumes: []
+  }
+})
+/** The compiled plan the stubbed compiler answers: one task, one wave. */
+export const ONE_TASK = { launch_waves: [[task(1)]], dag_edges: [] }
+
+/** `new` answers the VM it was asked to make, running. */
+export const NEW_OK = (cmd, argv) =>
+  answer({ vm_name: /--name (\S+)/.exec(String(argv[1] ?? ''))?.[1] ?? '', status: 'running' })
+
+/** The engine repository's `ls-remote` answers `engine` as its HEAD. */
+export const engineRule = (engine) => ({
+  when: (cmd, argv) =>
+    cmd === 'git' && argv.includes('ls-remote') && argv.some((a) => /ultrapowers/.test(String(a))),
+  answer: answer(`${engine}\tHEAD\n`)
+})
+
+/**
+ * The compiler the launcher fetches at `engine=`. At a fake engine sha the
+ * real `git show` in this checkout fails, so the `gh api` contents call is what
+ * answers — and it must answer BEFORE a sim's `recordRule`, whose empty page
+ * would otherwise read as a compiler that could not be fetched and refuse the
+ * launch. The body is never run: a sim's `compilerRule` answers every `python3`.
+ */
+export const COMPILER_FETCH = {
+  when: (cmd, argv) => cmd === 'gh' && argv[0] === 'api' &&
+    argv.some((a) => /contents\/skills\/ultrapowers\/scripts\/plan_(check|parse)\.py/.test(String(a))),
+  answer: answer('# plan_check.py or plan_parse.py, as the seam hands it back\n')
+}
+
+/** A git argv with its remote pointed at `repo.origin`, and a bare-branch fetch made a full refspec. */
+export const pointAtOrigin = (repo, argv) => {
+  const pointed = argv.map((a) => (a === 'origin' || /github\.com/.test(String(a)) ? repo.origin : a))
+  const fetchAt = argv.indexOf('fetch')
+  if (fetchAt < 0) return pointed
+  const remoteAt = argv.indexOf('origin', fetchAt)
+  const branch = String(argv[remoteAt + 1] ?? '')
+  if (remoteAt < 0 || branch === '' || branch.startsWith('-') || branch.includes(':')) return pointed
+  pointed[remoteAt + 1] = `+refs/heads/${branch}:refs/remotes/origin/${branch}`
+  return pointed
+}
+
+/** The target's push, ls-remote and fetch, really run against its local bare origin. */
+export const localRemote = (repo) => ({
+  when: (cmd, argv) => cmd === 'git' &&
+    (argv.includes('push') || argv.includes('ls-remote') || argv.includes('fetch')) &&
+    !argv.includes('--get-url') &&
+    !argv.some((a) => /ultrapowers/.test(String(a))),
+  answer: (cmd, argv, options) => defaultExec('git', pointAtOrigin(repo, argv), options ?? {})
+})
+
+/** What a git that would open a socket answers instead. */
+export const OFFLINE = answer('', { code: 128, stderr: 'exam: this exam opens no network socket\n' })
+export const NO_REMOTE_OPS = {
+  when: (cmd, argv) => cmd === 'git' && argv.some((a) => a === 'clone' || a === 'pull' || a === 'fetch'),
+  answer: OFFLINE
+}
+export const NO_NETWORK_GIT = {
+  when: (cmd, argv) => cmd === 'git' && argv.some((a) => /:\/\/|github\.com/.test(String(a))),
+  answer: OFFLINE
 }
