@@ -247,3 +247,5 @@
 {"t":138838,"kind":"landing","task":"2","k":1,"factsExit":0,"candidateSha":"7e8f91c97a77c1bae444f3343a116e5634481040","ts":"2026-09-29T19:51:55.161Z"}
 {"t":138838,"kind":"fold:verify","task":"3","ran":[{"id":"3","kind":"probe","cmd":"bash -c 'for p in evals/readings/jev_census.py evals/readings/autoresearch.py tests/test_jev_census.py tests/test_autoresearch.py; do test ! -e \"$p\" || exit 1; done'","exit":0},{"id":"3","kind":"probe","cmd":"bash -c 'test -z \"$(git grep -l -E \"jev_census|autoresearch\" -- . \":!docs\" \":!.ultrapowers\")\"'","exit":0}],"attempt":1,"snap":"7d7e551efa","ts":"2026-09-29T19:51:55.161Z"}
 {"t":138838,"kind":"landing","task":"3","k":1,"factsExit":0,"candidateSha":"7e8f91c97a77c1bae444f3343a116e5634481040","ts":"2026-09-29T19:51:55.161Z"}
+{"ts":"2026-09-29T19:52:01.313Z","kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1372","number":1372,"draft":false}
+{"ts":"2026-09-29T19:52:06.413Z","kind":"merge","code":200}
