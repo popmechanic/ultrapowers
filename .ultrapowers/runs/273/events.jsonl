@@ -267,3 +267,31 @@
 {"t":174664,"kind":"tool","agent":"B","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/doctor.mjs","ts":"2026-09-29T22:16:17.398Z"}
 {"t":174843,"kind":"publish","agent":"C","task":"1","by":"done","ts":"2026-09-29T22:16:17.577Z"}
 {"t":174857,"kind":"tool:post","agent":"C","tool":"mcp__flock__done","ts":"2026-09-29T22:16:17.591Z"}
+{"t":223523,"kind":"conflict:open","path":"factory/flock/engine.mjs","region":"2ff6878c82","between":["published copies"],"ts":"2026-09-29T22:17:06.257Z"}
+{"t":223524,"kind":"conflict:close","path":"factory/flock/engine.mjs","region":"2ff6878c82","by":"host","note":"the merged text of factory/flock/engine.mjs is C's own published writing over both sides","via":"early:held","evidence":{"snap":"98c7a86917","holders":[{"agent":"C","published_t":174843,"last_edit_t":148005,"last_marked_t":null}],"unflagged":false},"ts":"2026-09-29T22:17:06.258Z"}
+{"t":223524,"kind":"edge","snap":"98c7a86917","reason":"done C","perTask":{"1":[0,0,0,0,0],"2":[0,0,0,0],"3":[1,1,1,1,1,1,0,0],"4":[1,1,0,1,0]},"check":0,"conflicts":["factory/flock/engine.mjs"],"blocking":[],"outside":[],"green":false,"ts":"2026-09-29T22:17:06.258Z"}
+{"t":223526,"kind":"kata:mirror","task":"1","uid":"01M3QKJXHS1ZMSA5KM4FMG95ZR","what":"done by C","ok":false,"error":"The operation was aborted due to timeout","ts":"2026-09-29T22:17:06.260Z"}
+{"t":223527,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; grep -rln \"fold:verify\\|factsExit\\|disclosures\" --include=*.mjs --include=*.py --incl","ts":"2026-09-29T22:17:06.261Z"}
+{"t":223578,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T22:17:06.312Z"}
+{"t":224401,"kind":"pull","agent":"A","changed":[{"path":"factory/flock/engine.mjs","from":"C","added":50,"removed":87,"conflict":true}],"ts":"2026-09-29T22:17:07.135Z"}
+{"t":224401,"kind":"conflict:reflag","path":"factory/flock/engine.mjs","region":"2ff6878c82","ts":"2026-09-29T22:17:07.135Z"}
+{"t":224411,"kind":"edit","agent":"B","task":"4","tool":"Edit","path":"fleet/doctor.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:17:07.145Z"}
+{"t":225174,"kind":"pull","agent":"B","changed":[{"path":"factory/flock/engine.mjs","from":"C","added":50,"removed":87,"conflict":true}],"ts":"2026-09-29T22:17:07.908Z"}
+{"t":225174,"kind":"conflict:reflag","path":"factory/flock/engine.mjs","region":"2ff6878c82","ts":"2026-09-29T22:17:07.908Z"}
+{"t":225888,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; grep -n \"^<<<<<<<\\|^=======\\|^>>>>>>>\" factory/flock/engine.mjs","ts":"2026-09-29T22:17:08.622Z"}
+{"t":228690,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; grep -n \"<<<<<<<\\|>>>>>>>\\|||||||\" factory/flock/engine.mjs; grep -n \"fold:verify\\|se","ts":"2026-09-29T22:17:11.424Z"}
+{"t":228755,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T22:17:11.489Z"}
+{"t":229734,"kind":"session:end","agent":"C","task":"1","released":false,"done":"engine.mjs no longer reads the twelve unused flags; each default is now the only behaviour (elastic pool with a cap of 16, claude-opus-5-5, tested settling, explicit publish, done ends the copy, tool search off, digest brief, stdin closed, early close held, chain order). Pulls mode now comes only from policy flock.pulls.mode, and a bad value exits 2 naming that cell. The start and summary rows keep their keys, now with constant values. land() is untouched.","redRuns":0,"turns":38,"usage":{"input_tokens":26,"cache_creation_input_tokens":40274,"cache_read_input_tokens":605956,"output_tokens":12443,"output_tokens_details":{"thinking_tokens":499},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":40274,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[],"speed":"standard","fallback_credit":null},"ts":"2026-09-29T22:17:12.468Z"}
+{"t":231245,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; sed -n 1160,1190p factory/flock/engine.mjs","ts":"2026-09-29T22:17:13.979Z"}
+{"t":231264,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T22:17:13.998Z"}
+{"t":234187,"kind":"tool","agent":"A","task":"3","tool":"mcp__flock__resolve_conflict","target":"","ts":"2026-09-29T22:17:16.921Z"}
+{"t":234195,"kind":"tool:post","agent":"A","tool":"mcp__flock__resolve_conflict","ts":"2026-09-29T22:17:16.929Z"}
+{"t":234259,"kind":"tool","agent":"A","task":"3","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T22:17:16.993Z"}
+{"t":244728,"kind":"proof","agent":"A","task":"3","exits":[0,0,0,0,0,0,0,0],"causes":[],"errs":[],"ts":"2026-09-29T22:17:27.462Z"}
+{"t":244732,"kind":"tool:post","agent":"A","tool":"mcp__flock__run_proof","ts":"2026-09-29T22:17:27.466Z"}
+{"t":244734,"kind":"tool","agent":"B","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/doctor.mjs","ts":"2026-09-29T22:17:27.468Z"}
+{"t":245671,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T22:17:28.405Z"}
+{"t":245707,"kind":"edit","agent":"B","task":"4","tool":"Edit","path":"fleet/doctor.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:17:28.441Z"}
+{"t":245715,"kind":"tool","agent":"B","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/doctor.mjs","ts":"2026-09-29T22:17:28.449Z"}
+{"t":245879,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T22:17:28.613Z"}
+{"t":245895,"kind":"edit","agent":"B","task":"4","tool":"Edit","path":"fleet/doctor.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:17:28.629Z"}
