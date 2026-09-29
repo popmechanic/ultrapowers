@@ -19,7 +19,12 @@
  * Python heredoc, moved to the language already in the loop.
  */
 
+import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const PLAN_PARSER = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'ultrapowers', 'scripts', 'plan_parse.py')
 
 /** A `key=value` token split at its FIRST `=`; a token with no `=` is the
  *  whole token as the key and an empty string as the value. */
@@ -193,15 +198,65 @@ function cellText (value) {
   return JSON.stringify(value)
 }
 
-/** `| <task> | <candidateSha> |` for every `landing` row of the events
- *  file, in file order; no file gives no rows. */
-function landingRowLines (rows) {
-  const out = []
+/** The plan's probes, per task in plan order, through the parser the sandbox
+ *  runs: `{id, probes: [{cmd, proves}]}`. A stories-v1 task's probes are its
+ *  checker calls. A plan the parser refuses gives `null`, and the receipt then
+ *  shows exits without probe text. */
+function planProbes (planPath) {
+  const r = spawnSync('python3', [PLAN_PARSER, planPath], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  if (r.error || r.status !== 0) return null
+  let parsed
+  try { parsed = JSON.parse(r.stdout) } catch { return null }
+  return (parsed.tasks || []).map((t) => ({
+    id: String(t.id),
+    probes: parsed.grammar === 'stories-v1'
+      ? (t.probes || []).map((p) => ({ cmd: 'story checker', proves: p.clause }))
+      : (t.proofRuns || []).map((cmd, i) => ({ cmd, proves: ((t.proofRunClauses || [])[i] || []).join(', ') })),
+  }))
+}
+
+/** The edge row the receipt reads: the one whose `snap` is the last `settled`
+ *  row's, or the last `edge` row when nothing settled; `null` without edges. */
+function receiptEdge (rows) {
+  let settled = null
+  const edges = []
   for (const row of rows) {
-    if (row && row.kind === 'landing') {
-      out.push(`| ${cellText(row.task)} | ${cellText(row.candidateSha)} |`)
-    }
+    if (!row) continue
+    if (row.kind === 'settled') settled = row.snap
+    else if (row.kind === 'edge') edges.push(row)
   }
+  if (!edges.length) return null
+  if (settled !== null) {
+    const hit = edges.filter((e) => e.snap === settled).pop()
+    if (hit) return hit
+  }
+  return edges[edges.length - 1]
+}
+
+const receiptCell = (text) => String(text).replace(/\|/g, '\\|')
+const probeCell = (cmd) => '`' + receiptCell(cmd.length > 60 ? cmd.slice(0, 59) + '…' : cmd) + '`'
+
+/** `### Receipt` — one row per probe the plan named, with the exit it got on the
+ *  settled snapshot, then the run-wide checks' exit and the `**Evidence:**` link
+ *  when one was given. No edge row gives no receipt, only the link. */
+function receiptLines (planPath, rows, evidenceUrl) {
+  const out = []
+  const edge = receiptEdge(rows)
+  if (edge) {
+    const perTask = edge.perTask || {}
+    const tasks = planProbes(planPath) ||
+      Object.keys(perTask).map((id) => ({ id, probes: perTask[id].map(() => ({ cmd: '—', proves: '—' })) }))
+    out.push('### Receipt', '', '| task | probe | proves | exit |', '|---|---|---|---|')
+    for (const t of tasks) {
+      const exits = perTask[t.id] || []
+      t.probes.forEach((p, i) => {
+        const exit = typeof exits[i] === 'number' ? String(exits[i]) : '—'
+        out.push(`| ${t.id} | ${p.cmd === '—' ? '—' : probeCell(p.cmd)} | ${receiptCell(p.proves || '—')} | ${exit} |`)
+      })
+    }
+    out.push('', `Run-wide checks: exit ${edge.check ?? '—'}`)
+  }
+  if (evidenceUrl) out.push(`**Evidence:** ${evidenceUrl}`)
   return out
 }
 
@@ -238,15 +293,15 @@ function draftReasonLines (rows) {
   return out
 }
 
-/** `pr-body <plan.md> --events <file>` — the paragraph, an empty line, the
- *  rows, an empty line, the closes; every line, including the two empty
- *  ones, ends in a newline. A draft's reason follows the landing rows, and
- *  when any `jev:step` row exists, its table follows that. */
-export function renderPrBody (planPath, eventsPath) {
+/** `pr-body <plan.md> --events <file> [--evidence <url>]` — the paragraph, an
+ *  empty line, the receipt, an empty line, the closes; every line, including
+ *  the two empty ones, ends in a newline. A draft's reason follows the receipt,
+ *  and when any `jev:step` row exists, its table follows that. */
+export function renderPrBody (planPath, eventsPath, evidenceUrl) {
   const planText = readFileSync(planPath, 'utf8')
   const summary = planSummaryLines(planText)
   const events = eventsPath ? readEventRows(eventsPath) : []
-  const rows = landingRowLines(events)
+  const rows = receiptLines(planPath, events, evidenceUrl)
   const closes = planClosesLines(planText)
   let out = ''
   for (const line of summary) out += line + '\n'
@@ -450,8 +505,9 @@ export function main (argv) {
     case 'pr-body': {
       const planPath = args[1]
       if (planPath === undefined) return usageError('pr-body: missing <plan.md>')
-      const { eventsPath } = extractEvents(args.slice(2))
-      process.stdout.write(renderPrBody(planPath, eventsPath))
+      const { rest, eventsPath } = extractEvents(args.slice(2))
+      const at = rest.indexOf('--evidence')
+      process.stdout.write(renderPrBody(planPath, eventsPath, at >= 0 ? rest[at + 1] : undefined))
       return 0
     }
     case 'policy': {

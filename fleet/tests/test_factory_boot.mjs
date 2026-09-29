@@ -214,9 +214,10 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   assert.equal(closeRow.code, null, '(b) [M1] the sole board:close row carries code null')
 
   const prPost = fs.readFileSync(path.join(home, 'pr-post.json'), 'utf8')
-  // `factory/record.mjs` renders each landing row as `| <task> | <candidateSha> |`.
+  // `factory/record.mjs` renders the receipt from `edge` rows (this stub engine writes none, so the
+  // body carries only the evidence line) and the evidence tag's run folder.
   const expectedBody = 'One widget, one size. It exists so the boot has a plan to carry. It benefits the record.\n\n' +
-    `| 1 | ${landedSha} |\n\n` +
+    `**Evidence:** https://github.com/o/r/tree/ultra/evidence/run-${runN}/.ultrapowers/runs/${runN}\n\n` +
     'Closes #1222'
   const expectedPrPost = JSON.stringify({
     title: `fleet run-${runN}: A widget that answers its size`,

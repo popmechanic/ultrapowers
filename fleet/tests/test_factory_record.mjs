@@ -216,10 +216,10 @@ function lines (text) {
 
   const r1 = run(['pr-body', planWithCloses, '--events', landingEvents])
   assert.equal(r1.status, 0, '(c) [M3] pr-body over the fixture plan exits 0')
-  const expected1 = PARAGRAPH + '\n\n| 1 | abc |\n\nCloses #1222\n'
+  const expected1 = PARAGRAPH + '\n\n\nCloses #1222\n'
   assert.equal(
     r1.stdout, expected1,
-    '(c) [M3] pr-body is byte-equal to the paragraph, a blank line, the one landing row, a blank line, and Closes #1222'
+    '(c) [M3] with no edge row there is no receipt: pr-body is byte-equal to the paragraph, two blank lines, and Closes #1222'
   )
 
   const missingEvents = path.join(FIXTURES, 'no-such-pr-body-events.jsonl')
