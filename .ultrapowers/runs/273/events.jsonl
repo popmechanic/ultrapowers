@@ -295,3 +295,21 @@
 {"t":245715,"kind":"tool","agent":"B","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/doctor.mjs","ts":"2026-09-29T22:17:28.449Z"}
 {"t":245879,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T22:17:28.613Z"}
 {"t":245895,"kind":"edit","agent":"B","task":"4","tool":"Edit","path":"fleet/doctor.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:17:28.629Z"}
+{"t":247563,"kind":"tool","agent":"A","task":"3","tool":"mcp__flock__done","target":"","ts":"2026-09-29T22:17:30.297Z"}
+{"t":258230,"kind":"publish","agent":"A","task":"3","by":"done","ts":"2026-09-29T22:17:40.964Z"}
+{"t":258236,"kind":"tool:post","agent":"A","tool":"mcp__flock__done","ts":"2026-09-29T22:17:40.970Z"}
+{"t":258245,"kind":"kata:mirror","task":"3","uid":"01M3QKK2Q0MGRAJ8HG5M05YEPT","what":"done by A","ok":true,"ts":"2026-09-29T22:17:40.979Z"}
+{"t":307543,"kind":"conflict:reflag","path":"factory/flock/engine.mjs","region":"2ff6878c82","ts":"2026-09-29T22:18:30.277Z"}
+{"t":307543,"kind":"edge","snap":"67c74c6223","reason":"done A","perTask":{"1":[0,0,0,0,0],"2":[0,0,0,0],"3":[0,0,0,0,0,0,0,0],"4":[1,1,0,1,0]},"check":0,"conflicts":["factory/flock/engine.mjs"],"blocking":[],"outside":[],"green":false,"ts":"2026-09-29T22:18:30.277Z"}
+{"t":307544,"kind":"tool","agent":"B","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/doctor.mjs","ts":"2026-09-29T22:18:30.278Z"}
+{"t":307661,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T22:18:30.395Z"}
+{"t":307707,"kind":"edit","agent":"B","task":"4","tool":"Edit","path":"fleet/doctor.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:18:30.441Z"}
+{"t":307711,"kind":"tool","agent":"B","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/doctor.mjs","ts":"2026-09-29T22:18:30.445Z"}
+{"t":307838,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T22:18:30.572Z"}
+{"t":307855,"kind":"edit","agent":"B","task":"4","tool":"Edit","path":"fleet/doctor.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:18:30.589Z"}
+{"t":307860,"kind":"tool","agent":"B","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/doctor.mjs","ts":"2026-09-29T22:18:30.594Z"}
+{"t":308001,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T22:18:30.735Z"}
+{"t":308017,"kind":"edit","agent":"B","task":"4","tool":"Edit","path":"fleet/doctor.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:18:30.751Z"}
+{"t":308021,"kind":"tool","agent":"B","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/doctor.mjs","ts":"2026-09-29T22:18:30.755Z"}
+{"t":308141,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T22:18:30.875Z"}
+{"t":308157,"kind":"edit","agent":"B","task":"4","tool":"Edit","path":"fleet/doctor.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:18:30.891Z"}
