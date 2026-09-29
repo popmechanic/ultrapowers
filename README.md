@@ -93,8 +93,8 @@ work-in-progress was restored byte-for-byte.
 ## How it works
 
 ultrapowers runs on an exe.dev fleet you provision — the plugin is the client, and the engine is
-`factory/engine.mjs`. `/ultrapowers <plan-path>` publishes your approved plan and starts a run on
-a disposable sandbox of its own; every implementer, every probe, every fold and the test suite
+the Flock (`factory/flock/engine.mjs`). `/ultrapowers <plan-path>` publishes your approved plan and starts a run on
+a disposable sandbox of its own; every builder, every probe, every merge and every check
 execute there. Nothing builds, tests, or merges on your machine. When the run ends, the sandbox
 opens the pull request on the repository you ran in — ready if its own checks ended green, a draft
 otherwise — with the evidence linked in its body.
@@ -135,21 +135,19 @@ moment that one lands. There is no round to wait for; the shape of the work is t
 
 Pick any one of those circles. Up close, it isn't a dot — it's a small search.
 
-The task is handed to **more than one implementer**, each in its own fresh clone of the repository at
-the run's base. Each one works only from the task's contract — what must be true afterwards, and the
-proof that decides it — and each produces a patch. Then the patches are **measured**, not reviewed:
-the task's own `Run:` probes execute in each candidate's clone, the existing tests that touch what the
-patch touches run beside them, and the run-wide `Check:` lines run on the result. The candidate whose
-facts come out best is adopted; a judge reads the patches only to break ties and to grade what a
-probe cannot see.
+A **builder** claims the task off the run's board and works it in its own copy of the repository,
+from the task's contract alone — what must be true afterwards, and the proof that decides it. Its
+copy is never isolated for long: between the builder's steps, the other builders' published work
+**merges** into it through a content-level weave, so a task that reads what another task wrote is
+built against the tree it will actually ship in.
 
-Every adoption **folds** at once onto the run's integration tree through a content-level merge
-kernel — no waiting for siblings — and the folded tree is re-checked with every adopted task's probes,
-so a task that reads what another task wrote is proven against the tree it will actually ship in.
+The work is **measured**, not reviewed: every snapshot a builder publishes is tested at the edge
+with the task's own `Run:` probes and the run-wide `Check:` lines. A task is done when its facts
+pass; one that goes red again is reopened on the board for the next builder to pick up.
 
-The model each task runs on is the whole idea in miniature: the implementers are cheap and several,
-the judgment is your frontier model's and small — generation is where the tokens go, judgment is
-nearly free — multiplied across every task the pool holds at once.
+If main moved while the run worked, the run **catches up** before it publishes: its work is joined
+onto the new main and the plan's probes and checks run again there. A conflict or a red check there
+leaves the work as it was and opens a draft for you.
 
 ### It doesn't improvise
 
@@ -215,13 +213,13 @@ two checkpoints.
 ### 4. Build
 
 In the repository you want built, run `/ultrapowers <plan-path>`. The plan rides to the sandbox on
-that repository's `ultra/plan-run-<N>` branch, and the run happens there: the implementers, the probes,
-the folds, the suite. Watch it or walk away.
+that repository's `ultra/plan-run-<N>` branch, and the run happens there: the builders, the probes,
+the merges, the checks. Watch it or walk away.
 
 At the end you get the finished result: the sandbox opens the pull request on that repository —
 ultrapowers itself is just one such repository. Its body carries the gate receipt and links the
 evidence branch. The pull request merges itself on the run's own evidence — once its own gate is
-green and main has not moved off the tip it folded onto. Launch with `--hold` and the
+green and main has not moved off the tip it caught up to. Launch with `--hold` and the
 pull request stays open instead — your second checkpoint, yours to merge or close. A run the gate
 parked leaves a draft pull request, and the sandbox merges nothing after a park: acknowledge it by
 hand — mark it ready, `gh pr update-branch <N>` if it is behind main, `gh pr merge --squash <N>`.

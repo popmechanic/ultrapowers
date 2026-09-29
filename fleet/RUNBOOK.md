@@ -24,8 +24,9 @@ The setup script installs the toolchain, the immutable bootstrap at
 `fleet-run@<N>.service` itself — there is no ssh wait and no separate start.
 That unit runs the bootstrap, which reads the comment once, clones the engine at
 `engine=<sha>` into `/home/exedev/engines/<sha>`, and execs that checkout's
-`factory/boot.sh` or refuses — no other engine is launchable since cut two
-(2026-09-21). The boot script clones the target at `base=`, checks the plan
+`factory/boot.sh` or refuses. The boot always runs the one engine, the Flock
+(`factory/flock/engine.mjs`); the factory was retired under map #1292 rule 8
+(2026-09-29), and a `kind=factory` assignment fails the run. The boot script clones the target at `base=`, checks the plan
 branch's tip against the assignment, runs the engine as a transient user unit
 with a memory cap — no status page, git is the record — commits its evidence
 to the target on `ultra/evidence-run-<N>` at every transition, and — only when
@@ -268,8 +269,7 @@ re-answers the live run's task issues on the hub and kills it, #1036).
 - the hub, when the plan commit carried `.ultrapowers/kata.json` — the run's
   kata project holds a mirror of the run's progress, posted as comments as it
   happens. `fleet/CONTRACT.md` is the authority for what the current engine
-  mirrors there: the factory stamps each worker's issue through its hooks; a
-  Flock run posts `claimed by <agent>`, `released: <why>`, `reopened: <why>`
+  mirrors there: a Flock run posts `claimed by <agent>`, `released: <why>`, `reopened: <why>`
   and `done by <agent>` on each task's issue as the move happens, so its board
   shows every claim, release and close in flight, not only the closes at the
   end. A run in flight is read off the board:
@@ -325,10 +325,11 @@ was promised and how it was proved, with the record — receipt, shas, evidence
 listing and residuals checklist — folded away below. `pr` and `prAuthor` in `status.json` are
 the answer's `html_url` and `user.login`.
 A ready PR merges itself, on the run's own evidence and nobody else's: the
-publish fold rebased the branch onto the default branch's tip and the gate then
-greened the target's suite on that tree, so the sandbox squash-merges once its
+catch-up (`factory/flock/catchup.mjs`) joined the run's work onto the default
+branch's tip and re-ran the plan's setup, probes and checks on that tree, so the sandbox squash-merges once its
 gate is green and that tip is still the base's — it asks the target for no
-second opinion. A base that moved buys another fold rather than another ask; a
+second opinion. A base that moved buys another catch-up rather than another ask; a
+catch-up that conflicts or goes red leaves the run's commit alone and opens a draft; a
 refused merge, `--hold` on the launch line, or a gate whose suite went red on a
 path no task owns leaves the PR open for you, and `status.json`'s `merged` cell
 says which. A held PR's card carries a `## Held` section: what went red, the
@@ -752,10 +753,10 @@ an exe VM with 2 vCPU / 4 GB)
   draining with the port still held, so the next `--port` dies on
   `Address already in use`.
 
-**The fold kernel.**
+**The fold kernel (history: retired with the factory, 2026-09-29).**
 
-- A NUL byte in a source file makes git diff it as binary, `is_binary` in
-  `skills/ultrapowers/kernel/repo_weave.py` agrees, and every fold that touches the file parks
+- A NUL byte in a source file makes git diff it as binary, the old kernel's `is_binary`
+  agreed, and every fold that touches the file parks
   with `no annotated narration for <path> (binary)` and zero resolvers — run-163's publish fold,
   2026-09-16, after run-162's implementer wrote a `'\0'` key separator into the wave engine's own
   entry source (since gone with it at cut two) as the raw byte. GitHub still merges such a PR by

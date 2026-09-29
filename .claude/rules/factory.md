@@ -3,57 +3,48 @@ paths:
   - "factory/**"
 ---
 
-# The factory engine
+# The engine: the Flock
 
-The engine a fleet run gets: `fleet/fleet-bootstrap.sh` clones this repo at the launch's
-`--engine` sha and execs that checkout's `factory/boot.sh` (no other engine is launchable).
-Models never run git.
+There is one engine, the Flock (`factory/flock/engine.mjs`, map #1292). `fleet/fleet-bootstrap.sh`
+clones this repo at the launch's `--engine` sha and execs that checkout's `factory/boot.sh`, which
+always runs the Flock. The factory, the engine before it, was retired under map #1292 rule 8
+(2026-09-29); its rollback is a launch run from a checkout made before the retirement. Models
+never run git.
 
 ## Shape
 
 - `boot.sh` prepares the clone, the plan, the verdict record and the evidence worktree, brings
-  up the board, runs `engine.mjs` as one transient unit under `RuntimeMaxSec` (one clock, no
-  worker caps, #1144), and publishes as shell — a push and one POST.
-- `engine.mjs` is the run as search, a pool with no waves: per task `k` implementers
-  (`dispatch.mjs` decides who a task waits on; `worker.mjs` is one SDK `query()` per
-  dispatch), a measurement (`measure.mjs`: the task's `Run:` probes in the candidate's clone,
-  then the existing tests `select.mjs` offers), selection, at most one re-dispatch
-  (`retry.mjs`), a referee when `readTask` asks for one, and a fold through the kernel on every
-  adoption (`fold.mjs`). Every fold re-runs every adopted task's probes and selected tests on
-  the folded tree (`reverify.mjs`, #1251); the plan's `Check:` lines run on every folded tree
-  with `ULTRA_BASE` (`checks-at-base.mjs` reads them once at base).
-- Supporting modules: `clone.mjs` (`cloneAtBase`), `commands.mjs` (a fresh clone's bootstrap),
-  `facts.mjs` / `proofs.mjs` (a task's proof lines, run), `hunks.mjs` (what Jev is shown of an
-  oversized patch, #1154), `pairs.mjs` + `baseread.mjs` (the pair builder), `union.mjs` (the
-  kernel's union rule), `refold.mjs` (a finished run's work folded onto a moved base),
-  `kprobe.mjs` (the `dispatch.k_probe` cell), `watch.mjs` (the supervisor's questions),
-  `preflight.mjs` (the boot's credential probe), `record.mjs` (the boot's renderer),
-  `audit.mjs` (a finished run's final computed row). `replay/` holds landing-replay scripts
-  and results.
+  up the board, runs `flock/engine.mjs` as one transient unit under `RuntimeMaxSec` (one clock,
+  #1144), and publishes as shell — a push and one POST.
+- `flock/engine.mjs` is the run as a leaderless swarm: it seeds the board (`flock/flock_board.mjs`,
+  the plan read through `flock/plan.mjs`), runs each builder's session on its own copy, keeps
+  every copy's weave (`flock/weave.py`, over sha-pinned Manyana), merges peers into each copy
+  after each tool batch, and tests every published snapshot at the edge with the plan's `Run:`
+  probes and `Check:` lines under `ULTRA_BASE`. The builder pool is elastic.
+- **Catch-up.** A run that finishes after main moved runs `flock/catchup.mjs`: the weave keeper
+  joins the run's work onto the new main, the plan's setup, probes and check re-run with
+  `ULTRA_BASE` set to the new main, and a conflict or a red check leaves the run's commit alone,
+  so the boot opens a draft.
+- Supporting modules: `commands.mjs` (a fresh clone's bootstrap), `gitblock.mjs` (`findGit`, the
+  builders' git block), `flock/kata_mirror.mjs` (board moves mirrored onto Kata),
+  `flock/past.mjs` (a failed previous run's items for the brief), `preflight.mjs` (the boot's
+  credential probe), `record.mjs` (the boot's renderer), `audit.mjs` (a finished run's final
+  computed row).
 
 ## Judgment and policy
 
-- **Every judgment is a question** in `questions.json`, read through `judge.mjs` (the one judge)
-  over `jev-client.mjs` (one POST to TypeSafe, no key, `null` on anything unexpected).
-- **Every threshold is a cell of `policy.json`** carrying its `n`, `window`, `experiment` and
-  `rollback`; flipping a cell is the rollback of whatever it gates.
-- **Prompts:** the implementer and resolver prompts are `roles/implement.md` and
-  `roles/resolve.md`, read at dispatch — one copy, no bake step. The referee's brief is inline
-  in `engine.mjs` (`REFEREE_SYSTEM`). Role-file sizes are reported (`wc -w`), never gated; the
-  one surviving pin is stylistic (no shouted imperatives).
+- **Every judgment is a question** in `questions.json` (`flock_step`), read over
+  `jev-client.mjs` (one POST to TypeSafe, no key, `null` on anything unexpected).
+- **Every threshold is a cell of `policy.json`** (`publish`, `flock`) carrying its `n`,
+  `window`, `experiment` and `rollback`; flipping a cell is the rollback of whatever it gates.
 
-## The worker
+## The builder
 
-- `tools.mjs` holds the worker's in-process tools: `note`, `hand`, `settled`, `sibling_fact`,
-  `task_facts`, `run_proof`. `note` and `hand` write Kata comments through the engine's own
-  client (`fleet/kata-client.mjs`, the one fleet file the engine imports).
-- **The git block** is a PreToolUse hook (`makeGitHook` in `worker.mjs`), reading each Bash
-  line through `gitblock.mjs`'s `findGit`; `DISALLOWED_TOOLS` is the coarse prefix list beside
-  it.
-- **A worker sees its own task body and nothing else** — not the plan header, not
-  `## Global Constraints`, not a sibling. A literal two tasks share must be in the body of
-  each, or the worker invents it (runs 192–194 lost their board to two invented Kata shapes,
-  #1149, #1155).
+- A builder pulls its own work from the board and publishes through the board's tools; it never
+  runs git (the engine reads each Bash line through `gitblock.mjs`'s `findGit`).
+- **A builder sees its own task body and the board** — not the plan header, not
+  `## Global Constraints`. A literal two tasks share must be in the body of each, or the builder
+  invents it (runs 192–194 lost their board to two invented Kata shapes, #1149, #1155).
 
 ## Kata (the board)
 

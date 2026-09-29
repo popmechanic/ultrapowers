@@ -8,18 +8,18 @@ record) when a session reads those trees.
 
 ultrapowers authors a plan and then executes it in parallel. The operator stays closely
 involved in **planning** (what to build, how it is verified) and barely in
-**implementation**: a disposable exe.dev sandbox runs the plan as a pool of tasks — per task
-`k` implementers, each patch measured by the plan's own `Run:` probes, the existing tests
-selection picks and the plan's `Check:` lines — adopts winners through the fold kernel, and
-opens its own PR. No LLM orchestrator, no orchestrator VM; the PR is the one gate.
+**implementation**: a disposable exe.dev sandbox runs the plan as a swarm of builders, each on
+its own copy, merging with each other continuously through the weave; every published snapshot is
+measured by the plan's own `Run:` probes and `Check:` lines, and the sandbox opens its own PR. No LLM orchestrator, no orchestrator VM; the PR is the one gate.
 
-**Two engines; the Flock is the default (map #1292, operator 2026-09-26).** A plain launch
-boots the Flock (`factory/flock/engine.mjs`): a leaderless swarm, one weave replica per builder
-merged continuously, an elastic builder pool. `--kind factory` boots the factory
-(`factory/engine.mjs`), which is the rollback for any one launch; `DEFAULT_KIND` in
-`fleet/launch.mjs` is the rollback for all of them. The reading behind the flip: Run Room,
-n=5 fleet runs, 149 s and $1.82 median against the factory's 182 s and $2.82 (n=3), all green.
-It is one workload, the one the Flock was tuned on, so the flip is an `experiment`.
+**One engine: the Flock (map #1292).** Every launch boots the Flock (`factory/flock/engine.mjs`):
+a leaderless swarm, one weave replica per builder merged continuously, an elastic builder pool.
+The factory, the engine before it, was retired under map #1292 rule 8 (operator, 2026-09-29);
+its rollback is a launch run from a checkout made before the retirement. A run that finishes
+after main moved catches up through `factory/flock/catchup.mjs` (the weave joins its work onto
+the new main and the plan's setup, probes and checks re-run there; a conflict or a red check
+leaves a draft). History: the Flock became the default on Run Room, n=5 fleet runs, 149 s and
+$1.82 median against the factory's 182 s and $2.82 (n=3), all green (operator, 2026-09-26).
 
 ## Commands
 
@@ -35,7 +35,7 @@ bun skills/ultrawrite/stories/product.ts check|render|record <product.json> … 
 bun factory/stack/tinyapp/check.ts --plan <plan.md> --clause S1.1 --copy <app>   # one story step against one copy (exit 0 pass, 1 finding, 2 could not run)
 python3 evals/readings/checker_kit.py                                        # score the checker against a good todo app and broken copies (run when factory/stack/tinyapp/ changes)
 node fleet/doctor.mjs --json                                                 # which fleet prerequisite is missing
-node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha> --engine <sha>   # one run (the Flock; --kind factory for the factory); from this checkout, never the plugin cache
+node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha> --engine <sha>   # one run (the Flock); from this checkout, never the plugin cache
 python3 skills/ultrapowers/scripts/catch_counter.py --ledger <f> <path...>   # what a test file has ever caught
 python3 skills/ultrapowers/scripts/catch_report.py --ledger <f> --tree .     # the deletion candidates that reading names
 ```
@@ -52,8 +52,8 @@ the engine's exit code is the merge decision.
   the fleet); `scripts/` — `plan_parse.py` (the one plan parser; the sandbox runs it),
   `plan_check.py` (the laptop's check on it), `validate_skill.py`, `catch_counter.py` /
   `catch_report.py` (read through `fleet_events.py` and `_outcome.py`); `references/`
-  (`first-run.md` walks each doctor row); `kernel/` — the fold: `fold_wave.py`,
-  `frontier_fold.py`, `hunks.py`, `repo_weave.py` over sha-pinned `vendor/manyana.py`.
+  (`first-run.md` walks each doctor row); `kernel/vendor/manyana.py` — the sha-pinned merge
+  the Flock's weave (`factory/flock/weave.py`) keeps.
 - `skills/ultrawrite/` — plan authoring: the claims-v1 grammar (six body slots, contracts
   signed, edges derived, `- Run:` proofs), `references/` (`greenfield-stack.md`,
   `authoring-gotchas.md`), `scripts/` (provenance and base-fact pins, `authoring_census.py`),
@@ -101,12 +101,12 @@ the engine's exit code is the merge decision.
   `shelley client read`) before editing a script. A hack is only a bridge she has blessed.
 - **Run in parallel; same-file overlap folds at publish.** Launch plans concurrently whatever
   files they share: a PR whose base moved is refused (405, `strict=true` + `enforce_admins`)
-  and the sandbox folds onto the new main, so overlaps meet in the kernel (decision 11, #715;
+  and the sandbox catches the run up to the new main, so overlaps meet in the weave (decision 11, #715;
   every join on record was line-disjoint). A conflict is the resolver's measurement, not a
   reason to serialize. Contention, not allocated vCPU, bounds concurrent runs.
-- **One merge, one writer.** Manyana merges file content at the fold, the only merge in the
-  system — never patch `skills/ultrapowers/kernel/vendor/manyana.py` (sha-pinned); the kernel
-  takes patches against BASE so no worker needs shared refs. Run state has one writer, the
+- **One merge, one writer.** Manyana merges file content in the weave, the only merge in the
+  system — never patch `skills/ultrapowers/kernel/vendor/manyana.py` (sha-pinned); the engine
+  keeps each copy's weave so no builder needs shared refs. Run state has one writer, the
   sandbox, and its record is git. Same-file concurrent writes are the shipped default.
 - **Handoffs are opt-in.** A session starts from the operator's intention; read
   `.claude/ultrapowers/handoffs/` only when asked to resume. Sort by mtime, never filename, and
@@ -140,8 +140,8 @@ the engine's exit code is the merge decision.
 - **Verification is mechanical and fast.** A probe computes facts (exit code, argv,
   byte-exact string, count, ordering, oracle agreement); "the code says X" is Jev's, read
   against the hunk at landing. A probe is one `Run:` line, one command, ending in the tag of
-  the clause it proves — an untagged prover settles nothing. One case per behaviour. On every
-  fold the engine re-runs every adopted task's probes and selected tests (#1251). Answer a
+  the clause it proves — an untagged prover settles nothing. One case per behaviour. When a run
+  catches up to a moved main, the plan's setup, probes and checks re-run there (#1251). Answer a
   gate rejection by narrowing the clause, never by adding legs. A size budget is a note the PR
   reports, never a clause. Publish is shell, not a seam.
 - **The plan is a submission, not a contract (#990).** A worker that outgrows a clause or its

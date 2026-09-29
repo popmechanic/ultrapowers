@@ -34,9 +34,9 @@
  *       3"` and no plan/evidence tag is ever cut. Kept from BASE unchanged,
  *       same footing as (a).
  *
- *   (d) [M2] `node <engineDir>/factory/engine.mjs` with no arguments,
- *       through the rig's own `buildEngineDir` symlink, exits 2 — at BASE
- *       (broken `invokedDirectly` guard) it exits 0 and prints nothing.
+ *   (d) [M2] `node <engineDir>/factory/flock/engine.mjs` with no
+ *       arguments, through the rig's own `buildEngineDir` symlink, exits 2
+ *       (`engine: --plan is required`).
  *
  * The rig, once per case: a bare `origin.git` seeded via a throwaway scratch
  * clone with a `README` commit (`base`) and, on top of it, a
@@ -45,7 +45,7 @@
  * target` is a plain clone of that origin. `<FLEET_HOME>/engines/<sha>/
  * factory` and `.../skills` are symlinks to this checkout's own `factory/`
  * and `skills/`, so the boot's real `factory/audit.mjs` (and, in leg (d),
- * `factory/engine.mjs`) genuinely runs through a symlinked directory. A `bin`
+ * `factory/flock/engine.mjs`) genuinely runs through a symlinked directory. A `bin`
  * directory stubs `claude` (one `authMethod:` line), `curl` (a small
  * argument-sniffing router answering the GitHub-shaped endpoints `boot.sh`
  * hits, and — new in this task — saving a `PUT …/pulls/7/merge` body to
@@ -71,10 +71,10 @@
  * `ts` field is out of this task's own diff — this exam still asserts M1's
  * "every row carries a non-empty string `ts`" exactly as written, since a
  * clause is asserted as it reads, not as it is comfortable to satisfy today.
- * It also assumes that `factory/engine.mjs`'s `main()` reads `process.argv`
+ * It also assumes that `factory/flock/engine.mjs` reads `process.argv`
  * itself (so leg (d)'s bare module path is the same call `boot.sh` makes)
- * and, with none of `--plan`/`--target`/`--run-dir` given, returns 2 before
- * touching anything that would need a fuller rig — the same shape the
+ * and, with no `--plan` given, exits 2 before touching anything that would
+ * need a fuller rig — the same shape the
  * sibling exam `test_factory_preflight.mjs` already assumes of
  * `audit.mjs`/`preflight.mjs`.
  */
@@ -353,7 +353,7 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   )
 }
 
-// ── (d) [M2] engine.mjs through a symlinked factory/ ─────────────────────
+// ── (d) [M2] flock/engine.mjs through a symlinked factory/ ───────────────
 
 {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-d-'))
@@ -361,11 +361,11 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   fs.mkdirSync(home, { recursive: true })
   const engineDir = buildEngineDir(home, ENGINE_SHA)
 
-  const res = await runAsync([path.join(engineDir, 'factory', 'engine.mjs')], { home })
+  const res = await runAsync([path.join(engineDir, 'factory', 'flock', 'engine.mjs')], { home })
 
   assert.equal(
     res.code, 2,
-    `(d) [M2] node <engineDir>/factory/engine.mjs with no arguments, through the rig's symlinked factory/, exits 2 — got ${res.code}, stdout: ${res.stdout}, stderr: ${res.stderr}`
+    `(d) [M2] node <engineDir>/factory/flock/engine.mjs with no arguments, through the rig's symlinked factory/, exits 2 — got ${res.code}, stdout: ${res.stdout}, stderr: ${res.stderr}`
   )
 }
 

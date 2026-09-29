@@ -20,8 +20,8 @@ engine at `engine=` into a content-addressed directory, and execs that checkout'
 `factory/boot.sh`. The boot script clones the target at `base=`, runs the engine as a transient
 user service with a memory cap, commits its evidence to the TARGET repository on
 `ultra/evidence-run-N` at every transition — no status page; git is the record — and, only when
-there is something to publish and the default branch moved underneath it, re-folds the target's tip
-into the run's branch inline before the PR, then pushes
+there is something to publish and the default branch moved underneath it, catches the run up to
+the target's tip inline (`factory/flock/catchup.mjs`) before the PR, then pushes
 `ultra/integration-run-N` and opens the PR over GitHub's REST API through the edge. The PR is the human
 gate: the target's one integration rides the VM for the run's whole life, and there is no grant step.
 There is no image to keep fresh, no state repository, no orchestrator, no control VM, and no token on
@@ -61,7 +61,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `state-exams/`, `residuals.jsonl`, `kata.jsonl`'s per-event hub export and the fold-again
     receipts directory — and it left with that engine at cut two; what the current engine writes
     to this branch beyond the three files above is not yet described in this contract.
-    **A Flock run (`kind=flock`) adds seven files beside them** (with `summary.json` and the
+    **A Flock run adds seven files beside them** (with `summary.json` and the
     publish files), so its record says what went wrong and not only that it did:
     - `board-ops.json` — the board's moves, in order.
     - `board.json` — the board as it stood at the end: every task with its state and owner, and
@@ -80,7 +80,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
       `ultra/evidence/run-<M>` tag below this run's number; a failed read writes no `past.json`
       and never affects the run.
     Not kept: the whole snapshots, the raw weave log (whose `content` is the files' full texts) and
-    `checks/`. The factory engine (`kind=factory`) writes none of these seven.
+    `checks/`.
   - `ultra/integration-run-<N>` — the work. Pushed only when it is ahead of `base=`; the PR's head.
     It has three fates, decided by the pull request with the highest `number` on that head:
     a merged one goes with the merge (delete-on-merge), a `hold=1` run's stays while its PR is open,
@@ -105,8 +105,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   record compiles to nothing and its commit is a `no plan` line in the contending block.
 - **Comment** (≤200 bytes, one line, space-separated `key=value`, this order, nothing else):
   `run=<N> plan=<40-hex> target=<owner>/<repo> base=<40-hex> engine=<40-hex>` then
-  optional `kind=flock|factory` then optional `hold=1`. `kind=flock` runs the Flock
-  (`factory/flock/engine.mjs`), `kind=factory` the factory (`factory/engine.mjs`); absent means `factory` (a comment from before the switch); `fleet/launch.mjs` always writes the key, `flock` unless `--kind factory`.
+  optional `kind=flock` then optional `hold=1`. The boot always runs the Flock
+  (`factory/flock/engine.mjs`), the one engine: `kind=flock` or no `kind=` boots it, and any other
+  `kind=` (`kind=factory`, the engine retired under map #1292 rule 8) fails the run.
+  `fleet/launch.mjs` always writes `kind=flock` and refuses `--kind`.
   `plan=` is the tip of `ultra/plan-run-<N>` on the target; `hold=1` keeps the pull request open for a
   person — the sandbox publishes it and does not merge it. Written once by `new --comment`; the sandbox
   reads it ONCE from `https://reflection.int.exe.xyz/comment` (`{"comment": "..."}`) and fails the run
@@ -296,15 +298,18 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
 - **Boot script (`factory/boot.sh`), invoked by the bootstrap:** clones the target at `base=`,
   runs the engine as one transient unit, commits evidence under `ultra/evidence-run-<N>` at every
   transition (see above), and — only when there is something to publish — opens the pull request
-  and, gated by `factory/policy.json`'s `publish.self_merge`, merges it, re-folding onto the
-  target's tip inline (`node factory/engine.mjs --refold`) when it moved underneath the run. That
-  refold runs under the same environment as the engine unit — the same `env -u CLAUDE_CONFIG_DIR …`
-  prefix, so the resolver it dispatches reaches the proxy and the edge-injected bearer (run-207,
-  2026-09-21, n=1 run). The engine unit itself:
+  and, gated by `factory/policy.json`'s `publish.self_merge`, merges it. When the target's tip
+  moved underneath the run, the boot first runs `node factory/flock/catchup.mjs` (the old
+  `--refold`'s argv and last-line JSON): it joins the run's work onto the new main through the
+  weave keeper, re-runs the plan's setup, probes and `Check:` lines with `ULTRA_BASE` set to the
+  new main, and on a conflict or a red check leaves the run's commit alone, so the boot opens a
+  draft. It runs under the same environment as the engine unit — the same
+  `env -u CLAUDE_CONFIG_DIR …` prefix (run-207, 2026-09-21, n=1 run, read on the old re-fold).
+  The engine unit itself:
   - engine: `systemd-run --user --unit=fleet-engine-<N> --pipe --wait --collect -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288 -p RuntimeMaxSec=<seconds> -p WorkingDirectory=<target>
     -- env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=<proxy> CLAUDE_CODE_OAUTH_TOKEN=placeholder
     TYPESAFE_BASE_URL=https://typesafe.int.exe.xyz ULTRAPOWERS_FLEET_RUN=<run id> node
-    <engine>/factory/engine.mjs --plan <plan> --target <target> --base <sha> --run-dir <dir>`,
+    <engine>/factory/flock/engine.mjs --plan <plan> --target <target> --base <sha> --run-dir <dir>`,
     stdout+stderr teed to `engine.log`.
     cwd `<target>` — the same working directory the unit's own `WorkingDirectory=` sets.
   **This bullet spelled out the wave engine's own boot script here in detail through 2026-09-21** —
