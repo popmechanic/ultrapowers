@@ -175,3 +175,12 @@
 {"t":691520,"kind":"tool","agent":"A","task":"2","tool":"Read","target":"/home/exedev/run/work/agents/A/skills/ultrawrite/stories/tinyapp-template/server/index.ts","ts":"2026-09-29T06:15:07.603Z"}
 {"t":691537,"kind":"tool:post","agent":"A","tool":"Read","ts":"2026-09-29T06:15:07.620Z"}
 {"t":691909,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"grep -n '<<<<<<<\\|>>>>>>>' /home/exedev/run/work/agents/A/skills/ultrawrite/references/greenfield-stack.md","ts":"2026-09-29T06:15:07.992Z"}
+{"t":838403,"kind":"conflict:reflag","path":"skills/ultrawrite/references/greenfield-stack.md","region":"939d839533","ts":"2026-09-29T06:17:34.486Z"}
+{"t":838404,"kind":"edge","snap":"84a8faf00b","reason":"session end B","perTask":{"1":[0],"2":[1],"3":[0,1],"4":[0],"5":[1,0],"6":[0,0]},"check":0,"conflicts":["skills/ultrawrite/references/greenfield-stack.md"],"blocking":[],"outside":[],"green":false,"ts":"2026-09-29T06:17:34.487Z"}
+{"t":838405,"kind":"pull","agent":"D","changed":[{"path":"factory/stack/tinyapp/celld.ts","from":"B","added":8,"removed":0,"conflict":false}],"ts":"2026-09-29T06:17:34.488Z"}
+{"t":838405,"kind":"pull","agent":"A","changed":[{"path":"factory/stack/tinyapp/celld.ts","from":"B","added":8,"removed":0,"conflict":false}],"ts":"2026-09-29T06:17:34.488Z"}
+{"t":838406,"kind":"session:start","agent":"B","task":"5","ts":"2026-09-29T06:17:34.489Z"}
+{"t":838417,"kind":"wait_for","agent":"D","task":"3","fact":{"kind":"task_done","task":"2"},"held":false,"waited_ms":357815,"merged":["skills/ultrawrite/references/greenfield-stack.md","factory/stack/tinyapp/celld.ts"],"ts":"2026-09-29T06:17:34.500Z"}
+{"t":838439,"kind":"tool:post","agent":"D","tool":"mcp__flock__wait_for","ts":"2026-09-29T06:17:34.522Z"}
+{"t":841355,"kind":"tool","agent":"B","task":"5","tool":"Bash","target":"grep -n \"health\\|tinyapp root\" factory/stack/tinyapp/celld.ts; command -v esbuild","ts":"2026-09-29T06:17:37.438Z"}
+{"t":841444,"kind":"tool","agent":"B","task":"5","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T06:17:37.527Z"}
