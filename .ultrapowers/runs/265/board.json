@@ -1,0 +1,52 @@
+{
+ "tasks": [
+  {
+   "id": "1",
+   "title": "Retire the conflict check and the map-stage same-need reads",
+   "state": "done",
+   "owner": "C",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "2",
+   "title": "The ask file holds the operator's words",
+   "state": "done",
+   "owner": "D",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "3",
+   "title": "The census stops reading Jev fields nothing writes",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "4",
+   "title": "Two doc lines stop naming retired Jev readers",
+   "state": "done",
+   "owner": "B",
+   "depends_on": [],
+   "notes": []
+  }
+ ],
+ "beliefs": [
+  {
+   "id": 1,
+   "t": 32866,
+   "by": "host",
+   "claim": "open conflict in skills/ultrawrite/stories/policy.json between published copies; whoever next works there should make it say what both sides meant and call resolve_conflict",
+   "confidence": 1
+  },
+  {
+   "id": 2,
+   "t": 37319,
+   "by": "host",
+   "claim": "open conflict in skills/ultrapowers/scripts/catch_counter.py between published copies; whoever next works there should make it say what both sides meant and call resolve_conflict",
+   "confidence": 1
+  }
+ ]
+}
