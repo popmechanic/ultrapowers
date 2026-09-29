@@ -58,8 +58,8 @@ target's checkout after the self-merge, with `CLOUDFLARE_API_BASE_URL` pointed a
 no `node_modules`, so the command installs what it needs), `**Verify:** <probe command>`
 (run with `ULTRA_PUBLISH_URL` set to the first `https://…workers.dev` URL the deploy
 printed; it must read that variable), and optionally `**Rollback:** <command>` (run once
-when the verify exits non-zero); the account id is the target's `wrangler.jsonc`
-`account_id`, never a plan line. The parser prints the three as `publish: {deploy, verify,
+when the verify exits non-zero); the account id is the `CLOUDFLARE_ACCOUNT_ID=` prefix in
+the target's `deploy` script, never a plan line and never `wrangler.jsonc`, which celld refuses it in. The parser prints the three as `publish: {deploy, verify,
 rollback}`.
 
 An optional `**Closes:**` line names the tickets the plan closes. It sits directly under
@@ -97,7 +97,7 @@ judges the real app after it.
      `saved`); a `ui` step adds `ui` (click/type/key by role and name) and `see`.
      The accessible names you choose are the builder's contract. A step's
      `"as": "<email>"` (or `null`) sets who is signed in from that step on.
-   - To deploy when the run lands, `page.json` carries `publish`: `{"deploy": "bun install && bun run deploy", "verify": "curl -fsS \"$ULTRA_PUBLISH_URL/health\""}` (the app's `server/wrangler.jsonc` names the Worker and its `account_id`; see `references/greenfield-stack.md`).
+   - To deploy when the run lands, `page.json` carries `publish`: `{"deploy": "bun install && bun run deploy", "verify": "curl -fsS \"$ULTRA_PUBLISH_URL/health\""}` (`server/wrangler.jsonc` names the Worker; the account is a `CLOUDFLARE_ACCOUNT_ID=` prefix in the app's `deploy` script, since celld refuses `account_id` in the config; see `references/greenfield-stack.md`).
    - `cards.json`, each card with its `concept`.
    - `store.js` exports `TOOLS` and `makeStore`.
 5. **Write the stories the coverage rule requires**, not ones you invent:

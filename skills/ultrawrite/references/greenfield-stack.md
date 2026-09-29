@@ -147,11 +147,14 @@ A plan that publishes carries two header lines, verbatim:
 - **Publish:** bun install && bun run deploy
 - **Verify:** curl -fsS "$ULTRA_PUBLISH_URL/health"
 
-and sets the Worker's `name` and `account_id` in `server/wrangler.jsonc`. The
-Publish line runs once the plan's tasks have merged; the Verify line exits 0
-only when the deployed Worker answers `/health`. (`account_id` in the config is
-what `## The runtime host` warns celld 0.5 refuses; that section is deferred, and
-a plan that brings exams back on celld moves the account to `--env-file`.)
+and sets the Worker's `name` in `server/wrangler.jsonc`. The Cloudflare account
+goes in the app's `deploy` script, never in the config: `"deploy": "bun
+scripts/pack-client.ts && CLOUDFLARE_ACCOUNT_ID=<id> bunx wrangler deploy --config
+server/wrangler.jsonc"`. celld refuses `account_id` and `workers_dev` in the config
+it starts from, and the story checker runs every step under celld (radio-station,
+2026-09-29: `celld deploy does not support these config keys: account_id,
+workers_dev`). The Publish line runs once the plan's tasks have merged; the Verify
+line exits 0 only when the deployed Worker answers `/health`.
 
 ## State exams
 
