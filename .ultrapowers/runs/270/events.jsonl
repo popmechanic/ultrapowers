@@ -284,3 +284,56 @@
 {"t":96458,"kind":"tool:post","agent":"D","tool":"mcp__flock__done","ts":"2026-09-29T21:21:04.838Z"}
 {"t":96964,"kind":"driver:amendment","path":"factory/package-lock.json","snap":"e81bcd52d3","ts":"2026-09-29T21:21:05.344Z"}
 {"t":96964,"kind":"driver:amendment","path":"tests/test_plan_parse.py","snap":"e81bcd52d3","ts":"2026-09-29T21:21:05.344Z"}
+{"t":132801,"kind":"edge","snap":"e81bcd52d3","reason":"done D","perTask":{"1":[0,0,0],"2":[1,1,0,0,0,0],"3":[1,1,1,0,0,0],"4":[1,1],"5":[0,0,0]},"check":0,"conflicts":[],"blocking":[],"outside":[],"green":false,"ts":"2026-09-29T21:21:41.181Z"}
+{"t":132802,"kind":"tool","agent":"B","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/claude-token.mjs","ts":"2026-09-29T21:21:41.182Z"}
+{"t":132803,"kind":"tool","agent":"A","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/A/factory/boot.sh","ts":"2026-09-29T21:21:41.183Z"}
+{"t":132804,"kind":"tool","agent":"E","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/E/fleet/tests/test_launch_credential.mjs","ts":"2026-09-29T21:21:41.184Z"}
+{"t":133069,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T21:21:41.449Z"}
+{"t":133071,"kind":"tool:post","agent":"E","tool":"Edit","ts":"2026-09-29T21:21:41.451Z"}
+{"t":133080,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T21:21:41.460Z"}
+{"t":133085,"kind":"edit","agent":"A","task":"3","tool":"Edit","path":"factory/boot.sh","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:21:41.465Z"}
+{"t":133098,"kind":"edit","agent":"E","task":"2","tool":"Edit","path":"fleet/tests/test_launch_credential.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:21:41.478Z"}
+{"t":133103,"kind":"tool","agent":"E","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/E/fleet/tests/test_launch_credential.mjs","ts":"2026-09-29T21:21:41.483Z"}
+{"t":133841,"kind":"pull","agent":"A","changed":[{"path":"factory/flock/plan.mjs","from":"D","added":4,"removed":17,"conflict":false},{"path":"skills/ultrapowers/scripts/plan_parse.py","from":"D","added":19,"removed":0,"conflict":false},{"path":"skills/ultrapowers/scripts/stories_parse.py","from":"D","added":4,"removed":0,"conflict":false},{"path":"tests/test_plan_parse.py","from":"D","added":1,"removed":1,"conflict":false},{"path":"factory/package-lock.json","from":"D","added":1513,"removed":0,"conflict":false}],"ts":"2026-09-29T21:21:42.221Z"}
+{"t":133843,"kind":"edit","agent":"B","task":"4","tool":"Edit","path":"fleet/claude-token.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:21:42.223Z"}
+{"t":133854,"kind":"tool","agent":"B","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/claude-token.mjs","ts":"2026-09-29T21:21:42.234Z"}
+{"t":134035,"kind":"tool:post","agent":"E","tool":"Edit","ts":"2026-09-29T21:21:42.415Z"}
+{"t":134044,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T21:21:42.424Z"}
+{"t":134044,"kind":"edit","agent":"E","task":"2","tool":"Edit","path":"fleet/tests/test_launch_credential.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:21:42.424Z"}
+{"t":134052,"kind":"tool","agent":"E","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/E/fleet/tests/test_launch_credential.mjs","ts":"2026-09-29T21:21:42.432Z"}
+{"t":134055,"kind":"edit","agent":"B","task":"4","tool":"Edit","path":"fleet/claude-token.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:21:42.435Z"}
+{"t":134822,"kind":"pull","agent":"B","changed":[{"path":"factory/flock/plan.mjs","from":"D","added":4,"removed":17,"conflict":false},{"path":"skills/ultrapowers/scripts/plan_parse.py","from":"D","added":19,"removed":0,"conflict":false},{"path":"skills/ultrapowers/scripts/stories_parse.py","from":"D","added":4,"removed":0,"conflict":false},{"path":"tests/test_plan_parse.py","from":"D","added":1,"removed":1,"conflict":false},{"path":"factory/package-lock.json","from":"D","added":1513,"removed":0,"conflict":false}],"ts":"2026-09-29T21:21:43.202Z"}
+{"t":134942,"kind":"tool:post","agent":"E","tool":"Edit","ts":"2026-09-29T21:21:43.322Z"}
+{"t":134950,"kind":"edit","agent":"E","task":"2","tool":"Edit","path":"fleet/tests/test_launch_credential.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:21:43.330Z"}
+{"t":134955,"kind":"tool","agent":"E","task":"2","tool":"Read","target":"/home/exedev/run/work/agents/E/fleet/tests/test_launch_duplicate.mjs","ts":"2026-09-29T21:21:43.335Z"}
+{"t":134965,"kind":"tool:post","agent":"E","tool":"Read","ts":"2026-09-29T21:21:43.345Z"}
+{"t":135039,"kind":"tool","agent":"A","task":"3","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T21:21:43.419Z"}
+{"t":142624,"kind":"proof","agent":"A","task":"3","exits":[0,0,0,0,0,0],"causes":[],"errs":[],"ts":"2026-09-29T21:21:51.004Z"}
+{"t":142629,"kind":"pull","agent":"E","changed":[{"path":"factory/flock/plan.mjs","from":"D","added":4,"removed":17,"conflict":false},{"path":"skills/ultrapowers/scripts/plan_parse.py","from":"D","added":19,"removed":0,"conflict":false},{"path":"skills/ultrapowers/scripts/stories_parse.py","from":"D","added":4,"removed":0,"conflict":false},{"path":"tests/test_plan_parse.py","from":"D","added":1,"removed":1,"conflict":false},{"path":"factory/package-lock.json","from":"D","added":1513,"removed":0,"conflict":false}],"ts":"2026-09-29T21:21:51.009Z"}
+{"t":142632,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; grep -rn \"claude-token.mjs\" --include=*.mjs --include=*.sh --include=*.py . | grep -v","ts":"2026-09-29T21:21:51.012Z"}
+{"t":142634,"kind":"tool:post","agent":"A","tool":"mcp__flock__run_proof","ts":"2026-09-29T21:21:51.014Z"}
+{"t":142682,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T21:21:51.062Z"}
+{"t":142810,"kind":"session:end","agent":"D","task":"1","released":false,"done":"plan_parse.py: new fence-aware task_sections(text) ('Task <id>: …' up to the next unfenced task heading, trimmed); the public task view now carries `body`. stories_parse.py sets `body` on each task from the same helper. plan.mjs reads t.body for both grammars; sectionsById and readFileSync are gone. Bodies are byte-identical to the old sectionsById output on both fixtures. tests/test_plan_parse.py TASK_FIELDS now includes \"body\". pytest tests/: 179 passed; M1–M3 green.","redRuns":1,"turns":15,"usage":{"input_tokens":26,"cache_creation_input_tokens":22754,"cache_read_input_tokens":505125,"output_tokens":4985,"output_tokens_details":{"thinking_tokens":844},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":22754,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[],"speed":"standard","fallback_credit":null},"ts":"2026-09-29T21:21:51.190Z"}
+{"t":145214,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; ls fleet/tests | grep -i audit; for t in fleet/tests/test_factory_audit*.mjs; do node","ts":"2026-09-29T21:21:53.594Z"}
+{"t":146499,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; for t in fleet/tests/test_claude_token*.mjs fleet/tests/test_doctor*.mjs fleet/tests/","ts":"2026-09-29T21:21:54.879Z"}
+{"t":147337,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; grep -rl \"audit.mjs\" fleet/tests factory --include=*.mjs --include=*.sh | head; ","ts":"2026-09-29T21:21:55.717Z"}
+{"t":147370,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:21:55.750Z"}
+{"t":149724,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T21:21:58.104Z"}
+{"t":150273,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; node fleet/tests/test_factory_preflight.mjs >/dev/null 2>&1; echo $?; printf '{\"kind\"","ts":"2026-09-29T21:21:58.653Z"}
+{"t":150884,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:21:59.264Z"}
+{"t":152652,"kind":"tool","agent":"B","task":"4","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T21:22:01.032Z"}
+{"t":152711,"kind":"proof","agent":"B","task":"4","exits":[0,0],"causes":[],"errs":[],"ts":"2026-09-29T21:22:01.091Z"}
+{"t":152716,"kind":"tool:post","agent":"B","tool":"mcp__flock__run_proof","ts":"2026-09-29T21:22:01.096Z"}
+{"t":153712,"kind":"tool","agent":"E","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/E/fleet/tests/test_launch_duplicate.mjs","ts":"2026-09-29T21:22:02.092Z"}
+{"t":153766,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; grep -lE \"lobby.mjs|doctor.mjs|launch.mjs|claude-token\" fleet/tests/*.mjs | grep -vE ","ts":"2026-09-29T21:22:02.146Z"}
+{"t":153871,"kind":"tool:post","agent":"E","tool":"Edit","ts":"2026-09-29T21:22:02.251Z"}
+{"t":153878,"kind":"edit","agent":"E","task":"2","tool":"Edit","path":"fleet/tests/test_launch_duplicate.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:22:02.258Z"}
+{"t":154070,"kind":"tool","agent":"A","task":"3","tool":"mcp__flock__done","target":"","ts":"2026-09-29T21:22:02.450Z"}
+{"t":161619,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T21:22:09.999Z"}
+{"t":161621,"kind":"tool","agent":"E","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/E/fleet/tests/test_launch_duplicate.mjs","ts":"2026-09-29T21:22:10.001Z"}
+{"t":163016,"kind":"pull","agent":"B","changed":[{"path":"factory/audit.mjs","from":"A","added":2,"removed":26,"conflict":false},{"path":"factory/boot.sh","from":"A","added":4,"removed":2,"conflict":false},{"path":"factory/record.mjs","from":"A","added":33,"removed":42,"conflict":true}],"ts":"2026-09-29T21:22:11.396Z"}
+{"t":163017,"kind":"conflict:open","path":"factory/record.mjs","region":"0fdee51d07","between":["B","A"],"ts":"2026-09-29T21:22:11.397Z"}
+{"t":163021,"kind":"publish","agent":"A","task":"3","by":"done","ts":"2026-09-29T21:22:11.401Z"}
+{"t":163031,"kind":"tool:post","agent":"A","tool":"mcp__flock__done","ts":"2026-09-29T21:22:11.411Z"}
+{"t":163033,"kind":"kata:mirror","task":"3","uid":"01M3QGG8Z3T9D8FB4Z430NAAW4","what":"done by A","ok":true,"ts":"2026-09-29T21:22:11.413Z"}
+{"t":163038,"kind":"tool:post","agent":"E","tool":"Edit","ts":"2026-09-29T21:22:11.418Z"}
