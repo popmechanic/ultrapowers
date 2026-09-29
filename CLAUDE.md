@@ -174,7 +174,7 @@ the engine's exit code is the merge decision.
 
 ## Conventions & gotchas
 
-- **Releasing.** Both `plugin.json` and `marketplace.json` carry the version (`0.3.41` today);
+- **Releasing.** Both `plugin.json` and `marketplace.json` carry the version (`0.3.42` today);
   `plugin.json` wins silently if they drift. A release is one hand PR titled
   `chore: version 0.x.y — …` bumping both manifests and this line, squash-merged, then a bare
   tag on that commit: `git tag v0.x.y <sha> && git push origin v0.x.y`. **No GitHub release**
