@@ -148,3 +148,10 @@
 {"t":481371,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A/skills/ultrawrite/stories/tinyapp-template; head -c 600 server/client-files.ts; echo; ","ts":"2026-09-29T06:11:37.454Z"}
 {"t":481409,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T06:11:37.492Z"}
 {"t":482058,"kind":"tool","agent":"B","task":"5","tool":"mcp__flock__done","target":"","ts":"2026-09-29T06:11:38.141Z"}
+{"t":536196,"kind":"facts:red","agent":"B","task":"5","at":"done","exits":[1],"ts":"2026-09-29T06:12:32.279Z"}
+{"t":536200,"kind":"kata:mirror","task":"5","uid":"01M3NW37X2ZY8RNY9E03T4TSQS","what":"engine belief (0.95) from B: Task 5 fact 1 needs `esbuild` on PATH (the proof symlinks `command -v esbuild`); this agent sandbox has none, so it fails with 'esbuild not found'. With PATH including ~/.bun/install/cache/@esbuild/linux-x64@0.25.12@@@1/bin the fact passes (exit 0).","ok":false,"error":"The operation was aborted due to timeout","ts":"2026-09-29T06:12:32.283Z"}
+{"t":536200,"kind":"tool","agent":"C","task":"6","tool":"mcp__flock__done","target":"","ts":"2026-09-29T06:12:32.283Z"}
+{"t":536202,"kind":"tool:post","agent":"B","tool":"mcp__flock__done","ts":"2026-09-29T06:12:32.285Z"}
+{"t":539916,"kind":"publish","agent":"C","task":"6","by":"done","ts":"2026-09-29T06:12:35.999Z"}
+{"t":539926,"kind":"tool:post","agent":"C","tool":"mcp__flock__done","ts":"2026-09-29T06:12:36.009Z"}
+{"t":539931,"kind":"kata:mirror","task":"6","uid":"01M3NW3AF6PPH221F0WT3Q2SSR","what":"done by C","ok":true,"ts":"2026-09-29T06:12:36.014Z"}
