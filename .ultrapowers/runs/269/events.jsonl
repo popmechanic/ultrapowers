@@ -50,3 +50,32 @@
 {"t":100790,"kind":"tool","agent":"A","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/A/factory/policy.json","ts":"2026-09-29T21:09:21.628Z"}
 {"t":100960,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T21:09:21.798Z"}
 {"t":100962,"kind":"edit","agent":"A","task":"2","tool":"Edit","path":"factory/policy.json","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:09:21.800Z"}
+{"t":124765,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; cat > fleet/tests/flock_jev_trials_probe.mjs <<'EOF'\n#!/usr/bin/env node\n// The Jev t","ts":"2026-09-29T21:09:45.603Z"}
+{"t":134396,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; grep -n \"blocking\" factory/flock/engine.mjs | head -20","ts":"2026-09-29T21:09:55.234Z"}
+{"t":134453,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:09:55.291Z"}
+{"t":134600,"kind":"fallback","agent":"A","path":"fleet/tests/flock_jev_trials_probe.mjs","peer_lines":0,"deleted":false,"ts":"2026-09-29T21:09:55.438Z"}
+{"t":136507,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; grep -n \"function openConflicts\\|function earlyClose\" -A25 factory/flock/engine.mjs |","ts":"2026-09-29T21:09:57.345Z"}
+{"t":136535,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:09:57.373Z"}
+{"t":141248,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; sed -i \"s|'--clock', '120', '--stall-minutes', '2'\\]|'--clock', '120', '--stall-minut","ts":"2026-09-29T21:10:02.086Z"}
+{"t":141248,"kind":"deny:shell-write","agent":"A","task":"2","command":"cd /home/exedev/run/work/agents/A; sed -i \"s|'--clock', '120', '--stall-minutes', '2'\\]|'--clock', '120', '--stall-minutes', '2', ...(CASE === 'resolve' ? ['--e","ts":"2026-09-29T21:10:02.086Z"}
+{"t":145043,"kind":"tool","agent":"A","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/A/fleet/tests/flock_jev_trials_probe.mjs","ts":"2026-09-29T21:10:05.881Z"}
+{"t":145220,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T21:10:06.058Z"}
+{"t":145223,"kind":"edit","agent":"A","task":"2","tool":"Edit","path":"fleet/tests/flock_jev_trials_probe.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:10:06.061Z"}
+{"t":145227,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; node fleet/tests/flock_jev_trials_probe.mjs resolve","ts":"2026-09-29T21:10:06.065Z"}
+{"t":150054,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; grep -n \"ledger.set\\|function openConflicts\\|openEntries =\\|function openEntries\\|con","ts":"2026-09-29T21:10:10.892Z"}
+{"t":150075,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:10:10.913Z"}
+{"t":152253,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; sed -n 380,412p factory/flock/engine.mjs; grep -n \"recordConflict\\|noteConflict\" fact","ts":"2026-09-29T21:10:13.091Z"}
+{"t":152293,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:10:13.131Z"}
+{"t":154838,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; grep -n \"openConflict(\" factory/flock/engine.mjs; ls /tmp/flock-jev-trials-*/run/even","ts":"2026-09-29T21:10:15.676Z"}
+{"t":154878,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:10:15.716Z"}
+{"t":158757,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; node fleet/tests/flock_jev_trials_probe.mjs resolve >/dev/null; d=$(ls -td /tmp/flock","ts":"2026-09-29T21:10:19.595Z"}
+{"t":160523,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:10:21.361Z"}
+{"t":166407,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; grep -n \"addsOnly\\|adds_only\\|conflict\" factory/flock/weave.py | head -40","ts":"2026-09-29T21:10:27.245Z"}
+{"t":166440,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:10:27.278Z"}
+{"t":175238,"kind":"tool","agent":"A","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/A/fleet/tests/flock_jev_trials_probe.mjs","ts":"2026-09-29T21:10:36.076Z"}
+{"t":175416,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T21:10:36.254Z"}
+{"t":175419,"kind":"edit","agent":"A","task":"2","tool":"Edit","path":"fleet/tests/flock_jev_trials_probe.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:10:36.257Z"}
+{"t":175991,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; node fleet/tests/flock_jev_trials_probe.mjs resolve | cut -c1-300; d=$(ls -td /tmp/fl","ts":"2026-09-29T21:10:36.829Z"}
+{"t":179757,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:10:40.595Z"}
+{"t":184089,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; d=$(ls -td /tmp/flock-jev-trials-* | head -1); node -e \"import('./factory/flock/plan.","ts":"2026-09-29T21:10:44.927Z"}
+{"t":184186,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:10:45.024Z"}
