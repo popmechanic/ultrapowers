@@ -240,3 +240,47 @@
 {"t":53153,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T21:20:21.533Z"}
 {"t":53153,"kind":"kata:mirror","task":"5","uid":"01M3QGGEA8SM1W2DMN4WHZJNXD","what":"done by C","ok":true,"ts":"2026-09-29T21:20:21.533Z"}
 {"t":53159,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T21:20:21.539Z"}
+{"t":88884,"kind":"edge","snap":"0850e19495","reason":"done C","perTask":{"1":[1,1,1],"2":[1,1,0,0,0,0],"3":[1,1,1,0,0,0],"4":[1,1],"5":[0,0,0]},"check":0,"conflicts":[],"blocking":[],"outside":[],"green":false,"ts":"2026-09-29T21:20:57.264Z"}
+{"t":89252,"kind":"pull","agent":"D","changed":[{"path":"skills/ultrapowers/scripts/plan_check.py","from":"C","added":6,"removed":12,"conflict":false},{"path":"skills/ultrawrite/scripts/extract_gate_input.py","from":"C","added":3,"removed":3,"conflict":false}],"ts":"2026-09-29T21:20:57.632Z"}
+{"t":89255,"kind":"edit","agent":"A","task":"3","tool":"Edit","path":"factory/audit.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:20:57.635Z"}
+{"t":89260,"kind":"edit","agent":"B","task":"4","tool":"Edit","path":"fleet/launch.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:20:57.640Z"}
+{"t":89274,"kind":"tool","agent":"B","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/launch.mjs","ts":"2026-09-29T21:20:57.654Z"}
+{"t":89278,"kind":"tool","agent":"A","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/A/factory/audit.mjs","ts":"2026-09-29T21:20:57.658Z"}
+{"t":89645,"kind":"pull","agent":"E","changed":[{"path":"skills/ultrapowers/scripts/plan_check.py","from":"C","added":6,"removed":12,"conflict":false},{"path":"skills/ultrawrite/scripts/extract_gate_input.py","from":"C","added":3,"removed":3,"conflict":false}],"ts":"2026-09-29T21:20:58.025Z"}
+{"t":89834,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T21:20:58.214Z"}
+{"t":89837,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T21:20:58.217Z"}
+{"t":89859,"kind":"edit","agent":"B","task":"4","tool":"Edit","path":"fleet/launch.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:20:58.239Z"}
+{"t":89859,"kind":"edit","agent":"A","task":"3","tool":"Edit","path":"factory/audit.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:20:58.239Z"}
+{"t":89865,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B/fleet; grep -n \"ACCOUNT_NAME\" launch.mjs","ts":"2026-09-29T21:20:58.245Z"}
+{"t":89866,"kind":"tool","agent":"A","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/A/factory/audit.mjs","ts":"2026-09-29T21:20:58.246Z"}
+{"t":89893,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T21:20:58.273Z"}
+{"t":90064,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T21:20:58.444Z"}
+{"t":90067,"kind":"edit","agent":"A","task":"3","tool":"Edit","path":"factory/audit.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:20:58.447Z"}
+{"t":90464,"kind":"pull","agent":"B","changed":[{"path":"skills/ultrapowers/scripts/plan_check.py","from":"C","added":6,"removed":12,"conflict":false},{"path":"skills/ultrawrite/scripts/extract_gate_input.py","from":"C","added":3,"removed":3,"conflict":false}],"ts":"2026-09-29T21:20:58.844Z"}
+{"t":90812,"kind":"pull","agent":"A","changed":[{"path":"skills/ultrapowers/scripts/plan_check.py","from":"C","added":6,"removed":12,"conflict":false},{"path":"skills/ultrawrite/scripts/extract_gate_input.py","from":"C","added":3,"removed":3,"conflict":false}],"ts":"2026-09-29T21:20:59.192Z"}
+{"t":91274,"kind":"tool","agent":"D","task":"1","tool":"Bash","target":"cd /home/exedev/run/work/agents/D; for f in fleet/tests/test_launch_plan_path.mjs fleet/tests/test_launch_one_engine.mjs","ts":"2026-09-29T21:20:59.654Z"}
+{"t":92345,"kind":"tool","agent":"B","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/launch.mjs","ts":"2026-09-29T21:21:00.725Z"}
+{"t":92478,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T21:21:00.858Z"}
+{"t":92874,"kind":"edit","agent":"B","task":"4","tool":"Edit","path":"fleet/launch.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:21:01.254Z"}
+{"t":93330,"kind":"tool","agent":"E","task":"2","tool":"Read","target":"/home/exedev/run/work/agents/E/fleet/tests/test_launch_credential.mjs","ts":"2026-09-29T21:21:01.710Z"}
+{"t":93352,"kind":"tool:post","agent":"E","tool":"Read","ts":"2026-09-29T21:21:01.732Z"}
+{"t":93397,"kind":"tool","agent":"B","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/claude-token.mjs","ts":"2026-09-29T21:21:01.777Z"}
+{"t":93668,"kind":"session:end","agent":"C","task":"5","released":false,"done":"plan_check.py now uses plan_parse.BACKTICK_PATH_RE, plan_parse._FENCE_RE and plan_parse._is_implementation(t[\"type\"]) in place of its own PATH_RE/_FENCE_MARK_RE/_is_implementation; extract_gate_input.py imports BACKTICK_PATH_RE (as PATH_RE) and FILE_BULLET from plan_parse instead of PATH_RE from plan_check and its own _FILES_BULLET. _FILES_BULLET_RE left as instructed. All three proof facts pass.","redRuns":0,"turns":23,"usage":{"input_tokens":20,"cache_creation_input_tokens":17191,"cache_read_input_tokens":326482,"output_tokens":5344,"output_tokens_details":{"thinking_tokens":379},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":17191,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[],"speed":"standard","fallback_credit":null},"ts":"2026-09-29T21:21:02.048Z"}
+{"t":93823,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T21:21:02.203Z"}
+{"t":93833,"kind":"edit","agent":"B","task":"4","tool":"Edit","path":"fleet/claude-token.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:21:02.213Z"}
+{"t":94251,"kind":"tool","agent":"A","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/A/factory/boot.sh","ts":"2026-09-29T21:21:02.631Z"}
+{"t":94380,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T21:21:02.760Z"}
+{"t":94390,"kind":"edit","agent":"A","task":"3","tool":"Edit","path":"factory/boot.sh","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:21:02.770Z"}
+{"t":94469,"kind":"tool","agent":"B","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/claude-token.mjs","ts":"2026-09-29T21:21:02.849Z"}
+{"t":94601,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T21:21:02.981Z"}
+{"t":94609,"kind":"edit","agent":"B","task":"4","tool":"Edit","path":"fleet/claude-token.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:21:02.989Z"}
+{"t":95959,"kind":"tool","agent":"A","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/A/factory/boot.sh","ts":"2026-09-29T21:21:04.339Z"}
+{"t":96073,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T21:21:04.453Z"}
+{"t":96083,"kind":"edit","agent":"A","task":"3","tool":"Edit","path":"factory/boot.sh","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:21:04.463Z"}
+{"t":96133,"kind":"tool","agent":"D","task":"1","tool":"mcp__flock__done","target":"","ts":"2026-09-29T21:21:04.513Z"}
+{"t":96441,"kind":"fallback","agent":"D","path":"factory/package-lock.json","peer_lines":0,"deleted":false,"ts":"2026-09-29T21:21:04.821Z"}
+{"t":96451,"kind":"publish","agent":"D","task":"1","by":"done","ts":"2026-09-29T21:21:04.831Z"}
+{"t":96458,"kind":"kata:mirror","task":"1","uid":"01M3QGG3PG7KXR4ETQS30PGF41","what":"done by D","ok":true,"ts":"2026-09-29T21:21:04.838Z"}
+{"t":96458,"kind":"tool:post","agent":"D","tool":"mcp__flock__done","ts":"2026-09-29T21:21:04.838Z"}
+{"t":96964,"kind":"driver:amendment","path":"factory/package-lock.json","snap":"e81bcd52d3","ts":"2026-09-29T21:21:05.344Z"}
+{"t":96964,"kind":"driver:amendment","path":"tests/test_plan_parse.py","snap":"e81bcd52d3","ts":"2026-09-29T21:21:05.344Z"}
