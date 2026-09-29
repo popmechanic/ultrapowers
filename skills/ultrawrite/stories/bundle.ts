@@ -27,6 +27,9 @@ export type Page = {
   stories: Story[];
   links?: {id: string; sentence: string; pieces?: string[]}[];
   numbers?: {id: string; sentence: string; measure: string; target: string}[];
+  // A plan that deploys: the boot runs `deploy` after the self-merge, then `verify` with
+  // ULTRA_PUBLISH_URL set, and `rollback` when verify fails.
+  publish?: {deploy: string; verify: string; rollback?: string};
   subproject?: string;
   waivers?: {piece: string; action: string; refuses: string; arg: string; reason: string}[];
 };
