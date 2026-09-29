@@ -238,3 +238,4 @@
 {"t":1468118,"kind":"stall:deadlock","evidence":{"left":[{"id":"5","state":"parked","depends_on":[]}]},"ts":"2026-09-29T06:28:04.201Z"}
 {"t":1468118,"kind":"terminal","pr":"draft","why":"deadlock: work left and nothing claimable","snap":"dcb48a8c39","ts":"2026-09-29T06:28:04.201Z"}
 {"t":1469639,"kind":"parked","task":"5","reason":"red at dcb48a8c39","ts":"2026-09-29T06:28:05.722Z"}
+{"ts":"2026-09-29T06:28:29.197Z","kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1357","number":1357,"draft":true}
