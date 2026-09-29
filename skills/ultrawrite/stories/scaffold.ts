@@ -14,9 +14,11 @@ const STORE = 'client/src/store.js';
 const stub = (piece: string) => `import type {MergeableStore} from 'tinybase';
 
 type Tools = Record<string, (args: Record<string, unknown>) => boolean>;
+// Who is signed in right now: an email, or null. The page passes it to every tool.
+type Session = {who: () => string | null};
 
 // The ${piece} piece's screen. A builder writes this file.
-export function mount(root: HTMLElement, store: MergeableStore, tools: Tools): void {}
+export function mount(root: HTMLElement, store: MergeableStore, tools: Tools, session: Session): void {}
 `;
 
 function main(argv: string[]): number {

@@ -3,7 +3,8 @@
 holding one JSON object. The grammar is closed, and code decides every check.
 
     {"clause": "S1.2", "layer": "store" | "ui" | "saved",
-     "given": [{"tool": name, "args": {...}}, ...],
+     "as"?: email | null,                               who is signed in for `do`
+     "given": [{"tool": name, "args": {...}, "as"?: email | null}, ...],
      "do":    [{"tool": name, "args": {...}}]            (store, saved)
             | [{"click" | "type" | "key": {...}}, ...]   (ui),
      "expect": [check, ...],
@@ -17,19 +18,26 @@ A check is exactly one of:
     {"table": t, "row": r, "absent": true}             the row is gone
     {"value": k, "eq": v} | {"value": k, "absent": true}
     {"unchanged": true}                                nothing changed
-Deciding a check (holds, hollow, the diff a step made) is probe.ts's alone
+`as` sets who is signed in on the page (the page hook's `who`) before that
+call, and it stays so until the next `as`; absent, the page's own sign-in
+stands (none, on the checker). Deciding a check (holds, hollow, the diff a step made) is probe.ts's alone
 (factory/stack/tinyapp/probe.ts); this module reads the shape only."""
 import json
 
 LAYERS = ("store", "ui", "saved")
 UI_FORMS = ("click", "type", "key")
-PROBE_KEYS = {"clause", "layer", "given", "do", "expect", "see", "judge", "holds_before"}
+PROBE_KEYS = {"clause", "layer", "as", "given", "do", "expect", "see", "judge", "holds_before"}
+
+
+def is_who(x):
+    """A signed-in email, or None for nobody signed in."""
+    return x is None or (isinstance(x, str) and x != "")
 
 
 def is_tool_call(x):
-    return (isinstance(x, dict) and set(x) == {"tool", "args"}
+    return (isinstance(x, dict) and set(x) in ({"tool", "args"}, {"tool", "args", "as"})
             and isinstance(x["tool"], str) and x["tool"] != ""
-            and isinstance(x["args"], dict))
+            and isinstance(x["args"], dict) and is_who(x.get("as")))
 
 
 def is_ui_call(x):
@@ -74,16 +82,18 @@ def validate_probe(p):
         errs.append("%s: clause must name the story step, e.g. S1.2" % where)
     if p.get("layer") not in LAYERS:
         errs.append("%s: layer must be store, ui or saved" % where)
+    if not is_who(p.get("as")):
+        errs.append("%s: as must be an email or null" % where)
     given = p.get("given", [])
     if not isinstance(given, list) or not all(is_tool_call(g) for g in given):
-        errs.append("%s: given must be a list of {tool, args} calls" % where)
+        errs.append("%s: given must be a list of {tool, args, as?} calls" % where)
     do = p.get("do")
     if not isinstance(do, list) or not do:
         errs.append("%s: do must be a non-empty list" % where)
     elif p.get("layer") == "ui":
         if not all(is_ui_call(d) for d in do):
             errs.append("%s: a ui probe's do is click/type/key steps" % where)
-    elif not (len(do) == 1 and is_tool_call(do[0])):
+    elif not (len(do) == 1 and is_tool_call(do[0]) and "as" not in do[0]):
         errs.append("%s: a store or saved probe's do is one {tool, args} call" % where)
     expect = p.get("expect")
     if not isinstance(expect, list) or not expect or not all(is_check(c) for c in expect):

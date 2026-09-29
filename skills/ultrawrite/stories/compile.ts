@@ -14,7 +14,7 @@ import {loadBundle, type Bundle, type Card} from './bundle';
 import {runChecks} from './checks';
 import {renderProduct, saveProduct, type Product} from './product';
 
-type Tool = {name: string; inputSchema?: unknown; run: (store: unknown, args: Record<string, unknown>) => boolean};
+type Tool = {name: string; inputSchema?: unknown; run: (store: unknown, args: Record<string, unknown>, who: string | null) => boolean};
 type StoreModule = {TOOLS: Tool[]; makeStore: () => {getContent: () => Content}};
 type Derived = {story: string; step: number; piece: string; probe: Probe};
 type Line = {plan: string; signed: string; story: string; step: number; sentence: string; probe: Probe};
@@ -58,12 +58,15 @@ export function probesOf(b: Bundle, mod: StoreModule): Derived[] {
       return aliases.rename(c);
     };
     let before = read();
+    // Who is signed in: set by a step's `as` and kept until the next one.
+    let who: string | null | undefined;
     s.steps.forEach((st, i) => {
+      if (st.as !== undefined) who = st.as;
       const where = `story ${s.id} step ${i + 1}`;
       const tool = tools.get(st.tool);
       if (!tool) throw new Error(`${where}: the store module has no tool ${st.tool}`);
       const args = st.args ?? {};
-      const ran = tool.run(store, aliases.args(args, tool.inputSchema)) === true;
+      const ran = tool.run(store, aliases.args(args, tool.inputSchema), who ?? null) === true;
       if (ran === Boolean(st.refused)) {
         throw new Error(st.refused
           ? `${where}: ${st.tool} was to refuse ${json(args)}, but it ran`
@@ -75,7 +78,8 @@ export function probesOf(b: Bundle, mod: StoreModule): Derived[] {
         const probe: Probe = {
           clause: `${s.id}.${i + 1}`,
           layer: st.layer,
-          given: s.steps.slice(0, i).map((g) => ({tool: g.tool, args: g.args ?? {}})),
+          ...(who !== undefined ? {as: who} : {}),
+          given: s.steps.slice(0, i).map((g) => ({tool: g.tool, args: g.args ?? {}, ...(g.as !== undefined ? {as: g.as} : {})})),
           do: st.layer === 'ui' ? st.ui! : [{tool: st.tool, args}],
           expect,
           see: st.see ?? [],

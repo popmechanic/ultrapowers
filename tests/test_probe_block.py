@@ -57,3 +57,13 @@ def test_tools_of_reads_given_and_tool_do():
     p = good(); p["given"] = [{"tool": "addTodo", "args": {"text": "a"}},
                               {"tool": "completeTodo", "args": {"id": "0"}}]
     assert pb.tools_of(p) == {"addTodo", "completeTodo"}
+
+
+def test_as_names_who_is_signed_in_or_nobody():
+    p = good(); p["as"] = "kim@station.test"
+    p["given"] = [{"tool": "addTodo", "args": {"text": "a"}, "as": None}]
+    assert pb.validate_probe(p) == []
+    p["as"] = ""
+    assert any("as must be an email or null" in e for e in pb.validate_probe(p))
+    q = good(); q["given"] = [{"tool": "addTodo", "args": {}, "as": 3}]
+    assert any("given must be" in e for e in pb.validate_probe(q))

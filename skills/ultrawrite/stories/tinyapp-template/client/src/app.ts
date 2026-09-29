@@ -1,25 +1,31 @@
 // Given code: builders never edit this file. It makes the one synced store
 // from the signed store module, hands every piece its section of the page,
 // exposes the page hook the checker drives (window.__TINYAPP__), and offers
-// the same tools to an agent over WebMCP when the browser has it.
+// the same tools to an agent over WebMCP when the browser has it. Who is
+// signed in (hook.who: an email, or null) comes from the Worker's /me, which
+// reads Cloudflare Access; every action gets it as run's third argument.
 import {createMergeableStore} from 'tinybase';
 import {createWsSynchronizer} from 'tinybase/synchronizers/synchronizer-ws-client';
 import {TOOLS, makeStore} from './store.js';
 import {PIECES} from './pieces/index';
 
-type Tool = {name: string; description: string; inputSchema: unknown; run: (store: unknown, args: Record<string, unknown>) => boolean};
+type Tool = {name: string; description: string; inputSchema: unknown; run: (store: unknown, args: Record<string, unknown>, who: string | null) => boolean};
 
 declare global {
   interface Window {
     __TINYAPP_SYNC__?: string;
+    __TINYAPP_WHO__?: string | null;
     __TINYAPP__?: unknown;
   }
 }
 
 const store = createMergeableStore().setTablesSchema(JSON.parse(makeStore().getTablesSchemaJson()));
-const tools = Object.fromEntries((TOOLS as unknown as Tool[]).map((t) => [t.name, (args: Record<string, unknown>) => t.run(store, args)]));
+const hook = {store, tools: {} as Record<string, (args: Record<string, unknown>) => boolean>, schemas: {} as Record<string, unknown>, synced: false, who: null as string | null};
+const tools = Object.fromEntries((TOOLS as unknown as Tool[]).map((t) => [t.name, (args: Record<string, unknown>) => t.run(store, args, hook.who)]));
 const schemas = Object.fromEntries((TOOLS as unknown as Tool[]).map((t) => [t.name, t.inputSchema]));
-const hook = {store, tools, schemas, synced: false};
+hook.tools = tools;
+hook.schemas = schemas;
+const session = {who: () => hook.who};
 window.__TINYAPP__ = hook;
 
 const root = document.getElementById('app')!;
@@ -27,7 +33,7 @@ for (const [name, piece] of PIECES) {
   const section = document.createElement('section');
   section.dataset.piece = name;
   root.append(section);
-  piece.mount(section, store, tools);
+  piece.mount(section, store, tools, session);
 }
 
 // WebMCP: the same TOOLS, offered to an agent in the browser, plus one read
@@ -58,6 +64,11 @@ if (modelContext) {
 }
 
 const origin = window.__TINYAPP_SYNC__ ?? `ws://${location.hostname}:8787`;
+hook.who = window.__TINYAPP_WHO__ !== undefined ? window.__TINYAPP_WHO__
+  : await fetch(`${origin.replace(/^ws/, 'http')}/me`, {credentials: 'include', signal: AbortSignal.timeout(3000)})
+    .then((r) => (r.ok ? r.json() : {}))
+    .then((m: {email?: string | null}) => m.email ?? null)
+    .catch(() => null);
 const synchronizer = await createWsSynchronizer(store, new WebSocket(`${origin}/sync/app`));
 await synchronizer.startSync();
 hook.synced = true;

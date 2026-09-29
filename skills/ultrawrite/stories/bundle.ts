@@ -15,6 +15,8 @@ export type Step = {
   see?: See[];
   refused?: boolean | string;
   link?: string;
+  // Who is signed in from this step on: an email, or null for nobody.
+  as?: string | null;
 };
 export type Story = {id: string; sentence: string; steps: Step[]};
 export type Page = {
