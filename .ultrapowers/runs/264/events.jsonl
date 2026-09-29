@@ -26,3 +26,7 @@
 {"ts":"2026-09-29T19:15:14.291Z","kind":"refold","ok":true}
 {"ts":"2026-09-29T19:15:16.516Z","kind":"merge","code":405}
 {"ts":"2026-09-29T19:15:20.463Z","kind":"merge","code":200}
+{"ts":"2026-09-29T19:15:22.600Z","kind":"board:leave","rc":0}
+{"ts":"2026-09-29T19:15:22.755Z","kind":"board:close","what":"task 1","code":200}
+{"ts":"2026-09-29T19:15:22.797Z","kind":"board:close","what":"run","code":200}
+{"ts":"2026-09-29T19:15:22.886Z","kind":"run:audit","state":"done","missing":[]}
