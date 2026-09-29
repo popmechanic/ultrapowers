@@ -70,3 +70,28 @@
 {"t":117392,"kind":"deny:shell-write","agent":"A","task":"2","command":"cd /home/exedev/run/work/agents/A; python3 - <<'EOF'\np='factory/flock/engine.mjs'\ns=open(p).read()\na=s.index('// ── the compact record: what each tested snapsho","ts":"2026-09-29T23:30:21.467Z"}
 {"t":118841,"kind":"tool","agent":"A","task":"2","tool":"Read","target":"/home/exedev/run/work/agents/A/factory/flock/engine.mjs","ts":"2026-09-29T23:30:22.916Z"}
 {"t":118856,"kind":"tool:post","agent":"A","tool":"Read","ts":"2026-09-29T23:30:22.931Z"}
+{"t":127068,"kind":"tool","agent":"A","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/A/factory/flock/engine.mjs","ts":"2026-09-29T23:30:31.143Z"}
+{"t":127226,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T23:30:31.301Z"}
+{"t":127259,"kind":"edit","agent":"A","task":"2","tool":"Edit","path":"factory/flock/engine.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T23:30:31.334Z"}
+{"t":128175,"kind":"tool","agent":"A","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/A/factory/flock/engine.mjs","ts":"2026-09-29T23:30:32.250Z"}
+{"t":128322,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T23:30:32.397Z"}
+{"t":128346,"kind":"edit","agent":"A","task":"2","tool":"Edit","path":"factory/flock/engine.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T23:30:32.421Z"}
+{"t":129126,"kind":"tool","agent":"A","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/A/factory/boot.sh","ts":"2026-09-29T23:30:33.201Z"}
+{"t":129282,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T23:30:33.357Z"}
+{"t":129292,"kind":"edit","agent":"A","task":"2","tool":"Edit","path":"factory/boot.sh","how":"edit-call","peer_lines":1,"peers":["B"],"peer_lines_text":1,"outside":false,"ts":"2026-09-29T23:30:33.367Z"}
+{"t":131970,"kind":"tool","agent":"A","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/A/fleet/CONTRACT.md","ts":"2026-09-29T23:30:36.045Z"}
+{"t":132124,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T23:30:36.199Z"}
+{"t":132139,"kind":"edit","agent":"A","task":"2","tool":"Edit","path":"fleet/CONTRACT.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T23:30:36.214Z"}
+{"t":132558,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; grep -n \"crypto\" factory/flock/engine.mjs | head -3; node fleet/tests/flock_record_pr","ts":"2026-09-29T23:30:36.633Z"}
+{"t":134409,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T23:30:38.484Z"}
+{"t":143399,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /tmp && rm -rf crt && mkdir crt && cd crt && cat > t.mjs <<'EOF'\nimport { compactRecord } from '/home/exedev/run/work","ts":"2026-09-29T23:30:47.474Z"}
+{"t":143400,"kind":"deny:shell-write","agent":"A","task":"2","command":"cd /tmp && rm -rf crt && mkdir crt && cd crt && cat > t.mjs <<'EOF'\nimport { compactRecord } from '/home/exedev/run/work/agents/A/factory/flock/compact_record.m","ts":"2026-09-29T23:30:47.475Z"}
+{"t":149882,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"D=$(mktemp -d) && cd $D && cat > t.mjs <<'EOF'\nimport { compactRecord } from '/home/exedev/run/work/agents/A/factory/flo","ts":"2026-09-29T23:30:53.957Z"}
+{"t":149978,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T23:30:54.053Z"}
+{"t":152234,"kind":"tool","agent":"A","task":"2","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T23:30:56.309Z"}
+{"t":157609,"kind":"proof","agent":"A","task":"2","exits":[0,0,0,0],"causes":[],"errs":[],"ts":"2026-09-29T23:31:01.684Z"}
+{"t":157614,"kind":"tool:post","agent":"A","tool":"mcp__flock__run_proof","ts":"2026-09-29T23:31:01.689Z"}
+{"t":160774,"kind":"tool","agent":"A","task":"2","tool":"mcp__flock__done","target":"","ts":"2026-09-29T23:31:04.849Z"}
+{"t":166333,"kind":"publish","agent":"A","task":"2","by":"done","ts":"2026-09-29T23:31:10.408Z"}
+{"t":166343,"kind":"kata:mirror","task":"2","uid":"01M3QQX0E9E4RVPYR231SBBFSP","what":"done by A","ok":true,"ts":"2026-09-29T23:31:10.418Z"}
+{"t":166344,"kind":"tool:post","agent":"A","tool":"mcp__flock__done","ts":"2026-09-29T23:31:10.419Z"}
