@@ -480,6 +480,15 @@ re-dispatches, and a round boundary buys nothing. Measured 2026-09-04 (n=1 sitti
 one or two tasks apiece,
 each of them idle behind a barrier it did not need.
 
+Jev reads beside each reader. When a reader's verdict returns, the author runs
+`bun $UW/../stories/gate_jev.ts <the same diet file> --record <plan-stem>.gate-verdicts.json --agent <that verdict>`
+on the very diet that reader was fed (the laptop's key is `~/.ultrapowers/typesafe.env`).
+The call is record-only: Jev decides nothing, and the agent's verdict is the gate. A
+release reads `bun $UW/../stories/gate_jev.ts --agreement docs/superpowers/plans` and
+carries its line in the notes. This is an `experiment` at n=0 (operator pick,
+2026-09-29): no default flips until 5 plans' readings exist, and its rollback is dropping
+this paragraph.
+
 Then resolve provenance and check:
 
     python3 $UW/check_provenance.py <plan.md>

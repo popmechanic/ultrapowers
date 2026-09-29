@@ -35,5 +35,19 @@
   "surprise": {"assumption_surprises": {"type": "noul", "instructions": {"question": "Would the person who wrote `ask` be surprised to learn that the app `assumption`?", "context": "`ask` is everything the person wrote; `assumption` is something the author assumed the app does, about what it does, who uses it or how it looks."}, "criteria": {"true": "They would be surprised; it goes beyond or against what they asked", "false": "It is what they would expect from what they asked"}}},
   "map": {"essential": {"type": "noul", "instructions": {"question": "Is `piece.purpose` part of the core of what `summary` describes, rather than an extra?", "context": "`summary` says what the product is, why it exists and how it is used. `piece.purpose` is one thing the product could do; `other_purposes` are the other things it could do; `audience` are the people who use it."}, "criteria": {"true": "Core", "false": "An extra"}}, "serves_summary": {"type": "noul", "instructions": {"question": "Does `piece.purpose` serve what `summary` says the product is for?", "context": "`summary` says what the product is, why it exists and how it is used. `other_purposes` are the other things the product could do."}, "criteria": {"true": "It serves that purpose", "false": "It serves something else"}}},
   "decompose": {"stands_alone": {"type": "noul", "instructions": {"question": "Could `audience` use `plan` on its own and judge whether it works?", "context": "`summary` says what the whole product is. `plan` is one part of it: its title and the things it lets people do. `built_before` are the parts built before it, in order, which `audience` already has."}, "criteria": {"true": "Usable and judgeable on its own", "false": "Nothing to use or judge until other parts exist"}}},
+  "gate": {
+    "fact": {"type": "noul",
+      "instructions": {"question": "Does `clauses[i].text` state a computable fact: an exit code, a recorded argv, a byte-exact string, a count, an ordering of events, or that something is gone, unchanged or exactly so many?",
+        "context": "`claim` is what a task promises; `clauses` are its machine clauses, each with an id and its text. `probes` are the commands that prove it, each naming the clauses it proves; `legs` say which clause each part of the proof covers."},
+      "criteria": {"true": "A program could decide it exactly", "false": "It needs a judgment to decide"}},
+    "caught": {"type": "noul",
+      "instructions": {"question": "Would at least one command in `probes` fail if `clauses[i].text` were false?",
+        "context": "`clauses` are a task's machine clauses; `probes` are the commands that prove them, each with the clause ids it claims to prove (`proves`)."},
+      "criteria": {"true": "Some probe would fail", "false": "Every probe could still pass"}},
+    "contradiction": {"type": "noul",
+      "instructions": {"question": "Does any entry of `legs` say something the clause it cites rules out?",
+        "context": "`legs` are the proof's legs, each with its text and the clause ids it cites (`cites`); `clauses` are the task's machine clauses."},
+      "criteria": {"true": "Some leg contradicts its clause", "false": "Every leg agrees with the clauses it cites"}}
+  },
   "link": {"link_expected": {"type": "noul", "instructions": {"question": "Would `audience` expect this to happen: `link`?", "context": "`summary` says what the product is, why it exists and how it is used. `link` is a rule the app follows when something is deleted or changed."}, "criteria": {"true": "They would expect it", "false": "It would surprise or upset them"}}}
 }

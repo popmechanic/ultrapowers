@@ -7,53 +7,18 @@
 //
 //   bun skills/ultrawrite/stories/jev_checks.ts <bundle> [--ask-file <ask.txt>] [--stage understanding|map|decompose|bundle]
 import {existsSync, readFileSync} from 'node:fs';
-import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {parseArgs} from 'node:util';
 import {loadBundle, type Bundle} from './bundle';
 import {runChecks} from './checks';
 import {checkProduct, saveProduct, type Product} from './product';
+import {at, defaultAsk, noul, type Ask} from './jev';
 
-// The fleet's client: one POST, a status check and a state budget; the key rides as a header here.
-// @ts-ignore: a plain .mjs, which bun imports directly
-import {makeJevClient} from '../../../factory/jev-client.mjs';
-
-const BASE_URL = process.env.TYPESAFE_BASE_URL || 'https://api.typesafe.ai';
-const Q =JSON.parse(readFileSync(join(import.meta.dir, 'questions.json'), 'utf8'));
+const Q = JSON.parse(readFileSync(join(import.meta.dir, 'questions.json'), 'utf8'));
 const POLICY = JSON.parse(readFileSync(join(import.meta.dir, 'policy.json'), 'utf8')).flag_at;
 const STAGES = ['understanding', 'map', 'decompose', 'bundle'];
 
-type Ask = (state: unknown, questions: unknown) => Promise<Record<string, unknown> | null>;
 type Out = {flags: string[]; doubts: string[]; reads: number};
-
-function key(): string {
-  const home = process.env.ULTRAPOWERS_HOME ?? join(homedir(), '.ultrapowers');
-  const line = readFileSync(join(home, 'typesafe.env'), 'utf8').split('\n').find((l) => l.startsWith('TYPESAFE_API_KEY='));
-  if (!line) throw new Error('no TYPESAFE_API_KEY');
-  return line.slice('TYPESAFE_API_KEY='.length).trim();
-}
-
-const defaultAsk: Ask = async (state, questions) => {
-  let headers: Record<string, string>;
-  try {
-    headers = {Authorization: 'Bearer ' + key()};
-  } catch (e) {
-    console.error(`jev: ${(e as Error).message}`);
-    return null;
-  }
-  const client = makeJevClient({baseUrl: BASE_URL, timeoutMs: 30_000, headers, log: (l: string) => console.error(l)});
-  return client.ask({state, questions});
-};
-
-// A question written against `sentences[i]` or `pieces[j]`, pointed at the entries it asks about.
-const at = <T>(q: T, idx: Record<string, number>): T =>
-  JSON.parse(JSON.stringify(q).replace(/\[([ij])\]/g, (m, v) => (v in idx ? `[${idx[v]}]` : m)));
-
-function noul(answers: Record<string, unknown> | null, k: string): number | null {
-  const a = answers?.[k];
-  const v = typeof a === 'number' ? a : (a as {noul?: unknown} | undefined)?.noul;
-  return typeof v === 'number' ? v : null;
-}
 
 export const sentences = (text: string) => text.trim().split(/(?<=[.!?])\s+/).filter(Boolean);
 const f2 = (v: number) => v.toFixed(2);
