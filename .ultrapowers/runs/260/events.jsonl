@@ -184,3 +184,20 @@
 {"t":838439,"kind":"tool:post","agent":"D","tool":"mcp__flock__wait_for","ts":"2026-09-29T06:17:34.522Z"}
 {"t":841355,"kind":"tool","agent":"B","task":"5","tool":"Bash","target":"grep -n \"health\\|tinyapp root\" factory/stack/tinyapp/celld.ts; command -v esbuild","ts":"2026-09-29T06:17:37.438Z"}
 {"t":841444,"kind":"tool","agent":"B","task":"5","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T06:17:37.527Z"}
+{"t":898759,"kind":"proof","agent":"B","task":"5","exits":[1,0],"causes":[{"cause":"unknown"}],"errs":["Error: esbuild not found (/tmp/tmp.ERvUxQlmzJ/node_modules/.bin/esbuild)."],"ts":"2026-09-29T06:18:34.842Z"}
+{"t":898760,"kind":"tool","agent":"D","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/D; grep -n '^<<<<<<<\\|^>>>>>>>\\|^=======' skills/ultrawrite/references/greenfield-stack.","ts":"2026-09-29T06:18:34.843Z"}
+{"t":898760,"kind":"tool","agent":"A","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/A/skills/ultrawrite/stories/tinyapp-template/server/index.ts","ts":"2026-09-29T06:18:34.843Z"}
+{"t":898781,"kind":"tool:post","agent":"B","tool":"mcp__flock__run_proof","ts":"2026-09-29T06:18:34.864Z"}
+{"t":898793,"kind":"tool:post","agent":"D","tool":"Bash","ts":"2026-09-29T06:18:34.876Z"}
+{"t":900940,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T06:18:37.023Z"}
+{"t":900944,"kind":"edit","agent":"A","task":"2","tool":"Edit","path":"skills/ultrawrite/stories/tinyapp-template/server/index.ts","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T06:18:37.027Z"}
+{"t":900949,"kind":"tool","agent":"A","task":"2","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T06:18:37.032Z"}
+{"t":903208,"kind":"proof","agent":"A","task":"2","exits":[0],"causes":[],"errs":[],"ts":"2026-09-29T06:18:39.291Z"}
+{"t":903217,"kind":"tool:post","agent":"A","tool":"mcp__flock__run_proof","ts":"2026-09-29T06:18:39.300Z"}
+{"t":904800,"kind":"tool","agent":"D","task":"3","tool":"mcp__flock__wait_for","target":"","ts":"2026-09-29T06:18:40.883Z"}
+{"t":905507,"kind":"tool","agent":"B","task":"5","tool":"mcp__flock__release","target":"","ts":"2026-09-29T06:18:41.590Z"}
+{"t":905525,"kind":"tool:post","agent":"B","tool":"mcp__flock__release","ts":"2026-09-29T06:18:41.608Z"}
+{"t":907362,"kind":"tool","agent":"A","task":"2","tool":"mcp__flock__done","target":"","ts":"2026-09-29T06:18:43.445Z"}
+{"t":909774,"kind":"publish","agent":"A","task":"2","by":"done","ts":"2026-09-29T06:18:45.857Z"}
+{"t":909781,"kind":"tool:post","agent":"A","tool":"mcp__flock__done","ts":"2026-09-29T06:18:45.864Z"}
+{"t":909787,"kind":"kata:mirror","task":"2","uid":"01M3NW3D30AVH52CTDWRQFQ3QY","what":"done by A","ok":true,"ts":"2026-09-29T06:18:45.870Z"}
