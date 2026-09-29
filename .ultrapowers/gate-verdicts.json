@@ -1,0 +1,216 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "40b6e1bf0f1030e998d576d3b8cdc85d2044bab0af32d3c8b9167eb66b6d59fb",
+      "verdict": "pass",
+      "reason": "Each of M1-M4 has a tagged probe on the exact output or exit that would fail if false.",
+      "gate_rounds": [
+        {
+          "hash": "40b6e1bf0f1030e998d576d3b8cdc85d2044bab0af32d3c8b9167eb66b6d59fb",
+          "agent": "pass",
+          "jev": "pass"
+        }
+      ]
+    },
+    "2": {
+      "hash": "4c0a66b4d162ea8d17e64a2ecf0f98253d6a72d32fd420265431cd5477ede8e0",
+      "verdict": "pass",
+      "reason": "The frozen digests, the 13-set count, the absent file, the exact question strings and both thresholds each have a probe.",
+      "gate_rounds": [
+        {
+          "hash": "4c0a66b4d162ea8d17e64a2ecf0f98253d6a72d32fd420265431cd5477ede8e0",
+          "agent": "pass",
+          "jev": "pass"
+        }
+      ]
+    },
+    "3": {
+      "hash": "eb4b866e63f8879d56de9d5aebdc9732cef29d8882546f0af122b308001549d5",
+      "verdict": "pass",
+      "reason": "Round 2: the route mismatch is a printed line, never a refusal; M4 checks the line and the absence of a routing.branch refusal.",
+      "gate_rounds": [
+        {
+          "hash": "798f64d95009f893f40952d0c3cc94f46b880e1d09c93e88e90fa47c91c72f68",
+          "agent": "pass",
+          "jev": "pass"
+        },
+        {
+          "hash": "eb4b866e63f8879d56de9d5aebdc9732cef29d8882546f0af122b308001549d5",
+          "agent": "pass",
+          "jev": "pass"
+        }
+      ]
+    },
+    "4": {
+      "hash": "dd8b3a3df5c389c5ea75d8c6f279cb39d2f1331b5391e6896902982390440859",
+      "verdict": "pass",
+      "reason": "The exact reading line, exit 0 on a low reading, one recorded row in a temp copy, and no line when unreachable each have a probe.",
+      "gate_rounds": [
+        {
+          "hash": "dd8b3a3df5c389c5ea75d8c6f279cb39d2f1331b5391e6896902982390440859",
+          "agent": "pass",
+          "jev": "pass"
+        }
+      ]
+    },
+    "5": {
+      "hash": "975e0e3f902cafaac91b98e947d69f2282472c5cdf3e7d64dc7dba0127375a9a",
+      "verdict": "pass",
+      "reason": "The exact flag line, its absence at 0.2 and the one recorded reading in a temp copy each have a probe.",
+      "gate_rounds": [
+        {
+          "hash": "975e0e3f902cafaac91b98e947d69f2282472c5cdf3e7d64dc7dba0127375a9a",
+          "agent": "pass",
+          "jev": "pass"
+        }
+      ]
+    },
+    "6": {
+      "hash": "abdd0bf9043aa9264b25d3a9e02e2bdfdcae1407c7d1fcd67f9a31858a20e1c4",
+      "verdict": "pass",
+      "reason": "Round 2: probes derive each slip with python3 re.sub (perl is not in the sandbox toolchain); every clause still has its tagged probe.",
+      "gate_rounds": [
+        {
+          "hash": "d2c4461ff6f8674c51ec911104b2537a7c2013b9f5a7c4ee866607795360f6cb",
+          "agent": "pass",
+          "jev": "pass"
+        },
+        {
+          "hash": "abdd0bf9043aa9264b25d3a9e02e2bdfdcae1407c7d1fcd67f9a31858a20e1c4",
+          "agent": "pass",
+          "jev": "pass"
+        }
+      ]
+    },
+    "7": {
+      "hash": "953aac1a0e3f3f731222b7cd1f8621b410aa0dec00a6da064ed42b5ee302a5c5",
+      "verdict": "pass",
+      "reason": "Both comment pairs are pinned by line-above greps that fail if missing or reworded.",
+      "gate_rounds": [
+        {
+          "hash": "953aac1a0e3f3f731222b7cd1f8621b410aa0dec00a6da064ed42b5ee302a5c5",
+          "agent": "pass",
+          "jev": "pass"
+        }
+      ]
+    }
+  },
+  "tally": {
+    "dispatched": 9,
+    "rejected": 0,
+    "rounds": 2,
+    "round_1": {
+      "dispatched": 7,
+      "rejected": 0
+    },
+    "base": "8dd304745c0051696671f98e6514508ff68ebb81",
+    "round_2": {
+      "dispatched": 2,
+      "rejected": 0
+    }
+  },
+  "authoring": {
+    "minutes": 40,
+    "probes": 12,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Self-review",
+        "options": [
+          "plan_check refuses",
+          "Warn only",
+          "Leave as is",
+          "Please explain"
+        ],
+        "recommended": "plan_check refuses",
+        "picked": "plan_check refuses",
+        "explain_rounds": 1
+      },
+      {
+        "question": "Handoff",
+        "options": [
+          "Code + Jev risk",
+          "Code only",
+          "Leave as is",
+          "Please explain"
+        ],
+        "recommended": "Code + Jev risk",
+        "picked": "Code + Jev risk",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Questions",
+        "options": [
+          "One file",
+          "One shape, two files",
+          "Please explain"
+        ],
+        "recommended": "One file",
+        "picked": "One file",
+        "explain_rounds": 1
+      },
+      {
+        "question": "Story kinds",
+        "options": [
+          "Keep, mark planned",
+          "Delete them",
+          "Please explain"
+        ],
+        "recommended": "Keep, mark planned",
+        "picked": "Keep, mark planned",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Small Jev",
+        "options": [
+          "Desired state",
+          "Assumption label",
+          "Your-words filter",
+          "Builder beliefs"
+        ],
+        "recommended": null,
+        "picked": [
+          "Desired state",
+          "Assumption label"
+        ],
+        "explain_rounds": 0
+      },
+      {
+        "question": "Route check",
+        "options": [
+          "Fact line only",
+          "Keep the refusal",
+          "Please explain"
+        ],
+        "recommended": "Fact line only",
+        "picked": "Fact line only",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Sign",
+          "Fix a line",
+          "Please explain"
+        ],
+        "recommended": "Sign",
+        "picked": "Sign",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Execute",
+        "options": [
+          "Ultrapowers, both",
+          "Engine plan only",
+          "Please explain"
+        ],
+        "recommended": "Ultrapowers, both",
+        "picked": "Ultrapowers, both",
+        "explain_rounds": 0
+      }
+    ]
+  }
+}
