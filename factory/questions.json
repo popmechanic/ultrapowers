@@ -12,6 +12,7 @@
         "did",
         "before",
         "after",
+        "changes",
         "screen_text"
       ],
       "provenance": "state-probe runner spec 2026-09-27 §7; TypeSafe citation-check recipe (supports / contradicts / says nothing)",
@@ -21,7 +22,7 @@
           "type": "choice",
           "instructions": {
             "question": "After the user did `did`, do `after` and `screen_text` show that `story` came true?",
-            "context": "`story` is the sentence the operator signed. `before` and `after` are the app's store as [tables, values] before and after the step; row ids are numbered by creation order. `screen_text` is the page's visible text after the step. `did` is what the user clicked or typed."
+            "context": "`story` is the sentence the operator signed. `before` and `after` are the app's store as [tables, values] before the story's first step and after its last; row ids are numbered by creation order. When the store is too big to send whole, `changes` stands in for `before` and `after`: one {table, row, before, after} per row that differs, a missing row null. `screen_text` is the page's visible text after the last step. `did` is everything the user clicked or typed, every step of the story in order."
           },
           "criteria": {
             "supports": "The store or the screen after the step shows the outcome the sentence describes",
@@ -37,7 +38,7 @@
       "rollback": "factory/policy.json flock.jev_resolve.mode = off",
       "state": [
         "path",
-        "annotated",
+        "conflicts",
         "tasks"
       ],
       "provenance": "factory review reading 2026-09-29 (Jev candidate 1); operator pick 2026-09-29",
@@ -47,7 +48,7 @@
           "type": "choice",
           "instructions": {
             "question": "In `annotated`, do the left and right sides of each conflict already fit together as the merged text shows them, so the file needs no edit?",
-            "context": "`annotated` is the merged file, with each conflict shown as a `<<<<<<<` / `=======` / `>>>>>>>` section holding its left and right sides. `path` is the file. `tasks` are the titles of the tasks that touch it."
+            "context": "`conflicts` holds each conflict of the merged file as a `<<<<<<<` / `=======` / `>>>>>>>` section with its left and right sides and a few unmarked lines around it. `path` is the file. `tasks` are the tasks that touch it, each with its `title` and its `claim`, what that side meant."
           },
           "criteria": {
             "no_edit_needed": "Both sides say things that stand together as merged",
@@ -65,7 +66,10 @@
         "task",
         "title",
         "files",
+        "claim",
+        "facts",
         "reason",
+        "earlier_reasons",
         "depends_on"
       ],
       "provenance": "factory review reading 2026-09-29 (Jev candidate 2); operator pick 2026-09-29",
@@ -75,7 +79,7 @@
           "type": "choice",
           "instructions": {
             "question": "Given `reason`, what stands between this task and its facts passing?",
-            "context": "`task` and `title` name the task. `files` are the files it may change. `reason` is what the agent said when it gave the task back. `depends_on` are the tasks it depends on."
+            "context": "`task` and `title` name the task. `files` are the files it may change. `claim` is what the task must prove, and `facts` are the commands that decide it. `reason` is what the agent said when it gave the task back; `earlier_reasons` are its last give-backs before this one. `depends_on` are the tasks it depends on."
           },
           "criteria": {
             "fixable": "Another attempt at `files` could make them pass",
