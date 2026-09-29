@@ -133,7 +133,7 @@ the engine's exit code is the merge decision.
   has never caught anything is deleted, on `catch_counter.py`'s reading. Every reading states
   its `n=…` and `window`; no default flips under `n = 5 runs` (`20 tasks` per-task). A flip
   under the floor is an `experiment` carrying its `rollback`; a fact read once carries its
-  `date` (#994). `gate.jev_claim` is `record-only` until five runs are joined to smoke outcomes.
+  `date` (#994).
   **The proof is probes-only (operator, 2026-09-27):** the Flock selects no existing tests,
   so a run's proof is its `Run:` probes and `Check:` lines alone, and a plan that must keep
   existing behaviour names the guarding tests in a `Check:` (e.g.

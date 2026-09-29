@@ -1,10 +1,11 @@
 {
   "version": "authoring-policy-v1",
-  "flag_at": {"two_apps": 0.5, "one_need_below": 0.5, "same_people_below": 0.5, "actions_conflict": 0.5,
+  "flag_at": {"two_apps": 0.5, "one_need_below": 0.5, "same_people_below": 0.5,
               "story_passes_near_miss": 0.5, "branches_on_text": 0.5, "same_need": 0.5,
               "assumption_surprises": 0.5, "essential_below": 0.5, "serves_summary_below": 0.5,
               "stands_alone_below": 0.5, "link_expected_below": 0.5},
   "n": 0, "window": "none", "basis": "judgment", "experiment": true,
   "rollback": "flags off: the author's own read decides",
-  "readings": ["essential: reworded 2026-09-28 after the first wording read every radio-station concept low; the new wording read the four core concepts 0.71-0.84, donations 0.32, ads 0.17 (n=1 product, 6 concepts, window 2026-09-28)"]
+  "readings": ["essential: reworded 2026-09-28 after the first wording read every radio-station concept low; the new wording read the four core concepts 0.71-0.84, donations 0.32, ads 0.17 (n=1 product, 6 concepts, window 2026-09-28)",
+    "retired 2026-09-29: the coherence question on conflicting actions flagged exactly the pieces with an add/remove pair (7 of 22 readings) and never the others, so it carried no information; the map stage's pairwise same_need made 140 calls for 1 flag; both removed, the bundle stage's pairwise same_need stays (n=1 product, 468 readings, window 2026-09-28..29)"]
 }

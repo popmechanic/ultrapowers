@@ -328,9 +328,9 @@ def _fix_round_between(events, start, stop, task):
 
 def _verdict_before(events, pos, kind, task, path):
     """Whether a row of `kind` for `task` naming `path` precedes position
-    `pos` — the engine's own verdict on a selected test. `factory/measure.mjs`
-    re-runs each red at the anchor and writes its verdict before the
-    `select:landing` row it judges (#1259), so the search walks back from the
+    `pos` — the engine's own verdict on a selected test. The retired factory's
+    `measure.mjs` (deleted in #1365) re-ran each red at the anchor and
+    wrote its verdict before the `select:landing` row it judges (#1259), so the search walks back from the
     flattened entry and stops at an earlier landing of the same test for the
     same task: a verdict before that one judged that one's red."""
     for event in reversed(events[:pos]):
