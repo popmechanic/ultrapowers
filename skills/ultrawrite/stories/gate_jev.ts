@@ -12,7 +12,7 @@ import {join} from 'node:path';
 import {parseArgs} from 'node:util';
 import {at, defaultAsk, noul} from './jev';
 
-const Q = JSON.parse(readFileSync(join(import.meta.dir, 'questions.json'), 'utf8')).gate;
+const Q = JSON.parse(readFileSync(join(import.meta.dir, '..', '..', '..', 'factory', 'questions.json'), 'utf8')).sets.authoring_gate.questions;
 const POLICY = JSON.parse(readFileSync(join(import.meta.dir, 'policy.json'), 'utf8')).flag_at;
 
 type Diet = {task: string | number; claim: string; proof: string; hash: string; base?: string};

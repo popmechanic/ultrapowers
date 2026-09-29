@@ -13,6 +13,7 @@ class StoriesRefusal(Exception):
     pass
 
 
+# preserve and look are the declared shape for the Numbers checker still owed; nothing reads them yet.
 KINDS = ("behaviour", "preserve", "look")
 STACKS = ("tinyapp",)
 HEADER_RE = re.compile(r'^\*\*([A-Za-z-]+):\*\*\s*(.*)$')
@@ -111,6 +112,7 @@ def parse_stories_text(text):
             stories.append({"id": bm.group(1), "sentence": bm.group(2)})
         elif bm and section == "links":
             links.append({"id": bm.group(1), "sentence": bm.group(2)})
+        # numbers is the declared shape for the Numbers checker still owed; nothing reads it yet.
         elif bm and section == "numbers":
             parts = [x.strip() for x in bm.group(2).split(" | ")]
             fields = dict(x.split(": ", 1) for x in parts[1:] if ": " in x)

@@ -26,6 +26,11 @@ What refuses:
     `**Exam command:**` header line — cut three (2026-09-22) retired the
     examiner these fed; the parser reads none of them any more, and this is
     the one reader left to say so;
+  * five slips the author used to catch by eye (2026-09-29): a task body
+    without its six slots once each, non-empty and in order; a `**Summary:**`
+    of other than three sentences; a `**Closes:**` line off the `**Goal:**`
+    paragraph; a code fence outside a task's Proof; and a dated reading in a
+    Context or the Summary cited without `n=`;
   * with `--base`: a Stale-if predicate that already holds at BASE, and a
     `--base` that is neither a checkout directory nor a 40-hex sha.
 
@@ -33,7 +38,19 @@ What is printed after the verdict, with `--base` only, and refuses nothing:
 `BASE fact:` (what a deleted file holds; which files outside a task's Files
 carry a literal its Machine clauses pin), `STALE fact: … unreadable at BASE`,
 `GREEN-AT-BASE fact:` (the plan's `Run:` lines rehearsed in a throwaway
-worktree at BASE — behind a `PLAN OK` only), and `AUTHORING fact:`.
+worktree at BASE — behind a `PLAN OK` only), `ROUTING fact:` and
+`AUTHORING fact:`.
+
+`ROUTING fact: T=<n>, width <w>, risk <r>, branch <b>` is the execution
+handoff computed rather than worked out by hand: T the implementation tasks,
+width the largest launch wave, risk one Jev reading of `authoring_routing` /
+`risk` (via `skills/ultrawrite/stories/ask.ts`; any failure reads `risk
+unread` and the line ends `(computed without risk)`), and the branch by
+ultrawrite §Execution handoff's first-match rule. When risk was read and the
+record's `authoring.routing.branch` names another branch, one more line says
+`ROUTING fact: recorded branch <r> differs from the computed branch <b>` — a
+pointer, never a refusal: a reading near the threshold can flip between two
+checks.
 """
 from __future__ import annotations
 
@@ -264,6 +281,87 @@ def authoring_fact_line(plan_path):
                tally.get("rejected", "-"), auth["routing"]["branch"],
                auth["routing"]["lane"], len(questions), len(picked),
                len(with_rec), explain_rounds))
+
+
+# --------------------------------------------------------------------------- #
+# The execution handoff (operator decisions 2026-09-29)                        #
+# --------------------------------------------------------------------------- #
+ROUTING_ASK_TIMEOUT_S = 45
+_SKILLS = Path(__file__).resolve().parents[2]
+
+
+def routing_risk_threshold():
+    """`flag_at.routing_risk` of the stories policy; 0.5 when unreadable."""
+    try:
+        policy = json.loads(
+            (_SKILLS / "ultrawrite/stories/policy.json").read_text())
+        return float(policy["flag_at"]["routing_risk"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return 0.5
+
+
+def read_routing_risk(tasks):
+    """One Jev reading of `authoring_routing` / `risk` over the plan's
+    implementation tasks, or None for any failure — no `bun`, no `ask.ts`
+    beside this file, a timeout, a non-zero exit, output not
+    `{"noul": <number>}`, or a null."""
+    ask = _SKILLS / "ultrawrite/stories/ask.ts"
+    bun = shutil.which("bun")
+    if bun is None or not ask.is_file():
+        return None
+    state = {"plan": {"tasks": [
+        {"title": t["title"], "claim": t.get("claim") or "",
+         "files": list(t.get("files") or [])} for t in tasks]}}
+    try:
+        proc = subprocess.run(
+            [bun, str(ask), "authoring_routing", "risk"],
+            input=json.dumps(state), capture_output=True, text=True,
+            timeout=ROUTING_ASK_TIMEOUT_S)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        value = json.loads(proc.stdout.strip().splitlines()[-1])["noul"]
+    except (ValueError, IndexError, KeyError, TypeError):
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def routing_branch(T, width, risk):
+    """ultrawrite §Execution handoff, first match wins."""
+    if risk is not None and risk >= routing_risk_threshold():
+        return "risk"
+    if width >= 2 and T >= 3:
+        return "width"
+    if T <= 2:
+        return "inline"
+    return "subagent"
+
+
+def routing_fact_lines(result, tasks, plan_path):
+    """The `ROUTING fact:` line, and — risk read, the record naming another
+    of the four branches — the mismatch line. Asks Jev once."""
+    impl = [t for t in tasks if t.get("type") == "implementation"]
+    T = len(result["tasks"])
+    width = max((len(w) for w in result["launch_waves"]), default=0)
+    risk = read_routing_risk(impl)
+    branch = routing_branch(T, width, risk)
+    if risk is None:
+        lines = ["ROUTING fact: T=%d, width %d, risk unread, branch %s "
+                 "(computed without risk)" % (T, width, branch)]
+    else:
+        lines = ["ROUTING fact: T=%d, width %d, risk %.2f, branch %s"
+                 % (T, width, risk, branch)]
+        auth = _record(plan_path).get(AUTHORING_KEY)
+        routing = auth.get("routing") if isinstance(auth, dict) else None
+        recorded = routing.get("branch") if isinstance(routing, dict) else None
+        if recorded in AUTHORING_BRANCHES and recorded != branch:
+            lines.append("ROUTING fact: recorded branch %s differs from the "
+                         "computed branch %s" % (recorded, branch))
+    return lines
 
 
 # --------------------------------------------------------------------------- #
@@ -552,6 +650,155 @@ def retired_slot_violations(text_or_tasks):
                 violations.append(
                     "grammar: task %s: Proof carries a Guard: bullet — %s"
                     % (t["id"], _RETIRED_SUFFIX))
+    return violations
+
+
+# --------------------------------------------------------------------------- #
+# Five slips the author used to catch by eye (2026-09-29): the six slots,     #
+# a three-sentence Summary, Closes under Goal, a fence only in Proof, and a   #
+# dated reading with n=                                                       #
+# --------------------------------------------------------------------------- #
+_SLOT_ORDER = ["claim", "authorized-by", "interfaces", "context", "proof",
+               "stale-if"]
+_SUMMARY_RE = re.compile(r'^\*\*Summary:\*\*\s*(.*)$')
+_SENTENCE_SPLIT_RE = re.compile(r'(?<=[.!?])["\')\]]*\s+(?=[A-Z0-9"(`\[])')
+_PAREN_SPAN_RE = re.compile(r'\(([^()]*)\)')
+_DATE_RE = re.compile(r'\b20\d\d-\d\d-\d\d\b')
+_COUNT_RE = re.compile(
+    r'(?<![-\d])\d+\s+(?:[a-z-]+\s+)?(?:runs?|plans?|tasks?|readings?|calls?'
+    r'|products?|dispatches|sittings?|landings?|rounds?)(?![-\w])')
+_N_EQ_RE = re.compile(r'\bn\s*=')
+
+
+def _task_slots(body_lines):
+    """`[(name, text)]` for each unfenced slot label after the heading, in
+    order -- the text the label line's remainder plus the lines to the next
+    label, stripped -- and `[(idx, name)]` the label positions."""
+    positions = []
+    for i, (line, fenced) in enumerate(body_lines):
+        if fenced or i == 0:
+            continue
+        m = plan_parse.SLOT_RE.match(line.strip())
+        if m:
+            positions.append((i, plan_parse._slot_name(m.group(1)), m.group(2)))
+    slots = []
+    for k, (i, name, inline) in enumerate(positions):
+        end = positions[k + 1][0] if k + 1 < len(positions) else len(body_lines)
+        slots.append((name, "\n".join(
+            [inline] + [l for l, _ in body_lines[i + 1:end]]).strip()))
+    return slots, [(i, name) for i, name, _ in positions]
+
+
+def _undated_readings(text):
+    """Every innermost parenthesised span carrying a date and a count but no
+    `n=` -- how this repo cites a reading, with its sample size left off."""
+    return [s for s in _PAREN_SPAN_RE.findall(text)
+            if _DATE_RE.search(s) and _COUNT_RE.search(s)
+            and not _N_EQ_RE.search(s)]
+
+
+def _summary_text(header):
+    """The header's `**Summary:**` paragraph joined on single spaces, or
+    None when the header carries none."""
+    for n, (line, fenced) in enumerate(header):
+        m = None if fenced else _SUMMARY_RE.match(line.strip())
+        if not m:
+            continue
+        parts = [m.group(1).strip()]
+        for rest, _ in header[n + 1:]:
+            if not rest.strip():
+                break
+            parts.append(rest.strip())
+        return " ".join(p for p in parts if p)
+    return None
+
+
+def slip_violations(text, tasks):
+    """One `grammar:` line per slip the author used to catch by eye: a task
+    body without its six slots once each, non-empty and in order; a
+    `**Summary:**` of other than three sentences; a `**Closes:**` line not
+    directly under the `**Goal:**` paragraph; a code fence anywhere but a
+    task's Proof; and a dated reading in a Context or the Summary cited
+    without `n=`. Reads the plan's own lines through `plan_parse.py`'s
+    scanners; `tasks` is `parse_plan_full`'s list, whose ids it names."""
+    violations = []
+    header, bodies = plan_parse._split_plan(text)
+
+    summary = _summary_text(header)
+    if summary is not None:
+        k = len([s for s in _SENTENCE_SPLIT_RE.split(summary) if s.strip()])
+        if k != 3:
+            violations.append(
+                "grammar: header: the **Summary:** paragraph has %d sentences;"
+                " it carries exactly three" % k)
+
+    for n, (line, fenced) in enumerate(header):
+        if fenced or not line.strip().startswith("**Closes:**"):
+            continue
+        above = None
+        for prev, _ in reversed(header[:n]):
+            s = prev.strip()
+            if not s or s.startswith("**"):
+                above = s
+                break
+        if above is None or not above.startswith("**Goal:**"):
+            violations.append(
+                "grammar: header: the **Closes:** line sits directly under "
+                "the **Goal:** paragraph")
+
+    if any(fenced for _, fenced in header):
+        violations.append("grammar: header: a code fence above the first task")
+
+    if summary is not None:
+        for span in _undated_readings(summary):
+            violations.append(
+                "grammar: header: the **Summary:** cites a dated reading "
+                "without n= — (%s)" % span)
+
+    for tid, _title, _order, body in bodies:
+        slots, positions = _task_slots(body)
+        if ([name for name, _ in slots] != _SLOT_ORDER
+                or not all(t for _, t in slots)):
+            violations.append(
+                "grammar: task %s: the body must carry Claim, Authorized-by, "
+                "Interfaces, Context, Proof and Stale-if, each once, "
+                "non-empty, in that order" % tid)
+        for i, (_line, fenced) in enumerate(body):
+            if not fenced:
+                continue
+            owner = next((name for at, name in reversed(positions) if at < i),
+                         None)
+            if owner != "proof":
+                violations.append(
+                    "grammar: task %s: a code fence outside the Proof slot"
+                    % tid)
+                break
+        for name, slot in slots:
+            if name != "context":
+                continue
+            joined = " ".join(l.strip() for l in slot.splitlines() if l.strip())
+            for span in _undated_readings(joined):
+                violations.append(
+                    "grammar: task %s: Context cites a dated reading without "
+                    "n= — (%s)" % (tid, span))
+
+    # Lines under an `##` heading that is no task's own: neither the header
+    # nor any task body holds them.
+    scanned = plan_parse._fence_aware_lines(text)
+    owned = len(header) + sum(len(b) for _, _, _, b in bodies)
+    if owned < len(scanned):
+        outside, where = False, "header"
+        for line, fenced in scanned:
+            s = line.strip()
+            if not fenced and plan_parse._leading_spaces(line) <= 3:
+                if plan_parse.TASK_HEAD.match(s):
+                    where = "task"
+                elif where != "header" and plan_parse.H2_HEAD.match(s):
+                    where = "outside"
+            if fenced and where == "outside":
+                outside = True
+        if outside:
+            violations.append("grammar: a code fence outside every task")
     return violations
 
 
@@ -1091,6 +1338,7 @@ def main(argv=None):
                   + promised_violations(tasks)
                   + retired_slot_violations(tasks)
                   + retired_slot_violations(plan_text)
+                  + slip_violations(plan_text, tasks)
                   + publish_violations(result["publish"]))
     advisories = []
     if base_tree is not None:
@@ -1111,6 +1359,8 @@ def main(argv=None):
         if not violations:
             for line in green_at_base_lines(tasks, base_tree):
                 print(line)
+        for line in routing_fact_lines(result, tasks, args.plan):
+            print(line)
         print(authoring_fact_line(args.plan))
     return 2 if violations else 0
 

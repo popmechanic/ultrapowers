@@ -14,7 +14,9 @@ import {runChecks} from './checks';
 import {checkProduct, saveProduct, type Product} from './product';
 import {at, defaultAsk, noul, type Ask} from './jev';
 
-const Q = JSON.parse(readFileSync(join(import.meta.dir, 'questions.json'), 'utf8'));
+const SETS = JSON.parse(readFileSync(join(import.meta.dir, '..', '..', '..', 'factory', 'questions.json'), 'utf8')).sets;
+const GROUPS = ['ambiguity', 'coherence', 'near_miss', 'content_branch', 'redundancy', 'surprise', 'map', 'decompose', 'gate', 'link', 'about_product'];
+const Q = Object.fromEntries(GROUPS.map((g) => [g, SETS[`authoring_${g}`].questions]));
 const POLICY = JSON.parse(readFileSync(join(import.meta.dir, 'policy.json'), 'utf8')).flag_at;
 const STAGES = ['understanding', 'map', 'decompose', 'bundle'];
 
@@ -61,10 +63,18 @@ async function understanding(p: Product, ask: Ask, out: Out) {
   // Only what the author decided alone; a choice the operator already made is never re-asked.
   const assumed = p.understanding.assumed.filter((x) => x.about === 'product' && x.by === 'author')
     .map((a) => [a, one({ask: p.understanding.ask, assumption: a.text}, Q.surprise, `assumption "${a.text}"`, a.text)] as const);
+  // A technical label keeps an assumption from the surprise question; Jev reads whether it is
+  // really about the app, and a high reading is only a flag: the author acts on it.
+  const technical = p.understanding.assumed.filter((x) => x.about === 'technical' && x.by === 'author')
+    .map((a) => [a, one({assumption: a.text}, {about_product: Q.about_product.about_product}, `technical assumption "${a.text}"`, a.text)] as const);
   await ambiguity(one, p.understanding.ask, out);
   for (const [a, read] of assumed) {
     const v = (await read())('assumption_surprises', (x) => x >= POLICY.assumption_surprises);
     if (v !== null) out.doubts.push(`DOUBT: ask whether the app should: ${a.text}`);
+  }
+  for (const [a, read] of technical) {
+    const v = (await read())('about_product', (x) => x >= POLICY.about_product);
+    if (v !== null) out.flags.push(`JEV flag: assumption "${a.text}" is labelled technical but reads as about the product (about_product ${f2(v)}); the label may hide it from the surprise check`);
   }
 }
 

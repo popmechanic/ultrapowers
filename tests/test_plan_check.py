@@ -1362,3 +1362,92 @@ def test_a_task_the_engine_would_skip_is_refused(tmp_path, ttype):
              if l.startswith("grammar: task 1: Type")]
     assert len(lines) == 1 and ttype in lines[0], p.stdout
     assert "**Publish:**" in lines[0], p.stdout
+
+
+# ########################################################################### #
+# FIVE SLIPS                                                                  #
+# ########################################################################### #
+#
+# Five slips the author used to catch by eye (2026-09-29), refused now by
+# `slip_violations`: the six slots, a three-sentence Summary, Closes under
+# Goal, a fence only in Proof, and a dated reading with `n=`. Every plan is
+# `tests/fixtures/plan_check_slips/good.md` with one slip put in, re-signed
+# so the gate record is never the reason it is refused.
+
+SLIPS_GOOD = ROOT / "tests/fixtures/plan_check_slips/good.md"
+SIX_SLOTS_LINE = ("grammar: task 1: the body must carry Claim, Authorized-by, "
+                  "Interfaces, Context, Proof and Stale-if, each once, "
+                  "non-empty, in that order")
+
+
+def slipped(tmp_path, pattern, repl):
+    """`good.md` with `pattern` replaced by `repl` (multiline), signed and
+    checked: the lines the checker prints."""
+    text = re.sub(pattern, repl, SLIPS_GOOD.read_text(), flags=re.M)
+    assert text != SLIPS_GOOD.read_text(), pattern
+    p = run_compiler(write_plan(tmp_path, "p.md", text))
+    return p.returncode, p.stdout.splitlines()
+
+
+def test_slips_the_clean_fixture_checks_out():
+    p = run_compiler(SLIPS_GOOD)
+    assert p.returncode == 0, p.stdout
+    assert p.stdout.splitlines()[0] == "PLAN OK", p.stdout
+
+
+def test_slips_a_missing_slot_is_refused(tmp_path):
+    code, lines = slipped(tmp_path, r"^\*\*Authorized-by:\*\*.*\n", "")
+    assert code == 2 and SIX_SLOTS_LINE in lines, lines
+
+
+def test_slips_an_empty_or_misordered_slot_is_refused(tmp_path):
+    code, lines = slipped(tmp_path, r"^(\*\*Authorized-by:\*\*).*$", r"\1")
+    assert code == 2 and SIX_SLOTS_LINE in lines, lines
+    code, lines = slipped(tmp_path, r"^(\*\*Interfaces:\*\*.*\n\n)(\*\*Context:\*\*.*\n)",
+                          r"\2\n\1")
+    assert code == 2 and SIX_SLOTS_LINE in lines, lines
+
+
+def test_slips_a_four_sentence_summary_is_refused(tmp_path):
+    code, lines = slipped(tmp_path, r"^\*\*Summary:\*\* ", "**Summary:** Two. ")
+    assert code == 2, lines
+    assert ("grammar: header: the **Summary:** paragraph has 4 sentences; "
+            "it carries exactly three") in lines, lines
+
+
+def test_slips_a_closes_line_off_the_goal_is_refused(tmp_path):
+    code, lines = slipped(tmp_path, r"^\*\*Closes:\*\*.*\n(\*\*Tech Stack:\*\*.*\n)",
+                          r"\1**Closes:** #1\n")
+    assert code == 2, lines
+    assert ("grammar: header: the **Closes:** line sits directly under the "
+            "**Goal:** paragraph") in lines, lines
+
+
+def test_slips_a_fence_outside_proof_is_refused(tmp_path):
+    code, lines = slipped(tmp_path, r"^(\*\*Context:\*\*.*)$", "\\1\n~~~\nx\n~~~")
+    assert code == 2, lines
+    assert "grammar: task 1: a code fence outside the Proof slot" in lines, lines
+    code, lines = slipped(tmp_path, r"^(\*\*Tech Stack:\*\*.*)$", "\\1\n~~~\nx\n~~~")
+    assert code == 2, lines
+    assert "grammar: header: a code fence above the first task" in lines, lines
+    code, lines = slipped(tmp_path, r"\Z", "\n## Notes\n\n~~~\nx\n~~~\n")
+    assert code == 2, lines
+    assert "grammar: a code fence outside every task" in lines, lines
+
+
+def test_slips_a_dated_reading_without_n_is_refused(tmp_path):
+    code, lines = slipped(tmp_path, r"^(\*\*Context:\*\*.*)$",
+                          r"\1 (3 runs, 2026-09-22)")
+    assert code == 2, lines
+    assert ("grammar: task 1: Context cites a dated reading without n= — "
+            "(3 runs, 2026-09-22)") in lines, lines
+    code, lines = slipped(tmp_path, r"\(n=2 runs, 2026-09-22\)",
+                          "(2 runs, 2026-09-22)")
+    assert code == 2, lines
+    assert ("grammar: header: the **Summary:** cites a dated reading without "
+            "n= — (2 runs, 2026-09-22)") in lines, lines
+
+
+def test_slips_a_stories_plan_is_untouched():
+    p = run_compiler(ROOT / "evals/fixtures/stories/todo/.ultrapowers/plan.md")
+    assert p.stdout.splitlines() == ["PLAN OK"], p.stdout

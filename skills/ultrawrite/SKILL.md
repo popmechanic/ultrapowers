@@ -192,8 +192,8 @@ where this plan's Files sets were wrong.
   a typo and a prose sentence are both silently missing edges, and nothing warns on one.
 - **Context:** what the implementer must know that the repo cannot tell it. Keep it short;
   nothing refuses on its length. Steps prose smuggled in here is
-  caught structurally instead: fences belong in Proof, and a fence elsewhere is the
-  author's own to catch — nothing enforces it. A task-reference
+  caught structurally instead: fences belong in Proof, and `plan_check.py` refuses a
+  fence anywhere else. A task-reference
   ordering phrase (`after Task 2`) orders nothing at all.
 - **Proof:** the plan's `Run:` probes, citing clauses, and nothing else. The only slot
   where code fences are legal. Its legs — `(a) … (b) …` —
@@ -499,7 +499,11 @@ Then resolve provenance and check:
 what a parser cannot see: a gate record that is missing, stale or `fail`, a malformed
 authoring record, a `Check:` carrying a backtick or naming a path one task owns, a
 `Check:` that freezes a pathspec covering a task's own Files, a Stale-if predicate that
-already holds at BASE — and, since a plan's proof is its `Run:` probes and nothing else, a `Test:` or `Guard:` bullet or an `Exam command` header is refused outright. It is not a grammar check — the old
+already holds at BASE — and, since a plan's proof is its `Run:` probes and nothing else, a `Test:` or `Guard:` bullet or an `Exam command` header is refused outright. It also
+refuses five slips the author used to catch by eye: a task without its six slots once
+each, non-empty and in order; a `**Summary:**` of other than three sentences; a
+`**Closes:**` line not directly under the `**Goal:**` paragraph; a code fence outside a
+task's Proof; and a dated reading in a Context or the Summary cited without `n=`. It is not a grammar check — the old
 compiler's grammar refusals left with it at cut B (2026-09-21), so read `plan_parse.py`'s
 own output for the plan before launching (`proofRuns`, `proofRunClauses`, `checks`,
 `dag_edges`): what it prints is what the engine will do.
@@ -665,6 +669,9 @@ three signals off the plan:
   API, loops/cursors/pagination/budgets/termination logic), or behavior hard to verify by
   reading.
 
+Since 2026-09-29 the author computes none of these signals: `plan_check.py --base` prints
+them, and the branch, on one `ROUTING fact:` line, and the author reads that line.
+
 First match wins: risk → Ultrapowers (the **risk override** — every task held to its own probes
 and the run to its checks is the value, not speed); parallel width and T≥3 → Ultrapowers; T≤2 → Inline;
 else → Subagent-Driven. Show a one-line analysis, then the three options, tagging the
@@ -693,16 +700,19 @@ since run-45 paid for, each a rule with its reason — before the gate readers a
 dispatched, and checks the plan against each of them. They are the author's own to
 check — nothing prints them.
 
-- Every task carries all six slots, in order, none empty, and no checkbox steps.
+`plan_check.py` refuses five slips outright, so this list leaves them out: the six slots
+each once, non-empty and in order; a three-sentence Summary; Closes directly under Goal;
+a fence only in Proof; and a dated reading in a Context or the Summary with `n=`.
+
+- No task carries checkbox steps.
 - The plan carries one `**Claim:**` above the first task, elicited or quoted from an
   issue. Every task Claim is either the operator's words with a provenance tag or
   `(derived)` under the plan-level Claim, paired with a machine restatement at the same
   layer, and its gate verdict is recorded and fresh.
-- The plan carries one `**Summary:**` paragraph of three sentences directly under that
-  Claim, in the operator's register — what this is, why it exists, how it benefits them.
+- The plan's `**Summary:**` is in the operator's register — what this is, why it exists,
+  how it benefits them.
 - Every Stale-if entry is a predicate; every Proof `Run:` prover ends in the tag of a
-  clause the Machine line numbers, and no test-file or guard bullet is written; every
-  fence sits in Proof.
+  clause the Machine line numbers, and no test-file or guard bullet is written.
 - No Proof pins a sentence of a document as its evidence; a prose task's Proof is a
   `Run:`.
 - Every Machine clause is numbered and cited by a leg; every computable fact a clause states
@@ -714,8 +724,7 @@ check — nothing prints them.
   `Create:` a sibling later `Modify:`s — and any probe that quantifies over a directory was
   checked against BASE for pre-existing violators (#536).
 - Global Constraints state results, not process.
-- The `**Closes:**` line, when present, sits directly under `**Goal:**` and names only the
-  target repository's issues.
+- The `**Closes:**` line, when present, names only the target repository's issues.
 - No pinned number is a guess: every pinned literal was computed, not assumed — the author
   ran the command or did the arithmetic at BASE and pasted back what it printed, rather
   than the figure the sentence wanted to be true.

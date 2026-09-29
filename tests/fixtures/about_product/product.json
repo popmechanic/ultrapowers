@@ -1,0 +1,78 @@
+{
+  "version": "product-v1",
+  "intent": {
+    "name": "Todos with tags",
+    "kind": "behaviour",
+    "audience": [
+      "one person keeping their own list"
+    ],
+    "summary": [
+      "A list of things you mean to do, each of which you can tag with a word.",
+      "It exists so nothing you meant to do gets forgotten, and so you can see which todos belong together.",
+      "You add a todo, tag it, take a tag off, and deleting a todo takes its tags with it."
+    ],
+    "success": [
+      "You can see which todos belong together"
+    ]
+  },
+  "understanding": {
+    "ask": "A todo list where I can tag todos. Deleting a todo should take its tags too.",
+    "said": [
+      "A todo list where I can tag todos.",
+      "Deleting a todo should take its tags too."
+    ],
+    "assumed": [
+      {
+        "text": "a todo can carry several tags, each any word",
+        "about": "product",
+        "state": "decided",
+        "by": "operator"
+      },
+      {
+        "text": "deleting a todo removes only its own tags",
+        "about": "product",
+        "state": "decided",
+        "by": "operator"
+      },
+      {
+        "text": "todos are saved in a SQLite table",
+        "about": "technical",
+        "state": "decided",
+        "by": "author"
+      }
+    ],
+    "unsure": []
+  },
+  "concepts": [
+    {
+      "id": "todo",
+      "purpose": "You keep a list of things to do and tick them off",
+      "part": "The list",
+      "status": "keep",
+      "relies_on": []
+    },
+    {
+      "id": "tag",
+      "purpose": "You tag a todo with a word to group it with others",
+      "part": "The list",
+      "status": "keep",
+      "relies_on": [
+        "todo"
+      ]
+    }
+  ],
+  "subprojects": [
+    {
+      "id": "sp1",
+      "title": "Todos and tags",
+      "reason": "it is the whole product",
+      "concepts": [
+        "todo",
+        "tag"
+      ],
+      "depends_on": [],
+      "status": "next"
+    }
+  ],
+  "readings": []
+}
