@@ -637,6 +637,23 @@ def _kahn_layers(ids, edges):
 
 # --------------------------------------------------------------------------- #
 # Top-level parse.
+def task_sections(text):
+    """Each task's own section of the plan text, keyed by task id: its heading
+    line without the leading '### ' (so 'Task <id>: <title>'), then everything
+    up to the next unfenced task heading, trimmed -- what a builder is shown."""
+    scanned = _fence_aware_lines(text)
+    heads = [(m.group(1), i) for i, (line, fenced) in enumerate(scanned)
+             if not fenced and _leading_spaces(line) <= 3
+             for m in [TASK_HEAD.match(line.strip())] if m]
+    out = {}
+    for n, (tid, start) in enumerate(heads):
+        end = heads[n + 1][1] if n + 1 < len(heads) else len(scanned)
+        lines = [l for l, _ in scanned[start:end]]
+        lines[0] = lines[0].strip()[len('### '):]
+        out.setdefault(tid, "\n".join(lines).strip())
+    return out
+
+
 # --------------------------------------------------------------------------- #
 
 def parse_plan_text(text):
@@ -652,6 +669,7 @@ def parse_plan_full(text):
     header_lines, task_bodies = _split_plan(text)
     bootstrap_cmd, publish = _parse_header(header_lines)
     checks = _parse_checks(header_lines)
+    sections = task_sections(text)
 
     all_tasks = []
     for tid, title, order, body_lines in task_bodies:
@@ -701,6 +719,7 @@ def parse_plan_full(text):
             "proofRuns": t["proofRuns"],
             "proofRunClauses": t["proofRunClauses"],
             "interfaces": t["interfaces"],
+            "body": sections.get(t["id"], ""),
         }
         return view
 

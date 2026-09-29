@@ -35,14 +35,17 @@ import { randomBytes } from 'node:crypto'
 import fsp from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { makeKataClient, sshTransport } from './kata-client.mjs'
 
 // ── Names and shas ──────────────────────────────────────────────────────────
 
-/** `owner/repo`: exactly one slash, each half a git-safe name. */
-export const isSafeTarget = (value) =>
-  typeof value === 'string' && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value)
+/** `owner/repo`: exactly one slash, each half a git-safe name that starts and
+ *  ends with a letter or digit — the only shape that may be interpolated into
+ *  an ssh string, so `..` and a dot-led half are refused. */
+const TARGET = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?\/[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/
+export const isSafeTarget = (value) => typeof value === 'string' && TARGET.test(value)
 
 /** A git object name, as a pointer half. */
 export const isSafeSha = (value) => typeof value === 'string' && /^[0-9a-f]{7,64}$/.test(value)
@@ -152,6 +155,10 @@ export const ENGINE_REPO = 'popmechanic/ultrapowers'
 export const ENGINE_URL = `https://github.com/${ENGINE_REPO}.git`
 /** The assignment comment's hard ceiling — exe.dev's `comment` field. */
 export const COMMENT_MAX_BYTES = 200
+/** The lobby-verb record: the flag set per lobby verb, captured from the live
+ *  lobby and committed beside this file. `VERBS_RECORD` is how a message names it. */
+export const VERBS_RECORD = 'fleet/exe-verbs.json'
+export const VERBS_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'exe-verbs.json')
 
 // ── Config ──────────────────────────────────────────────────────────────────
 

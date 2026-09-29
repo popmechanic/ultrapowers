@@ -39,7 +39,7 @@ RECORDLESS_FIXTURES = sorted(
 # retired the examiner they fed, and `plan_check.py` refuses a plan that
 # still carries one instead.
 TASK_FIELDS = {"id", "title", "files", "depends_on", "proofRuns",
-               "proofRunClauses", "interfaces"}
+               "proofRunClauses", "interfaces", "body"}
 
 
 # --------------------------------------------------------------------------- #

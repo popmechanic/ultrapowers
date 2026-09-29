@@ -28,7 +28,7 @@
  *                 <name> --json`, `policy.selector`). That policy is the one
  *                 way a credential reaches a fleet VM: exe.dev refuses `new
  *                 --integration` and `integrations attach` since 2026-09-11.
- *   verb-drift    `help <verb>` for every verb in fleet/exe-verbs.json, and
+ *   verb-drift    `help <verb>` for every verb in the verb record, and
  *                 the diff against the flags recorded there. A flag that
  *                 appeared or vanished is a finding in a green row; only a
  *                 record the doctor cannot read turns it red.
@@ -67,6 +67,9 @@ import { fileURLToPath } from 'node:url'
 import {
   DEFAULT_CONFIG_PATH,
   FLEET_DEFAULTS,
+  VERBS_PATH,
+  VERBS_RECORD,
+  isSafeTarget,
   loadFleetConfig,
   parseMemoryGb,
   parsePolicy
@@ -89,11 +92,6 @@ const FIXES = Object.freeze(Object.fromEntries(ROW_IDS.map((id) => [id, id])))
  *  a process that has to start when nothing else in the fleet does. */
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const CLAUDE_TOKEN = path.join(HERE, 'claude-token.mjs')
-
-/** The recorded flag set per lobby verb, captured from the live lobby and read
- *  from beside this file. `verbsPath`/`recordPath` override it, so an exam
- *  drives the row from a fixture rather than from the committed record. */
-const DEFAULT_VERBS_PATH = () => path.join(HERE, 'exe-verbs.json')
 
 /** The eight standing reads, in the order the doctor issues them. One policy
  *  read per integration the `integrations` row asks about follows them, then
@@ -130,9 +128,6 @@ const OAUTH_INTEGRATION = 'claude-max'
  *  that predates the lift is told to detach it. Assembled rather than spelled
  *  out because no file under `fleet/` may carry that literal any more. */
 const LEGACY_RUNS = ['fleet', 'runs'].join('-')
-
-/** `owner/repo`, the only shape that may be interpolated into an ssh string. */
-const TARGET = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?\/[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/
 
 /** The bearer the edge injects, as the listing spells it. */
 const BEARER = 'Authorization:Bearer'
@@ -601,8 +596,9 @@ function helpFlags (stdout) {
 }
 
 /**
- * Re-fetch `help <verb>` for every verb of `fleet/exe-verbs.json` and diff the
- * live flag set against the recorded one.
+ * Re-fetch `help <verb>` for every verb of the verb record (`VERBS_PATH`, or
+ * `recordPath` so an exam drives the row from a fixture) and diff the live
+ * flag set against the recorded one.
  *
  * `--help` answers text, not JSON — a `Command:` line, a description, an
  * optional `Usage:` line, an `Options:` block and an optional `Examples:` block
@@ -615,12 +611,12 @@ function helpFlags (stdout) {
  * worth. Only a record this cannot read at all answers `readable: false`.
  */
 export async function verbDrift ({ help, recordPath } = {}) {
-  const target = recordPath ?? DEFAULT_VERBS_PATH()
+  const target = recordPath ?? VERBS_PATH
   const unreadable = (why) => ({
     readable: false,
     capturedAt: null,
     findings: [],
-    detail: `fleet/exe-verbs.json ${why} — re-capture it from ssh exe.dev "help <verb>" output`
+    detail: `${VERBS_RECORD} ${why} — re-capture it from ssh exe.dev "help <verb>" output`
   })
 
   let text
@@ -671,7 +667,7 @@ export async function verbDrift ({ help, recordPath } = {}) {
   }
 
   const detail = segments.length === 0
-    ? `${names.length} verbs match fleet/exe-verbs.json (captured ${capturedAt})`
+    ? `${names.length} verbs match ${VERBS_RECORD} (captured ${capturedAt})`
     : `drift since ${capturedAt}: ${segments.join('; ')} — re-measure the behaviours with node fleet/tests/probe_exe_facts.mjs`
   return { readable: true, capturedAt, findings, detail }
 }
@@ -856,7 +852,7 @@ export async function doctor ({
   const cfg = { ...FLEET_DEFAULTS, ...(config ?? {}) }
   const run = exec ?? defaultExec
   const want = target === null || target === undefined ? null : String(target)
-  if (want !== null && !TARGET.test(want)) {
+  if (want !== null && !isSafeTarget(want)) {
     throw new Error(`--target takes owner/repo, not ${JSON.stringify(want)}`)
   }
   const wantAccount = account === null || account === undefined ? null : String(account)

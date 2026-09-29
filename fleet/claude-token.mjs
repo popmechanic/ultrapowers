@@ -55,6 +55,8 @@ import os from 'node:os'
 import path from 'node:path'
 import readline from 'node:readline'
 
+import { EXE_HOST, FLEET_PATTERN } from './lobby.mjs'
+
 const OAUTH = Object.freeze({
   clientId: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
   authorizeUrl: 'https://claude.ai/oauth/authorize',
@@ -98,7 +100,7 @@ const CLIPBOARD_WAIT_MS = 10 * 60 * 1000
 
 // An account name is the keychain item's `acct` and rides `--comment account=`
 // into a lobby verb, so it is checked before anything else happens.
-const ACCOUNT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+export const ACCOUNT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 
 const b64url = (buf) => buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 
@@ -200,7 +202,7 @@ function defaultDeps () {
     },
     // The lobby verb runs with the secret on STDIN (`--bearer -`), never in argv.
     lobby: (verb, input) => {
-      const r = spawnSync('ssh', ['exe.dev', verb], { encoding: 'utf8', input })
+      const r = spawnSync('ssh', [EXE_HOST, verb], { encoding: 'utf8', input })
       return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` }
     },
     log: (line) => process.stderr.write(`${line}\n`),
@@ -305,10 +307,11 @@ export function installBearer (deps, accessToken, account = DEFAULT_ACCOUNT) {
 // exits non-zero, or whose `out` is not JSON, is an Error — never read as an
 // empty fleet, since that would spend a grant a live run could be killed by.
 function listLiveFleet (deps) {
-  const r = deps.lobby("ls 'fleet-r*' --json")
-  if (r.code !== 0) throw new Error(`exe.dev ls 'fleet-r*' --json failed (exit ${r.code}):\n${r.out}`)
+  const verb = `ls '${FLEET_PATTERN}' --json`
+  const r = deps.lobby(verb)
+  if (r.code !== 0) throw new Error(`${EXE_HOST} ${verb} failed (exit ${r.code}):\n${r.out}`)
   let payload
-  try { payload = JSON.parse(r.out) } catch { throw new Error(`ls 'fleet-r*' --json was not JSON:\n${String(r.out).slice(0, 300)}`) }
+  try { payload = JSON.parse(r.out) } catch { throw new Error(`${verb} was not JSON:\n${String(r.out).slice(0, 300)}`) }
   const vms = Array.isArray(payload?.vms) ? payload.vms : []
   return vms.map((row) => row?.vm_name).filter((name) => typeof name === 'string')
 }

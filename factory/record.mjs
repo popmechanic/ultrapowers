@@ -60,7 +60,7 @@ export function renderRow (kind, tokens) {
 
 /** `events.jsonl`'s lines, parsed as JSON in file order; a line that fails to
  *  parse is skipped, and a file that is missing or empty gives no rows. */
-function readEventRows (eventsPath) {
+export function readEventRows (eventsPath) {
   let text
   try {
     text = readFileSync(eventsPath, 'utf8')
@@ -204,9 +204,7 @@ function cellText (value) {
 
 /** `| <task> | <k> | <factsExit> | <candidateSha> |` for every `landing` row
  *  of the events file, in file order; no file gives no rows. */
-function landingRowLines (eventsPath) {
-  if (!eventsPath) return []
-  const rows = readEventRows(eventsPath)
+function landingRowLines (rows) {
   const out = []
   for (const row of rows) {
     if (row && row.kind === 'landing') {
@@ -219,15 +217,10 @@ function landingRowLines (eventsPath) {
 /** `### Jev read each story step (record only)` — a two-column table, one row
  *  per clause naming the latest `jev:step` row for it (file order breaks a
  *  tie), sorted by clause; no `jev:step` row at all gives no lines. */
-function jevStepLines (eventsPath) {
-  let text
-  try { text = readFileSync(eventsPath, 'utf8') } catch { return [] }
+function jevStepLines (rows) {
   const last = new Map()
-  for (const line of text.split('\n')) {
-    if (!line.trim()) continue
-    let row
-    try { row = JSON.parse(line) } catch { continue }
-    if (row.kind === 'jev:step' && typeof row.clause === 'string') last.set(row.clause, row)
+  for (const row of rows) {
+    if (row && row.kind === 'jev:step' && typeof row.clause === 'string') last.set(row.clause, row)
   }
   if (!last.size) return []
   const out = ['### Jev read each story step (record only)', '', '| step | reading | confidence |', '|---|---|---|']
@@ -240,15 +233,11 @@ function jevStepLines (eventsPath) {
 /** A draft's reason: the last `terminal` row, when it reads `pr: "draft"`, as one bold line
  *  naming why, then the `stall:<kind>` rows the run wrote, so the operator reads why the run
  *  stopped on the PR itself. A ready run, or a log with no `terminal` row, adds nothing. */
-function draftReasonLines (eventsPath) {
-  let text
-  try { text = readFileSync(eventsPath, 'utf8') } catch { return [] }
+function draftReasonLines (rows) {
   let term = null
   const stalls = []
-  for (const line of text.split('\n')) {
-    if (!line.trim()) continue
-    let row
-    try { row = JSON.parse(line) } catch { continue }
+  for (const row of rows) {
+    if (!row) continue
     if (row.kind === 'terminal') term = row
     else if (typeof row.kind === 'string' && row.kind.startsWith('stall:')) stalls.push(row.kind)
   }
@@ -265,21 +254,39 @@ function draftReasonLines (eventsPath) {
 export function renderPrBody (planPath, eventsPath) {
   const planText = readFileSync(planPath, 'utf8')
   const summary = planSummaryLines(planText)
-  const rows = landingRowLines(eventsPath)
+  const events = eventsPath ? readEventRows(eventsPath) : []
+  const rows = landingRowLines(events)
   const closes = planClosesLines(planText)
   let out = ''
   for (const line of summary) out += line + '\n'
   out += '\n'
   for (const line of rows) out += line + '\n'
   out += '\n'
-  const draft = draftReasonLines(eventsPath)
+  const draft = draftReasonLines(events)
   for (const line of draft) out += line + '\n'
   if (draft.length) out += '\n'
-  const readings = jevStepLines(eventsPath)
+  const readings = jevStepLines(events)
   for (const line of readings) out += line + '\n'
   if (readings.length) out += '\n'
   for (const line of closes) out += line + '\n'
   return out
+}
+
+/** `publish.<key>` off the policy file at `policyPath`, when it is an object
+ *  carrying an `enabled` key; a missing file, unparseable JSON, or any other
+ *  shape reads as `null`, so each caller fails closed to disabled. */
+function readPublishCell (policyPath, key) {
+  let doc
+  try {
+    doc = JSON.parse(readFileSync(policyPath, 'utf8'))
+  } catch {
+    return null
+  }
+  const cell = doc && typeof doc === 'object' ? doc.publish && doc.publish[key] : undefined
+  if (!cell || typeof cell !== 'object' || Array.isArray(cell) || !Object.prototype.hasOwnProperty.call(cell, 'enabled')) {
+    return null
+  }
+  return cell
 }
 
 /** `policy <policy.json>` — `<enabled> <max_refolds> <mergeable_wait_seconds>`
@@ -287,16 +294,8 @@ export function renderPrBody (planPath, eventsPath) {
  *  `self_merge` that is not an object carrying an `enabled` key reads as
  *  disabled, never a default a broken read falls into. */
 export function renderPolicy (policyPath) {
-  let doc
-  try {
-    doc = JSON.parse(readFileSync(policyPath, 'utf8'))
-  } catch {
-    return '0 3 120'
-  }
-  const sm = doc && typeof doc === 'object' ? doc.publish && doc.publish.self_merge : undefined
-  if (!sm || typeof sm !== 'object' || Array.isArray(sm) || !Object.prototype.hasOwnProperty.call(sm, 'enabled')) {
-    return '0 3 120'
-  }
+  const sm = readPublishCell(policyPath, 'self_merge')
+  if (!sm) return '0 3 120'
   const enabled = sm.enabled ? 1 : 0
   const maxRefolds = sm.max_refolds === undefined ? 3 : Math.trunc(Number(sm.max_refolds))
   const waitSeconds = sm.mergeable_wait_seconds === undefined ? 120 : Math.trunc(Number(sm.mergeable_wait_seconds))
@@ -309,16 +308,8 @@ export function renderPolicy (policyPath) {
  *  never a default a broken read falls into — the same rule `policy` reads
  *  `publish.self_merge` by. */
 export function renderPublishPolicy (policyPath) {
-  let doc
-  try {
-    doc = JSON.parse(readFileSync(policyPath, 'utf8'))
-  } catch {
-    return '0 600'
-  }
-  const probe = doc && typeof doc === 'object' ? doc.publish && doc.publish.probe : undefined
-  if (!probe || typeof probe !== 'object' || Array.isArray(probe) || !Object.prototype.hasOwnProperty.call(probe, 'enabled')) {
-    return '0 600'
-  }
+  const probe = readPublishCell(policyPath, 'probe')
+  if (!probe) return '0 600'
   const enabled = probe.enabled ? 1 : 0
   const timeoutSeconds = probe.timeout_seconds === undefined ? 600 : Math.trunc(Number(probe.timeout_seconds))
   return `${enabled} ${timeoutSeconds}`
