@@ -52,3 +52,7 @@
 {"t":131470,"kind":"landing","task":"1","k":1,"factsExit":0,"candidateSha":"6ac94cfa75ee69795508026cf574cb8ebd8b37d8","ts":"2026-09-29T20:11:45.759Z"}
 {"ts":"2026-09-29T20:11:52.965Z","kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1373","number":1373,"draft":false}
 {"ts":"2026-09-29T20:11:56.758Z","kind":"merge","code":200}
+{"ts":"2026-09-29T20:11:58.551Z","kind":"board:leave","rc":0}
+{"ts":"2026-09-29T20:11:58.681Z","kind":"board:close","what":"task 1","code":200}
+{"ts":"2026-09-29T20:11:58.766Z","kind":"board:close","what":"run","code":200}
+{"ts":"2026-09-29T20:11:58.858Z","kind":"run:audit","state":"done","missing":[]}
