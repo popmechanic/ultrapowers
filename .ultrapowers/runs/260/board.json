@@ -1,0 +1,107 @@
+{
+ "tasks": [
+  {
+   "id": "1",
+   "title": "The page is packed into the Worker",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "2",
+   "title": "The Worker serves the page, the snapshot and /health",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [
+    "1"
+   ],
+   "notes": []
+  },
+  {
+   "id": "3",
+   "title": "The page is public and read-only unless it is /staff",
+   "state": "done",
+   "owner": "D",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "4",
+   "title": "A scaffolded app names its public pieces",
+   "state": "done",
+   "owner": "E",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "5",
+   "title": "The checker knows a packed app is ready",
+   "state": "parked",
+   "owner": null,
+   "depends_on": [],
+   "notes": [
+    "B released: Still blocked by the environment, not the code. The celld.ts change is published: startCelld is ready when GET /health returns \"ok\":true, or when GET / contains `tinyapp root`. Fact 2 (checker_kit 10/10) passes. Fact 1 fails only because this sandbox has no esbuild on PATH (`command -v esbuild` is empty, so the proof symlinks /nonexistent). With esbuild on PATH, fact 1 exits 0. It needs to be run on M1, which has esbuild. I won't install esbuild into the host PATH without authorization.",
+    "B released: Blocked by the environment, not the code (third attempt, same result). The celld.ts change is published: startCelld is ready when GET /health returns \"ok\":true, or when GET / contains `tinyapp root`. Fact 2 (checker_kit 10/10) passes. Fact 1 is tagged [M1] and needs esbuild on PATH. This sandbox has none, so it fails with 'esbuild not found'. With PATH including ~/.bun/install/cache/@esbuild/linux-x64@0.25.12@@@1/bin, fact 1 exits 0 (checked just now). To close the task, run the proof on M1 or give the check runner esbuild on PATH. Re-claiming it in this sandbox won't help."
+   ]
+  },
+  {
+   "id": "6",
+   "title": "The stack reference says how a TinyApp goes online",
+   "state": "done",
+   "owner": "C",
+   "depends_on": [],
+   "notes": []
+  }
+ ],
+ "beliefs": [
+  {
+   "id": 1,
+   "t": 129148,
+   "by": "E",
+   "claim": "scaffold.ts now writes `export const PUBLIC: readonly string[] = [];` in client/src/pieces/index.ts. Task 4's proof also needs tinyapp-template/scripts/pack-client.ts and server/client-files.ts, which I expect from task 1.",
+   "confidence": 0.9,
+   "task": "4",
+   "about": "task"
+  },
+  {
+   "id": 2,
+   "t": 279447,
+   "by": "D",
+   "claim": "client/src/public.ts (isStaff, loadPublic) and app.ts staff/public split are published; app.ts now imports PUBLIC from ./pieces/index and loads /public.json on non-staff paths.",
+   "confidence": 0.95,
+   "task": "3",
+   "about": "app"
+  },
+  {
+   "id": 3,
+   "t": 480578,
+   "by": "B",
+   "claim": "Task 5 fact 1 needs `esbuild` on PATH (the proof symlinks `command -v esbuild`); this agent sandbox has none, so it fails with 'esbuild not found'. With PATH including ~/.bun/install/cache/@esbuild/linux-x64@0.25.12@@@1/bin the fact passes (exit 0).",
+   "confidence": 0.95,
+   "task": "5",
+   "about": "engine"
+  },
+  {
+   "id": 4,
+   "t": 683996,
+   "by": "host",
+   "claim": "open conflict in skills/ultrawrite/references/greenfield-stack.md between published copies; whoever next works there should make it say what both sides meant and call resolve_conflict",
+   "confidence": 1
+  },
+  {
+   "id": 5,
+   "t": 1083524,
+   "by": "host",
+   "claim": "stall: released {\"task\":\"5\",\"releases\":3}",
+   "confidence": 1
+  },
+  {
+   "id": 6,
+   "t": 1468118,
+   "by": "host",
+   "claim": "stall: deadlock {\"left\":[{\"id\":\"5\",\"state\":\"parked\",\"depends_on\":[]}]}",
+   "confidence": 1
+  }
+ ]
+}

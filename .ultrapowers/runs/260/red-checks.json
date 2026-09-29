@@ -1,0 +1,13 @@
+{
+ "snap": "dcb48a8c39",
+ "limit_bytes": 65536,
+ "truncated": false,
+ "red": [
+  {
+   "task": "5",
+   "cmd": "bash -lc bash -c 'set -e; T=$(mktemp -d); mkdir -p $T/server; printf \"export default { fetch: (r: Request) => new URL(r.url).pathname === \\\"/health\\\" ? Response.json({ok: true}) : new Response(\\\"a page\\\") };\\n\" > $T/server/index.ts; printf \"{\\\"name\\\": \\\"t\\\", \\\"main\\\": \\\"index.ts\\\", \\\"compatibility_date\\\": \\\"2026-09-01\\\"}\\n\" > $T/server/wrangler.jsonc; mkdir -p $T/node_modules/.bin; ln -s \"$(command -v esbuild || echo /nonexistent)\" $T/node_modules/.bin/esbuild 2>/dev/null || true; bun -e \"const {startCelld}=await import(\\\"./factory/stack/tinyapp/celld.ts\\\"); const c=await startCelld(\\\"$T\\\",{readyMs:30000}); await c.stop();\"'",
+   "exit": 1,
+   "tail": "    if (proc.exitCode !== null) {\n74 |       const err = await new Response(proc.stderr).text();\n75 |       throw new EnvError(`celld exited ${proc.exitCode} before it was ready:\\n${err.slice(-600)}`);\n                 ^\nerror: celld exited 1 before it was ready:\ncelld dev\n  Project  /tmp/tinyapp-celld-Xezp5a/wrangler.jsonc\n  State    /tmp/tinyapp-celld-Xezp5a/.celld/dev\n  Clean    no local state to discard\n  Logs     hidden (use --logs)\n  Watch    disabled\n  ● opening the local storage\n  ● building the application\nError: esbuild not found (/tmp/tmp.MECJIQHRVW/node_modules/.bin/esbuild).\n`celld deploy` bundles with esbuild; install it and retry,\nor set CELLD_ESBUILD to its path.\n\n      at <anonymous> (/home/exedev/run/work/edge/factory/stack/tinyapp/celld.ts:75:13)\n\nBun v1.4.2 (Linux x64)\n"
+  }
+ ]
+}
