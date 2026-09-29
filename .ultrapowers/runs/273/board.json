@@ -1,0 +1,52 @@
+{
+ "tasks": [
+  {
+   "id": "1",
+   "title": "The engine keeps only the switches a launch sets",
+   "state": "done",
+   "owner": "C",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "2",
+   "title": "Five runs trial narrow pulls",
+   "state": "done",
+   "owner": "D",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "3",
+   "title": "The record carries only what the Flock writes",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "4",
+   "title": "The doctor reads exe.dev through the lobby",
+   "state": "done",
+   "owner": "B",
+   "depends_on": [],
+   "notes": []
+  }
+ ],
+ "beliefs": [
+  {
+   "id": 1,
+   "t": 223523,
+   "by": "host",
+   "claim": "open conflict in factory/flock/engine.mjs between published copies; whoever next works there should make it say what both sides meant and call resolve_conflict",
+   "confidence": 1
+  },
+  {
+   "id": 2,
+   "t": 432936,
+   "by": "host",
+   "claim": "open conflict in fleet/doctor.mjs between published copies; whoever next works there should make it say what both sides meant and call resolve_conflict",
+   "confidence": 1
+  }
+ ]
+}
