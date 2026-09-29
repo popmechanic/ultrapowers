@@ -1,0 +1,33 @@
+{
+ "tasks": [
+  {
+   "id": "1",
+   "title": "The two questions and their reader",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "2",
+   "title": "The engine asks at both moments and records the answers",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [
+    "1"
+   ],
+   "notes": []
+  }
+ ],
+ "beliefs": [
+  {
+   "id": 1,
+   "t": 211264,
+   "by": "A",
+   "claim": "In a scripted Flock run, two tasks that both replace the same base line merge as a union (adds only), which never blocks, so no R: task is added. To force a resolve task, have one side keep the line and add after it while the other replaces it (fleet/tests/flock_jev_trials_probe.mjs).",
+   "confidence": 0.85,
+   "task": "2",
+   "about": "engine"
+  }
+ ]
+}
