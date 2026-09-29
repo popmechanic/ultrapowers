@@ -1,0 +1,54 @@
+{
+ "tasks": [
+  {
+   "id": "1",
+   "title": "The story reading sees the whole story, and a big store still gets read",
+   "state": "done",
+   "owner": "C",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "2",
+   "title": "The conflict and give-back questions see what each side meant and what the task must prove",
+   "state": "done",
+   "owner": "B",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "3",
+   "title": "The Jev client takes extra headers",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "4",
+   "title": "The authoring checks send the store once, batch what shares a state, and carry the missing context",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [
+    "3"
+   ],
+   "notes": []
+  }
+ ],
+ "beliefs": [
+  {
+   "id": 1,
+   "t": 114444,
+   "by": "host",
+   "claim": "open conflict in factory/flock/step_reading.mjs between published copies; whoever next works there should make it say what both sides meant and call resolve_conflict",
+   "confidence": 1
+  },
+  {
+   "id": 2,
+   "t": 273466,
+   "by": "host",
+   "claim": "open conflict in skills/ultrawrite/stories/questions.json between published copies; whoever next works there should make it say what both sides meant and call resolve_conflict",
+   "confidence": 1
+  }
+ ]
+}

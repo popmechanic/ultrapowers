@@ -1,0 +1,29 @@
+Running as unit: fleet-engine-271.service; invocation ID: 0cc3a827d455408682cb846d9d754663
+[   0.7s] workload run-271, 0 agents, claude-opus-5-5, out /home/exedev/run
+[   1.4s] past: run-270 finished green
+[   1.5s] opens builder A (pool 1)
+[   1.5s] opens builder B (pool 2)
+[   1.6s] opens builder C (pool 3)
+[   1.6s] A claims task 3
+[   1.6s] B claims task 2
+[   1.6s] C claims task 1
+[  11.7s] A done 3
+[  42.0s] edge f6b59cb8ed red {"1":[1,1],"2":[1,1,1,0,0],"3":[0,0],"4":[1,1,1,1]} check 0 
+[  46.1s] A claims task 4
+[  82.4s] C done 1
+[ 114.4s] early close factory/flock/step_reading.mjs 2c2af83774 held by C
+[ 114.4s] edge 5045c8bc90 red {"1":[0,0],"2":[1,1,1,0,0],"3":[0,0],"4":[1,1,1,1]} check 0 conflicts factory/flock/step_reading.mjs (blocking: none)
+[ 120.7s] B done 2
+[ 153.1s] edge fe7b0d1ea0 red {"1":[0,0],"2":[0,0,0,0,0],"3":[0,0],"4":[1,1,1,1]} check 0 conflicts factory/flock/step_reading.mjs (blocking: none)
+[ 240.8s] A done 4
+[ 273.5s] early close skills/ultrawrite/stories/questions.json 5166a95b7a held by A
+[ 273.5s] edge 8ed469aea7 GREEN {"1":[0,0],"2":[0,0,0,0,0],"3":[0,0],"4":[0,0,0,0]} check 0 conflicts factory/flock/step_reading.mjs,skills/ultrawrite/stories/questions.json (blocking: none)
+[ 274.3s] SETTLED on 8ed469aea7
+[ 274.3s] TERMINAL ready settled green
+[ 280.4s] summary {"workload":"run-271","agents":"elastic","builders_max":3,"cap":16,"model":"claude-opus-5-5","settled":{"t":274345,"snap":"8ed469aea7"},"wall_ms":280347,"publish":"explicit","early_close":"held","order":"chain","final":{"snap":"8ed469aea7","green":true,"perTask":{"1":[0,0],"2":[0,0,0,0,0],"3":[0,0],"4":[0,0,0,0]},"check":0,"conflicts":["factory/flock/step_reading.mjs","skills/ultrawrite/stories/questions.json"]},"snapshots":4,"beliefs":2,"outcome":{"pr":"ready","why":"settled green","snap":"8ed469aea7","t":274345},"settle_mode":"tested","debounce_ms":65282,"board_ops":138,"board_op_us_p50":13,"board_op_us_p90":21,"board":"standin","board_by_op":{"ready":{"n":120,"p50_us":13,"p90_us":15,"max_us":87146},"claim":{"n":6,"p50_us":93,"p90_us":190,"max_us":190},"claim:lost":{"n":2,"p50_us":0,"p90_us":0,"max_us":0},"publish":{"n":4,"p50_us":6,"p90_us":12,"max_us":12},"done":{"n":4,"p50_us":2,"p90_us":19,"max_us":19},"post":{"n":2,"p50_us":45,"p90_us":45,"max_us":45}},"board_writes":18,"board_writes_per_s":0.06,"board_peak_writes_per_s":7,"edit_failures":{"not_unique":0,"not_found":0,"stale":0,"other":0},"tokens":{"input":82,"output":32480,"cache_read":1640984,"cache_write":86199},"sessions":4,"cost_usd":1.719}
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 4min 40.718s
+CPU time consumed: 2min 22.024s
+Memory peak: 1.5G
+Memory swap peak: 0B
