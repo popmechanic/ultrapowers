@@ -115,6 +115,45 @@ runs in the page, so it stops the screens and the page's tools, not a client
 that writes the store directly; a server-side lock is its own piece (radio rs4,
 2026-09-28).
 
+## Going online
+
+A stories-v1 TinyApp goes online as **one Worker** that serves everything:
+`scripts/pack-client.ts` (`bun run pack`) builds `client/index.html` and writes
+every output file into the generated `server/client-files.ts`, so a deploy
+uploads one thing and there is no separate static host. `bun run deploy` runs
+`pack-client` and then `wrangler deploy --config server/wrangler.jsonc`. The
+Worker's routes:
+
+- `/` — the page, public and read-only;
+- `/staff` — the same page with the staff controls;
+- `/public.json` — a snapshot of the store's public content, for readers who
+  never open a socket;
+- `/health` — a plain liveness answer, what a plan's Verify line probes;
+- `/sync` — the store's `WsSynchronizer` socket;
+- `/me` — who is signed in, as above.
+
+**Cloudflare Access** guards `/staff`, `/sync` and `/me` and leaves `/`,
+`/public.json` and `/health` public. The operator sets that Access application
+in the Cloudflare dashboard; no plan does, and no task writes an Access policy.
+
+**Public pieces.** A plan names the pieces a public visitor sees in
+`client/src/pieces/index.ts`'s `PUBLIC`; every other piece renders only under
+`/staff`. A piece that is public but has staff controls hides them when
+`session.staff` is false, so the public page shows the store and never a control
+that writes it.
+
+**The deploy lines.** A plan that publishes carries, verbatim:
+
+```
+**Publish:** bun install && bun run deploy
+**Verify:** curl -fsS "$ULTRA_PUBLISH_URL/health"
+```
+
+with the Worker's `name` and `account_id` set in `server/wrangler.jsonc` — the
+account id lives there, never on a plan line. `bun install` comes first because
+the publish checkout has no `node_modules`; the Verify line reads
+`ULTRA_PUBLISH_URL`, the `workers.dev` URL the deploy printed.
+
 ## State exams
 
 *Deferred since cut three (2026-09-22): no plan can name a `Test:` path, so nothing in this section has a reader until state exams return as probes — owed on map #1248. The text below is the shape for that day, kept as it was.*

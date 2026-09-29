@@ -74,6 +74,14 @@ export const startCelld = async (
       const err = await new Response(proc.stderr).text();
       throw new EnvError(`celld exited ${proc.exitCode} before it was ready:\n${err.slice(-600)}`);
     }
+    // Packed apps answer /health with {"ok":true}; apps scaffolded before
+    // that answer / with `tinyapp root`.
+    try {
+      const health = await fetch(url + '/health');
+      if (health.ok && (await health.text()).replace(/\s/g, '').includes('"ok":true')) {
+        return {url, ws: `ws://127.0.0.1:${port}`, port, dir, stop};
+      }
+    } catch {}
     try {
       const body = await (await fetch(url + '/')).text();
       if (body.includes('tinyapp root')) {
