@@ -36,8 +36,23 @@ export function stepState (result, sentences) {
   }
 }
 
-export async function readSteps ({ ask, results, sentences, question, emit }) {
-  await Promise.all(results.filter((r) => r && r.exit === 0).map(async (r) => {
+// The clause Jev reads for each story: its highest-numbered step, the one after
+// which the story's sentence should be true (#1369: a middle step was asked about
+// an outcome that had not happened yet). Guard clauses (`G:`) belong to an
+// earlier plan and are never read.
+export function lastSteps (clauses) {
+  const best = new Map()
+  for (const c of clauses) {
+    if (/^G:/.test(c)) continue
+    const [story, step] = String(c).split('.')
+    const prev = best.get(story)
+    if (!prev || Number(step) > Number(prev.split('.')[1])) best.set(story, c)
+  }
+  return new Set(best.values())
+}
+
+export async function readSteps ({ ask, results, sentences, question, emit, last }) {
+  await Promise.all(results.filter((r) => r && r.exit === 0 && last.has(r.clause)).map(async (r) => {
     const answers = await ask({ state: stepState(r, sentences), questions: { delivered: question } })
     const a = answers && answers.delivered
     emit({

@@ -37,7 +37,7 @@ import { bootstrapFor } from '../commands.mjs'
 import { makeJevClient } from '../jev-client.mjs'
 import { mirrorBoard } from './kata_mirror.mjs'
 import { makeKataClient, httpTransport } from '../../fleet/kata-client.mjs'
-import { latestResults, readSteps } from './step_reading.mjs'
+import { lastSteps, latestResults, readSteps } from './step_reading.mjs'
 import { pastItems } from './past.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -146,15 +146,17 @@ const ev = (kind, o = {}) => fs.writeSync(EV, JSON.stringify({ t: now(), kind, .
 const log = (...a) => console.log(util.format(`[${(now() / 1000).toFixed(1).padStart(6)}s]`, ...a))
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-// record-only Jev reading per green story step (state-probe runner spec §7): never blocks
-// `done` or a PR, and a missing answer is recorded as `null` (step_reading.mjs `readSteps`).
+// record-only Jev reading of each story at its last step (state-probe runner spec §7, #1369),
+// once, at a ready settle: never blocks a PR, and a missing answer is recorded as `null`
+// (step_reading.mjs `readSteps`). No read at a builder's done: the edge's spawnSync blocked
+// the loop past the client's timeout, so 0 of 42 answered (radio-station runs 1-6).
 const STEP_QUESTION = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'questions.json'), 'utf8')).sets.flock_step.questions.delivered
 const jev = JEV_STEP ? makeJevClient({ baseUrl: process.env.TYPESAFE_BASE_URL, log: (m) => log('jev', m) }) : null
 const readAndRecord = (clauses) => {
   if (!jev || !W.stories) return Promise.resolve()
   const all = latestResults(CHECK_OUT)
   const results = clauses ? clauses.map((c) => all.get(c)).filter(Boolean) : [...all.values()]
-  return readSteps({ ask: jev.ask, results, sentences: W.stories.sentences, question: STEP_QUESTION, emit: (row) => ev('jev:step', row) })
+  return readSteps({ ask: jev.ask, results, sentences: W.stories.sentences, question: STEP_QUESTION, emit: (row) => ev('jev:step', row), last: lastSteps(W.tasks.flatMap((t) => t.clauses || [])) })
 }
 
 // ── the engine's own git, on the target ───────────────────────────────────────
@@ -781,7 +783,6 @@ async function session (agent, task) {
           ev('facts:red', { agent, task: task.id, at: 'done', exits: red.map((r) => r.exit) })
           return say('not done: these facts fail on your copy. Fix them, run run_proof, then call done again.\n\n' + redText(task, red))
         }
-        readAndRecord(task.clauses).catch(() => {})
         if (!DONE_ENDS) { st.done = a.summary; return say('marked done; end your turn now') }
         await syncFromDisk(agent); await publishCopy(agent); ev('publish', { agent, task: task.id, by: 'done' }); await board.publish(agent, task.id)
         st.done = a.summary; st.closed = true
