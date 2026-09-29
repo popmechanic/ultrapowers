@@ -69,3 +69,23 @@
 {"t":107928,"kind":"tool","agent":"C","task":"3","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T06:19:58.024Z"}
 {"t":107994,"kind":"proof","agent":"C","task":"3","exits":[0,1],"causes":[{"cause":"unknown"}],"errs":[""],"ts":"2026-09-29T06:19:58.090Z"}
 {"t":108004,"kind":"tool:post","agent":"C","tool":"mcp__flock__run_proof","ts":"2026-09-29T06:19:58.100Z"}
+{"t":190554,"kind":"edge","snap":"a964b79bb4","reason":"publish C","perTask":{"1":[1],"2":[1],"3":[0,1],"4":[1],"5":[1,0],"6":[1,1]},"check":0,"conflicts":[],"blocking":[],"outside":[],"green":false,"ts":"2026-09-29T06:21:20.650Z"}
+{"t":190559,"kind":"tool","agent":"B","task":"6","tool":"Edit","target":"/home/exedev/run/work/agents/B/skills/ultrawrite/references/greenfield-stack.md","ts":"2026-09-29T06:21:20.655Z"}
+{"t":191012,"kind":"pull","agent":"D","changed":[{"path":"skills/ultrawrite/stories/tinyapp-template/client/src/app.ts","from":"C","added":23,"removed":12,"conflict":false},{"path":"skills/ultrawrite/stories/tinyapp-template/client/src/public.ts","from":"C","added":25,"removed":0,"conflict":false}],"ts":"2026-09-29T06:21:21.108Z"}
+{"t":191120,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T06:21:21.216Z"}
+{"t":191122,"kind":"edit","agent":"A","task":"1","tool":"Edit","path":"skills/ultrawrite/stories/tinyapp-template/package.json","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T06:21:21.218Z"}
+{"t":191125,"kind":"tool","agent":"A","task":"1","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T06:21:21.221Z"}
+{"t":191197,"kind":"proof","agent":"A","task":"1","exits":[0],"causes":[],"errs":[],"ts":"2026-09-29T06:21:21.293Z"}
+{"t":191203,"kind":"tool:post","agent":"A","tool":"mcp__flock__run_proof","ts":"2026-09-29T06:21:21.299Z"}
+{"t":192090,"kind":"pull","agent":"A","changed":[{"path":"skills/ultrawrite/stories/tinyapp-template/client/src/app.ts","from":"C","added":23,"removed":12,"conflict":false},{"path":"skills/ultrawrite/stories/tinyapp-template/client/src/public.ts","from":"C","added":25,"removed":0,"conflict":false}],"ts":"2026-09-29T06:21:22.186Z"}
+{"t":192625,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T06:21:22.721Z"}
+{"t":192632,"kind":"edit","agent":"B","task":"6","tool":"Edit","path":"skills/ultrawrite/references/greenfield-stack.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T06:21:22.728Z"}
+{"t":193511,"kind":"pull","agent":"B","changed":[{"path":"skills/ultrawrite/stories/tinyapp-template/client/src/app.ts","from":"C","added":23,"removed":12,"conflict":false},{"path":"skills/ultrawrite/stories/tinyapp-template/client/src/public.ts","from":"C","added":25,"removed":0,"conflict":false}],"ts":"2026-09-29T06:21:23.607Z"}
+{"t":193563,"kind":"tool","agent":"C","task":"3","tool":"mcp__flock__post_belief","target":"","ts":"2026-09-29T06:21:23.659Z"}
+{"t":193784,"kind":"tool","agent":"C","task":"3","tool":"mcp__flock__wait_for","target":"","ts":"2026-09-29T06:21:23.880Z"}
+{"t":194156,"kind":"tool","agent":"A","task":"1","tool":"mcp__flock__done","target":"","ts":"2026-09-29T06:21:24.252Z"}
+{"t":194393,"kind":"publish","agent":"A","task":"1","by":"done","ts":"2026-09-29T06:21:24.489Z"}
+{"t":194402,"kind":"tool:post","agent":"A","tool":"mcp__flock__done","ts":"2026-09-29T06:21:24.498Z"}
+{"t":194407,"kind":"kata:mirror","task":"1","uid":"01M3NWXPQAQ9FBNRS3J8TEYH92","what":"done by A","ok":true,"ts":"2026-09-29T06:21:24.503Z"}
+{"t":194623,"kind":"builder:open","agent":"E","pool":5,"ready":2,"busy":3,"ts":"2026-09-29T06:21:24.719Z"}
+{"t":194632,"kind":"kata:mirror","task":"2","uid":"01M3NWY12A83SC51H6E5XFSXX0","what":"claimed by E","ok":true,"ts":"2026-09-29T06:21:24.728Z"}
