@@ -1,0 +1,131 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "02a65f31c2021b47bd9ec8b2a5db34887f1bfdd01a62dfb835b671d2da5aac78",
+      "verdict": "pass",
+      "reason": "M1-M3 each carry a tagged probe that fails if the fact is false; nothing at base pins the opposite."
+    },
+    "2": {
+      "hash": "702722e9e926b163822df9e65499253cb7d32ad7c9399ff5c92c4cf33e46f751",
+      "verdict": "pass",
+      "reason": "M1 pins mode narrow with its rollback and experiment flag, M2 pins the four words of the reading; base unread lacks them."
+    },
+    "3": {
+      "hash": "54487273e890f47c9a46cb5148447cdc91f843baac1a217754b9d113962f2d06",
+      "verdict": "pass",
+      "reason": "M1-M5 each have a tagged probe; the base files pinning the old shapes are the ones this task rewrites."
+    },
+    "4": {
+      "hash": "e3ddef58a10444a47dc6af55d52026ada8030f35eb353b411b0540dad4704f6d",
+      "verdict": "pass",
+      "reason": "M1-M4 each have a tagged probe (listing fields, lobby import, frozen base sha of the rows, banner equality); no base pin contradicts."
+    }
+  },
+  "tally": {
+    "base": "8dd304745c0051696671f98e6514508ff68ebb81",
+    "dispatched": 5,
+    "rejected": 0,
+    "rounds": [
+      {
+        "round": 1,
+        "dispatched": 4,
+        "rejected": 0
+      },
+      {
+        "round": 2,
+        "dispatched": 1,
+        "rejected": 0,
+        "note": "task 4 re-read after tightening the M2 probe to also catch a const-declared parser"
+      }
+    ]
+  },
+  "authoring": {
+    "minutes": 25,
+    "probes": 14,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Engine flags",
+        "options": [
+          "Delete them",
+          "Keep them",
+          "Please explain"
+        ],
+        "recommended": "Delete them",
+        "picked": "Delete them",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Narrow pulls",
+        "options": [
+          "Trial it, 5 runs",
+          "Delete it",
+          "Leave it off",
+          "Please explain"
+        ],
+        "recommended": "Trial it, 5 runs",
+        "picked": "Trial it, 5 runs",
+        "explain_rounds": 1
+      },
+      {
+        "question": "Old rows",
+        "options": [
+          "Clean up",
+          "Leave them",
+          "Please explain"
+        ],
+        "recommended": "Clean up",
+        "picked": "Clean up",
+        "explain_rounds": 0
+      },
+      {
+        "question": "status.json",
+        "options": [
+          "Fix both",
+          "Contract only",
+          "Leave it",
+          "Please explain"
+        ],
+        "recommended": "Fix both",
+        "picked": "Fix both",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Doctor",
+        "options": [
+          "Do it",
+          "Skip",
+          "Please explain"
+        ],
+        "recommended": "Do it",
+        "picked": "Do it",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Sign",
+          "Fix a line",
+          "Please explain"
+        ],
+        "recommended": "Sign",
+        "picked": "Sign",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Execute",
+        "options": [
+          "Ultrapowers, both",
+          "Engine plan only",
+          "Please explain"
+        ],
+        "recommended": "Ultrapowers, both",
+        "picked": "Ultrapowers, both",
+        "explain_rounds": 0
+      }
+    ]
+  }
+}
