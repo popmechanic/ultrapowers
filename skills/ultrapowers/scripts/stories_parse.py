@@ -147,6 +147,13 @@ def parse_stories_text(text):
         t["proofRuns"], t["proofRunClauses"] = [], []
         t["interfaces"] = {"consumes": [], "produces": []}
     by_id = {t["id"]: t for t in tasks}
+    # A TinyApp plan that publishes carries the same three header lines a claims plan does;
+    # the boot deploys after the self-merge and verifies with ULTRA_PUBLISH_URL set.
+    unwrap = lambda v: v[1:-1] if v and len(v) > 1 and v[0] == v[-1] == "`" else v
+    publish = None
+    if head.get("publish") or head.get("verify"):
+        publish = {"deploy": unwrap(head.get("publish")) or None, "verify": unwrap(head.get("verify")) or None,
+                   "rollback": unwrap(head.get("rollback")) or None}
     return {
         "grammar": "stories-v1", "stack": head["stack"], "plan_id": head["plan-id"],
         "kind": head["kind"], "summary": head.get("summary", ""),
@@ -154,5 +161,5 @@ def parse_stories_text(text):
         "stories": stories, "links": links, "numbers": numbers, "guards": guards,
         "tasks": tasks, "dag_edges": edges,
         "launch_waves": [[by_id[i] for i in w] for w in _layers([t["id"] for t in tasks], edges)],
-        "pairs": [], "checks": [], "bootstrapCmd": "bun install", "publish": None,
+        "pairs": [], "checks": [], "bootstrapCmd": "bun install", "publish": publish,
     }

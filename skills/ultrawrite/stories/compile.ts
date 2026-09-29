@@ -102,7 +102,10 @@ export function compilePlan(b: Bundle, planId: string, mine: Derived[], guards: 
     '**Grammar:** stories-v1', '**Stack:** tinyapp', `**Plan-id:** ${planId}`,
     ...(b.page.subproject ? [`**Product:** ${b.page.subproject}`] : []),
     `**Kind:** ${page.kind}`, `**Summary:** ${page.summary.join(' ')}`,
-    `**Store:** \`${page.store}\` sha256:${b.storeSha256}`, '',
+    `**Store:** \`${page.store}\` sha256:${b.storeSha256}`,
+    ...(page.publish ? [`**Publish:** ${page.publish.deploy}`, `**Verify:** ${page.publish.verify}`,
+      ...(page.publish.rollback ? [`**Rollback:** ${page.publish.rollback}`] : [])] : []),
+    '',
     '## Stories', '',
     ...page.stories.map((s) => `- ${s.id}: ${s.sentence}`)];
   if (page.links?.length) out.push('', '## Links', '', ...page.links.map((l) => `- ${l.id}: ${l.sentence}`));

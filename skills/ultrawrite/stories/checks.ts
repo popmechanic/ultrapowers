@@ -20,6 +20,10 @@ export function runChecks(b: Bundle): {refusals: string[]; facts: string[]} {
   if (page.store !== 'client/src/store.js') {
     refusals.push(`page: store must be client/src/store.js, not ${page.store}`);
   }
+  if (page.publish !== undefined && !(typeof page.publish?.deploy === 'string' && page.publish.deploy.trim()
+      && typeof page.publish?.verify === 'string' && page.publish.verify.trim())) {
+    refusals.push('page: publish needs a deploy command and a verify command');
+  }
   const stories = page.stories ?? [];
   const storyIds = stories.map((s) => s.id);
   const linkIds = (page.links ?? []).map((l) => l.id);

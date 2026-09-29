@@ -97,6 +97,7 @@ judges the real app after it.
      `saved`); a `ui` step adds `ui` (click/type/key by role and name) and `see`.
      The accessible names you choose are the builder's contract. A step's
      `"as": "<email>"` (or `null`) sets who is signed in from that step on.
+   - To deploy when the run lands, `page.json` carries `publish`: `{"deploy": "bun install && bun run deploy", "verify": "curl -fsS \"$ULTRA_PUBLISH_URL/health\""}` (the app's `server/wrangler.jsonc` names the Worker and its `account_id`; see `references/greenfield-stack.md`).
    - `cards.json`, each card with its `concept`.
    - `store.js` exports `TOOLS` and `makeStore`.
 5. **Write the stories the coverage rule requires**, not ones you invent:
