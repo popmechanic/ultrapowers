@@ -615,7 +615,7 @@ Independence is a property of contracts, not of files.
    registration line to one registry file and spent 3.4 worker-minutes ordering five lines
    any order would have satisfied. Give each such task its **own region or file**: a
    registration is a new file discovered by glob, never an appended line.
-4. **Prefer several small concurrent plans** merging into one merge frontier over one
+4. **Prefer several small concurrent plans** landing on one main over one
    large plan (0.26× batch wall, n=1 drain of 3 runs, #454, 2026-09-01). An effort split
    across plans gives the **final** plan an integration-spanning acceptance — per-phase
    green never establishes integrated green — or declares the gap explicitly in the final

@@ -13,14 +13,10 @@ a pool of builder agents, each task proved by the plan's own `Run:` probes and `
 lines, merges their work continuously through the weave, and opens its own PR. No LLM
 orchestrator, no orchestrator VM; the PR is the one gate.
 
-**One engine: the Flock (map #1292 rule 8, operator 2026-09-29).** Every launch boots the
-Flock (`factory/flock/engine.mjs`): a leaderless swarm, one weave replica per builder merged
-continuously, an elastic builder pool. The factory — the earlier engine (per-task `k`
-implementers adopted through the fold kernel) — was retired under map #1292 rule 8, after
-the Flock became the default (2026-09-26; history: Run Room, n=5 fleet runs, 149 s and $1.82
-median against the factory's 182 s and $2.82, n=3, all green). Its rollback is a launch run
-from a checkout made before the retirement: that checkout's launcher and `--engine` sha still
-boot the factory.
+**One engine: the Flock (map #1292 rule 8).** Every launch boots `factory/flock/engine.mjs`:
+a leaderless swarm, an elastic builder pool, one weave replica per builder merged
+continuously. The factory it replaced is retired; its rollback is a launch from a checkout
+made before the retirement.
 
 ## Commands
 
@@ -41,8 +37,7 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha> --engine <s
 
 The plan and census scripts take positional arguments only (no `--help`); the story-planning
 tools under `skills/ultrawrite/stories/` (Bun) take flags and print their usage.
-Nothing runs on push or on a
-PR: the sandbox opens a ready PR when the engine's run ended green and a draft otherwise, so
+Nothing runs on push or on a PR: the sandbox opens a ready PR when the engine's run ended green and a draft otherwise, so
 the engine's exit code is the merge decision.
 
 ## Layout
@@ -58,7 +53,7 @@ the engine's exit code is the merge decision.
   `stories/` (story planning for TinyApps in TypeScript: bundle loader, code and Jev
   checks, the compiler to `stories-v1`, the scaffold, the operator notebook), `catalog/`
   (ready pieces; `todo` first). The sandbox-facing half is
-  `skills/ultrapowers/scripts/{probe_block,stories_parse,stories_check,stacks}.py`.
+  `skills/ultrapowers/scripts/{probe_block,stories_parse,stories_check}.py`.
 - `factory/` — the engine the sandbox runs (see `.claude/rules/factory.md`). Its npm deps are
   `factory/package.json`'s.
 - `fleet/` — laptop tools (launcher, doctor, token, janitor, board reader) and the VM
@@ -84,12 +79,11 @@ the engine's exit code is the merge decision.
 - **No small measures while broken.** When the product is broken, replace the shape
   confidently and keep the old one as the rollback; don't hedge with partial fixes ("if it
   doesn't work, we can always roll back" — #589).
-- **The factory's values, in tie-break order (map #1131):** the mechanical facts (never
-  traded), then clock speed, then simplicity in lines and roles, then tokens. Three rules
-  with it: **a judgment is a question, never a sentence or a regex** (each lives in
-  `factory/questions.json` with its reader and rollback); **speculate, then select** (`k`
-  implementers, the facts' exit first, Jev's reading as tie-break); **fold on every landing**.
-  This stands beside the operator's own tie-break for hand work (§Working with the operator).
+- **The engine's values, in tie-break order (map #1131):** the mechanical facts (never
+  traded), then clock speed, then simplicity in lines and roles, then tokens. **A judgment is
+  a question, never a sentence or a regex** (each lives in `factory/questions.json`; every
+  threshold is a `factory/policy.json` cell with its rollback). Hand work has its own
+  tie-break (§Working with the operator).
 - **Don't vendor the vendor.** Before building a mechanism, ask whether exe.dev already
   provides it (identity, edge credentials, the VM comment, tags, first-boot setup script,
   cold start). #597 is plain `new` + a setup script for this reason.
@@ -125,17 +119,15 @@ the engine's exit code is the merge decision.
   explanation written in, escalating from plain words to a before-and-after to a rewrite.
   Record every sitting-level question and pick in the plan's `authoring` record; a
   recommendation taken every time is retired into a written default.
-- **Test doctrine (2026-09-09, rewritten 2026-09-22).** The implementer never does TDD and
-  writes no test of its own; the plan's `Run:` probes and the `Check:` lines are the proof, and the target's suite is a reported sensor. A test file is
-  pruned by hand, one per pull request that names what else guards its behaviour.
-  The catch census was retired on 2026-09-29: the Flock writes none of the rows it counted.
-  Every reading states its `n=…` and `window`; no default flips under `n = 5 runs` (`20 tasks` per-task). A flip
-  under the floor is an `experiment` carrying its `rollback`; a fact read once carries its
-  `date` (#994).
-  **The proof is probes-only (operator, 2026-09-27):** the Flock selects no existing tests,
-  so a run's proof is its `Run:` probes and `Check:` lines alone, and a plan that must keep
+- **The proof is probes-only.** The implementer never does TDD and writes no test of its
+  own; a run's proof is the plan's `Run:` probes and `Check:` lines alone (the Flock selects
+  no existing tests), and the target's suite is a reported sensor. A plan that must keep
   existing behaviour names the guarding tests in a `Check:` (e.g.
-  `python3 -m pytest -q tests/test_fleet_suite.py -k launch`).
+  `python3 -m pytest -q tests/test_fleet_suite.py -k launch`). A test file is pruned by hand,
+  one per pull request that names what else guards its behaviour.
+- **Readings carry their size (#994).** Every reading states its `n=…` and `window`; no
+  default flips under `n = 5 runs` (`20 tasks` per-task). A flip under the floor is an
+  `experiment` carrying its `rollback`; a fact read once carries its `date`.
 - **Verification is mechanical and fast.** A probe computes facts (exit code, argv,
   byte-exact string, count, ordering, oracle agreement); "the code says X" is Jev's, read
   against the hunk at landing. A probe is one `Run:` line, one command, ending in the tag of
@@ -150,14 +142,13 @@ the engine's exit code is the merge decision.
 
 ## Working with the operator
 
-- **They adjudicate, they do not author.** Every decision goes through AskUserQuestion as
-  above. A signed Claim is drafted by the author and confirmed in one touch (draft, machine
+- **They adjudicate, they do not author.** A signed Claim is drafted by the author and confirmed in one touch (draft, machine
   restatement and summary in one question); their edit is the Claim. Explain ideas plainly,
   not in the technical register.
 - **They never read code or tests.** The trust chain is plan → probes → gate receipt → smoke.
   Quote receipts; never narrate a green.
 - **Hand-work priorities: quality, then tokens, then clock.** The simpler design wins when it
-  costs none of the three. Per-task model tiering is never simplified away.
+  costs none of the three.
 - **Times in Pacific, 12-hour clock.** The record stays UTC; chat converts.
 - **Propose, then wait for "file it."** Tickets and issue comments follow an explicit ask.
 - **Releases are 0.3.x patches** bundling several merges behind a confidence run; a minor bump
@@ -208,8 +199,5 @@ the engine's exit code is the merge decision.
 - **TinyApp is the name** for a greenfield target on Bun + TypeScript + TinyBase whose
   MergeableStore syncs over WsSynchronizer to a Durable Object with a SQLite persister. The
   term "vibes app" is banned. Rule: `skills/ultrawrite/references/greenfield-stack.md`.
-- **"Frontier" is always qualified:** *merge frontier* (the fold kernel) or *docket frontier*
-  (the run-integration tree); bare "frontier" is banned in specs, docs and issues.
-- **No shouted imperatives** in engine prompts (history: the pin was on the factory's
-  `factory/roles/*.md`, retired with it).
+- **No shouted imperatives** in engine prompts.
 - **macOS has no `timeout`**; fleet-counsel's system node is v18 (use `npx -y node@22`).
