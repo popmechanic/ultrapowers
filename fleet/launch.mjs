@@ -120,6 +120,11 @@ const NEW_INTEGRATION_FLAG = /(^|\s)--integration(=|\s|$)/
 
 /** Where the plan lands in the commit the launcher pushes. */
 const PLAN_PATH = '.ultrapowers/plan.md'
+/** The plan's gate record, committed beside it: the laptop's authoring census
+ *  (`skills/ultrawrite/scripts/authoring_census.py --fetch`) reads it off the
+ *  plan tag. No engine reads it; the census does. */
+const VERDICTS_PATH = '.ultrapowers/gate-verdicts.json'
+
 /** Every flag the launcher reads; any other is refused before the plan is read. */
 const LAUNCH_FLAGS = [
   'account', 'again', 'base', 'config', 'cpu', 'engine', 'hold', 'json', 'memory', 'repo', 'run', 'target'
@@ -624,6 +629,12 @@ async function launchBody ({
     throw new Refusal(`launch: cannot read plan ${planPath}: ${error?.message ?? error}`)
   }
   if (planText.trim() === '') throw new Refusal(`launch: plan ${planPath} is empty`)
+  let verdictsText = null
+  try {
+    verdictsText = await fsp.readFile(`${planPath.replace(/\.md$/, '')}.gate-verdicts.json`, 'utf8')
+  } catch {
+    verdictsText = null
+  }
   // A stories-v1 plan's proof is state probes, run by factory/stack/tinyapp/check.ts
   // (state-probe runner, 2026-09-27); a Numbers probe has no checker yet.
   if (planGrammar(planText) === 'stories-v1' && /^## Numbers\s*$/m.test(planText)) {
@@ -964,6 +975,7 @@ async function launchBody ({
     base: opts.base,
     run: firstRun,
     planText,
+    verdictsText,
     commands,
     // `--run N` is the operator's number, not one the launcher is free to
     // move: a refused push under it is refused, never retried elsewhere.
@@ -1128,8 +1140,9 @@ async function readDefaultBranch ({ exec, repoDir }) {
 }
 
 /**
- * The plan commit: `<base>`'s tree plus `.ultrapowers/plan.md` (and the kata
- * record when a hub is reached), one commit on `<base>`,
+ * The plan commit: `<base>`'s tree plus `.ultrapowers/plan.md` (and the gate
+ * record when the plan has a sibling `.gate-verdicts.json`, and the kata record
+ * when a hub is reached), one commit on `<base>`,
  * built entirely with plumbing against a temporary index file. The operator's
  * own index and working tree are never read and never written, so a launch
  * from a dirty checkout is as safe as one from a clean one.
@@ -1137,7 +1150,7 @@ async function readDefaultBranch ({ exec, repoDir }) {
  * A local git failure here is still a refusal: exe.dev has seen nothing but
  * reads, and the target has nothing new on it.
  */
-async function commitPlan ({ exec, repoDir, base, run, planText, kataText = null }) {
+async function commitPlan ({ exec, repoDir, base, run, planText, verdictsText = null, kataText = null }) {
   const indexDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'fleet-plan-'))
   const env = { ...process.env, GIT_INDEX_FILE: path.join(indexDir, 'index') }
   const plumb = async (argv, options = {}) => {
@@ -1150,6 +1163,7 @@ async function commitPlan ({ exec, repoDir, base, run, planText, kataText = null
   try {
     await plumb(['read-tree', base])
     const entries = [[PLAN_PATH, planText]]
+    if (verdictsText !== null) entries.push([VERDICTS_PATH, verdictsText])
     if (kataText !== null) entries.push([KATA_PATH, kataText])
     for (const [rel, text] of entries) {
       const blob = await plumb(['hash-object', '-w', '--stdin'], { input: text })
@@ -1205,7 +1219,7 @@ const PUSH_ATTEMPTS = 3
  * more than one was made.
  */
 async function pushPlan ({
-  exec, repoDir, base, run, planText, commands, reread,
+  exec, repoDir, base, run, planText, verdictsText = null, commands, reread,
   kataStep = null, kataBump = null, compiled = null
 }) {
   let n = run
@@ -1216,7 +1230,7 @@ async function pushPlan ({
     // target's and outlives every number, so a bump destroys nothing.
     const filed = kataStep === null ? null : await kataStep(n, compiled)
     const sha = await commitPlan({
-      exec, repoDir, base, run: n, planText, kataText: filed === null ? null : filed.text
+      exec, repoDir, base, run: n, planText, verdictsText, kataText: filed === null ? null : filed.text
     })
     const pushArgv = ['-C', repoDir, 'push', 'origin', `${sha}:refs/heads/${branch}`]
     commands.push(`git ${pushArgv.join(' ')}`)

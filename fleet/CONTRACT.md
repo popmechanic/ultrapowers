@@ -13,7 +13,8 @@ A run is a number N per target. The launcher validates its arguments, reads the 
 `billing plan --json`, computes N from the target's own `ultra/*-run-*` branches and its
 `ultra/{plan,evidence}/run-<N>` tags, refreshes the Claude
 bearer, and pushes the plan as ONE commit on `base=` to `ultra/plan-run-N` (that commit's tree is base
-plus `.ultrapowers/plan.md` and `.ultrapowers/kata.json`). Then it
+plus `.ultrapowers/plan.md`, `.ultrapowers/kata.json`, and `.ultrapowers/gate-verdicts.json` when the
+plan has a sibling `<stem>.gate-verdicts.json`). Then it
 issues ONE lobby verb — `new` — which creates a fresh VM and runs the generated setup script on it.
 The setup script installs the toolchain, an immutable bootstrap and the run's unit, then starts
 `fleet-run@<N>.service`. The bootstrap reads the assignment from the VM comment once, clones the
@@ -45,7 +46,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
 - **The three branches on the target** — where a run works, not what it leaves; each one is deleted
   when the thing it carried has landed (nothing else the fleet writes lives anywhere else):
   - `ultra/plan-run-<N>` — one commit on `base=`; tree = base + `.ultrapowers/plan.md`
-    + `.ultrapowers/kata.json` (the run's record on the hub —
+    [+ `.ultrapowers/gate-verdicts.json`] + `.ultrapowers/kata.json` (the run's record on the hub —
     `{"url":"https://kata.int.exe.xyz","project":{id,uid,name},"run":{uid,revision},"tasks":{"<id>":{uid,short_id,revision}}}`,
     keys in that order, each `revision` the one the launcher's post-link `getIssue` of that issue
     answered and each task's `short_id` the one its `createIssue` answered — that is what a worker's
@@ -100,7 +101,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   the retire sweep also deletes an `ultra/integration-run-<N>` whose PR is closed and not merged,
   saying so on that run's line. The record is
   read by tag: `.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>` and
-  `.ultrapowers/plan.md?ref=ultra/plan/run-<N>`.
+  `.ultrapowers/plan.md?ref=ultra/plan/run-<N>`. No engine reads `.ultrapowers/gate-verdicts.json`;
+  the laptop's authoring census (`skills/ultrawrite/scripts/authoring_census.py --fetch`) reads it off
+  `ultra/plan/run-<N>` (runs 269–271 were launched without it, 2026-09-29).
 - **Comment** (≤200 bytes, one line, space-separated `key=value`, this order, nothing else):
   `run=<N> plan=<40-hex> target=<owner>/<repo> base=<40-hex> engine=<40-hex>` then
   optional `kind=flock` then optional `hold=1`. The boot always runs the Flock
