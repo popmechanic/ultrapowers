@@ -65,3 +65,28 @@
 {"t":71151,"kind":"publish","agent":"E","task":"4","ts":"2026-09-29T06:04:47.234Z"}
 {"t":71159,"kind":"tool:post","agent":"E","tool":"mcp__flock__publish","ts":"2026-09-29T06:04:47.242Z"}
 {"t":71164,"kind":"tool","agent":"B","task":"5","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; command -v esbuild; find / -name esbuild -type f -perm -u+x 2>/dev/null | head; sed -","ts":"2026-09-29T06:04:47.247Z"}
+{"t":129112,"kind":"edge","snap":"9b789c1f69","reason":"publish E","perTask":{"1":[1],"2":[1],"3":[1,1],"4":[1],"5":[1,0],"6":[1,1]},"check":0,"conflicts":[],"blocking":[],"outside":[],"green":false,"ts":"2026-09-29T06:05:45.195Z"}
+{"t":129113,"kind":"tool","agent":"C","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; grep -rl \"Global Constraints\" --include=*.md . | grep -v evals | head; ls skills/ultr","ts":"2026-09-29T06:05:45.196Z"}
+{"t":129113,"kind":"tool","agent":"A","task":"1","tool":"Edit","target":"/home/exedev/run/work/agents/A/skills/ultrawrite/stories/tinyapp-template/package.json","ts":"2026-09-29T06:05:45.196Z"}
+{"t":129116,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T06:05:45.199Z"}
+{"t":129122,"kind":"tool","agent":"E","task":"4","tool":"mcp__flock__post_belief","target":"","ts":"2026-09-29T06:05:45.205Z"}
+{"t":129122,"kind":"tool","agent":"D","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/D/skills/ultrawrite/stories/tinyapp-template/client/src && python3 - <<'EOF'\np='app.ts';","ts":"2026-09-29T06:05:45.205Z"}
+{"t":129148,"kind":"belief","id":1,"by":"E","claim":"scaffold.ts now writes `export const PUBLIC: readonly string[] = [];` in client/src/pieces/index.ts. Task 4's proof also needs tinyapp-template/scripts/pack-client.ts and server/client-files.ts, which I expect from task 1.","confidence":0.9,"task":"4","about":"task","ts":"2026-09-29T06:05:45.231Z"}
+{"t":129151,"kind":"tool:post","agent":"E","tool":"mcp__flock__post_belief","ts":"2026-09-29T06:05:45.234Z"}
+{"t":129157,"kind":"tool","agent":"E","task":"4","tool":"mcp__flock__wait_for","target":"","ts":"2026-09-29T06:05:45.240Z"}
+{"t":129161,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T06:05:45.244Z"}
+{"t":129186,"kind":"tool:post","agent":"D","tool":"Bash","ts":"2026-09-29T06:05:45.269Z"}
+{"t":129573,"kind":"fallback","agent":"D","path":"skills/ultrawrite/stories/tinyapp-template/client/src/app.ts","peer_lines":0,"deleted":false,"ts":"2026-09-29T06:05:45.656Z"}
+{"t":129610,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T06:05:45.693Z"}
+{"t":130025,"kind":"pull","agent":"B","changed":[{"path":"skills/ultrawrite/stories/scaffold.ts","from":"E","added":3,"removed":1,"conflict":false}],"ts":"2026-09-29T06:05:46.108Z"}
+{"t":130033,"kind":"edit","agent":"A","task":"1","tool":"Edit","path":"skills/ultrawrite/stories/tinyapp-template/package.json","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T06:05:46.116Z"}
+{"t":130038,"kind":"tool","agent":"A","task":"1","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T06:05:46.121Z"}
+{"t":130110,"kind":"proof","agent":"A","task":"1","exits":[0],"causes":[],"errs":[],"ts":"2026-09-29T06:05:46.193Z"}
+{"t":130115,"kind":"tool:post","agent":"A","tool":"mcp__flock__run_proof","ts":"2026-09-29T06:05:46.198Z"}
+{"t":130566,"kind":"pull","agent":"A","changed":[{"path":"skills/ultrawrite/stories/scaffold.ts","from":"E","added":3,"removed":1,"conflict":false}],"ts":"2026-09-29T06:05:46.649Z"}
+{"t":131075,"kind":"pull","agent":"C","changed":[{"path":"skills/ultrawrite/stories/scaffold.ts","from":"E","added":3,"removed":1,"conflict":false}],"ts":"2026-09-29T06:05:47.158Z"}
+{"t":131524,"kind":"pull","agent":"D","changed":[{"path":"skills/ultrawrite/stories/scaffold.ts","from":"E","added":3,"removed":1,"conflict":false}],"ts":"2026-09-29T06:05:47.607Z"}
+{"t":132365,"kind":"tool","agent":"A","task":"1","tool":"mcp__flock__done","target":"","ts":"2026-09-29T06:05:48.448Z"}
+{"t":132662,"kind":"publish","agent":"A","task":"1","by":"done","ts":"2026-09-29T06:05:48.745Z"}
+{"t":132670,"kind":"tool:post","agent":"A","tool":"mcp__flock__done","ts":"2026-09-29T06:05:48.753Z"}
+{"t":132674,"kind":"kata:mirror","task":"1","uid":"01M3NW30WX2HNNGKYH8G7A6GKV","what":"done by A","ok":true,"ts":"2026-09-29T06:05:48.757Z"}
