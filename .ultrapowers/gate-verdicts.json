@@ -1,0 +1,8 @@
+{"tasks": {
+ "1": {"hash": "1ef5d5fedad044d767589a7de5749cebbe26d956b50b91e8f532a2d1867e1d28", "verdict": "pass", "reason": "M1 byte-exact grep and M2 negated grep each fail if false."},
+ "2": {"hash": "1a3213d368616f42c0446bbb96ae0a45e2d0d60d01b6cc60501eca5d29608cee", "verdict": "pass", "reason": "One probe checks both flags, both counts and the capture date."},
+ "3": {"hash": "0ca5e4302197847076acf51d78dee489e3ad3e0a9bc8804f97e13bd71e2fd5a9", "verdict": "pass", "reason": "The path loop and the git grep each fail if a path or a name remains."}},
+ "tally": {"dispatched": 4, "rejected": 1, "rounds": 2, "base": "bd4ba875f94707ed909a796cbc89330ecfa61e5e"},
+ "authoring": {"minutes": 20, "probes": 0, "routing": {"branch": "width", "lane": "ultrapowers"}, "questions": [
+  {"question": "Claim and summary", "options": ["Sign", "Fix a line"], "recommended": "Sign", "picked": "Sign", "explain_rounds": 0},
+  {"question": "Execute", "options": ["Ultrapowers", "Inline"], "recommended": "Ultrapowers", "picked": "Ultrapowers", "explain_rounds": 0}]}}
