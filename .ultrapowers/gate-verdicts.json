@@ -1,0 +1,119 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "99772416475eb0231d283ba25ae1de05149219afae4da4dbfeed48b7279512ed",
+   "verdict": "pass",
+   "reason": "The pack probe greps the generated file for /index.html and the page."
+  },
+  "2": {
+   "hash": "87627cba8c3a3f781cd03a9099dd0f72d5166c2c45bca8eca5909ceaf639d346",
+   "verdict": "pass",
+   "reason": "Every route and the snapshot after a sync write fail the probe if wrong."
+  },
+  "3": {
+   "hash": "925657bed0f20753936d8cc9e4d78246aa02c045f4b765c2026e08840bfbe78f",
+   "verdict": "pass",
+   "reason": "Round 2: the browser probe pins the public page's pieces, zero sockets and sync, and /staff's."
+  },
+  "4": {
+   "hash": "4b9f02952497fe61efc48b49d8b84fd7bd14c6ab87ee74f0c22c44223959bd9f",
+   "verdict": "pass",
+   "reason": "The scaffold probe greps the exact PUBLIC line and the two files."
+  },
+  "5": {
+   "hash": "97fb3e059f9c4f99f150d73860732fb7a8ff3c6f47dd0625639335ba708a412a",
+   "verdict": "pass",
+   "reason": "celld readiness on a Worker that only answers /health fails today and passes after."
+  },
+  "6": {
+   "hash": "7bb791fde9bc167ede5dd24dd09717448a780b6ed59ba52aff80879ea88aa161",
+   "verdict": "pass",
+   "reason": "Each name has its own grep."
+  }
+ },
+ "tally": {
+  "base": "d4d3dc86c574ed460d22c03c5000ad3a52919434",
+  "dispatched": 7,
+  "rejected": 1,
+  "rounds": {
+   "1": {
+    "dispatched": 6,
+    "rejected": 1
+   },
+   "2": {
+    "dispatched": 1,
+    "rejected": 0
+   }
+  }
+ },
+ "history": [
+  {
+   "task": "3",
+   "round": 1,
+   "verdict": "fail",
+   "reason": "The public page's no-sync and public-pieces facts had no leg."
+  }
+ ],
+ "authoring": {
+  "minutes": 70,
+  "probes": 0,
+  "routing": {
+   "branch": "width",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "What next",
+    "options": [
+     "Put the radio app online",
+     "Smooth the rough edges",
+     "Release 0.3.41"
+    ],
+    "recommended": "Put the radio app online",
+    "picked": "Put the radio app online",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Who can open it",
+    "options": [
+     "Station people only, for now",
+     "Public page, staff sign in"
+    ],
+    "recommended": "Station people only, for now",
+    "picked": "Public page, staff sign in",
+    "explain_rounds": 0
+   },
+   {
+    "question": "The shape",
+    "options": [
+     "Yes, plan the template first",
+     "Listeners must update live"
+    ],
+    "recommended": "Yes, plan the template first",
+    "picked": "Yes, plan the template first",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Sign",
+     "Fix a line"
+    ],
+    "recommended": "Sign",
+    "picked": "Sign",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
