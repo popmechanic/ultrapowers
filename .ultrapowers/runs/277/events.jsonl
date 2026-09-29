@@ -1,0 +1,26 @@
+{"t":418,"kind":"non-text","path":"docs/assets/dag.gif","ts":"2026-09-29T23:28:24.493Z"}
+{"t":487,"kind":"start","workload":"run-277","agents":"elastic","cap":16,"model":"claude-opus-5-5","clock_ms":13800000,"quiet_ms":45000,"board":"standin","publish":"explicit","early_close":"held","order":"chain","pulls":"narrow","chain":{"1":2,"2":1,"3":1},"ts":"2026-09-29T23:28:24.562Z"}
+{"t":1233,"kind":"past","run":276,"items":1,"ts":"2026-09-29T23:28:25.308Z"}
+{"t":1284,"kind":"builder:open","agent":"A","pool":1,"ready":1,"busy":0,"ts":"2026-09-29T23:28:25.359Z"}
+{"t":1328,"kind":"session:start","agent":"A","task":"1","ts":"2026-09-29T23:28:25.403Z"}
+{"t":1377,"kind":"kata:mirror","task":"1","uid":"01M3QQWXX2699FGTYKH0Z6P6VS","what":"claimed by A","ok":true,"ts":"2026-09-29T23:28:25.452Z"}
+{"t":3586,"kind":"tool","agent":"A","task":"1","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; cat fleet/tests/flock_delete_probe.mjs","ts":"2026-09-29T23:28:27.661Z"}
+{"t":3678,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T23:28:27.753Z"}
+{"t":22945,"kind":"tool","agent":"A","task":"1","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; cat > fleet/tests/flock_record_probe.mjs <<'EOF'\n#!/usr/bin/env node\n// The record pr","ts":"2026-09-29T23:28:47.020Z"}
+{"t":24679,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T23:28:48.754Z"}
+{"t":24821,"kind":"fallback","agent":"A","path":"fleet/tests/flock_record_probe.mjs","peer_lines":0,"deleted":false,"ts":"2026-09-29T23:28:48.896Z"}
+{"t":27748,"kind":"tool","agent":"A","task":"1","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T23:28:51.823Z"}
+{"t":29538,"kind":"proof","agent":"A","task":"1","exits":[0],"causes":[],"errs":[],"ts":"2026-09-29T23:28:53.613Z"}
+{"t":29547,"kind":"tool:post","agent":"A","tool":"mcp__flock__run_proof","ts":"2026-09-29T23:28:53.622Z"}
+{"t":33199,"kind":"tool","agent":"A","task":"1","tool":"mcp__flock__post_belief","target":"","ts":"2026-09-29T23:28:57.274Z"}
+{"t":33208,"kind":"belief","id":1,"by":"A","claim":"flock_record_probe on the current engine prints: exit 0, snapshots 1 (for two tasks), reproduces null (snapshots.jsonl rows carry no `patch`), digest base row keys [op,paths,root,t], run dir files include snapshot-texts.json, snapshots.json, snapshots.jsonl, weave-ops.jsonl.","confidence":0.95,"task":"1","about":"app","ts":"2026-09-29T23:28:57.283Z"}
+{"t":33212,"kind":"tool:post","agent":"A","tool":"mcp__flock__post_belief","ts":"2026-09-29T23:28:57.287Z"}
+{"t":33649,"kind":"tool","agent":"A","task":"1","tool":"mcp__flock__done","target":"","ts":"2026-09-29T23:28:57.724Z"}
+{"t":35513,"kind":"publish","agent":"A","task":"1","by":"done","ts":"2026-09-29T23:28:59.588Z"}
+{"t":35521,"kind":"kata:mirror","task":"1","uid":"01M3QQWXX2699FGTYKH0Z6P6VS","what":"done by A","ok":true,"ts":"2026-09-29T23:28:59.596Z"}
+{"t":35526,"kind":"tool:post","agent":"A","tool":"mcp__flock__done","ts":"2026-09-29T23:28:59.601Z"}
+{"t":57644,"kind":"edge","snap":"7d711804f0","reason":"done A","perTask":{"1":[0],"2":[1,1,1,1],"3":[1,1,1]},"check":0,"conflicts":[],"blocking":[],"outside":[],"green":false,"ts":"2026-09-29T23:29:21.719Z"}
+{"t":57674,"kind":"builder:open","agent":"B","pool":2,"ready":2,"busy":0,"ts":"2026-09-29T23:29:21.749Z"}
+{"t":57688,"kind":"kata:mirror","task":"3","uid":"01M3QQX3GDAQ2M9PSXXEE9YEXD","what":"claimed by B","ok":true,"ts":"2026-09-29T23:29:21.763Z"}
+{"t":57693,"kind":"pull","agent":"B","changed":[{"path":"fleet/tests/flock_record_probe.mjs","from":"A","added":139,"removed":0,"conflict":false}],"ts":"2026-09-29T23:29:21.768Z"}
+{"t":57693,"kind":"session:start","agent":"B","task":"3","ts":"2026-09-29T23:29:21.768Z"}
