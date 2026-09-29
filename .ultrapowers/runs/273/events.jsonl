@@ -345,3 +345,10 @@
 {"t":368723,"kind":"proof","agent":"B","task":"4","exits":[0,0,0,0,0],"causes":[],"errs":[],"ts":"2026-09-29T22:19:31.457Z"}
 {"t":368727,"kind":"tool:post","agent":"B","tool":"mcp__flock__run_proof","ts":"2026-09-29T22:19:31.461Z"}
 {"t":368731,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; node fleet/tests/test_doctor_claude.mjs && node fleet/tests/test_doctor_cloudflare.mj","ts":"2026-09-29T22:19:31.465Z"}
+{"t":372562,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; python3 -m pytest -q tests/test_fleet_suite.py -k \"launch or doctor or target or kata","ts":"2026-09-29T22:19:35.296Z"}
+{"t":375043,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T22:19:37.777Z"}
+{"t":375141,"kind":"test","agent":"B","task":"4","red":false,"drift":0,"cause":null,"ts":"2026-09-29T22:19:37.875Z"}
+{"t":379700,"kind":"tool","agent":"B","task":"4","tool":"mcp__flock__done","target":"","ts":"2026-09-29T22:19:42.434Z"}
+{"t":383436,"kind":"publish","agent":"B","task":"4","by":"done","ts":"2026-09-29T22:19:46.170Z"}
+{"t":383456,"kind":"kata:mirror","task":"4","uid":"01M3QKK5115R7R4RAKDRYTKG96","what":"done by B","ok":true,"ts":"2026-09-29T22:19:46.190Z"}
+{"t":383458,"kind":"tool:post","agent":"B","tool":"mcp__flock__done","ts":"2026-09-29T22:19:46.192Z"}
