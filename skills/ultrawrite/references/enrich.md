@@ -59,7 +59,7 @@ such as "who may edit a show page" is listed, in those words. Run:
 
     bun skills/ultrawrite/stories/jev_checks.ts <bundle> --stage map
 
-Split any concept flagged as two needs; merge any pair flagged as one need. Then
+Split any concept flagged as two needs. Then
 ask which belong in the **First version**: one multi-select question per heading,
 at most three things per question (the fourth option is *Please explain*), at most
 four questions per call, and as many calls as the map needs, headings with the

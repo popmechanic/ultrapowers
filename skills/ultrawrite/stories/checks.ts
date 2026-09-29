@@ -27,6 +27,21 @@ export function runChecks(b: Bundle): {refusals: string[]; facts: string[]} {
   const stories = page.stories ?? [];
   const storyIds = stories.map((s) => s.id);
   const linkIds = (page.links ?? []).map((l) => l.id);
+  // The sandbox's parser reads an id only as S, L or N followed by digits;
+  // any other id would compile and then be dropped without a word.
+  const idKinds = [['story', 'S', storyIds], ['link', 'L', linkIds],
+    ['number', 'N', (page.numbers ?? []).map((n) => n.id)]] as const;
+  for (const [what, letter, ids] of idKinds) {
+    const seen = new Set<string>();
+    for (const id of ids) {
+      if (!(typeof id === 'string' && new RegExp(`^${letter}\\d+$`).test(id))) {
+        refusals.push(`${what} ${id}: its id must be ${letter} followed by digits, like ${letter}1`);
+      } else if (seen.has(id)) {
+        refusals.push(`${what} ${id}: its id is used twice`);
+      }
+      seen.add(id);
+    }
+  }
   if (page.kind === 'behaviour' && !stories.length) refusals.push('page: a behaviour plan needs at least one story');
   if (page.kind === 'preserve' && !(page.numbers ?? []).length) refusals.push('page: a preserve plan needs at least one number');
 

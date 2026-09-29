@@ -705,12 +705,6 @@ list, and `node fleet/tests/probe_exe_facts.mjs` re-reads them.
   `test_run_engine_jev_finding`, `_jev_suite_red` and `_reconcile_retry`, and
   the fix renamed their paths). Name a fixture path so it differs from every
   other by more than case.
-- **The laptop's python3 is older than the sandbox's, and `fromisoformat` is
-  where that shows.** macOS 27 ships Python 3.9.6; the sandbox runs 3.12.3, and
-  a trailing `Z` is only parsed from 3.11. `catch_report._when` handles it and
-  `tests/test_catch_report.py` did not, so two legs were red on one machine and
-  green on the other (2026-09-17). A test parses an instant the way the tool it
-  tests does, never with a bare `datetime.fromisoformat`.
 - The plugin cache's `plan_check.py` and `plan_parse.py` are not the sandbox's. The installed
   plugin on the laptop is whatever the last `plugin install` left behind, while
   the sandbox's preflight runs the engine checkout at `engine=` — main's tip
@@ -818,31 +812,15 @@ A release is the version bump on main and a bare git tag — no GitHub release
 version is what the plugin side reads for an update). The steps, all on the
 laptop:
 
-1. Pull the runs since the last tag off their evidence tags and count them:
-   `python3 skills/ultrapowers/scripts/catch_counter.py --fetch <owner>/<repo>
-   --runs <last tag's run + 1>..<latest> --into <dir> --ledger
-   docs/superpowers/observations/ledger.jsonl` — the run numbers are off
-   `git ls-remote --tags origin 'ultra/evidence/run-*'`, and the ledger is the
-   untracked laptop one, never a sandbox path.
-2. Read it over the window: `python3 skills/ultrapowers/scripts/catch_report.py
-   --ledger docs/superpowers/observations/ledger.jsonl --tree . --zero-over 1`
-   prints a `## Zero catches over the last 1 release(s)` section — its window
-   line naming the `v*` tag it opened at and how many runs fell inside it, then
-   one `- <path> — exercised by <k> run(s)` line per test of the tree that
-   caught nothing since that tag. It is report-only: nothing in it deletes
-   anything, and deletion of a listed file follows on the reading, one file at
-   a time in its own pull request, as `CLAUDE.md`'s Test doctrine has it.
-3. Write the notes to `docs/superpowers/plans/<date>-release-0-x-y.notes.md`
+1. Write the notes to `docs/superpowers/plans/<date>-release-0-x-y.notes.md`
    (untracked): what changed for someone launching a plan, what was read and
-   not flipped, the authoring census `totals:` line, and that section as it is.
-4. One hand PR, `chore: version 0.x.y — …`, that bumps `plugin.json` and
+   not flipped, and the authoring census `totals:` line.
+2. One hand PR, `chore: version 0.x.y — …`, that bumps `plugin.json` and
    `marketplace.json` together and the CLAUDE.md Versioning bullet. The notes
-   are its body, so the section is pasted into the release commit body as it
-   is, beside the prose sizes (`wc -l factory/boot.sh`, `wc -w factory/roles/*.md`).
+   are its body, beside the prose sizes (`wc -l factory/boot.sh`, `wc -w factory/roles/*.md`).
    Squash-merge it.
-5. Push a bare tag on the squash commit: `git tag v0.x.y <sha> && git push
-   origin v0.x.y`. A tag is a ref only — it is what step 2's window opens at
-   next time. No `gh release create`.
+3. Push a bare tag on the squash commit: `git tag v0.x.y <sha> && git push
+   origin v0.x.y`. A tag is a ref only. No `gh release create`.
 
 ## Rollback
 

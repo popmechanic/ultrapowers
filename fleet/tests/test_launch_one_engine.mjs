@@ -227,6 +227,20 @@ const commentOf = (remote) => /--comment '([^']*)'/.exec(String(remote ?? ''))?.
     '(a) [M1] --implementer-effort low executes nothing at all — no lobby verb, no push. ' +
     `Got ${effortAttempt.exec.calls.length} call(s): ` + JSON.stringify(effortAttempt.exec.calls.map((c) => c.line)))
   effortAttempt.ws.cleanup()
+
+  // A flag that was never a launcher flag — a typo of `--hold` — is refused
+  // the same way, by the one allow-list, rather than silently ignored.
+  const typoAttempt = await drive(['--hodl', '1'])
+  assert.ok(typoAttempt.error instanceof Refusal,
+    `(a) [M1] \`--hodl 1\` is a Refusal — got ${typoAttempt.error?.name}: ${typoAttempt.error?.message}`)
+  assert.notEqual(typoAttempt.error.exitCode, 0,
+    `(a) [M1] --hodl 1 exits non-zero, got ${typoAttempt.error.exitCode}`)
+  assert.equal(typoAttempt.error.message, 'launch: unknown flag --hodl',
+    `(a) [M1] the message is exactly the unknown-flag line. Got: ${JSON.stringify(typoAttempt.error.message)}`)
+  assert.equal(typoAttempt.exec.calls.length, 0,
+    '(a) [M1] --hodl 1 executes nothing at all. ' +
+    `Got ${typoAttempt.exec.calls.length} call(s): ` + JSON.stringify(typoAttempt.exec.calls.map((c) => c.line)))
+  typoAttempt.ws.cleanup()
 }
 
 // ══════════════════════════════════════════════════════════════════════════

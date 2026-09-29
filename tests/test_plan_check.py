@@ -1341,3 +1341,24 @@ def test_f_m4_the_runbook_names_the_refused_shape():
     flat = " ".join(text[start:end].splitlines())
     assert re.search(r"AUTHORING fact: refused.*key.*rule", flat)
     assert re.search(r"BASE fact:.*STALE fact:.*AUTHORING fact:.*launch line", flat)
+
+
+# ########################################################################### #
+# NON-IMPLEMENTATION TYPES                                                    #
+# ########################################################################### #
+
+
+@pytest.mark.parametrize("ttype", ["gate", "release", "manual"])
+def test_a_task_the_engine_would_skip_is_refused(tmp_path, ttype):
+    """The parser keeps only implementation tasks, so a `gate`, `release` or
+    `manual` task would vanish without a word: plan_check refuses it."""
+    text = (ROOT / "evals/fixtures/claims/plan.md").read_text()
+    plan = tmp_path / "p.md"
+    plan.write_text(re.sub(r"^\*\*Type:\*\* implementation",
+                           "**Type:** " + ttype, text, flags=re.M))
+    p = run_compiler(plan)
+    assert p.returncode != 0, p.stdout
+    lines = [l for l in p.stdout.splitlines()
+             if l.startswith("grammar: task 1: Type")]
+    assert len(lines) == 1 and ttype in lines[0], p.stdout
+    assert "**Publish:**" in lines[0], p.stdout

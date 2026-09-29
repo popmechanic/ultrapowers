@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Parse a stories-v1 plan to the fields the engine and the laptop's check
 read. The Flock's field names (tasks, dag_edges, launch_waves, checks,
-bootstrapCmd, publish) are kept; proofRuns stays empty until sub-project 2's
-runner turns probes into facts, and the launcher refuses the plan until then."""
+bootstrapCmd, publish) are kept. proofRuns stays empty: each task's facts are
+its probes, which factory/flock/plan.mjs turns into check.ts calls itself."""
 import re
 
 from probe_block import parse_probe_text
@@ -161,5 +161,5 @@ def parse_stories_text(text):
         "stories": stories, "links": links, "numbers": numbers, "guards": guards,
         "tasks": tasks, "dag_edges": edges,
         "launch_waves": [[by_id[i] for i in w] for w in _layers([t["id"] for t in tasks], edges)],
-        "pairs": [], "checks": [], "bootstrapCmd": "bun install", "publish": publish,
+        "checks": [], "bootstrapCmd": "bun install", "publish": publish,
     }

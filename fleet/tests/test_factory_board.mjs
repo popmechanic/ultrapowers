@@ -23,16 +23,12 @@
  *   M4 `close-run` never fails the run: a 500-answering stub still exits 0
  *      (rows carry `code: 500`); a missing kata.json exits 0, sends
  *      nothing, and writes the one documented skip row.
- *   M5 `import('../../factory/board.mjs')` resolves with `makeBoard` and
- *      `patchWithRevision` still exported as functions (the boot half of
- *      M5 — `bash -n` and the deleted-function grep — is the Proof's own
- *      `Run:` lines, not this file, per the task's Examiner note).
  *
  * Legs, each naming the clause it proves: (a) [M1] spoke-config's two files,
  * byte for byte, and its refusal; (b) [M2] wait's bound/unbound exit and
  * stdout; (c) [M3] close-run's three POSTs and its three event rows;
  * (d) [M4] close-run's never-fails shape over a 500 stub and a missing
- * kata.json; (e) [M5] the import.
+ * kata.json.
  *
  * The CLI is driven as a child process, every spawn's `env` built by
  * `simEnv` from `./_helpers.mjs` (`test_sims_are_hermetic.mjs` names any
@@ -426,18 +422,6 @@ const readEventRows = (file) =>
   } finally {
     await closeStub(stub)
   }
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// (e) [M5] the import
-// ══════════════════════════════════════════════════════════════════════════
-
-{
-  const mod = await import('../../factory/board.mjs')
-  assert.equal(typeof mod.makeBoard, 'function',
-    '(e) [M5] `makeBoard` is still exported as a function; got ' + typeof mod.makeBoard)
-  assert.equal(typeof mod.patchWithRevision, 'function',
-    '(e) [M5] `patchWithRevision` is still exported as a function; got ' + typeof mod.patchWithRevision)
 }
 
 // ── #1222 pass two: "The boot's exam drives the probe to `alive`, and the

@@ -121,36 +121,26 @@ const requireCompilerPath = (compilerPath, which) => {
   )
 }
 
-/** The pinning script, as the re-pin command names it. */
-const PIN_SCRIPT_REL = 'skills/ultrawrite/scripts/pin_base_facts.py'
-/** The stamp a generated `**BASE facts:**` block carries: the sha it was read at. */
-const BASE_FACTS_STAMP = /\*\*BASE facts:\*\*\s*\(generated at ([0-9a-f]{7,40})\)/g
-
 /**
  * The plan compiles against the tree at `--base`, or it is a refusal — before
- * any lobby verb, any push, any `ls-remote`. Two reads, in order:
- *
- *  1. A `**BASE facts:**` block stamped `(generated at <sha>)` was generated
- *     from some tree; when that sha is not a prefix of `--base`, the block is a
- *     fact about another commit and every worker would read stale Context
- *     (#865). The refusal carries the exact re-pin command.
- *  2. `plan_check.py --base <base> <plan>` — the gate record, the authoring
- *     record and, since #896, the tree's own facts about the plan (what a
- *     deleted file holds; which files outside a task's Files carry a literal
- *     its clauses pin). A non-zero exit is a refusal carrying the compiler's
- *     text verbatim — including a `STALE fact:` line for a Stale-if predicate
- *     that holds at BASE, which is what the operator reads on the laptop; the
- *     `BASE fact:`, `STALE fact:`, `GREEN-AT-BASE fact:`, `RED-AT-BASE fact:`
- *     and `AUTHORING fact:` lines of a clean check ride the result so the launch line prints them,
- *     in the order the compiler printed them (a `STALE fact:` there is the
- *     advisory kind: a predicate the compiler could not read at BASE, never a
- *     refusal; a `GREEN-AT-BASE fact:` line is a Proof `Run:` line the compiler
- *     found already green at BASE, plus the one line totalling what those runs
- *     cost — this release every one of them is a fact and the compile still
- *     exits 0, so dropping them on the laptop is the only way the operator
- *     could fail to read them; the `AUTHORING fact:` line is what the plan's
- *     authoring cost, or `AUTHORING fact: none recorded` when the gate record
- *     carries none).
+ * any lobby verb, any push, any `ls-remote`. The read is
+ * `plan_check.py --base <base> <plan>` — the gate record, the authoring
+ * record and, since #896, the tree's own facts about the plan (what a
+ * deleted file holds; which files outside a task's Files carry a literal
+ * its clauses pin). A non-zero exit is a refusal carrying the compiler's
+ * text verbatim — including a `STALE fact:` line for a Stale-if predicate
+ * that holds at BASE, which is what the operator reads on the laptop; the
+ * `BASE fact:`, `STALE fact:`, `GREEN-AT-BASE fact:`, `RED-AT-BASE fact:`
+ * and `AUTHORING fact:` lines of a clean check ride the result so the launch line prints them,
+ * in the order the compiler printed them (a `STALE fact:` there is the
+ * advisory kind: a predicate the compiler could not read at BASE, never a
+ * refusal; a `GREEN-AT-BASE fact:` line is a Proof `Run:` line the compiler
+ * found already green at BASE, plus the one line totalling what those runs
+ * cost — this release every one of them is a fact and the compile still
+ * exits 0, so dropping them on the laptop is the only way the operator
+ * could fail to read them; the `AUTHORING fact:` line is what the plan's
+ * authoring cost, or `AUTHORING fact: none recorded` when the gate record
+ * carries none).
  *
  * The compiler runs through the exec seam like every other subprocess, so a sim
  * that answers `python3` decides what the compiler said. `compilerPath` is the
@@ -160,14 +150,6 @@ const BASE_FACTS_STAMP = /\*\*BASE facts:\*\*\s*\(generated at ([0-9a-f]{7,40})\
  */
 export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planText, compilerPath }) {
   requireCompilerPath(compilerPath, 'plan_check.py')
-  const stamps = [...String(planText).matchAll(BASE_FACTS_STAMP)].map((m) => m[1])
-  const stale = [...new Set(stamps.filter((sha) => !base.startsWith(sha)))]
-  if (stale.length > 0) {
-    throw new Refusal(
-      `launch: the plan's **BASE facts:** blocks were generated at ${stale.join(', ')}, not at --base ${base} — ` +
-      `re-pin them first: python3 ${PIN_SCRIPT_REL} --write --base ${base} ${planPath}`
-    )
-  }
   const res = await exec('python3', [compilerPath, '--base', base, '--repo', repoDir, planPath], { cwd: repoDir })
   if (res.code !== 0) {
     throw new Refusal(

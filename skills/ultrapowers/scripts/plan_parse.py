@@ -4,7 +4,7 @@
 Usage: python3 plan_parse.py <plan.md>
 
 Prints exactly one JSON object on stdout with keys `tasks`, `dag_edges`,
-`launch_waves` and `pairs`, and exits 0 -- reading no file but the plan
+`launch_waves`, `checks`, `bootstrapCmd` and `publish`, and exits 0 -- reading no file but the plan
 itself, whether or not a `<stem>.gate-verdicts.json` sits beside it.
 
 Each task's files is the sorted set of its Create, Modify and Delete paths.
@@ -66,8 +66,6 @@ H2_HEAD = re.compile(r'^##\s')
 FILE_BULLET = re.compile(r'^-\s*(Create|Modify|Delete)\s*:\s*(.+)$', re.I)
 IFACE_BULLET = re.compile(r'^-\s*(Consumes|Produces)\s*:\s*(.+)$', re.I)
 PROOF_RUN_BULLET = re.compile(r'^-\s*Run\s*:\s*(.+)$', re.I)
-PROOF_LEGS_BULLET = re.compile(r'^-\s*Legs\s*:\s*(.+)$', re.I)
-LEG_MARKER_RE = re.compile(r'\([a-z]\)')
 
 # A Proof `Run:` bullet's citation tag (the old compiler's
 # RUN_CITE_RE exactly): the same bracket shape a Legs bullet's own citation
@@ -88,7 +86,8 @@ def _claims_run_cites(value):
     cites = sorted({c.strip() for c in m.group(1).split(",")},
                    key=lambda c: int(c[1:]))
     return value[:m.start()], cites
-LEG_CITATION_RE = re.compile(r'\[M(\d+)\]')
+
+
 TYPE_LINE = re.compile(r'^\*\*Type:\*\*\s*(.+?)\s*$', re.I)
 BOOTSTRAP_LINE = re.compile(r'^\*\*Bootstrap:\*\*\s*(.+?)\s*$', re.I)
 PUBLISH_LINE = re.compile(r'^\*\*Publish:\*\*\s*(.+?)\s*$', re.I)
@@ -336,9 +335,7 @@ def _parse_task_body(body_lines):
     proof_slot_lines = slot_lines("proof")
     proof_runs = []
     proof_run_clauses = []
-    legs_start = None
-    legs_first_text = None
-    for i, (line, fenced) in enumerate(proof_slot_lines):
+    for line, fenced in proof_slot_lines:
         if fenced:
             continue
         s = line.strip()
@@ -351,36 +348,6 @@ def _parse_task_body(body_lines):
                 val = bm.group(1)
             proof_runs.append(val)
             proof_run_clauses.append(clauses)
-            continue
-        m = PROOF_LEGS_BULLET.match(s)
-        if m and legs_start is None:
-            legs_start = i
-            legs_first_text = m.group(1)
-
-    # The Legs text runs from the `- Legs:` bullet to the end of the Proof
-    # slot -- every unfenced line after it (however it wraps) is part of it.
-    if legs_start is not None:
-        parts = [legs_first_text]
-        for line, fenced in proof_slot_lines[legs_start + 1:]:
-            if fenced:
-                continue
-            parts.append(line.strip())
-        legs_text = " ".join(p for p in parts if p)
-
-        legs = []
-        markers = list(LEG_MARKER_RE.finditer(legs_text))
-        for k, mk in enumerate(markers):
-            start = mk.start()
-            end = markers[k + 1].start() if k + 1 < len(markers) else len(legs_text)
-            legs.append(legs_text[start:end])
-
-        cited = {}
-        for leg in legs:
-            for n in LEG_CITATION_RE.findall(leg):
-                cited.setdefault(n, True)
-        legs_has_citation = bool(cited)
-    else:
-        legs_has_citation = False
 
     return {
         "type": ttype,
@@ -391,7 +358,6 @@ def _parse_task_body(body_lines):
         "produces_text": produces_text,
         "proof_runs": proof_runs,
         "proof_run_clauses": proof_run_clauses,
-        "legs_has_citation": legs_has_citation,
         "claim": slot_text("claim"),
         "authorized_by": slot_text("authorized-by"),
         "proof": slot_text("proof"),
@@ -605,64 +571,6 @@ def _produced_tokens_map(impl):
     }
 
 
-def _consumed_tokens_ordered(task):
-    return [tok for c in task["consumes_text"]
-            for tok in [_interface_token(c)] if tok]
-
-
-def _pair_interface_match(t1, t2, produced):
-    """t1 is the earlier-in-document task of the pair, t2 the later one.
-    Returns {"symbol", "producer", "consumer"} or None."""
-    t1_produces = produced.get(t1["id"], set())
-    t2_produces = produced.get(t2["id"], set())
-    t1_consumes_ordered = _consumed_tokens_ordered(t1)
-    t2_consumes_ordered = _consumed_tokens_ordered(t2)
-
-    forward = t1_produces & set(t2_consumes_ordered)   # t1 produces, t2 consumes
-    backward = t2_produces & set(t1_consumes_ordered)  # t2 produces, t1 consumes
-
-    if forward:
-        producer, consumer, consumer_order, matches = t1, t2, t2_consumes_ordered, forward
-    elif backward:
-        producer, consumer, consumer_order, matches = t2, t1, t1_consumes_ordered, backward
-    else:
-        return None
-
-    symbol = next(tok for tok in consumer_order if tok in matches)
-    return {"symbol": symbol, "producer": producer["id"], "consumer": consumer["id"]}
-
-
-def _build_pairs(impl):
-    """M1 (pairs task): one entry per unordered pair of implementation tasks
-    whose `files` intersect or whose interface tokens match, in document
-    order of `a` then of `b`."""
-    produced = _produced_tokens_map(impl)
-    pairs = []
-    n = len(impl)
-    for i in range(n):
-        for j in range(i + 1, n):
-            t1, t2 = impl[i], impl[j]
-            shared = sorted(set(t1["files"]) & set(t2["files"]))
-            match = _pair_interface_match(t1, t2, produced)
-            why = []
-            if shared:
-                why.append("files")
-            if match:
-                why.append("interface")
-            if not why:
-                continue
-            pairs.append({
-                "a": t1["id"],
-                "b": t2["id"],
-                "why": why,
-                "paths": shared,
-                "symbol": match["symbol"] if match else None,
-                "producer": match["producer"] if match else None,
-                "consumer": match["consumer"] if match else None,
-            })
-    return pairs
-
-
 # --------------------------------------------------------------------------- #
 # M5: Kahn layering and cycle detection.
 # --------------------------------------------------------------------------- #
@@ -767,7 +675,6 @@ def parse_plan_full(text):
                 "consumes": parsed["consumes_text"],
                 "produces": parsed["produces_text"],
             },
-            "legsHasCitation": parsed["legs_has_citation"],
             "body": "\n".join(l for l, _ in body_lines).strip(),
             "deletes": parsed["deletes"],
             "claim": parsed["claim"],
@@ -782,7 +689,6 @@ def parse_plan_full(text):
 
     edges = _build_edges(impl)
     waves_ids = _kahn_layers(ids, edges)
-    pairs = _build_pairs(impl)
 
     def public_view(t):
         view = {
@@ -807,7 +713,6 @@ def parse_plan_full(text):
         "tasks": tasks_out,
         "dag_edges": dag_edges,
         "launch_waves": launch_waves,
-        "pairs": pairs,
         "checks": checks,
         "bootstrapCmd": bootstrap_cmd,
         "publish": publish,
