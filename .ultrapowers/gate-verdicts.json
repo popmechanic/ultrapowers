@@ -1,0 +1,53 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "e3d78ef7233ad2b2fb27e2a0b0bd59b585beb30e2e8f7583b0529334bf8b0ff7",
+   "verdict": "pass",
+   "reason": "Both absences carry a tagged probe that fails while the base's version line and 'and this line' remain.",
+   "gate_rounds": [
+    {
+     "hash": "e3d78ef7233ad2b2fb27e2a0b0bd59b585beb30e2e8f7583b0529334bf8b0ff7",
+     "agent": "pass",
+     "jev": "pass"
+    }
+   ]
+  }
+ },
+ "tally": {
+  "dispatched": 1,
+  "rejected": 0,
+  "rounds": 1,
+  "base": "8dd304745c0051696671f98e6514508ff68ebb81"
+ },
+ "authoring": {
+  "minutes": 25,
+  "probes": 0,
+  "routing": {
+   "branch": "inline",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "What next",
+    "options": [
+     "Reap, then prove catch-up",
+     "Reap, then #998 store merge",
+     "Reap, then TinyApp stories"
+    ],
+    "recommended": "Reap, then prove catch-up",
+    "picked": "Reap, then prove catch-up",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Plan A sign",
+    "options": [
+     "Sign",
+     "Fix a line"
+    ],
+    "recommended": "Sign",
+    "picked": "Sign",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
