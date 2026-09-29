@@ -81,3 +81,48 @@
 {"t":59289,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:26:19.206Z"}
 {"t":59423,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T21:26:19.340Z"}
 {"t":59445,"kind":"edit","agent":"B","task":"2","tool":"Edit","path":"factory/flock/engine.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:26:19.362Z"}
+{"t":60395,"kind":"tool","agent":"B","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/B/factory/questions.json","ts":"2026-09-29T21:26:20.312Z"}
+{"t":60534,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T21:26:20.451Z"}
+{"t":60536,"kind":"edit","agent":"B","task":"2","tool":"Edit","path":"factory/questions.json","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:26:20.453Z"}
+{"t":61668,"kind":"tool","agent":"B","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/B/factory/questions.json","ts":"2026-09-29T21:26:21.585Z"}
+{"t":61788,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T21:26:21.705Z"}
+{"t":61791,"kind":"edit","agent":"B","task":"2","tool":"Edit","path":"factory/questions.json","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:26:21.708Z"}
+{"t":62766,"kind":"tool","agent":"B","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/B/factory/questions.json","ts":"2026-09-29T21:26:22.684Z"}
+{"t":62928,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T21:26:22.845Z"}
+{"t":62931,"kind":"edit","agent":"B","task":"2","tool":"Edit","path":"factory/questions.json","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:26:22.848Z"}
+{"t":67139,"kind":"tool","agent":"C","task":"1","tool":"Edit","target":"/home/exedev/run/work/agents/C/factory/flock/step_reading.mjs","ts":"2026-09-29T21:26:27.056Z"}
+{"t":67269,"kind":"tool:post","agent":"C","tool":"Edit","ts":"2026-09-29T21:26:27.186Z"}
+{"t":67273,"kind":"edit","agent":"C","task":"1","tool":"Edit","path":"factory/flock/step_reading.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:26:27.190Z"}
+{"t":67387,"kind":"tool","agent":"B","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/B/factory/questions.json","ts":"2026-09-29T21:26:27.304Z"}
+{"t":67723,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T21:26:27.640Z"}
+{"t":67725,"kind":"edit","agent":"B","task":"2","tool":"Edit","path":"factory/questions.json","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:26:27.642Z"}
+{"t":70176,"kind":"tool","agent":"B","task":"2","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T21:26:30.093Z"}
+{"t":76274,"kind":"proof","agent":"B","task":"2","exits":[0,0,0,0,0],"causes":[],"errs":[],"ts":"2026-09-29T21:26:36.191Z"}
+{"t":76278,"kind":"tool","agent":"C","task":"1","tool":"Edit","target":"/home/exedev/run/work/agents/C/factory/flock/step_reading.mjs","ts":"2026-09-29T21:26:36.195Z"}
+{"t":76288,"kind":"tool:post","agent":"B","tool":"mcp__flock__run_proof","ts":"2026-09-29T21:26:36.205Z"}
+{"t":76784,"kind":"tool:post","agent":"C","tool":"Edit","ts":"2026-09-29T21:26:36.701Z"}
+{"t":76787,"kind":"edit","agent":"C","task":"1","tool":"Edit","path":"factory/flock/step_reading.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:26:36.704Z"}
+{"t":76790,"kind":"tool","agent":"C","task":"1","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; node -e \"JSON.parse(require('fs').readFileSync('factory/questions.json'))\" && node --","ts":"2026-09-29T21:26:36.707Z"}
+{"t":78609,"kind":"tool","agent":"B","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; node fleet/tests/flock_jev_trials_probe.mjs off; echo $?","ts":"2026-09-29T21:26:38.526Z"}
+{"t":79139,"kind":"tool","agent":"C","task":"1","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T21:26:39.056Z"}
+{"t":79226,"kind":"proof","agent":"C","task":"1","exits":[0,0],"causes":[],"errs":[],"ts":"2026-09-29T21:26:39.143Z"}
+{"t":79232,"kind":"tool:post","agent":"C","tool":"mcp__flock__run_proof","ts":"2026-09-29T21:26:39.149Z"}
+{"t":79828,"kind":"tool","agent":"A","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; cat > fleet/tests/jev_calls_probe.mjs <<'EOF'\n#!/usr/bin/env node\n// The Jev calls pr","ts":"2026-09-29T21:26:39.745Z"}
+{"t":80395,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T21:26:40.312Z"}
+{"t":82106,"kind":"tool","agent":"C","task":"1","tool":"mcp__flock__done","target":"","ts":"2026-09-29T21:26:42.023Z"}
+{"t":82353,"kind":"publish","agent":"C","task":"1","by":"done","ts":"2026-09-29T21:26:42.270Z"}
+{"t":82363,"kind":"tool:post","agent":"C","tool":"mcp__flock__done","ts":"2026-09-29T21:26:42.280Z"}
+{"t":82365,"kind":"kata:mirror","task":"1","uid":"01M3QGTW8ZA2J68C2THSRSBQ1A","what":"done by C","ok":true,"ts":"2026-09-29T21:26:42.282Z"}
+{"t":114444,"kind":"conflict:open","path":"factory/flock/step_reading.mjs","region":"2c2af83774","between":["published copies"],"ts":"2026-09-29T21:27:14.361Z"}
+{"t":114444,"kind":"conflict:close","path":"factory/flock/step_reading.mjs","region":"2c2af83774","by":"host","note":"the merged text of factory/flock/step_reading.mjs is C's own published writing over both sides","via":"early:held","evidence":{"snap":"5045c8bc90","holders":[{"agent":"C","published_t":82353,"last_edit_t":76787,"last_marked_t":null}],"unflagged":false},"ts":"2026-09-29T21:27:14.361Z"}
+{"t":114444,"kind":"edge","snap":"5045c8bc90","reason":"done C","perTask":{"1":[0,0],"2":[1,1,1,0,0],"3":[0,0],"4":[1,1,1,1]},"check":0,"conflicts":["factory/flock/step_reading.mjs"],"blocking":[],"outside":[],"green":false,"ts":"2026-09-29T21:27:14.361Z"}
+{"t":114445,"kind":"tool","agent":"A","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/A/skills/ultrawrite/stories/jev_checks.ts","ts":"2026-09-29T21:27:14.362Z"}
+{"t":114447,"kind":"tool","agent":"B","task":"2","tool":"mcp__flock__done","target":"","ts":"2026-09-29T21:27:14.364Z"}
+{"t":120716,"kind":"fallback","agent":"A","path":"fleet/tests/jev_calls_probe.mjs","peer_lines":0,"deleted":false,"ts":"2026-09-29T21:27:20.633Z"}
+{"t":120739,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T21:27:20.656Z"}
+{"t":120745,"kind":"publish","agent":"B","task":"2","by":"done","ts":"2026-09-29T21:27:20.662Z"}
+{"t":120750,"kind":"edit","agent":"A","task":"4","tool":"Edit","path":"skills/ultrawrite/stories/jev_checks.ts","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:27:20.667Z"}
+{"t":120753,"kind":"tool:post","agent":"B","tool":"mcp__flock__done","ts":"2026-09-29T21:27:20.670Z"}
+{"t":120755,"kind":"kata:mirror","task":"2","uid":"01M3QGTYP799VYYZJSQVSP8GRQ","what":"done by B","ok":true,"ts":"2026-09-29T21:27:20.672Z"}
+{"t":120763,"kind":"tool","agent":"A","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/A/skills/ultrawrite/stories/jev_checks.ts","ts":"2026-09-29T21:27:20.680Z"}
+{"t":121203,"kind":"session:end","agent":"C","task":"1","released":false,"done":"stepState(result, sentences, all) now sends all the story's steps' did (in order), the first step's before and the last step's after; over 100000 chars it swaps before/after for per-row `changes` (trimmed with changes_cut if still over 120000). readSteps/engine readAndRecord pass `all`; questions.json flock_step state/context updated. M1, M2 pass.","redRuns":0,"turns":17,"usage":{"input_tokens":20,"cache_creation_input_tokens":17133,"cache_read_input_tokens":341634,"output_tokens":6986,"output_tokens_details":{"thinking_tokens":482},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":17133,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[],"speed":"standard","fallback_credit":null},"ts":"2026-09-29T21:27:21.120Z"}
