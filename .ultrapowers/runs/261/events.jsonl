@@ -148,3 +148,9 @@
 {"t":434836,"kind":"tool","agent":"B","task":"6","tool":"mcp__flock__done","target":"","ts":"2026-09-29T06:25:24.932Z"}
 {"t":436008,"kind":"edit","agent":"A","task":"5","tool":"Edit","path":"factory/stack/tinyapp/celld.ts","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T06:25:26.104Z"}
 {"t":436015,"kind":"tool","agent":"A","task":"5","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T06:25:26.111Z"}
+{"t":495240,"kind":"proof","agent":"A","task":"5","exits":[0,0],"causes":[],"errs":[],"ts":"2026-09-29T06:26:25.336Z"}
+{"t":495243,"kind":"tool","agent":"E","task":"2","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T06:26:25.339Z"}
+{"t":495244,"kind":"tool:post","agent":"A","tool":"mcp__flock__run_proof","ts":"2026-09-29T06:26:25.340Z"}
+{"t":497524,"kind":"proof","agent":"E","task":"2","exits":[0],"causes":[],"errs":[],"ts":"2026-09-29T06:26:27.620Z"}
+{"t":497532,"kind":"tool:post","agent":"E","tool":"mcp__flock__run_proof","ts":"2026-09-29T06:26:27.628Z"}
+{"t":500300,"kind":"tool","agent":"A","task":"5","tool":"mcp__flock__done","target":"","ts":"2026-09-29T06:26:30.396Z"}
