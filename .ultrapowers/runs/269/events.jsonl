@@ -27,3 +27,26 @@
 {"t":32651,"kind":"tool","agent":"A","task":"1","tool":"mcp__flock__done","target":"","ts":"2026-09-29T21:08:13.489Z"}
 {"t":32855,"kind":"publish","agent":"A","task":"1","by":"done","ts":"2026-09-29T21:08:13.693Z"}
 {"t":32864,"kind":"tool:post","agent":"A","tool":"mcp__flock__done","ts":"2026-09-29T21:08:13.702Z"}
+{"t":60084,"kind":"edge","snap":"3dcb47ee6a","reason":"done A","perTask":{"1":[0,0,0],"2":[1,1,1,1,0]},"check":0,"conflicts":[],"blocking":[],"outside":[],"green":false,"ts":"2026-09-29T21:08:40.922Z"}
+{"t":60086,"kind":"kata:mirror","task":"1","uid":"01M3QFTRA9X2FJWYXFKC96H412","what":"done by A","ok":false,"error":"The operation was aborted due to timeout","ts":"2026-09-29T21:08:40.924Z"}
+{"t":65179,"kind":"session:end","agent":"A","task":"1","released":false,"done":"Added flock_resolve (already_joined) and flock_release (blocker) sets to factory/questions.json (flock_step unchanged, about names three sets); created factory/flock/trial_reading.mjs with readTrial, resolveState, releaseState. All three facts pass.","redRuns":0,"turns":10,"usage":{"input_tokens":12,"cache_creation_input_tokens":14510,"cache_read_input_tokens":190171,"output_tokens":4372,"output_tokens_details":{"thinking_tokens":71},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":14510,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[],"speed":"standard","fallback_credit":null},"ts":"2026-09-29T21:08:46.017Z"}
+{"t":65182,"kind":"session:start","agent":"A","task":"2","ts":"2026-09-29T21:08:46.020Z"}
+{"t":65207,"kind":"kata:mirror","task":"2","uid":"01M3QFTV71QAPRAH0JSPTFXTNT","what":"claimed by A","ok":true,"ts":"2026-09-29T21:08:46.045Z"}
+{"t":68971,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; sed -n 1,200p factory/flock/engine.mjs; grep -n \"readTrial\\|resolveState\\|releaseStat","ts":"2026-09-29T21:08:49.809Z"}
+{"t":69082,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:08:49.920Z"}
+{"t":69226,"kind":"tool","agent":"A","task":"2","tool":"mcp__flock__board_read","target":"","ts":"2026-09-29T21:08:50.064Z"}
+{"t":69236,"kind":"tool:post","agent":"A","tool":"mcp__flock__board_read","ts":"2026-09-29T21:08:50.074Z"}
+{"t":71564,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; cat factory/flock/trial_reading.mjs; sed -n 25,60p factory/policy.json; grep -n \"floc","ts":"2026-09-29T21:08:52.402Z"}
+{"t":71617,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:08:52.455Z"}
+{"t":73907,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; sed -n 30,120p factory/jev-client.mjs; grep -n \"giveBack\\|resolve-task\\|summary.json\\","ts":"2026-09-29T21:08:54.745Z"}
+{"t":73945,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:08:54.783Z"}
+{"t":76169,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; sed -n 595,680p factory/flock/engine.mjs; sed -n 970,1005p factory/flock/engine.mjs; ","ts":"2026-09-29T21:08:57.007Z"}
+{"t":76204,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:08:57.042Z"}
+{"t":89723,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; python3 - <<'EOF'\np='factory/flock/engine.mjs'\ns=open(p).read()\ns=s.replace(\"\"\"import","ts":"2026-09-29T21:09:10.561Z"}
+{"t":89793,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:09:10.631Z"}
+{"t":89908,"kind":"fallback","agent":"A","path":"factory/flock/engine.mjs","peer_lines":0,"deleted":false,"ts":"2026-09-29T21:09:10.746Z"}
+{"t":95526,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; sed -n 55,75p factory/flock/plan.mjs; grep -n \"files\" factory/flock/scope.mjs | head ","ts":"2026-09-29T21:09:16.364Z"}
+{"t":95561,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:09:16.399Z"}
+{"t":100790,"kind":"tool","agent":"A","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/A/factory/policy.json","ts":"2026-09-29T21:09:21.628Z"}
+{"t":100960,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T21:09:21.798Z"}
+{"t":100962,"kind":"edit","agent":"A","task":"2","tool":"Edit","path":"factory/policy.json","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:09:21.800Z"}
