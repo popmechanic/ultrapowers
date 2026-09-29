@@ -1,0 +1,140 @@
+{"t":738,"op":"base","root":"/home/exedev/run/work/base","paths":[".claude/rules/factory.md",".claude/rules/fleet.md",".claude-plugin/marketplace.json",".claude-plugin/plugin.json",".gitignore","CLAUDE.md","README.md","docs/README.md","docs/bugs/2026-06-15-ultrapowers-command-collision.md","docs/objectives.md","evals/2026-08-09-snapshot-retirement-ab.md","evals/fixtures/claims/plan.gate-verdicts.json","evals/fixtures/claims/plan.md","evals/fixtures/stories/todo/.ultrapowers/plan.md","evals/fixtures/stories/todo/client/src/store.js","evals/fixtures/tinyapp-todo/server_no_persister.ts","evals/fixtures/tinyapp-todo/todo.ts","evals/fixtures/tinyapp-todo/todo_add_noop.ts","evals/fixtures/tinyapp-todo/todo_wrong_text.ts","evals/frontier/README.md","evals/readings/ab_auth.py","evals/readings/autoresearch.py","evals/readings/checker_kit.py","evals/readings/jev_census.py","evals/results/2026-07-10-0.1.0-ab.md","evals/results/2026-07-27-96-suite-bootstrap.md","evals/results/2026-08-30-one-driver-fold-ab.md","evals/results/2026-08-31-fold-ab-width8.md","evals/results/diffs/chained-A.diff","evals/results/diffs/chained-B.diff","evals/results/diffs/contend-B.diff","evals/results/diffs/contend-big-A.diff","evals/results/diffs/contend-big-B.diff","evals/results/diffs/contend-prod-A.diff","evals/results/diffs/contend-prod-B.diff","evals/results/diffs/flawed-routing-A.diff","evals/results/diffs/flawed-routing-B.diff","evals/results/diffs/mixed-B.diff","evals/results/diffs/webapp-A.diff","evals/results/diffs/webapp-B.diff","evals/results/diffs/wide-A.diff","evals/results/diffs/wide-B.diff","evals/results/judgment-chained.json","evals/results/judgment-webapp.json","evals/results/judgment-wide.json","evals/results/runs.jsonl","factory/.gitignore","factory/audit.mjs","factory/baseread.mjs","factory/board.mjs","factory/boot.sh","factory/checks-at-base.mjs","factory/clone.mjs","factory/commands.mjs","factory/dispatch.mjs","factory/engine.mjs","factory/facts.mjs","factory/flock/edit_spans.mjs","factory/flock/engine.mjs","factory/flock/flock_board.mjs","factory/flock/kata_mirror.mjs","factory/flock/past.mjs","factory/flock/plan.mjs","factory/flock/pulls.mjs","factory/flock/scope.mjs","factory/flock/step_reading.mjs","factory/flock/weave.py","factory/fold.mjs","factory/gitblock.mjs","factory/hunks.mjs","factory/jev-client.mjs","factory/judge.mjs","factory/kata-credential.mjs","factory/kprobe.mjs","factory/measure.mjs","factory/package.json","factory/pairs.mjs","factory/policy.json","factory/preflight.mjs","factory/proofs.mjs","factory/questions.json","factory/record.mjs","factory/refold.mjs","factory/replay/README.md","factory/replay/analyze_landing.py","factory/replay/replay_landing.py","factory/replay/results/2026-09-17-landing-replay.txt","factory/replay/results/handread_50.jsonl","factory/replay/results/landing_summary.json","factory/replay/sample_disagreements.py","factory/retry.mjs","factory/reverify.mjs","factory/roles/implement.md","factory/roles/resolve.md","factory/select.mjs","factory/stack/tinyapp/browser.ts","factory/stack/tinyapp/celld.ts","factory/stack/tinyapp/check.ts","factory/stack/tinyapp/probe.ts","factory/tools.mjs","factory/union.mjs","factory/watch.mjs","factory/worker.mjs","fleet/.gitignore","fleet/CONTRACT.md","fleet/RUNBOOK.md","fleet/board-read.mjs","fleet/claude-token.mjs","fleet/close-out.mjs","fleet/compiler.mjs","fleet/doctor.mjs","fleet/exe-verbs.json","fleet/fleet-bootstrap.sh","fleet/fleet-run@.service","fleet/janitor.mjs","fleet/kata-client.mjs","fleet/kata-file.mjs","fleet/kata-hub-setup.sh","fleet/kata-hub.mjs","fleet/kata.service","fleet/launch.mjs","fleet/lobby.mjs","fleet/plan-pins.mjs","fleet/retire.mjs","fleet/setup-script.mjs","fleet/target.mjs","fleet/tests/PROBES.md","fleet/tests/_boot_helpers.mjs","fleet/tests/_helpers.mjs","fleet/tests/_lobby_helpers.mjs","fleet/tests/fixtures/flock-tiny/base/calc.py","fleet/tests/fixtures/flock-tiny/green.json","fleet/tests/fixtures/flock-tiny/plan.md","fleet/tests/fixtures/flock-tiny/red.json","fleet/tests/fixtures/hermetic/leaky_sim.mjs","fleet/tests/flock_catchup_probe.mjs","fleet/tests/probe_exe_facts.mjs","fleet/tests/probe_kata_facts.mjs","fleet/tests/test_board_read.mjs","fleet/tests/test_claude_token_refresh.mjs","fleet/tests/test_claude_token_usage.mjs","fleet/tests/test_doctor_claude.mjs","fleet/tests/test_doctor_cloudflare.mjs","fleet/tests/test_factory_board.mjs","fleet/tests/test_factory_boot.mjs","fleet/tests/test_factory_facts.mjs","fleet/tests/test_factory_preflight.mjs","fleet/tests/test_factory_publish.mjs","fleet/tests/test_factory_record.mjs","fleet/tests/test_factory_referee.mjs","fleet/tests/test_factory_refold_dispatch.mjs","fleet/tests/test_factory_retry.mjs","fleet/tests/test_factory_reverify.mjs","fleet/tests/test_factory_select.mjs","fleet/tests/test_factory_tools.mjs","fleet/tests/test_factory_watch.mjs","fleet/tests/test_factory_worker_gitblock.mjs","fleet/tests/test_jev_client.mjs","fleet/tests/test_launch_credential.mjs","fleet/tests/test_launch_duplicate.mjs","fleet/tests/test_launch_one_engine.mjs","fleet/tests/test_launch_plan_path.mjs","fleet/tests/test_launch_probe_runners.mjs","fleet/tests/test_launch_stories_grammar.mjs","fleet/tests/test_probe_exe_facts.mjs","fleet/tests/test_probe_kata_facts.mjs","fleet/tests/test_sims_are_hermetic.mjs","fleet/toolchain.mjs","hooks/hooks.json","hooks/keep_working.sh","hooks/session_start.sh","pytest.ini","skills/ultrapowers/SKILL.md","skills/ultrapowers/kernel/FOLD_LOG.md","skills/ultrapowers/kernel/__init__.py","skills/ultrapowers/kernel/fold_wave.py","skills/ultrapowers/kernel/frontier_fold.py","skills/ultrapowers/kernel/hunks.py","skills/ultrapowers/kernel/repo_weave.py","skills/ultrapowers/kernel/vendor/PROVENANCE.md","skills/ultrapowers/kernel/vendor/manyana.py","skills/ultrapowers/references/design-rationale.md","skills/ultrapowers/references/finishing-notes.md","skills/ultrapowers/references/first-run.md","skills/ultrapowers/scripts/_outcome.py","skills/ultrapowers/scripts/catch_counter.py","skills/ultrapowers/scripts/catch_report.py","skills/ultrapowers/scripts/fleet_events.py","skills/ultrapowers/scripts/plan_check.py","skills/ultrapowers/scripts/plan_parse.py","skills/ultrapowers/scripts/probe_block.py","skills/ultrapowers/scripts/run_probes.py","skills/ultrapowers/scripts/stacks.py","skills/ultrapowers/scripts/stories_check.py","skills/ultrapowers/scripts/stories_parse.py","skills/ultrapowers/scripts/validate_skill.py","skills/ultrawrite/SKILL.md","skills/ultrawrite/catalog/todo/cards.json","skills/ultrawrite/catalog/todo/page.json","skills/ultrawrite/catalog/todo/product.json","skills/ultrawrite/catalog/todo/store.js","skills/ultrawrite/catalog/todo-tags/cards.json","skills/ultrawrite/catalog/todo-tags/page.json","skills/ultrawrite/catalog/todo-tags/product.json","skills/ultrawrite/catalog/todo-tags/store.js","skills/ultrawrite/references/authoring-gotchas.md","skills/ultrawrite/references/enrich.md","skills/ultrawrite/references/greenfield-stack.md","skills/ultrawrite/scripts/authoring_census.py","skills/ultrawrite/scripts/check_provenance.py","skills/ultrawrite/scripts/extract_gate_input.py","skills/ultrawrite/scripts/pin_base_facts.py","skills/ultrawrite/stories/bundle.ts","skills/ultrawrite/stories/checks.ts","skills/ultrawrite/stories/compile.ts","skills/ultrawrite/stories/jev_checks.ts","skills/ultrawrite/stories/notebook.ts","skills/ultrawrite/stories/policy.json","skills/ultrawrite/stories/product.ts","skills/ultrawrite/stories/questions.json","skills/ultrawrite/stories/scaffold.ts","skills/ultrawrite/stories/tinyapp-template/.gitignore","skills/ultrawrite/stories/tinyapp-template/client/index.html","skills/ultrawrite/stories/tinyapp-template/client/src/app.ts","skills/ultrawrite/stories/tinyapp-template/client/src/public.ts","skills/ultrawrite/stories/tinyapp-template/package.json","skills/ultrawrite/stories/tinyapp-template/scripts/pack-client.ts","skills/ultrawrite/stories/tinyapp-template/server/client-files.ts","skills/ultrawrite/stories/tinyapp-template/server/index.ts","skills/ultrawrite/stories/tinyapp-template/server/wrangler.jsonc","skills/ultrawrite/stories/tinyapp-template/tsconfig.json","tests/conftest.py","tests/fixtures/plans/2026-09-01-511-attempt-racing.gate-verdicts.json","tests/fixtures/plans/2026-09-01-511-attempt-racing.md","tests/fixtures/plans/2026-09-02-papercut-drain-2.gate-verdicts.json","tests/fixtures/plans/2026-09-02-papercut-drain-2.md","tests/fixtures/plans/2026-09-07/2026-09-07-acceptance-log-on-the-record.md","tests/fixtures/plans/2026-09-07/2026-09-07-boot-pipelines-survive-sigpipe.md","tests/fixtures/plans/2026-09-07/2026-09-07-evidence-page-per-phase.md","tests/fixtures/plans/2026-09-07/2026-09-07-publish-decisions-as-events.md","tests/fixtures/plans/2026-09-07/2026-09-07-retire-closed-unmerged-branches.md","tests/fixtures/plans/2026-09-07/2026-09-07-retire-skips-live-runs.md","tests/test_authoring_census.py","tests/test_autoresearch.py","tests/test_catch_counter.py","tests/test_catch_report.py","tests/test_extract_gate_input.py","tests/test_fleet_suite.py","tests/test_fold_wave_anchor.py","tests/test_jev_census.py","tests/test_keep_working_hook.py","tests/test_plan_check.py","tests/test_plan_parse.py","tests/test_probe_block.py","tests/test_stories_check.py","tests/test_stories_parse.py"]}
+{"t":2087,"op":"pull","agent":"A"}
+{"t":2088,"op":"pull","agent":"B"}
+{"t":2088,"op":"pull","agent":"C"}
+{"t":2088,"op":"pull","agent":"D"}
+{"t":5751,"op":"pull","agent":"D"}
+{"t":6233,"op":"pull","agent":"B"}
+{"t":6687,"op":"pull","agent":"C"}
+{"t":7367,"op":"pull","agent":"A"}
+{"t":8707,"op":"pull","agent":"B"}
+{"t":9458,"op":"pull","agent":"C"}
+{"t":9644,"op":"pull","agent":"D"}
+{"t":10226,"op":"pull","agent":"A"}
+{"t":11189,"op":"pull","agent":"B"}
+{"t":13268,"op":"pull","agent":"D"}
+{"t":13779,"op":"pull","agent":"B"}
+{"t":13882,"op":"pull","agent":"A"}
+{"t":14163,"op":"pull","agent":"C"}
+{"t":15724,"op":"pull","agent":"D"}
+{"t":16841,"op":"pull","agent":"C"}
+{"t":17800,"op":"pull","agent":"D"}
+{"t":20620,"op":"pull","agent":"D"}
+{"t":24352,"op":"rewrite","agent":"B","path":"fleet/CONTRACT.md","content_sha1":"ac0a66cff3bb3720cd9d900a051c6eb64616f966","content_bytes":66761}
+{"t":24486,"op":"pull","agent":"B"}
+{"t":24956,"op":"rewrite","agent":"A","path":"factory/flock/weave.py","content_sha1":"d593f159098a4e251663819d10eace53a7d3a8ef","content_bytes":28427}
+{"t":25020,"op":"pull","agent":"D"}
+{"t":25085,"op":"pull","agent":"A"}
+{"t":27232,"op":"pull","agent":"B"}
+{"t":27472,"op":"pull","agent":"D"}
+{"t":29756,"op":"edit","agent":"A","path":"skills/ultrapowers/kernel/vendor/PROVENANCE.md","vstart":13,"vend":14,"lines":["  tests/test_vendor_pin.py; read it with"]}
+{"t":29996,"op":"pull","agent":"D"}
+{"t":30721,"op":"edit","agent":"A","path":"skills/ultrapowers/kernel/vendor/PROVENANCE.md","vstart":19,"vend":20,"lines":["this file and `FROZEN_VENDOR_DIGEST` in tests/test_vendor_pin.py in the same commit."]}
+{"t":30727,"op":"pull","agent":"A"}
+{"t":33344,"op":"pull","agent":"A"}
+{"t":35509,"op":"edit","agent":"D","path":"fleet/launch.mjs","vstart":525,"vend":534,"lines":["  // None of these flags is read by anything any more (the engine they","  // configured or picked is gone); `parseArgs` keeps unknown keys for each CLI","  // to refuse for itself, so each is refused here by name, the same way any","  // other flag this launcher does not know would be — nothing executes past","  // this point.","  if (opts.tier !== undefined) {","    throw new Refusal(`launch: unknown flag --tier`)","  }","  if (opts['implementer-effort'] !== undefined) {","    throw new Refusal(`launch: unknown flag --implementer-effort`)","  }","  if (opts.kind !== undefined) {","    throw new Refusal(`launch: unknown flag --kind`)"]}
+{"t":37279,"op":"pull","agent":"A"}
+{"t":38584,"op":"edit","agent":"D","path":"fleet/launch.mjs","vstart":553,"vend":562,"lines":["  // Every launch boots the Flock, and the comment still names it: an older","  // boot reads a missing `kind=` as the factory.","  const kind = 'flock'"]}
+{"t":38630,"op":"rewrite","agent":"B","path":"CLAUDE.md","content_sha1":"450c0c6e665f7aa17f3b98c867c659dabec609e2","content_bytes":17072}
+{"t":38776,"op":"pull","agent":"B"}
+{"t":40389,"op":"edit","agent":"D","path":"fleet/launch.mjs","vstart":1290,"vend":1299,"lines":[]}
+{"t":41628,"op":"edit","agent":"D","path":"fleet/launch.mjs","vstart":98,"vend":99,"lines":["                             [--repo <dir>] [--engine <40-hex>] [--hold] [--again]"]}
+{"t":42341,"op":"pull","agent":"B"}
+{"t":42983,"op":"edit","agent":"D","path":"fleet/lobby.mjs","vstart":499,"vend":501,"lines":[" *  and `hold` are optional here, but every launch carries `kind=flock` (an"," *  older boot reads a missing `kind=` as the factory); only `hold` is left"," *  out of a launch that does not hold. */"]}
+{"t":42995,"op":"pull","agent":"D"}
+{"t":45817,"op":"pull","agent":"D"}
+{"t":46877,"op":"rewrite","agent":"A","path":"tests/test_vendor_pin.py","content_sha1":"ba3e5fb5f4e59d67b87a1624d88a09ef925fe7f9","content_bytes":2062}
+{"t":46882,"op":"pull","agent":"A"}
+{"t":49325,"op":"pull","agent":"A"}
+{"t":49844,"op":"rewrite","agent":"B","path":"CLAUDE.md","content_sha1":"befde5e0e460b3b6e5426d8d1121f59ebc768217","content_bytes":17090}
+{"t":50015,"op":"pull","agent":"B"}
+{"t":50907,"op":"pull","agent":"A"}
+{"t":52343,"op":"pull","agent":"D"}
+{"t":52555,"op":"pull","agent":"B"}
+{"t":53691,"op":"pull","agent":"A"}
+{"t":54749,"op":"rewrite","agent":"C","path":"factory/flock/catchup.mjs","content_sha1":"f5e7a7755d1dca19b19665e8ffd9923a8cf5014c","content_bytes":7049}
+{"t":54755,"op":"pull","agent":"C"}
+{"t":55219,"op":"pull","agent":"D"}
+{"t":55238,"op":"publish","agent":"A"}
+{"t":68864,"op":"pull","agent":"A"}
+{"t":69029,"op":"rewrite","agent":"B","path":"fleet/RUNBOOK.md","content_sha1":"86ac42432d6b924212d8ac5b05901e37183d0e5a","content_bytes":54214}
+{"t":69184,"op":"pull","agent":"D"}
+{"t":69688,"op":"pull","agent":"B"}
+{"t":70280,"op":"pull","agent":"C"}
+{"t":71858,"op":"pull","agent":"A"}
+{"t":73142,"op":"pull","agent":"D"}
+{"t":75966,"op":"rewrite","agent":"B","path":"skills/ultrapowers/SKILL.md","content_sha1":"005dadfdca776d2a6443748194616d9b0b505d92","content_bytes":13629}
+{"t":76007,"op":"pull","agent":"B"}
+{"t":77641,"op":"pull","agent":"C"}
+{"t":78313,"op":"publish","agent":"A"}
+{"t":78319,"op":"pull","agent":"A"}
+{"t":78614,"op":"pull","agent":"B"}
+{"t":81703,"op":"pull","agent":"A"}
+{"t":82117,"op":"edit","agent":"C","path":"factory/boot.sh","vstart":3,"vend":4,"lines":["# runs the Flock (`factory/flock/engine.mjs`) as a transient user service while keeping the record on"]}
+{"t":83318,"op":"edit","agent":"C","path":"factory/boot.sh","vstart":98,"vend":99,"lines":["  ENGINE_KIND=flock"]}
+{"t":83616,"op":"pull","agent":"A"}
+{"t":85104,"op":"rewrite","agent":"B","path":"skills/ultrawrite/SKILL.md","content_sha1":"b021572658a0d36d331ae7d959d983857323fbf3","content_bytes":50504}
+{"t":85163,"op":"edit","agent":"C","path":"factory/boot.sh","vstart":104,"vend":106,"lines":["      kind) case \"$val\" in flock) ENGINE_KIND=\"$val\" ;;","              factory) fail \"assignment: kind=factory is refused: the factory was retired, the Flock is the only engine\" ;;","              *) fail \"assignment: kind is not flock ('$val')\" ;; esac ;;"]}
+{"t":85175,"op":"pull","agent":"B"}
+{"t":86317,"op":"edit","agent":"C","path":"factory/boot.sh","vstart":255,"vend":258,"lines":["  local pid board_args=() engine_entry=\"factory/flock/engine.mjs\""]}
+{"t":87049,"op":"pull","agent":"A"}
+{"t":87565,"op":"edit","agent":"C","path":"factory/boot.sh","vstart":297,"vend":298,"lines":["# M2: on a moved default branch, hand the target to the Flock's catch-up and, once it says every exam ran green there, force-push the target's new HEAD over the run's own branch — any other exit leaves the target untouched and sets MERGE_PHASE."]}
+{"t":87928,"op":"pull","agent":"B"}
+{"t":88571,"op":"edit","agent":"C","path":"factory/boot.sh","vstart":302,"vend":303,"lines":["      \"ULTRAPOWERS_FLEET_RUN=$RUN_ID\" node \"$ENGINE_REPO_DIR/factory/flock/catchup.mjs\" \\"]}
+{"t":88582,"op":"pull","agent":"C"}
+{"t":89904,"op":"pull","agent":"B"}
+{"t":92602,"op":"publish","agent":"A"}
+{"t":92604,"op":"pull","agent":"A"}
+{"t":93103,"op":"pull","agent":"B"}
+{"t":96204,"op":"pull","agent":"A"}
+{"t":98569,"op":"pull","agent":"A"}
+{"t":101919,"op":"rewrite","agent":"B","path":"README.md","content_sha1":"d84d0dc2fc1e59c74ae0c61d593c81db85163922","content_bytes":14250}
+{"t":102067,"op":"pull","agent":"B"}
+{"t":103083,"op":"pull","agent":"C"}
+{"t":103367,"op":"pull","agent":"A"}
+{"t":105161,"op":"edit","agent":"B","path":"README.md","vstart":221,"vend":222,"lines":["green and main has not moved off the tip it caught up to. Launch with `--hold` and the"]}
+{"t":105901,"op":"pull","agent":"C"}
+{"t":106519,"op":"edit","agent":"B","path":"hooks/session_start.sh","vstart":9,"vend":10,"lines":["# engine ran its search natively and waves.js was deleted; the engine is now the","# Flock, factory/flock/engine.mjs.)"]}
+{"t":106524,"op":"pull","agent":"B"}
+{"t":108787,"op":"publish","agent":"A"}
+{"t":110303,"op":"publish","agent":"C"}
+{"t":110317,"op":"pull","agent":"C"}
+{"t":124894,"op":"pull","agent":"B"}
+{"t":127447,"op":"pull","agent":"B"}
+{"t":149374,"op":"edit","agent":"B","path":".claude/rules/factory.md","vstart":5,"vend":56,"lines":["# The engine: the Flock","","There is one engine, the Flock (`factory/flock/engine.mjs`, map #1292). `fleet/fleet-bootstrap.sh`","clones this repo at the launch's `--engine` sha and execs that checkout's `factory/boot.sh`, which","always runs the Flock. The factory, the engine before it, was retired under map #1292 rule 8","(2026-09-29); its rollback is a launch run from a checkout made before the retirement. Models","never run git.","","## Shape","","- `boot.sh` prepares the clone, the plan, the verdict record and the evidence worktree, brings","  up the board, runs `flock/engine.mjs` as one transient unit under `RuntimeMaxSec` (one clock,","  #1144), and publishes as shell — a push and one POST.","- `flock/engine.mjs` is the run as a leaderless swarm: it seeds the board (`flock/flock_board.mjs`,","  the plan read through `flock/plan.mjs`), runs each builder's session on its own copy, keeps","  every copy's weave (`flock/weave.py`, over sha-pinned Manyana), merges peers into each copy","  after each tool batch, and tests every published snapshot at the edge with the plan's `Run:`","  probes and `Check:` lines under `ULTRA_BASE`. The builder pool is elastic.","- **Catch-up.** A run that finishes after main moved runs `flock/catchup.mjs`: the weave keeper","  joins the run's work onto the new main, the plan's setup, probes and check re-run with","  `ULTRA_BASE` set to the new main, and a conflict or a red check leaves the run's commit alone,","  so the boot opens a draft.","- Supporting modules: `commands.mjs` (a fresh clone's bootstrap), `gitblock.mjs` (`findGit`, the","  builders' git block), `flock/kata_mirror.mjs` (board moves mirrored onto Kata),","  `flock/past.mjs` (a failed previous run's items for the brief), `preflight.mjs` (the boot's","  credential probe), `record.mjs` (the boot's renderer), `audit.mjs` (a finished run's final","  computed row).","","## Judgment and policy","","- **Every judgment is a question** in `questions.json` (`flock_step`), read over","  `jev-client.mjs` (one POST to TypeSafe, no key, `null` on anything unexpected).","- **Every threshold is a cell of `policy.json`** (`publish`, `flock`) carrying its `n`,","  `window`, `experiment` and `rollback`; flipping a cell is the rollback of whatever it gates.","","## The builder","","- A builder pulls its own work from the board and publishes through the board's tools; it never","  runs git (the engine reads each Bash line through `gitblock.mjs`'s `findGit`).","- **A builder sees its own task body and the board** — not the plan header, not","  `## Global Constraints`. A literal two tasks share must be in the body of each, or the builder","  invents it (runs 192–194 lost their board to two invented Kata shapes, #1149, #1155)."]}
+{"t":149394,"op":"pull","agent":"B"}
+{"t":150520,"op":"edit","agent":"D","path":"factory/questions.json","vstart":2,"vend":520,"lines":["  \"about\": \"The one Jev question set the Flock puts to `POST /v1/systemone`: `flock_step`, naming its reader and its rollback (map #1131 rule 3). A question is literal: it names no policy word, and nothing here decides anything. Its switch lives in factory/policy.json's `flock` cells. A Jev `null` routes that decision to the set's stated rollback, never to a guess.\",","  \"sets\": {"]}
+{"t":150536,"op":"pull","agent":"D"}
+{"t":152146,"op":"pull","agent":"B"}
+{"t":153712,"op":"pull","agent":"D"}
+{"t":156482,"op":"publish","agent":"B"}
+{"t":156498,"op":"pull","agent":"B"}
+{"t":171823,"op":"pull","agent":"D"}
+{"t":221802,"op":"edit","agent":"D","path":"factory/policy.json","vstart":2,"vend":351,"lines":["  \"about\": \"Every cell the Flock and the boot read, one file: `publish` (read by factory/record.mjs: self-merge and publish-as-probe) and `flock` (read by factory/flock/engine.mjs). Each cell carries the n and the window it was read over, or says in terms that it was not read. No default flips under n = 5 runs / 20 tasks: a cell read under that floor is an `experiment` with its `rollback` named. A Jev `null` routes to the set's rollback in questions.json.\","]}
+{"t":221811,"op":"pull","agent":"D"}
+{"t":225907,"op":"pull","agent":"D"}
+{"t":245131,"op":"edit","agent":"D","path":"fleet/tests/test_factory_worker_gitblock.mjs","vstart":1,"vend":85,"lines":[" * fleet/tests/test_factory_worker_gitblock.mjs — the exam for \"`findGit` reads"," * the whole Bash line for a git command word\" (derived; Authorized-by #1156,"," * map #1131; the rule `MODELS NEVER RUN GIT`)."," *"," * `DISALLOWED_TOOLS`'s `Bash(git *)` only catches a Bash command that BEGINS"," * with `git` — `cp … && git diff … && python3 …` runs the git anyway (run-193,"," * 2026-09-18). `factory/gitblock.mjs`'s `findGit` reads the whole line for a"," * git command word behind `&&`, `;`, `|`, a wrapper or `sh -c`; the Flock's"," * `PreToolUse` hook denies any line it answers a string for."," *"," * Legs, each naming the Machine clause it comes from:"," *"," *   (a) [M1] `findGit` of the three-command `&&` line, and of a bare `git"," *       status`, each answer a string;"," *   (b) [M2] `findGit` of a `sh -c 'git reset --hard'` wrapper answers a"," *       string — the wrapper does not hide the git word;"," *   (c) [M3] `findGit` of a line naming git only as a `grep` argument, and of"," *       a line naming it only inside `.gitignore`, each answer exactly `null`."," *"," * This exam stays hermetic: no child process, no disk, no network."," */","","import assert from 'node:assert/strict'","","import { findGit } from '../../factory/gitblock.mjs'"]}
+{"t":253298,"op":"edit","agent":"D","path":"fleet/tests/test_factory_worker_gitblock.mjs","vstart":57,"vend":119,"lines":[]}
+{"t":254815,"op":"edit","agent":"D","path":"fleet/tests/test_factory_worker_gitblock.mjs","vstart":62,"vend":63,"lines":["//     runs after the heredoc has closed; the #1156 `findGit` legs above this"]}
+{"t":256152,"op":"edit","agent":"D","path":"fleet/tests/test_factory_worker_gitblock.mjs","vstart":83,"vend":84,"lines":["  // the #1156 findGit legs above this comment, unedited, still pass:"]}
+{"t":257167,"op":"pull","agent":"D"}
+{"t":262557,"op":"edit","agent":"D","path":"fleet/tests/test_factory_boot.mjs","vstart":36,"vend":39,"lines":[" *   (d) [M2] `node <engineDir>/factory/flock/engine.mjs` with no"," *       arguments, through the rig's own `buildEngineDir` symlink, exits 2"," *       (`engine: --plan is required`)."]}
+{"t":264337,"op":"edit","agent":"D","path":"fleet/tests/test_factory_boot.mjs","vstart":47,"vend":48,"lines":[" * `factory/flock/engine.mjs`) genuinely runs through a symlinked directory. A `bin`"]}
+{"t":266103,"op":"edit","agent":"D","path":"fleet/tests/test_factory_boot.mjs","vstart":73,"vend":77,"lines":[" * It also assumes that `factory/flock/engine.mjs` reads `process.argv`"," * itself (so leg (d)'s bare module path is the same call `boot.sh` makes)"," * and, with no `--plan` given, exits 2 before touching anything that would"," * need a fuller rig — the same shape the"]}
+{"t":267868,"op":"edit","agent":"D","path":"fleet/tests/test_factory_boot.mjs","vstart":355,"vend":356,"lines":["// ── (d) [M2] flock/engine.mjs through a symlinked factory/ ───────────────"]}
+{"t":269631,"op":"edit","agent":"D","path":"fleet/tests/test_factory_boot.mjs","vstart":363,"vend":368,"lines":["  const res = await runAsync([path.join(engineDir, 'factory', 'flock', 'engine.mjs')], { home })","","  assert.equal(","    res.code, 2,","    `(d) [M2] node <engineDir>/factory/flock/engine.mjs with no arguments, through the rig's symlinked factory/, exits 2 — got ${res.code}, stdout: ${res.stdout}, stderr: ${res.stderr}`"]}
+{"t":274286,"op":"pull","agent":"D"}
+{"t":278410,"op":"publish","agent":"D"}
+{"t":278608,"op":"pull","agent":"D"}
+{"t":302172,"op":"pull","agent":"D"}
+{"t":310908,"op":"publish","agent":"D"}
+{"t":310915,"op":"pull","agent":"D"}
+{"t":316788,"op":"pull","agent":"D"}
+{"t":320461,"op":"pull","agent":"D"}
+{"t":326169,"op":"pull","agent":"D"}
+{"t":333384,"op":"publish","agent":"D"}
+{"t":333391,"op":"pull","agent":"D"}
+{"t":339758,"op":"pull","agent":"D"}
+{"t":343131,"op":"pull","agent":"D"}
+{"t":347885,"op":"pull","agent":"D"}
+{"t":354798,"op":"publish","agent":"D"}

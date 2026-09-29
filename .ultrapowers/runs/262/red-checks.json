@@ -1,0 +1,31 @@
+{
+ "snap": "da7256b262",
+ "limit_bytes": 65536,
+ "truncated": false,
+ "red": [
+  {
+   "task": "2",
+   "cmd": "bash -lc for f in engine baseread checks-at-base clone dispatch facts fold hunks judge kprobe measure pairs proofs refold retry reverify select tools union watch worker; do test ! -e factory/$f.mjs || exit 1; done && test ! -e factory/roles/implement.md && test ! -e factory/roles/resolve.md",
+   "exit": 1,
+   "tail": ""
+  },
+  {
+   "task": "2",
+   "cmd": "bash -lc test -z \"$(find factory/replay -type f ! -name '*.pyc' 2>/dev/null)\"",
+   "exit": 1,
+   "tail": ""
+  },
+  {
+   "task": "2",
+   "cmd": "bash -lc for f in referee refold_dispatch retry reverify select tools watch facts; do test ! -e fleet/tests/test_factory_$f.mjs || exit 1; done",
+   "exit": 1,
+   "tail": ""
+  },
+  {
+   "task": "3",
+   "cmd": "bash -lc for f in fold_wave.py repo_weave.py frontier_fold.py hunks.py FOLD_LOG.md; do test ! -e skills/ultrapowers/kernel/$f || exit 1; done && test ! -e tests/test_fold_wave_anchor.py",
+   "exit": 1,
+   "tail": ""
+  }
+ ]
+}

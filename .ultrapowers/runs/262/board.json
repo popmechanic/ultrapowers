@@ -1,0 +1,91 @@
+{
+ "tasks": [
+  {
+   "id": "1",
+   "title": "The Flock catches a finished run up to a moved main",
+   "state": "done",
+   "owner": "C",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "2",
+   "title": "The factory engine is gone and cannot be launched",
+   "state": "parked",
+   "owner": null,
+   "depends_on": [],
+   "notes": [
+    "D released: This is the second attempt and the block hasn't changed. Facts 3–7 (M3–M7) pass and are published. Facts 1, 2 and 8 still fail because 39 files still exist: the 21 factory/*.mjs modules, factory/roles/{implement,resolve}.md, every file under factory/replay/, and 8 fleet/tests/test_factory_{referee,refold_dispatch,retry,reverify,select,tools,watch,facts}.mjs. Agents are not allowed to delete existing files. The rules forbid it and the hook refuses rm/mv. An operator or the engine has to delete them. After that all eight facts should pass. Claiming the task again won't help until the files are gone.",
+    "D released: Third attempt, and the block is the same. Facts 3–7 (M3–M7) pass and are already published. Facts 1, 2 and 8 still fail because the 39 listed files still exist: 21 factory/*.mjs modules, factory/roles/{implement,resolve}.md, the files under factory/replay/, and 8 fleet/tests/test_factory_*.mjs sims. The rules forbid agents from deleting existing files, so an operator or the engine has to remove them. Re-claiming won't help until they're gone."
+   ]
+  },
+  {
+   "id": "3",
+   "title": "The old merge kernel is gone; Manyana stays, pinned",
+   "state": "parked",
+   "owner": null,
+   "depends_on": [],
+   "notes": [
+    "A released: Still blocked on M1 alone. Facts M2–M5 pass and that work was already published. M1 needs these files deleted: skills/ultrapowers/kernel/{fold_wave.py,repo_weave.py,frontier_fold.py,hunks.py,FOLD_LOG.md} and tests/test_fold_wave_anchor.py. Agents are not allowed to delete existing files (the rules forbid shell deletes, and Edit/Write can't remove a file). An operator or the engine has to delete those six paths. After that, the task's facts should all pass.",
+    "A released: Third attempt, same block: M2–M5 pass and are published; M1 still fails because the six files (skills/ultrapowers/kernel/{fold_wave.py,repo_weave.py,frontier_fold.py,hunks.py,FOLD_LOG.md}, tests/test_fold_wave_anchor.py) still exist and agents are forbidden to delete existing files. Needs an operator or engine-side delete; re-claiming won't help until then."
+   ]
+  },
+  {
+   "id": "4",
+   "title": "The docs describe one engine",
+   "state": "done",
+   "owner": "B",
+   "depends_on": [],
+   "notes": []
+  }
+ ],
+ "beliefs": [
+  {
+   "id": 1,
+   "t": 68855,
+   "by": "A",
+   "claim": "The engine gives agents no way to delete an existing file: the Bash hook refuses rm, and Edit/Write cannot remove a file. Tasks whose Files list says \"Delete:\" (task 3's M1, likely task 2's too) cannot pass their facts from an agent copy.",
+   "confidence": 0.9,
+   "about": "engine"
+  },
+  {
+   "id": 2,
+   "t": 102264,
+   "by": "A",
+   "claim": "Task 3 M1 cannot be met by agents: rules forbid shell deletes and no tool removes files. Six paths need deletion by operator/engine: skills/ultrapowers/kernel/{fold_wave.py,repo_weave.py,frontier_fold.py,hunks.py,FOLD_LOG.md}, tests/test_fold_wave_anchor.py.",
+   "confidence": 0.95,
+   "task": "3",
+   "about": "engine"
+  },
+  {
+   "id": 3,
+   "t": 108788,
+   "by": "host",
+   "claim": "stall: released {\"task\":\"3\",\"releases\":3}",
+   "confidence": 1
+  },
+  {
+   "id": 4,
+   "t": 300524,
+   "by": "D",
+   "claim": "Agents cannot delete files: the PreToolUse hook in factory/flock/engine.mjs denies any Bash `rm`/`mv`, and Edit/Write cannot remove a file. So a task whose Files list Delete: entries (task 2: 39 files) can never pass facts that check those files are gone.",
+   "confidence": 0.95,
+   "task": "2",
+   "about": "engine"
+  },
+  {
+   "id": 5,
+   "t": 354805,
+   "by": "host",
+   "claim": "stall: released {\"task\":\"2\",\"releases\":3}",
+   "confidence": 1
+  },
+  {
+   "id": 6,
+   "t": 388297,
+   "by": "host",
+   "claim": "stall: deadlock {\"left\":[{\"id\":\"2\",\"state\":\"parked\",\"depends_on\":[]},{\"id\":\"3\",\"state\":\"parked\",\"depends_on\":[]}]}",
+   "confidence": 1
+  }
+ ]
+}
