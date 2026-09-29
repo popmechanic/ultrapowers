@@ -1,0 +1,52 @@
+{
+  "run": 262,
+  "items": [
+    {
+      "kind": "stopped",
+      "text": "draft: deadlock: work left and nothing claimable"
+    },
+    {
+      "kind": "red-check",
+      "task": "2",
+      "text": "bash -lc for f in engine baseread checks-at-base clone dispatch facts fold hunks judge kprobe measure pairs proofs refold retry reverify select tools union watch worker; do test ! -e factory/$f.mjs || exit 1; done && test ! -e factory/roles/implement.md && test ! -e factory/roles/resolve.md exited 1"
+    },
+    {
+      "kind": "red-check",
+      "task": "2",
+      "text": "bash -lc test -z \"$(find factory/replay -type f ! -name '*.pyc' 2>/dev/null)\" exited 1: "
+    },
+    {
+      "kind": "red-check",
+      "task": "2",
+      "text": "bash -lc for f in referee refold_dispatch retry reverify select tools watch facts; do test ! -e fleet/tests/test_factory_$f.mjs || exit 1; done exited 1: "
+    },
+    {
+      "kind": "red-check",
+      "task": "3",
+      "text": "bash -lc for f in fold_wave.py repo_weave.py frontier_fold.py hunks.py FOLD_LOG.md; do test ! -e skills/ultrapowers/kernel/$f || exit 1; done && test ! -e tests/test_fold_wave_anchor.py exited 1: "
+    },
+    {
+      "kind": "belief",
+      "about": "engine",
+      "text": "A (0.9) about the engine: The engine gives agents no way to delete an existing file: the Bash hook refuses rm, and Edit/Write cannot remove a file. Tasks whose Files list says \"Delete:\" (task 3's M1, likely task 2's too) cannot pass their facts from an agent copy."
+    },
+    {
+      "kind": "belief",
+      "about": "engine",
+      "text": "A (0.95) about the engine: Task 3 M1 cannot be met by agents: rules forbid shell deletes and no tool removes files. Six paths need deletion by operator/engine: skills/ultrapowers/kernel/{fold_wave.py,repo_weave.py,frontier_fold.py,hunks.py,FOLD_LOG.md}, tests/test_fold_wave_anchor.py."
+    },
+    {
+      "kind": "belief",
+      "about": "engine",
+      "text": "D (0.95) about the engine: Agents cannot delete files: the PreToolUse hook in factory/flock/engine.mjs denies any Bash `rm`/`mv`, and Edit/Write cannot remove a file. So a task whose Files list Delete: entries (task 2: 39 files) can never pass facts that check those files are gone."
+    },
+    {
+      "kind": "stall",
+      "text": "released {\"task\":\"3\",\"releases\":3}"
+    },
+    {
+      "kind": "stall",
+      "text": "released {\"task\":\"2\",\"releases\":3}"
+    }
+  ]
+}

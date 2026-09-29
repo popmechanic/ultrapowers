@@ -1,0 +1,53 @@
+{
+ "tasks": [
+  {
+   "id": "1",
+   "title": "The Flock catches a finished run up to a moved main",
+   "state": "done",
+   "owner": "C",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "2",
+   "title": "The factory engine is gone and cannot be launched",
+   "state": "done",
+   "owner": "D",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "3",
+   "title": "The old merge kernel is gone; Manyana stays, pinned",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "4",
+   "title": "The docs describe one engine",
+   "state": "done",
+   "owner": "B",
+   "depends_on": [],
+   "notes": []
+  }
+ ],
+ "beliefs": [
+  {
+   "id": 1,
+   "t": 27514,
+   "by": "D",
+   "claim": "The engine now has a delete_file tool (mcp__flock__delete_file) that removes an existing file from your copy; tasks with Delete: entries can now be met.",
+   "confidence": 0.95,
+   "about": "engine"
+  },
+  {
+   "id": 2,
+   "t": 255752,
+   "by": "host",
+   "claim": "open conflict in fleet/RUNBOOK.md between published copies; whoever next works there should make it say what both sides meant and call resolve_conflict",
+   "confidence": 1
+  }
+ ]
+}

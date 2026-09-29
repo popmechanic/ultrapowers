@@ -1,0 +1,29 @@
+Running as unit: fleet-engine-263.service; invocation ID: c2b5161539d74a9f8be19c0ff36dd63b
+[   0.9s] workload run-263, 0 agents, claude-opus-5-5, out /home/exedev/run
+[   1.6s] past: run-262 10 items
+[   1.7s] opens builder A (pool 1)
+[   1.7s] opens builder B (pool 2)
+[   1.8s] opens builder C (pool 3)
+[   1.8s] opens builder D (pool 4)
+[   1.8s] A claims task 3
+[   1.9s] B claims task 4
+[   1.9s] C claims task 1
+[   1.9s] D claims task 2
+[  48.7s] A done 3
+[  61.8s] edge 786066490d red {"1":[1,1,1,1,1],"2":[1,1,1,1,1,1,1,1],"3":[0,0,0,0,0],"4":[1,1,1]} check 0 
+[ 103.6s] C done 1
+[ 118.3s] edge e1de534df2 red {"1":[0,0,0,0,0],"2":[1,1,1,1,1,1,1,1],"3":[0,0,0,0,0],"4":[1,1,1]} check 0 
+[ 240.9s] B done 4
+[ 255.8s] early close fleet/RUNBOOK.md b84df1a550 held by B
+[ 255.8s] edge 5df4e905eb red {"1":[0,0,0,0,0],"2":[1,1,1,1,1,1,1,1],"3":[0,0,0,0,0],"4":[0,0,0]} check 0 conflicts fleet/RUNBOOK.md (blocking: none)
+[ 340.6s] D done 2
+[ 356.8s] edge f9c14c1263 GREEN {"1":[0,0,0,0,0],"2":[0,0,0,0,0,0,0,0],"3":[0,0,0,0,0],"4":[0,0,0]} check 0 conflicts fleet/RUNBOOK.md (blocking: none)
+[ 358.5s] SETTLED on f9c14c1263
+[ 358.5s] TERMINAL ready settled green
+[ 364.8s] summary {"workload":"run-263","agents":"elastic","builders_max":4,"cap":16,"model":"claude-opus-5-5","settled":{"t":358462,"snap":"f9c14c1263"},"wall_ms":364665,"publish":"explicit","early_close":"held","order":"chain","final":{"snap":"f9c14c1263","green":true,"perTask":{"1":[0,0,0,0,0],"2":[0,0,0,0,0,0,0,0],"3":[0,0,0,0,0],"4":[0,0,0]},"check":0,"conflicts":["fleet/RUNBOOK.md"]},"snapshots":4,"beliefs":2,"outcome":{"pr":"ready","why":"settled green","snap":"f9c14c1263","t":358462},"settle_mode":"tested","debounce_ms":32264,"board_ops":378,"board_op_us_p50":12,"board_op_us_p90":15,"board":"standin","board_by_op":{"ready":{"n":364,"p50_us":12,"p90_us":15,"max_us":146898},"claim":{"n":4,"p50_us":71,"p90_us":131,"max_us":131},"post":{"n":2,"p50_us":68,"p90_us":68,"max_us":68},"publish":{"n":4,"p50_us":4,"p90_us":34,"max_us":34},"done":{"n":4,"p50_us":1,"p90_us":20,"max_us":20}},"board_writes":14,"board_writes_per_s":0.04,"board_peak_writes_per_s":4,"edit_failures":{"not_unique":0,"not_found":0,"stale":0,"other":0},"tokens":{"input":188,"output":70796,"cache_read":5769786,"cache_write":296139},"sessions":4,"cost_usd":5.011}
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 6min 5.106s
+CPU time consumed: 3min 35.051s
+Memory peak: 1.6G
+Memory swap peak: 0B
