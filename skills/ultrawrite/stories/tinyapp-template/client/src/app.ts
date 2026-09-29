@@ -4,10 +4,14 @@
 // the same tools to an agent over WebMCP when the browser has it. Who is
 // signed in (hook.who: an email, or null) comes from the Worker's /me, which
 // reads Cloudflare Access; every action gets it as run's third argument.
+// The page is public and read-only unless it is /staff: there it mounts only
+// the PUBLIC pieces and reads the saved snapshot (/public.json) every 5 s;
+// at /staff it mounts every piece, offers WebMCP tools and syncs.
 import {createMergeableStore} from 'tinybase';
 import {createWsSynchronizer} from 'tinybase/synchronizers/synchronizer-ws-client';
 import {TOOLS, makeStore} from './store.js';
-import {PIECES} from './pieces/index';
+import {PIECES, PUBLIC} from './pieces/index';
+import {isStaff, loadPublic} from './public';
 
 type Tool = {name: string; description: string; inputSchema: unknown; run: (store: unknown, args: Record<string, unknown>, who: string | null) => boolean};
 
@@ -25,11 +29,13 @@ const tools = Object.fromEntries((TOOLS as unknown as Tool[]).map((t) => [t.name
 const schemas = Object.fromEntries((TOOLS as unknown as Tool[]).map((t) => [t.name, t.inputSchema]));
 hook.tools = tools;
 hook.schemas = schemas;
-const session = {who: () => hook.who};
+const staff = isStaff(location.pathname, window.__TINYAPP_SYNC__);
+const session = {who: () => hook.who, staff};
 window.__TINYAPP__ = hook;
 
 const root = document.getElementById('app')!;
 for (const [name, piece] of PIECES) {
+  if (!staff && !PUBLIC.includes(name)) continue;
   const section = document.createElement('section');
   section.dataset.piece = name;
   root.append(section);
@@ -43,7 +49,7 @@ for (const [name, piece] of PIECES) {
 type ModelContext = {registerTool: (tool: Record<string, unknown>) => Promise<unknown> | unknown};
 const modelContext = ((document as unknown as {modelContext?: ModelContext}).modelContext
   ?? (navigator as unknown as {modelContext?: ModelContext}).modelContext);
-if (modelContext) {
+if (staff && modelContext) {
   for (const t of TOOLS as unknown as Tool[]) {
     void modelContext.registerTool({
       name: t.name,
@@ -63,12 +69,17 @@ if (modelContext) {
   });
 }
 
-const origin = window.__TINYAPP_SYNC__ ?? `ws://${location.hostname}:8787`;
-hook.who = window.__TINYAPP_WHO__ !== undefined ? window.__TINYAPP_WHO__
-  : await fetch(`${origin.replace(/^ws/, 'http')}/me`, {credentials: 'include', signal: AbortSignal.timeout(3000)})
-    .then((r) => (r.ok ? r.json() : {}))
-    .then((m: {email?: string | null}) => m.email ?? null)
-    .catch(() => null);
-const synchronizer = await createWsSynchronizer(store, new WebSocket(`${origin}/sync/app`));
-await synchronizer.startSync();
-hook.synced = true;
+if (!staff) {
+  hook.synced = await loadPublic(store);
+  setInterval(() => { void loadPublic(store); }, 5000);
+} else {
+  const origin = window.__TINYAPP_SYNC__ ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
+  hook.who = window.__TINYAPP_WHO__ !== undefined ? window.__TINYAPP_WHO__
+    : await fetch(`${origin.replace(/^ws/, 'http')}/me`, {credentials: 'include', signal: AbortSignal.timeout(3000)})
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((m: {email?: string | null}) => m.email ?? null)
+      .catch(() => null);
+  const synchronizer = await createWsSynchronizer(store, new WebSocket(`${origin}/sync/app`));
+  await synchronizer.startSync();
+  hook.synced = true;
+}

@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "bunx tsc --noEmit"
+    "typecheck": "bunx tsc --noEmit",
+    "pack": "bun scripts/pack-client.ts",
+    "deploy": "bun scripts/pack-client.ts && bunx wrangler deploy --config server/wrangler.jsonc"
   },
   "dependencies": {
     "tinybase": "^9.7.0"

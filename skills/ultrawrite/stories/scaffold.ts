@@ -43,7 +43,9 @@ function main(argv: string[]): number {
   mkdirSync(pdir, {recursive: true});
   writeFileSync(join(pdir, 'index.ts'),
     pieces.map((p) => `import * as ${p} from './${p}';\n`).join('')
-    + `\nexport const PIECES = [${pieces.map((p) => `['${p}', ${p}]`).join(', ')}] as const;\n`);
+    + `\nexport const PIECES = [${pieces.map((p) => `['${p}', ${p}]`).join(', ')}] as const;\n`
+    + `// The pieces a signed-out visitor sees. None is public until a plan names it.\n`
+    + `export const PUBLIC: readonly string[] = [];\n`);
   for (const p of pieces) writeFileSync(join(pdir, `${p}.ts`), stub(p));
   console.log(`SCAFFOLDED ${dst}: pieces ${pieces.join(', ')}`);
   return 0;

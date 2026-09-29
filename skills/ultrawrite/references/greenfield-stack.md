@@ -115,6 +115,44 @@ runs in the page, so it stops the screens and the page's tools, not a client
 that writes the store directly; a server-side lock is its own piece (radio rs4,
 2026-09-28).
 
+## Going online
+
+A TinyApp goes online as **one Cloudflare Worker** that serves both the page and
+the store (operator, 2026-09-29). The template's `scripts/pack-client.ts`
+(`bun run pack`) builds `client/index.html` and writes every output file into
+`server/client-files.ts`, and `bun run deploy` runs `pack-client` before
+`wrangler deploy`, so there is no second host for the page. The Worker answers
+these routes and no others:
+
+- `/` — the page, public and read-only: it mounts only the `PUBLIC` pieces and
+  re-reads `/public.json` every 5 s instead of syncing.
+- `/public.json` — the saved snapshot of the store, read-only.
+- `/health` — `200` when the Worker is up; what a plan's Verify line reads.
+- `/staff` — the same page with every piece, its WebMCP tools and the sync.
+- `/sync` — the store's `WsSynchronizer` socket.
+- `/me` — who is signed in, as `## The store, and the TinyApp shape` says.
+
+**Cloudflare Access** guards `/staff`, `/sync` and `/me`, and leaves `/`,
+`/public.json` and `/health` public. The operator sets that Access application
+in the Cloudflare dashboard; no plan does, and no task writes Access config.
+
+A plan names the pieces a visitor may see in `PUBLIC`, exported from
+`client/src/pieces/index.ts` beside `PIECES`; a piece not in it is mounted only
+under `/staff`. A public piece renders on both, and hides its staff controls
+whenever `session.staff` is false — so the public page is the same screens with
+the write controls gone, not a second app.
+
+A plan that publishes carries two header lines, verbatim:
+
+- **Publish:** bun install && bun run deploy
+- **Verify:** curl -fsS "$ULTRA_PUBLISH_URL/health"
+
+and sets the Worker's `name` and `account_id` in `server/wrangler.jsonc`. The
+Publish line runs once the plan's tasks have merged; the Verify line exits 0
+only when the deployed Worker answers `/health`. (`account_id` in the config is
+what `## The runtime host` warns celld 0.5 refuses; that section is deferred, and
+a plan that brings exams back on celld moves the account to `--env-file`.)
+
 ## State exams
 
 *Deferred since cut three (2026-09-22): no plan can name a `Test:` path, so nothing in this section has a reader until state exams return as probes — owed on map #1248. The text below is the shape for that day, kept as it was.*
