@@ -58,9 +58,9 @@ export const isFullSha = (value) => isSafeSha(value) && value.length === 40
 export const isRunNumber = (value) => /^[1-9][0-9]*$/.test(String(value))
 
 /**
- * One incarnation of a run: `fleet-r<N>-<yymmddHHMM>-<4 hex>`. exe.dev keeps a
- * deleted name reserved, so a name is minted once per launch and never derived
- * from N alone — the run's durable identity is N, in the comment and in the
+ * One incarnation of a run: `fleet-r<N>-<yymmddHHMM>-<4 hex>`. exe.dev does not
+ * reserve a deleted name, but a name is still minted once per launch and never
+ * derived from N alone — the run's durable identity is N, in the comment and in the
  * target's three branches; the VM name is only where it is running this time.
  */
 const VM_NAME = /^fleet-r([1-9][0-9]*)-[0-9]{10}-[0-9a-f]{4}$/

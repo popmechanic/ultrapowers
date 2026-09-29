@@ -75,7 +75,7 @@ export const FACTS = Object.freeze([
   { id: 'cp-copies-tags',
     says: 'cp copies tags by default; --copy-tags=false makes a copy with none' },
   { id: 'rm-reserves-name',
-    says: 'exe.dev reserves a deleted VM\'s name for good' },
+    says: 'exe.dev does not reserve a deleted VM\'s name: a new VM may take it' },
   { id: 'refused-verbs',
     says: 'new --integration, integrations attach and integrations detach are refused since 2026-09-11; the policy is the only grant' },
 ])
@@ -354,7 +354,7 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
     if (rm.code !== 0) leftBehind.push(name)
   }
 
-  // ── fact 11: rm reserves the name — read last, after the cleanup ─────────
+  // ── fact 11: rm frees the name — read last, after the cleanup ────────────
   let fact11
   if (!tCreated) {
     fact11 = unreadable(`${T} was never created`)
@@ -365,12 +365,12 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
     if (again.code === null) {
       fact11 = unreadable(`new --name ${T} gave no answer`)
     } else if (again.code !== 0) {
-      fact11 = holds(`new --name ${T} … failed (exit ${again.code}) — the name is reserved`)
+      fact11 = drift(`new --name ${T} … failed (exit ${again.code}) — the name is reserved`)
     } else {
-      // Unexpectedly succeeded: it made a VM, so it is counted in the cleanup.
+      // Succeeded: it made a VM, so it is counted in the cleanup.
       const rmAgain = await send(`rm ${T}`)
       if (rmAgain.code !== 0) leftBehind.push(T)
-      fact11 = drift(`new --name ${T} … exited 0 — the name was not reserved`)
+      fact11 = holds(`new --name ${T} … exited 0 — the name was not reserved`)
     }
   }
 

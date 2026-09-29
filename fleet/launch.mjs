@@ -144,7 +144,8 @@ const SHALLOW_FIX = 'is a shallow clone — unshallow it by hand and relaunch'
 
 /**
  * How many `new` lines a launch may issue, and the window it sleeps in between
- * them. A name exe.dev refused stays reserved, so each attempt mints its own.
+ * them. exe.dev does not reserve names, but a name is one incarnation — the run
+ * number is the identity — so each attempt still mints its own.
  */
 const NEW_ATTEMPTS = 3
 const RETRY_MIN_MS = 1_000
