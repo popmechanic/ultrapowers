@@ -3,7 +3,7 @@
   "about": "The one Jev question set the Flock puts to `POST /v1/systemone`: `flock_step`, read by factory/flock/step_reading.mjs once per green story step, naming its reader and its rollback (map #1131 rule 3). A question is literal: it names no policy word, and nothing here decides anything. Its mode lives in factory/policy.json's `flock.jev_step`. A Jev `null` routes that reading to the set's stated rollback, never to a guess. A reworded question is a different question: its readings mean something else.",
   "sets": {
     "flock_step": {
-      "when": "At a builder's done (that task's steps) and at a ready settle (every step), once per green story step",
+      "when": "At a ready settle, once per story, at its last green step (#1369)",
       "reader": "factory/flock/step_reading.mjs",
       "rollback": "factory/policy.json flock.jev_step.mode = off",
       "state": [
