@@ -210,3 +210,79 @@
 {"t":182237,"kind":"fallback","agent":"A","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:20:18.477Z"}
 {"t":183694,"kind":"tool","agent":"B","task":"5","tool":"Bash","target":"cd skills/ultrawrite/stories && python3 - <<'EOF'\np='jev_checks.ts'; s=open(p).read()\ns=s.replace(\"'decompose', 'gate', ","ts":"2026-09-29T22:20:19.934Z"}
 {"t":183776,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T22:20:20.016Z"}
+{"t":183874,"kind":"fallback","agent":"B","path":"skills/ultrawrite/stories/jev_checks.ts","peer_lines":1,"deleted":false,"ts":"2026-09-29T22:20:20.114Z"}
+{"t":183875,"kind":"fallback","agent":"B","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:20:20.115Z"}
+{"t":183888,"kind":"fallback","agent":"B","path":"tests/fixtures/about_product/product.json","peer_lines":0,"deleted":false,"ts":"2026-09-29T22:20:20.128Z"}
+{"t":184189,"kind":"tool","agent":"C","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; sed -n 150,215p tests/test_plan_check.py; sed -n 1280,1364p tests/test_plan_check.py;","ts":"2026-09-29T22:20:20.429Z"}
+{"t":184217,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T22:20:20.457Z"}
+{"t":184711,"kind":"fallback","agent":"C","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:20:20.951Z"}
+{"t":185763,"kind":"tool","agent":"B","task":"5","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T22:20:22.003Z"}
+{"t":187730,"kind":"proof","agent":"B","task":"5","exits":[0,0,0,0],"causes":[],"errs":[],"ts":"2026-09-29T22:20:23.970Z"}
+{"t":187731,"kind":"tool","agent":"D","task":"4","tool":"Bash","target":"mkdir -p tests/fixtures/provenance && cat > tests/fixtures/provenance/plan.md <<'EOF'\n# Widget Size Plan\n\n**Grammar:** c","ts":"2026-09-29T22:20:23.971Z"}
+{"t":187731,"kind":"deny:shell-write","agent":"D","task":"4","command":"mkdir -p tests/fixtures/provenance && cat > tests/fixtures/provenance/plan.md <<'EOF'\n# Widget Size Plan\n\n**Grammar:** claims-v1\n\n**Claim:** Every widget answer","ts":"2026-09-29T22:20:23.971Z"}
+{"t":187738,"kind":"tool:post","agent":"B","tool":"mcp__flock__run_proof","ts":"2026-09-29T22:20:23.978Z"}
+{"t":190416,"kind":"tool","agent":"B","task":"5","tool":"mcp__flock__done","target":"","ts":"2026-09-29T22:20:26.656Z"}
+{"t":192393,"kind":"tool","agent":"D","task":"4","tool":"Bash","target":"ls -la tests/fixtures/provenance/ 2>&1","ts":"2026-09-29T22:20:28.633Z"}
+{"t":192393,"kind":"tool","agent":"C","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; tail -3 tests/test_plan_check.py; grep -n \"^def run_compiler\" -A8 tests/test_plan_che","ts":"2026-09-29T22:20:28.633Z"}
+{"t":192419,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T22:20:28.659Z"}
+{"t":193243,"kind":"fallback","agent":"B","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:20:29.483Z"}
+{"t":193260,"kind":"fallback","agent":"C","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:20:29.500Z"}
+{"t":193264,"kind":"publish","agent":"B","task":"5","by":"done","ts":"2026-09-29T22:20:29.504Z"}
+{"t":193273,"kind":"tool:post","agent":"B","tool":"mcp__flock__done","ts":"2026-09-29T22:20:29.513Z"}
+{"t":193275,"kind":"kata:mirror","task":"5","uid":"01M3QKT62ZAJ5QBZAD77QW0KXA","what":"done by B","ok":true,"ts":"2026-09-29T22:20:29.515Z"}
+{"t":193789,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; mkdir -p tests/fixtures/routing; cat > tests/fixtures/routing/plan.md <<'EOF'\n# Routi","ts":"2026-09-29T22:20:30.029Z"}
+{"t":193920,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T22:20:30.160Z"}
+{"t":223221,"kind":"conflict:open","path":"skills/ultrawrite/stories/jev_checks.ts","region":"b1db05e0f3","between":["published copies"],"ts":"2026-09-29T22:20:59.461Z"}
+{"t":223221,"kind":"conflict:close","path":"skills/ultrawrite/stories/jev_checks.ts","region":"b1db05e0f3","by":"host","note":"the merged text of skills/ultrawrite/stories/jev_checks.ts is B's own published writing over both sides","via":"early:held","evidence":{"snap":"835581c84c","holders":[{"agent":"B","published_t":193264,"last_edit_t":183874,"last_marked_t":null}],"unflagged":false},"ts":"2026-09-29T22:20:59.461Z"}
+{"t":223221,"kind":"edge","snap":"835581c84c","reason":"done B","perTask":{"1":[0,0,0,0],"2":[0,0,0,0,0,0,0,0],"3":[1,1,1,1,1,1,0],"4":[1,1,1,1],"5":[0,0,0,0],"6":[1,1,1,1,1,1,1,1,1,0],"7":[0,0,0]},"check":0,"conflicts":["skills/ultrawrite/stories/jev_checks.ts"],"blocking":[],"outside":[],"green":false,"ts":"2026-09-29T22:20:59.461Z"}
+{"t":223222,"kind":"tool","agent":"D","task":"4","tool":"Write","target":"/home/exedev/run/work/agents/D/tests/fixtures/provenance/plan.md","ts":"2026-09-29T22:20:59.462Z"}
+{"t":224306,"kind":"pull","agent":"C","changed":[{"path":"skills/ultrawrite/stories/jev_checks.ts","from":"B","added":9,"removed":1,"conflict":false},{"path":"tests/fixtures/about_product/product.json","from":"B","added":79,"removed":0,"conflict":false}],"ts":"2026-09-29T22:21:00.546Z"}
+{"t":224446,"kind":"fallback","agent":"A","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:00.686Z"}
+{"t":224446,"kind":"fallback","agent":"D","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:00.686Z"}
+{"t":224480,"kind":"fallback","agent":"A","path":"tests/fixtures/routing/plan.gate-verdicts.json","peer_lines":0,"deleted":false,"ts":"2026-09-29T22:21:00.720Z"}
+{"t":224481,"kind":"fallback","agent":"A","path":"tests/fixtures/routing/plan.md","peer_lines":0,"deleted":false,"ts":"2026-09-29T22:21:00.721Z"}
+{"t":224503,"kind":"tool:post","agent":"D","tool":"Write","ts":"2026-09-29T22:21:00.743Z"}
+{"t":225193,"kind":"pull","agent":"A","changed":[{"path":"skills/ultrawrite/stories/jev_checks.ts","from":"B","added":9,"removed":1,"conflict":false},{"path":"tests/fixtures/about_product/product.json","from":"B","added":79,"removed":0,"conflict":false}],"ts":"2026-09-29T22:21:01.433Z"}
+{"t":225194,"kind":"edit","agent":"D","task":"4","tool":"Write","path":"tests/fixtures/provenance/plan.md","how":"new-file","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:21:01.434Z"}
+{"t":225201,"kind":"tool","agent":"D","task":"4","tool":"Bash","target":"d=$(mktemp -d); cp tests/fixtures/provenance/plan.md $d/; python3 skills/ultrawrite/scripts/check_provenance.py $d/plan.","ts":"2026-09-29T22:21:01.441Z"}
+{"t":225201,"kind":"deny:shell-write","agent":"D","task":"4","command":"d=$(mktemp -d); cp tests/fixtures/provenance/plan.md $d/; python3 skills/ultrawrite/scripts/check_provenance.py $d/plan.md --gh 'echo Every widget answers its s","ts":"2026-09-29T22:21:01.441Z"}
+{"t":225910,"kind":"pull","agent":"D","changed":[{"path":"skills/ultrawrite/stories/jev_checks.ts","from":"B","added":9,"removed":1,"conflict":false},{"path":"tests/fixtures/about_product/product.json","from":"B","added":79,"removed":0,"conflict":false}],"ts":"2026-09-29T22:21:02.150Z"}
+{"t":228666,"kind":"session:end","agent":"B","task":"5","released":false,"done":"jev_checks.ts understanding stage now reads about_product for each author-labelled technical assumption (question from factory/questions.json authoring_about_product, threshold policy flag_at.about_product), pushing a JEV flag (never a DOUBT) at ≥0.5; fixture tests/fixtures/about_product/product.json added. All 4 facts pass.","redRuns":0,"turns":6,"usage":{"input_tokens":12,"cache_creation_input_tokens":12770,"cache_read_input_tokens":188955,"output_tokens":1995,"output_tokens_details":{"thinking_tokens":25},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":12770,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[],"speed":"standard","fallback_credit":null},"ts":"2026-09-29T22:21:04.906Z"}
+{"t":229250,"kind":"tool","agent":"D","task":"4","tool":"Bash","target":"python3 -c \"\nimport shutil,tempfile,subprocess;d=tempfile.mkdtemp();shutil.copy('tests/fixtures/provenance/plan.md',d)\np","ts":"2026-09-29T22:21:05.490Z"}
+{"t":229380,"kind":"tool:post","agent":"D","tool":"Bash","ts":"2026-09-29T22:21:05.620Z"}
+{"t":229490,"kind":"fallback","agent":"D","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:05.730Z"}
+{"t":231716,"kind":"tool","agent":"D","task":"4","tool":"Bash","target":"cd skills/ultrawrite/scripts && python3 - <<'EOF'\nEOF\ngrep -n \"^import\\|^from\" check_provenance.py","ts":"2026-09-29T22:21:07.956Z"}
+{"t":231777,"kind":"tool:post","agent":"D","tool":"Bash","ts":"2026-09-29T22:21:08.017Z"}
+{"t":231866,"kind":"fallback","agent":"D","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:08.106Z"}
+{"t":234808,"kind":"tool","agent":"D","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/D && grep -rn \"check_plan\\b\\|check_provenance\" --include=*.py --include=*.mjs --include=","ts":"2026-09-29T22:21:11.048Z"}
+{"t":234838,"kind":"tool:post","agent":"D","tool":"Bash","ts":"2026-09-29T22:21:11.078Z"}
+{"t":234977,"kind":"fallback","agent":"D","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:11.217Z"}
+{"t":239593,"kind":"tool","agent":"C","task":"6","tool":"Edit","target":"/home/exedev/run/work/agents/C/tests/test_plan_check.py","ts":"2026-09-29T22:21:15.833Z"}
+{"t":239715,"kind":"fallback","agent":"C","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:15.955Z"}
+{"t":239743,"kind":"tool:post","agent":"C","tool":"Edit","ts":"2026-09-29T22:21:15.983Z"}
+{"t":239765,"kind":"edit","agent":"C","task":"6","tool":"Edit","path":"tests/test_plan_check.py","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:21:16.005Z"}
+{"t":239893,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; python3 - <<'EOF'\np='skills/ultrapowers/scripts/plan_check.py'\ns=open(p).read()\ns=s.r","ts":"2026-09-29T22:21:16.133Z"}
+{"t":239950,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T22:21:16.190Z"}
+{"t":240065,"kind":"fallback","agent":"A","path":"skills/ultrapowers/scripts/plan_check.py","peer_lines":0,"deleted":false,"ts":"2026-09-29T22:21:16.305Z"}
+{"t":240076,"kind":"fallback","agent":"A","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:16.316Z"}
+{"t":240380,"kind":"tool","agent":"C","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; python3 -m pytest -q tests/test_plan_check.py -k test_slips_ -p no:xdist 2>&1 | tail ","ts":"2026-09-29T22:21:16.620Z"}
+{"t":240567,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T22:21:16.807Z"}
+{"t":240776,"kind":"tool","agent":"D","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/D/skills/ultrawrite/scripts/check_provenance.py","ts":"2026-09-29T22:21:17.016Z"}
+{"t":240964,"kind":"fallback","agent":"C","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:17.204Z"}
+{"t":240964,"kind":"fallback","agent":"D","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:17.204Z"}
+{"t":240982,"kind":"test","agent":"C","task":"6","red":true,"drift":1,"cause":{"cause":"unknown"},"ts":"2026-09-29T22:21:17.222Z"}
+{"t":241003,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T22:21:17.243Z"}
+{"t":242102,"kind":"edit","agent":"D","task":"4","tool":"Edit","path":"skills/ultrawrite/scripts/check_provenance.py","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:21:18.342Z"}
+{"t":242166,"kind":"tool","agent":"D","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/D/skills/ultrawrite/scripts/check_provenance.py","ts":"2026-09-29T22:21:18.406Z"}
+{"t":242269,"kind":"fallback","agent":"D","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:18.509Z"}
+{"t":242294,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T22:21:18.534Z"}
+{"t":242298,"kind":"edit","agent":"D","task":"4","tool":"Edit","path":"skills/ultrawrite/scripts/check_provenance.py","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:21:18.538Z"}
+{"t":242625,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; grep -n \"Execution handoff\" -A30 skills/ultrawrite/SKILL.md | head -45","ts":"2026-09-29T22:21:18.865Z"}
+{"t":242658,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T22:21:18.898Z"}
+{"t":242776,"kind":"fallback","agent":"A","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:19.016Z"}
+{"t":243578,"kind":"tool","agent":"C","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; python3 -m pytest -q tests/test_plan_check.py 2>&1 | tail -30","ts":"2026-09-29T22:21:19.818Z"}
+{"t":243718,"kind":"tool","agent":"D","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/D/skills/ultrawrite/scripts/check_provenance.py","ts":"2026-09-29T22:21:19.958Z"}
+{"t":243807,"kind":"fallback","agent":"D","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:20.047Z"}
+{"t":243843,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T22:21:20.083Z"}
+{"t":243850,"kind":"edit","agent":"D","task":"4","tool":"Edit","path":"skills/ultrawrite/scripts/check_provenance.py","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:21:20.090Z"}
+{"t":245743,"kind":"tool","agent":"A","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/A/skills/ultrawrite/SKILL.md","ts":"2026-09-29T22:21:21.983Z"}
