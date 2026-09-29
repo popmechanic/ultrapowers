@@ -286,3 +286,69 @@
 {"t":243843,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T22:21:20.083Z"}
 {"t":243850,"kind":"edit","agent":"D","task":"4","tool":"Edit","path":"skills/ultrawrite/scripts/check_provenance.py","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:21:20.090Z"}
 {"t":245743,"kind":"tool","agent":"A","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/A/skills/ultrawrite/SKILL.md","ts":"2026-09-29T22:21:21.983Z"}
+{"t":245873,"kind":"fallback","agent":"A","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:22.113Z"}
+{"t":245905,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T22:21:22.145Z"}
+{"t":245918,"kind":"edit","agent":"A","task":"3","tool":"Edit","path":"skills/ultrawrite/SKILL.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:21:22.158Z"}
+{"t":246335,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T22:21:22.575Z"}
+{"t":246444,"kind":"fallback","agent":"C","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:22.684Z"}
+{"t":246457,"kind":"test","agent":"C","task":"6","red":false,"drift":1,"cause":null,"ts":"2026-09-29T22:21:22.697Z"}
+{"t":248000,"kind":"tool","agent":"A","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/A/tests/conftest.py","ts":"2026-09-29T22:21:24.240Z"}
+{"t":248123,"kind":"fallback","agent":"A","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:24.363Z"}
+{"t":248161,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T22:21:24.401Z"}
+{"t":248162,"kind":"edit","agent":"A","task":"3","tool":"Edit","path":"tests/conftest.py","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:21:24.402Z"}
+{"t":248168,"kind":"tool","agent":"A","task":"3","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T22:21:24.408Z"}
+{"t":250494,"kind":"proof","agent":"A","task":"3","exits":[0,0,0,0,0,0,0],"causes":[],"errs":[],"ts":"2026-09-29T22:21:26.735Z"}
+{"t":250495,"kind":"tool","agent":"D","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/D/skills/ultrawrite/scripts/check_provenance.py","ts":"2026-09-29T22:21:26.735Z"}
+{"t":250497,"kind":"tool","agent":"C","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; f=skills/ultrawrite/SKILL.md; grep -n \"^## \\|nothing enforces it\\|plan_check.py. sits","ts":"2026-09-29T22:21:26.737Z"}
+{"t":250499,"kind":"tool:post","agent":"A","tool":"mcp__flock__run_proof","ts":"2026-09-29T22:21:26.739Z"}
+{"t":250532,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T22:21:26.772Z"}
+{"t":251430,"kind":"fallback","agent":"D","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:27.670Z"}
+{"t":251435,"kind":"fallback","agent":"C","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:27.675Z"}
+{"t":251484,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T22:21:27.724Z"}
+{"t":252576,"kind":"edit","agent":"D","task":"4","tool":"Edit","path":"skills/ultrawrite/scripts/check_provenance.py","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:21:28.816Z"}
+{"t":252583,"kind":"tool","agent":"D","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/D/skills/ultrawrite/scripts/check_provenance.py","ts":"2026-09-29T22:21:28.823Z"}
+{"t":252705,"kind":"fallback","agent":"D","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:28.945Z"}
+{"t":252734,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T22:21:28.974Z"}
+{"t":252739,"kind":"edit","agent":"D","task":"4","tool":"Edit","path":"skills/ultrawrite/scripts/check_provenance.py","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:21:28.979Z"}
+{"t":252743,"kind":"tool","agent":"D","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/D/skills/ultrawrite/scripts/check_provenance.py","ts":"2026-09-29T22:21:28.983Z"}
+{"t":252827,"kind":"fallback","agent":"D","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:29.067Z"}
+{"t":252853,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T22:21:29.093Z"}
+{"t":252858,"kind":"edit","agent":"D","task":"4","tool":"Edit","path":"skills/ultrawrite/scripts/check_provenance.py","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:21:29.098Z"}
+{"t":253263,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; timeout 600 python3 -m pytest tests/test_plan_check.py -q -x -n 8 2>&1 | tail -15","ts":"2026-09-29T22:21:29.503Z"}
+{"t":253766,"kind":"tool","agent":"D","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/D/skills/ultrawrite/scripts/check_provenance.py","ts":"2026-09-29T22:21:30.006Z"}
+{"t":253878,"kind":"fallback","agent":"D","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:30.118Z"}
+{"t":253928,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T22:21:30.168Z"}
+{"t":253950,"kind":"edit","agent":"D","task":"4","tool":"Edit","path":"skills/ultrawrite/scripts/check_provenance.py","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:21:30.190Z"}
+{"t":254106,"kind":"tool","agent":"C","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; f=skills/ultrawrite/SKILL.md; sed -n 190,200p $f; sed -n 495,515p $f","ts":"2026-09-29T22:21:30.346Z"}
+{"t":254156,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T22:21:30.396Z"}
+{"t":254999,"kind":"fallback","agent":"C","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:31.239Z"}
+{"t":255371,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T22:21:31.611Z"}
+{"t":255875,"kind":"tool","agent":"D","task":"4","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T22:21:32.115Z"}
+{"t":257894,"kind":"proof","agent":"D","task":"4","exits":[0,0,0,0],"causes":[],"errs":[],"ts":"2026-09-29T22:21:34.134Z"}
+{"t":257903,"kind":"tool:post","agent":"D","tool":"mcp__flock__run_proof","ts":"2026-09-29T22:21:34.143Z"}
+{"t":258716,"kind":"fallback","agent":"A","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:34.956Z"}
+{"t":258732,"kind":"test","agent":"A","task":"3","red":false,"drift":1,"cause":null,"ts":"2026-09-29T22:21:34.972Z"}
+{"t":259870,"kind":"tool","agent":"D","task":"4","tool":"Bash","target":"python3 -m pytest tests/ -q -k \"provenance or authoring\" 2>&1 | tail -3","ts":"2026-09-29T22:21:36.110Z"}
+{"t":260404,"kind":"tool","agent":"C","task":"6","tool":"Edit","target":"/home/exedev/run/work/agents/C/skills/ultrawrite/SKILL.md","ts":"2026-09-29T22:21:36.644Z"}
+{"t":260556,"kind":"fallback","agent":"C","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:36.796Z"}
+{"t":260601,"kind":"tool:post","agent":"C","tool":"Edit","ts":"2026-09-29T22:21:36.841Z"}
+{"t":260631,"kind":"edit","agent":"C","task":"6","tool":"Edit","path":"skills/ultrawrite/SKILL.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:21:36.871Z"}
+{"t":261361,"kind":"tool:post","agent":"D","tool":"Bash","ts":"2026-09-29T22:21:37.601Z"}
+{"t":261458,"kind":"fallback","agent":"D","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:37.698Z"}
+{"t":261471,"kind":"test","agent":"D","task":"4","red":false,"drift":1,"cause":null,"ts":"2026-09-29T22:21:37.711Z"}
+{"t":262458,"kind":"tool","agent":"A","task":"3","tool":"mcp__flock__done","target":"","ts":"2026-09-29T22:21:38.698Z"}
+{"t":264681,"kind":"tool","agent":"C","task":"6","tool":"Edit","target":"/home/exedev/run/work/agents/C/skills/ultrawrite/SKILL.md","ts":"2026-09-29T22:21:40.921Z"}
+{"t":264794,"kind":"tool","agent":"D","task":"4","tool":"mcp__flock__done","target":"","ts":"2026-09-29T22:21:41.034Z"}
+{"t":266886,"kind":"fallback","agent":"A","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:43.126Z"}
+{"t":266887,"kind":"fallback","agent":"C","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:21:43.127Z"}
+{"t":266927,"kind":"publish","agent":"A","task":"3","by":"done","ts":"2026-09-29T22:21:43.167Z"}
+{"t":266935,"kind":"tool:post","agent":"C","tool":"Edit","ts":"2026-09-29T22:21:43.175Z"}
+{"t":266937,"kind":"kata:mirror","task":"3","uid":"01M3QKT0XXQR7NKKJ4N73K0445","what":"done by A","ok":true,"ts":"2026-09-29T22:21:43.177Z"}
+{"t":266938,"kind":"tool:post","agent":"A","tool":"mcp__flock__done","ts":"2026-09-29T22:21:43.178Z"}
+{"t":298279,"kind":"edge","snap":"3a2556947f","reason":"done A","perTask":{"1":[0,0,0,0],"2":[0,0,0,0,0,0,0,0],"3":[0,0,0,0,0,0,0],"4":[1,1,1,1],"5":[0,0,0,0],"6":[1,1,1,1,1,1,1,1,1,0],"7":[0,0,0]},"check":0,"conflicts":[],"blocking":[],"outside":[],"green":false,"ts":"2026-09-29T22:22:14.519Z"}
+{"t":298291,"kind":"edit","agent":"C","task":"6","tool":"Edit","path":"skills/ultrawrite/SKILL.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:22:14.531Z"}
+{"t":298300,"kind":"tool","agent":"C","task":"6","tool":"Edit","target":"/home/exedev/run/work/agents/C/skills/ultrawrite/SKILL.md","ts":"2026-09-29T22:22:14.540Z"}
+{"t":298364,"kind":"fallback","agent":"D","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:22:14.604Z"}
+{"t":298398,"kind":"publish","agent":"D","task":"4","by":"done","ts":"2026-09-29T22:22:14.638Z"}
+{"t":298404,"kind":"kata:mirror","task":"4","uid":"01M3QKT3H4C03DM3MEJ1R8PW9R","what":"done by D","ok":true,"ts":"2026-09-29T22:22:14.644Z"}
+{"t":298405,"kind":"tool:post","agent":"D","tool":"mcp__flock__done","ts":"2026-09-29T22:22:14.645Z"}
