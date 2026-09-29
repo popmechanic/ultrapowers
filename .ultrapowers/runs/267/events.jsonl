@@ -26,3 +26,21 @@
 {"t":55428,"kind":"deny:shell-write","agent":"A","task":"1","command":"cd /home/exedev/run/work/agents/A; sed -i '292,295s/\\\\`/`/g' fleet/tests/_boot_helpers.mjs; sed -n 290,296p fleet/tests/_boot_helpers.mjs","ts":"2026-09-29T20:10:29.717Z"}
 {"t":57986,"kind":"tool","agent":"A","task":"1","tool":"Read","target":"/home/exedev/run/work/agents/A/fleet/tests/_boot_helpers.mjs","ts":"2026-09-29T20:10:32.275Z"}
 {"t":58011,"kind":"tool:post","agent":"A","tool":"Read","ts":"2026-09-29T20:10:32.300Z"}
+{"t":61533,"kind":"tool","agent":"A","task":"1","tool":"Edit","target":"/home/exedev/run/work/agents/A/fleet/tests/_boot_helpers.mjs","ts":"2026-09-29T20:10:35.822Z"}
+{"t":61672,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T20:10:35.961Z"}
+{"t":61679,"kind":"edit","agent":"A","task":"1","tool":"Edit","path":"fleet/tests/_boot_helpers.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T20:10:35.968Z"}
+{"t":72040,"kind":"tool","agent":"A","task":"1","tool":"Edit","target":"/home/exedev/run/work/agents/A/fleet/tests/test_factory_boot.mjs","ts":"2026-09-29T20:10:46.329Z"}
+{"t":72213,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T20:10:46.502Z"}
+{"t":72219,"kind":"edit","agent":"A","task":"1","tool":"Edit","path":"fleet/tests/test_factory_boot.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T20:10:46.508Z"}
+{"t":72223,"kind":"tool","agent":"A","task":"1","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T20:10:46.512Z"}
+{"t":82219,"kind":"proof","agent":"A","task":"1","exits":[0,0],"causes":[],"errs":[],"ts":"2026-09-29T20:10:56.508Z"}
+{"t":82224,"kind":"tool:post","agent":"A","tool":"mcp__flock__run_proof","ts":"2026-09-29T20:10:56.513Z"}
+{"t":85692,"kind":"tool","agent":"A","task":"1","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; python3 -m pytest -q tests/test_fleet_suite.py -k \"test_factory_publish or test_facto","ts":"2026-09-29T20:10:59.981Z"}
+{"t":93989,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T20:11:08.278Z"}
+{"t":94111,"kind":"fallback","agent":"A","path":"factory/package-lock.json","peer_lines":0,"deleted":false,"ts":"2026-09-29T20:11:08.400Z"}
+{"t":94111,"kind":"test","agent":"A","task":"1","red":false,"drift":1,"cause":null,"ts":"2026-09-29T20:11:08.400Z"}
+{"t":97873,"kind":"tool","agent":"A","task":"1","tool":"mcp__flock__done","target":"","ts":"2026-09-29T20:11:12.162Z"}
+{"t":105721,"kind":"publish","agent":"A","task":"1","by":"done","ts":"2026-09-29T20:11:20.010Z"}
+{"t":105731,"kind":"tool:post","agent":"A","tool":"mcp__flock__done","ts":"2026-09-29T20:11:20.020Z"}
+{"t":105736,"kind":"kata:mirror","task":"1","uid":"01M3QCGHA09AD3RVN350TJRW17","what":"done by A","ok":true,"ts":"2026-09-29T20:11:20.025Z"}
+{"t":105928,"kind":"driver:amendment","path":"factory/package-lock.json","snap":"6e2f55fb41","ts":"2026-09-29T20:11:20.217Z"}
