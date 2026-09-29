@@ -1,0 +1,16 @@
+Running as unit: fleet-engine-276.service
+[   0.6s] workload run-276, elastic builders (cap 16), claude-opus-5-5, out /home/exedev/run
+[   1.3s] past: run-274 finished green
+[   1.4s] opens builder A (pool 1)
+[   1.4s] A claims task 1
+[  10.2s] A done 1
+[  10.4s] edge 95f1d05ca2 GREEN {"1":[0]} check 0 
+[  10.6s] SETTLED on 95f1d05ca2
+[  10.6s] TERMINAL ready settled green
+[  13.4s] summary {"workload":"run-276","agents":"elastic","builders_max":1,"cap":16,"model":"claude-opus-5-5","settled":{"t":10624,"snap":"95f1d05ca2"},"wall_ms":13375,"publish":"explicit","early_close":"held","order":"chain","final":{"snap":"95f1d05ca2","green":true,"perTask":{"1":[0]},"check":0,"conflicts":[]},"snapshots":1,"beliefs":0,"outcome":{"pr":"ready","why":"settled green","snap":"95f1d05ca2","t":10624},"settle_mode":"tested","debounce_ms":1000,"board_ops":4,"board_op_us_p50":45,"board_op_us_p90":822,"board":"standin","board_by_op":{"ready":{"n":1,"p50_us":822,"p90_us":822,"max_us":822},"claim":{"n":1,"p50_us":45,"p90_us":45,"max_us":45},"publish":{"n":1,"p50_us":9,"p90_us":9,"max_us":9},"done":{"n":1,"p50_us":8,"p90_us":8,"max_us":8}},"board_writes":3,"board_writes_per_s":0.22,"board_peak_writes_per_s":2,"edit_failures":{"not_unique":0,"not_found":0,"stale":0,"other":0},"tokens":{"input":10,"output":820,"cache_read":136154,"cache_write":5998},"sessions":1,"cost_usd":0.099}
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 13.698s
+CPU time consumed: 3.845s
+Memory peak: 2.1M
+Memory swap peak: 0B

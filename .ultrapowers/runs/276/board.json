@@ -1,0 +1,13 @@
+{
+ "tasks": [
+  {
+   "id": "1",
+   "title": "The README says what happens when main moves during a run",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [],
+   "notes": []
+  }
+ ],
+ "beliefs": []
+}
