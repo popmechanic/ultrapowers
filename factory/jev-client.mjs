@@ -7,7 +7,9 @@
 // The request carries NO `Authorization` header of its own: the edge injects
 // the bearer, which is the whole reason a sandbox holding no TypeSafe
 // credential at all can still be answered — and the reason no key is on disk,
-// in `argv` or in any environment the boot sets.
+// in `argv` or in any environment the boot sets. The optional `headers` is
+// for callers off the fleet (the laptop's authoring checks, which call
+// `api.typesafe.ai` directly with their own key); the fleet passes none.
 //
 // The shape is `httpTransport`'s (`fleet/kata-client.mjs`): `fetchImpl`
 // injected with `globalThis.fetch` as the default, `res.text()` and then a
@@ -51,12 +53,15 @@ const isObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v)
  * `ask({ state, questions })` resolves the reply's `answers` object, or `null`.
  * `log` is called exactly once, with a string beginning `jev:`, on each lane
  * that resolves `null` — and not at all on the lane that answers.
+ * `headers` is merged over the `content-type` header; with none, the request
+ * carries exactly `{ 'content-type': 'application/json' }`.
  */
 export const makeJevClient = ({
   baseUrl,
   fetchImpl = globalThis.fetch,
   timeoutMs = JEV_TIMEOUT_MS,
   log = () => {},
+  headers,
 } = {}) => {
   const origin = String(baseUrl == null ? '' : baseUrl).replace(/\/+$/, '')
   // One line, one `null`: the single exit every failure lane takes, so no lane
@@ -84,7 +89,7 @@ export const makeJevClient = ({
       try {
         const res = await fetchImpl(origin + JEV_PATH, {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json', ...headers },
           body,
           // Whatever the error name a rejection carries — `AbortError` from
           // this signal included — it is the network lane below.

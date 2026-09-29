@@ -35,7 +35,7 @@ import { pullScope } from './pulls.mjs'
 import { findGit } from '../gitblock.mjs'
 import { bootstrapFor } from '../commands.mjs'
 import { makeJevClient, JEV_TIMEOUT_MS } from '../jev-client.mjs'
-import { readTrial, resolveState, releaseState } from './trial_reading.mjs'
+import { readTrial, resolveState, releaseState, claimOf } from './trial_reading.mjs'
 import { mirrorBoard } from './kata_mirror.mjs'
 import { makeKataClient, httpTransport } from '../../fleet/kata-client.mjs'
 import { lastSteps, latestResults, readSteps } from './step_reading.mjs'
@@ -173,7 +173,7 @@ const readAndRecord = (clauses) => {
   if (!jev || !W.stories) return Promise.resolve()
   const all = latestResults(CHECK_OUT)
   const results = clauses ? clauses.map((c) => all.get(c)).filter(Boolean) : [...all.values()]
-  return readSteps({ ask: jev.ask, results, sentences: W.stories.sentences, question: STEP_QUESTION, emit: (row) => ev('jev:step', row), last: lastSteps(W.tasks.flatMap((t) => t.clauses || [])) })
+  return readSteps({ ask: jev.ask, results, sentences: W.stories.sentences, question: STEP_QUESTION, emit: (row) => ev('jev:step', row), last: lastSteps(W.tasks.flatMap((t) => t.clauses || [])), all })
 }
 
 // ── the engine's own git, on the target ───────────────────────────────────────
@@ -1017,8 +1017,8 @@ async function settle () {
         body: `Two agents changed the same part of \`${p}\` and the merge marked it as a conflict. Here is the merged file with the conflict sections marked (<<<<<<< begin … / ======= begin … / >>>>>>> end conflict; "left" and "right" are the two sides):\n\n\`\`\`\n${ann || '(annotation unavailable)'}\n\`\`\`\n\nYour copy holds the merged text WITHOUT the markers. Make that part of \`${p}\` say what both sides meant (edit with Edit if it does not already), run the tests, then call resolve_conflict for \`${p}\` and then done.` })
       ev('resolve-task', { path: p, snap: r.snap }); log('resolve task for', p)
       if (JEV_RESOLVE) {
-        const titles = W.tasks.filter((t) => (t.files || []).includes(p)).map((t) => t.title)
-        trial('already_joined', RESOLVE_QUESTION, resolveState({ path: p, annotated: ann, titles }), 'jev:resolve', { path: p, snap: r.snap })
+        const sides = W.tasks.filter((t) => (t.files || []).includes(p)).map((t) => ({ title: t.title, claim: claimOf(t.body) }))
+        trial('already_joined', RESOLVE_QUESTION, resolveState({ path: p, annotated: ann, sides }), 'jev:resolve', { path: p, snap: r.snap })
       }
     }
     if (W.check && r.check !== 0 && all.every((t) => (r.perTask[t.id] || []).every((x) => x === 0))) {
