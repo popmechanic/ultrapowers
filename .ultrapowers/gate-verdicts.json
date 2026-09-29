@@ -1,0 +1,97 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "4809851ca1e3c177b6dbac172eee90d857ed23e4f3a60e07c5724eea9def6377",
+   "verdict": "pass",
+   "reason": "each of M1-M5 has a tagged probe that fails if its fact is false; no base file pins the opposite"
+  },
+  "2": {
+   "hash": "c54499b1676c4226679c376f37402464835aa9eb069f68e13101e050b3b3bf64",
+   "verdict": "pass",
+   "reason": "M1-M8 each carry a tagged probe computing the absence, key set, exit or pass the Claim depends on"
+  },
+  "3": {
+   "hash": "0a65825e7f0c02f1973b12f33493d3a6b42719684e9c46cf0ebffcab08ea302c",
+   "verdict": "pass",
+   "reason": "M1-M5 each probed; the Manyana pin now reads its sha256 through hashlib (shasum is not in the sandbox)"
+  },
+  "4": {
+   "hash": "5df397ac4816827ca571d4ebd9ee802d5e0bce845d0d2d966b55e315553c0307",
+   "verdict": "pass",
+   "reason": "M1-M3 negations and presence are probed; M4 is prose for the run-time reader"
+  }
+ },
+ "tally": {
+  "dispatched": 5,
+  "rejected": 0,
+  "rounds": 2,
+  "base": "bfc3c20842d61c6c999e2c149cec1a6bf4adde97"
+ },
+ "authoring": {
+  "minutes": 55,
+  "probes": 15,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Next on the roadmap",
+    "options": [
+     "Release 0.3.41",
+     "Retire the factory",
+     "Jev audit #1336",
+     "Please explain"
+    ],
+    "recommended": "Release 0.3.41",
+    "picked": "Retire the factory",
+    "explain_rounds": 0
+   },
+   {
+    "question": "How a finished run catches up to a moved main",
+    "options": [
+     "Flock catch-up",
+     "Keep factory catch-up",
+     "Please explain"
+    ],
+    "recommended": "Flock catch-up",
+    "picked": "Flock catch-up",
+    "explain_rounds": 0
+   },
+   {
+    "question": "How much of the old merge machinery goes",
+    "options": [
+     "All factory-only code",
+     "Engine only",
+     "Please explain"
+    ],
+    "recommended": "All factory-only code",
+    "picked": "All factory-only code",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Sign",
+     "Fix a line",
+     "Please explain"
+    ],
+    "recommended": "Sign",
+    "picked": "Sign",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline",
+     "Please explain"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
