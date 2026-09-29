@@ -329,3 +329,6 @@
 {"t":389786,"kind":"parked","task":"2","reason":"red at da7256b262","ts":"2026-09-29T17:43:00.625Z"}
 {"t":389786,"kind":"parked","task":"3","reason":"red at da7256b262","ts":"2026-09-29T17:43:00.625Z"}
 {"ts":"2026-09-29T17:43:09.073Z","kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1363","number":1363,"draft":true}
+{"ts":"2026-09-29T17:43:10.710Z","kind":"board:leave","rc":0}
+{"ts":"2026-09-29T17:43:10.823Z","kind":"board:mark","what":"run","state":"parked","code":200}
+{"ts":"2026-09-29T17:43:10.858Z","kind":"run:audit","state":"parked","missing":[]}
