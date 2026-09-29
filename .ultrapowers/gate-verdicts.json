@@ -1,0 +1,53 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "002d13bbd3bd4eea15691a8693198f8c0fe9f79f400f2f9008693a60a88f8292",
+   "verdict": "pass",
+   "reason": "M1's path is pinned by a tagged grep; M2 is prose read against the hunk.",
+   "gate_rounds": [
+    {
+     "hash": "002d13bbd3bd4eea15691a8693198f8c0fe9f79f400f2f9008693a60a88f8292",
+     "agent": "pass",
+     "jev": "pass"
+    }
+   ]
+  }
+ },
+ "tally": {
+  "dispatched": 1,
+  "rejected": 0,
+  "rounds": 1,
+  "base": "8dd304745c0051696671f98e6514508ff68ebb81"
+ },
+ "authoring": {
+  "minutes": 25,
+  "probes": 0,
+  "routing": {
+   "branch": "inline",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "What next",
+    "options": [
+     "Reap, then prove catch-up",
+     "Reap, then #998 store merge",
+     "Reap, then TinyApp stories"
+    ],
+    "recommended": "Reap, then prove catch-up",
+    "picked": "Reap, then prove catch-up",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Plan B sign",
+    "options": [
+     "Sign",
+     "Fix a line"
+    ],
+    "recommended": "Sign",
+    "picked": "Sign",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
