@@ -1,0 +1,50 @@
+{"t":705,"kind":"non-text","path":"docs/assets/dag.gif","ts":"2026-09-29T06:18:10.801Z"}
+{"t":712,"kind":"non-text","path":"factory/replay/results/landing_out.jsonl.gz","ts":"2026-09-29T06:18:10.808Z"}
+{"t":766,"kind":"start","workload":"run-261","agents":"elastic","cap":16,"model":"claude-opus-5-5","clock_ms":13800000,"quiet_ms":45000,"board":"standin","publish":"explicit","early_close":"held","order":"chain","pulls":"all","chain":{"1":2,"2":1,"3":1,"4":1,"5":1,"6":1},"ts":"2026-09-29T06:18:10.862Z"}
+{"t":1531,"kind":"past","run":259,"items":0,"ts":"2026-09-29T06:18:11.627Z"}
+{"t":1590,"kind":"builder:open","agent":"A","pool":1,"ready":4,"busy":0,"ts":"2026-09-29T06:18:11.686Z"}
+{"t":1640,"kind":"builder:open","agent":"B","pool":2,"ready":4,"busy":0,"ts":"2026-09-29T06:18:11.736Z"}
+{"t":1695,"kind":"builder:open","agent":"C","pool":3,"ready":4,"busy":0,"ts":"2026-09-29T06:18:11.791Z"}
+{"t":1731,"kind":"builder:open","agent":"D","pool":4,"ready":4,"busy":0,"ts":"2026-09-29T06:18:11.827Z"}
+{"t":1779,"kind":"session:start","agent":"A","task":"1","ts":"2026-09-29T06:18:11.875Z"}
+{"t":1791,"kind":"session:start","agent":"B","task":"6","ts":"2026-09-29T06:18:11.887Z"}
+{"t":1796,"kind":"session:start","agent":"C","task":"3","ts":"2026-09-29T06:18:11.892Z"}
+{"t":1801,"kind":"session:start","agent":"D","task":"4","ts":"2026-09-29T06:18:11.897Z"}
+{"t":1868,"kind":"kata:mirror","task":"1","uid":"01M3NWXPQAQ9FBNRS3J8TEYH92","what":"claimed by A","ok":true,"ts":"2026-09-29T06:18:11.964Z"}
+{"t":1868,"kind":"kata:mirror","task":"4","uid":"01M3NWXVWGT724P4X3Q2K5S5T9","what":"claimed by D","ok":true,"ts":"2026-09-29T06:18:11.964Z"}
+{"t":1870,"kind":"kata:mirror","task":"6","uid":"01M3NWXYGVNK9GNMR9137V1EHH","what":"claimed by B","ok":true,"ts":"2026-09-29T06:18:11.966Z"}
+{"t":1886,"kind":"kata:mirror","task":"3","uid":"01M3NWXSA0JXCFWP5ZHYBYDH4F","what":"claimed by C","ok":true,"ts":"2026-09-29T06:18:11.982Z"}
+{"t":4468,"kind":"tool","agent":"A","task":"1","tool":"Bash","target":"cd skills/ultrawrite/stories/tinyapp-template && find . -type f -not -path '*/node_modules/*' | head -50 && cat package.","ts":"2026-09-29T06:18:14.564Z"}
+{"t":4559,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T06:18:14.655Z"}
+{"t":4603,"kind":"tool","agent":"C","task":"3","tool":"Bash","target":"cd skills/ultrawrite/stories/tinyapp-template; ls -R client | head -30; cat client/src/app.ts; cat client/src/pieces/ind","ts":"2026-09-29T06:18:14.699Z"}
+{"t":4664,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T06:18:14.760Z"}
+{"t":4729,"kind":"tool","agent":"D","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/D; grep -n \"PIECES\" -n skills/ultrawrite/stories/scaffold.ts; ls skills/ultrawrite/templ","ts":"2026-09-29T06:18:14.825Z"}
+{"t":4805,"kind":"tool:post","agent":"D","tool":"Bash","ts":"2026-09-29T06:18:14.901Z"}
+{"t":4813,"kind":"tool","agent":"B","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; cat skills/ultrawrite/references/greenfield-stack.md; ls .ultrapowers 2>/dev/null; gr","ts":"2026-09-29T06:18:14.909Z"}
+{"t":4894,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T06:18:14.990Z"}
+{"t":6280,"kind":"tool","agent":"A","task":"1","tool":"Bash","target":"cat .gitignore tsconfig.json server/index.ts | head -80","ts":"2026-09-29T06:18:16.376Z"}
+{"t":6319,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T06:18:16.415Z"}
+{"t":6522,"kind":"tool","agent":"C","task":"3","tool":"mcp__flock__board_read","target":"","ts":"2026-09-29T06:18:16.618Z"}
+{"t":6537,"kind":"tool:post","agent":"C","tool":"mcp__flock__board_read","ts":"2026-09-29T06:18:16.633Z"}
+{"t":7259,"kind":"tool","agent":"D","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/D; cat skills/ultrawrite/stories/scaffold.ts","ts":"2026-09-29T06:18:17.355Z"}
+{"t":7297,"kind":"tool","agent":"B","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; grep -rln \"pack-client\" . --include=*.md --include=*.ts --include=*.json 2>/dev/null ","ts":"2026-09-29T06:18:17.393Z"}
+{"t":7301,"kind":"tool:post","agent":"D","tool":"Bash","ts":"2026-09-29T06:18:17.397Z"}
+{"t":7349,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T06:18:17.445Z"}
+{"t":7425,"kind":"tool","agent":"C","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/C/skills/ultrawrite/stories/tinyapp-template; ls -la . server 2>/dev/null; cat client/in","ts":"2026-09-29T06:18:17.521Z"}
+{"t":7473,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T06:18:17.569Z"}
+{"t":9517,"kind":"tool","agent":"B","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; grep -rl \"public.json\\|pack-client\" --exclude-dir=node_modules . 2>/dev/null | head; ","ts":"2026-09-29T06:18:19.613Z"}
+{"t":10431,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T06:18:20.527Z"}
+{"t":10667,"kind":"tool","agent":"D","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/D/skills/ultrawrite/stories/scaffold.ts","ts":"2026-09-29T06:18:20.763Z"}
+{"t":10866,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T06:18:20.962Z"}
+{"t":10870,"kind":"edit","agent":"D","task":"4","tool":"Edit","path":"skills/ultrawrite/stories/scaffold.ts","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T06:18:20.966Z"}
+{"t":10904,"kind":"tool","agent":"D","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/D; ls skills/ultrawrite/stories/tinyapp-template/scripts skills/ultrawrite/stories/tinya","ts":"2026-09-29T06:18:21.000Z"}
+{"t":11616,"kind":"tool","agent":"B","task":"6","tool":"mcp__flock__board_read","target":"","ts":"2026-09-29T06:18:21.712Z"}
+{"t":11634,"kind":"tool:post","agent":"B","tool":"mcp__flock__board_read","ts":"2026-09-29T06:18:21.730Z"}
+{"t":12706,"kind":"tool","agent":"D","task":"4","tool":"mcp__flock__board_read","target":"","ts":"2026-09-29T06:18:22.802Z"}
+{"t":12719,"kind":"tool:post","agent":"D","tool":"mcp__flock__board_read","ts":"2026-09-29T06:18:22.815Z"}
+{"t":13964,"kind":"tool","agent":"B","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/B/skills/ultrawrite/stories/tinyapp-template; find . -type f | head -30; cat package.jso","ts":"2026-09-29T06:18:24.060Z"}
+{"t":14645,"kind":"tool","agent":"B","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/B/skills/ultrawrite/stories/tinyapp-template; cat server/src/index.ts; cat client/src/pi","ts":"2026-09-29T06:18:24.741Z"}
+{"t":14823,"kind":"tool","agent":"D","task":"4","tool":"mcp__flock__publish","target":"","ts":"2026-09-29T06:18:24.919Z"}
+{"t":15023,"kind":"publish","agent":"D","task":"4","ts":"2026-09-29T06:18:25.119Z"}
+{"t":15027,"kind":"tool:post","agent":"D","tool":"mcp__flock__publish","ts":"2026-09-29T06:18:25.123Z"}
+{"t":15195,"kind":"tool","agent":"D","task":"4","tool":"mcp__flock__wait_for","target":"","ts":"2026-09-29T06:18:25.291Z"}
