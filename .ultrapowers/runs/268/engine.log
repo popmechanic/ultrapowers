@@ -1,0 +1,48 @@
+Running as unit: fleet-engine-268.service; invocation ID: d0a41ddeba054218a631ea2df6a5b2d1
+[   0.8s] workload run-268, 0 agents, claude-opus-5-5, out /home/exedev/run
+[   1.7s] past: run-267 finished green
+[   1.7s] opens builder A (pool 1)
+[   1.8s] opens builder B (pool 2)
+[   1.8s] opens builder C (pool 3)
+[   1.8s] opens builder D (pool 4)
+[   1.9s] opens builder E (pool 5)
+[   1.9s] opens builder F (pool 6)
+[   2.0s] opens builder G (pool 7)
+[   2.0s] opens builder H (pool 8)
+[   2.0s] A claims task 3
+[   2.1s] B claims task 4
+[   2.1s] C claims task 5
+[   2.1s] D claims task 6
+[   2.1s] E claims task 7
+[   2.1s] F claims task 8
+[   2.1s] G claims task 1
+[   2.1s] H claims task 2
+[  11.5s] A done 3
+[  40.7s] edge 8a5fc6d88b red {"1":[1,1,1],"2":[1,1,1,1],"3":[0,0,0],"4":[1,1,1,0],"5":[1,1,1,1,0,0,0,0,0],"6":[1,1,1,0],"7":[1],"8":[1,1,1,0]} check 0 
+[  51.0s] E done 7
+[  80.8s] early close fleet/CONTRACT.md bff90c9e79 held by E
+[  80.8s] edge 3358bf626c red {"1":[1,1,1],"2":[1,1,1,1],"3":[0,0,0],"4":[1,1,1,0],"5":[1,1,1,1,0,0,0,0,0],"6":[1,1,1,0],"7":[0],"8":[1,1,1,0]} check 0 conflicts fleet/CONTRACT.md (blocking: none)
+[ 101.6s] D done 6
+[ 131.3s] edge e740e55f50 red {"1":[1,1,1],"2":[1,1,1,1],"3":[0,0,0],"4":[1,1,1,0],"5":[1,1,1,1,0,0,0,0,0],"6":[0,0,0,0],"7":[0],"8":[1,1,1,0]} check 0 conflicts fleet/CONTRACT.md (blocking: none)
+[ 143.2s] G done 1
+[ 172.3s] early close CLAUDE.md 1e4c4d923d held by G
+[ 172.3s] early close fleet/RUNBOOK.md eb52582358 held by G
+[ 172.3s] edge 9c5c42897c red {"1":[0,0,0],"2":[1,1,1,1],"3":[0,0,0],"4":[1,1,1,0],"5":[1,1,1,1,0,0,0,0,0],"6":[0,0,0,0],"7":[0],"8":[1,1,1,0]} check 0 conflicts CLAUDE.md,fleet/CONTRACT.md,fleet/RUNBOOK.md (blocking: skills/ultrawrite/SKILL.md)
+[ 280.7s] H done 2
+[ 307.3s] edge a8b3afcb93 red {"1":[0,0,0],"2":[0,0,0,0],"3":[0,0,0],"4":[1,1,1,0],"5":[1,1,1,1,0,0,0,0,0],"6":[0,0,0,0],"7":[0],"8":[1,1,1,0]} check 0 conflicts CLAUDE.md,fleet/CONTRACT.md,fleet/RUNBOOK.md (blocking: skills/ultrawrite/SKILL.md)
+[ 314.5s] C done 5
+[ 340.3s] edge b245327d2c red {"1":[0,0,0],"2":[0,0,0,0],"3":[0,0,0],"4":[1,1,1,0],"5":[0,0,0,0,0,0,0,0,0],"6":[0,0,0,0],"7":[0],"8":[1,1,1,0]} check 0 conflicts CLAUDE.md,fleet/CONTRACT.md,fleet/RUNBOOK.md (blocking: skills/ultrawrite/SKILL.md)
+[ 350.9s] B done 4
+[ 377.6s] edge 8ae5ec2105 red {"1":[0,0,0],"2":[0,0,0,0],"3":[0,0,0],"4":[0,0,0,0],"5":[0,0,0,0,0,0,0,0,0],"6":[0,0,0,0],"7":[0],"8":[1,1,1,0]} check 0 conflicts CLAUDE.md,fleet/CONTRACT.md,fleet/RUNBOOK.md (blocking: skills/ultrawrite/SKILL.md)
+[ 377.7s] F done 8
+[ 404.3s] early close skills/ultrawrite/SKILL.md eb33803783 held by F
+[ 404.3s] edge df8dfe21fb GREEN {"1":[0,0,0],"2":[0,0,0,0],"3":[0,0,0],"4":[0,0,0,0],"5":[0,0,0,0,0,0,0,0,0],"6":[0,0,0,0],"7":[0],"8":[0,0,0,0]} check 0 conflicts CLAUDE.md,fleet/CONTRACT.md,fleet/RUNBOOK.md (blocking: none)
+[ 407.2s] SETTLED on df8dfe21fb
+[ 407.2s] TERMINAL ready settled green
+[ 414.7s] summary {"workload":"run-268","agents":"elastic","builders_max":8,"cap":16,"model":"claude-opus-5-5","settled":{"t":407245,"snap":"df8dfe21fb"},"wall_ms":414472,"publish":"explicit","early_close":"held","order":"chain","final":{"snap":"df8dfe21fb","green":true,"perTask":{"1":[0,0,0],"2":[0,0,0,0],"3":[0,0,0],"4":[0,0,0,0],"5":[0,0,0,0,0,0,0,0,0],"6":[0,0,0,0],"7":[0],"8":[0,0,0,0]},"check":0,"conflicts":["CLAUDE.md","fleet/CONTRACT.md","fleet/RUNBOOK.md"]},"snapshots":8,"beliefs":6,"outcome":{"pr":"ready","why":"settled green","snap":"df8dfe21fb","t":407245},"settle_mode":"tested","debounce_ms":59452,"board_ops":466,"board_op_us_p50":5,"board_op_us_p90":16,"board":"standin","board_by_op":{"ready":{"n":436,"p50_us":5,"p90_us":16,"max_us":299945},"claim":{"n":8,"p50_us":86,"p90_us":115,"max_us":115},"publish":{"n":8,"p50_us":4,"p90_us":16,"max_us":16},"done":{"n":8,"p50_us":2,"p90_us":14,"max_us":14},"post":{"n":6,"p50_us":18,"p90_us":32,"max_us":32}},"board_writes":30,"board_writes_per_s":0.07,"board_peak_writes_per_s":8,"edit_failures":{"not_unique":0,"not_found":0,"stale":0,"other":0},"tokens":{"input":236,"output":76348,"cache_read":5441411,"cache_write":267744},"sessions":8,"cost_usd":4.854}
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 6min 55.000s
+CPU time consumed: 8min 2.808s
+Memory peak: 2.1G
+Memory swap peak: 0B

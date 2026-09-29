@@ -1,0 +1,116 @@
+{
+ "tasks": [
+  {
+   "id": "1",
+   "title": "The catch census is retired",
+   "state": "done",
+   "owner": "G",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "2",
+   "title": "The parser drops its dead fields and plan_check refuses a task the engine skips",
+   "state": "done",
+   "owner": "H",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "3",
+   "title": "A story, link or number with a malformed id is refused before compile",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "4",
+   "title": "The launcher refuses any unknown flag and ships nothing the engine no longer reads",
+   "state": "done",
+   "owner": "B",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "5",
+   "title": "The engine's factory leftovers are deleted",
+   "state": "done",
+   "owner": "C",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "6",
+   "title": "The old engine's reference docs are gone and the plugin describes the Flock",
+   "state": "done",
+   "owner": "D",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "7",
+   "title": "The contract states only what the Flock does",
+   "state": "done",
+   "owner": "E",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "8",
+   "title": "ultrawrite's own text describes the Flock",
+   "state": "done",
+   "owner": "F",
+   "depends_on": [],
+   "notes": []
+  }
+ ],
+ "beliefs": [
+  {
+   "id": 1,
+   "t": 80760,
+   "by": "host",
+   "claim": "open conflict in fleet/CONTRACT.md between published copies; whoever next works there should make it say what both sides meant and call resolve_conflict",
+   "confidence": 1
+  },
+  {
+   "id": 2,
+   "t": 132452,
+   "by": "host",
+   "claim": "open conflict in skills/ultrawrite/SKILL.md between F and D; whoever next works there should make it say what both sides meant and call resolve_conflict",
+   "confidence": 1
+  },
+  {
+   "id": 3,
+   "t": 172324,
+   "by": "host",
+   "claim": "open conflict in CLAUDE.md between published copies; whoever next works there should make it say what both sides meant and call resolve_conflict",
+   "confidence": 1
+  },
+  {
+   "id": 4,
+   "t": 172325,
+   "by": "host",
+   "claim": "open conflict in fleet/RUNBOOK.md between published copies; whoever next works there should make it say what both sides meant and call resolve_conflict",
+   "confidence": 1
+  },
+  {
+   "id": 5,
+   "t": 272344,
+   "by": "H",
+   "claim": "skills/ultrapowers/scripts/stacks.py is deleted (task 2); CLAUDE.md still lists it in `{probe_block,stories_parse,stories_check,stacks}.py` — whoever owns CLAUDE.md should drop `stacks` there.",
+   "confidence": 0.95,
+   "task": "2",
+   "about": "app"
+  },
+  {
+   "id": 6,
+   "t": 340330,
+   "by": "B",
+   "claim": "Task 4 removed the launcher's stale-**BASE facts:**-stamp refusal (fleet/compiler.mjs) and deleted pin_base_facts.py; skills/ultrawrite/SKILL.md ~line 536-538 still says such a block 'is refused with the re-pin command' — now stale prose, not in task 4's Files.",
+   "confidence": 0.9,
+   "task": "4",
+   "about": "app"
+  }
+ ]
+}
