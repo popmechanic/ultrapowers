@@ -1,0 +1,159 @@
+{"t":672,"op":"base","root":"/home/exedev/run/work/base","paths":[".claude/rules/factory.md",".claude/rules/fleet.md",".claude-plugin/marketplace.json",".claude-plugin/plugin.json",".gitignore","CLAUDE.md","README.md","docs/README.md","docs/bugs/2026-06-15-ultrapowers-command-collision.md","docs/objectives.md","evals/2026-08-09-snapshot-retirement-ab.md","evals/fixtures/claims/plan.gate-verdicts.json","evals/fixtures/claims/plan.md","evals/fixtures/stories/todo/.ultrapowers/plan.md","evals/fixtures/stories/todo/client/src/store.js","evals/fixtures/tinyapp-todo/server_no_persister.ts","evals/fixtures/tinyapp-todo/todo.ts","evals/fixtures/tinyapp-todo/todo_add_noop.ts","evals/fixtures/tinyapp-todo/todo_wrong_text.ts","evals/frontier/README.md","evals/readings/checker_kit.py","evals/results/2026-07-10-0.1.0-ab.md","evals/results/2026-07-27-96-suite-bootstrap.md","evals/results/2026-08-30-one-driver-fold-ab.md","evals/results/2026-08-31-fold-ab-width8.md","evals/results/diffs/chained-A.diff","evals/results/diffs/chained-B.diff","evals/results/diffs/contend-B.diff","evals/results/diffs/contend-big-A.diff","evals/results/diffs/contend-big-B.diff","evals/results/diffs/contend-prod-A.diff","evals/results/diffs/contend-prod-B.diff","evals/results/diffs/flawed-routing-A.diff","evals/results/diffs/flawed-routing-B.diff","evals/results/diffs/mixed-B.diff","evals/results/diffs/webapp-A.diff","evals/results/diffs/webapp-B.diff","evals/results/diffs/wide-A.diff","evals/results/diffs/wide-B.diff","evals/results/judgment-chained.json","evals/results/judgment-webapp.json","evals/results/judgment-wide.json","evals/results/runs.jsonl","factory/.gitignore","factory/audit.mjs","factory/board.mjs","factory/boot.sh","factory/commands.mjs","factory/flock/catchup.mjs","factory/flock/edit_spans.mjs","factory/flock/engine.mjs","factory/flock/flock_board.mjs","factory/flock/kata_mirror.mjs","factory/flock/past.mjs","factory/flock/plan.mjs","factory/flock/pulls.mjs","factory/flock/scope.mjs","factory/flock/step_reading.mjs","factory/flock/trial_reading.mjs","factory/flock/weave.py","factory/gitblock.mjs","factory/jev-client.mjs","factory/kata-credential.mjs","factory/package.json","factory/policy.json","factory/preflight.mjs","factory/questions.json","factory/record.mjs","factory/stack/tinyapp/browser.ts","factory/stack/tinyapp/celld.ts","factory/stack/tinyapp/check.ts","factory/stack/tinyapp/probe.ts","fleet/.gitignore","fleet/CONTRACT.md","fleet/RUNBOOK.md","fleet/board-read.mjs","fleet/claude-token.mjs","fleet/close-out.mjs","fleet/compiler.mjs","fleet/doctor.mjs","fleet/exe-verbs.json","fleet/fleet-bootstrap.sh","fleet/fleet-run@.service","fleet/janitor.mjs","fleet/kata-client.mjs","fleet/kata-file.mjs","fleet/kata-hub-setup.sh","fleet/kata-hub.mjs","fleet/kata.service","fleet/launch.mjs","fleet/lobby.mjs","fleet/plan-pins.mjs","fleet/retire.mjs","fleet/setup-script.mjs","fleet/target.mjs","fleet/tests/PROBES.md","fleet/tests/_boot_helpers.mjs","fleet/tests/_helpers.mjs","fleet/tests/_lobby_helpers.mjs","fleet/tests/fixtures/flock-tiny/base/calc.py","fleet/tests/fixtures/flock-tiny/green.json","fleet/tests/fixtures/flock-tiny/plan.md","fleet/tests/fixtures/flock-tiny/red.json","fleet/tests/fixtures/hermetic/leaky_sim.mjs","fleet/tests/flock_catchup_probe.mjs","fleet/tests/flock_delete_probe.mjs","fleet/tests/flock_jev_trials_probe.mjs","fleet/tests/probe_exe_facts.mjs","fleet/tests/probe_kata_facts.mjs","fleet/tests/test_board_read.mjs","fleet/tests/test_claude_token_refresh.mjs","fleet/tests/test_claude_token_usage.mjs","fleet/tests/test_doctor_claude.mjs","fleet/tests/test_doctor_cloudflare.mjs","fleet/tests/test_factory_board.mjs","fleet/tests/test_factory_boot.mjs","fleet/tests/test_factory_preflight.mjs","fleet/tests/test_factory_publish.mjs","fleet/tests/test_factory_record.mjs","fleet/tests/test_factory_worker_gitblock.mjs","fleet/tests/test_flock_scope.mjs","fleet/tests/test_jev_client.mjs","fleet/tests/test_launch_credential.mjs","fleet/tests/test_launch_duplicate.mjs","fleet/tests/test_launch_one_engine.mjs","fleet/tests/test_launch_plan_path.mjs","fleet/tests/test_launch_probe_runners.mjs","fleet/tests/test_launch_stories_grammar.mjs","fleet/tests/test_probe_exe_facts.mjs","fleet/tests/test_probe_kata_facts.mjs","fleet/tests/test_sims_are_hermetic.mjs","fleet/toolchain.mjs","hooks/hooks.json","hooks/keep_working.sh","hooks/session_start.sh","pytest.ini","skills/ultrapowers/SKILL.md","skills/ultrapowers/kernel/__init__.py","skills/ultrapowers/kernel/vendor/PROVENANCE.md","skills/ultrapowers/kernel/vendor/manyana.py","skills/ultrapowers/references/first-run.md","skills/ultrapowers/scripts/plan_check.py","skills/ultrapowers/scripts/plan_parse.py","skills/ultrapowers/scripts/probe_block.py","skills/ultrapowers/scripts/run_probes.py","skills/ultrapowers/scripts/stories_check.py","skills/ultrapowers/scripts/stories_parse.py","skills/ultrapowers/scripts/validate_skill.py","skills/ultrawrite/SKILL.md","skills/ultrawrite/catalog/todo/cards.json","skills/ultrawrite/catalog/todo/page.json","skills/ultrawrite/catalog/todo/product.json","skills/ultrawrite/catalog/todo/store.js","skills/ultrawrite/catalog/todo-tags/cards.json","skills/ultrawrite/catalog/todo-tags/page.json","skills/ultrawrite/catalog/todo-tags/product.json","skills/ultrawrite/catalog/todo-tags/store.js","skills/ultrawrite/references/authoring-gotchas.md","skills/ultrawrite/references/enrich.md","skills/ultrawrite/references/greenfield-stack.md","skills/ultrawrite/scripts/authoring_census.py","skills/ultrawrite/scripts/check_provenance.py","skills/ultrawrite/scripts/extract_gate_input.py","skills/ultrawrite/stories/bundle.ts","skills/ultrawrite/stories/checks.ts","skills/ultrawrite/stories/compile.ts","skills/ultrawrite/stories/jev_checks.ts","skills/ultrawrite/stories/notebook.ts","skills/ultrawrite/stories/policy.json","skills/ultrawrite/stories/product.ts","skills/ultrawrite/stories/questions.json","skills/ultrawrite/stories/scaffold.ts","skills/ultrawrite/stories/tinyapp-template/.gitignore","skills/ultrawrite/stories/tinyapp-template/client/index.html","skills/ultrawrite/stories/tinyapp-template/client/src/app.ts","skills/ultrawrite/stories/tinyapp-template/client/src/public.ts","skills/ultrawrite/stories/tinyapp-template/package.json","skills/ultrawrite/stories/tinyapp-template/scripts/pack-client.ts","skills/ultrawrite/stories/tinyapp-template/server/client-files.ts","skills/ultrawrite/stories/tinyapp-template/server/index.ts","skills/ultrawrite/stories/tinyapp-template/server/wrangler.jsonc","skills/ultrawrite/stories/tinyapp-template/tsconfig.json","tests/conftest.py","tests/fixtures/plans/2026-09-01-511-attempt-racing.gate-verdicts.json","tests/fixtures/plans/2026-09-01-511-attempt-racing.md","tests/fixtures/plans/2026-09-02-papercut-drain-2.gate-verdicts.json","tests/fixtures/plans/2026-09-02-papercut-drain-2.md","tests/fixtures/plans/2026-09-07/2026-09-07-acceptance-log-on-the-record.md","tests/fixtures/plans/2026-09-07/2026-09-07-boot-pipelines-survive-sigpipe.md","tests/fixtures/plans/2026-09-07/2026-09-07-evidence-page-per-phase.md","tests/fixtures/plans/2026-09-07/2026-09-07-publish-decisions-as-events.md","tests/fixtures/plans/2026-09-07/2026-09-07-retire-closed-unmerged-branches.md","tests/fixtures/plans/2026-09-07/2026-09-07-retire-skips-live-runs.md","tests/test_authoring_census.py","tests/test_extract_gate_input.py","tests/test_fleet_suite.py","tests/test_keep_working_hook.py","tests/test_plan_check.py","tests/test_plan_parse.py","tests/test_probe_block.py","tests/test_stories_check.py","tests/test_stories_parse.py","tests/test_vendor_pin.py"]}
+{"t":1748,"op":"pull","agent":"A"}
+{"t":1749,"op":"pull","agent":"B"}
+{"t":1750,"op":"pull","agent":"C"}
+{"t":1750,"op":"pull","agent":"D"}
+{"t":1751,"op":"pull","agent":"E"}
+{"t":4770,"op":"pull","agent":"D"}
+{"t":5306,"op":"pull","agent":"C"}
+{"t":5591,"op":"pull","agent":"B"}
+{"t":6139,"op":"pull","agent":"A"}
+{"t":6834,"op":"pull","agent":"D"}
+{"t":7182,"op":"pull","agent":"E"}
+{"t":8549,"op":"pull","agent":"C"}
+{"t":9969,"op":"pull","agent":"A"}
+{"t":10212,"op":"pull","agent":"E"}
+{"t":10228,"op":"pull","agent":"D"}
+{"t":11723,"op":"pull","agent":"C"}
+{"t":12313,"op":"pull","agent":"B"}
+{"t":12340,"op":"edit","agent":"A","path":"factory/record.mjs","vstart":62,"vend":63,"lines":["export function readEventRows (eventsPath) {"]}
+{"t":13936,"op":"edit","agent":"A","path":"factory/record.mjs","vstart":221,"vend":230,"lines":["function jevStepLines (rows) {","  const last = new Map()","  for (const row of rows) {","    if (row && row.kind === 'jev:step' && typeof row.clause === 'string') last.set(row.clause, row)"]}
+{"t":14637,"op":"pull","agent":"B"}
+{"t":16083,"op":"edit","agent":"A","path":"factory/record.mjs","vstart":237,"vend":246,"lines":["function draftReasonLines (rows) {","  let term = null","  const stalls = []","  for (const row of rows) {","    if (!row) continue"]}
+{"t":16108,"op":"pull","agent":"E"}
+{"t":16498,"op":"pull","agent":"D"}
+{"t":17840,"op":"edit","agent":"A","path":"factory/record.mjs","vstart":265,"vend":269,"lines":["  const events = eventsPath ? readEventRows(eventsPath) : []","  const draft = draftReasonLines(events)","  for (const line of draft) out += line + '\\n'","  if (draft.length) out += '\\n'","  const readings = jevStepLines(events)"]}
+{"t":17858,"op":"pull","agent":"A"}
+{"t":18493,"op":"pull","agent":"C"}
+{"t":18524,"op":"edit","agent":"B","path":"fleet/lobby.mjs","vstart":42,"vend":45,"lines":["/** `owner/repo`: exactly one slash, each half a git-safe name that starts and"," *  ends with a letter or digit — the only shape that may be interpolated into"," *  an ssh string, so `..` and a dot-led half are refused. */","const TARGET = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?\\/[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/","export const isSafeTarget = (value) => typeof value === 'string' && TARGET.test(value)"]}
+{"t":20395,"op":"edit","agent":"B","path":"fleet/lobby.mjs","vstart":156,"vend":156,"lines":["/** The lobby-verb record: the flag set per lobby verb, captured from the live"," *  lobby and committed beside this file. `VERBS_RECORD` is how a message names it. */","export const VERBS_RECORD = 'fleet/exe-verbs.json'","export const VERBS_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'exe-verbs.json')"]}
+{"t":21321,"op":"pull","agent":"A"}
+{"t":21357,"op":"edit","agent":"B","path":"fleet/lobby.mjs","vstart":37,"vend":37,"lines":["import { fileURLToPath } from 'node:url'"]}
+{"t":21371,"op":"pull","agent":"B"}
+{"t":21397,"op":"pull","agent":"C"}
+{"t":23839,"op":"edit","agent":"A","path":"factory/record.mjs","vstart":206,"vend":209,"lines":["function landingRowLines (rows) {"]}
+{"t":24102,"op":"pull","agent":"A"}
+{"t":24350,"op":"edit","agent":"B","path":"fleet/doctor.mjs","vstart":30,"vend":31,"lines":[" *   verb-drift    `help <verb>` for every verb in the verb record, and"]}
+{"t":26092,"op":"edit","agent":"B","path":"fleet/doctor.mjs","vstart":69,"vend":69,"lines":["  VERBS_PATH,","  VERBS_RECORD,","  isSafeTarget,"]}
+{"t":26144,"op":"rewrite","agent":"D","path":"factory/flock/plan.mjs","content_sha1":"08f44407063a32a902415392d2c40e70c8096549","content_bytes":2881}
+{"t":26185,"op":"rewrite","agent":"D","path":"skills/ultrapowers/scripts/plan_parse.py","content_sha1":"0ceaba047bfdb4ef62991ecd4f6b732a0162823e","content_bytes":29426}
+{"t":26209,"op":"rewrite","agent":"D","path":"skills/ultrapowers/scripts/stories_parse.py","content_sha1":"39a10597595de76dbec9c5ee2c75bc5a45240e2e","content_bytes":7290}
+{"t":26238,"op":"pull","agent":"D"}
+{"t":26727,"op":"pull","agent":"C"}
+{"t":26730,"op":"edit","agent":"A","path":"factory/record.mjs","vstart":256,"vend":257,"lines":["  const events = eventsPath ? readEventRows(eventsPath) : []","  const rows = landingRowLines(events)"]}
+{"t":27721,"op":"edit","agent":"A","path":"factory/record.mjs","vstart":264,"vend":265,"lines":[]}
+{"t":27731,"op":"pull","agent":"A"}
+{"t":27777,"op":"edit","agent":"B","path":"fleet/doctor.mjs","vstart":94,"vend":99,"lines":[]}
+{"t":29188,"op":"edit","agent":"B","path":"fleet/doctor.mjs","vstart":130,"vend":133,"lines":[]}
+{"t":30372,"op":"edit","agent":"C","path":"skills/ultrapowers/scripts/plan_check.py","vstart":288,"vend":292,"lines":[]}
+{"t":30503,"op":"pull","agent":"D"}
+{"t":31009,"op":"edit","agent":"B","path":"fleet/doctor.mjs","vstart":598,"vend":600,"lines":[" * Re-fetch `help <verb>` for every verb of the verb record (`VERBS_PATH`, or"," * `recordPath` so an exam drives the row from a fixture) and diff the live"," * flag set against the recorded one."]}
+{"t":31051,"op":"edit","agent":"C","path":"skills/ultrapowers/scripts/plan_check.py","vstart":296,"vend":297,"lines":["        for t in tasks if not plan_parse._is_implementation(t[\"type\"])]"]}
+{"t":32174,"op":"edit","agent":"C","path":"skills/ultrapowers/scripts/plan_check.py","vstart":321,"vend":322,"lines":["            if not plan_parse._is_implementation(t[\"type\"]):"]}
+{"t":32932,"op":"edit","agent":"B","path":"fleet/doctor.mjs","vstart":613,"vend":619,"lines":["  const target = recordPath ?? VERBS_PATH","  const unreadable = (why) => ({","    readable: false,","    capturedAt: null,","    findings: [],","    detail: `${VERBS_RECORD} ${why} — re-capture it from ssh exe.dev \"help <verb>\" output`"]}
+{"t":32971,"op":"pull","agent":"D"}
+{"t":33210,"op":"edit","agent":"A","path":"factory/record.mjs","vstart":278,"vend":289,"lines":["/** `publish.<key>` off the policy file at `policyPath`, when it is an object"," *  carrying an `enabled` key; a missing file, unparseable JSON, or any other"," *  shape reads as `null`, so each caller fails closed to disabled. */","function readPublishCell (policyPath, key) {","  let doc","  try {","    doc = JSON.parse(readFileSync(policyPath, 'utf8'))","  } catch {","    return null","  }","  const cell = doc && typeof doc === 'object' ? doc.publish && doc.publish[key] : undefined","  if (!cell || typeof cell !== 'object' || Array.isArray(cell) || !Object.prototype.hasOwnProperty.call(cell, 'enabled')) {","    return null","  }","  return cell","}","","export function renderPolicy (policyPath) {","  const sm = readPublishCell(policyPath, 'self_merge')","  if (!sm) return '0 3 120'"]}
+{"t":34085,"op":"edit","agent":"B","path":"fleet/doctor.mjs","vstart":669,"vend":670,"lines":["    ? `${names.length} verbs match ${VERBS_RECORD} (captured ${capturedAt})`"]}
+{"t":34100,"op":"edit","agent":"C","path":"skills/ultrapowers/scripts/plan_check.py","vstart":894,"vend":895,"lines":["        if not plan_parse._is_implementation(t[\"type\"]):"]}
+{"t":35320,"op":"pull","agent":"E"}
+{"t":35340,"op":"edit","agent":"B","path":"fleet/doctor.mjs","vstart":854,"vend":855,"lines":["  if (want !== null && !isSafeTarget(want)) {"]}
+{"t":35379,"op":"pull","agent":"B"}
+{"t":35504,"op":"edit","agent":"C","path":"skills/ultrapowers/scripts/plan_check.py","vstart":838,"vend":841,"lines":["    mis-pair BACKTICK_PATH_RE) and the Files bullets.\"\"\"","    return [line for line in task[\"body\"].splitlines()","            if not plan_parse._FENCE_RE.match(line.strip())"]}
+{"t":35543,"op":"edit","agent":"A","path":"factory/record.mjs","vstart":310,"vend":320,"lines":["  const probe = readPublishCell(policyPath, 'probe')","  if (!probe) return '0 600'"]}
+{"t":35562,"op":"pull","agent":"A"}
+{"t":36436,"op":"edit","agent":"C","path":"skills/ultrapowers/scripts/plan_check.py","vstart":878,"vend":879,"lines":["    for tok in plan_parse.BACKTICK_PATH_RE.findall(machine_restatement(t[\"claim\"])):"]}
+{"t":36945,"op":"pull","agent":"B"}
+{"t":37699,"op":"edit","agent":"C","path":"skills/ultrapowers/scripts/plan_check.py","vstart":811,"vend":812,"lines":[]}
+{"t":37819,"op":"pull","agent":"A"}
+{"t":38035,"op":"pull","agent":"D"}
+{"t":38284,"op":"edit","agent":"C","path":"skills/ultrapowers/scripts/plan_check.py","vstart":57,"vend":58,"lines":[]}
+{"t":39540,"op":"edit","agent":"C","path":"skills/ultrawrite/scripts/extract_gate_input.py","vstart":55,"vend":56,"lines":[]}
+{"t":39559,"op":"edit","agent":"B","path":"fleet/launch.mjs","vstart":16,"vend":17,"lines":[" *      `help <verb>` for every verb of the verb record — a drift there"]}
+{"t":40682,"op":"edit","agent":"A","path":"factory/record.mjs","vstart":274,"vend":278,"lines":[]}
+{"t":40700,"op":"edit","agent":"B","path":"fleet/launch.mjs","vstart":62,"vend":62,"lines":["  VERBS_PATH,","  VERBS_RECORD,"]}
+{"t":40740,"op":"edit","agent":"C","path":"skills/ultrawrite/scripts/extract_gate_input.py","vstart":60,"vend":61,"lines":["    BACKTICK_PATH_RE as PATH_RE,","    CLAIMS_GRAMMAR,","    FILE_BULLET,"]}
+{"t":41137,"op":"pull","agent":"D"}
+{"t":41378,"op":"pull","agent":"E"}
+{"t":41856,"op":"edit","agent":"C","path":"skills/ultrawrite/scripts/extract_gate_input.py","vstart":81,"vend":82,"lines":[]}
+{"t":42297,"op":"edit","agent":"A","path":"factory/record.mjs","vstart":291,"vend":291,"lines":["/** `policy <policy.json>` — `<enabled> <max_refolds> <mergeable_wait_seconds>`"," *  off `publish.self_merge`; a missing file, unparseable JSON, or a"," *  `self_merge` that is not an object carrying an `enabled` key reads as"," *  disabled, never a default a broken read falls into. */"]}
+{"t":42311,"op":"pull","agent":"A"}
+{"t":42430,"op":"edit","agent":"C","path":"skills/ultrawrite/scripts/extract_gate_input.py","vstart":134,"vend":135,"lines":["        m = FILE_BULLET.match(line.strip())"]}
+{"t":42438,"op":"pull","agent":"C"}
+{"t":43360,"op":"rewrite","agent":"E","path":"fleet/tests/_lobby_helpers.mjs","content_sha1":"c991e1a8bdd6fb3edc2e75d6eec423c3627e9b92","content_bytes":11325}
+{"t":43433,"op":"rewrite","agent":"E","path":"fleet/tests/test_launch_duplicate.mjs.new","content_sha1":"98b880dd8a8ce135340ee2562b9a9d728c83ff45","content_bytes":13060}
+{"t":43437,"op":"rewrite","agent":"E","path":"fleet/tests/test_launch_one_engine.mjs.new","content_sha1":"fcd915099591c5fc847bc668dea63ea94c1cbddd","content_bytes":14609}
+{"t":43440,"op":"rewrite","agent":"E","path":"fleet/tests/test_launch_plan_path.mjs.new","content_sha1":"8e497f34d0039878211013bfca6dc338505f8db9","content_bytes":11817}
+{"t":43566,"op":"edit","agent":"D","path":"tests/test_plan_parse.py","vstart":41,"vend":42,"lines":["               \"proofRunClauses\", \"interfaces\", \"body\"}"]}
+{"t":43970,"op":"pull","agent":"A"}
+{"t":43989,"op":"rewrite","agent":"E","path":"fleet/tests/test_launch_duplicate.mjs.new","content":null}
+{"t":47172,"op":"pull","agent":"C"}
+{"t":47437,"op":"rewrite","agent":"E","path":"fleet/tests/test_launch_one_engine.mjs.new","content":null}
+{"t":47467,"op":"pull","agent":"A"}
+{"t":47476,"op":"edit","agent":"B","path":"fleet/launch.mjs","vstart":119,"vend":122,"lines":[]}
+{"t":47677,"op":"rewrite","agent":"E","path":"fleet/tests/test_launch_plan_path.mjs.new","content":null}
+{"t":47691,"op":"pull","agent":"E"}
+{"t":47723,"op":"edit","agent":"B","path":"fleet/launch.mjs","vstart":775,"vend":776,"lines":["      detail: `${VERBS_RECORD} could not be compared against the lobby: ${error?.message ?? error}`"]}
+{"t":47748,"op":"pull","agent":"B"}
+{"t":48934,"op":"pull","agent":"A"}
+{"t":49138,"op":"pull","agent":"B"}
+{"t":53136,"op":"publish","agent":"C"}
+{"t":53159,"op":"pull","agent":"C"}
+{"t":88886,"op":"edit","agent":"A","path":"factory/audit.mjs","vstart":16,"vend":17,"lines":["import { readEventRows } from './record.mjs'"]}
+{"t":88886,"op":"edit","agent":"B","path":"fleet/launch.mjs","vstart":92,"vend":92,"lines":["import { ACCOUNT_RE } from './claude-token.mjs'"]}
+{"t":88891,"op":"pull","agent":"D"}
+{"t":89297,"op":"pull","agent":"E"}
+{"t":89838,"op":"edit","agent":"B","path":"fleet/launch.mjs","vstart":110,"vend":116,"lines":[" * `ACCOUNT_RE` is `fleet/claude-token.mjs`'s own rule, imported: the launcher"," * refuses a name the credential tool would refuse, and it refuses it before"," * anything is executed."," */","const DEFAULT_ACCOUNT = 'ultrapowers'"]}
+{"t":89838,"op":"edit","agent":"A","path":"factory/audit.mjs","vstart":94,"vend":118,"lines":[]}
+{"t":90065,"op":"edit","agent":"A","path":"factory/audit.mjs","vstart":102,"vend":103,"lines":["  const rows = eventsPath ? readEventRows(eventsPath) : []"]}
+{"t":90068,"op":"pull","agent":"B"}
+{"t":90072,"op":"pull","agent":"A"}
+{"t":92483,"op":"edit","agent":"B","path":"fleet/launch.mjs","vstart":558,"vend":559,"lines":["      `launch: --account must be a name matching ${ACCOUNT_RE.source}, got ${JSON.stringify(opts.account === true ? null : opts.account)}`"]}
+{"t":92497,"op":"edit","agent":"B","path":"fleet/launch.mjs","vstart":556,"vend":557,"lines":["  if (opts.account !== undefined && (opts.account === true || !ACCOUNT_RE.test(opts.account))) {"]}
+{"t":92517,"op":"pull","agent":"D"}
+{"t":93357,"op":"pull","agent":"E"}
+{"t":93825,"op":"edit","agent":"B","path":"fleet/claude-token.mjs","vstart":100,"vend":101,"lines":["export const ACCOUNT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/"]}
+{"t":94382,"op":"edit","agent":"A","path":"factory/boot.sh","vstart":163,"vend":164,"lines":["  for f in \"${ENGINE_EVIDENCE[@]}\"; do"]}
+{"t":94603,"op":"edit","agent":"B","path":"fleet/claude-token.mjs","vstart":202,"vend":203,"lines":["      const r = spawnSync('ssh', [EXE_HOST, verb], { encoding: 'utf8', input })"]}
+{"t":96075,"op":"edit","agent":"A","path":"factory/boot.sh","vstart":170,"vend":171,"lines":["  for p in status.json events.jsonl engine.log summary.json publish.json publish-deploy.log publish-verify.log publish-rollback.log \"${ENGINE_EVIDENCE[@]}\"; do"]}
+{"t":96436,"op":"rewrite","agent":"D","path":"factory/package-lock.json","content_sha1":"d8500ecbe4b1f6669a151d10ec284a1f41d97a19","content_bytes":52358}
+{"t":96441,"op":"publish","agent":"D"}
+{"t":96463,"op":"pull","agent":"D"}
+{"t":133071,"op":"edit","agent":"A","path":"factory/boot.sh","vstart":156,"vend":156,"lines":["# The engine's own evidence files, named once: collect_evidence copies them and evidence_commit adds them.","ENGINE_EVIDENCE=(board-ops.json board.json weave-ops.digest.jsonl snapshots.jsonl snapshot-texts.json red-checks.json past.json)"]}
+{"t":133073,"op":"edit","agent":"E","path":"fleet/tests/test_launch_credential.mjs","vstart":128,"vend":178,"lines":["const SEED = { 'README.md': '# target\\n', 'src/app.js': 'export const x = 1\\n' }","const PLAN = '# a plan\\n\\nOne plan, and a trailing newline.\\n'",""]}
+{"t":133083,"op":"edit","agent":"B","path":"fleet/claude-token.mjs","vstart":307,"vend":311,"lines":["  const verb = `ls '${FLEET_PATTERN}' --json`","  const r = deps.lobby(verb)","  if (r.code !== 0) throw new Error(`${EXE_HOST} ${verb} failed (exit ${r.code}):\\n${r.out}`)","  let payload","  try { payload = JSON.parse(r.out) } catch { throw new Error(`${verb} was not JSON:\\n${String(r.out).slice(0, 300)}`) }"]}
+{"t":133093,"op":"pull","agent":"A"}
+{"t":134037,"op":"edit","agent":"E","path":"fleet/tests/test_launch_credential.mjs","vstart":150,"vend":155,"lines":["","const readRules = ({ repo }) => [","  engineRule(ENGINE),"]}
+{"t":134046,"op":"edit","agent":"B","path":"fleet/claude-token.mjs","vstart":56,"vend":56,"lines":["","import { EXE_HOST, FLEET_PATTERN } from './lobby.mjs'"]}
+{"t":134061,"op":"pull","agent":"B"}
+{"t":134944,"op":"edit","agent":"E","path":"fleet/tests/test_launch_credential.mjs","vstart":73,"vend":74,"lines":["  BILLING_OK, COMPILER_FETCH, NEW_OK, NO_NETWORK_GIT, NO_REMOTE_OPS, ONE_TASK,","  answer, cleanup, cmdRule, engineRule, localRemote, makeExec, makeTargetRepo, pointAtOrigin, sshRule, tempDir,","  thrown, vmsPayload"]}
+{"t":134972,"op":"pull","agent":"E"}
+{"t":142641,"op":"pull","agent":"A"}
+{"t":143523,"op":"pull","agent":"B"}
+{"t":145287,"op":"pull","agent":"A"}
+{"t":147528,"op":"pull","agent":"A"}
+{"t":149854,"op":"pull","agent":"B"}
+{"t":151034,"op":"pull","agent":"A"}
+{"t":153873,"op":"edit","agent":"E","path":"fleet/tests/test_launch_duplicate.mjs","vstart":69,"vend":128,"lines":["// ── The seam's rules (the shared ones live in _lobby_helpers.mjs) ───────────",""]}
+{"t":161835,"op":"publish","agent":"A"}
+{"t":161842,"op":"pull","agent":"B"}
+{"t":163049,"op":"pull","agent":"A"}
+{"t":199907,"op":"edit","agent":"E","path":"fleet/tests/test_launch_duplicate.mjs","vstart":99,"vend":100,"lines":["  engineRule(ENGINE),"]}
+{"t":200101,"op":"pull","agent":"B"}
+{"t":201242,"op":"edit","agent":"E","path":"fleet/tests/test_launch_duplicate.mjs","vstart":47,"vend":50,"lines":["import { EXE_HOST, Refusal } from '../lobby.mjs'","import {","  BILLING_OK, COMPILER_FETCH, NEW_OK, NO_NETWORK_GIT, NO_REMOTE_OPS, ONE_TASK,","  answer, cleanup, cmdRule, engineRule, localRemote, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmRow,","  vmsPayload"]}
+{"t":201420,"op":"edit","agent":"E","path":"fleet/tests/test_launch_duplicate.mjs","vstart":60,"vend":61,"lines":[]}
+{"t":201436,"op":"pull","agent":"E"}
+{"t":204228,"op":"publish","agent":"B"}
+{"t":204251,"op":"pull","agent":"B"}
+{"t":240851,"op":"edit","agent":"E","path":"fleet/tests/test_launch_one_engine.mjs","vstart":61,"vend":118,"lines":["const SEED = { 'README.md': '# target\\n', 'src/app.js': 'export const x = 1\\n' }","const PLAN = '# a plan\\n\\nOne plan, and a trailing newline.\\n'","","// ── The seam's rules (the shared ones live in _lobby_helpers.mjs) ───────────",""]}
+{"t":240997,"op":"edit","agent":"E","path":"fleet/tests/test_launch_one_engine.mjs","vstart":79,"vend":80,"lines":["  engineRule(ENGINE),"]}
+{"t":241135,"op":"edit","agent":"E","path":"fleet/tests/test_launch_one_engine.mjs","vstart":50,"vend":53,"lines":["import { EXE_HOST, Refusal } from '../lobby.mjs'","import {","  BILLING_OK, COMPILER_FETCH, NEW_OK, NO_NETWORK_GIT, NO_REMOTE_OPS, ONE_TASK,","  answer, cleanup, cmdRule, engineRule, localRemote, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmsPayload"]}
+{"t":241153,"op":"pull","agent":"E"}
+{"t":254494,"op":"edit","agent":"E","path":"fleet/tests/test_launch_plan_path.mjs","vstart":57,"vend":114,"lines":["const SEED = { 'README.md': '# target\\n', 'src/app.js': 'export const x = 1\\n' }","const PLAN = '# a plan\\n\\nOne plan, and a trailing newline.\\n'","","// ── The seam's rules (the shared ones live in _lobby_helpers.mjs) ───────────",""]}
+{"t":255954,"op":"edit","agent":"E","path":"fleet/tests/test_launch_plan_path.mjs","vstart":75,"vend":76,"lines":["  engineRule(ENGINE),"]}
+{"t":257849,"op":"edit","agent":"E","path":"fleet/tests/test_launch_plan_path.mjs","vstart":45,"vend":48,"lines":["import { Refusal } from '../lobby.mjs'","import {","  BILLING_OK, COMPILER_FETCH, NEW_OK, NO_NETWORK_GIT, NO_REMOTE_OPS, ONE_TASK,","  answer, cleanup, cmdRule, engineRule, localRemote, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmsPayload"]}
+{"t":257861,"op":"pull","agent":"E"}
+{"t":266843,"op":"pull","agent":"E"}
+{"t":271577,"op":"edit","agent":"E","path":"fleet/tests/_lobby_helpers.mjs","vstart":3,"vend":4,"lines":[" * Two pieces, and the launch sims' shared rig (at the bottom):"]}
+{"t":274597,"op":"pull","agent":"E"}
+{"t":282490,"op":"publish","agent":"E"}
+{"t":282514,"op":"pull","agent":"E"}

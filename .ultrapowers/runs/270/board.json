@@ -1,0 +1,53 @@
+{
+ "tasks": [
+  {
+   "id": "1",
+   "title": "The parser gives each task its body, and the engine stops re-reading the plan",
+   "state": "done",
+   "owner": "D",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "2",
+   "title": "The launch sims share one rig",
+   "state": "done",
+   "owner": "E",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "3",
+   "title": "The record reads its event log once and its policy cells one way, and the boot names its evidence once",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "4",
+   "title": "The fleet's target, verb-record and account rules live once",
+   "state": "done",
+   "owner": "B",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "5",
+   "title": "The laptop's plan tools take the parser's rules",
+   "state": "done",
+   "owner": "C",
+   "depends_on": [],
+   "notes": []
+  }
+ ],
+ "beliefs": [
+  {
+   "id": 1,
+   "t": 163017,
+   "by": "host",
+   "claim": "open conflict in factory/record.mjs between B and A; whoever next works there should make it say what both sides meant and call resolve_conflict",
+   "confidence": 1
+  }
+ ]
+}
