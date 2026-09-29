@@ -25,13 +25,13 @@
   },
   "flock": {
     "pulls": {
-      "mode": "all",
-      "n": 0,
-      "window": "none",
-      "basis": "judgment",
+      "mode": "narrow",
+      "n": 1,
+      "window": "run-268",
+      "basis": "run-268: 15 conflict-marked pulls, 13 of them to builders whose task never touched the file",
       "experiment": true,
       "rollback": "mode = all",
-      "unread": "narrow pulls (#1292): cache reads and wall per run against the round-3 arm"
+      "unread": "the conflict-marked pull notes each builder got in files outside its own task, and run cost, over the 5 trial runs against runs 268–272 (operator review decision 2, 2026-09-29)"
     },
     "jev_step": {
       "mode": "record",

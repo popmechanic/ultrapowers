@@ -30,8 +30,9 @@
  *       the token, checked with the task's own `Run:` guard.
  *
  * (a)-(c) drive `doctor({ config, exec, configKeys, account })` in-process,
- * over a stub `exec` keyed on the exact command string for every other read
- * `doctor()` issues (read straight off `fleet/doctor.mjs`'s own `READS` and
+ * over a stub `exec(cmd, argv)` keyed on the call's command and argv (joined
+ * by spaces) for every other read `doctor()` issues (its `ssh exe.dev
+ * <remote>` reads, read straight off `fleet/doctor.mjs`'s own `READS` and
  * `policyRead`/`policyNames`), answering `integrations list --json` with a
  * `claude-max` entry that carries the bearer (so the `claude` row's `status`
  * is `ok` before this read exists) and everything unmatched — including every
@@ -68,25 +69,33 @@ const LIST_STDOUT = JSON.stringify([
   { name: 'claude-max', config_summary: 'Authorization:Bearer xyz' }
 ])
 
+/** One call on the seam `exec(cmd, argv)`, as the stub keys and records it:
+ *  the command and its argv joined by spaces. */
+const keyOf = (cmd, argv = []) => [cmd, ...argv].join(' ')
+/** A lobby read, `exec('ssh', ['exe.dev', remote])`, as the stub keys it. */
+const lobbyKey = (remote) => keyOf('ssh', ['exe.dev', remote])
+
 const KNOWN = new Map([
-  ['ssh exe.dev whoami', { code: 1, stdout: '' }],
-  ['ssh exe.dev "billing plan --json"', { code: 1, stdout: '' }],
-  ['ssh exe.dev "integrations list --json"', { code: 0, stdout: LIST_STDOUT }],
-  ['ssh exe.dev "integrations setup github --list"', { code: 1, stdout: '' }],
-  ['ssh exe.dev "integrations policy get claude-max --json"', { code: 1, stdout: '' }],
-  ['ssh exe.dev "integrations policy get kata --json"', { code: 1, stdout: '' }],
-  ['ssh exe.dev "ls kata-hub --json"', { code: 1, stdout: '' }]
+  [lobbyKey('whoami'), { code: 1, stdout: '' }],
+  [lobbyKey('billing plan --json'), { code: 1, stdout: '' }],
+  [lobbyKey('integrations list --json'), { code: 0, stdout: LIST_STDOUT }],
+  [lobbyKey('integrations setup github --list'), { code: 1, stdout: '' }],
+  [lobbyKey('integrations policy get claude-max --json'), { code: 1, stdout: '' }],
+  [lobbyKey('integrations policy get kata --json'), { code: 1, stdout: '' }],
+  [lobbyKey('ls kata-hub --json'), { code: 1, stdout: '' }]
 ])
 
 /**
- * Builds an `exec` stub recording every command it is asked, answering the
- * known reads above, answering any command containing `usage --json` with
- * `usageAnswer`, and answering everything else — the token/accounts reads and
- * every `verb-drift` `help <verb>` read included — with `{ code: 1, stdout: '' }`.
+ * Builds an `exec(cmd, argv)` stub recording every call it is asked (as
+ * `keyOf`), answering the known reads above, answering any call containing
+ * `usage --json` with `usageAnswer`, and answering everything else — the
+ * token/accounts reads and every `verb-drift` `help <verb>` read included —
+ * with `{ code: 1, stdout: '' }`.
  */
 function makeExec (usageAnswer) {
   const calls = []
-  const exec = async (cmd) => {
+  const exec = async (command, argv) => {
+    const cmd = keyOf(command, argv)
     calls.push(cmd)
     if (KNOWN.has(cmd)) return KNOWN.get(cmd)
     if (cmd.includes('usage --json')) return usageAnswer

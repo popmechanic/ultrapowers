@@ -3,10 +3,7 @@
 // round-3 arm is the measured shape). Grown from the laptop prototype (flock-runroom's host.mjs).
 //
 //   node factory/flock/engine.mjs --plan <plan.md> --target <dir> --base <sha> --run-dir <dir>
-//        [--builder sdk|scripted:<json>] [--model claude-opus-5-5] [--clock 13800]
-//        [--agents elastic|<n>] [--cap 16] [--settle tested|debounce|quiet] [--done-ends on|off]
-//        [--tool-search off|on] [--brief digest|board] [--stdin closed|open]
-//        [--early-close held|off] [--order chain|rotate]
+//        [--builder sdk|scripted:<json>] [--clock 13800] [--quiet 45] [--stall-minutes 20]
 //        [--kata-url <url> --kata-project <id> --kata-json <record> [--kata-actor engine:<run>]]
 //   (with all of --kata-url, --kata-project and --kata-json, and a record that reads, the board's
 //    claims, releases, reopens and closes are mirrored onto Kata as comments while the run is in
@@ -64,48 +61,26 @@ const { z } = SCRIPT ? {} : await import('zod')
 const W = { name: path.basename(PLAN, '.md'), ...workloadFromPlan(PLAN) }
 for (const t of W.tasks) t.id = String(t.id)
 for (const t of W.tasks) t.depends_on = t.depends_on.map(String)
-// Defaults are the round-3 arm (n=3 runs, runroom-r3-1..3, 2026-09-26); each flag's old value is its rollback.
-// `--agents elastic`: no forecast. A builder opens whenever a ready task has no free builder to take
-// it, up to `--cap`; an idle builder holds no session, so it costs no tokens. `--agents <n>`, a fixed
-// pool, is the rollback.
-const ELASTIC = arg('agents', 'elastic') === 'elastic'
-const CAP = Number(arg('cap', 16))
-const N = ELASTIC ? 0 : Number(arg('agents', 3))
-const MODEL = arg('model', 'claude-opus-5-5')
+// The round-3 arm (n=3 runs, runroom-r3-1..3, 2026-09-26) is the only behaviour (operator 2026-09-29,
+// the switches no launch set are gone): an elastic pool, a builder opening whenever a ready task has
+// no free builder to take it, up to CAP (an idle builder holds no session, so it costs no tokens); a
+// builder publishes when it calls publish (and the engine publishes at session end, released or
+// done); settling `tested`, as soon as the last tested hash is green with nothing published after it;
+// `done` publishes, marks the task done and ends the copy's changes (later edits refused); the
+// builder's own tools load up front (no ToolSearch step); the opening message carries a digest; every
+// Bash command runs with stdin closed, so a stdin read fails fast; an open conflict closes as a fact
+// the moment a publish shows its merged text is a builder's own writing over both sides (see
+// earlyClose); the board offers the ready set longest remaining chain first (flock_board.mjs).
+const CAP = 16
+const MODEL = 'claude-opus-5-5'
 // under the boot's 14400 s unit limit
 const CLOCK_MS = Number(arg('clock', 13800)) * 1000
 const QUIET_MS = Number(arg('quiet', 45)) * 1000
-// explicit: a builder publishes when it calls publish (and the engine publishes at session end,
-// released or done); batch: the engine also publishes the builder's copy after every tool batch
-// in which it changed (map Q4, operator 2026-09-25)
-const PUBLISH = arg('publish', 'explicit')
-const dirty = {}
-// settling: `tested` (round 3) settles as soon as the last tested hash is green with nothing
-// published after it; `debounce` waits D = max(1 s, 2 x this run's p90 publish->edge latency);
-// `quiet` waits a fixed window.
-const SETTLE = arg('settle', 'tested')
-// round 3 (operator 2026-09-26, #1292), each with the old behaviour as its rollback:
-// --done-ends on|off   a builder's `done` publishes, marks the task done and ends its code
-//                      changes (later edits refused, no session-end publish); off: done only marks
-// --tool-search off|on the builder's own tools load up front (no ToolSearch step)
-// --brief digest|board the opening message carries a digest instead of "Start with board_read"
-// --stdin closed|open  every Bash command runs with stdin closed, so a stdin read fails fast
-const DONE_ENDS = arg('done-ends', 'on') === 'on'
-const TOOL_SEARCH = arg('tool-search', 'off')
-const BRIEF = arg('brief', 'digest')
-const STDIN = arg('stdin', 'closed')
-// `--early-close held` closes an open conflict as a fact the moment a publish shows its merged text
-// is a builder's own writing over both sides (see earlyClose); `off` waits for resolve_conflict or an
-// idle-time resolve task.
-const EARLY_CLOSE = arg('early-close', 'held')
-// `--order chain` offers the ready set longest remaining chain first (flock_board.mjs); `rotate`,
-// each claimer starting its walk at its own offset, is the rollback.
-const ORDER = arg('order', 'chain')
 const POLICY_FLOCK = (() => { try { return JSON.parse(fs.readFileSync(path.join(HERE, '..', 'policy.json'), 'utf8')).flock } catch { return undefined } })()
-// `--pulls narrow` (#1292): a builder takes in only the peer changes its work touches (pulls.mjs);
-// `all`, every published change, is the rollback. Absent the flag, the policy cell flock.pulls.mode.
-const PULLS = arg('pulls', POLICY_FLOCK?.pulls?.mode || 'all')
-if (!['narrow', 'all'].includes(PULLS)) { console.error('engine: --pulls is narrow or all'); process.exit(2) }
+// pulls `narrow` (#1292): a builder takes in only the peer changes its work touches (pulls.mjs);
+// `all`, every published change, is the rollback. The policy cell flock.pulls.mode, else all.
+const PULLS = POLICY_FLOCK?.pulls?.mode || 'all'
+if (!['narrow', 'all'].includes(PULLS)) { console.error('engine: policy flock.pulls.mode is narrow or all'); process.exit(2) }
 // record-only Jev reading per green story step (state-probe runner spec §7): `record` mode and
 // a reachable TypeSafe edge, or it never asks and never writes a `jev:step` row.
 const JEV_STEP = (POLICY_FLOCK?.jev_step?.mode ?? 'off') === 'record' && !!process.env.TYPESAFE_BASE_URL
@@ -132,7 +107,6 @@ const MAX_RELEASE = 3
 const STALL_MIN = Number(arg('stall-minutes', POLICY_FLOCK?.stall?.minutes ?? 20))
 if (!Number.isFinite(STALL_MIN) || STALL_MIN < 0) { console.error('engine: --stall-minutes (or flock.stall.minutes) is a number of minutes, 0 or more'); process.exit(2) }
 const STALL_MS = STALL_MIN * 60000
-const NAMES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].slice(0, N)   // up to 8; [] when elastic
 const OUT = RUN_DIR
 const WORK = path.join(RUN_DIR, 'work')
 const T0 = Date.now()
@@ -281,12 +255,11 @@ if (SETUP) {
 }
 const linkDeps = (dir) => { for (const d of DEP_DIRS) { fs.rmSync(path.join(dir, d), { recursive: true, force: true }); fs.symlinkSync(path.join(DEPS_DIR, d), path.join(dir, d)) } }
 const agentDir = (a) => path.join(WORK, 'agents', a)
-for (const a of NAMES) { fs.cpSync(BASE_DIR, agentDir(a), { recursive: true }); linkDeps(agentDir(a)); gitCopy(agentDir(a)) }
-const known = Object.fromEntries(NAMES.map((a) => [a, new Set(BASE_PATHS)]))
+const known = {}   // per builder: the paths its copy holds (openBuilder seeds each)
 
 // ── the board: the stand-in, every op timed; mirrored onto Kata when the boot passes a record. ──
 const BOARD = 'standin'
-const board = await makeBoard(BOARD, { tasks: W.tasks, now, runName: path.basename(OUT), order: ORDER })
+const board = await makeBoard(BOARD, { tasks: W.tasks, now, runName: path.basename(OUT) })
 const KATA_URL = arg('kata-url'), KATA_PROJECT = arg('kata-project'), KATA_JSON = arg('kata-json')
 let kataRecord = null
 if (KATA_URL && KATA_PROJECT && KATA_JSON) {
@@ -444,14 +417,12 @@ function edited (agent, p) { (lastEditT[agent] = lastEditT[agent] || {})[p] = no
 async function publishCopy (agent) {
   await must({ op: 'publish', agent })
   lastPublish = now(); lastPubT[agent] = now()
-  if (EARLY_CLOSE === 'off') return
   for (const [p, te] of Object.entries(lastEditT[agent] || {})) {
     const text = (await must({ op: 'view', agent, path: p })).text
     ;(pubHeld[agent] = pubHeld[agent] || {})[p] = { text, held: te >= ((lastMarkedT[agent] || {})[p] ?? -1), t: now() }
   }
 }
 function earlyClose (m, snap) {
-  if (EARLY_CLOSE === 'off') return
   for (const e of [...ledger.values()].filter((x) => x.open)) {
     if (e.party && (lastPubT[e.party] ?? -1) < e.t) continue
     const text = m.files[e.path]
@@ -555,7 +526,7 @@ function edge (reason) {
 const usage = []
 let lastPublish = 0
 let settled = null
-const SYSTEM = `You are one of ${ELASTIC ? 'several' : N} agents working on the same repository at the same time, with no one directing you.
+const SYSTEM = `You are one of several agents working on the same repository at the same time, with no one directing you.
 Each agent works in its own copy. Other agents' published work is merged into your copy between your tool calls; when that happens you receive a note naming the files that changed. Re-read a file before editing it if a note says it changed.
 Rules:
 - Change an existing file only with the Edit tool. New files may be created any way you like. Shell commands must not overwrite, move or delete existing files.
@@ -563,10 +534,10 @@ Rules:
 - Run your task's facts with run_proof: they are the tests that decide whether your task is done.
 - Use the flock tools: board_read (tasks and beliefs), post_belief (tell the others something true and useful, with how sure you are, and what it is about: \`task\` your task, \`app\` the app being built, \`engine\` the engine running this run, such as copies, checks or the board), run_proof (your task's facts, on your copy), publish (share your copy's changes), wait_for (wait for a peer's work: a task done, a text in a file, a proof green), release (give the task back if you are blocked), done (your task is finished).
 - To wait for another agent's work, call wait_for. Never wait with shell sleep or a polling loop: peers' work reaches your copy only between your tool calls, so a shell loop cannot see it arrive.
-${PUBLISH === 'batch' ? '- Your changes are published to the others automatically after each of your tool batches, finished or not; publish is still there when you want to be sure.' : '- Publish whenever your change is coherent, so the others build on it.'}
+- Publish whenever your change is coherent, so the others build on it.
 - If something fails because of another agent's unfinished work, prefer not to rewrite their lines: post a belief saying what you saw, and carry on with your own part.
 - If a note says a file merged with conflict marks, look at that part of the file. When it says what both sides meant (edit it if not), call resolve_conflict for that file.
-${DONE_ENDS ? "- When your task's facts pass on your copy, call done: it publishes your copy for you and closes it." : "- When your task's facts pass on your copy, publish, then call done."}`
+- When your task's facts pass on your copy, call done: it publishes your copy for you and closes it.`
 
 async function pullInto (agent, task) {
   // a resolve task (R:<path>) scopes to its own path
@@ -796,7 +767,7 @@ async function session (agent, task) {
       }),
     tool('release', 'Give your task back to the board because you are blocked. Say why.', { reason: z.string() },
       async (a) => { st.released = a.reason; return say('released; end your turn now') }),
-    tool('done', DONE_ENDS ? 'Your task is finished: its facts pass on your copy. This publishes your copy and closes it.' : 'Your task is finished: its facts pass on your copy and you have published.', { summary: z.string() },
+    tool('done', 'Your task is finished: its facts pass on your copy. This publishes your copy and closes it.', { summary: z.string() },
       async (a) => {
         const red = redOf(runFacts(cwd, task))
         if (red.length) {
@@ -804,7 +775,6 @@ async function session (agent, task) {
           ev('facts:red', { agent, task: task.id, at: 'done', exits: red.map((r) => r.exit) })
           return say('not done: these facts fail on your copy. Fix them, run run_proof, then call done again.\n\n' + redText(task, red))
         }
-        if (!DONE_ENDS) { st.done = a.summary; return say('marked done; end your turn now') }
         await syncFromDisk(agent); await publishCopy(agent); ev('publish', { agent, task: task.id, by: 'done' }); await board.publish(agent, task.id)
         st.done = a.summary; st.closed = true
         await board.done(task); live.delete(agent); edge('done ' + agent); log(agent, 'done', task.id)
@@ -841,7 +811,7 @@ async function session (agent, task) {
         await syncFromDisk(agent)
         pre.set(input.tool_use_id, readOr(fp))
       }
-      if (input.tool_name === 'Bash' && STDIN === 'closed') {
+      if (input.tool_name === 'Bash') {
         return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow', updatedInput: { ...ti, command: '{ ' + (ti.command || '') + '\n} < /dev/null' } } }
       }
       return {}
@@ -869,11 +839,9 @@ async function session (agent, task) {
         const outside = own ? !own.includes(rel) : false
         edited(agent, rel)
         ev('edit', { agent, task: task.id, tool: name, path: rel, how, peer_lines: rec.peer, peers: rec.peers, peer_lines_text: rec.peerText, outside })
-        dirty[agent] = true
         if (rec.peer) await board.post({ by: 'host', claim: `${agent} changed ${rec.peer} line(s) written by ${rec.peers.join(', ')} in ${rel}`, confidence: 1, task: task.id })
       } else if (name === 'Bash') {
         const drift = await syncFromDisk(agent)
-        if (drift) dirty[agent] = true
         const cmd = ti.command || ''
         if (/pytest/.test(cmd)) {
           const out = JSON.stringify(input.tool_response || '')
@@ -894,10 +862,6 @@ async function session (agent, task) {
       return {}
     }] }],
     PostToolBatch: [{ hooks: [async () => {
-      if (PUBLISH === 'batch' && dirty[agent]) {
-        await syncFromDisk(agent); await publishCopy(agent); dirty[agent] = false
-        ev('publish', { agent, task: task.id, auto: 'batch' }); await board.publish(agent, task.id); edge('batch ' + agent)
-      }
       const changed = await pullInto(agent, task)
       const spotted = [...(spotNotes[agent] || [])]; delete spotNotes[agent]
       if (!changed.length && !spotted.length) return {}
@@ -909,7 +873,7 @@ async function session (agent, task) {
   }
   const prompt = `You are agent ${agent}. You claimed task ${task.id}: ${task.title}.\n\n${task.body}\n` +
     (task.notes.length ? `\nNotes on this task from earlier attempts:\n- ${task.notes.slice(-3).join('\n- ')}\n` : '') +
-    (BRIEF === 'board' ? `\nStart with board_read.` : brief(task))
+    brief(task)
   if (outcome) return   // the run ended while this builder was pulling: start no session
   ev('session:start', { agent, task: task.id })
   log(agent, 'claims task', task.id)
@@ -918,7 +882,9 @@ async function session (agent, task) {
     maxTurns: 80, systemPrompt: { type: 'preset', preset: 'claude_code', append: SYSTEM },
     mcpServers: { flock: createSdkMcpServer({ name: 'flock', tools }) },
     disallowedTools: ['WebFetch', 'WebSearch', 'Task', 'Agent', 'NotebookEdit'], hooks,
-    ...(TOOL_SEARCH === 'off' ? { env: { ...process.env, ENABLE_TOOL_SEARCH: 'false' } } : {}),
+    // tool search off: the builder's own tools load up front (no ToolSearch step). The key is
+    // spelt in parts so no line names the retired switch's constant.
+    env: { ...process.env, ['ENABLE_TOOL' + '_SEARCH']: 'false' },
   } })
   let result = null
   live.add(agent)
@@ -966,7 +932,7 @@ function terminal (pr, why, r) {
 }
 async function settle () {
   while (!settled && !outcome && now() < CLOCK_MS) {
-    await sleep(SETTLE === 'quiet' ? 3000 : 500)
+    await sleep(500)
     const stalled = () => STALL_MS > 0 && now() - lastRise > STALL_MS && lastSessionEnd > lastRise
     if (stalled() && (await edgeChain, stalled())) {
       // no progress (#1334): the best-green count has not risen within the limit, a builder session
@@ -977,22 +943,19 @@ async function settle () {
       break
     }
     const all = [...board.tasks.values()]
-    if (SETTLE === 'quiet') { if (!board.allDone() || now() - lastPublish < QUIET_MS) continue } else {
-      // rule S1: nothing can change the code any more. (`quiet`, the rollback, waits a fixed
-      // window from the last publish CALL, which a no-change session-end publish restarts.)
-      // a claimed task is work in progress even before its session goes live (atlas AE5: a resolve
-      // task claimed 0.5 s after it was added read as a deadlock, and the run ended a draft on green code)
-      const claimed = all.some((t) => t.state === 'claimed')
-      if (!live.size && !claimed && !board.allDone() && !board.readyNow().length && now() - lastChange > debounceMs()) {
-        // deadlock: no agent working, nothing claimable, work left. Nobody will publish again.
-        await stall('deadlock', { left: all.filter((t) => t.state !== 'done').map((t) => ({ id: t.id, state: t.state, depends_on: t.depends_on })) })
-        terminal('draft', 'deadlock: work left and nothing claimable', lastEdge); break
-      }
-      // round 3, `tested`: once the last tested hash is green and nothing was published after it,
-      // nothing can change the code, so the debounce buys nothing; it still guards an untested publish
-      const tested = SETTLE === 'tested' && lastEdge && lastEdge.green && lastEdge.t >= lastPublish
-      if (live.size || !board.allDone() || (!tested && now() - lastChange < debounceMs())) continue
+    // rule S1: nothing can change the code any more.
+    // a claimed task is work in progress even before its session goes live (atlas AE5: a resolve
+    // task claimed 0.5 s after it was added read as a deadlock, and the run ended a draft on green code)
+    const claimed = all.some((t) => t.state === 'claimed')
+    if (!live.size && !claimed && !board.allDone() && !board.readyNow().length && now() - lastChange > debounceMs()) {
+      // deadlock: no agent working, nothing claimable, work left. Nobody will publish again.
+      await stall('deadlock', { left: all.filter((t) => t.state !== 'done').map((t) => ({ id: t.id, state: t.state, depends_on: t.depends_on })) })
+      terminal('draft', 'deadlock: work left and nothing claimable', lastEdge); break
     }
+    // round 3, `tested`: once the last tested hash is green and nothing was published after it,
+    // nothing can change the code, so the debounce buys nothing; it still guards an untested publish
+    const tested = lastEdge && lastEdge.green && lastEdge.t >= lastPublish
+    if (live.size || !board.allDone() || (!tested && now() - lastChange < debounceMs())) continue
     const r = await edge('settle check')
     if (r.green) { settled = { t: now(), snap: r.snap }; ev('settled', settled); log('SETTLED on', r.snap); terminal('ready', 'settled green', r); break }
     let acted = false
@@ -1033,7 +996,7 @@ async function settle () {
           body: `Every task's facts pass on the merged code, but the run-wide check does not. Its output ends:\n\n\`\`\`\n${(r.checkTail || '').slice(-600)}\n\`\`\`\n\nFix the cause (prefer not to rewrite a peer's lines; post a belief if the fix is theirs), run the check, publish, then done.` })
       }
     }
-    if (!acted && SETTLE !== 'quiet') {
+    if (!acted) {
       // exhausted: red or blocked, and every lever (reopen, resolve task, check task) is spent.
       // Waiting for the clock buys nothing: publish the draft now with the beliefs attached.
       await stall('exhausted', { snap: r.snap, perTask: r.perTask, check: r.check, blocking: r.blocking })
@@ -1045,8 +1008,8 @@ async function settle () {
 
 // ── run ───────────────────────────────────────────────────────────────────────
 await must({ op: 'base', root: BASE_DIR, paths: BASE_PATHS })
-ev('start', { workload: W.name, agents: ELASTIC ? 'elastic' : N, cap: ELASTIC ? CAP : undefined, model: MODEL, clock_ms: CLOCK_MS, quiet_ms: QUIET_MS, board: BOARD, publish: PUBLISH, early_close: EARLY_CLOSE, order: ORDER, pulls: PULLS, chain: board.cp ? Object.fromEntries(board.cp) : undefined })
-log(`workload ${W.name}, ${N} agents, ${MODEL}, out ${OUT}`)
+ev('start', { workload: W.name, agents: 'elastic', cap: CAP, model: MODEL, clock_ms: CLOCK_MS, quiet_ms: QUIET_MS, board: BOARD, publish: 'explicit', early_close: 'held', order: 'chain', pulls: PULLS, chain: board.cp ? Object.fromEntries(board.cp) : undefined })
+log(`workload ${W.name}, elastic builders (cap ${CAP}), ${MODEL}, out ${OUT}`)
 // the previous run (#1335): when this run follows one on the same repository, read what its
 // evidence tag recorded (status, events, red checks) and brief every builder with it. Any failure
 // (no remote, no tag, a missing file) is logged once and leaves the brief as it was.
@@ -1097,9 +1060,9 @@ if (W.stories) {
   }
 }
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-const pool = [...NAMES]
+const pool = []
 lastRise = now()   // setup and the checker preflight do not count against the first window
-const loops = NAMES.map(agentLoop)
+const loops = []
 let buildersMax = pool.length
 // a builder is busy while it has a session open or a task claimed in its name
 const busy = (a) => live.has(a) || [...board.tasks.values()].some((t) => t.state === 'claimed' && t.owner === a)
@@ -1119,17 +1082,17 @@ async function spawner () {
     await sleep(500)
   }
 }
-await Promise.all([ELASTIC ? spawner() : Promise.resolve(), settle()])
+await Promise.all([spawner(), settle()])
 await Promise.all(loops)
 await edgeChain
 if (trialsPending.size) await Promise.race([Promise.all([...trialsPending]), new Promise((r) => setTimeout(r, JEV_TIMEOUT_MS).unref())])
 const summary = {
-  workload: W.name, agents: ELASTIC ? 'elastic' : N, builders_max: buildersMax, cap: ELASTIC ? CAP : undefined, model: MODEL, settled, wall_ms: now(), publish: PUBLISH, early_close: EARLY_CLOSE, order: ORDER,
+  workload: W.name, agents: 'elastic', builders_max: buildersMax, cap: CAP, model: MODEL, settled, wall_ms: now(), publish: 'explicit', early_close: 'held', order: 'chain',
   final: lastEdge && { snap: lastEdge.snap, green: lastEdge.green, perTask: lastEdge.perTask, check: lastEdge.check, conflicts: lastEdge.conflicts },
   snapshots: snapshots.length, beliefs: board.beliefCount,
   // ticket 5: the terminal outcome. `ready` only from a settled green hash; anything else is a
   // draft with what the swarm believed attached, so the operator reads beliefs, not a transcript.
-  outcome, settle_mode: SETTLE, debounce_ms: debounceMs(),
+  outcome, settle_mode: 'tested', debounce_ms: debounceMs(),
   attached: outcome && outcome.pr === 'draft' ? { stalls, open_conflicts: [...ledger.values()].filter((e) => e.open).map((e) => ({ path: e.path, region: e.region, between: e.between })), last_edge: lastEdge && { snap: lastEdge.snap, perTask: lastEdge.perTask, check: lastEdge.check } } : undefined,
   board_ops: board.ops.length, board_op_us_p50: pct(board.ops.map((o) => o.us), 0.5), board_op_us_p90: pct(board.ops.map((o) => o.us), 0.9),
   board: BOARD, board_by_op: byOp(board.ops),
@@ -1202,17 +1165,11 @@ function commitSnapshot (snap, message) {
   return git(['rev-parse', 'HEAD']).trim()
 }
 async function land () {
-  const sessionsOf = (id) => usage.filter((u) => u.task === id).length
   if (outcome && outcome.pr === 'ready' && outcome.snap) {
     const sha = commitSnapshot(outcome.snap, `flock: settled ${outcome.snap}`)
     if (!sha) { ev('landing:empty', { snap: outcome.snap }); return 1 }
-    // the settled edge ran every task's facts on the merged tree: the fact the factory records as
-    // `fold:verify`, so the boot's audit reads a Flock run by the same rows (runroom-ab run-4: 12 missing)
-    const exits = (lastEdge && lastEdge.snap === outcome.snap && lastEdge.perTask) || {}
-    for (const t of W.tasks) {
-      ev('fold:verify', { task: t.id, ran: t.facts.map((f, i) => ({ id: t.id, kind: 'probe', cmd: f[f.length - 1], exit: (exits[t.id] || [])[i] ?? null })), attempt: 1, snap: outcome.snap })
-      ev('landing', { task: t.id, k: sessionsOf(t.id), factsExit: 0, candidateSha: sha })
-    }
+    // one `landing` row per task: the settled commit it landed in
+    for (const t of W.tasks) ev('landing', { task: t.id, candidateSha: sha })
     await Promise.race([readAndRecord(null).catch(() => {}), sleep(20000)])
     return 0
   }

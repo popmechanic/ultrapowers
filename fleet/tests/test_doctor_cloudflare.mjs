@@ -25,8 +25,9 @@
  *       `integrations policy set cloudflare 'tag:fleet'`.
  *
  * (b)-(d) drive `doctor({ config, exec, configKeys, account })` in-process,
- * over a stub `exec` keyed on the exact command strings of the doctor's own
- * `READS` (`fleet/doctor.mjs`) plus `policyRead(name)`, answering
+ * over a stub `exec(cmd, argv)` keyed on the call's command and argv (joined
+ * by spaces) — the doctor's own `ssh exe.dev <remote>` reads (`READS` in
+ * `fleet/doctor.mjs`) plus `policyRead(name)` — answering
  * `integrations list --json` with the listing each leg needs and everything
  * unmatched — including every `help <verb>` read `verb-drift` issues — with
  * `{ code: 1, stdout: '' }`. Only the `cloudflare` row's outcome is asserted;
@@ -39,30 +40,37 @@ import { doctor, ROW_IDS, policyRead } from '../doctor.mjs'
 
 // ── the exec stub every leg shares ──────────────────────────────────────────
 
+/** One call on the seam `exec(cmd, argv)`, as the stub keys and records it:
+ *  the command and its argv joined by spaces. */
+const keyOf = (cmd, argv = []) => [cmd, ...argv].join(' ')
+/** A lobby read, `exec('ssh', ['exe.dev', remote])`, as the stub keys it. */
+const lobbyKey = (remote) => keyOf('ssh', ['exe.dev', remote])
+
 const BASE_KNOWN = new Map([
-  ['ssh exe.dev whoami', { code: 1, stdout: '' }],
-  ['ssh exe.dev "billing plan --json"', { code: 1, stdout: '' }],
-  ['ssh exe.dev "integrations setup github --list"', { code: 1, stdout: '' }],
-  ['ssh exe.dev "integrations policy get claude-max --json"', { code: 1, stdout: '' }],
-  ['ssh exe.dev "integrations policy get kata --json"', { code: 1, stdout: '' }],
-  ['ssh exe.dev "ls kata-hub --json"', { code: 1, stdout: '' }]
+  [lobbyKey('whoami'), { code: 1, stdout: '' }],
+  [lobbyKey('billing plan --json'), { code: 1, stdout: '' }],
+  [lobbyKey('integrations setup github --list'), { code: 1, stdout: '' }],
+  [lobbyKey('integrations policy get claude-max --json'), { code: 1, stdout: '' }],
+  [lobbyKey('integrations policy get kata --json'), { code: 1, stdout: '' }],
+  [lobbyKey('ls kata-hub --json'), { code: 1, stdout: '' }]
 ])
 
 /**
- * Builds an `exec` stub recording every command it is asked, answering
- * `integrations list --json` with `listStdout`, the extra entries of
- * `extraKnown` (e.g. the cloudflare policy read), the shared base table, and
- * everything else — the token/accounts/usage reads and every `verb-drift`
- * `help <verb>` read included — with `{ code: 1, stdout: '' }`.
+ * Builds an `exec(cmd, argv)` stub recording every call it is asked (as
+ * `keyOf`), answering `integrations list --json` with `listStdout`, the extra
+ * entries of `extraKnown` (e.g. the cloudflare policy read), the shared base
+ * table, and everything else — the token/accounts/usage reads and every
+ * `verb-drift` `help <verb>` read included — with `{ code: 1, stdout: '' }`.
  */
 function makeExec (listStdout, extraKnown = new Map()) {
   const known = new Map([
     ...BASE_KNOWN,
-    ['ssh exe.dev "integrations list --json"', { code: 0, stdout: listStdout }],
+    [lobbyKey('integrations list --json'), { code: 0, stdout: listStdout }],
     ...extraKnown
   ])
   const calls = []
-  const exec = async (cmd) => {
+  const exec = async (command, argv) => {
+    const cmd = keyOf(command, argv)
     calls.push(cmd)
     if (known.has(cmd)) return known.get(cmd)
     return { code: 1, stdout: '' }
@@ -72,7 +80,7 @@ function makeExec (listStdout, extraKnown = new Map()) {
 }
 
 const cloudflareRowOf = (result) => result.rows.find((r) => r.id === 'cloudflare')
-const CLOUDFLARE_POLICY_READ = policyRead('cloudflare')
+const CLOUDFLARE_POLICY_READ = lobbyKey(policyRead('cloudflare'))
 
 // ── (a) [M1] ROW_IDS and row order ───────────────────────────────────────
 {

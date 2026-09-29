@@ -43,11 +43,10 @@ const isCloseCode = (code) => Number.isInteger(code) && code >= 200 && code <= 2
  * For any `state` other than `'done'`, `missing` is always `[]` (M1): an
  * unfinished run has nothing yet to be missing.
  *
- * For `state: 'done'` (M2): every landed task with no `fold:verify` row
- * carrying the same `task` contributes `fold:verify task <id>`, in landing
- * order.
+ * For `state: 'done'` with `bound: false`, `missing` is `[]` too: the
+ * Flock writes one `landing` row per task and nothing else is asked of it.
  *
- * For `state: 'done'` with `bound: true` (M3), after those come, in order:
+ * For `state: 'done'` with `bound: true`, in order:
  * `board:close task <id>` for every landed task with no `board:close` row
  * whose `what` is `task <id>` and whose `code` is an integer 200–299; then
  * `board:close run` under the same rule for `what: 'run'`; then
@@ -61,16 +60,6 @@ export function auditRows (rows, { state, bound } = {}) {
 
   if (state === 'done') {
     const landed = landedTaskIds(safeRows)
-
-    const verifiedTasks = new Set()
-    for (const row of safeRows) {
-      if (row && row.kind === 'fold:verify' && row.task != null) {
-        verifiedTasks.add(String(row.task))
-      }
-    }
-    for (const id of landed) {
-      if (!verifiedTasks.has(id)) missing.push(`fold:verify task ${id}`)
-    }
 
     if (bound) {
       const closedWhat = new Set()
