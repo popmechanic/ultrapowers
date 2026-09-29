@@ -28,6 +28,7 @@ import { workloadFromPlan } from './plan.mjs'
 import { makeBoard } from './flock_board.mjs'
 import { scopeOf } from './scope.mjs'
 import { editSpans } from './edit_spans.mjs'
+import { compactRecord } from './compact_record.mjs'
 import { pullScope } from './pulls.mjs'
 import { findGit } from '../gitblock.mjs'
 import { bootstrapFor } from '../commands.mjs'
@@ -257,7 +258,7 @@ const linkDeps = (dir) => { for (const d of DEP_DIRS) { fs.rmSync(path.join(dir,
 const agentDir = (a) => path.join(WORK, 'agents', a)
 const known = {}   // per builder: the paths its copy holds (openBuilder seeds each)
 
-// ── the board: the stand-in, every op timed; mirrored onto Kata when the boot passes a record. ──
+// ── the board: the stand-in; mirrored onto Kata when the boot passes a record. ──
 const BOARD = 'standin'
 const board = await makeBoard(BOARD, { tasks: W.tasks, now, runName: path.basename(OUT) })
 const KATA_URL = arg('kata-url'), KATA_PROJECT = arg('kata-project'), KATA_JSON = arg('kata-json')
@@ -278,7 +279,6 @@ if (kataRecord) {
   const track = (q) => { kataPending.add(q); q.finally(() => kataPending.delete(q)) }
   mirrorBoard(board, { kata, projectId: KATA_PROJECT, tasks: (kataRecord && kataRecord.tasks) || {}, onPost: (rec) => ev('kata:mirror', rec), track, runUid: kataRecord.run && kataRecord.run.uid, surfaceAt: POLICY_FLOCK?.surface?.min_confidence ?? 0.8 })
 }
-const READS = new Set(['ping', 'ready', 'list', 'beliefs', 'read'])
 
 // ── edit-location errors (gap 3 at scale): an Edit the tool refused, by why ──
 const editFailures = { not_unique: 0, not_found: 0, stale: 0, other: 0 }
@@ -819,7 +819,6 @@ async function session (agent, task) {
     PostToolUse: [{ hooks: [async (input) => {
       const ti = input.tool_input || {}
       const name = input.tool_name
-      ev('tool:post', { agent, tool: name })
       if (['Edit', 'MultiEdit', 'Write'].includes(name)) {
         const fp = path.resolve(cwd, ti.file_path)
         const rel = fp.slice(cwd.length + 1)
@@ -1094,11 +1093,6 @@ const summary = {
   // draft with what the swarm believed attached, so the operator reads beliefs, not a transcript.
   outcome, settle_mode: 'tested', debounce_ms: debounceMs(),
   attached: outcome && outcome.pr === 'draft' ? { stalls, open_conflicts: [...ledger.values()].filter((e) => e.open).map((e) => ({ path: e.path, region: e.region, between: e.between })), last_edge: lastEdge && { snap: lastEdge.snap, perTask: lastEdge.perTask, check: lastEdge.check } } : undefined,
-  board_ops: board.ops.length, board_op_us_p50: pct(board.ops.map((o) => o.us), 0.5), board_op_us_p90: pct(board.ops.map((o) => o.us), 0.9),
-  board: BOARD, board_by_op: byOp(board.ops),
-  board_writes: board.ops.filter((o) => !READS.has(o.name)).length,
-  board_writes_per_s: Math.round(board.ops.filter((o) => !READS.has(o.name)).length / (now() / 1000) * 100) / 100,
-  board_peak_writes_per_s: peakPerSecond(board.ops.filter((o) => !READS.has(o.name))),
   edit_failures: editFailures,
   tokens: usage.reduce((a, u) => ({ input: a.input + (u.usage?.input_tokens || 0), output: a.output + (u.usage?.output_tokens || 0), cache_read: a.cache_read + (u.usage?.cache_read_input_tokens || 0), cache_write: a.cache_write + (u.usage?.cache_creation_input_tokens || 0) }), { input: 0, output: 0, cache_read: 0, cache_write: 0 }),
   sessions: usage.length,
@@ -1107,7 +1101,6 @@ const summary = {
 fs.writeFileSync(path.join(OUT, 'summary.json'), JSON.stringify(summary, null, 1))
 fs.writeFileSync(path.join(OUT, 'snapshots.json'), JSON.stringify(snapshots))
 fs.writeFileSync(path.join(OUT, 'board.json'), JSON.stringify(await board.read(), null, 1))
-fs.writeFileSync(path.join(OUT, 'board-ops.json'), JSON.stringify(board.ops))
 writeCompactRecord()
 writeFailureRecord()
 log('summary', JSON.stringify(summary))
@@ -1116,36 +1109,13 @@ const landed = await land()
 if (kataPending.size) await Promise.race([Promise.all([...kataPending]), new Promise((r) => setTimeout(r, KATA_EXIT_MS).unref())])
 process.exit(landed)
 
-// ── the compact record: what each tested snapshot changed against base, the changed texts once
-// each up to a limit, and the weave's ops with file texts as fingerprints. The 512 KB limit is
-// about ten times the largest changed text measured (54,027 bytes, n=2 runs, 2026-09-28).
+// ── the compact record: each tested snapshot's patch against the previous one, and the weave's
+// ops with file texts as fingerprints (compact_record.mjs) ──
 function writeCompactRecord () {
-  const LIMIT = 524288
-  const sha1 = (x) => crypto.createHash('sha1').update(x).digest('hex')
-  const texts = {}
-  let bytes = 0; let truncated = false
-  const rows = snapshots.map((s) => {
-    const changed = []; const deleted = []
-    for (const p of Object.keys(s.files).sort()) {
-      if (!s.exists[p]) continue
-      const text = s.files[p]
-      if (p in BASE_FILES && BASE_FILES[p] === text) continue
-      const h = sha1(text); const n = Buffer.byteLength(text, 'utf8')
-      changed.push({ path: p, sha1: h, bytes: n })
-      if (!(h in texts)) { if (bytes + n <= LIMIT) { texts[h] = text; bytes += n } else truncated = true }
-    }
-    for (const p of Object.keys(BASE_FILES).sort()) if (!s.exists[p]) deleted.push(p)
-    return JSON.stringify({ snap: s.snap, t: s.t, changed, deleted })
-  })
-  fs.writeFileSync(path.join(OUT, 'snapshots.jsonl'), rows.map((r) => r + '\n').join(''))
-  fs.writeFileSync(path.join(OUT, 'snapshot-texts.json'), JSON.stringify({ limit_bytes: LIMIT, bytes, truncated, texts }))
-  const ops = fs.readFileSync(path.join(OUT, 'weave-ops.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => {
-    const o = JSON.parse(l)
-    if (typeof o.content !== 'string') return l
-    const { content, ...rest } = o
-    return JSON.stringify({ ...rest, content_sha1: sha1(content), content_bytes: Buffer.byteLength(content, 'utf8') })
-  })
-  fs.writeFileSync(path.join(OUT, 'weave-ops.digest.jsonl'), ops.map((r) => r + '\n').join(''))
+  const lines = fs.readFileSync(path.join(OUT, 'weave-ops.jsonl'), 'utf8').split('\n')
+  const rec = compactRecord(snapshots, BASE_FILES, lines)
+  fs.writeFileSync(path.join(OUT, 'snapshots.jsonl'), rec.snapshots)
+  fs.writeFileSync(path.join(OUT, 'weave-ops.digest.jsonl'), rec.digest)
 }
 
 // ── the ending: one commit on the target, and the rows the pull request card reads ──
@@ -1207,10 +1177,3 @@ function writeFailureRecord () {
   fs.writeFileSync(path.join(OUT, 'red-checks.json'), JSON.stringify(rec, null, 1))
 }
 
-function byOp (ops) {
-  const g = {}
-  for (const o of ops) (g[o.name] = g[o.name] || []).push(o.us)
-  return Object.fromEntries(Object.entries(g).map(([k, xs]) => [k, { n: xs.length, p50_us: pct(xs, 0.5), p90_us: pct(xs, 0.9), max_us: pct(xs, 1) }]))
-}
-function peakPerSecond (ops) { const c = {}; for (const o of ops) { const s = Math.floor(o.t / 1000); c[s] = (c[s] || 0) + 1 } return Math.max(0, ...Object.values(c)) }
-function pct (xs, p) { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); return Math.round(s[Math.min(s.length - 1, Math.floor(p * s.length))]) }
