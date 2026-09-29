@@ -1,0 +1,92 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "025a09d70f43983f09f86ab66777f1d0dbf7d915117c9ba287271aa55a56b0f7",
+   "verdict": "pass",
+   "reason": "M1 grep, M2 count and M3 exit each have a probe that fails if false."
+  },
+  "2": {
+   "hash": "129441a032ba99e259be2789719f1a663c1e8c51dc3eac743838dab83d62694a",
+   "verdict": "pass",
+   "reason": "Both exact sentences have a grep -qF probe."
+  },
+  "3": {
+   "hash": "242ad66d7e3bcd25cda1a6d498b5d9dbc19a4b6ad8f2e130463b50054d7ddbe8",
+   "verdict": "pass",
+   "reason": "The absence grep covers all five names; the tests prove M2."
+  },
+  "4": {
+   "hash": "ae43f3b9316d28a59c90c5a383115e4fb9ff5f85552480d2c6bdfe7a77ea0680",
+   "verdict": "pass",
+   "reason": "Both absences have a tagged negated grep."
+  }
+ },
+ "tally": {
+  "dispatched": 6,
+  "rejected": 2,
+  "rounds": 2,
+  "base": "8af874e21ff66448a9722ee96ab4522feb982588"
+ },
+ "authoring": {
+  "minutes": 35,
+  "probes": 0,
+  "routing": {
+   "branch": "width",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Conflict check",
+    "options": [
+     "Retire it",
+     "Reword it"
+    ],
+    "recommended": "Retire it",
+    "picked": "Retire it",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Ask text",
+    "options": [
+     "Ask file = your words",
+     "Raise the bar"
+    ],
+    "recommended": "Ask file = your words",
+    "picked": "Ask file = your words",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Quiet checks",
+    "options": [
+     "Drop map same-need",
+     "Drop both",
+     "Keep both"
+    ],
+    "recommended": "Drop map same-need",
+    "picked": "Drop map same-need",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Claim and summary",
+    "options": [
+     "Sign",
+     "Fix a line"
+    ],
+    "recommended": "Sign",
+    "picked": "Sign",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Execute",
+    "options": [
+     "Plan 1 inline, plan 2 fleet",
+     "Both on the fleet",
+     "Both inline"
+    ],
+    "recommended": "Plan 1 inline, plan 2 fleet",
+    "picked": "Plan 1 inline, plan 2 fleet",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
