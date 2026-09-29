@@ -578,4 +578,15 @@ const HUB_PROJECTS = [{ id: 31, uid: 'P', name: 'popmechanic-ultrapowers' }]
   assert.equal(mod.parseBoardArgs(['--run', '5', '--target', 'o/r', '--follow', '--quiet', '7']).quietMinutes, 7, '(follow g) --quiet sets the window')
 }
 
+{
+  // A Flock task's state follows the mirror's comments: filed -> claimed -> done (run-275, 2026-09-29).
+  const mirror = [
+    row(1, 'issue.created', 'rvxp', 'launch', '2026-09-29T22:41:03.000Z', { title: 'task 1: t', metadata: { run: 275 } }),
+    row(2, 'issue.commented', 'rvxp', 'factory', '2026-09-29T22:42:22.000Z', { body: 'claimed by A' }),
+  ]
+  assert.equal(mod.projectBoard(mirror, { runs: [275] }).tasks[0].state, 'claimed', '(mirror a) a claim comment sets state claimed')
+  mirror.push(row(3, 'issue.commented', 'rvxp', 'factory', '2026-09-29T22:42:30.000Z', { body: 'done by A' }))
+  assert.equal(mod.projectBoard(mirror, { runs: [275] }).tasks[0].state, 'done', '(mirror b) a done comment sets state done')
+}
+
 console.log('ALL TESTS PASSED')
