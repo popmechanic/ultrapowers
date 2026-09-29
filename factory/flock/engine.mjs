@@ -509,7 +509,7 @@ function edge (reason) {
       perTask[t.id] = res.map((r) => r.exit)
       res.forEach((r, i) => { if (r.exit !== 0) red.push({ task: t.id, clause: t.clauses ? t.clauses[i] : undefined, cmd: t.facts[i].join(' '), exit: r.exit, tail: r.tail }) })
     }
-    const chk = W.check ? spawnSync(W.check[0], W.check.slice(1), { cwd: dir, encoding: 'utf8', timeout: 120000, env: RUN_ENV }) : { status: 0, stdout: '', stderr: '' }
+    const chk = W.check ? spawnSync(W.check[0], W.check.slice(1), { cwd: dir, encoding: 'utf8', timeout: W.checkTimeoutMs ?? 120000, env: RUN_ENV }) : { status: 0, stdout: '', stderr: '' }
     const factsGreen = Object.values(perTask).every((xs) => xs.every((x) => x === 0))
     // ticket 5: every region the edge sees goes through the ledger. The old `!ledger.has(p)`
     // let a NEW conflict on a once-closed path pass the edge unexamined.

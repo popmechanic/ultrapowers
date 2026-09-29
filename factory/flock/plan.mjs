@@ -42,6 +42,9 @@ function storiesWorkload (parsed, planPath, bodies) {
   return {
     tasks,
     check: bash(['bun run typecheck', ...guards].join(' && ')),
+    // Every earlier story is a guard, one checker call each (~4.9 s apiece on radio-station run-5,
+    // n=1 run, 2026-09-29), so the check's limit grows with them: 120 s plus 15 s per guard.
+    checkTimeoutMs: 120000 + 15000 * guards.length,
     setup: bash(parsed.bootstrapCmd),
     stories: { planPath: abs, sentences: Object.fromEntries((parsed.stories || []).map((s) => [s.id, s.sentence])) },
   };
