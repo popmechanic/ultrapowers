@@ -119,3 +119,94 @@
 {"t":119146,"kind":"edit","agent":"C","task":"6","tool":"Edit","path":"tests/fixtures/plan_check_slips/good.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:19:15.386Z"}
 {"t":119712,"kind":"tool","agent":"C","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; f=tests/fixtures/plan_check_slips/good.md; grep -n Stale-if $f; python3 skills/ultraw","ts":"2026-09-29T22:19:15.952Z"}
 {"t":119813,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T22:19:16.053Z"}
+{"t":122859,"kind":"tool","agent":"C","task":"6","tool":"Edit","target":"/home/exedev/run/work/agents/C/tests/fixtures/plan_check_slips/good.gate-verdicts.json","ts":"2026-09-29T22:19:19.099Z"}
+{"t":123036,"kind":"tool:post","agent":"C","tool":"Edit","ts":"2026-09-29T22:19:19.276Z"}
+{"t":123037,"kind":"edit","agent":"C","task":"6","tool":"Edit","path":"tests/fixtures/plan_check_slips/good.gate-verdicts.json","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:19:19.277Z"}
+{"t":123496,"kind":"tool","agent":"C","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; f=tests/fixtures/plan_check_slips/good.md; python3 skills/ultrapowers/scripts/plan_ch","ts":"2026-09-29T22:19:19.736Z"}
+{"t":123613,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T22:19:19.853Z"}
+{"t":124639,"kind":"tool","agent":"D","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/D/factory/questions.json","ts":"2026-09-29T22:19:20.879Z"}
+{"t":124925,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T22:19:21.165Z"}
+{"t":124938,"kind":"edit","agent":"D","task":"2","tool":"Edit","path":"factory/questions.json","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:19:21.178Z"}
+{"t":126423,"kind":"tool","agent":"C","task":"6","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T22:19:22.663Z"}
+{"t":127260,"kind":"proof","agent":"C","task":"6","exits":[0,0,0,0,0,0,0,1,1,0],"causes":[{"cause":"unknown"},{"cause":"unknown"}],"errs":["",""],"ts":"2026-09-29T22:19:23.500Z"}
+{"t":127261,"kind":"tool","agent":"D","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/D/skills/ultrawrite/stories/jev_checks.ts","ts":"2026-09-29T22:19:23.501Z"}
+{"t":127266,"kind":"tool:post","agent":"C","tool":"mcp__flock__run_proof","ts":"2026-09-29T22:19:23.506Z"}
+{"t":127270,"kind":"tool","agent":"C","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; python3 -m pytest -q -x tests/test_plan_check.py 2>&1 | tail -30; grep -rln \"plan_che","ts":"2026-09-29T22:19:23.510Z"}
+{"t":127420,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T22:19:23.660Z"}
+{"t":127423,"kind":"edit","agent":"D","task":"2","tool":"Edit","path":"skills/ultrawrite/stories/jev_checks.ts","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:19:23.663Z"}
+{"t":128555,"kind":"tool","agent":"D","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/D/skills/ultrawrite/stories/gate_jev.ts","ts":"2026-09-29T22:19:24.795Z"}
+{"t":128676,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T22:19:24.916Z"}
+{"t":128678,"kind":"edit","agent":"D","task":"2","tool":"Edit","path":"skills/ultrawrite/stories/gate_jev.ts","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:19:24.918Z"}
+{"t":129080,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T22:19:25.320Z"}
+{"t":129203,"kind":"test","agent":"C","task":"6","red":false,"drift":0,"cause":null,"ts":"2026-09-29T22:19:25.443Z"}
+{"t":129853,"kind":"tool","agent":"D","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/D/skills/ultrawrite/stories/policy.json","ts":"2026-09-29T22:19:26.093Z"}
+{"t":130011,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T22:19:26.251Z"}
+{"t":130012,"kind":"edit","agent":"D","task":"2","tool":"Edit","path":"skills/ultrawrite/stories/policy.json","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:19:26.252Z"}
+{"t":130126,"kind":"tool","agent":"D","task":"2","tool":"mcp__flock__delete_file","target":"","ts":"2026-09-29T22:19:26.366Z"}
+{"t":130221,"kind":"fallback","agent":"D","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:19:26.461Z"}
+{"t":130235,"kind":"delete","agent":"D","task":"2","path":"skills/ultrawrite/stories/questions.json","ts":"2026-09-29T22:19:26.475Z"}
+{"t":130239,"kind":"tool:post","agent":"D","tool":"mcp__flock__delete_file","ts":"2026-09-29T22:19:26.479Z"}
+{"t":132670,"kind":"tool","agent":"C","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; grep -rl \"plan_check\" --include=*.py --include=*.mjs --include=*.sh --include=*.ts . ","ts":"2026-09-29T22:19:28.910Z"}
+{"t":132711,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T22:19:28.951Z"}
+{"t":133363,"kind":"tool","agent":"D","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/D; grep -rn \"stories/questions.json\\|'questions.json'\" --include=*.ts --include=*.mjs --","ts":"2026-09-29T22:19:29.603Z"}
+{"t":133403,"kind":"tool:post","agent":"D","tool":"Bash","ts":"2026-09-29T22:19:29.643Z"}
+{"t":133685,"kind":"fallback","agent":"D","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:19:29.925Z"}
+{"t":133706,"kind":"tool","agent":"D","task":"2","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T22:19:29.946Z"}
+{"t":134100,"kind":"proof","agent":"D","task":"2","exits":[0,0,0,0,0,0,0,0],"causes":[],"errs":[],"ts":"2026-09-29T22:19:30.340Z"}
+{"t":134104,"kind":"tool:post","agent":"D","tool":"mcp__flock__run_proof","ts":"2026-09-29T22:19:30.344Z"}
+{"t":135429,"kind":"tool","agent":"C","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; python3 -m pytest -q tests/test_plan_parse.py tests/test_stories_check.py 2>&1 | tail","ts":"2026-09-29T22:19:31.669Z"}
+{"t":136274,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T22:19:32.514Z"}
+{"t":136372,"kind":"test","agent":"C","task":"6","red":false,"drift":0,"cause":null,"ts":"2026-09-29T22:19:32.612Z"}
+{"t":137717,"kind":"tool","agent":"D","task":"2","tool":"mcp__flock__done","target":"","ts":"2026-09-29T22:19:33.957Z"}
+{"t":138255,"kind":"fallback","agent":"D","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:19:34.495Z"}
+{"t":138270,"kind":"publish","agent":"D","task":"2","by":"done","ts":"2026-09-29T22:19:34.510Z"}
+{"t":138278,"kind":"tool:post","agent":"D","tool":"mcp__flock__done","ts":"2026-09-29T22:19:34.518Z"}
+{"t":138282,"kind":"kata:mirror","task":"2","uid":"01M3QKSS7DZ5T3N28NMKWA06H3","what":"done by D","ok":true,"ts":"2026-09-29T22:19:34.522Z"}
+{"t":166503,"kind":"edge","snap":"b194b6c475","reason":"done D","perTask":{"1":[0,0,0,0],"2":[0,0,0,0,0,0,0,0],"3":[1,1,1,1,1,1,0],"4":[1,1,1,1],"5":[1,1,1,0],"6":[1,1,1,1,1,1,1,1,1,0],"7":[0,0,0]},"check":0,"conflicts":[],"blocking":[],"outside":[],"green":false,"ts":"2026-09-29T22:20:02.743Z"}
+{"t":166510,"kind":"tool","agent":"C","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; for t in test_launch_plan_path test_launch_duplicate test_launch_credential test_laun","ts":"2026-09-29T22:20:02.750Z"}
+{"t":166536,"kind":"kata:mirror","task":"5","uid":"01M3QKT62ZAJ5QBZAD77QW0KXA","what":"claimed by B","ok":true,"ts":"2026-09-29T22:20:02.776Z"}
+{"t":166536,"kind":"kata:mirror","task":"3","uid":"01M3QKT0XXQR7NKKJ4N73K0445","what":"claimed by A","ok":true,"ts":"2026-09-29T22:20:02.776Z"}
+{"t":167195,"kind":"pull","agent":"A","changed":[{"path":"factory/questions.json","from":"D","added":353,"removed":1,"conflict":false},{"path":"skills/ultrawrite/stories/gate_jev.ts","from":"D","added":1,"removed":1,"conflict":false},{"path":"skills/ultrawrite/stories/jev_checks.ts","from":"D","added":3,"removed":1,"conflict":false},{"path":"skills/ultrawrite/stories/policy.json","from":"D","added":2,"removed":1,"conflict":false},{"path":"skills/ultrawrite/stories/questions.json","from":"D","added":0,"removed":54,"conflict":false}],"ts":"2026-09-29T22:20:03.435Z"}
+{"t":167196,"kind":"session:start","agent":"A","task":"3","ts":"2026-09-29T22:20:03.436Z"}
+{"t":167919,"kind":"pull","agent":"B","changed":[{"path":"skills/ultrawrite/stories/ask.ts","from":"A","added":43,"removed":0,"conflict":false},{"path":"tests/jev_standin.py","from":"A","added":93,"removed":0,"conflict":false},{"path":"factory/questions.json","from":"D","added":353,"removed":1,"conflict":false},{"path":"skills/ultrawrite/stories/gate_jev.ts","from":"D","added":1,"removed":1,"conflict":false},{"path":"skills/ultrawrite/stories/jev_checks.ts","from":"D","added":3,"removed":1,"conflict":false},{"path":"skills/ultrawrite/stories/policy.json","from":"D","added":2,"removed":1,"conflict":false},{"path":"skills/ultrawrite/stories/questions.json","from":"D","added":0,"removed":54,"conflict":false}],"ts":"2026-09-29T22:20:04.159Z"}
+{"t":167919,"kind":"session:start","agent":"B","task":"5","ts":"2026-09-29T22:20:04.159Z"}
+{"t":169879,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T22:20:06.119Z"}
+{"t":169909,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; wc -l skills/ultrapowers/scripts/plan_check.py; cat tests/conftest.py; cat tests/jev_","ts":"2026-09-29T22:20:06.149Z"}
+{"t":169999,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T22:20:06.239Z"}
+{"t":171135,"kind":"pull","agent":"C","changed":[{"path":"factory/questions.json","from":"D","added":353,"removed":1,"conflict":false},{"path":"skills/ultrawrite/stories/gate_jev.ts","from":"D","added":1,"removed":1,"conflict":false},{"path":"skills/ultrawrite/stories/jev_checks.ts","from":"D","added":3,"removed":1,"conflict":false},{"path":"skills/ultrawrite/stories/policy.json","from":"D","added":2,"removed":1,"conflict":false},{"path":"skills/ultrawrite/stories/questions.json","from":"D","added":0,"removed":54,"conflict":false}],"ts":"2026-09-29T22:20:07.375Z"}
+{"t":171142,"kind":"tool","agent":"B","task":"5","tool":"Bash","target":"grep -n \"understanding\\|function one\\|const one\\|flag_at\\|Q\\b\\|Q\\.\\|questions.json\" skills/ultrawrite/stories/jev_checks","ts":"2026-09-29T22:20:07.382Z"}
+{"t":171181,"kind":"fallback","agent":"A","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:20:07.421Z"}
+{"t":171261,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T22:20:07.501Z"}
+{"t":171998,"kind":"fallback","agent":"B","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:20:08.238Z"}
+{"t":172731,"kind":"tool","agent":"C","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; timeout 300 node --test fleet/tests/test_launch_plan_path.mjs 2>&1 | tail -15","ts":"2026-09-29T22:20:08.971Z"}
+{"t":172957,"kind":"session:end","agent":"D","task":"2","released":false,"done":"Moved the ten authoring question groups into factory/questions.json as authoring_* sets (when/reader/rollback/state/provenance/calibrated:false), added authoring_routing, authoring_desired_state, authoring_about_product; rewrote about; jev_checks.ts and gate_jev.ts read from factory/questions.json; deleted stories/questions.json; policy flag_at gains routing_risk and about_product 0.5. All 8 facts green.","redRuns":0,"turns":16,"usage":{"input_tokens":20,"cache_creation_input_tokens":29516,"cache_read_input_tokens":396579,"output_tokens":11121,"output_tokens_details":{"thinking_tokens":859},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":29516,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[],"speed":"standard","fallback_credit":null},"ts":"2026-09-29T22:20:09.197Z"}
+{"t":172967,"kind":"kata:mirror","task":"4","uid":"01M3QKT3H4C03DM3MEJ1R8PW9R","what":"claimed by D","ok":true,"ts":"2026-09-29T22:20:09.207Z"}
+{"t":173293,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T22:20:09.533Z"}
+{"t":173690,"kind":"session:start","agent":"D","task":"4","ts":"2026-09-29T22:20:09.930Z"}
+{"t":173790,"kind":"fallback","agent":"C","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:20:10.030Z"}
+{"t":174038,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; sed -n 1,80p skills/ultrapowers/scripts/plan_check.py; grep -n \"BASE fact\\|STALE fact","ts":"2026-09-29T22:20:10.278Z"}
+{"t":174076,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T22:20:10.316Z"}
+{"t":174238,"kind":"tool","agent":"B","task":"5","tool":"Bash","target":"sed -n 1,75p skills/ultrawrite/stories/jev_checks.ts; sed -n 140,200p skills/ultrawrite/stories/jev_checks.ts","ts":"2026-09-29T22:20:10.478Z"}
+{"t":174279,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T22:20:10.519Z"}
+{"t":175074,"kind":"fallback","agent":"A","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:20:11.314Z"}
+{"t":175074,"kind":"fallback","agent":"B","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:20:11.314Z"}
+{"t":176339,"kind":"tool","agent":"D","task":"4","tool":"Bash","target":"cat skills/ultrawrite/scripts/check_provenance.py && cat tests/jev_standin.py && ls tests/fixtures/ skills/ultrawrite/st","ts":"2026-09-29T22:20:12.579Z"}
+{"t":176451,"kind":"tool:post","agent":"D","tool":"Bash","ts":"2026-09-29T22:20:12.691Z"}
+{"t":176617,"kind":"fallback","agent":"D","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:20:12.858Z"}
+{"t":176949,"kind":"tool","agent":"C","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; for t in test_launch_duplicate test_launch_credential test_launch_one_engine test_lau","ts":"2026-09-29T22:20:13.189Z"}
+{"t":177478,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; sed -n 140,270p skills/ultrapowers/scripts/plan_check.py; sed -n 1038,1119p skills/ul","ts":"2026-09-29T22:20:13.718Z"}
+{"t":177500,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T22:20:13.740Z"}
+{"t":177602,"kind":"fallback","agent":"A","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:20:13.842Z"}
+{"t":179009,"kind":"tool","agent":"D","task":"4","tool":"Bash","target":"sed -n 1,40p skills/ultrawrite/stories/ask.ts; ls tests/fixtures/plans | head; grep -rl \"claims-v1\" tests/fixtures evals","ts":"2026-09-29T22:20:15.249Z"}
+{"t":179075,"kind":"tool:post","agent":"D","tool":"Bash","ts":"2026-09-29T22:20:15.315Z"}
+{"t":179178,"kind":"fallback","agent":"D","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:20:15.418Z"}
+{"t":179865,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T22:20:16.105Z"}
+{"t":180054,"kind":"fallback","agent":"C","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:20:16.294Z"}
+{"t":181070,"kind":"tool","agent":"D","task":"4","tool":"Bash","target":"cat evals/fixtures/claims/plan.md | head -60","ts":"2026-09-29T22:20:17.310Z"}
+{"t":181095,"kind":"tool:post","agent":"D","tool":"Bash","ts":"2026-09-29T22:20:17.335Z"}
+{"t":181383,"kind":"fallback","agent":"D","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:20:17.623Z"}
+{"t":181385,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; cat evals/fixtures/claims/plan.md | head -80; python3 -c \"\nimport sys; sys.path.inser","ts":"2026-09-29T22:20:17.625Z"}
+{"t":181440,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T22:20:17.680Z"}
+{"t":182237,"kind":"fallback","agent":"A","path":"skills/ultrawrite/stories/questions.json","peer_lines":0,"deleted":true,"ts":"2026-09-29T22:20:18.477Z"}
+{"t":183694,"kind":"tool","agent":"B","task":"5","tool":"Bash","target":"cd skills/ultrawrite/stories && python3 - <<'EOF'\np='jev_checks.ts'; s=open(p).read()\ns=s.replace(\"'decompose', 'gate', ","ts":"2026-09-29T22:20:19.934Z"}
+{"t":183776,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T22:20:20.016Z"}
