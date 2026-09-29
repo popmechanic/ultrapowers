@@ -1,0 +1,21 @@
+Running as unit: fleet-engine-272.service; invocation ID: 16f884e92df74ff59c0ebc6155c05776
+[   0.4s] workload run-272, 0 agents, claude-opus-5-5, out /home/exedev/run
+[   1.1s] past: run-271 finished green
+[   1.2s] opens builder A (pool 1)
+[   1.2s] opens builder B (pool 2)
+[   1.3s] A claims task 1
+[   1.3s] B claims task 2
+[  11.6s] B done 2
+[  36.4s] edge da8cc39eaa red {"1":[1,1,1,0],"2":[0,0]} check 0 
+[ 105.1s] A done 1
+[ 129.8s] early close skills/ultrawrite/stories/jev_checks.ts cd25b3f83e held by A
+[ 129.8s] edge 1ec8ff79a6 GREEN {"1":[0,0,0,0],"2":[0,0]} check 0 conflicts skills/ultrawrite/stories/jev_checks.ts (blocking: none)
+[ 130.3s] SETTLED on 1ec8ff79a6
+[ 130.3s] TERMINAL ready settled green
+[ 136.9s] summary {"workload":"run-272","agents":"elastic","builders_max":2,"cap":16,"model":"claude-opus-5-5","settled":{"t":130340,"snap":"1ec8ff79a6"},"wall_ms":136826,"publish":"explicit","early_close":"held","order":"chain","final":{"snap":"1ec8ff79a6","green":true,"perTask":{"1":[0,0,0,0],"2":[0,0]},"check":0,"conflicts":["skills/ultrawrite/stories/jev_checks.ts"]},"snapshots":2,"beliefs":1,"outcome":{"pr":"ready","why":"settled green","snap":"1ec8ff79a6","t":130340},"settle_mode":"tested","debounce_ms":49564,"board_ops":54,"board_op_us_p50":14,"board_op_us_p90":36,"board":"standin","board_by_op":{"ready":{"n":47,"p50_us":14,"p90_us":36,"max_us":43811},"claim":{"n":2,"p50_us":59,"p90_us":59,"max_us":59},"publish":{"n":2,"p50_us":31,"p90_us":31,"max_us":31},"done":{"n":2,"p50_us":19,"p90_us":19,"max_us":19},"post":{"n":1,"p50_us":29,"p90_us":29,"max_us":29}},"board_writes":7,"board_writes_per_s":0.05,"board_peak_writes_per_s":2,"edit_failures":{"not_unique":0,"not_found":0,"stale":0,"other":0},"tokens":{"input":28,"output":11652,"cache_read":538722,"cache_write":41862},"sessions":2,"cost_usd":0.702}
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 2min 17.170s
+CPU time consumed: 1min 1.194s
+Memory peak: 1.2G
+Memory swap peak: 0B

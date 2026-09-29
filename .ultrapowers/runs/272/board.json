@@ -1,0 +1,29 @@
+{
+ "tasks": [
+  {
+   "id": "1",
+   "title": "The Jev gate reader and its agreement reading",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "2",
+   "title": "The proof gate runs Jev beside each reader",
+   "state": "done",
+   "owner": "B",
+   "depends_on": [],
+   "notes": []
+  }
+ ],
+ "beliefs": [
+  {
+   "id": 1,
+   "t": 129844,
+   "by": "host",
+   "claim": "open conflict in skills/ultrawrite/stories/jev_checks.ts between published copies; whoever next works there should make it say what both sides meant and call resolve_conflict",
+   "confidence": 1
+  }
+ ]
+}
