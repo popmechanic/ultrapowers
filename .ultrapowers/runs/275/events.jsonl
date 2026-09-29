@@ -28,3 +28,6 @@
 {"t":12257,"kind":"landing","task":"1","candidateSha":"36fc98e3030947e5717f5bc16203a65363f9d6c4","ts":"2026-09-29T22:42:33.500Z"}
 {"ts":"2026-09-29T22:42:49.477Z","kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1385","number":1385,"draft":false}
 {"ts":"2026-09-29T22:42:50.021Z","kind":"refold","ok":false,"reason":"merge: re-fold refused (conflict)"}
+{"ts":"2026-09-29T22:42:55.729Z","kind":"board:leave","rc":0}
+{"ts":"2026-09-29T22:42:55.865Z","kind":"board:mark","what":"run","state":"parked","code":200}
+{"ts":"2026-09-29T22:42:55.891Z","kind":"run:audit","state":"parked","missing":[]}
