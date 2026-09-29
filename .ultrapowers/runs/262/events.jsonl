@@ -258,3 +258,44 @@
 {"t":244925,"kind":"tool","agent":"D","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/D/fleet/tests/test_factory_worker_gitblock.mjs","ts":"2026-09-29T17:40:35.764Z"}
 {"t":245130,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T17:40:35.969Z"}
 {"t":245139,"kind":"edit","agent":"D","task":"2","tool":"Edit","path":"fleet/tests/test_factory_worker_gitblock.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T17:40:35.978Z"}
+{"t":253077,"kind":"tool","agent":"D","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/D/fleet/tests/test_factory_worker_gitblock.mjs","ts":"2026-09-29T17:40:43.916Z"}
+{"t":253297,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T17:40:44.136Z"}
+{"t":253299,"kind":"edit","agent":"D","task":"2","tool":"Edit","path":"fleet/tests/test_factory_worker_gitblock.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T17:40:44.138Z"}
+{"t":254615,"kind":"tool","agent":"D","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/D/fleet/tests/test_factory_worker_gitblock.mjs","ts":"2026-09-29T17:40:45.454Z"}
+{"t":254814,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T17:40:45.653Z"}
+{"t":254818,"kind":"edit","agent":"D","task":"2","tool":"Edit","path":"fleet/tests/test_factory_worker_gitblock.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T17:40:45.657Z"}
+{"t":255965,"kind":"tool","agent":"D","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/D/fleet/tests/test_factory_worker_gitblock.mjs","ts":"2026-09-29T17:40:46.804Z"}
+{"t":256151,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T17:40:46.990Z"}
+{"t":256155,"kind":"edit","agent":"D","task":"2","tool":"Edit","path":"fleet/tests/test_factory_worker_gitblock.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T17:40:46.994Z"}
+{"t":256915,"kind":"tool","agent":"D","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/D; node fleet/tests/test_factory_worker_gitblock.mjs; sed -n 30,80p fleet/tests/test_fac","ts":"2026-09-29T17:40:47.754Z"}
+{"t":256998,"kind":"tool:post","agent":"D","tool":"Bash","ts":"2026-09-29T17:40:47.837Z"}
+{"t":262364,"kind":"tool","agent":"D","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/D/fleet/tests/test_factory_boot.mjs","ts":"2026-09-29T17:40:53.203Z"}
+{"t":262556,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T17:40:53.395Z"}
+{"t":262563,"kind":"edit","agent":"D","task":"2","tool":"Edit","path":"fleet/tests/test_factory_boot.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T17:40:53.402Z"}
+{"t":264134,"kind":"tool","agent":"D","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/D/fleet/tests/test_factory_boot.mjs","ts":"2026-09-29T17:40:54.973Z"}
+{"t":264335,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T17:40:55.174Z"}
+{"t":264343,"kind":"edit","agent":"D","task":"2","tool":"Edit","path":"fleet/tests/test_factory_boot.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T17:40:55.182Z"}
+{"t":265932,"kind":"tool","agent":"D","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/D/fleet/tests/test_factory_boot.mjs","ts":"2026-09-29T17:40:56.771Z"}
+{"t":266102,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T17:40:56.941Z"}
+{"t":266110,"kind":"edit","agent":"D","task":"2","tool":"Edit","path":"fleet/tests/test_factory_boot.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T17:40:56.949Z"}
+{"t":267652,"kind":"tool","agent":"D","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/D/fleet/tests/test_factory_boot.mjs","ts":"2026-09-29T17:40:58.491Z"}
+{"t":267867,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T17:40:58.706Z"}
+{"t":267875,"kind":"edit","agent":"D","task":"2","tool":"Edit","path":"fleet/tests/test_factory_boot.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T17:40:58.714Z"}
+{"t":269445,"kind":"tool","agent":"D","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/D/fleet/tests/test_factory_boot.mjs","ts":"2026-09-29T17:41:00.284Z"}
+{"t":269630,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T17:41:00.469Z"}
+{"t":269639,"kind":"edit","agent":"D","task":"2","tool":"Edit","path":"fleet/tests/test_factory_boot.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T17:41:00.478Z"}
+{"t":270324,"kind":"tool","agent":"D","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/D; grep -n \"factory/engine.mjs\" fleet/tests/test_factory_boot.mjs; timeout 300 node flee","ts":"2026-09-29T17:41:01.163Z"}
+{"t":274100,"kind":"tool:post","agent":"D","tool":"Bash","ts":"2026-09-29T17:41:04.939Z"}
+{"t":278204,"kind":"tool","agent":"D","task":"2","tool":"mcp__flock__publish","target":"","ts":"2026-09-29T17:41:09.043Z"}
+{"t":278416,"kind":"publish","agent":"D","task":"2","ts":"2026-09-29T17:41:09.255Z"}
+{"t":278421,"kind":"tool:post","agent":"D","tool":"mcp__flock__publish","ts":"2026-09-29T17:41:09.260Z"}
+{"t":278424,"kind":"tool","agent":"D","task":"2","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T17:41:09.263Z"}
+{"t":278603,"kind":"proof","agent":"D","task":"2","exits":[1,1,0,0,0,0,0,1],"causes":[{"cause":"unknown"},{"cause":"unknown"},{"cause":"unknown"}],"errs":["","",""],"ts":"2026-09-29T17:41:09.442Z"}
+{"t":278606,"kind":"tool:post","agent":"D","tool":"mcp__flock__run_proof","ts":"2026-09-29T17:41:09.445Z"}
+{"t":295017,"kind":"edge","snap":"da7256b262","reason":"publish D","perTask":{"1":[0,0,0,0,0],"2":[1,1,0,0,0,0,0,1],"3":[1,0,0,0,0],"4":[0,0,0]},"check":0,"conflicts":[],"blocking":[],"outside":[],"green":false,"ts":"2026-09-29T17:41:25.856Z"}
+{"t":300519,"kind":"tool","agent":"D","task":"2","tool":"mcp__flock__post_belief","target":"","ts":"2026-09-29T17:41:31.358Z"}
+{"t":300524,"kind":"belief","id":4,"by":"D","claim":"Agents cannot delete files: the PreToolUse hook in factory/flock/engine.mjs denies any Bash `rm`/`mv`, and Edit/Write cannot remove a file. So a task whose Files list Delete: entries (task 2: 39 files) can never pass facts that check those files are gone.","confidence":0.95,"task":"2","about":"engine","ts":"2026-09-29T17:41:31.364Z"}
+{"t":300528,"kind":"tool:post","agent":"D","tool":"mcp__flock__post_belief","ts":"2026-09-29T17:41:31.367Z"}
+{"t":300535,"kind":"kata:mirror","task":"2","uid":"01M3Q3R03ZZ22AAQ6V4YN459XT","what":"engine belief (0.95) from D: Agents cannot delete files: the PreToolUse hook in factory/flock/engine.mjs denies any Bash `rm`/`mv`, and Edit/Write cannot remove a file. So a task whose Files list Delete: entries (task 2: 39 files) can never pass facts that check those files are gone.","ok":true,"ts":"2026-09-29T17:41:31.374Z"}
+{"t":302156,"kind":"tool","agent":"D","task":"2","tool":"mcp__flock__release","target":"","ts":"2026-09-29T17:41:32.995Z"}
+{"t":302169,"kind":"tool:post","agent":"D","tool":"mcp__flock__release","ts":"2026-09-29T17:41:33.008Z"}
