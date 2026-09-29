@@ -236,6 +236,4 @@ approved plan, **is** the authorization to execute — no further approval pause
   `factory/flock/catchup.mjs` — a finished run caught up to a moved main.
 - `references/first-run.md` — one section per doctor row: what it means and the
   command that builds it.
-- `references/design-rationale.md` — why each surviving guard exists.
-- `references/finishing-notes.md` — finishing checks.
 - `scripts/plan_parse.py` (the one parser — the sandbox runs it), `scripts/plan_check.py` (the laptop's check of the records and the base, on that parser).

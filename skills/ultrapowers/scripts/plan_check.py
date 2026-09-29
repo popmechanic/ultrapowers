@@ -290,6 +290,17 @@ def _is_implementation(t):
     return t["type"] is None or t["type"] == "implementation"
 
 
+def type_violations(tasks):
+    """The parser keeps only implementation tasks and the engine runs only
+    what it keeps, so a `gate`, `release` or `manual` task would be dropped
+    without a word — refused here instead."""
+    return [
+        "grammar: task %s: Type `%s` is never run — only `implementation` "
+        "tasks run; publishing goes through the plan's `**Publish:**` header."
+        % (t["id"], t["type"])
+        for t in tasks if not _is_implementation(t)]
+
+
 def command_violations(checks, tasks, publish=None):
     """The engine runs a `Check:` and a Proof `Run:` through a shell, which
     reads a backtick as a command substitution (run-74) — one wording, two
@@ -564,8 +575,8 @@ def _git_run(base, *args, binary=False):
 
 
 def _git(base, *args):
-    """git in `base`; stdout text, or '' on ANY failure. Name and signature
-    are load-bearing: `pin_base_facts.py` imports this."""
+    """git in `base`; stdout text, or '' on ANY failure. `BaseTree`, which
+    `extract_gate_input.py` imports, reads the tree through this."""
     ok, out = _git_run(base, *args)
     return out if ok else ""
 
@@ -796,8 +807,8 @@ _LITERAL_FILES_SHOWN = 6
 _LITERAL_CARRIERS_MAX = 40
 
 # Path referents: a backticked token in a task body may name a repo path.
-# `pin_base_facts.py` and `extract_gate_input.py` import the normalizer and the
-# body-line selector from here, so what they pin is what this file reads.
+# `extract_gate_input.py` imports the normalizer from here, so what it
+# hashes is what this file reads.
 _REFERENT_EXTS = frozenset(
     "py js mjs cjs ts tsx jsx md json jsonl sh yml yaml toml txt html css "
     "sql csv lock cfg ini env tgz log".split())
@@ -1078,7 +1089,8 @@ def main(argv=None):
         print("%s\n\n1 violation(s)" % exc)
         return 2
 
-    violations = (gate_verdict_violations(args.plan, tasks)
+    violations = (type_violations(tasks)
+                  + gate_verdict_violations(args.plan, tasks)
                   + authoring_record_violations(args.plan)
                   + command_violations(result["checks"], tasks, result["publish"])
                   + freeze_violations(result["checks"], tasks)

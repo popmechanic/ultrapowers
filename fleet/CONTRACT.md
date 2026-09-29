@@ -13,7 +13,7 @@ A run is a number N per target. The launcher validates its arguments, reads the 
 `billing plan --json`, computes N from the target's own `ultra/*-run-*` branches and its
 `ultra/{plan,evidence}/run-<N>` tags, refreshes the Claude
 bearer, and pushes the plan as ONE commit on `base=` to `ultra/plan-run-N` (that commit's tree is base
-plus `.ultrapowers/plan.md`, plus `.ultrapowers/gate-verdicts.json` when the plan has one). Then it
+plus `.ultrapowers/plan.md` and `.ultrapowers/kata.json`). Then it
 issues ONE lobby verb — `new` — which creates a fresh VM and runs the generated setup script on it.
 The setup script installs the toolchain, an immutable bootstrap and the run's unit, then starts
 `fleet-run@<N>.service`. The bootstrap reads the assignment from the VM comment once, clones the
@@ -45,7 +45,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
 - **The three branches on the target** — where a run works, not what it leaves; each one is deleted
   when the thing it carried has landed (nothing else the fleet writes lives anywhere else):
   - `ultra/plan-run-<N>` — one commit on `base=`; tree = base + `.ultrapowers/plan.md`
-    [+ `.ultrapowers/gate-verdicts.json`] + `.ultrapowers/kata.json` (the run's record on the hub —
+    + `.ultrapowers/kata.json` (the run's record on the hub —
     `{"url":"https://kata.int.exe.xyz","project":{id,uid,name},"run":{uid,revision},"tasks":{"<id>":{uid,short_id,revision}}}`,
     keys in that order, each `revision` the one the launcher's post-link `getIssue` of that issue
     answered and each task's `short_id` the one its `createIssue` answered — that is what a worker's
@@ -100,11 +100,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   the retire sweep also deletes an `ultra/integration-run-<N>` whose PR is closed and not merged,
   saying so on that run's line. The record is
   read by tag: `.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>` and
-  `.ultrapowers/plan.md?ref=ultra/plan/run-<N>`. The publish fold attributes a `Fleet-Run: <N>`
-  frontier commit to its run's tasks only when `ultra/plan/run-<N>` carries the
-  `.ultrapowers/gate-verdicts.json` its plan needs to compile — the record is laid beside the plan as
-  `<stem>.gate-verdicts.json`, a legacy-grammar plan needs none, and a claims-v1 tag without its
-  record compiles to nothing and its commit is a `no plan` line in the contending block.
+  `.ultrapowers/plan.md?ref=ultra/plan/run-<N>`.
 - **Comment** (≤200 bytes, one line, space-separated `key=value`, this order, nothing else):
   `run=<N> plan=<40-hex> target=<owner>/<repo> base=<40-hex> engine=<40-hex>` then
   optional `kind=flock` then optional `hold=1`. The boot always runs the Flock
@@ -116,10 +112,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   if it is absent or malformed. Nobody rewrites it.
 - **Proof environment:** one variable, set by the engine and by nothing else. A plan's `Check:`
   lines run at every fold check with `ULTRA_BASE` set to the run's base sha — never the anchor,
-  never a candidate's own base — under `proofs.run_lines` in `factory/policy.json`, and it rides no
-  other line. A task is measured by its `Run:` probes, run in the candidate's own clone; by the
-  existing tests the engine selects for the patch; and by the plan's `Check:` lines on the folded
-  tree — no file is written for it anywhere on the fleet. A task's `Run:` probes run with the
+  never a candidate's own base — and it rides no other line. A run's proof is the plan's `Run:`
+  probes and `Check:` lines only: a task is measured by its `Run:` probes, run in the candidate's
+  own clone, and by the plan's `Check:` lines on the folded tree; the Flock selects no other tests
+  (probes-only, operator, 2026-09-27) — no file is written for it anywhere on the fleet. A task's `Run:` probes run with the
   engine's own environment and nothing added: no `ULTRA_BASE` (that rides `Check:` lines and
   nothing else), no `ULTRA_TASK`, no `ULTRA_RUN_DIR`, no `ULTRA_EXAM_PASS`. Those three, the
   numbered exam passes, the pre-review pass, the review rounds and `reviewOnStateExams` (#836) were
@@ -375,12 +371,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   run ends only at its clock. Before this (runs 247, 251–255 and radio-station run-1, 2026-09-26..28,
   n=7) the longest wait for a rise in the green count was 2.0 min, while run-252 ran 229.7 min
   after its last rise.
-- **Jev (2026-09-16, the `jev:` seam):** three event kinds ride the run's own event log exactly as
-  a `driver:` row does — `jev:finding` (a reviewer's blocking finding, beside the task it was raised
-  against), `jev:tier` (the tier chosen at a task's dispatch and again at each review round) and
-  `jev:suite-red` (an epoch's own red suite, on the run's issue) — each one a `POST /v1/systemone`
-  against the typesafe host; a failed call is one log line and no row, and the reply itself is
-  read by nothing else in this engine.
+- **Jev (2026-09-16, the `jev:` seam):** one event kind rides the run's own event log exactly as
+  a `driver:` row does — `jev:step` (the step read for a plan clause, one row per clause asked;
+  `factory/record.mjs` reads the latest row per clause) — each one a `POST /v1/systemone` against
+  the typesafe host, asked only over a reachable TypeSafe edge; a failed call is one log line and
+  no row.
     Receipts (2026-09-16): the same POST carries a `state` object out and an `answers` object back;
   neither is persisted anywhere this engine reads again.
 - **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","disclosures":"<url or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"wave":"<n or null>","state":"queued|waiting|examining|implementing|proving|reviewing|fixing|folded|failed","role":"<worker label or null>","lastProof":"{cmd, exit, ts} or null","park":"<detail or null>","attention":"{value, msg, ts} or null","blockedBy":"[<task ids>] or null"}}}`
@@ -414,8 +409,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   again — ONE `running → publishing` PAIR PER FOLD, the `running` carrying that fold's own phase
   `publish fold (attempt <n>)`. So a run folded once more reads
   `running → publishing → running → publishing → done`, one folded three times more carries three
-  such pairs before its `done`, and the count is whatever `FOLD_AGAIN_WAIT` and the folds allowed —
-  never a fixed number. `parked` and `failed` are terminal wherever they are reached.
+  such pairs before its `done`, and the count is whatever the folds allowed under the refold bound
+  `publish.self_merge.max_refolds` in `factory/policy.json` — never a fixed number. `parked` and `failed` are terminal wherever they are reached.
 - **Publish:** the pull request is one `POST /repos/<target>/pulls` with title
   `fleet run-<N>: <plan H1>`, head `ultra/integration-run-<N>`, base the target's default branch,
   `draft` true unless the engine exited 0, and no `authorization` header — the edge injects the

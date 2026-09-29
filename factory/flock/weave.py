@@ -19,19 +19,11 @@ Requests (all answer {"ok": true, ...} or {"ok": false, "error": ...}):
   publish  {agent}                        this agent's copy becomes its published copy
   pull     {agent}                        merge every peer's published copy into this one
   merged   {}                             the join of every published copy
-  authors  {agent, path}                  [author] per visible line
 
 Added for ticket 2 (#359; every earlier request answers as before, plus fields):
   pull          also answers sameAnchor [{path, from, flags}] (see same_anchor)
-  merged        takes an optional order; also answers sameAnchor, digest,
-                hiddenOnly, realConflicts
+  merged        takes an optional order; also answers sameAnchor, digest
   authors_keyed {agent, path}             [author] per visible line, by identity
-  cand_open     {agent, cand}             a private copy for one candidate
-  cand_edit     {cand, path, vstart, vend, lines}
-  cand_publish  {cand}                    publish it HIDDEN
-  cand_pull     {cand}                    pull, keeping the author's own view
-  select / rehide {agent, cand}           count moves on agent's copy
-  adopt         {agent, path, text, after} a loser's line, placed by the adopter
 """
 import difflib, json, os, re, sys, threading
 
@@ -272,47 +264,6 @@ def same_anchor(left, right, merged, lauth, rauth):
     return out
 
 
-def bump(state, want, parity):
-    """Raise the count of every entry whose key is in `want` until its parity
-    is `parity` (1 = visible, 0 = hidden). Counts only ever rise, so a merge's
-    max carries the move to every copy. Returns (state, moved)."""
-    st = M.deserialize_state(state)
-    moved = 0
-    for e, k in zip(st, line_keys(st)):
-        if k in want and e[3] % 2 != parity:
-            e[3] += 1
-            moved += 1
-    return M.serialize_state(st), moved
-
-
-def hidden_only(ann, cands):
-    """True when a conflict is only the shadow of a hidden candidate: every line
-    Manyana marks "deleted" in it is a candidate's tagged line. The kernel reads
-    a dead line that one side holds and the other has never seen as a delete by
-    the holder, so a copy that has not pulled a hidden candidate yet 'conflicts'
-    with the selector. Nobody deleted anything; the region is safe to take.
-    Read per region: a section labelled `... left` is the left side acting and
-    `... right` the right; the region is only a shadow when, with the tagged
-    dead lines left out, one side no longer acts at all."""
-    regions, cur, label = [], None, None
-    for l in ann:
-        if l.startswith(("<<<<<<< begin", "======= begin")):
-            if l.startswith("<<<<<<<"):
-                cur = {"L": False, "R": False, "shadow": False}
-                regions.append(cur)
-            label = l.split("begin ", 1)[1]
-        elif l == M.END:
-            cur, label = None, None
-        elif cur is not None:
-            if label.startswith("deleted") and SEP in l and l.rsplit(SEP, 1)[1] in cands:
-                cur["shadow"] = True
-            elif label.endswith("left"):
-                cur["L"] = True
-            elif label.endswith("right"):
-                cur["R"] = True
-    return bool(regions) and all(r["shadow"] and not (r["L"] and r["R"]) for r in regions)
-
-
 def _union_auth(into, other):
     for path, m in other.items():
         dst = into.setdefault(path, {})
@@ -326,10 +277,9 @@ class Keeper:
         self.copies = {}      # agent -> {path -> state}
         self.published = {}   # agent -> {path -> state}
         # ticket 2 (additive): authorship keyed by line identity, one sidecar per
-        # copy, gossiped with it (a union, so order-free); and candidates.
+        # copy, gossiped with it (a union, so order-free).
         self.kauth = {}       # copy -> {path -> {key -> set(author)}}
         self.kauth_pub = {}   # agent -> the sidecar as of its last publish
-        self.cands = {}       # candidate -> {owner, deletes {path: set(key)}, live {path: set(key)}}
 
     def auth(self, who):
         return self.kauth.setdefault(who, {})
@@ -451,13 +401,12 @@ class Keeper:
                                         "added": sum(1 for o in difflib.ndiff(old, new) if o.startswith("+ ")),
                                         "removed": sum(1 for o in difflib.ndiff(old, new) if o.startswith("- ")),
                                         "text": "\n".join(new), "exists": bool(new_raw),
-                                        "sameAnchor": flags,
-                                        "hiddenOnly": conflict and hidden_only(ann, self.cands)})
+                                        "sameAnchor": flags})
         return {"changed": changed, "sameAnchor": flagged}
 
     def r_merged(self, order=None):
         out, conflicts, annotated, adds_only = {}, [], {}, {}
-        same, auth, hidden = {}, {}, {}   # ticket 2 (additive): same-anchor flags, shadows, the join's digest
+        same, auth = {}, {}   # ticket 2 (additive): same-anchor flags, the join's digest
         for who in (order or list(self.published)):
             pub, pauth = self.published[who], self.kauth_pub.get(who, {})
             for p, st in pub.items():
@@ -473,116 +422,21 @@ class Keeper:
                         only = all(("added" in h) for h in heads)
                         adds_only[p] = adds_only.get(p, True) and only
                         annotated[p] = "\n".join(strip(l) for l in ann)
-                        hidden[p] = hidden.get(p, True) and hidden_only(ann, self.cands)
                     out[p] = m
             _union_auth(auth, pauth)
         files = {p: "\n".join(strip(l) for l in visible_raw(st)) for p, st in out.items()}
         exists = {p: bool(visible_raw(st)) for p, st in out.items()}
         digest = hashlib.blake2b(json.dumps(sorted(out.items())).encode(), digest_size=8).hexdigest()
         return {"files": files, "exists": exists, "conflicts": sorted(set(conflicts)), "annotated": annotated, "addsOnly": adds_only,
-                "sameAnchor": {p: f for p, f in same.items() if f}, "digest": digest,
-                "hiddenOnly": hidden, "realConflicts": sorted(p for p in set(conflicts) if not hidden.get(p))}
+                "sameAnchor": {p: f for p, f in same.items() if f}, "digest": digest}
 
-    def r_authors(self, agent, path):
-        return {"authors": [self.who(agent, path, l) for l in visible_raw(self.state(agent, path))]}
-
-    # ── ticket 2 (additive): authorship by identity, and hidden candidates ──
+    # ── ticket 2 (additive): authorship by identity ──
     def r_authors_keyed(self, agent, path):
         """[author] per visible line, from the keyed sidecar ("base" when none)."""
         st = M.deserialize_state(self.state(agent, path))
         side = self.auth(agent).get(path, {})
         return {"authors": ["|".join(sorted(side[k])) if side.get(k) else "base"
                             for e, k in zip(st, line_keys(st)) if e[3] % 2]}
-
-    def r_cand_open(self, agent, cand):
-        """A candidate is a private copy forked from `agent`'s copy. It is never
-        published as itself; only its hidden form is (r_cand_publish)."""
-        self.copies[cand] = dict(self.copy(agent))
-        self.kauth[cand] = _copy.deepcopy(self.auth(agent))
-        self.cands[cand] = {"owner": agent, "deletes": {}, "live": {}}
-        return {"paths": len(self.copies[cand])}
-
-    def r_cand_edit(self, cand, path, vstart, vend, lines):
-        """An edit inside the candidate. Inserted lines carry the candidate's
-        tag in the stored text (stripped from every view), so two candidates'
-        identical lines stay two lines; deletions of lines the candidate did
-        not write are recorded as pending, because a count can hide an insert
-        but cannot withhold a delete."""
-        st = self.state(cand, path)
-        ents, keys = M.deserialize_state(st), line_keys(st)
-        vis = [i for i, e in enumerate(ents) if e[3] % 2]
-        pend = self.cands[cand]["deletes"].setdefault(path, set())
-        for i in vis[vstart:vend]:
-            if not ents[i][0].endswith(SEP + cand):
-                pend.add(keys[i])
-        new, gone = apply_edit(st, vstart, vend, [l + SEP + cand for l in lines])
-        self.copies[cand][path] = new
-        return {"deleted": len(gone), "pendingDeletes": len(pend)}
-
-    def _cand_mine(self, cand, st):
-        ents, keys = M.deserialize_state(st), line_keys(st)
-        return ents, keys, {k for e, k in zip(ents, keys) if e[0].endswith(SEP + cand) and e[3] % 2}
-
-    def r_cand_publish(self, cand):
-        """Publish the candidate HIDDEN: its live lines go to the next even count,
-        its pending deletes go out one below their private count (a merge keeps
-        the max, so this withholds only what the candidate itself did)."""
-        rec, out = self.cands[cand], {}
-        for path, st in self.copies[cand].items():
-            ents, keys, live = self._cand_mine(cand, st)
-            pend = rec["deletes"].get(path, set())
-            for e, k in zip(ents, keys):
-                if k in live:
-                    e[3] += 1
-                elif k in pend and e[3] % 2 == 0 and e[3] >= 2:
-                    e[3] -= 1
-            rec["live"][path] = live
-            out[path] = M.serialize_state(ents)
-        self.published[cand] = out
-        self.kauth_pub[cand] = _copy.deepcopy(self.auth(cand))
-        return {"live": sum(len(v) for v in rec["live"].values()),
-                "pendingDeletes": sum(len(v) for v in rec["deletes"].values())}
-
-    def r_cand_pull(self, cand):
-        """Pull peers into the private copy, then re-assert the candidate's own
-        view: its live lines visible, its pending deletes deleted (peers hold
-        the hidden form, and a merge would otherwise hide it from its author)."""
-        rec = self.cands[cand]
-        before = {p: self._cand_mine(cand, st)[2] for p, st in self.copies[cand].items()}
-        res = self.r_pull(cand)
-        for path, st in self.copies[cand].items():
-            st, _ = bump(st, before.get(path, set()), 1)
-            st, _ = bump(st, rec["deletes"].get(path, set()), 0)
-            self.copies[cand][path] = st
-        return res
-
-    def _cand_move(self, agent, cand, show):
-        rec, moved = self.cands[cand], 0
-        mine = self.copy(agent)
-        for path in set(rec["live"]) | set(rec["deletes"]):
-            if path not in mine:
-                continue
-            st, a = bump(mine[path], rec["live"].get(path, set()), 1 if show else 0)
-            st, b = bump(st, rec["deletes"].get(path, set()), 0 if show else 1)
-            mine[path] = st
-            moved += a + b
-        return {"moved": moved}
-
-    def r_select(self, agent, cand):
-        """On `agent`'s copy: the candidate's live lines become visible and its
-        pending deletes land. Counts only rise; publish spreads it."""
-        return self._cand_move(agent, cand, True)
-
-    def r_rehide(self, agent, cand):
-        return self._cand_move(agent, cand, False)
-
-    def r_adopt(self, agent, path, text, after):
-        """Partial adoption: `text` (a line of a losing candidate) is inserted
-        as a fresh line of `agent`'s, directly after visible line `after`
-        (-1 = top). A weave never moves a line, and a hidden line's place is
-        fixed by its candidate's parent, so adoption is a new line placed by
-        the adopter, not a count move on the old one."""
-        return self.r_edit(agent, path, after + 1, after + 1, [text], refine=False)
 
 
 def serve():

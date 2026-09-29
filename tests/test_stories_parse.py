@@ -6,7 +6,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
-import stacks  # noqa: E402
 import plan_parse  # noqa: E402
 
 PARSER = ROOT / "skills/ultrapowers/scripts/plan_parse.py"
@@ -61,20 +60,6 @@ def test_claims_plans_still_parse_as_before():
     assert plan_parse.plan_grammar("**Grammar:** claims-v1\n") == "claims-v1"
     assert plan_parse.plan_grammar("**Grammar:** stories-v1\n") == "stories-v1"
     assert plan_parse.plan_grammar("# nothing\n") is None
-
-
-def test_the_stack_registry():
-    s = stacks.stack_for("tinyapp")
-    assert (s.name, s.grammar, s.bootstrap) == ("tinyapp", "stories-v1", "bun install")
-    assert s.detect(["package.json", "server/wrangler.jsonc"]) is True
-    assert s.detect(["package.json"]) is False
-    assert stacks.stack_for("rails") is None
-    try:
-        s.state_of("/tmp")
-    except NotImplementedError as exc:
-        assert "sub-project 2" in str(exc)
-    else:
-        raise AssertionError("state_of must not be implemented yet")
 
 
 def test_plan_parse_alone_in_a_temp_dir_still_parses_a_claims_plan(tmp_path):

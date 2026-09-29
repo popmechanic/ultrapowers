@@ -144,21 +144,16 @@ judges the real app after it.
 `### Task N: <title>`, then the header block, then the Files block, then exactly six body
 slots.
 
-Header markers: **Type:** and optionally **Review:** — nothing else; **Files:** is not a marker and ends the header block.
+Header markers: **Type:** — nothing else; **Files:** is not a marker and ends the header block.
 
 The compiler closes the header block at the first line that is not marker-shaped, so a
 marker written below the Files block is not read — it is dropped and surfaced as a
-conflict. Keep both markers in the contiguous run directly under the heading.
+conflict. Keep the marker directly under the heading.
 
-- `**Type:**` — `implementation` (the default, and the only Type that waves),
-  `gate`, `release`, `manual`. A write-nothing verification task is `gate`; anything that
-  pushes, deploys, or waits on a human is its own `release`/`manual` task.
-- `**Review:**` — optional, `peer` or `lean`, kept for the record. Since the engine plan of
-  2026-09-14 (PR #974) every task gets exactly one reviewer and one fix round whatever the
-  value says; the pair `peer` used to buy is gone on its reading (8 marginal findings,
-  n=71 runs through 2026-09-13, #964).
-- There is no `Tier` plan marker. Tier is a signed field of the *intent document* (One
-  Driver spec §7), a spend authority — never written on a task here.
+- `**Type:**` — `implementation`, the default and the only Type the Flock runs;
+  `plan_check.py` refuses any other. A write-nothing verification is a `Run:` probe or a
+  `Check:`, never a task of its own; a deploy goes through the plan's `**Publish:**`
+  header (above), and nothing in a run waits on a human.
 - `Depends-on` and `Commutes` lines are refused by `plan_check.py` as a `grammar:`
   violation; `plan_parse.py` reads neither. Ordering is derived from
   Interfaces token-matching and Files overlap; same-path overlap is derived from Files.
@@ -168,12 +163,11 @@ conflict. Keep both markers in the contiguous run directly under the heading.
   An operator who does not read diffs cannot verify an edge, so no edge is signed.
 
 The Files block carries canonical `Create:` / `Modify:` / `Delete:` bullets, backticked
-paths, no globs and no open write sets. It is doubly load-bearing: wave shape *and* edge
-derivation.
+paths, no globs and no open write sets. It is load-bearing for edge derivation.
 
 That block is the expected footprint of a submission, not a fence. A worker that must go outside
 it, that must read a clause otherwise, or that must re-aim a sim declares an amendment: the record
-carries it as a `driver:amendment` row and on the pull request card, and the reviewer reads it as a
+carries it as a `driver:amendment` row and on the pull request card, and Jev reads it as a
 lens on the diff rather than as a breach to revert. So the author still lists every file they can
 foresee the task touching — an unforeseen one now costs a declared amendment, not a dead task — and
 reads a run's amendments as the next plan's input, since what the workers had to declare is exactly
@@ -214,9 +208,9 @@ where this plan's Files sets were wrong.
   per variant, synonym or error flavour: an enumerated clause is still one behaviour. A
   universal or negation clause about a computable fact (`no file is written`, `exits 2`)
   still wants the one leg that names what fails or is absent.
-  A `Run:` bullet names a command the driver executes in the task's clone after the
-  implementer's patch lands; its exit code and output are evidence the reviewer reads
-  against the legs, and a non-zero exit sends the task to the fix loop. A task whose
+  A `Run:` bullet names a command — one of the task's facts — that the builder who claimed
+  the task runs on its copy; the task is done only when every one exits 0, so a non-zero
+  exit keeps the builder at work on it. A task whose
   deliverable is prose proves itself with `Run:` commands, never with a test that
   matches sentences of a document.
   And one `Run:` names one probe — a command the driver pays once, never a loop over a glob
@@ -238,9 +232,9 @@ where this plan's Files sets were wrong.
   A command still running at 30 s is killed and reported `not run (timeout after 30 s)`; a
   non-zero exit prints nothing. This release the line is a fact, not a refusal — `PLAN OK`
   still prints, and the refusal for a prover green at BASE comes after one release's census.
-  The plan's Global Constraints `Check:` lines are not rehearsed on the laptop: the sandbox
-  runs each one once at base before the first dispatch and records it as a `check:line` row
-  carrying `base: true`, so a check red before any task landed is a fact on the run's record.
+  The plan's Global Constraints `Check:` lines are not rehearsed on the laptop, and the Flock
+  records no base run of them either — so run a check at BASE yourself before signing, since
+  one red before any task lands keeps the whole run from settling green.
   Without `--base` nothing is run.
   A `byte-identical to BASE` or `git show HEAD:` comparison is a **tautology at the
   integration head**, where HEAD already carries the edit — so a BASE comparison is a
@@ -263,7 +257,6 @@ where this plan's Files sets were wrong.
 ### Task 2: The widget catalog
 
 **Type:** implementation
-**Review:** peer
 
 **Files:**
 - Create: `widgetkit/catalog.py`
@@ -351,12 +344,12 @@ nothing.
 
 A sitting's queue of well-defined issues drains by partitioning it by files into
 disjoint bundles, and it must partition by `Create:` paths as well as by files: two
-plans that would touch one file go in one bundle, since same-file edits fold inside
+plans that would touch one file go in one bundle, since same-file edits merge inside
 one run and never across two PRs, and two plans that would create one path go in
 one bundle, or the second declares `Consumes:` on the first and launches after it
 (the 2026-09-17 drain serialized #1095 and #1096 by hand after both listed `Create:
 fleet/jev-client.mjs`). Dispatch one author subagent per bundle — each loads this
-skill, pins its own BASE facts, dispatches its own fresh gate readers per task,
+skill, pins its own launch base, dispatches its own fresh gate readers per task,
 writing each diet to `<issue>-gate-<t>.json` so the filename carries the plan's
 own issue prefix and two authors' readers never collide on the scratchpad (six
 authors once collided on bare `gate-<t>.json` names, and author-1096's round-2
@@ -405,9 +398,10 @@ cost a fleet run. **An author who answers a rejection by adding legs is answerin
 question: narrow the clause first.** A mismatch means no compile until the task is revised.
 The exactly-these-keys clause exists because on run-195 (2026-09-18) one task added `ts`
 to every row of the run's event log and the probes of two sibling tasks, each asserting a
-row's exact key list, went red on the folded tree with both features right (n=2 probes on
-1 run, read by hand against the folded head); the fold check now re-runs every adopted
-task's probes, and the gate's job is that such a leg is never written.
+row's exact key list, went red on the merged tree with both features right (n=2 probes on
+1 run, read by hand against the merged head); a Flock builder's copy keeps merging its
+peers' published work, so such a leg goes red under its own builder, and the gate's job is
+that it is never written.
 The literal-computing half is there because on walk run-10 a
 Claim pinned `4` vowels in `Ada Lovelace` — `6` under its own M1 and M2 — and the reader
 passed the legs on shape without ever computing the number, where a reader asked exactly
@@ -429,7 +423,7 @@ there, its line count, its headings or test names, and an `excerpt` of the lines
 carry the diet's own literals, at most `8000` bytes per file and `24000` in total,
 `truncated` flagged when the cap cut. The reader's question gains its second half on that
 excerpt: *whether a named file already pins the opposite of a clause, and whether every
-section, path or symbol a leg names exists at BASE — or does not exist there at all.* — so "this sim already asserts the wave count"
+section, path or symbol a leg names exists at BASE — or does not exist there at all.* — so "this sim already asserts the task count"
 and "this doc section does not exist" are the reader's to say, not the sandbox's. The
 `hash` a verdict is keyed on is `unchanged` by the excerpt — it is still over the Claim and
 Proof only — so a moved base never stales a verdict; record the base a verdict was read
@@ -464,7 +458,7 @@ and its last `totals:` line is what the release notes carry. A missing task, a
 stale hash, or a `fail` is a compile refusal. The verdict is an artifact, not
 a memory: the compiler refuses a plan whose record is missing or whose hashes are stale,
 so an edited Claim or Proof re-dispatches. The gate agent never authors proofs, and the
-wave author never chooses which proof a task satisfies.
+plan author never chooses which proof a task satisfies.
 
 Dispatch is **per task**, not per round, and every reader runs in the foreground. Dispatch
 it with the Agent tool, `subagent_type: "general-purpose"`, `run_in_background: false` —
@@ -499,7 +493,7 @@ authoring record, a `Check:` carrying a backtick or naming a path one task owns,
 already holds at BASE — and, since a plan's proof is its `Run:` probes and nothing else, a `Test:` or `Guard:` bullet or an `Exam command` header is refused outright. It is not a grammar check — the old
 compiler's grammar refusals left with it at cut B (2026-09-21), so read `plan_parse.py`'s
 own output for the plan before launching (`proofRuns`, `proofRunClauses`, `checks`,
-`dag_edges`, `pairs`): what it prints is what the engine will do.
+`dag_edges`): what it prints is what the engine will do.
 
 `check_provenance.py` (needs `gh`) resolves every anchor and string-matches every
 `quoted from #NNN` claim against its issue body at signing time. The plan is done when
@@ -534,8 +528,7 @@ prints `PLAN OK` and exits 0. Only `plan_check.py --base` asks: a plain compile 
 The launcher
 runs this same compile at `--base` before it pushes anything and prints the same
 lines, so a plan that does not compile at the launch base is refused on the laptop
-(#865), and a `**BASE facts:**` block generated at another sha is refused with the
-re-pin command.
+(#865).
 
 The rejection species are listed in `references/authoring-gotchas.md` and read by the
 author before a reader is dispatched — nothing prints them.
@@ -548,7 +541,7 @@ Every `implementation` task is a pure diff against the integration branch:
    note (port assignments, shared literals) lives in the body of each task it affects,
    never only in a preamble.
 2. **No branch instructions.** The executor owns branching.
-3. **Concurrency-safe proofs.** Same-wave suites run at once on one machine: unique port
+3. **Concurrency-safe proofs.** Builders run their probes at once on one machine: unique port
    and temp path per test, no shared on-disk fixtures.
 4. **Name only what exists.** Every path a slot cites must exist at BASE or be created by
    a task this one derivably follows. `docs/superpowers/` is untracked (#544) and absent
@@ -556,18 +549,17 @@ Every `implementation` task is a pure diff against the integration branch:
    worker is asked to open — put what the worker needs from a spec into Context.
 5. **Claims about the live world carry their evidence.** A task asserting what a live
    system does is unverifiable from a sandbox — paste the commands and their output into
-   Context so review checks correspondence to a record, not truth it cannot reach.
+   Context so the builder and Jev check correspondence to a record, not truth they cannot
+   reach.
 6. **Isolate `CLAUDE_CONFIG_DIR`** in any task that spawns the agent CLI, or it writes
    false memories into the host project.
 7. **Greenfield targets take the Bun + TypeScript + TinyBase defaults** — `bun install` to
    bootstrap, `bunx tsc --noEmit && bun test` as the suite, one TinyBase store as the
    app's state; the synced shape (store → WsSynchronizer → Durable Object) is a *TinyApp*.
    Both knobs verbatim, the `@types/bun` tsconfig gotcha, the TinyApp shape, and where the
-   restriction stops: `references/greenfield-stack.md`. State exams — a Bun test over a
-   seed and an expected store state, once named as a test-file path — are deferred since
-   cut three (2026-09-22): a TinyApp task is proven like any other, by `Run:` probes and
-   the stack's `Check:` line, until state exams return as probes (owed on map #1248;
-   `references/greenfield-stack.md` §State exams carries the shape for that day).
+   restriction stops: `references/greenfield-stack.md`. A TinyApp task is proven like any
+   other, by `Run:` probes and the stack's `Check:` line.
+   the stack's `Check:` line, until state exams return as probes (owed on map #1248).
 
 ## Decomposition judgment
 
@@ -576,8 +568,8 @@ Independence is a property of contracts, not of files.
 1. **Split by default.** Every piece of work that can carry its own contract — a module
    with its own exports and its own tests — is its own task. Where a consumer would wait
    on a producer, put the shared shape (a schema, a signature, a file format) as one
-   literal in the Context of every task that touches it; the critic checks that the
-   implementations agree with it. A `Consumes:` of a sibling's `Produces:` orders the two,
+   literal in the Context of every task that touches it, and give each side a probe that
+   pins the literal, so an implementation that drifts from it goes red. A `Consumes:` of a sibling's `Produces:` orders the two,
    and a `Create:` a sibling task later `Modify:`s is the same kind of fact; a shared
    literal orders neither, so prefer the literal wherever the consumer only needs the
    shape. Workers have no shared memory — a chain of two tasks is two strangers in
@@ -595,43 +587,43 @@ Independence is a property of contracts, not of files.
    authored, and there is no width to state and no rationale line to write. An edge an
    author takes only to keep two same-file edits apart — not because a sibling needs the
    other's runtime behaviour — is a defect: on run-193 the author chained the engine task
-   behind the hunk-picker task to keep two import inserts out of the resolver, and the
+   behind the hunk-picker task to keep two import inserts from meeting at merge, and the
    consumer waited on a producer it needed nothing from — about nine minutes of clock lost
    (n=1 run, 2026-09-18).
-3. **Let same-file edits stand.** Concurrent same-file *text* writes fold at merge, so a
-   shared hot file is never a reason to reshape a plan — let colliding `Modify` lines
-   collide. Non-text (binary, symlink) same-file pairs are ordered automatically. Blast
-   radius follows the contract, not the file: a task that changes a `Produces:` shape owns
-   every strict-equality pin of it, in any sibling's file — list that file in its own
-   Files block. One shape does not fold, though: N tasks that each add one line to one
-   list are N **adjacent inserts at one location**, which the fold sends to a resolver —
-   run-12 (2026-09-05, PR #662) had five tasks each append one registration line to
-   `compile_plan.py`, and the fold spent three resolver workers
-   (3.4 worker-minutes, 6.6 of the 13-minute post-review tail) ordering
-   five lines any order would have satisfied. Give each such task its **own region or
-   file**: a registration is a new file discovered by glob, never an appended line.
-4. **Prefer several small concurrent plans** folding into one frontier over one large plan
-   (0.26× batch wall, n=1 drain of 3 runs, #454, 2026-09-01). Until that fold lands
-   (Tier 2), an effort split
+3. **Let same-file edits stand.** Builders merge each other's published work continuously
+   through the weave, so concurrent same-file *text* writes meet there, and a shared hot
+   file is never a reason to reshape a plan — let colliding `Modify` lines collide.
+   Non-text (binary, symlink) same-file pairs are ordered automatically. Blast radius
+   follows the contract, not the file: a task that changes a `Produces:` shape owns every
+   strict-equality pin of it, in any sibling's file — list that file in its own Files
+   block. One shape does not merge cleanly, though: N tasks that each add one line to one
+   list are N **adjacent inserts at one location**, which merge as a conflict a builder
+   must stop and resolve — run-12 (2026-09-05, PR #662) had five tasks each append one
+   registration line to one registry file and spent 3.4 worker-minutes ordering five lines
+   any order would have satisfied. Give each such task its **own region or file**: a
+   registration is a new file discovered by glob, never an appended line.
+4. **Prefer several small concurrent plans** merging into one merge frontier over one
+   large plan (0.26× batch wall, n=1 drain of 3 runs, #454, 2026-09-01). An effort split
    across plans gives the **final** plan an integration-spanning acceptance — per-phase
-   green never establishes integrated green — or declares the gap explicitly at the final
-   gate. Never silently.
+   green never establishes integrated green — or declares the gap explicitly in the final
+   plan. Never silently.
 
 ## Global Constraints discipline
 
-`## Global Constraints` is forwarded to every reviewer as its attention lens. Copy the
-spec's binding, cross-cutting requirements: version floors, naming and copy rules,
-platform requirements. State what must be true **of the result**. Process rules — TDD
-ordering, commit cadence, "write the failing test first" — are never Global Constraints:
-no diff evidences the order work was done in, so as a lens they yield only unverifiable
-findings, one per task.
+`## Global Constraints` holds the spec's binding, cross-cutting requirements: version
+floors, naming and copy rules, platform requirements. State what must be true **of the
+result**. Process rules — TDD ordering, commit cadence, "write the failing test first" —
+are never Global Constraints: no diff evidences the order work was done in, so nothing
+could ever check them.
 
-The section holds two kinds of bullet, and they are read by different machinery. A
-`- Check:` bullet is a command the driver executes in every task's clone before review
-and once on the adopted tree — blocking, unless it ends `(minor)`, which is recorded and
-never dispatched. A prose bullet is only the referee's attention lens: it is what decides
-whether a finding is minor, and nothing runs it. So a constraint a command can decide is
-written as a Check:, never as prose — prose is where the undecidable half goes. A prose
+The section holds two kinds of bullet, and only one of them reaches the run. A `- Check:`
+bullet is a command that runs across the whole run: the Flock reads the plan's `checks`
+and the run settles green only when every one exits 0 — unless it ends `(minor)`, which is
+never run. A prose bullet is read by people only: nothing runs it and nothing forwards it,
+and no builder sees it, because a builder's task body is its own `### Task` section and
+nothing else. So a constraint a command can decide is written as a Check:, never as
+prose — prose is where the undecidable half goes, and a constraint a builder must honour is
+repeated in the Context of every task it touches. A prose
 bullet naming a byte-identical file or a script's output is one the driver could have run,
 so write it as a `Check:` beside the prose. Such a comparison has a base to compare
 against: a `Check:` or `Run:` that compares the tree against BASE writes `$ULTRA_BASE`,
@@ -659,19 +651,19 @@ Offer three options, parallel first, and do **not** default to the parallel lane
 three signals off the plan:
 
 - **T** — the number of `implementation` tasks.
-- **parallel width** — are there ≥2 tasks with no edge between them, after treating non-text same-file edits between tasks as dependencies (text overlap folds at merge)? Compute it from derived edges plus the Files blocks.
+- **parallel width** — are there ≥2 tasks with no edge between them, after treating non-text same-file edits between tasks as dependencies (text overlap merges in the weave)? Compute it from derived edges plus the Files blocks.
 - **risk** — a high-stakes surface (auth, payments, migrations, data integrity, public
   API, loops/cursors/pagination/budgets/termination logic), or behavior hard to verify by
   reading.
 
-First match wins: risk → Ultrapowers (the **risk override** — independent per-task review
-is the value, not speed); parallel width and T≥3 → Ultrapowers; T≤2 → Inline;
+First match wins: risk → Ultrapowers (the **risk override** — every task held to its own probes
+and the run to its checks is the value, not speed); parallel width and T≥3 → Ultrapowers; T≤2 → Inline;
 else → Subagent-Driven. Show a one-line analysis, then the three options, tagging the
 winner **(recommended)**:
 
 1. **Ultrapowers** — `/ultrapowers <plan-path>`: commits the plan and drives it on the
-   exe.dev fleet (a pool of tasks in a sandbox, several implementers per task, the plan's
-   probes and checks as the proof, the sandbox opens the PR). Selecting it authorizes execution: the plan is committed and the fleet run
+   exe.dev fleet (builders in a sandbox claim tasks from a board and merge each other's
+   published work, the plan's probes and checks as the proof, the sandbox opens the PR). Selecting it authorizes execution: the plan is committed and the fleet run
    launches immediately, without a further approval pause.
 2. **Subagent-Driven** — sequential, fresh context and review between tasks.
 3. **Inline** — continuous inline execution.

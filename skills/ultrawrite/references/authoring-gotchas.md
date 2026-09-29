@@ -17,26 +17,26 @@ file — `suite-total-pin`, `directory-absence-pin` and, since the compiler left
 
 - **A zero-count grep over a source file counts its comments too.** A `Run:` that pins
   `grep -c <symbol> <file>` = 0 goes red the moment the implementer deletes the code and
-  leaves the comment that named it — three of four tasks on run-127 (2026-09-14) took a fix
-  round on exactly that, where run-126's Task 2 had listed the 14 comment carriers of
+  leaves the comment that named it — three of four tasks on run-127 (2026-09-14) took a second
+  attempt on exactly that, where run-126's Task 2 had listed the 14 comment carriers of
   `serialize` in Context and took none. Before dispatch, `grep -n` the literal across the
   task's Files and put the comment carriers in Context, or pin the definition (`^def x`,
   `^export const x`) instead of the bare word.
 
-- **Every wave leaves the folded tree green.** A wave-1 producer that deletes or
-  renames a symbol whose consumers are a wave-2 rewrite turns the wave-1 folded
-  suite red by construction — the old consumers still import the old name — and
-  a doc↔code pin (doctor `ROW_IDS` ↔ `first-run.md` headings) split across
-  waves does the same; the engine gates every wave's folded tree with the full
-  suite, so "the consumer rewrites it next wave" is not a plan. Keep the old
-  export as a shim in the producer's task, or put the consumers in the
-  producer's wave and let same-file text fold; keep both halves of any pin in
-  one wave (run-72, 2026-09-04).
+- **A producer's published work must leave its consumers' copies green.** A
+  producer that deletes or renames a symbol whose consumers another task rewrites
+  turns every copy that has merged it red by construction — the old consumers
+  still import the old name — and a doc↔code pin (doctor `ROW_IDS` ↔
+  `first-run.md` headings) split across two tasks does the same. Builders merge
+  each other's published work continuously and the run settles green only on
+  every probe and `Check:`, so "the consumer rewrites it later" is not a plan.
+  Keep the old export as a shim in the producer's task, or put the consumers in
+  the producer's own task; keep both halves of any pin in one task (run-72,
+  2026-09-04).
 - **No backticks inside a `Run:` command.** The compiler strips only a
   whole-value backtick wrapper; an inner backtick reaches `bash -lc` as a
-  command substitution and the proof exits 127, and the fix loop cannot repair a
-  proof it does not own, so the task dies `fix-loop-exhausted` with a correct
-  patch. Grep for the word, never for the backticked literal. Since 0.3.10 the
+  command substitution and the proof exits 127, and no builder can repair a
+  proof it does not own, so the task never goes green with a correct patch. Grep for the word, never for the backticked literal. Since 0.3.10 the
   compiler refuses it outright with `command carries a backtick` (run-74,
   2026-09-04).
 - **The gate readers never see Context, so read every ordered Machine clause
@@ -75,30 +75,28 @@ file — `suite-total-pin`, `directory-absence-pin` and, since the compiler left
   prints this list: read it here, row by row, before a reader is dispatched.
 - **Absolute collected-count pins are integration-hostile.**
   `test "$(pytest --collect-only -q | tail -1 | cut -d' ' -f1)" = 1461` passes
-  in the task's clone and fails on the adopted tree, where every merged `Run:`
-  is re-run and every sibling's deletions have folded in — five blocking
-  findings on a correct tree. Pin per-file counts
+  in the task's clone and fails on the merged tree, where every sibling's
+  deletions have merged in — five blocking findings on a correct tree. Pin per-file counts
   (`--collect-only -q <file> | grep -c ::`) or state the delta, never the suite
   total. Likewise `test ! -e tests/<dir>` fails on a `__pycache__` survivor in
   the integration clone — pin the source files. The compiler names both:
   `suite-total-pin` and `directory-absence-pin` (run-4, 2026-09-04).
 - **Every file a task can foresee touching is in its own Files,
-  even a sibling's one-liner.** A compelled edit outside Files was ruled lawful
-  in review round 1, reverted by the fix round told to "resolve every blocking
-  issue", blocked in round 2, and the task died `fix-loop-exhausted`; same-file
-  text folds, so listing the file costs nothing. A file the author could not
-  foresee is no longer that death: it is a declared amendment the reviewer
-  judges on its merits and never reverts, the rule since #990 — so the listing
-  is foresight, not a fence (run-2, 2026-09-04). That foresight never becomes
+  even a sibling's one-liner.** On run-2 (2026-09-04) a compelled edit outside
+  Files was ruled lawful, then reverted, then blocked, and the task died with a
+  correct patch; same-file text merges in the weave, so listing the file costs
+  nothing. A file the author could not foresee is no longer that death: it is a
+  declared amendment, read on its merits and never reverted, the rule since
+  #990 — so the listing is foresight, not a fence. That foresight never becomes
   an authored ordering: the engine reads every overlapping or consuming pair
   itself, so a chain added only to keep two same-file edits apart is a defect,
   not caution — on run-193 the author chained the engine task behind the
-  hunk-picker task to keep two import inserts out of the resolver, and the
+  hunk-picker task to keep two import inserts from meeting at merge, and the
   consumer waited on a producer it needed nothing from, about nine minutes of
   clock lost (n=1 run, 2026-09-18).
 - **Never a process or authorship sentence in the plan-level Claim.** "Every
   task's exam was written by a peer before the implementer started" parked an
-  otherwise clean run as `deferred:external`: the critic reads the tree, and no
+  otherwise clean run as `deferred:external`: Jev reads the tree, and no
   tree shows authorship order — that fact lives in the run record. The Claim is
   do:/see: about the product; the process is the engine's to record (walk run-3,
   2026-09-04).
@@ -134,17 +132,16 @@ file — `suite-total-pin`, `directory-absence-pin` and, since the compiler left
   `tests/state-exams` directory, which names all of them — was the old compiler's
   `one Run, one exam` refusal; nothing refuses it now. The reading behind it: 19
   of 29 fixture exam files spawned a runner over their neighbours, one leg took
-  573 s, and the fold suite grew from 2.4 to 19 minutes over four fixture runs
-  ending at run-24. One claim, one prover; regression is the fold's one suite
-  run per merge, so a sweep the operator wants is written once in the owning
-  task's own `Run:` (a `Check:` line is not read by this rule).
+  573 s, and the integration suite grew from 2.4 to 19 minutes over four fixture
+  runs ending at run-24. One claim, one prover; regression is the run's `Check:`
+  lines, so a sweep the operator wants is written once in the owning task's own
+  `Run:` (a `Check:` line is not read by this rule).
 - **A `Run:`/`Check:` line writes only to stdout.** `tee /dev/stderr` — and any
   write to `/dev/stderr` or `/dev/tty` — is refused under the sandbox's
   service shell (`tee: /dev/stderr: Permission denied`), so the proof exits
-  non-zero on plumbing with the claim already proven. The driver captures the
-  command's stdout and stderr already (the last 4,000 characters ride the
-  reviewer's evidence), so a line that wants its output on the record lets the
-  driver keep it and never duplicates it; and a proof line's exit comes from
+  non-zero on plumbing with the claim already proven. The engine captures the
+  command's stdout and stderr already, so a line that wants its output on the
+  record lets the engine keep it and never duplicates it; and a proof line's exit comes from
   the command that proves the claim, not from plumbing (fixture run-25,
   popmechanic/tinyapp-fixture, 2026-09-17).
 - **A fake that stands in for a client a sibling feature also calls
@@ -160,15 +157,14 @@ file — `suite-total-pin`, `directory-absence-pin` and, since the compiler left
 
 - **A `Check:` red at BASE is a red no task of the plan owns, unless one
   task's Files hold the offender.** A run-wide `Check:` is paid by every task
-  on every pass; one already failing before any work is done costs repair
-  attempts that can change nothing, because no task caused it and no task can
-  turn it green. The sandbox runs every `Check:` once at base before the
-  first dispatch and records it as a `check:line` row carrying `base: true`
-  (#1195), so the author's defence before launch is to run the command by
-  hand in an installed checkout. A fixture `Check:` copied verbatim from
-  `greenfield-stack.md` exited 1 at BASE on a file no task owned, turned both
-  fold checks red, and bought two repair attempts that could change nothing
-  (fixture run-36, popmechanic/tinyapp-fixture, 2026-09-21; #1173).
+  on every pass; one already failing before any work is done keeps the run from
+  settling green, because no task caused it and no task can turn it green. The
+  Flock records no base run of a `Check:`, so the author's defence before launch
+  is to run the command by hand in an installed checkout. A fixture `Check:`
+  copied verbatim from `greenfield-stack.md` exited 1 at BASE on a file no task
+  owned, went red on both integration passes, and bought two repair attempts that
+  could change nothing (fixture run-36, popmechanic/tinyapp-fixture, 2026-09-21;
+  #1173).
 
 - **A `Check:` that freezes a path must not cover any task's own Files.**
   A run-wide `git diff --quiet $ULTRA_BASE -- <paths>` is green at BASE by construction: it
@@ -187,17 +183,17 @@ file — `suite-total-pin`, `directory-absence-pin` and, since the compiler left
   read back from a shared log or a shared JSON file that another task's own leg also
   writes. On run-195 (2026-09-18) one task added `ts` to every row of the run's event log
   and the probes of two sibling tasks, each asserting a row's exact key list, went red on
-  the folded tree with both features right; the gate now refuses such a leg before
-  dispatch.
+  the merged tree with both features right; the gate now refuses such a leg before
+  launch.
 
 - **A probe cannot pass in a lone clone at BASE when it drives a sibling's region.** A
   task whose probe boots the whole system exercises every sibling's lines, so an
   assertion that only a sibling's edit satisfies is red in that task's own clone
   whatever the task does — the author's "passes at BASE" assumption is the thing to
   check, clause by clause, against the Files of every sibling. Either the clause names
-  only what this task's Files can change, or the fold check is its measurement. On
-  run-215 (2026-09-22) task 3 was red on a `ts` a sibling wrote — two implementers and a
-  re-dispatch, 90 worker-minutes — before the clause was narrowed to what its own Files
+  only what this task's Files can change, or a run-wide `Check:` is its measurement. On
+  run-215 (2026-09-22) task 3 was red on a `ts` a sibling wrote — three attempts,
+  90 worker-minutes — before the clause was narrowed to what its own Files
   could change.
 
 - **An untagged `Run:` settles nothing.** The engine settles a clause only through a
@@ -227,11 +223,11 @@ file — `suite-total-pin`, `directory-absence-pin` and, since the compiler left
   landed on the first try (n=1 pair of runs).
 
 - **A probe reads what it reads, not only what its task wrote.** On run-225 task 2
-  pinned how task 1's `record.mjs` rendered a cell, the two tasks shared no file, the
-  fold check skipped the sim, and the merged tree was red by hand (#1250); since #1251
-  the fold check re-runs every adopted task's probes on every fold, so the rule for an
-  author is only to expect it: a probe green in its own clone can be red on the folded
-  tree, and that is the fold check's finding, not the task's.
+  pinned how task 1's `record.mjs` rendered a cell, the two tasks shared no file, and
+  the merged tree was red by hand (#1250). A Flock builder's copy keeps merging its
+  peers' published work, so a probe green before a sibling publishes can go red after,
+  on a correct task: write a probe over a sibling's output only when the pair is
+  ordered by a derived edge, or pin only what this task's own Files write.
 
 - **Inside `python3 -c "…"`, a literal dollar sign is `chr(36)` and a backtick is
   `chr(96)`.** The double-quoted program reaches bash first: a `$ULTRA_BASE` written

@@ -21,7 +21,7 @@ The ultrapowers plugin is installed. Two standing rules:
    it task-by-task from contract plus proof. This rule wins over a skill's own
    handoff: when superpowers:brainstorming ends with "invoke the writing-plans
    skill", invoke ultrawrite instead — writing-plans emits the legacy grammar,
-   which the fleet driver refuses before any VM (no Claim, no proof gate).
+   which the launcher refuses before any VM (no Claim, no proof gate).
 
 2. At a marked plan's execution handoff, do NOT default to ultrapowers: follow
    ultrawrite's §Execution handoff — read T, parallel width and risk off the plan,

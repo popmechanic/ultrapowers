@@ -74,7 +74,7 @@ if (both.length) {
   const j = await ask({ op: 'merged', order: ['main', 'run'] })
   wp.stdin.end()
   fs.rmSync(tmp, { recursive: true, force: true })
-  if ((j.realConflicts || []).length) finish({ refolded: false, reason: 'conflict' }, 1)
+  if ((j.conflicts || []).length) finish({ refolded: false, reason: 'conflict' }, 1)
   for (const t of texts) {
     const gone = j.exists[t.p] === false || !(t.p in j.files)
     result.set(t.p, gone ? null : Buffer.from(j.files[t.p], 'utf8'))

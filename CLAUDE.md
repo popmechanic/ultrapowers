@@ -37,8 +37,6 @@ bun factory/stack/tinyapp/check.ts --plan <plan.md> --clause S1.1 --copy <app>  
 python3 evals/readings/checker_kit.py                                        # score the checker against a good todo app and broken copies (run when factory/stack/tinyapp/ changes)
 node fleet/doctor.mjs --json                                                 # which fleet prerequisite is missing
 node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha> --engine <sha>   # one run (the Flock); from this checkout, never the plugin cache
-python3 skills/ultrapowers/scripts/catch_counter.py --ledger <f> <path...>   # what a test file has ever caught
-python3 skills/ultrapowers/scripts/catch_report.py --ledger <f> --tree .     # the deletion candidates that reading names
 ```
 
 The plan and census scripts take positional arguments only (no `--help`); the story-planning
@@ -51,8 +49,7 @@ the engine's exit code is the merge decision.
 
 - `skills/ultrapowers/` — the operator skill: `SKILL.md` (thin client: commit the plan, launch
   the fleet); `scripts/` — `plan_parse.py` (the one plan parser; the sandbox runs it),
-  `plan_check.py` (the laptop's check on it), `validate_skill.py`, `catch_counter.py` /
-  `catch_report.py` (read through `fleet_events.py` and `_outcome.py`); `references/`
+  `plan_check.py` (the laptop's check on it), `validate_skill.py`; `references/`
   (`first-run.md` walks each doctor row); `kernel/` — sha-pinned `vendor/manyana.py`, the
   merge the Flock's weave (`factory/flock/weave.py`) runs.
 - `skills/ultrawrite/` — plan authoring: the claims-v1 grammar (six body slots, contracts
@@ -129,15 +126,16 @@ the engine's exit code is the merge decision.
   Record every sitting-level question and pick in the plan's `authoring` record; a
   recommendation taken every time is retired into a written default.
 - **Test doctrine (2026-09-09, rewritten 2026-09-22).** The implementer never does TDD and
-  writes no test of its own; the plan's `Run:` probes and the `Check:` lines are the proof, and the target's suite is a reported sensor. A test file that
-  has never caught anything is deleted, on `catch_counter.py`'s reading. Every reading states
-  its `n=…` and `window`; no default flips under `n = 5 runs` (`20 tasks` per-task). A flip
+  writes no test of its own; the plan's `Run:` probes and the `Check:` lines are the proof, and the target's suite is a reported sensor. A test file is
+  pruned by hand, one per pull request that names what else guards its behaviour.
+  The catch census was retired on 2026-09-29: the Flock writes none of the rows it counted.
+  Every reading states its `n=…` and `window`; no default flips under `n = 5 runs` (`20 tasks` per-task). A flip
   under the floor is an `experiment` carrying its `rollback`; a fact read once carries its
   `date` (#994).
   **The proof is probes-only (operator, 2026-09-27):** the Flock selects no existing tests,
   so a run's proof is its `Run:` probes and `Check:` lines alone, and a plan that must keep
   existing behaviour names the guarding tests in a `Check:` (e.g.
-  `python3 -m pytest -q tests/test_fleet_suite.py -k launch`). Flock runs add no catches.
+  `python3 -m pytest -q tests/test_fleet_suite.py -k launch`).
 - **Verification is mechanical and fast.** A probe computes facts (exit code, argv,
   byte-exact string, count, ordering, oracle agreement); "the code says X" is Jev's, read
   against the hunk at landing. A probe is one `Run:` line, one command, ending in the tag of
@@ -181,8 +179,7 @@ the engine's exit code is the merge decision.
   `chore: version 0.x.y — …` bumping both manifests and this line, squash-merged, then a bare
   tag on that commit: `git tag v0.x.y <sha> && git push origin v0.x.y`. **No GitHub release**
   until the operator calls it production-ready. Notes go to
-  `docs/superpowers/plans/<date>-release-0-x-y.notes.md` (untracked) with the census line and
-  the catch report.
+  `docs/superpowers/plans/<date>-release-0-x-y.notes.md` (untracked) with the census line.
 - **The installed plugin lags the repo.** Edits here reach the running plugin only after
   `/plugin` re-resolves the new version (interactive terminal) **and** a new session starts.
   Skill text reloads in-session; hooks and manifest need a new session. The fleet is

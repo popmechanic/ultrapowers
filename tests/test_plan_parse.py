@@ -151,11 +151,9 @@ def test_m1_stdout_shape_with_and_without_verdict_record(plan_path, tmp_path):
     proc_with = run_parser(plan_path)
     assert proc_with.returncode == 0, proc_with.stdout + proc_with.stderr  # [M1]
     obj_with = parse_stdout_json(proc_with.stdout)
-    # Pin extended to the fourth top-level key, `pairs`, by "The parser
-    # lists every pair of tasks that share a file or an interface", and to
-    # the fifth and sixth, `checks` and `bootstrapCmd`, by this task. [M1] [pairs-M1] [cmds-M2]
+    # Pin extended to `checks` and `bootstrapCmd` by this task. [M1] [cmds-M2]
     assert set(obj_with.keys()) == {"tasks", "dag_edges", "launch_waves",
-                                    "pairs", "checks", "bootstrapCmd", "publish"}
+                                    "checks", "bootstrapCmd", "publish"}
 
     # A copy of the fixture alone in tmp_path, with no sibling file at all.
     tmp_plan = tmp_path / plan_path.name
@@ -164,7 +162,7 @@ def test_m1_stdout_shape_with_and_without_verdict_record(plan_path, tmp_path):
     assert proc_without.returncode == 0, proc_without.stdout + proc_without.stderr  # [M1]
     obj_without = parse_stdout_json(proc_without.stdout)
     assert set(obj_without.keys()) == {"tasks", "dag_edges", "launch_waves",
-                                       "pairs", "checks", "bootstrapCmd", "publish"}  # [M1] [pairs-M1] [cmds-M2]
+                                       "checks", "bootstrapCmd", "publish"}  # [M1] [cmds-M2]
 
     # Reading no file but the plan: the answer does not change when the
     # sibling verdict record vanishes. [M1]
@@ -561,27 +559,7 @@ def test_guard_m3_bad_argv_variants_exit_2_with_usage(tmp_path):
     assert len(set(usage_lines)) == 1
 
 
-# --------------------------------------------------------------------------- #
-# Task: "The parser lists every pair of tasks that share a file or an        #
-# interface".                                                                #
-#                                                                             #
-# pairs-M1 -- a new top-level key `pairs`: one entry per unordered pair of   #
-#             implementation tasks whose `files` intersect or whose         #
-#             Consumes/Produces tokens match, each entry                    #
-#             `{a, b, why, paths, symbol, producer, consumer}` with `a`     #
-#             before `b` in document order, `why` drawn from `files` then   #
-#             `interface` in that order, `paths` the sorted shared paths    #
-#             (`[]` when none), `symbol`/`producer`/`consumer` the matched  #
-#             token and task ids for an interface pair and `null`/`null`/   #
-#             `null` for a files-only pair, and the whole `pairs` list in   #
-#             document order of `a` then of `b`.                            #
-# pairs-M2 -- `tasks`, `dag_edges` and `launch_waves` are unchanged: every   #
-#             edge still carries its `why`, and an interface pair is still  #
-#             an `interface` edge.                                          #
-# pairs-M3 -- `--unguarded <plan.md>` prints what it printed before.        #
-# --------------------------------------------------------------------------- #
-
-def test_pairs_m1_files_and_interface_pairs_shape_and_order(tmp_path):
+def test_interface_edge_and_launch_waves(tmp_path):
     tasks = [
         task_block("1", "Producer", creates=["a.py"],
                    produces=["`make_widget(n)`"]),
@@ -590,148 +568,10 @@ def test_pairs_m1_files_and_interface_pairs_shape_and_order(tmp_path):
         task_block("3", "Other modifier", modifies=["b.py"]),
     ]
     obj = build_and_run(tmp_path, tasks)
-    # The new top-level key, alongside the three pre-existing ones (plus the
-    # `checks`/`bootstrapCmd` pair added by this task). [pairs-M1] [cmds-M2]
-    assert set(obj.keys()) == {"tasks", "dag_edges", "launch_waves",
-                               "pairs", "checks", "bootstrapCmd", "publish"}
-    # Full entry shape, values and list order: (1, 2) by interface (no shared
-    # file so no "files" reason, symbol/producer/consumer filled in), (2, 3)
-    # by files (no interface so those three are null); (1, 3) shares neither
-    # a file nor a token so draws no entry at all. [pairs-M1]
-    assert obj["pairs"] == [
-        {"a": "1", "b": "2", "why": ["interface"], "paths": [],
-         "symbol": "make_widget", "producer": "1", "consumer": "2"},
-        {"a": "2", "b": "3", "why": ["files"], "paths": ["b.py"],
-         "symbol": None, "producer": None, "consumer": None},
-    ]
-
-
-def test_pairs_m1_why_lists_files_before_interface_when_both_match(tmp_path):
-    tasks = [
-        task_block("1", "Producer", creates=["a.py"],
-                   produces=["`make_widget(n)`"]),
-        task_block("2", "Consumer", modifies=["a.py", "b.py"],
-                   consumes=["`make_widget(n)`"]),
-        task_block("3", "Other modifier", modifies=["b.py"]),
-    ]
-    obj = build_and_run(tmp_path, tasks)
-    first = obj["pairs"][0]
-    assert (first["a"], first["b"]) == ("1", "2")  # [pairs-M1]
-    # Both reasons hold for (1, 2) now that task 2 also modifies a.py; "why"
-    # names "files" before "interface", and "paths" is the shared path
-    # between the two tasks only (not b.py, which task 1 never touches). [pairs-M1]
-    assert first["why"] == ["files", "interface"]
-    assert first["paths"] == ["a.py"]
-
-
-def test_pairs_m1_paths_sorted_for_multiple_shared_files(tmp_path):
-    tasks = [
-        task_block("1", "A", modifies=["z.py", "a.py"]),
-        task_block("2", "B", modifies=["z.py", "a.py"]),
-    ]
-    obj = build_and_run(tmp_path, tasks)
-    # Shared paths sorted, not left in source/declaration order. [pairs-M1]
-    assert obj["pairs"] == [
-        {"a": "1", "b": "2", "why": ["files"], "paths": ["a.py", "z.py"],
-         "symbol": None, "producer": None, "consumer": None},
-    ]
-
-
-def test_pairs_m1_files_intersection_excludes_test_paths(tmp_path):
-    tasks = [
-        task_block("1", "A", creates=["src/a.py"],
-                   tests=["tests/shared_test.py"]),
-        task_block("2", "B", creates=["src/b.py"],
-                   tests=["tests/shared_test.py"]),
-    ]
-    obj = build_and_run(tmp_path, tasks)
-    # A `- Test:` bullet adds no path to a task's `files`, so a Test:-only
-    # overlap draws no "files" pair. [pairs-M1]
-    assert obj["pairs"] == []
-
-
-def test_pairs_m1_symbol_tie_break_uses_consumers_bullet_order(tmp_path):
-    tasks = [
-        task_block("1", "Producer", creates=["ta1.py"],
-                   produces=["`alpha()`", "`beta()`"]),
-        task_block("2", "Consumer", creates=["ta2.py"],
-                   consumes=["`beta()`", "`alpha()`"]),
-    ]
-    obj = build_and_run(tmp_path, tasks)
-    # Both alpha and beta match; the consumer lists `beta()` before
-    # `alpha()` in its own Consumes bullets, so "symbol" is "beta" even
-    # though the producer declared "alpha" first. [pairs-M1]
-    assert obj["pairs"] == [
-        {"a": "1", "b": "2", "why": ["interface"], "paths": [],
-         "symbol": "beta", "producer": "1", "consumer": "2"},
-    ]
-
-
-def test_pairs_m1_producer_tie_break_uses_earlier_document_task_when_mutual(tmp_path):
-    tasks = [
-        task_block("1", "Earlier", creates=["tb1.py"],
-                   produces=["`x()`"], consumes=["`y()`"]),
-        task_block("2", "Later", creates=["tb2.py"],
-                   produces=["`y()`"], consumes=["`x()`"]),
-    ]
-    obj = build_and_run(tmp_path, tasks)
-    # Each side consumes what the other produces (task 1 makes x() which
-    # task 2 consumes; task 2 makes y() which task 1 consumes); the earlier
-    # document task, 1, is the producer, and the matched token follows from
-    # that role assignment: task 1 produces x() and task 2 consumes it. [pairs-M1]
-    assert obj["pairs"] == [
-        {"a": "1", "b": "2", "why": ["interface"], "paths": [],
-         "symbol": "x", "producer": "1", "consumer": "2"},
-    ]
-
-
-def test_pairs_m1_pairs_ordered_by_document_position_not_id_string(tmp_path):
-    # Ids "9" and "10" sort the wrong way lexically ("10" < "9"); document
-    # order (task 9 appears before task 10) must win over id-string order.
-    tasks = [
-        task_block("0", "X", modifies=["shared.py"]),
-        task_block("9", "Y", modifies=["shared.py"]),
-        task_block("10", "Z", modifies=["shared.py"]),
-    ]
-    obj = build_and_run(tmp_path, tasks)
-    # "a" before "b" in document order, and the whole list in document order
-    # of "a" then "b": all three tasks share one file, so the pair list
-    # walks (0,9), (0,10) -- both "a"="0" pairs, "b" in document order, not
-    # lexical order -- then (9,10). [pairs-M1]
-    assert [(p["a"], p["b"]) for p in obj["pairs"]] == [
-        ("0", "9"), ("0", "10"), ("9", "10"),
-    ]
-    for p in obj["pairs"]:
-        assert p["why"] == ["files"]  # [pairs-M1]
-        assert p["paths"] == ["shared.py"]  # [pairs-M1]
-        assert (p["symbol"], p["producer"], p["consumer"]) == (None, None, None)  # [pairs-M1]
-
-
-def test_pairs_m1_pairs_only_among_implementation_tasks(tmp_path):
-    tasks = [
-        task_block("1", "Impl", modifies=["shared2.py"]),
-        task_block("2", "Gate", ttype="gate", modifies=["shared2.py"]),
-    ]
-    obj = build_and_run(tmp_path, tasks)
-    # A gate task shares a file with the implementation task, but "pairs" is
-    # a list of pairs of *implementation* tasks only, so no entry is drawn. [pairs-M1]
-    assert obj["pairs"] == []
-
-
-def test_pairs_m2_dag_edges_and_launch_waves_unchanged(tmp_path):
-    tasks = [
-        task_block("1", "Producer", creates=["a.py"],
-                   produces=["`make_widget(n)`"]),
-        task_block("2", "Consumer", modifies=["b.py"],
-                   consumes=["`make_widget(n)`"]),
-        task_block("3", "Other modifier", modifies=["b.py"]),
-    ]
-    obj = build_and_run(tmp_path, tasks)
-    # The interface edge still carries its "why", unaffected by "pairs"
-    # being added alongside it. [pairs-M2]
+    # The interface edge carries its "why".
     assert obj["dag_edges"] == [{"from": "1", "to": "2", "why": "interface"}]
     wave_ids = [[t["id"] for t in wave] for wave in obj["launch_waves"]]
-    assert wave_ids == [["1", "3"], ["2"]]  # [pairs-M2]
+    assert wave_ids == [["1", "3"], ["2"]]
 
 
 # --------------------------------------------------------------------------- #
@@ -741,7 +581,7 @@ def test_pairs_m2_dag_edges_and_launch_waves_unchanged(tmp_path):
 # This task's own Machine clauses are M1-M3, colliding by number with the    #
 # grammar-parser's M1-M6 tags used at the top of this file -- its legs are   #
 # tagged cmds-M1, cmds-M2, cmds-M3 to stay unambiguous, mirroring            #
-# guard-M*/pairs-M*.                                                         #
+# guard-M*.                                                      #
 #                                                                             #
 # cmds-M1 -- every task object gains `proofRuns` (the task's Proof           #
 #            `- Run:` commands in order, a whole-value backtick wrapper      #
@@ -752,7 +592,7 @@ def test_pairs_m2_dag_edges_and_launch_waves_unchanged(tmp_path):
 #            which is not part of `cmd`) and `bootstrapCmd` (the text of a   #
 #            `**Bootstrap:**` header line above the first task, `null` when  #
 #            the plan has none).                                            #
-# cmds-M3 -- the other task fields, `dag_edges`, `launch_waves` and `pairs`  #
+# cmds-M3 -- the other task fields, `dag_edges` and `launch_waves`           #
 #            are unchanged; the task-object key set is the earlier set plus #
 #            `proofRuns`, the top-level key set is the earlier set plus     #
 #            `checks`/`bootstrapCmd`, both and nothing else.                #
@@ -818,17 +658,13 @@ def test_cmds_m3_key_sets_and_other_fields_unchanged(tmp_path):
     # The top-level key set is the earlier set plus `checks` and
     # `bootstrapCmd`, nothing else. [cmds-M3]
     assert set(obj.keys()) == {"tasks", "dag_edges", "launch_waves",
-                               "pairs", "checks", "bootstrapCmd", "publish"}
+                               "checks", "bootstrapCmd", "publish"}
 
-    # dag_edges and pairs are what they were: the write-after-create edge
-    # (task "1" creates cm3/a.py, task "2" modifies it) still fires with its
-    # own "why", and the pair still carries "files". [cmds-M3]
+    # dag_edges are what they were: the write-after-create edge (task "1"
+    # creates cm3/a.py, task "2" modifies it) still fires with its own
+    # "why". [cmds-M3]
     assert obj["dag_edges"] == [
         {"from": "1", "to": "2", "why": "write-after-create"}]
-    assert obj["pairs"] == [
-        {"a": "1", "b": "2", "why": ["files"], "paths": ["cm3/a.py"],
-         "symbol": None, "producer": None, "consumer": None},
-    ]
 
 
 # --------------------------------------------------------------------------- #
