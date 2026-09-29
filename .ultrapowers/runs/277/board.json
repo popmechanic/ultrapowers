@@ -1,0 +1,51 @@
+{
+ "tasks": [
+  {
+   "id": "1",
+   "title": "A probe that reads a real run's record",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "2",
+   "title": "Each tested snapshot is a patch that replays onto base",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [
+    "1"
+   ],
+   "notes": []
+  },
+  {
+   "id": "3",
+   "title": "The board timings and the tool:post rows leave the record",
+   "state": "done",
+   "owner": "B",
+   "depends_on": [
+    "1"
+   ],
+   "notes": []
+  }
+ ],
+ "beliefs": [
+  {
+   "id": 1,
+   "t": 33208,
+   "by": "A",
+   "claim": "flock_record_probe on the current engine prints: exit 0, snapshots 1 (for two tasks), reproduces null (snapshots.jsonl rows carry no `patch`), digest base row keys [op,paths,root,t], run dir files include snapshot-texts.json, snapshots.json, snapshots.jsonl, weave-ops.jsonl.",
+   "confidence": 0.95,
+   "task": "1",
+   "about": "app"
+  },
+  {
+   "id": 2,
+   "t": 129292,
+   "by": "host",
+   "claim": "A changed 1 line(s) written by B in factory/boot.sh",
+   "confidence": 1,
+   "task": "2"
+  }
+ ]
+}
