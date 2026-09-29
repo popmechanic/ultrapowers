@@ -786,7 +786,9 @@ def parse_plan_full(text):
         view = {
             "id": t["id"],
             "title": t["title"],
-            "files": t["files"],
+            # a Delete: path is the task's own too, or the engine's scope rule reads a
+            # planned deletion as an amendment (run-263: all 44 amendment rows)
+            "files": sorted(set(t["files"]) | set(t["deletes"])),
             "depends_on": t["depends_on"],
             "proofRuns": t["proofRuns"],
             "proofRunClauses": t["proofRunClauses"],
