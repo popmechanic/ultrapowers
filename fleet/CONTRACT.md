@@ -412,10 +412,13 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
 - **Publish:** the pull request is one `POST /repos/<target>/pulls` with title
   `fleet run-<N>: <plan H1>`, head `ultra/integration-run-<N>`, base the target's default branch,
   `draft` true unless the engine exited 0, and no `authorization` header — the edge injects the
-  credential. Its body is the plan's `**Summary:**` paragraph, a blank line, one
-  `| <task> | <candidateSha> |` row per `landing` row of the run's own
-  `events.jsonl`, a blank line, and one `Closes #<n>` line per number on the plan's `**Closes:**`
-  line, all rendered by `factory/record.mjs pr-body`. The `publish:pr` row it leaves —
+  credential. Its body is the plan's `**Summary:**` paragraph, a blank line, the receipt — a
+  `### Receipt` table with one `| task | probe | proves | exit |` row per `Run:` line of the plan,
+  the exit read from the `edge` row of the last `settled` snapshot (the last `edge` row when
+  nothing settled), then `Run-wide checks: exit <n>` and `**Evidence:** <the evidence tag's
+  run folder>` — a blank line, and one `Closes #<n>` line per number on the plan's `**Closes:**`
+  line, all rendered by `factory/record.mjs pr-body`. A run with no `edge` row carries only the
+  evidence line. The `publish:pr` row it leaves —
   `{ts, kind, url, number, draft}` — is written through the same writer as every other
   end-of-run row (`event_row`, over `factory/record.mjs row`).
 - **Publish probe (#835, `run_publish_probe` in `factory/boot.sh`, called from `publish()` once

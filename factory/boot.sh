@@ -287,9 +287,10 @@ run_engine() {
   log "engine: exited $(cat "$DONE_MARKER") (output in $ENGINE_LOG)"
 }
 plan_title()   { { sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" || true; } | head -n 1; }
-# The pull request body: the plan's summary paragraph, the landing rows off the run's
-# own event log, and its closes line — rendered whole by `factory/record.mjs pr-body`.
-pr_body() { fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" pr-body "$PLAN_FILE" --events "$RUN_DIR/events.jsonl"; }
+# The pull request body: the plan's summary paragraph, the probes and their exits off the run's
+# own event log as the receipt, the evidence tag's link, and its closes line — rendered whole by `factory/record.mjs pr-body`.
+pr_body() { fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" pr-body "$PLAN_FILE" --events "$RUN_DIR/events.jsonl" \
+  --evidence "https://github.com/$TARGET_REPO/tree/ultra/evidence/$RUN_ID/$EVIDENCE_REL"; }
 # The target's default branch as the remote advertised it: a PR against a guessed `main` on a `master` repo is refused, or worse taken.
 default_branch() {
   local ref; ref="$(fleet_git -C "$TARGET_DIR" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || true)"
