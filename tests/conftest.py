@@ -5,7 +5,15 @@ One thing lives here because it belongs to no single test file:
 `--dist load` hands items to workers in collection order, so the file
 carrying the slowest items must start at t=0 or it becomes the straggler
 every other worker waits on.
+
+And one environment setting: `ULTRAPOWERS_HOME` points at a fresh empty
+directory at import, so no `--base` exam (each now asks Jev for its
+`ROUTING fact:` risk) finds a real key — every reading is a quick null.
 """
+import os
+import tempfile
+
+os.environ["ULTRAPOWERS_HOME"] = tempfile.mkdtemp(prefix="ultrapowers-home-")
 
 BRIDGE = "test_fleet_suite.py"
 
