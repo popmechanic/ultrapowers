@@ -1,0 +1,50 @@
+{"t":731,"kind":"non-text","path":"docs/assets/dag.gif","ts":"2026-09-29T06:03:36.814Z"}
+{"t":734,"kind":"non-text","path":"factory/replay/results/landing_out.jsonl.gz","ts":"2026-09-29T06:03:36.817Z"}
+{"t":815,"kind":"start","workload":"run-260","agents":"elastic","cap":16,"model":"claude-opus-5-5","clock_ms":13800000,"quiet_ms":45000,"board":"standin","publish":"explicit","early_close":"held","order":"chain","pulls":"all","chain":{"1":2,"2":1,"3":1,"4":1,"5":1,"6":1},"ts":"2026-09-29T06:03:36.898Z"}
+{"t":1600,"kind":"past","run":259,"items":0,"ts":"2026-09-29T06:03:37.683Z"}
+{"t":1652,"kind":"builder:open","agent":"A","pool":1,"ready":5,"busy":0,"ts":"2026-09-29T06:03:37.735Z"}
+{"t":1694,"kind":"builder:open","agent":"B","pool":2,"ready":5,"busy":0,"ts":"2026-09-29T06:03:37.777Z"}
+{"t":1748,"kind":"builder:open","agent":"C","pool":3,"ready":5,"busy":0,"ts":"2026-09-29T06:03:37.831Z"}
+{"t":1795,"kind":"builder:open","agent":"D","pool":4,"ready":5,"busy":0,"ts":"2026-09-29T06:03:37.878Z"}
+{"t":1832,"kind":"builder:open","agent":"E","pool":5,"ready":5,"busy":0,"ts":"2026-09-29T06:03:37.915Z"}
+{"t":1874,"kind":"session:start","agent":"A","task":"1","ts":"2026-09-29T06:03:37.957Z"}
+{"t":1886,"kind":"session:start","agent":"B","task":"5","ts":"2026-09-29T06:03:37.969Z"}
+{"t":1893,"kind":"session:start","agent":"C","task":"6","ts":"2026-09-29T06:03:37.976Z"}
+{"t":1901,"kind":"session:start","agent":"D","task":"3","ts":"2026-09-29T06:03:37.984Z"}
+{"t":1925,"kind":"session:start","agent":"E","task":"4","ts":"2026-09-29T06:03:38.008Z"}
+{"t":2005,"kind":"kata:mirror","task":"1","uid":"01M3NW30WX2HNNGKYH8G7A6GKV","what":"claimed by A","ok":true,"ts":"2026-09-29T06:03:38.088Z"}
+{"t":2006,"kind":"kata:mirror","task":"5","uid":"01M3NW37X2ZY8RNY9E03T4TSQS","what":"claimed by B","ok":true,"ts":"2026-09-29T06:03:38.089Z"}
+{"t":2006,"kind":"kata:mirror","task":"6","uid":"01M3NW3AF6PPH221F0WT3Q2SSR","what":"claimed by C","ok":true,"ts":"2026-09-29T06:03:38.089Z"}
+{"t":2007,"kind":"kata:mirror","task":"4","uid":"01M3NW35DW9BGPEPY3JXF8BMGX","what":"claimed by E","ok":true,"ts":"2026-09-29T06:03:38.090Z"}
+{"t":2007,"kind":"kata:mirror","task":"3","uid":"01M3NW339MHSMZWNXKE2ZV24SZ","what":"claimed by D","ok":true,"ts":"2026-09-29T06:03:38.090Z"}
+{"t":4353,"kind":"tool","agent":"B","task":"5","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; grep -n \"tinyapp root\\|ready\\|health\" factory/stack/tinyapp/celld.ts","ts":"2026-09-29T06:03:40.436Z"}
+{"t":4454,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T06:03:40.537Z"}
+{"t":4531,"kind":"tool","agent":"A","task":"1","tool":"Bash","target":"cd skills/ultrawrite/stories/tinyapp-template && find . -type f -not -path './node_modules/*' | head -50 && cat package.","ts":"2026-09-29T06:03:40.614Z"}
+{"t":4601,"kind":"tool","agent":"D","task":"3","tool":"Bash","target":"cd skills/ultrawrite/stories/tinyapp-template; ls -R client | head -50; cat client/src/app.ts; cat client/src/pieces/ind","ts":"2026-09-29T06:03:40.684Z"}
+{"t":4639,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T06:03:40.722Z"}
+{"t":4693,"kind":"tool:post","agent":"D","tool":"Bash","ts":"2026-09-29T06:03:40.776Z"}
+{"t":4738,"kind":"tool","agent":"C","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; cat skills/ultrawrite/references/greenfield-stack.md; ls .ultrapowers 2>/dev/null; gr","ts":"2026-09-29T06:03:40.821Z"}
+{"t":4814,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T06:03:40.897Z"}
+{"t":5035,"kind":"tool","agent":"E","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/E; grep -n \"PIECES\" -A5 -B5 skills/ultrawrite/stories/scaffold.ts; ls skills/ultrawrite/","ts":"2026-09-29T06:03:41.118Z"}
+{"t":5119,"kind":"tool:post","agent":"E","tool":"Bash","ts":"2026-09-29T06:03:41.202Z"}
+{"t":5832,"kind":"tool","agent":"B","task":"5","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; sed -n 65,90p factory/stack/tinyapp/celld.ts","ts":"2026-09-29T06:03:41.915Z"}
+{"t":5880,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T06:03:41.963Z"}
+{"t":6982,"kind":"tool","agent":"C","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; grep -rln \"pack-client\\|ULTRA_PUBLISH_URL\" . 2>/dev/null | grep -v node_modules | hea","ts":"2026-09-29T06:03:43.065Z"}
+{"t":7019,"kind":"tool","agent":"D","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/D/skills/ultrawrite/stories/tinyapp-template; ls -la; ls server 2>&1; which celld","ts":"2026-09-29T06:03:43.102Z"}
+{"t":7040,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T06:03:43.123Z"}
+{"t":7057,"kind":"tool:post","agent":"D","tool":"Bash","ts":"2026-09-29T06:03:43.140Z"}
+{"t":7314,"kind":"tool","agent":"D","task":"3","tool":"mcp__flock__board_read","target":"","ts":"2026-09-29T06:03:43.397Z"}
+{"t":7330,"kind":"tool:post","agent":"D","tool":"mcp__flock__board_read","ts":"2026-09-29T06:03:43.413Z"}
+{"t":7665,"kind":"tool","agent":"E","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/E/skills/ultrawrite/stories/scaffold.ts","ts":"2026-09-29T06:03:43.748Z"}
+{"t":7872,"kind":"tool:post","agent":"E","tool":"Edit","ts":"2026-09-29T06:03:43.955Z"}
+{"t":7874,"kind":"edit","agent":"E","task":"4","tool":"Edit","path":"skills/ultrawrite/stories/scaffold.ts","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T06:03:43.957Z"}
+{"t":7878,"kind":"tool","agent":"E","task":"4","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T06:03:43.962Z"}
+{"t":7911,"kind":"proof","agent":"E","task":"4","exits":[1],"causes":[{"cause":"unknown"}],"errs":[""],"ts":"2026-09-29T06:03:43.994Z"}
+{"t":7918,"kind":"tool:post","agent":"E","tool":"mcp__flock__run_proof","ts":"2026-09-29T06:03:44.001Z"}
+{"t":9031,"kind":"tool","agent":"C","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; grep -n \"pack-client\\|ULTRA_PUBLISH_URL\\|Publish:\\|Verify:\" skills/ultrawrite/SKILL.m","ts":"2026-09-29T06:03:45.114Z"}
+{"t":9072,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T06:03:45.155Z"}
+{"t":9899,"kind":"tool","agent":"E","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/E; sed -n 1,40p skills/ultrawrite/stories/scaffold.ts; T=$(mktemp -d)/app; bun skills/ul","ts":"2026-09-29T06:03:45.982Z"}
+{"t":9937,"kind":"tool","agent":"B","task":"5","tool":"Edit","target":"/home/exedev/run/work/agents/B/factory/stack/tinyapp/celld.ts","ts":"2026-09-29T06:03:46.020Z"}
+{"t":10119,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T06:03:46.202Z"}
+{"t":10123,"kind":"edit","agent":"B","task":"5","tool":"Edit","path":"factory/stack/tinyapp/celld.ts","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T06:03:46.206Z"}
+{"t":10134,"kind":"tool","agent":"B","task":"5","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T06:03:46.217Z"}
