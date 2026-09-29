@@ -211,3 +211,10 @@
 {"ts":"2026-09-29T19:41:19.858Z","kind":"refold","ok":true}
 {"ts":"2026-09-29T19:41:21.795Z","kind":"merge","code":405}
 {"ts":"2026-09-29T19:41:25.278Z","kind":"merge","code":200}
+{"ts":"2026-09-29T19:41:27.099Z","kind":"board:leave","rc":0}
+{"ts":"2026-09-29T19:41:27.247Z","kind":"board:close","what":"task 1","code":200}
+{"ts":"2026-09-29T19:41:27.282Z","kind":"board:close","what":"task 2","code":200}
+{"ts":"2026-09-29T19:41:27.305Z","kind":"board:close","what":"task 3","code":200}
+{"ts":"2026-09-29T19:41:27.334Z","kind":"board:close","what":"task 4","code":200}
+{"ts":"2026-09-29T19:41:27.357Z","kind":"board:close","what":"run","code":200}
+{"ts":"2026-09-29T19:41:27.393Z","kind":"run:audit","state":"done","missing":[]}
