@@ -200,3 +200,6 @@
 {"t":280508,"kind":"landing","task":"3","k":1,"factsExit":0,"candidateSha":"45389991db8b7b709f01260eba10ab5b2a60628b","ts":"2026-09-29T21:30:00.425Z"}
 {"t":280508,"kind":"fold:verify","task":"4","ran":[{"id":"4","kind":"probe","cmd":"node fleet/tests/jev_calls_probe.mjs bundle","exit":0},{"id":"4","kind":"probe","cmd":"node fleet/tests/jev_calls_probe.mjs map","exit":0},{"id":"4","kind":"probe","cmd":"node fleet/tests/jev_calls_probe.mjs decompose","exit":0},{"id":"4","kind":"probe","cmd":"node fleet/tests/jev_calls_probe.mjs understanding","exit":0}],"attempt":1,"snap":"8ed469aea7","ts":"2026-09-29T21:30:00.425Z"}
 {"t":280508,"kind":"landing","task":"4","k":1,"factsExit":0,"candidateSha":"45389991db8b7b709f01260eba10ab5b2a60628b","ts":"2026-09-29T21:30:00.425Z"}
+{"ts":"2026-09-29T21:30:06.799Z","kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1377","number":1377,"draft":false}
+{"ts":"2026-09-29T21:30:42.027Z","kind":"refold","ok":true}
+{"ts":"2026-09-29T21:30:48.475Z","kind":"merge","code":200,"message":"Pull Request successfully merged"}
