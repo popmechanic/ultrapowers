@@ -36,9 +36,14 @@
  *   (c) [M3] an absolute plan path under a temp directory outside R, with
  *       `--repo R`: read as it is, and the launch resolves with a string
  *       `runId`.
+ *   (d) a plan with a sibling `<stem>.gate-verdicts.json`: the pushed
+ *       `ultra/plan-run-<N>` commit carries it as `.ultrapowers/gate-verdicts.json`,
+ *       byte for byte — the laptop's authoring census reads it off the plan tag
+ *       (run-268 dropped it; runs 269–271 went without, 2026-09-29).
  */
 
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -46,7 +51,7 @@ import { launch } from '../launch.mjs'
 import { Refusal } from '../lobby.mjs'
 import {
   BILLING_OK, COMPILER_FETCH, NEW_OK, NO_NETWORK_GIT, NO_REMOTE_OPS, ONE_TASK,
-  answer, cleanup, cmdRule, engineRule, localRemote, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmsPayload
+  answer, cleanup, cmdRule, engineRule, gitEnv, localRemote, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmsPayload
 } from './_lobby_helpers.mjs'
 
 const TARGET = 'acme/widgets'
@@ -232,6 +237,28 @@ const pythonCalls = (exec) => exec.calls.filter((c) => c.cmd === 'python3')
 
   ws.cleanup()
   cleanup(planDir)
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// (d) the gate record beside the plan rides the plan commit
+// ══════════════════════════════════════════════════════════════════════════
+{
+  const ws = workspace()
+  fs.mkdirSync(path.join(ws.repo.dir, 'plans'), { recursive: true })
+  fs.writeFileSync(path.join(ws.repo.dir, 'plans', 'a-plan.md'), PLAN)
+  const RECORD = '{"tasks": {}, "tally": {"dispatched": 0}}\n'
+  fs.writeFileSync(path.join(ws.repo.dir, 'plans', 'a-plan.gate-verdicts.json'), RECORD)
+
+  const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
+  const result = await launchIn(ws, { exec, planPath: 'plans/a-plan.md' })
+  const n = String(result?.runId ?? '').replace(/^run-/, '')
+  const shown = spawnSync('git', ['--git-dir', ws.repo.origin, 'show', `refs/heads/ultra/plan-run-${n}:.ultrapowers/gate-verdicts.json`],
+    { encoding: 'utf8', env: gitEnv() })
+  assert.equal(shown.status, 0,
+    `(d) the pushed plan commit carries .ultrapowers/gate-verdicts.json. git show said: ${shown.stderr}`)
+  assert.equal(shown.stdout, RECORD, '(d) and it is the sibling record, byte for byte')
+
+  ws.cleanup()
 }
 
 console.log('ALL TESTS PASSED')
