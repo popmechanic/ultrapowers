@@ -34,7 +34,8 @@ import { editSpans } from './edit_spans.mjs'
 import { pullScope } from './pulls.mjs'
 import { findGit } from '../gitblock.mjs'
 import { bootstrapFor } from '../commands.mjs'
-import { makeJevClient } from '../jev-client.mjs'
+import { makeJevClient, JEV_TIMEOUT_MS } from '../jev-client.mjs'
+import { readTrial, resolveState, releaseState } from './trial_reading.mjs'
 import { mirrorBoard } from './kata_mirror.mjs'
 import { makeKataClient, httpTransport } from '../../fleet/kata-client.mjs'
 import { lastSteps, latestResults, readSteps } from './step_reading.mjs'
@@ -108,6 +109,10 @@ if (!['narrow', 'all'].includes(PULLS)) { console.error('engine: --pulls is narr
 // record-only Jev reading per green story step (state-probe runner spec §7): `record` mode and
 // a reachable TypeSafe edge, or it never asks and never writes a `jev:step` row.
 const JEV_STEP = (POLICY_FLOCK?.jev_step?.mode ?? 'off') === 'record' && !!process.env.TYPESAFE_BASE_URL
+// record-only Jev trials at a merge conflict (an `R:` task added) and at a task given back:
+// the same gate, each on its own policy cell (flock.jev_resolve, flock.jev_release).
+const JEV_RESOLVE = (POLICY_FLOCK?.jev_resolve?.mode ?? 'off') === 'record' && !!process.env.TYPESAFE_BASE_URL
+const JEV_RELEASE = (POLICY_FLOCK?.jev_release?.mode ?? 'off') === 'record' && !!process.env.TYPESAFE_BASE_URL
 // the scope rule (#1333, scope.mjs): `enforce` folds a change outside every task's Files that no
 // builder wrote into the edge's verdict; `record` only writes the `scope:outside` row. Absent, enforce.
 const SCOPE_MODE = POLICY_FLOCK?.scope?.mode ?? 'enforce'
@@ -152,6 +157,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 // the loop past the client's timeout, so 0 of 42 answered (radio-station runs 1-6).
 const STEP_QUESTION = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'questions.json'), 'utf8')).sets.flock_step.questions.delivered
 const jev = JEV_STEP ? makeJevClient({ baseUrl: process.env.TYPESAFE_BASE_URL, log: (m) => log('jev', m) }) : null
+// the two trials: nothing waits on an answer. Each pending read is kept here, and before
+// summary.json the engine waits for them at most JEV_TIMEOUT_MS; a late answer is simply absent.
+const QSETS = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'questions.json'), 'utf8')).sets
+const RESOLVE_QUESTION = QSETS.flock_resolve.questions.already_joined
+const RELEASE_QUESTION = QSETS.flock_release.questions.blocker
+const trialJev = (JEV_RESOLVE || JEV_RELEASE) ? makeJevClient({ baseUrl: process.env.TYPESAFE_BASE_URL, log: (m) => log('jev', m) }) : null
+const trialsPending = new Set()
+const trial = (key, question, state, kind, row) => {
+  if (!trialJev) return
+  const p = readTrial({ ask: trialJev.ask, key, question, state, row, emit: (o) => ev(kind, o) }).catch(() => {})
+  trialsPending.add(p); p.finally(() => trialsPending.delete(p))
+}
 const readAndRecord = (clauses) => {
   if (!jev || !W.stories) return Promise.resolve()
   const all = latestResults(CHECK_OUT)
@@ -603,6 +620,10 @@ function brief (task) {
 // Every give-back, scripted or model, goes through here, so MAX_RELEASE caps them all.
 async function giveBack (agent, task, why) {
   task.released = (task.released || 0) + 1
+  if (JEV_RELEASE) {
+    const depends = (task.depends_on || []).map((id) => ({ id, state: board.tasks.get(id)?.state ?? null }))
+    trial('blocker', RELEASE_QUESTION, releaseState({ task, why, depends }), 'jev:release', { task: task.id, releases: task.released })
+  }
   if (task.released >= MAX_RELEASE) {
     task.state = 'parked'; task.owner = null; task.notes.push(`${agent} released: ${why}`)
     ev('task:parked', { task: task.id, releases: task.released, reason: String(why).slice(0, 300) })
@@ -995,6 +1016,10 @@ async function settle () {
       await board.addTask({ id, title: 'Resolve conflict marks in ' + p, depends_on: [], state: 'ready', owner: null, notes: [], reopen: prev ? prev.reopen + 1 : 0, facts: [],
         body: `Two agents changed the same part of \`${p}\` and the merge marked it as a conflict. Here is the merged file with the conflict sections marked (<<<<<<< begin … / ======= begin … / >>>>>>> end conflict; "left" and "right" are the two sides):\n\n\`\`\`\n${ann || '(annotation unavailable)'}\n\`\`\`\n\nYour copy holds the merged text WITHOUT the markers. Make that part of \`${p}\` say what both sides meant (edit with Edit if it does not already), run the tests, then call resolve_conflict for \`${p}\` and then done.` })
       ev('resolve-task', { path: p, snap: r.snap }); log('resolve task for', p)
+      if (JEV_RESOLVE) {
+        const titles = W.tasks.filter((t) => (t.files || []).includes(p)).map((t) => t.title)
+        trial('already_joined', RESOLVE_QUESTION, resolveState({ path: p, annotated: ann, titles }), 'jev:resolve', { path: p, snap: r.snap })
+      }
     }
     if (W.check && r.check !== 0 && all.every((t) => (r.perTask[t.id] || []).every((x) => x === 0))) {
       // ticket 5: the check is red with every fact green. The old loop restarted the quiet
@@ -1097,6 +1122,7 @@ async function spawner () {
 await Promise.all([ELASTIC ? spawner() : Promise.resolve(), settle()])
 await Promise.all(loops)
 await edgeChain
+if (trialsPending.size) await Promise.race([Promise.all([...trialsPending]), new Promise((r) => setTimeout(r, JEV_TIMEOUT_MS).unref())])
 const summary = {
   workload: W.name, agents: ELASTIC ? 'elastic' : N, builders_max: buildersMax, cap: ELASTIC ? CAP : undefined, model: MODEL, settled, wall_ms: now(), publish: PUBLISH, early_close: EARLY_CLOSE, order: ORDER,
   final: lastEdge && { snap: lastEdge.snap, green: lastEdge.green, perTask: lastEdge.perTask, check: lastEdge.check, conflicts: lastEdge.conflicts },

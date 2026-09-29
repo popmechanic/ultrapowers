@@ -1,6 +1,6 @@
 {
   "version": "questions-v1",
-  "about": "The one Jev question set the Flock puts to `POST /v1/systemone`: `flock_step`, read by factory/flock/step_reading.mjs once per green story step, naming its reader and its rollback (map #1131 rule 3). A question is literal: it names no policy word, and nothing here decides anything. Its mode lives in factory/policy.json's `flock.jev_step`. A Jev `null` routes that reading to the set's stated rollback, never to a guess. A reworded question is a different question: its readings mean something else.",
+  "about": "The three Jev question sets the Flock puts to `POST /v1/systemone`: `flock_step`, read by factory/flock/step_reading.mjs once per green story step; `flock_resolve`, read by factory/flock/engine.mjs at a merge conflict an agent resolves; and `flock_release`, read by factory/flock/engine.mjs at a task given back. Each names its reader and its rollback (map #1131 rule 3). A question is literal: it names no policy word, and nothing here decides anything. Their modes live in factory/policy.json's `flock.jev_step`, `flock.jev_resolve` and `flock.jev_release`. A Jev `null` routes that reading to the set's stated rollback, never to a guess. A reworded question is a different question: its readings mean something else.",
   "sets": {
     "flock_step": {
       "when": "At a ready settle, once per story, at its last green step (#1369)",
@@ -27,6 +27,60 @@
             "supports": "The store or the screen after the step shows the outcome the sentence describes",
             "contradicts": "The store or the screen shows something the sentence rules out",
             "says_nothing": "The evidence neither shows nor rules out the sentence's outcome"
+          }
+        }
+      }
+    },
+    "flock_resolve": {
+      "when": "When an agent resolves a merge conflict in a file of its copy, once per resolve",
+      "reader": "factory/flock/engine.mjs",
+      "rollback": "factory/policy.json flock.jev_resolve.mode = off",
+      "state": [
+        "path",
+        "annotated",
+        "tasks"
+      ],
+      "provenance": "factory review reading 2026-09-29 (Jev candidate 1); operator pick 2026-09-29",
+      "calibrated": false,
+      "questions": {
+        "already_joined": {
+          "type": "choice",
+          "instructions": {
+            "question": "In `annotated`, do the left and right sides of each conflict already fit together as the merged text shows them, so the file needs no edit?",
+            "context": "`annotated` is the merged file, with each conflict shown as a `<<<<<<<` / `=======` / `>>>>>>>` section holding its left and right sides. `path` is the file. `tasks` are the titles of the tasks that touch it."
+          },
+          "criteria": {
+            "no_edit_needed": "Both sides say things that stand together as merged",
+            "needs_edit": "One side's meaning is lost, or the text does not read as one file, until someone edits it",
+            "contradictory": "The two sides want opposite things, and one must be chosen"
+          }
+        }
+      }
+    },
+    "flock_release": {
+      "when": "When an agent gives its task back to the board, once per release",
+      "reader": "factory/flock/engine.mjs",
+      "rollback": "factory/policy.json flock.jev_release.mode = off",
+      "state": [
+        "task",
+        "title",
+        "files",
+        "reason",
+        "depends_on"
+      ],
+      "provenance": "factory review reading 2026-09-29 (Jev candidate 2); operator pick 2026-09-29",
+      "calibrated": false,
+      "questions": {
+        "blocker": {
+          "type": "choice",
+          "instructions": {
+            "question": "Given `reason`, what stands between this task and its facts passing?",
+            "context": "`task` and `title` name the task. `files` are the files it may change. `reason` is what the agent said when it gave the task back. `depends_on` are the tasks it depends on."
+          },
+          "criteria": {
+            "fixable": "Another attempt at `files` could make them pass",
+            "waiting_on_peer": "They need work another task in `depends_on` or elsewhere has not published yet",
+            "plan_defect": "No change to `files` can make them pass as the plan states them"
           }
         }
       }
