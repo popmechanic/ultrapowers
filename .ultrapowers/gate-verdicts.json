@@ -1,0 +1,2 @@
+{"tasks": {"1": {"hash": "d89cb76bd2d400e72354fb7e052dd7404283a21a5dcc500e5b0de48f06a1718e", "verdict": "pass", "reason": "The tagged probe asserts the exact sentence in the module docstring, so it fails if M1 is false."}}, "tally": {"dispatched": 1, "rejected": 0, "rounds": 1, "base": "5c1c387830e6c9496957c84fdfe6aaa178cd6438"},
+ "authoring": {"minutes": 10, "probes": 0, "routing": {"branch": "inline", "lane": "ultrapowers"}, "questions": [{"question": "Claim and summary", "options": ["Sign", "Fix a line"], "recommended": "Sign", "picked": "Sign", "explain_rounds": 0}]}}
