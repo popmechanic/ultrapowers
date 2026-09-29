@@ -3315,3 +3315,5 @@
 {"t":364889,"kind":"landing","task":"3","k":1,"factsExit":0,"candidateSha":"6f7cacdb75ca04062db5dbc7092cfff353846424","ts":"2026-09-29T18:43:59.536Z"}
 {"t":364889,"kind":"fold:verify","task":"4","ran":[{"id":"4","kind":"probe","cmd":"! grep -qE 'factory/engine\\.mjs|fold_wave|repo_weave|frontier_fold' CLAUDE.md README.md fleet/CONTRACT.md fleet/RUNBOOK.md .claude/rules/factory.md skills/ultrapowers/SKILL.md skills/ultrawrite/SKILL.md hooks/session_start.sh","exit":0},{"id":"4","kind":"probe","cmd":"! grep -q -- '--kind' CLAUDE.md","exit":0},{"id":"4","kind":"probe","cmd":"grep -q 'factory/flock/catchup.mjs' fleet/CONTRACT.md","exit":0}],"attempt":1,"snap":"f9c14c1263","ts":"2026-09-29T18:43:59.536Z"}
 {"t":364889,"kind":"landing","task":"4","k":1,"factsExit":0,"candidateSha":"6f7cacdb75ca04062db5dbc7092cfff353846424","ts":"2026-09-29T18:43:59.536Z"}
+{"ts":"2026-09-29T18:44:09.621Z","kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1365","number":1365,"draft":false}
+{"ts":"2026-09-29T18:44:16.043Z","kind":"merge","code":200}
