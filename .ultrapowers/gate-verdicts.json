@@ -1,0 +1,117 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "a318213f5279de9d59ee75cb16ab08e5e51030d5738530f23d4ed349d1eddfd3",
+   "verdict": "pass",
+   "reason": "One tagged leg pins the six keys, a zero exit and at least one snapshot.",
+   "gate_rounds": [
+    {
+     "hash": "a318213f5279de9d59ee75cb16ab08e5e51030d5738530f23d4ed349d1eddfd3",
+     "agent": "pass",
+     "jev": "pass"
+    }
+   ]
+  },
+  "2": {
+   "hash": "3562a249eec0f8e385572324acdc47c676269cae8e48bf693ba68b9b6ac370da",
+   "verdict": "pass",
+   "reason": "Each of M1-M4 has a tagged probe that fails if false.",
+   "gate_rounds": [
+    {
+     "hash": "3562a249eec0f8e385572324acdc47c676269cae8e48bf693ba68b9b6ac370da",
+     "agent": "pass",
+     "jev": "pass"
+    }
+   ]
+  },
+  "3": {
+   "hash": "c2db47dccd31592cda893bd0bf2e6033a54a6db3b0313b0ebdd60ea0f084e774",
+   "verdict": "pass",
+   "reason": "Each of M1-M3 has a tagged probe that fails if false.",
+   "gate_rounds": [
+    {
+     "hash": "c2db47dccd31592cda893bd0bf2e6033a54a6db3b0313b0ebdd60ea0f084e774",
+     "agent": "pass",
+     "jev": "pass"
+    }
+   ]
+  }
+ },
+ "tally": {
+  "dispatched": 3,
+  "rejected": 0,
+  "rounds": 1,
+  "base": "32e95a78620b8824de6ef6a680026d61da5fe134"
+ },
+ "authoring": {
+  "minutes": 40,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Split #1395",
+    "options": [
+     "Three plans",
+     "One plan"
+    ],
+    "recommended": "Three plans",
+    "picked": "Three plans",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Plan commit moves too",
+    "options": [
+     "Move it too",
+     "Keep it on the product"
+    ],
+    "recommended": "Move it too",
+    "picked": "Move it too",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Evidence repo layout",
+    "options": [
+     "Branch then tag per run",
+     "One shared main"
+    ],
+    "recommended": "Branch then tag per run",
+    "picked": "Branch then tag per run",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Create repo and integration",
+    "options": [
+     "Yes, create both",
+     "I'll do it"
+    ],
+    "recommended": "Yes, create both",
+    "picked": "Yes, create both",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Plan 1 sign",
+    "options": [
+     "Sign",
+     "Fix a line"
+    ],
+    "recommended": "Sign",
+    "picked": "Sign",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Plan 1 execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
