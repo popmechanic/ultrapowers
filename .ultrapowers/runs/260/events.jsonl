@@ -239,3 +239,6 @@
 {"t":1468118,"kind":"terminal","pr":"draft","why":"deadlock: work left and nothing claimable","snap":"dcb48a8c39","ts":"2026-09-29T06:28:04.201Z"}
 {"t":1469639,"kind":"parked","task":"5","reason":"red at dcb48a8c39","ts":"2026-09-29T06:28:05.722Z"}
 {"ts":"2026-09-29T06:28:29.197Z","kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/1357","number":1357,"draft":true}
+{"ts":"2026-09-29T06:28:30.792Z","kind":"board:leave","rc":0}
+{"ts":"2026-09-29T06:28:30.914Z","kind":"board:mark","what":"run","state":"parked","code":200}
+{"ts":"2026-09-29T06:28:30.959Z","kind":"run:audit","state":"parked","missing":[]}
