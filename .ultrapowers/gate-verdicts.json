@@ -1,0 +1,80 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "f611723733f0fe2fef80003fa9e194dfec031fc63368dc7cce9805fe6c97e755",
+      "verdict": "pass",
+      "reason": "Each clause has a tagged probe red at BASE whose literals compute out."
+    },
+    "2": {
+      "hash": "35303a0c4a9ee28deb09d084500a38315312da305ef370b0e9ee5a94d15fd441",
+      "verdict": "pass",
+      "reason": "Each clause has a tagged probe red at BASE whose literals compute out."
+    }
+  },
+  "tally": {
+    "dispatched": 2,
+    "rejected": 0,
+    "rounds": {
+      "1": {
+        "dispatched": 2,
+        "rejected": 0
+      }
+    },
+    "base": "dce9590d799a486cc4bd40b3e6c09296bc52d771"
+  },
+  "authoring": {
+    "minutes": 20,
+    "probes": 6,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Next plan while run-271 builds",
+        "options": [
+          "Proof gate on Jev",
+          "Engine rollback switches",
+          "Stop here",
+          "Please explain"
+        ],
+        "recommended": "Proof gate on Jev",
+        "picked": "Proof gate on Jev",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Census fix",
+        "options": [
+          "Hand PR now",
+          "Fold into the next plan",
+          "Please explain"
+        ],
+        "recommended": "Hand PR now",
+        "picked": "Hand PR now",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Sign",
+          "Fix a line",
+          "Please explain"
+        ],
+        "recommended": "Sign",
+        "picked": "Sign",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Execute",
+        "options": [
+          "Ultrapowers",
+          "Inline",
+          "Please explain"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers",
+        "explain_rounds": 0
+      }
+    ]
+  }
+}
