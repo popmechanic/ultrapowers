@@ -95,7 +95,8 @@ judges the real app after it.
      sentences (run inside the trigger's `store.transaction`), numbers, and stories,
      each with its `steps`. A step is `{tool, args, layer}` (`store`, `ui` or
      `saved`); a `ui` step adds `ui` (click/type/key by role and name) and `see`.
-     The accessible names you choose are the builder's contract.
+     The accessible names you choose are the builder's contract. A step's
+     `"as": "<email>"` (or `null`) sets who is signed in from that step on.
    - `cards.json`, each card with its `concept`.
    - `store.js` exports `TOOLS` and `makeStore`.
 5. **Write the stories the coverage rule requires**, not ones you invent:

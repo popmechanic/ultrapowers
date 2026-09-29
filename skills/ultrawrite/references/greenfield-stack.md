@@ -105,6 +105,16 @@ A **stories-v1** plan does not scaffold with the generator: its launch base is
 persister). It is still a TinyApp; builders write one screen per piece and
 nothing else (state-probe runner spec, 2026-09-27).
 
+**Who is signed in** comes from Cloudflare Access, never from the app: the
+template's Worker answers `/me` with the email `ctx.access.getIdentity()` vouches
+for (null when Access did not run), the page keeps it as the hook's `who`, and
+every store tool gets it as `run`'s third argument, so a role rule lives in the
+signed store module. A story step's `"as": "<email>" | null` sets who is signed
+in from that step on; the checker sets the hook's `who` the same way. The rule
+runs in the page, so it stops the screens and the page's tools, not a client
+that writes the store directly; a server-side lock is its own piece (radio rs4,
+2026-09-28).
+
 ## State exams
 
 *Deferred since cut three (2026-09-22): no plan can name a `Test:` path, so nothing in this section has a reader until state exams return as probes — owed on map #1248. The text below is the shape for that day, kept as it was.*

@@ -137,7 +137,12 @@ async function open(b: Browser, origin: string, celld: Celld): Promise<Page> {
   return page;
 }
 
+// Who is signed in: the page hook's `who`, which the page passes to every action.
+const signIn = (page: Page, who: string | null) =>
+  page.evaluate(`window.__TINYAPP__.who = ${JSON.stringify(who)}; true`);
+
 async function callTool(page: Page, aliases: Aliases, schemas: Record<string, unknown>, g: ToolCall, stage: Stage) {
+  if (g.as !== undefined) await signIn(page, g.as);
   const args = aliases.args(g.args, schemas[g.tool]);
   const ok = await page.evaluate(`window.__TINYAPP__.tools[${JSON.stringify(g.tool)}](${JSON.stringify(args)})`)
     .catch((e) => String(e));
@@ -162,6 +167,7 @@ async function run(probe: Probe): Promise<Result> {
     throw new Finding('before', 'hollow: every check already holds before the step, so the step proves nothing');
   }
 
+  if (probe.as !== undefined) await signIn(page, probe.as);
   for (const d of probe.do) {
     if ('tool' in d) { await callTool(page, aliases, schemas, d as ToolCall, 'do'); continue; }
     try {
