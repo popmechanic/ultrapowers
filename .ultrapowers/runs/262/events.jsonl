@@ -121,3 +121,106 @@
 {"t":55023,"kind":"tool","agent":"A","task":"3","tool":"mcp__flock__publish","target":"","ts":"2026-09-29T17:37:25.862Z"}
 {"t":55240,"kind":"publish","agent":"A","task":"3","ts":"2026-09-29T17:37:26.079Z"}
 {"t":55248,"kind":"tool:post","agent":"A","tool":"mcp__flock__publish","ts":"2026-09-29T17:37:26.087Z"}
+{"t":68845,"kind":"edge","snap":"b37a72e781","reason":"publish A","perTask":{"1":[1,1,1,1,1],"2":[1,1,1,1,1,1,1,1],"3":[1,0,0,0,0],"4":[1,1,1]},"check":0,"conflicts":[],"blocking":[],"outside":[],"green":false,"ts":"2026-09-29T17:37:39.685Z"}
+{"t":68846,"kind":"tool","agent":"A","task":"3","tool":"mcp__flock__post_belief","target":"","ts":"2026-09-29T17:37:39.685Z"}
+{"t":68846,"kind":"tool","agent":"C","task":"1","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; for c in clean conflict red; do node fleet/tests/flock_catchup_probe.mjs $c; done","ts":"2026-09-29T17:37:39.685Z"}
+{"t":68846,"kind":"tool","agent":"D","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/D; grep -n '^  \"\\|^    \"[a-z_]*\": {' factory/questions.json; echo; grep -n '^  \"' factor","ts":"2026-09-29T17:37:39.685Z"}
+{"t":68846,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; python3 - <<'EOF'\np='fleet/RUNBOOK.md'; s=open(p).read()\nreps=[\n(\"\"\"`factory/boot.sh`","ts":"2026-09-29T17:37:39.685Z"}
+{"t":68855,"kind":"belief","id":1,"by":"A","claim":"The engine gives agents no way to delete an existing file: the Bash hook refuses rm, and Edit/Write cannot remove a file. Tasks whose Files list says \"Delete:\" (task 3's M1, likely task 2's too) cannot pass their facts from an agent copy.","confidence":0.9,"about":"engine","ts":"2026-09-29T17:37:39.695Z"}
+{"t":68859,"kind":"tool:post","agent":"A","tool":"mcp__flock__post_belief","ts":"2026-09-29T17:37:39.698Z"}
+{"t":68863,"kind":"kata:mirror","uid":"01M3Q3QX0MBQEBGSGXWNP9A766","what":"engine belief (0.9) from A: The engine gives agents no way to delete an existing file: the Bash hook refuses rm, and Edit/Write cannot remove a file. Tasks whose Files list says \"Delete:\" (task 3's M1, likely task 2's too) cannot pass their facts from an agent copy.","ok":true,"ts":"2026-09-29T17:37:39.702Z"}
+{"t":68879,"kind":"tool:post","agent":"D","tool":"Bash","ts":"2026-09-29T17:37:39.718Z"}
+{"t":68904,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T17:37:39.743Z"}
+{"t":69080,"kind":"fallback","agent":"B","path":"fleet/RUNBOOK.md","peer_lines":0,"deleted":false,"ts":"2026-09-29T17:37:39.919Z"}
+{"t":69463,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T17:37:40.302Z"}
+{"t":69660,"kind":"pull","agent":"D","changed":[{"path":"factory/flock/weave.py","from":"A","added":66,"removed":4,"conflict":false},{"path":"skills/ultrapowers/kernel/vendor/PROVENANCE.md","from":"A","added":2,"removed":2,"conflict":false},{"path":"tests/test_vendor_pin.py","from":"A","added":55,"removed":0,"conflict":false}],"ts":"2026-09-29T17:37:40.499Z"}
+{"t":70156,"kind":"pull","agent":"B","changed":[{"path":"factory/flock/weave.py","from":"A","added":66,"removed":4,"conflict":false},{"path":"skills/ultrapowers/kernel/vendor/PROVENANCE.md","from":"A","added":2,"removed":2,"conflict":false},{"path":"tests/test_vendor_pin.py","from":"A","added":55,"removed":0,"conflict":false}],"ts":"2026-09-29T17:37:40.995Z"}
+{"t":70732,"kind":"pull","agent":"C","changed":[{"path":"factory/flock/weave.py","from":"A","added":66,"removed":4,"conflict":false},{"path":"skills/ultrapowers/kernel/vendor/PROVENANCE.md","from":"A","added":2,"removed":2,"conflict":false},{"path":"tests/test_vendor_pin.py","from":"A","added":55,"removed":0,"conflict":false}],"ts":"2026-09-29T17:37:41.571Z"}
+{"t":71843,"kind":"tool","agent":"A","task":"3","tool":"mcp__flock__release","target":"","ts":"2026-09-29T17:37:42.682Z"}
+{"t":71855,"kind":"tool:post","agent":"A","tool":"mcp__flock__release","ts":"2026-09-29T17:37:42.694Z"}
+{"t":72919,"kind":"tool","agent":"D","task":"2","tool":"Read","target":"/home/exedev/run/work/agents/D/factory/questions.json","ts":"2026-09-29T17:37:43.758Z"}
+{"t":73130,"kind":"tool:post","agent":"D","tool":"Read","ts":"2026-09-29T17:37:43.969Z"}
+{"t":75821,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; python3 - <<'EOF'\np='skills/ultrapowers/SKILL.md'; s=open(p).read()\nreps=[\n(\"\"\"on the","ts":"2026-09-29T17:37:46.660Z"}
+{"t":75875,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T17:37:46.714Z"}
+{"t":75971,"kind":"fallback","agent":"B","path":"skills/ultrapowers/SKILL.md","peer_lines":0,"deleted":false,"ts":"2026-09-29T17:37:46.810Z"}
+{"t":77576,"kind":"tool","agent":"C","task":"1","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; python3 - <<'EOF'\nimport re\np='factory/boot.sh'\ns=open(p).read()\nreps=[\n(\"# runs `fac","ts":"2026-09-29T17:37:48.415Z"}
+{"t":78121,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; sed -n 584,616p skills/ultrawrite/SKILL.md; sed -n 645,655p skills/ultrawrite/SKILL.m","ts":"2026-09-29T17:37:48.960Z"}
+{"t":78159,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T17:37:48.998Z"}
+{"t":78317,"kind":"session:end","agent":"A","task":"3","released":"Facts M2–M5 pass and that work is published: weave.py now holds run_on_kernel_thread itself, the new tests/test_vendor_pin.py pins the vendor file list and digest, and PROVENANCE.md points at it with the digest recomputed. M1 needs five kernel files and tests/test_fold_wave_anchor.py deleted, but the repo's hook refuses any shell delete (\"may not overwrite, move or delete an existing file\") and no other tool removes files. An operator or the engine has to delete: skills/ultrapowers/kernel/{fold_wave.py,repo_weave.py,frontier_fold.py,hunks.py,FOLD_LOG.md} and tests/test_fold_wave_anchor.py.","done":false,"redRuns":0,"turns":16,"usage":{"input_tokens":28,"cache_creation_input_tokens":42817,"cache_read_input_tokens":496024,"output_tokens":6629,"output_tokens_details":{"thinking_tokens":861},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":42817,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[],"speed":"standard"},"ts":"2026-09-29T17:37:49.156Z"}
+{"t":78327,"kind":"kata:mirror","task":"3","uid":"01M3Q3R2NB4CYQMYX9SPC3CS05","what":"released: A released: Facts M2–M5 pass and that work is published: weave.py now holds run_on_kernel_thread itself, the new tests/test_vendor_pin.py pins the vendor file list and digest, and PROVENANCE.md points at it with the digest recomputed. M1 needs five kernel files and tests/test_fold_wave_anchor.py deleted, but the repo's hook refuses any shell delete (\"may not overwrite, move or delete an existing file\") and no other tool removes files. An operator or the engine has to delete: skills/ultrapowers/kernel/{fold_wave.py,repo_weave.py,frontier_fold.py,hunks.py,FOLD_LOG.md} and tests/test_fold_wave_anchor.py.","ok":true,"ts":"2026-09-29T17:37:49.166Z"}
+{"t":78354,"kind":"kata:mirror","task":"3","uid":"01M3Q3R2NB4CYQMYX9SPC3CS05","what":"claimed by A","ok":true,"ts":"2026-09-29T17:37:49.193Z"}
+{"t":78555,"kind":"session:start","agent":"A","task":"3","ts":"2026-09-29T17:37:49.394Z"}
+{"t":81081,"kind":"tool","agent":"A","task":"3","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T17:37:51.920Z"}
+{"t":81686,"kind":"proof","agent":"A","task":"3","exits":[1,0,0,0,0],"causes":[{"cause":"unknown"}],"errs":[""],"ts":"2026-09-29T17:37:52.525Z"}
+{"t":81686,"kind":"tool","agent":"C","task":"1","tool":"Read","target":"/home/exedev/run/work/agents/C/factory/boot.sh","ts":"2026-09-29T17:37:52.525Z"}
+{"t":81696,"kind":"tool:post","agent":"A","tool":"mcp__flock__run_proof","ts":"2026-09-29T17:37:52.535Z"}
+{"t":81700,"kind":"tool:post","agent":"C","tool":"Read","ts":"2026-09-29T17:37:52.539Z"}
+{"t":81870,"kind":"tool","agent":"C","task":"1","tool":"Edit","target":"/home/exedev/run/work/agents/C/factory/boot.sh","ts":"2026-09-29T17:37:52.709Z"}
+{"t":82114,"kind":"tool:post","agent":"C","tool":"Edit","ts":"2026-09-29T17:37:52.953Z"}
+{"t":82129,"kind":"edit","agent":"C","task":"1","tool":"Edit","path":"factory/boot.sh","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T17:37:52.968Z"}
+{"t":83079,"kind":"tool","agent":"C","task":"1","tool":"Edit","target":"/home/exedev/run/work/agents/C/factory/boot.sh","ts":"2026-09-29T17:37:53.918Z"}
+{"t":83316,"kind":"tool:post","agent":"C","tool":"Edit","ts":"2026-09-29T17:37:54.155Z"}
+{"t":83326,"kind":"edit","agent":"C","task":"1","tool":"Edit","path":"factory/boot.sh","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T17:37:54.165Z"}
+{"t":83596,"kind":"tool","agent":"A","task":"3","tool":"mcp__flock__board_read","target":"","ts":"2026-09-29T17:37:54.435Z"}
+{"t":83610,"kind":"tool:post","agent":"A","tool":"mcp__flock__board_read","ts":"2026-09-29T17:37:54.449Z"}
+{"t":84805,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; python3 - <<'EOF'\np='skills/ultrawrite/SKILL.md'; s=open(p).read()\nreps=[\n(\"\"\"2. **Wr","ts":"2026-09-29T17:37:55.644Z"}
+{"t":84855,"kind":"tool","agent":"C","task":"1","tool":"Edit","target":"/home/exedev/run/work/agents/C/factory/boot.sh","ts":"2026-09-29T17:37:55.694Z"}
+{"t":84876,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T17:37:55.715Z"}
+{"t":85122,"kind":"fallback","agent":"B","path":"skills/ultrawrite/SKILL.md","peer_lines":0,"deleted":false,"ts":"2026-09-29T17:37:55.961Z"}
+{"t":85161,"kind":"tool:post","agent":"C","tool":"Edit","ts":"2026-09-29T17:37:56.000Z"}
+{"t":85170,"kind":"edit","agent":"C","task":"1","tool":"Edit","path":"factory/boot.sh","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T17:37:56.009Z"}
+{"t":86110,"kind":"tool","agent":"C","task":"1","tool":"Edit","target":"/home/exedev/run/work/agents/C/factory/boot.sh","ts":"2026-09-29T17:37:56.949Z"}
+{"t":86315,"kind":"tool:post","agent":"C","tool":"Edit","ts":"2026-09-29T17:37:57.154Z"}
+{"t":86325,"kind":"edit","agent":"C","task":"1","tool":"Edit","path":"factory/boot.sh","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T17:37:57.164Z"}
+{"t":87034,"kind":"tool","agent":"A","task":"3","tool":"mcp__flock__release","target":"","ts":"2026-09-29T17:37:57.873Z"}
+{"t":87045,"kind":"tool:post","agent":"A","tool":"mcp__flock__release","ts":"2026-09-29T17:37:57.884Z"}
+{"t":87320,"kind":"tool","agent":"C","task":"1","tool":"Edit","target":"/home/exedev/run/work/agents/C/factory/boot.sh","ts":"2026-09-29T17:37:58.159Z"}
+{"t":87562,"kind":"tool:post","agent":"C","tool":"Edit","ts":"2026-09-29T17:37:58.401Z"}
+{"t":87575,"kind":"edit","agent":"C","task":"1","tool":"Edit","path":"factory/boot.sh","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T17:37:58.414Z"}
+{"t":87684,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; grep -nE 'factory|fold|kernel|implementer' README.md | head -30","ts":"2026-09-29T17:37:58.523Z"}
+{"t":87709,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T17:37:58.548Z"}
+{"t":88066,"kind":"tool","agent":"C","task":"1","tool":"Edit","target":"/home/exedev/run/work/agents/C/factory/boot.sh","ts":"2026-09-29T17:37:58.905Z"}
+{"t":88569,"kind":"tool:post","agent":"C","tool":"Edit","ts":"2026-09-29T17:37:59.408Z"}
+{"t":88578,"kind":"edit","agent":"C","task":"1","tool":"Edit","path":"factory/boot.sh","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T17:37:59.417Z"}
+{"t":89732,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; sed -n 130,160p README.md","ts":"2026-09-29T17:38:00.571Z"}
+{"t":89752,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T17:38:00.591Z"}
+{"t":91520,"kind":"tool","agent":"C","task":"1","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; bash -n factory/boot.sh && diff factory/boot.sh /tmp/C_boot.sh && echo same; for t in","ts":"2026-09-29T17:38:02.359Z"}
+{"t":92603,"kind":"session:end","agent":"A","task":"3","released":"Still blocked on M1 alone. Facts M2–M5 pass and that work was already published. M1 needs these files deleted: skills/ultrapowers/kernel/{fold_wave.py,repo_weave.py,frontier_fold.py,hunks.py,FOLD_LOG.md} and tests/test_fold_wave_anchor.py. Agents are not allowed to delete existing files (the rules forbid shell deletes, and Edit/Write can't remove a file). An operator or the engine has to delete those six paths. After that, the task's facts should all pass.","done":false,"redRuns":0,"turns":4,"usage":{"input_tokens":8,"cache_creation_input_tokens":7573,"cache_read_input_tokens":111208,"output_tokens":904,"output_tokens_details":{"thinking_tokens":126},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":7573,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[],"speed":"standard"},"ts":"2026-09-29T17:38:03.442Z"}
+{"t":92821,"kind":"session:start","agent":"A","task":"3","ts":"2026-09-29T17:38:03.660Z"}
+{"t":92904,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; sed -n 112,130p README.md","ts":"2026-09-29T17:38:03.743Z"}
+{"t":92918,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T17:38:03.757Z"}
+{"t":95530,"kind":"kata:mirror","task":"3","uid":"01M3Q3R2NB4CYQMYX9SPC3CS05","what":"released: A released: Still blocked on M1 alone. Facts M2–M5 pass and that work was already published. M1 needs these files deleted: skills/ultrapowers/kernel/{fold_wave.py,repo_weave.py,frontier_fold.py,hunks.py,FOLD_LOG.md} and tests/test_fold_wave_anchor.py. Agents are not allowed to delete existing files (the rules forbid shell deletes, and Edit/Write can't remove a file). An operator or the engine has to delete those six paths. After that, the task's facts should all pass.","ok":true,"ts":"2026-09-29T17:38:06.369Z"}
+{"t":95539,"kind":"kata:mirror","task":"3","uid":"01M3Q3R2NB4CYQMYX9SPC3CS05","what":"claimed by A","ok":true,"ts":"2026-09-29T17:38:06.378Z"}
+{"t":95570,"kind":"tool","agent":"A","task":"3","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T17:38:06.409Z"}
+{"t":96192,"kind":"proof","agent":"A","task":"3","exits":[1,0,0,0,0],"causes":[{"cause":"unknown"}],"errs":[""],"ts":"2026-09-29T17:38:07.031Z"}
+{"t":96197,"kind":"tool:post","agent":"A","tool":"mcp__flock__run_proof","ts":"2026-09-29T17:38:07.036Z"}
+{"t":98321,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; ls skills/ultrapowers/kernel/ tests/test_fold_wave_anchor.py 2>&1","ts":"2026-09-29T17:38:09.160Z"}
+{"t":98405,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T17:38:09.244Z"}
+{"t":101844,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; python3 - <<'EOF'\np='README.md'; s=open(p).read()\nreps=[\n(\"\"\"the engine is\n`factory/e","ts":"2026-09-29T17:38:12.683Z"}
+{"t":101912,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T17:38:12.751Z"}
+{"t":101948,"kind":"fallback","agent":"B","path":"README.md","peer_lines":0,"deleted":false,"ts":"2026-09-29T17:38:12.787Z"}
+{"t":102259,"kind":"tool","agent":"A","task":"3","tool":"mcp__flock__post_belief","target":"","ts":"2026-09-29T17:38:13.098Z"}
+{"t":102264,"kind":"belief","id":2,"by":"A","claim":"Task 3 M1 cannot be met by agents: rules forbid shell deletes and no tool removes files. Six paths need deletion by operator/engine: skills/ultrapowers/kernel/{fold_wave.py,repo_weave.py,frontier_fold.py,hunks.py,FOLD_LOG.md}, tests/test_fold_wave_anchor.py.","confidence":0.95,"task":"3","about":"engine","ts":"2026-09-29T17:38:13.105Z"}
+{"t":102271,"kind":"tool:post","agent":"A","tool":"mcp__flock__post_belief","ts":"2026-09-29T17:38:13.110Z"}
+{"t":102275,"kind":"kata:mirror","task":"3","uid":"01M3Q3R2NB4CYQMYX9SPC3CS05","what":"engine belief (0.95) from A: Task 3 M1 cannot be met by agents: rules forbid shell deletes and no tool removes files. Six paths need deletion by operator/engine: skills/ultrapowers/kernel/{fold_wave.py,repo_weave.py,frontier_fold.py,hunks.py,FOLD_LOG.md}, tests/test_fold_wave_anchor.py.","ok":true,"ts":"2026-09-29T17:38:13.114Z"}
+{"t":102926,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T17:38:13.765Z"}
+{"t":103357,"kind":"tool","agent":"A","task":"3","tool":"mcp__flock__release","target":"","ts":"2026-09-29T17:38:14.196Z"}
+{"t":103364,"kind":"tool:post","agent":"A","tool":"mcp__flock__release","ts":"2026-09-29T17:38:14.203Z"}
+{"t":104916,"kind":"tool","agent":"B","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/B/README.md","ts":"2026-09-29T17:38:15.755Z"}
+{"t":105160,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T17:38:15.999Z"}
+{"t":105168,"kind":"edit","agent":"B","task":"4","tool":"Edit","path":"README.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T17:38:16.007Z"}
+{"t":105169,"kind":"tool","agent":"C","task":"1","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T17:38:16.008Z"}
+{"t":105895,"kind":"proof","agent":"C","task":"1","exits":[0,0,0,0,0],"causes":[],"errs":[],"ts":"2026-09-29T17:38:16.734Z"}
+{"t":105899,"kind":"tool:post","agent":"C","tool":"mcp__flock__run_proof","ts":"2026-09-29T17:38:16.738Z"}
+{"t":106199,"kind":"tool","agent":"B","task":"4","tool":"Edit","target":"/home/exedev/run/work/agents/B/hooks/session_start.sh","ts":"2026-09-29T17:38:17.038Z"}
+{"t":106518,"kind":"tool:post","agent":"B","tool":"Edit","ts":"2026-09-29T17:38:17.357Z"}
+{"t":106519,"kind":"edit","agent":"B","task":"4","tool":"Edit","path":"hooks/session_start.sh","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T17:38:17.358Z"}
+{"t":108788,"kind":"session:end","agent":"A","task":"3","released":"Third attempt, same block: M2–M5 pass and are published; M1 still fails because the six files (skills/ultrapowers/kernel/{fold_wave.py,repo_weave.py,frontier_fold.py,hunks.py,FOLD_LOG.md}, tests/test_fold_wave_anchor.py) still exist and agents are forbidden to delete existing files. Needs an operator or engine-side delete; re-claiming won't help until then.","done":false,"redRuns":0,"turns":5,"usage":{"input_tokens":8,"cache_creation_input_tokens":7427,"cache_read_input_tokens":111189,"output_tokens":1106,"output_tokens_details":{"thinking_tokens":84},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":7427,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[],"speed":"standard"},"ts":"2026-09-29T17:38:19.627Z"}
+{"t":108788,"kind":"task:parked","task":"3","releases":3,"reason":"Third attempt, same block: M2–M5 pass and are published; M1 still fails because the six files (skills/ultrapowers/kernel/{fold_wave.py,repo_weave.py,frontier_fold.py,hunks.py,FOLD_LOG.md}, tests/test_fold_wave_anchor.py) still exist and agents are forbidden to delete existing files. Needs an operato","ts":"2026-09-29T17:38:19.627Z"}
+{"t":108788,"kind":"stall:released","evidence":{"task":"3","releases":3},"ts":"2026-09-29T17:38:19.627Z"}
+{"t":109487,"kind":"tool","agent":"C","task":"1","tool":"mcp__flock__done","target":"","ts":"2026-09-29T17:38:20.326Z"}
+{"t":110305,"kind":"publish","agent":"C","task":"1","by":"done","ts":"2026-09-29T17:38:21.144Z"}
+{"t":110313,"kind":"tool:post","agent":"C","tool":"mcp__flock__done","ts":"2026-09-29T17:38:21.152Z"}
+{"t":110317,"kind":"kata:mirror","task":"1","uid":"01M3Q3QXS493TS4P9GTRZB1KSW","what":"done by C","ok":true,"ts":"2026-09-29T17:38:21.156Z"}
+{"t":110561,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; grep -oE 'factory/[a-z_./-]+|\\b[a-z-]+\\.mjs' factory/boot.sh | sort | uniq -c; grep -","ts":"2026-09-29T17:38:21.400Z"}
+{"t":110631,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T17:38:21.470Z"}
