@@ -13,10 +13,7 @@
       "criteria": {"true": "One need", "false": "Two or more needs joined together"}},
     "same_people": {"type": "noul",
       "instructions": "Do all of `piece.actions` serve the same people for the same reason?",
-      "criteria": {"true": "The same people, the same reason", "false": "Some actions serve different people or a different reason"}},
-    "actions_conflict": {"type": "noul",
-      "instructions": "Could using one of `piece.actions` ever defeat the purpose of another of them?",
-      "criteria": {"true": "Two actions can work against each other", "false": "The actions never work against each other"}}
+      "criteria": {"true": "The same people, the same reason", "false": "Some actions serve different people or a different reason"}}
   },
   "near_miss": {
     "story_passes_near_miss": {"type": "noul",

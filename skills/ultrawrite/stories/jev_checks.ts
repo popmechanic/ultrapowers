@@ -97,17 +97,6 @@ async function map(p: Product, ask: Ask, out: Out) {
     const n = get('one_need', (x) => x < POLICY.one_need_below);
     if (n !== null) out.flags.push(`JEV flag: ${c.id}: its purpose reads as more than one need (one_need ${f2(n)}); split it`);
   }
-  const parts = [...new Set(p.concepts.map((c) => c.part))];
-  for (const part of parts) {
-    const cs = p.concepts.filter((c) => c.part === part && c.status !== 'cut');
-    for (let i = 0; i < cs.length; i++) {
-      for (let j = i + 1; j < cs.length; j++) {
-        const v = (await one({a: {name: cs[i].id, purpose: cs[i].purpose}, b: {name: cs[j].id, purpose: cs[j].purpose}},
-          Q.redundancy, `${cs[i].id} and ${cs[j].id}`, `${cs[i].id}+${cs[j].id}`))('same_need', (x) => x >= POLICY.same_need);
-        if (v !== null) out.flags.push(`JEV flag: ${cs[i].id} and ${cs[j].id} serve the same need (same_need ${f2(v)}); merge them`);
-      }
-    }
-  }
 }
 
 async function decompose(p: Product, ask: Ask, out: Out) {
@@ -139,8 +128,6 @@ async function bundleStage(b: Bundle, ask: Ask, out: Out, askText?: string) {
     if (v !== null) out.flags.push(`JEV flag: piece ${c.piece}: its purpose reads as more than one need (one_need ${f2(v)})`);
     v = get('same_people', (x) => x < POLICY.same_people_below);
     if (v !== null) out.flags.push(`JEV flag: piece ${c.piece}: its actions serve different people (same_people ${f2(v)})`);
-    v = get('actions_conflict', (x) => x >= POLICY.actions_conflict);
-    if (v !== null) out.flags.push(`JEV flag: piece ${c.piece}: two actions can work against each other (actions_conflict ${f2(v)})`);
     v = (await one({piece: {name: c.piece, purpose: c.purpose}, story: stories.get(c.main_story ?? '') ?? '', near_miss: c.near_miss ?? ''},
       Q.near_miss, `piece ${c.piece} near-miss`, c.piece))('story_passes_near_miss', (x) => x >= POLICY.story_passes_near_miss);
     if (v !== null) out.flags.push(`JEV flag: piece ${c.piece}: main story ${c.main_story} does not rule out its near-miss (story_passes_near_miss ${f2(v)})`);

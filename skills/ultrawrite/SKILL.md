@@ -84,6 +84,7 @@ judges the real app after it.
 1. **Read the notebook first:** `bun skills/ultrawrite/stories/notebook.ts show`.
    Use its words; avoid its failed ones.
 2. **Take the ask as it comes**, in any form. Save it verbatim to `<bundle>/ask.txt`.
+   The ask file holds only the operator's own words for this plan: never notes, earlier picks or the author's lines, because Jev reads every sentence in it.
 3. **Enrich the ask — every plan, never skipped:** follow
    `skills/ultrawrite/references/enrich.md` (intent, understanding, the whole
    product's map, the build order) into `<bundle>/product.json`. Draft no story

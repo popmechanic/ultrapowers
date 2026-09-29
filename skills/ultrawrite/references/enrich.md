@@ -20,6 +20,7 @@ If the target app has `stories/product.json`, copy it into the bundle and start 
 stage 4: the map and the understanding are already signed. Add to the map only
 what the new ask brings (stage 3 for those concepts alone). Pass the new ask with
 `--ask-file` to the bundle stage; Jev reads its sentences because they are new.
+The ask file holds only the operator's own words for this plan: never notes, earlier picks or the author's lines, because Jev reads every sentence in it.
 
 **A change to something already built** (touch 2 said "delete should ask first"):
 name the built plan that owns it as `page.json`'s `subproject`, and carry cards
