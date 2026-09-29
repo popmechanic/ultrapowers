@@ -1023,7 +1023,9 @@ let PAST = null
       const read = (f) => JSON.parse(g(['show', `${ref}:.ultrapowers/runs/${m}/${f}`]))
       const status = read('status.json')
       const events = g(['show', `${ref}:.ultrapowers/runs/${m}/events.jsonl`]).split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))
-      const redChecks = read('red-checks.json')
+      // optional: runs before #1352, and factory runs, have no red-checks.json; pastItems reads null as none
+      let redChecks = null
+      try { redChecks = read('red-checks.json') } catch { /* no red checks recorded */ }
       const items = pastItems({ status, events, redChecks })
       ev('past', { run: m, items: items ? items.length : 0 })
       if (items) {
