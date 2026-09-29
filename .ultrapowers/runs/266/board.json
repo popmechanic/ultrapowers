@@ -1,0 +1,39 @@
+{
+ "tasks": [
+  {
+   "id": "1",
+   "title": "The name-reservation fact reads as exe.dev behaves",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "2",
+   "title": "The recorded flag sets include --host-key",
+   "state": "done",
+   "owner": "B",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "3",
+   "title": "The factory's Jev readings tools are deleted",
+   "state": "done",
+   "owner": "C",
+   "depends_on": [],
+   "notes": []
+  }
+ ],
+ "beliefs": [
+  {
+   "id": 1,
+   "t": 114650,
+   "by": "A",
+   "claim": "fleet/tests/test_probe_exe_facts.mjs's fake lobby now refuses `new` only for a live VM's name (not a deleted one), and leg (g) expects a 4th rm (fact 11's own VM), matching the flipped rm-reserves-name reading. Test passes.",
+   "confidence": 0.95,
+   "task": "1",
+   "about": "task"
+  }
+ ]
+}

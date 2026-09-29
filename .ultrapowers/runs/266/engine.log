@@ -1,0 +1,24 @@
+Running as unit: fleet-engine-266.service; invocation ID: fa4426eb6b78403b8bdcf55aa9d47b61
+[   0.6s] workload run-266, 0 agents, claude-opus-5-5, out /home/exedev/run
+[   1.5s] past: run-265 finished green
+[   1.5s] opens builder A (pool 1)
+[   1.5s] opens builder B (pool 2)
+[   1.6s] opens builder C (pool 3)
+[   1.6s] A claims task 1
+[   1.6s] B claims task 2
+[   1.6s] C claims task 3
+[  11.5s] C done 3
+[  28.9s] edge 4c1a407cf7 red {"1":[1,1,0],"2":[1],"3":[0,0]} check 0 
+[  33.5s] B done 2
+[  49.5s] edge 8ffa4171f8 red {"1":[1,1,0],"2":[0],"3":[0,0]} check 0 
+[ 116.2s] A done 1
+[ 132.5s] edge 7d7e551efa GREEN {"1":[0,0,0],"2":[0],"3":[0,0]} check 0 
+[ 133.6s] SETTLED on 7d7e551efa
+[ 133.6s] TERMINAL ready settled green
+[ 138.8s] summary {"workload":"run-266","agents":"elastic","builders_max":3,"cap":16,"model":"claude-opus-5-5","settled":{"t":133570,"snap":"7d7e551efa"},"wall_ms":138685,"publish":"explicit","early_close":"held","order":"chain","final":{"snap":"7d7e551efa","green":true,"perTask":{"1":[0,0,0],"2":[0],"3":[0,0]},"check":0,"conflicts":[]},"snapshots":3,"beliefs":1,"outcome":{"pr":"ready","why":"settled green","snap":"7d7e551efa","t":133571},"settle_mode":"tested","debounce_ms":34824,"board_ops":106,"board_op_us_p50":12,"board_op_us_p90":17,"board":"standin","board_by_op":{"ready":{"n":96,"p50_us":12,"p90_us":13,"max_us":69937},"claim":{"n":3,"p50_us":55,"p90_us":96,"max_us":96},"publish":{"n":3,"p50_us":11,"p90_us":20,"max_us":20},"done":{"n":3,"p50_us":4,"p90_us":18,"max_us":18},"post":{"n":1,"p50_us":27,"p90_us":27,"max_us":27}},"board_writes":10,"board_writes_per_s":0.07,"board_peak_writes_per_s":3,"edit_failures":{"not_unique":0,"not_found":0,"stale":0,"other":0},"tokens":{"input":56,"output":10467,"cache_read":946893,"cache_write":36065},"sessions":3,"cost_usd":0.715}
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 2min 19.062s
+CPU time consumed: 1min 31.727s
+Memory peak: 1.4G
+Memory swap peak: 0B
