@@ -97,7 +97,10 @@ engine, the Flock (`factory/flock/engine.mjs`). `/ultrapowers <plan-path>` publi
 plan and starts a run on a disposable sandbox of its own; every builder, every probe, every merge
 and every check execute there. Nothing builds, tests, or merges on your machine. When the run ends, the sandbox
 opens the pull request on the repository you ran in — ready if its own checks ended green, a draft
-otherwise — with the evidence linked in its body.
+otherwise — with the evidence linked in its body. If main moved while the run worked, the sandbox
+first joins the run's work onto the new main (`factory/flock/catchup.mjs`) and re-runs the plan's
+probes and checks there; only then does it merge its own pull request. A conflict or a red check
+leaves that pull request open and unmerged for you.
 
 The clearest way to see what it does is to zoom in — the whole plan, then one task.
 
