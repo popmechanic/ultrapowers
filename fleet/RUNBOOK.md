@@ -25,7 +25,9 @@ The setup script installs the toolchain, the immutable bootstrap at
 That unit runs the bootstrap, which reads the comment once, clones the engine at
 `engine=<sha>` into `/home/exedev/engines/<sha>`, and execs that checkout's
 `factory/boot.sh` or refuses — no other engine is launchable since cut two
-(2026-09-21). The boot script clones the target at `base=`, checks the plan
+(2026-09-21), and the boot always runs the Flock (`factory/flock/engine.mjs`),
+the one engine since the factory's retirement (map #1292 rule 8); an
+assignment with `kind=factory` is refused. The boot script clones the target at `base=`, checks the plan
 branch's tip against the assignment, runs the engine as a transient user unit
 with a memory cap — no status page, git is the record — commits its evidence
 to the target on `ultra/evidence-run-<N>` at every transition, and — only when
@@ -324,17 +326,17 @@ signed, the answer line, the plan's Claim and one table row per task saying what
 was promised and how it was proved, with the record — receipt, shas, evidence
 listing and residuals checklist — folded away below. `pr` and `prAuthor` in `status.json` are
 the answer's `html_url` and `user.login`.
-A ready PR merges itself, on the run's own evidence and nobody else's: the
-publish fold rebased the branch onto the default branch's tip and the gate then
-greened the target's suite on that tree, so the sandbox squash-merges once its
-gate is green and that tip is still the base's — it asks the target for no
-second opinion. A base that moved buys another fold rather than another ask; a
+A ready PR merges itself, on the run's own evidence and nobody else's: when the
+default branch moved, the catch-up (`factory/flock/catchup.mjs`) joined the run's
+work onto its tip and re-ran the plan's setup, probes and check there, so the
+sandbox squash-merges once its gate is green and that tip is still the base's —
+it asks the target for no second opinion. A base that moved buys another
+catch-up rather than another ask; a conflict or a red check in the catch-up, a
 refused merge, `--hold` on the launch line, or a gate whose suite went red on a
 path no task owns leaves the PR open for you, and `status.json`'s `merged` cell
 says which. A held PR's card carries a `## Held` section: what went red, the
 `gh pr merge` line that finishes it, and the path to fix. A draft is yours to
-merge or close. A squash-merge takes the plan's title as its subject, because the fold
-commit is titled from the plan's H1 and `frontier fold wave <n>` rides its body.
+merge or close. A squash-merge takes the plan's title as its subject.
 A `prAuthor` that is the installation bot rather than you means
 `--act-as-user` did not take — link your GitHub account on exe.dev's
 Integrations page, and check the account is not a team.
@@ -570,7 +572,7 @@ on the next one, ask her before editing a script.
 - Branch protection `strict=true` enforces nothing without at least one required status
   context: with `contexts=[]` a behind PR's merge PUT is accepted (probe on a scratch repo,
   2026-09-10). Since CI was removed the sandbox checks main's tip itself before its PUT and
-  folds again if it moved (decision 15); never cite `strict` as the guard.
+  catches up again if it moved (decision 15); never cite `strict` as the guard.
 - `integrations edit` on a GitHub integration serves the cached installation
   token for 30–60 s afterwards: a `gh pr create` twenty seconds after a binding
   produced a bot-authored PR. The grant is a standing policy the VM matches from
@@ -752,14 +754,14 @@ an exe VM with 2 vCPU / 4 GB)
   draining with the port still held, so the next `--port` dies on
   `Address already in use`.
 
-**The fold kernel.**
+**NUL bytes in source.**
 
-- A NUL byte in a source file makes git diff it as binary, `is_binary` in
-  `skills/ultrapowers/kernel/repo_weave.py` agrees, and every fold that touches the file parks
-  with `no annotated narration for <path> (binary)` and zero resolvers — run-163's publish fold,
-  2026-09-16, after run-162's implementer wrote a `'\0'` key separator into the wave engine's own
-  entry source (since gone with it at cut two) as the raw byte. GitHub still merges such a PR by
-  hand. Find one with `grep -Plc '\x00' fleet/*.mjs factory/*.mjs`; the fix is the escape, one byte.
+- A NUL byte in a source file makes git diff it as binary. History: under the retired fold
+  kernel every fold that touched such a file parked with `no annotated narration for <path>
+  (binary)` and zero resolvers — run-163's publish fold, 2026-09-16, after run-162's implementer
+  wrote a `'\0'` key separator into the wave engine's own entry source (since gone with it at cut
+  two) as the raw byte. GitHub still merges such a PR by hand. Find one with
+  `grep -Plc '\x00' fleet/*.mjs factory/*.mjs`; the fix is the escape, one byte.
 
 **The factory's board.**
 
@@ -858,6 +860,13 @@ separately from the implementer, and its own evidence copy, left the engine the 
 task's proof is now its `Run:` probes, the tests the engine selects for the patch and the plan's
 `Check:` lines, and nothing on the fleet writes a file for that role. An engine sha from before
 that date still carries it; `--engine d412149a` is how you run it.
+
+**The factory's retirement (map #1292 rule 8, 2026-09-29).** The factory engine — its modules,
+roles, replay tools and the fold kernel's `kernel/*.py` beside Manyana — is gone; the Flock is the
+one engine, and a run that finishes after main moved is caught up by `factory/flock/catchup.mjs`.
+The launcher refuses `--kind` and the boot refuses `kind=factory`. The rollback is a launch run
+from a checkout made before the retirement: that checkout's launcher, with `--kind factory` and an
+`--engine` sha from before it, still boots the factory.
 
 The move onto the target is one release. If it does not hold:
 

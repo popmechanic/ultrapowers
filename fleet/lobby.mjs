@@ -496,9 +496,10 @@ export async function listIntegrations (exec) {
 
 // ── The assignment comment ──────────────────────────────────────────────────
 
-/** The comment's seven keys, in the order the contract spells them. `kind`
- *  (`flock` or `factory`) and `hold` are optional: a launch without `--kind`
- *  carries no `kind=` and builds the six-key comment byte for byte. */
+/** The comment's seven keys, in the order the contract spells them. The
+ *  launcher always writes `kind=flock` (an older boot reads a missing `kind=`
+ *  as the retired factory); `hold` is optional, and a comment read back may
+ *  lack `kind=` when an older launcher wrote it. */
 export const COMMENT_KEYS = Object.freeze([
   'run', 'plan', 'target', 'base', 'engine', 'kind', 'hold'
 ])
