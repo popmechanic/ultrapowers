@@ -1,0 +1,121 @@
+{
+ "workload": "run-261",
+ "agents": "elastic",
+ "builders_max": 5,
+ "cap": 16,
+ "model": "claude-opus-5-5",
+ "settled": {
+  "t": 987753,
+  "snap": "7017660540"
+ },
+ "wall_ms": 991869,
+ "publish": "explicit",
+ "early_close": "held",
+ "order": "chain",
+ "final": {
+  "snap": "7017660540",
+  "green": true,
+  "perTask": {
+   "1": [
+    0
+   ],
+   "2": [
+    0
+   ],
+   "3": [
+    0,
+    0
+   ],
+   "4": [
+    0
+   ],
+   "5": [
+    0,
+    0
+   ],
+   "6": [
+    0,
+    0
+   ]
+  },
+  "check": 0,
+  "conflicts": [
+   "skills/ultrawrite/references/greenfield-stack.md"
+  ]
+ },
+ "snapshots": 6,
+ "beliefs": 2,
+ "outcome": {
+  "pr": "ready",
+  "why": "settled green",
+  "snap": "7017660540",
+  "t": 987754
+ },
+ "settle_mode": "tested",
+ "debounce_ms": 347458,
+ "board_ops": 92,
+ "board_op_us_p50": 8,
+ "board_op_us_p90": 111,
+ "board": "standin",
+ "board_by_op": {
+  "ready": {
+   "n": 59,
+   "p50_us": 8,
+   "p90_us": 31,
+   "max_us": 141868
+  },
+  "claim": {
+   "n": 10,
+   "p50_us": 153,
+   "p90_us": 1738,
+   "max_us": 1738
+  },
+  "claim:lost": {
+   "n": 4,
+   "p50_us": 0,
+   "p90_us": 0,
+   "max_us": 0
+  },
+  "read": {
+   "n": 3,
+   "p50_us": 38,
+   "p90_us": 69,
+   "max_us": 69
+  },
+  "publish": {
+   "n": 8,
+   "p50_us": 5,
+   "p90_us": 11,
+   "max_us": 11
+  },
+  "done": {
+   "n": 6,
+   "p50_us": 2,
+   "p90_us": 34,
+   "max_us": 34
+  },
+  "post": {
+   "n": 2,
+   "p50_us": 111,
+   "p90_us": 111,
+   "max_us": 111
+  }
+ },
+ "board_writes": 30,
+ "board_writes_per_s": 0.03,
+ "board_peak_writes_per_s": 12,
+ "edit_failures": {
+  "not_unique": 0,
+  "not_found": 0,
+  "stale": 0,
+  "other": 0
+ },
+ "tokens": {
+  "input": 96,
+  "output": 15005,
+  "cache_read": 1557361,
+  "cache_write": 67702
+ },
+ "sessions": 6,
+ "cost_usd": 1.221
+}

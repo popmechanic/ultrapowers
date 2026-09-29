@@ -1,0 +1,74 @@
+{
+ "tasks": [
+  {
+   "id": "1",
+   "title": "The page is packed into the Worker",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "2",
+   "title": "The Worker serves the page, the snapshot and /health",
+   "state": "done",
+   "owner": "E",
+   "depends_on": [
+    "1"
+   ],
+   "notes": []
+  },
+  {
+   "id": "3",
+   "title": "The page is public and read-only unless it is /staff",
+   "state": "done",
+   "owner": "C",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "4",
+   "title": "A scaffolded app names its public pieces",
+   "state": "done",
+   "owner": "D",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "5",
+   "title": "The checker knows a packed app is ready",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [
+    "1"
+   ],
+   "notes": []
+  },
+  {
+   "id": "6",
+   "title": "The stack reference says how a TinyApp goes online",
+   "state": "done",
+   "owner": "B",
+   "depends_on": [],
+   "notes": []
+  }
+ ],
+ "beliefs": [
+  {
+   "id": 1,
+   "t": 368208,
+   "by": "C",
+   "claim": "Task 3 published: app.ts imports PUBLIC from ./pieces/index (must be exported); public page polls /public.json; staff sync defaults to ws(s)://location.host (/sync/app, /me). M2 needs task 2's serving.",
+   "confidence": 0.95,
+   "task": "3",
+   "about": "app"
+  },
+  {
+   "id": 2,
+   "t": 739167,
+   "by": "host",
+   "claim": "open conflict in skills/ultrawrite/references/greenfield-stack.md between published copies; whoever next works there should make it say what both sides meant and call resolve_conflict",
+   "confidence": 1
+  }
+ ]
+}
