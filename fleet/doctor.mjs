@@ -58,24 +58,25 @@
  * listing is the edge-side truth the doctor can read.
  */
 
-import { execFile } from 'node:child_process'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
-import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 
 import {
   DEFAULT_CONFIG_PATH,
+  EXE_HOST,
   FLEET_DEFAULTS,
   VERBS_PATH,
   VERBS_RECORD,
+  defaultExec,
   isSafeTarget,
+  listIntegrations,
   loadFleetConfig,
+  parseJson,
   parseMemoryGb,
-  parsePolicy
+  parsePolicy,
+  readPlanCapacity
 } from './lobby.mjs'
-
-const execFileAsync = promisify(execFile)
 
 /** The nine rows, in the order the doctor reports them. Each id is also a
  *  `## ` heading in skills/ultrapowers/references/first-run.md. */
@@ -93,10 +94,13 @@ const FIXES = Object.freeze(Object.fromEntries(ROW_IDS.map((id) => [id, id])))
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const CLAUDE_TOKEN = path.join(HERE, 'claude-token.mjs')
 
-/** The eight standing reads, in the order the doctor issues them. One policy
- *  read per integration the `integrations` row asks about follows them, then
- *  the `help` reads of the verb-drift row, one per verb of the record;
- *  together they are the only commands the doctor ever runs.
+/** The standing lobby reads, as the remote half of `ssh exe.dev "<remote>"`,
+ *  in the order the doctor issues them; the three `claude-token.mjs` reads sit
+ *  between the github and kata ones. One policy read per integration the
+ *  `integrations` row asks about follows them, then the `help` reads of the
+ *  verb-drift row, one per verb of the record; together they are the only
+ *  commands the doctor ever runs, every one through the exec seam
+ *  `exec(cmd, argv)` — `ssh` or `node`, never a shell string.
  *
  *  The last two are the `kata` row's. Its policy read is spelled out rather
  *  than taken from `policyRead`, because it is a standing read of a fixed name
@@ -104,19 +108,26 @@ const CLAUDE_TOKEN = path.join(HERE, 'claude-token.mjs')
  *  one thing the doctor asks `ls` about, every other row reading edge-side
  *  objects the listing already carries. */
 const READS = Object.freeze({
-  whoami: 'ssh exe.dev whoami',
-  billing: 'ssh exe.dev "billing plan --json"',
-  list: 'ssh exe.dev "integrations list --json"',
-  github: 'ssh exe.dev "integrations setup github --list"',
-  token: `node ${CLAUDE_TOKEN} status`,
-  usage: `node ${CLAUDE_TOKEN} usage --json --no-rotate`,
-  accounts: `node ${CLAUDE_TOKEN} accounts --json`,
-  kataPolicy: 'ssh exe.dev "integrations policy get kata --json"',
-  kataVm: 'ssh exe.dev "ls kata-hub --json"'
+  whoami: 'whoami',
+  github: 'integrations setup github --list',
+  kataPolicy: 'integrations policy get kata --json',
+  kataVm: 'ls kata-hub --json'
 })
 
-/** The policy read for one integration — the only read of a name. */
-export const policyRead = (name) => `ssh exe.dev "integrations policy get ${name} --json"`
+/** The policy read for one integration — the only read of a name — as the
+ *  remote half of its `ssh exe.dev` argv. */
+export const policyRead = (name) => `integrations policy get ${name} --json`
+
+/** One lobby read: `ssh exe.dev "<remote>"`, answered whatever its exit code,
+ *  so every row keeps the code it reports. */
+const lobbyRead = (exec, remote) => exec('ssh', [EXE_HOST, remote])
+
+/** One `claude-token.mjs` read. stderr joins stdout because claude-token logs
+ *  its status line there. */
+async function tokenRead (exec, argv) {
+  const res = await exec('node', [CLAUDE_TOKEN, ...argv])
+  return { code: res.code, stdout: `${res.stdout ?? ''}${res.stderr ?? ''}` }
+}
 
 /** The tag a fleet VM is created with, the policy every fleet integration
  *  carries, and the integration that carries the bearer. */
@@ -197,23 +208,6 @@ export async function fleetConfigAccount ({ path: configPath } = {}) {
   return typeof account === 'string' && account !== '' ? account : null
 }
 
-/** The exec seam: resolve `{ code, stdout }`, never reject, so a test drives
- *  every row with a stub and the CLI drives them with a shell. stderr joins
- *  stdout because claude-token logs its status line there. */
-export async function defaultExec (cmd) {
-  try {
-    const { stdout, stderr } = await execFileAsync('/bin/sh', ['-c', cmd], {
-      maxBuffer: 10 * 1024 * 1024
-    })
-    return { code: 0, stdout: stdout + stderr }
-  } catch (error) {
-    return {
-      code: error?.code ?? 1,
-      stdout: (error?.stdout ?? '') + (error?.stderr ?? '')
-    }
-  }
-}
-
 // ── exe-dev ──────────────────────────────────────────────────────────────────
 
 function exeDevRow (res) {
@@ -236,7 +230,30 @@ function exeDevRow (res) {
  * `billing plan --json`, or a `cpu`/`memory` it cannot parse. Both details name
  * `~/.ultrapowers/fleet.json`, the file that sets the size a run asks for.
  */
-function poolRow (res, config) {
+/**
+ * The pool `billing plan --json` answered, through the lobby's own reader:
+ * `{ maxCpus, maxMemoryGb, tier }`, or null when the verb exited non-zero or
+ * answered no numeric `max_cpus`. `readPlanCapacity` reads an absent
+ * `max_memory_gb` as 0, which is a launch's business; the doctor reads it as no
+ * pool, so `maxMemoryGb` is null unless the payload itself carries a number.
+ */
+async function readPool (res) {
+  if (res.code !== 0) return null
+  let capacity
+  try {
+    capacity = await readPlanCapacity(async () => res)
+  } catch {
+    return null
+  }
+  const payload = parseJson(res.stdout)
+  return {
+    maxCpus: capacity.maxCpus,
+    maxMemoryGb: typeof payload?.max_memory_gb === 'number' ? capacity.maxMemoryGb : null,
+    tier: capacity.tier !== '' ? capacity.tier : String(payload?.plan ?? 'untiered')
+  }
+}
+
+function poolRow (res, pool, config) {
   const askedCpu = parseCpus(config.cpu)
   const askedGb = parseMemoryGb(config.memory)
   if (askedCpu === null || askedGb === null) {
@@ -247,10 +264,7 @@ function poolRow (res, config) {
     )
   }
 
-  const plan = res.code === 0 ? readJson(res.stdout) : null
-  const poolCpu = typeof plan?.max_cpus === 'number' ? plan.max_cpus : null
-  const poolGb = typeof plan?.max_memory_gb === 'number' ? plan.max_memory_gb : null
-  if (poolCpu === null || poolGb === null) {
+  if (pool === null || pool.maxMemoryGb === null) {
     return row(
       'capacity',
       'missing',
@@ -258,10 +272,9 @@ function poolRow (res, config) {
     )
   }
 
-  const tier = typeof plan.tier === 'string' && plan.tier !== '' ? plan.tier : String(plan.plan ?? 'untiered')
-  const pool = `${tier} pool ${poolCpu} vCPU / ${poolGb}GB`
+  const described = `${pool.tier} pool ${pool.maxCpus} vCPU / ${pool.maxMemoryGb}GB`
   const asked = `${askedCpu} vCPU / ${askedGb}GB`
-  return row('capacity', 'ok', `${pool}; a run asks ${asked}`)
+  return row('capacity', 'ok', `${described}; a run asks ${asked}`)
 }
 
 /** The two key names the doctor reads, as the row's detail spells them. */
@@ -289,8 +302,8 @@ const CONFIG_KEYS = Object.freeze([...READ_KEYS, ...LAUNCHER_KEYS])
  * there. A file that omits one of the two the doctor does read is not wrong, only
  * silent, so the green detail says which default it fell back to.
  */
-function capacityRow (res, config, configKeys = null) {
-  const base = poolRow(res, config)
+function capacityRow (res, pool, config, configKeys = null) {
+  const base = poolRow(res, pool, config)
   const keys = Array.isArray(configKeys) ? configKeys.filter((k) => typeof k === 'string') : null
   if (keys === null) return base
 
@@ -315,94 +328,40 @@ function capacityRow (res, config, configKeys = null) {
 
 // ── integrations, read once for two rows ─────────────────────────────────────
 
-function readJson (stdout) {
-  try {
-    return JSON.parse(String(stdout ?? ''))
-  } catch {
-    return null
-  }
-}
-
 /**
- * `integrations list --json` read defensively. The doctor asks three questions
- * of each object — does it exist, does it carry the bearer, and is it attached
- * to `tag:fleet` — and every answer has to survive a field rename on exe.dev's
- * side without turning a healthy fleet red for the wrong reason. So the reader
- * takes the top level as either an array or an object with an array under
- * `integrations`, a name via `name` or `id`, the bearer via `config_summary` or
- * `config.headers[]`, and attachments via whichever plausible key is present,
- * each entry either the string `tag:fleet` / `vm:fleet-run-3` or an object
- * carrying a `tag` key.
+ * `integrations list --json`, read through the lobby's own `listIntegrations`.
+ * The doctor asks three questions of each object — does it exist, does it
+ * carry the bearer, and is it attached to `tag:fleet` — and the lobby's reader
+ * answers all three defensively (`bearer`, `tags`), so a field rename on
+ * exe.dev's side does not turn a healthy fleet red for the wrong reason.
  *
  * Answers a Map of name → `{ name, tags, github, bearer, comment }`, or null
- * when the stdout is not a listing at all. `comment` is the entry's own comment
- * string or null: the credential tool writes `account=<name>` into `claude-max`'s
- * on every install, and the `accounts` row reads the edge's account off it.
+ * when the verb exited non-zero or its stdout is not a listing at all.
+ * `comment` is the entry's own comment string or null: the credential tool
+ * writes `account=<name>` into `claude-max`'s on every install, and the
+ * `accounts` row reads the edge's account off it.
  */
-function parseIntegrations (stdout) {
-  const parsed = readJson(stdout)
-  const list = Array.isArray(parsed)
-    ? parsed
-    : (Array.isArray(parsed?.integrations) ? parsed.integrations : null)
-  if (list === null) return null
-
+async function readIntegrations (res) {
+  if (res.code !== 0) return null
+  const payload = parseJson(res.stdout)
+  if (!Array.isArray(payload) && !Array.isArray(payload?.integrations)) return null
   const out = new Map()
-  for (const entry of list) {
-    if (!entry || typeof entry !== 'object') continue
-    const name = typeof entry.name === 'string' ? entry.name : entry.id
-    if (typeof name !== 'string' || name === '') continue
-    out.set(name, {
-      name,
-      tags: attachedTags(entry),
-      github: isGithub(entry, name),
-      bearer: hasBearer(entry),
-      comment: typeof entry.comment === 'string' ? entry.comment : null
+  for (const entry of await listIntegrations(async () => res)) {
+    out.set(entry.name, {
+      name: entry.name,
+      tags: entry.tags,
+      github: isGithub(entry),
+      bearer: entry.bearer,
+      comment: entry.comment
     })
   }
   return out
 }
 
-/** Is this entry a GitHub integration? By its declared type, by the repository
- *  field only GitHub objects carry, or by the fleet's own naming. */
-function isGithub (entry, name) {
-  const type = entry.type ?? entry.kind
-  if (type === 'github') return true
-  if (typeof entry.repository === 'string' || typeof entry.repo === 'string') return true
-  return name === LEGACY_RUNS || name.startsWith('gh-')
-}
-
-/** Does this entry carry the Authorization bearer the edge injects? The
- *  measured listing spells it in `config_summary`; a listing that spells it in
- *  `config.headers[]` instead says the same thing. */
-function hasBearer (entry) {
-  const summary = typeof entry.config_summary === 'string' ? entry.config_summary : ''
-  if (summary.replace(/\s+/g, '').includes(BEARER)) return true
-  const headers = entry.config?.headers
-  if (Array.isArray(headers)) {
-    for (const header of headers) {
-      if (typeof header === 'string' && header.replace(/\s+/g, '').includes(BEARER)) return true
-    }
-  }
-  return false
-}
-
-const ATTACHMENT_KEYS = ['attachments', 'attached', 'attachedTo', 'attached_to', 'targets']
-
-function attachedTags (entry) {
-  const tags = new Set()
-  for (const key of ATTACHMENT_KEYS) {
-    const value = entry[key]
-    if (!Array.isArray(value)) continue
-    for (const item of value) {
-      if (typeof item === 'string' && item.startsWith('tag:')) tags.add(item.slice(4))
-      else if (item && typeof item === 'object' && typeof item.tag === 'string') tags.add(item.tag)
-    }
-  }
-  if (Array.isArray(entry.tags)) {
-    for (const tag of entry.tags) if (typeof tag === 'string') tags.add(tag)
-  }
-  return tags
-}
+/** Is this entry a GitHub integration? By the repository field only GitHub
+ *  objects carry, or by the fleet's own naming. */
+const isGithub = (entry) =>
+  entry.repository !== null || entry.name === LEGACY_RUNS || entry.name.startsWith('gh-')
 
 /** The fix for a policy that is not `tag:fleet`: the read, then the write
  *  under the revision the read answered. */
@@ -428,7 +387,7 @@ export function policyRowFor (name, { id, found, policyRes, absentIsOk = false, 
   if (have === undefined) {
     return row(id, absentIsOk ? 'ok' : 'missing', absentDetail ?? `no ${name} integration at the edge`)
   }
-  if (have.tags.has('fleet')) return null
+  if (have.tags.includes(TAG)) return null
   const policy = policyRes && policyRes.code === 0 ? parsePolicy(policyRes.stdout) : null
   if (policy === null) {
     const seen = policyRes && policyRes.code === 0 ? 'printed no readable policy' : `exited ${policyRes?.code ?? 1}`
@@ -515,7 +474,7 @@ const ACCOUNT_TOKEN = 'account='
  */
 function parseAccounts (res) {
   if (res.code !== 0) return null
-  const parsed = readJson(res.stdout)
+  const parsed = parseJson(res.stdout)
   return Array.isArray(parsed) ? parsed : null
 }
 
@@ -766,7 +725,7 @@ const KATA_FIX = 'node fleet/kata-hub.mjs'
  *  `.vms[]` only: `.shared_vms[]` are other people's machines. */
 function kataVmRow (res) {
   if (!res || res.code !== 0) return null
-  const parsed = readJson(res.stdout)
+  const parsed = parseJson(res.stdout)
   const rows = Array.isArray(parsed?.vms) ? parsed.vms : []
   return rows.find((entry) => entry?.vm_name === KATA_VM) ?? null
 }
@@ -833,8 +792,8 @@ function cloudflareRow (found, policyRes) {
 
 /**
  * Run every row against `config` and resolve `{ config, rows, verdict }`.
- * `exec(cmd)` resolves `{ code, stdout }`, so a test drives the doctor with a
- * stub. `target` is `owner/repo` or null; anything else is refused before any
+ * `exec(cmd, argv)` is the lobby's seam, resolving `{ code, stdout, stderr }`,
+ * so a test drives the doctor with a stub. `target` is `owner/repo` or null; anything else is refused before any
  * read rather than interpolated into an ssh string.
  *
  * `configKeys` is the config file's own top-level key names — `fleetConfigKeys`
@@ -857,40 +816,44 @@ export async function doctor ({
   }
   const wantAccount = account === null || account === undefined ? null : String(account)
 
-  const whoami = await run(READS.whoami)
-  const billing = await run(READS.billing)
-  const list = await run(READS.list)
-  const found = list.code === 0 ? parseIntegrations(list.stdout) : null
-  const github = await run(READS.github)
+  const read = (remote) => lobbyRead(run, remote)
+  const whoami = await read(READS.whoami)
+  // The lobby's own readers, each handed the answer already in hand so a
+  // non-zero exit stays the code the row reports rather than a thrown error.
+  const billing = await read('billing plan --json')
+  const pool = await readPool(billing)
+  const list = await read('integrations list --json')
+  const found = await readIntegrations(list)
+  const github = await read(READS.github)
   // The status read names the configured account (`fleet.json` `account`), never
   // the code's default: the keychain entries are named by email since 2026-09-11.
-  const token = await run(wantAccount ? `${READS.token} --account ${wantAccount}` : READS.token)
+  const token = await tokenRead(run, wantAccount ? ['status', '--account', wantAccount] : ['status'])
   // The usage read carries `--account` before `--no-rotate`, unlike the token
   // read's trailing clause, and never rotates the token it reads.
-  const usage = await run(wantAccount
-    ? `node ${CLAUDE_TOKEN} usage --json --account ${wantAccount} --no-rotate`
-    : READS.usage)
-  const accounts = await run(READS.accounts)
+  const usage = await tokenRead(run, wantAccount
+    ? ['usage', '--json', '--account', wantAccount, '--no-rotate']
+    : ['usage', '--json', '--no-rotate'])
+  const accounts = await tokenRead(run, ['accounts', '--json'])
   // The hub's two reads: the policy that grants it, then the VM behind it.
-  const kataPolicy = await run(READS.kataPolicy)
-  const kataVms = await run(READS.kataVm)
+  const kataPolicy = await read(READS.kataPolicy)
+  const kataVms = await read(READS.kataVm)
   const policies = new Map()
   for (const name of policyNames(want)) {
-    policies.set(name, await run(policyRead(name)))
+    policies.set(name, await read(policyRead(name)))
   }
   // The ninth read: only when `found` names a cloudflare object at all — an
   // absent one needs no policy read, and most fleets never publish.
   const cloudflarePolicy = found !== null && found.has(CLOUDFLARE_INTEGRATION)
-    ? await run(policyRead(CLOUDFLARE_INTEGRATION))
+    ? await read(policyRead(CLOUDFLARE_INTEGRATION))
     : null
   const drift = await verbDrift({
-    help: (verb) => run(`ssh exe.dev "help ${verb}"`),
+    help: (verb) => read(`help ${verb}`),
     recordPath: verbsPath
   })
 
   const rows = [
     exeDevRow(whoami),
-    capacityRow(billing, cfg, configKeys),
+    capacityRow(billing, pool, cfg, configKeys),
     claudeRow(found, token, usage),
     accountsRow(accounts, found, wantAccount),
     githubRow(github),

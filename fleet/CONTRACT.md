@@ -381,7 +381,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   no row.
     Receipts (2026-09-16): the same POST carries a `state` object out and an `answers` object back;
   neither is persisted anywhere this engine reads again.
-- **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","disclosures":"<url or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"wave":"<n or null>","state":"queued|waiting|examining|implementing|proving|reviewing|fixing|folded|failed","role":"<worker label or null>","lastProof":"{cmd, exit, ts} or null","park":"<detail or null>","attention":"{value, msg, ts} or null","blockedBy":"[<task ids>] or null"}}}`
+- **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"state":"folded|failed","park":"<detail or null>"}}}`
   — committed to
   `.ultrapowers/runs/<N>/status.json` on `ultra/evidence-run-<N>` at every transition **and, while
   the engine runs, on the first tick that finds `events.jsonl` changed since the last commit, at
@@ -389,15 +389,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   heartbeat (`updatedAt` moves) and earns no commit.
   `"tasks":` is the LAST cell on the page — a reader answers the FIRST `"state"` in the file, so a
   task's own `folded` must never sit above the run's — and it is a projection of `events.jsonl` and
-  nothing else: one key per task id the plan's waves or the log names, each carrying the wave it
-  belongs to, one of the nine states above, the label of the worker open for it, its last proof run
-  (`driver:proof-run` or `driver:check-run`), the detail it was parked with,
-  its `attention` cell — `{value, msg, ts}` read off that task's latest `driver:attention` event,
-  `null` for a task that never raised a hand — and its `blockedBy` cell, the LAST key of the cell.
-  A task the driver re-edged reads `waiting` with `blockedBy` the siblings that `driver:re-edged`
-  named, whatever the `worker:end` before it said, and the state moves on at the task's next
-  `worker:start` while `blockedBy` keeps the record of what it waited on; a task no `driver:re-edged`
-  names reads `null` there.
+  nothing else: one key per task a `landing` or `parked` row names, in the order it first appears,
+  each carrying its `state` — `folded` for a `landing` row, `failed` for a `parked` row, a later row
+  for the same task overwriting — and its `park`, the `reason` its `parked` row carried, else `null`.
   The same projection runs inside `factory/record.mjs` (`status`), called by `write_status` each
   time it writes the page, rather than as a separate invocation over a log file.
   `phase` names the SUB-STEP while the engine runs: the run's last phase event alone when no worker
@@ -418,7 +412,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `fleet run-<N>: <plan H1>`, head `ultra/integration-run-<N>`, base the target's default branch,
   `draft` true unless the engine exited 0, and no `authorization` header — the edge injects the
   credential. Its body is the plan's `**Summary:**` paragraph, a blank line, one
-  `| <task> | <k> | <factsExit> | <candidateSha> |` row per `landing` row of the run's own
+  `| <task> | <candidateSha> |` row per `landing` row of the run's own
   `events.jsonl`, a blank line, and one `Closes #<n>` line per number on the plan's `**Closes:**`
   line, all rendered by `factory/record.mjs pr-body`. The `publish:pr` row it leaves —
   `{ts, kind, url, number, draft}` — is written through the same writer as every other

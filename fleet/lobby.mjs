@@ -483,7 +483,27 @@ function normaliseAttachment (entry) {
   return null
 }
 
-/** `ssh exe.dev "integrations list --json"` → `[{ name, repository, attachments }]`. */
+/** The bearer the edge injects, as the listing spells it (spaces ignored). */
+const BEARER = 'Authorization:Bearer'
+
+/** Does this entry carry the Authorization bearer the edge injects? The
+ *  measured listing spells it in `config_summary`; a listing that spells it in
+ *  `config.headers[]` instead says the same thing. */
+function hasBearer (entry) {
+  const carries = (text) => typeof text === 'string' && text.replace(/\s+/g, '').includes(BEARER)
+  if (carries(entry?.config_summary)) return true
+  const headers = entry?.config?.headers
+  return Array.isArray(headers) && headers.some(carries)
+}
+
+/**
+ * `ssh exe.dev "integrations list --json"` →
+ * `[{ name, repository, attachments, bearer, comment, tags }]`. `bearer` is
+ * whether the entry carries the edge's Authorization bearer, `comment` its own
+ * comment string or null (the credential tool writes `account=<name>` into
+ * `claude-max`'s), and `tags` the tag names its attachments and its own `tags`
+ * field name.
+ */
 export async function listIntegrations (exec) {
   const res = await lobby(exec, 'integrations list --json')
   const payload = parseJson(res.stdout)
@@ -493,10 +513,17 @@ export async function listIntegrations (exec) {
     const raw = row?.attachments ?? row?.attached ?? row?.attachedTo ?? row?.attached_to ??
       row?.targets ?? []
     const attachments = (Array.isArray(raw) ? raw : [raw]).map(normaliseAttachment).filter(Boolean)
+    const tags = attachments.filter((a) => a.kind === 'tag').map((a) => a.value)
+    for (const tag of Array.isArray(row?.tags) ? row.tags : []) {
+      if (typeof tag === 'string' && !tags.includes(tag)) tags.push(tag)
+    }
     return {
       name: str(row?.name) ?? str(row?.integration) ?? str(row?.id),
       repository: str(row?.repository) ?? str(row?.repo),
-      attachments
+      attachments,
+      bearer: hasBearer(row),
+      comment: typeof row?.comment === 'string' ? row.comment : null,
+      tags
     }
   }).filter((row) => row.name)
 }

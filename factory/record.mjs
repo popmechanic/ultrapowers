@@ -5,7 +5,7 @@
  * what its phase reads, whether a pull request is open, what its policy
  * allows. This module decides nothing — every subcommand below takes what
  * the boot already knows and turns it into the bytes the boot writes: one
- * event row, the thirteen-cell status page, the pull request body, or the
+ * event row, the twelve-cell status page, the pull request body, or the
  * three numbers `publish.self_merge` carries. Nothing here writes a file or
  * reads an environment variable; every subcommand prints one thing to
  * stdout and its exit code says whether that printing happened.
@@ -105,15 +105,7 @@ export function projectTasks (eventsPath) {
   }
   const tasks = {}
   for (const id of order) {
-    tasks[id] = {
-      wave: null,
-      state: state[id],
-      role: null,
-      lastProof: null,
-      park: park[id],
-      attention: null,
-      blockedBy: null
-    }
+    tasks[id] = { state: state[id], park: park[id] }
   }
   return tasks
 }
@@ -129,7 +121,7 @@ function stringOrEmpty (value) {
   return value === undefined ? '' : value
 }
 
-/** `status key=value ... --events <file>` — the thirteen-cell page, `tasks`
+/** `status key=value ... --events <file>` — the twelve-cell page, `tasks`
  *  last, `updatedAt` stamped fresh on every call. */
 export function renderStatus (fields, eventsPath) {
   const tasks = eventsPath ? projectTasks(eventsPath) : {}
@@ -140,7 +132,6 @@ export function renderStatus (fields, eventsPath) {
     ['pr', stringOrNull(fields.pr)],
     ['prAuthor', stringOrNull(fields.prAuthor)],
     ['merged', stringOrNull(fields.merged)],
-    ['disclosures', null],
     ['branch', stringOrEmpty(fields.branch)],
     ['vm', stringOrNull(fields.vm)],
     ['startedAt', stringOrEmpty(fields.startedAt)],
@@ -202,13 +193,13 @@ function cellText (value) {
   return JSON.stringify(value)
 }
 
-/** `| <task> | <k> | <factsExit> | <candidateSha> |` for every `landing` row
- *  of the events file, in file order; no file gives no rows. */
+/** `| <task> | <candidateSha> |` for every `landing` row of the events
+ *  file, in file order; no file gives no rows. */
 function landingRowLines (rows) {
   const out = []
   for (const row of rows) {
     if (row && row.kind === 'landing') {
-      out.push(`| ${cellText(row.task)} | ${cellText(row.k)} | ${cellText(row.factsExit)} | ${cellText(row.candidateSha)} |`)
+      out.push(`| ${cellText(row.task)} | ${cellText(row.candidateSha)} |`)
     }
   }
   return out

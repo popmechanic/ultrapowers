@@ -14,10 +14,10 @@
  *       exactly `ts, kind, ...pairs-in-argument-order`, with a bare value
  *       (`null`/`true`/`false`/an integer) parsed to its JS type and anything
  *       else — including a value carrying a literal `"` — a JSON string.
- *   (b) [M2] `status key=value ... --events <file>` prints the thirteen-cell
+ *   (b) [M2] `status key=value ... --events <file>` prints the twelve-cell
  *       page in exactly the pinned key order with `tasks` last; the five
- *       optional cells given empty on the command line come back `null`
- *       alongside the always-`null` `disclosures`; `updatedAt` is a non-empty
+ *       optional cells given empty on the command line come back `null`;
+ *       `updatedAt` is a non-empty
  *       string; `tasks` is the two-row projection M2 pins over an events file
  *       holding a `landing` and a `parked` row, and is `{}` over a path that
  *       does not exist.
@@ -112,7 +112,7 @@ function lines (text) {
 // ── b. [M2] `status key=value ... --events <file>` ─────────────────────────
 {
   const STATUS_KEYS = [
-    'run', 'state', 'phase', 'pr', 'prAuthor', 'merged', 'disclosures',
+    'run', 'state', 'phase', 'pr', 'prAuthor', 'merged',
     'branch', 'vm', 'startedAt', 'updatedAt', 'error', 'tasks',
   ]
 
@@ -137,18 +137,18 @@ function lines (text) {
 
   assert.deepEqual(
     Object.keys(status), STATUS_KEYS,
-    '(b) [M2] the thirteen keys are exactly, and in exactly, the pinned order with tasks last'
+    '(b) [M2] the twelve keys are exactly, and in exactly, the pinned order with tasks last'
   )
 
-  for (const key of ['pr', 'prAuthor', 'merged', 'vm', 'error', 'disclosures']) {
+  for (const key of ['pr', 'prAuthor', 'merged', 'vm', 'error']) {
     assert.equal(status[key], null, `(b) [M2] ${key} is exactly null`)
   }
   assert.equal(typeof status.updatedAt, 'string', '(b) [M2] updatedAt is a string')
   assert.ok(status.updatedAt.length > 0, '(b) [M2] updatedAt is non-empty')
 
   const expectedTasks = {
-    '1': { wave: null, state: 'folded', role: null, lastProof: null, park: null, attention: null, blockedBy: null },
-    '2': { wave: null, state: 'failed', role: null, lastProof: null, park: 'r', attention: null, blockedBy: null },
+    '1': { state: 'folded', park: null },
+    '2': { state: 'failed', park: 'r' },
   }
   assert.deepEqual(
     status.tasks, expectedTasks,
@@ -211,12 +211,12 @@ function lines (text) {
   const landingEvents = path.join(FIXTURES, 'pr-body-events.jsonl')
   fs.writeFileSync(
     landingEvents,
-    JSON.stringify({ kind: 'landing', task: 1, k: 1, factsExit: 0, candidateSha: 'abc' }) + '\n'
+    JSON.stringify({ kind: 'landing', task: 1, candidateSha: 'abc' }) + '\n'
   )
 
   const r1 = run(['pr-body', planWithCloses, '--events', landingEvents])
   assert.equal(r1.status, 0, '(c) [M3] pr-body over the fixture plan exits 0')
-  const expected1 = PARAGRAPH + '\n\n| 1 | 1 | 0 | abc |\n\nCloses #1222\n'
+  const expected1 = PARAGRAPH + '\n\n| 1 | abc |\n\nCloses #1222\n'
   assert.equal(
     r1.stdout, expected1,
     '(c) [M3] pr-body is byte-equal to the paragraph, a blank line, the one landing row, a blank line, and Closes #1222'
@@ -276,7 +276,7 @@ function lines (text) {
   const frozenBody = [
     'One widget, one size.',
     '',
-    '| 1 | 1 | 0 | abc |',
+    '| 1 | abc |',
     '',
     'Closes #1222 back\\slash'
   ].join('\n')
@@ -292,7 +292,7 @@ function lines (text) {
   assert.equal(r1.status, 0, '(e) [M5] pr-payload over the frozen inputs exits 0')
   const expectedPrPayload = '{"title":"fleet run-502: A widget that \\"answers\\" its size",' +
     '"head":"ultra/integration-run-502","base":"main",' +
-    '"body":"One widget, one size.\\n\\n| 1 | 1 | 0 | abc |\\n\\nCloses #1222 back\\\\slash",' +
+    '"body":"One widget, one size.\\n\\n| 1 | abc |\\n\\nCloses #1222 back\\\\slash",' +
     '"draft":false}'
   assert.equal(
     r1.stdout, expectedPrPayload + '\n',

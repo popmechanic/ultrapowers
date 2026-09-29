@@ -141,7 +141,7 @@ prepare() {
   fleet_git -C "$TARGET_DIR" worktree add --detach "$EVIDENCE_DIR" "$at" || fail "evidence: worktree add $EVIDENCE_DIR at $at"
   EVIDENCE_READY=1; log "evidence: worktree at $at"
 }
-# One writer, thirteen cells, written atomically through `factory/record.mjs status`.
+# One writer, twelve cells, written atomically through `factory/record.mjs status`.
 # `startedAt` is the run's clock and is set once; every write stamps `updatedAt`.
 write_status() { # $1 = state, $2 = phase (optional)
   local tmp

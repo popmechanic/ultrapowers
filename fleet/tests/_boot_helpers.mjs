@@ -42,7 +42,7 @@ const ENGINE_SHA = 'e'.repeat(40)
 const MERGE_SHA = 'deadbeef'.repeat(5)
 
 const EXPECTED_STATUS_KEYS = [
-  'run', 'state', 'phase', 'pr', 'prAuthor', 'merged', 'disclosures',
+  'run', 'state', 'phase', 'pr', 'prAuthor', 'merged',
   'branch', 'vm', 'startedAt', 'updatedAt', 'error', 'tasks'
 ]
 
@@ -279,7 +279,7 @@ if [ "$code" = "0" ]; then
   sha="$(cd "$target" && git rev-parse HEAD)"
   printf %s "$sha" > "$FLEET_HOME/landed-sha"
   mkdir -p "$rundir"
-  printf '{"ts":"2026-09-22T00:00:00.000Z","kind":"landing","task":1,"k":1,"factsExit":0,"candidateSha":"%s"}\\n' "$sha" >> "$rundir/events.jsonl"
+  printf '{"ts":"2026-09-22T00:00:00.000Z","kind":"landing","task":1,"candidateSha":"%s"}\\n' "$sha" >> "$rundir/events.jsonl"
 fi
 exit "$code"
 `
