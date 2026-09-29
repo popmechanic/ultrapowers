@@ -114,3 +114,7 @@
 {"t":279447,"kind":"belief","id":2,"by":"D","claim":"client/src/public.ts (isStaff, loadPublic) and app.ts staff/public split are published; app.ts now imports PUBLIC from ./pieces/index and loads /public.json on non-staff paths.","confidence":0.95,"task":"3","about":"app","ts":"2026-09-29T06:08:15.530Z"}
 {"t":279451,"kind":"tool:post","agent":"D","tool":"mcp__flock__post_belief","ts":"2026-09-29T06:08:15.534Z"}
 {"t":279478,"kind":"tool","agent":"D","task":"3","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T06:08:15.561Z"}
+{"t":325697,"kind":"proof","agent":"D","task":"3","exits":[0,1],"causes":[{"cause":"unknown"}],"errs":[""],"ts":"2026-09-29T06:09:01.780Z"}
+{"t":325698,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T06:09:01.781Z"}
+{"t":325706,"kind":"tool","agent":"C","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/C/skills/ultrawrite/stories/tinyapp-template; cat package.json; head -20 scripts/pack-cl","ts":"2026-09-29T06:09:01.789Z"}
+{"t":325707,"kind":"tool:post","agent":"D","tool":"mcp__flock__run_proof","ts":"2026-09-29T06:09:01.790Z"}
