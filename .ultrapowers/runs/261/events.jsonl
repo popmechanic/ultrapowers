@@ -158,3 +158,13 @@
 {"t":565436,"kind":"publish","agent":"B","task":"6","by":"done","ts":"2026-09-29T06:27:35.532Z"}
 {"t":565446,"kind":"tool:post","agent":"B","tool":"mcp__flock__done","ts":"2026-09-29T06:27:35.542Z"}
 {"t":565446,"kind":"kata:mirror","task":"6","uid":"01M3NWXYGVNK9GNMR9137V1EHH","what":"done by B","ok":true,"ts":"2026-09-29T06:27:35.542Z"}
+{"t":739166,"kind":"conflict:open","path":"skills/ultrawrite/references/greenfield-stack.md","region":"27e83c1754","between":["published copies"],"ts":"2026-09-29T06:30:29.262Z"}
+{"t":739167,"kind":"conflict:close","path":"skills/ultrawrite/references/greenfield-stack.md","region":"27e83c1754","by":"host","note":"the merged text of skills/ultrawrite/references/greenfield-stack.md is B's own published writing over both sides","via":"early:held","evidence":{"snap":"5783f17750","holders":[{"agent":"B","published_t":565436,"last_edit_t":431188,"last_marked_t":null}],"unflagged":false},"ts":"2026-09-29T06:30:29.263Z"}
+{"t":739167,"kind":"edge","snap":"5783f17750","reason":"done B","perTask":{"1":[0],"2":[1],"3":[0,1],"4":[0],"5":[1,0],"6":[0,0]},"check":0,"conflicts":["skills/ultrawrite/references/greenfield-stack.md"],"blocking":[],"outside":[],"green":false,"ts":"2026-09-29T06:30:29.263Z"}
+{"t":739172,"kind":"pull","agent":"C","changed":[{"path":"skills/ultrawrite/references/greenfield-stack.md","from":"B","added":38,"removed":0,"conflict":true}],"ts":"2026-09-29T06:30:29.268Z"}
+{"t":739172,"kind":"conflict:reflag","path":"skills/ultrawrite/references/greenfield-stack.md","region":"27e83c1754","ts":"2026-09-29T06:30:29.268Z"}
+{"t":739172,"kind":"wait_for","agent":"C","task":"3","fact":{"kind":"task_done","task":"2"},"held":false,"waited_ms":315069,"merged":["skills/ultrawrite/references/greenfield-stack.md"],"ts":"2026-09-29T06:30:29.268Z"}
+{"t":739184,"kind":"tool:post","agent":"C","tool":"mcp__flock__wait_for","ts":"2026-09-29T06:30:29.280Z"}
+{"t":740659,"kind":"publish","agent":"A","task":"5","by":"done","ts":"2026-09-29T06:30:30.755Z"}
+{"t":740666,"kind":"kata:mirror","task":"5","uid":"01M3NWY3BCAVYAZF3FEGEJEBSK","what":"done by A","ok":true,"ts":"2026-09-29T06:30:30.762Z"}
+{"t":740673,"kind":"tool:post","agent":"A","tool":"mcp__flock__done","ts":"2026-09-29T06:30:30.769Z"}
