@@ -1,0 +1,29 @@
+{"t":476,"kind":"non-text","path":"docs/assets/dag.gif","ts":"2026-09-29T21:07:41.314Z"}
+{"t":552,"kind":"start","workload":"run-269","agents":"elastic","cap":16,"model":"claude-opus-5-5","clock_ms":13800000,"quiet_ms":45000,"board":"standin","publish":"explicit","early_close":"held","order":"chain","pulls":"all","chain":{"1":2,"2":1},"ts":"2026-09-29T21:07:41.390Z"}
+{"t":1289,"kind":"past","run":268,"items":0,"ts":"2026-09-29T21:07:42.127Z"}
+{"t":1341,"kind":"builder:open","agent":"A","pool":1,"ready":1,"busy":0,"ts":"2026-09-29T21:07:42.179Z"}
+{"t":1392,"kind":"session:start","agent":"A","task":"1","ts":"2026-09-29T21:07:42.230Z"}
+{"t":1428,"kind":"kata:mirror","task":"1","uid":"01M3QFTRA9X2FJWYXFKC96H412","what":"claimed by A","ok":true,"ts":"2026-09-29T21:07:42.266Z"}
+{"t":3763,"kind":"tool","agent":"A","task":"1","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; cat factory/questions.json; cat factory/flock/step_reading.mjs","ts":"2026-09-29T21:07:44.601Z"}
+{"t":3881,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:07:44.719Z"}
+{"t":13580,"kind":"tool","agent":"A","task":"1","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; cat > /tmp/q.mjs <<'EOF'\nimport fs from 'node:fs'\nconst p='factory/questions.json'; c","ts":"2026-09-29T21:07:54.418Z"}
+{"t":13648,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:07:54.486Z"}
+{"t":16238,"kind":"tool","agent":"A","task":"1","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; sed -n 25,90p /tmp/questions.json","ts":"2026-09-29T21:07:57.076Z"}
+{"t":16264,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:07:57.102Z"}
+{"t":18330,"kind":"tool","agent":"A","task":"1","tool":"Read","target":"/home/exedev/run/work/agents/A/factory/questions.json","ts":"2026-09-29T21:07:59.168Z"}
+{"t":18350,"kind":"tool:post","agent":"A","tool":"Read","ts":"2026-09-29T21:07:59.188Z"}
+{"t":21214,"kind":"tool","agent":"A","task":"1","tool":"Edit","target":"/home/exedev/run/work/agents/A/factory/questions.json","ts":"2026-09-29T21:08:02.052Z"}
+{"t":21345,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T21:08:02.183Z"}
+{"t":21348,"kind":"edit","agent":"A","task":"1","tool":"Edit","path":"factory/questions.json","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:08:02.186Z"}
+{"t":27580,"kind":"tool","agent":"A","task":"1","tool":"Edit","target":"/home/exedev/run/work/agents/A/factory/questions.json","ts":"2026-09-29T21:08:08.418Z"}
+{"t":27743,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T21:08:08.581Z"}
+{"t":27745,"kind":"edit","agent":"A","task":"1","tool":"Edit","path":"factory/questions.json","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:08:08.583Z"}
+{"t":30805,"kind":"tool","agent":"A","task":"1","tool":"Write","target":"/home/exedev/run/work/agents/A/factory/flock/trial_reading.mjs","ts":"2026-09-29T21:08:11.643Z"}
+{"t":30924,"kind":"tool:post","agent":"A","tool":"Write","ts":"2026-09-29T21:08:11.762Z"}
+{"t":30925,"kind":"edit","agent":"A","task":"1","tool":"Write","path":"factory/flock/trial_reading.mjs","how":"new-file","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:08:11.763Z"}
+{"t":30928,"kind":"tool","agent":"A","task":"1","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T21:08:11.766Z"}
+{"t":31019,"kind":"proof","agent":"A","task":"1","exits":[0,0,0],"causes":[],"errs":[],"ts":"2026-09-29T21:08:11.857Z"}
+{"t":31025,"kind":"tool:post","agent":"A","tool":"mcp__flock__run_proof","ts":"2026-09-29T21:08:11.863Z"}
+{"t":32651,"kind":"tool","agent":"A","task":"1","tool":"mcp__flock__done","target":"","ts":"2026-09-29T21:08:13.489Z"}
+{"t":32855,"kind":"publish","agent":"A","task":"1","by":"done","ts":"2026-09-29T21:08:13.693Z"}
+{"t":32864,"kind":"tool:post","agent":"A","tool":"mcp__flock__done","ts":"2026-09-29T21:08:13.702Z"}
