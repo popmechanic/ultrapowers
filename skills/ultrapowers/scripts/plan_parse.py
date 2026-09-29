@@ -7,6 +7,8 @@ Prints exactly one JSON object on stdout with keys `tasks`, `dag_edges`,
 `launch_waves` and `pairs`, and exits 0 -- reading no file but the plan
 itself, whether or not a `<stem>.gate-verdicts.json` sits beside it.
 
+Each task's files is the sorted set of its Create, Modify and Delete paths.
+
 This is a grammar parser, not the old semantic compiler
 (`compile_plan.py`, deleted at cut B, 2026-09-21): it refuses (exit 2, one
 stderr line) only what it cannot parse -- no `### Task <id>:` heading found,
