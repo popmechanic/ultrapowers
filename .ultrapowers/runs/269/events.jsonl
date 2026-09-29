@@ -79,3 +79,22 @@
 {"t":179757,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:10:40.595Z"}
 {"t":184089,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; d=$(ls -td /tmp/flock-jev-trials-* | head -1); node -e \"import('./factory/flock/plan.","ts":"2026-09-29T21:10:44.927Z"}
 {"t":184186,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:10:45.024Z"}
+{"t":188117,"kind":"tool","agent":"A","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/A/fleet/tests/flock_jev_trials_probe.mjs","ts":"2026-09-29T21:10:48.955Z"}
+{"t":188279,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T21:10:49.117Z"}
+{"t":188282,"kind":"edit","agent":"A","task":"2","tool":"Edit","path":"fleet/tests/flock_jev_trials_probe.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:10:49.120Z"}
+{"t":188294,"kind":"tool","agent":"A","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; node fleet/tests/flock_jev_trials_probe.mjs resolve","ts":"2026-09-29T21:10:49.132Z"}
+{"t":192057,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T21:10:52.895Z"}
+{"t":196489,"kind":"tool","agent":"A","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/A/fleet/tests/flock_jev_trials_probe.mjs","ts":"2026-09-29T21:10:57.327Z"}
+{"t":196637,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T21:10:57.475Z"}
+{"t":196640,"kind":"edit","agent":"A","task":"2","tool":"Edit","path":"fleet/tests/flock_jev_trials_probe.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:10:57.478Z"}
+{"t":196643,"kind":"tool","agent":"A","task":"2","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T21:10:57.481Z"}
+{"t":208054,"kind":"proof","agent":"A","task":"2","exits":[0,0,0,0,0],"causes":[],"errs":[],"ts":"2026-09-29T21:11:08.892Z"}
+{"t":208060,"kind":"tool:post","agent":"A","tool":"mcp__flock__run_proof","ts":"2026-09-29T21:11:08.898Z"}
+{"t":211258,"kind":"tool","agent":"A","task":"2","tool":"mcp__flock__post_belief","target":"","ts":"2026-09-29T21:11:12.096Z"}
+{"t":211264,"kind":"belief","id":1,"by":"A","claim":"In a scripted Flock run, two tasks that both replace the same base line merge as a union (adds only), which never blocks, so no R: task is added. To force a resolve task, have one side keep the line and add after it while the other replaces it (fleet/tests/flock_jev_trials_probe.mjs).","confidence":0.85,"task":"2","about":"engine","ts":"2026-09-29T21:11:12.104Z"}
+{"t":211270,"kind":"tool:post","agent":"A","tool":"mcp__flock__post_belief","ts":"2026-09-29T21:11:12.108Z"}
+{"t":211276,"kind":"kata:mirror","task":"2","uid":"01M3QFTV71QAPRAH0JSPTFXTNT","what":"engine belief (0.85) from A: In a scripted Flock run, two tasks that both replace the same base line merge as a union (adds only), which never blocks, so no R: task is added. To force a resolve task, have one side keep the line and add after it while the other replaces it (fleet/tests/flock_jev_trials_probe.mjs).","ok":true,"ts":"2026-09-29T21:11:12.114Z"}
+{"t":213317,"kind":"tool","agent":"A","task":"2","tool":"mcp__flock__done","target":"","ts":"2026-09-29T21:11:14.155Z"}
+{"t":223918,"kind":"publish","agent":"A","task":"2","by":"done","ts":"2026-09-29T21:11:24.756Z"}
+{"t":223925,"kind":"kata:mirror","task":"2","uid":"01M3QFTV71QAPRAH0JSPTFXTNT","what":"done by A","ok":true,"ts":"2026-09-29T21:11:24.763Z"}
+{"t":223925,"kind":"tool:post","agent":"A","tool":"mcp__flock__done","ts":"2026-09-29T21:11:24.763Z"}
