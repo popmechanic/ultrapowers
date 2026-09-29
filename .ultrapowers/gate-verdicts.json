@@ -1,0 +1,115 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "ed2ec20fbda5dd9da7f22ef8b3e143e5bb70396d7ed9b484a113891754df8347",
+      "verdict": "pass",
+      "reason": "Each of M1-M3 has a tagged probe that fails if the fact is false; the pinned sentence satisfies its own absence rule."
+    },
+    "2": {
+      "hash": "68cea039bc006c7e6205c8965ba7336fe816b01dc652cfde3d9638b5b51138ce",
+      "verdict": "pass",
+      "reason": "M1-M4 each carry a tagged probe; the Type refusal is checked for gate, release and manual with exit code and line prefix."
+    },
+    "3": {
+      "hash": "d43be5fe51536e3f7ff7ca59a2652e926b45d06fb9eff7ff65f90a179ca43fd4",
+      "verdict": "pass",
+      "reason": "Refusals naming add-todo and link-1 and zero refusals on both catalogs are each a tagged probe."
+    },
+    "4": {
+      "hash": "b0e1d40b4fa5b613c10198c3e26568728ec846c9f4cf4a4d2609a3dbb8541d7c",
+      "verdict": "pass",
+      "reason": "The exact refusal line with exit 2 and the three absences each have a tagged probe; every named path exists at BASE."
+    },
+    "5": {
+      "hash": "6ce41f12d8b29baaf9385334b1908fea3cbc0270fba18615dd2129fcc78878f3",
+      "verdict": "pass",
+      "reason": "Each of the four absences has its own negated grep, and the catch-up and scope guards cover the switch to conflicts."
+    },
+    "6": {
+      "hash": "f5fe6afaf4e7bc236f747510101a502f84055d3c24abafff5f6aaf03ba78b784",
+      "verdict": "pass",
+      "reason": "Round 2: the M1 grep now excludes .ultrapowers/, so each of M1-M3 has a satisfiable tagged probe."
+    },
+    "7": {
+      "hash": "5a7041c60c5293c315a30258b9220668ddb8448ae7cec305984c69cacd00daf9",
+      "verdict": "pass",
+      "reason": "The eight retired literals are one negated grep; M2 is prose read against the hunk."
+    },
+    "8": {
+      "hash": "11371de0e6972bb38c67aeb998236ecaf6e76166815258ad8f4ea8d61fc30915",
+      "verdict": "pass",
+      "reason": "M1-M3 are tagged absence probes; M4 is prose read against the hunk."
+    }
+  },
+  "tally": {
+    "dispatched": 9,
+    "rejected": 1,
+    "rounds": {
+      "1": {
+        "dispatched": 8,
+        "rejected": 1
+      },
+      "2": {
+        "dispatched": 1,
+        "rejected": 0
+      }
+    },
+    "base": "9399cf151557c923310582d533864182f5ef4ae1"
+  },
+  "authoring": {
+    "minutes": 55,
+    "probes": 24,
+    "routing": {
+      "branch": "risk",
+      "lane": "ultrapowers"
+    },
+    "questions": [
+      {
+        "question": "Catch census: retire or repoint",
+        "options": [
+          "Retire it",
+          "Repoint it at the Flock",
+          "Please explain"
+        ],
+        "recommended": "Retire it",
+        "picked": "Retire it",
+        "explain_rounds": 0
+      },
+      {
+        "question": "How to act on the review",
+        "options": [
+          "Cleanup plan first",
+          "Jev proof gate first",
+          "File issues only",
+          "Please explain"
+        ],
+        "recommended": "Cleanup plan first",
+        "picked": "Cleanup plan first",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Claim and summary",
+        "options": [
+          "Sign",
+          "Fix a line",
+          "Please explain"
+        ],
+        "recommended": "Sign",
+        "picked": "Sign",
+        "explain_rounds": 0
+      },
+      {
+        "question": "Execute",
+        "options": [
+          "Ultrapowers",
+          "Subagent-Driven",
+          "Inline",
+          "Please explain"
+        ],
+        "recommended": "Ultrapowers",
+        "picked": "Ultrapowers",
+        "explain_rounds": 0
+      }
+    ]
+  }
+}
