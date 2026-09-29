@@ -644,6 +644,8 @@ async function scriptedSession (agent, task) {
   if (files) {
     for (const [p, text] of Object.entries(files)) {
       const f = path.join(cwd, p)
+      // a path mapped to null is deleted, as a builder's delete_file would
+      if (text === null) { fs.rmSync(f, { force: true }); continue }
       fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text)
     }
     const red = redOf(runFacts(cwd, task))
@@ -740,6 +742,25 @@ async function session (agent, task) {
           (merged.size ? `\nMerged into your copy while waiting: ${[...merged.values()].map((c) => `${c.path} (from ${c.from}${c.conflict ? ', with conflict marks' : ''})`).join('; ')}. Re-read before editing those files.` : '') +
           (spotted.length ? '\nSame-spot insertions in your copy: ' + spotted.join('; ') : ''))
       }),
+    // run-262 (2026-09-29): a plan that deletes files parked because no builder tool removed one and
+    // the shell hook refuses `rm`. The file leaves the copy on disk; syncFromDisk records the delete
+    // in the weave (rewrite with content null) exactly as it records any other change.
+    tool('delete_file', 'Delete an existing file in your copy (the shell may not delete one). Give its path relative to your copy.',
+      { path: z.string() },
+      async (a) => {
+        const fp = path.resolve(cwd, a.path || '')
+        if (!fp.startsWith(cwd + '/')) return say('refused: ' + JSON.stringify(a.path) + ' is outside your copy')
+        let isFile = false
+        try { isFile = fs.statSync(fp).isFile() } catch { /* absent */ }
+        if (!isFile) return say('refused: ' + JSON.stringify(a.path) + ' is not an existing file in your copy')
+        const rel = fp.slice(cwd.length + 1)
+        touch(agent, rel); known[agent].add(rel)
+        fs.rmSync(fp)
+        await syncFromDisk(agent)
+        edited(agent, rel)
+        ev('delete', { agent, task: task.id, path: rel })
+        return say('deleted ' + rel)
+      }),
     tool('publish', "Publish your copy's changes so the other agents receive them.", {},
       async () => { await syncFromDisk(agent); await publishCopy(agent); ev('publish', { agent, task: task.id }); await board.publish(agent, task.id); edge('publish ' + agent); return say('published') }),
     tool('resolve_conflict', 'Close an open conflict in a file: the text in your copy now says what both sides meant (edit it first with Edit if it did not).',
@@ -789,7 +810,7 @@ async function session (agent, task) {
         if (overwrites || /\bsed\s+-[a-zA-Z]*i|\bperl\s+-[a-zA-Z]*i|\b(mv|cp|rm)\s/.test(cmd)) {
           ev('deny:shell-write', { agent, task: task.id, command: cmd.slice(0, 160) })
           return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny',
-            permissionDecisionReason: 'In this repository an existing file changes only through the Edit tool, so every change is recorded exactly and merges with the other agents. A shell command may create a NEW file, and may read and run anything, but may not overwrite, move or delete an existing file.' } }
+            permissionDecisionReason: 'In this repository an existing file changes only through the Edit tool, so every change is recorded exactly and merges with the other agents. A shell command may create a NEW file, and may read and run anything, but may not overwrite, move or delete an existing file. Delete an existing file with the delete_file tool.' } }
         }
       }
       if (['Edit', 'MultiEdit', 'Write'].includes(input.tool_name)) {
