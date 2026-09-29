@@ -1,0 +1,13 @@
+{
+ "tasks": [
+  {
+   "id": "1",
+   "title": "Wait for the pushed head, and record GitHub's reply",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [],
+   "notes": []
+  }
+ ],
+ "beliefs": []
+}
