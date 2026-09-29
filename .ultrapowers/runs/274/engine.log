@@ -1,0 +1,41 @@
+Running as unit: fleet-engine-274.service
+[   0.6s] workload run-274, 0 agents, claude-opus-5-5, out /home/exedev/run
+[   1.4s] past: run-272 finished green
+[   1.4s] opens builder A (pool 1)
+[   1.4s] opens builder B (pool 2)
+[   1.5s] opens builder C (pool 3)
+[   1.5s] opens builder D (pool 4)
+[   1.6s] A claims task 1
+[   1.6s] D claims task 2
+[   1.6s] B claims task 7
+[   1.6s] C claims task 6
+[  19.7s] B done 7
+[  45.5s] edge 912231ebc8 red {"1":[2,1,2,1],"2":[1,1,1,1,1,0,0,0],"3":[1,1,1,1,1,1,0],"4":[1,1,1,1],"5":[1,1,1,0],"6":[1,1,1,1,1,1,1,1,1,0],"7":[0,0,0]} check 0 
+[  51.9s] A done 1
+[  80.5s] edge 19ef870186 red {"1":[0,0,0,0],"2":[1,1,1,1,1,0,0,0],"3":[1,1,1,1,1,1,0],"4":[1,1,1,1],"5":[1,1,1,0],"6":[1,1,1,1,1,1,1,1,1,0],"7":[0,0,0]} check 0 
+[ 138.3s] D done 2
+[ 166.5s] edge b194b6c475 red {"1":[0,0,0,0],"2":[0,0,0,0,0,0,0,0],"3":[1,1,1,1,1,1,0],"4":[1,1,1,1],"5":[1,1,1,0],"6":[1,1,1,1,1,1,1,1,1,0],"7":[0,0,0]} check 0 
+[ 167.2s] A claims task 3
+[ 167.9s] B claims task 5
+[ 173.7s] D claims task 4
+[ 193.3s] B done 5
+[ 223.2s] early close skills/ultrawrite/stories/jev_checks.ts b1db05e0f3 held by B
+[ 223.2s] edge 835581c84c red {"1":[0,0,0,0],"2":[0,0,0,0,0,0,0,0],"3":[1,1,1,1,1,1,0],"4":[1,1,1,1],"5":[0,0,0,0],"6":[1,1,1,1,1,1,1,1,1,0],"7":[0,0,0]} check 0 conflicts skills/ultrawrite/stories/jev_checks.ts (blocking: none)
+[ 266.9s] A done 3
+[ 298.3s] edge 3a2556947f red {"1":[0,0,0,0],"2":[0,0,0,0,0,0,0,0],"3":[0,0,0,0,0,0,0],"4":[1,1,1,1],"5":[0,0,0,0],"6":[1,1,1,1,1,1,1,1,1,0],"7":[0,0,0]} check 0 
+[ 298.4s] D done 4
+[ 331.0s] edge 4fb176de1d red {"1":[0,0,0,0],"2":[0,0,0,0,0,0,0,0],"3":[0,0,0,0,0,0,0],"4":[0,0,0,0],"5":[0,0,0,0],"6":[1,1,1,1,1,1,1,1,1,0],"7":[0,0,0]} check 0 
+[ 370.8s] C done 6
+[ 403.1s] edge 6879ef5ed5 red {"1":[0,0,0,0],"2":[0,0,0,0,0,0,0,0],"3":[0,0,0,0,0,0,0],"4":[0,0,0,0],"5":[0,0,0,0],"6":[0,0,0,0,0,0,0,0,0,0],"7":[0,0,0]} check 0 conflicts skills/ultrapowers/scripts/plan_check.py (blocking: skills/ultrapowers/scripts/plan_check.py)
+[ 438.9s] resolve task for skills/ultrapowers/scripts/plan_check.py
+[ 440.2s] B claims task R:skills/ultrapowers/scripts/plan_check.py
+[ 460.2s] B done R:skills/ultrapowers/scripts/plan_check.py
+[ 464.0s] SETTLED on 6879ef5ed5
+[ 464.0s] TERMINAL ready settled green
+[ 468.4s] summary {"workload":"run-274","agents":"elastic","builders_max":4,"cap":16,"model":"claude-opus-5-5","settled":{"t":464041,"snap":"6879ef5ed5"},"wall_ms":468250,"publish":"explicit","early_close":"held","order":"chain","final":{"snap":"6879ef5ed5","green":true,"perTask":{"1":[0,0,0,0],"2":[0,0,0,0,0,0,0,0],"3":[0,0,0,0,0,0,0],"4":[0,0,0,0],"5":[0,0,0,0],"6":[0,0,0,0,0,0,0,0,0,0],"7":[0,0,0]},"check":0,"conflicts":["skills/ultrapowers/scripts/plan_check.py"]},"snapshots":7,"beliefs":2,"outcome":{"pr":"ready","why":"settled green","snap":"6879ef5ed5","t":464042},"settle_mode":"tested","debounce_ms":65264,"board_ops":364,"board_op_us_p50":12,"board_op_us_p90":17,"board":"standin","board_by_op":{"ready":{"n":329,"p50_us":12,"p90_us":17,"max_us":132481},"claim":{"n":12,"p50_us":58,"p90_us":3366,"max_us":3369},"claim:lost":{"n":4,"p50_us":0,"p90_us":0,"max_us":0},"publish":{"n":8,"p50_us":4,"p90_us":12,"max_us":12},"done":{"n":8,"p50_us":1,"p90_us":9,"max_us":9},"post":{"n":2,"p50_us":29,"p90_us":29,"max_us":29},"add":{"n":1,"p50_us":10,"p90_us":10,"max_us":10}},"board_writes":35,"board_writes_per_s":0.07,"board_peak_writes_per_s":12,"edit_failures":{"not_unique":0,"not_found":0,"stale":0,"other":0},"tokens":{"input":176,"output":47268,"cache_read":3958765,"cache_write":194073},"sessions":8,"cost_usd":3.509}
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 7min 48.706s
+CPU time consumed: 6min 33.511s
+Memory peak: 1.7G
+Memory swap peak: 0B

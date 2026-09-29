@@ -1,0 +1,93 @@
+{
+ "tasks": [
+  {
+   "id": "1",
+   "title": "A local stand-in Jev and a one-question entry for the laptop",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "2",
+   "title": "One question file",
+   "state": "done",
+   "owner": "D",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "3",
+   "title": "The handoff route is computed and printed",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [
+    "1",
+    "2"
+   ],
+   "notes": []
+  },
+  {
+   "id": "4",
+   "title": "Jev reads whether a quoted Claim says what should be true",
+   "state": "done",
+   "owner": "D",
+   "depends_on": [
+    "1",
+    "2"
+   ],
+   "notes": []
+  },
+  {
+   "id": "5",
+   "title": "Jev flags a technical label that may hide a product assumption",
+   "state": "done",
+   "owner": "B",
+   "depends_on": [
+    "2",
+    "1"
+   ],
+   "notes": []
+  },
+  {
+   "id": "6",
+   "title": "The checker refuses five slips the author used to catch by eye",
+   "state": "done",
+   "owner": "C",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "7",
+   "title": "A note that two story kinds and the numbers are declared but unread",
+   "state": "done",
+   "owner": "B",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "R:skills/ultrapowers/scripts/plan_check.py",
+   "title": "Resolve conflict marks in skills/ultrapowers/scripts/plan_check.py",
+   "state": "done",
+   "owner": "B",
+   "depends_on": [],
+   "notes": []
+  }
+ ],
+ "beliefs": [
+  {
+   "id": 1,
+   "t": 223221,
+   "by": "host",
+   "claim": "open conflict in skills/ultrawrite/stories/jev_checks.ts between published copies; whoever next works there should make it say what both sides meant and call resolve_conflict",
+   "confidence": 1
+  },
+  {
+   "id": 2,
+   "t": 333362,
+   "by": "host",
+   "claim": "open conflict in skills/ultrapowers/scripts/plan_check.py between C and A; whoever next works there should make it say what both sides meant and call resolve_conflict",
+   "confidence": 1
+  }
+ ]
+}
