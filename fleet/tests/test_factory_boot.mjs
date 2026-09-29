@@ -369,6 +369,53 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   )
 }
 
+// ── (e) [M1, M2] the stale head: the first GET names an old head, the PUT
+//    waits for the pushed one and is sent once ─────────────────────────────
+
+{
+  const runN = '505'
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-e-'))
+  const home = path.join(root, 'home')
+  const bin = path.join(root, 'bin')
+  fs.mkdirSync(home, { recursive: true })
+  fs.mkdirSync(bin, { recursive: true })
+  writeGitConfig(home)
+
+  const { originDir, base, plan } = buildOrigin(root, runN)
+  git(root, ['clone', originDir, path.join(home, 'target')])
+  buildEngineDir(home, ENGINE_SHA)
+  writeStubs(bin, { claudeAuth: 'oauth' })
+  // One GET answers `{"mergeable":true,"head":{"sha":"<40 zeros>"}}`; the PUT
+  // answers 405 `Pull Request is not mergeable` until a GET names the pushed tip.
+  fs.writeFileSync(path.join(home, 'stale-heads'), '1')
+
+  const env = {
+    ...baseEnv(PROXY_URL),
+    FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA }),
+    MERGE_SHA
+  }
+
+  const res = await runBootAsync({ bin, home, env })
+
+  assert.equal(
+    res.code, 0,
+    `(e) the stale-head run exits 0 — got ${res.code}, stdout: ${res.stdout}, stderr tail: ${(res.stderr || '').slice(-4000)}`
+  )
+
+  const eventsText = git(originDir, ['show', `ultra/evidence/run-${runN}:.ultrapowers/runs/${runN}/events.jsonl`])
+  const rows = eventsText.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l))
+  const mergeRows = rows.filter((r) => r.kind === 'merge')
+  assert.equal(
+    mergeRows.length, 1,
+    `(e) [M1] events.jsonl holds exactly one merge row — the PUT waited for the pushed head — got ${JSON.stringify(mergeRows)}`
+  )
+  assert.equal(mergeRows[0].code, 200, '(e) [M1] the one merge row records code 200')
+  assert.equal(
+    mergeRows[0].message, 'Pull Request successfully merged',
+    `(e) [M2] the merge row carries GitHub's reply message — got ${JSON.stringify(mergeRows[0].message)}`
+  )
+}
+
 proxyServer.close()
 
 console.log('ALL TESTS PASSED')
