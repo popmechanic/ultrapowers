@@ -1,0 +1,19 @@
+{
+  "url": "https://kata.int.exe.xyz",
+  "project": {
+    "id": 31,
+    "uid": "01M2HBYF26YQWA0S07E1J3NSGF",
+    "name": "popmechanic-ultrapowers"
+  },
+  "run": {
+    "uid": "01M3QCGGJDM0VW3PK7A2EBWCKB",
+    "revision": 1
+  },
+  "tasks": {
+    "1": {
+      "uid": "01M3QCGHA09AD3RVN350TJRW17",
+      "short_id": "rw17",
+      "revision": 2
+    }
+  }
+}

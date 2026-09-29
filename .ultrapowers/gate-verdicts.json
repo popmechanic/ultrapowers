@@ -1,0 +1,6 @@
+{"tasks": {"1": {"hash": "03485bdb06f0b4941dcde8b19bb7ea5e0ac7572bf427ae0c5eddbb31401c7a15", "verdict": "pass", "reason": "The stale-head sim case proves one 200 merge row (M1) and its message (M2); bash -n is a guard."}},
+ "tally": {"dispatched": 1, "rejected": 0, "rounds": 1, "base": "dc12514bf960264cb69e606dd4abb61a5147b2f4"},
+ "authoring": {"minutes": 20, "probes": 0, "routing": {"branch": "risk", "lane": "ultrapowers"}, "questions": [
+  {"question": "Which fix", "options": ["Right signal + record reply", "Just raise the budget", "Record first, fix later"], "recommended": "Right signal + record reply", "picked": "Right signal + record reply", "explain_rounds": 0},
+  {"question": "Claim and summary", "options": ["Sign", "Fix a line"], "recommended": "Sign", "picked": "Sign", "explain_rounds": 0},
+  {"question": "Execute", "options": ["Ultrapowers", "Inline"], "recommended": "Ultrapowers", "picked": "Ultrapowers", "explain_rounds": 0}]}}
