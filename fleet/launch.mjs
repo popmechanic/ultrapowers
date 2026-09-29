@@ -96,7 +96,7 @@ import { toolchainViolations } from './toolchain.mjs'
 /** One string, so a docs check that reads the first `usage` literal sees every
  *  flag the launch line may carry. */
 export const USAGE = `usage: node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <40-hex>
-                             [--repo <dir>] [--engine <40-hex>] [--kind flock|factory] [--hold] [--again]
+                             [--repo <dir>] [--engine <40-hex>] [--hold] [--again]
                              [--cpu <n>] [--memory <n>GB]
                              [--run <N>] [--config <path>] [--account <name>] [--json]`
 
@@ -523,15 +523,19 @@ async function launchBody ({
   if (opts.engine !== undefined && !isFullSha(opts.engine)) {
     throw new Refusal(`launch: --engine must be a 40-hex commit sha, got ${JSON.stringify(opts.engine)}`)
   }
-  // Neither flag is read by anything any more (the engine they configured is
-  // gone); `parseArgs` keeps unknown keys for each CLI to refuse for itself,
-  // so both are refused here by name, the same way any other flag this
-  // launcher does not know would be — nothing executes past this point.
+  // None of these flags is read by anything any more (the engine they
+  // configured or picked, the factory, is gone); `parseArgs` keeps unknown
+  // keys for each CLI to refuse for itself, so each is refused here by name,
+  // the same way any other flag this launcher does not know would be —
+  // nothing executes past this point.
   if (opts.tier !== undefined) {
     throw new Refusal(`launch: unknown flag --tier`)
   }
   if (opts['implementer-effort'] !== undefined) {
     throw new Refusal(`launch: unknown flag --implementer-effort`)
+  }
+  if (opts.kind !== undefined) {
+    throw new Refusal(`launch: unknown flag --kind`)
   }
   // `--hold` is a bare flag, so `parseArgs` answers `true` for it and a string
   // for any `--hold=<value>` spelling. A string is a refusal here, before the
@@ -547,15 +551,6 @@ async function launchBody ({
   if (opts.again !== undefined && opts.again !== true) {
     throw new Refusal(`launch: --again takes no value, got ${JSON.stringify(opts.again)}`)
   }
-  // `--kind` picks the engine the sandbox boots: `flock` or `factory`, the two
-  // values `factory/boot.sh` accepts. Anything else, a bare `--kind` included,
-  // is a refusal before the plan is read.
-  if (opts.kind !== undefined && opts.kind !== 'flock' && opts.kind !== 'factory') {
-    throw new Refusal(`launch: --kind must be flock or factory, got ${JSON.stringify(opts.kind)}`)
-  }
-  // No `--kind` launches DEFAULT_KIND, and the comment always names the kind it
-  // launched, so a run's record says which engine built it either way.
-  const kind = opts.kind ?? DEFAULT_KIND
   if (opts.run !== undefined && !isRunNumber(opts.run)) {
     throw new Refusal(`launch: --run must be a positive integer, got ${JSON.stringify(opts.run)}`)
   }
@@ -654,7 +649,7 @@ async function launchBody ({
     target,
     base: opts.base,
     engine: opts.engine ?? '0'.repeat(40),
-    kind,
+    kind: KIND,
     hold: opts.hold === true ? '1' : undefined
   }
   const probeComment = buildComment(fields)
@@ -1291,13 +1286,11 @@ const engineLine = (result) =>
  * comment byte for byte and differ on this line.
  */
 /**
- * The engine a launch with no `--kind` boots. `flock` since map #1292's five-run
- * reading (2026-09-26: Run Room, n=5 runs, 149 s and $1.82 median against the
- * factory's 182 s and $2.82, n=3; one workload, the one the Flock was tuned on)
- * and the operator's call on it. An `experiment`: its rollback is `'factory'`
- * here, or `--kind factory` on any one launch.
+ * The engine every launch boots: the Flock, the one engine left since the
+ * factory's retirement (map #1292 rule 8). The comment still names it on every
+ * launch: an older boot reads a missing `kind=` as the factory.
  */
-export const DEFAULT_KIND = 'flock'
+export const KIND = 'flock'
 
 export const renderLaunch = (result) => [
   result.runId,

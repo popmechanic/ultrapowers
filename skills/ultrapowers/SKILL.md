@@ -14,10 +14,10 @@ hooks:
 # Ultrapowers
 
 This skill is the CLIENT only. Since 0.3.0 there is no LLM engine session:
-on the sandbox, a boot unit (`factory/boot.sh`) spawns the engine
-(`factory/engine.mjs`), which compiles the plan, dispatches `k` implementers
-per task, measures each one by its `Run:` probes, the tests it selects for
-the patch and the plan's `Check:` lines, folds the winner in with the kernel,
+on the sandbox, a boot unit (`factory/boot.sh`) spawns the one engine, the
+Flock (`factory/flock/engine.mjs`), which seeds a board from the plan, runs a
+leaderless pool of builders that claim its tasks, merges their copies through
+the weave, proves each task by its `Run:` probes and the plan's `Check:` lines,
 and decides the merge by its own exit code — code, not prose. Nothing in this
 skill runs a plan locally; every dispatch happens on the sandbox.
 
@@ -232,11 +232,10 @@ approved plan, **is** the authorization to execute — no further approval pause
 
 ## Resources
 
-- `factory/engine.mjs` — the engine (task search, judgments, fold) as code;
-  `factory/roles/*.md` — the judgment prompts, one file per role.
+- `factory/flock/engine.mjs` — the engine (board, builders, weave) as code;
+  `factory/flock/catchup.mjs` — a finished run caught up to a moved main.
 - `references/first-run.md` — one section per doctor row: what it means and the
   command that builds it.
 - `references/design-rationale.md` — why each surviving guard exists.
 - `references/finishing-notes.md` — finishing checks.
-- `kernel/FOLD_LOG.md` — the fold-log schema the kernel writes in its run directory on the sandbox (the evidence branch carries `events.jsonl` and `engine.log`, not the fold dir).
 - `scripts/plan_parse.py` (the one parser — the sandbox runs it), `scripts/plan_check.py` (the laptop's check of the records and the base, on that parser).

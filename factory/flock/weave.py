@@ -33,12 +33,75 @@ Added for ticket 2 (#359; every earlier request answers as before, plus fields):
   select / rehide {agent, cand}           count moves on agent's copy
   adopt         {agent, path, text, after} a loser's line, placed by the adopter
 """
-import difflib, json, os, re, sys
+import difflib, json, os, re, sys, threading
 
 KERNEL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "skills", "ultrapowers", "kernel")
-sys.path[:0] = [KERNEL, os.path.join(KERNEL, "vendor")]
+sys.path[:0] = [os.path.join(KERNEL, "vendor")]
 import manyana  # noqa: E402
-import fold_wave  # noqa: E402
+
+# The vendored kernel's merge walk (`merge_states` -> `state_to_tree` ->
+# `pull_out_tree`/`merge_trees`/`insert_tree`) recurses once per weave-state
+# entry, ~2*lines+4 frames. Raising `sys.setrecursionlimit` alone does not buy
+# those frames: the C stack runs out first and the interpreter dies on a
+# SIGSEGV. So the recursion limit is raised on a thread given a 1 GiB stack,
+# which is what lets a large file weave.
+STACK_BYTES = 1 << 30
+THREAD_RECURSION_LIMIT = 1_000_000
+
+
+def run_on_kernel_thread(fn, *args, **kwargs):
+    """Run `fn` on a thread with a 1 GiB stack and the fixed recursion limit.
+
+    The result and any exception are marshalled back to the caller — including
+    `SystemExit`, so exit codes are unchanged by the hop. A platform that
+    refuses the big stack (`ValueError` from `threading.stack_size`) or the
+    thread itself (`RuntimeError` from `Thread.start()`) falls through to a
+    main-thread call plus one stderr line: the work still runs, just without
+    the headroom. `threading.stack_size` is process-global like the recursion
+    limit, so the prior stack size is restored in every path — a thread's
+    stack is fixed at `start()`, so threads created later are unaffected.
+
+    `sys.setrecursionlimit` is interpreter-global, not per-thread, so raising
+    it inside the thread raises it for the whole process. The limit is
+    therefore restored before the thread ends — the caller (and, in-process,
+    every later caller) keeps the limit it had. Restoring is safe because the
+    thread's own stack is shallow again by then: `fn` has already returned or
+    unwound.
+    """
+    box = {}
+
+    def target():
+        prior = sys.getrecursionlimit()
+        sys.setrecursionlimit(THREAD_RECURSION_LIMIT)
+        try:
+            box["result"] = fn(*args, **kwargs)
+        except BaseException as e:      # marshal everything back, incl. SystemExit
+            box["exc"] = e
+        finally:
+            sys.setrecursionlimit(prior)
+
+    try:
+        prior_stack = threading.stack_size(STACK_BYTES)
+    except ValueError as e:
+        # Nothing was changed: stack_size raises before mutating.
+        print("weave: big-stack thread unavailable (%s); running in main "
+              "thread" % e, file=sys.stderr)
+        return fn(*args, **kwargs)
+    try:
+        t = threading.Thread(target=target, name="weave-kernel")
+        t.start()
+    except RuntimeError as e:
+        print("weave: big-stack thread unavailable (%s); running in main "
+              "thread" % e, file=sys.stderr)
+        return fn(*args, **kwargs)
+    finally:
+        # Process-global, like the recursion limit: a thread's stack is fixed
+        # at start(), so restoring here affects only threads created later.
+        threading.stack_size(prior_stack)
+    t.join()
+    if "exc" in box:
+        raise box["exc"]
+    return box["result"]
 
 SEP = "␟"
 M = manyana
@@ -540,4 +603,4 @@ def serve():
 
 
 if __name__ == "__main__":
-    fold_wave.run_on_kernel_thread(serve)
+    run_on_kernel_thread(serve)

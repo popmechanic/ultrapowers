@@ -585,11 +585,10 @@ Independence is a property of contracts, not of files.
    (`from tests.trends_fixtures import …`, `import('./lib/a.mjs')`) is a `proof-run` edge
    the parser derives and the engine keeps hard under live pairs (#1265), so write the
    probe as it is and list nothing under `Modify:` to force the wait — the wait is derived.
-2. **Write no ordering.** On the factory an author writes no ordering: the engine reads
-   every overlapping or consuming pair itself, with Jev, starts every task at once unless
-   a pair reads as a chain by that reading, and runs every adopted task's probes after every fold.
-   A `Consumes:` whose symbol is absent at BASE is chained by code, not read: the consumer
-   starts on the producer's measured candidate.
+2. **Write no ordering.** An author writes no ordering: the parser derives the edges, the
+   Flock seeds its board with them, and a task becomes claimable once every task it depends
+   on is done; every other task is claimable at once, and builders merge each other's
+   published work continuously, so a same-file pair meets in the weave, not in a queue.
    `Consumes:`/`Produces:` bullets are still written exactly, one symbol per bullet,
    because they are how a pair is found — but the chain they imply is derived, never
    authored, and there is no width to state and no rationale line to write. An edge an
@@ -647,7 +646,7 @@ task's `Create:`, `Modify:` or `Delete:` path is refused by `plan_check.py` the
 same way, because it goes red the moment that task's own patch lands (run-199, n=1 run,
 2026-09-21) — freeze files, not the directory they sit in.
 
-The Flock, the default engine since 0.3.39, selects no existing tests: a Flock run's proof is the
+The Flock, the one engine (the default since 0.3.39, the only one since map #1292 rule 8), selects no existing tests: a Flock run's proof is the
 plan's probes and `Check:` lines and nothing else (operator, 2026-09-27). So a plan whose change
 can break behaviour the repository already tests names those tests itself, as one `Check:` that
 runs them (`- Check: python3 -m pytest -q tests/test_fleet_suite.py -k launch` for a launcher

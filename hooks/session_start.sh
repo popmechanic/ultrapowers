@@ -6,8 +6,8 @@
 # Stdout from a SessionStart command hook becomes session context (exit 0).
 set -euo pipefail
 
-# (The Workflow-harness install step lived here until 0.3.0 — the Amendment 10
-# engine runs its search natively in factory/engine.mjs, and waves.js is deleted.)
+# (The Workflow-harness install step lived here until 0.3.0 — the engine runs on
+# the sandbox, today the Flock in factory/flock/engine.mjs, and waves.js is deleted.)
 
 cat <<'EOF'
 <ultrapowers-routing>

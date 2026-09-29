@@ -1,7 +1,7 @@
 #!/bin/bash
 # factory/boot.sh — the sandbox side of a factory run: clones the target, takes the
 # plan off `ultra/plan-run-<N>`, proves the credential through `factory/preflight.mjs`,
-# runs `factory/engine.mjs` as a transient user service while keeping the record on
+# runs the Flock (`factory/flock/engine.mjs`) as a transient user service while keeping the record on
 # `ultra/evidence-run-<N>`, then publishes, merges and tags. Every external program
 # goes through a `fleet_*` wrapper and every path hangs off `$FLEET_HOME`, so the exam
 # drives this against stubs.
@@ -96,14 +96,15 @@ is_target() { [[ $1 =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; }
 # `hold` is recorded: `hold=1` is the signal that keeps `publish` from ever sending a merge.
 parse_assignment() { # $1 = the comment line
   local tok key val
-  ENGINE_KIND=factory
+  ENGINE_KIND=flock
   for tok in $1; do
     key="${tok%%=*}"; val="${tok#*=}"
     case "$key" in
       run) RUN_N="$val" ;; plan) PLAN_SHA="$val" ;; target) TARGET_REPO="$val" ;;
       base) BASE_SHA="$val" ;; engine) ENGINE_SHA="$val" ;;
-      kind) case "$val" in flock | factory) ENGINE_KIND="$val" ;;
-              *) fail "assignment: kind is not flock or factory ('$val')" ;; esac ;;
+      kind) case "$val" in flock) ENGINE_KIND="$val" ;;
+              factory) fail "assignment: kind=factory is refused: the factory was retired, the Flock is the one engine" ;;
+              *) fail "assignment: kind is not flock ('$val')" ;; esac ;;
       hold) [ "$val" = 1 ] && HOLD_FLAG=1 ;;
       *) fail "assignment: unknown key '$key' in comment" ;; esac
   done
@@ -252,9 +253,7 @@ engine_deps() {
 }
 # A transient SERVICE, not a scope: `--wait` hands back the exit code and `--collect` unloads the unit; while it runs, the boot relays events every FLEET_COMMIT_SECONDS and looks for its exit every second.
 run_engine() {
-  local pid board_args=() engine_entry="factory/engine.mjs"
-  # `kind=flock` runs the Flock under the same unit, environment, arguments and log; the factory is the rollback.
-  [ "$ENGINE_KIND" = flock ] && engine_entry="factory/flock/engine.mjs"
+  local pid board_args=() engine_entry="factory/flock/engine.mjs"
   [ -n "$BOARD_BOUND" ] && board_args=(--kata-url "$KATA_URL" --kata-project "$BOARD_PROJECT_ID" --kata-json "$BOARD_KATA_JSON" --kata-actor "engine:$RUN_ID")
   mkdir -p "$RUN_DIR"; rm -f "$DONE_MARKER"
   ( set +e
@@ -296,12 +295,12 @@ read_self_merge_policy() {
   set -- $out
   SELF_MERGE_ENABLED="${1:-0}"; SELF_MERGE_MAX_REFOLDS="${2:-3}"; SELF_MERGE_WAIT_SECONDS="${3:-120}"
 }
-# M2: on a moved default branch, hand the target to the sibling re-fold entry and, once it says every exam ran green there, force-push the target's new HEAD over the run's own branch — any other exit leaves the target untouched and sets MERGE_PHASE.
+# M2: on a moved default branch, hand the target to the Flock's catch-up (factory/flock/catchup.mjs) and, once it says every exam ran green there, force-push the target's new HEAD over the run's own branch — any other exit leaves the target untouched and sets MERGE_PHASE.
 refold_onto() { # $1 = the base the run's work stood on, $2 = the moved tip
   local base="$1" onto="$2" line rc=0 reason
   line="$(env -u CLAUDE_CONFIG_DIR "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
       "TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL" CLAUDE_CODE_OAUTH_TOKEN=placeholder \
-      "ULTRAPOWERS_FLEET_RUN=$RUN_ID" node "$ENGINE_REPO_DIR/factory/engine.mjs" --refold \
+      "ULTRAPOWERS_FLEET_RUN=$RUN_ID" node "$ENGINE_REPO_DIR/factory/flock/catchup.mjs" \
       --plan "$PLAN_FILE" --target "$TARGET_DIR" --base "$base" --onto "$onto" \
       --run-dir "$RUN_DIR" | tail -n 1)" || rc=$?
   if [ "$rc" -ne 0 ]; then
