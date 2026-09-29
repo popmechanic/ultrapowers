@@ -71,6 +71,13 @@ bounded_run() {
 # No jq: every value read is one flat field of a small document, and an ABSENT field is an answer, not an error; both take the field in $1, the document on stdin.
 json_field() { { grep -o "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" || true; } | head -n 1 | sed 's/.*:[[:space:]]*"\(.*\)"$/\1/'; }
 json_int()   { { grep -o "\"$1\"[[:space:]]*:[[:space:]]*-\?[0-9]\+" || true; } | head -n 1 | sed 's/.*[:[:space:]]//'; }
+# A nested field (`head.sha`) of a document that carries its namesakes elsewhere (`base.sha`), so a real parse, not the first match: the dotted path in $1, the document on stdin; absent, null or unparsable prints empty.
+json_path() {
+  fleet_node -e 'let s = ""; process.stdin.on("data", (d) => { s += d }).on("end", () => {
+    let v; try { v = JSON.parse(s) } catch { v = undefined }
+    for (const k of process.argv[1].split(".")) v = v == null ? undefined : v[k]
+    process.stdout.write(v == null ? "" : String(v)) })' "$1" 2>/dev/null || true
+}
 # The one writer for every end-of-run row (#1167): one JSON object, one line, appended to
 # `<file>` (created if it does not exist). $1 = file, $2 = kind, then any number of
 # `key=value` pairs, each written in argument order — `factory/record.mjs row` renders the
@@ -328,7 +335,7 @@ refold_onto() { # $1 = the base the run's work stood on, $2 = the moved tip
 # edge injects the credential). A 405/409 repeats, up to `max_refolds` merge requests in all; anything else parks.
 maybe_self_merge() { # $1 = the pull request number, $2 = the PR's base branch name
   local number="$1" base_branch="$2" attempts=0 cur_base="$BASE_SHA" tip
-  local start now answer code reply mergeable head_sha title payload merge_code merge_reply
+  local start now answer code reply mergeable head_sha reply_head title payload merge_code merge_reply
   read_self_merge_policy
   [ "$SELF_MERGE_ENABLED" = 1 ] || return 0
   while [ "$attempts" -lt "$SELF_MERGE_MAX_REFOLDS" ]; do
@@ -341,13 +348,18 @@ maybe_self_merge() { # $1 = the pull request number, $2 = the PR's base branch n
       refold_onto "$cur_base" "$tip" || return 0
       cur_base="$tip"
     fi
+    # GitHub answers a `mergeable` it computed for whatever head it last processed: right after a
+    # refold's force-push that is the old head (runs 264/265: 405, then 200), so only a reply
+    # naming the head this boot pushed counts; any other head is waited out like a null.
+    head_sha="$(fleet_git -C "$TARGET_DIR" rev-parse HEAD)"
     mergeable=""; start="$(date +%s)"
     while :; do
       answer="$(fleet_curl -sS "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/pulls/$number" -w '\n%{http_code}' 2>/dev/null || true)"
       code="$(printf '%s' "$answer" | tail -n 1)"; reply="$(printf '%s' "$answer" | sed '$d')"
       if [ "$code" = 200 ]; then
-        mergeable="$(printf '%s' "$reply" | grep -o '"mergeable"[[:space:]]*:[[:space:]]*[a-zA-Z]*' | head -n 1 | sed 's/.*://')"
-        [ -n "$mergeable" ] && [ "$mergeable" != null ] && break
+        mergeable="$(printf '%s' "$reply" | json_path mergeable)"
+        reply_head="$(printf '%s' "$reply" | json_path head.sha)"
+        [ -n "$mergeable" ] && [ "$reply_head" = "$head_sha" ] && break
         mergeable=""
       fi
       now="$(date +%s)"
@@ -357,13 +369,13 @@ maybe_self_merge() { # $1 = the pull request number, $2 = the PR's base branch n
       sleep 1
     done
     attempts=$(( attempts + 1 ))
-    head_sha="$(fleet_git -C "$TARGET_DIR" rev-parse HEAD)"
     title="fleet $RUN_ID: $(plan_title) (#$number)"
     payload="$(fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" merge-payload title="$title" sha="$head_sha")"
     answer="$(fleet_curl -sS -X PUT "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/pulls/$number/merge" \
         -H 'content-type: application/json' -d "$payload" -w '\n%{http_code}' 2>/dev/null || true)"
     merge_code="$(printf '%s' "$answer" | tail -n 1)"; merge_reply="$(printf '%s' "$answer" | sed '$d')"
-    event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" merge code="${merge_code:-null}" || true
+    event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" merge code="${merge_code:-null}" \
+      message="$(printf '%s' "$merge_reply" | json_path message)" || true
     case "$merge_code" in
       2[0-9][0-9])
         MERGED_SHA="$(printf '%s' "$merge_reply" | json_field sha)"

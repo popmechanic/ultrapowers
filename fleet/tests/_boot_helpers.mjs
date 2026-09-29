@@ -203,7 +203,16 @@ case "$url" in
     ;;
   */api/v3/repos/o/r/pulls/7)
     if [ "$method" = "GET" ]; then
-      body='{"mergeable":true}'
+      tip="$(git -C "$FLEET_HOME/target" ls-remote origin 'refs/heads/ultra/integration-run-*' 2>/dev/null | head -n 1 | cut -f 1)"
+      stale="$(cat "$FLEET_HOME/stale-heads" 2>/dev/null || echo 0)"
+      if [ "$stale" -gt 0 ] 2>/dev/null; then
+        printf %s "$((stale - 1))" > "$FLEET_HOME/stale-heads"
+        head=0000000000000000000000000000000000000000
+      else
+        head="$tip"
+        [ -n "$tip" ] && : > "$FLEET_HOME/pushed-head-seen"
+      fi
+      body=$(printf '{"mergeable":true,"head":{"sha":"%s"}}' "$head")
       code=200
     else
       body=""
@@ -213,8 +222,13 @@ case "$url" in
   */api/v3/repos/o/r/pulls/7/merge)
     if [ "$method" = "PUT" ]; then
       printf %s "$data" > "$FLEET_HOME/merge-put.json"
-      body=$(printf '{"sha":"%s"}' "$MERGE_SHA")
-      code=200
+      if [ -f "$FLEET_HOME/stale-heads" ] && [ ! -f "$FLEET_HOME/pushed-head-seen" ]; then
+        body='{"message":"Pull Request is not mergeable"}'
+        code=405
+      else
+        body=$(printf '{"sha":"%s","message":"Pull Request successfully merged"}' "$MERGE_SHA")
+        code=200
+      fi
     else
       body=""
       code=404
@@ -274,6 +288,11 @@ function claudeStub (mode) {
   const text = mode === 'api_key' ? 'authMethod: api_key' : 'authMethod: oauth_token'
   return `#!/bin/sh\necho '${text}'\n`
 }
+
+// The `/pulls/7` GET names as `head.sha` the origin's tip of the run's integration
+// branch. A case that writes `<home>/stale-heads` (a count) gets that many GETs naming
+// forty zeros first, and every `/pulls/7/merge` PUT answers 405 until a GET has named
+// the pushed tip (the live catch-up of runs 264/265).
 
 /** Writes the base stub set (`claude`, `curl`, `systemd-run`, `systemctl`)
  *  into `binDir`, plus every `[name, content]` of `extraStubs` — additional
