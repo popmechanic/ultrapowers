@@ -1,0 +1,60 @@
+{"t":523,"kind":"non-text","path":"docs/assets/dag.gif","ts":"2026-09-29T22:13:23.257Z"}
+{"t":593,"kind":"start","workload":"run-273","agents":"elastic","cap":16,"model":"claude-opus-5-5","clock_ms":13800000,"quiet_ms":45000,"board":"standin","publish":"explicit","early_close":"held","order":"chain","pulls":"all","chain":{"1":1,"2":1,"3":1,"4":1},"ts":"2026-09-29T22:13:23.327Z"}
+{"t":1523,"kind":"past","run":272,"items":0,"ts":"2026-09-29T22:13:24.257Z"}
+{"t":1575,"kind":"builder:open","agent":"A","pool":1,"ready":4,"busy":0,"ts":"2026-09-29T22:13:24.309Z"}
+{"t":1619,"kind":"builder:open","agent":"B","pool":2,"ready":4,"busy":0,"ts":"2026-09-29T22:13:24.353Z"}
+{"t":1662,"kind":"builder:open","agent":"C","pool":3,"ready":4,"busy":0,"ts":"2026-09-29T22:13:24.396Z"}
+{"t":1705,"kind":"builder:open","agent":"D","pool":4,"ready":4,"busy":0,"ts":"2026-09-29T22:13:24.439Z"}
+{"t":1743,"kind":"session:start","agent":"A","task":"3","ts":"2026-09-29T22:13:24.477Z"}
+{"t":1756,"kind":"session:start","agent":"B","task":"4","ts":"2026-09-29T22:13:24.490Z"}
+{"t":1760,"kind":"session:start","agent":"C","task":"1","ts":"2026-09-29T22:13:24.494Z"}
+{"t":1765,"kind":"session:start","agent":"D","task":"2","ts":"2026-09-29T22:13:24.499Z"}
+{"t":1860,"kind":"kata:mirror","task":"1","uid":"01M3QKJXHS1ZMSA5KM4FMG95ZR","what":"claimed by C","ok":true,"ts":"2026-09-29T22:13:24.594Z"}
+{"t":1882,"kind":"kata:mirror","task":"2","uid":"01M3QKK061QY4765QMCGZ3DHPZ","what":"claimed by D","ok":true,"ts":"2026-09-29T22:13:24.616Z"}
+{"t":1882,"kind":"kata:mirror","task":"4","uid":"01M3QKK5115R7R4RAKDRYTKG96","what":"claimed by B","ok":true,"ts":"2026-09-29T22:13:24.616Z"}
+{"t":1882,"kind":"kata:mirror","task":"3","uid":"01M3QKK2Q0MGRAJ8HG5M05YEPT","what":"claimed by A","ok":true,"ts":"2026-09-29T22:13:24.616Z"}
+{"t":4709,"kind":"tool","agent":"D","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/D; python3 -c \"import json;print(json.dumps(json.load(open('factory/policy.json'))['floc","ts":"2026-09-29T22:13:27.443Z"}
+{"t":4838,"kind":"tool:post","agent":"D","tool":"Bash","ts":"2026-09-29T22:13:27.572Z"}
+{"t":5100,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; grep -n \"fold:verify\\|landing\\|sessionsOf\\|factsExit\" factory/flock/engine.mjs; echo ","ts":"2026-09-29T22:13:27.834Z"}
+{"t":5200,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T22:13:27.934Z"}
+{"t":5552,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; wc -l fleet/doctor.mjs fleet/lobby.mjs fleet/tests/test_doctor_claude.mjs fleet/tests","ts":"2026-09-29T22:13:28.286Z"}
+{"t":5552,"kind":"tool","agent":"C","task":"1","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; wc -l factory/flock/engine.mjs; grep -nE \"arg\\('|ELASTIC|\\bSETTLE\\b|\\bPUBLISH\\b|DONE_","ts":"2026-09-29T22:13:28.286Z"}
+{"t":5559,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; cat fleet/doctor.mjs","ts":"2026-09-29T22:13:28.293Z"}
+{"t":5652,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T22:13:28.386Z"}
+{"t":5656,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T22:13:28.390Z"}
+{"t":5663,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T22:13:28.397Z"}
+{"t":7354,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; sed -n 1195,1225p factory/flock/engine.mjs; grep -n \"exits\\b\\|exits\\[\" factory/flock/","ts":"2026-09-29T22:13:30.088Z"}
+{"t":7405,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T22:13:30.139Z"}
+{"t":7732,"kind":"tool","agent":"B","task":"4","tool":"Read","target":"/home/exedev/run/work/agents/B/fleet/doctor.mjs","ts":"2026-09-29T22:13:30.466Z"}
+{"t":7979,"kind":"tool:post","agent":"B","tool":"Read","ts":"2026-09-29T22:13:30.713Z"}
+{"t":8073,"kind":"tool","agent":"C","task":"1","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; sed -n 1,140p factory/flock/engine.mjs; echo ----; sed -n 275,292p factory/flock/engi","ts":"2026-09-29T22:13:30.807Z"}
+{"t":8122,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T22:13:30.856Z"}
+{"t":8869,"kind":"tool","agent":"D","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/D/factory/policy.json","ts":"2026-09-29T22:13:31.603Z"}
+{"t":9012,"kind":"tool:post","agent":"D","tool":"Edit","ts":"2026-09-29T22:13:31.746Z"}
+{"t":9016,"kind":"edit","agent":"D","task":"2","tool":"Edit","path":"factory/policy.json","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:13:31.750Z"}
+{"t":9022,"kind":"tool","agent":"D","task":"2","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T22:13:31.756Z"}
+{"t":16101,"kind":"proof","agent":"D","task":"2","exits":[0,0,0,0],"causes":[],"errs":[],"ts":"2026-09-29T22:13:38.835Z"}
+{"t":16106,"kind":"tool","agent":"A","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/A/factory/flock/engine.mjs","ts":"2026-09-29T22:13:38.840Z"}
+{"t":16109,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; cat fleet/tests/test_doctor_claude.mjs fleet/tests/test_doctor_cloudflare.mjs; grep -","ts":"2026-09-29T22:13:38.843Z"}
+{"t":16111,"kind":"tool:post","agent":"D","tool":"mcp__flock__run_proof","ts":"2026-09-29T22:13:38.845Z"}
+{"t":16170,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T22:13:38.904Z"}
+{"t":16389,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T22:13:39.123Z"}
+{"t":16431,"kind":"edit","agent":"A","task":"3","tool":"Edit","path":"factory/flock/engine.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:13:39.165Z"}
+{"t":16434,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; grep -n \"sessionsOf\\|usage\" factory/flock/engine.mjs | head","ts":"2026-09-29T22:13:39.168Z"}
+{"t":16457,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T22:13:39.192Z"}
+{"t":17097,"kind":"tool","agent":"C","task":"1","tool":"Bash","target":"cd /home/exedev/run/work/agents/C; python3 - <<'EOF'\nimport re\np='factory/flock/engine.mjs'\ns=open(p).read()\nold_hdr=\"\"\"","ts":"2026-09-29T22:13:39.831Z"}
+{"t":17159,"kind":"tool:post","agent":"C","tool":"Bash","ts":"2026-09-29T22:13:39.893Z"}
+{"t":18958,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; grep -n \"doctor\" fleet/launch.mjs fleet/tests/probe_exe_facts.mjs fleet/claude-token.","ts":"2026-09-29T22:13:41.692Z"}
+{"t":19005,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T22:13:41.739Z"}
+{"t":19190,"kind":"tool","agent":"D","task":"2","tool":"mcp__flock__done","target":"","ts":"2026-09-29T22:13:41.924Z"}
+{"t":23717,"kind":"tool","agent":"A","task":"3","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; cat > /tmp/a_audit.py <<'EOF'\np='factory/audit.mjs'\ns=open(p).read()\nold1=\"\"\" * For `","ts":"2026-09-29T22:13:46.451Z"}
+{"t":23717,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; ls tests/; grep -n \"def test_doctor\\|def test_launch_credential\\|def test_launch_dupl","ts":"2026-09-29T22:13:46.451Z"}
+{"t":23718,"kind":"tool","agent":"C","task":"1","tool":"Edit","target":"/home/exedev/run/work/agents/C/factory/flock/engine.mjs","ts":"2026-09-29T22:13:46.452Z"}
+{"t":23761,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T22:13:46.495Z"}
+{"t":23768,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T22:13:46.502Z"}
+{"t":24033,"kind":"fallback","agent":"D","path":"factory/package-lock.json","peer_lines":0,"deleted":false,"ts":"2026-09-29T22:13:46.767Z"}
+{"t":24040,"kind":"publish","agent":"D","task":"2","by":"done","ts":"2026-09-29T22:13:46.774Z"}
+{"t":24054,"kind":"tool:post","agent":"D","tool":"mcp__flock__done","ts":"2026-09-29T22:13:46.788Z"}
+{"t":24056,"kind":"kata:mirror","task":"2","uid":"01M3QKK061QY4765QMCGZ3DHPZ","what":"done by D","ok":true,"ts":"2026-09-29T22:13:46.790Z"}
+{"t":24059,"kind":"tool:post","agent":"C","tool":"Edit","ts":"2026-09-29T22:13:46.793Z"}
+{"t":24230,"kind":"driver:amendment","path":"factory/package-lock.json","snap":"ea5a305d91","ts":"2026-09-29T22:13:46.964Z"}
