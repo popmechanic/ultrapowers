@@ -1,0 +1,28 @@
+{"t":613,"kind":"non-text","path":"docs/assets/dag.gif","ts":"2026-09-29T22:42:21.856Z"}
+{"t":695,"kind":"start","workload":"run-275","agents":"elastic","cap":16,"model":"claude-opus-5-5","clock_ms":13800000,"quiet_ms":45000,"board":"standin","publish":"explicit","early_close":"held","order":"chain","pulls":"narrow","chain":{"1":1},"ts":"2026-09-29T22:42:21.938Z"}
+{"t":1445,"kind":"past","run":274,"items":0,"ts":"2026-09-29T22:42:22.688Z"}
+{"t":1494,"kind":"builder:open","agent":"A","pool":1,"ready":1,"busy":0,"ts":"2026-09-29T22:42:22.737Z"}
+{"t":1540,"kind":"session:start","agent":"A","task":"1","ts":"2026-09-29T22:42:22.783Z"}
+{"t":1582,"kind":"kata:mirror","task":"1","uid":"01M3QN88H2N3ZK9K2E529SRVXP","what":"claimed by A","ok":true,"ts":"2026-09-29T22:42:22.825Z"}
+{"t":3825,"kind":"tool","agent":"A","task":"1","tool":"Bash","target":"grep -n -A3 'Releasing' /home/exedev/run/work/agents/A/CLAUDE.md","ts":"2026-09-29T22:42:25.068Z"}
+{"t":3936,"kind":"tool:post","agent":"A","tool":"Bash","ts":"2026-09-29T22:42:25.179Z"}
+{"t":5744,"kind":"tool","agent":"A","task":"1","tool":"Read","target":"/home/exedev/run/work/agents/A/CLAUDE.md","ts":"2026-09-29T22:42:26.987Z"}
+{"t":5765,"kind":"tool:post","agent":"A","tool":"Read","ts":"2026-09-29T22:42:27.008Z"}
+{"t":6323,"kind":"tool","agent":"A","task":"1","tool":"Edit","target":"/home/exedev/run/work/agents/A/CLAUDE.md","ts":"2026-09-29T22:42:27.566Z"}
+{"t":6496,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T22:42:27.739Z"}
+{"t":6502,"kind":"edit","agent":"A","task":"1","tool":"Edit","path":"CLAUDE.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:42:27.745Z"}
+{"t":7325,"kind":"tool","agent":"A","task":"1","tool":"Edit","target":"/home/exedev/run/work/agents/A/CLAUDE.md","ts":"2026-09-29T22:42:28.568Z"}
+{"t":7511,"kind":"tool:post","agent":"A","tool":"Edit","ts":"2026-09-29T22:42:28.754Z"}
+{"t":7515,"kind":"edit","agent":"A","task":"1","tool":"Edit","path":"CLAUDE.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T22:42:28.758Z"}
+{"t":7518,"kind":"tool","agent":"A","task":"1","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-29T22:42:28.761Z"}
+{"t":7548,"kind":"proof","agent":"A","task":"1","exits":[0,0],"causes":[],"errs":[],"ts":"2026-09-29T22:42:28.791Z"}
+{"t":7553,"kind":"tool:post","agent":"A","tool":"mcp__flock__run_proof","ts":"2026-09-29T22:42:28.796Z"}
+{"t":8913,"kind":"tool","agent":"A","task":"1","tool":"mcp__flock__done","target":"","ts":"2026-09-29T22:42:30.156Z"}
+{"t":9084,"kind":"publish","agent":"A","task":"1","by":"done","ts":"2026-09-29T22:42:30.327Z"}
+{"t":9092,"kind":"kata:mirror","task":"1","uid":"01M3QN88H2N3ZK9K2E529SRVXP","what":"done by A","ok":true,"ts":"2026-09-29T22:42:30.335Z"}
+{"t":9093,"kind":"tool:post","agent":"A","tool":"mcp__flock__done","ts":"2026-09-29T22:42:30.336Z"}
+{"t":9295,"kind":"edge","snap":"a1badab198","reason":"done A","perTask":{"1":[0,0]},"check":0,"conflicts":[],"blocking":[],"outside":[],"green":true,"ts":"2026-09-29T22:42:30.538Z"}
+{"t":9690,"kind":"settled","snap":"a1badab198","ts":"2026-09-29T22:42:30.933Z"}
+{"t":9690,"kind":"terminal","pr":"ready","why":"settled green","snap":"a1badab198","ts":"2026-09-29T22:42:30.933Z"}
+{"t":12128,"kind":"session:end","agent":"A","task":"1","released":false,"done":"Removed \"(`0.3.42` today)\" and \"and this line\" from the Releasing bullet in CLAUDE.md; meaning kept. Both facts pass.","redRuns":0,"turns":7,"usage":{"input_tokens":8,"cache_creation_input_tokens":5952,"cache_read_input_tokens":107720,"output_tokens":876,"output_tokens_details":{"thinking_tokens":0},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":5952,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[],"speed":"standard","fallback_credit":null},"ts":"2026-09-29T22:42:33.371Z"}
+{"t":12257,"kind":"landing","task":"1","candidateSha":"36fc98e3030947e5717f5bc16203a65363f9d6c4","ts":"2026-09-29T22:42:33.500Z"}

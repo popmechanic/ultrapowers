@@ -1,0 +1,13 @@
+{
+ "tasks": [
+  {
+   "id": "1",
+   "title": "The release note stops naming today's version",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [],
+   "notes": []
+  }
+ ],
+ "beliefs": []
+}
