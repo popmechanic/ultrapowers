@@ -35,8 +35,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   record, so a run number is read from both shapes and never from one (`--run N` overrides).
   A refused plan push re-reads the highest run and retries with the next N, up to three pushes
   in all, so the push and not the read is what reserves N. `RUN_ID=run-N`.
-- **VM name:** `fleet-r<N>-<yymmddHHMM>-<4 hex>` (e.g. `fleet-r70-2609032215-a1b2`). exe.dev reserves deleted
-  names forever, so a name is one incarnation and is never derived from N alone. Lookup by pattern:
+- **VM name:** `fleet-r<N>-<yymmddHHMM>-<4 hex>` (e.g. `fleet-r70-2609032215-a1b2`). exe.dev does not reserve
+  deleted names, but a name is still one incarnation, never derived from N alone: the run number
+  is the identity. Lookup by pattern:
   `ssh exe.dev "ls 'fleet-r<N>-*' --json"`; the whole fleet: `ls 'fleet-r*' --json`. Read `.vms[]` ONLY
   (`.shared_vms` are other people's). Contractual row fields: `vm_name`, `ssh_dest`, `ssh_host`, `status`.
   `comment`, `tags`, `created_at` are undocumented: read them as optional, never crash on their absence,
@@ -601,7 +602,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   - share-port-single — `share port` sets the VM's single `proxy_port` and a second call replaces it (lobby 92465a0aa5e0141b, 2026-09-23; first read 2026-09-12, Traps).
   - tag-add-remove — `tag` adds and `tag -d` removes a tag; `tag -d` of a policy-named tag detaches that integration at once, not re-measured by the probe (lobby 92465a0aa5e0141b, 2026-09-23; first read 2026-09-04, Traps).
   - cp-copies-tags — `cp` copies tags by default and `--copy-tags=false` makes a copy with none (lobby 92465a0aa5e0141b, 2026-09-23; first read 2026-09-04, Traps).
-  - rm-reserves-name — DRIFTED: a `new` with a just-deleted name succeeds — the name is not reserved (lobby 92465a0aa5e0141b, 2026-09-23; the 2026-09-04 Trap read "reserved for good" and the probe's first hand run read the opposite, n=1). The practice stands regardless: the run number is the identity and a VM name is one incarnation, never reused.
+  - rm-reserves-name — a `new` with a just-deleted name succeeds — the name is not reserved (lobby 92465a0aa5e0141b, 2026-09-23 and 2026-09-29, n=2; the 2026-09-04 Trap read "reserved for good", and both probe hand runs read the opposite). The practice stands regardless: the run number is the identity and a VM name is one incarnation, never reused.
   - refused-verbs — `new --integration`, `integrations attach` and `integrations detach` are refused since 2026-09-11; the policy is the only grant (lobby 92465a0aa5e0141b, 2026-09-23; first read 2026-09-11, Traps, #1036).
 - **SDK and edge-auth facts (measured 2026-09-17, one hand-stood `--tag fleet` box):** the readings
   the Agent SDK worker layer rests on, taken on `jev-probe-09172119` (node 24.20.0, SDK 0.3.274,

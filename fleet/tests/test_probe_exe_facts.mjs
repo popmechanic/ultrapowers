@@ -31,9 +31,9 @@
  * THE FAKE LOBBY. `makeFakeLobby()` answers by the verb line exe.dev would
  * see, stateful for `ls --json` — the VMs the fake has been told to create,
  * their comment, tags and proxy_port — reflecting exactly the twelve
- * recorded readings Context spells. `everCreated` never forgets a name once
- * minted, which is what makes `rm-reserves-name` hold on a bare `new` for
- * `T` after the cleanup removed it.
+ * recorded readings Context spells. `new` refuses only a name a live VM
+ * holds, never a deleted one, which is what makes `rm-reserves-name` hold on
+ * a bare `new` for `T` after the cleanup removed it.
  */
 
 import assert from 'node:assert/strict'
@@ -149,14 +149,14 @@ const makeFakeLobby = ({
     }
     if ((m = /^new --name (\S+) --cpu 1 --memory 2GB --comment '(.*)'$/.exec(remote))) {
       const [, name, comment] = m
-      if (everCreated.has(name)) return refuse(`Error: name reserved: ${name}`)
+      if (vms.has(name)) return refuse(`Error: name in use: ${name}`)
       everCreated.add(name)
       vms.set(name, { comment, tags: new Set(), proxy_port: null })
       return ok({ ok: true, vm_name: name })
     }
     if ((m = /^new --name (\S+) --cpu 1 --memory 2GB$/.exec(remote))) {
       const [, name] = m
-      if (everCreated.has(name)) return refuse(`Error: name reserved: ${name}`)
+      if (vms.has(name)) return refuse(`Error: name in use: ${name}`)
       everCreated.add(name)
       vms.set(name, { comment: '', tags: new Set(), proxy_port: null })
       return ok({ ok: true, vm_name: name })
@@ -360,13 +360,15 @@ await test('(g) [M3] a rm answering non-zero leaves that VM named as left behind
   assert.ok(last.includes('probe-exe-facts-202609231600-copy1') && /left behind/.test(last),
     `(g) [M3] the last line names the VM left behind — got: ${JSON.stringify(last)}`)
   assert.equal(result.exit, 2, `(g) [M3] exit is 2 when the cleanup left a VM behind — got ${result.exit}`)
-  // The cleanup issues one rm per VM it created, in order, before the fact-11 check.
+  // The cleanup issues one rm per VM it created, in order, before the fact-11
+  // check; fact 11's own `new` takes the freed name and removes that VM too.
   const rmCalls = lobby.calls.filter((c) => /^rm /.test(c))
   assert.deepEqual(rmCalls, [
     'rm probe-exe-facts-202609231600-copy1',
     'rm probe-exe-facts-202609231600-copy2',
     'rm probe-exe-facts-202609231600',
-  ], `(g) [M3] one rm per created VM, copies then the throwaway — got: ${JSON.stringify(rmCalls)}`)
+    'rm probe-exe-facts-202609231600',
+  ], `(g) [M3] one rm per created VM, copies then the throwaway, then fact 11's — got: ${JSON.stringify(rmCalls)}`)
 })
 
 // ════════════════════════════════════════════════════════════════════════════
