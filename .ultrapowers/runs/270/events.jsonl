@@ -337,3 +337,35 @@
 {"t":163031,"kind":"tool:post","agent":"A","tool":"mcp__flock__done","ts":"2026-09-29T21:22:11.411Z"}
 {"t":163033,"kind":"kata:mirror","task":"3","uid":"01M3QGG8Z3T9D8FB4Z430NAAW4","what":"done by A","ok":true,"ts":"2026-09-29T21:22:11.413Z"}
 {"t":163038,"kind":"tool:post","agent":"E","tool":"Edit","ts":"2026-09-29T21:22:11.418Z"}
+{"t":199906,"kind":"edge","snap":"c43e2aa1a0","reason":"done A","perTask":{"1":[0,0,0],"2":[1,1,0,0,0,0],"3":[0,0,0,0,0,0],"4":[1,1],"5":[0,0,0]},"check":0,"conflicts":["factory/record.mjs"],"blocking":["factory/record.mjs"],"outside":[],"green":false,"ts":"2026-09-29T21:22:48.286Z"}
+{"t":199908,"kind":"tool","agent":"B","task":"4","tool":"Bash","target":"cd /home/exedev/run/work/agents/B; grep -nE \"^(<<<<<<<|=======|>>>>>>>)\" factory/record.mjs | head","ts":"2026-09-29T21:22:48.288Z"}
+{"t":199916,"kind":"edit","agent":"E","task":"2","tool":"Edit","path":"fleet/tests/test_launch_duplicate.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:22:48.296Z"}
+{"t":199930,"kind":"tool","agent":"E","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/E/fleet/tests/test_launch_duplicate.mjs","ts":"2026-09-29T21:22:48.310Z"}
+{"t":199935,"kind":"tool:post","agent":"B","tool":"Bash","ts":"2026-09-29T21:22:48.315Z"}
+{"t":200116,"kind":"tool:post","agent":"E","tool":"Edit","ts":"2026-09-29T21:22:48.496Z"}
+{"t":201258,"kind":"edit","agent":"E","task":"2","tool":"Edit","path":"fleet/tests/test_launch_duplicate.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:22:49.638Z"}
+{"t":201268,"kind":"tool","agent":"E","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/E/fleet/tests/test_launch_duplicate.mjs","ts":"2026-09-29T21:22:49.648Z"}
+{"t":201418,"kind":"tool:post","agent":"E","tool":"Edit","ts":"2026-09-29T21:22:49.798Z"}
+{"t":201422,"kind":"edit","agent":"E","task":"2","tool":"Edit","path":"fleet/tests/test_launch_duplicate.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:22:49.802Z"}
+{"t":201425,"kind":"tool","agent":"E","task":"2","tool":"Read","target":"/home/exedev/run/work/agents/E/fleet/tests/test_launch_one_engine.mjs","ts":"2026-09-29T21:22:49.805Z"}
+{"t":201431,"kind":"tool:post","agent":"E","tool":"Read","ts":"2026-09-29T21:22:49.811Z"}
+{"t":202538,"kind":"pull","agent":"E","changed":[{"path":"factory/audit.mjs","from":"A","added":2,"removed":26,"conflict":false},{"path":"factory/boot.sh","from":"A","added":4,"removed":2,"conflict":false},{"path":"factory/record.mjs","from":"A","added":33,"removed":42,"conflict":true}],"ts":"2026-09-29T21:22:50.918Z"}
+{"t":204048,"kind":"tool","agent":"B","task":"4","tool":"mcp__flock__done","target":"","ts":"2026-09-29T21:22:52.428Z"}
+{"t":204239,"kind":"publish","agent":"B","task":"4","by":"done","ts":"2026-09-29T21:22:52.619Z"}
+{"t":204246,"kind":"tool:post","agent":"B","tool":"mcp__flock__done","ts":"2026-09-29T21:22:52.626Z"}
+{"t":204249,"kind":"kata:mirror","task":"4","uid":"01M3QGGBCYZ0ZH6QAC1CCX6XE3","what":"done by B","ok":true,"ts":"2026-09-29T21:22:52.629Z"}
+{"t":204798,"kind":"session:end","agent":"A","task":"3","released":false,"done":"record.mjs: readEventRows exported and read once in renderPrBody, passed as rows to landingRowLines/jevStepLines/draftReasonLines; one readPublishCell shared by renderPolicy/renderPublishPolicy (output unchanged). audit.mjs imports readEventRows instead of its own reader. boot.sh names ENGINE_EVIDENCE array once, used by collect_evidence and evidence_commit. All 6 facts pass; preflight test also passes.","redRuns":0,"turns":31,"usage":{"input_tokens":40,"cache_creation_input_tokens":21472,"cache_read_input_tokens":768208,"output_tokens":7361,"output_tokens_details":{"thinking_tokens":485},"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":21472,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[],"speed":"standard","fallback_credit":null},"ts":"2026-09-29T21:22:53.178Z"}
+{"t":240686,"kind":"conflict:close","path":"factory/record.mjs","region":"0fdee51d07","by":"host","note":"the merged text of factory/record.mjs is A's own published writing over both sides","via":"early:held","evidence":{"snap":"a880560ccc","holders":[{"agent":"A","published_t":163019,"last_edit_t":42303,"last_marked_t":null}],"unflagged":false},"ts":"2026-09-29T21:23:29.066Z"}
+{"t":240686,"kind":"edge","snap":"a880560ccc","reason":"done B","perTask":{"1":[0,0,0],"2":[1,1,0,0,0,0],"3":[0,0,0,0,0,0],"4":[0,0],"5":[0,0,0]},"check":0,"conflicts":["factory/record.mjs"],"blocking":[],"outside":[],"green":false,"ts":"2026-09-29T21:23:29.066Z"}
+{"t":240689,"kind":"tool","agent":"E","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/E/fleet/tests/test_launch_one_engine.mjs","ts":"2026-09-29T21:23:29.069Z"}
+{"t":240850,"kind":"tool:post","agent":"E","tool":"Edit","ts":"2026-09-29T21:23:29.230Z"}
+{"t":240856,"kind":"edit","agent":"E","task":"2","tool":"Edit","path":"fleet/tests/test_launch_one_engine.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:23:29.236Z"}
+{"t":240864,"kind":"tool","agent":"E","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/E/fleet/tests/test_launch_one_engine.mjs","ts":"2026-09-29T21:23:29.244Z"}
+{"t":240996,"kind":"tool:post","agent":"E","tool":"Edit","ts":"2026-09-29T21:23:29.376Z"}
+{"t":241001,"kind":"edit","agent":"E","task":"2","tool":"Edit","path":"fleet/tests/test_launch_one_engine.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:23:29.381Z"}
+{"t":241008,"kind":"tool","agent":"E","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/E/fleet/tests/test_launch_one_engine.mjs","ts":"2026-09-29T21:23:29.388Z"}
+{"t":241133,"kind":"tool:post","agent":"E","tool":"Edit","ts":"2026-09-29T21:23:29.513Z"}
+{"t":241142,"kind":"edit","agent":"E","task":"2","tool":"Edit","path":"fleet/tests/test_launch_one_engine.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-29T21:23:29.522Z"}
+{"t":241145,"kind":"tool","agent":"E","task":"2","tool":"Read","target":"/home/exedev/run/work/agents/E/fleet/tests/test_launch_plan_path.mjs","ts":"2026-09-29T21:23:29.525Z"}
+{"t":241150,"kind":"tool:post","agent":"E","tool":"Read","ts":"2026-09-29T21:23:29.530Z"}
+{"t":242676,"kind":"pull","agent":"E","changed":[{"path":"fleet/claude-token.mjs","from":"B","added":8,"removed":5,"conflict":false},{"path":"fleet/doctor.mjs","from":"B","added":11,"removed":15,"conflict":false},{"path":"fleet/launch.mjs","from":"B","added":10,"removed":11,"conflict":false},{"path":"fleet/lobby.mjs","from":"B","added":10,"removed":3,"conflict":false}],"ts":"2026-09-29T21:23:31.056Z"}
