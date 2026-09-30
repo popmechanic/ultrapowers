@@ -68,20 +68,28 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
+  CLAUDE_INTEGRATION,
   DEFAULT_CONFIG_PATH,
   EXE_HOST,
   FLEET_DEFAULTS,
+  FLEET_POLICY,
+  FLEET_TAG,
+  Refusal,
   VERBS_PATH,
   VERBS_RECORD,
   defaultExec,
+  githubIntegrationFor,
   isSafeTarget,
   listIntegrations,
   loadFleetConfig,
+  parseArgs,
   parseJson,
   parseMemoryGb,
   parsePolicy,
   readEvidenceSetting,
-  readPlanCapacity
+  readFleetJson,
+  readPlanCapacity,
+  runCli
 } from './lobby.mjs'
 
 /** The ten rows, in the order the doctor reports them. Each id is also a
@@ -135,55 +143,13 @@ async function tokenRead (exec, argv) {
   return { code: res.code, stdout: `${res.stdout ?? ''}${res.stderr ?? ''}` }
 }
 
-/** The tag a fleet VM is created with, the policy every fleet integration
- *  carries, and the integration that carries the bearer. */
-const TAG = 'fleet'
-const FLEET_POLICY = `tag:${TAG}`
-const OAUTH_INTEGRATION = 'claude-max'
-
-/** The legacy per-account runs integration, still recognised by name so a fleet
- *  that predates the lift is told to detach it. Assembled rather than spelled
- *  out because no file under `fleet/` may carry that literal any more. */
-const LEGACY_RUNS = ['fleet', 'runs'].join('-')
-
 /** The bearer the edge injects, as the listing spells it. */
 const BEARER = 'Authorization:Bearer'
 
 const row = (id, status, detail) => ({ id, status, detail, fix: FIXES[id] })
 const firstLine = (stdout) => String(stdout ?? '').split('\n')[0].trim()
 
-/** `owner/repo` → the target's one integration object, `gh-<owner>-<repo>`. */
-const targetIntegration = (target) => `gh-${String(target).replace(/\//g, '-')}`
-
 const parseCpus = (value) => (/^\d+$/.test(String(value ?? '').trim()) ? Number(value) : null)
-
-/**
- * The config file's own top-level key names, in file order — `loadFleetConfig`
- * answers what the doctor reads, this answers what the operator wrote. Null
- * when the file is absent, unreadable, not JSON, or not a JSON object, because
- * none of those is a file carrying keys.
- *
- * The two travel separately on purpose: `result.config` is exactly the doctor's
- * two keys, so a name the doctor does not read reaches the `capacity` row on
- * `configKeys` and never through the config.
- */
-async function fleetConfigKeys ({ path: configPath } = {}) {
-  const target = configPath ?? DEFAULT_CONFIG_PATH()
-  let text
-  try {
-    text = await fsp.readFile(target, 'utf8')
-  } catch {
-    return null
-  }
-  let parsed
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    return null
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
-  return Object.keys(parsed)
-}
 
 /**
  * The config file's default account: its top-level `account`, or null when the
@@ -196,21 +162,7 @@ async function fleetConfigKeys ({ path: configPath } = {}) {
  * `doctor()` as its own option.
  */
 export async function fleetConfigAccount ({ path: configPath } = {}) {
-  const target = configPath ?? DEFAULT_CONFIG_PATH()
-  let text
-  try {
-    text = await fsp.readFile(target, 'utf8')
-  } catch {
-    return null
-  }
-  let parsed
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    return null
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
-  const account = parsed.account
+  const account = (await readFleetJson(configPath ?? DEFAULT_CONFIG_PATH()))?.account
   return typeof account === 'string' && account !== '' ? account : null
 }
 
@@ -299,7 +251,7 @@ const CONFIG_KEYS = Object.freeze([...READ_KEYS, ...LAUNCHER_KEYS])
 /**
  * The pool arithmetic, plus what the config file's own key names say about it.
  *
- * `configKeys` is `fleetConfigKeys`'s answer for the same file: null when there
+ * `configKeys` is the file's own top-level key names (`readFleetJson`): null when there
  * is no file to read keys off, and otherwise every top-level name in it. A name
  * outside `CONFIG_KEYS` is a key left by a fleet from before the lift — the
  * operator wrote a setting nothing consults, so the row is red until the file is
@@ -357,18 +309,12 @@ async function readIntegrations (res) {
     out.set(entry.name, {
       name: entry.name,
       tags: entry.tags,
-      github: isGithub(entry),
       bearer: entry.bearer,
       comment: entry.comment
     })
   }
   return out
 }
-
-/** Is this entry a GitHub integration? By the repository field only GitHub
- *  objects carry, or by the fleet's own naming. */
-const isGithub = (entry) =>
-  entry.repository !== null || entry.name === LEGACY_RUNS || entry.name.startsWith('gh-')
 
 /** The fix for a policy that is not `tag:fleet`: the read, then the write
  *  under the revision the read answered. */
@@ -394,7 +340,7 @@ export function policyRowFor (name, { id, found, policyRes, absentIsOk = false, 
   if (have === undefined) {
     return row(id, absentIsOk ? 'ok' : 'missing', absentDetail ?? `no ${name} integration at the edge`)
   }
-  if (have.tags.includes(TAG)) return null
+  if (have.tags.includes(FLEET_TAG)) return null
   const policy = policyRes && policyRes.code === 0 ? parsePolicy(policyRes.stdout) : null
   if (policy === null) {
     const seen = policyRes && policyRes.code === 0 ? 'printed no readable policy' : `exited ${policyRes?.code ?? 1}`
@@ -452,17 +398,17 @@ function claudeRow (found, tokenRes, usageRes) {
   if (found === null) {
     return row('claude', 'missing', `integrations list printed no readable JSON${suffix}`)
   }
-  const have = found.get(OAUTH_INTEGRATION)
+  const have = found.get(CLAUDE_INTEGRATION)
   if (have === undefined || !have.bearer) {
     const why = have === undefined
-      ? `no ${OAUTH_INTEGRATION} integration at the edge`
-      : `${OAUTH_INTEGRATION} carries no ${BEARER} header`
+      ? `no ${CLAUDE_INTEGRATION} integration at the edge`
+      : `${CLAUDE_INTEGRATION} carries no ${BEARER} header`
     return row('claude', 'missing', `${why} — node fleet/claude-token.mjs login${suffix}`)
   }
   const status = tokenRes.code === 0 && firstLine(tokenRes.stdout) !== ''
     ? firstLine(tokenRes.stdout)
     : 'no refresh token in the keychain — the bearer will not be refreshed before a run'
-  return row('claude', 'ok', `${OAUTH_INTEGRATION} carries the bearer at the edge; ${status}${suffix}`)
+  return row('claude', 'ok', `${CLAUDE_INTEGRATION} carries the bearer at the edge; ${status}${suffix}`)
 }
 
 // ── accounts ─────────────────────────────────────────────────────────────────
@@ -497,7 +443,7 @@ const describeAccount = (entry) =>
  * tool wrote one, which the next refresh records.
  */
 function edgeAccount (found) {
-  const comment = found?.get(OAUTH_INTEGRATION)?.comment
+  const comment = found?.get(CLAUDE_INTEGRATION)?.comment
   if (typeof comment !== 'string') return null
   for (const word of comment.split(/\s+/)) {
     if (!word.startsWith(ACCOUNT_TOKEN)) continue
@@ -682,8 +628,8 @@ function githubRow (res) {
  * --json`, in this order.
  */
 function policyNames (target) {
-  const names = [OAUTH_INTEGRATION]
-  if (target !== null) names.push(targetIntegration(target))
+  const names = [CLAUDE_INTEGRATION]
+  if (target !== null) names.push(githubIntegrationFor(target))
   return names
 }
 
@@ -706,7 +652,7 @@ function integrationsRow (found, target, policies) {
     return row('integrations', 'missing', 'integrations list printed no readable JSON')
   }
   if (target !== null) {
-    const want = targetIntegration(target)
+    const want = githubIntegrationFor(target)
     if (!found.has(want)) {
       return row('integrations', 'missing', `no ${want} integration for ${target} — node fleet/target.mjs ${target}`)
     }
@@ -753,7 +699,7 @@ function evidenceRow (evidence, repoRes, found, policyRes) {
   if (found === null) {
     return row('evidence', 'missing', 'integrations list printed no readable JSON')
   }
-  const name = targetIntegration(evidence)
+  const name = githubIntegrationFor(evidence)
   if (!found.has(name)) {
     return row('evidence', 'missing', `no ${name} integration for ${evidence} — node fleet/target.mjs ${evidence}`)
   }
@@ -844,7 +790,7 @@ function cloudflareRow (found, policyRes) {
  * so a test drives the doctor with a stub. `target` is `owner/repo` or null; anything else is refused before any
  * read rather than interpolated into an ssh string.
  *
- * `configKeys` is the config file's own top-level key names — `fleetConfigKeys`
+ * `configKeys` is the config file's own top-level key names — `readFleetJson`'s keys
  * for the same path `config` was loaded from, or null when there is no file.
  * It reaches the `capacity` row and nothing else: `result.config` stays exactly
  * the two keys the doctor reads.
@@ -904,7 +850,7 @@ export async function doctor ({
   // The evidence row's reads, each only when the step before it answered: the
   // repository, then its integration's policy when the listing names it.
   const evidenceRepo = wantEvidence === null ? null : await run('gh', evidenceRepoRead(wantEvidence))
-  const evidenceName = wantEvidence === null ? null : targetIntegration(wantEvidence)
+  const evidenceName = wantEvidence === null ? null : githubIntegrationFor(wantEvidence)
   const evidencePolicy = evidenceRepo !== null && evidenceRepo.code === 0 && found !== null && found.has(evidenceName)
     ? (policies.get(evidenceName) ?? await read(policyRead(evidenceName)))
     : null
@@ -931,22 +877,6 @@ export async function doctor ({
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
-export function parseArgs (argv) {
-  const opts = { json: false, configPath: null, target: null }
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i]
-    if (arg === '--json') opts.json = true
-    else if (arg === '--config') {
-      i += 1
-      opts.configPath = argv[i] ?? null
-    } else if (arg === '--target') {
-      i += 1
-      opts.target = argv[i] ?? null
-    }
-  }
-  return opts
-}
-
 const PAD = Math.max(...['ok', 'missing'].map((s) => s.length))
 
 function renderRows (rows) {
@@ -958,28 +888,33 @@ function renderRows (rows) {
   return out.join('\n')
 }
 
+/** A value flag's string, or null when absent or given bare. */
+const valueOf = (opt) => (typeof opt === 'string' ? opt : null)
+
 async function main (argv) {
-  const opts = parseArgs(argv)
-  const configPath = opts.configPath ?? DEFAULT_CONFIG_PATH()
+  const { opts } = parseArgs(argv, { flags: ['json'] })
+  const configPath = valueOf(opts.config) ?? DEFAULT_CONFIG_PATH()
   const config = await loadFleetConfig({ path: configPath })
-  const configKeys = await fleetConfigKeys({ path: configPath })
+  // The config file's own top-level key names — what the operator wrote, where
+  // `config` is what the doctor reads — reach the `capacity` row alone; null
+  // when there is no JSON object to carry keys.
+  const written = await readFleetJson(configPath)
+  const configKeys = written === null ? null : Object.keys(written)
   const account = await fleetConfigAccount({ path: configPath })
   const evidence = await readEvidenceSetting({ path: configPath })
   let result
   try {
-    result = await doctor({ config, exec: defaultExec, target: opts.target, configKeys, account, evidence })
+    result = await doctor({ config, exec: defaultExec, target: valueOf(opts.target), configKeys, account, evidence })
   } catch (error) {
-    process.stderr.write(`${error.message}\n`)
-    process.exitCode = 2
-    return
+    throw new Refusal(error?.message ?? String(error))
   }
   process.stdout.write(
-    opts.json ? `${JSON.stringify(result)}\n` : `${renderRows(result.rows)}\n`
+    opts.json === true ? `${JSON.stringify(result)}\n` : `${renderRows(result.rows)}\n`
   )
   process.exitCode = result.verdict === 'ready' ? 0 : 1
 }
 
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : ''
 if (invokedPath === fileURLToPath(import.meta.url)) {
-  await main(process.argv.slice(2))
+  await runCli(main, process.argv.slice(2))
 }

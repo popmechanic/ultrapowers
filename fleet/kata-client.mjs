@@ -230,6 +230,14 @@ const scoreLess = (a, b) => {
 }
 
 /**
+ * The project called `name` in a `listProjects()` answer, or null. A project
+ * is addressed by its integer `id` alone, so an entry without one is no match.
+ */
+export const projectNamed = (listing, name) =>
+  (Array.isArray(listing?.projects) ? listing.projects : [])
+    .find((p) => p?.name === name && Number.isInteger(p?.id)) ?? null
+
+/**
  * The client. Every method issues EXACTLY ONE request — nothing here polls,
  * retries or reads an issue back to confirm a write, because the driver's own
  * ordering is what the record is for: a step is on the hub before the driver
@@ -304,10 +312,17 @@ export const makeKataClient = ({ transport, actor }) => {
 
     // `If-Match` is kata's own ETag spelling — the quotes are part of the value,
     // and a stale revision is a 412 the caller is expected to treat as a fatal
-    // disagreement about what the record says.
-    patchMetadata: (projectId, uid, patch, revision) =>
+    // disagreement about what the record says. A writer with no revision to
+    // claim (the janitor's death, re-driven pass after pass) passes `revision`
+    // undefined and an `idempotencyKey` instead, so a re-drive is the same
+    // patch; each header rides only when given.
+    patchMetadata: (projectId, uid, patch, revision, { idempotencyKey } = {}) =>
       mutation({ method: 'POST', path: issuePath(projectId, uid) + '/metadata',
-                 body: { actor, patch }, headers: { 'If-Match': '"rev-' + revision + '"' } }),
+                 body: { actor, patch },
+                 headers: {
+                   ...(revision === undefined ? {} : { 'If-Match': '"rev-' + revision + '"' }),
+                   ...(idempotencyKey === undefined ? {} : { 'Idempotency-Key': String(idempotencyKey) })
+                 } }),
 
     // A comment answers the comment kata stored, not the issue, so this reads
     // its receipt — `comment.uid` and `comment.created_at`, each null when

@@ -127,9 +127,9 @@ evidence repository.
   laptop's authoring census (`skills/ultrawrite/scripts/authoring_census.py --fetch`) reads it off the
   run tag (runs 269–271 were launched without it, 2026-09-29). The evidence repository's `main` holds
   a one-time hand archive under `archive/`; no tool writes to `main`, and runs live only under
-  `runs/`, on `live/*` branches and on the run tags. The retire sweep
-  (`node fleet/retire.mjs --target <owner>/<repo>`) keeps only its deletion of an
-  `ultra/integration-run-<N>` whose pull request is closed and not merged.
+  `runs/`, on `live/*` branches and on the run tags. The janitor deletes an
+  `ultra/integration-run-<N>` whose pull request is closed and not merged (`--target
+  <owner>/<repo>` for a target no fleet VM names).
 - **Migration (`fleet/migrate-evidence.mjs`):**
   `node fleet/migrate-evidence.mjs --target <owner>/<repo> [--evidence-repo <o>/<r>] [--dry-run]`,
   one target per call, copies that target's past runs — its old `ultra/*` plan and evidence refs —
@@ -566,8 +566,11 @@ evidence repository.
   later by the ordinary rule, off the `work.state` the death itself wrote. No
   `created_at`, no clone, no `git`. Run by `fleet/launch.mjs` before every launch and by hand after
   a sleep; nothing schedules it, and the janitor merges nothing — the sandbox merges its own PR.
-  The close-out, the census and the launcher's duplicate check likewise read runs only from the
-  evidence repository, taking it from the same setting; none of them reads a target's refs.
+  The janitor's close-out, the census and the launcher's duplicate check likewise read runs only
+  from the evidence repository, taking it from the same setting; none of them reads a target's
+  refs. On a target the janitor's one write is the DELETE of an `ultra/integration-run-<N>` whose
+  highest-numbered pull request (`pulls?state=all&per_page=100&head=<owner>:ultra/integration-run-<N>`, every page) is
+  closed with `merged_at` null; an open, merged or absent one keeps the branch.
 - **Kata hub (`fleet/kata-hub.mjs`):** ONE persistent VM named `kata-hub`, `--cpu 1 --memory 2GB
   --disk 20GB`, comment `kata hub — persistent service, do not reap`, and NO tag — the janitor's
   `fleet-r*` never lists it, and the comment is the second lock. Its port is pinned by

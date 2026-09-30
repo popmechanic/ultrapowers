@@ -40,6 +40,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
+  FLEET_POLICY,
   LobbyError,
   Refusal,
   defaultExec,
@@ -57,9 +58,6 @@ export const USAGE = `usage: node fleet/target.mjs <owner>/<repo>
        node fleet/target.mjs gc [--json]`
 
 export const usage = () => USAGE
-
-/** The policy every fleet integration carries: the tag a fleet VM is created with. */
-export const FLEET_POLICY = 'tag:fleet'
 
 /** The one `integrations add` line, verbatim, for a target. No `--attach`, no `--readonly`;
  *  the complete policy at creation, so a fresh object never needs a second write. */

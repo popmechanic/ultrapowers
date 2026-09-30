@@ -328,8 +328,8 @@ Two things a stranger will not know:
 ## verb-drift
 
 `fleet/exe-verbs.json` is the flag set of every lobby verb the fleet drives,
-recorded verb by verb with the date it was captured. The doctor and the
-launcher re-fetch `help <verb>` for each of them and diff what the lobby prints
+recorded verb by verb with the date it was captured. The doctor re-fetches
+`help <verb>` for each of them and diffs what the lobby prints
 today against what is recorded. A flag that appeared or vanished is a
 **finding** printed inside a green row — the lobby moving is news, not a
 failure, and nothing is refused over it. The row is `missing` only when the

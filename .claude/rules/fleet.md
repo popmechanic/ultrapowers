@@ -56,11 +56,13 @@ Read a past run at
   CLAUDE.md).
 - `janitor.mjs` — reaps finished runs by reading each fleet VM's comment and asking the kata
   hub for the run issue's state, falling back to the evidence repository via `gh api` only when
-  the hub is dark (and not at all when `"evidence"` is unset); never a VM's disk.
+  the hub is dark (and not at all when `"evidence"` is unset); never a VM's disk. It also writes
+  the end of a dead or orphaned run (`failRun`, then `sealRun`) and deletes the closed-unmerged
+  `ultra/integration-run-*` branches of the targets its rows name (`--target` adds one no VM
+  names).
 - `target.mjs` (the per-repository integration, targets and the evidence repository alike),
   `board-read.mjs` (print a run's board), `migrate-evidence.mjs` (copies one target's past runs
-  into the evidence repository, idempotent, deleting nothing), `retire.mjs` (sweeps
-  closed-unmerged `ultra/integration-run-*` branches), `kata-hub.mjs` + `kata-hub-setup.sh` +
+  into the evidence repository, idempotent, deleting nothing), `kata-hub.mjs` + `kata-hub-setup.sh` +
   `kata.service` (build the one kata hub).
 - The laptop reads the hub daemon with `ssh kata-hub.exe.xyz curl localhost:8000/api/v1/…`,
   the bearer from `~/.ultrapowers/kata-hub.env` on stdin, never on an argv.

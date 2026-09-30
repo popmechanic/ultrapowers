@@ -84,7 +84,9 @@ export const runOfVmName = (name) => {
 /** The whole fleet, as the server-side `ls` pattern. */
 export const FLEET_PATTERN = 'fleet-r*'
 
-/** `<owner>/<repo>` → `<owner>-<repo>`, the slash-free half of an integration name. */
+/** `<owner>/<repo>` → `<owner>-<repo>`, the slash-free half of an integration name,
+ *  and the name of the target's one kata hub project (every run against one target
+ *  files into it; a name the hub already holds answers the existing project). */
 export const targetSlug = (target) => String(target).replace('/', '-')
 
 /**
@@ -101,7 +103,7 @@ export const githubIntegrationFor = (target) => `gh-${targetSlug(target)}`
 
 /**
  * The one branch a run pushes to the target: the work it integrated. It is
- * transient: delete-on-merge drops it, and `retire.mjs` sweeps the
+ * transient: delete-on-merge drops it, and the janitor deletes the
  * closed-unmerged ones.
  */
 export const integrationBranchFor = (run) => `ultra/integration-run-${run}`
@@ -147,15 +149,8 @@ export const evidenceRepoFor = (config, override = null) => {
  * `isSafeTarget` refuses. Beside `loadFleetConfig`, which stays the pool's.
  */
 export async function readEvidenceSetting ({ path: configPath } = {}) {
-  const target = configPath ?? DEFAULT_CONFIG_PATH()
-  let parsed
-  try {
-    parsed = JSON.parse(await fsp.readFile(target, 'utf8'))
-  } catch {
-    return null
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
-  return evidenceRepoFor(parsed)
+  const parsed = await readFleetJson(configPath ?? DEFAULT_CONFIG_PATH())
+  return parsed === null ? null : evidenceRepoFor(parsed)
 }
 
 /**
@@ -193,6 +188,10 @@ export const runOfEvidenceRef = (target, ref) => {
 
 export const EXE_HOST = 'exe.dev'
 export const FLEET_TAG = 'fleet'
+/** The attachment policy every fleet integration carries: the tag a fleet VM is created with. */
+export const FLEET_POLICY = `tag:${FLEET_TAG}`
+/** The http-proxy integration that carries the Claude bearer at the edge. */
+export const CLAUDE_INTEGRATION = 'claude-max'
 export const ENGINE_REPO = 'popmechanic/ultrapowers'
 export const ENGINE_URL = `https://github.com/${ENGINE_REPO}.git`
 /** The assignment comment's hard ceiling — exe.dev's `comment` field. */
@@ -250,15 +249,6 @@ export const kataHostOf = (url) => {
 }
 
 /**
- * The hub project one TARGET is: `<owner>-<repo>`, every slash of the target
- * spelled `-`. The project belongs to the repository, not to a run — every run
- * against one target files into that one project, and a name the hub already
- * holds answers the existing project. The launcher files under this name and
- * the janitor looks it up by it, so both spell it here.
- */
-export const kataProjectFor = (target) => String(target).replace(/\//g, '-')
-
-/**
  * The hub, opened from its env file: read `kataEnvPath` (default
  * `defaultKataEnvPath()`), take its `KATA_URL`'s host, and build a kata client
  * for `actor` over `sshTransport` on that host. Resolves
@@ -290,25 +280,27 @@ export async function hubFromEnv ({ exec, actor, kataEnvPath } = {}) {
  * stays at its default. The doctor reads the config through this function too.
  */
 export async function loadFleetConfig ({ path: configPath } = {}) {
-  const target = configPath ?? DEFAULT_CONFIG_PATH()
+  const parsed = await readFleetJson(configPath ?? DEFAULT_CONFIG_PATH())
   const config = { ...FLEET_DEFAULTS }
-  let text
-  try {
-    text = await fsp.readFile(target, 'utf8')
-  } catch {
-    return config
-  }
-  let parsed
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    return config
-  }
-  if (!parsed || typeof parsed !== 'object') return config
   for (const key of Object.keys(FLEET_DEFAULTS)) {
-    if (typeof parsed[key] === 'string' && parsed[key] !== '') config[key] = parsed[key]
+    if (typeof parsed?.[key] === 'string' && parsed[key] !== '') config[key] = parsed[key]
   }
   return config
+}
+
+/**
+ * The one read of `~/.ultrapowers/fleet.json` (or `configPath`): the parsed
+ * JSON object, or null when the file is absent, unreadable, not JSON, or not a
+ * JSON object. Every reader of the file — the pool, the evidence key, the
+ * doctor's key names and the default account — goes through it.
+ */
+export async function readFleetJson (configPath) {
+  try {
+    const parsed = JSON.parse(await fsp.readFile(configPath, 'utf8'))
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
+  } catch {
+    return null
+  }
 }
 
 // ── The exec seam ───────────────────────────────────────────────────────────

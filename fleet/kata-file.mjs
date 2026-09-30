@@ -6,7 +6,7 @@
 
 import crypto from 'node:crypto'
 
-import { Refusal, kataProjectFor } from './lobby.mjs'
+import { Refusal, targetSlug } from './lobby.mjs'
 
 /** The url the SANDBOX reaches the hub at — the `kata` http-proxy attached by
  *  `tag:fleet` — written into the record regardless of the laptop's own route,
@@ -112,7 +112,7 @@ async function fileRunOnHub ({ hub, call, planText, target, base, n, compiled })
   const planSha = planBlobSha(planText)
   const keyFor = (suffix) => `${target}:${planSha}:${suffix}`
 
-  const name = kataProjectFor(target)
+  const name = targetSlug(target)
   const project = await call('createProject', () => hub.createProject(name))
   // Task issues are keyed by plan sha, so a byte-identical plan relaunched
   // while its twin runs would replay and patch that run's task issues (#1308).

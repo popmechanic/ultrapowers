@@ -2,7 +2,7 @@
 /**
  * fleet/janitor.mjs — reap finished runs; write the deaths; report stale ones.
  *
- *   node fleet/janitor.mjs [--age 1h] [--dry-run] [--json] [--help]
+ *   node fleet/janitor.mjs [--age 1h] [--target <owner>/<repo>] [--dry-run] [--json] [--help]
  *
  * The janitor is the expiry. One `ls 'fleet-r*' --json` through the lobby gives
  * the fleet, and every row carries its own assignment comment, so `run=` and
@@ -20,7 +20,7 @@
  * laptop's argv carries the literal `$KATA_AUTH_TOKEN` and never a token. Two
  * reads answer a row: the projects listing, once per pass and only when a row
  * needs it — `GET /api/v1/projects?limit=1000`, matched on `name` against the
- * target's one project `<owner>-<repo>` (`kataProjectFor`), because kata
+ * target's one project `<owner>-<repo>` (`targetSlug`), because kata
  * addresses a project by integer `id` and a name in the path is a 400 — and
  * that project's issues, `GET /api/v1/projects/<id>/issues?limit=1000`, which
  * holds every run of that target and in which the run issue is the one whose
@@ -89,8 +89,8 @@
  * with `state` `failed`, both `gh api -X PUT` on the contents API against the
  * run's LIVE branch in the evidence repository, when the branch has a page (a
  * hub-read row's page is read then, and only then); once the page is written
- * the run is sealed (`fleet/close-out.mjs`'s `sealRun`: the tag cut at the
- * branch head through the refs API, then the live branch deleted); and, when
+ * the run is sealed (`sealRun`: the tag cut at the branch head through the
+ * refs API, then the live branch deleted); and, when
  * the hub answered the row, one metadata patch
  * of the run issue — `work.state` `failed`, `work.attention` `needs-human`,
  * `work.attention_msg` the death's own line — under the idempotency key
@@ -105,44 +105,42 @@
  * cannot be read at all — a dark VM, an ssh that times out, an empty answer —
  * is left exactly as it was.
  *
- * The reap is the only removal. The janitor merges nothing — an approved run
- * merges its own pull request from the sandbox — and on the target it deletes
- * no branch and no tag, so every action it records is an `rm` and its writes
- * are the death's and the close-out's, each ending in a seal of the evidence
- * repository's live branch; the rest of its `gh` surface is reads: the contents API for a
- * fallback page, and #724's two —
+ * The reap is the only removal of a VM. The janitor merges nothing — an
+ * approved run merges its own pull request from the sandbox — and its writes
+ * are the death's and the close-out's (both `failRun`: the page put back
+ * failed on the live branch, then the seal), the reap's `rm`, and the one
+ * deletion it makes on a target: an integration branch nothing merged. Two
+ * reads find those (#724) —
  *
  *   gh api repos/<target>/git/matching-refs/heads/ultra/integration-run-
  *   gh api repos/<target>/pulls?state=all&head=<owner>:ultra/integration-run-<N>
  *
- * — one prefix match per distinct target the rows name, and one pull-request
- * listing per head it answers. A branch whose highest-numbered pull request is
- * closed and not merged is reported, last, beside the VMs this pass reaped:
- * nothing merged it and nothing will, so it is the sweep's to delete
- * (`node fleet/retire.mjs --target <t>`) and never the janitor's. The targets
- * come from the rows' own `target=`, because that is the only place the janitor
- * learns a target from — a branch whose every VM is already gone is the sweep's
- * to find.
+ * — one prefix match per distinct target the rows name (and the one
+ * `--target` names, for a target no VM does), and one pull-request listing
+ * per head it answers. A branch whose highest-numbered pull request is closed
+ * and not merged is nothing's to merge, so the janitor deletes it —
+ * `gh api -X DELETE repos/<target>/git/refs/heads/ultra/integration-run-<N>` —
+ * and reports it last, beside the VMs this pass reaped. An open pull request,
+ * a merged one (delete-on-merge's to take) or none keeps the branch.
  *
- * The one write beyond the death's is the close-out (#1314). Beside that
- * report, each target the rows named is read once more for orphans, in the
- * evidence repository —
+ * The close-out (#1314). Each target the rows named is read once more for
+ * orphans, in the evidence repository —
  *
  *   gh api repos/<evidence>/git/matching-refs/heads/live/<slug>/run-
  *
  * — and every run there that no row of this pass carries has its branch page
  * read (`?ref=live/<slug>/run-<N>`). A page still saying `booting`,
  * `running` or `publishing`, last updated longer ago than `--age`, is a run
- * whose VM is gone and which will never record its own end, so the janitor
- * hands it to `fleet/close-out.mjs`'s `closeOut`: the page put back on the
- * live branch with `state` `failed`, then the run sealed.
- * A finished page, or a live one younger than `--age`, is left alone.
+ * whose VM is gone and which will never record its own end: once the fleet is
+ * listed again and still carries no VM for it, the janitor writes its end —
+ * the page put back on the live branch with `state` `failed`, then the run
+ * sealed. A finished page, or a live one younger than `--age`, is left alone.
  *
  * Nothing schedules it: `fleet/launch.mjs` runs it before every launch, handing
  * it the hub client the launch already built, and it is run by hand after the
  * laptop has been asleep.
  *
- * `--dry-run` issues every read and no write: no `rm`, no PUT, no close. There
+ * `--dry-run` issues every read and no write: no `rm`, no PUT, no DELETE. There
  * is no attachment sweep: attachments carry `--for` and lapse by themselves.
  */
 
@@ -150,8 +148,7 @@ import { Buffer } from 'node:buffer'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { closeOut, sealRun } from './close-out.mjs'
-import { KataError, runIssueOf } from './kata-client.mjs'
+import { projectNamed, runIssueOf } from './kata-client.mjs'
 import {
   DEFAULT_CONFIG_PATH,
   Refusal,
@@ -162,11 +159,11 @@ import {
   isRunNumber,
   isSafeTarget,
   isVmName,
-  kataProjectFor,
   listVms,
   liveBranchFor,
   lobby,
   LobbyError,
+  output,
   parseArgs,
   parseComment,
   parseDuration,
@@ -177,10 +174,11 @@ import {
   runOfBranch,
   runOfEvidenceRef,
   runOfVmName,
-  runTagFor
+  runTagFor,
+  targetSlug
 } from './lobby.mjs'
 
-export const USAGE = 'usage: node fleet/janitor.mjs [--age 1h] [--dry-run] [--json] [--help]'
+export const USAGE = 'usage: node fleet/janitor.mjs [--age 1h] [--target <owner>/<repo>] [--dry-run] [--json] [--help]'
 
 export const usage = () => USAGE
 
@@ -252,42 +250,7 @@ async function openHub ({ exec, kata, kataEnvPath }) {
   if (kata !== undefined) return { client: kata, host: kata?.host ?? null, dark: null }
   const hub = await hubFromEnv({ exec, actor: HUB_ACTOR, kataEnvPath })
   if (hub.client === null) return { client: null, host: null, dark: hub.dark }
-  return {
-    client: { ...hub.client, patchMetadata: metadataPatch(hub.transport) },
-    host: hub.host,
-    dark: null
-  }
-}
-
-/** One issue's metadata, as kata's API addresses it. */
-const metadataPath = (projectId, uid) => `/api/v1/projects/${projectId}/issues/${uid}/metadata`
-
-/**
- * The metadata patch the janitor writes, beside the client's other methods and
- * over the same ssh-curl seam: one `POST …/issues/<uid>/metadata`, body
- * `{actor, patch}`, and the `Idempotency-Key` the death rides — no `If-Match`,
- * which is what separates it from the client's own four-argument
- * `patchMetadata` (the engine's, whose revision is a claim about what it read).
- * The janitor reads the hub once a pass and a death is the same three keys
- * however often it is driven, so a revision it held would only turn the second
- * pass into a 412. `revision` and `idempotencyKey` are the fourth and fifth
- * arguments precisely so a pass handed the LAUNCHER's plain kata client — which
- * is this method's four-argument namesake — still writes the same three keys,
- * under its `If-Match` instead of under the key.
- */
-const metadataPatch = (transport) => async (projectId, uid, patch, _revision, idempotencyKey) => {
-  const path = metadataPath(projectId, uid)
-  const res = await transport.request({
-    method: 'POST',
-    path,
-    headers: idempotencyKey === undefined ? {} : { 'Idempotency-Key': String(idempotencyKey) },
-    body: { actor: HUB_ACTOR, patch }
-  })
-  const status = res?.status
-  if (!(status >= 200 && status < 300)) {
-    throw new KataError({ method: 'POST', path, status, body: res?.body })
-  }
-  return res?.json ?? null
+  return { client: hub.client, host: hub.host, dark: null }
 }
 
 /** The first line of what went wrong, for a report line and nothing longer. */
@@ -343,22 +306,16 @@ const readingOfIssue = (project, issue) => {
  * answer means "not from the hub": the caller reads the evidence for that row.
  */
 function hubReader (hub) {
-  let byName = null
+  let listing = null
   const darken = (error) => {
     if (hub.dark === null) hub.dark = reasonOf(error)
   }
   return async (target, run, plan) => {
     if (hub.client === null || hub.dark !== null) return null
     try {
-      if (byName === null) {
-        const json = await hub.client.listProjects()
-        byName = new Map()
-        for (const p of Array.isArray(json?.projects) ? json.projects : []) {
-          if (typeof p?.name === 'string' && Number.isInteger(p?.id)) byName.set(p.name, p)
-        }
-      }
-      const project = byName.get(kataProjectFor(target))
-      if (project === undefined) return null
+      if (listing === null) listing = await hub.client.listProjects()
+      const project = projectNamed(listing, targetSlug(target))
+      if (project === null) return null
       const json = await hub.client.listIssues(project.id)
       const issues = Array.isArray(json?.issues) ? json.issues : []
       const issue = runIssueOf(issues, run, plan ?? null)
@@ -380,6 +337,17 @@ function hubReader (hub) {
 export const ghApi = async (exec, apiPath) => {
   const res = await exec('gh', ['api', apiPath])
   return res.code === 0 ? parseJson(res.stdout) : null
+}
+
+/**
+ * A list read that follows every page: `--paginate --slurp` answers an array
+ * of pages, flattened here into one array. A one-page answer (or a stub's bare
+ * array) flattens to itself; anything that is not an array is null, as above.
+ */
+const ghList = async (exec, apiPath) => {
+  const res = await exec('gh', ['api', '--paginate', '--slurp', apiPath])
+  const payload = res.code === 0 ? parseJson(res.stdout) : null
+  return Array.isArray(payload) ? payload.flat() : null
 }
 
 /**
@@ -547,16 +515,86 @@ const unitSummary = (unit) => UNIT_PROPERTIES
 const deathError = (run, unit, state, said) =>
   `janitor: ${unitOf(run)} ${unitSummary(unit)} while the ${said} said ${state}`
 
+// ── A run's end, written for it ─────────────────────────────────────────────
+
+/** The `error` a close-out writes: a run no VM carries, whose page said live. */
+export const CLOSE_OUT_ERROR = 'reaped before the run recorded its end'
+
 /**
- * The death, written: the journal first — so the page's transition is the
- * branch's last commit, as the sandbox's own transitions are — then the page,
- * which is the page as read with three cells changed, then, for a row the hub
- * answered, the run issue's three keys. A hub-read row's page is fetched here,
- * off the evidence BRANCH, since the death is written where the sandbox writes;
- * a branch with no page (a boot that never committed) gets no PUT and the
- * marking alone. Nothing retries a failed PUT: a 409/422 means the sandbox
- * pushed between the read and the write, and the next pass reads the fresh
- * record. A patch the hub refuses is reported on the entry, never thrown.
+ * Seal run `run` of `target` in `evidence`: the tag `<slug>/run-<N>` cut at
+ * the live branch's head through GitHub's refs API, read back to verify it
+ * names that sha, and only then the live branch deleted. An answer that the
+ * reference already exists is the tag being there, and the read-back decides.
+ * Any refusal keeps the branch and says so: `{ tagged, deleted, reason? }`.
+ */
+export async function sealRun ({ exec = defaultExec, evidence, target, run }) {
+  const branch = liveBranchFor(target, run)
+  const tag = runTagFor(target, run)
+  const saidBy = (res) => output(res).split('\n')[0]
+  const head = await exec('gh', ['api', `repos/${evidence}/git/ref/heads/${branch}`])
+  const sha = head.code === 0 ? parseJson(head.stdout)?.object?.sha : null
+  if (typeof sha !== 'string') {
+    return { tagged: false, deleted: false, reason: `no head for ${branch}: ${saidBy(head)}` }
+  }
+  const made = await exec('gh', [
+    'api', '-X', 'POST', `repos/${evidence}/git/refs`,
+    '-f', `ref=refs/tags/${tag}`,
+    '-f', `sha=${sha}`
+  ])
+  if (made.code !== 0 && !/already exists/i.test(saidBy(made))) {
+    return { tagged: false, deleted: false, reason: `tag ${tag} refused: ${saidBy(made)}` }
+  }
+  const check = await exec('gh', ['api', `repos/${evidence}/git/ref/tags/${tag}`])
+  const tagged = check.code === 0 && parseJson(check.stdout)?.object?.sha === sha
+  if (!tagged) {
+    return { tagged: false, deleted: false, reason: `tag ${tag} does not name ${sha}; ${branch} kept` }
+  }
+  const gone = await exec('gh', ['api', '-X', 'DELETE', `repos/${evidence}/git/refs/heads/${branch}`])
+  if (gone.code !== 0) {
+    return { tagged: true, deleted: false, reason: `delete of ${branch} refused: ${saidBy(gone)}` }
+  }
+  return { tagged: true, deleted: true }
+}
+
+/**
+ * Write a run's end for it — the one write the death and the close-out share.
+ * `found` is the page as read off the live branch (`readContentsAt`): it is put
+ * back with `state` `failed`, `updatedAt` `at` and `error`, every other cell
+ * kept, then the run is sealed. A `journal`, when given, lands first as
+ * `janitor-journal.txt`, so the page's transition is the branch's last commit
+ * as the sandbox's own transitions are. Nothing retries a refused PUT: a
+ * 409/422 means the sandbox pushed between the read and the write, and the
+ * next pass reads the fresh record. Answers `{ written, sealed? , error? }`.
+ */
+async function failRun ({ exec, evidence, target, run, found, at, error, why, journal = null }) {
+  const branch = liveBranchFor(target, run)
+  if (journal !== null) {
+    await ghPut(exec, contentsPath(evidence, target, run, 'janitor-journal.txt'), {
+      branch,
+      message: `janitor: run ${run} journal at death`,
+      content: journal
+    })
+  }
+  const written = { ...found.page, state: 'failed', updatedAt: at, error }
+  const res = await ghPut(exec, contentsPath(evidence, target, run, 'status.json'), {
+    branch,
+    message: `janitor: run ${run} failed — ${why}`,
+    content: `${JSON.stringify(written, null, 2)}\n`,
+    sha: found.sha
+  })
+  if (res.code !== 0) return { written: false, error: output(res) }
+  // The page now says failed: the run is sealed — tagged at the page just
+  // written, its live branch deleted once the tag is verified there.
+  return { written: true, sealed: await sealRun({ exec, evidence, target, run }) }
+}
+
+/**
+ * The death, written: the unit's journal and the page (`failRun`), then, for
+ * a row the hub answered, the run issue's three keys. A hub-read row's page is
+ * fetched here, off the evidence BRANCH, since the death is written where the
+ * sandbox writes; a branch with no page (a boot that never committed) gets no
+ * PUT and the marking alone. A patch the hub refuses is reported on the entry,
+ * never thrown.
  */
 async function writeDeath ({ exec, dryRun, row, run, target, evidence, reading, unit, at, hub }) {
   const fromHub = reading.source === 'hub'
@@ -566,37 +604,30 @@ async function writeDeath ({ exec, dryRun, row, run, target, evidence, reading, 
   // `--dry-run` reads — the unit read above was one — and writes nothing.
   if (dryRun) return death
 
-  const branch = liveBranchFor(target, run)
   // No evidence repository: no page to read, and the hub's marking alone.
   const found = evidence === null
     ? null
-    : fromHub ? await readContentsAt(exec, evidence, target, run, branch) : reading
-  const page = found?.page ?? null
-  if (page !== null) {
+    : fromHub ? await readContentsAt(exec, evidence, target, run, liveBranchFor(target, run)) : reading
+  if ((found?.page ?? null) !== null) {
     const journal = await onVm(exec, row.sshDest, journalCommand(run))
-    const log = journal.code === 0
-      ? String(journal.stdout ?? '')
-      : `${journal.stdout ?? ''}${journal.stderr ?? ''}`
-    await ghPut(exec, contentsPath(evidence, target, run, 'janitor-journal.txt'), {
-      branch,
-      message: `janitor: run ${run} journal at death`,
-      content: log
+    const out = await failRun({
+      exec,
+      evidence,
+      target,
+      run,
+      found,
+      at,
+      error: deathError(run, unit, reading.state, said),
+      why: unitSummary(unit),
+      journal: journal.code === 0
+        ? String(journal.stdout ?? '')
+        : `${journal.stdout ?? ''}${journal.stderr ?? ''}`
     })
-
-    const written = { ...page, state: 'failed', updatedAt: at, error: deathError(run, unit, reading.state, said) }
-    const res = await ghPut(exec, contentsPath(evidence, target, run, 'status.json'), {
-      branch,
-      message: `janitor: run ${run} failed — ${unitSummary(unit)}`,
-      content: `${JSON.stringify(written, null, 2)}\n`,
-      sha: found.sha
-    })
-    if (res.code === 0) {
+    if (out.written) {
       death.applied = true
-      // The page now says failed: the run is sealed — tagged at the page just
-      // written, its live branch deleted once the tag is verified there.
-      death.sealed = await sealRun({ exec, evidence, target, run })
+      death.sealed = out.sealed
     } else {
-      death.error = `${res.stdout ?? ''}${res.stderr ?? ''}`.trim()
+      death.error = out.error
     }
   }
 
@@ -604,7 +635,10 @@ async function writeDeath ({ exec, dryRun, row, run, target, evidence, reading, 
     // The run issue is MARKED, not closed: a close carries a verified outcome
     // and this one is nobody's yet, so the record reads `failed` and raises a
     // hand — the same three keys, spelled the same flat way, that the sandbox
-    // writes at a park.
+    // writes at a park. No `If-Match`: the janitor reads the hub once a pass
+    // and a death is the same three keys however often it is driven, so a
+    // revision it held would only turn the second pass into a 412; the key
+    // makes a re-driven death the same patch.
     try {
       await hub.client.patchMetadata(
         reading.project.id,
@@ -614,8 +648,8 @@ async function writeDeath ({ exec, dryRun, row, run, target, evidence, reading, 
           [ATTENTION_KEY]: DEATH_ATTENTION,
           [ATTENTION_MSG_KEY]: deathError(run, unit, reading.state, said)
         },
-        reading.issue.revision,
-        deathKeyFor(run)
+        undefined,
+        { idempotencyKey: deathKeyFor(run) }
       )
       death.hubMarked = true
     } catch (error) {
@@ -625,7 +659,7 @@ async function writeDeath ({ exec, dryRun, row, run, target, evidence, reading, 
   return death
 }
 
-// ── #724 Task 2: the branches beside them — reported, never deleted ─────────
+// ── #724: the integration branches nothing merged — deleted ────────────────
 
 /**
  * Every `ultra/integration-run-<N>` head on a target, in one read. The path's
@@ -633,9 +667,7 @@ async function writeDeath ({ exec, dryRun, row, run, target, evidence, reading, 
  * branch name the rest of the fleet builds. `git/matching-refs/heads/<prefix>`
  * is a prefix match and answers an array of
  * `{ ref: 'refs/heads/ultra/integration-run-<N>', object: { sha } }` — `[]`
- * when the target has none. It is paged at GitHub's default of thirty, and no
- * `per_page` rides the path: this is a report whose remedy is the sweep, not a
- * ledger.
+ * when the target has none.
  */
 const matchingRefsPath = (target) =>
   `repos/${target}/git/matching-refs/heads/${integrationBranchFor('')}`
@@ -654,7 +686,7 @@ const evidenceRefsPath = (evidence, target) =>
  * rather than guessed at.
  */
 async function integrationRunsOf (exec, target) {
-  const payload = await ghApi(exec, matchingRefsPath(target))
+  const payload = await ghList(exec, matchingRefsPath(target))
   if (!Array.isArray(payload)) return []
   const runs = []
   for (const entry of payload) {
@@ -677,9 +709,9 @@ async function integrationRunsOf (exec, target) {
  */
 export async function decidingPull (exec, target, run) {
   const owner = String(target).split('/')[0]
-  const payload = await ghApi(
+  const payload = await ghList(
     exec,
-    `repos/${target}/pulls?state=all&head=${owner}:${integrationBranchFor(run)}`
+    `repos/${target}/pulls?state=all&per_page=100&head=${owner}:${integrationBranchFor(run)}`
   )
   const rows = Array.isArray(payload) ? payload : []
   let decider = null
@@ -692,7 +724,7 @@ export async function decidingPull (exec, target, run) {
 }
 
 /**
- * The rule, shared with the sweep through `decidingPull`: the highest-numbered pull request decides;
+ * The rule: the highest-numbered pull request decides;
  * `state` `"open"` keeps the branch; `state` `"closed"` with `merged_at` `null`
  * retires it; `merged_at` a string keeps it (delete-on-merge's own); no rows
  * keeps it. The list endpoint's rows carry `merged_at` and no `merged` boolean,
@@ -702,10 +734,11 @@ const isClosedUnmerged = (pull) =>
   pull !== null && pull.state === 'closed' && pull.mergedAt === null
 
 /**
- * The branches to report, ascending by target then run. One `matching-refs`
+ * The branches to delete, ascending by target then run. One `matching-refs`
  * read per distinct target — however many of its runs are in the fleet — and
  * one `pulls?` read per head that read answered. Nothing here mutates: the
- * remedy is the sweep, and `--dry-run` issues exactly these same reads.
+ * DELETE is the pass's, after the reap, and `--dry-run` issues exactly these
+ * same reads.
  */
 async function closedUnmergedBranches (exec, targets) {
   const branches = []
@@ -713,7 +746,7 @@ async function closedUnmergedBranches (exec, targets) {
     for (const run of await integrationRunsOf(exec, target)) {
       const pull = await decidingPull(exec, target, run)
       if (!isClosedUnmerged(pull)) continue
-      branches.push({ target, run, branch: integrationBranchFor(run), pr: pull.number })
+      branches.push({ target, run, branch: integrationBranchFor(run), pr: pull.number, deleted: false })
     }
   }
   return branches
@@ -724,14 +757,16 @@ async function closedUnmergedBranches (exec, targets) {
 /**
  * One `matching-refs` read per target for its live branches in the evidence
  * repository; for every run no row of this pass carries on that target, its
- * branch page. A live page older than `ageMs` is closed out — `closed` false
- * under `--dry-run`. No evidence repository, no reads and no close-outs.
+ * branch page. A live page older than `ageMs`, on a run the fleet still
+ * carries no VM for when listed again, is written failed and sealed
+ * (`failRun`) — `closed` false under `--dry-run`. No evidence repository, no
+ * reads and no close-outs.
  */
 async function closeOutOrphans ({ exec, evidence, targets, carried, nowMs, ageMs, now, dryRun }) {
   const closed = []
   if (evidence === null) return closed
   for (const target of [...targets].sort()) {
-    const payload = await ghApi(exec, evidenceRefsPath(evidence, target))
+    const payload = await ghList(exec, evidenceRefsPath(evidence, target))
     if (!Array.isArray(payload)) continue
     const orphans = []
     for (const entry of payload) {
@@ -747,11 +782,21 @@ async function closeOutOrphans ({ exec, evidence, targets, carried, nowMs, ageMs
       if (!LIVE_STATES.includes(state)) continue
       const updated = Date.parse(String(page.updatedAt))
       if (!Number.isFinite(updated) || nowMs - updated < ageMs) continue
-      const out = await closeOut({ exec, target, run, evidence, now, dryRun })
-      // A VM that came up between the listing and the close-out is not an
-      // orphan: closeOut said so, and there is nothing to report.
-      if (out.state === null) continue
-      closed.push({ target, run, state: out.state, closed: out.closed })
+      // A VM that came up between the pass's listing and now is not an
+      // orphan, and there is nothing to report.
+      const vms = await listVms(exec)
+      if (vms.some((row) => {
+        const fields = parseComment(row.comment)
+        return fields.run === String(run) && fields.target === target
+      })) continue
+      if (dryRun) {
+        closed.push({ target, run, state, closed: false })
+        continue
+      }
+      const out = await failRun({
+        exec, evidence, target, run, found, at: now().toISOString(), error: CLOSE_OUT_ERROR, why: CLOSE_OUT_ERROR
+      })
+      closed.push({ target, run, state, closed: out.written })
     }
   }
   return closed
@@ -774,6 +819,10 @@ export async function janitor ({
   const age = opts.age === undefined || opts.age === true ? DEFAULT_AGE : String(opts.age)
   const ageMs = parseDuration(age)
   if (ageMs === null) throw new Refusal(`janitor: --age must look like 1h or 30m, got ${JSON.stringify(age)}`)
+  // `--target` adds a target to the branch sweep that no VM of this pass names.
+  if (opts.target !== undefined && !isSafeTarget(opts.target)) {
+    throw new Refusal(`janitor: --target must be <owner>/<repo>, got ${JSON.stringify(opts.target)}`)
+  }
   // The janitor sizes nothing, so of `fleet.json` it reads the one key
   // `evidence` — and only when it was handed no repository; `kata-hub.env` is
   // the only other file under `~/.ultrapowers/` it opens. The run's state
@@ -886,13 +935,14 @@ export async function janitor ({
     }
   }
 
-  // ── #724 Task 2: the last of the reads — the branches nothing merged. ─────
-  //    They come after the row loop, so every read order above is unchanged.
-  const branches = await closedUnmergedBranches(exec, targets)
+  // ── #724: the last of the reads — the branches nothing merged. They come
+  //    after the row loop, so every read order above is unchanged.
+  const sweep = opts.target === undefined ? targets : new Set([...targets, opts.target])
+  const branches = await closedUnmergedBranches(exec, sweep)
   // ── #1314: beside it, the orphans — the runs no VM carries, still live. ───
   const closedOut = await closeOutOrphans({ exec, evidence: evidenceRepo, targets, carried, nowMs, ageMs, now, dryRun })
 
-  // ── Then the one mutation there is: the reap, through the lobby. ──────────
+  // ── Then the reap, through the lobby, and the branches nothing merged. ───
   if (!dryRun) {
     for (const action of actions) {
       try {
@@ -903,6 +953,11 @@ export async function janitor ({
         action.applied = false
         action.error = String(error.message ?? error)
       }
+    }
+    for (const branch of branches) {
+      const res = await exec('gh', ['api', '-X', 'DELETE', `repos/${branch.target}/git/refs/heads/${branch.branch}`])
+      branch.deleted = res.code === 0
+      if (!branch.deleted) branch.error = output(res)
     }
   }
 
@@ -932,13 +987,11 @@ const renderDeath = (d, dryRun) =>
   `${d.state} → failed: ${unitSummary(d.unit)} — ${liveBranchFor(d.target, d.run)}` +
   renderDeathHub(d, dryRun)
 
-/**
- * #724 Task 2: a branch nothing merged, and where the operator goes for it.
- * The janitor deletes nothing here, so the line ends in the sweep's command.
- */
-const renderBranch = (b) =>
-  `branch ${b.branch}  target=${b.target} PR #${b.pr} closed, not merged — ` +
-  `node fleet/retire.mjs --target ${b.target}`
+/** #724: a branch nothing merged, deleted (or, dry, to be). */
+const renderBranch = (b, dryRun) =>
+  `${dryRun ? 'would delete' : b.deleted ? 'deleted' : 'kept'} branch ${b.branch}  ` +
+  `target=${b.target} PR #${b.pr} closed, not merged` +
+  (b.error === undefined ? '' : ` (delete failed: ${b.error})`)
 
 /** #1314: a run no VM carried, whose page said live, written (or not) as failed. */
 const renderClosedOut = (c, dryRun) =>
@@ -962,9 +1015,9 @@ const renderJanitor = (result) => {
     ...(result.stale ?? []).map((s) => `stale ${s.vm}  run=${s.run} state=${s.state ?? 'none'} last update ${s.lastUpdate} (${s.from}) — look before you rm`),
     ...(result.pending ?? []).map((p) => `pending ${p.vm}  run=${p.run} state=${p.state ?? 'none'} reapable at ${p.reapableAt}`),
     ...(result.unknown ?? []).map((u) => `unknown ${u.vm}  no readable assignment — look before you rm`),
-    // Last, after every rm, stale and unknown line: the reap is the pass's
-    // work, and the branch report is what the operator does next.
-    ...(result.branches ?? []).map(renderBranch),
+    // Last, after every rm, stale and unknown line: the target's branches,
+    // then the evidence repository's close-outs.
+    ...(result.branches ?? []).map((b) => renderBranch(b, result.dryRun)),
     ...(result.closedOut ?? []).map((c) => renderClosedOut(c, result.dryRun))
   ]
   return lines.length === 0 ? 'nothing to do' : lines.join('\n')
