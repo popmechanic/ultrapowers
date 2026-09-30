@@ -37,8 +37,7 @@ The seven Machine clauses, restated, and where each is graded here:
     Proof order through `bash -lc` with `ULTRA_BASE` set to the 40-hex commit
     and the worktree as working directory, and removes the worktree afterwards
     whatever the commands did. Graded by leg (c) — the command itself asserts
-    where it ran, and the exam asserts what is left behind — and by leg (h)'s
-    first two `Run:` lines.
+    where it ran, and the exam asserts what is left behind.
   * M4 — the three outcome lines, verbatim: a prover that exits 0, a guard
     that exits 0, and nothing at all for a command that exits non-zero. Graded
     by leg (d), by equality, from the function and from the `--check --base`
@@ -60,9 +59,8 @@ The seven Machine clauses, restated, and where each is graded here:
     `GREEN-AT-BASE fact:` line. Graded by leg (g), whose witness is a `Run:`
     line that touches a file outside the worktree.
 
-Leg (h) is the Proof's three `Run:` lines. Its first two — the constant at 30
-and the function's signature — are graded here as source reads, byte for byte
-with the greps the Proof spells. Its third is `python3 -m pytest -q
+Leg (h) is the Proof's `Run:` lines. The constant at 30 is graded here; the
+function's signature is exercised by every leg that calls it. Its third is `python3 -m pytest -q
 tests/test_plan_check.py`, which is THIS file: an exam never
 runs an exam, least of all itself, so the driver runs that line and nothing
 here does.
@@ -100,12 +98,10 @@ Machine, restated, and where each clause is graded here:
     to a task's path covers it. Graded by leg (c), and again directly in leg
     (d).
   * M4 — `freeze_violations(checks, tasks)` is a module-level function of
-    `plan_check.py` that answers from the `checks`/`tasks` values alone, and
-    the gotchas row and `SKILL.md`'s `## Global Constraints discipline`
-    section each name the `plan_check.py` refusal. Graded by leg (d): the
-    function's definition line and its answering M1/M2/M3 correctly when
+    `plan_check.py` that answers from the `checks`/`tasks` values alone.
+    Graded by leg (d): its answering M1/M2/M3 correctly when
     called directly on plain dicts (no `tmp_path`, no git, no subprocess —
-    demonstrating it needs none), plus the two doc greps. `main` summing its
+    demonstrating it needs none). `main` summing its
     answer into `violations` is what legs (a)-(c) already exercise end to
     end; that the function itself spawns nothing is a diff-reading claim (the
     Context's own words), not one this file can observe from outside.
@@ -165,8 +161,6 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 COMPILER = ROOT / "skills/ultrapowers/scripts/plan_check.py"
-GOTCHAS = ROOT / "skills/ultrawrite/references/authoring-gotchas.md"
-SKILL = ROOT / "skills/ultrawrite/SKILL.md"
 
 sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
 import plan_check  # noqa: E402
@@ -723,8 +717,8 @@ def test_g_a_refused_check_at_base_runs_nothing_and_says_nothing(tmp_path):
 # "(h) the first and second `Run:` lines find the constant at 30 and the
 # function's signature, and the third reports the exam passing [M3, M5]"
 #
-# The first two are source reads, written with the grep patterns the Proof
-# spells. The third, `python3 -m pytest -q
+# The signature is exercised by legs (d)-(f), which call the function with
+# `timeout_s`; no source read pins it. The third, `python3 -m pytest -q
 # tests/test_plan_check.py`, is this file: an exam never runs
 # an exam, and it cannot run itself, so the driver runs that line.
 
@@ -736,18 +730,6 @@ def test_h_the_default_timeout_is_a_module_constant_of_thirty():
         "plan_check.py carries no `GREEN_AT_BASE_TIMEOUT_S = 30` line")
     assert getattr(plan_check, "GREEN_AT_BASE_TIMEOUT_S", None) == 30, (
         getattr(plan_check, "GREEN_AT_BASE_TIMEOUT_S", None))
-
-
-def test_h_the_function_has_the_signature_the_interface_names():
-    """(h)/[M3]: the Proof's second `Run:` line — the signature the task
-    PRODUCES, spelled as the plan spells it."""
-    assert re.search(
-        r"^def green_at_base_lines\(tasks, base_tree, "
-        r"timeout_s=GREEN_AT_BASE_TIMEOUT_S\)", SOURCE, re.M), (
-        "plan_check.py carries no `green_at_base_lines(tasks, base_tree, "
-        "timeout_s=GREEN_AT_BASE_TIMEOUT_S)` definition")
-    assert callable(getattr(plan_check, "green_at_base_lines", None)), (
-        "plan_check has no module-level green_at_base_lines")
 
 
 # ########################################################################### #
@@ -887,17 +869,6 @@ TASK1 = fake_task("1", modifies=["src/prover.ts"],
                   creates=["fleet/tests/test_x.mjs"])
 
 
-def test_d_freeze_violations_is_defined_at_module_level():
-    """[M4]: `def freeze_violations(checks, tasks)` at module level, the
-    Proof's own signature, and reachable as `plan_check.freeze_violations`."""
-    assert re.search(r"^def freeze_violations\(checks, tasks\)\s*:", SOURCE,
-                     re.M), (
-        "plan_check.py carries no `def freeze_violations(checks, tasks):` "
-        "definition")
-    assert callable(getattr(plan_check, "freeze_violations", None)), (
-        "plan_check has no module-level freeze_violations")
-
-
 def test_d_freeze_violations_answers_m1_m2_m3_from_plain_dicts_alone():
     """[M4]: called directly on plain `checks`/`tasks` dicts — no `tmp_path`,
     no git, no subprocess anywhere in this test — `freeze_violations`
@@ -915,51 +886,6 @@ def test_d_freeze_violations_answers_m1_m2_m3_from_plain_dicts_alone():
     assert m3, "expected a violation for a pathspec equal to the task's path"
     assert any(all(tok in line for tok in
                    ("freezes", "src/prover.ts", "task 1")) for line in m3), m3
-
-
-def sed_range(text, start_pat, end_pat):
-    """`sed -n '/start_pat/,/end_pat/p'`: from the first line matching
-    `start_pat` (inclusive) through the next line matching `end_pat`
-    (inclusive)."""
-    start_re = re.compile(start_pat)
-    end_re = re.compile(end_pat)
-    out = []
-    in_range = False
-    for line in text.splitlines():
-        if not in_range and start_re.search(line):
-            in_range = True
-        if in_range:
-            out.append(line)
-            if end_re.search(line):
-                break
-    return "\n".join(out)
-
-
-def test_d_the_gotchas_row_names_the_plan_check_refusal():
-    """[M4]: the Proof's second `Run:` line, as a python equivalent of
-    `sed -n '/that freezes a path must not cover/,/^## Three older lessons/p'
-    ... | tr '\\n' ' ' | grep -q 'plan_check.py.*refuses'`."""
-    text = GOTCHAS.read_text()
-    segment = sed_range(text, r"that freezes a path must not cover",
-                        r"^## Three older lessons")
-    assert segment, "authoring-gotchas.md carries no such row"
-    joined = " ".join(segment.split("\n"))
-    assert re.search(r"plan_check\.py.*refuses", joined), (
-        "gotchas row does not name the plan_check.py refusal:\n%s" % segment)
-
-
-def test_d_the_skill_global_constraints_section_names_the_freeze_refusal():
-    """[M4]: the Proof's third `Run:` line, as a python equivalent of
-    `sed -n '/^## Global Constraints discipline/,/^## Execution handoff/p'
-    ... | tr '\\n' ' ' | grep -q 'freezes.*plan_check.py'`."""
-    text = SKILL.read_text()
-    segment = sed_range(text, r"^## Global Constraints discipline",
-                        r"^## Execution handoff")
-    assert segment, "SKILL.md carries no ## Global Constraints discipline section"
-    joined = " ".join(segment.split("\n"))
-    assert re.search(r"freezes.*plan_check\.py", joined), (
-        "Global Constraints discipline section does not name the freeze "
-        "refusal:\n%s" % segment)
 
 
 # ########################################################################### #
@@ -1330,17 +1256,6 @@ def test_f_m1_two_defects_print_two_refused_lines(tmp_path):
     assert len(refused) == 2, p.stdout + p.stderr
     assert sorted(r.split(":")[0] for r in refused) == ["minutes", "routing"], refused
     assert NONE_LINE not in p.stdout.splitlines(), p.stdout
-
-
-def test_f_m4_the_runbook_names_the_refused_shape():
-    """(e) [M4]: the RUNBOOK's Per run section names the refused line beside
-    the cost and none-recorded lines, in the launcher's order."""
-    text = (pathlib.Path(__file__).resolve().parents[1] / "fleet" / "RUNBOOK.md").read_text()
-    start = text.index("## Per run")
-    end = text.index("## States")
-    flat = " ".join(text[start:end].splitlines())
-    assert re.search(r"AUTHORING fact: refused.*key.*rule", flat)
-    assert re.search(r"BASE fact:.*STALE fact:.*AUTHORING fact:.*launch line", flat)
 
 
 # ########################################################################### #

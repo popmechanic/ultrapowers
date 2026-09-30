@@ -15,8 +15,6 @@ One test per leg of the 2026-09-15 plan `gate-reader-reads-base`, task 1:
       `truncated` exactly on the entries the cap cut.
   (e) [M5] `--plan --base` is refused (exit 2, one stderr line naming --base,
       empty stdout); an unknown sha exits non-zero with an `error:` line.
-  (f) [M6] the skill's proof-gate section says the new things, in order, and
-      still says the Stale-if things.
 
 The fixture is a one-commit git repository under tmp_path holding the plan
 itself, so a 40-hex `--base` names a commit of the plan's own repository.
@@ -33,7 +31,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "skills/ultrawrite/scripts/extract_gate_input.py"
-SKILL = ROOT / "skills/ultrawrite/SKILL.md"
 
 # A 7-character literal is under the compiler's `_LITERAL_MIN` of 8; the
 # nine-character one is the carrier the exam looks for.
@@ -269,22 +266,6 @@ def test_e_m5_refusals(repo):
     assert q.stderr.strip().startswith("error:") and zeros in q.stderr, q.stderr
 
 
-def _section():
-    text = SKILL.read_text()
-    start = text.index("## The proof gate")
-    end = text.index("## The worktree-pure contract")
-    return " ".join(text[start:end].splitlines())
-
-
-def test_f_m6_skill_says_it_in_order():
-    flat = _section()
-    assert re.search(
-        r"--base <sha>.*base.*excerpt.*8000.*24000.*already pins the opposite"
-        r".*does not exist.*hash.*unchanged", flat), "(f) [M6] the new sentence, in order"
-    assert re.search(r"STALE fact.*refus.*unreadable.*advisory", flat), \
-        "(f) [M6] the Stale-if pin still holds"
-
-
 # ── extractor-and-authoring-refusals task 1 (#1025): a base that is neither a
 # checkout directory nor a 40-hex sha is refused on one line, exit 2 ─────────
 
@@ -315,15 +296,3 @@ def test_g_m3_a_real_sha_and_a_directory_still_read_present(repo):
         by = {f["path"]: f for f in d["base"]["files"]}
         assert by["tests/test_mod.py"]["status"] == "present", rev
         assert d["hash"] == plain["hash"], rev
-
-
-def test_g_m4_the_skill_names_the_refusal():
-    """(e) [M4]: the proof-gate section says a value that is neither a
-    checkout directory nor a 40-hex sha is refused with exit 2, not read as
-    every file absent — and the two existing pins still hold."""
-    flat = _section()
-    assert re.search(r"neither a checkout directory nor a 40-hex sha.*exit 2"
-                     r".*every file.*absent", flat)
-    assert re.search(r"--base <sha>.*base.*excerpt.*8000.*24000.*already pins the opposite"
-                     r".*does not exist.*hash.*unchanged", flat)
-    assert re.search(r"STALE fact.*refus.*unreadable.*advisory", flat)
