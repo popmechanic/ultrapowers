@@ -1,14 +1,11 @@
 /**
  * fleet/lobby.mjs — the laptop's half of the fleet, in one place.
  *
- * There is no orchestrator and no control VM. A run is a number N; it lives on
- * the *target* repository as three branches — `ultra/plan-run-N`,
- * `ultra/integration-run-N`, `ultra/evidence-run-N` — and its VM is one
- * incarnation named `fleet-r<N>-<yymmddHHMM>-<4 hex>`, found again by the
- * pattern `fleet-r<N>-*`. Everything the laptop does is either a git command
- * against the target's clone or one exe.dev lobby verb issued as
- * `ssh exe.dev "<verb …>"`. There is no side repository: the run's durable
- * record is the target's own refs.
+ * There is no orchestrator and no control VM. A run is a number N per target;
+ * its VM is `fleet-r<N>-<yymmddHHMM>-<4 hex>`, found again by `fleet-r<N>-*`.
+ * Where its plan and record live (the operator's evidence repository; the
+ * target receives only `ultra/integration-run-N`) is `fleet/CONTRACT.md`
+ * section "The shape in one paragraph"; this file does not restate it.
  *
  * This module is what the three laptop CLIs (`launch`, `janitor`, `target`)
  * share: the exec seam, the config file, the name validators, the branch
@@ -103,29 +100,11 @@ export const githubIntegrationFor = (target) => `gh-${targetSlug(target)}`
 // ── The refs a run has on the target ────────────────────────────────────────
 
 /**
- * A run's three branches on the target repository, all under one `ultra/`
- * prefix. They are transient — the sandbox deletes the plan and evidence
- * branches at publish, and delete-on-merge drops the integration branch:
- *
- *   `ultra/plan-run-N`         the plan the launcher pushed before the VM booted
- *   `ultra/integration-run-N`  the work the run integrated
- *   `ultra/evidence-run-N`     what the run recorded about itself
+ * The one branch a run pushes to the target: the work it integrated. It is
+ * transient: delete-on-merge drops it, and `retire.mjs` sweeps the
+ * closed-unmerged ones.
  */
-export const planBranchFor = (run) => `ultra/plan-run-${run}`
 export const integrationBranchFor = (run) => `ultra/integration-run-${run}`
-export const evidenceBranchFor = (run) => `ultra/evidence-run-${run}`
-
-/**
- * A run's durable record is two tags, which outlive the branches:
- *
- *   `ultra/plan/run-N`      the plan commit
- *   `ultra/evidence/run-N`  the evidence head
- *
- * There is no integration tag — the integration work lands on the target's
- * default branch, so nothing needs to point at it afterwards.
- */
-export const planTagFor = (run) => `ultra/plan/run-${run}`
-export const evidenceTagFor = (run) => `ultra/evidence/run-${run}`
 
 /** The three branch shapes, in one regex — with or without a `refs/heads/` head. */
 const RUN_BRANCH = /^(?:refs\/heads\/)?ultra\/(?:plan|integration|evidence)-run-([1-9][0-9]*)$/

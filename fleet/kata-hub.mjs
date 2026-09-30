@@ -62,42 +62,41 @@ import {
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 
-export const USAGE = 'usage: node fleet/kata-hub.mjs [--dry-run] [--json]'
-export const usage = () => USAGE
+const USAGE = 'usage: node fleet/kata-hub.mjs [--dry-run] [--json]'
 
 /** The hub's VM name, and the integration that fronts it. */
-export const HUB_VM = 'kata-hub'
-export const HUB_INTEGRATION = 'kata'
+const HUB_VM = 'kata-hub'
+const HUB_INTEGRATION = 'kata'
 /** The second integration on the same target: no bearer, so a spoke's own
  *  `Authorization` rides through untouched for federation. */
-export const FED_INTEGRATION = 'kata-sync'
+const FED_INTEGRATION = 'kata-sync'
 /** The port the daemon binds and the one verb that pins it. */
-export const HUB_PORT = 8000
+const HUB_PORT = 8000
 /** The policy every fleet integration rides, this one included. */
-export const FLEET_POLICY = 'tag:fleet'
+const FLEET_POLICY = 'tag:fleet'
 /** Two locks against the janitor: no tag at all, and a comment that says why. */
-export const HUB_COMMENT = 'kata hub — persistent service, do not reap'
-export const INTEGRATION_COMMENT = 'kata issue daemon on kata-hub'
+const HUB_COMMENT = 'kata hub — persistent service, do not reap'
+const INTEGRATION_COMMENT = 'kata issue daemon on kata-hub'
 /** The federation transport's own comment — carries no bearer, so it says why. */
-export const FED_INTEGRATION_COMMENT = 'kata hub federation transport — passes Authorization through'
+const FED_INTEGRATION_COMMENT = 'kata hub federation transport — passes Authorization through'
 
 /** The laptop's copy of the hub's address and bearer. */
-export const ENV_FILE = ['.ultrapowers', 'kata-hub.env']
+const ENV_FILE = ['.ultrapowers', 'kata-hub.env']
 
 /** exe.dev's `--setup-script` cap is 10 KiB; this is the fleet's own budget. */
-export const HUB_SETUP_BUDGET_BYTES = 8192
+const HUB_SETUP_BUDGET_BYTES = 8192
 /** The quoted heredoc the unit's bytes ride in, and the line they replace. */
 const UNIT_TAG = 'KATA_UNIT_EOF'
 const UNIT_PLACEHOLDER = '__KATA_UNIT__'
 
 /** How long between polls, and how long in all, both overridable. */
-export const DEFAULT_POLL_SECONDS = 5
-export const DEFAULT_WAIT_SECONDS = 600
+const DEFAULT_POLL_SECONDS = 5
+const DEFAULT_WAIT_SECONDS = 600
 
 // ── The setup script ────────────────────────────────────────────────────────
 
 /** The two files this tool carries, as they sit beside this module. */
-export function readHubFiles () {
+function readHubFiles () {
   return {
     template: fs.readFileSync(path.join(HERE, 'kata-hub-setup.sh'), 'utf8'),
     unit: fs.readFileSync(path.join(HERE, 'kata.service'), 'utf8')
@@ -113,7 +112,7 @@ export function readHubFiles () {
  * because a two-byte overrun would otherwise surface at `new`, after the
  * operator has waited for a VM.
  */
-export function renderHubSetupScript ({ template, unit }) {
+function renderHubSetupScript ({ template, unit }) {
   const lines = String(template ?? '').split('\n')
   const at = lines.indexOf(UNIT_PLACEHOLDER)
   if (at === -1) {
@@ -134,24 +133,24 @@ export function renderHubSetupScript ({ template, unit }) {
 
 // ── The three verbs, as strings ─────────────────────────────────────────────
 
-export const newVerb = () =>
+const newVerb = () =>
   `new --name ${HUB_VM} --cpu 1 --memory 2GB --disk 20GB ` +
   `--comment '${HUB_COMMENT}' --setup-script /dev/stdin --json`
 
-export const sharePortVerb = () => `share port ${HUB_VM} ${HUB_PORT}`
+const sharePortVerb = () => `share port ${HUB_VM} ${HUB_PORT}`
 
-export const addVerb = (httpsUrl) =>
+const addVerb = (httpsUrl) =>
   `integrations add http-proxy --name ${HUB_INTEGRATION} --target ${httpsUrl} --peer ` +
   `--bearer - --comment '${INTEGRATION_COMMENT}' --policy '${FLEET_POLICY}'`
 
 /** The same creation on the attach-model lobby: exe.dev shipped the policy model
  *  on 2026-09-11 and rolled it back the same afternoon, so `--policy` may be an
  *  unknown flag; `--attach tag:fleet` says the same thing there (#924's rule). */
-export const addVerbAttach = (httpsUrl) =>
+const addVerbAttach = (httpsUrl) =>
   `integrations add http-proxy --name ${HUB_INTEGRATION} --target ${httpsUrl} --peer ` +
   `--bearer - --comment '${INTEGRATION_COMMENT}' --attach ${FLEET_POLICY}`
 
-export const editVerb = () => `integrations edit ${HUB_INTEGRATION} --bearer=-`
+const editVerb = () => `integrations edit ${HUB_INTEGRATION} --bearer=-`
 
 /**
  * The federation transport, same target, no `--bearer`: peer auth rides a
@@ -159,12 +158,12 @@ export const editVerb = () => `integrations edit ${HUB_INTEGRATION} --bearer=-`
  * `Authorization: Bearer <enrollment token>` is the only one in flight
  * (Shelley's counsel, 2026-09-18, `kata-federation-proxy-configuration`).
  */
-export const fedAddVerb = (httpsUrl) =>
+const fedAddVerb = (httpsUrl) =>
   `integrations add http-proxy --name ${FED_INTEGRATION} --target ${httpsUrl} --peer ` +
   `--comment '${FED_INTEGRATION_COMMENT}' --policy '${FLEET_POLICY}'`
 
 /** The attach-model twin of `fedAddVerb`, `addVerbAttach`'s own shape. */
-export const fedAddVerbAttach = (httpsUrl) =>
+const fedAddVerbAttach = (httpsUrl) =>
   `integrations add http-proxy --name ${FED_INTEGRATION} --target ${httpsUrl} --peer ` +
   `--comment '${FED_INTEGRATION_COMMENT}' --attach ${FLEET_POLICY}`
 
@@ -178,7 +177,7 @@ export const fedAddVerbAttach = (httpsUrl) =>
  * do without — so the raw payload is read here instead of widening a helper
  * three other CLIs share.
  */
-export async function readHubRow (exec) {
+async function readHubRow (exec) {
   const res = await lobby(exec, `ls ${HUB_VM} --json`)
   const payload = parseJson(res.stdout)
   const rows = Array.isArray(payload?.vms) ? payload.vms : []
@@ -204,14 +203,14 @@ const onVm = (exec, dest, command, options) => {
   return options === undefined ? exec('ssh', argv) : exec('ssh', argv, options)
 }
 
-export const DONE_FLAG = '/var/lib/kata/.setup-done'
+const DONE_FLAG = '/var/lib/kata/.setup-done'
 
-export const configCommand = () =>
+const configCommand = () =>
   'sudo -n tee /var/lib/kata/config.toml >/dev/null && ' +
   'sudo -n chown exedev:exedev /var/lib/kata/config.toml && ' +
   'sudo -n chmod 0644 /var/lib/kata/config.toml'
 
-export const envCommand = () =>
+const envCommand = () =>
   'sudo -n install -d -m 0755 /etc/kata && ' +
   'sudo -n tee /etc/kata/kata.env >/dev/null && ' +
   'sudo -n chown root:exedev /etc/kata/kata.env && ' +
@@ -219,10 +218,10 @@ export const envCommand = () =>
   'sudo -n systemctl restart kata.service'
 
 /** What the daemon validates the request `Host` against. */
-export const configText = (httpsUrl) => `[web]\npublic_origin = "${httpsUrl}"\n`
+const configText = (httpsUrl) => `[web]\npublic_origin = "${httpsUrl}"\n`
 
 /** What the unit sources. `PORT` is what makes the daemon bind 0.0.0.0. */
-export const envText = (bearer) =>
+const envText = (bearer) =>
   `KATA_AUTH_TOKEN=${bearer}\nKATA_TRUST_PRIVATE_NETWORK=1\nKATA_HOME=/var/lib/kata\nPORT=${HUB_PORT}\n`
 
 // ── The bounded wait ────────────────────────────────────────────────────────
@@ -262,7 +261,7 @@ const defaultSleep = (seconds) => new Promise((resolve) => setTimeout(resolve, s
  * substitute answering hex already is taken at its word rather than encoded
  * twice.
  */
-export function mintBearer (rand) {
+function mintBearer (rand) {
   const minted = rand(32)
   if (typeof minted === 'string') {
     return /^[0-9a-f]{64}$/.test(minted) ? minted : Buffer.from(minted, 'utf8').toString('hex')
@@ -282,7 +281,7 @@ const positive = (value, fallback) => {
  * below; the bearer is minted before the first mutation, because a rebuilt VM
  * needs a fresh one at the edge whether the integration is added or edited.
  */
-export async function kataHub ({
+async function kataHub ({
   argv = [],
   exec = defaultExec,
   rand = randomBytes,
@@ -390,7 +389,7 @@ export async function kataHub ({
   })
 }
 
-export const renderKataHub = (result) => {
+const renderKataHub = (result) => {
   if (result.help) return USAGE
   if (result.dryRun) return result.verbs.join('\n')
   if (result.alreadyBuilt) return `${HUB_VM} already built`

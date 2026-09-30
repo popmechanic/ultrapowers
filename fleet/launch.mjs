@@ -1355,7 +1355,7 @@ const engineLine = (result) =>
  * factory's retirement (map #1292 rule 8). The comment still names it on every
  * launch: an older boot reads a missing `kind=` as the factory.
  */
-export const KIND = 'flock'
+const KIND = 'flock'
 
 export const renderLaunch = (result) => [
   result.runId,
