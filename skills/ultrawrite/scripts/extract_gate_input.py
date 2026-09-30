@@ -24,19 +24,10 @@ literals — so the reader can say "a test already pins the opposite" or "the
 section this leg names does not exist" instead of judging shape alone. The
 hash does not change: it is over the Claim and Proof only, so a moved base
 never stales a verdict (the base a verdict was read against is the tally's).
-
-    extract_gate_input.py <plan.md> --plan
-
-is the plan-level diet (#552): the header's ONE operator sentence and every
-task's Machine restatement, so the gate can ask whether the machine halves add
-up to what the operator signed. No task's Claim, Proof or Context rides here,
-and the header sentence never rides in a task's diet — the two hashes are over
-disjoint text.
 """
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 import sys
@@ -60,16 +51,16 @@ from plan_check import (  # noqa: E402
 from plan_parse import (  # noqa: E402
     BACKTICK_PATH_RE as PATH_RE,
     CLAIMS_GRAMMAR,
-    FILE_BULLET,
     Refusal,
-    machine_restatement,
-    parse_plan_claim,
+    _fence_aware_lines,
+    _file_bullets,
+    _pre_slot,
     parse_plan_full,
     plan_grammar,
 )
 
-__all__ = ["base_excerpt", "gate_input", "gate_input_hash", "plan_input",
-           "verdicts_path", "main"]
+__all__ = ["base_excerpt", "gate_input", "gate_input_hash", "verdicts_path",
+           "main"]
 
 # The excerpt's caps (#989): three times the largest excerpt measured on the
 # four tasks of the 2026-09-15 authoring-cost plan (6,216 bytes for one file,
@@ -92,16 +83,11 @@ def _claims_text(plan_path):
     return text
 
 
-def _tasks(plan_path, text):
-    """Every task of the plan, as `plan_parse.py` reads it."""
+def _task(plan_path, task_id):
     try:
-        return parse_plan_full(text)[1]
+        tasks = parse_plan_full(_claims_text(plan_path))[1]
     except Refusal as exc:
         raise SystemExit("extract_gate_input: %s — %s" % (plan_path, exc))
-
-
-def _task(plan_path, task_id):
-    tasks = _tasks(plan_path, _claims_text(plan_path))
     task = next((t for t in tasks if t["id"] == task_id), None)
     if task is None:
         raise SystemExit(
@@ -120,22 +106,11 @@ def gate_input(plan_path, task_id):
 
 def _files_in_block_order(body):
     """The task's Files paths as the block lists them — `Create:`, `Modify:`
-    and `Delete:` bullets in their written order, first mention wins. The
-    reader is shown the author's order."""
+    and `Delete:` bullets in their written order, first mention wins, read by
+    the parser's own Files scan. The reader is shown the author's order."""
     paths = []
-    in_files = False
-    for line in body.splitlines():
-        if line.startswith("**Files:**"):
-            in_files = True
-            continue
-        if in_files and line.startswith("**"):
-            break
-        if not in_files:
-            continue
-        m = FILE_BULLET.match(line.strip())
-        if not m:
-            continue
-        for tok in PATH_RE.findall(m.group(2)):
+    for _label, toks in _file_bullets(_pre_slot(_fence_aware_lines(body))):
+        for tok in toks:
             ref = _path_referent(tok)
             if ref and ref not in paths:
                 paths.append(ref)
@@ -252,44 +227,18 @@ def base_excerpt(plan_path, task_id, base):
     return {"rev": str(base), "files": files}
 
 
-def plan_input(plan_path):
-    """The plan-level diet: the header's operator sentence and every task's
-    Machine restatement, keyed by a hash over exactly those two (#552)."""
-    text = _claims_text(plan_path)
-    claim = parse_plan_claim(text)
-    if not claim:
-        raise SystemExit(
-            "extract_gate_input: %s carries no plan-level Claim — the one "
-            "elicited operator sentence sits above the first task." % plan_path)
-    entries = [{"id": t["id"], "machine": machine_restatement(t["claim"])}
-               for t in _tasks(plan_path, text)]
-    machines = "\n".join(e["machine"] for e in entries)
-    return {"claim": claim, "tasks": entries,
-            "hash": hashlib.sha256(
-                (claim + "\x00" + machines).encode("utf-8")).hexdigest()}
-
-
 def main(argv=None):
     ap = argparse.ArgumentParser(
         description="Print the proof gate's capped input for one claims-v1 "
-                    "task, or for the plan.")
+                    "task.")
     ap.add_argument("plan", type=Path)
-    # Exactly one diet per invocation: a task's (Claim, Proof) or the plan's
-    # (Claim, Machines). Mixing them would put the header sentence in front of
-    # a task gate, which is the one thing the cap exists to prevent.
-    mode = ap.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--task", metavar="ID",
-                      help="the task id as it appears in `### Task <id>:`")
-    mode.add_argument("--plan", action="store_true", dest="plan_mode",
-                      help="the plan-level diet: header Claim + every Machine")
+    ap.add_argument("--task", metavar="ID", required=True,
+                    help="the task id as it appears in `### Task <id>:`")
     ap.add_argument("--base", metavar="SHA|DIR", default=None,
                     help="add a capped excerpt of the task's files at this "
                          "base (a 40-hex commit of the plan's repository, or "
                          "a checkout directory); the hash is unchanged")
     args = ap.parse_args(argv)
-    if args.plan_mode and args.base is not None:
-        ap.exit(2, "extract_gate_input: --base rides a task diet only; the "
-                   "plan-level diet (--plan) reads no tree\n")
     # A base that is neither a checkout directory nor a 40-hex sha is refused
     # here, before the tree reader sees it: that reader treats any non-sha
     # value as a directory on purpose, so an 8-character abbreviation became
@@ -299,8 +248,7 @@ def main(argv=None):
     if args.base is not None and base_flag_refusal(args.base) is not None:
         sys.stderr.write("extract: %s\n" % base_flag_refusal(args.base))
         return 2
-    payload = (plan_input(args.plan) if args.plan_mode
-               else gate_input(args.plan, args.task))
+    payload = gate_input(args.plan, args.task)
     if args.base is not None:
         payload["base"] = base_excerpt(args.plan, args.task, args.base)
     print(json.dumps(payload, indent=2))

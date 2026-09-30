@@ -241,48 +241,66 @@ def _parse_checks(header_lines):
 # Task-body parsing.
 # --------------------------------------------------------------------------- #
 
-def _parse_task_body(body_lines):
-    """body_lines is the fence-aware (line, fenced) list from the task's
-    heading line through (but not including) the next boundary."""
-
-    # Locate slot label lines (non-fenced) to bound the pre-slot header/Files
-    # region and each of the six slots.
-    slot_positions = []  # (idx, canonical_name)
-    slot_inline = {}     # idx -> the text after the label on its own line
+def _slot_spans(body_lines):
+    """`[(start, end, name, inline)]` for each unfenced slot label after the
+    heading line, in written order, duplicates kept: the label's line index,
+    the next label's (or the body's end), its canonical name, and the label
+    line's remainder, stripped."""
+    heads = []
     for i, (line, fenced) in enumerate(body_lines):
         if fenced or i == 0:
             continue
         m = SLOT_RE.match(line.strip())
         if m:
-            slot_positions.append((i, _slot_name(m.group(1))))
-            slot_inline[i] = m.group(2).strip()
+            heads.append((i, _slot_name(m.group(1)), m.group(2).strip()))
+    ends = [i for i, _, _ in heads[1:]] + [len(body_lines)]
+    return [(i, end, name, inline)
+            for (i, name, inline), end in zip(heads, ends)]
 
-    pre_slot_end = slot_positions[0][0] if slot_positions else len(body_lines)
-    pre_slot = body_lines[1:pre_slot_end]
 
-    slot_ranges = {}
-    for k, (idx, name) in enumerate(slot_positions):
-        end = slot_positions[k + 1][0] if k + 1 < len(slot_positions) else len(body_lines)
-        slot_ranges.setdefault(name, []).append((idx, end))
+def _span_text(body_lines, span):
+    """A slot's raw text, label stripped: the label line's remainder and every
+    line to the next label, stripped once as a whole. `plan_check.py`'s gate
+    hash is over two of these (`sha256(claim + NUL + proof)`), so the recipe
+    is byte-for-byte the one every recorded verdict was signed under."""
+    start, end, _name, inline = span
+    return "\n".join(([inline] if inline else [])
+                     + [l for l, _ in body_lines[start + 1:end]]).strip()
+
+
+def _pre_slot(body_lines):
+    """The task body's lines between its heading and its first slot label --
+    the region its `**Type:**` line and Files bullets are read from."""
+    spans = _slot_spans(body_lines)
+    return body_lines[1:spans[0][0] if spans else len(body_lines)]
+
+
+def _file_bullets(lines):
+    """`(label, paths)` for each unfenced `Create:`/`Modify:`/`Delete:`
+    bullet of `lines`, in written order, label lower-cased."""
+    for line, fenced in lines:
+        m = None if fenced else FILE_BULLET.match(line.strip())
+        if m:
+            yield m.group(1).lower(), BACKTICK_PATH_RE.findall(m.group(2))
+
+
+def _parse_task_body(body_lines):
+    """body_lines is the fence-aware (line, fenced) list from the task's
+    heading line through (but not including) the next boundary."""
+    spans = _slot_spans(body_lines)
+    pre_slot = _pre_slot(body_lines)
 
     def slot_lines(name):
         out = []
-        for start, end in slot_ranges.get(name, []):
-            out.extend(body_lines[start:end])
+        for start, end, n, _ in spans:
+            if n == name:
+                out.extend(body_lines[start:end])
         return out
 
     def slot_text(name):
-        """The slot's raw text, label stripped: the label line's remainder
-        and every line to the next label, stripped once as a whole. First
-        occurrence wins. `plan_check.py`'s gate hash is over two of these
-        (`sha256(claim + NUL + proof)`), so the recipe is byte-for-byte the
-        one every recorded verdict was signed under."""
-        if name not in slot_ranges:
-            return ""
-        start, end = slot_ranges[name][0]
-        inline = slot_inline[start]
-        return "\n".join(([inline] if inline else [])
-                         + [l for l, _ in body_lines[start + 1:end]]).strip()
+        """First occurrence wins; "" when the slot is absent."""
+        span = next((sp for sp in spans if sp[2] == name), None)
+        return "" if span is None else _span_text(body_lines, span)
 
     # Stale-if: one predicate per line, bullet optional.
     stale_if_entries = [e for e in (re.sub(r'^[-*+]\s+', '', l.strip())
@@ -300,36 +318,16 @@ def _parse_task_body(body_lines):
             break
 
     # Files block.
-    creates, modifies, deletes = [], [], []
-    for line, fenced in pre_slot:
-        if fenced:
-            continue
-        m = FILE_BULLET.match(line.strip())
-        if not m:
-            continue
-        label = m.group(1).lower()
-        paths = BACKTICK_PATH_RE.findall(m.group(2))
-        if label == "create":
-            creates.extend(paths)
-        elif label == "modify":
-            modifies.extend(paths)
-        elif label == "delete":
-            deletes.extend(paths)
+    files = {"create": [], "modify": [], "delete": []}
+    for label, paths in _file_bullets(pre_slot):
+        files[label].extend(paths)
 
     # Interfaces slot.
-    consumes_text, produces_text = [], []
+    interfaces = {"consumes": [], "produces": []}
     for line, fenced in slot_lines("interfaces"):
-        if fenced:
-            continue
-        m = IFACE_BULLET.match(line.strip())
-        if not m:
-            continue
-        label = m.group(1).lower()
-        value = m.group(2).strip()
-        if label == "consumes":
-            consumes_text.append(value)
-        else:
-            produces_text.append(value)
+        m = None if fenced else IFACE_BULLET.match(line.strip())
+        if m:
+            interfaces[m.group(1).lower()].append(m.group(2).strip())
 
     # Proof slot.
     proof_slot_lines = slot_lines("proof")
@@ -351,13 +349,12 @@ def _parse_task_body(body_lines):
 
     return {
         "type": ttype,
-        "creates": creates,
-        "modifies": modifies,
-        "deletes": deletes,
-        "consumes_text": consumes_text,
-        "produces_text": produces_text,
-        "proof_runs": proof_runs,
-        "proof_run_clauses": proof_run_clauses,
+        "creates": files["create"],
+        "modifies": files["modify"],
+        "deletes": files["delete"],
+        "interfaces": interfaces,
+        "proofRuns": proof_runs,
+        "proofRunClauses": proof_run_clauses,
         "claim": slot_text("claim"),
         "authorized_by": slot_text("authorized-by"),
         "proof": slot_text("proof"),
@@ -525,14 +522,12 @@ def _build_edges(impl):
     # Tier 2: interface.
     produced_tokens = _produced_tokens_map(impl)
     for b in ids:
-        b_consumes = {tok for c in by_id[b]["consumes_text"]
+        b_consumes = {tok for c in by_id[b]["interfaces"]["consumes"]
                       for tok in [_interface_token(c)] if tok}
         if not b_consumes:
             continue
         for a in ids:
             if a == b:
-                continue
-            if (a, b) in seen:
                 continue
             if not (b_consumes & produced_tokens.get(a, set())):
                 continue
@@ -544,14 +539,12 @@ def _build_edges(impl):
     files_of = {t["id"]: set(t["files"]) | set(t.get("deletes", [])) for t in impl}
     for b in ids:
         b_files = files_of[b]
-        for cmd in by_id[b]["proof_runs"]:
+        for cmd in by_id[b]["proofRuns"]:
             tokens = set(_run_tokens(cmd))
             if not tokens:
                 continue
             for a in ids:
                 if a == b:
-                    continue
-                if (a, b) in seen:
                     continue
                 a_only = files_of[a] - b_files
                 if not (tokens & a_only):
@@ -565,7 +558,7 @@ def _build_edges(impl):
 
 def _produced_tokens_map(impl):
     return {
-        t["id"]: {tok for p in t["produces_text"]
+        t["id"]: {tok for p in t["interfaces"]["produces"]
                   for tok in [_interface_token(p)] if tok}
         for t in impl
     }
@@ -674,33 +667,15 @@ def parse_plan_full(text):
     all_tasks = []
     for tid, title, order, body_lines in task_bodies:
         parsed = _parse_task_body(body_lines)
-        files = sorted(set(parsed["creates"]) | set(parsed["modifies"]))
-        task = {
+        all_tasks.append({
             "id": tid,
             "title": title,
             "order": order,
-            "type": parsed["type"],
-            "creates": parsed["creates"],
-            "modifies": parsed["modifies"],
-            "consumes_text": parsed["consumes_text"],
-            "produces_text": parsed["produces_text"],
-            "proof_runs": parsed["proof_runs"],
-            "files": files,
+            **parsed,
+            "files": sorted(set(parsed["creates"]) | set(parsed["modifies"])),
             "depends_on": [],
-            "proofRuns": parsed["proof_runs"],
-            "proofRunClauses": parsed["proof_run_clauses"],
-            "interfaces": {
-                "consumes": parsed["consumes_text"],
-                "produces": parsed["produces_text"],
-            },
             "body": "\n".join(l for l, _ in body_lines).strip(),
-            "deletes": parsed["deletes"],
-            "claim": parsed["claim"],
-            "authorized_by": parsed["authorized_by"],
-            "proof": parsed["proof"],
-            "stale_if_entries": parsed["stale_if_entries"],
-        }
-        all_tasks.append(task)
+        })
 
     impl = [t for t in all_tasks if _is_implementation(t["type"])]
     ids = [t["id"] for t in impl]

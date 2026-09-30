@@ -181,9 +181,26 @@ def _nonneg_int(value):
 def picks(question):
     """A question's picks as a list: `picked` is one option, or — for a
     multi-select question (#1189) — a list of them. One row is one question
-    either way."""
+    either way. `authoring_census.py` reads its register through this."""
     picked = question.get("picked")
     return picked if isinstance(picked, list) else [picked]
+
+
+def recommended_picked(questions):
+    """`(picked, offered)` — the questions that carried a recommended option,
+    and those of them whose picks include that option. A question with a null
+    `recommended` offered no recommendation and counts in neither."""
+    offered = [q for q in questions if q.get("recommended") is not None]
+    return (len([q for q in offered if q.get("recommended") in picks(q)]),
+            len(offered))
+
+
+def explain_rounds(questions):
+    """The sum of every row's `explain_rounds` — absent, or not an int,
+    counts 0 (#526)."""
+    return sum(q["explain_rounds"] for q in questions
+               if isinstance(q.get("explain_rounds"), int)
+               and not isinstance(q["explain_rounds"], bool))
 
 
 def authoring_record_violations(plan_path):
@@ -270,24 +287,49 @@ def authoring_fact_line(plan_path):
                          for v in violations)
     tally = record.get("tally") if isinstance(record.get("tally"), dict) else {}
     questions = auth.get("questions", [])
-    with_rec = [q for q in questions if q.get("recommended") is not None]
-    picked = [q for q in with_rec if q.get("recommended") in picks(q)]
-    explain_rounds = sum(q.get("explain_rounds", 0) for q in questions)
+    picked, offered = recommended_picked(questions)
     # `-` reads as "the record does not say" — distinct from a recorded 0.
     return ("AUTHORING fact: %s min to PLAN OK, %s hub probes, "
             "%s gate dispatches, %s rejected, routing %s->%s, "
             "%d questions, %d/%d recommended picked, %d explain rounds"
             % (auth["minutes"], auth["probes"], tally.get("dispatched", "-"),
                tally.get("rejected", "-"), auth["routing"]["branch"],
-               auth["routing"]["lane"], len(questions), len(picked),
-               len(with_rec), explain_rounds))
+               auth["routing"]["lane"], len(questions), picked, offered,
+               explain_rounds(questions)))
 
 
 # --------------------------------------------------------------------------- #
 # The execution handoff (operator decisions 2026-09-29)                        #
 # --------------------------------------------------------------------------- #
-ROUTING_ASK_TIMEOUT_S = 45
+JEV_ASK_TIMEOUT_S = 45
 _SKILLS = Path(__file__).resolve().parents[2]
+ASK_TS = _SKILLS / "ultrawrite/stories/ask.ts"
+
+
+def ask_jev(question_set, question, state):
+    """One Jev reading through `ask.ts <set> <question>` over `state`, or None
+    for any failure — no `bun`, no `ask.ts`, a timeout, a non-zero exit,
+    output not `{"noul": <number>}`, or a null. `ask.ts` prints that object
+    as its one stdout line; the last line is the one read."""
+    bun = shutil.which("bun")
+    if bun is None or not ASK_TS.is_file():
+        return None
+    try:
+        proc = subprocess.run(
+            [bun, str(ASK_TS), question_set, question],
+            input=json.dumps(state), capture_output=True, text=True,
+            timeout=JEV_ASK_TIMEOUT_S)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        value = json.loads(proc.stdout.strip().splitlines()[-1])["noul"]
+    except (ValueError, IndexError, KeyError, TypeError):
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return value
 
 
 def routing_risk_threshold():
@@ -302,32 +344,11 @@ def routing_risk_threshold():
 
 def read_routing_risk(tasks):
     """One Jev reading of `authoring_routing` / `risk` over the plan's
-    implementation tasks, or None for any failure — no `bun`, no `ask.ts`
-    beside this file, a timeout, a non-zero exit, output not
-    `{"noul": <number>}`, or a null."""
-    ask = _SKILLS / "ultrawrite/stories/ask.ts"
-    bun = shutil.which("bun")
-    if bun is None or not ask.is_file():
-        return None
-    state = {"plan": {"tasks": [
+    implementation tasks, or None for any failure (`ask_jev`)."""
+    value = ask_jev("authoring_routing", "risk", {"plan": {"tasks": [
         {"title": t["title"], "claim": t.get("claim") or "",
-         "files": list(t.get("files") or [])} for t in tasks]}}
-    try:
-        proc = subprocess.run(
-            [bun, str(ask), "authoring_routing", "risk"],
-            input=json.dumps(state), capture_output=True, text=True,
-            timeout=ROUTING_ASK_TIMEOUT_S)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if proc.returncode != 0:
-        return None
-    try:
-        value = json.loads(proc.stdout.strip().splitlines()[-1])["noul"]
-    except (ValueError, IndexError, KeyError, TypeError):
-        return None
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    return float(value)
+         "files": list(t.get("files") or [])} for t in tasks]}})
+    return None if value is None else float(value)
 
 
 def routing_branch(T, width, risk):
@@ -621,15 +642,11 @@ def _unfenced_lines(text):
 
 def _pre_slot_lines(body):
     """The unfenced lines of a task body before its first named slot label
-    (`**Claim:**`, `**Proof:**`, ...) -- the same span the parser's own
-    Files-bullet scan reads, heading line included (it matches no bullet
-    shape anyway)."""
-    out = []
-    for line in _unfenced_lines(body):
-        if plan_parse.SLOT_RE.match(line.strip()):
-            break
-        out.append(line)
-    return out
+    (`**Claim:**`, `**Proof:**`, ...) -- the span the parser's own
+    Files-bullet scan reads, through the parser's own `_pre_slot`."""
+    return [line for line, fenced in
+            plan_parse._pre_slot(plan_parse._fence_aware_lines(body))
+            if not fenced]
 
 
 def retired_slot_violations(text_or_tasks):
@@ -694,21 +711,11 @@ _N_EQ_RE = re.compile(r'\bn\s*=')
 
 def _task_slots(body_lines):
     """`[(name, text)]` for each unfenced slot label after the heading, in
-    order -- the text the label line's remainder plus the lines to the next
-    label, stripped -- and `[(idx, name)]` the label positions."""
-    positions = []
-    for i, (line, fenced) in enumerate(body_lines):
-        if fenced or i == 0:
-            continue
-        m = plan_parse.SLOT_RE.match(line.strip())
-        if m:
-            positions.append((i, plan_parse._slot_name(m.group(1)), m.group(2)))
-    slots = []
-    for k, (i, name, inline) in enumerate(positions):
-        end = positions[k + 1][0] if k + 1 < len(positions) else len(body_lines)
-        slots.append((name, "\n".join(
-            [inline] + [l for l, _ in body_lines[i + 1:end]]).strip()))
-    return slots, [(i, name) for i, name, _ in positions]
+    order, duplicates kept, each the parser's own slot text -- and
+    `[(idx, name)]` the label positions."""
+    spans = plan_parse._slot_spans(body_lines)
+    return ([(sp[2], plan_parse._span_text(body_lines, sp)) for sp in spans],
+            [(sp[0], sp[2]) for sp in spans])
 
 
 def _undated_readings(text):
@@ -962,6 +969,15 @@ def _stale_argument(text):
     return text.strip().strip("`").strip()
 
 
+def gh_issue_view(gh, number, field, cwd=None):
+    """THE `gh issue view <number> --json <field> -q .<field>` call: the
+    completed process. `gh` is the command as a list — a binary, or a
+    caller's wrapper."""
+    return subprocess.run(
+        list(gh) + ["issue", "view", number, "--json", field, "-q", "." + field],
+        capture_output=True, text=True, cwd=cwd)
+
+
 def _issue_state(repo, number):
     """(state, reason) from one `gh issue view` in `repo`, once per number."""
     if number in _ISSUE_STATE_CACHE:
@@ -970,9 +986,7 @@ def _issue_state(repo, number):
     if gh is None:
         answer = None, "gh not on PATH"
     else:
-        p = subprocess.run(
-            [gh, "issue", "view", number, "--json", "state", "-q", ".state"],
-            capture_output=True, text=True, cwd=str(repo))
+        p = gh_issue_view([gh], number, "state", cwd=str(repo))
         state = (p.stdout or "").strip()
         if p.returncode != 0:
             first = (p.stderr or "").strip().splitlines()

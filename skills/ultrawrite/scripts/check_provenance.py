@@ -25,12 +25,12 @@ import argparse
 import json
 import re
 import shlex
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ultrapowers/scripts"))
+from plan_check import ask_jev, gh_issue_view, verdicts_path  # noqa: E402
 from plan_parse import (  # noqa: E402
     CLAIMS_GRAMMAR,
     CLAIM_PROVENANCE_RE,
@@ -70,9 +70,7 @@ def fold(text):
 def issue_body(number, gh, cache):
     """The body of issue `number`, or None when it does not resolve."""
     if number not in cache:
-        proc = subprocess.run(
-            gh + ["issue", "view", number, "--json", "body", "-q", ".body"],
-            capture_output=True, text=True)
+        proc = gh_issue_view(gh, number, "body")
         cache[number] = proc.stdout if proc.returncode == 0 else None
     return cache[number]
 
@@ -165,33 +163,19 @@ def check_plan(md_text, gh, matched=None):
     return failures, quotes, derived, anchors
 
 
-ASK_TS = Path(__file__).resolve().parents[1] / "stories/ask.ts"
-
-
 def jev_desired_state(body, sentence):
     """Jev's reading of whether `sentence` says what should be true after the
-    change, or None. Any failure — no `bun`, a timeout, a non-zero exit,
-    unparseable output, a null — is no reading: the author's own read decides."""
-    try:
-        proc = subprocess.run(
-            ["bun", str(ASK_TS), "authoring_desired_state", "desired_state"],
-            input=json.dumps({"issue_body": body, "sentence": sentence}),
-            capture_output=True, text=True, timeout=45)
-        if proc.returncode != 0:
-            return None
-        value = json.loads(proc.stdout).get("noul")
-    except (OSError, subprocess.SubprocessError, ValueError, AttributeError):
-        return None
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    return value
+    change, or None. Any failure (`ask_jev`) is no reading: the author's own
+    read decides."""
+    return ask_jev("authoring_desired_state", "desired_state",
+                   {"issue_body": body, "sentence": sentence})
 
 
 def record_readings(plan_path, rows):
     """Append `rows` to the `jev_readings` list of the plan's sibling
     `<stem>.gate-verdicts.json`, every other key left as it was. Record-only:
     a record that cannot be read or written is skipped, never a failure."""
-    record = plan_path.with_name(plan_path.stem + ".gate-verdicts.json")
+    record = verdicts_path(plan_path)
     try:
         data = (json.loads(record.read_text(encoding="utf-8"))
                 if record.exists() else {})

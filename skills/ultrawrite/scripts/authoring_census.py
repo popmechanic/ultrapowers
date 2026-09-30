@@ -40,6 +40,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# scripts -> ultrawrite -> skills: the question counts are `plan_check.py`'s,
+# so a run's census row and its `AUTHORING fact:` line cannot disagree.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ultrapowers/scripts"))
+from plan_check import explain_rounds, picks, recommended_picked  # noqa: E402
+
 # The stem of a run directory: `run-131` is run 131. The census orders by that
 # number, not by the name — `run-9` sorts ahead of `run-131`.
 RUN_DIR_RE = re.compile(r"^run-(\d+)$")
@@ -132,33 +137,6 @@ def _questions(authoring):
     return [_obj(q) for q in questions]
 
 
-def _picks(question):
-    """A question's picks as a list: `picked` is one option, or a list of them
-    for a multi-select question (#1189) — one row, one question, either way."""
-    picked = question.get("picked")
-    return picked if isinstance(picked, list) else [picked]
-
-
-def _recommended_picked(questions):
-    """`(picked, offered)` — the questions that carried a recommended option,
-    and those of them whose picks include that option. A question with a null
-    `recommended` offered no recommendation and counts in neither."""
-    offered = [q for q in questions if q.get("recommended") is not None]
-    picked = [q for q in offered if q.get("recommended") in _picks(q)]
-    return len(picked), len(offered)
-
-
-def _explain_rounds(questions):
-    """The sum of every row's `explain_rounds` — absent, or not an int,
-    counts 0 (#526)."""
-    total = 0
-    for q in questions:
-        value = q.get("explain_rounds")
-        if isinstance(value, int) and not isinstance(value, bool):
-            total += value
-    return total
-
-
 def census_rows(root):
     """One row per `run-<N>` directory under `root` that holds a record.
 
@@ -206,11 +184,11 @@ def census_rows(root):
             "lane": routing.get("lane") if has_authoring else None,
             "questions": len(questions) if has_authoring else None,
             "recommended_picked": (
-                _recommended_picked(questions) if has_authoring else None),
+                recommended_picked(questions) if has_authoring else None),
             "run_min": run_min,
             "amendments": amendments,
             "explain_rounds": (
-                _explain_rounds(questions) if has_authoring else None),
+                explain_rounds(questions) if has_authoring else None),
             "questions_detail": questions,
         })
     return rows
@@ -293,7 +271,7 @@ def render_register(rows):
             if not isinstance(options, list):
                 continue
             recommended = question.get("recommended")
-            picked = _picks(question)
+            picked = picks(question)
             for option in options:
                 lines.append("\t".join([
                     "run-%d" % row["run"],

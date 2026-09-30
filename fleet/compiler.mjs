@@ -130,7 +130,7 @@ const requireCompilerPath = (compilerPath, which) => {
  * its clauses pin). A non-zero exit is a refusal carrying the compiler's
  * text verbatim — including a `STALE fact:` line for a Stale-if predicate
  * that holds at BASE, which is what the operator reads on the laptop; the
- * `BASE fact:`, `STALE fact:`, `GREEN-AT-BASE fact:`, `RED-AT-BASE fact:`
+ * `BASE fact:`, `STALE fact:`, `GREEN-AT-BASE fact:`
  * and `AUTHORING fact:` lines of a clean check ride the result so the launch line prints them,
  * in the order the compiler printed them (a `STALE fact:` there is the
  * advisory kind: a predicate the compiler could not read at BASE, never a
@@ -161,7 +161,6 @@ export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planT
       line.startsWith('BASE fact:') ||
       line.startsWith('STALE fact:') ||
       line.startsWith('GREEN-AT-BASE fact:') ||
-      line.startsWith('RED-AT-BASE fact:') ||
       line.startsWith('AUTHORING fact:')
   )
 }
