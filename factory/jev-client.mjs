@@ -36,6 +36,17 @@ export const JEV_TIMEOUT_MS = 10000
  *  exceeds it costs one log line and no call at all. */
 export const JEV_STATE_MAX_BYTES = 120000
 
+/** One question's answer off `ask`'s resolved `answers` (itself possibly
+ *  `null`), as the row fields the record-only readings write: `choice` and
+ *  `confidence` when they have their types, each `null` otherwise. */
+export const answerOf = (answers, key) => {
+  const a = answers && answers[key]
+  return {
+    answer: a && typeof a.choice === 'string' ? a.choice : null,
+    confidence: a && typeof a.confidence === 'number' ? a.confidence : null,
+  }
+}
+
 /** A JSON document, or `null` when the answer carried none — an error body is
  *  frequently not JSON at all, and a parse that threw would turn the edge's
  *  `422` into this process's exception. */

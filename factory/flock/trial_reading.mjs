@@ -1,6 +1,7 @@
 // Jev reads a merge conflict an agent resolves and a task an agent gives back,
 // record only: what it would have said there, next to what the agent did.
 // It never blocks a task or a resolve; a missing answer is recorded as null.
+import { answerOf } from '../jev-client.mjs'
 
 const CONFLICT_MAX = 4000
 const CONTEXT_LINES = 10
@@ -71,10 +72,5 @@ export function releaseState ({ task, why, depends }) {
 export async function readTrial ({ ask, key, question, state, row, emit }) {
   let answers = null
   try { answers = await ask({ state, questions: { [key]: question } }) } catch { answers = null }
-  const a = answers && answers[key]
-  emit({
-    ...row,
-    answer: a && typeof a.choice === 'string' ? a.choice : null,
-    confidence: a && typeof a.confidence === 'number' ? a.confidence : null,
-  })
+  emit({ ...row, ...answerOf(answers, key) })
 }

@@ -3,6 +3,7 @@
 // It never blocks a task or a PR; a missing answer is recorded as null.
 import fs from 'node:fs'
 import path from 'node:path'
+import { answerOf } from '../jev-client.mjs'
 
 export function latestResults (dir) {
   const by = new Map()
@@ -105,11 +106,6 @@ export function lastSteps (clauses) {
 export async function readSteps ({ ask, results, sentences, question, emit, last, all }) {
   await Promise.all(results.filter((r) => r && r.exit === 0 && last.has(r.clause)).map(async (r) => {
     const answers = await ask({ state: stepState(r, sentences, all), questions: { delivered: question } })
-    const a = answers && answers.delivered
-    emit({
-      clause: r.clause,
-      answer: a && typeof a.choice === 'string' ? a.choice : null,
-      confidence: a && typeof a.confidence === 'number' ? a.confidence : null,
-    })
+    emit({ clause: r.clause, ...answerOf(answers, 'delivered') })
   }))
 }

@@ -15,6 +15,7 @@
 
 import { readFileSync, appendFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
+import { kataIds } from './flock/io.mjs'
 
 /** `--name value` pairs off `argv`, in order; a trailing flag with no value
  *  reads as `undefined`. */
@@ -138,12 +139,12 @@ async function cmdCloseRun (flags) {
       return 0
     }
 
-    const projectId = doc.project && doc.project.id
-    const runUid = doc.run && doc.run.uid
-    if (!Number.isInteger(projectId) || typeof runUid !== 'string' || runUid.length === 0) {
+    const ids = kataIds(doc)
+    if (!ids) {
       appendEventRow(eventsPath, { what: 'run', code: null, skipped: 'no readable project.id/run.uid' })
       return 0
     }
+    const { projectId, runUid } = ids
 
     const evidence = [{ type: 'pr', url: pr }]
     if (merged) evidence.push({ type: 'commit', sha: merged })
@@ -209,12 +210,12 @@ async function cmdMarkRun (flags) {
       appendEventRow(eventsPath, { what: 'run', state, code: null, skipped: 'no kata.json to read' }, 'board:mark')
       return 0
     }
-    const projectId = doc.project && doc.project.id
-    const runUid = doc.run && doc.run.uid
-    if (!Number.isInteger(projectId) || typeof runUid !== 'string' || runUid.length === 0) {
+    const ids = kataIds(doc)
+    if (!ids) {
       appendEventRow(eventsPath, { what: 'run', state, code: null, skipped: 'no readable project.id/run.uid' }, 'board:mark')
       return 0
     }
+    const { projectId, runUid } = ids
 
     let code = null
     let revision = null

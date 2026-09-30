@@ -23,6 +23,7 @@ import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { readEventRows } from './flock/io.mjs'
 
 const PLAN_PARSER = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'ultrapowers', 'scripts', 'plan_parse.py')
 
@@ -64,27 +65,9 @@ export function renderRow (kind, tokens) {
 }
 
 /** `events.jsonl`'s lines, parsed as JSON in file order; a line that fails to
- *  parse is skipped, and a file that is missing or empty gives no rows. */
-export function readEventRows (eventsPath) {
-  let text
-  try {
-    text = readFileSync(eventsPath, 'utf8')
-  } catch {
-    return []
-  }
-  const rows = []
-  for (const line of text.split('\n')) {
-    const trimmed = line.trim()
-    if (trimmed === '') continue
-    try {
-      rows.push(JSON.parse(trimmed))
-    } catch {
-      // A line that does not parse is skipped — the projection is a fact
-      // over what did land, not a reason to fail over what didn't.
-    }
-  }
-  return rows
-}
+ *  parse is skipped — the projection is a fact over what did land, not a reason
+ *  to fail over what didn't — and a file that is missing or empty gives no rows. */
+export { readEventRows }
 
 /** The status page's `tasks` cell: one entry per task a `landing` or
  *  `parked` row names, in the order each task first appears, its state and

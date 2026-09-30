@@ -17,11 +17,10 @@
 // keeps every copy's weave (factory/flock/weave.py), merges peers after each tool
 // batch, and tests every published snapshot at the edge. Builders pull their own
 // work from the board and never run git.
-import { spawn, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import util from 'node:util'
 import { workloadFromPlan } from './plan.mjs'
@@ -31,10 +30,10 @@ import { editSpans } from './edit_spans.mjs'
 import { compactRecord } from './compact_record.mjs'
 import { pullScope } from './pulls.mjs'
 import { findGit } from '../gitblock.mjs'
-import { bootstrapFor } from '../commands.mjs'
 import { makeJevClient, JEV_TIMEOUT_MS } from '../jev-client.mjs'
 import { readTrial, resolveState, releaseState, claimOf } from './trial_reading.mjs'
 import { mirrorBoard } from './kata_mirror.mjs'
+import { gitIn, utf8, writeFiles, snapshotEntries, startWeave, readEventRows, kataIds } from './io.mjs'
 import { makeKataClient, httpTransport } from '../../fleet/kata-client.mjs'
 import { lastSteps, latestResults, readSteps } from './step_reading.mjs'
 import { pastItems } from './past.mjs'
@@ -82,34 +81,37 @@ const MODEL = 'claude-opus-5-5'
 // under the boot's 14400 s unit limit
 const CLOCK_MS = Number(arg('clock', 13800)) * 1000
 const POLICY_FLOCK = (() => { try { return JSON.parse(fs.readFileSync(path.join(HERE, '..', 'policy.json'), 'utf8')).flock } catch { return undefined } })()
+// A policy cell of flock: its value, else the default; a value outside `allowed` stops the engine.
+const mode = (cell, allowed, dflt) => {
+  const v = cell.split('.').reduce((o, k) => o?.[k], POLICY_FLOCK) ?? dflt
+  if (!allowed.includes(v)) { console.error(`engine: policy flock.${cell} is ${allowed.join(', ')}`); process.exit(2) }
+  return v
+}
 // pulls `narrow` (#1292): a builder takes in only the peer changes its work touches (pulls.mjs);
 // `all`, every published change, is the rollback. The policy cell flock.pulls.mode, else all.
-const PULLS = POLICY_FLOCK?.pulls?.mode || 'all'
-if (!['narrow', 'all'].includes(PULLS)) { console.error('engine: policy flock.pulls.mode is narrow or all'); process.exit(2) }
+const PULLS = mode('pulls.mode', ['narrow', 'all'], 'all')
 // record-only Jev reading per green story step (state-probe runner spec §7): `record` mode and
 // a reachable TypeSafe edge, or it never asks and never writes a `jev:step` row.
-const JEV_STEP = (POLICY_FLOCK?.jev_step?.mode ?? 'off') === 'record' && !!process.env.TYPESAFE_BASE_URL
+const TYPESAFE = !!process.env.TYPESAFE_BASE_URL
+const JEV_STEP = mode('jev_step.mode', ['record', 'off'], 'off') === 'record' && TYPESAFE
 // record-only Jev trials at a merge conflict (an `R:` task added) and at a task given back:
 // the same gate, each on its own policy cell (flock.jev_resolve, flock.jev_release).
-const JEV_RESOLVE = (POLICY_FLOCK?.jev_resolve?.mode ?? 'off') === 'record' && !!process.env.TYPESAFE_BASE_URL
-const JEV_RELEASE = (POLICY_FLOCK?.jev_release?.mode ?? 'off') === 'record' && !!process.env.TYPESAFE_BASE_URL
+const JEV_RESOLVE = mode('jev_resolve.mode', ['record', 'off'], 'off') === 'record' && TYPESAFE
+const JEV_RELEASE = mode('jev_release.mode', ['record', 'off'], 'off') === 'record' && TYPESAFE
 // the peer-rewrite read (#1401): an edit that replaces or deletes lines a peer wrote is put to Jev
 // (run-277: a builder's own Edit ran two of a peer's words together and the run went green).
 // `enforce`: a `loses` answer whose text is still in the settled snapshot ends the run a draft;
 // `record` only writes the `jev:peer-rewrite` row; `off` never asks. Absent, record. A `null`
 // answer never drafts: it takes the set's rollback, record.
-const PEER_MODE = POLICY_FLOCK?.jev_peer_rewrite?.mode ?? 'record'
-if (!['enforce', 'record', 'off'].includes(PEER_MODE)) { console.error('engine: policy flock.jev_peer_rewrite.mode is enforce, record or off'); process.exit(2) }
-const JEV_PEER = PEER_MODE !== 'off' && !!process.env.TYPESAFE_BASE_URL
+const PEER_MODE = mode('jev_peer_rewrite.mode', ['enforce', 'record', 'off'], 'record')
+const JEV_PEER = PEER_MODE !== 'off' && TYPESAFE
 // the scope rule (#1333, scope.mjs): `enforce` folds a change outside every task's Files that no
 // builder wrote into the edge's verdict; `record` only writes the `scope:outside` row. Absent, enforce.
-const SCOPE_MODE = POLICY_FLOCK?.scope?.mode ?? 'enforce'
-if (!['enforce', 'record'].includes(SCOPE_MODE)) { console.error('engine: policy flock.scope.mode is enforce or record'); process.exit(2) }
+const SCOPE_MODE = mode('scope.mode', ['enforce', 'record'], 'enforce')
 // provenance.json (#1404): `record` runs each task's tagged facts once more on the landed snapshot
 // with coverage on (coverage.mjs) so the record names the changed code no probe ran; `off` skips
 // it (coverage null). The policy cell flock.provenance.coverage, else record.
-const PROV_COVERAGE = POLICY_FLOCK?.provenance?.coverage ?? 'record'
-if (!['record', 'off'].includes(PROV_COVERAGE)) { console.error('engine: policy flock.provenance.coverage is record or off'); process.exit(2) }
+const PROV_COVERAGE = mode('provenance.coverage', ['record', 'off'], 'record')
 // the coverage pass's bounds: facts run `parallel` at once, each killed with its process group after
 // fact_timeout_seconds, none started once budget_seconds have passed (defaults 4, 60, 300)
 const PROV_PARALLEL = POLICY_FLOCK?.provenance?.parallel ?? 4
@@ -153,18 +155,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 // (step_reading.mjs `readSteps`). No read at a builder's done: the edge's spawnSync blocked
 // the loop past the client's timeout, so 0 of 42 answered (radio-station runs 1-6).
 const STEP_QUESTION = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'questions.json'), 'utf8')).sets.flock_step.questions.delivered
-const jev = JEV_STEP ? makeJevClient({ baseUrl: process.env.TYPESAFE_BASE_URL, log: (m) => log('jev', m) }) : null
+// one client for the step reading and the trials
+const jev = (JEV_STEP || JEV_RESOLVE || JEV_RELEASE || JEV_PEER) ? makeJevClient({ baseUrl: process.env.TYPESAFE_BASE_URL, log: (m) => log('jev', m) }) : null
 // the two trials: nothing waits on an answer. Each pending read is kept here, and before
 // summary.json the engine waits for them at most JEV_TIMEOUT_MS; a late answer is simply absent.
 const QSETS = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'questions.json'), 'utf8')).sets
 const RESOLVE_QUESTION = QSETS.flock_resolve.questions.already_joined
 const RELEASE_QUESTION = QSETS.flock_release.questions.blocker
 const PEER_QUESTION = QSETS.flock_peer_rewrite.questions.kept
-const trialJev = (JEV_RESOLVE || JEV_RELEASE || JEV_PEER) ? makeJevClient({ baseUrl: process.env.TYPESAFE_BASE_URL, log: (m) => log('jev', m) }) : null
 const trialsPending = new Set()
 const trial = (key, question, state, kind, row, then) => {
-  if (!trialJev) return
-  const p = readTrial({ ask: trialJev.ask, key, question, state, row, emit: (o) => { ev(kind, o); if (then) then(o) } }).catch(() => {})
+  if (!jev) return
+  const p = readTrial({ ask: jev.ask, key, question, state, row, emit: (o) => { ev(kind, o); if (then) then(o) } }).catch(() => {})
   trialsPending.add(p); p.finally(() => trialsPending.delete(p))
 }
 // #1401: one `peer:rewrite` row per sub-edit over a peer's lines (the weave's peerRewrites), and
@@ -187,7 +189,7 @@ function peerRewrites (agent, rel, rewrites) {
   }
 }
 const readAndRecord = (clauses) => {
-  if (!jev || !W.stories) return Promise.resolve()
+  if (!JEV_STEP || !W.stories) return Promise.resolve()
   const all = latestResults(CHECK_OUT)
   const results = clauses ? clauses.map((c) => all.get(c)).filter(Boolean) : [...all.values()]
   return readSteps({ ask: jev.ask, results, sentences: W.stories.sentences, question: STEP_QUESTION, emit: (row) => ev('jev:step', row), last: lastSteps(W.tasks.flatMap((t) => t.clauses || [])), all })
@@ -202,28 +204,20 @@ const readAndRecord = (clauses) => {
 let TARGET_OBJECTS = null
 function gitCopy (dir) {
   if (TARGET_OBJECTS === null) TARGET_OBJECTS = path.resolve(TARGET, git(['rev-parse', '--git-common-dir']).trim(), 'objects')
-  const run = (args) => { const r = spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8' }); if (r.status !== 0) throw new Error(`git ${args.join(' ')} in ${dir}: ${r.stderr}`) }
-  run(['init', '-q'])
+  gitIn(dir, ['init', '-q'])
   fs.writeFileSync(path.join(dir, '.git', 'objects', 'info', 'alternates'), TARGET_OBJECTS + '\n')
-  run(['read-tree', BASE_SHA])
-  run(['update-index', '-q', '--refresh'])
+  gitIn(dir, ['read-tree', BASE_SHA])
+  gitIn(dir, ['update-index', '-q', '--refresh'])
 }
-function git (args, opts = {}) {
-  const r = spawnSync('git', ['-C', TARGET, ...args], { encoding: opts.encoding === undefined ? 'utf8' : opts.encoding, maxBuffer: 256 * 1024 * 1024 })
-  if (r.error) throw r.error
-  if (r.status !== 0) throw new Error(`git ${args.join(' ')} exited ${r.status}: ${r.stderr}`)
-  return r.stdout
-}
+const git = (args, opts) => gitIn(TARGET, args, opts).stdout
 
 // ── the weave keeper ──────────────────────────────────────────────────────────
-const wp = spawn('python3', [path.join(HERE, 'weave.py')], { stdio: ['pipe', 'pipe', 'inherit'] })
-const waiting = []
-readline.createInterface({ input: wp.stdout }).on('line', (l) => waiting.shift()(JSON.parse(l)))
+const keeper = startWeave()
 const OPS = fs.openSync(path.join(OUT, 'weave-ops.jsonl'), 'a')
-const weave = (o) => new Promise((res) => {
+const weave = (o) => {
   if (['base', 'edit', 'rewrite', 'publish', 'pull'].includes(o.op)) fs.writeSync(OPS, JSON.stringify({ t: now(), ...o }) + '\n')
-  waiting.push(res); wp.stdin.write(JSON.stringify(o) + '\n')
-})
+  return keeper.send(o)
+}
 const must = async (o) => { const r = await weave(o); if (!r.ok) throw new Error('weave ' + o.op + ': ' + r.error); return r }
 
 // ── files ─────────────────────────────────────────────────────────────────────
@@ -241,7 +235,6 @@ function walk (dir, rel = '') {
 // it. Every copy and the edge start from BASE_DIR, so such a file stays exactly as it is at base, and
 // a builder's change to one is recorded, never merged (ultrapowers run-246: `docs/assets/dag.gif`
 // stopped the weave's `base` op with a UnicodeDecodeError before any builder opened).
-const UTF8 = new TextDecoder('utf-8', { fatal: true })
 const textSeen = new Map()   // absolute path -> { key: size:mtime, text: boolean }
 const nonText = new Set()    // relative paths set aside, recorded once each
 function isText (abs, rel) {
@@ -251,29 +244,21 @@ function isText (abs, rel) {
   const key = st.size + ':' + st.mtimeMs
   const seen = textSeen.get(abs)
   if (seen && seen.key === key) return seen.text
-  let text = true
-  try { UTF8.decode(fs.readFileSync(abs)) } catch { text = false }
+  const text = utf8(fs.readFileSync(abs)) !== undefined
   textSeen.set(abs, { key, text })
   if (!text && !nonText.has(rel)) { nonText.add(rel); if (typeof ev === 'function') ev('non-text', { path: rel }) }
   return text
 }
 const readOr = (f) => { try { return fs.readFileSync(f, 'utf8') } catch { return null } }
 const BASE_DIR = path.join(WORK, 'base')
-// BASE is the target's tree at --base, read with the engine's own git (not its working tree)
+// BASE is the target's tree at --base, checked out by the engine's own git into BASE_DIR through a
+// scratch index (the target's own index and working tree are untouched): one process, modes and
+// symlinks as the tree has them
 function writeBase (dir) {
   fs.mkdirSync(dir, { recursive: true })
-  const rows = git(['ls-tree', '-r', '-z', BASE_SHA]).split('\0').filter(Boolean)
-  for (const row of rows) {
-    const tab = row.indexOf('\t')
-    const [mode, type, sha] = row.slice(0, tab).split(' ')
-    const rel = row.slice(tab + 1)
-    if (type !== 'blob') continue
-    const f = path.join(dir, rel)
-    fs.mkdirSync(path.dirname(f), { recursive: true })
-    if (mode === '120000') { fs.symlinkSync(git(['cat-file', 'blob', sha]), f); continue }
-    fs.writeFileSync(f, git(['show', sha], { encoding: 'buffer' }))
-    if (mode === '100755') fs.chmodSync(f, 0o755)
-  }
+  const index = path.join(WORK, 'base.index')
+  gitIn(TARGET, [`--work-tree=${dir}`, 'read-tree', '--reset', '-u', BASE_SHA], { env: { ...process.env, GIT_INDEX_FILE: index } })
+  fs.rmSync(index, { force: true })
 }
 writeBase(BASE_DIR)
 const BASE_PATHS = walk(BASE_DIR)
@@ -283,10 +268,11 @@ const BASE_FILES = Object.fromEntries(BASE_PATHS.map((p) => [p, readOr(path.join
 // them (walk skips node_modules) and no copy pays a second install
 const DEPS_DIR = path.join(WORK, 'deps')
 let DEP_DIRS = []
-// the plan's own bootstrap wins; without one, the factory's rule reads the target's tracked files
-// (a bun lockfile -> bun install, package-lock.json -> npm ci), so the Flock installs exactly what a
-// factory run of the same plan would (runroom-ab run-3: no install, the check exited 127 on every edge)
-const SETUP = W.setup || ((cmd) => cmd ? ['bash', '-lc', cmd] : null)(bootstrapFor({ planCmd: null, files: BASE_PATHS }))
+// the plan's own setup wins; without one, the target's tracked lockfile decides (a bun lockfile ->
+// bun install, package-lock.json -> npm ci; runroom-ab run-3: no install, the check exited 127 on every edge)
+const LOCK_CMD = BASE_PATHS.includes('bun.lock') || BASE_PATHS.includes('bun.lockb') ? 'bun install --frozen-lockfile'
+  : BASE_PATHS.includes('package-lock.json') ? 'npm ci' : null
+const SETUP = W.setup || (LOCK_CMD && ['bash', '-lc', LOCK_CMD])
 if (SETUP) {
   fs.cpSync(BASE_DIR, DEPS_DIR, { recursive: true })
   const t0 = Date.now()
@@ -298,6 +284,11 @@ if (SETUP) {
 }
 const linkDeps = (dir) => { for (const d of DEP_DIRS) { fs.rmSync(path.join(dir, d), { recursive: true, force: true }); fs.symlinkSync(path.join(DEPS_DIR, d), path.join(dir, d)) } }
 const agentDir = (a) => path.join(WORK, 'agents', a)
+// a copy of a snapshot ({files, exists}) at dir: base, the deps, the target's git at base, then the snapshot's files
+function freshCopy (dir, s) {
+  fs.rmSync(dir, { recursive: true, force: true }); fs.cpSync(BASE_DIR, dir, { recursive: true }); linkDeps(dir); gitCopy(dir)
+  writeFiles(dir, snapshotEntries(s))
+}
 const known = {}   // per builder: the paths its copy holds (openBuilder seeds each)
 
 // ── the board: in memory; mirrored onto Kata when the boot passes a record. ──
@@ -314,7 +305,7 @@ const kataPending = new Set()
 const KATA_POST_MS = 10000
 const KATA_EXIT_MS = 3000
 // the posts go to the record's project and are keyed on its run uid: without both, nothing mirrors
-if (kataRecord && !(Number.isInteger(kataRecord.project && kataRecord.project.id) && typeof (kataRecord.run && kataRecord.run.uid) === 'string' && kataRecord.run.uid)) {
+if (kataRecord && !kataIds(kataRecord)) {
   log('kata record lacks an integer project.id or a run.uid, not mirroring')
   kataRecord = null
 }
@@ -517,11 +508,7 @@ function edge (reason) {
     }
     lastChange = now()
     const dir = path.join(WORK, 'edge')
-    fs.rmSync(dir, { recursive: true, force: true }); fs.cpSync(BASE_DIR, dir, { recursive: true }); linkDeps(dir); gitCopy(dir)
-    for (const [p, text] of Object.entries(m.files)) {
-      const f = path.join(dir, p)
-      if (m.exists[p]) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text) } else fs.rmSync(f, { force: true })
-    }
+    freshCopy(dir, m)
     const perTask = {}, red = []   // red: the facts that did not exit 0, kept for red-checks.json
     for (const t of board.tasks.values()) {
       const res = runFacts(dir, t)
@@ -579,11 +566,8 @@ async function pullInto (agent, task) {
   const scope = task ? pullScope({ task, tasks: W.tasks, touched: [...(touched[agent] || [])], mode: PULLS, created }) : null
   const r = await must(scope ? { op: 'pull', agent, paths: [...scope] } : { op: 'pull', agent })
   const dir = agentDir(agent)
-  for (const c of r.changed) {
-    const f = path.join(dir, c.path)
-    known[agent].add(c.path)
-    if (c.exists) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, c.text) } else fs.rmSync(f, { force: true })
-  }
+  for (const c of r.changed) known[agent].add(c.path)
+  writeFiles(dir, r.changed.map((c) => [c.path, c.exists ? c.text : null]))
   if (r.changed.length) ev('pull', { agent, changed: r.changed.map((c) => ({ path: c.path, from: c.from, added: c.added, removed: c.removed, conflict: c.conflict })) })
   for (const c of r.changed.filter((x) => x.conflict)) (lastMarkedT[agent] = lastMarkedT[agent] || {})[c.path] = now()
   for (const c of r.changed.filter((x) => x.conflict)) await openConflict(c.path, { addsOnly: c.addsOnly, annotated: c.annotated, between: [agent, c.from], party: agent })
@@ -673,12 +657,8 @@ async function scriptedSession (agent, task) {
   // test seam: `@beliefs` lists beliefs; a session posts those whose `task` is its own before it writes
   for (const b of SCRIPT['@beliefs'] || []) if (String(b.task) === String(task.id)) await postBelief(agent, b)
   if (files) {
-    for (const [p, text] of Object.entries(files)) {
-      const f = path.join(cwd, p)
-      // a path mapped to null is deleted, as a builder's delete_file would
-      if (text === null) { fs.rmSync(f, { force: true }); continue }
-      fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text)
-    }
+    // a path mapped to null is deleted, as a builder's delete_file would
+    writeFiles(cwd, Object.entries(files))
     const red = redOf(runFacts(cwd, task))
     if (red.length) {
       ev('facts:red', { agent, task: task.id, at: 'scripted', exits: red.map((r) => r.exit) })
@@ -1060,7 +1040,7 @@ let PAST = null
       if (!Number.isInteger(m) || m < 1) throw new Error(`past dir ${dir} is not named by a run number`)
       const text = (f) => fs.readFileSync(path.join(dir, f), 'utf8')
       const status = JSON.parse(text('status.json'))
-      const events = text('events.jsonl').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))
+      const events = readEventRows(path.join(dir, 'events.jsonl'))
       // optional: runs before #1352, and factory runs, have no red-checks.json; pastItems reads null as none
       let redChecks = null
       try { redChecks = JSON.parse(text('red-checks.json')) } catch { /* no red checks recorded */ }
@@ -1134,7 +1114,7 @@ writeFailureRecord()
 log('summary', JSON.stringify(summary))
 // the join's blame and text, asked before the weave closes, for provenance.json at landing
 const JOIN = { blame: (await weave({ op: 'blame' })).blame || {}, files: (await weave({ op: 'merged' })).files || {} }
-wp.stdin.end()
+keeper.end()
 const landed = await land()
 if (kataPending.size) await Promise.race([Promise.all([...kataPending]), new Promise((r) => setTimeout(r, KATA_EXIT_MS).unref())])
 // a post still pending is dropped at exit: say how many, so the record accounts for every post
@@ -1181,13 +1161,10 @@ function writeCompactRecord () {
 function commitSnapshot (snap, message) {
   const s = snapshots.find((x) => x.snap === snap)
   if (!s) return null
-  for (const [p, text] of Object.entries(s.files)) {
-    const f = path.join(TARGET, p)
-    if (s.exists[p]) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text) } else fs.rmSync(f, { force: true })
-  }
+  writeFiles(TARGET, snapshotEntries(s))
   git(['add', '-A'])
   if (!git(['status', '--porcelain']).trim()) return null
-  git(['-c', 'user.name=flock', '-c', 'user.email=flock@ultrapowers.invalid', 'commit', '-qm', message])
+  git(['commit', '-qm', message], { identity: true })
   return git(['rev-parse', 'HEAD']).trim()
 }
 async function land () {
@@ -1224,18 +1201,13 @@ async function writeProvenance (snap) {
     if (!s) return
     const landed = Object.fromEntries(Object.entries(s.files).filter(([p]) => s.exists[p]))
     const blame = Object.fromEntries(Object.entries(JOIN.blame).filter(([p]) => p in landed && JOIN.files[p] === landed[p]))
-    const events = fs.readFileSync(path.join(OUT, 'events.jsonl'), 'utf8').split('\n').filter((l) => l.trim())
-      .map((l) => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean)
+    const events = readEventRows(path.join(OUT, 'events.jsonl'))
     let coverage = null
     let counts = null
     if (PROV_COVERAGE === 'record') {
       coverage = {}
       const dir = path.join(WORK, 'provenance')
-      fs.rmSync(dir, { recursive: true, force: true }); fs.cpSync(BASE_DIR, dir, { recursive: true }); linkDeps(dir); gitCopy(dir)
-      for (const [p, text] of Object.entries(s.files)) {
-        const f = path.join(dir, p)
-        if (s.exists[p]) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text) } else fs.rmSync(f, { force: true })
-      }
+      freshCopy(dir, s)
       const tagged = []
       for (const t of W.tasks) {
         (t.facts || []).forEach((argv, i) => {

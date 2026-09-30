@@ -28,8 +28,9 @@ keeps the name `factory/`. Models never run git.
   alone, so the boot opens a draft.
 - Supporting modules: `flock/flock_board.mjs` (the board), `flock/kata_mirror.mjs` (board
   moves mirrored onto Kata), `flock/scope.mjs` (the scope rule, #1333), `flock/pulls.mjs`,
-  `flock/edit_spans.mjs`, `flock/step_reading.mjs`, `flock/past.mjs`, `commands.mjs` (a fresh
-  clone's bootstrap), `gitblock.mjs` (`findGit`, the builders' git block),
+  `flock/edit_spans.mjs`, `flock/step_reading.mjs`, `flock/past.mjs`, `flock/io.mjs` (the git
+  wrapper, the weave keeper client, snapshot writes, `events.jsonl` rows and the `kata.json`
+  address the engine, the catch-up and `board.mjs` share), `gitblock.mjs` (`findGit`, the builders' git block),
   `preflight.mjs` (the boot's credential probe), `record.mjs` (the boot's renderer),
   `audit.mjs` (a finished run's final computed row).
 
