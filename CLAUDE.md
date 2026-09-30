@@ -97,10 +97,11 @@ the engine's exit code is the merge decision.
   weave), so overlaps meet in Manyana (decision 11, #715;
   every join on record was line-disjoint). A conflict is the resolver's measurement, not a
   reason to serialize. Contention, not allocated vCPU, bounds concurrent runs.
-- **One merge, one writer.** Manyana merges file content in the weave, the only merge in the
-  system — never patch `skills/ultrapowers/kernel/vendor/manyana.py` (sha-pinned); each
-  builder's copy is a weave replica, so no worker needs shared refs. Run state has one writer, the
-  sandbox, and its record is git. Same-file concurrent writes are the shipped default.
+- **One merge, many writers (#1292).** Every builder writes its own weave replica and merges its
+  peers' in any order; no engine step is the sole merger. Manyana is the only merge in the system,
+  so never patch `skills/ultrapowers/kernel/vendor/manyana.py` (sha-pinned). Same-file concurrent
+  writes are the shipped default. Run state still has one writer, the sandbox, and its record is
+  git; the laptop only reads it.
 - **Handoffs are opt-in.** A session starts from the operator's intention; read
   `.claude/ultrapowers/handoffs/` only when asked to resume. Sort by mtime, never filename, and
   treat each as what was true when written.
