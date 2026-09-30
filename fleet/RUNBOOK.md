@@ -532,7 +532,9 @@ Four logs, in the order a run writes them:
    died here: a package install, the user bus, or the `daemon-reload`.
 2. `/home/exedev/fleet-boot.log` — the bootstrap: the comment read, the
    `engine=` parse, the clone into `/home/exedev/engines/<sha>`. A run that
-   never reached `booting` on the target is here.
+   never reached `booting` on the target is here. Its lines from the boot
+   script on are stamped to the millisecond.
+Both logs are also committed to the run's evidence folder.
 3. `engine.log` — the engine's stdout and stderr, committed to the live branch
    beside `status.json` and `events.jsonl`.
    The `claude auth status` line before the engine starts has to show

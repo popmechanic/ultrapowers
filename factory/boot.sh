@@ -47,8 +47,16 @@ fleet_python3()     { python3 "$@"; }
 fleet_node()        { node "$@"; }
 # KATA_SERVER rides every call the boot itself makes: the daemon it is talking to is always the one it just started, on localhost.
 fleet_kata() { env "KATA_SERVER=$KATA_URL" kata "$@"; }
+# The boot log's stamp, UTC to the millisecond: bash 5's `$EPOCHREALTIME` where it is set
+# (the VM), else one python3 call — macOS's /bin/bash 3.2, which the boot sims run, has none.
+stamp_ms() {
+  if [ -n "${EPOCHREALTIME:-}" ]; then
+    local t="${EPOCHREALTIME/,/.}" d; TZ=UTC printf -v d '%(%Y-%m-%dT%H:%M:%S)T' "${t%.*}"
+    t="${t#*.}000"; printf '%s.%sZ\n' "$d" "${t:0:3}"
+  else python3 -c 'import datetime as d; print(d.datetime.now(d.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:23] + "Z")'; fi
+}
 log() {
-  local line; line="$(date -u +%Y-%m-%dT%H:%M:%SZ) $*"; mkdir -p "$FLEET_HOME"
+  local line; line="$(stamp_ms) $*"; mkdir -p "$FLEET_HOME"
   printf '%s\n' "$line" >>"$BOOT_LOG"; printf '%s\n' "$line" >&2
 }
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
@@ -135,16 +143,28 @@ read_evidence_repo() {
   log "evidence: $EVIDENCE_REPO (from $file)"
 }
 # The clone is left AT BASE; the evidence repository is a shallow clone of the run's live branch alone, whose tip on a fresh clone must be the assignment's `plan=` before a model reads a word of the plan.
+# The two clones are independent and run side by side: each is a background subshell whose `fail` logs its own message and
+# exits only that subshell, leaving the message in a file the parent turns into the boot's own `fail` once `wait` reports it.
 prepare() {
-  local landed
-  [ -e "$TARGET_DIR/.git" ] || fleet_git clone "https://$GITHUB_INT_HOST/$TARGET_REPO.git" "$TARGET_DIR" || fail "clone: target $TARGET_REPO through $GITHUB_INT_HOST"
-  fleet_git -C "$TARGET_DIR" checkout "$BASE_SHA" || fail "checkout: target at $BASE_SHA"
-  if [ ! -e "$EVIDENCE_DIR/.git" ]; then
-    fleet_git clone --depth=1 --single-branch --branch "$LIVE_BRANCH" "https://$GITHUB_INT_HOST/$EVIDENCE_REPO.git" "$EVIDENCE_DIR" \
-      || fail "plan: cannot clone $LIVE_BRANCH of $EVIDENCE_REPO through $GITHUB_INT_HOST"
-    landed="$(fleet_git -C "$EVIDENCE_DIR" rev-parse HEAD 2>/dev/null || true)"
-    [ "$landed" = "$PLAN_SHA" ] || fail "plan: $LIVE_BRANCH of $EVIDENCE_REPO is at '${landed:-<nothing>}', not the plan=$PLAN_SHA this run was assigned"
-  fi
+  local tpid epid err="$FLEET_HOME/.prepare-error"
+  mkdir -p "$FLEET_HOME"; rm -f "$err.target" "$err.evidence"
+  (
+    trap '[ -z "$ERROR" ] || printf "%s" "$ERROR" >"$err.target"' EXIT
+    [ -e "$TARGET_DIR/.git" ] || fleet_git clone "https://$GITHUB_INT_HOST/$TARGET_REPO.git" "$TARGET_DIR" || fail "clone: target $TARGET_REPO through $GITHUB_INT_HOST"
+    fleet_git -C "$TARGET_DIR" checkout "$BASE_SHA" || fail "checkout: target at $BASE_SHA"
+  ) & tpid=$!
+  (
+    local landed
+    trap '[ -z "$ERROR" ] || printf "%s" "$ERROR" >"$err.evidence"' EXIT
+    if [ ! -e "$EVIDENCE_DIR/.git" ]; then
+      fleet_git clone --depth=1 --single-branch --branch "$LIVE_BRANCH" "https://$GITHUB_INT_HOST/$EVIDENCE_REPO.git" "$EVIDENCE_DIR" \
+        || fail "plan: cannot clone $LIVE_BRANCH of $EVIDENCE_REPO through $GITHUB_INT_HOST"
+      landed="$(fleet_git -C "$EVIDENCE_DIR" rev-parse HEAD 2>/dev/null || true)"
+      [ "$landed" = "$PLAN_SHA" ] || fail "plan: $LIVE_BRANCH of $EVIDENCE_REPO is at '${landed:-<nothing>}', not the plan=$PLAN_SHA this run was assigned"
+    fi
+  ) & epid=$!
+  wait "$tpid" || { ERROR="$(cat "$err.target" 2>/dev/null || true)"; wait "$epid" || true; fail "${ERROR:-clone: target $TARGET_REPO through $GITHUB_INT_HOST}"; }
+  wait "$epid" || { ERROR="$(cat "$err.evidence" 2>/dev/null || true)"; fail "${ERROR:-plan: cannot clone $LIVE_BRANCH of $EVIDENCE_REPO through $GITHUB_INT_HOST}"; }
   mkdir -p "$FLEET_HOME/plans"; fleet_git -C "$EVIDENCE_DIR" show "$PLAN_SHA:$EVIDENCE_REL/plan.md" >"$PLAN_FILE" || fail "plan: $PLAN_SHA carries no $EVIDENCE_REL/plan.md"
   EVIDENCE_READY=1; log "plan: $LIVE_BRANCH of $EVIDENCE_REPO at $PLAN_SHA -> $PLAN_FILE"
 }
@@ -190,6 +210,9 @@ collect_evidence() {
   [ -f "$ENGINE_LOG" ] && cp "$ENGINE_LOG" "$EVIDENCE_DIR/$EVIDENCE_REL/engine.log"
   [ -f "$RUN_DIR/summary.json" ] && cp "$RUN_DIR/summary.json" "$EVIDENCE_DIR/$EVIDENCE_REL/summary.json"
   local f
+  for f in fleet-boot.log fleet-setup.log; do
+    [ -f "$FLEET_HOME/$f" ] && cp "$FLEET_HOME/$f" "$EVIDENCE_DIR/$EVIDENCE_REL/$f"
+  done
   for f in "${ENGINE_EVIDENCE[@]}"; do
     [ -f "$RUN_DIR/$f" ] && cp "$RUN_DIR/$f" "$EVIDENCE_DIR/$EVIDENCE_REL/$f"
   done
@@ -197,7 +220,7 @@ collect_evidence() {
 }
 evidence_commit() { # $1 = commit subject
   local p n=0 paths=()
-  for p in status.json events.jsonl engine.log summary.json publish.json publish-deploy.log publish-verify.log publish-rollback.log "${ENGINE_EVIDENCE[@]}"; do
+  for p in status.json events.jsonl engine.log fleet-boot.log fleet-setup.log summary.json publish.json publish-deploy.log publish-verify.log publish-rollback.log "${ENGINE_EVIDENCE[@]}"; do
     if [ -f "$EVIDENCE_DIR/$EVIDENCE_REL/$p" ]; then paths+=("$EVIDENCE_REL/$p"); fi
   done
   [ "${#paths[@]}" -gt 0 ] || return 0
@@ -282,8 +305,9 @@ board_down() {
 engine_deps() {
   [ -d "$ENGINE_REPO_DIR/factory/node_modules" ] && return 0
   if [ -f "$ENGINE_REPO_DIR/factory/package-lock.json" ]
-  then ( cd "$ENGINE_REPO_DIR/factory" && fleet_npm ci --no-audit --no-fund ) || fail "npm ci: engine deps"
-  else ( cd "$ENGINE_REPO_DIR/factory" && fleet_npm install --no-audit --no-fund ) || fail "npm install: engine deps"; fi
+  then log "deps: npm ci"; ( cd "$ENGINE_REPO_DIR/factory" && fleet_npm ci --no-audit --no-fund ) || fail "npm ci: engine deps"
+  else log "deps: npm install"; ( cd "$ENGINE_REPO_DIR/factory" && fleet_npm install --no-audit --no-fund ) || fail "npm install: engine deps"; fi
+  log "deps: npm returned"
 }
 # A transient SERVICE, not a scope: `--wait` hands back the exit code and `--collect` unloads the unit; while it runs, the boot relays events every FLEET_COMMIT_SECONDS and looks for its exit every second.
 run_engine() {

@@ -20,7 +20,7 @@ repository) and another user's fleet both work: a `facebook/react` run lands in
 `runs/facebook-react/<N>/` of the operator's repository. A run's folder is
 `runs/<owner>-<repo>/<N>/` (the target's owner and repo): the plan files `plan.md`, `kata.json` and
 `gate-verdicts.json`, and every record file — `status.json`, `events.jsonl`, `engine.log`,
-`summary.json`, the engine files and the publish files. The launcher validates its arguments, reads
+`fleet-boot.log`, `fleet-setup.log`, `summary.json`, the engine files and the publish files. The launcher validates its arguments, reads
 the account pool from `billing plan --json`, computes N from the evidence repository's
 `live/<owner>-<repo>/run-*` branches and `<owner>-<repo>/run-*` tags, refreshes the Claude bearer, and
 pushes the plan as ONE parentless commit in the evidence repository — its tree that folder with the
@@ -306,7 +306,12 @@ evidence repository.
      beside bun's version — `CELLD_SHA256` in `fleet/setup-script.mjs`, since the release carries no
      sums file and `gh attestation verify` needs a token the sandbox does not hold — then decompressed
      and installed at `/usr/local/bin/celld` mode 0755, never through the vendor's installer script
-     and never under `/usr/local/lib/fleet`), and `python3-pytest` + `python3-pytest-xdist` from apt;
+     and never under `/usr/local/lib/fleet`), and pytest by the image's `uv pip install --system --break-system-packages`, pinned to
+     `pytest==7.4.4` and `pytest-xdist==3.4.0` (exactly the versions noble's packages shipped, no
+     package manager and no index refresh). The node, bun and celld fetch-and-verify jobs run at once,
+     each its own background job waited on by its own pid, so any failure still stops the script;
+     each step is preceded by a `stamp` line (UTC to the millisecond, `setup: <step>`) in
+     `$HOME/fleet-setup.log`;
   3. install the bootstrap at `/usr/local/lib/fleet/bootstrap.sh`, mode 0555, owned by root — outside
      `/home/exedev` and unwritable by the run;
   4. install the user unit TEMPLATE `~/.config/systemd/user/fleet-run@.service`
