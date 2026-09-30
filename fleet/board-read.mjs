@@ -19,15 +19,15 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { runIssueOf } from './kata-client.mjs'
+import { projectNamed, runIssueOf } from './kata-client.mjs'
 import {
   KATA_HUB_FIX,
   Refusal,
   defaultExec,
   defaultKataEnvPath,
   hubFromEnv,
-  kataProjectFor,
-  runCli
+  runCli,
+  targetSlug
 } from './lobby.mjs'
 
 const fail = (message) => { throw new Refusal(`board-read: ${message}`) }
@@ -390,10 +390,9 @@ export async function main (argv, { exec = defaultExec, kataEnvPath = defaultKat
   const { client, dark } = await hubFromEnv({ exec, actor: 'board-read', kataEnvPath })
   if (dark !== null) fail(dark)
 
-  const projectName = kataProjectFor(args.target)
-  const listing = await client.listProjects()
-  const project = (listing?.projects || []).find((p) => p.name === projectName)
-  if (!project) {
+  const projectName = targetSlug(args.target)
+  const project = projectNamed(await client.listProjects(), projectName)
+  if (project === null) {
     fail(`no hub project named ${JSON.stringify(projectName)} for target ${JSON.stringify(args.target)} — ${KATA_HUB_FIX}`)
   }
 

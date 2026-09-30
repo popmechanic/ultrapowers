@@ -55,7 +55,7 @@ import os from 'node:os'
 import path from 'node:path'
 import readline from 'node:readline'
 
-import { EXE_HOST, FLEET_PATTERN } from './lobby.mjs'
+import { CLAUDE_INTEGRATION as INTEGRATION, EXE_HOST, FLEET_PATTERN, parseArgs as parseFlags, runCli } from './lobby.mjs'
 
 const OAUTH = Object.freeze({
   clientId: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
@@ -65,7 +65,6 @@ const OAUTH = Object.freeze({
   scopes: 'user:profile user:inference user:sessions:claude_code user:mcp_servers'
 })
 
-const INTEGRATION = 'claude-max'
 export const TARGET = 'https://api.anthropic.com'
 export const DEFAULT_ACCOUNT = 'ultrapowers'
 const KEYCHAIN = Object.freeze({ service: 'ultrapowers-claude-oauth', account: DEFAULT_ACCOUNT })
@@ -519,23 +518,22 @@ const USAGE_LINE = 'usage: node fleet/claude-token.mjs login [--code-from-clipbo
 
 // `--account` takes the token after the flag; the rest are bare. Every value is
 // checked here, which is before any keychain read, token request or lobby verb.
+const BARE = { 'no-install': ['install', false], force: ['force', true], 'code-from-clipboard': ['codeFromClipboard', true], json: ['json', true], 'no-rotate': ['rotate', false] }
+
 function parseArgs (rest) {
   const opts = { account: DEFAULT_ACCOUNT, accountGiven: false, install: true, force: false, codeFromClipboard: false, json: false, rotate: true }
-  for (let i = 0; i < rest.length; i += 1) {
-    const arg = rest[i]
-    if (arg === '--account') {
-      const value = rest[i + 1]
-      i += 1
-      if (value === undefined) throw new Error('--account needs a name: --account <name>')
+  const { opts: given, positional } = parseFlags(rest, { flags: Object.keys(BARE) })
+  if (positional.length > 0) throw new Error(USAGE_LINE)
+  for (const [key, value] of Object.entries(given)) {
+    if (key === 'account') {
+      if (value === true) throw new Error('--account needs a name: --account <name>')
       if (!ACCOUNT_RE.test(value)) throw new Error(`--account ${JSON.stringify(value)} is not a name matching ${ACCOUNT_RE.source}`)
       opts.account = value
       opts.accountGiven = true
-    } else if (arg === '--no-install') opts.install = false
-    else if (arg === '--force') opts.force = true
-    else if (arg === '--code-from-clipboard') opts.codeFromClipboard = true
-    else if (arg === '--json') opts.json = true
-    else if (arg === '--no-rotate') opts.rotate = false
-    else throw new Error(USAGE_LINE)
+    } else if (Object.hasOwn(BARE, key) && value === true) {
+      const [field, set] = BARE[key]
+      opts[field] = set
+    } else throw new Error(USAGE_LINE)
   }
   return opts
 }
@@ -560,8 +558,7 @@ export async function main (argv, deps = defaultDeps()) {
 }
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
-  main(process.argv.slice(2)).then(() => process.exit(0), (err) => {
-    process.stderr.write(`${err.message}\n`)
-    process.exit(1)
-  })
+  // `process.exit` after the exit code is set: a login's clipboard poll or
+  // prompt must not hold the process open once `main` has answered.
+  runCli(main, process.argv.slice(2)).then(() => process.exit())
 }

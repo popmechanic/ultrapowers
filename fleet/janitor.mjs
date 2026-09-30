@@ -20,7 +20,7 @@
  * laptop's argv carries the literal `$KATA_AUTH_TOKEN` and never a token. Two
  * reads answer a row: the projects listing, once per pass and only when a row
  * needs it — `GET /api/v1/projects?limit=1000`, matched on `name` against the
- * target's one project `<owner>-<repo>` (`kataProjectFor`), because kata
+ * target's one project `<owner>-<repo>` (`targetSlug`), because kata
  * addresses a project by integer `id` and a name in the path is a 400 — and
  * that project's issues, `GET /api/v1/projects/<id>/issues?limit=1000`, which
  * holds every run of that target and in which the run issue is the one whose
@@ -151,7 +151,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { closeOut, sealRun } from './close-out.mjs'
-import { KataError, runIssueOf } from './kata-client.mjs'
+import { KataError, projectNamed, runIssueOf } from './kata-client.mjs'
 import {
   DEFAULT_CONFIG_PATH,
   Refusal,
@@ -162,7 +162,6 @@ import {
   isRunNumber,
   isSafeTarget,
   isVmName,
-  kataProjectFor,
   listVms,
   liveBranchFor,
   lobby,
@@ -177,7 +176,8 @@ import {
   runOfBranch,
   runOfEvidenceRef,
   runOfVmName,
-  runTagFor
+  runTagFor,
+  targetSlug
 } from './lobby.mjs'
 
 export const USAGE = 'usage: node fleet/janitor.mjs [--age 1h] [--dry-run] [--json] [--help]'
@@ -343,22 +343,16 @@ const readingOfIssue = (project, issue) => {
  * answer means "not from the hub": the caller reads the evidence for that row.
  */
 function hubReader (hub) {
-  let byName = null
+  let listing = null
   const darken = (error) => {
     if (hub.dark === null) hub.dark = reasonOf(error)
   }
   return async (target, run, plan) => {
     if (hub.client === null || hub.dark !== null) return null
     try {
-      if (byName === null) {
-        const json = await hub.client.listProjects()
-        byName = new Map()
-        for (const p of Array.isArray(json?.projects) ? json.projects : []) {
-          if (typeof p?.name === 'string' && Number.isInteger(p?.id)) byName.set(p.name, p)
-        }
-      }
-      const project = byName.get(kataProjectFor(target))
-      if (project === undefined) return null
+      if (listing === null) listing = await hub.client.listProjects()
+      const project = projectNamed(listing, targetSlug(target))
+      if (project === null) return null
       const json = await hub.client.listIssues(project.id)
       const issues = Array.isArray(json?.issues) ? json.issues : []
       const issue = runIssueOf(issues, run, plan ?? null)

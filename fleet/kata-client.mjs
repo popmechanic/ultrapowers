@@ -230,6 +230,14 @@ const scoreLess = (a, b) => {
 }
 
 /**
+ * The project called `name` in a `listProjects()` answer, or null. A project
+ * is addressed by its integer `id` alone, so an entry without one is no match.
+ */
+export const projectNamed = (listing, name) =>
+  (Array.isArray(listing?.projects) ? listing.projects : [])
+    .find((p) => p?.name === name && Number.isInteger(p?.id)) ?? null
+
+/**
  * The client. Every method issues EXACTLY ONE request — nothing here polls,
  * retries or reads an issue back to confirm a write, because the driver's own
  * ordering is what the record is for: a step is on the hub before the driver

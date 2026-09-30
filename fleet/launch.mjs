@@ -95,7 +95,10 @@ import {
   vmNameFor
 } from './lobby.mjs'
 import { fleetConfigAccount } from './doctor.mjs'
-import { ACCOUNT_RE } from './claude-token.mjs'
+// The keychain entry a run signs in with when neither `--account` nor the
+// config names one, and the name rule: the credential tool's own, so the
+// launcher refuses a name it would refuse, before anything is executed.
+import { ACCOUNT_RE, DEFAULT_ACCOUNT } from './claude-token.mjs'
 import { janitor } from './janitor.mjs'
 import { readFleetFiles, renderSetupScript } from './setup-script.mjs'
 import { compilePlanForRun, fetchCompilerAt, verifyPlanCompiles } from './compiler.mjs'
@@ -110,15 +113,6 @@ export const USAGE = `usage: node fleet/launch.mjs <plan.md> --target <owner>/<r
                              [--evidence-repo <owner>/<repo>] [--json]`
 
 export const usage = () => USAGE
-
-/**
- * The keychain entry a run signs in with when neither `--account` nor the
- * config names one — the entry every laptop that walked the first run has.
- * `ACCOUNT_RE` is `fleet/claude-token.mjs`'s own rule, imported: the launcher
- * refuses a name the credential tool would refuse, and it refuses it before
- * anything is executed.
- */
-const DEFAULT_ACCOUNT = 'ultrapowers'
 
 /** The flag `new` may never carry: exe.dev refuses it, and the policy
  *  `tag:fleet` on each integration is what grants a fleet VM its credentials. */

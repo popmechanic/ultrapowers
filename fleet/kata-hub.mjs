@@ -50,6 +50,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
+  FLEET_POLICY,
   LobbyError,
   defaultExec,
   listIntegrations,
@@ -72,8 +73,6 @@ const HUB_INTEGRATION = 'kata'
 const FED_INTEGRATION = 'kata-sync'
 /** The port the daemon binds and the one verb that pins it. */
 const HUB_PORT = 8000
-/** The policy every fleet integration rides, this one included. */
-const FLEET_POLICY = 'tag:fleet'
 /** Two locks against the janitor: no tag at all, and a comment that says why. */
 const HUB_COMMENT = 'kata hub — persistent service, do not reap'
 const INTEGRATION_COMMENT = 'kata issue daemon on kata-hub'
