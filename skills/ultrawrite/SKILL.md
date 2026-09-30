@@ -469,9 +469,9 @@ never arrives (2026-09-08: of four concurrent authors, three had backgrounded th
 readers and had to be resumed by hand with the verdict pasted in, two of them with no
 `.gate-verdicts.json` written at all). In the foreground the verdict returns to the author
 that dispatched it, as that call's result: the reader answers with its verdict line and one
-sentence, and `<plan-stem>.gate-verdicts.json` is written by the author from that returned
-verdict, never by the reader — the reader sees only the extractor's output and has no plan
-path to write beside. A task whose verdict lands first gets its next
+sentence, and the author records that verdict into `<plan-stem>.gate-verdicts.json` through
+Jev's recording command (below), never by hand and never by the reader — the reader sees
+only the extractor's output and has no plan path to write beside. A task whose verdict lands first gets its next
 reader the moment its Claim or Proof is edited: re-extract that one task with
 `extract_gate_input.py`, dispatch one reader for it, and do not wait for the round's
 other verdicts to arrive — the verdict is still keyed on the hash, so the edit is what
@@ -480,14 +480,27 @@ re-dispatches, and a round boundary buys nothing. Measured 2026-09-04 (n=1 sitti
 one or two tasks apiece,
 each of them idle behind a barrier it did not need.
 
-Jev reads beside each reader. When a reader's verdict returns, the author runs
-`bun $UW/../stories/gate_jev.ts <the same diet file> --record <plan-stem>.gate-verdicts.json --agent <that verdict>`
+Jev reads beside each reader. The author extracts each diet with `--base`, dispatches the
+reader on it, and records the reader's verdict on every round — `pass` or `fail`, a
+rejection included — with
+`bun $UW/../stories/gate_jev.ts <diet> --record <plan-stem>.gate-verdicts.json --agent <verdict> --reason "<the reader's sentence>"`
 on the very diet that reader was fed (the laptop's key is `~/.ultrapowers/typesafe.env`).
-The call is record-only: Jev decides nothing, and the agent's verdict is the gate. A
-release reads `bun $UW/../stories/gate_jev.ts --agreement docs/superpowers/plans` and
-carries its line in the notes. This is an `experiment` at n=0 (operator pick,
-2026-09-29): no default flips until 5 plans' readings exist, and its rollback is dropping
-this paragraph.
+That one call writes the verdict and Jev's reading of the same diet, clause scores
+included. Before signing, the author reads Jev's lowest `caught` clause and treats it as
+the leg to strengthen. At the release census, each disagreement between the two readers is
+labelled with
+`bun $UW/../stories/gate_jev.ts --label <file> --task <id> --round <n> --right agent|jev --because "<run evidence>"`,
+and the notes carry both `--agreement` lines from
+`bun $UW/../stories/gate_jev.ts --agreement docs/superpowers/plans`.
+
+The bar for Jev taking over (operator, 2026-09-30): Jev leads the reading once, across n=5 plans
+in which Jev saw the base on every round, there is no labelled disagreement with
+`right: agent`; after that the agent reader is kept only as a tie-breaker on a clause Jev
+scores low. Until then Jev decides nothing and the agent's verdict is the gate — an
+`experiment`, whose rollback is dropping these two paragraphs. The reading that prompted
+it: on 2026-09-29, over n=6 plans, Jev disagreed with the agent reader four times once the
+rejected rounds were read — Jev right once (a loosened grep), the agent reader right three
+times, two of them on facts Jev was never shown.
 
 Then resolve provenance and check:
 

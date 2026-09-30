@@ -4,7 +4,7 @@
               "story_passes_near_miss": 0.5, "branches_on_text": 0.5, "same_need": 0.5,
               "assumption_surprises": 0.5, "essential_below": 0.5, "serves_summary_below": 0.5,
               "stands_alone_below": 0.5, "link_expected_below": 0.5,
-              "gate_fact": 0.5, "gate_caught_below": 0.5, "gate_contradiction": 0.5,
+              "gate_fact": 0.5, "gate_caught_below": 0.5, "gate_contradiction": 0.5, "gate_pinned": 0.5,
               "routing_risk": 0.5, "about_product": 0.5},
   "n": 0, "window": "none", "basis": "judgment", "experiment": true,
   "rollback": "flags off: the author's own read decides",

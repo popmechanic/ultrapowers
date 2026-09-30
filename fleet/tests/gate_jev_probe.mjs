@@ -4,10 +4,11 @@
 // the script against a local stand-in Jev (a node:http server on 127.0.0.1) that records each
 // request and answers every `fact:` question 0.9, every `caught:` question 0.1 and
 // `contradiction` 0.1. The case is argv[2]:
-//   record     one diet (task 3, hash h1, clauses M1 and M2) read with `--record --agent pass`:
-//              one request asking exactly fact/caught per clause plus contradiction, whose state
-//              carries the two clauses; stdout is one JSON line with verdict fail; the seeded
-//              record keeps hash, verdict and reason and gains one gate round {h1, pass, fail};
+//   record     one diet (task 3, hash h1, clauses M1 and M2) read with `--record --agent pass
+//              --reason r1`: one request asking exactly fact/caught per clause plus contradiction,
+//              whose state carries the two clauses; stdout is one JSON line with verdict fail; the
+//              call writes the task's hash h1, verdict pass and reason r1 over the seeded ones, and
+//              the task gains one gate round {h1, pass, fail} with its clause scores;
 //   agreement  `--agreement` over two records (rounds pass/pass, fail/pass and fail/fail) prints
 //              exactly the counts.
 // Prints `GATE JEV <case> OK` and exits 0, or names what differed and exits 1.
@@ -69,7 +70,7 @@ if (CASE === 'record') {
   const rec = path.join(tmp, 'plan.gate-verdicts.json')
   const seeded = { hash: 'h0', verdict: 'pass', reason: 'layer match: seeded' }
   fs.writeFileSync(rec, JSON.stringify({ tasks: { 3: seeded }, tally: { dispatched: 1, rejected: 0 } }, null, 2))
-  const run = await gate([diet, '--record', rec, '--agent', 'pass'])
+  const run = await gate([diet, '--record', rec, '--agent', 'pass', '--reason', 'r1'])
   if (run.code !== 0) fail(`gate_jev exited ${run.code}:\n${run.stdout}${run.stderr}`)
   if (requests.length !== 1) fail(`${requests.length} request(s) made, expected 1`)
   const asked = Object.keys(requests[0].body.questions || {}).sort()
@@ -84,8 +85,15 @@ if (CASE === 'record') {
   if (out.verdict !== 'fail') fail(`verdict ${JSON.stringify(out.verdict)}, expected "fail"`)
   const t = JSON.parse(fs.readFileSync(rec, 'utf8')).tasks?.['3']
   if (!t) fail('the record has no task 3')
-  for (const k of ['hash', 'verdict', 'reason']) if (t[k] !== seeded[k]) fail(`the record's ${k} became ${JSON.stringify(t[k])}`)
-  if (!same(t.gate_rounds, [{ hash: 'h1', agent: 'pass', jev: 'fail' }])) fail(`gate_rounds is ${JSON.stringify(t.gate_rounds)}`)
+  const written = { hash: 'h1', verdict: 'pass', reason: 'r1' }
+  for (const k of ['hash', 'verdict', 'reason']) if (t[k] !== written[k]) fail(`the record's ${k} is ${JSON.stringify(t[k])}, expected ${JSON.stringify(written[k])}`)
+  const rounds = t.gate_rounds
+  if (!Array.isArray(rounds) || rounds.length !== 1) fail(`gate_rounds is ${JSON.stringify(rounds)}`)
+  const r = rounds[0]
+  if (!same([r.hash, r.agent, r.jev], ['h1', 'pass', 'fail'])) fail(`the round is ${JSON.stringify(r)}`)
+  if (!same(r.clauses, [{ id: 'M1', fact: 0.9, caught: 0.1 }, { id: 'M2', fact: 0.9, caught: 0.1 }])) fail(`the round's clauses are ${JSON.stringify(r.clauses)}`)
+  if (r.contradiction !== 0.1 || !('pinned' in r)) fail(`the round is ${JSON.stringify(r)}`)
+  if (!same(JSON.parse(fs.readFileSync(rec, 'utf8')).tally, { dispatched: 1, rejected: 0 })) fail('the tally changed')
 } else {
   const dir = path.join(tmp, 'records')
   fs.mkdirSync(dir)
