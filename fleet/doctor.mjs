@@ -2,61 +2,23 @@
 /**
  * fleet/doctor.mjs — "do you have a fleet?"
  *
- * The one piece of `fleet/` that runs on a user's laptop, straight out of the
- * installed plugin cache, where no `node_modules` directory under `fleet/` has
- * ever existed. Hence the built-ins-only rule: every specifier here is
- * `node:`-prefixed or a sibling fleet module that is itself built-ins-only —
- * the config readers come from `./lobby.mjs`, one copy for both
- * the doctor and the launcher.
+ * The ten rows, their reads and their verdicts are `fleet/CONTRACT.md` §Doctor;
+ * each red row names the `references/first-run.md` section that builds the
+ * piece. This header does not restate them (#1444). Every row is a read:
+ * running the doctor twice is the same as running it once.
  *
- * Ten rows, all reads, every one of them answered by exe.dev's own truth or
- * by this laptop's own keychain:
+ * Built-ins only: the doctor runs on a user's laptop straight out of the
+ * installed plugin cache, where no `node_modules` under `fleet/` has ever
+ * existed, so every specifier here is `node:`-prefixed or a sibling fleet
+ * module that is itself built-ins-only (the config readers come from
+ * `./lobby.mjs`, one copy for both the doctor and the launcher).
  *
- *   exe-dev       `ssh exe.dev whoami` names an account.
- *   capacity      `billing plan --json` names the pool, beside the size one
- *                 run asks for. The row reports; it limits nothing.
- *   claude        the `claude-max` integration carries the bearer at the edge;
- *                 claude-token's status line rides along.
- *   accounts      `claude-token.mjs accounts --json` lists every keychain
- *                 entry with its expiry, and the row says which account the
- *                 edge carries and whether the config names one the keychain
- *                 does not hold.
- *   github        `integrations setup github --list` lists an account.
- *   integrations  every integration a run needs — `claude-max`, and with
- *                 `--target` the target's own `gh-<owner>-<repo>` — is attached
- *                 to `tag:fleet` in `integrations list --json`. That attachment
- *                 is the one way a credential reaches a fleet VM (#1434).
- *   evidence      the one-time setup of the operator's evidence repository,
- *                 walked in order and stopped at the first miss: the key
- *                 `evidence` in `~/.ultrapowers/fleet.json`, the repository
- *                 itself (`gh api repos/<owner>/<repo>`), and its
- *                 `gh-<owner>-<repo>` integration attached to `tag:fleet`.
- *   verb-drift    `help <verb>` for every verb in the verb record, and
- *                 the diff against the flags recorded there. A flag that
- *                 appeared or vanished is a finding in a green row; only a
- *                 record the doctor cannot read turns it red.
- *   kata          the hub is there: the `kata` http-proxy carries a bearer at
- *                 the edge, it is attached to `tag:fleet`, and
- *                 `ls kata-hub --json` answers a
- *                 `kata-hub` row. All three, or the row says which is absent.
- *   cloudflare    the deploy's credential, needed only by a plan with a
- *                 `**Publish:**` line. Absent is green — most plans never
- *                 publish — and a present object is green attached to
- *                 `tag:fleet`, and red otherwise.
- *
- * Running the doctor twice is the same as running it once: nothing here
- * creates, copies or removes a VM, and nothing writes a file. A red row names
- * the `references/first-run.md` section that builds the piece and, where there
- * is one, the exact command.
- *
- * There are no token rows, because after the lift no token is on any disk the
- * doctor could stat: the Claude subscription reaches a sandbox through the
- * `claude-max` http-proxy integration, whose bearer is injected at exe.dev's
- * edge, and GitHub reaches it through the target's one integration
- * `gh-<owner>-<repo>`. `integrations test claude-max` is not a check for an
- * http-proxy (measured 2026-09-04: it answers "test connection is available
- * for catalog and database integrations"), so the bearer's presence in the
- * listing is the edge-side truth the doctor can read.
+ * No token rows: no token is on any disk the doctor could stat. The Claude
+ * subscription reaches a sandbox through the `claude-max` http-proxy, whose
+ * bearer is injected at exe.dev's edge, and `integrations test claude-max` is
+ * not a check for an http-proxy (measured 2026-09-04: it answers "test
+ * connection is available for catalog and database integrations"), so the
+ * bearer's presence in the listing is the edge-side truth the doctor can read.
  */
 
 import fsp from 'node:fs/promises'

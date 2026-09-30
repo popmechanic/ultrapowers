@@ -2,50 +2,13 @@
 /**
  * fleet/launch.mjs — start one run. The whole client, on the laptop.
  *
- * A run is a number N. There is no image to keep warm and no side repository to
- * keep in sync: the run is created with one plain `new` on exe.dev's default
- * image, and our delta is installed on that box by a first-boot setup script
- * handed to `new` on stdin. The launcher, in this order:
- *
- *   1. validates its own arguments — nothing has been executed yet;
- *   2. reads: that the `--repo` checkout is not shallow, its `origin` (it must
- *      name `--target`), that `--base` is a commit the checkout has and that it
- *      is on the target's default branch, `integrations list --json` (the
- *      target's and the evidence repository's GitHub objects must exist),
- *      `billing plan --json` (one run must fit the plan's pool), the target's
- *      live branches and tags in the operator's evidence repository (the run
- *      number is one past the highest N they carry) and the engine tip (the
- *      verb record's drift is the doctor's row, never a launch's). Its check and its parse run
- *      `plan_check.py` and `plan_parse.py` FETCHED AT `engine=` (`git show`
- *      from this checkout, else `gh api`, into a temp directory), so the
- *      laptop reads the plan with the sandbox's own parser; files it cannot
- *      fetch are a refusal before any push;
- *   3. refreshes the Claude credential the run signs in with, the entry
- *      `--account` names — a refresh failure is a failure before any VM
- *      exists;
- *   4. commits the plan, parentless, against a temporary index and pushes it to
- *      the evidence repository (the operator's `evidence` setting, or
- *      `--evidence-repo`) as `live/<slug>/run-N`, its tree the run's folder
- *      `runs/<slug>/N/` and nothing else; nothing is written to the target — a
- *      refused push re-reads the highest run and, if
- *      one appeared, takes N+1 and pushes again, three pushes in all, so the
- *      push and not the read is what reserves N; that commit's sha is `plan=`
- *      in the assignment;
- *   5. issues exactly one mutating lobby verb:
- *
- *        new --name <vm> --tag fleet --comment '<assignment>'
- *            --cpu <cpu> --memory <memory> --setup-script /dev/stdin --json
- *
- *      with the rendered setup script on that call's stdin, carrying a
- *      `# fleet: width=<W>` header the launcher stamps on it. `--tag fleet` is
- *      what grants the run's integrations (each is attached to
- *      `tag:fleet`); the verb carries no `--integration`.
- *
- * `<cpu>` and `<memory>` are the PLAN's, sized by `vmSizeFor` from W, the task
- * count of the parse's widest wave, under the ceiling `~/.ultrapowers/fleet.json`
- * names. A refusal (exit 2) happens before anything is created; a failure after
- * that (exit 1) prints the lobby's own words. Each phase's section comment
- * below says the rest.
+ * The order of a launch — validate, read, refresh the credential, push the
+ * plan to the evidence repository, then exactly one mutating lobby verb, `new`
+ * — and every literal it uses are `fleet/CONTRACT.md` §Launch order and
+ * §Literals; this header does not restate them (#1444). A refusal (exit 2)
+ * happens before anything is created; a failure after that (exit 1) prints the
+ * lobby's own words. Each phase's section comment below says why it is shaped
+ * the way it is.
  */
 
 import fsp from 'node:fs/promises'

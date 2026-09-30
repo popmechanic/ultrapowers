@@ -4,144 +4,16 @@
  *
  *   node fleet/janitor.mjs [--age 1h] [--target <owner>/<repo>] [--dry-run] [--json] [--help]
  *
- * The janitor is the expiry. One `ls 'fleet-r*' --json` through the lobby gives
- * the fleet, and every row carries its own assignment comment, so `run=` and
- * `target=` come out of the row itself. The run's STATE is asked of the hub —
- * kata is the live record since #913 — and read off the run's record in the
- * operator's evidence repository only when the hub cannot answer (#938 item 1,
- * #1395). That repository is the `evidence` key of `~/.ultrapowers/fleet.json`
- * (or the one the launcher hands in), never the target; with none set, nothing
- * is read from any evidence repository and the reap goes on by the hub.
+ * The contract is `fleet/CONTRACT.md` §Janitor: what a pass reads (the hub
+ * first, the evidence repository when the hub is dark), what it removes (a
+ * finished run's VM after `--age`, an integration branch nothing merged), what
+ * it writes (a dead or orphaned run's end, then the seal) and what it only
+ * reports (`kept`, `unknown`, `stale`). This header does not restate it (#1444);
+ * the comments below say why the code is shaped the way it is.
  *
- * The hub. `~/.ultrapowers/kata-hub.env` names it (`KATA_URL`); it is reached
- * exactly as the launcher reaches it, `fleet/kata-client.mjs`'s `sshTransport`:
- * one `ssh <host> curl … localhost:8000/api/v1/…` per request, the bearer
- * sourced from `/etc/kata/kata.env` ON the hub by the hub's own shell, so the
- * laptop's argv carries the literal `$KATA_AUTH_TOKEN` and never a token. Two
- * reads answer a row: the projects listing, once per pass and only when a row
- * needs it — `GET /api/v1/projects?limit=1000`, matched on `name` against the
- * target's one project `<owner>-<repo>` (`targetSlug`), because kata
- * addresses a project by integer `id` and a name in the path is a 400 — and
- * that project's issues, `GET /api/v1/projects/<id>/issues?limit=1000`, which
- * holds every run of that target and in which the run issue is the one whose
- * `metadata.run` is N. Its `status` is
- * the first half of the verdict: `closed` is a finished run, `closed_reason`
- * (`done`|`wontfix`) its state and `closed_at` its age. The other half is the
- * issue's own `work.state` (#964): an OPEN issue whose metadata carries
- * `done`, `parked` or `failed` there is a finished run too, that value its
- * state and `updated_at` its age — a parked run's issue stays open for the
- * operator to read, and its VM is ballast all the same. Kata stores a dotted
- * key flat (#960), so it is read as `metadata['work.state']` and never as
- * `metadata.work.state`. An open issue with no such key is a run in flight,
- * aged from `updated_at`. The sandbox closes the run issue at publish (#937)
- * and marks it at a park, and the janitor marks it at a death (below), so a
- * row the hub says is open, unmarked, and whose unit is alive is a run still
- * going.
- *
- * The fallback. A hub that cannot be read — the env file absent, ssh or curl
- * failing, any answer that is not an answer — darkens the pass: the first such
- * error is kept, no further hub request is made, and every row from there is
- * read from the evidence repository, keyed by the target's slug:
- *
- *   gh api repos/<evidence>/contents/runs/<slug>/<N>/status.json?ref=<slug>/run-<N>
- *
- * — the contents envelope, whose base64 `content` is the status page — and, only
- * when the tag answered no envelope, the same path at `?ref=live/<slug>/run-<N>`:
- * a finished run has been sealed and has only the tag,
- * a run in flight has only the branch. A run the hub is up for but has no
- * project or run issue for (launched before the hub, or filed under another
- * name) is read from the evidence the same way, row by row, without darkening
- * the pass. A run with no record anywhere is left alone: there is nothing to
- * decide on. The pass reports which it did — `hub` on the result, and one
- * `hub <host> unreachable` line when it fell back.
- *
- * A finished run whose age is older than `--age` (1 h) is removed with
- * `rm <vm> --json`. The hour is for the operator to read a status page before
- * it goes; the rows are already one per VM, so every incarnation of a finished
- * run is reaped by its own row.
- *
- * Three things are never removed and reported instead:
- *
- *   kept    — a row whose `comment` carries `do not reap`. It is decided on the
- *             raw comment string, before the assignment is parsed, so a comment
- *             that also reads as an assignment is still kept; the row is then
- *             skipped whole, so not one hub or `gh api` read is issued about it.
- *   unknown — a row with no comment, or a comment carrying no `target=`: there
- *             is nothing to read, so there is nothing to decide on.
- *   stale   — a run silent for six hours: the hub's run issue, or the evidence
- *             page, last touched six hours ago. A boot that never committed, an
- *             engine that stopped writing: a stuck VM is evidence, so it is
- *             printed, never removed. The line names where its age was read —
- *             `kata:<project>`, or the evidence ref — because the two mean
- *             different things to the operator.
- *
- * A run the record says is in flight is a claim about a process, and #607
- * lifts the "no ssh into any VM" rule for the one read that checks it: for such
- * a row, and only such a row, the janitor asks the VM about the run's unit —
- *
- *   ssh <ssh_dest> "XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user show
- *                   fleet-run@<N>.service -p ActiveState -p SubState -p Result
- *                   -p ExecMainStatus"
- *
- * — and when the unit has failed (or hit its `Result=timeout`) under a record
- * that still says the run is in flight, it writes the death: the unit's journal
- * to `runs/<slug>/<N>/janitor-journal.txt`, then the page itself back
- * with `state` `failed`, both `gh api -X PUT` on the contents API against the
- * run's LIVE branch in the evidence repository, when the branch has a page (a
- * hub-read row's page is read then, and only then); once the page is written
- * the run is sealed (`sealRun`: the tag cut at the branch head through the
- * refs API, then the live branch deleted); and, when
- * the hub answered the row, one metadata patch
- * of the run issue — `work.state` `failed`, `work.attention` `needs-human`,
- * `work.attention_msg` the death's own line — under the idempotency key
- * `janitor:run-<N>:death`, so the hub's record says what the page says. The
- * issue itself is left OPEN: a close carries a verified outcome and a death is
- * a run nobody has read yet, so the marking is the record and the operator's
- * close is the close. The janitor still clones nothing and runs no `git`.
- * Because the patch and the page are dated now, the reap does not fire in the
- * same pass: the hour before the `rm` is the operator's window, and the record
- * already holds the journal — the next pass reads `work.state` `failed` off
- * that same issue and reaps by the ordinary rule. A unit that is alive, or that
- * cannot be read at all — a dark VM, an ssh that times out, an empty answer —
- * is left exactly as it was.
- *
- * The reap is the only removal of a VM. The janitor merges nothing — an
- * approved run merges its own pull request from the sandbox — and its writes
- * are the death's and the close-out's (both `failRun`: the page put back
- * failed on the live branch, then the seal), the reap's `rm`, and the one
- * deletion it makes on a target: an integration branch nothing merged. Two
- * reads find those (#724) —
- *
- *   gh api repos/<target>/git/matching-refs/heads/ultra/integration-run-
- *   gh api repos/<target>/pulls?state=all&head=<owner>:ultra/integration-run-<N>
- *
- * — one prefix match per distinct target the rows name (and the one
- * `--target` names, for a target no VM does), and one pull-request listing
- * per head it answers. A branch whose highest-numbered pull request is closed
- * and not merged is nothing's to merge, so the janitor deletes it —
- * `gh api -X DELETE repos/<target>/git/refs/heads/ultra/integration-run-<N>` —
- * and reports it last, beside the VMs this pass reaped. An open pull request,
- * a merged one (delete-on-merge's to take) or none keeps the branch.
- *
- * The close-out (#1314). Each target the rows named is read once more for
- * orphans, in the evidence repository —
- *
- *   gh api repos/<evidence>/git/matching-refs/heads/live/<slug>/run-
- *
- * — and every run there that no row of this pass carries has its branch page
- * read (`?ref=live/<slug>/run-<N>`). A page still saying `booting`,
- * `running` or `publishing`, last updated longer ago than `--age`, is a run
- * whose VM is gone and which will never record its own end: once the fleet is
- * listed again and still carries no VM for it, the janitor writes its end —
- * the page put back on the live branch with `state` `failed`, then the run
- * sealed. A finished page, or a live one younger than `--age`, is left alone.
- *
- * Nothing schedules it: `fleet/launch.mjs` runs it before every launch, handing
- * it the hub client the launch already built, and it is run by hand after the
- * laptop has been asleep.
- *
- * `--dry-run` issues every read and no write: no `rm`, no PUT, no DELETE. There
- * is no attachment sweep: attachments carry `--for` and lapse by themselves.
+ * Nothing schedules it: `fleet/launch.mjs` runs it before every launch, and it
+ * is run by hand after the laptop has been asleep. `--dry-run` issues every
+ * read and no write.
  */
 
 import { Buffer } from 'node:buffer'
