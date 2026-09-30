@@ -1,6 +1,6 @@
 {
   "version": "policy-v1",
-  "about": "Every threshold the Flock and the record read, one file: `flock` holds the Flock's cells and `publish` the self-merge and probe cells record.mjs reads. A threshold is chosen on the record's readings and never tuned live; each carries the n and the window it was read over, or says in terms that it was not read. No default flips under n = 5 runs / 20 tasks: a threshold read under that floor is an `experiment` with its `rollback` named.",
+  "about": "Every threshold the Flock and the record read, one file: `flock` holds the Flock's cells and `publish` the self-merge and probe cells publish.mjs reads. A threshold is chosen on the record's readings and never tuned live; each carries the n and the window it was read over, or says in terms that it was not read. No default flips under n = 5 runs / 20 tasks: a threshold read under that floor is an `experiment` with its `rollback` named.",
   "publish": {
     "self_merge": {
       "enabled": true,

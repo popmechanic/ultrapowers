@@ -15,7 +15,9 @@ keeps the name `factory/`. Models never run git.
 
 - `boot.sh` prepares the clone, the plan, the verdict record and the evidence worktree, brings
   up the board, runs `flock/engine.mjs` as one transient unit under `RuntimeMaxSec` (one
-  clock, #1144), and publishes as shell — a push and one POST.
+  clock, #1144), then pushes the run's branch and hands the rest to `publish.mjs`: the pull
+  request, the self-merge (catching up to a moved main) and the publish probe, run once after the
+  engine exits, never inside it (#1441).
 - `flock/engine.mjs` is the run as a leaderless swarm: it seeds the board from the plan
   (`flock/plan.mjs`), runs an elastic pool of builder sessions that claim tasks, each on its
   own copy, keeps every copy's weave (`flock/weave.py` over the kernel's sha-pinned
@@ -31,7 +33,7 @@ keeps the name `factory/`. Models never run git.
   `flock/edit_spans.mjs`, `flock/step_reading.mjs`, `flock/past.mjs`, `flock/io.mjs` (the git
   wrapper, the weave keeper client, snapshot writes, `events.jsonl` rows and the `kata.json`
   address the engine, the catch-up and `board.mjs` share), `flock/nogit/git` (the refusing git first on every builder's PATH),
-  `preflight.mjs` (the boot's credential probe), `record.mjs` (the boot's renderer),
+  `preflight.mjs` (the boot's credential probe), `record.mjs` (the status page and PR body),
   `audit.mjs` (a finished run's final computed row).
 
 ## Judgment and policy

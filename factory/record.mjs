@@ -1,22 +1,13 @@
 /**
- * factory/record.mjs — the boot's one renderer (#1167, #1205, #1222).
+ * factory/record.mjs — the run's renderer (#1167, #1205, #1222).
  *
- * `factory/boot.sh` decides everything about a run: what state it is in,
- * what its phase reads, whether a pull request is open, what its policy
- * allows. This module decides nothing — every subcommand below takes what
- * the boot already knows and turns it into the bytes the boot writes: one
- * event row, the twelve-cell status page, the pull request body, or the
- * three numbers `publish.self_merge` carries. Nothing here writes a file or
- * reads an environment variable; every subcommand prints one thing to
- * stdout and its exit code says whether that printing happened.
- *
- * `row` gives every end-of-run row its `ts` — the boot had one writer for
- * this at BASE (`event_row`) and this module is now the string it prints.
- * `status` is the same projection `ev_project`/`write_status` did over
- * `events.jsonl`, moved so the shell no longer parses JSON by hand. `pr-body`
- * is `plan_summary`/`ev_project rows`/`plan_closes` joined the way `pr_body`
- * joined them. `policy` is the read `read_self_merge_policy` did through a
- * Python heredoc, moved to the language already in the loop.
+ * This module decides nothing: it takes what the boot and `factory/publish.mjs` already know
+ * and turns it into the bytes they write — the twelve-cell status page (`status`, the
+ * projection over `events.jsonl` the boot commits) and the pull request body (`pr-body`, the
+ * plan's summary, the receipt, provenance, a draft's reason, Jev's step readings and the
+ * closes). Nothing here writes a file or reads an environment variable; each subcommand prints
+ * one thing to stdout and its exit code says whether that printing happened. The JSON the
+ * publish used to build here by hand is `publish.mjs`'s own now (#1441).
  */
 
 import { readFileSync } from 'node:fs'
@@ -31,33 +22,11 @@ function splitToken (token) {
   return [token.slice(0, idx), token.slice(idx + 1)]
 }
 
-/** The bare-value rule `is_bare_value` states at BASE: a value that is
- *  exactly `null`, `true` or `false`, or that matches `/^-?[0-9]+$/`, is that
- *  JSON literal or number; every other value is a JSON string. */
-function bareOrString (value) {
-  if (value === 'null') return null
-  if (value === 'true') return true
-  if (value === 'false') return false
-  if (/^-?[0-9]+$/.test(value)) return Number(value)
-  return value
-}
-
 /** One `{"key":value,...}` object, keys and values rendered in the order
  *  given — never a plain JS object, whose own key order reorders an
  *  integer-looking string key ahead of insertion order. */
 function renderObject (entries) {
   return '{' + entries.map(([k, v]) => JSON.stringify(k) + ':' + JSON.stringify(v)).join(',') + '}'
-}
-
-/** `row <kind> [key=value ...]` — `{ts, kind, ...pairs}`, `ts` first, `kind`
- *  second, then the pairs in argument order, each value bare or a string. */
-export function renderRow (kind, tokens) {
-  const entries = [['ts', new Date().toISOString()], ['kind', kind]]
-  for (const token of tokens) {
-    const [key, raw] = splitToken(token)
-    entries.push([key, bareOrString(raw)])
-  }
-  return renderObject(entries)
 }
 
 /** `events.jsonl`'s lines, parsed as JSON in file order; a line that fails to
@@ -325,147 +294,6 @@ export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath,
   return out
 }
 
-/** `publish.<key>` off the policy file at `policyPath`, when it is an object
- *  carrying an `enabled` key; a missing file, unparseable JSON, or any other
- *  shape reads as `null`, so each caller fails closed to disabled. */
-function readPublishCell (policyPath, key) {
-  let doc
-  try {
-    doc = JSON.parse(readFileSync(policyPath, 'utf8'))
-  } catch {
-    return null
-  }
-  const cell = doc && typeof doc === 'object' ? doc.publish && doc.publish[key] : undefined
-  if (!cell || typeof cell !== 'object' || Array.isArray(cell) || !Object.prototype.hasOwnProperty.call(cell, 'enabled')) {
-    return null
-  }
-  return cell
-}
-
-/** `policy <policy.json>` — `<enabled> <max_refolds> <mergeable_wait_seconds>`
- *  off `publish.self_merge`; a missing file, unparseable JSON, or a
- *  `self_merge` that is not an object carrying an `enabled` key reads as
- *  disabled, never a default a broken read falls into. */
-export function renderPolicy (policyPath) {
-  // the one place the boot's self-merge bounds default
-  const MAX_REFOLDS = 3, WAIT_SECONDS = 120
-  const sm = readPublishCell(policyPath, 'self_merge')
-  if (!sm) return `0 ${MAX_REFOLDS} ${WAIT_SECONDS}`
-  const enabled = sm.enabled ? 1 : 0
-  const maxRefolds = sm.max_refolds === undefined ? MAX_REFOLDS : Math.trunc(Number(sm.max_refolds))
-  const waitSeconds = sm.mergeable_wait_seconds === undefined ? WAIT_SECONDS : Math.trunc(Number(sm.mergeable_wait_seconds))
-  return `${enabled} ${maxRefolds} ${waitSeconds}`
-}
-
-/** `publish-policy <policy.json>` — `<enabled> <timeout_seconds>` off
- *  `publish.probe`; a missing file, unparseable JSON, or a `probe` that is
- *  not an object carrying an `enabled` key reads as disabled (`0 600`),
- *  never a default a broken read falls into — the same rule `policy` reads
- *  `publish.self_merge` by. */
-export function renderPublishPolicy (policyPath) {
-  const probe = readPublishCell(policyPath, 'probe')
-  if (!probe) return '0 600'
-  const enabled = probe.enabled ? 1 : 0
-  const timeoutSeconds = probe.timeout_seconds === undefined ? 600 : Math.trunc(Number(probe.timeout_seconds))
-  return `${enabled} ${timeoutSeconds}`
-}
-
-/** The three command strings off `plan_parse.py`'s own `publish` object —
- *  read from `jsonText`, its full stdout (`{..., "publish": {"deploy",
- *  "verify", "rollback"} | null}`) — one per line, an absent command (the
- *  plan named no `**Publish:**` line, or that particular line) an empty
- *  line; unparseable input reads as three empty lines, same as a null
- *  `publish`. */
-export function renderPublishCmds (jsonText) {
-  let doc
-  try {
-    doc = JSON.parse(jsonText)
-  } catch {
-    doc = null
-  }
-  const publish = doc && typeof doc === 'object' ? doc.publish : null
-  const strOr = (v) => (publish && typeof publish === 'object' && typeof v === 'string' ? v : '')
-  const deploy = publish && typeof publish === 'object' ? strOr(publish.deploy) : ''
-  const verify = publish && typeof publish === 'object' ? strOr(publish.verify) : ''
-  const rollback = publish && typeof publish === 'object' ? strOr(publish.rollback) : ''
-  return `${deploy}\n${verify}\n${rollback}`
-}
-
-/** `publish-json url=… published=… deployCmd=… deployExit=… deployMs=…
- *  [verifyCmd=… verifyExit=… verifyMs=…] [rollbackCmd=… rollbackExit=…]` —
- *  the object the boot's publish probe used to build by hand:
- *  `{"url", "published", "deploy": {"cmd","exit","ms"},
- *  "verify": {"cmd","exit","ms"}|null, "rollback": {"cmd","exit"}|null}`.
- *  `verify` is an object only when `verifyExit` was given (the deploy
- *  produced a URL and a live check ran); `rollback` is an object only when
- *  `rollbackExit` was given (the check went red and a rollback command was
- *  named). */
-export function renderPublishJson (tokens) {
-  const fields = {}
-  for (const token of tokens) {
-    const [key, value] = splitToken(token)
-    fields[key] = value
-  }
-  const url = fields.url === undefined || fields.url === '' || fields.url === 'null' ? null : fields.url
-  const published = fields.published === 'true'
-  const deploy = {
-    cmd: fields.deployCmd ?? '',
-    exit: fields.deployExit === undefined ? null : Math.trunc(Number(fields.deployExit)),
-    ms: fields.deployMs === undefined ? null : Math.trunc(Number(fields.deployMs))
-  }
-  let verify = null
-  if (fields.verifyExit !== undefined) {
-    verify = {
-      cmd: fields.verifyCmd ?? '',
-      exit: Math.trunc(Number(fields.verifyExit)),
-      ms: fields.verifyMs === undefined ? null : Math.trunc(Number(fields.verifyMs))
-    }
-  }
-  let rollback = null
-  if (fields.rollbackExit !== undefined) {
-    rollback = {
-      cmd: fields.rollbackCmd ?? '',
-      exit: Math.trunc(Number(fields.rollbackExit))
-    }
-  }
-  return JSON.stringify({ url, published, deploy, verify, rollback })
-}
-
-/** `pr-payload title=… head=… base=… body=… draft=…` — the five-key object
- *  the boot's `publish` used to build by hand: the four named strings always
- *  rendered as JSON strings (never the bare-value rule `row` applies), a
- *  missing key an empty string, and `draft` the boolean `true` only when the
- *  token is exactly `draft=true`. */
-export function renderPrPayload (tokens) {
-  const fields = {}
-  for (const token of tokens) {
-    const [key, value] = splitToken(token)
-    fields[key] = value
-  }
-  return JSON.stringify({
-    title: fields.title ?? '',
-    head: fields.head ?? '',
-    base: fields.base ?? '',
-    body: fields.body ?? '',
-    draft: fields.draft === 'true'
-  })
-}
-
-/** `merge-payload title=… sha=…` — the object `maybe_self_merge` used to
- *  build by hand; a missing key an empty string. */
-export function renderMergePayload (tokens) {
-  const fields = {}
-  for (const token of tokens) {
-    const [key, value] = splitToken(token)
-    fields[key] = value
-  }
-  return JSON.stringify({
-    merge_method: 'squash',
-    commit_title: fields.title ?? '',
-    sha: fields.sha ?? ''
-  })
-}
-
 /** The tokens after a subcommand, split into plain tokens and the file named
  *  by a `--events <file>` pair wherever it falls among them. */
 function extractEvents (args) {
@@ -495,12 +323,6 @@ export function main (argv) {
   const args = argv.slice(2)
   const subcommand = args[0]
   switch (subcommand) {
-    case 'row': {
-      const kind = args[1]
-      if (kind === undefined) return usageError('row: missing <kind>')
-      process.stdout.write(renderRow(kind, args.slice(2)) + '\n')
-      return 0
-    }
     case 'status': {
       const { rest, eventsPath } = extractEvents(args.slice(1))
       const fields = {}
@@ -522,35 +344,6 @@ export function main (argv) {
         pv >= 0 ? rest[pv + 1] : undefined, pj >= 0 ? rest[pj + 1] : undefined))
       return 0
     }
-    case 'policy': {
-      const policyPath = args[1]
-      if (policyPath === undefined) return usageError('policy: missing <policy.json>')
-      process.stdout.write(renderPolicy(policyPath) + '\n')
-      return 0
-    }
-    case 'publish-policy': {
-      const policyPath = args[1]
-      if (policyPath === undefined) return usageError('publish-policy: missing <policy.json>')
-      process.stdout.write(renderPublishPolicy(policyPath) + '\n')
-      return 0
-    }
-    case 'publish-cmds': {
-      const jsonText = readFileSync(0, 'utf8')
-      process.stdout.write(renderPublishCmds(jsonText) + '\n')
-      return 0
-    }
-    case 'publish-json': {
-      process.stdout.write(renderPublishJson(args.slice(1)) + '\n')
-      return 0
-    }
-    case 'pr-payload': {
-      process.stdout.write(renderPrPayload(args.slice(1)) + '\n')
-      return 0
-    }
-    case 'merge-payload': {
-      process.stdout.write(renderMergePayload(args.slice(1)) + '\n')
-      return 0
-    }
     default:
       return usageError(`unknown subcommand '${subcommand ?? ''}'`)
   }
@@ -559,15 +352,8 @@ export function main (argv) {
 if (import.meta.main) { process.exitCode = main(process.argv) }
 
 export default {
-  renderRow,
   renderStatus,
   renderPrBody,
-  renderPolicy,
-  renderPublishPolicy,
-  renderPublishCmds,
-  renderPublishJson,
-  renderPrPayload,
-  renderMergePayload,
   projectTasks,
   main
 }

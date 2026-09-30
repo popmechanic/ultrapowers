@@ -332,7 +332,9 @@ evidence repository.
   engine's `--past-dir`, runs the engine as one transient unit, commits the record to the live
   branch every 60 s and at each transition (see above), cuts and verifies the run tag and deletes
   the live branch at the end of every run, and — only when there is something to publish — opens the pull request
-  and, gated by `factory/policy.json`'s `publish.self_merge`, merges it. When the target's tip moved
+  and, gated by `factory/policy.json`'s `publish.self_merge`, merges it — the pull request, the
+  merge, the catch-up and the publish probe are `factory/publish.mjs`, which the boot calls once
+  after the engine unit exits (#1441), GitHub over `curl` and the target over `git`, both off PATH. When the target's tip moved
   underneath the run, the boot catches the run up to the new main inline by running
   `node factory/flock/catchup.mjs --plan <plan> --plan-json <parse> --target <target> --base <run base> --onto <moved tip>
   --run-dir <dir>`, whose last stdout line is JSON: `{"refolded": true, "head", "onto"}` (exit 0) or
@@ -459,18 +461,17 @@ evidence repository.
   `https://github.com/<evidence repo>/tree/<owner>-<repo>/run-<N>/runs/<owner>-<repo>/<N>` — a blank line, and one `Closes #<n>` line per number on the plan's `**Closes:**`
   line, all rendered by `factory/record.mjs pr-body`. A run with no `edge` row carries only the
   evidence line. The `publish:pr` row it leaves —
-  `{ts, kind, url, number, draft}` — is written through the same writer as every other
-  end-of-run row (`event_row`, over `factory/record.mjs row`).
-- **Publish probe (#835, `run_publish_probe` in `factory/boot.sh`, called from `publish()` once
-  `MERGED_SHA` is non-empty, before `write_status`):** the plan's `**Publish:**`/`**Verify:**`/
-  `**Rollback:**` header lines are read off the run's one parse (never grepped off the plan text)
-  by `factory/record.mjs publish-cmds`, one per line;
+  `{ts, kind, url, number, draft}` — is appended by `factory/publish.mjs`, as are its `merge`,
+  `refold` and `publish:*` rows.
+- **Publish probe (#835, in `factory/publish.mjs`, run once the merge answered a sha, before the
+  boot's `write_status`):** the plan's `**Publish:**`/`**Verify:**`/
+  `**Rollback:**` header lines are read off the run's one parse (never grepped off the plan text);
   a plan naming no `**Publish:**` line, or `factory/policy.json`'s `publish.probe.enabled` false
-  (read by `factory/record.mjs publish-policy`, which prints `"<0 or 1> <timeout_seconds>"`), leaves
+  (a cell with no `enabled` key, or no readable file, reads as false), leaves
   the run's `phase` at the plain `"the pull request was merged"` and writes no `publish:*` row and
   no `publish.json`. Otherwise:
   1. **Deploy** — `bash -lc "<deploy cmd>"`, cwd `<target>`, under `timeout <publish.probe.
-     timeout_seconds>` (policy default 600), env carrying `CLOUDFLARE_API_BASE_URL=https://
+     timeout_seconds>` (policy default 600; exit 124 on the budget), env carrying `CLOUDFLARE_API_BASE_URL=https://
      cloudflare.int.exe.xyz/client/v4` and `CLOUDFLARE_API_TOKEN=placeholder`. Its combined
      stdout+stderr is grepped for the first `https://[A-Za-z0-9.-]*.workers.dev` url; a
      `publish:deploy{cmd, exit, ms, url}` row is written (`url` is `null` when none matched). Exit
@@ -487,8 +488,7 @@ evidence repository.
      request was merged; the live check was red and the deploy was rolled back"`. A red verify with
      no `**Rollback:**` line skips this step and sets `phase` to `"the pull request was merged; the
      live check was red and no rollback was named"` instead, `publish.json`'s `rollback` staying
-     `null`. Every case's `publish.json` is rendered whole by `factory/record.mjs publish-json`,
-     never hand-built shell JSON.
+     `null`. Every case's `publish.json` is `publish.mjs`'s own JSON, never hand-built shell JSON.
   Every step's raw combined stdout+stderr is truncated to its last 4000 bytes and written beside
   `publish.json` in the evidence directory as `publish-deploy.log`/`publish-verify.log`/
   `publish-rollback.log` — none of it is ever embedded in an event row. `evidence_commit`'s fixed
