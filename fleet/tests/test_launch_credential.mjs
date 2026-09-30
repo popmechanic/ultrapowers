@@ -30,10 +30,10 @@
  *       as its own whole line; `{ ok: true }` alone renders no `token:` line.
  *
  * (c) and (d) drive `launch({ argv, exec, config, now, sleep, refreshCredential,
- * kata: null })` in-process over the same launcher rig `test_launch_duplicate.mjs`
- * uses, copied rather than imported (a sim may not run a sibling sim): a local
- * bare origin stands in for GitHub, and every lobby verb, `gh api` and `python3`
- * call is answered by a rule.
+ * kata: null })` in-process over the launch sims' shared rig in
+ * `_lobby_helpers.mjs` (`launchRules`, `launchWorkspace`): a local bare origin
+ * stands in for GitHub, and every lobby verb, `gh api` and `python3` call is
+ * answered by a rule.
  *
  * ── #1114 (this task) ───────────────────────────────────────────────────────
  *
@@ -71,10 +71,7 @@ import { fileURLToPath } from 'node:url'
 import { defaultReadUsage, defaultRefreshCredential, launch, renderLaunch, USAGE_REFUSE_PCT } from '../launch.mjs'
 import { Refusal, defaultExec } from '../lobby.mjs'
 import {
-  BILLING_OK, COMPILER_FETCH, NEW_OK, NO_NETWORK_GIT, NO_REMOTE_OPS, ONE_TASK,
-  answer, cleanup, cmdRule, engineRule, localRemote, makeEvidenceRepo, makeExec, makeTargetRepo, pointAtOrigin, sshRule,
-  tempDir,
-  thrown, vmsPayload
+  HELP_FROM_VERBS, launchRules, launchWorkspace, makeExec, pointAtOrigin, pushCalls, thrown
 } from './_lobby_helpers.mjs'
 
 // ── a/b. [M1, M2] defaultRefreshCredential over a spawn spy ─────────────────
@@ -130,57 +127,16 @@ const ENGINE = 'b'.repeat(40)
 const NOW = new Date('2026-09-16T03:20:00.000Z')
 const EVIDENCE = 'ops/evidence'
 const CAPPED = { cpu: '6', memory: '8GB', evidence: EVIDENCE }
-const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n' }
-const PLAN = '# a plan\n\nOne plan, and a trailing newline.\n'
-
-const helpText = (verb, flags) => [
-  `Command: ${verb}`, '', 'Options:', ...flags.map((flag) => `  ${flag}  what ${flag} does`), ''
-].join('\n')
 const FLEET_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const VERBS = JSON.parse(fs.readFileSync(path.join(FLEET_DIR, 'exe-verbs.json'), 'utf8'))
-const HELP_OK = (cmd, argv) => {
-  const verb = String(argv[1] ?? '').slice('help '.length)
-  const flags = VERBS.verbs[verb]
-  return flags
-    ? answer(helpText(verb, flags))
-    : answer(`No help available for unrecognized command: ${verb}\n`)
-}
-const compilerRule = (compiled) => ({
-  when: (cmd) => cmd === 'python3',
-  answer: (cmd, argv) =>
-    argv.some((a) => String(a).endsWith('plan_check.py')) ? answer('PLAN OK\n') : answer(JSON.stringify(compiled))
-})
-const NO_RECORD = answer('')
-const recordRule = (res) => cmdRule('gh', 'api', res)
 
 // `repo.evidence` is the workspace's evidence bare, which the evidence URL is routed to.
-const readRules = ({ repo }) => [
-  engineRule(ENGINE),
-  COMPILER_FETCH,
-  localRemote(repo, repo.evidence),
-  compilerRule(ONE_TASK),
-  sshRule('help ', HELP_OK),
-  sshRule('integrations list --json', answer([
-    { name: GH, attachments: [] }, { name: 'gh-ops-evidence', attachments: [] }, { name: 'claude-max', attachments: [] }
-  ])),
-  sshRule('billing plan --json', answer(BILLING_OK)),
-  sshRule("ls '", vmsPayload([])),
-  sshRule('new ', NEW_OK),
-  recordRule(NO_RECORD),
-  NO_REMOTE_OPS,
-  NO_NETWORK_GIT
-]
+const readRules = ({ repo }) =>
+  launchRules({ engine: ENGINE, repo, evidence: repo.evidence, gh: GH, help: HELP_FROM_VERBS })
 
 function workspace () {
-  const root = tempDir('fleet-launch-credential-')
-  const repo = makeTargetRepo({ root, files: { ...SEED } })
-  repo.git(['remote', 'set-url', 'origin', ORIGIN_URL])
-  repo.evidence = makeEvidenceRepo({ root, name: EVIDENCE })
-  const planDir = path.join(root, 'plans-src')
-  fs.mkdirSync(planDir)
-  const planPath = path.join(planDir, 'a-plan.md')
-  fs.writeFileSync(planPath, PLAN)
-  return { root, repo, planPath, cleanup: () => cleanup(root) }
+  const ws = launchWorkspace({ prefix: 'fleet-launch-credential-', originUrl: ORIGIN_URL, evidence: EVIDENCE })
+  ws.repo.evidence = ws.evidence
+  return ws
 }
 
 const argvFor = (ws) => [ws.planPath, '--target', TARGET, '--base', ws.repo.base, '--repo', ws.repo.dir, '--engine', ENGINE]
@@ -195,7 +151,6 @@ const launchIn = (ws, { exec, refreshCredential, readUsage }) => launch({
   kata: null
 })
 
-const pushCalls = (exec) => exec.calls.filter((c) => c.cmd === 'git' && c.argv.includes('push'))
 const newVerbs = (exec) => exec.mutating().filter((line) => line.startsWith('new '))
 
 // (c) [M3] a declined credential refuses in one line, before anything is pushed

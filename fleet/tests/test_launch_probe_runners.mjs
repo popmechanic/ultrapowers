@@ -31,11 +31,8 @@ import path from 'node:path'
 
 import * as launchModule from '../launch.mjs'
 import { probeWordsOf, toolchainViolations, SANDBOX_TOOLCHAIN } from '../toolchain.mjs'
-import { Refusal, defaultExec } from '../lobby.mjs'
-import { simEnv } from './_helpers.mjs'
-import {
-  answer, cleanup, cmdRule, makeEvidenceRepo, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmsPayload
-} from './_lobby_helpers.mjs'
+import { Refusal } from '../lobby.mjs'
+import { launchRules, launchWorkspace, makeExec, thrown } from './_lobby_helpers.mjs'
 
 const { launch } = launchModule
 
@@ -131,7 +128,6 @@ const isFunction = (leg, name, value) => assert.equal(
   const NOW = new Date('2026-09-22T12:00:00.000Z')
   const EVIDENCE = 'ops/evidence'
   const CAPPED = { cpu: '6', memory: '8GB', evidence: EVIDENCE }
-  const BILLING_OK = { max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'Individual' }
   const PLAN = '# a plan\n\nOne plan whose probe runs cargo.\n'
 
   // The compiled plan the stubbed parser answers: one task, one probe the
@@ -144,65 +140,20 @@ const isFunction = (leg, name, value) => assert.equal(
     dag_edges: [], pairs: [], checks: [], bootstrapCmd: null
   }
 
-  const COMPILER_FETCH = {
-    when: (cmd, argv) => cmd === 'gh' && argv[0] === 'api' &&
-      argv.some((a) => /contents\/skills\/ultrapowers\/scripts\/plan_(check|parse)\.py/.test(String(a))),
-    answer: answer('# plan_check.py or plan_parse.py, as the seam hands it back\n')
-  }
   // The evidence repository's URL goes to its own bare; every other github.com
-  // URL, and `origin`, to the target's.
-  const pointAtOrigin = (repo, argv) => {
-    const pointed = argv.map((a) => a === `https://github.com/${EVIDENCE}.git` ? repo.evidence.bare
-      : (a === 'origin' || /github\.com/.test(String(a)) ? repo.origin : a))
-    const fetchAt = argv.indexOf('fetch')
-    if (fetchAt < 0) return pointed
-    const remoteAt = argv.indexOf('origin', fetchAt)
-    const branch = String(argv[remoteAt + 1] ?? '')
-    if (remoteAt < 0 || branch === '' || branch.startsWith('-') || branch.includes(':')) return pointed
-    pointed[remoteAt + 1] = `+refs/heads/${branch}:refs/remotes/origin/${branch}`
-    return pointed
-  }
-  const localRemote = (repo) => ({
-    when: (cmd, argv) => cmd === 'git' &&
-      (argv.includes('push') || argv.includes('ls-remote') || argv.includes('fetch')) &&
-      !argv.includes('--get-url') &&
-      !argv.some((a) => /ultrapowers/.test(String(a))),
-    answer: (cmd, argv, options) => defaultExec('git', pointAtOrigin(repo, argv), { ...(options ?? {}), env: simEnv() })
+  // URL, and `origin`, to the target's. No engine rule: the refusal comes first.
+  const ws = launchWorkspace({
+    prefix: 'fleet-launch-probe-runners-',
+    originUrl: ORIGIN_URL,
+    seed: { 'README.md': '# target\n', 'src/a.rs': 'fn main() {}\n' },
+    evidence: EVIDENCE,
+    plan: null
   })
-  const OFFLINE = answer('', { code: 128, stderr: 'sim: this sim opens no network socket\n' })
-  const compilerRule = {
-    when: (cmd) => cmd === 'python3',
-    answer: (cmd, argv) =>
-      argv.some((a) => String(a).endsWith('plan_check.py')) ? answer('PLAN OK\n') : answer(JSON.stringify(COMPILED))
-  }
-  const HELP_OK = (cmd, argv) => answer(`Command: ${String(argv[1] ?? '').slice('help '.length)}\n\nOptions:\n`)
-  const NEW_OK = (cmd, argv) =>
-    answer({ vm_name: /--name (\S+)/.exec(String(argv[1] ?? ''))?.[1] ?? '', status: 'running' })
-
-  const root = tempDir('fleet-launch-probe-runners-')
-  const repo = makeTargetRepo({ root, files: { 'README.md': '# target\n', 'src/a.rs': 'fn main() {}\n' } })
-  repo.git(['remote', 'set-url', 'origin', ORIGIN_URL])
-  repo.evidence = makeEvidenceRepo({ root, name: EVIDENCE })
+  const { repo } = ws
   fs.mkdirSync(path.join(repo.dir, 'plans'), { recursive: true })
   fs.writeFileSync(path.join(repo.dir, 'plans', 'a-plan.md'), PLAN)
 
-  const exec = makeExec({
-    rules: [
-      COMPILER_FETCH,
-      localRemote(repo),
-      compilerRule,
-      sshRule('help ', HELP_OK),
-      sshRule('integrations list --json', answer([
-        { name: GH, attachments: [] }, { name: 'gh-ops-evidence', attachments: [] }, { name: 'claude-max', attachments: [] }
-      ])),
-      sshRule('billing plan --json', answer(BILLING_OK)),
-      sshRule("ls '", vmsPayload([])),
-      sshRule('new ', NEW_OK),
-      cmdRule('gh', 'api', answer('')),
-      { when: (cmd, argv) => cmd === 'git' && argv.some((a) => a === 'clone' || a === 'pull'), answer: OFFLINE },
-      { when: (cmd, argv) => cmd === 'git' && argv.some((a) => /:\/\/|github\.com/.test(String(a))), answer: OFFLINE }
-    ]
-  })
+  const exec = makeExec({ rules: launchRules({ repo, evidence: ws.evidence, gh: GH, compiled: COMPILED }) })
 
   const error = await thrown(() => launch({
     argv: ['plans/a-plan.md', '--target', TARGET, '--base', repo.base, '--repo', repo.dir, '--engine', ENGINE],
@@ -230,7 +181,7 @@ const isFunction = (leg, name, value) => assert.equal(
   assert.ok(!lines.some((l) => /^ssh exe\.dev billing plan/.test(l)),
     `(c) [M3] the pool was never read: the refusal comes before it. Calls: ${JSON.stringify(lines)}`)
 
-  cleanup(root)
+  ws.cleanup()
 }
 
 console.log('ALL TESTS PASSED')

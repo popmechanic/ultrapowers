@@ -21,6 +21,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
 import { EXE_HOST, defaultExec } from '../lobby.mjs'
 import { simEnv } from './_helpers.mjs'
@@ -247,8 +248,8 @@ export async function thrown (body) {
 }
 
 // ── The launch sims' shared rig ─────────────────────────────────────────────
-// test_launch_credential/duplicate/one_engine/plan_path all drive `launch()`
-// over the same seam; what they share lives here, once.
+// test_launch_credential/duplicate/evidence/one_engine/plan_path/probe_runners
+// all drive `launch()` over the same seam; what they share lives here, once.
 
 /** An account whose billing caps clear every launch. */
 export const BILLING_OK = { max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'Individual' }
@@ -331,3 +332,91 @@ export const NO_NETWORK_GIT = {
   when: (cmd, argv) => cmd === 'git' && argv.some((a) => /:\/\/|github\.com/.test(String(a))),
   answer: OFFLINE
 }
+
+/** The seed of a launch sim's target, and the plan it launches. */
+export const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n' }
+export const PLAN = '# a plan\n\nOne plan, and a trailing newline.\n'
+
+/** Every `python3` run of the compiler: `plan_check.py` passes, `plan_parse.py`
+ *  answers `compiled`. */
+export const compilerRule = (compiled) => ({
+  when: (cmd) => cmd === 'python3',
+  answer: (cmd, argv) =>
+    argv.some((a) => String(a).endsWith('plan_check.py')) ? answer('PLAN OK\n') : answer(JSON.stringify(compiled))
+})
+
+/** `help <verb>` answered with a bare Options block. */
+export const HELP_OK = (cmd, argv) => answer(`Command: ${String(argv[1] ?? '').slice('help '.length)}\n\nOptions:\n`)
+
+const FLEET_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const helpText = (verb, flags) => [
+  `Command: ${verb}`, '', 'Options:', ...flags.map((flag) => `  ${flag}  what ${flag} does`), ''
+].join('\n')
+/** `help <verb>` answered with the flags `fleet/exe-verbs.json` pins for it,
+ *  and an unrecognized verb answered as exe.dev answers one. Read per call, so
+ *  a sim that never asks never opens the file. */
+export const HELP_FROM_VERBS = (cmd, argv) => {
+  const { verbs } = JSON.parse(fs.readFileSync(path.join(FLEET_DIR, 'exe-verbs.json'), 'utf8'))
+  const verb = String(argv[1] ?? '').slice('help '.length)
+  const flags = verbs[verb]
+  return flags
+    ? answer(helpText(verb, flags))
+    : answer(`No help available for unrecognized command: ${verb}\n`)
+}
+
+/** `gh api …` answering `res` for every call; `NO_RECORD` is an empty page. */
+export const recordRule = (res) => cmdRule('gh', 'api', res)
+export const NO_RECORD = answer('')
+
+/**
+ * The seam a good launch reads through, in the order the launch sims need it
+ * (`COMPILER_FETCH` before `recordRule`, see above). `gh` is the target's
+ * integration name, and `integrations` replaces the default three rows; `rows`
+ * is what `ls` answers, `record` what `gh api` answers, `help` what `help`
+ * answers. With no `engine` the engine's `ls-remote` rule is left out.
+ */
+export const launchRules = ({
+  engine, repo, evidence = [], gh, integrations, rows = [], record = NO_RECORD, help = HELP_OK, compiled = ONE_TASK
+}) => [
+  ...(engine ? [engineRule(engine)] : []),
+  COMPILER_FETCH,
+  localRemote(repo, evidence),
+  compilerRule(compiled),
+  sshRule('help ', help),
+  sshRule('integrations list --json', answer(integrations ?? [
+    { name: gh, attachments: [] }, { name: 'gh-ops-evidence', attachments: [] }, { name: 'claude-max', attachments: [] }
+  ])),
+  sshRule('billing plan --json', answer(BILLING_OK)),
+  sshRule("ls '", vmsPayload(rows)),
+  sshRule('new ', NEW_OK),
+  recordRule(record),
+  NO_REMOTE_OPS,
+  NO_NETWORK_GIT
+]
+
+/**
+ * A launch sim's workspace under a fresh temp root: a target seeded with
+ * `seed` whose origin URL then reads `originUrl`, an evidence repository named
+ * `evidence`, and — unless `plan` is null — the plan at `plans-src/a-plan.md`,
+ * outside the target. Answers `{ root, repo, evidence, planPath, cleanup }`.
+ */
+export function launchWorkspace ({ prefix, originUrl, seed = SEED, evidence = 'ops/evidence', plan = PLAN }) {
+  const root = tempDir(prefix)
+  const repo = makeTargetRepo({ root, files: { ...seed } })
+  repo.git(['remote', 'set-url', 'origin', originUrl])
+  const evidenceRepo = makeEvidenceRepo({ root, name: evidence })
+  let planPath = null
+  if (plan !== null) {
+    const planDir = path.join(root, 'plans-src')
+    fs.mkdirSync(planDir)
+    planPath = path.join(planDir, 'a-plan.md')
+    fs.writeFileSync(planPath, plan)
+  }
+  return { root, repo, evidence: evidenceRepo, planPath, cleanup: () => cleanup(root) }
+}
+
+/** Every `git push` the seam recorded. */
+export const pushCalls = (exec) => exec.calls.filter((c) => c.cmd === 'git' && c.argv.includes('push'))
+
+/** The `--comment '<...>'` value off a recorded `new` call. */
+export const commentOf = (call) => /--comment '([^']*)'/.exec(String(call?.argv[1] ?? ''))?.[1]
