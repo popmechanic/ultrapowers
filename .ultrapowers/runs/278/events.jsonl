@@ -230,3 +230,52 @@
 {"t":183270,"kind":"tool","agent":"A","task":"9","tool":"Bash","target":"cd /home/exedev/run/work/agents/A; sed -n 330,480p fleet/lobby.mjs; sed -n 220,270p fleet/retire.mjs; tail -30 fleet/ret","ts":"2026-09-30T00:59:37.052Z"}
 {"t":183717,"kind":"tool","agent":"F","task":"10","tool":"Edit","target":"/home/exedev/run/work/agents/F/fleet/CONTRACT.md","ts":"2026-09-30T00:59:37.499Z"}
 {"t":183885,"kind":"edit","agent":"F","task":"10","tool":"Edit","path":"fleet/CONTRACT.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T00:59:37.667Z"}
+{"t":185216,"kind":"tool","agent":"F","task":"10","tool":"Edit","target":"/home/exedev/run/work/agents/F/fleet/CONTRACT.md","ts":"2026-09-30T00:59:38.998Z"}
+{"t":185384,"kind":"edit","agent":"F","task":"10","tool":"Edit","path":"fleet/CONTRACT.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T00:59:39.166Z"}
+{"t":186210,"kind":"tool","agent":"D","task":"6","tool":"Edit","target":"/home/exedev/run/work/agents/D/fleet/retire.mjs","ts":"2026-09-30T00:59:39.992Z"}
+{"t":186252,"kind":"tool","agent":"B","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/B/factory/boot.sh","ts":"2026-09-30T00:59:40.034Z"}
+{"t":186434,"kind":"edit","agent":"D","task":"6","tool":"Edit","path":"fleet/retire.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T00:59:40.216Z"}
+{"t":186472,"kind":"edit","agent":"B","task":"3","tool":"Edit","path":"factory/boot.sh","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T00:59:40.254Z"}
+{"t":186569,"kind":"tool","agent":"D","task":"6","tool":"Bash","target":"cd /home/exedev/run/work/agents/D; grep -n \"  const retired = \\[\\]\" fleet/retire.mjs; grep -n \"  for (const run of runsO","ts":"2026-09-30T00:59:40.351Z"}
+{"t":187866,"kind":"tool","agent":"F","task":"10","tool":"Edit","target":"/home/exedev/run/work/agents/F/fleet/CONTRACT.md","ts":"2026-09-30T00:59:41.648Z"}
+{"t":188035,"kind":"edit","agent":"F","task":"10","tool":"Edit","path":"fleet/CONTRACT.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T00:59:41.817Z"}
+{"t":188879,"kind":"tool","agent":"D","task":"6","tool":"Read","target":"/home/exedev/run/work/agents/D/fleet/retire.mjs","ts":"2026-09-30T00:59:42.661Z"}
+{"t":188940,"kind":"tool","agent":"B","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/B/factory/boot.sh","ts":"2026-09-30T00:59:42.722Z"}
+{"t":189100,"kind":"edit","agent":"B","task":"3","tool":"Edit","path":"factory/boot.sh","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T00:59:42.882Z"}
+{"t":190345,"kind":"tool","agent":"G","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/G/fleet/tests; sed -n 50,264p test_launch_one_engine.mjs","ts":"2026-09-30T00:59:44.127Z"}
+{"t":191793,"kind":"tool","agent":"B","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/B/factory/boot.sh","ts":"2026-09-30T00:59:45.575Z"}
+{"t":191961,"kind":"edit","agent":"B","task":"3","tool":"Edit","path":"factory/boot.sh","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T00:59:45.743Z"}
+{"t":192119,"kind":"tool","agent":"E","task":"7","tool":"Edit","target":"/home/exedev/run/work/agents/E/tests/test_authoring_census.py","ts":"2026-09-30T00:59:45.901Z"}
+{"t":192282,"kind":"edit","agent":"E","task":"7","tool":"Edit","path":"tests/test_authoring_census.py","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T00:59:46.064Z"}
+{"t":192666,"kind":"tool","agent":"F","task":"10","tool":"Edit","target":"/home/exedev/run/work/agents/F/fleet/CONTRACT.md","ts":"2026-09-30T00:59:46.448Z"}
+{"t":192855,"kind":"edit","agent":"F","task":"10","tool":"Edit","path":"fleet/CONTRACT.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T00:59:46.637Z"}
+{"t":192887,"kind":"tool","agent":"E","task":"7","tool":"Bash","target":"cd /home/exedev/run/work/agents/E; grep -n \"REPORT_FETCHED =\\|def call_log\" tests/test_authoring_census.py; python3 -m p","ts":"2026-09-30T00:59:46.669Z"}
+{"t":193443,"kind":"tool","agent":"B","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/B/factory/boot.sh","ts":"2026-09-30T00:59:47.225Z"}
+{"t":193693,"kind":"edit","agent":"B","task":"3","tool":"Edit","path":"factory/boot.sh","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T00:59:47.475Z"}
+{"t":194111,"kind":"tool","agent":"F","task":"10","tool":"Edit","target":"/home/exedev/run/work/agents/F/fleet/CONTRACT.md","ts":"2026-09-30T00:59:47.893Z"}
+{"t":194144,"kind":"tool","agent":"I","task":"8","tool":"Bash","target":"cd /home/exedev/run/work/agents/I; python3 - <<'EOF'\np='fleet/doctor.mjs'\ns=open(p).read()\ndef r(a,b):\n    global s\n    ","ts":"2026-09-30T00:59:47.926Z"}
+{"t":194409,"kind":"fallback","agent":"I","path":"fleet/doctor.mjs","peer_lines":0,"deleted":false,"ts":"2026-09-30T00:59:48.191Z"}
+{"t":194531,"kind":"edit","agent":"F","task":"10","tool":"Edit","path":"fleet/CONTRACT.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T00:59:48.313Z"}
+{"t":194950,"kind":"tool","agent":"F","task":"10","tool":"Bash","target":"cd /home/exedev/run/work/agents/F; grep -n -e 'ultra/plan' -e 'ultra/evidence' -e '\\.ultrapowers/' -e 'evidence branch' ","ts":"2026-09-30T00:59:48.732Z"}
+{"t":196692,"kind":"tool","agent":"B","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/B/factory/boot.sh","ts":"2026-09-30T00:59:50.474Z"}
+{"t":196893,"kind":"edit","agent":"B","task":"3","tool":"Edit","path":"factory/boot.sh","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T00:59:50.675Z"}
+{"t":197463,"kind":"tool","agent":"F","task":"10","tool":"Bash","target":"cd /home/exedev/run/work/agents/F; sed -n 695,712p fleet/CONTRACT.md; sed -n 568,575p fleet/CONTRACT.md","ts":"2026-09-30T00:59:51.245Z"}
+{"t":198378,"kind":"tool","agent":"E","task":"7","tool":"Edit","target":"/home/exedev/run/work/agents/E/tests/test_authoring_census.py","ts":"2026-09-30T00:59:52.160Z"}
+{"t":198445,"kind":"tool","agent":"I","task":"8","tool":"Edit","target":"/home/exedev/run/work/agents/I/skills/ultrapowers/references/first-run.md","ts":"2026-09-30T00:59:52.227Z"}
+{"t":198637,"kind":"edit","agent":"E","task":"7","tool":"Edit","path":"tests/test_authoring_census.py","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T00:59:52.419Z"}
+{"t":198644,"kind":"tool","agent":"E","task":"7","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-30T00:59:52.426Z"}
+{"t":198650,"kind":"edit","agent":"I","task":"8","tool":"Edit","path":"skills/ultrapowers/references/first-run.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T00:59:52.432Z"}
+{"t":200077,"kind":"proof","agent":"E","task":"7","exits":[0,0,0],"causes":[],"errs":[],"ts":"2026-09-30T00:59:53.859Z"}
+{"t":200080,"kind":"tool","agent":"D","task":"6","tool":"Edit","target":"/home/exedev/run/work/agents/D/fleet/retire.mjs","ts":"2026-09-30T00:59:53.862Z"}
+{"t":200082,"kind":"tool","agent":"I","task":"8","tool":"Edit","target":"/home/exedev/run/work/agents/I/skills/ultrapowers/references/first-run.md","ts":"2026-09-30T00:59:53.864Z"}
+{"t":200336,"kind":"edit","agent":"D","task":"6","tool":"Edit","path":"fleet/retire.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T00:59:54.118Z"}
+{"t":200340,"kind":"edit","agent":"I","task":"8","tool":"Edit","path":"skills/ultrapowers/references/first-run.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T00:59:54.122Z"}
+{"t":200671,"kind":"tool","agent":"F","task":"10","tool":"Edit","target":"/home/exedev/run/work/agents/F/fleet/CONTRACT.md","ts":"2026-09-30T00:59:54.453Z"}
+{"t":200873,"kind":"edit","agent":"F","task":"10","tool":"Edit","path":"fleet/CONTRACT.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T00:59:54.655Z"}
+{"t":202527,"kind":"tool","agent":"D","task":"6","tool":"Edit","target":"/home/exedev/run/work/agents/D/fleet/retire.mjs","ts":"2026-09-30T00:59:56.309Z"}
+{"t":202688,"kind":"edit","agent":"D","task":"6","tool":"Edit","path":"fleet/retire.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T00:59:56.470Z"}
+{"t":202856,"kind":"tool","agent":"E","task":"7","tool":"mcp__flock__done","target":"","ts":"2026-09-30T00:59:56.638Z"}
+{"t":204334,"kind":"tool","agent":"D","task":"6","tool":"Edit","target":"/home/exedev/run/work/agents/D/fleet/retire.mjs","ts":"2026-09-30T00:59:58.116Z"}
+{"t":204497,"kind":"publish","agent":"E","task":"7","by":"done","ts":"2026-09-30T00:59:58.279Z"}
+{"t":204512,"kind":"kata:mirror","task":"7","uid":"01M3QWXAJ3PTWD7D9EM1JS4NWV","what":"done by E","ok":true,"ts":"2026-09-30T00:59:58.294Z"}
+{"t":204605,"kind":"tool","agent":"F","task":"10","tool":"Edit","target":"/home/exedev/run/work/agents/F/fleet/CONTRACT.md","ts":"2026-09-30T00:59:58.387Z"}
