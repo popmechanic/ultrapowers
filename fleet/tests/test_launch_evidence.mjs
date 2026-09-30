@@ -41,9 +41,7 @@ import path from 'node:path'
 import { launch } from '../launch.mjs'
 import { EXE_HOST, Refusal } from '../lobby.mjs'
 import {
-  BILLING_OK, COMPILER_FETCH, NEW_OK, NO_NETWORK_GIT, NO_REMOTE_OPS, ONE_TASK,
-  answer, cleanup, cmdRule, engineRule, gitEnv, localRemote, makeEvidenceRepo, makeExec, makeTargetRepo, sshRule,
-  tempDir, vmsPayload
+  PLAN, commentOf, gitEnv, launchRules, launchWorkspace, makeEvidenceRepo, makeExec, pushCalls
 } from './_lobby_helpers.mjs'
 
 const TARGET = 'o/r'
@@ -55,61 +53,35 @@ const OTHER = 'ops/other'
 const ENGINE = 'c'.repeat(40)
 const NOW = new Date('2026-09-30T12:00:00.000Z')
 const CAPPED = { cpu: '6', memory: '8GB', evidence: EVIDENCE }
-const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n' }
-const PLAN = '# a plan\n\nOne plan, and a trailing newline.\n'
 const RECORD = '{"tasks": {}, "tally": {"dispatched": 0}}\n'
 
 // ── The seam's rules ────────────────────────────────────────────────────────
 
-const compilerRule = (compiled) => ({
-  when: (cmd) => cmd === 'python3',
-  answer: (cmd, argv) =>
-    argv.some((a) => String(a).endsWith('plan_check.py')) ? answer('PLAN OK\n') : answer(JSON.stringify(compiled))
-})
-const HELP_OK = (cmd, argv) => answer(`Command: ${String(argv[1] ?? '').slice('help '.length)}\n\nOptions:\n`)
 const ALL_INTEGRATIONS = [
   { name: GH, attachments: [] }, { name: 'gh-ops-evidence', attachments: [] },
   { name: 'gh-ops-other', attachments: [] }, { name: 'claude-max', attachments: [] }
 ]
 
-const readRules = ({ ws, integrations = ALL_INTEGRATIONS }) => [
-  engineRule(ENGINE),
-  COMPILER_FETCH,
-  localRemote(ws.repo, [ws.evidence, ws.other]),
-  compilerRule(ONE_TASK),
-  sshRule('help ', HELP_OK),
-  sshRule('integrations list --json', answer(integrations)),
-  sshRule('billing plan --json', answer(BILLING_OK)),
-  sshRule("ls '", vmsPayload([])),
-  sshRule('new ', NEW_OK),
-  cmdRule('gh', 'api', answer('')),
-  NO_REMOTE_OPS,
-  NO_NETWORK_GIT
-]
+const readRules = ({ ws, integrations = ALL_INTEGRATIONS }) =>
+  launchRules({ engine: ENGINE, repo: ws.repo, evidence: [ws.evidence, ws.other], integrations })
 
 // ── The workspace: a target, two evidence repositories, a plan and its record ─
 
 function workspace ({ targetTag = null } = {}) {
-  const root = tempDir('fleet-launch-evidence-')
-  const repo = makeTargetRepo({ root, files: { ...SEED } })
+  const ws = launchWorkspace({ prefix: 'fleet-launch-evidence-', originUrl: ORIGIN_URL, evidence: EVIDENCE })
+  const { root, repo } = ws
   if (targetTag !== null) {
     repo.git(['tag', targetTag])
-    repo.git(['push', '-q', 'origin', `refs/tags/${targetTag}`])
+    repo.git(['push', '-q', repo.origin, `refs/tags/${targetTag}`])
   }
-  repo.git(['remote', 'set-url', 'origin', ORIGIN_URL])
-  const evidence = makeEvidenceRepo({ root, name: EVIDENCE })
   const other = makeEvidenceRepo({ root, name: OTHER })
-  const planDir = path.join(root, 'plans-src')
-  fs.mkdirSync(planDir)
-  const planPath = path.join(planDir, 'a-plan.md')
-  fs.writeFileSync(planPath, PLAN)
-  fs.writeFileSync(path.join(planDir, 'a-plan.gate-verdicts.json'), RECORD)
+  fs.writeFileSync(path.join(path.dirname(ws.planPath), 'a-plan.gate-verdicts.json'), RECORD)
   const targetRefs = () => {
     const res = spawnSync('git', ['--git-dir', repo.origin, 'for-each-ref', '--format=%(refname) %(objectname)'],
       { encoding: 'utf8', env: gitEnv() })
     return res.stdout
   }
-  return { root, repo, evidence, other, planPath, targetRefs, cleanup: () => cleanup(root) }
+  return { ...ws, other, targetRefs }
 }
 
 const drive = async (ws, { extra = [], config = CAPPED, integrations } = {}) => {
@@ -133,10 +105,8 @@ const drive = async (ws, { extra = [], config = CAPPED, integrations } = {}) => 
   return { exec, result, error }
 }
 
-const pushCalls = (exec) => exec.calls.filter((c) => c.cmd === 'git' && c.argv.includes('push'))
 const newCalls = (exec) => exec.calls.filter((c) =>
   c.cmd === 'ssh' && c.argv[0] === EXE_HOST && String(c.argv[1] ?? '').startsWith('new '))
-const commentOf = (call) => /--comment '([^']*)'/.exec(String(call?.argv[1] ?? ''))?.[1]
 const added = (before, after) => Object.fromEntries(Object.entries(after).filter(([ref, sha]) => before[ref] !== sha))
 
 const assertRefusedClean = (d, leg, needles) => {

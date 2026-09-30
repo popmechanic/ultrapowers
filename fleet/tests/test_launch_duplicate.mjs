@@ -28,7 +28,7 @@
  *       `live`/`state` from the record and null when there is none;
  *   (g) [M7] is the plan's `Run:` greps over CONTRACT.md and RUNBOOK.md.
  *
- * The rig is `test_launch_size.mjs`'s, copied rather than imported (a sim may
+ * The rig is the launch sims' shared one in `_lobby_helpers.mjs` (a sim may
  * not name a sibling sim): a local bare origin stands in for GitHub, every
  * lobby verb and `gh api` is answered by the seam, and the compiler is stubbed
  * — both its fetch at `engine=` (`COMPILER_FETCH`) and its every `python3` run
@@ -41,16 +41,13 @@
  */
 
 import assert from 'node:assert/strict'
-import fs from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import { USAGE, launch, renderLaunch } from '../launch.mjs'
 import { janitor } from '../janitor.mjs'
-import { EXE_HOST, Refusal } from '../lobby.mjs'
+import { Refusal } from '../lobby.mjs'
 import {
-  BILLING_OK, COMPILER_FETCH, NEW_OK, NO_NETWORK_GIT, NO_REMOTE_OPS, ONE_TASK,
-  answer, cleanup, cmdRule, engineRule, localRemote, makeEvidenceRepo, makeExec, makeTargetRepo, sshRule, tempDir,
+  HELP_FROM_VERBS, NO_NETWORK_GIT, NO_RECORD, NO_REMOTE_OPS, PLAN,
+  answer, launchRules, launchWorkspace, makeExec, pushCalls, recordRule, sshRule,
   thrown, vmRow, vmsPayload
 } from './_lobby_helpers.mjs'
 
@@ -62,61 +59,24 @@ const NOW = new Date('2026-09-16T03:20:00.000Z')
 const SLUG = 'popmechanic-smoke'
 const EVIDENCE = 'ops/evidence'
 const CAPPED = { cpu: '6', memory: '8GB', evidence: EVIDENCE }
-const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n' }
-const PLAN = '# a plan\n\nOne plan, and a trailing newline.\n'
 const OTHER_PLAN = '# a plan\n\nOne plan, and a trailing newline.\nAnd one more line.\n'
 const LIVE_VM = 'fleet-r7-2609160900-ab12'
 const OLD_VM = 'fleet-r6-2609160800-cd34'
 const FOREIGN_VM = 'fleet-r3-2609160700-ef56'
 
-const FLEET_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const VERBS = JSON.parse(fs.readFileSync(path.join(FLEET_DIR, 'exe-verbs.json'), 'utf8'))
-
 // ── The seam's rules (the shared ones live in _lobby_helpers.mjs) ───────────
-
-const helpText = (verb, flags) => [
-  `Command: ${verb}`, '', 'Options:', ...flags.map((flag) => `  ${flag}  what ${flag} does`), ''
-].join('\n')
-const HELP_OK = (cmd, argv) => {
-  const verb = String(argv[1] ?? '').slice('help '.length)
-  const flags = VERBS.verbs[verb]
-  return flags
-    ? answer(helpText(verb, flags))
-    : answer(`No help available for unrecognized command: ${verb}\n`)
-}
-const compilerRule = (compiled) => ({
-  when: (cmd) => cmd === 'python3',
-  answer: (cmd, argv) =>
-    argv.some((a) => String(a).endsWith('plan_check.py')) ? answer('PLAN OK\n') : answer(JSON.stringify(compiled))
-})
 
 /** A status page as the contents API hands it back. */
 const page = (state, updatedAt) => answer({
   content: Buffer.from(JSON.stringify({ state, updatedAt })).toString('base64'),
   sha: 'x'
 })
-/** `gh api …` answering one page for every ref — or nothing at all. */
-const recordRule = (res) => cmdRule('gh', 'api', res)
-const NO_RECORD = answer('')
 const RUNNING = page('running', NOW.toISOString())
 const DONE_5_MIN_AGO = page('done', new Date(NOW.getTime() - 5 * 60 * 1000).toISOString())
 
-const readRules = ({ repo, evidence, rows, record }) => [
-  engineRule(ENGINE),
-  COMPILER_FETCH,
-  localRemote(repo, evidence),
-  compilerRule(ONE_TASK),
-  sshRule('help ', HELP_OK),
-  sshRule('integrations list --json', answer([
-    { name: GH, attachments: [] }, { name: 'gh-ops-evidence', attachments: [] }, { name: 'claude-max', attachments: [] }
-  ])),
-  sshRule('billing plan --json', answer(BILLING_OK)),
-  sshRule("ls '", vmsPayload(rows)),
-  sshRule('new ', NEW_OK),
-  recordRule(record),
-  NO_REMOTE_OPS,
-  NO_NETWORK_GIT
-]
+/** `gh api …` answers one page for every ref — or nothing at all (`NO_RECORD`). */
+const readRules = ({ repo, evidence, rows, record }) =>
+  launchRules({ engine: ENGINE, repo, evidence, gh: GH, rows, record, help: HELP_FROM_VERBS })
 
 // ── The workspace: a target whose origin already carries plan branches ──────
 
@@ -129,17 +89,10 @@ const livePlan = (evidence, n, text) => evidence.seed(
 )
 
 function workspace () {
-  const root = tempDir('fleet-launch-duplicate-')
-  const repo = makeTargetRepo({ root, files: { ...SEED } })
-  const evidence = makeEvidenceRepo({ root, name: EVIDENCE })
-  const run6 = livePlan(evidence, 6, OTHER_PLAN)
-  const run7 = livePlan(evidence, 7, PLAN)
-  repo.git(['remote', 'set-url', 'origin', ORIGIN_URL])
-  const planDir = path.join(root, 'plans-src')
-  fs.mkdirSync(planDir)
-  const planPath = path.join(planDir, 'a-plan.md')
-  fs.writeFileSync(planPath, PLAN)
-  return { root, repo, evidence, planPath, run6, run7, cleanup: () => cleanup(root) }
+  const ws = launchWorkspace({ prefix: 'fleet-launch-duplicate-', originUrl: ORIGIN_URL, evidence: EVIDENCE })
+  const run6 = livePlan(ws.evidence, 6, OTHER_PLAN)
+  const run7 = livePlan(ws.evidence, 7, PLAN)
+  return { ...ws, run6, run7 }
 }
 const comment = (n, plan, target, base) => `run=${n} plan=${plan} target=${target} base=${base} engine=${ENGINE}`
 const liveRow = (ws) => vmRow(LIVE_VM, { comment: comment(7, ws.run7, TARGET, ws.repo.base) })
@@ -174,7 +127,6 @@ const drive = async ({ rows, record, extra = [] }) => {
 
 // ── Reading the calls ───────────────────────────────────────────────────────
 
-const pushCalls = (exec) => exec.calls.filter((c) => c.cmd === 'git' && c.argv.includes('push'))
 const newVerbs = (exec) => exec.mutating().filter((line) => line.startsWith('new '))
 
 const assertRefused = (d, leg) => {

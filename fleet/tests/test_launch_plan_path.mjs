@@ -13,11 +13,10 @@
  * leaves an absolute path as it is, and with no `--repo` it resolves against
  * the working directory because that is what `repoDir` then is.
  *
- * A hermetic sim in the shape of `test_launch_one_engine.mjs` and
- * `test_launch_duplicate.mjs`: a stubbed lobby (`makeExec`), a real temporary
+ * A hermetic sim on the launch sims' shared rig (`launchRules`,
+ * `launchWorkspace`): a stubbed lobby (`makeExec`), a real temporary
  * target repository with a bare origin (`makeTargetRepo`), and the compiler's
- * fetch and every `python3` run stubbed. Copied rather than imported — a sim
- * may not run a sibling sim. It imports only `./_lobby_helpers.mjs` and never
+ * fetch and every `python3` run stubbed. It imports only `./_lobby_helpers.mjs` and never
  * chdirs: the sim's own working directory and R already differ, since R is a
  * fresh temp directory.
  *
@@ -51,9 +50,7 @@ import path from 'node:path'
 import { launch } from '../launch.mjs'
 import { Refusal } from '../lobby.mjs'
 import {
-  BILLING_OK, COMPILER_FETCH, NEW_OK, NO_NETWORK_GIT, NO_REMOTE_OPS, ONE_TASK,
-  answer, cleanup, cmdRule, engineRule, gitEnv, localRemote, makeEvidenceRepo, makeExec, makeTargetRepo, sshRule, tempDir,
-  thrown, vmsPayload
+  PLAN, cleanup, gitEnv, launchRules, launchWorkspace, makeExec, tempDir, thrown
 } from './_lobby_helpers.mjs'
 
 const TARGET = 'acme/widgets'
@@ -64,49 +61,14 @@ const BASE_40HEX = 'e'.repeat(40)
 const NOW = new Date('2026-09-21T12:00:00.000Z')
 const EVIDENCE = 'ops/evidence'
 const CAPPED = { cpu: '6', memory: '8GB', evidence: EVIDENCE }
-const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n' }
-const PLAN = '# a plan\n\nOne plan, and a trailing newline.\n'
-
 // ── The seam's rules (the shared ones live in _lobby_helpers.mjs) ───────────
 
-const compilerRule = (compiled) => ({
-  when: (cmd) => cmd === 'python3',
-  answer: (cmd, argv) =>
-    argv.some((a) => String(a).endsWith('plan_check.py')) ? answer('PLAN OK\n') : answer(JSON.stringify(compiled))
-})
-const HELP_OK = (cmd, argv) => {
-  const verb = String(argv[1] ?? '').slice('help '.length)
-  return answer(`Command: ${verb}\n\nOptions:\n`)
-}
-const NO_RECORD = answer('')
-const recordRule = (res) => cmdRule('gh', 'api', res)
-
-const readRules = ({ repo, evidence }) => [
-  engineRule(ENGINE),
-  COMPILER_FETCH,
-  localRemote(repo, evidence),
-  compilerRule(ONE_TASK),
-  sshRule('help ', HELP_OK),
-  sshRule('integrations list --json', answer([
-    { name: GH, attachments: [] }, { name: 'gh-ops-evidence', attachments: [] }, { name: 'claude-max', attachments: [] }
-  ])),
-  sshRule('billing plan --json', answer(BILLING_OK)),
-  sshRule("ls '", vmsPayload([])),
-  sshRule('new ', NEW_OK),
-  recordRule(NO_RECORD),
-  NO_REMOTE_OPS,
-  NO_NETWORK_GIT
-]
+const readRules = ({ repo, evidence }) => launchRules({ engine: ENGINE, repo, evidence, gh: GH })
 
 // ── The workspace: one fresh target clone, R, that is never the process's cwd ─
 
-function workspace () {
-  const root = tempDir('fleet-launch-plan-path-')
-  const repo = makeTargetRepo({ root, files: { ...SEED } })
-  repo.git(['remote', 'set-url', 'origin', ORIGIN_URL])
-  const evidence = makeEvidenceRepo({ root, name: EVIDENCE })
-  return { root, repo, evidence, cleanup: () => cleanup(root) }
-}
+const workspace = () =>
+  launchWorkspace({ prefix: 'fleet-launch-plan-path-', originUrl: ORIGIN_URL, evidence: EVIDENCE, plan: null })
 
 const launchIn = (ws, { exec, planPath, extra = [] }) => launch({
   argv: [planPath, '--target', TARGET, '--base', ws.repo.base, '--repo', ws.repo.dir, '--engine', ENGINE, ...extra],
