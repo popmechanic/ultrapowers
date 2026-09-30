@@ -302,7 +302,8 @@ function lineCount (lines) {
 
 /** The `### Provenance` section over the engine's `provenance.json` (#1404): the heading, an
  *  empty line and one counts line — changed lines, the tasks that changed them, the lines no
- *  probe ran (`unmeasured` when `unproven` is null) and the exceptions by kind. An absent,
+ *  probe ran (`unmeasured` when `unproven` is null; followed by `(N probes unmeasured)` when
+ *  `coverage` counts N > 0 timed-out, skipped or unmeasured probes, #1411) and the exceptions by kind. An absent,
  *  missing or unparseable file adds nothing. */
 function provenanceLines (provenancePath) {
   if (!provenancePath) return []
@@ -315,12 +316,15 @@ function provenanceLines (provenancePath) {
   const unproven = Array.isArray(prov.unproven)
     ? prov.unproven.reduce((n, u) => n + lineCount(u && u.lines), 0)
     : 'unmeasured'
+  const cov = prov.coverage && typeof prov.coverage === 'object' ? prov.coverage : {}
+  const missed = ['timed_out', 'skipped', 'unmeasured'].reduce((n, k) => n + (Number(cov[k]) || 0), 0)
+  const partial = missed > 0 ? ` (${missed} probes unmeasured)` : ''
   const kinds = { contested: 0, lost: 0, ordered: 0, foreign: 0 }
   for (const e of Array.isArray(prov.exceptions) ? prov.exceptions : []) {
     if (e && Object.hasOwn(kinds, e.kind)) kinds[e.kind]++
   }
   return ['### Provenance', '',
-    `${changed} changed lines from ${tasks} tasks; ${unproven} not run by any probe; ` +
+    `${changed} changed lines from ${tasks} tasks; ${unproven} not run by any probe${partial}; ` +
     `exceptions: ${kinds.contested} contested, ${kinds.lost} lost, ${kinds.ordered} ordered, ${kinds.foreign} foreign.`]
 }
 

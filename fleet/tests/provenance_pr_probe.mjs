@@ -4,6 +4,8 @@
 // `provenance.json` (hunks of 2 and 1 lines from tasks `1` and `2`, one `contested` and one `lost`
 // exception, one unproven line) into a temp dir, renders `factory/record.mjs pr-body` with
 // `--provenance`, and prints the first line after `### Provenance` and its blank line.
+// `node fleet/tests/provenance_pr_probe.mjs partial` adds partial `coverage` counts
+// (`ran` 2, `timed_out` 1, `skipped` 0, `unmeasured` 1) to the provenance file.
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -39,6 +41,7 @@ fs.writeFileSync(provenance, JSON.stringify({
     { kind: 'lost', path: 'b.js' },
   ],
   unproven: [{ path: 'b.js', lines: '7', task: '2' }],
+  ...(process.argv[2] === 'partial' ? { coverage: { ran: 2, timed_out: 1, skipped: 0, unmeasured: 1 } } : {}),
 }))
 const r = spawnSync('node', [path.join(REPO, 'factory', 'record.mjs'), 'pr-body', plan, '--events', events, '--provenance', provenance], { encoding: 'utf8' })
 fs.rmSync(tmp, { recursive: true, force: true })

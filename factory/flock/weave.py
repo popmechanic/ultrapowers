@@ -109,9 +109,6 @@ def run_on_kernel_thread(fn, *args, **kwargs):
 M = manyana
 
 
-REPLACED = {}   # (path, text) -> the visible lines the edit that wrote `text` replaced (#1401)
-
-
 def task_label(agent, task):
     """The authorship label of `agent` working `task`: `A.2`, or `A` with no task."""
     return agent if task is None else agent + "." + str(task)
@@ -271,12 +268,16 @@ def _union_auth(into, other):
 
 
 def _union_del(into, other):
-    # one deleting label per entry; the smallest wins, so the union is order-free
+    # every deleting label per entry, a set, unioned like kauth (#1409)
+    _union_auth(into, other)
+
+
+def _union_rep(into, other):
+    # one edit writes a key, so its replaced lines agree wherever the key travels
     for path, m in other.items():
         dst = into.setdefault(path, {})
-        for k, by in m.items():
-            if k not in dst or by < dst[k]:
-                dst[k] = by
+        for k, gone in m.items():
+            dst.setdefault(k, list(gone))
 
 
 class Keeper:
@@ -289,14 +290,20 @@ class Keeper:
         self.kauth = {}       # copy -> {path -> {key -> set(author)}}
         self.kauth_pub = {}   # agent -> the sidecar as of its last publish
         # #1404: the label of the edit that deleted each entry, published and pulled like kauth
-        self.kdel = {}        # copy -> {path -> {key -> label}}
+        self.kdel = {}        # copy -> {path -> {key -> set(label)}}  (#1409: every deleter)
         self.kdel_pub = {}    # agent -> the sidecar as of its last publish
+        # #1410: the visible lines the edit that wrote each entry replaced, keyed by identity
+        self.krep = {}        # copy -> {path -> {key -> [line]}}
+        self.krep_pub = {}    # agent -> the sidecar as of its last publish
 
     def auth(self, who):
         return self.kauth.setdefault(who, {})
 
     def dels(self, who):
         return self.kdel.setdefault(who, {})
+
+    def reps(self, who):
+        return self.krep.setdefault(who, {})
 
     def copy(self, agent):
         if agent not in self.copies:
@@ -337,24 +344,25 @@ class Keeper:
             vis_keys = [k for e, k in zip(ss, line_keys(ss)) if e[3] % 2][a:z]
             owners = [self.who(agent, path, k) for k in vis_keys]
             gone_text = visible_raw(st)[a:z]
-            theirs = [(o, t) for o, t in zip(owners, gone_text) if o not in (label, "base")]
+            theirs = [(o, t, k) for o, t, k in zip(owners, gone_text, vis_keys) if o not in (label, "base")]
             if theirs:
-                rewrites.append({"peers": sorted({p for o, _ in theirs for p in o.split("|")}),
-                                 "peer": [t for _, t in theirs],
-                                 "before": [b for _, t in theirs for b in REPLACED.get((path, t), [])],
+                rside = self.reps(agent).get(path, {})
+                rewrites.append({"peers": sorted({p for o, _, _ in theirs for p in o.split("|")}),
+                                 "peer": [t for _, t, _ in theirs],
+                                 "before": [b for _, _, k in theirs for b in rside.get(k, [])],
                                  "after": list(new_lines)})
-            for l in new_lines:
-                REPLACED[(path, l)] = gone_text
             new, gone = apply_edit(st, a, z, list(new_lines))
             self.copy(agent)[path] = new
             if new_lines:   # ticket 2: the keyed sidecar learns the new lines' identity
                 fresh = collections.Counter(line_keys(new)) - collections.Counter(line_keys(st))
                 side = self.auth(agent).setdefault(path, {})
+                rside = self.reps(agent).setdefault(path, {})
                 for k in fresh:
                     side.setdefault(k, set()).add(label)
+                    rside[k] = list(gone_text)
             dside = self.dels(agent).setdefault(path, {})   # a key survives its deletion: the counter is not in it
             for k in vis_keys:
-                dside[k] = label
+                dside.setdefault(k, set()).add(label)
             deleted += len(gone)
             for o in owners:
                 if o not in (label, "base"):
@@ -387,6 +395,7 @@ class Keeper:
         self.published[agent] = dict(self.copy(agent))
         self.kauth_pub[agent] = _copy.deepcopy(self.auth(agent))
         self.kdel_pub[agent] = _copy.deepcopy(self.dels(agent))
+        self.krep_pub[agent] = _copy.deepcopy(self.reps(agent))
         return {"paths": len(self.published[agent])}
 
     def r_pull(self, agent, paths=None):
@@ -414,6 +423,7 @@ class Keeper:
                         flags = same_anchor(before, st, after, self.auth(agent).get(p, {}), peer_auth.get(p, {}))
                 _union_auth(self.auth(agent), {p: peer_auth.get(p, {})})
                 _union_del(self.dels(agent), {p: self.kdel_pub.get(peer, {}).get(p, {})})
+                _union_rep(self.reps(agent), {p: self.krep_pub.get(peer, {}).get(p, {})})
                 if flags:
                     flagged.append({"path": p, "from": peer, "flags": flags})
                 if before != after:
@@ -469,19 +479,19 @@ class Keeper:
         return join, auth, dels
 
     def r_lost(self):
-        """Per (path, author label, deleting label): the entries of the join that are invisible, were
-        written by someone (not base), and were deleted by a label not among their authors, in weave order."""
+        """Per (path, author label, deleting labels): the entries of the join that are invisible, were
+        written by someone (not base), and none of whose deleting labels is among their authors, in weave order."""
         join, auth, dels = self._join()
         lost = {}
         for p, st in join.items():
             js, side, dside = M.deserialize_state(st), auth.get(p, {}), dels.get(p, {})
             for e, k in zip(js, line_keys(js)):
-                if e[3] % 2 or not side.get(k):
+                if e[3] % 2 or not (side.get(k, set()) - {"base"}):
                     continue
-                by = dside.get(k)
-                if by in side[k]:
+                by = dside.get(k, set())
+                if by & side[k]:
                     continue
-                lost.setdefault((p, label_of(side, k), by or ""), []).append(e[0])
+                lost.setdefault((p, label_of(side, k), "|".join(sorted(by))), []).append(e[0])
         return {"lost": [{"path": p, "author": a, "by": b or None, "lines": ls}
                          for (p, a, b), ls in sorted(lost.items(), key=lambda kv: kv[0])]}
 
