@@ -292,7 +292,7 @@ await test('M2: a hub-read death marks the run issue under janitor:run-<N>:death
 // R1 — the integration-branch sweep (folded from test_retire_integration_only):
 // a closed, unmerged pull request's branch is the ONE thing deleted on the
 // target; no tag, no PATCH, nothing naming a plan or evidence branch.
-const PULLS = 'GET repos/o/r/pulls?state=all&head=o:ultra/integration-run-3'
+const PULLS = 'GET repos/o/r/pulls?state=all&per_page=100&head=o:ultra/integration-run-3'
 const sweepAnswers = (pulls) => ({
   'GET repos/o/r/git/matching-refs/heads/ultra/integration-run-': ok(JSON.stringify([
     { ref: 'refs/heads/ultra/integration-run-3', object: { sha: HEAD_SHA } }

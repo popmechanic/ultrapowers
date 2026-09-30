@@ -569,7 +569,7 @@ evidence repository.
   The janitor's close-out, the census and the launcher's duplicate check likewise read runs only
   from the evidence repository, taking it from the same setting; none of them reads a target's
   refs. On a target the janitor's one write is the DELETE of an `ultra/integration-run-<N>` whose
-  highest-numbered pull request (`pulls?state=all&head=<owner>:ultra/integration-run-<N>`) is
+  highest-numbered pull request (`pulls?state=all&per_page=100&head=<owner>:ultra/integration-run-<N>`, every page) is
   closed with `merged_at` null; an open, merged or absent one keeps the branch.
 - **Kata hub (`fleet/kata-hub.mjs`):** ONE persistent VM named `kata-hub`, `--cpu 1 --memory 2GB
   --disk 20GB`, comment `kata hub — persistent service, do not reap`, and NO tag — the janitor's

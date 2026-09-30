@@ -340,6 +340,17 @@ export const ghApi = async (exec, apiPath) => {
 }
 
 /**
+ * A list read that follows every page: `--paginate --slurp` answers an array
+ * of pages, flattened here into one array. A one-page answer (or a stub's bare
+ * array) flattens to itself; anything that is not an array is null, as above.
+ */
+const ghList = async (exec, apiPath) => {
+  const res = await exec('gh', ['api', '--paginate', '--slurp', apiPath])
+  const payload = res.code === 0 ? parseJson(res.stdout) : null
+  return Array.isArray(payload) ? payload.flat() : null
+}
+
+/**
  * One file of a run's evidence, as the contents API addresses it: in the
  * operator's evidence repository (#1395), under the TARGET's run folder.
  */
@@ -675,7 +686,7 @@ const evidenceRefsPath = (evidence, target) =>
  * rather than guessed at.
  */
 async function integrationRunsOf (exec, target) {
-  const payload = await ghApi(exec, matchingRefsPath(target))
+  const payload = await ghList(exec, matchingRefsPath(target))
   if (!Array.isArray(payload)) return []
   const runs = []
   for (const entry of payload) {
@@ -698,9 +709,9 @@ async function integrationRunsOf (exec, target) {
  */
 export async function decidingPull (exec, target, run) {
   const owner = String(target).split('/')[0]
-  const payload = await ghApi(
+  const payload = await ghList(
     exec,
-    `repos/${target}/pulls?state=all&head=${owner}:${integrationBranchFor(run)}`
+    `repos/${target}/pulls?state=all&per_page=100&head=${owner}:${integrationBranchFor(run)}`
   )
   const rows = Array.isArray(payload) ? payload : []
   let decider = null
@@ -755,7 +766,7 @@ async function closeOutOrphans ({ exec, evidence, targets, carried, nowMs, ageMs
   const closed = []
   if (evidence === null) return closed
   for (const target of [...targets].sort()) {
-    const payload = await ghApi(exec, evidenceRefsPath(evidence, target))
+    const payload = await ghList(exec, evidenceRefsPath(evidence, target))
     if (!Array.isArray(payload)) continue
     const orphans = []
     for (const entry of payload) {
