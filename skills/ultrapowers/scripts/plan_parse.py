@@ -677,7 +677,15 @@ def parse_plan_full(text):
             "body": "\n".join(l for l, _ in body_lines).strip(),
         })
 
-    impl = [t for t in all_tasks if _is_implementation(t["type"])]
+    # the engine runs only implementation tasks, so any other Type would be
+    # dropped without a word: refused instead
+    for t in all_tasks:
+        if not _is_implementation(t["type"]):
+            raise Refusal(
+                "grammar: task %s: Type `%s` is never run — only `implementation` "
+                "tasks run; publishing goes through the plan's `**Publish:**` header."
+                % (t["id"], t["type"]))
+    impl = all_tasks
     ids = [t["id"] for t in impl]
 
     edges = _build_edges(impl)

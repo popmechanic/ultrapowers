@@ -14,7 +14,7 @@ control VM, no token on any VM or in any argv.
 
 1. Validate: the plan's hash pins (`plan-pins.mjs`), then `plan_check.py --base` through
    `compiler.mjs`, which fetches and runs `plan_check.py` and `plan_parse.py` at `engine=`.
-   Its `BASE fact:` and `STALE fact:` lines print on the launch line. The VM is sized from
+   Its `STALE fact:`, `GREEN-AT-BASE fact:` and `AUTHORING fact:` lines print on the launch line. The VM is sized from
    `plan_parse.py`'s widest wave. `toolchain.mjs` checks what a fresh sandbox can run.
 2. Read the evidence repository (`--evidence-repo`, else `"evidence"` in
    `~/.ultrapowers/fleet.json`; neither is a refusal) and the pool from `billing plan --json`;

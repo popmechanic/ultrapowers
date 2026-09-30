@@ -38,11 +38,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ultrapowers/scripts"))
 
 from plan_check import (  # noqa: E402
-    _BANNER_RE,
-    _CASE_LINE_RE,
-    _LITERAL_MIN,
-    _RULE_RE,
-    _path_referent,
     BaseTree,
     base_flag_refusal,
     gate_input_hash,
@@ -58,6 +53,42 @@ from plan_parse import (  # noqa: E402
     parse_plan_full,
     plan_grammar,
 )
+
+# What a test file at BASE looks like and which backticked tokens name a
+# repo path (moved from plan_check.py, #1440).
+EXT_RE = re.compile(r"\.([A-Za-z0-9]{1,8})$")
+_CASE_LINE_RE = re.compile(r"^\s*(?:test\(|it\(|def test_)")
+# A section banner: a comment line that is a shouted heading, or a rule.
+_BANNER_RE = re.compile(
+    r"^\s*(?://|#)\s*((?:[A-Z][A-Z0-9'’#,:\-]*\s+){2}[A-Z][A-Z0-9'’#,:\-]*.*?)\s*$")
+_RULE_RE = re.compile(r"^\s*(?://|#)\s*[═─=\-]{20,}\s*$")
+# Eight characters is where a quoted string starts to name one thing.
+_LITERAL_MIN = 8
+
+_REFERENT_EXTS = frozenset(
+    "py js mjs cjs ts tsx jsx md json jsonl sh yml yaml toml txt html css "
+    "sql csv lock cfg ini env tgz log".split())
+_MIME_RE = re.compile(r"^(text|application|image|audio|video|multipart)/")
+
+
+def _path_referent(tok):
+    """The normalized repo path a backticked token names, or None when the
+    token is not a repo-path referent (identifier, dotted field, URL, glob,
+    template, placeholder, absolute path, import specifier, MIME type)."""
+    t = tok.strip()
+    if (not t or any(c in t for c in "*?{}<>$~ ()'\"") or "://" in t
+            or t.startswith(("-", "/", "./", "../")) or _MIME_RE.match(t)):
+        return None
+    t = re.sub(r":\d+(?:-\d+)?$", "", t).rstrip("/")
+    if "/" in t:
+        return t
+    if t.startswith("."):
+        return None  # a dotfile name alone is not a referent worth resolving
+    m = EXT_RE.search(t)
+    if m and m.group(1).lower() in _REFERENT_EXTS:
+        return t
+    return None
+
 
 __all__ = ["base_excerpt", "gate_input", "gate_input_hash", "verdicts_path",
            "main"]

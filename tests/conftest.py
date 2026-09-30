@@ -7,8 +7,8 @@ carrying the slowest items must start at t=0 or it becomes the straggler
 every other worker waits on.
 
 And one environment setting: `ULTRAPOWERS_HOME` points at a fresh empty
-directory at import, so no `--base` exam (each now asks Jev for its
-`ROUTING fact:` risk) finds a real key — every reading is a quick null.
+directory at import, so no exam that reaches Jev (`check_provenance.py`,
+`routing.py`) finds a real key — every reading is a quick null.
 """
 import os
 import tempfile

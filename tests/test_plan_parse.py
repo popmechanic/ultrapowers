@@ -224,23 +224,30 @@ def test_m2_test_bullet_and_exam_command_add_no_field_or_path(tmp_path):
     assert t["files"] == ["src/a.ts"]
 
 
-def test_m2_gate_release_manual_excluded_absent_type_included(tmp_path):
+def test_m2_absent_type_is_implementation(tmp_path):
     tasks = [
         task_block("1", "Explicit implementation", creates=["m2/impl.py"]),
         task_block("2", "No Type marker at all", ttype=None,
                    creates=["m2/nomarker.py"]),
-        task_block("3", "Gate task", ttype="gate", creates=["m2/gate.txt"]),
-        task_block("4", "Release task", ttype="release",
-                   creates=["m2/release.txt"]),
-        task_block("5", "Manual task", ttype="manual",
-                   creates=["m2/manual.txt"]),
     ]
     obj = build_and_run(tmp_path, tasks)
-    # implementation-or-absent tasks are in; gate/release/manual are in
-    # neither list. [M2]
-    assert [t["id"] for t in obj["tasks"]] == ["1", "2"]
+    assert [t["id"] for t in obj["tasks"]] == ["1", "2"]  # [M2]
     wave_ids = {t["id"] for wave in obj["launch_waves"] for t in wave}
     assert wave_ids == {"1", "2"}  # [M2]
+
+
+@pytest.mark.parametrize("ttype", ["gate", "release", "manual"])
+def test_m2_a_task_the_engine_would_skip_is_refused(tmp_path, ttype):
+    """#1440: a Type the engine never runs is the parser's refusal, not a
+    silent drop."""
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text(make_plan([
+        task_block("1", "Explicit implementation", creates=["m2/impl.py"]),
+        task_block("2", "Other task", ttype=ttype, creates=["m2/other.txt"])]))
+    proc = run_parser(plan_path)
+    assert_is_the_scripts_own_refusal(proc)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "task 2: Type `%s` is never run" % ttype in proc.stderr, proc.stderr
 
 
 # --------------------------------------------------------------------------- #
