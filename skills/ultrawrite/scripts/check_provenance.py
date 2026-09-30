@@ -30,7 +30,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ultrapowers/scripts"))
-from plan_check import ask_jev, gh_issue_view, verdicts_path  # noqa: E402
+from plan_check import gh_issue_view, verdicts_path  # noqa: E402
+from routing import ask_jev  # noqa: E402
 from plan_parse import (  # noqa: E402
     CLAIMS_GRAMMAR,
     CLAIM_PROVENANCE_RE,

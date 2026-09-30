@@ -452,7 +452,8 @@ option carried the tag, and `explain_rounds` the number of Please explain rounds
 took (absent reads 0). The author writes the whole object once, at the execution handoff after
 `PLAN OK` and before the launch; the compiler prints it as one `AUTHORING fact:` line under
 `plan_check.py --base`, ending with the explain count, and the launcher carries that line onto the
-launch line. A release reads a run
+launch line. The record is telemetry: a field it does not say, or says oddly, prints `-` and never
+refuses the plan (#1440). A release reads a run
 range with `python3 $UW/authoring_census.py --fetch <owner>/<repo> --runs <A>..<B> --into <dir>`,
 and its last `totals:` line is what the release notes carry. A missing task, a
 stale hash, or a `fail` is a compile refusal. The verdict is an artifact, not
@@ -509,14 +510,11 @@ Then resolve provenance and check:
     python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/plan_parse.py <plan.md>
 
 `plan_check.py` sits on `plan_parse.py`, the parser the sandbox runs, and refuses only
-what a parser cannot see: a gate record that is missing, stale or `fail`, a malformed
-authoring record, a `Check:` carrying a backtick or naming a path one task owns, a
+what a parser cannot see: a gate record that is missing, stale or `fail`, a `Check:` carrying a backtick or naming a path one task owns, a
 `Check:` that freezes a pathspec covering a task's own Files, a Stale-if predicate that
-already holds at BASE — and, since a plan's proof is its `Run:` probes and nothing else, a `Test:` or `Guard:` bullet or an `Exam command` header is refused outright. It also
-refuses five slips the author used to catch by eye: a task without its six slots once
-each, non-empty and in order; a `**Summary:**` of other than three sentences; a
-`**Closes:**` line not directly under the `**Goal:**` paragraph; a code fence outside a
-task's Proof; and a dated reading in a Context or the Summary cited without `n=`. It is not a grammar check — the old
+already holds at BASE, a `Run:` tag citing a clause the Machine line does not number, a
+task without its six slots once each, non-empty and in order, and a code fence outside a
+task's Proof. The parser itself refuses a task whose `**Type:**` is not `implementation`. It is not a grammar check — the old
 compiler's grammar refusals left with it at cut B (2026-09-21), so read `plan_parse.py`'s
 own output for the plan before launching (`proofRuns`, `proofRunClauses`, `checks`,
 `dag_edges`): what it prints is what the engine will do.
@@ -528,18 +526,10 @@ own output for the plan before launching (`proofRuns`, `proofRunClauses`, `check
 
 `--base` takes a checkout directory or a 40-hex sha, and a sha must be present locally:
 the check reads that commit's tree with `git show`/`git ls-tree` in the plan's own
-repository, so every BASE fact — which paths exist, which file mentions a `Produces:`
-symbol, which test pins a Machine-clause span — resolves against the exact commit
+repository, so every read at BASE — which paths exist, whether a Stale-if predicate
+holds, which `Run:` lines are already green — resolves against the exact commit
 `launch.mjs --base` will hand the run, not against whatever the working tree happens to
 hold. Unset, `--base` defaults to the plan's own git toplevel.
-
-With a base, the verdict is followed by the tree's own facts about the plan, one
-`BASE fact:` line each (#896): what a `- Delete:` file holds at BASE (its line count,
-test-case count and section banners — read them before signing a sentence about what
-the file is; run-90 deleted five exams on the sentence "entirely the check-runs poll"),
-and every file outside a task's Files that carries a literal its Machine clauses pin —
-the shape that parked runs 84, 88 and 90. A carrier that pins the value the task
-changes goes into that task's Files; the line is a fact, never a refusal.
 
 A `**Stale-if:**` predicate is read against the same base, and it is the one thing there
 that does refuse: a predicate that already holds at that base is a `STALE fact: task <id>:
@@ -547,7 +537,7 @@ that does refuse: a predicate that already holds at that base is a `STALE fact: 
 exits 2 and prints no `PLAN OK`. An issue predicate the laptop cannot read is unreadable,
 not false: no `gh` on PATH, a non-zero exit, or an answer that is neither `OPEN` nor
 `CLOSED` prints `STALE fact: task <id>: <entry> unreadable at BASE — <reason>` as an
-advisory line after the verdict, beside the `BASE fact:` lines, so an offline laptop still
+advisory line after the verdict, so an offline laptop still
 prints `PLAN OK` and exits 0. Only `plan_check.py --base` asks: a plain compile with no
 `--base` evaluates no predicate at all.
 
@@ -687,8 +677,9 @@ three signals off the plan:
   API, loops/cursors/pagination/budgets/termination logic), or behavior hard to verify by
   reading.
 
-Since 2026-09-29 the author computes none of these signals: `plan_check.py --base` prints
-them, and the branch, on one `ROUTING fact:` line, and the author reads that line.
+Since 2026-09-29 the author computes none of these signals:
+`python3 $UW/routing.py <plan.md>` prints them, and the branch, on one `ROUTING fact:` line,
+and the author reads that line (#1440 moved it out of the launch-time check).
 
 First match wins: risk → Ultrapowers (the **risk override** — every task held to its own probes
 and the run to its checks is the value, not speed); parallel width and T≥3 → Ultrapowers; T≤2 → Inline;
@@ -718,9 +709,11 @@ since run-45 paid for, each a rule with its reason — before the gate readers a
 dispatched, and checks the plan against each of them. They are the author's own to
 check — nothing prints them.
 
-`plan_check.py` refuses five slips outright, so this list leaves them out: the six slots
-each once, non-empty and in order; a three-sentence Summary; Closes directly under Goal;
-a fence only in Proof; and a dated reading in a Context or the Summary with `n=`.
+`plan_check.py` refuses two shape slips outright, so this list leaves them out: the six
+slots each once, non-empty and in order, and a fence only in Proof. Three wording rules are
+the author's alone (the checker stopped refusing them, #1440): the `**Summary:**` is exactly
+three sentences; `**Closes:**` sits directly under the `**Goal:**` paragraph; and a dated
+reading in a Context or the Summary carries its `n=`.
 
 - No task carries checkbox steps.
 - The plan carries one `**Claim:**` above the first task, elicited or quoted from an

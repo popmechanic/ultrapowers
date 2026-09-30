@@ -949,8 +949,6 @@ EXAMPLE_LINE = ("AUTHORING fact: 118 min to PLAN OK, 12 hub probes, "
                 "1 questions, 1/1 recommended picked, 0 explain rounds")
 # M2's line for a record with no `authoring` key.
 NONE_LINE = "AUTHORING fact: none recorded"
-# M3's refusal prefix.
-UNREADABLE = "grammar: authoring record unreadable — "
 
 FACT_PREFIX = "AUTHORING fact:"
 
@@ -1061,7 +1059,7 @@ def test_b_two_questions_count_only_the_recommended_ones(tmp_path):
 def test_b_a_multi_select_question_is_one_row(tmp_path):
     """#1189: `picked` may be a list for a multi-select question — one row, one
     question, counted as recommended-picked when the recommendation is among
-    the picks; a pick outside `options` is still refused."""
+    the picks."""
     repo, head = base_repo(tmp_path)
     authoring = copy.deepcopy(AUTHORING)
     authoring["questions"] = [{"question": "which features", "options":
@@ -1071,9 +1069,6 @@ def test_b_a_multi_select_question_is_one_row(tmp_path):
     p = check(repo, "b3.md", record(authoring=authoring), "--base", head)
     assert_one_fact_after_the_verdict(
         p, EXAMPLE_LINE)  # 1 questions, 1/1 recommended picked
-    authoring["questions"][0]["picked"] = ["rename", "nope"]
-    p = check(repo, "b4.md", record(authoring=authoring))
-    assert p.returncode == 2 and "questions[0].picked" in p.stdout
 
 
 # ── (c) M2: no record, one `none recorded` line ─────────────────────────────
@@ -1110,152 +1105,28 @@ def test_d_a_bare_check_prints_no_fact_line(tmp_path, label, authoring):
     assert p.stdout.strip() == "PLAN OK", out
 
 
-# ── (e) M3: a malformed record is refused, naming the field ─────────────────
-# "A record whose `authoring` object is malformed is refused at `--check` —
-# exit 2, no `PLAN OK` — with one violation line beginning `grammar: authoring
-# record unreadable —` that names the offending field, for each of: `minutes`
-# not a non-negative integer; `probes` not a non-negative integer;
-# `routing.branch` outside `risk`, `width`, `inline`, `subagent`;
-# `routing.lane` outside `ultrapowers`, `subagent`, `inline`; a question whose
-# `options` has fewer than 2 entries; a question whose `picked` is not one of
-# its `options`; a question whose `recommended` is neither null nor one of its
-# `options`."
+# ── (e) #1440: the record is telemetry — a malformed one reads `-`, never refuses ──
 
-
-def _with(**fields):
-    """The example record with top-level fields replaced."""
+def _odd():
+    """Every field the fact line reads, said oddly or not at all."""
     a = copy.deepcopy(AUTHORING)
-    a.update(fields)
-    return a
-
-
-def _routing(**fields):
-    a = copy.deepcopy(AUTHORING)
-    a["routing"].update(fields)
-    return a
-
-
-def _question(**fields):
-    a = copy.deepcopy(AUTHORING)
-    a["questions"][0].update(fields)
-    return a
-
-
-# Each row carries exactly one defect, so the one line the clause promises is
-# the line about that row's field and nothing else.
-MALFORMED = [
-    ("minutes -1", _with(minutes=-1), "minutes"),
-    ('minutes "12"', _with(minutes="12"), "minutes"),
-    ("probes -1", _with(probes=-1), "probes"),
-    ('branch "speed"', _routing(branch="speed"), "branch"),
-    ('lane "fleet"', _routing(lane="fleet"), "lane"),
-    ('options ["only"]', _question(options=["only"], recommended="only",
-                                   picked="only"), "options"),
-    ('picked "C"', _question(picked="C"), "picked"),
-    ('recommended "C"', _question(recommended="C"), "recommended"),
-    ("explain_rounds -1", _question(explain_rounds=-1),
-     "questions[0].explain_rounds"),
-]
-
-
-@pytest.mark.parametrize("row,authoring,field", MALFORMED,
-                         ids=[r[0] for r in MALFORMED])
-def test_e_a_malformed_record_is_refused_naming_the_field(tmp_path, row,
-                                                          authoring, field):
-    """(e)/[M3]: each malformed row, at a bare `--check` — exit 2, no
-    `PLAN OK`, and exactly one line beginning `grammar: authoring record
-    unreadable —`, naming the field the row broke."""
-    p = check(tmp_path, "e.md", record(authoring=authoring))
-    out = p.stdout + p.stderr
-    assert p.returncode == 2, (row, out)
-    assert "PLAN OK" not in out, (row, out)
-    named = [line for line in out.splitlines()
-             if line.startswith(UNREADABLE)]
-    assert len(named) == 1, (row, out)
-    assert field in named[0], (row, named[0])
-
-
-def test_e_the_same_record_made_well_formed_is_not_refused(tmp_path):
-    """(e)/[M3]: the refusal is the malformation and nothing else about the
-    record — the example record, unbroken, still prints `PLAN OK` at a bare
-    `--check` and earns no `unreadable` line."""
-    p = check(tmp_path, "e-ok.md", record())
-    out = p.stdout + p.stderr
-    assert p.returncode == 0, out
-    assert p.stdout.strip() == "PLAN OK", out
-    assert UNREADABLE not in out, out
-
-
-# ── extractor-and-authoring-refusals task 2 (#1029): a refused record prints
-# its violation on the fact line, never `none recorded` ──────────────────────
-
-REFUSED_PREFIX = "AUTHORING fact: refused — "
-
-
-def _no_routing():
-    a = copy.deepcopy(AUTHORING)
+    a["minutes"] = "12"
+    a["probes"] = -1
     del a["routing"]
+    a["questions"] = [{"question": "q", "options": ["only"], "picked": "C"}, "not a row"]
     return a
 
 
-def _no_picked():
-    a = copy.deepcopy(AUTHORING)
-    del a["questions"][0]["picked"]
-    return a
-
-
-def _rule_of(grammar_line, name):
-    """The `<key>: <rule>` text after the backticked file name on a
-    `grammar: authoring record unreadable —` line."""
-    head = UNREADABLE + "`" + name + "`: "
-    assert grammar_line.startswith(head), grammar_line
-    return grammar_line[len(head):]
-
-
-ONE_DEFECT = [
-    ("minutes null", _with(minutes=None), "minutes:"),
-    ("routing absent", _no_routing(), "routing:"),
-    ("picked absent", _no_picked(), "questions[0].picked:"),
-]
-
-
-@pytest.mark.parametrize("row,authoring,key", ONE_DEFECT,
-                         ids=[r[0] for r in ONE_DEFECT])
-def test_f_m1_a_refused_record_prints_its_violation_on_the_fact_line(
-        tmp_path, row, authoring, key):
-    """(a) [M1] and (d) [M3]: under `--check --base <head>`, exactly one
-    `AUTHORING fact: refused — ` line, equal to the `<key>: <rule>` of the one
-    `grammar:` line, beginning with the row's key; no `none recorded`; still
-    exit 2, no `PLAN OK`; and a bare `--check` prints no fact line at all."""
+def test_e_a_malformed_record_reads_dashes_and_is_not_refused(tmp_path):
+    """(e) #1440: odd `minutes`/`probes`, no `routing` and a non-object
+    question row — exit 0, `PLAN OK`, and one fact line reading each unsaid
+    field as `-` and skipping the row that is not an object."""
     repo, head = base_repo(tmp_path)
-    p = check(repo, "f.md", record(authoring=authoring), "--base", head)
-    out = p.stdout + p.stderr
-    assert p.returncode == 2, (row, out)
-    assert "PLAN OK" not in out, (row, out)
-    grammar = [l for l in out.splitlines() if l.startswith(UNREADABLE)]
-    assert len(grammar) == 1, (row, out)
-    refused = [l for l in p.stdout.splitlines() if l.startswith(REFUSED_PREFIX)]
-    assert len(refused) == 1, (row, out)
-    rule = refused[0][len(REFUSED_PREFIX):]
-    assert rule == _rule_of(grammar[0], "f.gate-verdicts.json"), (row, out)
-    assert rule.startswith(key), (row, rule)
-    assert NONE_LINE not in p.stdout.splitlines(), (row, out)
-    bare = check(repo, "f-bare.md", record(authoring=authoring))
-    assert carrying_lines(bare.stdout + bare.stderr) == [], bare.stdout + bare.stderr
-
-
-def test_f_m1_two_defects_print_two_refused_lines(tmp_path):
-    """(b) [M1]: `minutes` null and `routing` absent — exactly two
-    `refused` lines, one per key, and no `none recorded`."""
-    repo, head = base_repo(tmp_path)
-    a = _with(minutes=None)
-    del a["routing"]
-    p = check(repo, "f2.md", record(authoring=a), "--base", head)
-    refused = [l[len(REFUSED_PREFIX):] for l in p.stdout.splitlines()
-               if l.startswith(REFUSED_PREFIX)]
-    assert len(refused) == 2, p.stdout + p.stderr
-    assert sorted(r.split(":")[0] for r in refused) == ["minutes", "routing"], refused
-    assert NONE_LINE not in p.stdout.splitlines(), p.stdout
+    p = check(repo, "e.md", record(authoring=_odd()), "--base", head)
+    assert_one_fact_after_the_verdict(
+        p, "AUTHORING fact: - min to PLAN OK, - hub probes, 4 gate dispatches, "
+           "1 rejected, routing -->-, 1 questions, 0/0 recommended picked, "
+           "0 explain rounds")
 
 
 # ########################################################################### #
@@ -1280,12 +1151,11 @@ def test_a_task_the_engine_would_skip_is_refused(tmp_path, ttype):
 
 
 # ########################################################################### #
-# FIVE SLIPS                                                                  #
+# THE BODY'S SHAPE                                                            #
 # ########################################################################### #
 #
-# Five slips the author used to catch by eye (2026-09-29), refused now by
-# `slip_violations`: the six slots, a three-sentence Summary, Closes under
-# Goal, a fence only in Proof, and a dated reading with `n=`. Every plan is
+# `slip_violations` refuses a body without its six slots in order and a code
+# fence outside a task's Proof (the three wording slips went in #1440). Every plan is
 # `tests/fixtures/plan_check_slips/good.md` with one slip put in, re-signed
 # so the gate record is never the reason it is refused.
 
@@ -1323,21 +1193,6 @@ def test_slips_an_empty_or_misordered_slot_is_refused(tmp_path):
     assert code == 2 and SIX_SLOTS_LINE in lines, lines
 
 
-def test_slips_a_four_sentence_summary_is_refused(tmp_path):
-    code, lines = slipped(tmp_path, r"^\*\*Summary:\*\* ", "**Summary:** Two. ")
-    assert code == 2, lines
-    assert ("grammar: header: the **Summary:** paragraph has 4 sentences; "
-            "it carries exactly three") in lines, lines
-
-
-def test_slips_a_closes_line_off_the_goal_is_refused(tmp_path):
-    code, lines = slipped(tmp_path, r"^\*\*Closes:\*\*.*\n(\*\*Tech Stack:\*\*.*\n)",
-                          r"\1**Closes:** #1\n")
-    assert code == 2, lines
-    assert ("grammar: header: the **Closes:** line sits directly under the "
-            "**Goal:** paragraph") in lines, lines
-
-
 def test_slips_a_fence_outside_proof_is_refused(tmp_path):
     code, lines = slipped(tmp_path, r"^(\*\*Context:\*\*.*)$", "\\1\n~~~\nx\n~~~")
     assert code == 2, lines
@@ -1348,19 +1203,6 @@ def test_slips_a_fence_outside_proof_is_refused(tmp_path):
     code, lines = slipped(tmp_path, r"\Z", "\n## Notes\n\n~~~\nx\n~~~\n")
     assert code == 2, lines
     assert "grammar: a code fence outside every task" in lines, lines
-
-
-def test_slips_a_dated_reading_without_n_is_refused(tmp_path):
-    code, lines = slipped(tmp_path, r"^(\*\*Context:\*\*.*)$",
-                          r"\1 (3 runs, 2026-09-22)")
-    assert code == 2, lines
-    assert ("grammar: task 1: Context cites a dated reading without n= — "
-            "(3 runs, 2026-09-22)") in lines, lines
-    code, lines = slipped(tmp_path, r"\(n=2 runs, 2026-09-22\)",
-                          "(2 runs, 2026-09-22)")
-    assert code == 2, lines
-    assert ("grammar: header: the **Summary:** cites a dated reading without "
-            "n= — (2 runs, 2026-09-22)") in lines, lines
 
 
 def test_slips_a_stories_plan_is_untouched():

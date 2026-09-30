@@ -1295,7 +1295,7 @@ const engineLine = (result) =>
  * line at all.
  *
  * `compiler=` sits between the engine line and the fact lines, never among
- * them: the `BASE fact:`, `STALE fact:`, `GREEN-AT-BASE fact:` and
+ * them: the `STALE fact:`, `GREEN-AT-BASE fact:` and
  * `AUTHORING fact:` entries are the LAST lines of the launch text, which is
  * what an operator reads down to.
  *

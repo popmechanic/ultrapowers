@@ -13,7 +13,6 @@ What refuses:
   * the gate-verdict record `<stem>.gate-verdicts.json` — missing, unreadable,
     an entry missing, stale against the live `sha256(claim NUL proof)`, or
     `fail`;
-  * that record's `authoring` object, when it carries one and it is malformed;
   * a `- Check:`, Proof `Run:`, `**Publish:**`, `**Verify:**` or
     `**Rollback:**` command carrying a backtick, and a `Check:` naming a path
     one implementation task's Files own;
@@ -22,35 +21,21 @@ What refuses:
   * a `**Publish:**` header line without a `**Verify:**` line (or the other
     way around), and a `**Verify:**` command that never reads
     `$ULTRA_PUBLISH_URL`;
-  * a `- Test:` or `- Guard:` bullet under a task's Files or Proof, and an
-    `**Exam command:**` header line — cut three (2026-09-22) retired the
-    examiner these fed; the parser reads none of them any more, and this is
-    the one reader left to say so;
-  * five slips the author used to catch by eye (2026-09-29): a task body
-    without its six slots once each, non-empty and in order; a `**Summary:**`
-    of other than three sentences; a `**Closes:**` line off the `**Goal:**`
-    paragraph; a code fence outside a task's Proof; and a dated reading in a
-    Context or the Summary cited without `n=`;
+  * a Proof `Run:` tag citing a clause the Machine line does not number, and
+    a `**Stale-if:**` entry that is no predicate;
+  * a task body without its six slots once each, non-empty and in order, and
+    a code fence outside a task's Proof;
   * with `--base`: a Stale-if predicate that already holds at BASE, and a
     `--base` that is neither a checkout directory nor a 40-hex sha.
 
-What is printed after the verdict, with `--base` only, and refuses nothing:
-`BASE fact:` (what a deleted file holds; which files outside a task's Files
-carry a literal its Machine clauses pin), `STALE fact: … unreadable at BASE`,
-`GREEN-AT-BASE fact:` (the plan's `Run:` lines rehearsed in a throwaway
-worktree at BASE — behind a `PLAN OK` only), `ROUTING fact:` and
-`AUTHORING fact:`.
+A task whose `**Type:**` is not `implementation` is refused by the parser.
 
-`ROUTING fact: T=<n>, width <w>, risk <r>, branch <b>` is the execution
-handoff computed rather than worked out by hand: T the implementation tasks,
-width the largest launch wave, risk one Jev reading of `authoring_routing` /
-`risk` (via `skills/ultrawrite/stories/ask.ts`; any failure reads `risk
-unread` and the line ends `(computed without risk)`), and the branch by
-ultrawrite §Execution handoff's first-match rule. When risk was read and the
-record's `authoring.routing.branch` names another branch, one more line says
-`ROUTING fact: recorded branch <r> differs from the computed branch <b>` — a
-pointer, never a refusal: a reading near the threshold can flip between two
-checks.
+What is printed after the verdict and refuses nothing: `SHARED fact:` always;
+with `--base`, `STALE fact: … unreadable at BASE`, `GREEN-AT-BASE fact:` (the
+plan's `Run:` lines rehearsed in a throwaway worktree at BASE — behind a
+`PLAN OK` only) and `AUTHORING fact:` (the record's telemetry, never a
+refusal). The execution handoff's `ROUTING fact:` is ultrawrite's
+(`skills/ultrawrite/scripts/routing.py`).
 """
 from __future__ import annotations
 
@@ -72,7 +57,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import plan_parse  # noqa: E402
 from plan_parse import machine_restatement  # noqa: E402
 
-EXT_RE = re.compile(r"\.([A-Za-z0-9]{1,8})$")
 
 
 # --------------------------------------------------------------------------- #
@@ -153,12 +137,9 @@ def gate_verdict_violations(plan_path, tasks):
 # The authoring record (#988): what the sitting that produced the plan cost    #
 # --------------------------------------------------------------------------- #
 # A top-level `authoring` object in the verdict record, written by the
-# authoring skill and only READ here. A malformed one is a refusal; a record
-# with no `authoring` key is read exactly as it was before the key existed.
+# authoring skill and only READ here: telemetry, printed as a fact and never a
+# refusal (#1440). A field the record does not say, or says oddly, reads `-`.
 AUTHORING_KEY = "authoring"
-AUTHORING_BRANCHES = ("risk", "width", "inline", "subagent")
-AUTHORING_LANES = ("ultrapowers", "subagent", "inline")
-_AUTHORING_BAD = "grammar: authoring record unreadable — "
 
 
 def _record(plan_path):
@@ -169,13 +150,6 @@ def _record(plan_path):
     except (OSError, ValueError):
         return {}
     return record if isinstance(record, dict) else {}
-
-
-def _nonneg_int(value):
-    """A JSON non-negative integer. `True` is an `int` in Python and is not
-    one of these; `"12"` is a string the record's writer did not convert."""
-    return (isinstance(value, int) and not isinstance(value, bool)
-            and value >= 0)
 
 
 def picks(question):
@@ -203,186 +177,40 @@ def explain_rounds(questions):
                and not isinstance(q["explain_rounds"], bool))
 
 
-def authoring_record_violations(plan_path):
-    """Every refusal the `authoring` object earns, one line per offending
-    field. A question whose option list is unusable says nothing further.
-    A question row's `explain_rounds` may be absent; when present it must be
-    a non-negative integer."""
-    auth = _record(plan_path).get(AUTHORING_KEY)
-    if auth is None:
-        return []
-    name = verdicts_path(plan_path).name
-    out = []
+def _count(value):
+    """A JSON non-negative integer as itself, anything else as `-` (`True`
+    is an `int` in Python and is not one of these)."""
+    ok = isinstance(value, int) and not isinstance(value, bool) and value >= 0
+    return value if ok else "-"
 
-    def bad(field, detail):
-        out.append("%s`%s`: %s: %s" % (_AUTHORING_BAD, name, field, detail))
 
-    if not isinstance(auth, dict):
-        bad("authoring", "must be an object, got %s" % type(auth).__name__)
-        return out
-
-    if not _nonneg_int(auth.get("minutes")):
-        bad("minutes", "must be a non-negative integer, got %r"
-            % (auth.get("minutes"),))
-    if not _nonneg_int(auth.get("probes")):
-        bad("probes", "must be a non-negative integer, got %r"
-            % (auth.get("probes"),))
-
-    routing = auth.get("routing")
-    if not isinstance(routing, dict):
-        bad("routing", "must be an object carrying `branch` and `lane`, got %r"
-            % (routing,))
-    else:
-        if routing.get("branch") not in AUTHORING_BRANCHES:
-            bad("routing.branch", "must be one of %s, got %r"
-                % (", ".join(AUTHORING_BRANCHES), routing.get("branch")))
-        if routing.get("lane") not in AUTHORING_LANES:
-            bad("routing.lane", "must be one of %s, got %r"
-                % (", ".join(AUTHORING_LANES), routing.get("lane")))
-
-    questions = auth.get("questions", [])
-    if not isinstance(questions, list):
-        bad("questions", "must be a list, one row per question, got %r"
-            % (questions,))
-        return out
-    for i, q in enumerate(questions):
-        where = "questions[%d]" % i
-        if not isinstance(q, dict):
-            bad(where, "must be an object, got %r" % (q,))
-            continue
-        options = q.get("options")
-        if not isinstance(options, list) or len(options) < 2:
-            bad(where + ".options",
-                "must be a list of at least 2 entries, got %r" % (options,))
-            continue
-        if not picks(q) or any(p not in options for p in picks(q)):
-            bad(where + ".picked", "must be one of %r, or a list of them, "
-                "got %r" % (options, q.get("picked")))
-        recommended = q.get("recommended")
-        if recommended is not None and recommended not in options:
-            bad(where + ".recommended", "must be null or one of %r, got %r"
-                % (options, recommended))
-        explain_rounds = q.get("explain_rounds")
-        if explain_rounds is not None and not _nonneg_int(explain_rounds):
-            bad(where + ".explain_rounds",
-                "must be a non-negative integer or absent, got %r"
-                % (explain_rounds,))
-    return out
+def _word(value):
+    """A non-empty string as itself, anything else as `-`."""
+    return value if isinstance(value, str) and value else "-"
 
 
 def authoring_fact_line(plan_path):
-    """The `AUTHORING fact:` line(s): `none recorded` only for a record with
-    no `authoring` key; one `refused — <key>: <rule>` line per violation for a
-    malformed one (#1029), so it is never read as an absent one. A
-    well-formed record's line ends with the question and pick-rate counts and
-    the sum of every row's `explain_rounds` (absent reads 0)."""
+    """The `AUTHORING fact:` line: `none recorded` for a record with no
+    `authoring` key, else what it cost, each field the record does not say
+    (or says oddly) read as `-`, like `authoring_census.py` reads it. Rows of
+    `questions` that are not objects are skipped."""
     record = _record(plan_path)
     auth = record.get(AUTHORING_KEY)
     if auth is None:
         return "AUTHORING fact: none recorded"
-    violations = authoring_record_violations(plan_path)
-    if violations:
-        head = "%s`%s`: " % (_AUTHORING_BAD, verdicts_path(plan_path).name)
-        return "\n".join("AUTHORING fact: refused — " + v[len(head):]
-                         for v in violations)
+    auth = auth if isinstance(auth, dict) else {}
     tally = record.get("tally") if isinstance(record.get("tally"), dict) else {}
-    questions = auth.get("questions", [])
+    routing = auth.get("routing") if isinstance(auth.get("routing"), dict) else {}
+    questions = auth.get("questions")
+    questions = [q for q in questions if isinstance(q, dict)] if isinstance(questions, list) else []
     picked, offered = recommended_picked(questions)
-    # `-` reads as "the record does not say" — distinct from a recorded 0.
     return ("AUTHORING fact: %s min to PLAN OK, %s hub probes, "
             "%s gate dispatches, %s rejected, routing %s->%s, "
             "%d questions, %d/%d recommended picked, %d explain rounds"
-            % (auth["minutes"], auth["probes"], tally.get("dispatched", "-"),
-               tally.get("rejected", "-"), auth["routing"]["branch"],
-               auth["routing"]["lane"], len(questions), picked, offered,
-               explain_rounds(questions)))
-
-
-# --------------------------------------------------------------------------- #
-# The execution handoff (operator decisions 2026-09-29)                        #
-# --------------------------------------------------------------------------- #
-JEV_ASK_TIMEOUT_S = 45
-_SKILLS = Path(__file__).resolve().parents[2]
-ASK_TS = _SKILLS / "ultrawrite/stories/ask.ts"
-
-
-def ask_jev(question_set, question, state):
-    """One Jev reading through `ask.ts <set> <question>` over `state`, or None
-    for any failure — no `bun`, no `ask.ts`, a timeout, a non-zero exit,
-    output not `{"noul": <number>}`, or a null. `ask.ts` prints that object
-    as its one stdout line; the last line is the one read."""
-    bun = shutil.which("bun")
-    if bun is None or not ASK_TS.is_file():
-        return None
-    try:
-        proc = subprocess.run(
-            [bun, str(ASK_TS), question_set, question],
-            input=json.dumps(state), capture_output=True, text=True,
-            timeout=JEV_ASK_TIMEOUT_S)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if proc.returncode != 0:
-        return None
-    try:
-        value = json.loads(proc.stdout.strip().splitlines()[-1])["noul"]
-    except (ValueError, IndexError, KeyError, TypeError):
-        return None
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    return value
-
-
-def routing_risk_threshold():
-    """`flag_at.routing_risk` of the stories policy; 0.5 when unreadable."""
-    try:
-        policy = json.loads(
-            (_SKILLS / "ultrawrite/stories/policy.json").read_text())
-        return float(policy["flag_at"]["routing_risk"])
-    except (OSError, ValueError, KeyError, TypeError):
-        return 0.5
-
-
-def read_routing_risk(tasks):
-    """One Jev reading of `authoring_routing` / `risk` over the plan's
-    implementation tasks, or None for any failure (`ask_jev`)."""
-    value = ask_jev("authoring_routing", "risk", {"plan": {"tasks": [
-        {"title": t["title"], "claim": t.get("claim") or "",
-         "files": list(t.get("files") or [])} for t in tasks]}})
-    return None if value is None else float(value)
-
-
-def routing_branch(T, width, risk):
-    """ultrawrite §Execution handoff, first match wins."""
-    if risk is not None and risk >= routing_risk_threshold():
-        return "risk"
-    if width >= 2 and T >= 3:
-        return "width"
-    if T <= 2:
-        return "inline"
-    return "subagent"
-
-
-def routing_fact_lines(result, tasks, plan_path):
-    """The `ROUTING fact:` line, and — risk read, the record naming another
-    of the four branches — the mismatch line. Asks Jev once."""
-    impl = [t for t in tasks if t.get("type") == "implementation"]
-    T = len(result["tasks"])
-    width = max((len(w) for w in result["launch_waves"]), default=0)
-    risk = read_routing_risk(impl)
-    branch = routing_branch(T, width, risk)
-    if risk is None:
-        lines = ["ROUTING fact: T=%d, width %d, risk unread, branch %s "
-                 "(computed without risk)" % (T, width, branch)]
-    else:
-        lines = ["ROUTING fact: T=%d, width %d, risk %.2f, branch %s"
-                 % (T, width, risk, branch)]
-        auth = _record(plan_path).get(AUTHORING_KEY)
-        routing = auth.get("routing") if isinstance(auth, dict) else None
-        recorded = routing.get("branch") if isinstance(routing, dict) else None
-        if recorded in AUTHORING_BRANCHES and recorded != branch:
-            lines.append("ROUTING fact: recorded branch %s differs from the "
-                         "computed branch %s" % (recorded, branch))
-    return lines
+            % (_count(auth.get("minutes")), _count(auth.get("probes")),
+               tally.get("dispatched", "-"), tally.get("rejected", "-"),
+               _word(routing.get("branch")), _word(routing.get("lane")),
+               len(questions), picked, offered, explain_rounds(questions)))
 
 
 # --------------------------------------------------------------------------- #
@@ -424,17 +252,6 @@ def shared_fact_lines(tasks):
         lines.append("SHARED fact: %s is in tasks %s; name what it must keep "
                      "in a Run: probe" % (path, named))
     return lines
-
-
-def type_violations(tasks):
-    """The parser keeps only implementation tasks and the engine runs only
-    what it keeps, so a `gate`, `release` or `manual` task would be dropped
-    without a word — refused here instead."""
-    return [
-        "grammar: task %s: Type `%s` is never run — only `implementation` "
-        "tasks run; publishing goes through the plan's `**Publish:**` header."
-        % (t["id"], t["type"])
-        for t in tasks if not plan_parse._is_implementation(t["type"])]
 
 
 def command_violations(checks, tasks, publish=None):
@@ -565,12 +382,10 @@ def freeze_violations(checks, tasks):
 
 
 # --------------------------------------------------------------------------- #
-# Three shapes the authoring skill already says it refuses, but              #
-# `plan_parse.py` only ignores: a Depends-on/Commutes bullet, a Run: tag     #
-# citing a clause the Machine line does not number, a Stale-if entry that    #
-# is not a predicate (review 2026-09-24 findings S2/S3/S5).                  #
+# Two shapes the authoring skill already says it refuses, but `plan_parse.py` #
+# only ignores: a Run: tag citing a clause the Machine line does not number, #
+# a Stale-if entry that is not a predicate (review 2026-09-24, S3/S5).       #
 # --------------------------------------------------------------------------- #
-_DEPENDS_ON_RE = re.compile(r'^\s*[-*+]\s*(Depends-on|Commutes)\s*:', re.I)
 _MACHINE_NUM_RE = re.compile(r'\bM(\d+)\.')
 
 
@@ -586,21 +401,13 @@ def _run_cite_span(numbers):
 
 
 def promised_violations(tasks):
-    """One `grammar:` violation for each of three shapes the authoring skill
+    """One `grammar:` violation for each of two shapes the authoring skill
     already tells an author are refused, but that `plan_parse.py` only
-    ignores rather than refusing: a `- Depends-on:`/`- Commutes:` bullet (no
-    such edge is ever derived from it), a Proof `Run:` tag citing a clause
-    the task's Machine line does not number, and a `**Stale-if:**` entry
-    that matches no predicate head."""
+    ignores rather than refusing: a Proof `Run:` tag citing a clause the
+    task's Machine line does not number, and a `**Stale-if:**` entry that
+    matches no predicate head."""
     violations = []
     for t in tasks:
-        for line in _unfenced_lines(t["body"]):
-            if _DEPENDS_ON_RE.match(line.strip()):
-                violations.append(
-                    "grammar: task %s: `%s` is not read — ordering is "
-                    "derived from Interfaces and Files, never written"
-                    % (t["id"], line.strip()))
-
         numbers = [int(n) for n in _MACHINE_NUM_RE.findall(
             machine_restatement(t["claim"]))]
         span = _run_cite_span(sorted(set(numbers)))
@@ -623,92 +430,11 @@ def promised_violations(tasks):
 
 
 # --------------------------------------------------------------------------- #
-# Retired slots (cut three, 2026-09-22): a `- Test:` or `- Guard:` bullet,     #
-# or an `**Exam command:**` header line                                       #
-# --------------------------------------------------------------------------- #
-_RETIRED_TEST_BULLET_RE = re.compile(r'^-\s*Test\s*:', re.I)
-_RETIRED_GUARD_BULLET_RE = re.compile(r'^-\s*Guard\s*:', re.I)
-_EXAM_CMD_HEADER_RE = re.compile(r'^\*\*Exam command:\*\*', re.I)
-_RETIRED_SUFFIX = ("a plan's proof is its Run: probes; a test file is not "
-                   "written for a task since cut three (2026-09-22)")
-
-
-def _unfenced_lines(text):
-    """`text`'s own lines, fence-tracked the same way `plan_parse.py` tracks
-    them -- a fence's content is never read as structure, here either."""
-    return [line for line, fenced in plan_parse._fence_aware_lines(text)
-            if not fenced]
-
-
-def _pre_slot_lines(body):
-    """The unfenced lines of a task body before its first named slot label
-    (`**Claim:**`, `**Proof:**`, ...) -- the span the parser's own
-    Files-bullet scan reads, through the parser's own `_pre_slot`."""
-    return [line for line, fenced in
-            plan_parse._pre_slot(plan_parse._fence_aware_lines(body))
-            if not fenced]
-
-
-def retired_slot_violations(text_or_tasks):
-    """One `grammar:` line per retired slot the plan still carries: a
-    `- Test:` bullet under a task's Files or Proof, a `- Guard:` bullet
-    under Proof, or an `**Exam command:**` header line -- cut three
-    (2026-09-22) retired the examiner all three fed, and `plan_parse.py`
-    reads none of them any more. A fenced occurrence of any shape is never
-    read as one, the same as the parser's own scan.
-
-    Called with the plan's raw TEXT for the header check (the lines above
-    the first `### Task` heading), or with the TASKS list
-    (`parse_plan_full`'s per-task dicts, each carrying `body` and `proof`)
-    for the bullet check -- `parse_plan_full` answers neither slot any
-    more, so this reads the plan's own strings directly."""
-    if isinstance(text_or_tasks, str):
-        violations = []
-        for line, fenced in plan_parse._header_lines(text_or_tasks):
-            if not fenced and _EXAM_CMD_HEADER_RE.match(line.strip()):
-                violations.append(
-                    "grammar: header: Exam command is not read since cut "
-                    "three (2026-09-22) — a task's probes are its own "
-                    "Run: lines")
-        return violations
-
-    violations = []
-    for t in text_or_tasks:
-        for line in _pre_slot_lines(t["body"]):
-            if _RETIRED_TEST_BULLET_RE.match(line.strip()):
-                violations.append(
-                    "grammar: task %s: Files carries a Test: bullet — %s"
-                    % (t["id"], _RETIRED_SUFFIX))
-        for line in _unfenced_lines(t["proof"]):
-            s = line.strip()
-            if _RETIRED_TEST_BULLET_RE.match(s):
-                violations.append(
-                    "grammar: task %s: Proof carries a Test: bullet — %s"
-                    % (t["id"], _RETIRED_SUFFIX))
-            elif _RETIRED_GUARD_BULLET_RE.match(s):
-                violations.append(
-                    "grammar: task %s: Proof carries a Guard: bullet — %s"
-                    % (t["id"], _RETIRED_SUFFIX))
-    return violations
-
-
-# --------------------------------------------------------------------------- #
-# Five slips the author used to catch by eye (2026-09-29): the six slots,     #
-# a three-sentence Summary, Closes under Goal, a fence only in Proof, and a   #
-# dated reading with n=                                                       #
+# The body's shape (2026-09-29): the six slots in order, and a code fence     #
+# only in a task's Proof                                                      #
 # --------------------------------------------------------------------------- #
 _SLOT_ORDER = ["claim", "authorized-by", "interfaces", "context", "proof",
                "stale-if"]
-_SUMMARY_RE = re.compile(r'^\*\*Summary:\*\*\s*(.*)$')
-_SENTENCE_SPLIT_RE = re.compile(r'(?<=[.!?])["\')\]]*\s+(?=[A-Z0-9"(`\[])')
-_PAREN_SPAN_RE = re.compile(r'\(([^()]*)\)')
-_DATE_RE = re.compile(r'\b20\d\d-\d\d-\d\d\b')
-_COUNT_RE = re.compile(
-    r'(?<![-\d])\d+\s+(?:[a-z-]+\s+)?(?:runs?|plans?|tasks?|readings?|calls?'
-    r'|products?|dispatches|sittings?|landings?|rounds?)(?![-\w])')
-_N_EQ_RE = re.compile(r'\bn\s*=')
-
-
 def _task_slots(body_lines):
     """`[(name, text)]` for each unfenced slot label after the heading, in
     order, duplicates kept, each the parser's own slot text -- and
@@ -718,71 +444,16 @@ def _task_slots(body_lines):
             [(sp[0], sp[2]) for sp in spans])
 
 
-def _undated_readings(text):
-    """Every innermost parenthesised span carrying a date and a count but no
-    `n=` -- how this repo cites a reading, with its sample size left off."""
-    return [s for s in _PAREN_SPAN_RE.findall(text)
-            if _DATE_RE.search(s) and _COUNT_RE.search(s)
-            and not _N_EQ_RE.search(s)]
-
-
-def _summary_text(header):
-    """The header's `**Summary:**` paragraph joined on single spaces, or
-    None when the header carries none."""
-    for n, (line, fenced) in enumerate(header):
-        m = None if fenced else _SUMMARY_RE.match(line.strip())
-        if not m:
-            continue
-        parts = [m.group(1).strip()]
-        for rest, _ in header[n + 1:]:
-            if not rest.strip():
-                break
-            parts.append(rest.strip())
-        return " ".join(p for p in parts if p)
-    return None
-
-
 def slip_violations(text, tasks):
-    """One `grammar:` line per slip the author used to catch by eye: a task
-    body without its six slots once each, non-empty and in order; a
-    `**Summary:**` of other than three sentences; a `**Closes:**` line not
-    directly under the `**Goal:**` paragraph; a code fence anywhere but a
-    task's Proof; and a dated reading in a Context or the Summary cited
-    without `n=`. Reads the plan's own lines through `plan_parse.py`'s
+    """One `grammar:` line per shape slip: a task body without its six slots
+    once each, non-empty and in order, and a code fence anywhere but a task's
+    Proof. Reads the plan's own lines through `plan_parse.py`'s
     scanners; `tasks` is `parse_plan_full`'s list, whose ids it names."""
     violations = []
     header, bodies = plan_parse._split_plan(text)
 
-    summary = _summary_text(header)
-    if summary is not None:
-        k = len([s for s in _SENTENCE_SPLIT_RE.split(summary) if s.strip()])
-        if k != 3:
-            violations.append(
-                "grammar: header: the **Summary:** paragraph has %d sentences;"
-                " it carries exactly three" % k)
-
-    for n, (line, fenced) in enumerate(header):
-        if fenced or not line.strip().startswith("**Closes:**"):
-            continue
-        above = None
-        for prev, _ in reversed(header[:n]):
-            s = prev.strip()
-            if not s or s.startswith("**"):
-                above = s
-                break
-        if above is None or not above.startswith("**Goal:**"):
-            violations.append(
-                "grammar: header: the **Closes:** line sits directly under "
-                "the **Goal:** paragraph")
-
     if any(fenced for _, fenced in header):
         violations.append("grammar: header: a code fence above the first task")
-
-    if summary is not None:
-        for span in _undated_readings(summary):
-            violations.append(
-                "grammar: header: the **Summary:** cites a dated reading "
-                "without n= — (%s)" % span)
 
     for tid, _title, _order, body in bodies:
         slots, positions = _task_slots(body)
@@ -802,15 +473,6 @@ def slip_violations(text, tasks):
                     "grammar: task %s: a code fence outside the Proof slot"
                     % tid)
                 break
-        for name, slot in slots:
-            if name != "context":
-                continue
-            joined = " ".join(l.strip() for l in slot.splitlines() if l.strip())
-            for span in _undated_readings(joined):
-                violations.append(
-                    "grammar: task %s: Context cites a dated reading without "
-                    "n= — (%s)" % (tid, span))
-
     # Lines under an `##` heading that is no task's own: neither the header
     # nor any task body holds them.
     scanned = plan_parse._fence_aware_lines(text)
@@ -1066,146 +728,6 @@ def evaluate_stale_if(tasks, base_tree):
 
 
 # --------------------------------------------------------------------------- #
-# BASE facts (#896)                                                            #
-# --------------------------------------------------------------------------- #
-# Two facts an author narrates from memory and gets wrong (runs 84, 88, 90):
-# what a file the plan deletes actually holds, and which files OUTSIDE a task's
-# Files carry a literal its Machine clauses pin. Facts, not advisories.
-
-# A test case, in the shapes this repository's suites use.
-_CASE_LINE_RE = re.compile(r"^\s*(?:test\(|it\(|def test_)")
-# A section banner: a comment line that is a shouted heading, or a rule.
-_BANNER_RE = re.compile(
-    r"^\s*(?://|#)\s*((?:[A-Z][A-Z0-9'’#,:\-]*\s+){2}[A-Z][A-Z0-9'’#,:\-]*.*?)\s*$")
-_BANNER_CAP = 70
-_RULE_RE = re.compile(r"^\s*(?://|#)\s*[═─=\-]{20,}\s*$")
-# Eight characters is where a quoted string starts to name one thing.
-_LITERAL_MIN = 8
-_LITERAL_FILES_SHOWN = 6
-_LITERAL_CARRIERS_MAX = 40
-
-# Path referents: a backticked token in a task body may name a repo path.
-# `extract_gate_input.py` imports the normalizer from here, so what it
-# hashes is what this file reads.
-_REFERENT_EXTS = frozenset(
-    "py js mjs cjs ts tsx jsx md json jsonl sh yml yaml toml txt html css "
-    "sql csv lock cfg ini env tgz log".split())
-_MIME_RE = re.compile(r"^(text|application|image|audio|video|multipart)/")
-_FILES_BULLET_RE = re.compile(
-    r"^\s*[-*+]\s*(Create|Modify|Delete|Test|Test fixture\(s\)|Fixture\(s\))\s*:")
-
-
-def _path_referent(tok):
-    """The normalized repo path a backticked token names, or None when the
-    token is not a repo-path referent (identifier, dotted field, URL, glob,
-    template, placeholder, absolute path, import specifier, MIME type)."""
-    t = tok.strip()
-    if (not t or any(c in t for c in "*?{}<>$~ ()'\"") or "://" in t
-            or t.startswith(("-", "/", "./", "../")) or _MIME_RE.match(t)):
-        return None
-    t = re.sub(r":\d+(?:-\d+)?$", "", t).rstrip("/")
-    if "/" in t:
-        return t
-    if t.startswith("."):
-        return None  # a dotfile name alone is not a referent worth resolving
-    m = EXT_RE.search(t)
-    if m and m.group(1).lower() in _REFERENT_EXTS:
-        return t
-    return None
-
-
-def _referent_scan_lines(task):
-    """Body lines whose backticked tokens are referents: every line, fenced
-    content included, minus the fence markers themselves (their backtick runs
-    mis-pair BACKTICK_PATH_RE) and the Files bullets."""
-    return [line for line in task["body"].splitlines()
-            if not plan_parse._FENCE_RE.match(line.strip())
-            and not _FILES_BULLET_RE.match(line)]
-
-
-def _file_shape(base_tree, rel):
-    """(lines, cases, banners) of `rel` at BASE, or None when unreadable."""
-    text = base_tree.read_text(rel)
-    if text is None:
-        return None
-    lines = text.splitlines()
-    cases = sum(1 for l in lines if _CASE_LINE_RE.match(l))
-    banners = []
-    for l in lines:
-        m = _BANNER_RE.match(l)
-        if m and not _RULE_RE.match(l):
-            banners.append(m.group(1).strip()[:_BANNER_CAP])
-    return len(lines), cases, banners
-
-
-def _tree_files_carrying(base_tree, literal):
-    """Every path at BASE whose text carries `literal` verbatim, sorted."""
-    args = ["grep", "-F", "-l", "-e", literal]
-    if base_tree.is_sha:
-        out = _git(base_tree.repo, *args, base_tree.rev, "--", ".")
-        strip = base_tree.rev + ":"
-        paths = [l[len(strip):] if l.startswith(strip) else l
-                 for l in out.splitlines()]
-    else:
-        paths = _git(base_tree.repo, *args, "--", ".").splitlines()
-    return sorted(p for p in paths if p)
-
-
-def _machine_literals(t, base_tree):
-    """The backticked literals of a task's Machine clauses, in order, deduped,
-    long enough to name one thing, and not a path of the tree (paths are the
-    pinning script's business; a path the tree LACKS is a literal like any
-    other, and the files that still say it are the fact — run-88)."""
-    out = []
-    for tok in plan_parse.BACKTICK_PATH_RE.findall(machine_restatement(t["claim"])):
-        tok = tok.strip()
-        if len(tok) < _LITERAL_MIN or "\n" in tok or tok in out:
-            continue
-        rel = _path_referent(tok)
-        if rel is not None and base_tree._blob_mode(rel) is not None:
-            continue
-        out.append(tok)
-    return out
-
-
-def base_fact_lines(tasks, base_tree):
-    """One line per fact, in task order — empty for a task with nothing to
-    say."""
-    lines = []
-    for t in tasks:
-        if not plan_parse._is_implementation(t["type"]):
-            continue
-        for rel in t["deletes"]:
-            shape = _file_shape(base_tree, rel)
-            if shape is None:
-                continue
-            n, cases, banners = shape
-            shown = "; ".join('"%s"' % b for b in banners[:8])
-            if len(banners) > 8:
-                shown += "; and %d more" % (len(banners) - 8)
-            lines.append(
-                "BASE fact: task %s deletes `%s` — %d lines, %d test cases, "
-                "%d section banner%s%s"
-                % (t["id"], rel, n, cases, len(banners),
-                   "" if len(banners) == 1 else "s",
-                   (": " + shown) if banners else ""))
-        own = task_files(t)
-        for lit in _machine_literals(t, base_tree):
-            carriers = [p for p in _tree_files_carrying(base_tree, lit)
-                        if p not in own]
-            # A string carried by half the tree pins nothing in particular.
-            if not carriers or len(carriers) > _LITERAL_CARRIERS_MAX:
-                continue
-            more = len(carriers) - _LITERAL_FILES_SHOWN
-            lines.append(
-                "BASE fact: task %s: `%s` is carried at BASE by %s%s — not in "
-                "this task's Files"
-                % (t["id"], lit, ", ".join(carriers[:_LITERAL_FILES_SHOWN]),
-                   (" and %d more" % more) if more > 0 else ""))
-    return lines
-
-
-# --------------------------------------------------------------------------- #
 # The rehearsals at BASE: every `Run:` (#1098)                                #
 # --------------------------------------------------------------------------- #
 GREEN_AT_BASE_TIMEOUT_S = 30
@@ -1366,14 +888,10 @@ def main(argv=None):
         print("%s\n\n1 violation(s)" % exc)
         return 2
 
-    violations = (type_violations(tasks)
-                  + gate_verdict_violations(args.plan, tasks)
-                  + authoring_record_violations(args.plan)
+    violations = (gate_verdict_violations(args.plan, tasks)
                   + command_violations(result["checks"], tasks, result["publish"])
                   + freeze_violations(result["checks"], tasks)
                   + promised_violations(tasks)
-                  + retired_slot_violations(tasks)
-                  + retired_slot_violations(plan_text)
                   + slip_violations(plan_text, tasks)
                   + publish_violations(result["publish"]))
     advisories = []
@@ -1390,15 +908,13 @@ def main(argv=None):
     for line in shared_fact_lines(tasks):
         print(line)
     if base_tree is not None:
-        for line in base_fact_lines(tasks, base_tree) + advisories:
+        for line in advisories:
             print(line)
         # A refused plan's commands are not run: the seconds would buy a
         # reading of a document nobody will dispatch.
         if not violations:
             for line in green_at_base_lines(tasks, base_tree):
                 print(line)
-        for line in routing_fact_lines(result, tasks, args.plan):
-            print(line)
         print(authoring_fact_line(args.plan))
     return 2 if violations else 0
 
