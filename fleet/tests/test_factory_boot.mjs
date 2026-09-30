@@ -363,6 +363,9 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
   assert.equal(status.state, 'failed', '(c) [M2] status.json at the tag records state "failed"')
   assert.equal(status.error, 'engine exit 3', '(c) status.json error is exactly "engine exit 3"')
+  // #1392: the hub's mark is in the committed record, not appended after the last commit
+  const marks = atTag(evidenceDir, runN, 'events.jsonl').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.kind === 'board:mark')
+  assert.deepEqual(marks.map((r) => r.state), ['failed'], `(c) events.jsonl at the tag holds one board:mark row, state failed — got ${JSON.stringify(marks)}`)
   assert.deepEqual(Object.keys(refsOf(originDir)), ['refs/heads/main'], '(c) nothing is written to the target')
 }
 
@@ -506,6 +509,35 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   )
   assert.deepEqual(refsOf(originDir), targetBefore, '(g) [M5] the target\'s refs are unchanged')
   assert.deepEqual(refsOf(evidenceDir), evidenceBefore, '(g) the evidence repository\'s refs are unchanged')
+}
+
+// ── (h) #1392 nothing ahead of base: parked, and the hub's mark is in the tagged record ──
+
+{
+  const runN = '508'
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-h-'))
+  const home = path.join(root, 'home')
+  const bin = path.join(root, 'bin')
+  fs.mkdirSync(home, { recursive: true })
+  fs.mkdirSync(bin, { recursive: true })
+  writeGitConfig(home)
+
+  const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+  wireEvidence(home, evidenceDir)
+  git(root, ['clone', originDir, path.join(home, 'target')])
+  buildEngineDir(home, ENGINE_SHA)
+  writeStubs(bin, { claudeAuth: 'oauth' })
+  fs.writeFileSync(path.join(home, 'engine-lands-nothing'), '')
+
+  const env = {
+    ...baseEnv(PROXY_URL),
+    FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA })
+  }
+  const res = await runBootAsync({ bin, home, env })
+  assert.equal(res.code, 0, `(h) the nothing-ahead run exits 0 — got ${res.code}, stderr tail: ${(res.stderr || '').slice(-4000)}`)
+  assert.equal(JSON.parse(atTag(evidenceDir, runN, 'status.json')).state, 'parked', '(h) status.json at the tag records state "parked"')
+  const marks = atTag(evidenceDir, runN, 'events.jsonl').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.kind === 'board:mark')
+  assert.deepEqual(marks.map((r) => r.state), ['parked'], `(h) events.jsonl at the tag holds one board:mark row, state parked — got ${JSON.stringify(marks)}`)
 }
 
 proxyServer.close()

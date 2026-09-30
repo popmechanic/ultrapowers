@@ -95,9 +95,9 @@ fail() { # $1 = message, $2 = exit code (default 1)
   # A clone subshell in `prepare` leaves its message to the parent, whose own `fail` logs the one `FAILED:` line.
   [ -n "${PREPARE_CLONE:-}" ] || log "FAILED: $1"
   if [ -n "${EVIDENCE_READY:-}" ] && [ -z "${FAILING:-}" ]; then
-    FAILING=1; collect_evidence; write_status failed "$PHASE"; evidence_commit "$RUN_ID: failed"; record_tags
     # The hub hears the failure too (#1288): `work.state=failed` on the run issue, so the janitor reaps the VM by its ordinary rule.
-    mark_run failed; fi
+    # Marked before the last commit, so the record holds the `board:mark` row (#1392).
+    FAILING=1; collect_evidence; write_status failed "$PHASE"; mark_run failed; evidence_commit "$RUN_ID: failed"; record_tags; fi
   exit "${2:-1}"
 }
 # `board.mjs mark-run`: `work.state=<state>` on the run issue, which the janitor reaps (#1288); it never fails the run.
@@ -581,8 +581,7 @@ boot() {
   head="$(fleet_git -C "$TARGET_DIR" rev-parse HEAD 2>/dev/null || true)"
   if [ "$head" = "$BASE_SHA" ]; then
     if [ "$code" != 0 ]; then fail "engine exit $code" "$code"; fi
-    write_status parked "nothing ahead of base"; evidence_commit "$RUN_ID: parked"
-    mark_run parked
+    write_status parked "nothing ahead of base"; mark_run parked; evidence_commit "$RUN_ID: parked"
     record_tags; exit 0; fi
   publish "$code"; exit 0
 }
