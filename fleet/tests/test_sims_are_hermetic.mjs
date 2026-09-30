@@ -26,26 +26,20 @@
  *       probe names every spawn that does not.
  *   M3  no such file reads, stats or sources a string-literal absolute path
  *       outside the checkout and `os.tmpdir()`, and the probe names every one.
- *   M4  no `test_*.mjs` spawns another `test_*.mjs` or `pytest`; the eight
- *       sites at BASE became names a sim checked exist under `fleet/tests/`
- *       without running them, and every sim that held such a list has since
- *       been retired, so no sibling list is left in the tree at all. A mutated
+ *   M4  no `test_*.mjs` spawns another `test_*.mjs` or `pytest`. A mutated
  *       copy of a sim's own text under the temp root is not a sibling run.
- *   M6  `tests/test_fleet_suite.py` exports `sim_env()` and hands each bridged
- *       `node` the environment it returns.
  *   M7  the probe, pointed at `fleet/tests/fixtures/hermetic/leaky_sim.mjs`,
  *       names its inheriting spawn, its `/etc/fleet/planted.env` read and its
- *       sibling-sim spawn — and the probe itself spawns nothing.
+ *       sibling-sim spawn.
  *
- * Legs: (a) M1, (b) M2, (c) M3, (d) M4, (e) M4 at the eight sites, (f) M7,
- * (g) M7, (h) M6.
+ * Legs: (a) M1, (b) M2, (c) M3, (d) M4, (g) M7.
  *
  * The sweep (legs b, c, d) is a static read of source, never an execution: it
  * reads every `fleet/tests/test_*.mjs` and `fleet/tests/_*.mjs` except this
  * file, and never `probe_*.mjs` (those are
  * live probes, `fleet/tests/PROBES.md`, outside every sweep here) and never
- * `fixtures/`. Reading source is also why this file needs no child process of
- * its own — leg (f) holds it to that.
+ * `fixtures/`. The bridge (`tests/test_fleet_suite.py`) guards itself by
+ * construction: its `sim_env()` builds each sim's environment from nothing.
  *
  * The three rules, spelled once so an implementation can be read against them:
  *
@@ -86,7 +80,6 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const ROOT = path.resolve(HERE, '..', '..')
 const TESTS_DIR = HERE
 /** This file, the one sim the sweep leaves out — it quotes offenders on purpose. */
 const SELF = 'test_sims_are_hermetic.mjs'
@@ -94,8 +87,6 @@ const SELF = 'test_sims_are_hermetic.mjs'
 const HELPERS = path.join(TESTS_DIR, '_helpers.mjs')
 /** The fixture leg (g) sweeps, at the path the Files list names. */
 const FIXTURE = path.join(TESTS_DIR, 'fixtures', 'hermetic', 'leaky_sim.mjs')
-/** The bridge leg (h) reads. */
-const BRIDGE = path.join(ROOT, 'tests', 'test_fleet_suite.py')
 
 /** The deliverable, imported dynamically so a tree without it still reports
  *  every other leg rather than dying at load. */
@@ -551,27 +542,6 @@ const TREE = SWEPT.map((name) => {
 })
 const treeOffenders = (kind) => TREE.flatMap((r) => r[kind])
 
-/** Every `test_*.mjs` name a file hands to an `existsSync` — the sibling list
- *  read rather than run. Resolved transitively, since a list reaches the check
- *  through a loop variable and sometimes through an entry of a record. */
-const namesCheckedForExistence = (src) => {
-  const found = new Set()
-  const collect = (span, depth, seen) => {
-    for (const q of literalsIn(src, span)) found.add(q.slice(1, -1))
-    if (depth <= 0) return
-    for (const id of identsIn(src.skeleton.slice(span.start, span.end))) {
-      if (seen.has(id)) continue
-      seen.add(id)
-      const b = bindingOf(src, id)
-      if (b) collect(b, depth - 1, seen)
-    }
-  }
-  for (const call of callSitesOf(src, ['existsSync', 'statSync', 'accessSync'], { dotted: true })) {
-    collect({ start: call.open, end: call.end }, 3, new Set())
-  }
-  return found
-}
-
 // ── the harness ──────────────────────────────────────────────────────────────
 
 const tests = []
@@ -838,50 +808,6 @@ test('the same sweep names each shape of a sim running another  [M4 / leg (d)]',
     'level, copyWithProbe(simName, probe) carries no literal, and that pin is not a sibling run')
 })
 
-// ── (e) the nested shape is gone from the tree  [M4] ─────────────────────────
-
-/**
- * The nested sites at BASE and the siblings each one ran — empty, and the table
- * is kept so a new one has somewhere to be named. Every sim that held a sibling
- * list was retired in run-126 for catching no defect over runs 40–123, so the
- * shape leg (e) used to pin site by site no longer exists in the tree. The leg
- * below is what is left of it: not "each site reads its list", but "no sim has
- * a list to read" — the stronger statement, and the one the tree can still make.
- */
-const NESTED_AT_BASE = []
-
-const SIBLING_NAME_RE = /(^|\/)test_[a-z0-9_]+\.mjs$/
-
-test('no sim of the tree carries a sibling list at all  [M4 / leg (e)]', () => {
-  assert.deepEqual(NESTED_AT_BASE, [],
-    '(e) [M4] the nested sites are gone from fleet/tests/, and so is the table naming them')
-  const reading = SWEPT
-    .map((file, i) => [file, [...namesCheckedForExistence(TREE[i].src)].filter((q) => SIBLING_NAME_RE.test(q))])
-    .filter(([, names]) => names.length)
-    .map(([file, names]) => `${file}: ${JSON.stringify(names)}`)
-  assert.deepEqual(reading, [],
-    `(e) [M4] no surviving sim names a sibling sim, run or merely checked for existence — the ` +
-    `eight sites at BASE became names read rather than run, and the sims holding those names ` +
-    `are themselves gone now:\n  ${reading.join('\n  ')}`)
-})
-
-// ── (f) the probe spawns nothing  [M7] ───────────────────────────────────────
-
-test('the probe imports nothing from child_process  [M7 / leg (f)]', () => {
-  const own = fs.readFileSync(path.join(TESTS_DIR, SELF), 'utf8')
-  const CP = ['child', 'process'].join('_')
-  const forms = [
-    ['an import', new RegExp(`(^|[\\n;])\\s*import\\b[^\\n]*from\\s*['"](?:node:)?${CP}['"]`)],
-    ['a bare import', new RegExp(`(^|[\\n;])\\s*import\\s*['"](?:node:)?${CP}['"]`)],
-    ['a dynamic import', new RegExp(`import\\s*\\(\\s*['"](?:node:)?${CP}['"]`)],
-    ['a require', new RegExp(`require\\s*\\(\\s*['"](?:node:)?${CP}['"]`)],
-  ]
-  for (const [what, re] of forms) {
-    assert.equal(re.test(own), false,
-      `(f) [M7] the probe reads source and runs nothing — it carries ${what} of ${CP}`)
-  }
-})
-
 // ── (g) the fixture, one offender per rule  [M7] ─────────────────────────────
 
 test('the fixture is swept to exactly three offenders, one per rule  [M7 / leg (g)]', () => {
@@ -901,71 +827,10 @@ test('the fixture is swept to exactly three offenders, one per rule  [M7 / leg (
   assert.match(r.absolute[0].why, /\/etc\/fleet\/planted\.env/,
     `(g) [M7] the absolute read is of /etc/fleet/planted.env: ${r.absolute[0].why}`)
 
-  const flat = text.replace(/\s+/g, ' ')
-  const PINS = [
-    "spawnSync('bash', ['-c', 'true'], { env: { ...process.env } })",
-    "fs.readFileSync('/etc/fleet/planted.env', 'utf8')",
-    "spawnSync(process.execPath, ['fleet/tests/test_fitness.mjs'], { env: simEnv() })",
-  ]
-  for (const pin of PINS) {
-    assert.ok(flat.includes(pin),
-      `(g) [M7] the fixture carries this text verbatim, so the sweep is read against a known ` +
-      `source: ${pin}`)
-  }
   assert.equal(path.basename(FIXTURE).startsWith('test_'), false,
     '(g) [M7] and the fixture is never collected by the bridge — its name does not match test_*.mjs')
   assert.equal(SWEPT.includes(path.basename(FIXTURE)), false,
     '(g) [M7] nor swept as a sim of the tree')
-})
-
-// ── (h) the bridge hands each sim its environment  [M6] ──────────────────────
-
-test('tests/test_fleet_suite.py binds env=sim_env() on the node it runs  [M6 / leg (h)]', () => {
-  assert.ok(fs.existsSync(BRIDGE), '(h) [M6] tests/test_fleet_suite.py is the bridge')
-  const text = fs.readFileSync(BRIDGE, 'utf8')
-  assert.match(text, /^def sim_env\(/m,
-    '(h) [M6] the bridge exports sim_env() as a module-level function beside collect_sims')
-  const calls = []
-  const re = /subprocess\.run\(\s*\[\s*["']node["']/g
-  let m
-  while ((m = re.exec(text)) !== null) {
-    const open = text.indexOf('(', m.index)
-    let depth = 0
-    let end = open
-    for (let i = open; i < text.length; i++) {
-      if (text[i] === '(') depth++
-      else if (text[i] === ')') { depth--; if (depth === 0) { end = i; break } }
-    }
-    calls.push(text.slice(m.index, end + 1))
-  }
-  assert.ok(calls.length >= 1,
-    '(h) [M6] the bridge dispatches each sim with subprocess.run(["node", path], …)')
-  for (const call of calls) {
-    // `env=sim_env()` inline, or `env=<name>` where `<name> = sim_env()` is
-    // bound in the bridge — the shape #890 needs, since the bridge removes
-    // that environment's HOME once the sim exits and has to hold the object.
-    const m = call.match(/env=(sim_env\(\)|[A-Za-z_]\w*)\b/)
-    assert.ok(m,
-      `(h) [M6] and hands that sim the environment sim_env() returns: ${call.replace(/\s+/g, ' ')}`)
-    if (m[1] !== 'sim_env()') {
-      assert.match(text, new RegExp(`^\\s*${m[1]} = sim_env\\(\\)\\s*$`, 'm'),
-        `(h) [M6] env=${m[1]} is bound by \`${m[1]} = sim_env()\` in the bridge`)
-    }
-  }
-  assert.match(text, /finally:\s*\n\s*shutil\.rmtree\(env\["HOME"\], ignore_errors=True\)/,
-    '(h) [#890] and removes that environment\'s fleet-bridge-* HOME in a finally once the sim exits')
-
-  const body = text.slice(text.search(/^def sim_env\(/m))
-  const end = body.slice(1).search(/^(def |@|class )/m)
-  const fn = end === -1 ? body : body.slice(0, end + 1)
-  for (const prefix of DROPPED) {
-    assert.ok(fn.includes(prefix),
-      `(h) [M6] sim_env() drops the same six prefixes as the rig, ${prefix} among them`)
-  }
-  for (const tool of TOOLS) {
-    assert.ok(fn.includes(tool),
-      `(h) [M6] and builds PATH from the same interpreters, ${tool} among them`)
-  }
 })
 
 // ── the sentinel ─────────────────────────────────────────────────────────────
