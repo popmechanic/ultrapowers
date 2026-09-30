@@ -28,6 +28,8 @@ Added for ticket 2 (#359; every earlier request answers as before, plus fields):
 Added for #1401: edit and rewrite also answer peerRewrites [{peers, peer, before, after}], one per
 sub-edit that replaced or deleted lines a peer wrote: `peer` the peer's lines, `before` what those
 lines had replaced when the peer wrote them, `after` what this edit put there.
+  lost          {}                        [{path, author, lines}]: lines each agent's published copy shows
+                                          as its own that the join of every published copy no longer shows
 """
 import difflib, json, os, re, sys, threading
 
@@ -446,6 +448,28 @@ class Keeper:
         digest = hashlib.blake2b(json.dumps(sorted(out.items())).encode(), digest_size=8).hexdigest()
         return {"files": files, "exists": exists, "conflicts": sorted(set(conflicts)), "annotated": annotated, "addsOnly": adds_only,
                 "sameAnchor": {p: f for p, f in same.items() if f}, "digest": digest}
+
+    def r_lost(self):
+        """Per (path, author): the visible lines of the author's published copy that the author wrote
+        (keyed sidecar) and whose key is not visible in the join, in file order."""
+        join = {}
+        for who in self.published:
+            for p, st in self.published[who].items():
+                join[p] = st if p not in join else M.merge_states(join[p], st)[0]
+        seen = {}
+        for p, st in join.items():
+            js = M.deserialize_state(st)
+            seen[p] = {k for e, k in zip(js, line_keys(js)) if e[3] % 2}
+        lost = []
+        for who, pub in self.published.items():
+            pauth = self.kauth_pub.get(who, {})
+            for p, st in pub.items():
+                ps, side = M.deserialize_state(st), pauth.get(p, {})
+                gone = [strip(e[0]) for e, k in zip(ps, line_keys(ps))
+                        if e[3] % 2 and who in side.get(k, ()) and k not in seen.get(p, ())]
+                if gone:
+                    lost.append({"path": p, "author": who, "lines": gone})
+        return {"lost": sorted(lost, key=lambda d: (d["path"], d["author"]))}
 
     # ── ticket 2 (additive): authorship by identity ──
     def r_authors_keyed(self, agent, path):
