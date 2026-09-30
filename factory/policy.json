@@ -95,6 +95,15 @@
       "experiment": true,
       "rollback": "min_confidence = 2",
       "unread": "engine beliefs surfaced per run and how many named a real engine fault"
+    },
+    "provenance": {
+      "coverage": "record",
+      "n": 0,
+      "window": "none",
+      "basis": "operator pick 2026-09-29 (#1404 Depth 3)",
+      "experiment": true,
+      "rollback": "coverage = off",
+      "unread": "unproven line counts per run against the lines a reviewer found untested"
     }
   }
 }

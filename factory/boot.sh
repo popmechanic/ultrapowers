@@ -182,7 +182,7 @@ write_status() { # $1 = state, $2 = phase (optional)
   mv "$tmp" "$STATUS_FILE"; log "status: state=$STATE phase=$PHASE"
 }
 # The engine's own evidence files, named once: collect_evidence copies them and evidence_commit adds them.
-ENGINE_EVIDENCE=(board.json weave-ops.digest.jsonl snapshots.jsonl red-checks.json past.json)
+ENGINE_EVIDENCE=(board.json weave-ops.digest.jsonl snapshots.jsonl red-checks.json past.json provenance.json)
 # The named files the engine left, copied beside the page — never `git add -A`, since the engine's clones live under the run directory and none of them is evidence.
 collect_evidence() {
   mkdir -p "$EVIDENCE_DIR/$EVIDENCE_REL"
@@ -314,9 +314,9 @@ run_engine() {
 }
 plan_title()   { { sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" || true; } | head -n 1; }
 # The pull request body: the plan's summary paragraph, the probes and their exits off the run's
-# own event log as the receipt, the link to the run's folder at its tag in the evidence repository, and its closes line — rendered whole by `factory/record.mjs pr-body`.
+# own event log as the receipt, the link to the run's folder at its tag in the evidence repository, the provenance counts, and its closes line — rendered whole by `factory/record.mjs pr-body`.
 pr_body() { fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" pr-body "$PLAN_FILE" --events "$RUN_DIR/events.jsonl" \
-  --evidence "https://github.com/$EVIDENCE_REPO/tree/$SLUG/$RUN_ID/$EVIDENCE_REL"; }
+  --evidence "https://github.com/$EVIDENCE_REPO/tree/$SLUG/$RUN_ID/$EVIDENCE_REL" --provenance "$RUN_DIR/provenance.json"; }
 # The target's default branch as the remote advertised it: a PR against a guessed `main` on a `master` repo is refused, or worse taken.
 default_branch() {
   local ref; ref="$(fleet_git -C "$TARGET_DIR" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || true)"

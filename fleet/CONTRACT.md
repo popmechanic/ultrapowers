@@ -81,7 +81,7 @@ evidence repository.
     `state-exams/`, `residuals.jsonl`, `kata.jsonl`'s per-event hub export and the fold-again
     receipts directory — and it left with that engine at cut two; what the current engine writes
     to this branch beyond the three files above is not yet described in this contract.
-    **A Flock run adds six files beside them** (with `summary.json` and the
+    **A Flock run adds seven files beside them** (with `summary.json` and the
     publish files), so its record says what went wrong and not only that it did:
     - `board.json` — the board as it stood at the end: every task with its state and owner, and
       the beliefs.
@@ -101,8 +101,13 @@ evidence repository.
       `<owner>-<repo>/run-<M>` tag below this run's number in the evidence repository; the boot
       extracts its folder into a directory the engine reads (`--past-dir`), and a failed read
       writes no `past.json` and never affects the run.
+    - `provenance.json` — the whole account of the run's changed lines: `hunks`, the changed
+      lines by task (`path`, `lines`, `task`), with the clauses whose probes ran them; the
+      exceptions only (`contested`, `lost`, `ordered`, `foreign`); and `unproven`, the changed
+      code no tagged probe ran (`null` when unmeasured). The PR body's `### Provenance` line
+      counts it.
     Not kept: the whole snapshots, the raw weave log (whose `content` is the files' full texts) and
-    `checks/`. (History: the retired factory engine wrote none of these six.)
+    `checks/`. (History: the retired factory engine wrote none of these seven.)
   - `ultra/integration-run-<N>` on the target — the work, and the only ref the product repository
     ever receives. Pushed only when it is ahead of `base=`; the PR's head.
     It has three fates, decided by the pull request with the highest `number` on that head:
