@@ -24,6 +24,10 @@ Added for ticket 2 (#359; every earlier request answers as before, plus fields):
   pull          also answers sameAnchor [{path, from, flags}] (see same_anchor)
   merged        takes an optional order; also answers sameAnchor, digest
   authors_keyed {agent, path}             [author] per visible line, by identity
+
+Added for #1401: edit and rewrite also answer peerRewrites [{peers, peer, before, after}], one per
+sub-edit that replaced or deleted lines a peer wrote: `peer` the peer's lines, `before` what those
+lines had replaced when the peer wrote them, `after` what this edit put there.
 """
 import difflib, json, os, re, sys, threading
 
@@ -101,6 +105,7 @@ M = manyana
 
 TAG = os.environ.get("FLOCK_TAG", "0") == "1"
 INSERTED = {}   # (agent copy, path) -> {text: set(authors)}: the authorship sidecar when TAG is off
+REPLACED = {}   # (path, text) -> the visible lines the edit that wrote `text` replaced (#1401)
 
 
 def tag(lines, who):
@@ -319,11 +324,20 @@ class Keeper:
         if refine and vend > vstart and lines:
             ops = difflib.SequenceMatcher(None, cur[vstart:vend], lines, autojunk=False).get_opcodes()
             subs = [(vstart + i1, vstart + i2, lines[j1:j2]) for t, i1, i2, j1, j2 in ops if t != "equal"]
-        deleted, touched, peers = 0, 0, set()
+        deleted, touched, peers, rewrites = 0, 0, set(), []
         for a, z, new_lines in reversed(subs):
             st = self.state(agent, path)
             vis_raw = visible_raw(st)
             owners = [self.who(agent, path, r) for r in vis_raw[a:z]]
+            gone_text = [strip(r) for r in vis_raw[a:z]]
+            theirs = [(o, t) for o, t in zip(owners, gone_text) if o not in (agent, "base")]
+            if theirs:
+                rewrites.append({"peers": sorted({p for o, _ in theirs for p in o.split("|")}),
+                                 "peer": [t for _, t in theirs],
+                                 "before": [b for _, t in theirs for b in REPLACED.get((path, t), [])],
+                                 "after": list(new_lines)})
+            for l in new_lines:
+                REPLACED[(path, l)] = gone_text
             new, gone = apply_edit(st, a, z, tag(new_lines, agent))
             self.copy(agent)[path] = new
             if new_lines:   # ticket 2: the keyed sidecar learns the new lines' identity
@@ -338,7 +352,8 @@ class Keeper:
                 if o not in (agent, "base"):
                     touched += 1
                     peers.add(o)
-        return {"deleted": deleted, "peer_lines_touched": touched, "peers": sorted(peers), "subedits": len(subs)}
+        return {"deleted": deleted, "peer_lines_touched": touched, "peers": sorted(peers), "subedits": len(subs),
+                "peerRewrites": rewrites[::-1]}
 
     def r_rewrite(self, agent, path, content):
         old = self.lines(agent, path)
@@ -346,14 +361,16 @@ class Keeper:
         if content is not None and not old and path not in self.copy(agent):
             self.copy(agent)[path] = M.initial_state([])
         ops = difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
-        touched, peers = 0, set()
+        touched, peers, rewrites = 0, set(), []
         for tag_, i1, i2, j1, j2 in reversed(ops):
             if tag_ == "equal":
                 continue
             r = self.r_edit(agent, path, i1, i2, new[j1:j2], refine=False)
             touched += r["peer_lines_touched"]
             peers |= set(r["peers"])
-        return {"ops": sum(1 for o in ops if o[0] != "equal"), "peer_lines_touched": touched, "peers": sorted(peers)}
+            rewrites[:0] = r["peerRewrites"]
+        return {"ops": sum(1 for o in ops if o[0] != "equal"), "peer_lines_touched": touched, "peers": sorted(peers),
+                "peerRewrites": rewrites}
 
     def r_view(self, agent, path):
         return {"text": "\n".join(self.lines(agent, path))}

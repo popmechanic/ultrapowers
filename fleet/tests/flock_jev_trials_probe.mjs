@@ -10,7 +10,12 @@
 //   resolve  two tasks write into the same line of a.txt (base `x`): task 1 replaces it with ONE,
 //            task 2 keeps it and adds TWO after it. Both replacing it would merge as a union (adds
 //            only), which never blocks; this shape conflicts, so a resolve task is added; at least one jev:resolve row, every one for a.txt with the stand-in's answer;
-//   off      the release plan with TYPESAFE_BASE_URL empty: no jev:release row, no request.
+//   off      the release plan with TYPESAFE_BASE_URL empty: no jev:release row, no request;
+//   peer     (#1401) task 1 turns a.txt's `x y z` into `x ONE z`; task 2, held until then, writes
+//            `x ONEz TWO` over task 1's line, as run-277's builder ran two of a peer's words
+//            together. The stand-in answers `loses`: one peer:rewrite row and one
+//            jev:peer-rewrite row naming task 1's line, and the run ends a draft;
+//   peer-keeps  the same plan, the stand-in answering `keeps`: the rows, and the run ends ready.
 // Prints `JEV TRIALS <case> OK` and exits 0, or names what differed and exits 1.
 import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -21,7 +26,8 @@ import { fileURLToPath } from 'node:url'
 import { simEnv } from './_helpers.mjs'
 
 const CASE = process.argv[2]
-if (!['release', 'resolve', 'off'].includes(CASE)) { console.log('usage: flock_jev_trials_probe.mjs release|resolve|off'); process.exit(2) }
+if (!['release', 'resolve', 'off', 'peer', 'peer-keeps'].includes(CASE)) { console.log('usage: flock_jev_trials_probe.mjs release|resolve|off|peer|peer-keeps'); process.exit(2) }
+const CHOICE = CASE === 'peer' ? 'loses' : CASE === 'peer-keeps' ? 'keeps' : 'plan_defect'
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'flock-jev-trials-'))
 const T = path.join(tmp, 'target')
@@ -39,7 +45,7 @@ const server = http.createServer((req, res) => {
     requests += 1
     let keys = []
     try { keys = Object.keys(JSON.parse(body).questions || {}) } catch {}
-    const answers = Object.fromEntries(keys.map((k) => [k, { choice: 'plan_defect', confidence: 0.9 }]))
+    const answers = Object.fromEntries(keys.map((k) => [k, { choice: CHOICE, confidence: 0.9 }]))
     res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ answers }))
   })
 })
@@ -52,7 +58,7 @@ const git = (...a) => {
   if (r.status !== 0) fail(`git ${a.join(' ')}: ${r.stderr}`)
   return r.stdout.trim()
 }
-fs.writeFileSync(path.join(T, 'a.txt'), 'x\n')
+fs.writeFileSync(path.join(T, 'a.txt'), CASE.startsWith('peer') ? 'x y z\n' : 'x\n')
 git('init', '-q'); git('add', '-A'); git('commit', '-qm', 'base')
 const base = git('rev-parse', 'HEAD')
 
@@ -98,6 +104,10 @@ const script = path.join(tmp, 'script.json')
 if (CASE === 'resolve') {
   fs.writeFileSync(plan, header + task(1, 'ONE') + '\n' + task(2, 'TWO'))
   fs.writeFileSync(script, JSON.stringify({ 1: { 'a.txt': 'ONE\n' }, 2: { 'a.txt': 'x\nTWO\n' } }))
+} else if (CASE.startsWith('peer')) {
+  // two builders at once; task 2's holds until task 1 has published, then pulls and writes over its line
+  fs.writeFileSync(plan, header + task(1, 'ONE') + '\n' + task(2, 'TWO'))
+  fs.writeFileSync(script, JSON.stringify({ 1: { 'a.txt': 'x ONE z\n' }, 2: { 'a.txt': 'x ONEz TWO\n' }, '@hold_ms': { 2: 3000 } }))
 } else {
   fs.writeFileSync(plan, header + task(1, 'DONE'))
   fs.writeFileSync(script, JSON.stringify({}))
@@ -131,6 +141,15 @@ if (CASE === 'release' || CASE === 'off') {
     const bad = rel.filter((r) => r.task !== '1' || r.answer !== 'plan_defect' || r.confidence !== 0.9)
     if (bad.length) fail(`jev:release rows differ: ${JSON.stringify(bad)}`)
   }
+} else if (CASE.startsWith('peer')) {
+  const pr = of('peer:rewrite'), jr = of('jev:peer-rewrite')
+  const want = (r) => r.path === 'a.txt' && r.task === '2' && r.peers.join() === 'A' && r.peer.join() === 'x ONE z' && r.before.join() === 'x y z' && r.after.join() === 'x ONEz TWO'
+  if (pr.length !== 1 || !want(pr[0])) fail(`expected one peer:rewrite row over task 1's line, saw ${JSON.stringify(pr)}`)
+  if (jr.length !== 1 || !want(jr[0]) || jr[0].answer !== CHOICE) fail(`expected one jev:peer-rewrite row answered ${CHOICE}, saw ${JSON.stringify(jr)}`)
+  const end = of('terminal').at(-1)
+  const pr_ = CASE === 'peer' ? 'draft' : 'ready'
+  if (!end || end.pr !== pr_) fail(`expected the run to end ${pr_}, saw ${JSON.stringify(end)}`)
+  if ((code.c === 0) !== (pr_ === 'ready')) fail(`engine exit ${code.c} for a ${pr_} run`)
 } else {
   if (!of('resolve-task').length) fail(`the engine added no resolve task: ${code.out.slice(-1500)}`)
   const res = of('jev:resolve')
