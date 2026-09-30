@@ -328,7 +328,7 @@ printf '%s\\n' "$@" > "$FLEET_HOME/engine-argv"
 code=0
 if [ -f "$FLEET_HOME/engine-exit" ]; then code="$(cat "$FLEET_HOME/engine-exit")"; fi
 
-if [ "$code" = "0" ]; then
+if [ "$code" = "0" ] && [ ! -f "$FLEET_HOME/engine-lands-nothing" ]; then
   printf '%s\\n' "export const size = () => 1" > "$target/widget.mjs"
   mkdir -p "$target/tests"
   printf '%s\\n' "export const t = 1" > "$target/tests/test_widget.mjs"
