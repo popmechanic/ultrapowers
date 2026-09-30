@@ -630,6 +630,57 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   )
 }
 
+// ── (j) #1441 main moved after the target clone: the self-merge catches up before its merge ──
+
+{
+  const runN = '510'
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-j-'))
+  const home = path.join(root, 'home')
+  const bin = path.join(root, 'bin')
+  fs.mkdirSync(home, { recursive: true })
+  fs.mkdirSync(bin, { recursive: true })
+  writeGitConfig(home)
+
+  const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+  wireEvidence(home, evidenceDir)
+  git(root, ['clone', originDir, path.join(home, 'target')])
+
+  // Move the origin's main by one commit touching a file the plan never names.
+  const side = path.join(root, 'side')
+  git(root, ['clone', originDir, side])
+  git(side, ['checkout', 'main'])
+  fs.writeFileSync(path.join(side, 'other.txt'), 'a commit that landed on main after the clone\n')
+  git(side, ['add', 'other.txt'])
+  git(side, ['-c', 'user.name=Side', '-c', 'user.email=side@example.com', 'commit', '-m', 'move main'])
+  git(side, ['push', 'origin', 'main'])
+
+  buildEngineDir(home, ENGINE_SHA)
+  writeStubs(bin, { claudeAuth: 'oauth' })
+
+  const env = {
+    ...baseEnv(PROXY_URL),
+    FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA }),
+    MERGE_SHA
+  }
+
+  const res = await runBootAsync({ bin, home, env })
+
+  assert.equal(
+    res.code, 0,
+    `(j) the moved-main run exits 0 — got ${res.code}, stdout: ${res.stdout}, stderr tail: ${(res.stderr || '').slice(-4000)}`
+  )
+
+  const rows = atTag(evidenceDir, runN, 'events.jsonl').split('\n').filter(Boolean).map((l) => JSON.parse(l))
+  const refoldAt = rows.findIndex((r) => r.kind === 'refold' && r.ok === true)
+  const mergeAt = rows.findIndex((r) => r.kind === 'merge' && r.code === 200)
+  assert.ok(refoldAt >= 0, `(j) events.jsonl carries a refold row with ok true — got kinds ${JSON.stringify(rows.map((r) => r.kind))}`)
+  assert.ok(mergeAt >= 0, `(j) events.jsonl carries a merge row with code 200 — got ${JSON.stringify(rows.filter((r) => r.kind === 'merge'))}`)
+  assert.ok(refoldAt < mergeAt, `(j) the refold row comes before the merge row — got kinds ${JSON.stringify(rows.map((r) => r.kind))}`)
+
+  assert.equal(JSON.parse(atTag(evidenceDir, runN, 'status.json')).state, 'done', '(j) status.json at the tag records state "done"')
+  console.log('ok (j) the self-merge catches up to a moved main')
+}
+
 proxyServer.close()
 
 console.log('ALL TESTS PASSED')

@@ -48,6 +48,12 @@
  *       no `publish:*` row beyond `publish:pr`; no `publish.json` committed
  *       to the evidence tree.
  *
+ *   (e) [M1] a deploy past its time budget: the engine's `factory/policy.json`
+ *       carries `publish.probe.timeout_seconds` 2 and the deploy stub sleeps
+ *       10 s before printing its url — the publish:deploy row reads exit 124
+ *       and url null, the phase names the failed deploy, and the verify probe
+ *       never ran.
+ *
  * Every boot is `spawn`ed and awaited (`runBootAsync`), the same asynchronous
  * shape `test_factory_boot.mjs` and `test_factory_preflight.mjs` use, so the
  * in-process proxy stub server's own event loop is never blocked by a
@@ -88,6 +94,7 @@ env > "$HOME/publish-env-$verb.txt"
 case_val="green"
 [ -f "$HOME/publish-case" ] && case_val="$(cat "$HOME/publish-case")"
 if [ "$verb" = "deploy" ]; then
+  [ "$case_val" = "slow" ] && sleep 10
   if [ "$case_val" = "deploy-failed" ]; then
     echo "fixture: deploy failed" 1>&2
     exit 1
@@ -129,8 +136,10 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
 
 /** One full `bash factory/boot.sh boot` run of `rig`'s bound fixture plan,
  *  marking `markCase` in `$HOME/publish-case` (when given) before the boot
- *  ever starts. Returns the handles a case's own assertions need. */
-async function runCase (rig, runN, markCase) {
+ *  ever starts, and running `afterEngine(engineDir)` (when given) right after
+ *  the engine directory is built. Returns the handles a case's own assertions
+ *  need. */
+async function runCase (rig, runN, markCase, afterEngine) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `fleet-publish-${runN}-`))
   const home = path.join(root, 'home')
   const bin = path.join(root, 'bin')
@@ -142,7 +151,8 @@ async function runCase (rig, runN, markCase) {
   const { originDir, evidenceDir, base, plan } = rig.buildOrigin(root, runN)
   rig.wireEvidence(home, evidenceDir)
   rig.git(root, ['clone', originDir, path.join(home, 'target')])
-  rig.buildEngineDir(home, ENGINE_SHA)
+  const engineDir = rig.buildEngineDir(home, ENGINE_SHA)
+  if (afterEngine) afterEngine(engineDir)
   rig.writeStubs(bin, { claudeAuth: 'oauth' })
 
   const env = {
@@ -383,6 +393,50 @@ function evidenceRunDirEntries (evidenceDir, runN) {
     !runDirEntries.some((p) => p.endsWith('/publish.json')),
     `(d) [M5] no publish.json is committed to the evidence tree — got ${JSON.stringify(runDirEntries)}`
   )
+}
+
+// ── (e) [M1] a deploy past its time budget ────────────────────────────────
+
+{
+  const runN = '605'
+  // The engine's policy.json becomes a real file with a 2 s probe budget.
+  // publish.mjs reads the policy.json beside its own resolved path, and node
+  // resolves a symlinked main to the checkout's copy, so publish.mjs becomes a
+  // real copy too (its `./record.mjs` and `flock/` still resolve through the
+  // engine's symlinks).
+  const withShortBudget = (engineDir) => {
+    const policyPath = path.join(engineDir, 'factory', 'policy.json')
+    const policy = JSON.parse(fs.readFileSync(policyPath, 'utf8'))
+    policy.publish.probe.timeout_seconds = 2
+    fs.unlinkSync(policyPath)
+    fs.writeFileSync(policyPath, JSON.stringify(policy, null, 2) + '\n')
+    const publishPath = path.join(engineDir, 'factory', 'publish.mjs')
+    const publishText = fs.readFileSync(publishPath, 'utf8')
+    fs.unlinkSync(publishPath)
+    fs.writeFileSync(publishPath, publishText)
+  }
+  const { res, home, evidenceDir } = await runCase(PUBLISH_RIG, runN, 'slow', withShortBudget)
+  assert.equal(
+    res.code, 0,
+    `(e) [M1] the slow-deploy publish case still exits 0 — got ${res.code}, stderr tail: ${(res.stderr || '').slice(-4000)}`
+  )
+
+  const eventsText = readEvidence(evidenceDir, runN, 'events.jsonl')
+  const rows = eventsText.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l))
+  const deployRows = rows.filter((r) => r.kind === 'publish:deploy')
+  assert.equal(deployRows.length, 1, `(e) [M1] exactly one publish:deploy row — got ${deployRows.length}`)
+  assert.equal(deployRows[0].exit, 124, `(e) [M1] the deploy row carries exit 124 — got ${JSON.stringify(deployRows[0])}`)
+  assert.equal(deployRows[0].url, null, '(e) [M1] the deploy row carries url null')
+
+  const status = JSON.parse(readEvidence(evidenceDir, runN, 'status.json'))
+  assert.equal(
+    status.phase, 'the pull request was merged; the deploy failed',
+    '(e) [M1] status.json phase is exactly "the pull request was merged; the deploy failed"'
+  )
+
+  assert.ok(!rows.some((r) => r.kind === 'publish:verify'), '(e) [M1] no publish:verify row')
+  assert.ok(!fs.existsSync(path.join(home, 'publish-env-verify.txt')), '(e) [M1] the verify probe never ran')
+  console.log('ok (e) a deploy past its budget exits 124')
 }
 
 proxyServer.close()
