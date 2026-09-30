@@ -720,3 +720,16 @@
 {"t":926925,"kind":"tool","agent":"G","task":"2","tool":"Write","target":"/home/exedev/run/work/agents/G/fleet/tests/test_launch_evidence.mjs","ts":"2026-09-30T01:12:00.707Z"}
 {"t":927064,"kind":"edit","agent":"G","task":"2","tool":"Write","path":"fleet/tests/test_launch_evidence.mjs","how":"new-file","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T01:12:00.846Z"}
 {"t":927314,"kind":"tool","agent":"G","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/G/fleet/tests; node test_launch_evidence.mjs 2>&1 | tail -15","ts":"2026-09-30T01:12:01.096Z"}
+{"t":932769,"kind":"tool","agent":"G","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/G/fleet/tests/test_launch_evidence.mjs","ts":"2026-09-30T01:12:06.551Z"}
+{"t":932939,"kind":"edit","agent":"G","task":"2","tool":"Edit","path":"fleet/tests/test_launch_evidence.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T01:12:06.721Z"}
+{"t":936853,"kind":"tool","agent":"G","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/G/fleet/tests/test_launch_evidence.mjs","ts":"2026-09-30T01:12:10.635Z"}
+{"t":937036,"kind":"edit","agent":"G","task":"2","tool":"Edit","path":"fleet/tests/test_launch_evidence.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T01:12:10.818Z"}
+{"t":937041,"kind":"tool","agent":"G","task":"2","tool":"mcp__flock__run_proof","target":"","ts":"2026-09-30T01:12:10.823Z"}
+{"t":942721,"kind":"proof","agent":"G","task":"2","exits":[0,0,0,0,0,0,0,0],"causes":[],"errs":[],"ts":"2026-09-30T01:12:16.503Z"}
+{"t":946874,"kind":"tool","agent":"G","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/G/fleet/tests; for f in $(grep -l \"launch.mjs\\|_lobby_helpers\\|setup-script\" *.mjs | gre","ts":"2026-09-30T01:12:20.656Z"}
+{"t":958329,"kind":"tool","agent":"G","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/G; grep -rln \"fleet/launch.mjs\" --include=*.py --include=*.mjs --include=*.sh . | grep -","ts":"2026-09-30T01:12:32.111Z"}
+{"t":960608,"kind":"tool","agent":"G","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/G; grep -n \"launch.mjs\" tests/test_plan_check.py | head -5","ts":"2026-09-30T01:12:34.390Z"}
+{"t":965212,"kind":"tool","agent":"G","task":"2","tool":"mcp__flock__post_belief","target":"","ts":"2026-09-30T01:12:38.994Z"}
+{"t":967964,"kind":"tool","agent":"G","task":"2","tool":"mcp__flock__done","target":"","ts":"2026-09-30T01:12:41.746Z"}
+{"t":973693,"kind":"publish","agent":"G","task":"2","by":"done","ts":"2026-09-30T01:12:47.475Z"}
+{"t":973703,"kind":"kata:mirror","task":"2","uid":"01M3QWXFPFVJWKZPMEF6GEDB7Q","what":"done by G","ok":true,"ts":"2026-09-30T01:12:47.485Z"}
