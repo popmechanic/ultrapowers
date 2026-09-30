@@ -192,9 +192,7 @@ own, never in the repository being built — so you can run on someone else's re
 `"evidence": "<owner>/<repo>"` (a launch can override it with `--evidence-repo <owner>/<repo>`),
 create it with `gh repo create <owner>/<repo> --private`, and give the fleet its integration with
 `node fleet/target.mjs <owner>/<repo>`. A run on `<owner>/<repo>` then leaves its record in that
-repository's `runs/<owner>-<repo>/<N>/`, at the tag `<owner>-<repo>/run-<N>`. If you ran the fleet
-before this, copy each past target's runs over once with
-`node fleet/migrate-evidence.mjs --target <owner>/<repo>` (`--dry-run` first).
+repository's `runs/<owner>-<repo>/<N>/`, at the tag `<owner>-<repo>/run-<N>`.
 
 Three browser consents are yours to give, because only you can give them. You sign up at exe.dev and
 add your ssh key; you approve the GitHub app on your account; you approve ultrapowers on claude.ai,

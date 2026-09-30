@@ -47,9 +47,7 @@ evidence repository.
 - **Run id:** `N` = 1 + max N over the evidence repository's `live/<owner>-<repo>/run-<N>` branches
   and its `<owner>-<repo>/run-<N>` tags (`<owner>-<repo>` the target's) — the branches are transient
   and the tags are the record, so a run number is read from both shapes and never from one
-  (`--run N` overrides). The launcher refuses when the evidence repository holds no ref for the
-  target while the target still holds `ultra/*` refs: the target's old runs are migrated first
-  (`node fleet/migrate-evidence.mjs --target <owner>/<repo>`, below). A refused plan push re-reads
+  (`--run N` overrides). A refused plan push re-reads
   the highest run and retries with the next N, up to three pushes in all, so the push and not the
   read is what reserves N. `RUN_ID=run-N`.
 - **VM name:** `fleet-r<N>-<yymmddHHMM>-<4 hex>` (e.g. `fleet-r70-2609032215-a1b2`). exe.dev does not reserve
@@ -129,13 +127,9 @@ evidence repository.
   `runs/`, on `live/*` branches and on the run tags. The janitor deletes an
   `ultra/integration-run-<N>` whose pull request is closed and not merged (`--target
   <owner>/<repo>` for a target no fleet VM names).
-- **Migration (`fleet/migrate-evidence.mjs`):**
-  `node fleet/migrate-evidence.mjs --target <owner>/<repo> [--evidence-repo <o>/<r>] [--dry-run]`,
-  one target per call, copies that target's past runs — its old `ultra/*` plan and evidence refs —
-  into the evidence repository as `runs/<owner>-<repo>/<N>/` under `<owner>-<repo>/run-<N>` tags. It
-  is idempotent and deletes nothing on the target; the operator runs it once per past target before
-  the first launch on it (the launcher refuses until then, see Run id). The rollback of this whole
-  shape is a launch from a checkout made before #1395's plan merged.
+- **Migration (retired, #1450):** every past target's `ultra/*` runs were copied into the
+  evidence repository (12 targets, 369 runs, 0 missing, read 2026-09-30); the one-time tool and the
+  launcher's unmigrated-target refusal are gone. The old refs stay on the targets, untouched.
 - **Comment** (≤200 bytes, one line, space-separated `key=value`, this order, nothing else):
   `run=<N> plan=<40-hex> target=<owner>/<repo> base=<40-hex> engine=<40-hex>` then
   optional `kind=flock` then optional `hold=1`. The boot always runs the Flock
@@ -189,9 +183,8 @@ evidence repository.
   (hub, else evidence) does not say the run ended; a
   match is a `Refusal` naming `run-<N>`, the VM and `--again`, the one flag that launches it again on
   purpose, and a run whose record says it ended never refuses, however recently → `git ls-remote` the
-  evidence repository's `live/<owner>-<repo>/run-*` branches and `<owner>-<repo>/run-*` tags for N,
-  refusing when it holds none while the target still holds `ultra/*` refs (the fix named is
-  `node fleet/migrate-evidence.mjs --target <owner>/<repo>`) → refuse when `integrations list --json`
+  evidence repository's `live/<owner>-<repo>/run-*` branches and `<owner>-<repo>/run-*` tags for N
+  → refuse when `integrations list --json`
   has no `gh-<owner>-<repo>` for the target or none for the evidence repository (the fix named is
   `node fleet/target.mjs <owner>/<repo>` for whichever is missing; a public target would still clone
   from github.com but could not push or open its PR, so it is not launched) →
