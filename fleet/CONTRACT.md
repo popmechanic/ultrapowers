@@ -598,34 +598,35 @@ evidence repository.
 - **Kata facts (measured):** every kata behaviour the fleet leans on, read once and written down
   here rather than restated from memory — the readings `node fleet/tests/probe_kata_facts.mjs`
   takes against the hub, one row per probe fact in the probe's own order, then the two rows no
-  probe can reach. The rows below are stamped v0.17.2 and have not been re-read on 0.18.0, the
-  version the hub and the spokes now run. It is re-read after every `kata upgrade` and before any plan touching
+  probe can reach. The 24 probe rows were re-read on v0.18.0, the version the hub runs
+  (2026-09-30: `24 facts, 0 drift, 0 unreadable`); each keeps its first reading's stamp beside it.
+  The rows the probe cannot reach keep only their v0.17.2 stamp. It is re-read after every `kata upgrade` and before any plan touching
   `fleet/kata-client.mjs`; a reading that moves is one edited row, and a document or an issue
   comment cites the row instead of repeating what it says.
-  - ping-version — `GET /api/v1/ping` answers a `version` and needs no bearer (v0.17.2, 2026-09-15; this plan).
-  - project-find-or-create — a create whose name the hub already holds answers 200 with `created: false` (v0.17.2, 2026-09-14; #978).
-  - project-by-id-only — a project NAME in an issue path is 400; every issue route takes the project id (v0.17.2, 2026-09-14; CONTRACT's janitor paragraph).
-  - create-replay — the same `Idempotency-Key` with the same fields answers 200, the same uid and the ORIGINAL revision (v0.17.2, 2026-09-14; #978, #993).
-  - create-fingerprint-metadata — the same key with other metadata is 409 `idempotency_mismatch`, naming the prior uid: the key is fingerprinted with the body (v0.17.2, 2026-09-14; #978, #993).
-  - create-duplicate-scorer — the same title with no key is 409 `duplicate_candidates` and `force_new: true` bypasses it, scored 0.93 (v0.17.2, 2026-09-15; #993's comment — #978's 2026-09-14 table read `200, a second issue` for that case; settled 2026-09-15 by the probe's first hand run: 409 with `force_new: true` 200, the earlier reading kept as history).
-  - link-blocks-idempotent — the same `blocks` link created twice answers 200 with the same `link.id` (v0.17.2, 2026-09-14; #978).
-  - link-parent-replace — a second `parent` is 409 `parent_already_set`, and `replace: true` swaps it (v0.17.2, 2026-09-14; #978, #993).
-  - link-types — the types are exactly `parent`, `blocks` and `related`; `blocked_by` is 400 (v0.17.2, 2026-09-14; #979).
-  - metadata-merge-if-match — a patch merges per key under `If-Match: "rev-N"`, and a stale revision is 412 `revision_conflict` (v0.17.2, 2026-09-14; #978, CONTRACT's 412 sentence).
-  - metadata-dotted-flat — `work.state` is stored as the flat key `metadata["work.state"]`, never a nested object (v0.17.2, 2026-09-13; #810's Phase A comment, CONTRACT's janitor paragraph).
-  - claim-if-unowned — a claim on an owned issue is 409 `already_claimed` carrying `data.current_owner` (v0.17.2, 2026-09-14; #979).
-  - unassign-key — `expect_owner` is 400 unexpected property; the OpenAPI names `expected_owner` (v0.17.2, 2026-09-15; #979, #993, the OpenAPI read 2026-09-15).
-  - close-evidence-required — a `done` close whose `evidence` is empty is 400 `evidence required for reason=done`; the accepted entry types are `commit`, `pr`, `test`, `reviewed-paths` and `external`, and the engine's task closes, the boot's run close and the probe each send at least one (v0.17.2, 2026-09-15; #1023, #1026).
-  - close-message-40 — a `done` close needs a message of 40 characters or more (v0.17.2, 2026-09-11; run-111, CLAUDE.md's kata seams, CONTRACT's close paragraph).
-  - close-retry-protocol — a close under an `Idempotency-Key` also needs `retry_protocol: "close-v1"` (v0.17.2, 2026-09-14; recorded only as a comment in `fleet/kata-client.mjs`).
-  - close-superseded-evidence — a `superseded-by` close is 400 for the evidence keys `ref`, `value` and `issue`; the accepted key is undocumented (v0.17.2, 2026-09-14; #978).
-  - ready-unowned — `/ready` exists, `?unowned=true` filters it, and `?owner=` is ignored (v0.17.2, 2026-09-14; #978, #979).
-  - next-no-endpoint — `GET /projects/<id>/next` is 404; there is no next endpoint on the API (v0.17.2, 2026-09-14; #979, #993; settled 2026-09-15 by the probe's first hand run, `/next` 404).
-  - labels-merge — adding a label twice leaves one label (v0.17.2, 2026-09-14; recorded only as a comment in `fleet/kata-client.mjs`).
-  - events-issue-uid — every event carries an `issue_uid` except `project.created`, which has none (v0.17.2, 2026-09-14; #978).
-  - issue-links-shape — an issue's links read `links: [{id, type, from: {uid, short_id, …}, to: {…}}]` (v0.17.2, 2026-09-14; #979).
-  - archive-actor-required — `DELETE /api/v1/projects/<id>` with no `actor` query parameter is 400 `actor: required query parameter is missing`; the query is validated before any state check (v0.17.2, 2026-09-15; #1023, #1026).
-  - purge-ladder — a purge is 412 `confirm_required` without `X-Kata-Confirm: PURGE <name>` and 409 `project_not_archived` before `DELETE /projects/<id>?actor=<name>`, and the archive itself, carrying `?actor=`, refuses `project_has_open_issues` (v0.17.2, 2026-09-14; #978, #993 — the launcher's old bump purge had never once succeeded live).
+  - ping-version — `GET /api/v1/ping` answers a `version` and needs no bearer (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-15; this plan).
+  - project-find-or-create — a create whose name the hub already holds answers 200 with `created: false` (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-14; #978).
+  - project-by-id-only — a project NAME in an issue path is 400; every issue route takes the project id (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-14; CONTRACT's janitor paragraph).
+  - create-replay — the same `Idempotency-Key` with the same fields answers 200, the same uid and the ORIGINAL revision (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-14; #978, #993).
+  - create-fingerprint-metadata — the same key with other metadata is 409 `idempotency_mismatch`, naming the prior uid: the key is fingerprinted with the body (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-14; #978, #993).
+  - create-duplicate-scorer — the same title with no key is 409 `duplicate_candidates` and `force_new: true` bypasses it, scored 0.93 (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-15; #993's comment — #978's 2026-09-14 table read `200, a second issue` for that case; settled 2026-09-15 by the probe's first hand run: 409 with `force_new: true` 200, the earlier reading kept as history).
+  - link-blocks-idempotent — the same `blocks` link created twice answers 200 with the same `link.id` (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-14; #978).
+  - link-parent-replace — a second `parent` is 409 `parent_already_set`, and `replace: true` swaps it (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-14; #978, #993).
+  - link-types — the types are exactly `parent`, `blocks` and `related`; `blocked_by` is 400 (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-14; #979).
+  - metadata-merge-if-match — a patch merges per key under `If-Match: "rev-N"`, and a stale revision is 412 `revision_conflict` (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-14; #978, CONTRACT's 412 sentence).
+  - metadata-dotted-flat — `work.state` is stored as the flat key `metadata["work.state"]`, never a nested object (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-13; #810's Phase A comment, CONTRACT's janitor paragraph).
+  - claim-if-unowned — a claim on an owned issue is 409 `already_claimed` carrying `data.current_owner` (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-14; #979).
+  - unassign-key — `expect_owner` is 400 unexpected property; the OpenAPI names `expected_owner` (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-15; #979, #993, the OpenAPI read 2026-09-15).
+  - close-evidence-required — a `done` close whose `evidence` is empty is 400 `evidence required for reason=done`; the accepted entry types are `commit`, `pr`, `test`, `reviewed-paths` and `external`, and the engine's task closes, the boot's run close and the probe each send at least one (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-15; #1023, #1026).
+  - close-message-40 — a `done` close needs a message of 40 characters or more (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-11; run-111, CLAUDE.md's kata seams, CONTRACT's close paragraph).
+  - close-retry-protocol — a close under an `Idempotency-Key` also needs `retry_protocol: "close-v1"` (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-14; recorded only as a comment in `fleet/kata-client.mjs`).
+  - close-superseded-evidence — a `superseded-by` close is 400 for the evidence keys `ref`, `value` and `issue`; the accepted key is undocumented (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-14; #978).
+  - ready-unowned — `/ready` exists, `?unowned=true` filters it, and `?owner=` is ignored (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-14; #978, #979).
+  - next-no-endpoint — `GET /projects/<id>/next` is 404; there is no next endpoint on the API (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-14; #979, #993; settled 2026-09-15 by the probe's first hand run, `/next` 404).
+  - labels-merge — adding a label twice leaves one label (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-14; recorded only as a comment in `fleet/kata-client.mjs`).
+  - events-issue-uid — every event carries an `issue_uid` except `project.created`, which has none (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-14; #978).
+  - issue-links-shape — an issue's links read `links: [{id, type, from: {uid, short_id, …}, to: {…}}]` (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-14; #979).
+  - archive-actor-required — `DELETE /api/v1/projects/<id>` with no `actor` query parameter is 400 `actor: required query parameter is missing`; the query is validated before any state check (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-15; #1023, #1026).
+  - purge-ladder — a purge is 412 `confirm_required` without `X-Kata-Confirm: PURGE <name>` and 409 `project_not_archived` before `DELETE /projects/<id>?actor=<name>`, and the archive itself, carrying `?actor=`, refuses `project_has_open_issues` (re-read v0.18.0, 2026-09-30; first v0.17.2, 2026-09-14; #978, #993 — the launcher's old bump purge had never once succeeded live).
   - events-page — `GET /projects/<id>/events?after_id=N&limit=K` answers `{reset_required, events, next_after_id}`, `next_after_id` being the last event's `event_id`: a `limit` of 2 answered 100 events, so the limit is no bound and the cursor is the whole of the walk, and an empty `events` is its end. A comment event is `type` `issue.commented` with `issue_uid`, `actor` (`impl:3@run-170`) and `payload: {comment_uid, author, body, created_at}` (v0.17.2, 2026-09-17; #1095).
   - cli-next-unowned — hand, read by a person and not the probe: #979 read the CLI's `next` as having no `--unowned`, and `kata next --help` on the hub lists one — both readings stand (v0.17.2, 2026-09-15; #979).
   - int-hosts-https — hand, read by a person and not the probe and readable only from a VM: every `*.int.exe.xyz` host is https, http 301s, and a followed 301 turns a POST into a GET (v0.17.2, 2026-09-11; run-110, CLAUDE.md's kata seams).

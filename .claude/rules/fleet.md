@@ -62,8 +62,9 @@ Read a past run at
 - `target.mjs` (the per-repository integration, targets and the evidence repository alike),
   `board-read.mjs` (print a run's board), `kata-hub.mjs` + `kata-hub-setup.sh` +
   `kata.service` (build the one kata hub).
-- The laptop reads the hub daemon with `ssh kata-hub.exe.xyz curl localhost:8000/api/v1/…`,
-  the bearer from `~/.ultrapowers/kata-hub.env` on stdin, never on an argv.
+- The laptop reads the hub daemon with `ssh kata-hub.exe.xyz curl localhost:8000/api/v1/…`:
+  `~/.ultrapowers/kata-hub.env` names only the host (`KATA_URL`), and the bearer is sourced from
+  `/etc/kata/kata.env` on the hub by the hub's own shell, never on a laptop argv.
 
 ## Tests
 
