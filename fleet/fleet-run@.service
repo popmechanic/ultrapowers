@@ -28,3 +28,9 @@ RemainAfterExit=yes
 RuntimeMaxSec=6h
 LimitNOFILE=524288
 ExecStart=/usr/local/lib/fleet/bootstrap.sh %i
+# The VM writes its own death (#1445): systemd runs this when the unit stops —
+# after a non-zero exit, a kill or the RuntimeMaxSec timeout — with
+# SERVICE_RESULT, EXIT_CODE and EXIT_STATUS set. After a clean exit the unit
+# stays `active (exited)` and this runs only when the VM goes down, where
+# `died` finds a finished record and writes nothing.
+ExecStopPost=/usr/local/lib/fleet/bootstrap.sh %i died

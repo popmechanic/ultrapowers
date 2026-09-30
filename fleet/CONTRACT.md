@@ -284,8 +284,13 @@ evidence repository.
      (`Description=ultrapowers run %i`, `After=network-online.target`, `Type=exec`,
      `RemainAfterExit=yes`, `RuntimeMaxSec=6h`, `LimitNOFILE=524288` — a shell under the unit
      otherwise inherits soft 1024, which is what bites Chromium, bun and pytest, while the image's
-     hard limit for a service is 524288 — `ExecStart=/usr/local/lib/fleet/bootstrap.sh %i`, no
-     `[Install]`, no `KillMode`, no `Restart`);
+     hard limit for a service is 524288 — `ExecStart=/usr/local/lib/fleet/bootstrap.sh %i`,
+     `ExecStopPost=/usr/local/lib/fleet/bootstrap.sh %i died`, no `[Install]`, no `KillMode`, no
+     `Restart`). The stop-post is how the VM writes its own death (#1445): systemd runs it when the
+     unit stops — after a non-zero exit, a kill or the `RuntimeMaxSec` timeout — with
+     `SERVICE_RESULT`, `EXIT_CODE` and `EXIT_STATUS` set, and it reaches `boot.sh died` through the
+     bootstrap; after a clean exit the unit stays `active (exited)` and the stop-post runs only when
+     the VM goes down, where `died` finds a finished record and writes nothing;
   5. write `~/.claude/settings.json`, exactly
      `{"env":{"CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS":"0"},"permissions":{"defaultMode":"bypassPermissions"}}`,
      and a git identity for `exedev` (`user.name fleet`, `user.email fleet@exe.dev`). No `ANTHROPIC_*`
@@ -312,7 +317,12 @@ evidence repository.
   to `$dst.tmp`, `git checkout -q <sha>`, `mv` → `exec "$dst/factory/boot.sh" boot` with
   `FLEET_ASSIGNMENT='<comment>'` in its env. It never writes anywhere but `/home/exedev/engines/` and
   `/home/exedev/fleet-boot.log`. It is never overwritten by a run. The assignment comes from
-  Reflection, never from `$1`.
+  Reflection, never from `$1`. An optional `$2` is the mode: absent is `boot`, as above; `died` is
+  the unit's `ExecStopPost=`, the VM writing its own death (#1445) — the comment is read as in
+  `boot`, an absent `engines/<sha>` logs `died: no engine at <sha> — nothing to write` and exits 0
+  (never a clone at stop time), and otherwise it `exec`s `"$dst/factory/boot.sh" died` with
+  `FLEET_ASSIGNMENT` set exactly as `boot` does. In `died` mode every refusal that `boot` exits 1 on
+  exits 0 after its log line.
 - **Boot script (`factory/boot.sh`), invoked by the bootstrap:** reads the evidence repository from
   `$HOME/fleet-evidence-repo` and fails the run without it, clones the target at `base=`, fetches
   only `live/<owner>-<repo>/run-<N>` of the evidence repository, shallow, through the same edge host
@@ -554,7 +564,10 @@ evidence repository.
   `failed`, `work.attention` `needs-human` and `work.attention_msg` the death's own line, under
   `Idempotency-Key janitor:run-<N>:death` — the run issue left open and never a `wontfix` close, a
   close carrying a verified outcome and a death being a run nobody has read yet — and reaped an hour
-  later by the ordinary rule, off the `work.state` the death itself wrote. No
+  later by the ordinary rule, off the `work.state` the death itself wrote. The VM writes its own
+  death through the unit's `ExecStopPost=` → `boot.sh died` (#1445); the janitor's death write
+  remains the backstop for a VM whose stop-post never ran, to be retired after n=5 runs of
+  VM-written deaths. No
   `created_at`, no clone, no `git`. Run by `fleet/launch.mjs` before every launch and by hand after
   a sleep; nothing schedules it, and the janitor merges nothing — the sandbox merges its own PR.
   The janitor's close-out, the census and the launcher's duplicate check likewise read runs only

@@ -569,6 +569,11 @@ ssh <ssh_dest> 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user status fleet
 never `<vm>.exe.xyz`. The `failed` page's `error` names the step; a failure at
 any step, the clone included, commits and pushes that page before exiting.
 
+A dead run's journal is already in its record: `journal.txt` when the VM wrote
+its own death (the unit's `ExecStopPost=` → `boot.sh died`, #1445), and
+`janitor-journal.txt` when the janitor did — the backstop for a VM whose
+stop-post never ran.
+
 ## Traps (measured 2026-09-03/04)
 
 Each of these cost a run, an image, or a credential. Shelley's shape for each
