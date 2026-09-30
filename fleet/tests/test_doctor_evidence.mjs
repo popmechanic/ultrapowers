@@ -13,9 +13,9 @@
  *   (c) [M3] `evidence: 'ops/evidence'`, `gh api repos/ops/evidence` exiting
  *       1 — `missing`, naming `gh repo create ops/evidence --private`.
  *   (d) [M4] that read answering: no `gh-ops-evidence` in the listing is
- *       `missing` naming `node fleet/target.mjs ops/evidence`; listed with
- *       policy selector `tag:fleet` is `ok`; any other selector is `missing`
- *       naming `gh-ops-evidence`.
+ *       `missing` naming `node fleet/target.mjs ops/evidence`; listed and
+ *       attached to `tag:fleet` is `ok`; attached elsewhere is `missing`
+ *       naming `gh-ops-evidence` (#1434).
  *   (e) [M5] the `capacity` row over config keys `cpu`, `memory`, `account`
  *       and `evidence` calls none of them a key nothing reads.
  *
@@ -27,7 +27,7 @@
 
 import assert from 'node:assert/strict'
 
-import { doctor, policyRead } from '../doctor.mjs'
+import { doctor } from '../doctor.mjs'
 
 const keyOf = (cmd, argv = []) => [cmd, ...argv].join(' ')
 const lobbyKey = (remote) => keyOf('ssh', ['exe.dev', remote])
@@ -35,7 +35,6 @@ const lobbyKey = (remote) => keyOf('ssh', ['exe.dev', remote])
 const EVIDENCE = 'ops/evidence'
 const OBJECT = 'gh-ops-evidence'
 const REPO_READ = keyOf('gh', ['api', `repos/${EVIDENCE}`])
-const POLICY_READ = lobbyKey(policyRead(OBJECT))
 
 const CLAUDE_MAX = { name: 'claude-max', config_summary: 'Authorization:Bearer xyz' }
 
@@ -52,8 +51,6 @@ function makeExec (known = new Map()) {
 }
 
 const listing = (entries) => [lobbyKey('integrations list --json'), { code: 0, stdout: JSON.stringify(entries) }]
-const policyAnswer = (selector) =>
-  [POLICY_READ, { code: 0, stdout: JSON.stringify({ policy: { selector }, revision: 'r1' }) }]
 const evidenceRowOf = (result) => result.rows.find((r) => r.id === 'evidence')
 
 // ── (b) [M2] no setting ────────────────────────────────────────────────────
@@ -88,7 +85,7 @@ const evidenceRowOf = (result) => result.rows.find((r) => r.id === 'evidence')
   )
 }
 
-// ── (d) [M4] the integration and its policy ────────────────────────────────
+// ── (d) [M4] the integration and its attachment ────────────────────────────────
 const REPO_OK = [REPO_READ, { code: 0, stdout: JSON.stringify({ full_name: EVIDENCE }) }]
 {
   const exec = makeExec(new Map([listing([CLAUDE_MAX]), REPO_OK]))
@@ -101,21 +98,17 @@ const REPO_OK = [REPO_READ, { code: 0, stdout: JSON.stringify({ full_name: EVIDE
 }
 {
   const exec = makeExec(new Map([
-    listing([CLAUDE_MAX, { name: OBJECT, repository: EVIDENCE }]), REPO_OK, policyAnswer('tag:fleet')
+    listing([CLAUDE_MAX, { name: OBJECT, repository: EVIDENCE, attachments: ['tag:fleet'] }]), REPO_OK
   ]))
   const ev = evidenceRowOf(await doctor({ config: {}, exec, evidence: EVIDENCE }))
   assert.equal(ev.status, 'ok', `(d) [M4] tag:fleet is ok — got ${JSON.stringify(ev)}`)
-  assert.equal(
-    exec.calls.filter((c) => c === POLICY_READ).length, 1,
-    `(d) [M4] the policy is read once — calls:\n${exec.calls.join('\n')}`
-  )
 }
 {
   const exec = makeExec(new Map([
-    listing([CLAUDE_MAX, { name: OBJECT, repository: EVIDENCE }]), REPO_OK, policyAnswer('vm:one')
+    listing([CLAUDE_MAX, { name: OBJECT, repository: EVIDENCE, attachments: ['vm:one'] }]), REPO_OK
   ]))
   const ev = evidenceRowOf(await doctor({ config: {}, exec, evidence: EVIDENCE }))
-  assert.equal(ev.status, 'missing', `(d) [M4] an off policy is missing — got ${JSON.stringify(ev)}`)
+  assert.equal(ev.status, 'missing', `(d) [M4] attached elsewhere is missing — got ${JSON.stringify(ev)}`)
   assert.ok(ev.detail.includes(OBJECT), `(d) [M4] detail names ${OBJECT} — got ${JSON.stringify(ev.detail)}`)
 }
 

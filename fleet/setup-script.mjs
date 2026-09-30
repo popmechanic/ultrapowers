@@ -167,7 +167,7 @@ git config --global user.email fleet@exe.dev
 
 stamp daemon-reload
 systemctl --user daemon-reload
-# Credentials reach this box by the policy tag:fleet, with no documented order
+# Credentials reach this box by their attachment tag:fleet, with no documented order
 # against this script; wait, bounded, until Reflection lists claude-max.
 stamp credentials
 for i in $(seq 1 30); do

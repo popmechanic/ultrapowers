@@ -6,28 +6,24 @@
  * `doctor.mjs` gains a ninth row, `cloudflare`: the deploy's credential, an
  * http-proxy integration needed only by a plan with a `**Publish:**` line.
  * Unlike every other row, absent is green — most plans never publish. Present
- * is judged the same way `kata`'s policy question is: the listing's own
- * attachment tag first (`tags` carrying `fleet`), then the policy read
- * (`integrations policy get cloudflare --json`, `policy.selector`), asked only
- * when `found` names a `cloudflare` object at all.
+ * is judged the way every integration is (#1434): its attachment `tag:fleet`
+ * in `integrations list --json`.
  *
  * Legs, each naming the Machine clause it comes from:
  *
  *   (a) [M1] `ROW_IDS` is exactly the ten pinned ids, the tenth `cloudflare`,
  *       and `doctor()` answers ten rows in that same order.
  *   (b) [M2] with no `cloudflare` object in `integrations list --json`: the
- *       row is `ok`, its detail contains `absent` and `Publish:`, and no
- *       `integrations policy get cloudflare --json` read is issued at all.
- *   (c) [M2] with the object present and its policy read answering selector
- *       `tag:fleet`: the row is `ok`.
- *   (d) [M2] with the object present and its policy read answering a selector
- *       that is not `tag:fleet`: the row is `missing`, and its detail names
- *       `integrations policy set cloudflare 'tag:fleet'`.
+ *       row is `ok`, and its detail contains `absent` and `Publish:`.
+ *   (c) [M2] with the object present and attached to `tag:fleet`: `ok`.
+ *   (d) [M2] with the object present and not attached to `tag:fleet`: the
+ *       row is `missing`, and its detail names
+ *       `integrations attach cloudflare tag:fleet`.
  *
  * (b)-(d) drive `doctor({ config, exec, configKeys, account })` in-process,
  * over a stub `exec(cmd, argv)` keyed on the call's command and argv (joined
  * by spaces) — the doctor's own `ssh exe.dev <remote>` reads (`READS` in
- * `fleet/doctor.mjs`) plus `policyRead(name)` — answering
+ * `fleet/doctor.mjs`) — answering
  * `integrations list --json` with the listing each leg needs and everything
  * unmatched — including every `help <verb>` read `verb-drift` issues — with
  * `{ code: 1, stdout: '' }`. Only the `cloudflare` row's outcome is asserted;
@@ -36,7 +32,7 @@
 
 import assert from 'node:assert/strict'
 
-import { doctor, ROW_IDS, policyRead } from '../doctor.mjs'
+import { doctor, ROW_IDS } from '../doctor.mjs'
 
 // ── the exec stub every leg shares ──────────────────────────────────────────
 
@@ -50,23 +46,19 @@ const BASE_KNOWN = new Map([
   [lobbyKey('whoami'), { code: 1, stdout: '' }],
   [lobbyKey('billing plan --json'), { code: 1, stdout: '' }],
   [lobbyKey('integrations setup github --list'), { code: 1, stdout: '' }],
-  [lobbyKey('integrations policy get claude-max --json'), { code: 1, stdout: '' }],
-  [lobbyKey('integrations policy get kata --json'), { code: 1, stdout: '' }],
   [lobbyKey('ls kata-hub --json'), { code: 1, stdout: '' }]
 ])
 
 /**
  * Builds an `exec(cmd, argv)` stub recording every call it is asked (as
- * `keyOf`), answering `integrations list --json` with `listStdout`, the extra
- * entries of `extraKnown` (e.g. the cloudflare policy read), the shared base
+ * `keyOf`), answering `integrations list --json` with `listStdout`, the shared base
  * table, and everything else — the token/accounts/usage reads and every
  * `verb-drift` `help <verb>` read included — with `{ code: 1, stdout: '' }`.
  */
-function makeExec (listStdout, extraKnown = new Map()) {
+function makeExec (listStdout) {
   const known = new Map([
     ...BASE_KNOWN,
-    [lobbyKey('integrations list --json'), { code: 0, stdout: listStdout }],
-    ...extraKnown
+    [lobbyKey('integrations list --json'), { code: 0, stdout: listStdout }]
   ])
   const calls = []
   const exec = async (command, argv) => {
@@ -80,7 +72,6 @@ function makeExec (listStdout, extraKnown = new Map()) {
 }
 
 const cloudflareRowOf = (result) => result.rows.find((r) => r.id === 'cloudflare')
-const CLOUDFLARE_POLICY_READ = lobbyKey(policyRead('cloudflare'))
 
 // ── (a) [M1] ROW_IDS and row order ───────────────────────────────────────
 {
@@ -99,7 +90,7 @@ const CLOUDFLARE_POLICY_READ = lobbyKey(policyRead('cloudflare'))
   )
 }
 
-// ── (b) [M2] absent — ok, "absent" and "Publish:" in the detail, no read ───
+// ── (b) [M2] absent — ok, "absent" and "Publish:" in the detail ────────────
 {
   const exec = makeExec(JSON.stringify([{ name: 'claude-max', config_summary: 'Authorization:Bearer xyz' }]))
   const result = await doctor({ config: {}, exec, configKeys: null, account: null })
@@ -114,49 +105,31 @@ const CLOUDFLARE_POLICY_READ = lobbyKey(policyRead('cloudflare'))
     cloudflare.detail.includes('Publish:'),
     `(b) [M2] detail names "Publish:" — got: ${JSON.stringify(cloudflare.detail)}`
   )
-  assert.ok(
-    !exec.calls.includes(CLOUDFLARE_POLICY_READ),
-    `(b) [M2] an absent object needs no policy read — calls:\n${exec.calls.join('\n')}`
-  )
 }
 
-// ── (c) [M2] present, on the policy — ok ────────────────────────────────────
+// ── (c) [M2] present, attached to tag:fleet — ok ───────────────────────────
 {
   const listStdout = JSON.stringify([
     { name: 'claude-max', config_summary: 'Authorization:Bearer xyz' },
-    { name: 'cloudflare', config_summary: 'Authorization:Bearer cf' }
+    { name: 'cloudflare', config_summary: 'Authorization:Bearer cf', attachments: ['tag:fleet'] }
   ])
-  const policyStdout = JSON.stringify({ policy: { selector: 'tag:fleet' }, revision: 'rev-1' })
-  const exec = makeExec(listStdout, new Map([[CLOUDFLARE_POLICY_READ, { code: 0, stdout: policyStdout }]]))
-  const result = await doctor({ config: {}, exec, configKeys: null, account: null })
+  const result = await doctor({ config: {}, exec: makeExec(listStdout), configKeys: null, account: null })
   const cloudflare = cloudflareRowOf(result)
-  assert.equal(
-    cloudflare.status, 'ok',
-    `(c) [M2] present on tag:fleet is ok — got: ${JSON.stringify(cloudflare)}`
-  )
-  assert.ok(
-    exec.calls.includes(CLOUDFLARE_POLICY_READ),
-    `(c) [M2] a present object's policy is read — calls:\n${exec.calls.join('\n')}`
-  )
+  assert.equal(cloudflare.status, 'ok', `(c) [M2] present on tag:fleet is ok — got: ${JSON.stringify(cloudflare)}`)
 }
 
-// ── (d) [M2] present, off the policy — missing, names the policy-set verb ──
+// ── (d) [M2] present, not attached — missing, names the attach ──────────────
 {
   const listStdout = JSON.stringify([
     { name: 'claude-max', config_summary: 'Authorization:Bearer xyz' },
-    { name: 'cloudflare', config_summary: 'Authorization:Bearer cf' }
+    { name: 'cloudflare', config_summary: 'Authorization:Bearer cf', attachments: ['vm:one'] }
   ])
-  const policyStdout = JSON.stringify({ policy: { selector: 'tag:other' }, revision: 'rev-2' })
-  const exec = makeExec(listStdout, new Map([[CLOUDFLARE_POLICY_READ, { code: 0, stdout: policyStdout }]]))
-  const result = await doctor({ config: {}, exec, configKeys: null, account: null })
+  const result = await doctor({ config: {}, exec: makeExec(listStdout), configKeys: null, account: null })
   const cloudflare = cloudflareRowOf(result)
-  assert.equal(
-    cloudflare.status, 'missing',
-    `(d) [M2] present off the policy is missing — got: ${JSON.stringify(cloudflare)}`
-  )
+  assert.equal(cloudflare.status, 'missing', `(d) [M2] present off tag:fleet is missing — got: ${JSON.stringify(cloudflare)}`)
   assert.ok(
-    cloudflare.detail.includes("integrations policy set cloudflare 'tag:fleet'"),
-    `(d) [M2] detail names the policy-set verb — got: ${JSON.stringify(cloudflare.detail)}`
+    cloudflare.detail.includes('integrations attach cloudflare tag:fleet'),
+    `(d) [M2] detail names the attach — got: ${JSON.stringify(cloudflare.detail)}`
   )
 }
 

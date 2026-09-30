@@ -100,19 +100,16 @@ Keep that integration personal: `--act-as-user` is unavailable on team
 integrations, so a team account's PRs are authored by the installation bot
 rather than by the user.
 
-`integrations` — every object a run needs, on the fleet's policy. The agent runs
+`integrations` — every object a run needs, attached to `tag:fleet`. The agent runs
 `node <plugin-root>/fleet/target.mjs <owner>/<repo>` for the repository being
-built, which creates the one object that repository needs on the attachment
-policy `tag:fleet`; the command is idempotent, so an object already there is
-left alone, its policy read and replaced only when it is not `tag:fleet`. When
-the doctor reports another object — `claude-max`, say — as off
-that policy, the agent asks with
-AskUserQuestion: **Put `<name>` on the fleet policy?** — `Yes, set its policy to tag:fleet (Recommended)` / `No, leave it and I will look`,
-and on yes it runs `ssh exe.dev "integrations policy get <name> --json"`, reads
-the `revision` it prints, then runs
-`ssh exe.dev "integrations policy set <name> 'tag:fleet' --permanent --if-revision=<revision>"`
-with that revision. (exe.dev refuses `integrations attach`/`detach` and
-`new --integration` since 2026-09-11; the policy is the only grant.)
+built, which creates the one object that repository needs attached to
+`tag:fleet`; the command is idempotent, so an object already there is left
+alone and attached only when it is not on `tag:fleet`. When the doctor reports
+another object — `claude-max`, say — as not attached, the agent asks with
+AskUserQuestion: **Attach `<name>` to the fleet tag?** — `Yes, attach it to tag:fleet (Recommended)` / `No, leave it and I will look`,
+and on yes it runs `ssh exe.dev "integrations attach <name> tag:fleet"`.
+(`new --integration` is refused since 2026-09-11, and `integrations` has no
+`policy` verb, #1434; the tag attachment is the only grant.)
 
 `evidence` — the operator's evidence repository, where every run's plan and
 record live (never on the target, so a run on someone else's repository works
@@ -169,7 +166,7 @@ approved plan, **is** the authorization to execute — no further approval pause
    there is no page behind it today, git is the record. Nothing else needs staging — the launcher commits the plan to the
    evidence repository's `live/<owner>-<repo>/run-<N>` branch (the target is
    never written to until the run's own PR branch), then creates the VM in one lobby call with
-   `--tag fleet` (the tag every fleet integration's policy grants), the
+   `--tag fleet` (the tag every fleet integration is attached to), the
    assignment as its comment, and a setup script that starts the run's unit.
    No ssh, no second step.
 

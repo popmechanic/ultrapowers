@@ -6,7 +6,7 @@
  * installed plugin cache, where no `node_modules` directory under `fleet/` has
  * ever existed. Hence the built-ins-only rule: every specifier here is
  * `node:`-prefixed or a sibling fleet module that is itself built-ins-only —
- * the config and policy readers come from `./lobby.mjs`, one copy for both
+ * the config readers come from `./lobby.mjs`, one copy for both
  * the doctor and the launcher.
  *
  * Ten rows, all reads, every one of them answered by exe.dev's own truth or
@@ -23,30 +23,26 @@
  *                 does not hold.
  *   github        `integrations setup github --list` lists an account.
  *   integrations  every integration a run needs — `claude-max`, and with
- *                 `--target` the target's own `gh-<owner>-<repo>` — carries the
- *                 attachment policy `tag:fleet` (`integrations policy get
- *                 <name> --json`, `policy.selector`). That policy is the one
- *                 way a credential reaches a fleet VM: exe.dev refuses `new
- *                 --integration` and `integrations attach` since 2026-09-11.
+ *                 `--target` the target's own `gh-<owner>-<repo>` — is attached
+ *                 to `tag:fleet` in `integrations list --json`. That attachment
+ *                 is the one way a credential reaches a fleet VM (#1434).
  *   evidence      the one-time setup of the operator's evidence repository,
  *                 walked in order and stopped at the first miss: the key
  *                 `evidence` in `~/.ultrapowers/fleet.json`, the repository
  *                 itself (`gh api repos/<owner>/<repo>`), and its
- *                 `gh-<owner>-<repo>` integration on the policy `tag:fleet`.
+ *                 `gh-<owner>-<repo>` integration attached to `tag:fleet`.
  *   verb-drift    `help <verb>` for every verb in the verb record, and
  *                 the diff against the flags recorded there. A flag that
  *                 appeared or vanished is a finding in a green row; only a
  *                 record the doctor cannot read turns it red.
  *   kata          the hub is there: the `kata` http-proxy carries a bearer at
- *                 the edge, its attachment policy is `tag:fleet` (`integrations
- *                 policy get kata --json`, `policy.selector` — never the
- *                 listing's `attachments`, which name the VMs the policy
- *                 currently resolves to), and `ls kata-hub --json` answers a
+ *                 the edge, it is attached to `tag:fleet`, and
+ *                 `ls kata-hub --json` answers a
  *                 `kata-hub` row. All three, or the row says which is absent.
  *   cloudflare    the deploy's credential, needed only by a plan with a
  *                 `**Publish:**` line. Absent is green — most plans never
- *                 publish — and a present object is green on the fleet's
- *                 policy, `tag:fleet`, and red off it.
+ *                 publish — and a present object is green attached to
+ *                 `tag:fleet`, and red otherwise.
  *
  * Running the doctor twice is the same as running it once: nothing here
  * creates, copies or removes a VM, and nothing writes a file. A red row names
@@ -85,7 +81,6 @@ import {
   parseArgs,
   parseJson,
   parseMemoryGb,
-  parsePolicy,
   readEvidenceSetting,
   readFleetJson,
   readPlanCapacity,
@@ -110,27 +105,19 @@ const CLAUDE_TOKEN = path.join(HERE, 'claude-token.mjs')
 
 /** The standing lobby reads, as the remote half of `ssh exe.dev "<remote>"`,
  *  in the order the doctor issues them; the three `claude-token.mjs` reads sit
- *  between the github and kata ones. One policy read per integration the
- *  `integrations` row asks about follows them, then the `help` reads of the
+ *  between the github and kata ones, then the `help` reads of the
  *  verb-drift row, one per verb of the record; together they are the only
  *  commands the doctor ever runs, every one through the exec seam
  *  `exec(cmd, argv)` — `ssh` or `node`, never a shell string.
  *
- *  The last two are the `kata` row's. Its policy read is spelled out rather
- *  than taken from `policyRead`, because it is a standing read of a fixed name
- *  and not one of the names the `integrations` row computes; and the hub is the
- *  one thing the doctor asks `ls` about, every other row reading edge-side
- *  objects the listing already carries. */
+ *  The last is the `kata` row's: the hub is the one thing the doctor asks `ls`
+ *  about, every other row reading edge-side objects the listing already
+ *  carries. */
 const READS = Object.freeze({
   whoami: 'whoami',
   github: 'integrations setup github --list',
-  kataPolicy: 'integrations policy get kata --json',
   kataVm: 'ls kata-hub --json'
 })
-
-/** The policy read for one integration — the only read of a name — as the
- *  remote half of its `ssh exe.dev` argv. */
-export const policyRead = (name) => `integrations policy get ${name} --json`
 
 /** One lobby read: `ssh exe.dev "<remote>"`, answered whatever its exit code,
  *  so every row keeps the code it reports. */
@@ -316,43 +303,23 @@ async function readIntegrations (res) {
   return out
 }
 
-/** The fix for a policy that is not `tag:fleet`: the read, then the write
- *  under the revision the read answered. */
-const policyFix = (name) =>
-  `ssh exe.dev "integrations attach ${name} ${FLEET_POLICY}" (or, when the lobby serves the policy model: ` +
-  `ssh exe.dev "integrations policy get ${name} --json" then ` +
-  `ssh exe.dev "integrations policy set ${name} '${FLEET_POLICY}' --permanent --if-revision=<revision>")`
+/** The fix for an integration no fleet VM is granted. */
+const attachFix = (name) => `ssh exe.dev "integrations attach ${name} ${FLEET_POLICY}"`
 
 /**
- * The one policy question every integration row asks: is the object `name`
- * granted to fleet VMs? The listing is served by both lobby models (#924): an
- * attachment `tag:fleet` in `integrations list --json` is the grant whichever
- * verb set the edge has; only an unattached object is judged by its policy
- * read (`policyRes`, the answer of `integrations policy get <name> --json`).
- *
- * Resolves null when the object is on the policy, otherwise the row `id`
- * reports: an absent object is `ok` with `absentIsOk` (and `absentDetail`),
- * `missing` without; an unreadable or off-policy one is `missing`, naming
- * `policyFix(name)`.
+ * The one question every integration row asks: is the object `name` granted to
+ * fleet VMs, i.e. attached to `tag:fleet` in `integrations list --json`?
+ * Resolves null when it is, otherwise the row `id` reports: an absent object is
+ * `ok` with `absentIsOk` (and `absentDetail`), `missing` without; an unattached
+ * one is `missing`, naming `attachFix(name)`.
  */
-export function policyRowFor (name, { id, found, policyRes, absentIsOk = false, absentDetail = null } = {}) {
+export function attachRowFor (name, { id, found, absentIsOk = false, absentDetail = null } = {}) {
   const have = found === null || found === undefined ? undefined : found.get(name)
   if (have === undefined) {
     return row(id, absentIsOk ? 'ok' : 'missing', absentDetail ?? `no ${name} integration at the edge`)
   }
   if (have.tags.includes(FLEET_TAG)) return null
-  const policy = policyRes && policyRes.code === 0 ? parsePolicy(policyRes.stdout) : null
-  if (policy === null) {
-    const seen = policyRes && policyRes.code === 0 ? 'printed no readable policy' : `exited ${policyRes?.code ?? 1}`
-    return row(id, 'missing', `integrations policy get ${name} --json ${seen} — ${policyFix(name)}`)
-  }
-  if (policy.selector === FLEET_POLICY) return null
-  return row(
-    id,
-    'missing',
-    `${name} carries the attachment policy ${policy.selector === null ? 'none' : JSON.stringify(policy.selector)} ` +
-    `rather than ${FLEET_POLICY}, so no fleet VM is granted it — ${policyFix(name)}`
-  )
+  return row(id, 'missing', `${name} is not attached to ${FLEET_POLICY}, so no fleet VM is granted it — ${attachFix(name)}`)
 }
 // ── claude ───────────────────────────────────────────────────────────────────
 
@@ -385,7 +352,7 @@ function usageSuffix (usageRes) {
 
 /**
  * The bearer has to exist at the edge. Whether the object reaches a fleet VM
- * is the `integrations` row's question (its policy), not this one's.
+ * is the `integrations` row's question (its attachment), not this one's.
  *
  * claude-token's status line only decorates the row. Either outcome leaves the
  * status alone — the bearer is injected at the edge whether or not this laptop
@@ -622,32 +589,23 @@ function githubRow (res) {
 
 // ── integrations ─────────────────────────────────────────────────────────────
 
-/**
- * The names the row asks about: the bearer's object always, and the target's
- * with `--target`. Each is read once with `integrations policy get <name>
- * --json`, in this order.
- */
-function policyNames (target) {
+/** The names the row asks about: the bearer's object always, and the target's
+ *  with `--target`, in this order. */
+function attachNames (target) {
   const names = [CLAUDE_INTEGRATION]
   if (target !== null) names.push(githubIntegrationFor(target))
   return names
 }
 
 /**
- * A credential reaches a fleet VM by the attachment policy on its integration
- * and by nothing else: exe.dev refuses `new --integration` and `integrations
- * attach` since 2026-09-11, so every integration a run needs has to carry the
- * policy `tag:fleet` — the tag `new --tag fleet` creates the VM with. The row
- * is red for the FIRST name whose `policy.selector` is anything else, naming
- * the get/set two-step that fixes it, because a stranger reading several
- * failures at once cannot tell which one to run first.
- *
- * With `--target`, the target's one object `gh-<owner>-<repo>` also has to
- * exist, and that is asked before its policy is. The listing's `attachments`
- * (which spells a policy-attached object as `tag:fleet` too) is not consulted:
- * the policy read is the edge's own answer, revision included.
+ * A credential reaches a fleet VM by its integration's attachment `tag:fleet`,
+ * the tag `new --tag fleet` creates the VM with. The row is red for the FIRST
+ * name that is not attached, naming the attach that fixes it, because a stranger
+ * reading several failures at once cannot tell which one to run first. With
+ * `--target`, the target's one object `gh-<owner>-<repo>` also has to exist, and
+ * that is asked first.
  */
-function integrationsRow (found, target, policies) {
+function integrationsRow (found, target) {
   if (found === null) {
     return row('integrations', 'missing', 'integrations list printed no readable JSON')
   }
@@ -657,13 +615,13 @@ function integrationsRow (found, target, policies) {
       return row('integrations', 'missing', `no ${want} integration for ${target} — node fleet/target.mjs ${target}`)
     }
   }
-  const names = policyNames(target)
+  const names = attachNames(target)
   for (const name of names) {
     if (!found.has(name)) continue // the claude row names a missing object
-    const off = policyRowFor(name, { id: 'integrations', found, policyRes: policies.get(name) })
+    const off = attachRowFor(name, { id: 'integrations', found })
     if (off !== null) return off
   }
-  return row('integrations', 'ok', `${names.filter((n) => found.has(n)).join(', ')} on the policy ${FLEET_POLICY}`)
+  return row('integrations', 'ok', `${names.filter((n) => found.has(n)).join(', ')} attached to ${FLEET_POLICY}`)
 }
 
 // ── evidence ─────────────────────────────────────────────────────────────────
@@ -679,9 +637,9 @@ const evidenceRepoRead = (evidence) => ['api', `repos/${evidence}`]
  * fix: the key `evidence` in `~/.ultrapowers/fleet.json`; the repository
  * itself (`repoRes`, the answer of `gh api repos/<owner>/<repo>`, null when
  * there was no key to read); its `gh-<owner>-<repo>` integration in the
- * listing, then that object's policy, judged by `policyRowFor`.
+ * listing, then its attachment, judged by `attachRowFor`.
  */
-function evidenceRow (evidence, repoRes, found, policyRes) {
+function evidenceRow (evidence, repoRes, found) {
   if (evidence === null) {
     return row(
       'evidence',
@@ -703,8 +661,8 @@ function evidenceRow (evidence, repoRes, found, policyRes) {
   if (!found.has(name)) {
     return row('evidence', 'missing', `no ${name} integration for ${evidence} — node fleet/target.mjs ${evidence}`)
   }
-  const off = policyRowFor(name, { id: 'evidence', found, policyRes })
-  return off ?? row('evidence', 'ok', `${evidence} exists and ${name} is on the policy ${FLEET_POLICY}`)
+  const off = attachRowFor(name, { id: 'evidence', found })
+  return off ?? row('evidence', 'ok', `${evidence} exists and ${name} is attached to ${FLEET_POLICY}`)
 }
 
 // ── kata ─────────────────────────────────────────────────────────────────────
@@ -725,16 +683,10 @@ function kataVmRow (res) {
 }
 
 /**
- * The hub, in three questions asked in the order an operator fixes them: the
- * object, its bearer, its policy, and then the VM behind it.
- *
- * The policy question is asked of `integrations policy get kata --json` and
- * never of the listing's `attachments`: an attachment array names the VMs a
- * live selector currently resolves to, so a hub whose policy is right reads as
- * a list of today's fleet VMs, and a hub attached to one VM by hand reads as a
- * plausible one. Only the selector says which.
+ * The hub, in the order an operator fixes it: the object, its bearer, its
+ * attachment, and then the VM behind it.
  */
-function kataRow (found, policyRes, vmsRes) {
+function kataRow (found, vmsRes) {
   const have = found === null ? undefined : found.get(KATA_INTEGRATION)
   if (have === undefined) {
     return row('kata', 'missing', `no ${KATA_INTEGRATION} http-proxy at the edge — ${KATA_FIX}`)
@@ -742,7 +694,7 @@ function kataRow (found, policyRes, vmsRes) {
   if (!have.bearer) {
     return row('kata', 'missing', `${KATA_INTEGRATION} carries no ${BEARER} header — ${KATA_FIX}`)
   }
-  const off = policyRowFor(KATA_INTEGRATION, { id: 'kata', found, policyRes })
+  const off = attachRowFor(KATA_INTEGRATION, { id: 'kata', found })
   if (off !== null) return off
   const vm = kataVmRow(vmsRes)
   if (vm === null) {
@@ -752,7 +704,7 @@ function kataRow (found, policyRes, vmsRes) {
   return row(
     'kata',
     'ok',
-    `${KATA_INTEGRATION} carries the bearer on the policy ${FLEET_POLICY}, and ${KATA_VM} is ${status}`
+    `${KATA_INTEGRATION} carries the bearer, attached to ${FLEET_POLICY}, and ${KATA_VM} is ${status}`
   )
 }
 
@@ -765,21 +717,17 @@ const CLOUDFLARE_INTEGRATION = 'cloudflare'
 /**
  * The ninth row: cloudflare carries the deploy's credential at the edge, and
  * only a plan with a `**Publish:**` line needs it — so unlike every other row,
- * absent is `ok`. Present is judged exactly as `kata`'s policy question is:
- * the listing's own attachment tag first, then the policy read (asked only
- * when the object exists at all — `doctor()` skips the read otherwise), red
- * for the first selector that is not `tag:fleet`.
+ * absent is `ok`, and present is judged by its attachment `tag:fleet`.
  */
-function cloudflareRow (found, policyRes) {
-  const off = policyRowFor(CLOUDFLARE_INTEGRATION, {
+function cloudflareRow (found) {
+  const off = attachRowFor(CLOUDFLARE_INTEGRATION, {
     id: 'cloudflare',
     found,
-    policyRes,
     absentIsOk: true,
     absentDetail: 'cloudflare integration absent — only a plan with a **Publish:** line needs it; ' +
       'first-run.md §cloudflare walks the token'
   })
-  return off ?? row('cloudflare', 'ok', `${CLOUDFLARE_INTEGRATION} http-proxy on the policy ${FLEET_POLICY}`)
+  return off ?? row('cloudflare', 'ok', `${CLOUDFLARE_INTEGRATION} http-proxy attached to ${FLEET_POLICY}`)
 }
 
 // ── the doctor ───────────────────────────────────────────────────────────────
@@ -835,25 +783,9 @@ export async function doctor ({
     ? ['usage', '--json', '--account', wantAccount, '--no-rotate']
     : ['usage', '--json', '--no-rotate'])
   const accounts = await tokenRead(run, ['accounts', '--json'])
-  // The hub's two reads: the policy that grants it, then the VM behind it.
-  const kataPolicy = await read(READS.kataPolicy)
+  // The hub's VM, then the evidence repository when a key names one.
   const kataVms = await read(READS.kataVm)
-  const policies = new Map()
-  for (const name of policyNames(want)) {
-    policies.set(name, await read(policyRead(name)))
-  }
-  // The ninth read: only when `found` names a cloudflare object at all — an
-  // absent one needs no policy read, and most fleets never publish.
-  const cloudflarePolicy = found !== null && found.has(CLOUDFLARE_INTEGRATION)
-    ? await read(policyRead(CLOUDFLARE_INTEGRATION))
-    : null
-  // The evidence row's reads, each only when the step before it answered: the
-  // repository, then its integration's policy when the listing names it.
   const evidenceRepo = wantEvidence === null ? null : await run('gh', evidenceRepoRead(wantEvidence))
-  const evidenceName = wantEvidence === null ? null : githubIntegrationFor(wantEvidence)
-  const evidencePolicy = evidenceRepo !== null && evidenceRepo.code === 0 && found !== null && found.has(evidenceName)
-    ? (policies.get(evidenceName) ?? await read(policyRead(evidenceName)))
-    : null
   const drift = await verbDrift({
     help: (verb) => read(`help ${verb}`),
     recordPath: verbsPath
@@ -865,11 +797,11 @@ export async function doctor ({
     claudeRow(found, token, usage),
     accountsRow(accounts, found, wantAccount),
     githubRow(github),
-    integrationsRow(found, want, policies),
-    evidenceRow(wantEvidence, evidenceRepo, found, evidencePolicy),
+    integrationsRow(found, want),
+    evidenceRow(wantEvidence, evidenceRepo, found),
     verbDriftRow(drift),
-    kataRow(found, kataPolicy, kataVms),
-    cloudflareRow(found, cloudflarePolicy)
+    kataRow(found, kataVms),
+    cloudflareRow(found)
   ]
   const verdict = rows.every((r) => r.status === 'ok') ? 'ready' : 'not-ready'
   return { config: cfg, rows, verdict }

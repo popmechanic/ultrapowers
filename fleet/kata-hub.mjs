@@ -17,7 +17,7 @@
  *   share port kata-hub 8000                  (`docs/proxy.md` picks a port
  *                                              heuristically; this pins it)
  *   integrations add http-proxy --name kata --target <https_url> --peer
- *       --bearer - --comment '…' --policy 'tag:fleet'   (bearer on stdin)
+ *       --bearer - --comment '…' --attach tag:fleet   (bearer on stdin)
  *
  * `<https_url>` is read off the `kata-hub` row of one `ls kata-hub --json`
  * issued directly after the `new`: a team VM's host is not necessarily
@@ -140,13 +140,6 @@ const sharePortVerb = () => `share port ${HUB_VM} ${HUB_PORT}`
 
 const addVerb = (httpsUrl) =>
   `integrations add http-proxy --name ${HUB_INTEGRATION} --target ${httpsUrl} --peer ` +
-  `--bearer - --comment '${INTEGRATION_COMMENT}' --policy '${FLEET_POLICY}'`
-
-/** The same creation on the attach-model lobby: exe.dev shipped the policy model
- *  on 2026-09-11 and rolled it back the same afternoon, so `--policy` may be an
- *  unknown flag; `--attach tag:fleet` says the same thing there (#924's rule). */
-const addVerbAttach = (httpsUrl) =>
-  `integrations add http-proxy --name ${HUB_INTEGRATION} --target ${httpsUrl} --peer ` +
   `--bearer - --comment '${INTEGRATION_COMMENT}' --attach ${FLEET_POLICY}`
 
 const editVerb = () => `integrations edit ${HUB_INTEGRATION} --bearer=-`
@@ -158,11 +151,6 @@ const editVerb = () => `integrations edit ${HUB_INTEGRATION} --bearer=-`
  * (Shelley's counsel, 2026-09-18, `kata-federation-proxy-configuration`).
  */
 const fedAddVerb = (httpsUrl) =>
-  `integrations add http-proxy --name ${FED_INTEGRATION} --target ${httpsUrl} --peer ` +
-  `--comment '${FED_INTEGRATION_COMMENT}' --policy '${FLEET_POLICY}'`
-
-/** The attach-model twin of `fedAddVerb`, `addVerbAttach`'s own shape. */
-const fedAddVerbAttach = (httpsUrl) =>
   `integrations add http-proxy --name ${FED_INTEGRATION} --target ${httpsUrl} --peer ` +
   `--comment '${FED_INTEGRATION_COMMENT}' --attach ${FLEET_POLICY}`
 
@@ -335,25 +323,11 @@ async function kataHub ({
   if (!row.httpsUrl) throw new LobbyError(`the ${HUB_VM} row carries no https_url`)
   if (!row.sshDest) throw new LobbyError(`the ${HUB_VM} row carries no ssh_dest`)
 
-  if (!listed) {
-    try {
-      await lobby(exec, addVerb(row.httpsUrl), { input: bearer })
-    } catch (error) {
-      // The attach-model lobby knows no `--policy`; create with `--attach`.
-      await lobby(exec, addVerbAttach(row.httpsUrl), { input: bearer })
-    }
-  }
+  if (!listed) await lobby(exec, addVerb(row.httpsUrl), { input: bearer })
   else if (rebuilt) await lobby(exec, editVerb(), { input: bearer })
 
   // The federation transport: same target, no bearer, idempotent the same way.
-  if (!listedFed) {
-    try {
-      await lobby(exec, fedAddVerb(row.httpsUrl))
-    } catch (error) {
-      // The attach-model lobby knows no `--policy`; create with `--attach`.
-      await lobby(exec, fedAddVerbAttach(row.httpsUrl))
-    }
-  }
+  if (!listedFed) await lobby(exec, fedAddVerb(row.httpsUrl))
 
   // First boot: the setup script's last act before it deletes itself.
   await waitFor(async () => {

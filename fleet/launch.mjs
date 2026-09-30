@@ -38,7 +38,7 @@
  *
  *      with the rendered setup script on that call's stdin, carrying a
  *      `# fleet: width=<W>` header the launcher stamps on it. `--tag fleet` is
- *      what grants the run's integrations (each carries the policy
+ *      what grants the run's integrations (each is attached to
  *      `tag:fleet`); the verb carries no `--integration`.
  *
  * `<cpu>` and `<memory>` are the PLAN's, sized by `vmSizeFor` from W, the task
@@ -113,8 +113,8 @@ export const USAGE = `usage: node fleet/launch.mjs <plan.md> --target <owner>/<r
 
 export const usage = () => USAGE
 
-/** The flag `new` may never carry: exe.dev refuses it, and the policy
- *  `tag:fleet` on each integration is what grants a fleet VM its credentials. */
+/** The flag `new` may never carry: exe.dev refuses it, and each integration's
+ *  attachment `tag:fleet` is what grants a fleet VM its credentials. */
 const NEW_INTEGRATION_FLAG = /(^|\s)--integration(=|\s|$)/
 
 /** Where the plan lands in the run's folder (`runs/<slug>/<N>/`) of the
@@ -1011,7 +1011,7 @@ async function launchBody ({
   )
   // No `--integration` on the verb: the run's credentials — `claude-max` and the
   // target's object — reach the box by the
-  // attachment policy `tag:fleet` each of them carries, so `--tag fleet` is the
+  // attachment `tag:fleet` each of them carries, so `--tag fleet` is the
   // grant. exe.dev refuses the flag outright since 2026-09-11, and a line that
   // carried it would fail every launch at `new`; hence the guard, which
   // refuses before the verb is issued rather than after the lobby does.
@@ -1019,7 +1019,7 @@ async function launchBody ({
     const remote = `new --name ${vm} --tag ${FLEET_TAG} --comment '${comment}'` +
       ` --cpu ${cpu} --memory ${memory} --setup-script /dev/stdin --json`
     if (NEW_INTEGRATION_FLAG.test(remote)) {
-      throw new Refusal(`launch: the \`new\` verb must not carry --integration — exe.dev refuses it since 2026-09-11; integrations reach a fleet VM by the policy tag:${FLEET_TAG}`)
+      throw new Refusal(`launch: the \`new\` verb must not carry --integration — exe.dev refuses it since 2026-09-11; integrations reach a fleet VM by their attachment tag:${FLEET_TAG}`)
     }
     return remote
   }
