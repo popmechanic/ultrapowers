@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // factory/flock/catchup.mjs — the Flock's catch-up of a finished run onto a moved main.
-// `node factory/flock/catchup.mjs --plan <p> --target <dir> --base <run base> --onto <moved tip> --run-dir <dir>`
+// `node factory/flock/catchup.mjs --plan <p> [--plan-json <parse>] --target <dir> --base <run base> --onto <moved tip> --run-dir <dir>`
 // The target sits on the run's branch, the run's own commit at HEAD, the tree clean. The paths
 // changed on both sides are joined by the weave keeper (weave.py); a clean join becomes one commit
 // on top of --onto, which must pass the plan's setup, every task's facts and the run-wide check.
@@ -84,7 +84,7 @@ const back = (why) => {
   finish({ refolded: false, reason: 'red' }, 1)
 }
 let work
-try { work = workloadFromPlan(PLAN) } catch (e) { back(`plan: ${e.message}`) }
+try { work = workloadFromPlan(PLAN, arg('--plan-json')) } catch (e) { back(`plan: ${e.message}`) }
 const env = { ...process.env, ULTRA_BASE: ONTO }
 const exam = (cmd, timeout) => {
   const r = spawnSync(cmd[0], cmd.slice(1), { cwd: T, env, encoding: 'utf8', timeout, maxBuffer: 64 * 1024 * 1024 })

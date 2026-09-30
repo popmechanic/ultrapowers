@@ -2,7 +2,7 @@
 // The Flock engine (map #1292: adopted as an experiment behind the boot's engine switch; the
 // round-3 arm is the measured shape). Grown from the laptop prototype (flock-runroom's host.mjs).
 //
-//   node factory/flock/engine.mjs --plan <plan.md> --target <dir> --base <sha> --run-dir <dir>
+//   node factory/flock/engine.mjs --plan <plan.md> [--plan-json <parse>] --target <dir> --base <sha> --run-dir <dir>
 //        [--builder sdk|scripted:<json>] [--clock 13800] [--stall-minutes 20]
 //        [--kata-url <hub> --kata-json <record> [--kata-actor engine:<run>]]
 //   (with both --kata-url and --kata-json, and a record that reads, the board's
@@ -60,7 +60,7 @@ if (!SCRIPT && BUILDER !== 'sdk') { console.error('engine: --builder is sdk or s
 // the SDK and zod load only for model builders: a scripted run needs neither
 const { query, createSdkMcpServer, tool } = SCRIPT ? {} : await import('@anthropic-ai/claude-agent-sdk')
 const { z } = SCRIPT ? {} : await import('zod')
-const W = { name: path.basename(PLAN, '.md'), ...workloadFromPlan(PLAN) }
+const W = { name: path.basename(PLAN, '.md'), ...workloadFromPlan(PLAN, arg('plan-json')) }
 for (const t of W.tasks) t.id = String(t.id)
 for (const t of W.tasks) t.depends_on = t.depends_on.map(String)
 // The round-3 arm (n=3 runs, runroom-r3-1..3, 2026-09-26) is the only behaviour (operator 2026-09-29,

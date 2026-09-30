@@ -28,7 +28,7 @@ TARGET_DIR="$FLEET_HOME/target"; EVIDENCE_DIR="$FLEET_HOME/evidence"
 RUN_DIR="$FLEET_HOME/run"; ENGINE_LOG="$FLEET_HOME/engine.log"
 BOOT_LOG="$FLEET_HOME/fleet-boot.log"; DONE_MARKER="$FLEET_HOME/.fleet-engine-done"
 RUN_N=""; PLAN_SHA=""; TARGET_REPO=""; BASE_SHA=""; ENGINE_SHA=""; RUN_ID=""
-BRANCH=""; SLUG=""; LIVE_BRANCH=""; EVIDENCE_REPO=""; EVIDENCE_REL=""; PLAN_FILE=""; PAST_DIR=""
+BRANCH=""; SLUG=""; LIVE_BRANCH=""; EVIDENCE_REPO=""; EVIDENCE_REL=""; PLAN_FILE=""; PLAN_JSON=""; PAST_DIR=""
 ENGINE_REPO_DIR=""; STATUS_FILE=""; STATE=""; PHASE=""; PR_URL=""; PR_AUTHOR=""
 ERROR=""; VM_NAME=""; STARTED_AT=""; EVIDENCE_READY=""; HOLD_FLAG=0
 # RECORDED is 1 once `record_tags` saw the run's tag listed at the pushed head, else empty.
@@ -137,7 +137,7 @@ parse_assignment() { # $1 = the comment line
   is_sha "$ENGINE_SHA"     || fail "assignment: engine is not a 40-hex sha ('$ENGINE_SHA')"
   RUN_ID="run-$RUN_N"; BRANCH="ultra/integration-$RUN_ID"; SLUG="${TARGET_REPO/\//-}"
   LIVE_BRANCH="live/$SLUG/$RUN_ID"; EVIDENCE_REL="runs/$SLUG/$RUN_N"
-  PLAN_FILE="$FLEET_HOME/plans/$RUN_ID.md"; ENGINE_REPO_DIR="$FLEET_HOME/engines/$ENGINE_SHA"
+  PLAN_FILE="$FLEET_HOME/plans/$RUN_ID.md"; PLAN_JSON="$FLEET_HOME/plans/$RUN_ID.plan.json"; ENGINE_REPO_DIR="$FLEET_HOME/engines/$ENGINE_SHA"
   STATUS_FILE="$EVIDENCE_DIR/$EVIDENCE_REL/status.json"
   log "assignment: $RUN_ID target=$TARGET_REPO base=$BASE_SHA engine=$ENGINE_SHA kind=$ENGINE_KIND"
   read_evidence_repo
@@ -179,6 +179,9 @@ prepare() {
   wait "$epid" || { ERROR="$(cat "$err.evidence" 2>/dev/null || true)"; fail "${ERROR:-plan: cannot clone $LIVE_BRANCH of $EVIDENCE_REPO through $GITHUB_INT_HOST}"; }
   mkdir -p "$FLEET_HOME/plans"; fleet_git -C "$EVIDENCE_DIR" show "$PLAN_SHA:$EVIDENCE_REL/plan.md" >"$PLAN_FILE" || fail "plan: $PLAN_SHA carries no $EVIDENCE_REL/plan.md"
   EVIDENCE_READY=1; log "plan: $LIVE_BRANCH of $EVIDENCE_REPO at $PLAN_SHA -> $PLAN_FILE"
+  # The run's one parse (#1449): the engine, the catch-up, the PR body and the publish probe all read this file.
+  fleet_python3 "$ENGINE_REPO_DIR/skills/ultrapowers/scripts/plan_parse.py" "$PLAN_FILE" >"$PLAN_JSON" \
+    || fail "plan: plan_parse.py refused $PLAN_FILE"
 }
 # The previous run's record, for the engine: the highest `<slug>/run-<M>` tag below this run, its run folder
 # extracted to `$FLEET_HOME/past/<M>`. Any miss is one `past:` log line and no `--past-dir`.
@@ -305,7 +308,7 @@ run_engine() {
       env -u CLAUDE_CONFIG_DIR "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
         "TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL" CLAUDE_CODE_OAUTH_TOKEN=placeholder \
         "ULTRAPOWERS_FLEET_RUN=$RUN_ID" node "$ENGINE_REPO_DIR/$engine_entry" \
-        --plan "$PLAN_FILE" --target "$TARGET_DIR" --base "$BASE_SHA" --run-dir "$RUN_DIR" \
+        --plan "$PLAN_FILE" --plan-json "$PLAN_JSON" --target "$TARGET_DIR" --base "$BASE_SHA" --run-dir "$RUN_DIR" \
         ${board_args[@]+"${board_args[@]}"} ${past_args[@]+"${past_args[@]}"} >>"$ENGINE_LOG" 2>&1
     printf '%s\n' "$?" >"$DONE_MARKER" ) &
   pid=$!
@@ -323,7 +326,7 @@ run_engine() {
 plan_title()   { { sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" || true; } | head -n 1; }
 # The pull request body: the plan's summary paragraph, the probes and their exits off the run's
 # own event log as the receipt, the link to the run's folder at its tag in the evidence repository, the provenance counts, and its closes line — rendered whole by `factory/record.mjs pr-body`.
-pr_body() { fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" pr-body "$PLAN_FILE" --events "$RUN_DIR/events.jsonl" \
+pr_body() { fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" pr-body "$PLAN_FILE" --plan-json "$PLAN_JSON" --events "$RUN_DIR/events.jsonl" \
   --evidence "https://github.com/$EVIDENCE_REPO/tree/$SLUG/$RUN_ID/$EVIDENCE_REL" --provenance "$RUN_DIR/provenance.json"; }
 # The target's default branch as the remote advertised it: a PR against a guessed `main` on a `master` repo is refused, or worse taken.
 default_branch() {
@@ -346,7 +349,7 @@ refold_onto() { # $1 = the base the run's work stood on, $2 = the moved tip
   line="$(env -u CLAUDE_CONFIG_DIR "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
       "TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL" CLAUDE_CODE_OAUTH_TOKEN=placeholder \
       "ULTRAPOWERS_FLEET_RUN=$RUN_ID" node "$ENGINE_REPO_DIR/factory/flock/catchup.mjs" \
-      --plan "$PLAN_FILE" --target "$TARGET_DIR" --base "$base" --onto "$onto" \
+      --plan "$PLAN_FILE" --plan-json "$PLAN_JSON" --target "$TARGET_DIR" --base "$base" --onto "$onto" \
       --run-dir "$RUN_DIR" | tail -n 1)" || rc=$?
   if [ "$rc" -ne 0 ]; then
     reason="$(printf '%s' "$line" | json_field reason)"
@@ -438,9 +441,9 @@ maybe_self_merge() { # $1 = the pull request number, $2 = the PR's base branch n
 # called once MERGED_SHA is non-empty. PUBLISH_PHASE stays empty — the caller keeps
 # the plain "the pull request was merged" phase — when the plan named no
 # `**Publish:**` line or `publish.probe.enabled` is off; either way that is never a
-# failure of the run. The plan's publish object is `plan_parse.py`'s own, read once
-# here (never grepped off the plan text) and its three commands handed to
-# `record.mjs publish-cmds`, one per line, an absent command an empty line.
+# failure of the run. The plan's publish object is `plan_parse.py`'s own, read off the
+# run's one parse (never grepped off the plan text) by `record.mjs publish-cmds`, its
+# three commands one per line, an absent command an empty line.
 PUBLISH_PHASE=""
 # One publish command in the target under the budget, its output to $3: the Cloudflare edge's
 # address and a placeholder token in its environment (the edge injects the credential), and
@@ -455,10 +458,8 @@ publish_run() { # $1 = seconds, $2 = command, $3 = its raw log, $4 = the app's u
 publish_json() { fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" publish-json "$@" >"$EVIDENCE_DIR/$EVIDENCE_REL/publish.json"; }
 run_publish_probe() {
   PUBLISH_PHASE=""
-  local parsed cmds deploy_cmd verify_cmd rollback_cmd policy_out enabled timeout_seconds
-  parsed="$(fleet_python3 "$ENGINE_REPO_DIR/skills/ultrapowers/scripts/plan_parse.py" "$PLAN_FILE" 2>/dev/null)" || parsed=""
-  [ -n "$parsed" ] || return 0
-  cmds="$(printf '%s' "$parsed" | fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" publish-cmds)" || return 0
+  local cmds deploy_cmd verify_cmd rollback_cmd policy_out enabled timeout_seconds
+  cmds="$(fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" publish-cmds <"$PLAN_JSON")" || return 0
   deploy_cmd="$(printf '%s\n' "$cmds" | sed -n '1p')"
   verify_cmd="$(printf '%s\n' "$cmds" | sed -n '2p')"
   rollback_cmd="$(printf '%s\n' "$cmds" | sed -n '3p')"

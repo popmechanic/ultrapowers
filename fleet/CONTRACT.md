@@ -326,13 +326,15 @@ evidence repository.
 - **Boot script (`factory/boot.sh`), invoked by the bootstrap:** reads the evidence repository from
   `$HOME/fleet-evidence-repo` and fails the run without it, clones the target at `base=`, fetches
   only `live/<owner>-<repo>/run-<N>` of the evidence repository, shallow, through the same edge host
-  (`https://$GITHUB_INT_HOST/<evidence repo>.git`), extracts the previous run's folder for the
+  (`https://$GITHUB_INT_HOST/<evidence repo>.git`), parses the plan once with `plan_parse.py`
+  into `$FLEET_HOME/plans/<run>.plan.json` (a refusal fails the run; the engine, the catch-up, the
+  PR body and the publish probe all read that parse, #1449), extracts the previous run's folder for the
   engine's `--past-dir`, runs the engine as one transient unit, commits the record to the live
   branch every 60 s and at each transition (see above), cuts and verifies the run tag and deletes
   the live branch at the end of every run, and — only when there is something to publish — opens the pull request
   and, gated by `factory/policy.json`'s `publish.self_merge`, merges it. When the target's tip moved
   underneath the run, the boot catches the run up to the new main inline by running
-  `node factory/flock/catchup.mjs --plan <plan> --target <target> --base <run base> --onto <moved tip>
+  `node factory/flock/catchup.mjs --plan <plan> --plan-json <parse> --target <target> --base <run base> --onto <moved tip>
   --run-dir <dir>`, whose last stdout line is JSON: `{"refolded": true, "head", "onto"}` (exit 0) or
   `{"refolded": false, "reason": "conflict" | "red", "onto"}` (exit 1). It joins the run's work onto
   the new main through the weave keeper (`factory/flock/weave.py`) and re-runs the plan's setup,
@@ -345,7 +347,7 @@ evidence repository.
   - engine: `systemd-run --user --unit=fleet-engine-<N> --pipe --wait --collect -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288 -p RuntimeMaxSec=<seconds> -p WorkingDirectory=<target>
     -- env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=<proxy> CLAUDE_CODE_OAUTH_TOKEN=placeholder
     TYPESAFE_BASE_URL=https://typesafe.int.exe.xyz ULTRAPOWERS_FLEET_RUN=<run id> node
-    <engine>/factory/flock/engine.mjs --plan <plan> --target <target> --base <sha> --run-dir <dir>`,
+    <engine>/factory/flock/engine.mjs --plan <plan> --plan-json <parse> --target <target> --base <sha> --run-dir <dir>`,
     stdout+stderr teed to `engine.log`.
     cwd `<target>` — the same working directory the unit's own `WorkingDirectory=` sets.
   **This bullet spelled out the wave engine's own boot script here in detail through 2026-09-21** —
@@ -461,8 +463,8 @@ evidence repository.
   end-of-run row (`event_row`, over `factory/record.mjs row`).
 - **Publish probe (#835, `run_publish_probe` in `factory/boot.sh`, called from `publish()` once
   `MERGED_SHA` is non-empty, before `write_status`):** the plan's `**Publish:**`/`**Verify:**`/
-  `**Rollback:**` header lines are read once through `skills/ultrapowers/scripts/plan_parse.py`
-  (never grepped off the plan text) and handed, one per line, to `factory/record.mjs publish-cmds`;
+  `**Rollback:**` header lines are read off the run's one parse (never grepped off the plan text)
+  by `factory/record.mjs publish-cmds`, one per line;
   a plan naming no `**Publish:**` line, or `factory/policy.json`'s `publish.probe.enabled` false
   (read by `factory/record.mjs publish-policy`, which prints `"<0 or 1> <timeout_seconds>"`), leaves
   the run's `phase` at the plain `"the pull request was merged"` and writes no `publish:*` row and
