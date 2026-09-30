@@ -118,8 +118,9 @@ export function projectBoard (events, { runs } = {}) {
       const what = body.split('\n').slice(0, 3).join(' ').trim().slice(0, 120)
       timeline.push({ eventId: ev.event_id, at: ev.created_at, run, issue, name, what })
       // The Flock's board moves reach kata only as `factory/flock/kata_mirror.mjs`'s comments.
-      const move = /^(claimed|done) by |^(released|reopened): /.exec(body)
-      if (move) task.state = move[1] || move[2]
+      // A release reads `<agent> released: <why>` since #1418; older runs posted `released: <why>`.
+      const move = /^(claimed|done) by |^(released|reopened): |^\S+ (released): /.exec(body)
+      if (move) task.state = move[1] || move[2] || move[3]
       task.lastAt = ev.created_at
       task.last = what
     } else if (ev.type === 'issue.closed') {

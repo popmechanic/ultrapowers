@@ -587,6 +587,11 @@ const HUB_PROJECTS = [{ id: 31, uid: 'P', name: 'popmechanic-ultrapowers' }]
   assert.equal(mod.projectBoard(mirror, { runs: [275] }).tasks[0].state, 'claimed', '(mirror a) a claim comment sets state claimed')
   mirror.push(row(3, 'issue.commented', 'rvxp', 'factory', '2026-09-29T22:42:30.000Z', { body: 'done by A' }))
   assert.equal(mod.projectBoard(mirror, { runs: [275] }).tasks[0].state, 'done', '(mirror b) a done comment sets state done')
+  const released = [mirror[0], mirror[1],
+    row(3, 'issue.commented', 'rvxp', 'factory', '2026-09-29T22:42:30.000Z', { body: 'A released: gave up' })]
+  assert.equal(mod.projectBoard(released, { runs: [275] }).tasks[0].state, 'released', '(mirror c) `<agent> released: <why>` sets state released')
+  released[2] = row(3, 'issue.commented', 'rvxp', 'factory', '2026-09-29T22:42:30.000Z', { body: 'released: gave up' })
+  assert.equal(mod.projectBoard(released, { runs: [275] }).tasks[0].state, 'released', '(mirror d) the older bare `released: <why>` still sets state released')
 }
 
 console.log('ALL TESTS PASSED')

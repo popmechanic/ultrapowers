@@ -90,7 +90,9 @@ event_row() {
 }
 # The failure account: the page, one evidence commit, one push, the run's tag, out — once there is an evidence clone to write from.
 fail() { # $1 = message, $2 = exit code (default 1)
-  ERROR="$1"; log "FAILED: $1"
+  ERROR="$1"
+  # A clone subshell in `prepare` leaves its message to the parent, whose own `fail` logs the one `FAILED:` line.
+  [ -n "${PREPARE_CLONE:-}" ] || log "FAILED: $1"
   if [ -n "${EVIDENCE_READY:-}" ] && [ -z "${FAILING:-}" ]; then
     FAILING=1; collect_evidence; write_status failed "$PHASE"; evidence_commit "$RUN_ID: failed"; record_tags
     # The hub hears the failure too (#1288): `work.state=failed` on the run issue, so the janitor reaps the VM by its ordinary rule.
@@ -137,17 +139,19 @@ read_evidence_repo() {
 # The clone is left AT BASE; the evidence repository is a shallow clone of the run's live branch alone, whose tip on a fresh clone must be the assignment's `plan=` before a model reads a word of the plan.
 # The two clones are independent and run side by side: each is a background subshell whose `fail` logs its own message and
 # exits only that subshell, leaving the message in a file the parent turns into the boot's own `fail` once `wait` reports it.
+# Each trap has its file's path expanded when it is set: under bash 3.2 (macOS) a function's local is gone when an EXIT trap runs.
 prepare() {
   local tpid epid err="$FLEET_HOME/.prepare-error"
   mkdir -p "$FLEET_HOME"; rm -f "$err.target" "$err.evidence"
   (
-    trap '[ -z "$ERROR" ] || printf "%s" "$ERROR" >"$err.target"' EXIT
+    PREPARE_CLONE=1
+    trap '[ -z "$ERROR" ] || printf "%s" "$ERROR" >"'"$err.target"'"' EXIT
     [ -e "$TARGET_DIR/.git" ] || fleet_git clone "https://$GITHUB_INT_HOST/$TARGET_REPO.git" "$TARGET_DIR" || fail "clone: target $TARGET_REPO through $GITHUB_INT_HOST"
     fleet_git -C "$TARGET_DIR" checkout "$BASE_SHA" || fail "checkout: target at $BASE_SHA"
   ) & tpid=$!
   (
-    local landed
-    trap '[ -z "$ERROR" ] || printf "%s" "$ERROR" >"$err.evidence"' EXIT
+    local landed; PREPARE_CLONE=1
+    trap '[ -z "$ERROR" ] || printf "%s" "$ERROR" >"'"$err.evidence"'"' EXIT
     if [ ! -e "$EVIDENCE_DIR/.git" ]; then
       fleet_git clone --depth=1 --single-branch --branch "$LIVE_BRANCH" "https://$GITHUB_INT_HOST/$EVIDENCE_REPO.git" "$EVIDENCE_DIR" \
         || fail "plan: cannot clone $LIVE_BRANCH of $EVIDENCE_REPO through $GITHUB_INT_HOST"
@@ -212,6 +216,11 @@ collect_evidence() {
 }
 evidence_commit() { # $1 = commit subject
   local p n=0 paths=()
+  # The two logs as they stand now, so a line logged after the engine exits reaches this commit.
+  mkdir -p "$EVIDENCE_DIR/$EVIDENCE_REL"
+  for p in fleet-boot.log fleet-setup.log; do
+    if [ -f "$FLEET_HOME/$p" ]; then cp "$FLEET_HOME/$p" "$EVIDENCE_DIR/$EVIDENCE_REL/$p"; fi
+  done
   for p in status.json events.jsonl engine.log fleet-boot.log fleet-setup.log summary.json publish.json publish-deploy.log publish-verify.log publish-rollback.log "${ENGINE_EVIDENCE[@]}"; do
     if [ -f "$EVIDENCE_DIR/$EVIDENCE_REL/$p" ]; then paths+=("$EVIDENCE_REL/$p"); fi
   done

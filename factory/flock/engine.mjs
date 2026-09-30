@@ -52,7 +52,7 @@ const BASE_SHA = need('base')
 if (!/^[0-9a-f]{40}$/.test(BASE_SHA)) { console.error('engine: --base must be a 40-hex sha'); process.exit(2) }
 const RUN_DIR = path.resolve(need('run-dir'))
 // --kata-url / --kata-json / --kata-actor: the boot passes them to either engine. With the first
-// two and a record that reads, each board move is mirrored straight onto the task's issue on the
+// two and a record that reads with an integer project.id and a run.uid, each board move is mirrored straight onto the task's issue on the
 // hub (the record's project.id) as a keyed comment (factory/flock/kata_mirror.mjs), never awaited,
 // never failing the run; each attempt is a `kata:mirror` event row, `ok` only with the hub's
 // comment uid. Otherwise the board is the plain stand-in.
@@ -315,13 +315,18 @@ const kataPending = new Set()
 // the exit still waits at most 3 s for posts in flight, so Kata never holds the publish longer
 const KATA_POST_MS = 10000
 const KATA_EXIT_MS = 3000
+// the posts go to the record's project and are keyed on its run uid: without both, nothing mirrors
+if (kataRecord && !(Number.isInteger(kataRecord.project && kataRecord.project.id) && typeof (kataRecord.run && kataRecord.run.uid) === 'string' && kataRecord.run.uid)) {
+  log('kata record lacks an integer project.id or a run.uid, not mirroring')
+  kataRecord = null
+}
 if (kataRecord) {
   // each request gives up after KATA_POST_MS, so a hung hub costs a post, never the run
   const fetchImpl = (u, init) => fetch(u, { ...init, signal: AbortSignal.timeout(KATA_POST_MS) })
   const kata = makeKataClient({ transport: httpTransport({ url: KATA_URL, fetchImpl }), actor: arg('kata-actor') })
   const track = (q) => { kataPending.add(q); q.finally(() => kataPending.delete(q)) }
   // the record's project.id is the hub's own project id: posts go straight to the hub
-  mirrorBoard(board, { kata, projectId: kataRecord.project && kataRecord.project.id, run: W.name, tasks: (kataRecord && kataRecord.tasks) || {}, onPost: (rec) => ev('kata:mirror', rec), track, runUid: kataRecord.run && kataRecord.run.uid, surfaceAt: POLICY_FLOCK?.surface?.min_confidence ?? 0.8 })
+  mirrorBoard(board, { kata, projectId: kataRecord.project.id, tasks: kataRecord.tasks || {}, onPost: (rec) => ev('kata:mirror', rec), track, runUid: kataRecord.run.uid, surfaceAt: POLICY_FLOCK?.surface?.min_confidence ?? 0.8 })
 }
 
 // ── edit-location errors (gap 3 at scale): an Edit the tool refused, by why ──
@@ -1176,6 +1181,8 @@ const JOIN = { blame: (await weave({ op: 'blame' })).blame || {}, files: (await 
 wp.stdin.end()
 const landed = await land()
 if (kataPending.size) await Promise.race([Promise.all([...kataPending]), new Promise((r) => setTimeout(r, KATA_EXIT_MS).unref())])
+// a post still pending is dropped at exit: say how many, so the record accounts for every post
+if (kataPending.size) ev('kata:mirror', { abandoned: kataPending.size })
 process.exit(landed)
 
 // #1401: under `enforce`, a settled green whose snapshot lost a peer's line (the survival fact,

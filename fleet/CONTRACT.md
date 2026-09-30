@@ -304,11 +304,13 @@ evidence repository.
      sums file and `gh attestation verify` needs a token the sandbox does not hold — then decompressed
      and installed at `/usr/local/bin/celld` mode 0755, never through the vendor's installer script
      and never under `/usr/local/lib/fleet`), and pytest by the image's `uv pip install --system --break-system-packages`, pinned to
-     `pytest==7.4.4` and `pytest-xdist==3.4.0` (exactly the versions noble's packages shipped, no
-     package manager and no index refresh). The node, bun and celld fetch-and-verify jobs run at once,
+     `pytest==7.4.4` and `pytest-xdist==3.4.0` with their dependencies `pluggy==1.4.0`,
+     `packaging==24.0`, `iniconfig==1.1.1` and `execnet==2.0.0` — exactly the versions noble's
+     packages shipped; uv is a package manager and queries PyPI, but with all six pinned it
+     resolves nothing fresh. The node, bun and celld fetch-and-verify jobs run at once,
      each its own background job waited on by its own pid, so any failure still stops the script;
      each step is preceded by a `stamp` line (UTC to the millisecond, `setup: <step>`) in
-     `$HOME/fleet-setup.log`;
+     `$HOME/fleet-setup.log`, and a last `stamp done` follows the unit start;
   3. install the bootstrap at `/usr/local/lib/fleet/bootstrap.sh`, mode 0555, owned by root — outside
      `/home/exedev` and unwritable by the run;
   4. install the user unit TEMPLATE `~/.config/systemd/user/fleet-run@.service`
@@ -388,9 +390,13 @@ evidence repository.
   `--kata-url`, `--kata-json` and `--kata-actor` (the boot does exactly when
   `$FLEET_HOME/plans/<run>.kata.json` exists); it posts to the hub at `https://kata.int.exe.xyz`,
   reading the project id from that record. Each board move becomes one comment on its task's issue, posted after the move has
-  completed: `claimed by <agent>`, `released: <why>`, `reopened: <why>` and `done by <agent>` (a
+  completed: `claimed by <agent>`, `<agent> released: <why>` (the engine's own release reason,
+  e.g. `A released: gave up`), `reopened: <why>` and `done by <agent>` (a
   release made on the way to a reopen posts only the `reopened:` body). Every attempted post is
-  one `kata:mirror` event row in `events.jsonl` naming the task, the body and whether it landed; a
+  one `kata:mirror` event row in `events.jsonl` naming the task, the body, `key` (the
+  `Idempotency-Key` sent), `ok` (true only when the hub answered with a comment uid),
+  `comment_uid` and `created_at`; the key is `<run uid>:task:<id>:<n>` (`n` counting that task's
+  posts from 1) or `<run uid>:run:<n>` on the run issue, `<run uid>` being the record's `run.uid`. A
   task the record names no issue for posts nothing and its row says it was skipped. Posts are
   fire-and-forget: none is awaited, so a slow, failing or absent Kata never delays or fails the
   run — a failed post is that row and nothing else. One task's posts go out one after another,
