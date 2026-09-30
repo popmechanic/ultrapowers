@@ -8,7 +8,7 @@ This exam never imports the module under test — it is a script invoked as
 assertion below runs it as a subprocess and reads stdout/stderr/the exit
 code, exactly as `factory/engine.mjs` would.
 
-Every assertion is tagged with the Machine clause (M1-M6) it proves.
+Every assertion is tagged with the Machine clause (M1-M5) it proves.
 """
 import json
 import subprocess
@@ -21,18 +21,12 @@ ROOT = Path(__file__).resolve().parents[1]
 PARSER = ROOT / "skills/ultrapowers/scripts/plan_parse.py"
 
 # The three claims-v1 fixtures that carry a `.gate-verdicts.json` record
-# beside them — the old compiler's oracle set for M6.
+# beside them — parsed with and without it by M1.
 RECORD_FIXTURES = [
     ROOT / "evals/fixtures/claims/plan.md",
     ROOT / "tests/fixtures/plans/2026-09-01-511-attempt-racing.md",
     ROOT / "tests/fixtures/plans/2026-09-02-papercut-drain-2.md",
 ]
-
-# The six claims-v1 fixtures under tests/fixtures/plans/ that carry NO
-# verdict record — the old compiler refuses every one of them on that
-# ground alone.
-RECORDLESS_FIXTURES = sorted(
-    (ROOT / "tests/fixtures/plans/2026-09-07").glob("*.md"))
 
 # Every field a task object prints (M1): a `- Test:`/`- Guard:` bullet or an
 # `**Exam command:**` header adds no field here -- cut three (2026-09-22)
@@ -509,30 +503,6 @@ def test_m5_refusal_cycle_names_both_tasks(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# M6 — a plan with no verdict record still parses (the old compiler, gone at cut B, refused it). #
-# --------------------------------------------------------------------------- #
-
-@pytest.mark.parametrize("plan_path", RECORDLESS_FIXTURES, ids=lambda p: p.stem)
-def test_m6_parser_succeeds_without_a_verdict_record(plan_path):
-    parser_proc = run_parser(plan_path)
-    assert parser_proc.returncode == 0, parser_proc.stdout + parser_proc.stderr  # [M6]
-    parser_obj = parse_stdout_json(parser_proc.stdout)
-    assert len(parser_obj["launch_waves"]) > 0  # [M6]
-
-
-def test_m6_fixture_inventory_sanity():
-    """Guards the two oracle sets this file's M6 tests depend on: three
-    fixtures with a verdict record, six under tests/fixtures/plans/2026-09-07
-    without one -- so a drift in the fixture tree fails loudly here instead
-    of silently shrinking the M6 coverage above."""
-    assert len(RECORD_FIXTURES) == 3
-    assert all(p.exists() for p in RECORD_FIXTURES)
-    assert len(RECORDLESS_FIXTURES) == 6
-    for p in RECORDLESS_FIXTURES:
-        assert not p.with_name(p.stem + ".gate-verdicts.json").exists()
-
-
-# --------------------------------------------------------------------------- #
 # guard-M3 -- any argv that is not exactly one `<plan.md>` prints the usage   #
 #             line on stderr and exits 2 -- an unrecognized flag such as     #
 #             `--unguarded` included, since the parser reads none such any   #
@@ -579,7 +549,7 @@ def test_interface_edge_and_launch_waves(tmp_path):
 # checks, its bootstrap, and its test commands one by one".                  #
 #                                                                             #
 # This task's own Machine clauses are M1-M3, colliding by number with the    #
-# grammar-parser's M1-M6 tags used at the top of this file -- its legs are   #
+# grammar-parser's M1-M5 tags used at the top of this file -- its legs are   #
 # tagged cmds-M1, cmds-M2, cmds-M3 to stay unambiguous, mirroring            #
 # guard-M*.                                                      #
 #                                                                             #
