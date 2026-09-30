@@ -1,6 +1,7 @@
 // The plan reader: turns a signed plan into the Flock's workload, reading it
 // through the same parser the sandbox uses (skills/ultrapowers/scripts/plan_parse.py).
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -38,13 +39,20 @@ function storiesWorkload (parsed, planPath) {
   };
 }
 
-export function workloadFromPlan(planPath) {
+// The parser's JSON: the run's one parse when the boot wrote it (`planJson`, #1449), else
+// plan_parse.py over `planPath` (a hand run or a sim).
+export function parsedPlan(planPath, planJson) {
+  if (planJson) return JSON.parse(readFileSync(planJson, 'utf8'));
   const r = spawnSync('python3', [PARSER, planPath], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   if (r.error) throw r.error;
   if (r.status !== 0) {
     throw new Error(`plan_parse.py exited ${r.status} on ${planPath}: ${r.stderr}`);
   }
-  const parsed = JSON.parse(r.stdout);
+  return JSON.parse(r.stdout);
+}
+
+export function workloadFromPlan(planPath, planJson) {
+  const parsed = parsedPlan(planPath, planJson);
   if (parsed.grammar === 'stories-v1') return storiesWorkload(parsed, planPath);
   const edges = parsed.dag_edges || [];
 

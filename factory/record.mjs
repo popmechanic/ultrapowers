@@ -19,13 +19,9 @@
  * Python heredoc, moved to the language already in the loop.
  */
 
-import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { readEventRows } from './flock/io.mjs'
-
-const PLAN_PARSER = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'ultrapowers', 'scripts', 'plan_parse.py')
+import { parsedPlan } from './flock/plan.mjs'
 
 /** A `key=value` token split at its FIRST `=`; a token with no `=` is the
  *  whole token as the key and an empty string as the value. */
@@ -181,15 +177,13 @@ function cellText (value) {
   return JSON.stringify(value)
 }
 
-/** The plan's probes, per task in plan order, through the parser the sandbox
- *  runs: `{id, probes: [{cmd, proves}]}`. A stories-v1 task's probes are its
- *  checker calls. A plan the parser refuses gives `null`, and the receipt then
- *  shows exits without probe text. */
-function planProbes (planPath) {
-  const r = spawnSync('python3', [PLAN_PARSER, planPath], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
-  if (r.error || r.status !== 0) return null
+/** The plan's probes, per task in plan order, off the run's one parse (or the
+ *  parser the sandbox runs, with none): `{id, probes: [{cmd, proves}]}`. A
+ *  stories-v1 task's probes are its checker calls. A plan the parser refuses
+ *  gives `null`, and the receipt then shows exits without probe text. */
+function planProbes (planPath, planJson) {
   let parsed
-  try { parsed = JSON.parse(r.stdout) } catch { return null }
+  try { parsed = parsedPlan(planPath, planJson) } catch { return null }
   return (parsed.tasks || []).map((t) => ({
     id: String(t.id),
     probes: parsed.grammar === 'stories-v1'
@@ -222,12 +216,12 @@ const probeCell = (cmd) => '`' + receiptCell(cmd.length > 60 ? cmd.slice(0, 59) 
 /** `### Receipt` — one row per probe the plan named, with the exit it got on the
  *  settled snapshot, then the run-wide checks' exit and the `**Evidence:**` link
  *  when one was given. No edge row gives no receipt, only the link. */
-function receiptLines (planPath, rows, evidenceUrl) {
+function receiptLines (planPath, planJson, rows, evidenceUrl) {
   const out = []
   const edge = receiptEdge(rows)
   if (edge) {
     const perTask = edge.perTask || {}
-    const tasks = planProbes(planPath) ||
+    const tasks = planProbes(planPath, planJson) ||
       Object.keys(perTask).map((id) => ({ id, probes: perTask[id].map(() => ({ cmd: '—', proves: '—' })) }))
     out.push('### Receipt', '', '| task | probe | proves | exit |', '|---|---|---|---|')
     for (const t of tasks) {
@@ -303,15 +297,15 @@ function provenanceLines (provenancePath) {
     `${changed} changed lines from ${tasks} tasks; exceptions: ${kinds.contested} contested, ${kinds.lost} lost, ${kinds.ordered} ordered, ${kinds.foreign} foreign.`]
 }
 
-/** `pr-body <plan.md> --events <file> [--evidence <url>] [--provenance <file>]` — the paragraph, an
+/** `pr-body <plan.md> [--plan-json <parse>] --events <file> [--evidence <url>] [--provenance <file>]` — the paragraph, an
  *  empty line, the receipt, an empty line, the closes; every line, including
  *  the two empty ones, ends in a newline. The provenance section follows the receipt,
  *  a draft's reason follows that, and when any `jev:step` row exists, its table follows that. */
-export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath) {
+export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath, planJson) {
   const planText = readFileSync(planPath, 'utf8')
   const summary = planSummaryLines(planText)
   const events = eventsPath ? readEventRows(eventsPath) : []
-  const rows = receiptLines(planPath, events, evidenceUrl)
+  const rows = receiptLines(planPath, planJson, events, evidenceUrl)
   const closes = planClosesLines(planText)
   let out = ''
   for (const line of summary) out += line + '\n'
@@ -523,8 +517,9 @@ export function main (argv) {
       const { rest, eventsPath } = extractEvents(args.slice(2))
       const at = rest.indexOf('--evidence')
       const pv = rest.indexOf('--provenance')
+      const pj = rest.indexOf('--plan-json')
       process.stdout.write(renderPrBody(planPath, eventsPath, at >= 0 ? rest[at + 1] : undefined,
-        pv >= 0 ? rest[pv + 1] : undefined))
+        pv >= 0 ? rest[pv + 1] : undefined, pj >= 0 ? rest[pj + 1] : undefined))
       return 0
     }
     case 'policy': {
