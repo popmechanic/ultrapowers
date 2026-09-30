@@ -6,30 +6,22 @@
 // on top of --onto, which must pass the plan's setup, every task's facts and the run-wide check.
 // Last stdout line: {"refolded": true, "head", "onto"} (exit 0) or {"refolded": false, "reason":
 // "conflict" | "red", "onto"} (exit 1). A conflict or a red leaves the run's own commit at HEAD.
-import { spawn, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import readline from 'node:readline'
-import { fileURLToPath } from 'node:url'
 import { workloadFromPlan } from './plan.mjs'
 import { remapProvenance } from './provenance.mjs'
+import { gitIn, utf8, writeFiles, startWeave } from './io.mjs'
 
-const HERE = path.dirname(fileURLToPath(import.meta.url))
 const arg = (k) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : undefined }
 const PLAN = arg('--plan'), T = arg('--target'), BASE = arg('--base'), ONTO = arg('--onto'), RUN_DIR = arg('--run-dir')
 if (!PLAN || !T || !BASE || !ONTO) { console.log(JSON.stringify({ refolded: false, reason: 'usage', onto: ONTO ?? null })); process.exit(2) }
 
-const git = (args, opts = {}) => {
-  const r = spawnSync('git', ['-c', 'user.name=flock', '-c', 'user.email=flock@ultrapowers.invalid', ...args],
-    { cwd: T, maxBuffer: 256 * 1024 * 1024, ...opts })
-  if (r.status !== 0 && !opts.ok) throw new Error(`git ${args.join(' ')}: ${r.stderr}`)
-  return r
-}
-const out = (args) => git(args, { encoding: 'utf8' }).stdout.trim()
+const git = (args, opts) => gitIn(T, args, { identity: true, ...opts })
+const out = (args) => git(args).stdout.trim()
 // A path's bytes at a rev, or null when the path is absent there.
-const blob = (rev, p) => { const r = git(['cat-file', 'blob', `${rev}:${p}`], { ok: true }); return r.status === 0 ? r.stdout : null }
-const utf8 = (buf) => { if (buf === null) return null; try { return new TextDecoder('utf-8', { fatal: true }).decode(buf) } catch { return undefined } }
+const blob = (rev, p) => { const r = git(['cat-file', 'blob', `${rev}:${p}`], { ok: true, encoding: 'buffer' }); return r.status === 0 ? r.stdout : null }
 const finish = (o, code) => { console.log(JSON.stringify({ ...o, onto: ONTO })); process.exit(code) }
 
 const runSha = out(['rev-parse', 'HEAD'])
@@ -52,19 +44,15 @@ if (both.length) {
   for (const p of both) {
     const b = utf8(blob(BASE, p)), r = utf8(blob(runSha, p)), m = utf8(blob(ONTO, p))
     if (b === undefined || r === undefined || m === undefined) finish({ refolded: false, reason: 'conflict' }, 1)
-    if (b !== null) { fs.mkdirSync(path.dirname(path.join(tmp, p)), { recursive: true }); fs.writeFileSync(path.join(tmp, p), b) }
     texts.push({ p, b, r, m })
   }
-  const wp = spawn('python3', [path.join(HERE, 'weave.py')], { stdio: ['pipe', 'pipe', 'inherit'] })
-  const lines = readline.createInterface({ input: wp.stdout })[Symbol.asyncIterator]()
+  const keeper = startWeave()
   const ask = async (req) => {
-    wp.stdin.write(JSON.stringify(req) + '\n')
-    const { value, done } = await lines.next()
-    if (done) throw new Error('weave keeper exited')
-    const res = JSON.parse(value)
+    const res = await keeper.send(req)
     if (!res.ok) throw new Error(`weave ${req.op}: ${res.error}`)
     return res
   }
+  writeFiles(tmp, texts.filter((t) => t.b !== null).map((t) => [t.p, t.b]))
   await ask({ op: 'base', root: tmp, paths: texts.filter((t) => t.b !== null).map((t) => t.p) })
   for (const t of texts) {
     await ask({ op: 'rewrite', agent: 'run', path: t.p, content: t.r })
@@ -73,7 +61,7 @@ if (both.length) {
   await ask({ op: 'publish', agent: 'run' })
   await ask({ op: 'publish', agent: 'main' })
   const j = await ask({ op: 'merged', order: ['main', 'run'] })
-  wp.stdin.end()
+  keeper.end()
   fs.rmSync(tmp, { recursive: true, force: true })
   if ((j.conflicts || []).length) finish({ refolded: false, reason: 'conflict' }, 1)
   for (const t of texts) {
@@ -84,12 +72,7 @@ if (both.length) {
 
 // The join is clean: one commit on --onto, then every exam of the plan with ULTRA_BASE = --onto.
 git(['reset', '-q', '--hard', ONTO])
-for (const [p, buf] of result) {
-  const f = path.join(T, p)
-  if (buf === null) { fs.rmSync(f, { force: true }); continue }
-  fs.mkdirSync(path.dirname(f), { recursive: true })
-  fs.writeFileSync(f, buf)
-}
+writeFiles(T, result)
 git(['add', '-A'])
 git(['commit', '-q', '--allow-empty', '-m', `catch up onto ${ONTO.slice(0, 12)}`])
 const head = out(['rev-parse', 'HEAD'])
