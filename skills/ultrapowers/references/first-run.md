@@ -96,8 +96,8 @@ Two things a newcomer would not know:
 The Claude subscription reaches a sandbox as an exe.dev integration named
 `claude-max`: an http-proxy whose bearer is injected at the network edge. The
 VM never holds the token, never sees it, and cannot read it back. This row is
-`ok` when the object carries the bearer header; whether it is on the fleet's
-policy is the `integrations` row's question.
+`ok` when the object carries the bearer header; whether it is attached to
+`tag:fleet` is the `integrations` row's question.
 
 **In a browser:** claude.ai shows a consent page and then a code. Approve, and
 copy the code.
@@ -127,11 +127,10 @@ Three things this command hides:
   and any `integrations edit claude-max` should pass `--bearer=-` again in the
   same command; read the result from `integrations list --json`, never from a
   request made seconds after the edit.
-- **`claude-max` reaches a run by the policy `tag:fleet`.** That is the
+- **`claude-max` reaches a run by its attachment `tag:fleet`.** That is the
   `integrations` row's check, not this one's: since 2026-09-11 exe.dev refuses
   `new --integration`, so the one way a credential reaches a fleet VM is the
-  attachment policy on the object, and every fleet VM is created with that
-  tag. The doctor's detail
+  object's tag attachment, and every fleet VM is created with that tag. The doctor's detail
   carries `claude-token`'s own status line too — a laptop with no refresh token
   in its keychain is a warning inside a green row, because the bearer already
   lives at the edge and only the next refresh needs the keychain.
@@ -231,36 +230,32 @@ Three things a newcomer would not know:
 
 An exe.dev integration is a credential injected at the network edge: the VM
 sends an ordinary request to a `*.int.exe.xyz` host and the platform attaches
-the secret on the way out. Each integration carries one complete attachment
-policy — an expression over VM names and tags — and a VM that matches it is
-granted the credential. This row checks that every integration a run needs is
-on the fleet's policy, `tag:fleet`: `claude-max`, and one GitHub object per
+the secret on the way out. Each integration is attached to VMs or tags, and a VM
+that matches an attachment is granted the credential. This row checks that every
+integration a run needs is attached to the fleet's tag, `tag:fleet`: `claude-max`, and one GitHub object per
 repository you drive, `gh-<owner>-<repo>`. A fleet VM is created with that tag,
 and that is the whole grant.
 
 **In a browser:** nothing.
 
 **The agent runs** this for each repository you drive, which creates the object
-on the policy, or reads an existing object's policy and replaces it only when
-it is not `tag:fleet`:
+attached to `tag:fleet`, or attaches an existing one that is not:
 
 ```bash
 node <plugin-root>/fleet/target.mjs <owner>/<repo>
 ```
 
-and, for any other object the doctor names as off the policy, the two-step it
-prints — the read first, because the write must echo the revision it answered:
+and, for any other object the doctor names as not attached, the fix it prints:
 
 ```bash
-ssh exe.dev "integrations policy get <name> --json"
-ssh exe.dev "integrations policy set <name> 'tag:fleet' --permanent --if-revision=<revision>"
+ssh exe.dev "integrations attach <name> tag:fleet"
 ```
 
 `target.mjs` is one call underneath for a fresh object:
 
 ```bash
 ssh exe.dev "integrations add github --name gh-<owner>-<repo> \
-  --repository <owner>/<repo> --act-as-user --policy 'tag:fleet'"
+  --repository <owner>/<repo> --act-as-user --attach tag:fleet"
 ```
 
 The doctor only asks about a target's object when you pass
@@ -268,14 +263,11 @@ The doctor only asks about a target's object when you pass
 
 Three things this command hides:
 
-- **The policy is the only grant.** Since 2026-09-11 exe.dev refuses
-  `new --integration`, `integrations attach` and `integrations detach` — one
-  singular policy per integration, replaced whole and revision-checked — so
-  nothing is attached per VM, and the launcher's `new` names no integration.
-  `--if-revision` takes the `revision` the get printed; `--permanent` because
-  an older object's grants may carry mixed expiries, which the set otherwise
-  refuses to inherit. The policy is live: it reaches VMs already running with
-  the tag, and leaves them when it changes.
+- **The tag attachment is the only grant.** Since 2026-09-11 exe.dev refuses
+  `new --integration`, so nothing is attached per VM and the launcher's `new`
+  names no integration. (exe.dev's short-lived attachment-policy model was
+  rolled back; `integrations` has no `policy` verb, #1434.) The attachment is
+  live: it reaches VMs already running with the tag.
 - **Never two GitHub integrations naming one repository on one VM.** exe.dev's
   GitHub edge routes by repo path and documents no tie-break between them
   (measured 2026-09-03), so the sandbox refuses to boot into that.
@@ -301,16 +293,16 @@ in order and stops at the first one still to do, naming its fix:
    gh repo create <owner>/<repo> --private
    ```
 
-3. **Its integration is on the policy.** The evidence repository is reached
-   from a fleet VM the way every repository is: through its own exe.dev
-   integration `gh-<owner>-<repo>`, carrying the policy `tag:fleet`. Fix:
+3. **Its integration is attached to `tag:fleet`.** The evidence repository is
+   reached from a fleet VM the way every repository is: through its own exe.dev
+   integration `gh-<owner>-<repo>`, attached to `tag:fleet`. Fix:
 
    ```bash
    node <plugin-root>/fleet/target.mjs <owner>/<repo>
    ```
 
-   An object that exists off the policy gets the get/set two-step the doctor
-   prints, as in `## integrations`.
+   An object that exists but is not attached gets `integrations attach <name>
+   tag:fleet`, as in `## integrations`.
 
 **In a browser:** nothing, unless `gh` is not signed in on this laptop
 (`gh auth login`).
@@ -372,7 +364,7 @@ integration named `kata` and which the laptop reaches over ssh. It is not part
 of any run. Its HTTPS front door is the daemon's port and nothing else: exe.dev
 fronts exactly one port per VM (`share port`), so any second browser service — the
 Viz page, for one — lives on a VM of its own. This row is `ok` when the `kata` integration carries a bearer at the
-edge, its attachment policy is `tag:fleet`, and `ls kata-hub --json` answers a
+edge, it is attached to `tag:fleet`, and `ls kata-hub --json` answers a
 `kata-hub` row; the detail says which of the three is missing.
 
 **In a browser:** nothing.
@@ -389,7 +381,7 @@ It creates the VM with its first-boot setup script, pins the daemon's port with
 on stdin:
 
 ```bash
-printf '%s' "$KATA_TOKEN" | ssh exe.dev "integrations add http-proxy --name kata --target <https_url> --peer --bearer - --comment 'kata issue daemon on kata-hub' --policy 'tag:fleet'"
+printf '%s' "$KATA_TOKEN" | ssh exe.dev "integrations add http-proxy --name kata --target <https_url> --peer --bearer - --comment 'kata issue daemon on kata-hub' --attach tag:fleet"
 ```
 
 It then waits for first boot, delivers the daemon's config and env over ssh,
@@ -410,7 +402,7 @@ Five things a newcomer would not know:
   wave's sandboxes are subtracted from, so the `capacity` row counts it.
 - **Never `cp` the hub, or any fleet VM, without `--copy-tags=false`.**
   `cp --copy-tags` is on by default, so a copy of a fleet VM inherits
-  `tag:fleet` and is granted every credential the policy grants; a copy of the
+  `tag:fleet` and is granted every credential the tag grants; a copy of the
   hub inherits its comment and its daemon.
 - **The bearer has exactly two homes.** `/etc/kata/kata.env` on the hub
   (`root:exedev`, mode 0640, delivered over ssh after first boot and never in
@@ -419,13 +411,11 @@ Five things a newcomer would not know:
   `https://kata.int.exe.xyz/<path>`. Rotation is one
   `integrations edit kata --bearer=-` with a fresh token on stdin, followed by
   the same token delivered to the hub's env file.
-- **A wrong policy is repaired with two commands, never an attach.** exe.dev
-  refuses `integrations attach` outright; the fix the doctor prints is the read
-  and then the write under the revision it answered:
+- **A missing attachment is repaired with one command**, the fix the doctor
+  prints:
 
 ```bash
-ssh exe.dev "integrations policy get kata --json"
-ssh exe.dev "integrations policy set kata 'tag:fleet' --permanent --if-revision=<revision>"
+ssh exe.dev "integrations attach kata tag:fleet"
 ```
 
 ## cloudflare

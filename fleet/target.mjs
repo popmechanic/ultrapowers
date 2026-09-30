@@ -6,31 +6,25 @@
  *   node fleet/target.mjs list
  *   node fleet/target.mjs gc
  *
- * Per target, exactly ONE object, created once, on the policy `tag:fleet`:
+ * Per target, exactly ONE object, created once, attached to `tag:fleet`:
  *
- *   gh-<owner>-<repo>   --act-as-user   --policy 'tag:fleet'
+ *   gh-<owner>-<repo>   --act-as-user   --attach tag:fleet
  *
- * Every GitHub integration rides `tag:fleet` by policy: since 2026-09-11 exe.dev
- * refuses `new --integration` and `integrations attach` ("cannot safely rewrite
- * a singular attachment policy"), so the one way a credential reaches a fleet
- * VM is the complete attachment policy on the integration itself, and the
- * launcher's `--tag fleet` is the grant. The sandbox clones, pushes and opens
- * the PR through it; the human gate is the PR itself. There is no read-only
- * twin and no write grant, because of two facts measured 2026-09-03: exe.dev's
- * GitHub edge routes each request by repo path and serves a cached installation
- * token for 30–60 s after an integration is edited (a `gh pr create` twenty
- * seconds after a swap produced a bot-authored PR), and two integrations naming
- * one repo on one VM have no documented tie-break. One object per repo makes
- * both faults inexpressible — two targets' objects on one VM name two repos,
- * which the edge routes apart by path.
+ * A credential reaches a fleet VM by its integration's attachment `tag:fleet`,
+ * and the launcher's `--tag fleet` is the grant (the policy model exe.dev tried
+ * on 2026-09-11 was rolled back; `integrations` has no `policy` verb, #1434).
+ * The sandbox clones, pushes and opens the PR through it; the human gate is the
+ * PR itself. There is no read-only twin and no write grant, because of two facts
+ * measured 2026-09-03: exe.dev's GitHub edge routes each request by repo path
+ * and serves a cached installation token for 30–60 s after an integration is
+ * edited (a `gh pr create` twenty seconds after a swap produced a bot-authored
+ * PR), and two integrations naming one repo on one VM have no documented
+ * tie-break. One object per repo makes both faults inexpressible — two targets'
+ * objects on one VM name two repos, which the edge routes apart by path.
  *
  * Creating is idempotent: an object that exists is left exactly as it is and
- * reported as `skipped`, and then its policy is read (`integrations policy get
- * <name> --json`) and, when its selector is not `tag:fleet`, replaced —
- * `integrations policy set <name> 'tag:fleet' --permanent
- * --if-revision=<revision>`, the revision the read just answered, so a policy
- * something else changed in between is refused by the lobby rather than
- * overwritten. `gc` reports and never deletes — it names integration
+ * reported as `skipped`, and attached to `tag:fleet` when the listing shows it
+ * is not. `gc` reports and never deletes — it names integration
  * objects whose repository `gh repo view` can no longer see, and leaves the
  * decision to the operator, because a repo that is merely private to another
  * account looks identical to one that is gone.
@@ -49,7 +43,6 @@ import {
   listIntegrations,
   lobby,
   parseArgs,
-  parsePolicy,
   runCli
 } from './lobby.mjs'
 
@@ -59,52 +52,24 @@ export const USAGE = `usage: node fleet/target.mjs <owner>/<repo>
 
 export const usage = () => USAGE
 
-/** The one `integrations add` line, verbatim, for a target. No `--attach`, no `--readonly`;
- *  the complete policy at creation, so a fresh object never needs a second write. */
+/** The one `integrations add` line, verbatim, for a target: attached at creation,
+ *  so a fresh object never needs a second write. No `--readonly`. */
 const addCommand = (target) =>
-  `integrations add github --name ${githubIntegrationFor(target)} --repository ${target} --act-as-user --policy '${FLEET_POLICY}'`
-
-/** The same creation on the attach-model lobby, and the attach verb for an existing object. */
-const addCommandAttach = (target) =>
   `integrations add github --name ${githubIntegrationFor(target)} --repository ${target} --act-as-user --attach ${FLEET_POLICY}`
 const attachCommand = (name) => `integrations attach ${name} ${FLEET_POLICY}`
-
-/** The read and the write that bring an existing object onto the policy. */
-const policyGetCommand = (name) => `integrations policy get ${name} --json`
-const policySetCommand = (name, revision) =>
-  `integrations policy set ${name} '${FLEET_POLICY}' --permanent --if-revision=${revision}`
 
 /** Is this one of the per-target objects? `gh-<slug>`. */
 const isTargetIntegration = (name) => /^gh-.+/.test(name)
 
-/** Read the object's policy and, unless it already is `tag:fleet`, replace it
- *  under the revision the read answered. Answers `kept` or `set`. */
-async function ensurePolicy ({ exec, name, rows = null }) {
-  // The listing answers first: it is served by both lobby models (the policy
-  // model exe.dev shipped 2026-09-11 and rolled back the same afternoon), and an
-  // attachment `tag:fleet` there is the grant whichever verb wrote it.
+/** Attach the object to `tag:fleet` unless the listing already shows it there.
+ *  Answers `kept` or `set`. */
+async function ensureAttached ({ exec, name, rows = null }) {
   const listed = rows ?? await listIntegrations(exec)
   const row = listed.find((r) => r.name === name)
   if (row && row.attachments.some((a) => a.kind === 'tag' && a.value === 'fleet')) {
     return { policy: 'kept', command: null }
   }
-  let res
-  try {
-    res = await lobby(exec, policyGetCommand(name))
-  } catch (error) {
-    // No `policy` subcommand: the lobby is on the attach model — attach by tag.
-    const command = attachCommand(name)
-    await lobby(exec, command)
-    return { policy: 'set', command }
-  }
-  // The write is conditional on the revision the read answered, so a read
-  // with no revision is refused rather than written blind.
-  const policy = parsePolicy(res.stdout)
-  if (policy === null || policy.revision === null) {
-    throw new LobbyError(`exe.dev integrations policy get ${name} --json answered no policy and revision:\n${res.stdout}`)
-  }
-  if (policy.selector === FLEET_POLICY) return { policy: 'kept', command: null }
-  const command = policySetCommand(name, policy.revision)
+  const command = attachCommand(name)
   await lobby(exec, command)
   return { policy: 'set', command }
 }
@@ -114,17 +79,11 @@ async function add ({ exec, target }) {
   const rows = await listIntegrations(exec)
   const existing = new Set(rows.map((row) => row.name))
   if (existing.has(name)) {
-    const ensured = await ensurePolicy({ exec, name, rows })
+    const ensured = await ensureAttached({ exec, name, rows })
     return { verb: 'add', target, results: [{ name, action: 'skipped', command: ensured.command, policy: ensured.policy }] }
   }
-  let command = addCommand(target)
-  try {
-    await lobby(exec, command)
-  } catch (error) {
-    // The attach-model lobby knows no `--policy`: create with `--attach tag:fleet`.
-    command = addCommandAttach(target)
-    await lobby(exec, command)
-  }
+  const command = addCommand(target)
+  await lobby(exec, command)
   return { verb: 'add', target, results: [{ name, action: 'created', command, policy: 'set' }] }
 }
 
@@ -178,7 +137,7 @@ const attachedTo = (attachments) =>
 
 const renderTarget = (result) => {
   if (result.verb === 'add') {
-    return result.results.map((r) => `${r.action} ${r.name} (policy ${FLEET_POLICY} ${r.policy})`).join('\n')
+    return result.results.map((r) => `${r.action} ${r.name} (attached ${FLEET_POLICY} ${r.policy})`).join('\n')
   }
   if (result.verb === 'list') {
     if (result.results.length === 0) return 'no target integrations'

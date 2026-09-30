@@ -33,7 +33,7 @@
  * over a stub `exec(cmd, argv)` keyed on the call's command and argv (joined
  * by spaces) for every other read `doctor()` issues (its `ssh exe.dev
  * <remote>` reads, read straight off `fleet/doctor.mjs`'s own `READS` and
- * `policyRead`/`policyNames`), answering `integrations list --json` with a
+ * the listing), answering `integrations list --json` with a
  * `claude-max` entry that carries the bearer (so the `claude` row's `status`
  * is `ok` before this read exists) and everything unmatched — including every
  * `help <verb>` read `verb-drift` issues — with `{ code: 1, stdout: '' }`.
@@ -80,8 +80,6 @@ const KNOWN = new Map([
   [lobbyKey('billing plan --json'), { code: 1, stdout: '' }],
   [lobbyKey('integrations list --json'), { code: 0, stdout: LIST_STDOUT }],
   [lobbyKey('integrations setup github --list'), { code: 1, stdout: '' }],
-  [lobbyKey('integrations policy get claude-max --json'), { code: 1, stdout: '' }],
-  [lobbyKey('integrations policy get kata --json'), { code: 1, stdout: '' }],
   [lobbyKey('ls kata-hub --json'), { code: 1, stdout: '' }]
 ])
 

@@ -182,7 +182,7 @@ export const runOfEvidenceRef = (target, ref) => {
 
 export const EXE_HOST = 'exe.dev'
 export const FLEET_TAG = 'fleet'
-/** The attachment policy every fleet integration carries: the tag a fleet VM is created with. */
+/** The attachment every fleet integration carries (`integrations attach <name> tag:fleet`): the tag a fleet VM is created with. */
 export const FLEET_POLICY = `tag:${FLEET_TAG}`
 /** The http-proxy integration that carries the Claude bearer at the edge. */
 export const CLAUDE_INTEGRATION = 'claude-max'
@@ -616,27 +616,6 @@ export async function highestRunInEvidence (exec, repoDir, evidenceRepo, target)
     if (run !== null && run > best) best = run
   }
   return best
-}
-
-// ── Integration policy ──────────────────────────────────────────────────────
-
-/**
- * `integrations policy get <name> --json` → `{ selector, revision }`, read
- * defensively: the selector is `policy.selector`, or `policy.wire` when a
- * listing spells it that way alone; `revision` is the top-level string. Either
- * field is null when absent; the whole answer is null when the stdout is not
- * JSON or carries neither. A caller that writes under `--if-revision` refuses
- * a null `revision` itself.
- */
-export function parsePolicy (stdout) {
-  let parsed
-  try { parsed = JSON.parse(String(stdout ?? '')) } catch { return null }
-  const policy = parsed?.policy
-  const selector = typeof policy?.selector === 'string' ? policy.selector
-    : typeof policy?.wire === 'string' ? policy.wire : null
-  const revision = typeof parsed?.revision === 'string' ? parsed.revision : null
-  if (selector === null && revision === null) return null
-  return { selector, revision }
 }
 
 // ── The plan's capacity ─────────────────────────────────────────────────────

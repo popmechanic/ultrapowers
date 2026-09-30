@@ -19,9 +19,8 @@ and `gate-verdicts.json`, its message naming the target and base sha.
 Then it issues one lobby verb, `new`, which creates a fresh VM named
 `fleet-r<N>-<yymmddHHMM>-<4 hex>` with `--tag fleet`, the assignment as its
 comment, and the generated setup script on stdin. The tag is what grants the
-run its credentials: every fleet integration carries the attachment policy
-`tag:fleet`, and `new` names no integration — exe.dev refuses `--integration`
-since 2026-09-11.
+run its credentials: every fleet integration is attached to `tag:fleet`, and
+`new` names no integration — exe.dev refuses `--integration` since 2026-09-11.
 
 The setup script writes the evidence repository to `$HOME/fleet-evidence-repo`
 (the boot reads it there and fails without it), installs the toolchain, the immutable bootstrap at
@@ -140,8 +139,8 @@ installs the current token if ninety minutes or more remain or exits without
 launching if less; `status` shows the expiry.
 
 Rotate the token with `integrations edit claude-max --bearer=-` and a fresh
-token on stdin. `claude-max` reaches a run's VM by its attachment policy,
-`tag:fleet`, which the `integrations` row below checks.
+token on stdin. `claude-max` reaches a run's VM by its attachment `tag:fleet`,
+which the `integrations` row below checks.
 
 **4. `github` — the account link.** `ssh exe.dev "integrations setup github
 --list"` prints the GitHub accounts this exe.dev account has linked. No account
@@ -158,37 +157,30 @@ you, and `prAuthor` on the status page says which one you got. On an exe.dev
 TEAM account `--act-as-user` is unavailable, so the GitHub integration must stay
 personal.
 
-**5. `integrations` — one object per target, every object on the policy.** A
-credential reaches a fleet VM by the attachment policy on its integration and by
-nothing else: since 2026-09-11 exe.dev refuses `new --integration` and
-`integrations attach`/`detach` ("cannot safely rewrite a singular attachment
-policy"), so `claude-max` and the target's object each carry the
-complete policy `tag:fleet`, and `new --tag fleet` is the grant. The row reads
-each one's policy and is red for the first whose selector is anything else.
+**5. `integrations` — one object per target, every object on `tag:fleet`.** A
+credential reaches a fleet VM by its integration's attachment `tag:fleet` and by
+nothing else (`new --integration` is refused since 2026-09-11; exe.dev's
+short-lived attachment-policy model was rolled back, and `integrations` has no
+`policy` verb, #1434), so `claude-max` and the target's object are each attached
+to `tag:fleet`, and `new --tag fleet` is the grant. The row reads the listing and
+is red for the first object not attached there.
 
 ```bash
 node fleet/target.mjs <owner>/<repo>
 ```
 
-which runs, once, creating the object on the policy:
+which runs, once, creating the object attached to the tag:
 
 ```bash
-ssh exe.dev "integrations add github --name gh-<owner>-<repo> --repository <owner>/<repo> --act-as-user --policy 'tag:fleet'"
+ssh exe.dev "integrations add github --name gh-<owner>-<repo> --repository <owner>/<repo> --act-as-user --attach tag:fleet"
 ```
 
-and, for an object that already exists, reads its policy and replaces it only
-when the selector is not `tag:fleet` — the same two-step the doctor names for
-any of the three:
+and, for an object that already exists but is not on `tag:fleet`, attaches it —
+the same fix the doctor names for any of them:
 
 ```bash
-ssh exe.dev "integrations policy get <name> --json"
-ssh exe.dev "integrations policy set <name> 'tag:fleet' --permanent --if-revision=<revision>"
+ssh exe.dev "integrations attach <name> tag:fleet"
 ```
-
-`--if-revision` is required and is the `revision` the get just answered, so a
-policy something else changed in between is refused rather than overwritten;
-`--permanent` because a legacy object's grants may carry mixed expiries, which
-the set otherwise refuses to inherit.
 
 That is the whole of the target's credential: the sandbox clones, pushes and
 opens the PR through it, and the PR is the gate. Never two GitHub integrations
@@ -223,12 +215,12 @@ here (the janitor keeps reaping by the hub alone when the key is unset).
 
 The doctor's tenth row, `cloudflare`, is not part of this one-time walk: it is
 the deploy's credential, needed only by a plan that carries a `**Publish:**`
-line, and an absent object is green. When one exists it is judged by the same
-policy the rest of this section reads, and it is built the same way, an
-`http-proxy` on the fleet's policy:
+line, and an absent object is green. When one exists it is judged the same way
+as the rest of this section, and it is built the same way, an `http-proxy`
+attached to `tag:fleet`:
 
 ```bash
-ssh exe.dev "integrations add http-proxy --name cloudflare --target https://api.cloudflare.com --bearer - --policy 'tag:fleet'"
+ssh exe.dev "integrations add http-proxy --name cloudflare --target https://api.cloudflare.com --bearer - --attach tag:fleet"
 ```
 
 `skills/ultrapowers/references/first-run.md` §cloudflare walks the token that
@@ -248,7 +240,7 @@ It issues three mutating verbs and nothing else: `new --name kata-hub --cpu 1
 all, `share port kata-hub 8000`, and
 
 ```bash
-ssh exe.dev "integrations add http-proxy --name kata --target <https_url> --peer --bearer - --comment 'kata issue daemon on kata-hub' --policy 'tag:fleet'"
+ssh exe.dev "integrations add http-proxy --name kata --target <https_url> --peer --bearer - --comment 'kata issue daemon on kata-hub' --attach tag:fleet"
 ```
 
 with a freshly minted 32-byte bearer on stdin. `<https_url>` is read off the
@@ -261,10 +253,10 @@ The hub carries no tag, so the janitor's `fleet-r*` never lists it; its comment
 says so a second time. Its 1 vCPU and 2 GB come out of the same pool step 2
 measures. Never `cp` the hub, or any fleet VM, without `--copy-tags=false`:
 `cp --copy-tags` is on by default, so the copy inherits `tag:fleet` and with it
-every credential the policy grants. Never prune the `peer-kata` ssh key
+every credential the tag grants. Never prune the `peer-kata` ssh key
 `--peer` generates: it is how a sandbox reaches the hub, and it goes when the
-integration goes. A wrong policy is repaired by the same two-step as step 5,
-never by `integrations attach`.
+integration goes. A missing attachment is repaired as in step 5:
+`integrations attach kata tag:fleet`.
 
 ### The hub's reaper (#1470)
 
@@ -307,8 +299,8 @@ reads the pool; computes N from the evidence repository's
 when the target's `gh-<owner>-<repo>` or the evidence repository's integration
 does not exist; refreshes the Claude bearer; pushes the plan as one parentless
 commit to `live/<owner>-<repo>/run-<N>` in the evidence repository; then issues one `new`
-with the run's name, `--tag fleet` (which grants every integration on the
-policy `tag:fleet` — the line names none), the assignment as `--comment`,
+with the run's name, `--tag fleet` (which grants every integration attached
+to `tag:fleet` — the line names none), the assignment as `--comment`,
 `--cpu`/`--memory` from the config, and the generated setup script
 on stdin. It prints the run number and the VM name. A refusal
 exits before the plan branch is pushed and before any lobby verb runs.
@@ -617,8 +609,8 @@ on the next one, ask her before editing a script.
 
 **TypeSafe.**
 
-- The classifier is an exe.dev `http-proxy` integration named `typesafe` attached to the fleet
-  policy `tag:fleet`, the same shape as `claude-max` and `kata`, and a VM reaches it at
+- The classifier is an exe.dev `http-proxy` integration named `typesafe` attached to
+  `tag:fleet`, the same shape as `claude-max` and `kata`, and a VM reaches it at
   `https://typesafe.int.exe.xyz/v1/systemone` — `https` only, because the http form answers `301`
   and a followed 301 turns the POST into a GET and the body is lost (run-110's seam). The client
   sends no `Authorization` header: the edge injects the bearer, so no `TYPESAFE_API_KEY` is on any
@@ -635,18 +627,17 @@ on the next one, ask her before editing a script.
   catches up again if it moved (decision 15); never cite `strict` as the guard.
 - `integrations edit` on a GitHub integration serves the cached installation
   token for 30–60 s afterwards: a `gh pr create` twenty seconds after a binding
-  produced a bot-authored PR. The grant is a standing policy the VM matches from
-  creation, never something bound just-in-time; wait a minute after any edit
+  produced a bot-authored PR. The grant is a standing tag attachment the VM matches
+  from creation, never something bound just-in-time; wait a minute after any edit
   before a write.
-- `new --integration`, `integrations attach` and `integrations detach` are
-  refused by exe.dev since 2026-09-11: one complete attachment policy per
-  integration, replaced whole with `integrations policy set … --if-revision`.
-  A fleet VM is granted an integration by matching that policy (`tag:fleet`),
-  and by nothing the launcher does per VM. The setup script waits, bounded,
-  for Reflection to list `claude-max` before starting the run, since no order
-  between the policy and first boot is documented.
+- `new --integration` is refused by exe.dev since 2026-09-11. A fleet VM is
+  granted an integration by its attachment `tag:fleet` (`integrations attach
+  <name> tag:fleet`; there is no `integrations policy` verb, #1434), and by
+  nothing the launcher does per VM. The setup script waits, bounded, for
+  Reflection to list `claude-max` before starting the run, since no order
+  between the grant and first boot is documented.
 - `cp` of a fleet VM copies its tags by default, so the copy inherits every
-  credential on the policy and the janitor's reap; take a forensic copy with
+  credential on the tag and the janitor's reap; take a forensic copy with
   tag copying off and re-tag deliberately.
 - `--act-as-user` is unavailable on TEAM integrations. On an exe.dev team
   account every PR is authored by `exe-dev-github-integration[bot]`, so the

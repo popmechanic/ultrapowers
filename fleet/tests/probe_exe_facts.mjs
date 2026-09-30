@@ -77,7 +77,7 @@ export const FACTS = Object.freeze([
   { id: 'rm-reserves-name',
     says: 'exe.dev does not reserve a deleted VM\'s name: a new VM may take it' },
   { id: 'refused-verbs',
-    says: 'new --integration, integrations attach and integrations detach are refused since 2026-09-11; the policy is the only grant' },
+    says: 'integrations attach and detach are the grant verbs and there is no integrations policy verb: help integrations lists attach and detach and no policy (#1434; the earlier reading attached a nonexistent name, which fails whatever the model)' },
 ])
 
 // ── Small readings of an answer ─────────────────────────────────────────────
@@ -333,14 +333,13 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
   }
 
   // ── fact 12: refused verbs — read before the cleanup ──────────────────────
-  const badIntegration = `no-such-integration-${runStamp}`
-  const attach = await send(`integrations attach ${badIntegration}`)
-  const detach = await send(`integrations detach ${badIntegration}`)
-  const fact12 = attach.code === null || detach.code === null
-    ? unreadable(`integrations attach exited ${attach.code ?? 'none'}, integrations detach exited ${detach.code ?? 'none'}`)
-    : attach.code !== 0 && detach.code !== 0
-      ? holds(`integrations attach and integrations detach both refused (exit ${attach.code}, ${detach.code})`)
-      : drift(`integrations attach exited ${attach.code}, integrations detach exited ${detach.code}`)
+  const intHelp = await send('help integrations')
+  const verbs = new Set([...String(intHelp.stdout ?? '').matchAll(/^\s+([a-z-]+)\s+-\s/gm)].map((m) => m[1]))
+  const fact12 = intHelp.code !== 0
+    ? unreadable(`help integrations exited ${intHelp.code ?? 'none'}`)
+    : verbs.has('attach') && verbs.has('detach') && !verbs.has('policy')
+      ? holds(`help integrations lists attach and detach and no policy`)
+      : drift(`help integrations lists ${JSON.stringify([...verbs])}`)
 
   // ── cleanup: one `rm` per VM the run created ──────────────────────────────
   const toRemove = []
