@@ -167,7 +167,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    port = int(os.environ.get("PORT", "8001"))
+    # REAPER_PORT, never PORT: the unit loads /etc/kata/kata.env, whose PORT=8000 is the daemon's own
+    port = int(os.environ.get("REAPER_PORT", "8001"))
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     print(f"reaper listening on 0.0.0.0:{port}", flush=True)
     server.serve_forever()
