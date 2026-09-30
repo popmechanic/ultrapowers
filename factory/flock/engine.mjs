@@ -40,6 +40,7 @@ import { lastSteps, latestResults, readSteps } from './step_reading.mjs'
 import { pastItems } from './past.mjs'
 import { peerNote } from './peer_note.mjs'
 import { buildProvenance } from './provenance.mjs'
+import { executableLines } from './executable.mjs'
 import { coverageCounts, linesRunAll } from './coverage.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -551,8 +552,9 @@ function edge (reason) {
     earlyClose(m, snap)
     const blocking = openConflicts()
     lastEdge = { snap, t: now(), reason, perTask, red, check: chk.status, checkTail: ((chk.stdout || '') + (chk.stderr || '')).slice(-600), conflicts: m.conflicts, blocking, outside, annotated: m.annotated, green: factsGreen && chk.status === 0 && !blocking.length && !outside.length }
-    // survival: the lines a published copy's author wrote that this snapshot no longer shows
-    const { lost } = await must({ op: 'lost' })
+    // survival: the lines a published copy's author wrote that this snapshot no longer shows, from
+    // the same `merged` answer that named the snapshot (a later ask could describe a later join)
+    const lost = m.lost || []
     ev('survival', { snap, lost })
     snapshots.push({ snap, t: now(), files: m.files, exists: m.exists, lost })
     edgeLatency.push(now() - asked)
@@ -1180,10 +1182,14 @@ process.exit(landed)
 // A lost line no read answers (Jev off, a null, never asked) is recorded, never drafted.
 function peerRewriteDraft () {
   if (PEER_MODE !== 'enforce' || !outcome || outcome.pr !== 'ready') return
-  const s = snapshots.find((x) => x.snap === outcome.snap)
+  const s = snapshots.findLast((x) => x.snap === outcome.snap)
   if (!s || !s.lost) return
+  // a line restored with the same text is a new identity in the weave: the deleted one stays lost,
+  // but the snapshot shows its text, so nothing was lost
+  const shown = (e) => new Set(String(s.files[e.path] ?? '').split('\n'))
+  const lost = s.lost.map((e) => ({ ...e, lines: e.lines.filter((l) => !shown(e).has(l)) })).filter((e) => e.lines.length)
   const losing = []
-  for (const e of s.lost) {
+  for (const e of lost) {
     const covers = (l) => (r) => r.path === e.path && String(e.author).split('|').some((a) => (r.peers || []).includes(a)) && (r.peer || []).includes(l)
     const unread = e.lines.filter((l) => !peerReads.some((r) => covers(l)(r) && (r.answer === 'loses' || r.answer === 'keeps')))
     for (const l of e.lines) for (const r of peerReads.filter(covers(l))) if (r.answer === 'loses' && !losing.includes(r)) losing.push(r)
@@ -1283,7 +1289,13 @@ async function writeProvenance (snap) {
         }
       })
     }
-    const prov = buildProvenance({ landed, blame, events, lost: s.lost || [], coverage })
+    // the lines that can run, for each changed .py path (#1407); a path Python cannot read has none
+    const executable = {}
+    for (const p of Object.keys(blame).filter((q) => q.endsWith('.py'))) {
+      const lines = executableLines(p, landed[p])
+      if (lines) executable[p] = lines
+    }
+    const prov = buildProvenance({ landed, blame, events, lost: s.lost || [], coverage, executable })
     fs.writeFileSync(path.join(OUT, 'provenance.json'), JSON.stringify({ snap, ...prov, coverage: counts }, null, 1))
   } catch (e) {
     ev('provenance:error', { snap, error: String(e && e.message || e).slice(0, 500) })

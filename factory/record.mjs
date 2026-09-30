@@ -312,7 +312,8 @@ function provenanceLines (provenancePath) {
   if (!prov || typeof prov !== 'object') return []
   const hunks = Array.isArray(prov.hunks) ? prov.hunks : []
   const changed = hunks.reduce((n, h) => n + lineCount(h && h.lines), 0)
-  const tasks = new Set(hunks.filter((h) => h && h.task !== undefined).map((h) => String(h.task))).size
+  // A hunk of `1|2` holds lines two tasks wrote identically: each counts once.
+  const tasks = new Set(hunks.filter((h) => h && h.task !== undefined).flatMap((h) => String(h.task).split('|'))).size
   const unproven = Array.isArray(prov.unproven)
     ? prov.unproven.reduce((n, u) => n + lineCount(u && u.lines), 0)
     : 'unmeasured'

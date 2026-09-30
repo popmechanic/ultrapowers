@@ -19,6 +19,10 @@
 //   survival  the peer plan, the stand-in answering `loses`: one survival row per tested snapshot,
 //            the last carrying task 1's lost line; the lost line read as a loss ends the run a draft;
 //   survival-keeps  the same, answering `keeps`: the run ends ready.
+//   survival-restored  task 1 writes `x ONE z`; task 2, held until task 1 publishes, deletes it;
+//            task 3, held until task 2 publishes, writes `x ONE z` back as a new line. The stand-in
+//            answers `loses`: a jev:peer-rewrite row answered `loses`, a survival row listing
+//            `x ONE z` as lost, and the run ends ready, since the snapshot shows the line again.
 //   reuse    the peer script with task 2 consuming task 1's interface, so one builder A does both
 //            and no hold is needed; the stand-in answers `loses`: A's second task over its first
 //            task's line is one peer:rewrite row (peers `A.1`), and the run ends a draft.
@@ -33,9 +37,9 @@ import { fileURLToPath } from 'node:url'
 import { simEnv } from './_helpers.mjs'
 
 const CASE = process.argv[2]
-if (!['release', 'resolve', 'off', 'peer', 'peer-keeps', 'survival', 'survival-keeps', 'reuse'].includes(CASE)) { console.log('usage: flock_jev_trials_probe.mjs release|resolve|off|peer|peer-keeps|survival|survival-keeps|reuse'); process.exit(2) }
-const PEER = ['peer', 'peer-keeps', 'survival', 'survival-keeps', 'reuse'].includes(CASE)
-const CHOICE = CASE === 'peer' || CASE === 'survival' || CASE === 'reuse' ? 'loses' : PEER ? 'keeps' : 'plan_defect'
+if (!['release', 'resolve', 'off', 'peer', 'peer-keeps', 'survival', 'survival-keeps', 'survival-restored', 'reuse'].includes(CASE)) { console.log('usage: flock_jev_trials_probe.mjs release|resolve|off|peer|peer-keeps|survival|survival-keeps|survival-restored|reuse'); process.exit(2) }
+const PEER = ['peer', 'peer-keeps', 'survival', 'survival-keeps', 'survival-restored', 'reuse'].includes(CASE)
+const CHOICE = CASE === 'peer' || CASE === 'survival' || CASE === 'survival-restored' || CASE === 'reuse' ? 'loses' : PEER ? 'keeps' : 'plan_defect'
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'flock-jev-trials-'))
 const T = path.join(tmp, 'target')
@@ -70,7 +74,7 @@ fs.writeFileSync(path.join(T, 'a.txt'), PEER ? 'x y z\n' : 'x\n')
 git('init', '-q'); git('add', '-A'); git('commit', '-qm', 'base')
 const base = git('rev-parse', 'HEAD')
 
-const task = (id, word, depends, iface = '- Produces: none') => `### Task ${id}: Write ${word} into a.txt
+const task = (id, word, depends, iface = '- Produces: none', probe = `grep -q ${word} a.txt`) => `### Task ${id}: Write ${word} into a.txt
 
 **Type:** implementation
 
@@ -88,7 +92,7 @@ ${iface}
 **Context:** none
 ${depends ? '\n**Depends-on:** ' + depends + '\n' : ''}
 **Proof:**
-- Run: grep -q ${word} a.txt [M1]
+- Run: ${probe} [M1]
 - Legs: (a) a.txt carries ${word} [M1].
 
 **Stale-if:**
@@ -116,6 +120,11 @@ if (CASE === 'resolve') {
   // task 2 consumes task 1's interface, so the one builder A does task 1, then task 2 over its line
   fs.writeFileSync(plan, header + task(1, 'ONE', null, '- Produces: `ONE`') + '\n' + task(2, 'TWO', null, '- Consumes: `ONE`'))
   fs.writeFileSync(script, JSON.stringify({ 1: { 'a.txt': 'x ONE z\n' }, 2: { 'a.txt': 'x ONEz TWO\n' } }))
+} else if (CASE === 'survival-restored') {
+  // task 2 holds until task 1 has published and deletes its line; task 3 holds until task 2 has
+  // published and writes the line back, new in the weave; every probe passes on the final file
+  fs.writeFileSync(plan, header + task(1, 'ONE') + '\n' + task(2, 'NONE', null, undefined, 'test -f a.txt') + '\n' + task(3, 'BACK', null, undefined, 'grep -q ONE a.txt'))
+  fs.writeFileSync(script, JSON.stringify({ 1: { 'a.txt': 'x ONE z\n' }, 2: { 'a.txt': '' }, 3: { 'a.txt': 'x ONE z\n' }, '@hold_ms': { 2: 3000, 3: 6000 } }))
 } else if (PEER) {
   // two builders at once; task 2's holds until task 1 has published, then pulls and writes over its line
   fs.writeFileSync(plan, header + task(1, 'ONE') + '\n' + task(2, 'TWO'))
@@ -153,6 +162,14 @@ if (CASE === 'release' || CASE === 'off') {
     const bad = rel.filter((r) => r.task !== '1' || r.answer !== 'plan_defect' || r.confidence !== 0.9)
     if (bad.length) fail(`jev:release rows differ: ${JSON.stringify(bad)}`)
   }
+} else if (CASE === 'survival-restored') {
+  const jr = of('jev:peer-rewrite')
+  if (!jr.some((r) => r.path === 'a.txt' && r.answer === 'loses' && (r.peer || []).includes('x ONE z'))) fail(`expected a jev:peer-rewrite row over task 1's line answered loses, saw ${JSON.stringify(jr)}`)
+  const sv = of('survival')
+  if (!sv.some((r) => (r.lost || []).some((e) => e.path === 'a.txt' && e.lines.includes('x ONE z')))) fail(`expected a survival row listing x ONE z as lost, saw ${JSON.stringify(sv)}`)
+  const end = of('terminal').at(-1)
+  if (!end || end.pr !== 'ready') fail(`expected the run to end ready, saw ${JSON.stringify(end)}`)
+  if (code.c !== 0) fail(`engine exit ${code.c} for a ready run`)
 } else if (PEER) {
   const pr = of('peer:rewrite'), jr = of('jev:peer-rewrite')
   const want = (r) => r.path === 'a.txt' && r.task === '2' && r.peers.join() === 'A.1' && r.peer.join() === 'x ONE z' && r.before.join() === 'x y z' && r.after.join() === 'x ONEz TWO'
