@@ -485,3 +485,25 @@
 {"t":431933,"kind":"edit","agent":"F","task":"10","tool":"Edit","path":"fleet/RUNBOOK.md","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T01:03:45.715Z"}
 {"t":431989,"kind":"edit","agent":"H","task":"5","tool":"Edit","path":"fleet/janitor.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T01:03:45.771Z"}
 {"t":432297,"kind":"tool","agent":"F","task":"10","tool":"Bash","target":"cd /home/exedev/run/work/agents/F; sed -n 55,110p fleet/RUNBOOK.md","ts":"2026-09-30T01:03:46.079Z"}
+{"t":433212,"kind":"tool","agent":"A","task":"9","tool":"mcp__flock__done","target":"","ts":"2026-09-30T01:03:46.994Z"}
+{"t":434099,"kind":"tool","agent":"G","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/G/fleet/launch.mjs","ts":"2026-09-30T01:03:47.881Z"}
+{"t":434104,"kind":"tool","agent":"F","task":"10","tool":"Bash","target":"cd /home/exedev/run/work/agents/F; sed -n 110,260p fleet/RUNBOOK.md","ts":"2026-09-30T01:03:47.886Z"}
+{"t":434149,"kind":"tool","agent":"B","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/tests/test_factory_boot.mjs","ts":"2026-09-30T01:03:47.931Z"}
+{"t":434458,"kind":"publish","agent":"A","task":"9","by":"done","ts":"2026-09-30T01:03:48.240Z"}
+{"t":434471,"kind":"kata:mirror","task":"9","uid":"01M3QWXQY8BNE6HM4G22MKNPQY","what":"done by A","ok":true,"ts":"2026-09-30T01:03:48.253Z"}
+{"t":435702,"kind":"tool","agent":"H","task":"5","tool":"Edit","target":"/home/exedev/run/work/agents/H/fleet/janitor.mjs","ts":"2026-09-30T01:03:49.484Z"}
+{"t":490649,"kind":"edge","snap":"c82e147d01","reason":"done A","perTask":{"1":[0,0,0,0,0],"2":[1,1,0,0,0,0,0,0],"3":[0,0,0],"4":[0,0,0],"5":[1],"6":[0],"7":[0,0,0],"8":[0,0,0,0],"9":[0,0],"10":[1,1,1,1,1,1,0]},"check":0,"conflicts":[],"blocking":[],"outside":[],"green":false,"ts":"2026-09-30T01:04:44.431Z"}
+{"t":490686,"kind":"edit","agent":"G","task":"2","tool":"Edit","path":"fleet/launch.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T01:04:44.468Z"}
+{"t":490701,"kind":"tool","agent":"G","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/G/fleet/launch.mjs","ts":"2026-09-30T01:04:44.483Z"}
+{"t":490930,"kind":"edit","agent":"B","task":"3","tool":"Edit","path":"fleet/tests/test_factory_boot.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T01:04:44.712Z"}
+{"t":490943,"kind":"tool","agent":"B","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/tests/test_factory_boot.mjs","ts":"2026-09-30T01:04:44.725Z"}
+{"t":491250,"kind":"edit","agent":"G","task":"2","tool":"Edit","path":"fleet/launch.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T01:04:45.032Z"}
+{"t":491251,"kind":"edit","agent":"H","task":"5","tool":"Edit","path":"fleet/janitor.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T01:04:45.033Z"}
+{"t":491256,"kind":"edit","agent":"B","task":"3","tool":"Edit","path":"fleet/tests/test_factory_boot.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T01:04:45.038Z"}
+{"t":491263,"kind":"tool","agent":"H","task":"5","tool":"Bash","target":"cd /home/exedev/run/work/agents/H; sed -i 's|^// ── The fallback: the run.s page, read off the target ──────────────────","ts":"2026-09-30T01:04:45.045Z"}
+{"t":491264,"kind":"deny:shell-write","agent":"H","task":"5","command":"cd /home/exedev/run/work/agents/H; sed -i 's|^// ── The fallback: the run.s page, read off the target ───────────────────────$|// ── The fallback: the run'\"'\"'s","ts":"2026-09-30T01:04:45.046Z"}
+{"t":491270,"kind":"tool","agent":"B","task":"3","tool":"Edit","target":"/home/exedev/run/work/agents/B/fleet/tests/test_factory_boot.mjs","ts":"2026-09-30T01:04:45.052Z"}
+{"t":491740,"kind":"edit","agent":"B","task":"3","tool":"Edit","path":"fleet/tests/test_factory_boot.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T01:04:45.522Z"}
+{"t":494286,"kind":"tool","agent":"H","task":"5","tool":"Edit","target":"/home/exedev/run/work/agents/H/fleet/janitor.mjs","ts":"2026-09-30T01:04:48.068Z"}
+{"t":494471,"kind":"edit","agent":"H","task":"5","tool":"Edit","path":"fleet/janitor.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T01:04:48.253Z"}
+{"t":494997,"kind":"tool","agent":"G","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/G/fleet/launch.mjs","ts":"2026-09-30T01:04:48.779Z"}
