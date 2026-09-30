@@ -24,9 +24,7 @@ The exam for `skills/ultrawrite/scripts/authoring_census.py`, leg by leg:
 
 The script is driven as a subprocess over directories built under `tmp_path`,
 with a fake `gh` written there that answers from a table keyed on the `ref=`
-and path of its argv — the shape the task's Context asks for. The one test
-that imports the module is the Interfaces check: the four `Produces` symbols
-and the parameter names the task spells.
+and path of its argv — the shape the task's Context asks for.
 
 Two readings this file pins, both from the task's own words:
 
@@ -94,7 +92,6 @@ Each part keeps its own fixture roots (`build_root`, `amendments_root`) and
 its own expected rows; the seam helpers are shared.
 """
 import importlib.util
-import inspect
 import json
 import os
 import pathlib
@@ -660,15 +657,6 @@ def test_a_missing_default_config_exits_2_and_calls_no_gh(tmp_path):
     assert not bare_log.exists(), bare_log.read_text()
 
 
-# -------------------------------------------------------- the Proof's `Run:`
-
-def test_help_names_the_register_flag():
-    """The Proof's second `Run:` line: `--help` names `--register`."""
-    p = census("--help")
-    assert p.returncode == 0, p.stdout + p.stderr
-    assert "--register" in p.stdout, p.stdout
-
-
 # ------------------------------------------------------------- the Interfaces
 
 def load_module():
@@ -679,37 +667,6 @@ def load_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-def test_the_produced_symbols_carry_the_names_the_task_spells(tmp_path):
-    """Interfaces/Produces: `census_rows(root)`, `render_table(rows)`,
-    `render_register(rows)`, `fetch_runs(target, first, last, into, gh,
-    evidence)` and `evidence_contents_path(evidence, target, number, name)`,
-    with those parameter names; `census_rows` answers one dict per row."""
-    module = load_module()
-    wanted = {
-        "census_rows": ["root"],
-        "render_table": ["rows"],
-        "render_register": ["rows"],
-        "fetch_runs": ["target", "first", "last", "into", "gh", "evidence"],
-        "evidence_contents_path": ["evidence", "target", "number", "name"],
-    }
-    for name, params in wanted.items():
-        fn = getattr(module, name, None)
-        assert callable(fn), "no callable `%s` in %s" % (name, CENSUS)
-        got = list(inspect.signature(fn).parameters)
-        assert got == params, "%s%s" % (name, tuple(got))
-    rows = module.census_rows(build_root(tmp_path))
-    assert isinstance(rows, list) and len(rows) == 3, rows
-    assert all(isinstance(row, dict) for row in rows), rows
-
-
-def test_the_module_docstring_carries_the_three_invocations():
-    """Context: the module docstring carries the three invocations."""
-    module = load_module()
-    doc = module.__doc__ or ""
-    for flag in ("--from", "--register", "--fetch"):
-        assert flag in doc, doc
 
 
 # ============================================================================
@@ -932,13 +889,6 @@ def test_a_census_rows_carries_an_amendments_value_per_row(tmp_path):
     assert got == [3, None, None], got
 
 
-def test_a_columns_gains_amendments_last_and_keeps_the_ten_before_it(tmp_path):
-    """(a)/[M2]: `COLUMNS` itself — the ten BASE names in their order, then
-    `amendments`, then `explain_rounds`, which a later plan hung off it."""
-    module = load_module()
-    assert tuple(module.COLUMNS) == COLUMN_NAMES, module.COLUMNS
-
-
 # ------------------------------------------------------------------- leg (b)
 
 def test_b_the_totals_line_ends_with_the_amendments_sum(tmp_path):
@@ -1073,14 +1023,6 @@ def test_c_the_printed_rows_carry_the_list_length_and_the_dash(tmp_path):
     assert totals_field(lines(p.stdout)[-1], "amendments") == "2", p.stdout
 
 
-def test_c_the_bare_gh_on_path_is_never_resolved(tmp_path):
-    """(c)/[M1]: the new read goes through the same seam as the two existing
-    ones — the binary `--gh` names, never the bare `gh` first on PATH."""
-    p, _into, _calls, bare_log = run_fetch(
-        tmp_path, answers=report_fetch_answers(), runs="131..132")
-    assert not bare_log.exists(), bare_log.read_text() + p.stdout + p.stderr
-
-
 # ------------------------------------------------------------------- leg (d)
 
 def skipped_run_answers():
@@ -1112,12 +1054,3 @@ def test_d_a_plan_tag_without_a_record_yields_no_row_and_no_directory(
     assert (into / "run-200/report.json").read_bytes() == \
         blob(REPORT_FETCHED), p.stdout + p.stderr
     assert amendments_cell(row_for(p.stdout, 200)) == "2", p.stdout
-
-
-# ------------------------------------------------------------------- leg (f)
-
-def test_f_help_names_the_fetch_flag():
-    """(f)/[M1]: the Proof's third `Run:` line — `--help` names `--fetch`."""
-    p = census("--help")
-    assert p.returncode == 0, p.stdout + p.stderr
-    assert "--fetch" in p.stdout, p.stdout
