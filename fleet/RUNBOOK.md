@@ -340,7 +340,8 @@ re-answers the live run's task issues on the hub and kills it, #1036).
   claimed for `--quiet <minutes>` (default 10) with no `done`, or when no new
   row has come in for that long, and ends with `== closed` (exit 0) when the
   run's own issue closes, or `== gave up` (exit 3) after 4 hours. It is a
-  foreground command you run while you wait, never a scheduled job.
+  read-only command, so it may run in the foreground or the background for as
+  long as the run lasts; what never runs on a timer here is a writer (the reap, a merge).
 - `runs/<owner>-<repo>/<N>/status.json` in the evidence repository —
   committed at every transition and, while the engine runs, every
   `FLEET_COMMIT_SECONDS` (default 60) that `events.jsonl` has changed, so the

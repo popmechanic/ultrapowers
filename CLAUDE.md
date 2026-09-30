@@ -112,8 +112,11 @@ the engine's exit code is the merge decision.
   whole product's map and the build order, into `product.json`, before any story.
   superpowers is never called for it. The operator is asked only what the app does,
   who uses it and how it looks.
-- **No local scheduled process, ever** (`skills/ultrapowers/SKILL.md` §Client step 5): the
-  launcher reaps by hand after a sleep.
+- **No local process writes run state** (`skills/ultrapowers/SKILL.md` §Client step 5, #660):
+  the sandbox is the one writer of a run and the launcher reaps by hand after a sleep, so
+  nothing on a timer here merges, reaps or edits. Reading is telemetry and is wanted: watch a
+  run with `fleet/board-read.mjs --follow`, in the background or on any cadence (operator,
+  2026-09-29, narrowing the 2026-09-05 no-timer rule to writers).
 - **Every choice is an AskUserQuestion:** 2–3 concrete options with consequences and a
   `(Recommended)` tag, always plus `Please explain` — which re-asks in place with the
   explanation written in, escalating from plain words to a before-and-after to a rewrite.

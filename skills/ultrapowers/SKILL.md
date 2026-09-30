@@ -203,8 +203,9 @@ approved plan, **is** the authorization to execute — no further approval pause
    goes at the end of the run — read `status.json` there
    (`?ref=live/<owner>-<repo>/run-<N>`) as a fallback when the hub is dark.
 
-   The board is the poll: read it on whatever cadence the user asks for, and
-   never a timer on this machine.
+   The board is the poll: read it on whatever cadence the user asks for, or
+   watch it with `--follow`, in the foreground or the background. A watcher
+   only reads; nothing on this machine writes to a run (step 5).
 
 4. **The PR is the gate.** There is no approval command. When the engine is
    done and the branch is ahead of base, the sandbox pushes it and opens the
