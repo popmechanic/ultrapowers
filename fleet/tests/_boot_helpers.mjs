@@ -369,8 +369,7 @@ function baseEnv (proxyUrl) {
     ANTHROPIC_PROXY_URL: proxyUrl,
     REFLECTION_URL: 'http://127.0.0.1:1',
     GITHUB_INT_HOST: 'stub.invalid',
-    FLEET_COMMIT_SECONDS: '1',
-    FLEET_KATA_WAIT_SECONDS: '1'
+    FLEET_COMMIT_SECONDS: '1'
   }
 }
 

@@ -13,12 +13,8 @@ REFLECTION_URL="${REFLECTION_URL:-https://reflection.int.exe.xyz}"
 ANTHROPIC_PROXY_URL="${ANTHROPIC_PROXY_URL:-https://claude-max.int.exe.xyz}"
 TYPESAFE_PROXY_URL="${TYPESAFE_PROXY_URL:-https://typesafe.int.exe.xyz}"
 GITHUB_INT_HOST="${GITHUB_INT_HOST:-github.int.exe.xyz}"
-KATA_VERSION="0.18.0"
-KATA_RELEASE_BASE="https://github.com/kenn-io/kata/releases/download/v$KATA_VERSION/"
-# The helper administers through the host where the edge injects the hub's bearer; the spoke syncs through the other.
+# The hub, through the host where the edge injects its bearer: the engine writes the board there, and `board.mjs` closes the run there.
 KATA_ADMIN_URL="https://kata.int.exe.xyz"
-KATA_URL="http://127.0.0.1:7777"
-FLEET_KATA_WAIT_SECONDS="${FLEET_KATA_WAIT_SECONDS:-120}"
 FLEET_COMMIT_SECONDS="${FLEET_COMMIT_SECONDS:-60}"
 # The run's one clock: systemd ends the engine unit at this many seconds (the old lease's four hours), and
 # whatever landed by then is published as a draft. No worker carries a cap of its own.
@@ -33,7 +29,6 @@ RUN_N=""; PLAN_SHA=""; TARGET_REPO=""; BASE_SHA=""; ENGINE_SHA=""; RUN_ID=""
 BRANCH=""; SLUG=""; LIVE_BRANCH=""; EVIDENCE_REPO=""; EVIDENCE_REL=""; PLAN_FILE=""; PAST_DIR=""
 ENGINE_REPO_DIR=""; STATUS_FILE=""; STATE=""; PHASE=""; PR_URL=""; PR_AUTHOR=""
 ERROR=""; VM_NAME=""; STARTED_AT=""; EVIDENCE_READY=""; HOLD_FLAG=0
-BOARD_BOUND=""; BOARD_UNIT=""; BOARD_PROJECT_ID=""; BOARD_PROJECT_NAME=""; BOARD_KATA_JSON=""
 # Self-merge state: MERGED_SHA is the merge commit once a PUT succeeds (else empty, which
 # `write_status` renders as `null`); MERGE_PHASE is the reason `maybe_self_merge` parked,
 # read only when MERGED_SHA stayed empty. SELF_MERGE_* are the read of `publish.self_merge`.
@@ -45,8 +40,6 @@ fleet_systemd_run() { systemd-run "$@"; }
 fleet_systemctl()   { systemctl "$@"; }
 fleet_python3()     { python3 "$@"; }
 fleet_node()        { node "$@"; }
-# KATA_SERVER rides every call the boot itself makes: the daemon it is talking to is always the one it just started, on localhost.
-fleet_kata() { env "KATA_SERVER=$KATA_URL" kata "$@"; }
 # The boot log's stamp, UTC to the millisecond: bash 5's `$EPOCHREALTIME` where it is set
 # (the VM), else one python3 call — macOS's /bin/bash 3.2, which the boot sims run, has none.
 stamp_ms() {
@@ -100,8 +93,7 @@ fail() { # $1 = message, $2 = exit code (default 1)
   ERROR="$1"; log "FAILED: $1"
   if [ -n "${EVIDENCE_READY:-}" ] && [ -z "${FAILING:-}" ]; then
     FAILING=1; collect_evidence; write_status failed "$PHASE"; evidence_commit "$RUN_ID: failed"; record_tags
-    # The hub hears the failure too (#1288): the spoke leaves, then `work.state=failed` on the run issue, so the janitor reaps the VM by its ordinary rule.
-    board_down || true
+    # The hub hears the failure too (#1288): `work.state=failed` on the run issue, so the janitor reaps the VM by its ordinary rule.
     fleet_node "${ENGINE_REPO_DIR:-}/factory/board.mjs" mark-run --kata-json "${FLEET_HOME:-}/plans/${RUN_ID:-}.kata.json" --run "${RUN_ID:-}" --state failed --admin-url "${KATA_ADMIN_URL:-}" --events "${EVIDENCE_DIR:-}/${EVIDENCE_REL:-}/events.jsonl" || true; fi
   exit "${2:-1}"
 }
@@ -259,48 +251,15 @@ preflight() {
     alive*|inconclusive*) : ;;
   esac
 }
-# One sandbox, one spoke: installs kata, then hands the rest — the spoke's config, the
-# bound-wait — to `board.mjs`, the one module that talks to Kata; every miss along the
-# way is one `board:` log line and a return 0 with BOARD_BOUND left empty, which is
-# `run_engine`'s whole signal.
-board_up() {
-  local blob kata_bin out local_id
-  BOARD_UNIT="fleet-kata-$RUN_N"
+# The run's hub record: the plan commit's `kata.json`, written where `run_engine`, `close_run`,
+# `mark-run` and the failure path read it; a plan commit without one writes nothing, and the
+# run proceeds with no board.
+kata_record() {
+  local blob
   blob="$(fleet_git -C "$EVIDENCE_DIR" show "$PLAN_SHA:$EVIDENCE_REL/kata.json" 2>/dev/null || true)"
-  [ -n "$blob" ] || { log "board: no $EVIDENCE_REL/kata.json at $PLAN_SHA — the run proceeds without a spoke"; return 0; }
-  mkdir -p "$FLEET_HOME/plans"; BOARD_KATA_JSON="$FLEET_HOME/plans/$RUN_ID.kata.json"
-  printf '%s' "$blob" >"$BOARD_KATA_JSON"
-  if ! kata_bin="$(fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" install --version "$KATA_VERSION" --release-base "$KATA_RELEASE_BASE" --home "$FLEET_HOME")"
-  then log "board: installing kata $KATA_VERSION failed — proceeding without a spoke"; return 0; fi
-  PATH="$(dirname "$kata_bin"):$PATH"
-  # The one kata on a sandbox (#1190): nothing system-wide sits behind this PATH entry.
-  command -v kata >/dev/null 2>&1 || { log "board: kata $KATA_VERSION installed but not on PATH — proceeding without a spoke"; return 0; }
-  log "board: kata $KATA_VERSION installed at $(command -v kata)"
-  if ! out="$(fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" spoke-config --kata-json "$BOARD_KATA_JSON" --engine-dir "$ENGINE_REPO_DIR" --home "$FLEET_HOME" 2>&1)"
-  then log "board: spoke-config failed — proceeding without a spoke — $(printf '%s' "$out" | tr '\n' ' ' | cut -c1-300)"; return 0; fi
-  BOARD_PROJECT_NAME="$(printf '%s' "$out" | awk '{ print $1 }')"; BOARD_PROJECT_ID="$(printf '%s' "$out" | awk '{ print $2 }')"
-  if ! fleet_systemd_run --user "--unit=$BOARD_UNIT" -p "WorkingDirectory=$FLEET_HOME/kata" -- \
-      env "KATA_HOME=$FLEET_HOME/kata" "PATH=$PATH" kata daemon start --foreground
-  then log "board: systemd-run could not start $BOARD_UNIT — proceeding without a spoke"; return 0; fi
-  if ! local_id="$(fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" wait --project "$BOARD_PROJECT_NAME" --kata-json "$BOARD_KATA_JSON" --kata-url "$KATA_URL" --seconds "$FLEET_KATA_WAIT_SECONDS")"
-  then log "board: $BOARD_PROJECT_NAME was not bound with the run's issues pulled within ${FLEET_KATA_WAIT_SECONDS}s"; return 0; fi
-  BOARD_BOUND=1
-  [ -n "$local_id" ] && BOARD_PROJECT_ID="$local_id"
-  log "kata federation status: $BOARD_PROJECT_NAME is bound as local project $BOARD_PROJECT_ID, and the run's issues have arrived"
-}
-# The teardown side: a bound spoke leaves the hub and its unit stops; a `leave` that fails is logged and nothing else, since the run's own state and exit code were already decided.
-board_down() {
-  local out rc=0
-  [ -n "$BOARD_BOUND" ] || return 0
-  # `--yes` and a closed stdin: under the run unit there is no TTY, and kata answers `no TTY: pass --yes to
-  # proceed noninteractively` (exit 6) without it — every factory run through run-198 left its enrollment
-  # live on the hub that way (#1176; measured on run-36's sandbox 2026-09-21, where `--yes` left and revoked).
-  if ! out="$(fleet_kata federation leave "$BOARD_PROJECT_NAME" --yes </dev/null 2>&1)"
-  then rc=$?; log "board: kata federation leave $BOARD_PROJECT_NAME failed — leaving the unit for the box to reap — $(printf '%s' "$out" | head -n 1 | cut -c1-300)"; fi
-  event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" board:leave rc="$rc" || true
-  fleet_systemctl --user stop "$BOARD_UNIT" >/dev/null 2>&1 || true
-  BOARD_BOUND=""
-  return 0
+  [ -n "$blob" ] || { log "board: no $EVIDENCE_REL/kata.json at $PLAN_SHA — the run proceeds without a board"; return 0; }
+  mkdir -p "$FLEET_HOME/plans"; printf '%s' "$blob" >"$FLEET_HOME/plans/$RUN_ID.kata.json"
+  log "board: the hub record is at $FLEET_HOME/plans/$RUN_ID.kata.json"
 }
 engine_deps() {
   [ -d "$ENGINE_REPO_DIR/factory/node_modules" ] && return 0
@@ -311,8 +270,8 @@ engine_deps() {
 }
 # A transient SERVICE, not a scope: `--wait` hands back the exit code and `--collect` unloads the unit; while it runs, the boot relays events every FLEET_COMMIT_SECONDS and looks for its exit every second.
 run_engine() {
-  local pid board_args=() past_args=() engine_entry="factory/flock/engine.mjs"
-  [ -n "$BOARD_BOUND" ] && board_args=(--kata-url "$KATA_URL" --kata-project "$BOARD_PROJECT_ID" --kata-json "$BOARD_KATA_JSON" --kata-actor "engine:$RUN_ID")
+  local pid board_args=() past_args=() engine_entry="factory/flock/engine.mjs" kata_json="$FLEET_HOME/plans/$RUN_ID.kata.json"
+  [ -f "$kata_json" ] && board_args=(--kata-url "$KATA_ADMIN_URL" --kata-json "$kata_json" --kata-actor "engine:$RUN_ID")
   [ -n "$PAST_DIR" ] && past_args=(--past-dir "$PAST_DIR")
   mkdir -p "$RUN_DIR"; rm -f "$DONE_MARKER"
   ( set +e
@@ -534,7 +493,7 @@ run_publish_probe() {
 # One POST, one JSON answer: the status rides as the answer's last line, and a run the engine did not finish green still gets its PR — as a DRAFT, since the merge is the operator's act.
 publish() { # $1 = the engine's exit code
   local base title draft body payload answer code reply state number phase_text
-  local was_bound audit_args audit_line
+  local audit_args audit_line
   fleet_git -C "$TARGET_DIR" push origin "HEAD:refs/heads/$BRANCH" || fail "publish: pushing $BRANCH was rejected"
   write_status publishing "opening the pull request"; evidence_commit "$RUN_ID: publishing"
   base="$(default_branch)" || fail "publish: cannot read the target's default branch from refs/remotes/origin/HEAD"
@@ -563,9 +522,8 @@ publish() { # $1 = the engine's exit code
     phase_text="the pull request is open"
   fi
   write_status "$state" "$phase_text"; evidence_commit "$RUN_ID: $state"
-  was_bound="$BOARD_BOUND"
   close_run "$state"
-  audit_args=(); [ -n "$was_bound" ] && audit_args=(--bound)
+  audit_args=(); [ -f "$FLEET_HOME/plans/$RUN_ID.kata.json" ] && audit_args=(--bound)
   audit_line="$(fleet_node "$ENGINE_REPO_DIR/factory/audit.mjs" "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" "$state" ${audit_args[@]+"${audit_args[@]}"} 2>/dev/null)" || true
   [ -n "${audit_line:-}" ] && printf '%s\n' "$audit_line" >>"$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl"
   evidence_commit "$RUN_ID: audit"
@@ -582,14 +540,11 @@ record_tags() {
   fleet_git -C "$EVIDENCE_DIR" push origin --delete "refs/heads/$LIVE_BRANCH" || { log "record: $tag is on $EVIDENCE_REPO but deleting $LIVE_BRANCH was rejected"; return 0; }
   log "record: $tag at $head in $EVIDENCE_REPO — $LIVE_BRANCH deleted"
 }
-# The run's close: the spoke leaves first — the three closes measured to work (runs
-# 36, 197 and 37, by hand, 2026-09-21) were sent after `leave`, and `board_down` is
-# idempotent — then `board.mjs close-run` itself, the one module that talks to Kata
-# and never fails a run (CLAUDE.md). A parked run is not closed but marked:
-# `mark-run` writes `work.state=parked` on the run issue, which the janitor reaps (#1288).
+# The run's close: `board.mjs close-run`, the one module that talks to Kata and never
+# fails a run (CLAUDE.md). A parked run is not closed but marked: `mark-run` writes
+# `work.state=parked` on the run issue, which the janitor reaps (#1288).
 close_run() { # $1 = the run's final state (done|parked)
   local args
-  board_down
   if [ "$1" != done ]; then
     fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" mark-run --kata-json "$FLEET_HOME/plans/$RUN_ID.kata.json" --run "$RUN_ID" --state parked \
       --admin-url "$KATA_ADMIN_URL" --events "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" || true
@@ -600,23 +555,23 @@ close_run() { # $1 = the run's final state (done|parked)
   [ -n "$MERGED_SHA" ] && args+=(--merged "$MERGED_SHA")
   fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" close-run "${args[@]}" || true
 }
-# The one entry point: nothing ahead of base is a park (a failure if the engine wasn't green), anything ahead is a publish — either way a bound spoke leaves once the outcome is settled.
+# The one entry point: nothing ahead of base is a park (a failure if the engine wasn't green), anything ahead is a publish.
 boot() {
   local comment code head; comment="$(read_assignment)"
   [ -n "$comment" ] || fail "assignment: no comment in FLEET_ASSIGNMENT or at $REFLECTION_URL/comment"
   parse_assignment "$comment"
   VM_NAME="$(fleet_curl -fsS "$REFLECTION_URL/" 2>/dev/null | json_field name || true)"; prepare; find_past
   write_status running "the engine is starting"; evidence_commit "$RUN_ID: running"
-  engine_deps; preflight; board_up; run_engine
+  engine_deps; preflight; kata_record; run_engine
   code="$(cat "$DONE_MARKER")"; collect_evidence
   head="$(fleet_git -C "$TARGET_DIR" rev-parse HEAD 2>/dev/null || true)"
   if [ "$head" = "$BASE_SHA" ]; then
-    if [ "$code" != 0 ]; then board_down; fail "engine exit $code" "$code"; fi
-    write_status parked "nothing ahead of base"; evidence_commit "$RUN_ID: parked"; board_down
+    if [ "$code" != 0 ]; then fail "engine exit $code" "$code"; fi
+    write_status parked "nothing ahead of base"; evidence_commit "$RUN_ID: parked"
     fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" mark-run --kata-json "$FLEET_HOME/plans/$RUN_ID.kata.json" --run "$RUN_ID" --state parked \
       --admin-url "$KATA_ADMIN_URL" --events "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" || true
     record_tags; exit 0; fi
-  publish "$code"; board_down; exit 0
+  publish "$code"; exit 0
 }
 case "${1:-}" in
   boot) boot ;;

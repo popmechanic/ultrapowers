@@ -49,10 +49,9 @@ const isCloseCode = (code) => Number.isInteger(code) && code >= 200 && code <= 2
  * For `state: 'done'` with `bound: true`, in order:
  * `board:close task <id>` for every landed task with no `board:close` row
  * whose `what` is `task <id>` and whose `code` is an integer 200–299; then
- * `board:close run` under the same rule for `what: 'run'`; then
- * `board:leave` when no `board:leave` row has `rc === 0`. With
- * `bound: false` none of those three kinds is ever listed — a hubless run
- * never had a close to miss.
+ * `board:close run` under the same rule for `what: 'run'`. `bound` means
+ * the run had a hub record (`kata.json`). With `bound: false` neither kind
+ * is ever listed — a hubless run never had a close to miss.
  */
 export function auditRows (rows, { state, bound } = {}) {
   const safeRows = Array.isArray(rows) ? rows : []
@@ -72,9 +71,6 @@ export function auditRows (rows, { state, bound } = {}) {
         if (!closedWhat.has(`task ${id}`)) missing.push(`board:close task ${id}`)
       }
       if (!closedWhat.has('run')) missing.push('board:close run')
-
-      const leftClean = safeRows.some((row) => row && row.kind === 'board:leave' && row.rc === 0)
-      if (!leftClean) missing.push('board:leave')
     }
   }
 

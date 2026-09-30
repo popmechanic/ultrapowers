@@ -296,11 +296,8 @@ evidence repository.
   in order:
   1. wait, bounded, for the user bus (`systemctl --user` has no address before `user@.service` is
      up);
-  2. install the toolchain: node 24.20.0, bun 1.4.2 — and no kata: a sandbox carries one kata, the
-     one `factory/boot.sh` installs at `/home/exedev/.local/bin/kata` at the version its own engine
-     sha pins (`KATA_VERSION`, the release tarball fetched and checked against the release's own
-     `SHA256SUMS` by `factory/board.mjs install`), because the spoke's config is coupled to the engine and a second,
-     system-wide binary shadowed it for any non-login `ssh <vm> kata …` (#1190; Shelley, 2026-09-21) —
+  2. install the toolchain: node 24.20.0, bun 1.4.2 — and no kata: a sandbox runs none, the engine
+     writing the hub directly (#1390) —
      celld 0.5.0 (the one `.gz` asset from
      `github.com/denoland/celld`, verified with `sha256sum -c` against the digest the plugin records
      beside bun's version — `CELLD_SHA256` in `fleet/setup-script.mjs`, since the release carries no
@@ -388,8 +385,9 @@ evidence repository.
   worker's issue is stamped by two hooks on its session: `kata attention-hook start` and
   `kata attention-hook end`, exiting 0 doing nothing when the worker carries no `KATA_REF`.
 - **Kata record (Flock, the `kata:mirror` row):** the Flock mirrors only when the boot passes
-  `--kata-url`, `--kata-project` and `--kata-json`; it posts to the spoke, which federates to the
-  hub. Each board move becomes one comment on its task's issue, posted after the move has
+  `--kata-url`, `--kata-json` and `--kata-actor` (the boot does exactly when
+  `$FLEET_HOME/plans/<run>.kata.json` exists); it posts to the hub at `https://kata.int.exe.xyz`,
+  reading the project id from that record. Each board move becomes one comment on its task's issue, posted after the move has
   completed: `claimed by <agent>`, `released: <why>`, `reopened: <why>` and `done by <agent>` (a
   release made on the way to a reopen posts only the `reopened:` body). Every attempted post is
   one `kata:mirror` event row in `events.jsonl` naming the task, the body and whether it landed; a
@@ -605,7 +603,7 @@ evidence repository.
   script; `fleet/kata.service` at `/etc/systemd/system/kata.service`; `/var/lib/kata` as `KATA_HOME`
   with `config.toml` carrying `[web] public_origin`; the binary from
   `https://github.com/kenn-io/kata/releases/download/v0.18.0/kata_0.18.0_linux_amd64.tar.gz`
-  (`fleet/kata-hub-setup.sh`; `factory/boot.sh` pins the same 0.18.0 for the spoke),
+  (`fleet/kata-hub-setup.sh`),
   checked against that release's `SHA256SUMS`; and `/var/lib/kata/.setup-done`, the flag the setup
   script writes last and the laptop polls for. On the laptop: `~/.ultrapowers/kata-hub.env`, mode
   0600, exactly `KATA_URL` and `KATA_TOKEN`, written only after the daemon answers `active`.
