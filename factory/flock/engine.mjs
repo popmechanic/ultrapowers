@@ -38,6 +38,7 @@ import { mirrorBoard } from './kata_mirror.mjs'
 import { makeKataClient, httpTransport } from '../../fleet/kata-client.mjs'
 import { lastSteps, latestResults, readSteps } from './step_reading.mjs'
 import { pastItems } from './past.mjs'
+import { peerNote } from './peer_note.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d }
@@ -534,7 +535,10 @@ function edge (reason) {
     earlyClose(m, snap)
     const blocking = openConflicts()
     lastEdge = { snap, t: now(), reason, perTask, red, check: chk.status, checkTail: ((chk.stdout || '') + (chk.stderr || '')).slice(-600), conflicts: m.conflicts, blocking, outside, annotated: m.annotated, green: factsGreen && chk.status === 0 && !blocking.length && !outside.length }
-    snapshots.push({ snap, t: now(), files: m.files, exists: m.exists })
+    // survival: the lines a published copy's author wrote that this snapshot no longer shows
+    const { lost } = await must({ op: 'lost' })
+    ev('survival', { snap, lost })
+    snapshots.push({ snap, t: now(), files: m.files, exists: m.exists, lost })
     edgeLatency.push(now() - asked)
     // ticket 5: livelock, record-only. Facts rose on every new snapshot of every recorded run
     // (0 regressions over 53 edges, n=15 runs), so K snapshots with no new best is unseen: it
@@ -869,6 +873,20 @@ async function session (agent, task) {
         edited(agent, rel)
         ev('edit', { agent, task: task.id, tool: name, path: rel, how, peer_lines: rec.peer, peers: rec.peers, peer_lines_text: rec.peerText, outside })
         if (rec.peer) await board.post({ by: 'host', claim: `${agent} changed ${rec.peer} line(s) written by ${rec.peers.join(', ')} in ${rel}`, confidence: 1, task: task.id })
+      } else if (name === 'Read' && ti.file_path) {
+        // warn first: before a builder edits a peer's lines, it is told whose they are
+        const fp = path.resolve(cwd, ti.file_path)
+        if (!fp.startsWith(cwd + '/')) return {}
+        const rel = fp.slice(cwd.length + 1)
+        const r = await weave({ op: 'authors_keyed', agent, path: rel })
+        if (!r.ok) return {}
+        const tasks = {}
+        for (const [a, t] of Object.entries(taskOf)) if (t && a !== agent) tasks[a] = { id: t.id, title: t.title }
+        const note = peerNote({ path: rel, authors: r.authors, agent, tasks })
+        if (note) {
+          ev('peer:note', { agent, task: task.id, path: rel })
+          return { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: note } }
+        }
       } else if (name === 'Bash') {
         const drift = await syncFromDisk(agent)
         const cmd = ti.command || ''
@@ -1132,21 +1150,24 @@ const landed = await land()
 if (kataPending.size) await Promise.race([Promise.all([...kataPending]), new Promise((r) => setTimeout(r, KATA_EXIT_MS).unref())])
 process.exit(landed)
 
-// #1401: under `enforce`, a settled green whose snapshot still holds a peer rewrite Jev read as
-// `loses` ends a draft. "Still holds": every line the rewrite wrote is in that path's settled text,
-// or, for a deletion, none of the peer's lines is back. A later edit that fixed it clears it.
+// #1401: under `enforce`, a settled green whose snapshot lost a peer's line (the survival fact,
+// weave `lost`) that a peer rewrite Jev read as `loses` covers ends a draft. A read covers a lost
+// line when it is on the line's path, names the line's author among its peers and holds the line.
+// A lost line no read answers (Jev off, a null, never asked) is recorded, never drafted.
 function peerRewriteDraft () {
   if (PEER_MODE !== 'enforce' || !outcome || outcome.pr !== 'ready') return
   const s = snapshots.find((x) => x.snap === outcome.snap)
-  if (!s) return
-  const lines = (p) => new Set(String((p in s.files ? s.files[p] : readOr(path.join(BASE_DIR, p))) ?? '').split('\n'))
-  const lost = peerReads.filter((r) => r.answer === 'loses').filter((r) => {
-    const held = lines(r.path)
-    return r.after.length ? r.after.every((l) => held.has(l)) : !r.peer.some((l) => held.has(l))
-  })
-  if (!lost.length) return
-  ev('peer:rewrite:draft', { rewrites: lost.map((r) => ({ agent: r.agent, path: r.path, peers: r.peers, after: r.after })) })
-  terminal('draft', `a peer rewrite Jev read as losing the peer's change: ${[...new Set(lost.map((r) => r.path))].join(', ')}`, outcome)
+  if (!s || !s.lost) return
+  const losing = []
+  for (const e of s.lost) {
+    const covers = (l) => (r) => r.path === e.path && (r.peers || []).includes(e.author) && (r.peer || []).includes(l)
+    const unread = e.lines.filter((l) => !peerReads.some((r) => covers(l)(r) && (r.answer === 'loses' || r.answer === 'keeps')))
+    for (const l of e.lines) for (const r of peerReads.filter(covers(l))) if (r.answer === 'loses' && !losing.includes(r)) losing.push(r)
+    if (unread.length) ev('survival:unread', { snap: s.snap, path: e.path, author: e.author, lines: unread })
+  }
+  if (!losing.length) return
+  ev('peer:rewrite:draft', { rewrites: losing.map((r) => ({ agent: r.agent, path: r.path, peers: r.peers, after: r.after })) })
+  terminal('draft', `a peer rewrite Jev read as losing the peer's change: ${[...new Set(losing.map((r) => r.path))].join(', ')}`, outcome)
 }
 
 // ── the compact record: each tested snapshot's patch against the previous one, and the weave's

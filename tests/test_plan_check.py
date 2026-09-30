@@ -1451,3 +1451,26 @@ def test_slips_a_dated_reading_without_n_is_refused(tmp_path):
 def test_slips_a_stories_plan_is_untouched():
     p = run_compiler(ROOT / "evals/fixtures/stories/todo/.ultrapowers/plan.md")
     assert p.stdout.splitlines() == ["PLAN OK"], p.stdout
+
+
+# === SHARED fact ===
+#
+# A path two or more tasks list in their Files draws one `SHARED fact:` line
+# after the verdict, with or without --base; the exit code is unchanged.
+
+
+def test_shared_a_file_two_tasks_list_is_named_once():
+    p = run_compiler(ROOT / "tests/fixtures/plan_check_shared/plan.md")
+    shared = [l for l in p.stdout.splitlines() if l.startswith("SHARED fact:")]
+    assert shared == ["SHARED fact: a.txt is in tasks 1 and 2; name what it "
+                      "must keep in a Run: probe"], p.stdout
+
+
+def test_shared_three_tasks_join_with_commas_and_and(tmp_path):
+    text = (ROOT / "tests/fixtures/plan_check_shared/plan.md").read_text()
+    plan = tmp_path / "plan.md"
+    plan.write_text(text.replace("- Modify: `b.txt`", "- Modify: `a.txt`"))
+    p = run_compiler(plan)
+    shared = [l for l in p.stdout.splitlines() if l.startswith("SHARED fact:")]
+    assert shared == ["SHARED fact: a.txt is in tasks 1, 2 and 3; name what "
+                      "it must keep in a Run: probe"], p.stdout

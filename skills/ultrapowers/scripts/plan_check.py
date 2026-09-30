@@ -383,6 +383,28 @@ def task_files(t):
     return set(t["creates"]) | set(t["modifies"]) | set(t["deletes"])
 
 
+def shared_fact_lines(tasks):
+    """One `SHARED fact:` line per path two or more tasks list in their
+    Files, in the order each path first appears: each such task's probes
+    should pin what the file must keep beyond its own change (run-277's
+    two probes each checked only their own removal). A fact, never a
+    refusal."""
+    owners = {}
+    for t in tasks:
+        for path in t["creates"] + t["modifies"] + t["deletes"]:
+            ids = owners.setdefault(path, [])
+            if t["id"] not in ids:
+                ids.append(t["id"])
+    lines = []
+    for path, ids in owners.items():
+        if len(ids) < 2:
+            continue
+        named = ", ".join(str(i) for i in ids[:-1]) + " and " + str(ids[-1])
+        lines.append("SHARED fact: %s is in tasks %s; name what it must keep "
+                     "in a Run: probe" % (path, named))
+    return lines
+
+
 def type_violations(tasks):
     """The parser keeps only implementation tasks and the engine runs only
     what it keeps, so a `gate`, `release` or `manual` task would be dropped
@@ -1351,6 +1373,8 @@ def main(argv=None):
         print("%d violation(s)" % len(violations))
     else:
         print("PLAN OK")
+    for line in shared_fact_lines(tasks):
+        print(line)
     if base_tree is not None:
         for line in base_fact_lines(tasks, base_tree) + advisories:
             print(line)

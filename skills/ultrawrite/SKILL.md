@@ -628,6 +628,11 @@ Independence is a property of contracts, not of files.
    registration line to one registry file and spent 3.4 worker-minutes ordering five lines
    any order would have satisfied. Give each such task its **own region or file**: a
    registration is a new file discovered by glob, never an appended line.
+   And when two tasks list one file, each of them carries a
+   Run: probe of what that file must keep beyond its own change: run-277's two tasks each removed one name from one
+   line and each probe checked only its own removal, so a line that fused two kept names
+   went green (n=1 run, 2026-09-29). `plan_check.py` prints a `SHARED fact:` line for each
+   such file.
 4. **Prefer several small concurrent plans** landing on one main over one
    large plan (0.26× batch wall, n=1 drain of 3 runs, #454, 2026-09-01). An effort split
    across plans gives the **final** plan an integration-spanning acceptance — per-phase

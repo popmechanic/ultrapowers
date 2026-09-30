@@ -16,6 +16,9 @@
 //            together. The stand-in answers `loses`: one peer:rewrite row and one
 //            jev:peer-rewrite row naming task 1's line, and the run ends a draft;
 //   peer-keeps  the same plan, the stand-in answering `keeps`: the rows, and the run ends ready.
+//   survival  the peer plan, the stand-in answering `loses`: one survival row per tested snapshot,
+//            the last carrying task 1's lost line; the lost line read as a loss ends the run a draft;
+//   survival-keeps  the same, answering `keeps`: the run ends ready.
 // Prints `JEV TRIALS <case> OK` and exits 0, or names what differed and exits 1.
 import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -26,8 +29,9 @@ import { fileURLToPath } from 'node:url'
 import { simEnv } from './_helpers.mjs'
 
 const CASE = process.argv[2]
-if (!['release', 'resolve', 'off', 'peer', 'peer-keeps'].includes(CASE)) { console.log('usage: flock_jev_trials_probe.mjs release|resolve|off|peer|peer-keeps'); process.exit(2) }
-const CHOICE = CASE === 'peer' ? 'loses' : CASE === 'peer-keeps' ? 'keeps' : 'plan_defect'
+if (!['release', 'resolve', 'off', 'peer', 'peer-keeps', 'survival', 'survival-keeps'].includes(CASE)) { console.log('usage: flock_jev_trials_probe.mjs release|resolve|off|peer|peer-keeps|survival|survival-keeps'); process.exit(2) }
+const PEER = ['peer', 'peer-keeps', 'survival', 'survival-keeps'].includes(CASE)
+const CHOICE = CASE === 'peer' || CASE === 'survival' ? 'loses' : PEER ? 'keeps' : 'plan_defect'
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'flock-jev-trials-'))
 const T = path.join(tmp, 'target')
@@ -58,7 +62,7 @@ const git = (...a) => {
   if (r.status !== 0) fail(`git ${a.join(' ')}: ${r.stderr}`)
   return r.stdout.trim()
 }
-fs.writeFileSync(path.join(T, 'a.txt'), CASE.startsWith('peer') ? 'x y z\n' : 'x\n')
+fs.writeFileSync(path.join(T, 'a.txt'), PEER ? 'x y z\n' : 'x\n')
 git('init', '-q'); git('add', '-A'); git('commit', '-qm', 'base')
 const base = git('rev-parse', 'HEAD')
 
@@ -104,7 +108,7 @@ const script = path.join(tmp, 'script.json')
 if (CASE === 'resolve') {
   fs.writeFileSync(plan, header + task(1, 'ONE') + '\n' + task(2, 'TWO'))
   fs.writeFileSync(script, JSON.stringify({ 1: { 'a.txt': 'ONE\n' }, 2: { 'a.txt': 'x\nTWO\n' } }))
-} else if (CASE.startsWith('peer')) {
+} else if (PEER) {
   // two builders at once; task 2's holds until task 1 has published, then pulls and writes over its line
   fs.writeFileSync(plan, header + task(1, 'ONE') + '\n' + task(2, 'TWO'))
   fs.writeFileSync(script, JSON.stringify({ 1: { 'a.txt': 'x ONE z\n' }, 2: { 'a.txt': 'x ONEz TWO\n' }, '@hold_ms': { 2: 3000 } }))
@@ -141,13 +145,21 @@ if (CASE === 'release' || CASE === 'off') {
     const bad = rel.filter((r) => r.task !== '1' || r.answer !== 'plan_defect' || r.confidence !== 0.9)
     if (bad.length) fail(`jev:release rows differ: ${JSON.stringify(bad)}`)
   }
-} else if (CASE.startsWith('peer')) {
+} else if (PEER) {
   const pr = of('peer:rewrite'), jr = of('jev:peer-rewrite')
   const want = (r) => r.path === 'a.txt' && r.task === '2' && r.peers.join() === 'A' && r.peer.join() === 'x ONE z' && r.before.join() === 'x y z' && r.after.join() === 'x ONEz TWO'
   if (pr.length !== 1 || !want(pr[0])) fail(`expected one peer:rewrite row over task 1's line, saw ${JSON.stringify(pr)}`)
   if (jr.length !== 1 || !want(jr[0]) || jr[0].answer !== CHOICE) fail(`expected one jev:peer-rewrite row answered ${CHOICE}, saw ${JSON.stringify(jr)}`)
   const end = of('terminal').at(-1)
-  const pr_ = CASE === 'peer' ? 'draft' : 'ready'
+  const pr_ = CHOICE === 'loses' ? 'draft' : 'ready'
+  if (CASE.startsWith('survival')) {
+    const sv = of('survival'), edges = of('edge')
+    const bad = edges.filter((e) => sv.filter((r) => r.snap === e.snap).length !== 1)
+    if (!edges.length || bad.length) fail(`expected one survival row per edge snap, saw ${JSON.stringify(sv.map((r) => r.snap))} for edges ${JSON.stringify(edges.map((e) => e.snap))}`)
+    const last = sv.find((r) => r.snap === edges.at(-1).snap)
+    const want_ = JSON.stringify([{ path: 'a.txt', author: 'A', lines: ['x ONE z'] }])
+    if (JSON.stringify(last.lost) !== want_) fail(`expected the last snapshot to lose ${want_}, saw ${JSON.stringify(last.lost)}`)
+  }
   if (!end || end.pr !== pr_) fail(`expected the run to end ${pr_}, saw ${JSON.stringify(end)}`)
   if ((code.c === 0) !== (pr_ === 'ready')) fail(`engine exit ${code.c} for a ${pr_} run`)
 } else {
