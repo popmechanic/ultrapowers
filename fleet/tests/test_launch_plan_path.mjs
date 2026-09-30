@@ -41,6 +41,12 @@
  *       `runs/<slug>/<N>/gate-verdicts.json`, byte for byte — the laptop's
  *       authoring census reads it off the run's tag
  *       (run-268 dropped it; runs 269–271 went without, 2026-09-29).
+ *   (e) a flag outside the launcher's allow-list (`--tier x`, a knob the old
+ *       engine read) is a `Refusal` whose message is exactly `launch: unknown
+ *       flag --tier`, before any command is executed.
+ *   (f) the assignment comment the `new` verb carries names `run=`, `plan=`,
+ *       `target=`, `base=` and `engine=`, and `hold=1` only under `--hold`;
+ *       it is the comment the launch result carries.
  */
 
 import assert from 'node:assert/strict'
@@ -266,6 +272,52 @@ const pythonCalls = (exec) => exec.calls.filter((c) => c.cmd === 'python3')
   assert.equal(shown.stdout, RECORD, '(d) and it is the sibling record, byte for byte')
 
   ws.cleanup()
+}
+
+// A workspace with the plan at R/plans/a-plan.md, launched with `extra` flags.
+const launchWith = async (extra) => {
+  const ws = workspace()
+  fs.mkdirSync(path.join(ws.repo.dir, 'plans'), { recursive: true })
+  fs.writeFileSync(path.join(ws.repo.dir, 'plans', 'a-plan.md'), PLAN)
+  const exec = makeExec({ rules: readRules({ repo: ws.repo, evidence: ws.evidence }) })
+  let result = null
+  const error = await thrown(async () => { result = await launchIn(ws, { exec, planPath: 'plans/a-plan.md', extra }) })
+  ws.cleanup()
+  return { exec, result, error }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// (e) a flag outside the allow-list is refused before anything runs
+// ══════════════════════════════════════════════════════════════════════════
+{
+  const { exec, error } = await launchWith(['--tier', 'x'])
+  assert.ok(error instanceof Refusal, `(e) \`--tier x\` is a Refusal. Got: ${error?.name}: ${error?.message}`)
+  assert.notEqual(error.exitCode, 0, `(e) it exits non-zero. Got: ${error.exitCode}`)
+  assert.equal(error.message, 'launch: unknown flag --tier',
+    `(e) the message is exactly the unknown-flag line. Got: ${JSON.stringify(error.message)}`)
+  assert.equal(exec.calls.length, 0,
+    `(e) nothing was executed. Got: ${JSON.stringify(exec.calls.map((c) => c.line))}`)
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// (f) the assignment comment's keys, and hold=1 only under --hold
+// ══════════════════════════════════════════════════════════════════════════
+{
+  const commentOn = (exec) =>
+    /--comment '([^']*)'/.exec(exec.lobby().find((line) => line.startsWith('new ')) ?? '')?.[1]
+  for (const [extra, held] of [[[], false], [['--hold'], true]]) {
+    const { exec, result, error } = await launchWith(extra)
+    assert.equal(error, null, `(f) ${JSON.stringify(extra)} resolves: ${error?.message ?? ''}`)
+    const comment = commentOn(exec)
+    assert.ok(comment, `(f) ${JSON.stringify(extra)}: the \`new\` verb carries a --comment. Lobby: ${JSON.stringify(exec.lobby())}`)
+    for (const key of ['run=', 'plan=', 'target=', 'base=', 'engine=']) {
+      assert.ok(comment.includes(key), `(f) ${JSON.stringify(extra)}: the comment carries \`${key}\`. Got: ${comment}`)
+    }
+    assert.equal(comment.includes('hold=1'), held,
+      `(f) ${JSON.stringify(extra)}: \`hold=1\` is in the comment only under --hold. Got: ${comment}`)
+    if (!held) assert.ok(!comment.includes('hold='), `(f) without --hold no \`hold=\` key at all. Got: ${comment}`)
+    assert.equal(result?.comment, comment, `(f) ${JSON.stringify(extra)}: the launch result carries the same comment`)
+  }
 }
 
 console.log('ALL TESTS PASSED')
