@@ -50,24 +50,6 @@
       "rollback": "mode = off",
       "unread": "per-step Jev readings joined to the operator's smoke (state-probe runner spec §10)"
     },
-    "jev_resolve": {
-      "mode": "record",
-      "n": 0,
-      "window": "none",
-      "basis": "judgment",
-      "experiment": true,
-      "rollback": "mode = off",
-      "unread": "the jev:resolve answers against whether the R: task's session then edited the path (its edit rows), over 5 runs with a resolve task; Atlas: every resolve task changed nothing (n=5 runs)"
-    },
-    "jev_release": {
-      "mode": "record",
-      "n": 0,
-      "window": "none",
-      "basis": "judgment",
-      "experiment": true,
-      "rollback": "mode = off",
-      "unread": "the jev:release answers against whether the task was later done or parked, over 20 given-back tasks; run-252: ~1,150 give-backs of one task, $80.57"
-    },
     "jev_peer_rewrite": {
       "mode": "enforce",
       "n": 1,
