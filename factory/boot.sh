@@ -31,8 +31,9 @@ ENGINE_REPO_DIR=""; STATUS_FILE=""; STATE=""; PHASE=""; PR_URL=""; PR_AUTHOR=""
 ERROR=""; VM_NAME=""; STARTED_AT=""; EVIDENCE_READY=""; HOLD_FLAG=0
 # Self-merge state: MERGED_SHA is the merge commit once a PUT succeeds (else empty, which
 # `write_status` renders as `null`); MERGE_PHASE is the reason `maybe_self_merge` parked,
-# read only when MERGED_SHA stayed empty. SELF_MERGE_* are the read of `publish.self_merge`.
-MERGED_SHA=""; MERGE_PHASE=""; SELF_MERGE_ENABLED=0; SELF_MERGE_MAX_REFOLDS=3; SELF_MERGE_WAIT_SECONDS=120
+# read only when MERGED_SHA stayed empty. SELF_MERGE_* are the read of `publish.self_merge`, whose
+# defaults live in `factory/record.mjs policy` alone.
+MERGED_SHA=""; MERGE_PHASE=""; SELF_MERGE_ENABLED=0; SELF_MERGE_MAX_REFOLDS=""; SELF_MERGE_WAIT_SECONDS=""
 fleet_curl()        { curl "$@"; }
 fleet_git()         { git "$@"; }
 fleet_npm()         { npm "$@"; }
@@ -96,8 +97,13 @@ fail() { # $1 = message, $2 = exit code (default 1)
   if [ -n "${EVIDENCE_READY:-}" ] && [ -z "${FAILING:-}" ]; then
     FAILING=1; collect_evidence; write_status failed "$PHASE"; evidence_commit "$RUN_ID: failed"; record_tags
     # The hub hears the failure too (#1288): `work.state=failed` on the run issue, so the janitor reaps the VM by its ordinary rule.
-    fleet_node "${ENGINE_REPO_DIR:-}/factory/board.mjs" mark-run --kata-json "${FLEET_HOME:-}/plans/${RUN_ID:-}.kata.json" --run "${RUN_ID:-}" --state failed --admin-url "${KATA_ADMIN_URL:-}" --events "${EVIDENCE_DIR:-}/${EVIDENCE_REL:-}/events.jsonl" || true; fi
+    mark_run failed; fi
   exit "${2:-1}"
+}
+# `board.mjs mark-run`: `work.state=<state>` on the run issue, which the janitor reaps (#1288); it never fails the run.
+mark_run() { # $1 = parked|failed
+  fleet_node "${ENGINE_REPO_DIR:-}/factory/board.mjs" mark-run --kata-json "${FLEET_HOME:-}/plans/${RUN_ID:-}.kata.json" --run "${RUN_ID:-}" --state "$1" \
+    --admin-url "${KATA_ADMIN_URL:-}" --events "${EVIDENCE_DIR:-}/${EVIDENCE_REL:-}/events.jsonl" || true
 }
 read_assignment() { if [ -n "${FLEET_ASSIGNMENT:-}" ]; then printf '%s\n' "$FLEET_ASSIGNMENT"; else fleet_curl -fsS "$REFLECTION_URL/comment" 2>/dev/null | json_field comment || true; fi; }
 is_sha()    { case "$1" in *[!0-9a-f]* | "") return 1 ;; esac; [ "${#1}" -eq 40 ]; }
@@ -319,12 +325,13 @@ default_branch() {
 }
 # `publish.self_merge` off `factory/policy.json` in the ENGINE checkout — not the target's.
 # A missing file, a missing `enabled` cell, or a read that fails in any way reads as
-# disabled: self-merge is opt-in, never a default a broken read falls into.
+# disabled: self-merge is opt-in, never a default a broken read falls into. The two bounds'
+# defaults are record.mjs's; a disabled read never uses them.
 read_self_merge_policy() {
   local out
-  out="$(fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" policy "$ENGINE_REPO_DIR/factory/policy.json" 2>/dev/null)" || out="0 3 120"
+  out="$(fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" policy "$ENGINE_REPO_DIR/factory/policy.json" 2>/dev/null)" || out="0"
   set -- $out
-  SELF_MERGE_ENABLED="${1:-0}"; SELF_MERGE_MAX_REFOLDS="${2:-3}"; SELF_MERGE_WAIT_SECONDS="${3:-120}"
+  SELF_MERGE_ENABLED="${1:-0}"; SELF_MERGE_MAX_REFOLDS="${2:-}"; SELF_MERGE_WAIT_SECONDS="${3:-}"
 }
 # M2: on a moved default branch, hand the target to the Flock's catch-up (factory/flock/catchup.mjs) and, once it says every exam ran green there, force-push the target's new HEAD over the run's own branch — any other exit leaves the target untouched and sets MERGE_PHASE.
 refold_onto() { # $1 = the base the run's work stood on, $2 = the moved tip
@@ -428,6 +435,17 @@ maybe_self_merge() { # $1 = the pull request number, $2 = the PR's base branch n
 # here (never grepped off the plan text) and its three commands handed to
 # `record.mjs publish-cmds`, one per line, an absent command an empty line.
 PUBLISH_PHASE=""
+# One publish command in the target under the budget, its output to $3: the Cloudflare edge's
+# address and a placeholder token in its environment (the edge injects the credential), and
+# ULTRA_PUBLISH_URL when $4 names the deployed app.
+publish_run() { # $1 = seconds, $2 = command, $3 = its raw log, $4 = the app's url (optional)
+  ( cd "$TARGET_DIR" || exit
+    export CLOUDFLARE_API_BASE_URL="https://cloudflare.int.exe.xyz/client/v4" CLOUDFLARE_API_TOKEN="placeholder"
+    [ -z "${4:-}" ] || export ULTRA_PUBLISH_URL="$4"
+    bounded_run "$1" "$2" ) >"$3" 2>&1
+}
+# publish.json, its cells in argument order
+publish_json() { fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" publish-json "$@" >"$EVIDENCE_DIR/$EVIDENCE_REL/publish.json"; }
 run_publish_probe() {
   PUBLISH_PHASE=""
   local parsed cmds deploy_cmd verify_cmd rollback_cmd policy_out enabled timeout_seconds
@@ -448,58 +466,46 @@ run_publish_probe() {
   local deploy_raw="$RUN_DIR/.publish-deploy-raw.log" deploy_log="$pub_dir/publish-deploy.log"
   local verify_raw="$RUN_DIR/.publish-verify-raw.log" verify_log="$pub_dir/publish-verify.log"
   local rollback_raw="$RUN_DIR/.publish-rollback-raw.log" rollback_log="$pub_dir/publish-rollback.log"
-  local start_ms end_ms deploy_exit deploy_ms verify_exit verify_ms rollback_exit url json_args
+  local start_ms end_ms deploy_exit deploy_ms verify_exit verify_ms rollback_exit url deploy_cells verify_cells
 
   start_ms="$(now_ms)"
-  if (cd "$TARGET_DIR" && CLOUDFLARE_API_BASE_URL="https://cloudflare.int.exe.xyz/client/v4" CLOUDFLARE_API_TOKEN="placeholder" \
-      bounded_run "$timeout_seconds" "$deploy_cmd") >"$deploy_raw" 2>&1
-  then deploy_exit=0; else deploy_exit=$?; fi
+  if publish_run "$timeout_seconds" "$deploy_cmd" "$deploy_raw"; then deploy_exit=0; else deploy_exit=$?; fi
   end_ms="$(now_ms)"; deploy_ms=$(( end_ms - start_ms ))
   url="$(grep -oE 'https://[A-Za-z0-9.-]*\.workers\.dev' "$deploy_raw" | head -n 1 || true)"
   tail -c 4000 "$deploy_raw" >"$deploy_log"; rm -f "$deploy_raw"
   event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" publish:deploy cmd="$deploy_cmd" exit="$deploy_exit" ms="$deploy_ms" url="${url:-null}"
 
+  deploy_cells=(deployCmd="$deploy_cmd" deployExit="$deploy_exit" deployMs="$deploy_ms")
   if [ "$deploy_exit" != 0 ] || [ -z "$url" ]; then
-    json_args=(url="${url:-null}" published=false deployCmd="$deploy_cmd" deployExit="$deploy_exit" deployMs="$deploy_ms")
-    fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" publish-json "${json_args[@]}" >"$pub_dir/publish.json"
+    publish_json url="${url:-null}" published=false "${deploy_cells[@]}"
     PUBLISH_PHASE="the pull request was merged; the deploy failed"
     return 0
   fi
 
   start_ms="$(now_ms)"
-  if (cd "$TARGET_DIR" && CLOUDFLARE_API_BASE_URL="https://cloudflare.int.exe.xyz/client/v4" CLOUDFLARE_API_TOKEN="placeholder" \
-      ULTRA_PUBLISH_URL="$url" bounded_run "$timeout_seconds" "$verify_cmd") >"$verify_raw" 2>&1
-  then verify_exit=0; else verify_exit=$?; fi
+  if publish_run "$timeout_seconds" "$verify_cmd" "$verify_raw" "$url"; then verify_exit=0; else verify_exit=$?; fi
   end_ms="$(now_ms)"; verify_ms=$(( end_ms - start_ms ))
   tail -c 4000 "$verify_raw" >"$verify_log"; rm -f "$verify_raw"
   event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" publish:verify cmd="$verify_cmd" exit="$verify_exit" ms="$verify_ms" url="$url"
 
+  verify_cells=(verifyCmd="$verify_cmd" verifyExit="$verify_exit" verifyMs="$verify_ms")
   if [ "$verify_exit" = 0 ]; then
-    json_args=(url="$url" published=true deployCmd="$deploy_cmd" deployExit="$deploy_exit" deployMs="$deploy_ms" \
-      verifyCmd="$verify_cmd" verifyExit="$verify_exit" verifyMs="$verify_ms")
-    fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" publish-json "${json_args[@]}" >"$pub_dir/publish.json"
+    publish_json url="$url" published=true "${deploy_cells[@]}" "${verify_cells[@]}"
     PUBLISH_PHASE="the pull request was merged and the app is published"
     return 0
   fi
 
   if [ -z "$rollback_cmd" ]; then
-    json_args=(url="$url" published=false deployCmd="$deploy_cmd" deployExit="$deploy_exit" deployMs="$deploy_ms" \
-      verifyCmd="$verify_cmd" verifyExit="$verify_exit" verifyMs="$verify_ms")
-    fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" publish-json "${json_args[@]}" >"$pub_dir/publish.json"
+    publish_json url="$url" published=false "${deploy_cells[@]}" "${verify_cells[@]}"
     PUBLISH_PHASE="the pull request was merged; the live check was red and no rollback was named"
     return 0
   fi
 
-  if (cd "$TARGET_DIR" && CLOUDFLARE_API_BASE_URL="https://cloudflare.int.exe.xyz/client/v4" CLOUDFLARE_API_TOKEN="placeholder" \
-      bounded_run "$timeout_seconds" "$rollback_cmd") >"$rollback_raw" 2>&1
-  then rollback_exit=0; else rollback_exit=$?; fi
+  if publish_run "$timeout_seconds" "$rollback_cmd" "$rollback_raw"; then rollback_exit=0; else rollback_exit=$?; fi
   tail -c 4000 "$rollback_raw" >"$rollback_log"; rm -f "$rollback_raw"
   event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" publish:rollback cmd="$rollback_cmd" exit="$rollback_exit"
 
-  json_args=(url="$url" published=false deployCmd="$deploy_cmd" deployExit="$deploy_exit" deployMs="$deploy_ms" \
-    verifyCmd="$verify_cmd" verifyExit="$verify_exit" verifyMs="$verify_ms" \
-    rollbackCmd="$rollback_cmd" rollbackExit="$rollback_exit")
-  fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" publish-json "${json_args[@]}" >"$pub_dir/publish.json"
+  publish_json url="$url" published=false "${deploy_cells[@]}" "${verify_cells[@]}" rollbackCmd="$rollback_cmd" rollbackExit="$rollback_exit"
   PUBLISH_PHASE="the pull request was merged; the live check was red and the deploy was rolled back"
 }
 # One POST, one JSON answer: the status rides as the answer's last line, and a run the engine did not finish green still gets its PR — as a DRAFT, since the merge is the operator's act.
@@ -557,11 +563,7 @@ record_tags() {
 # `work.state=parked` on the run issue, which the janitor reaps (#1288).
 close_run() { # $1 = the run's final state (done|parked)
   local args
-  if [ "$1" != done ]; then
-    fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" mark-run --kata-json "$FLEET_HOME/plans/$RUN_ID.kata.json" --run "$RUN_ID" --state parked \
-      --admin-url "$KATA_ADMIN_URL" --events "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" || true
-    return 0
-  fi
+  if [ "$1" != done ]; then mark_run parked; return 0; fi
   args=(--kata-json "$FLEET_HOME/plans/$RUN_ID.kata.json" --run "$RUN_ID" --pr "$PR_URL" \
     --admin-url "$KATA_ADMIN_URL" --events "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" --title "$(plan_title)")
   [ -n "$MERGED_SHA" ] && args+=(--merged "$MERGED_SHA")
@@ -580,8 +582,7 @@ boot() {
   if [ "$head" = "$BASE_SHA" ]; then
     if [ "$code" != 0 ]; then fail "engine exit $code" "$code"; fi
     write_status parked "nothing ahead of base"; evidence_commit "$RUN_ID: parked"
-    fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" mark-run --kata-json "$FLEET_HOME/plans/$RUN_ID.kata.json" --run "$RUN_ID" --state parked \
-      --admin-url "$KATA_ADMIN_URL" --events "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" || true
+    mark_run parked
     record_tags; exit 0; fi
   publish "$code"; exit 0
 }

@@ -362,11 +362,13 @@ function readPublishCell (policyPath, key) {
  *  `self_merge` that is not an object carrying an `enabled` key reads as
  *  disabled, never a default a broken read falls into. */
 export function renderPolicy (policyPath) {
+  // the one place the boot's self-merge bounds default
+  const MAX_REFOLDS = 3, WAIT_SECONDS = 120
   const sm = readPublishCell(policyPath, 'self_merge')
-  if (!sm) return '0 3 120'
+  if (!sm) return `0 ${MAX_REFOLDS} ${WAIT_SECONDS}`
   const enabled = sm.enabled ? 1 : 0
-  const maxRefolds = sm.max_refolds === undefined ? 3 : Math.trunc(Number(sm.max_refolds))
-  const waitSeconds = sm.mergeable_wait_seconds === undefined ? 120 : Math.trunc(Number(sm.mergeable_wait_seconds))
+  const maxRefolds = sm.max_refolds === undefined ? MAX_REFOLDS : Math.trunc(Number(sm.max_refolds))
+  const waitSeconds = sm.mergeable_wait_seconds === undefined ? WAIT_SECONDS : Math.trunc(Number(sm.mergeable_wait_seconds))
   return `${enabled} ${maxRefolds} ${waitSeconds}`
 }
 
