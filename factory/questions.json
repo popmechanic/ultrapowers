@@ -306,7 +306,8 @@
         "claim",
         "clauses",
         "probes",
-        "legs"
+        "legs",
+        "base"
       ],
       "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29",
       "calibrated": false,
@@ -342,6 +343,17 @@
           "criteria": {
             "true": "Some leg contradicts its clause",
             "false": "Every leg agrees with the clauses it cites"
+          }
+        },
+        "pinned": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does some file in `base` already pin the opposite of an entry of `clauses`, where that clause does not say the file changes?",
+            "context": "`base` holds, for each file the task names, what it is at BASE: whether it exists, its line count, its headings or test names, and an `excerpt` of its lines carrying the task's literals. `clauses` are the task's machine clauses; asked only when `base` is present."
+          },
+          "criteria": {
+            "true": "Some file at BASE already pins the opposite of a clause that does not say it changes",
+            "false": "No file at BASE pins the opposite of a clause, or the clause says that file changes"
           }
         }
       }
