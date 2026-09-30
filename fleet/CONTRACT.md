@@ -102,10 +102,9 @@ evidence repository.
       extracts its folder into a directory the engine reads (`--past-dir`), and a failed read
       writes no `past.json` and never affects the run.
     - `provenance.json` — the whole account of the run's changed lines: `hunks`, the changed
-      lines by task (`path`, `lines`, `task`), with the clauses whose probes ran them; the
-      exceptions only (`contested`, `lost`, `ordered`, `foreign`); and `unproven`, the changed
-      code no tagged probe ran (`null` when unmeasured); and `coverage`, the counts of the tagged
-      probes that `ran`, `timed_out`, were `skipped` or went `unmeasured`. The PR body's
+      lines by task (`path`, `lines`, `task`), and the exceptions only (`contested`, `lost`,
+      `ordered`, `foreign`). (The coverage pass that added `unproven` was retired unread, #1442.)
+      The PR body's
       `### Provenance` line counts it: a hunk whose `task` joins several with `|` (lines two tasks
       wrote identically) counts each of its tasks once.
     Not kept: the whole snapshots, the raw weave log (whose `content` is the files' full texts) and

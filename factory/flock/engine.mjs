@@ -39,8 +39,6 @@ import { lastSteps, latestResults, readSteps } from './step_reading.mjs'
 import { pastItems } from './past.mjs'
 import { peerNote } from './peer_note.mjs'
 import { buildProvenance } from './provenance.mjs'
-import { executableLines } from './executable.mjs'
-import { coverageCounts, linesRunAll } from './coverage.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d }
@@ -107,15 +105,6 @@ const JEV_PEER = PEER_MODE !== 'off' && TYPESAFE
 // the scope rule (#1333, scope.mjs): `enforce` folds a change outside every task's Files that no
 // builder wrote into the edge's verdict; `record` only writes the `scope:outside` row. Absent, enforce.
 const SCOPE_MODE = mode('scope.mode', ['enforce', 'record'], 'enforce')
-// provenance.json (#1404): `record` runs each task's tagged facts once more on the landed snapshot
-// with coverage on (coverage.mjs) so the record names the changed code no probe ran; `off` skips
-// it (coverage null). The policy cell flock.provenance.coverage, else record.
-const PROV_COVERAGE = mode('provenance.coverage', ['record', 'off'], 'record')
-// the coverage pass's bounds: facts run `parallel` at once, each killed with its process group after
-// fact_timeout_seconds, none started once budget_seconds have passed (defaults 4, 60, 300)
-const PROV_PARALLEL = POLICY_FLOCK?.provenance?.parallel ?? 4
-const PROV_FACT_TIMEOUT_MS = (POLICY_FLOCK?.provenance?.fact_timeout_seconds ?? 60) * 1000
-const PROV_BUDGET_MS = (POLICY_FLOCK?.provenance?.budget_seconds ?? 300) * 1000
 const touched = {}   // per builder: the paths it has read or edited in its copy
 const touch = (agent, rel) => (touched[agent] = touched[agent] || new Set()).add(rel)
 const MAX_REOPEN = 3
@@ -1172,14 +1161,14 @@ async function land () {
     if (!sha) { ev('landing:empty', { snap: outcome.snap }); return 1 }
     // one `landing` row per task: the settled commit it landed in
     for (const t of W.tasks) ev('landing', { task: t.id, candidateSha: sha })
-    await writeProvenance(outcome.snap)
+    writeProvenance(outcome.snap)
     await Promise.race([readAndRecord(null).catch(() => {}), sleep(20000)])
     return 0
   }
   if (lastEdge) {
     const sha = commitSnapshot(lastEdge.snap, `flock: draft ${lastEdge.snap}`)
     if (sha) {
-      await writeProvenance(lastEdge.snap)
+      writeProvenance(lastEdge.snap)
       for (const t of W.tasks) {
         if ((lastEdge.perTask[t.id] || []).some((x) => x !== 0)) ev('parked', { task: t.id, reason: `red at ${lastEdge.snap}` })
       }
@@ -1188,51 +1177,17 @@ async function land () {
   return 1
 }
 
-// provenance.json (#1404, provenance.mjs): the landed snapshot's hunks by task, the surprises and,
-// under flock.provenance.coverage `record`, the changed code no tagged fact ran. Each task's fact at
-// index i proves t.clauses[i] (claims-v1: t.factClauses[i]); every tagged fact is one job of a single
-// linesRunAll call in a fresh edge copy of the snapshot, and its lines merge per clause; the jobs'
-// counts (coverageCounts: ran, timed_out, skipped, unmeasured) go in as `coverage`. The join's blame is kept only for paths whose
-// text is the landed text.
-async function writeProvenance (snap) {
+// provenance.json (#1404, provenance.mjs): the landed snapshot's hunks by task and the surprises.
+// The join's blame is kept only for paths whose text is the landed text.
+function writeProvenance (snap) {
   try {
     const s = snapshots.find((x) => x.snap === snap)
     if (!s) return
     const landed = Object.fromEntries(Object.entries(s.files).filter(([p]) => s.exists[p]))
     const blame = Object.fromEntries(Object.entries(JOIN.blame).filter(([p]) => p in landed && JOIN.files[p] === landed[p]))
     const events = readEventRows(path.join(OUT, 'events.jsonl'))
-    let coverage = null
-    let counts = null
-    if (PROV_COVERAGE === 'record') {
-      coverage = {}
-      const dir = path.join(WORK, 'provenance')
-      freshCopy(dir, s)
-      const tagged = []
-      for (const t of W.tasks) {
-        (t.facts || []).forEach((argv, i) => {
-          // a stories-v1 fact proves t.clauses[i]; a claims-v1 fact, the clauses its `Run:` line tags
-          const clauses = t.clauses ? (t.clauses[i] ? [t.clauses[i]] : []) : ((t.factClauses || [])[i] || [])
-          if (clauses.length) tagged.push({ argv, clauses })
-        })
-      }
-      const answers = await linesRunAll(tagged.map(({ argv }) => ({ argv, cwd: dir, env: RUN_ENV })),
-        { parallel: PROV_PARALLEL, timeoutMs: PROV_FACT_TIMEOUT_MS, budgetMs: PROV_BUDGET_MS })
-      counts = coverageCounts(answers)
-      answers.forEach(({ lines }, k) => {
-        for (const clause of tagged[k].clauses) {
-          const into = coverage[clause] = coverage[clause] || {}
-          for (const [p, ns] of Object.entries(lines)) into[p] = [...new Set([...(into[p] || []), ...ns])].sort((a, b) => a - b)
-        }
-      })
-    }
-    // the lines that can run, for each changed .py path (#1407); a path Python cannot read has none
-    const executable = {}
-    for (const p of Object.keys(blame).filter((q) => q.endsWith('.py'))) {
-      const lines = executableLines(p, landed[p])
-      if (lines) executable[p] = lines
-    }
-    const prov = buildProvenance({ landed, blame, events, lost: s.lost || [], coverage, executable })
-    fs.writeFileSync(path.join(OUT, 'provenance.json'), JSON.stringify({ snap, ...prov, coverage: counts }, null, 1))
+    const prov = buildProvenance({ landed, blame, events, lost: s.lost || [] })
+    fs.writeFileSync(path.join(OUT, 'provenance.json'), JSON.stringify({ snap, ...prov }, null, 1))
   } catch (e) {
     ev('provenance:error', { snap, error: String(e && e.message || e).slice(0, 500) })
   }

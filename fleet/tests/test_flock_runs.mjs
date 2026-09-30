@@ -41,7 +41,7 @@ for (const CASE of Object.keys(MAIN)) test(`catchup ${CASE}`, () => {
   const runSha = t.git('rev-parse', 'HEAD')
   if (CASE === 'remap') {
     fs.mkdirSync(t.RUN)
-    fs.writeFileSync(path.join(t.RUN, 'provenance.json'), JSON.stringify({ snap: 'x', hunks: [{ path: 'a.txt', lines: '5', task: '1' }], exceptions: [], unproven: null }))
+    fs.writeFileSync(path.join(t.RUN, 'provenance.json'), JSON.stringify({ snap: 'x', hunks: [{ path: 'a.txt', lines: '5', task: '1' }], exceptions: [] }))
   }
   const r = spawnSync('node', [path.join(REPO, 'factory', 'flock', 'catchup.mjs'), '--plan', plan, '--target', t.T,
     '--base', t.base, '--onto', onto, '--run-dir', t.RUN], { encoding: 'utf8', timeout: 120000, env: simEnv({ home: t.tmp, env: t.over }) })
@@ -89,7 +89,7 @@ test('delete', async () => {
   t.done()
 })
 
-// ── provenance.json: the landed lines, and the one no probe ran (#1404) ──────────
+// ── provenance.json: the landed lines by task (#1404) ──────────────────────────
 test('provenance run', async () => {
   const t = flockTarget({ 'README.md': 'sim\n' })
   const plan = writePlan(t, {
@@ -100,19 +100,17 @@ test('provenance run', async () => {
   const provPath = path.join(t.RUN, 'provenance.json')
   assert(fs.existsSync(provPath), `no provenance.json (engine exit ${r.code}): ${r.out.slice(-1500)}`)
   const prov = JSON.parse(fs.readFileSync(provPath, 'utf8'))
-  assert(JSON.stringify(prov.hunks) === JSON.stringify([{ path: 'p.py', lines: '1-4', task: '1', clauses: ['M1'] }]), `hunks ${JSON.stringify(prov.hunks)}`)
-  assert(JSON.stringify(prov.unproven) === JSON.stringify([{ path: 'p.py', lines: '3', task: '1' }]), `unproven ${JSON.stringify(prov.unproven)}`)
+  assert(JSON.stringify(prov.hunks) === JSON.stringify([{ path: 'p.py', lines: '1-4', task: '1' }]), `hunks ${JSON.stringify(prov.hunks)}`)
+  assert(!('unproven' in prov) && !('coverage' in prov), `the retired coverage keys are written: ${Object.keys(prov)}`)
   t.done()
 })
 
 // ── the PR body's Provenance section (record.mjs pr-body --provenance) ───────────
 const PROV_PR = {
-  full: [{ hunks: [{ path: 'a.js', lines: '3-4', task: '1', clauses: ['M1'] }, { path: 'b.js', lines: '7', task: '2' }], exceptions: [{ kind: 'contested', path: 'a.js' }, { kind: 'lost', path: 'b.js' }], unproven: [{ path: 'b.js', lines: '7', task: '2' }] },
-    '3 changed lines from 2 tasks; 1 not run by any probe; exceptions: 1 contested, 1 lost, 0 ordered, 0 foreign.'],
-  partial: [{ hunks: [{ path: 'a.js', lines: '3-4', task: '1', clauses: ['M1'] }, { path: 'b.js', lines: '7', task: '2' }], exceptions: [{ kind: 'contested', path: 'a.js' }, { kind: 'lost', path: 'b.js' }], unproven: [{ path: 'b.js', lines: '7', task: '2' }], coverage: { ran: 2, timed_out: 1, skipped: 0, unmeasured: 1 } },
-    '3 changed lines from 2 tasks; 1 not run by any probe (2 probes unmeasured); exceptions: 1 contested, 1 lost, 0 ordered, 0 foreign.'],
-  shared: [{ hunks: [{ path: 'a.js', lines: '1', task: '1' }, { path: 'a.js', lines: '2', task: '1|2' }, { path: 'a.js', lines: '3', task: '2' }], exceptions: [], unproven: [] },
-    '3 changed lines from 2 tasks; 0 not run by any probe; exceptions: 0 contested, 0 lost, 0 ordered, 0 foreign.'],
+  full: [{ hunks: [{ path: 'a.js', lines: '3-4', task: '1' }, { path: 'b.js', lines: '7', task: '2' }], exceptions: [{ kind: 'contested', path: 'a.js' }, { kind: 'lost', path: 'b.js' }] },
+    '3 changed lines from 2 tasks; exceptions: 1 contested, 1 lost, 0 ordered, 0 foreign.'],
+  shared: [{ hunks: [{ path: 'a.js', lines: '1', task: '1' }, { path: 'a.js', lines: '2', task: '1|2' }, { path: 'a.js', lines: '3', task: '2' }], exceptions: [] },
+    '3 changed lines from 2 tasks; exceptions: 0 contested, 0 lost, 0 ordered, 0 foreign.'],
 }
 for (const [CASE, [record, want]] of Object.entries(PROV_PR)) test(`provenance pr ${CASE}`, () => {
   const t = flockTarget({ 'README.md': 'sim\n' })
