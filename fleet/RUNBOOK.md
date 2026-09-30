@@ -217,8 +217,8 @@ one-time setup in three steps, in order, and is red for the first missing:
 The sandbox reaches the repository through the same edge host as the target
 (`https://$GITHUB_INT_HOST/<evidence repo>.git`). Its `main` holds a one-time
 hand archive under `archive/`; no tool writes to `main`, and runs live only
-under `runs/`, on `live/*` branches and on the run tags. The janitor, the
-close-out, the census and the launcher's duplicate check read runs only from
+under `runs/`, on `live/*` branches and on the run tags. The janitor (its
+close-out included), the census and the launcher's duplicate check read runs only from
 here (the janitor keeps reaping by the hub alone when the key is unset).
 
 **Migrating a past target, once.** A target the fleet ran on before this
@@ -413,9 +413,9 @@ alone), at the run tag `<owner>-<repo>/run-<N>` first and at the branch
 `live/<owner>-<repo>/run-<N>` only while the run is in flight; a run the hub has never heard of is read that way too, and a run with
 no record anywhere is left alone. Last in its report it also names, for each
 target its rows carry, every `ultra/integration-run-<N>` whose highest-numbered
-pull request is closed and not merged. The janitor deletes no branch — the
-sweep (`node fleet/retire.mjs --target <t>`) does. It merges nothing: an
-approved run merges its own pull request from the sandbox.
+pull request is closed and not merged, and deletes it (`--dry-run` only names
+it; `--target <owner>/<repo>` sweeps a target no VM names). It merges nothing:
+an approved run merges its own pull request from the sandbox.
 For any fleet VM whose run has had no update in six hours it prints a line,
 once, naming where it read the age. The only ssh into a fleet VM is the unit
 read of a run the record says is in flight; a unit that has died is written as
@@ -477,7 +477,7 @@ re-driven by on 2026-09-08, as run-57: ready, squash-merge, then a plan for the
 finding.
 
 **The finding is not fixable.** The run is closed — its pull request closed, its
-integration branch left to the retire sweep (`node fleet/retire.mjs --target
+integration branch left to the janitor (`node fleet/janitor.mjs --target
 <t>`), which deletes the branch of a pull request that is closed and not merged
 — and its plan re-authored, with the finding folded into the new plan's tasks. A
 park with nothing mergeable, the branch zero commits ahead of base and `pr`
@@ -904,8 +904,8 @@ tag, `<owner>-<repo>/run-<N>`, in the operator's evidence repository, and it is
 kept — deleting it is deleting the run. Runs from before that move still have
 their `ultra/*` refs on their target; `node fleet/migrate-evidence.mjs --target
 <owner>/<repo>` copies them into the evidence repository (§One-time setup, step
-6) and deletes nothing on the target. The retire sweep
-(`node fleet/retire.mjs --target <t>`) keeps only its deletion of an
+6) and deletes nothing on the target. The janitor
+(`node fleet/janitor.mjs --target <t>`) deletes an
 `ultra/integration-run-<N>` whose pull request is closed and not merged, never a
 `git push origin --delete` by hand. The `--hold` run's open PR keeps its
 branch, and a merged one is delete-on-merge's. The rollback of the evidence

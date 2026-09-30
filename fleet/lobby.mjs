@@ -103,7 +103,7 @@ export const githubIntegrationFor = (target) => `gh-${targetSlug(target)}`
 
 /**
  * The one branch a run pushes to the target: the work it integrated. It is
- * transient: delete-on-merge drops it, and `retire.mjs` sweeps the
+ * transient: delete-on-merge drops it, and the janitor deletes the
  * closed-unmerged ones.
  */
 export const integrationBranchFor = (run) => `ultra/integration-run-${run}`
