@@ -319,19 +319,14 @@ const redOf = (res) => res.map((r, i) => ({ i, ...r })).filter((r) => r.exit !==
 const redText = (task, red) => red.map((r) =>
   `fact ${r.i + 1}${task.clauses ? ` (${task.clauses[r.i]})` : ''} exit ${r.exit}\n${r.tail}`).join('\n\n')
 
-// peer lines an agent's change removed or replaced, by identity: the fall, per peer, in the
-// count of visible lines that peer wrote (an agent's own change never adds a peer's line)
-async function keyedOwners (agent, rel) {
-  const r = await weave({ op: 'authors_keyed', agent, path: rel })
-  const c = {}
-  if (!r.ok) return c
-  for (const a of r.authors) if (a !== 'base' && !a.split('|').includes(labelOf(agent))) c[a] = (c[a] || 0) + 1
-  return c
-}
-function peerFall (before, after) {
-  let n = 0; const peers = new Set()
-  for (const [who, k] of Object.entries(before)) { const d = k - (after[who] || 0); if (d > 0) { n += d; who.split('|').forEach((x) => peers.add(x)) } }
-  return { peer: n, peers: [...peers] }
+// peer lines an agent's change removed or replaced, as the weave answers them per edit or rewrite:
+// the count, and each peer label (a shared line's `a|b` counts both). #1446: this was read again by
+// two authors_keyed round trips per edit; over 1,040 edits (n=51 runs, 2026-09-26..30) the two
+// counts never differed.
+function peerOf (answers) {
+  const peers = new Set()
+  for (const r of answers) for (const o of r.peers || []) o.split('|').forEach((x) => peers.add(x))
+  return { peer: answers.reduce((n, r) => n + (r.peer_lines_touched || 0), 0), peers: [...peers] }
 }
 
 // ── keeping a copy's weave in step with its files ─────────────────────────────
@@ -357,17 +352,17 @@ async function syncFromDisk (agent) {
 
 // editSpans lives in edit_spans.mjs since the replace-all fix (pinned by readings/replace_all_check.mjs)
 async function recordEditCall (agent, rel, before, edits) {
-  let text = before, peerText = 0
-  const owners0 = await keyedOwners(agent, rel)
+  let text = before
+  const answers = []
   for (const e of edits) {
     for (const s of editSpans(text, e.old_string, e.new_string, e.replace_all)) {
       const r = await must({ op: 'edit', agent, path: rel, ...s, task: taskOf[agent]?.id })
-      peerText += r.peer_lines_touched
+      answers.push(r)
       peerRewrites(agent, rel, r.peerRewrites)
     }
     text = e.replace_all ? text.split(e.old_string).join(e.new_string) : text.replace(e.old_string, () => e.new_string)
   }
-  return { ...peerFall(owners0, await keyedOwners(agent, rel)), peerText }
+  return peerOf(answers)
 }
 
 // ── the conflict ledger: Manyana recomputes conflicts per merge and stores none, so the
@@ -833,8 +828,7 @@ async function session (agent, task) {
         const before = pre.get(input.tool_use_id)
         let rec = { peer: 0, peers: [] }, how = 'edit-call'
         if (name === 'Write' || before === null || before === undefined) {
-          const owners0 = await keyedOwners(agent, rel)
-          const r = await must({ op: 'rewrite', agent, path: rel, content: readOr(fp), task: task.id }); peerRewrites(agent, rel, r.peerRewrites); rec = { ...peerFall(owners0, await keyedOwners(agent, rel)), peerText: r.peer_lines_touched }; how = before == null ? 'new-file' : 'write'
+          const r = await must({ op: 'rewrite', agent, path: rel, content: readOr(fp), task: task.id }); peerRewrites(agent, rel, r.peerRewrites); rec = peerOf([r]); how = before == null ? 'new-file' : 'write'
         } else {
           rec = await recordEditCall(agent, rel, before, name === 'MultiEdit' ? ti.edits : [ti])
           const view = (await must({ op: 'view', agent, path: rel })).text
@@ -844,7 +838,7 @@ async function session (agent, task) {
         const own = task.files || (String(task.id).startsWith('R:') ? [task.id.slice(2)] : null)
         const outside = own ? !own.includes(rel) : false
         edited(agent, rel)
-        ev('edit', { agent, task: task.id, tool: name, path: rel, how, peer_lines: rec.peer, peers: rec.peers, peer_lines_text: rec.peerText, outside })
+        ev('edit', { agent, task: task.id, tool: name, path: rel, how, peer_lines: rec.peer, peers: rec.peers, outside })
         if (rec.peer) await board.post({ by: 'host', claim: `${agent} changed ${rec.peer} line(s) written by ${rec.peers.join(', ')} in ${rel}`, confidence: 1, task: task.id })
       } else if (name === 'Read' && ti.file_path) {
         // warn first: before a builder edits a peer's lines, it is told whose they are
