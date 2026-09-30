@@ -28,11 +28,14 @@
  *       exactly `main` and the integration branch (M1); the PR body's
  *       evidence line byte-exact (M3); no `--past-dir` in the engine's argv,
  *       there being no earlier tag (M4); and `<home>/merge-put.json`
- *       byte-equal to the exam's own rendering of the merge payload.
+ *       byte-equal to the exam's own rendering of the merge payload; and
+ *       `<home>/reap-post.json` parsing to `{ run: 502, target: 'o/r' }`
+ *       with exactly one `reap: asked the hub` line in the boot log (#1470).
  *
  *   (c) [M2] the engine stub exits 3 — the boot fails with exactly `"engine
  *       exit 3"`, and the run is tagged all the same: `status.json` at
- *       `o-r/run-<N>` says `failed` and the live branch is gone.
+ *       `o-r/run-<N>` says `failed` and the live branch is gone; no
+ *       `<home>/reap-post.json` is written (#1470).
  *
  *   (d) `node <engineDir>/factory/flock/engine.mjs` with no arguments,
  *       through the rig's own `buildEngineDir` symlink, exits 2
@@ -324,6 +327,14 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
     mergePut, expectedMergePut,
     `(b) [M5] the merge PUT payload is byte-equal to the exam's own rendering — got ${mergePut}`
   )
+
+  // #1470: the merged run whose tag verified asks the hub, once, to remove its VM.
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(path.join(home, 'reap-post.json'), 'utf8')), { run: 502, target: 'o/r' },
+    '(b) the reap request carries the run and its target'
+  )
+  const reapLines = bootLog.split('\n').filter((l) => l.includes('reap: asked the hub'))
+  assert.equal(reapLines.length, 1, `(b) the boot log has exactly one reap line — got ${JSON.stringify(reapLines)}`)
 }
 
 // ── (c) engine exit 3 -> the boot fails, no tag is ever cut ──────────────
@@ -367,6 +378,8 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   const marks = atTag(evidenceDir, runN, 'events.jsonl').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.kind === 'board:mark')
   assert.deepEqual(marks.map((r) => r.state), ['failed'], `(c) events.jsonl at the tag holds one board:mark row, state failed — got ${JSON.stringify(marks)}`)
   assert.deepEqual(Object.keys(refsOf(originDir)), ['refs/heads/main'], '(c) nothing is written to the target')
+  // #1470: a failed run never asks the hub to remove its VM.
+  assert.ok(!fs.existsSync(path.join(home, 'reap-post.json')), '(c) the failed run sends the reaper nothing')
 }
 
 // ── (d) [M2] flock/engine.mjs through a symlinked factory/ ───────────────

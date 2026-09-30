@@ -1,0 +1,15 @@
+[Unit]
+Description=fleet reaper: removes a fleet VM once its run closed as done (#1470)
+After=network-online.target kata.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=exedev
+EnvironmentFile=/etc/kata/kata.env
+ExecStart=/usr/bin/python3 /usr/local/lib/reaper/reaper.py
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

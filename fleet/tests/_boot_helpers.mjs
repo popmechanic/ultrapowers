@@ -290,6 +290,16 @@ case "$url" in
       code=404
     fi
     ;;
+  */reap)
+    if [ "$method" = "POST" ]; then
+      printf %s "$data" > "$FLEET_HOME/reap-post.json"
+      body='{"status":202}'
+      code=202
+    else
+      body=""
+      code=404
+    fi
+    ;;
   */)
     body='{"name":"fleet-sim"}'
     code=200

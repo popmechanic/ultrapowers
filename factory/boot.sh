@@ -15,6 +15,8 @@ TYPESAFE_PROXY_URL="${TYPESAFE_PROXY_URL:-https://typesafe.int.exe.xyz}"
 GITHUB_INT_HOST="${GITHUB_INT_HOST:-github.int.exe.xyz}"
 # The hub, through the host where the edge injects its bearer: the engine writes the board there, and `board.mjs` closes the run there.
 KATA_ADMIN_URL="https://kata.int.exe.xyz"
+# The hub's reaper: a merged run whose tag verified asks it, once, to remove this VM (#1470).
+REAPER_URL="https://reaper.int.exe.xyz"
 FLEET_COMMIT_SECONDS="${FLEET_COMMIT_SECONDS:-60}"
 # The run's one clock: systemd ends the engine unit at this many seconds (the old lease's four hours), and
 # whatever landed by then is published as a draft. No worker carries a cap of its own.
@@ -29,6 +31,8 @@ RUN_N=""; PLAN_SHA=""; TARGET_REPO=""; BASE_SHA=""; ENGINE_SHA=""; RUN_ID=""
 BRANCH=""; SLUG=""; LIVE_BRANCH=""; EVIDENCE_REPO=""; EVIDENCE_REL=""; PLAN_FILE=""; PAST_DIR=""
 ENGINE_REPO_DIR=""; STATUS_FILE=""; STATE=""; PHASE=""; PR_URL=""; PR_AUTHOR=""
 ERROR=""; VM_NAME=""; STARTED_AT=""; EVIDENCE_READY=""; HOLD_FLAG=0
+# RECORDED is 1 once `record_tags` saw the run's tag listed at the pushed head, else empty.
+RECORDED=""
 # Self-merge state: MERGED_SHA is the merge commit once a PUT succeeds (else empty, which
 # `write_status` renders as `null`); MERGE_PHASE is the reason `maybe_self_merge` parked,
 # read only when MERGED_SHA stayed empty. SELF_MERGE_* are the read of `publish.self_merge`, whose
@@ -548,6 +552,11 @@ publish() { # $1 = the engine's exit code
   [ -n "${audit_line:-}" ] && printf '%s\n' "$audit_line" >>"$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl"
   evidence_commit "$RUN_ID: audit"
   record_tags
+  # The boot's last act, which never fails the run: the hub answers before it removes (#1470).
+  if [ "$state" = done ] && [ -n "$MERGED_SHA" ] && [ "$HOLD_FLAG" != 1 ] && [ "$RECORDED" = 1 ]; then
+    fleet_curl -m 5 -sS -X POST "$REAPER_URL/reap" -H 'content-type: application/json' -d "{\"run\":$RUN_N,\"target\":\"$TARGET_REPO\"}" -o /dev/null || true
+    log "reap: asked the hub to remove this VM"
+  fi
 }
 # What a run leaves behind is its one tag in the evidence repository; the live branch is only where it worked, deleted only once the listing agrees — every unhappy path logs one `record:` line and returns 0.
 record_tags() {
@@ -557,6 +566,7 @@ record_tags() {
   fleet_git -C "$EVIDENCE_DIR" push origin "HEAD:$tag" || { log "record: pushing $tag at $head was rejected — $LIVE_BRANCH kept"; return 0; }
   listed="$(fleet_git -C "$EVIDENCE_DIR" ls-remote --tags origin "$tag" 2>/dev/null | awk -v r="$tag" '$2 == r { print $1 }' || true)"
   [ "$listed" = "$head" ] || { log "record: $EVIDENCE_REPO lists $tag at '${listed:-<nothing>}', not $head — $LIVE_BRANCH kept"; return 0; }
+  RECORDED=1
   fleet_git -C "$EVIDENCE_DIR" push origin --delete "refs/heads/$LIVE_BRANCH" || { log "record: $tag is on $EVIDENCE_REPO but deleting $LIVE_BRANCH was rejected"; return 0; }
   log "record: $tag at $head in $EVIDENCE_REPO — $LIVE_BRANCH deleted"
 }

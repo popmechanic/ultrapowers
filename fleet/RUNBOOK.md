@@ -266,6 +266,30 @@ every credential the policy grants. Never prune the `peer-kata` ssh key
 integration goes. A wrong policy is repaired by the same two-step as step 5,
 never by `integrations attach`.
 
+### The hub's reaper (#1470)
+
+A fleet VM whose run closed as done asks the hub to remove it: `POST /reap`
+with `{"run": <n>, "target": "<owner>/<repo>"}`. The reaper
+(`fleet/reaper.py`, stdlib Python on port 8001) reads the caller from the
+platform-set `X-Exedev-Source-Vm` header, checks that the caller's name carries
+the body's run, finds the run issue on the hub's own kata, and only when it is
+closed as done answers 202 and then removes that caller's VM, never any other.
+One-time install:
+
+```bash
+scp fleet/reaper.py fleet/reaper.service kata-hub.exe.xyz:/tmp/
+ssh kata-hub.exe.xyz 'sudo install -D -m 0755 /tmp/reaper.py /usr/local/lib/reaper/reaper.py && sudo install -m 0644 /tmp/reaper.service /etc/systemd/system/reaper.service'
+ssh kata-hub.exe.xyz 'sudo systemctl daemon-reload && sudo systemctl enable --now reaper.service'
+ssh exe.dev "integrations add http-proxy --name=reaper --target=https://kata-hub.exe.xyz:8001/ --peer --attach=tag:fleet"
+```
+
+A port other than 8000 rides in the target URL. The reaper removes through
+`lobby-rm`, the hub-only integration holding the `rm`-only key (`hub-reaper`,
+expires 2026-10-30). Renew it by the same pipe the operator used: mint a new
+`rm`-only key, then pipe it on stdin to `integrations edit lobby-rm --bearer=-`.
+The journal (`journalctl -u reaper`) has one line per request: the caller, the
+run, the status and, on 202, whether the removal succeeded.
+
 ## Per run
 
 ```bash
