@@ -71,7 +71,6 @@ import {
   git,
   githubIntegrationFor,
   highestRunInEvidence,
-  highestRunOnTarget,
   integrationBranchFor,
   isFullSha,
   isRunNumber,
@@ -851,21 +850,8 @@ async function launchBody ({
 
   // The N this launch asks for. Without `--run` it is one past the highest the
   // evidence repository carries for this target *now*, which another launch can
-  // take between this read and the push; the push is where it is settled. An
-  // evidence repository with no run of this target while the target still
-  // carries its old `ultra/*` runs has not been migrated: its numbering would
-  // restart at 1 over runs that exist, so that is a refusal before any push.
+  // take between this read and the push; the push is where it is settled.
   const inEvidence = await highestRunInEvidence(exec, repoDir, evidence, target)
-  if (inEvidence === 0) {
-    const onTarget = await highestRunOnTarget(exec, repoDir)
-    if (onTarget > 0) {
-      throw new Refusal(
-        `launch: ${evidence} holds no run of ${target}, but ${target} carries runs up to run-${onTarget} — ` +
-        `copy them into the evidence repository first: node fleet/migrate-evidence.mjs --target ${target} — ` +
-        'no VM was created and nothing was pushed'
-      )
-    }
-  }
   const firstRun = opts.run ? Number(opts.run) : inEvidence + 1
 
   // ── The parse. Exactly one, here, before the `new` verb — everything

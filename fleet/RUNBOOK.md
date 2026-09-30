@@ -221,21 +221,6 @@ under `runs/`, on `live/*` branches and on the run tags. The janitor (its
 close-out included), the census and the launcher's duplicate check read runs only from
 here (the janitor keeps reaping by the hub alone when the key is unset).
 
-**Migrating a past target, once.** A target the fleet ran on before this
-change keeps its old `ultra/*` refs, and the launcher refuses it while the
-evidence repository holds no ref for it. Copy its runs over, one target per
-call, dry run first:
-
-```bash
-node fleet/migrate-evidence.mjs --target <owner>/<repo> --dry-run
-node fleet/migrate-evidence.mjs --target <owner>/<repo> [--evidence-repo <o>/<r>]
-```
-
-The migration is idempotent — a second call copies nothing new — and deletes
-nothing on the target. Do it for every past target before the first launch on
-it. The rollback of the whole change is a launch from a checkout made before
-#1395's plan merged.
-
 The doctor's tenth row, `cloudflare`, is not part of this one-time walk: it is
 the deploy's credential, needed only by a plan that carries a `**Publish:**`
 line, and an absent object is green. When one exists it is judged by the same
@@ -294,9 +279,7 @@ reads every command word of every `Run:` probe and `Check:` line against the
 sandbox toolchain (`SANDBOX_TOOLCHAIN` in `fleet/toolchain.mjs`) and refuses one
 the box lacks, naming the task, the word and the line (#645);
 reads the pool; computes N from the evidence repository's
-`live/<owner>-<repo>/run-*` branches and `<owner>-<repo>/run-*` tags, refusing
-when it holds none for the target while the target still holds `ultra/*` refs
-(run `node fleet/migrate-evidence.mjs --target <owner>/<repo>` first); refuses
+`live/<owner>-<repo>/run-*` branches and `<owner>-<repo>/run-*` tags; refuses
 when the target's `gh-<owner>-<repo>` or the evidence repository's integration
 does not exist; refreshes the Claude bearer; pushes the plan as one parentless
 commit to `live/<owner>-<repo>/run-<N>` in the evidence repository; then issues one `new`
@@ -902,9 +885,8 @@ the whole of the rollback: nothing in the new path writes anywhere the old path
 read. A run leaves no branch behind to clean up: since #1395 its record is one
 tag, `<owner>-<repo>/run-<N>`, in the operator's evidence repository, and it is
 kept — deleting it is deleting the run. Runs from before that move still have
-their `ultra/*` refs on their target; `node fleet/migrate-evidence.mjs --target
-<owner>/<repo>` copies them into the evidence repository (§One-time setup, step
-6) and deletes nothing on the target. The janitor
+their `ultra/*` refs on their target, and a copy of each in the evidence
+repository (migrated once, #1450). The janitor
 (`node fleet/janitor.mjs --target <t>`) deletes an
 `ultra/integration-run-<N>` whose pull request is closed and not merged, never a
 `git push origin --delete` by hand. The `--hold` run's open PR keeps its

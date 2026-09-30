@@ -19,8 +19,7 @@ control VM, no token on any VM or in any argv.
 2. Read the evidence repository (`--evidence-repo`, else `"evidence"` in
    `~/.ultrapowers/fleet.json`; neither is a refusal) and the pool from `billing plan --json`;
    compute N from the evidence repository's `live/<owner>-<repo>/run-*` branches and
-   `<owner>-<repo>/run-*` tags (refused while the target still holds unmigrated `ultra/*` refs:
-   `migrate-evidence.mjs --target`); refresh the Claude bearer (`claude-token.mjs`).
+   `<owner>-<repo>/run-*` tags; refresh the Claude bearer (`claude-token.mjs`).
 3. Push the plan as one parentless commit in the evidence repository (tree =
    `runs/<owner>-<repo>/<N>/plan.md` and its siblings) to `live/<owner>-<repo>/run-<N>`; file the
    run on the kata hub (`kata-file.mjs`).
@@ -61,8 +60,7 @@ Read a past run at
   `ultra/integration-run-*` branches of the targets its rows name (`--target` adds one no VM
   names).
 - `target.mjs` (the per-repository integration, targets and the evidence repository alike),
-  `board-read.mjs` (print a run's board), `migrate-evidence.mjs` (copies one target's past runs
-  into the evidence repository, idempotent, deleting nothing), `kata-hub.mjs` + `kata-hub-setup.sh` +
+  `board-read.mjs` (print a run's board), `kata-hub.mjs` + `kata-hub-setup.sh` +
   `kata.service` (build the one kata hub).
 - The laptop reads the hub daemon with `ssh kata-hub.exe.xyz curl localhost:8000/api/v1/…`,
   the bearer from `~/.ultrapowers/kata-hub.env` on stdin, never on an argv.

@@ -17,9 +17,6 @@
  *   (c) [M3] neither the setting nor `--evidence-repo`: refused naming
  *       `evidence`, `~/.ultrapowers/fleet.json` and `node fleet/doctor.mjs`,
  *       nothing pushed and no `new`;
- *   (d) [M4] no `o-r` ref in the evidence repository while the target holds
- *       `refs/tags/ultra/evidence/run-2`: refused naming
- *       `migrate-evidence.mjs`, nothing pushed and no `new`;
  *   (e) [M5] `integrations list` naming `gh-o-r` and not `gh-ops-evidence`:
  *       refused naming `gh-ops-evidence`, nothing pushed and no `new`;
  *   (f) [M6] `--evidence-repo ops/other` over the setting `ops/evidence`: the
@@ -67,13 +64,9 @@ const readRules = ({ ws, integrations = ALL_INTEGRATIONS }) =>
 
 // ── The workspace: a target, two evidence repositories, a plan and its record ─
 
-function workspace ({ targetTag = null } = {}) {
+function workspace () {
   const ws = launchWorkspace({ prefix: 'fleet-launch-evidence-', originUrl: ORIGIN_URL, evidence: EVIDENCE })
   const { root, repo } = ws
-  if (targetTag !== null) {
-    repo.git(['tag', targetTag])
-    repo.git(['push', '-q', repo.origin, `refs/tags/${targetTag}`])
-  }
   const other = makeEvidenceRepo({ root, name: OTHER })
   fs.writeFileSync(path.join(path.dirname(ws.planPath), 'a-plan.gate-verdicts.json'), RECORD)
   const targetRefs = () => {
@@ -185,16 +178,6 @@ const assertRefusedClean = (d, leg, needles) => {
   const ws = workspace()
   const d = await drive(ws, { config: { cpu: '6', memory: '8GB' } })
   assertRefusedClean(d, '(c) [M3]', ['evidence', '~/.ultrapowers/fleet.json', 'node fleet/doctor.mjs'])
-  ws.cleanup()
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// (d) [M4] an unmigrated target: refused naming the migration
-// ══════════════════════════════════════════════════════════════════════════
-{
-  const ws = workspace({ targetTag: 'ultra/evidence/run-2' })
-  const d = await drive(ws)
-  assertRefusedClean(d, '(d) [M4]', ['migrate-evidence.mjs'])
   ws.cleanup()
 }
 

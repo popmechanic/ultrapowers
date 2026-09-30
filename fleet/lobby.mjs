@@ -108,23 +108,17 @@ export const githubIntegrationFor = (target) => `gh-${targetSlug(target)}`
  */
 export const integrationBranchFor = (run) => `ultra/integration-run-${run}`
 
-/** The three branch shapes, in one regex — with or without a `refs/heads/` head. */
-const RUN_BRANCH = /^(?:refs\/heads\/)?ultra\/(?:plan|integration|evidence)-run-([1-9][0-9]*)$/
-
-/** The two tag shapes, likewise — with or without a `refs/tags/` head. */
-const RUN_TAG = /^(?:refs\/tags\/)?ultra\/(?:plan|evidence)\/run-([1-9][0-9]*)$/
+/** The integration branch, with or without a `refs/heads/` head. */
+const RUN_BRANCH = /^(?:refs\/heads\/)?ultra\/integration-run-([1-9][0-9]*)$/
 
 /**
- * The run a ref carries, or null — over both the branch shapes and the tag
- * shapes. `main` is null and so is a non-numeric tail like `ultra/plan-run-x`
- * or `ultra/plan/run-x`; so are a shape that exists in neither family
- * (`ultra/integration/run-7`) and the peeled `^{}` line an annotated tag adds
- * to an `ls-remote` listing. A run number is never guessed: anything that is
- * not one of the five shapes answers null rather than a number.
+ * The run an integration branch carries, or null: `main`, a non-numeric tail
+ * like `ultra/integration-run-x` and every other shape answer null. A run
+ * number is never guessed.
  */
 export const runOfBranch = (ref) => {
   const text = String(ref ?? '')
-  const match = RUN_BRANCH.exec(text) ?? RUN_TAG.exec(text)
+  const match = RUN_BRANCH.exec(text)
   return match ? Number(match[1]) : null
 }
 
@@ -597,36 +591,6 @@ export function parseComment (text) {
 }
 
 // ── Reading the target's runs ───────────────────────────────────────────────
-
-/**
- * The highest run number the target already carries, over the three branch
- * shapes *and* the two tag shapes, or 0 when it carries none. One `ls-remote`
- * against the clone's `origin`, carrying both patterns in the one call — the
- * refs are the truth, so nothing here reads a local branch that a stale fetch
- * might have left behind. The branches are transient, so a target whose runs
- * have all published carries only tags; reading the branches alone would hand
- * the next launch a number that is already taken.
- *
- * A non-zero `ls-remote` is a *refusal*, not a zero, for the same reason.
- */
-export async function highestRunOnTarget (exec, repoDir) {
-  const res = await git(exec, repoDir, ['ls-remote', 'origin', 'refs/heads/ultra/*', 'refs/tags/ultra/*'])
-  if (res.code !== 0) {
-    refuse(
-      `git ls-remote origin 'refs/heads/ultra/*' 'refs/tags/ultra/*' in ${repoDir} ` +
-      `failed (exit ${res.code}):\n${output(res)}`
-    )
-  }
-  let best = 0
-  // `<sha>\t<ref>` per line; only the ref half carries the run.
-  for (const line of String(res.stdout ?? '').split('\n')) {
-    const ref = line.split('\t')[1]
-    if (ref === undefined) continue
-    const run = runOfBranch(ref.trim())
-    if (run !== null && run > best) best = run
-  }
-  return best
-}
 
 /**
  * The highest run `target` has in the evidence repository: one `ls-remote`
