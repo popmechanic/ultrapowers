@@ -103,7 +103,8 @@ if (CASE === 'record') {
   fs.writeFileSync(path.join(dir, 'b.gate-verdicts.json'), JSON.stringify(task([{ hash: 'h1', agent: 'fail', jev: 'fail' }])))
   const run = await gate(['--agreement', dir])
   if (run.code !== 0) fail(`gate_jev exited ${run.code}:\n${run.stdout}${run.stderr}`)
-  const want = 'gate-jev: n=2 plans, 3 rounds, agree 2, jev-only fail 0, agent-only fail 1'
+  const want = 'gate-jev: n=2 plans, 3 rounds, agree 2, jev-only fail 0, agent-only fail 1\n' +
+    'gate-jev outcomes: disagreements 1, agent right 0, jev right 0, unlabelled 1'
   if (run.stdout !== want + '\n') fail(`stdout is ${JSON.stringify(run.stdout)}, expected ${JSON.stringify(want)}`)
 }
 server.close()

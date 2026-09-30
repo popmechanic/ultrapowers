@@ -33,7 +33,7 @@ import { findGit } from '../gitblock.mjs'
 import { makeJevClient, JEV_TIMEOUT_MS } from '../jev-client.mjs'
 import { readTrial, resolveState, releaseState, claimOf } from './trial_reading.mjs'
 import { mirrorBoard } from './kata_mirror.mjs'
-import { gitIn, utf8, writeFiles, snapshotEntries, startWeave, readEventRows, kataIds } from './io.mjs'
+import { gitIn, utf8, writeFiles, snapshotEntries, startWeave, readEventRows, kataIds, POLICY_FLOCK, EXAM_MS } from './io.mjs'
 import { makeKataClient, httpTransport } from '../../fleet/kata-client.mjs'
 import { lastSteps, latestResults, readSteps } from './step_reading.mjs'
 import { pastItems } from './past.mjs'
@@ -80,7 +80,6 @@ const CAP = 16
 const MODEL = 'claude-opus-5-5'
 // under the boot's 14400 s unit limit
 const CLOCK_MS = Number(arg('clock', 13800)) * 1000
-const POLICY_FLOCK = (() => { try { return JSON.parse(fs.readFileSync(path.join(HERE, '..', 'policy.json'), 'utf8')).flock } catch { return undefined } })()
 // A policy cell of flock: its value, else the default; a value outside `allowed` stops the engine.
 const mode = (cell, allowed, dflt) => {
   const v = cell.split('.').reduce((o, k) => o?.[k], POLICY_FLOCK) ?? dflt
@@ -276,7 +275,7 @@ const SETUP = W.setup || (LOCK_CMD && ['bash', '-lc', LOCK_CMD])
 if (SETUP) {
   fs.cpSync(BASE_DIR, DEPS_DIR, { recursive: true })
   const t0 = Date.now()
-  const r = spawnSync(SETUP[0], SETUP.slice(1), { cwd: DEPS_DIR, encoding: 'utf8', timeout: 300000, env: RUN_ENV })
+  const r = spawnSync(SETUP[0], SETUP.slice(1), { cwd: DEPS_DIR, encoding: 'utf8', timeout: EXAM_MS.setup, env: RUN_ENV })
   ev('setup', { cmd: SETUP[SETUP.length - 1], exit: r.status, ms: Date.now() - t0 })
   if (r.status !== 0) throw new Error('setup failed: ' + ((r.stdout || '') + (r.stderr || '')).slice(-800))
   DEP_DIRS = ['node_modules', ...fs.readdirSync(DEPS_DIR, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name !== 'node_modules')
@@ -321,7 +320,7 @@ if (kataRecord) {
 // ── facts ─────────────────────────────────────────────────────────────────────
 function runFacts (cwd, task) {
   return task.facts.map((cmd) => {
-    const r = spawnSync(cmd[0], cmd.slice(1), { cwd, encoding: 'utf8', timeout: 60000, env: RUN_ENV })
+    const r = spawnSync(cmd[0], cmd.slice(1), { cwd, encoding: 'utf8', timeout: EXAM_MS.fact, env: RUN_ENV })
     return { exit: r.status ?? 124, tail: ((r.stdout || '') + (r.stderr || '')).slice(-800) }
   })
 }

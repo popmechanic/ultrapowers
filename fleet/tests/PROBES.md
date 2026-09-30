@@ -45,3 +45,27 @@ The current probes:
   exit 0 every fact holds, 1 at least one drift or unreadable fact, 2 the
   lobby was unreachable, a live run's VM was listed, or a throwaway was left
   behind.
+
+## Hand-run: the Jev authoring probes (need `bun`)
+
+The bridge's `sim_env()` PATH holds node, python3, git, bash and sh only, so three
+probes of the Bun authoring tools stay outside the suite (operator pick, #1447).
+Each runs against a local stand-in Jev on 127.0.0.1 and spends nothing. Run all
+three before any change to `skills/ultrawrite/stories/gate_jev.ts`,
+`jev_checks.ts` or `factory/questions.json`:
+
+    for c in record agreement; do node fleet/tests/gate_jev_probe.mjs $c; done
+    for c in pinned-high pinned-low no-base; do node fleet/tests/gate_jev_base_probe.mjs $c; done
+    for c in bundle map decompose understanding; do node fleet/tests/jev_calls_probe.mjs $c; done
+
+- `gate_jev_probe.mjs` — `record`: one request asking the five clause keys,
+  the verdict record left alone and one `gate_rounds` entry written;
+  `agreement`: the census's two lines over two records. Prints `GATE JEV <case> OK`.
+- `gate_jev_base_probe.mjs` — prints one JSON line (`verdict`, `pinned`,
+  `asked_pinned`, `state_base`); `pinned` is asked only when the diet has a
+  `base`. Exits 1 only when it could not run; read the line.
+- `jev_calls_probe.mjs` — the state `jev_checks.ts` sends Jev at each stage.
+  Prints `JEV CALLS <case> OK`.
+
+Everything else the Flock's scripted runs used to probe by hand (catch-up,
+deletes, provenance, the Jev trials) is `test_flock_runs.mjs`, in the suite.
