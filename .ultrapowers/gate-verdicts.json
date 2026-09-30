@@ -1,0 +1,240 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "bccd73fa431b6f36871479a9d945cdf73359329194991aff1b7b77c9fbb3bf04",
+   "verdict": "pass",
+   "reason": "Every computable fact has a tagged probe that fails if false.",
+   "gate_rounds": [
+    {
+     "hash": "bccd73fa431b6f36871479a9d945cdf73359329194991aff1b7b77c9fbb3bf04",
+     "agent": "pass",
+     "jev": "pass"
+    }
+   ]
+  },
+  "2": {
+   "hash": "715ca4aa9988e698fa5f9f159f3604771ff6dbb5145d5af85550573e1d4c6d6d",
+   "verdict": "pass",
+   "reason": "Every computable fact has a tagged probe that fails if false.",
+   "gate_rounds": [
+    {
+     "hash": "715ca4aa9988e698fa5f9f159f3604771ff6dbb5145d5af85550573e1d4c6d6d",
+     "agent": "pass",
+     "jev": "pass"
+    }
+   ]
+  },
+  "3": {
+   "hash": "9422536ac39c0d693f6d02105c09a6d81a91e6011f6e47e2dc97c5988bb755e2",
+   "verdict": "pass",
+   "reason": "Every computable fact has a tagged probe that fails if false.",
+   "gate_rounds": [
+    {
+     "hash": "9422536ac39c0d693f6d02105c09a6d81a91e6011f6e47e2dc97c5988bb755e2",
+     "agent": "pass",
+     "jev": "pass"
+    }
+   ]
+  },
+  "4": {
+   "hash": "6490d90d632c1047cd74a5763944dad3f736f4ae55cc0c580e77cac2fff7938b",
+   "verdict": "pass",
+   "reason": "Every computable fact has a tagged probe that fails if false.",
+   "gate_rounds": [
+    {
+     "hash": "6490d90d632c1047cd74a5763944dad3f736f4ae55cc0c580e77cac2fff7938b",
+     "agent": "pass",
+     "jev": "pass"
+    }
+   ]
+  },
+  "5": {
+   "hash": "3c8ea0e696780d0757e4daa19b19305bf6d01a03cf9081021a4c0779a85975c6",
+   "verdict": "pass",
+   "reason": "Every computable fact has a tagged probe that fails if false.",
+   "gate_rounds": [
+    {
+     "hash": "3c8ea0e696780d0757e4daa19b19305bf6d01a03cf9081021a4c0779a85975c6",
+     "agent": "pass",
+     "jev": "pass"
+    }
+   ]
+  },
+  "6": {
+   "hash": "fbeab5036a757ea94726ff6dcab5d9475420f673e67bd1c3a62a84ac88fbaa86",
+   "verdict": "pass",
+   "reason": "Every computable fact has a tagged probe that fails if false.",
+   "gate_rounds": [
+    {
+     "hash": "fbeab5036a757ea94726ff6dcab5d9475420f673e67bd1c3a62a84ac88fbaa86",
+     "agent": "pass",
+     "jev": "pass"
+    }
+   ]
+  },
+  "7": {
+   "hash": "609fd7a9a72cd80e4116d5852ea704deeedd2163e96ba0c3f3f08ce5cfc281cf",
+   "verdict": "pass",
+   "reason": "Every computable fact has a tagged probe that fails if false (round 2, clause narrowed).",
+   "gate_rounds": [
+    {
+     "hash": "609fd7a9a72cd80e4116d5852ea704deeedd2163e96ba0c3f3f08ce5cfc281cf",
+     "agent": "pass",
+     "jev": "pass"
+    }
+   ]
+  },
+  "8": {
+   "hash": "18f84728b6376aab174cc90d0c288baba3cfbc083bed0f8be9ce60ae36377c63",
+   "verdict": "pass",
+   "reason": "Every computable fact has a tagged probe that fails if false (round 2, clause narrowed).",
+   "gate_rounds": [
+    {
+     "hash": "18f84728b6376aab174cc90d0c288baba3cfbc083bed0f8be9ce60ae36377c63",
+     "agent": "pass",
+     "jev": "pass"
+    }
+   ]
+  },
+  "9": {
+   "hash": "9cf34db7aff0f41bc706be23778f891bf96eba657fbb96b0a6bdc252afab1e70",
+   "verdict": "pass",
+   "reason": "Every computable fact has a tagged probe that fails if false.",
+   "gate_rounds": [
+    {
+     "hash": "9cf34db7aff0f41bc706be23778f891bf96eba657fbb96b0a6bdc252afab1e70",
+     "agent": "pass",
+     "jev": "pass"
+    }
+   ]
+  },
+  "10": {
+   "hash": "7c1c4c41eb589b08e31896dd5e475dbccb81ccb5004e8ec25ae9c88ec07932ba",
+   "verdict": "pass",
+   "reason": "Every computable fact has a tagged probe that fails if false (round 2, clause narrowed).",
+   "gate_rounds": [
+    {
+     "hash": "7c1c4c41eb589b08e31896dd5e475dbccb81ccb5004e8ec25ae9c88ec07932ba",
+     "agent": "pass",
+     "jev": "pass"
+    }
+   ]
+  }
+ },
+ "tally": {
+  "dispatched": 13,
+  "rejected": 3,
+  "rounds": 2,
+  "round1": {
+   "pass": 7,
+   "fail": 3
+  },
+  "round2": {
+   "pass": 3,
+   "fail": 0
+  },
+  "base": "60e4ee7c3a5135a1ceff30b05282fea9e5cf9281"
+ },
+ "history": [
+  {
+   "task": "7",
+   "round": 1,
+   "verdict": "fail",
+   "reason": "tests/test_authoring_census.py pinned the old paths the clause did not say it moves"
+  },
+  {
+   "task": "8",
+   "round": 1,
+   "verdict": "fail",
+   "reason": "test_doctor_cloudflare.mjs pinned nine row ids"
+  },
+  {
+   "task": "10",
+   "round": 1,
+   "verdict": "fail",
+   "reason": "grep for 'evidence row' contradicted the backticked row name"
+  }
+ ],
+ "authoring": {
+  "minutes": 150,
+  "probes": 0,
+  "routing": {
+   "branch": "risk",
+   "lane": "ultrapowers"
+  },
+  "questions": [
+   {
+    "question": "Rollback shape",
+    "options": [
+     "Switch, not dual-write",
+     "Dual-write as filed"
+    ],
+    "recommended": "Switch, not dual-write",
+    "picked": "Switch, not dual-write",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Evidence repo name",
+    "options": [
+     "<owner>/fleet-evidence",
+     "Always name it"
+    ],
+    "recommended": "<owner>/fleet-evidence",
+    "picked": "<owner>/fleet-evidence",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Old runs",
+    "options": [
+     "New home, then old",
+     "Migrate old runs"
+    ],
+    "recommended": "New home, then old",
+    "picked": "Migrate old runs",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Rollback with migration",
+    "options": [
+     "Launch from the old checkout",
+     "Keep the switch flag"
+    ],
+    "recommended": "Launch from the old checkout",
+    "picked": "Launch from the old checkout",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Plan 2 sign",
+    "options": [
+     "Sign",
+     "Fix a line"
+    ],
+    "recommended": "Sign",
+    "picked": "Sign",
+    "explain_rounds": 0
+   },
+   {
+    "question": "Comment cap override",
+    "options": [
+     "Accept the limit",
+     "Carry it another way",
+     "Operator setting (their ruling: abstract it for foreign runs and other users)"
+    ],
+    "recommended": "Accept the limit",
+    "picked": "Operator setting (their ruling: abstract it for foreign runs and other users)",
+    "explain_rounds": 1
+   },
+   {
+    "question": "Plan 2 execute",
+    "options": [
+     "Ultrapowers",
+     "Subagent-Driven",
+     "Inline"
+    ],
+    "recommended": "Ultrapowers",
+    "picked": "Ultrapowers",
+    "explain_rounds": 0
+   }
+  ]
+ }
+}
