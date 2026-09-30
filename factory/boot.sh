@@ -146,6 +146,8 @@ prepare() {
   # The run's one parse (#1449): the engine, the catch-up, the PR body and the publish probe all read this file.
   fleet_python3 "$ENGINE_REPO_DIR/skills/ultrapowers/scripts/plan_parse.py" "$PLAN_FILE" >"$PLAN_JSON" \
     || fail "plan: plan_parse.py refused $PLAN_FILE"
+  # ... and it is the record's too, so a reader sees exactly what the engine read (#1486).
+  mkdir -p "$EVIDENCE_DIR/$EVIDENCE_REL"; cp "$PLAN_JSON" "$EVIDENCE_DIR/$EVIDENCE_REL/plan.json"
 }
 # The previous run's record, for the engine: the highest `<slug>/run-<M>` tag below this run, its run folder
 # extracted to `$FLEET_HOME/past/<M>`. Any miss is one `past:` log line and no `--past-dir`.
@@ -204,7 +206,7 @@ evidence_commit() { # $1 = commit subject
   for p in fleet-boot.log fleet-setup.log; do
     if [ -f "$FLEET_HOME/$p" ]; then cp "$FLEET_HOME/$p" "$EVIDENCE_DIR/$EVIDENCE_REL/$p"; fi
   done
-  for p in status.json events.jsonl engine.log journal.txt fleet-boot.log fleet-setup.log summary.json publish.json publish-deploy.log publish-verify.log publish-rollback.log "${ENGINE_EVIDENCE[@]}"; do
+  for p in status.json plan.json events.jsonl engine.log journal.txt fleet-boot.log fleet-setup.log summary.json publish.json publish-deploy.log publish-verify.log publish-rollback.log "${ENGINE_EVIDENCE[@]}"; do
     if [ -f "$EVIDENCE_DIR/$EVIDENCE_REL/$p" ]; then paths+=("$EVIDENCE_REL/$p"); fi
   done
   [ "${#paths[@]}" -gt 0 ] || return 0

@@ -242,6 +242,7 @@ function evidenceRunDirEntries (evidenceDir, runN) {
       `runs/o-r/${runN}/engine.log`,
       `runs/o-r/${runN}/events.jsonl`,
       `runs/o-r/${runN}/fleet-boot.log`,
+      `runs/o-r/${runN}/plan.json`,
       `runs/o-r/${runN}/plan.md`,
       `runs/o-r/${runN}/publish-deploy.log`,
       `runs/o-r/${runN}/publish-verify.log`,

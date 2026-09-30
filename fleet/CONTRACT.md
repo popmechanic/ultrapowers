@@ -19,7 +19,7 @@ Because the record always goes to the operator's repository, a foreign target (s
 repository) and another user's fleet both work: a `facebook/react` run lands in
 `runs/facebook-react/<N>/` of the operator's repository. A run's folder is
 `runs/<owner>-<repo>/<N>/` (the target's owner and repo): the plan files `plan.md`, `kata.json` and
-`gate-verdicts.json`, and every record file — `status.json`, `events.jsonl`, `engine.log`,
+`gate-verdicts.json`, and every record file — `status.json`, `plan.json` (the run's one parse, #1486), `events.jsonl`, `engine.log`,
 `fleet-boot.log`, `fleet-setup.log`, `summary.json`, the engine files and the publish files. The launcher validates its arguments, reads
 the account pool from `billing plan --json`, computes N from the evidence repository's
 `live/<owner>-<repo>/run-*` branches and `<owner>-<repo>/run-*` tags, refreshes the Claude bearer, and

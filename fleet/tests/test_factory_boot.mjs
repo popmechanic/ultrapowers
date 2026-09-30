@@ -23,7 +23,7 @@
  *       opened and merged, the run closes — plus the one line ending
  *       ` preflight: alive` in `<home>/fleet-boot.log`; the evidence
  *       repository holding the tag `o-r/run-<N>` whose `runs/o-r/<N>/` is
- *       exactly `engine.log`, `events.jsonl`, `plan.md` and `status.json`
+ *       exactly `engine.log`, `events.jsonl`, `plan.json`, `plan.md` and `status.json`
  *       (`state` `done`), `live/o-r/run-<N>` gone and the target holding
  *       exactly `main` and the integration branch (M1); the PR body's
  *       evidence line byte-exact (M3); no `--past-dir` in the engine's argv,
@@ -315,10 +315,11 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
       `runs/o-r/${runN}/events.jsonl`,
       `runs/o-r/${runN}/fleet-boot.log`,
       `runs/o-r/${runN}/fleet-setup.log`,
+      `runs/o-r/${runN}/plan.json`,
       `runs/o-r/${runN}/plan.md`,
       `runs/o-r/${runN}/status.json`
     ],
-    `(b) [M1] runs/o-r/${runN}/ carries exactly engine.log, events.jsonl, fleet-boot.log, fleet-setup.log, plan.md and status.json — got ${JSON.stringify(runDirEntries)}`
+    `(b) [M1] runs/o-r/${runN}/ carries exactly engine.log, events.jsonl, fleet-boot.log, fleet-setup.log, plan.json, plan.md and status.json — got ${JSON.stringify(runDirEntries)}`
   )
 
   // [M5] the merge PUT body the boot sent is byte-equal to the exam's own
