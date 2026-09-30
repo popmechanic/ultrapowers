@@ -1,0 +1,180 @@
+{
+ "tasks": [
+  {
+   "id": "1",
+   "title": "The evidence setting and ref names, in one place",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "2",
+   "title": "The launcher pushes the plan to the operator's evidence repository",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [
+    "1"
+   ],
+   "notes": [
+    "edge snapshot f1d8397106 is red on this task's facts [0,0,1,0,0,0,0,0]; check exit 1",
+    "edge snapshot f1d8397106 is red on this task's facts [0,0,1,0,0,0,0,0]; check exit 1"
+   ]
+  },
+  {
+   "id": "3",
+   "title": "The sandbox keeps the record in the evidence repository and tags every end",
+   "state": "done",
+   "owner": "B",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "4",
+   "title": "The engine reads the previous run from a directory",
+   "state": "done",
+   "owner": "C",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "5",
+   "title": "The janitor and the close-out read and finish runs in the evidence repository",
+   "state": "done",
+   "owner": "H",
+   "depends_on": [
+    "1"
+   ],
+   "notes": []
+  },
+  {
+   "id": "6",
+   "title": "Retire keeps only its integration-branch sweep",
+   "state": "done",
+   "owner": "D",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "7",
+   "title": "The census reads run folders in the evidence repository",
+   "state": "done",
+   "owner": "E",
+   "depends_on": [],
+   "notes": []
+  },
+  {
+   "id": "8",
+   "title": "The doctor's evidence row walks the one-time setup",
+   "state": "done",
+   "owner": "I",
+   "depends_on": [
+    "1"
+   ],
+   "notes": []
+  },
+  {
+   "id": "9",
+   "title": "The one-time migration copies old runs into the evidence repository",
+   "state": "done",
+   "owner": "A",
+   "depends_on": [
+    "1"
+   ],
+   "notes": []
+  },
+  {
+   "id": "10",
+   "title": "The docs say the operator's evidence repository owns the record",
+   "state": "done",
+   "owner": "F",
+   "depends_on": [],
+   "notes": []
+  }
+ ],
+ "beliefs": [
+  {
+   "id": 1,
+   "t": 347286,
+   "by": "I",
+   "claim": "doctor.mjs now has ten rows (new `evidence` after `integrations`); fleet/CONTRACT.md:471 and .claude/rules/fleet.md:45 still say \"nine rows\" and list the old order — outside task 8's files, left untouched.",
+   "confidence": 0.95,
+   "task": "8",
+   "about": "app"
+  },
+  {
+   "id": 2,
+   "t": 605270,
+   "by": "host",
+   "claim": "open conflict in skills/ultrapowers/SKILL.md between published copies; whoever next works there should make it say what both sides meant and call resolve_conflict",
+   "confidence": 1
+  },
+  {
+   "id": 3,
+   "t": 682075,
+   "by": "H",
+   "claim": "janitor() now reads run status only from the evidence repo (its `evidence` arg, else fleet.json's setting). launch.mjs ~802 passes no evidence, so test_launch_duplicate (c)[M3] fails until launch hands janitor `evidence` and its stubs answer repos/<evidence>/contents/runs/...",
+   "confidence": 0.9,
+   "task": "2",
+   "about": "app"
+  },
+  {
+   "id": 4,
+   "t": 707806,
+   "by": "B",
+   "claim": "factory/boot.sh now: EVIDENCE_REPO read from $FLEET_HOME/fleet-evidence-repo; evidence is a shallow clone of live/<slug>/run-<N>; record in runs/<slug>/<N>/; one tag <slug>/run-<N> cut at publish end, parked path and fail(); engine gets --past-dir $FLEET_HOME/past/<M> (highest earlier tag).",
+   "confidence": 0.95,
+   "task": "3",
+   "about": "app"
+  },
+  {
+   "id": 5,
+   "t": 709468,
+   "by": "B",
+   "claim": "boot.sh's ENGINE_EVIDENCE list reads `snapshots.jsonlred-checks.json` (two names fused), so red-checks.json is never committed to the run folder and a --past-dir never carries it. I left it as it was (outside task 3). Whoever owns the past-run read (task 4) may want to split it.",
+   "confidence": 0.85,
+   "task": "4",
+   "about": "app"
+  },
+  {
+   "id": 6,
+   "t": 1042920,
+   "by": "host",
+   "claim": "edge red on task 2 at snapshot f1d8397106",
+   "confidence": 1,
+   "task": "2"
+  },
+  {
+   "id": 7,
+   "t": 1042931,
+   "by": "G",
+   "claim": "launch.mjs passes `evidence` to janitor() and renderSetupScript() (which now throws without a valid <owner>/<repo>). _lobby_helpers.mjs adds makeEvidenceRepo({root,name}); localRemote(repo, evidence) and pointAtOrigin(repo, argv, evidence) route that repo's github URL to its bare.",
+   "confidence": 0.95,
+   "task": "2",
+   "about": "app"
+  },
+  {
+   "id": 8,
+   "t": 1112651,
+   "by": "host",
+   "claim": "edge red on task 2 at snapshot f1d8397106",
+   "confidence": 1,
+   "task": "2"
+  },
+  {
+   "id": 9,
+   "t": 1145012,
+   "by": "host",
+   "claim": "edge red on task 2 at snapshot f1d8397106",
+   "confidence": 1,
+   "task": "2"
+  },
+  {
+   "id": 10,
+   "t": 1237766,
+   "by": "host",
+   "claim": "stall: exhausted {\"snap\":\"a4c13a22fb\",\"perTask\":{\"1\":[0,0,0,0,0],\"2\":[0,0,1,0,0,0,0,0],\"3\":[0,0,0],\"4\":[0,0,0],\"5\":[0],\"6\":[0],\"7\":[0,0,0],\"8\":[0,0,0,0],\"9\":[0,0],\"10\":[0,0,0,0,0,0,0]},\"check\":1,\"blocking\":[]}",
+   "confidence": 1
+  }
+ ]
+}

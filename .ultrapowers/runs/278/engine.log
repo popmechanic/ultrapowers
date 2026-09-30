@@ -1,0 +1,62 @@
+Running as unit: fleet-engine-278.service
+[   0.8s] workload run-278, elastic builders (cap 16), claude-opus-5-5, out /home/exedev/run
+[   1.6s] past: run-277 finished green
+[   1.7s] opens builder A (pool 1)
+[   1.7s] opens builder B (pool 2)
+[   1.7s] opens builder C (pool 3)
+[   1.8s] opens builder D (pool 4)
+[   1.8s] opens builder E (pool 5)
+[   1.9s] opens builder F (pool 6)
+[   1.9s] A claims task 1
+[   1.9s] B claims task 3
+[   1.9s] C claims task 4
+[   1.9s] D claims task 6
+[   1.9s] E claims task 7
+[   1.9s] F claims task 10
+[  52.5s] A done 1
+[  52.7s] opens builder G (pool 7)
+[  52.7s] opens builder H (pool 8)
+[  52.7s] opens builder I (pool 9)
+[  98.7s] edge 0f98c91e0b red {"1":[0,0,0,0,0],"2":[1,1,0,0,0,0,0,0],"3":[0,0,0],"4":[1,1,1],"5":[1],"6":[1],"7":[1,0,1],"8":[1,1,0,0],"9":[1,1],"10":[1,1,1,1,1,1,0]} check 0 
+[  98.7s] G claims task 2
+[  98.7s] H claims task 5
+[  98.7s] I claims task 8
+[ 105.9s] A claims task 9
+[ 124.6s] C done 4
+[ 176.4s] edge 92081f27ba red {"1":[0,0,0,0,0],"2":[1,1,0,0,0,0,0,0],"3":[0,0,0],"4":[0,0,0],"5":[1],"6":[1],"7":[1,0,1],"8":[1,1,0,0],"9":[1,1],"10":[1,1,1,1,1,1,0]} check 0 
+[ 204.5s] E done 7
+[ 258.3s] edge 29dd97e99c red {"1":[0,0,0,0,0],"2":[1,1,0,0,0,0,0,0],"3":[0,0,0],"4":[0,0,0],"5":[1],"6":[1],"7":[0,0,0],"8":[1,1,0,0],"9":[1,1],"10":[1,1,1,1,1,1,0]} check 0 
+[ 280.8s] D done 6
+[ 336.2s] edge 21f6c029dc red {"1":[0,0,0,0,0],"2":[1,1,0,0,0,0,0,0],"3":[0,0,0],"4":[0,0,0],"5":[1],"6":[0],"7":[0,0,0],"8":[1,1,0,0],"9":[1,1],"10":[1,1,1,1,1,1,0]} check 0 
+[ 349.6s] I done 8
+[ 401.8s] edge c6605fce45 red {"1":[0,0,0,0,0],"2":[1,1,0,0,0,0,0,0],"3":[0,0,0],"4":[0,0,0],"5":[1],"6":[0],"7":[0,0,0],"8":[0,0,0,0],"9":[1,1],"10":[1,1,1,1,1,1,0]} check 0 
+[ 434.5s] A done 9
+[ 490.6s] edge c82e147d01 red {"1":[0,0,0,0,0],"2":[1,1,0,0,0,0,0,0],"3":[0,0,0],"4":[0,0,0],"5":[1],"6":[0],"7":[0,0,0],"8":[0,0,0,0],"9":[0,0],"10":[1,1,1,1,1,1,0]} check 0 
+[ 548.6s] F done 10
+[ 605.3s] early close skills/ultrapowers/SKILL.md 42d78053f4 held by F
+[ 605.3s] edge d3c3985366 red {"1":[0,0,0,0,0],"2":[1,1,0,0,0,0,0,0],"3":[0,0,0],"4":[0,0,0],"5":[1],"6":[0],"7":[0,0,0],"8":[0,0,0,0],"9":[0,0],"10":[0,0,0,0,0,0,0]} check 0 conflicts skills/ultrapowers/SKILL.md (blocking: none)
+[ 622.5s] H done 5
+[ 679.5s] edge e9ec19a977 red {"1":[0,0,0,0,0],"2":[1,1,1,0,0,0,0,0],"3":[0,0,0],"4":[0,0,0],"5":[0],"6":[0],"7":[0,0,0],"8":[0,0,0,0],"9":[0,0],"10":[0,0,0,0,0,0,0]} check 1 conflicts skills/ultrapowers/SKILL.md (blocking: none)
+[ 732.8s] B done 3
+[ 792.4s] edge 230c718d61 red {"1":[0,0,0,0,0],"2":[1,1,1,0,0,0,0,0],"3":[0,0,0],"4":[0,0,0],"5":[0],"6":[0],"7":[0,0,0],"8":[0,0,0,0],"9":[0,0],"10":[0,0,0,0,0,0,0]} check 1 conflicts skills/ultrapowers/SKILL.md (blocking: none)
+[ 973.7s] G done 2
+[1039.4s] edge f1d8397106 red {"1":[0,0,0,0,0],"2":[0,0,1,0,0,0,0,0],"3":[0,0,0],"4":[0,0,0],"5":[0],"6":[0],"7":[0,0,0],"8":[0,0,0,0],"9":[0,0],"10":[0,0,0,0,0,0,0]} check 1 conflicts skills/ultrapowers/SKILL.md (blocking: none)
+[1042.9s] reopen task 2 at f1d8397106
+[1044.4s] B claims task 2
+[1069.0s] B done 2
+[1112.7s] reopen task 2 at f1d8397106
+[1113.3s] B claims task 2
+[1137.3s] B done 2
+[1145.0s] reopen task 2 at f1d8397106
+[1146.5s] A claims task 2
+[1171.2s] A done 2
+[1234.0s] edge a4c13a22fb red {"1":[0,0,0,0,0],"2":[0,0,1,0,0,0,0,0],"3":[0,0,0],"4":[0,0,0],"5":[0],"6":[0],"7":[0,0,0],"8":[0,0,0,0],"9":[0,0],"10":[0,0,0,0,0,0,0]} check 1 conflicts skills/ultrapowers/SKILL.md (blocking: none)
+[1237.8s] STALL exhausted {"snap":"a4c13a22fb","perTask":{"1":[0,0,0,0,0],"2":[0,0,1,0,0,0,0,0],"3":[0,0,0],"4":[0,0,0],"5":[0],"6":[0],"7":[0,0,0],"8":[0,0,0,0],"9":[0,0],"10":[0,0,0,0,0,0,0]},"check":1,"blocking":[]}
+[1237.8s] TERMINAL draft exhausted: red or blocked with every retry spent
+[1241.7s] summary {"workload":"run-278","agents":"elastic","builders_max":9,"cap":16,"model":"claude-opus-5-5","settled":null,"wall_ms":1241457,"publish":"explicit","early_close":"held","order":"chain","final":{"snap":"a4c13a22fb","green":false,"perTask":{"1":[0,0,0,0,0],"2":[0,0,1,0,0,0,0,0],"3":[0,0,0],"4":[0,0,0],"5":[0],"6":[0],"7":[0,0,0],"8":[0,0,0,0],"9":[0,0],"10":[0,0,0,0,0,0,0]},"check":1,"conflicts":["skills/ultrapowers/SKILL.md"]},"snapshots":11,"beliefs":10,"outcome":{"pr":"draft","why":"exhausted: red or blocked with every retry spent","snap":"a4c13a22fb","t":1237767},"settle_mode":"tested","debounce_ms":125488,"attached":{"stalls":[{"kind":"exhausted","evidence":{"snap":"a4c13a22fb","perTask":{"1":[0,0,0,0,0],"2":[0,0,1,0,0,0,0,0],"3":[0,0,0],"4":[0,0,0],"5":[0],"6":[0],"7":[0,0,0],"8":[0,0,0,0],"9":[0,0],"10":[0,0,0,0,0,0,0]},"check":1,"blocking":[]},"t":1237766}],"open_conflicts":[],"last_edge":{"snap":"a4c13a22fb","perTask":{"1":[0,0,0,0,0],"2":[0,0,1,0,0,0,0,0],"3":[0,0,0],"4":[0,0,0],"5":[0],"6":[0],"7":[0,0,0],"8":[0,0,0,0],"9":[0,0],"10":[0,0,0,0,0,0,0]},"check":1}},"edit_failures":{"not_unique":0,"not_found":0,"stale":0,"other":0},"tokens":{"input":450,"output":218222,"cache_read":15732379,"cache_write":801027},"sessions":13,"cost_usd":14.138}
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 20min 42.022s
+CPU time consumed: 14min 13.326s
+Memory peak: 2.3G
+Memory swap peak: 0B
