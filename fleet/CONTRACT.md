@@ -1,41 +1,57 @@
-# The fleet contract (v3, 2026-09-04 — the target owns the record). Every builder reads this first.
+# The fleet contract (v4, 2026-09-29 — the evidence repository owns the record). Every builder reads this first.
 
 Design record: `docs/superpowers/specs/2026-09-03-fleet-on-the-grain.md`, whose `## Counsel 2` section
 (Sol + Opus on the papercuts of runs 65–69) is the authority for the sandbox internals below, and
 issues #597/#598 for the shape of a launch. Where v2 of this file (git history) and this text
-disagree, this text wins. This contract is the launcher's and the fleet VM's; the engine itself is
+disagree, this text wins; v4 (#1395, the operator's picks and ruling of 2026-09-29) moved the plan
+and the record off the target into the operator's evidence repository. This contract is the launcher's and the fleet VM's; the engine itself is
 the Flock (`factory/flock/`), the one engine since the factory's retirement (map #1292 rule 8), and
 its own literals are not restated here. The wave engine this file described in detail
 until 2026-09-21 (cut two) is gone; `fleet/RUNBOOK.md` names the rollback.
 
 ## The shape in one paragraph
-A run is a number N per target. The launcher validates its arguments, reads the account pool from
-`billing plan --json`, computes N from the target's own `ultra/*-run-*` branches and its
-`ultra/{plan,evidence}/run-<N>` tags, refreshes the Claude
-bearer, and pushes the plan as ONE commit on `base=` to `ultra/plan-run-N` (that commit's tree is base
-plus `.ultrapowers/plan.md`, `.ultrapowers/kata.json`, and `.ultrapowers/gate-verdicts.json` when the
-plan has a sibling `<stem>.gate-verdicts.json`). Then it
+A run is a number N per target, and its plan and record live in the operator's EVIDENCE REPOSITORY,
+never on the target. That repository is the operator's own setting — the key `"evidence"` (value
+`<owner>/<repo>`; the operator's is `popmechanic/fleet-evidence`, private) in
+`~/.ultrapowers/fleet.json`, overridden per launch by `--evidence-repo <owner>/<repo>` — and is never
+derived from the target; a launch with neither is refused, naming the key and `node fleet/doctor.mjs`.
+Because the record always goes to the operator's repository, a foreign target (someone else's
+repository) and another user's fleet both work: a `facebook/react` run lands in
+`runs/facebook-react/<N>/` of the operator's repository. A run's folder is
+`runs/<owner>-<repo>/<N>/` (the target's owner and repo): the plan files `plan.md`, `kata.json` and
+`gate-verdicts.json`, and every record file — `status.json`, `events.jsonl`, `engine.log`,
+`summary.json`, the engine files and the publish files. The launcher validates its arguments, reads
+the account pool from `billing plan --json`, computes N from the evidence repository's
+`live/<owner>-<repo>/run-*` branches and `<owner>-<repo>/run-*` tags, refreshes the Claude bearer, and
+pushes the plan as ONE parentless commit in the evidence repository — its tree that folder with the
+plan files, its message naming the target and the base sha — to `live/<owner>-<repo>/run-<N>`. Then it
 issues ONE lobby verb — `new` — which creates a fresh VM and runs the generated setup script on it.
-The setup script installs the toolchain, an immutable bootstrap and the run's unit, then starts
-`fleet-run@<N>.service`. The bootstrap reads the assignment from the VM comment once, clones the
-engine at `engine=` into a content-addressed directory, and execs that checkout's
-`factory/boot.sh`. The boot script clones the target at `base=`, runs the engine as a transient
-user service with a memory cap, commits its evidence to the TARGET repository on
-`ultra/evidence-run-N` at every transition — no status page; git is the record — and, only when
-there is something to publish and the default branch moved underneath it, catches the run up to the
-target's tip inline (`factory/flock/catchup.mjs`) before the PR, then pushes
-`ultra/integration-run-N` and opens the PR over GitHub's REST API through the edge. The PR is the human
-gate: the target's one integration rides the VM for the run's whole life, and there is no grant step.
-There is no image to keep fresh, no state repository, no orchestrator, no control VM, and no token on
-any VM. The branches are the working surface and go at publish; what a run leaves on the repository it
-was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+The setup script writes the evidence repository to `$HOME/fleet-evidence-repo`, installs the
+toolchain, an immutable bootstrap and the run's unit, then starts `fleet-run@<N>.service`. The
+bootstrap reads the assignment from the VM comment once, clones the engine at `engine=` into a
+content-addressed directory, and execs that checkout's `factory/boot.sh`. The boot script clones the
+target at `base=`, fetches only the live branch of the evidence repository, shallow, runs the engine
+as a transient user service with a memory cap, commits the record to the live branch every 60 s and
+at each transition — no status page; git is the record — and, only when there is something to publish
+and the default branch moved underneath it, catches the run up to the target's tip inline
+(`factory/flock/catchup.mjs`) before the PR, then pushes `ultra/integration-run-N` to the target and
+opens the PR over GitHub's REST API through the edge. At the end of every run (done, parked and
+failed) it cuts one tag `<owner>-<repo>/run-<N>` on the live branch's last commit, verifies it with
+`git ls-remote --tags`, and deletes the live branch. The PR is the human gate: the target's
+integration and the evidence repository's ride the VM for the run's whole life, and there is no
+grant step. There is no image to keep fresh, no orchestrator, no control VM, and no token on any VM.
+The product repository receives only `ultra/integration-run-<N>`; what a run leaves is one tag in the
+evidence repository.
 
 ## Literals
-- **Run id:** `N` = 1 + max N over the target's `ultra/{plan,integration,evidence}-run-<N>` branches
-  and over its `ultra/{plan,evidence}/run-<N>` tags — the branches are transient and the tags are the
-  record, so a run number is read from both shapes and never from one (`--run N` overrides).
-  A refused plan push re-reads the highest run and retries with the next N, up to three pushes
-  in all, so the push and not the read is what reserves N. `RUN_ID=run-N`.
+- **Run id:** `N` = 1 + max N over the evidence repository's `live/<owner>-<repo>/run-<N>` branches
+  and its `<owner>-<repo>/run-<N>` tags (`<owner>-<repo>` the target's) — the branches are transient
+  and the tags are the record, so a run number is read from both shapes and never from one
+  (`--run N` overrides). The launcher refuses when the evidence repository holds no ref for the
+  target while the target still holds `ultra/*` refs: the target's old runs are migrated first
+  (`node fleet/migrate-evidence.mjs --target <owner>/<repo>`, below). A refused plan push re-reads
+  the highest run and retries with the next N, up to three pushes in all, so the push and not the
+  read is what reserves N. `RUN_ID=run-N`.
 - **VM name:** `fleet-r<N>-<yymmddHHMM>-<4 hex>` (e.g. `fleet-r70-2609032215-a1b2`). exe.dev does not reserve
   deleted names, but a name is still one incarnation, never derived from N alone: the run number
   is the identity. Lookup by pattern:
@@ -43,17 +59,18 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   (`.shared_vms` are other people's). Contractual row fields: `vm_name`, `ssh_dest`, `ssh_host`, `status`.
   `comment`, `tags`, `created_at` are undocumented: read them as optional, never crash on their absence,
   never decide from `created_at`. Use `ssh_dest` for ssh/scp, never `<vm_name>.exe.xyz`.
-- **The three branches on the target** — where a run works, not what it leaves; each one is deleted
-  when the thing it carried has landed (nothing else the fleet writes lives anywhere else):
-  - `ultra/plan-run-<N>` — one commit on `base=`; tree = base + `.ultrapowers/plan.md`
-    [+ `.ultrapowers/gate-verdicts.json`] + `.ultrapowers/kata.json` (the run's record on the hub —
+- **The two branches** — where a run works, not what it leaves; each one is deleted when the thing it
+  carried has landed (nothing else the fleet writes lives anywhere else):
+  - `live/<owner>-<repo>/run-<N>` in the evidence repository — the plan commit, then the record on
+    top of it. The plan commit is parentless; its tree is `runs/<owner>-<repo>/<N>/` holding
+    `plan.md` [+ `gate-verdicts.json`] + `kata.json` (the run's record on the hub —
     `{"url":"https://kata.int.exe.xyz","project":{id,uid,name},"run":{uid,revision},"tasks":{"<id>":{uid,short_id,revision}}}`,
     keys in that order, each `revision` the one the launcher's post-link `getIssue` of that issue
     answered and each task's `short_id` the one its `createIssue` answered — that is what a worker's
     `KATA_REF=<project>#<short_id>` is built from, so a create answer without one is a refusal and no
-    record; `JSON.stringify(…, null, 2)` plus a trailing newline). Written by the launcher, before
-    any VM exists.
-  - `ultra/evidence-run-<N>` — the run's record under `.ultrapowers/runs/<N>/`: `status.json`,
+    record; `JSON.stringify(…, null, 2)` plus a trailing newline), its message naming the target and
+    the base sha. Written by the launcher, before any VM exists.
+    On top of it the sandbox commits the run's record into the same folder: `status.json`,
     `events.jsonl` and `engine.log`, committed at every state transition and, while the engine
     runs, on the first tick that finds `events.jsonl` changed since the last commit, at most
     `FLEET_COMMIT_SECONDS` seconds apart (default 60) — so the branch is never far behind the
@@ -81,36 +98,46 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     - `past.json` — the previous run's items the builders were briefed with: `{run, items}`, at
       most 10 items of at most 300 characters each. Written only when the previous run on the
       target did not end `done`. The previous run is the one with the highest
-      `ultra/evidence/run-<M>` tag below this run's number; a failed read writes no `past.json`
-      and never affects the run.
+      `<owner>-<repo>/run-<M>` tag below this run's number in the evidence repository; the boot
+      extracts its folder into a directory the engine reads (`--past-dir`), and a failed read
+      writes no `past.json` and never affects the run.
     Not kept: the whole snapshots, the raw weave log (whose `content` is the files' full texts) and
     `checks/`. (History: the retired factory engine wrote none of these six.)
-  - `ultra/integration-run-<N>` — the work. Pushed only when it is ahead of `base=`; the PR's head.
+  - `ultra/integration-run-<N>` on the target — the work, and the only ref the product repository
+    ever receives. Pushed only when it is ahead of `base=`; the PR's head.
     It has three fates, decided by the pull request with the highest `number` on that head:
     a merged one goes with the merge (delete-on-merge), a `hold=1` run's stays while its PR is open,
     and the retire sweep deletes one whose pull request is closed and not merged.
-- **The two tags** — a run's record, and the only refs that outlive it. At publish the sandbox tags
-  the plan commit `ultra/plan/run-<N>` and the final evidence commit `ultra/evidence/run-<N>`, and the
-  branches `ultra/plan-run-<N>` and `ultra/evidence-run-<N>` are deleted in the same step, after both
-  tags are verified against the remote with `git ls-remote --tags`. A tag that does not verify keeps
-  both branches; a run that ends `failed` keeps them for the one-time sweep
-  (`node fleet/retire.mjs --target <owner>/<repo>`, for the runs already on a target). The sweep
-  reads each pair's `.ultrapowers/runs/<N>/status.json` on the run's evidence branch before it names
-  that run's tags or branches: a run whose `state` is not one of `done`, `parked` or `failed`, or
-  whose `ultra/integration-run-<N>` still has an open pull request, is a run in flight and prints
-  `run <N>: live (<why>) — skipped` instead — the same line under `--dry-run`. And
-  the retire sweep also deletes an `ultra/integration-run-<N>` whose PR is closed and not merged,
-  saying so on that run's line. The record is
-  read by tag: `.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>` and
-  `.ultrapowers/plan.md?ref=ultra/plan/run-<N>`. No engine reads `.ultrapowers/gate-verdicts.json`;
-  the laptop's authoring census (`skills/ultrawrite/scripts/authoring_census.py --fetch`) reads it off
-  `ultra/plan/run-<N>` (runs 269–271 were launched without it, 2026-09-29).
+- **The one tag** — a run's record, and the only ref that outlives it. At the end of every run
+  (done, parked and failed) the sandbox cuts one tag `<owner>-<repo>/run-<N>` in the evidence
+  repository on the live branch's last commit, verifies it against the remote with
+  `git ls-remote --tags`, and only then deletes `live/<owner>-<repo>/run-<N>`; a tag that does not
+  verify keeps the branch. The plan commit is an ancestor of that tag, so one tag carries both the
+  plan and the record. The record is read by tag:
+  `runs/<owner>-<repo>/<N>/status.json?ref=<owner>-<repo>/run-<N>` and
+  `runs/<owner>-<repo>/<N>/plan.md?ref=<owner>-<repo>/run-<N>`, and at
+  `?ref=live/<owner>-<repo>/run-<N>` while the run is live. No engine reads `gate-verdicts.json`; the
+  laptop's authoring census (`skills/ultrawrite/scripts/authoring_census.py --fetch`) reads it off the
+  run tag (runs 269–271 were launched without it, 2026-09-29). The evidence repository's `main` holds
+  a one-time hand archive under `archive/`; no tool writes to `main`, and runs live only under
+  `runs/`, on `live/*` branches and on the run tags. The retire sweep
+  (`node fleet/retire.mjs --target <owner>/<repo>`) keeps only its deletion of an
+  `ultra/integration-run-<N>` whose pull request is closed and not merged.
+- **Migration (`fleet/migrate-evidence.mjs`):**
+  `node fleet/migrate-evidence.mjs --target <owner>/<repo> [--evidence-repo <o>/<r>] [--dry-run]`,
+  one target per call, copies that target's past runs — its old `ultra/*` plan and evidence refs —
+  into the evidence repository as `runs/<owner>-<repo>/<N>/` under `<owner>-<repo>/run-<N>` tags. It
+  is idempotent and deletes nothing on the target; the operator runs it once per past target before
+  the first launch on it (the launcher refuses until then, see Run id). The rollback of this whole
+  shape is a launch from a checkout made before #1395's plan merged.
 - **Comment** (≤200 bytes, one line, space-separated `key=value`, this order, nothing else):
   `run=<N> plan=<40-hex> target=<owner>/<repo> base=<40-hex> engine=<40-hex>` then
   optional `kind=flock` then optional `hold=1`. The boot always runs the Flock
   (`factory/flock/engine.mjs`): `kind=flock` or no `kind=` boots it, and `kind=factory` (the retired
   engine) fails the run at the assignment; `fleet/launch.mjs` always writes `kind=flock` and refuses `--kind`.
-  `plan=` is the tip of `ultra/plan-run-<N>` on the target; `hold=1` keeps the pull request open for a
+  `plan=` is the plan commit — the tip of `live/<owner>-<repo>/run-<N>` in the evidence repository
+  when the launcher pushed it (the comment carries no `evidence=`; the VM learns the repository from
+  the setup script); `hold=1` keeps the pull request open for a
   person — the sandbox publishes it and does not merge it. Written once by `new --comment`; the sandbox
   reads it ONCE from `https://reflection.int.exe.xyz/comment` (`{"comment": "..."}`) and fails the run
   if it is absent or malformed. Nobody rewrites it.
@@ -156,7 +183,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   and no `handshake:settled`, and dispatches the prompts it dispatched before the handshake existed;
   a run without `--kata` also makes no `getIssue` for it. The findings a task collected this way
   ride its `report.json` row as `tasks[].findings`, `[]` when it collected none.
-- **Launch order (launcher):** validate `--target`/`--base`/plan — a `--base` that is not an ancestor
+- **Launch order (launcher):** read the evidence repository (`--evidence-repo`, else `fleet.json`'s
+  `"evidence"`) and refuse a launch with neither, naming the key and `node fleet/doctor.mjs` →
+  validate `--target`/`--base`/plan — a `--base` that is not an ancestor
   of the target's default branch is refused (the publish fold would have nothing to fold onto), and so
   is a shallow launch clone, whose history cannot answer that question → the `--base` check
   and the parse both run files fetched at `engine=` — `skills/ultrapowers/scripts/plan_check.py` and
@@ -172,13 +201,18 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   (`ssh exe.dev "billing plan --json"`) and refuse a run larger than it → run the janitor
   (`fleet/janitor.mjs`, the reap) → refuse a plan that is already live on the target (#1036): the
   plan text's git blob sha — the `<plan sha>` of the kata `Idempotency-Key` below — is compared with
-  the `.ultrapowers/plan.md` blob on `ultra/plan-run-<N>` of every running `fleet-r*` VM whose
-  comment names this target and whose record (hub, else evidence) does not say the run ended; a
+  the `runs/<owner>-<repo>/<N>/plan.md` blob on `live/<owner>-<repo>/run-<N>` in the evidence
+  repository, for every running `fleet-r*` VM whose comment names this target and whose record
+  (hub, else evidence) does not say the run ended; a
   match is a `Refusal` naming `run-<N>`, the VM and `--again`, the one flag that launches it again on
-  purpose, and a run whose record says it ended never refuses, however recently → `git ls-remote` the target's
-  `ultra/*-run-*` branches and `ultra/{plan,evidence}/run-*` tags for N → refuse when `integrations list --json` has no `gh-<owner>-<repo>` (the fix
-  named is `node fleet/target.mjs <owner>/<repo>`; a public target would still clone from github.com
-  but could not push or open its PR, so it is not launched) → `node fleet/claude-token.mjs refresh` →
+  purpose, and a run whose record says it ended never refuses, however recently → `git ls-remote` the
+  evidence repository's `live/<owner>-<repo>/run-*` branches and `<owner>-<repo>/run-*` tags for N,
+  refusing when it holds none while the target still holds `ultra/*` refs (the fix named is
+  `node fleet/migrate-evidence.mjs --target <owner>/<repo>`) → refuse when `integrations list --json`
+  has no `gh-<owner>-<repo>` for the target or none for the evidence repository (the fix named is
+  `node fleet/target.mjs <owner>/<repo>` for whichever is missing; a public target would still clone
+  from github.com but could not push or open its PR, so it is not launched) →
+  `node fleet/claude-token.mjs refresh` →
   read the account's usage windows (`node fleet/claude-token.mjs usage --json --account <account>
   --no-rotate`) and refuse a reading at or past 95% of either window, naming the account and the
   reset time, before any push (#1114); under the wall, the launch line carries
@@ -200,7 +234,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   read back, its metadata patched `{run, wave}` under that read's revision and the run
   issue set as its `parent` with `replace: true`; one `blocks` link per `dag_edges` entry created ON
   the task that blocks, then one `getIssue` per task and one for the run, whose revisions are what
-  `.ultrapowers/kata.json` records; a refused push that bumps N closes the run-N issue with reason
+  `kata.json` records; a refused push that bumps N closes the run-N issue with reason
   `wontfix` and files again for N+1, where the same keys answer the same task issues — nothing on the
   hub is destroyed. The hub is reached from the laptop as `ssh <hub> curl …
   localhost:8000/api/v1/…` — the host is the `KATA_URL` of `~/.ultrapowers/kata-hub.env`, the bearer
@@ -208,7 +242,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   is refused before any command (`node fleet/kata-hub.mjs` builds the hub), a `ping` that fails —
   asked right after the `integrations list --json` read — is refused before any push, and a hub call
   that fails after it is a launch failure before any push and before `new` →
-  push `ultra/plan-run-N` → ONE verb:
+  push the parentless plan commit to `live/<owner>-<repo>/run-<N>` in the evidence repository → ONE
+  verb:
 
   ```
   ssh exe.dev "new --name fleet-r<N>-<yymmddHHMM>-<4 hex> --tag fleet --comment '<assignment>' \
@@ -234,8 +269,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   refuses it since 2026-09-11 (`new --integration cannot safely rewrite a singular attachment
   policy; create the VM first, then use integrations policy get/set with the complete expression`),
   and the launcher refuses its own line before issuing it should the flag ever reappear. The run's
-  credentials reach the VM by POLICY instead: each integration a run needs — `claude-max` and
-  `gh-<owner>-<repo>` — carries the complete
+  credentials reach the VM by POLICY instead: each integration a run needs — `claude-max`, the
+  target's `gh-<owner>-<repo>` and the evidence repository's `gh-<owner>-<repo>` — carries the complete
   attachment policy `tag:fleet` (`integrations policy get <name> --json` → `policy.selector`;
   written once with `integrations policy set <name> 'tag:fleet' --permanent --if-revision=<revision>`,
   or at creation with `--policy 'tag:fleet'`), so `--tag fleet` on `new` is the grant, nothing is
@@ -276,10 +311,12 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
      and a git identity for `exedev` (`user.name fleet`, `user.email fleet@exe.dev`). No `ANTHROPIC_*`
      anywhere in the script: the proxy variables are the engine service's argv (boot script, below),
      and the bearer itself never leaves the edge;
-  6. wait for the user bus (`${FLEET_USER_BUS:-/run/user/$(id -u)/bus}`, at most 60 s) to appear
+  6. write the evidence repository's `<owner>/<repo>` to `$HOME/fleet-evidence-repo` — the one way
+     the VM learns it (the assignment comment carries no `evidence=`);
+  7. wait for the user bus (`${FLEET_USER_BUS:-/run/user/$(id -u)/bus}`, at most 60 s) to appear
      before any `systemctl --user` call — the image lingers `exedev` by a marker file, so the script
      never calls `loginctl`;
-  7. `systemctl --user daemon-reload`, then `systemctl --user start fleet-run@<N>.service`.
+  8. `systemctl --user daemon-reload`, then `systemctl --user start fleet-run@<N>.service`.
 
   `<N>` is baked into the script the launcher generates, so the script passes `bash -n` for every run
   number. Why a template of `Type=exec` and not a oneshot (Counsel 3, measured on exeuntu, systemd 255):
@@ -296,9 +333,13 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `FLEET_ASSIGNMENT='<comment>'` in its env. It never writes anywhere but `/home/exedev/engines/` and
   `/home/exedev/fleet-boot.log`. It is never overwritten by a run. The assignment comes from
   Reflection, never from `$1`.
-- **Boot script (`factory/boot.sh`), invoked by the bootstrap:** clones the target at `base=`,
-  runs the engine as one transient unit, commits evidence under `ultra/evidence-run-<N>` at every
-  transition (see above), and — only when there is something to publish — opens the pull request
+- **Boot script (`factory/boot.sh`), invoked by the bootstrap:** reads the evidence repository from
+  `$HOME/fleet-evidence-repo` and fails the run without it, clones the target at `base=`, fetches
+  only `live/<owner>-<repo>/run-<N>` of the evidence repository, shallow, through the same edge host
+  (`https://$GITHUB_INT_HOST/<evidence repo>.git`), extracts the previous run's folder for the
+  engine's `--past-dir`, runs the engine as one transient unit, commits the record to the live
+  branch every 60 s and at each transition (see above), cuts and verifies the run tag and deletes
+  the live branch at the end of every run, and — only when there is something to publish — opens the pull request
   and, gated by `factory/policy.json`'s `publish.self_merge`, merges it. When the target's tip moved
   underneath the run, the boot catches the run up to the new main inline by running
   `node factory/flock/catchup.mjs --plan <plan> --target <target> --base <run base> --onto <moved tip>
@@ -384,7 +425,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   neither is persisted anywhere this engine reads again.
 - **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"state":"folded|failed","park":"<detail or null>"}}}`
   — committed to
-  `.ultrapowers/runs/<N>/status.json` on `ultra/evidence-run-<N>` at every transition **and, while
+  `runs/<owner>-<repo>/<N>/status.json` on `live/<owner>-<repo>/run-<N>` in the evidence repository
+  at every transition **and, while
   the engine runs, on the first tick that finds `events.jsonl` changed since the last commit, at
   most once every `FLEET_COMMIT_SECONDS` seconds (default 60)**. A tick that saw no change is a
   heartbeat (`updatedAt` moves) and earns no commit.
@@ -415,8 +457,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   credential. Its body is the plan's `**Summary:**` paragraph, a blank line, the receipt — a
   `### Receipt` table with one `| task | probe | proves | exit |` row per `Run:` line of the plan,
   the exit read from the `edge` row of the last `settled` snapshot (the last `edge` row when
-  nothing settled), then `Run-wide checks: exit <n>` and `**Evidence:** <the evidence tag's
-  run folder>` — a blank line, and one `Closes #<n>` line per number on the plan's `**Closes:**`
+  nothing settled), then `Run-wide checks: exit <n>` and `**Evidence:** <the run tag's folder>` —
+  `https://github.com/<evidence repo>/tree/<owner>-<repo>/run-<N>/runs/<owner>-<repo>/<N>` — a blank line, and one `Closes #<n>` line per number on the plan's `**Closes:**`
   line, all rendered by `factory/record.mjs pr-body`. A run with no `edge` row carries only the
   evidence line. The `publish:pr` row it leaves —
   `{ts, kind, url, number, draft}` — is written through the same writer as every other
@@ -454,7 +496,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `publish-rollback.log` — none of it is ever embedded in an event row. `evidence_commit`'s fixed
   file list grew the four new names (`publish.json` and the three logs) alongside
   `status.json`/`events.jsonl`/`engine.log`.
-- **Integration naming:** ONE GitHub integration per target, `gh-<owner>-<repo>` (slashes → `-`),
+- **Integration naming:** ONE GitHub integration per repository — each target, and the evidence
+  repository (the operator's is `gh-popmechanic-fleet-evidence`) — `gh-<owner>-<repo>` (slashes → `-`),
   `--act-as-user`, not readonly, created on the policy `tag:fleet` by `node fleet/target.mjs
   <owner>/<repo>` (`integrations add github … --policy 'tag:fleet'`; an object that already exists
   has its policy read and, when the selector is not `tag:fleet`, replaced under the read's
@@ -468,7 +511,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `typesafe` **http-proxy** (`https://typesafe.int.exe.xyz`, the engine's `TYPESAFE_BASE_URL`),
   both created with `--policy 'tag:fleet'` like the rest. What the `- **Publish:**` rule still forbids is
   the *attachment*: no GitHub integration is attached to the tag, because nothing is attached at all.
-- **Doctor (`fleet/doctor.mjs`) — nine rows, this order, `ROW_IDS`:**
+- **Doctor (`fleet/doctor.mjs`) — ten rows, this order, `ROW_IDS`:**
   | id | what it reads | green when |
   |---|---|---|
   | `exe-dev` | `ssh exe.dev whoami` | the alias answers with a username |
@@ -477,6 +520,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   | `accounts` | `node fleet/claude-token.mjs accounts --json` against `fleet.json`'s `account` | the keychain holds an account; the row names each entry with its expiry, and a config account the keychain does not hold is the red |
   | `github` | `ssh exe.dev "integrations setup github --list"` | at least one GitHub account is linked |
   | `integrations` | `integrations list --json` + `integrations policy get <name> --json` for `claude-max` and `gh-<owner>-<repo>` (with `--target`) | with `--target <owner>/<repo>`, `gh-<owner>-<repo>` exists; every one of those objects' `policy.selector` is `tag:fleet` — the red names the first that is not and the get/set two-step that fixes it |
+  | `evidence` | `fleet.json`'s `"evidence"` + `gh repo view <owner>/<repo>` + `integrations list --json` / `integrations policy get gh-<owner>-<repo> --json` | the one-time setup, three checks in order, the red naming the first that fails and its fix: the key is set (`"evidence": "<owner>/<repo>"`); the repository exists (`gh repo create <owner>/<repo> --private`); its integration `gh-<owner>-<repo>` exists on `tag:fleet` (`node fleet/target.mjs <owner>/<repo>`) |
   | `verb-drift` | `help <verb>` for every verb in `fleet/exe-verbs.json` | the record is readable; a flag that appeared or vanished is a finding in a green row, and only an unreadable record is red |
   | `kata` | `integrations list --json` + `ssh exe.dev "integrations policy get kata --json"` + `ssh exe.dev "ls kata-hub --json"` | the `kata` http-proxy exists and carries a bearer, its `policy.selector` is exactly `tag:fleet` (the listing's own tags are read first — a `tag:fleet` attachment there is the grant under either lobby model (#924) — and the policy only when that tag is absent), and `.vms[]` has a `kata-hub` row; the red says which of the four is absent, and names `node fleet/kata-hub.mjs` — or, for a wrong policy, the get/set two-step |
   | `cloudflare` | `integrations list --json` + `ssh exe.dev "integrations policy get cloudflare --json"` (asked only when the listing names a `cloudflare` object) | green when the object is absent (only a plan with a `**Publish:**` line needs it) or its `policy.selector` is `tag:fleet`; red for a present object off that policy, naming the get/set two-step |
@@ -504,9 +548,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `~/.ultrapowers/kata-hub.env`'s, and `fleet/launch.mjs` hands the janitor the client it already
   built. A hub that cannot be read — the env file absent, ssh or curl failing, an answer that is not
   one — darkens the pass at the first error: no further hub request is made, every row from there
-  is read from the target's evidence, `.ultrapowers/runs/<N>/status.json` with `gh api`
-  (`gh api repos/<owner>/<repo>/contents/…?ref=…`) at the evidence tag `ultra/evidence/run-<N>` first
-  and at the branch `ultra/evidence-run-<N>` only when the tag answered no envelope — the page's
+  is read from the evidence repository (taken from the `"evidence"` setting; with the key unset the
+  janitor reads no evidence and keeps reaping by the hub alone), `runs/<owner>-<repo>/<N>/status.json`
+  with `gh api` (`gh api repos/<evidence repo>/contents/…?ref=…`) at the run tag
+  `<owner>-<repo>/run-<N>` first and at the branch `live/<owner>-<repo>/run-<N>` only when the tag
+  answered no envelope — the page's
   `state` (`done|parked|failed` finished, `booting|running|publishing` in flight) and `updatedAt`
   standing in for the issue's — the result carries `hub: {host, dark}`, and the report opens with one
   `hub <host> unreachable` line. A run the hub is up for but holds no project or run issue for is
@@ -518,7 +564,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   the age was read (`kata:<project>`, or the evidence ref). A run the record says is in flight is
   cross-checked at its unit (`ssh <ssh_dest> "… systemctl --user show fleet-run@<N>.service …"`, the
   one ssh into a fleet VM); a dead unit is written as the death — the journal and the page as
-  `failed`, both `gh api -X PUT` on the evidence branch when it has a page, and, for a row the hub
+  `failed`, both `gh api -X PUT` on the live branch in the evidence repository when it has a page, and, for a row the hub
   answered, one `POST …/issues/<run uid>/metadata` patching the run issue's three keys, `work.state`
   `failed`, `work.attention` `needs-human` and `work.attention_msg` the death's own line, under
   `Idempotency-Key janitor:run-<N>:death` — the run issue left open and never a `wontfix` close, a
@@ -526,6 +572,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   later by the ordinary rule, off the `work.state` the death itself wrote. No
   `created_at`, no clone, no `git`. Run by `fleet/launch.mjs` before every launch and by hand after
   a sleep; nothing schedules it, and the janitor merges nothing — the sandbox merges its own PR.
+  The close-out, the census and the launcher's duplicate check likewise read runs only from the
+  evidence repository, taking it from the same setting; none of them reads a target's refs.
 - **Kata hub (`fleet/kata-hub.mjs`):** ONE persistent VM named `kata-hub`, `--cpu 1 --memory 2GB
   --disk 20GB`, comment `kata hub — persistent service, do not reap`, and NO tag — the janitor's
   `fleet-r*` never lists it, and the comment is the second lock. Its port is pinned by
@@ -648,20 +696,23 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     roughly 8× a hand price of the same usage. The token counts in `result.usage` are the readable
     quantity; the dollar figure is an estimate the subscription path does not make true
     (2026-09-17; #1131 probe 1).
-- **Laptop config `~/.ultrapowers/fleet.json`** — `cpu`, `memory` and `account`, every one of them
-  optional, an unknown key ignored and a missing file meaning the defaults:
+- **Laptop config `~/.ultrapowers/fleet.json`** — `cpu`, `memory`, `account` and `evidence`, every
+  one of them optional to the file, an unknown key ignored and a missing file meaning the defaults:
 
   ```json
   {
     "cpu": "8",
     "memory": "16GB",
-    "account": "<name>"
+    "account": "<name>",
+    "evidence": "<owner>/<repo>"
   }
   ```
 
   `memory` is `<int>GB` or `<int>G`; a bare number or a fractional `1.5GB` is unreadable. `account`
-  is the keychain account the `accounts` row expects. A key outside those three is a key nothing
-  reads: the `capacity` row is red and names it.
+  is the keychain account the `accounts` row expects. `"evidence"` is the evidence repository
+  (the operator's `popmechanic/fleet-evidence`); `--evidence-repo` overrides it per launch, and a
+  launch with neither is refused. A key outside those four is a key nothing reads: the `capacity`
+  row is red and names it.
 - **Logs without an env var:** `ssh <ssh_dest> 'journalctl _SYSTEMD_USER_UNIT=fleet-run@<N>.service --no-pager -n 200'`
   reads the run unit's journal by field match, so it needs no `XDG_RUNTIME_DIR` and no `--user`. The
   setup script's own output is `~/fleet-setup.log` on the VM.

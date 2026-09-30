@@ -15,8 +15,9 @@
  * `bootRig({ plan, stubs })`, and both `test_factory_boot.mjs` and
  * `test_factory_publish.mjs` call it.
  *
- * `plan` overrides the fixture plan text committed to `.ultrapowers/plan.md`
- * (default `FIXTURE_PLAN`, the boot sim's own one-task plan); `stubs` is a
+ * `plan` overrides the fixture plan text committed to `runs/o-r/<N>/plan.md`
+ * in the evidence repository's bare (default `FIXTURE_PLAN`, the boot sim's
+ * own one-task plan); `stubs` is a
  * `{name: content}` map of extra executable stub scripts `writeStubs` writes
  * into the case's `bin` directory alongside `claude`/`curl`/`systemd-run`/
  * `systemctl` — `test_factory_publish.mjs` uses it for `bun`/`bunx`.
@@ -112,8 +113,30 @@ function writeGitConfig (home) {
   fs.writeFileSync(path.join(home, '.gitconfig'), '[user]\n\tname = fleet\n\temail = fleet@exe.dev\n')
 }
 
-/** A bare origin seeded with a `base` commit on `main`, plus a `plan`
- * commit — `planText` — pushed only to `refs/heads/ultra/plan-run-<runN>`. */
+// The target is always `o/r`; the operator's evidence repository `ops/evidence`,
+// an owner unlike the target's, reached through `GITHUB_INT_HOST` as the boot names it.
+const SLUG = 'o-r'
+const EVIDENCE_REPO = 'ops/evidence'
+const EVIDENCE_URL = `https://stub.invalid/${EVIDENCE_REPO}.git`
+
+/** A parentless commit in the evidence bare whose tree is `runs/o-r/<runN>/`
+ *  holding `files` (`{name: text}`), pushed to `ref`; returns its sha. */
+function pushRunFolder (evidenceDir, scratch, runN, files, ref) {
+  git(scratch, ['checkout', '-q', '--orphan', `folder-${runN}-${Date.now()}`])
+  git(scratch, ['rm', '-rfq', '--ignore-unmatch', '.'])
+  const folder = path.join(scratch, 'runs', SLUG, String(runN))
+  fs.mkdirSync(folder, { recursive: true })
+  for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(folder, name), text)
+  git(scratch, ['add', '-A'])
+  git(scratch, ['commit', '-qm', `${SLUG}/run-${runN}`])
+  git(scratch, ['push', '-q', 'origin', `HEAD:${ref}`])
+  return git(scratch, ['rev-parse', 'HEAD']).trim()
+}
+
+/** Two bares: the target `origin.git`, holding only a `base` commit on `main`,
+ *  and the evidence repository `evidence.git`, `main` seeded with a hand
+ *  archive, taking the launcher's parentless plan commit — `runs/o-r/<runN>/plan.md`
+ *  holding `planText` — on `refs/heads/live/o-r/run-<runN>`. */
 function buildOrigin (root, runN, planText) {
   const originDir = path.join(root, 'origin.git')
   git(root, ['init', '--bare', originDir])
@@ -130,14 +153,47 @@ function buildOrigin (root, runN, planText) {
   git(scratch, ['push', 'origin', 'HEAD:refs/heads/main'])
   const base = git(scratch, ['rev-parse', 'HEAD']).trim()
 
-  fs.mkdirSync(path.join(scratch, '.ultrapowers'), { recursive: true })
-  fs.writeFileSync(path.join(scratch, '.ultrapowers', 'plan.md'), planText)
-  git(scratch, ['add', '-A'])
-  git(scratch, ['commit', '-m', 'plan'])
-  git(scratch, ['push', 'origin', `HEAD:refs/heads/ultra/plan-run-${runN}`])
-  const plan = git(scratch, ['rev-parse', 'HEAD']).trim()
+  const evidenceDir = path.join(root, 'evidence.git')
+  git(root, ['init', '--bare', evidenceDir])
+  git(evidenceDir, ['symbolic-ref', 'HEAD', 'refs/heads/main'])
+  const evidenceScratch = path.join(root, 'evidence-scratch')
+  git(root, ['clone', evidenceDir, evidenceScratch])
+  git(evidenceScratch, ['config', 'user.email', 'fleet@exe.dev'])
+  git(evidenceScratch, ['config', 'user.name', 'fleet'])
+  fs.mkdirSync(path.join(evidenceScratch, 'archive'))
+  fs.writeFileSync(path.join(evidenceScratch, 'archive', 'README'), 'the hand archive\n')
+  git(evidenceScratch, ['add', '-A'])
+  git(evidenceScratch, ['commit', '-m', 'seed'])
+  git(evidenceScratch, ['push', 'origin', 'HEAD:refs/heads/main'])
 
-  return { originDir, base, plan }
+  const plan = pushRunFolder(evidenceDir, evidenceScratch, runN, { 'plan.md': planText }, `refs/heads/live/${SLUG}/run-${runN}`)
+
+  return { originDir, evidenceDir, evidenceScratch, base, plan }
+}
+
+/** An earlier run's record: a parentless commit holding `runs/o-r/<runN>/`
+ *  with `files`, tagged `o-r/run-<runN>` in the evidence bare. */
+function seedPastRun (evidenceDir, evidenceScratch, runN, files) {
+  return pushRunFolder(evidenceDir, evidenceScratch, runN, files, `refs/tags/${SLUG}/run-${runN}`)
+}
+
+/** What the first-boot setup script leaves: `<home>/fleet-evidence-repo`
+ *  naming `ops/evidence` (unless `setting` is false), plus the case HOME's
+ *  `.gitconfig` routing that repository's URL to the local evidence bare. */
+function wireEvidence (home, evidenceDir, { setting = true } = {}) {
+  if (setting) fs.writeFileSync(path.join(home, 'fleet-evidence-repo'), `${EVIDENCE_REPO}\n`)
+  fs.appendFileSync(path.join(home, '.gitconfig'), `[url "file://${evidenceDir}"]\n\tinsteadOf = ${EVIDENCE_URL}\n`)
+}
+
+/** Every ref of a bare, `{ref: sha}`, read with `for-each-ref` (no `HEAD`). */
+function refsOf (bareDir) {
+  const map = {}
+  for (const line of git(bareDir, ['for-each-ref', '--format=%(refname) %(objectname)']).split('\n')) {
+    if (!line.trim()) continue
+    const [ref, sha] = line.split(' ')
+    map[ref] = sha
+  }
+  return map
 }
 
 function buildEngineDir (home, engineSha) {
@@ -267,6 +323,7 @@ for a in "$@"; do
   case "$a" in --unit=fleet-engine-*) is_engine=1 ;; esac
 done
 [ "$is_engine" = "1" ] || exit 0
+printf '%s\\n' "$@" > "$FLEET_HOME/engine-argv"
 
 code=0
 if [ -f "$FLEET_HOME/engine-exit" ]; then code="$(cat "$FLEET_HOME/engine-exit")"; fi
@@ -379,7 +436,12 @@ export function bootRig ({ plan = FIXTURE_PLAN, stubs = {} } = {}) {
     git,
     writeStub,
     writeGitConfig,
+    SLUG,
+    EVIDENCE_REPO,
     buildOrigin: (root, runN) => buildOrigin(root, runN, plan),
+    seedPastRun,
+    wireEvidence,
+    refsOf,
     buildEngineDir,
     lsRemote,
     assignment,

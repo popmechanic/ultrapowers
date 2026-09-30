@@ -53,7 +53,7 @@ cache path itself differs by version and by host, so derive it rather than
 naming it.
 
 The doctor answers with one row per piece, and its row ids are `exe-dev`,
-`capacity`, `claude`, `accounts`, `github`, `integrations`, `verb-drift`, `kata`, in that
+`capacity`, `claude`, `accounts`, `github`, `integrations`, `evidence`, `verb-drift`, `kata`, in that
 order. Each row carries
 a `status` of `ok` or `missing`, a human `detail`, and a `fix` naming the `## `
 section of `references/first-run.md` that repairs it. Read the rows back to the
@@ -114,6 +114,15 @@ the `revision` it prints, then runs
 with that revision. (exe.dev refuses `integrations attach`/`detach` and
 `new --integration` since 2026-09-11; the policy is the only grant.)
 
+`evidence` — the operator's evidence repository, where every run's plan and
+record live (never on the target, so a run on someone else's repository works
+too). It is set up once, in three steps the row checks in order: the key
+`"evidence": "<owner>/<repo>"` in `~/.ultrapowers/fleet.json`, the private
+repository itself (`gh repo create <owner>/<repo> --private`), and its
+integration (`node <plugin-root>/fleet/target.mjs <owner>/<repo>`). The detail
+of each step is the `evidence` section of `references/first-run.md`
+(`references/first-run.md#evidence`).
+
 The agent re-runs the doctor after each fix, and the row that turned `ok` is
 read back to the user in one line before the next red row is touched. A row
 that comes back `missing` twice is reported with the doctor's `detail` and its
@@ -157,8 +166,9 @@ approved plan, **is** the authorization to execute — no further approval pause
    It prints the run id and the VM name — `run-<N>` and `fleet-r<N>-…` — along
    with a status URL and the assignment comment; tell the user the run id and
    VM name, and point them at step 3 to read progress, not the printed URL —
-   there is no page behind it today, git is the record. Nothing else needs staging — the launcher commits the plan to the target's
-   `ultra/plan-run-<N>` branch, then creates the VM in one lobby call with
+   there is no page behind it today, git is the record. Nothing else needs staging — the launcher commits the plan to the
+   evidence repository's `live/<owner>-<repo>/run-<N>` branch (the target is
+   never written to until the run's own PR branch), then creates the VM in one lobby call with
    `--tag fleet` (the tag every fleet integration's policy grants), the
    assignment as its comment, and a setup script that starts the run's unit.
    No ssh, no second step.
@@ -178,18 +188,20 @@ approved plan, **is** the authorization to execute — no further approval pause
    order.
 
    Its state is also `status.json`, written at every transition: `booting` →
-   `running` → `publishing` → `done`, or `parked` or `failed`. A finished
-   run's record is `status.json` by tag: `ultra/evidence/run-<N>`, the one
-   spelling that keeps working after the VM is reaped and after the run's
-   branches are gone.
+   `running` → `publishing` → `done`, or `parked` or `failed`. It lives in the
+   evidence repository (`"evidence"` in `~/.ultrapowers/fleet.json`), under
+   `runs/<owner>-<repo>/<N>/`. A finished run's record is `status.json` by tag:
+   `<owner>-<repo>/run-<N>`, the one spelling that keeps working after the VM
+   is reaped and after the run's live branch is gone.
 
    ```bash
-   gh api 'repos/<repo>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>' --jq .content | base64 -d
+   gh api 'repos/<evidence repo>/contents/runs/<owner>-<repo>/<N>/status.json?ref=<owner>-<repo>/run-<N>' --jq .content | base64 -d
    ```
 
    While the run is in flight that tag is not written yet and the same bytes
-   are on its `ultra/evidence-run-<N>` branch, a working surface that goes at
-   publish — read `status.json` there as a fallback when the hub is dark.
+   are on its `live/<owner>-<repo>/run-<N>` branch, a working surface that
+   goes at the end of the run — read `status.json` there
+   (`?ref=live/<owner>-<repo>/run-<N>`) as a fallback when the hub is dark.
 
    The board is the poll: read it on whatever cadence the user asks for, and
    never a timer on this machine.
@@ -198,9 +210,10 @@ approved plan, **is** the authorization to execute — no further approval pause
    done and the branch is ahead of base, the sandbox pushes it and opens the
    PR itself, through the target's integration attached at launch. The run's
    code is the `ultra/integration-run-<N>` branch, which is the PR head; its
-   evidence is under `.ultrapowers/runs/<N>/`, on the `ultra/evidence-run-<N>`
-   branch while the run is in flight and at the tag `ultra/evidence/run-<N>`
-   once it ends, never merged and linked from the PR body. Gate-green → a
+   evidence is under `runs/<owner>-<repo>/<N>/` in the evidence repository, on
+   the `live/<owner>-<repo>/run-<N>` branch while the run is in flight and at
+   the tag `<owner>-<repo>/run-<N>` once it ends, never merged and linked from
+   the PR body. Gate-green → a
    ready PR and `done`. Parked → a draft PR carrying the gate receipt and
    `parked`. `pr` and
    `prAuthor` in `status.json` are the PR's URL and who GitHub says opened it —
@@ -218,7 +231,7 @@ approved plan, **is** the authorization to execute — no further approval pause
    refuses a behind merge; this is a GitHub merge, not the kernel's fold),
    then `gh pr merge --squash <N>` — or re-driven as a narrower plan. A parked
    run with nothing to publish opens no PR; its record is still pushed and
-   still tagged `ultra/evidence/run-<N>`. The laptop never fetches a run
+   still tagged `<owner>-<repo>/run-<N>`. The laptop never fetches a run
    branch.
 
 5. **Reap.** `node <plugin-root>/fleet/janitor.mjs` removes the VMs of runs

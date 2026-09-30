@@ -36,9 +36,10 @@
  *   (c) [M3] an absolute plan path under a temp directory outside R, with
  *       `--repo R`: read as it is, and the launch resolves with a string
  *       `runId`.
- *   (d) a plan with a sibling `<stem>.gate-verdicts.json`: the pushed
- *       `ultra/plan-run-<N>` commit carries it as `.ultrapowers/gate-verdicts.json`,
- *       byte for byte — the laptop's authoring census reads it off the plan tag
+ *   (d) a plan with a sibling `<stem>.gate-verdicts.json`: the plan commit on
+ *       the evidence repository's `live/<slug>/run-<N>` carries it as
+ *       `runs/<slug>/<N>/gate-verdicts.json`, byte for byte — the laptop's
+ *       authoring census reads it off the run's tag
  *       (run-268 dropped it; runs 269–271 went without, 2026-09-29).
  */
 
@@ -51,7 +52,8 @@ import { launch } from '../launch.mjs'
 import { Refusal } from '../lobby.mjs'
 import {
   BILLING_OK, COMPILER_FETCH, NEW_OK, NO_NETWORK_GIT, NO_REMOTE_OPS, ONE_TASK,
-  answer, cleanup, cmdRule, engineRule, gitEnv, localRemote, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmsPayload
+  answer, cleanup, cmdRule, engineRule, gitEnv, localRemote, makeEvidenceRepo, makeExec, makeTargetRepo, sshRule, tempDir,
+  thrown, vmsPayload
 } from './_lobby_helpers.mjs'
 
 const TARGET = 'acme/widgets'
@@ -60,7 +62,8 @@ const ORIGIN_URL = `https://github.com/${TARGET}.git`
 const ENGINE = 'd'.repeat(40)
 const BASE_40HEX = 'e'.repeat(40)
 const NOW = new Date('2026-09-21T12:00:00.000Z')
-const CAPPED = { cpu: '6', memory: '8GB' }
+const EVIDENCE = 'ops/evidence'
+const CAPPED = { cpu: '6', memory: '8GB', evidence: EVIDENCE }
 const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n' }
 const PLAN = '# a plan\n\nOne plan, and a trailing newline.\n'
 
@@ -78,13 +81,15 @@ const HELP_OK = (cmd, argv) => {
 const NO_RECORD = answer('')
 const recordRule = (res) => cmdRule('gh', 'api', res)
 
-const readRules = ({ repo }) => [
+const readRules = ({ repo, evidence }) => [
   engineRule(ENGINE),
   COMPILER_FETCH,
-  localRemote(repo),
+  localRemote(repo, evidence),
   compilerRule(ONE_TASK),
   sshRule('help ', HELP_OK),
-  sshRule('integrations list --json', answer([{ name: GH, attachments: [] }, { name: 'claude-max', attachments: [] }])),
+  sshRule('integrations list --json', answer([
+    { name: GH, attachments: [] }, { name: 'gh-ops-evidence', attachments: [] }, { name: 'claude-max', attachments: [] }
+  ])),
   sshRule('billing plan --json', answer(BILLING_OK)),
   sshRule("ls '", vmsPayload([])),
   sshRule('new ', NEW_OK),
@@ -99,7 +104,8 @@ function workspace () {
   const root = tempDir('fleet-launch-plan-path-')
   const repo = makeTargetRepo({ root, files: { ...SEED } })
   repo.git(['remote', 'set-url', 'origin', ORIGIN_URL])
-  return { root, repo, cleanup: () => cleanup(root) }
+  const evidence = makeEvidenceRepo({ root, name: EVIDENCE })
+  return { root, repo, evidence, cleanup: () => cleanup(root) }
 }
 
 const launchIn = (ws, { exec, planPath, extra = [] }) => launch({
@@ -127,7 +133,7 @@ const pythonCalls = (exec) => exec.calls.filter((c) => c.cmd === 'python3')
   fs.mkdirSync(path.join(ws.repo.dir, 'plans'), { recursive: true })
   fs.writeFileSync(path.join(ws.repo.dir, 'plans', 'a-plan.md'), PLAN)
 
-  const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
+  const exec = makeExec({ rules: readRules({ repo: ws.repo, evidence: ws.evidence }) })
   const result = await launchIn(ws, { exec, planPath: 'plans/a-plan.md' })
 
   assert.equal(typeof result?.runId, 'string',
@@ -229,7 +235,7 @@ const pythonCalls = (exec) => exec.calls.filter((c) => c.cmd === 'python3')
   assert.ok(!planPath.startsWith(path.resolve(ws.repo.dir)),
     '(c) [M3] sanity: the absolute plan path is outside R')
 
-  const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
+  const exec = makeExec({ rules: readRules({ repo: ws.repo, evidence: ws.evidence }) })
   const result = await launchIn(ws, { exec, planPath })
 
   assert.equal(typeof result?.runId, 'string',
@@ -249,13 +255,14 @@ const pythonCalls = (exec) => exec.calls.filter((c) => c.cmd === 'python3')
   const RECORD = '{"tasks": {}, "tally": {"dispatched": 0}}\n'
   fs.writeFileSync(path.join(ws.repo.dir, 'plans', 'a-plan.gate-verdicts.json'), RECORD)
 
-  const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
+  const exec = makeExec({ rules: readRules({ repo: ws.repo, evidence: ws.evidence }) })
   const result = await launchIn(ws, { exec, planPath: 'plans/a-plan.md' })
   const n = String(result?.runId ?? '').replace(/^run-/, '')
-  const shown = spawnSync('git', ['--git-dir', ws.repo.origin, 'show', `refs/heads/ultra/plan-run-${n}:.ultrapowers/gate-verdicts.json`],
-    { encoding: 'utf8', env: gitEnv() })
+  const shown = spawnSync('git', ['--git-dir', ws.evidence.bare, 'show',
+    `refs/heads/live/acme-widgets/run-${n}:runs/acme-widgets/${n}/gate-verdicts.json`],
+  { encoding: 'utf8', env: gitEnv() })
   assert.equal(shown.status, 0,
-    `(d) the pushed plan commit carries .ultrapowers/gate-verdicts.json. git show said: ${shown.stderr}`)
+    `(d) the plan commit on the evidence repository's live branch carries runs/acme-widgets/${n}/gate-verdicts.json. git show said: ${shown.stderr}`)
   assert.equal(shown.stdout, RECORD, '(d) and it is the sibling record, byte for byte')
 
   ws.cleanup()

@@ -11,20 +11,30 @@ import path from 'node:path'
 import { launch } from '../launch.mjs'
 import { defaultExec } from '../lobby.mjs'
 import {
-  answer, cleanup, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmsPayload
+  answer, cleanup, makeEvidenceRepo, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmsPayload
 } from './_lobby_helpers.mjs'
+
+// The operator's evidence repository: an owner unlike the target's, its URL
+// routed to a local bare of its own.
+const EVIDENCE = 'ops/evidence'
+const EVIDENCE_URL = `https://github.com/${EVIDENCE}.git`
+const INTEGRATIONS = answer([
+  { name: 'gh-o-r', attachments: [] }, { name: 'gh-ops-evidence', attachments: [] }, { name: 'cloudflare', attachments: [] }
+])
+const pointAt = (r, ev) => (x) => x === 'origin' ? r.origin : x === EVIDENCE_URL ? ev.bare : x
 
 const root = tempDir('stories-')
 const repo = makeTargetRepo({ root, files: { 'README.md': 'x\n' } })
 repo.git(['remote', 'set-url', 'origin', 'https://github.com/o/r.git'])
+const evidence = makeEvidenceRepo({ root, name: EVIDENCE })
 fs.writeFileSync(path.join(repo.dir, 'p.md'),
   '# todos\n\n**Grammar:** stories-v1\n**Stack:** tinyapp\n**Plan-id:** p1\n\n## Numbers\n\nsome numbers section\n')
 const exec = makeExec({
   rules: [
     { when: (c, a) => c === 'git' && (a.includes('push') || a.includes('ls-remote') || a.includes('fetch')),
-      answer: (c, a, o) => defaultExec('git', a.map((x) => x === 'origin' ? repo.origin : x), o || {}) },
+      answer: (c, a, o) => defaultExec('git', a.map(pointAt(repo, evidence)), o || {}) },
     sshRule('help ', () => answer('Command: x\n\nOptions:\n')),
-    sshRule('integrations list --json', answer([{ name: 'gh-o-r', attachments: [] }, { name: 'cloudflare', attachments: [] }])),
+    sshRule('integrations list --json', INTEGRATIONS),
     sshRule('billing plan --json', answer({ max_cpus: 16, max_memory_gb: 64 })),
     sshRule('ls ', vmsPayload([]))
   ]
@@ -32,7 +42,7 @@ const exec = makeExec({
 const err = await thrown(() => launch({
   argv: ['p.md', '--target', 'o/r', '--base', repo.base, '--repo', repo.dir, '--engine', 'd'.repeat(40)],
   exec,
-  config: { cpu: '2', memory: '4GB' },
+  config: { cpu: '2', memory: '4GB', evidence: EVIDENCE },
   now: () => new Date('2026-09-27T12:00:00Z'),
   sleep: async () => {},
   refreshCredential: () => ({ ok: true }),
@@ -51,6 +61,7 @@ assert.ok(!exec.calls.some((c) => /python3/.test(c.line)), 'the plan is never co
 const root2 = tempDir('stories-fenced-')
 const repo2 = makeTargetRepo({ root: root2, files: { 'README.md': 'x\n' } })
 repo2.git(['remote', 'set-url', 'origin', 'https://github.com/o/r.git'])
+const evidence2 = makeEvidenceRepo({ root: root2, name: EVIDENCE })
 fs.writeFileSync(path.join(repo2.dir, 'p2.md'),
   [
     '# todos',
@@ -70,9 +81,9 @@ fs.writeFileSync(path.join(repo2.dir, 'p2.md'),
 const exec2 = makeExec({
   rules: [
     { when: (c, a) => c === 'git' && (a.includes('push') || a.includes('ls-remote') || a.includes('fetch')),
-      answer: (c, a, o) => defaultExec('git', a.map((x) => x === 'origin' ? repo2.origin : x), o || {}) },
+      answer: (c, a, o) => defaultExec('git', a.map(pointAt(repo2, evidence2)), o || {}) },
     sshRule('help ', () => answer('Command: x\n\nOptions:\n')),
-    sshRule('integrations list --json', answer([{ name: 'gh-o-r', attachments: [] }, { name: 'cloudflare', attachments: [] }])),
+    sshRule('integrations list --json', INTEGRATIONS),
     sshRule('billing plan --json', answer({ max_cpus: 16, max_memory_gb: 64 })),
     sshRule('ls ', vmsPayload([]))
   ]
@@ -80,7 +91,7 @@ const exec2 = makeExec({
 const err2 = await thrown(() => launch({
   argv: ['p2.md', '--target', 'o/r', '--base', repo2.base, '--repo', repo2.dir, '--engine', 'd'.repeat(40)],
   exec: exec2,
-  config: { cpu: '2', memory: '4GB' },
+  config: { cpu: '2', memory: '4GB', evidence: EVIDENCE },
   now: () => new Date('2026-09-27T12:00:00Z'),
   sleep: async () => {},
   refreshCredential: () => ({ ok: true }),

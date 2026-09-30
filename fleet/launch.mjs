@@ -11,9 +11,10 @@
  *   2. reads: that the `--repo` checkout is not shallow, its `origin` (it must
  *      name `--target`), that `--base` is a commit the checkout has and that it
  *      is on the target's default branch, `integrations list --json` (the
- *      target's one GitHub object must exist), `billing plan --json` (one run
- *      must fit the plan's pool), the target's `ultra/*` refs (the run number
- *      is one past the highest N they carry) and the engine tip, and asks
+ *      target's and the evidence repository's GitHub objects must exist),
+ *      `billing plan --json` (one run must fit the plan's pool), the target's
+ *      live branches and tags in the operator's evidence repository (the run
+ *      number is one past the highest N they carry) and the engine tip, and asks
  *      `help <verb>` for every verb of the verb record — a drift there
  *      is a line on the launch, never a refusal. Its check and its parse run
  *      `plan_check.py` and `plan_parse.py` FETCHED AT `engine=` (`git show`
@@ -23,8 +24,11 @@
  *   3. refreshes the Claude credential the run signs in with, the entry
  *      `--account` names — a refresh failure is a failure before any VM
  *      exists;
- *   4. commits the plan against a temporary index and pushes it to the target
- *      as `ultra/plan-run-N` — a refused push re-reads the highest run and, if
+ *   4. commits the plan, parentless, against a temporary index and pushes it to
+ *      the evidence repository (the operator's `evidence` setting, or
+ *      `--evidence-repo`) as `live/<slug>/run-N`, its tree the run's folder
+ *      `runs/<slug>/N/` and nothing else; nothing is written to the target — a
+ *      refused push re-reads the highest run and, if
  *      one appeared, takes N+1 and pushes again, three pushes in all, so the
  *      push and not the read is what reserves N; that commit's sha is `plan=`
  *      in the assignment;
@@ -65,9 +69,11 @@ import {
   Refusal,
   buildComment,
   defaultExec,
-  evidenceBranchFor,
+  evidenceRepoFor,
+  evidenceUrlFor,
   git,
   githubIntegrationFor,
+  highestRunInEvidence,
   highestRunOnTarget,
   integrationBranchFor,
   isFullSha,
@@ -79,14 +85,16 @@ import {
   hubFromEnv,
   defaultKataEnvPath,
   listIntegrations,
+  liveBranchFor,
   loadFleetConfig,
   lobby,
   output,
   parseArgs,
   parseMemoryGb,
-  planBranchFor,
+  readEvidenceSetting,
   readPlanCapacity,
   runCli,
+  runFolderFor,
   vmNameFor
 } from './lobby.mjs'
 import { fleetConfigAccount, verbDrift } from './doctor.mjs'
@@ -101,7 +109,8 @@ import { toolchainViolations } from './toolchain.mjs'
 export const USAGE = `usage: node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <40-hex>
                              [--repo <dir>] [--engine <40-hex>] [--hold] [--again]
                              [--cpu <n>] [--memory <n>GB]
-                             [--run <N>] [--config <path>] [--account <name>] [--json]`
+                             [--run <N>] [--config <path>] [--account <name>]
+                             [--evidence-repo <owner>/<repo>] [--json]`
 
 export const usage = () => USAGE
 
@@ -118,21 +127,23 @@ const DEFAULT_ACCOUNT = 'ultrapowers'
  *  `tag:fleet` on each integration is what grants a fleet VM its credentials. */
 const NEW_INTEGRATION_FLAG = /(^|\s)--integration(=|\s|$)/
 
-/** Where the plan lands in the commit the launcher pushes. */
-const PLAN_PATH = '.ultrapowers/plan.md'
+/** Where the plan lands in the run's folder (`runs/<slug>/<N>/`) of the
+ *  commit the launcher pushes to the evidence repository. */
+const PLAN_FILE = 'plan.md'
 /** The plan's gate record, committed beside it: the laptop's authoring census
  *  (`skills/ultrawrite/scripts/authoring_census.py --fetch`) reads it off the
- *  plan tag. No engine reads it; the census does. */
-const VERDICTS_PATH = '.ultrapowers/gate-verdicts.json'
+ *  run's tag. No engine reads it; the census does. */
+const VERDICTS_FILE = 'gate-verdicts.json'
 
 /** Every flag the launcher reads; any other is refused before the plan is read. */
 const LAUNCH_FLAGS = [
-  'account', 'again', 'base', 'config', 'cpu', 'engine', 'hold', 'json', 'memory', 'repo', 'run', 'target'
+  'account', 'again', 'base', 'config', 'cpu', 'engine', 'evidence-repo', 'hold', 'json', 'memory', 'repo', 'run',
+  'target'
 ]
-/** The third path of the plan commit: the run's kata record — the project, the
+/** The third file of the plan commit: the run's kata record — the project, the
  *  run issue and one issue per task on the hub, each with the revision it had
  *  when the launcher last read it (#913). Written only when a hub is reached. */
-const KATA_PATH = '.ultrapowers/kata.json'
+const KATA_FILE = 'kata.json'
 /** The one command that builds the hub, and where `fleet/kata-hub.mjs` leaves
  *  the hub's address and bearer — both `fleet/lobby.mjs`'s, since the janitor
  *  reads the same file. */
@@ -466,13 +477,14 @@ function usageRefusal (account, label, window) {
  * launch's target and whose record does not say the run ended (#1036). The
  * plan's identity is its text's blob sha: the launcher hashes `planText` with
  * `git hash-object --stdin` (no `-w` — nothing is written before the refusal
- * is decided), and reads each candidate row's `.ultrapowers/plan.md` blob off
- * the run's own plan branch, `ultra/plan-run-<N>`, fetched from the target
- * through the clone's `origin`. A fetch or a `rev-parse` that fails means the
- * branch is gone — the run is publishing or has published, and no engine reads
- * its task issues any more — so that row is not a duplicate.
+ * is decided), and reads each candidate row's `runs/<slug>/<N>/plan.md` blob
+ * off the run's own live branch, `live/<slug>/run-<N>`, fetched from the
+ * evidence repository into `FETCH_HEAD` (no ref of the checkout is written). A
+ * fetch or a `rev-parse` that fails means the branch is gone — the run is
+ * publishing or has published, and no engine reads its task issues any more —
+ * so that row is not a duplicate.
  */
-async function liveDuplicatesOf ({ exec, repoDir, target, planText, runs }) {
+async function liveDuplicatesOf ({ exec, repoDir, target, evidence, planText, runs }) {
   const candidates = runs.filter((r) => r.target === target && r.live !== false && isRunNumber(r.run))
   if (candidates.length === 0) return []
   const hashed = await exec('git', ['-C', repoDir, 'hash-object', '--stdin'], { input: planText })
@@ -480,11 +492,11 @@ async function liveDuplicatesOf ({ exec, repoDir, target, planText, runs }) {
   const wanted = String(hashed.stdout ?? '').trim()
   const found = []
   for (const row of candidates) {
-    const branch = planBranchFor(row.run)
-    const fetched = await git(exec, repoDir, ['fetch', 'origin', branch])
+    const branch = liveBranchFor(target, row.run)
+    const fetched = await git(exec, repoDir, ['fetch', evidenceUrlFor(evidence), `refs/heads/${branch}`])
     if (fetched.code !== 0) continue
-    const commit = isSafeSha(row.plan) ? row.plan : `refs/remotes/origin/${branch}`
-    const blob = await git(exec, repoDir, ['rev-parse', '--verify', '--quiet', `${commit}:.ultrapowers/plan.md`])
+    const planFile = `${runFolderFor(target, row.run)}/${PLAN_FILE}`
+    const blob = await git(exec, repoDir, ['rev-parse', '--verify', '--quiet', `FETCH_HEAD:${planFile}`])
     if (blob.code !== 0) continue
     if (String(blob.stdout ?? '').trim() === wanted) found.push({ run: row.run, vm: row.vm })
   }
@@ -577,6 +589,27 @@ async function launchBody ({
       ? await fleetConfigAccount({ path: opts.config })
       : config.account
     account = typeof named === 'string' && named !== '' ? named : DEFAULT_ACCOUNT
+  }
+  // The evidence repository the run's record lives in (#1395): `--evidence-repo`
+  // for this one launch, else the operator's `evidence` setting — read off the
+  // injected config in a sim, else off the file. Nothing derives it from the
+  // target, so a launch with neither is refused here, before anything is read.
+  const evidenceFlag = opts['evidence-repo']
+  if (evidenceFlag !== undefined && !isSafeTarget(evidenceFlag)) {
+    throw new Refusal(
+      `launch: --evidence-repo must be <owner>/<repo>, got ${JSON.stringify(evidenceFlag === true ? null : evidenceFlag)}`
+    )
+  }
+  const evidenceSetting = config === undefined || config === null
+    ? await readEvidenceSetting({ path: opts.config })
+    : config.evidence
+  const evidence = evidenceRepoFor({ evidence: evidenceSetting }, evidenceFlag ?? null)
+  if (evidence === null) {
+    throw new Refusal(
+      'launch: no evidence repository — set "evidence": "<owner>/<repo>" in ~/.ultrapowers/fleet.json ' +
+      'or pass --evidence-repo <owner>/<repo>; node fleet/doctor.mjs walks the one-time setup — ' +
+      'no VM was created and nothing was pushed'
+    )
   }
   // The hub, on the same branch the account takes: an injected
   // `kata` is the client (a fake in a sim; `null` means "no hub" outright); with
@@ -753,6 +786,14 @@ async function launchBody ({
       `launch: no ${githubName} integration — the sandbox could still clone a public ${target} from github.com, but could not push its branch or open its PR. Build it once: node fleet/target.mjs ${target}`
     )
   }
+  // ... and the evidence repository's, which is where the run writes its record.
+  const evidenceGithubName = githubIntegrationFor(evidence)
+  if (!integrations.some((row) => row.name === evidenceGithubName)) {
+    throw new Refusal(
+      `launch: no ${evidenceGithubName} integration — the run could not write its record to the evidence repository ${evidence}. ` +
+      `Build it once: node fleet/target.mjs ${evidence} (node fleet/doctor.mjs walks the setup) — no VM was created and nothing was pushed`
+    )
+  }
 
   // ── The hub answers, or nothing is launched. One `ping` right after the
   //    integrations read and before the reap: a hub that is dark is a run
@@ -799,7 +840,7 @@ async function launchBody ({
   let reapError = null
   let fleetRuns = null
   try {
-    const reap = await janitor({ argv: [], exec, now, kata: hub })
+    const reap = await janitor({ argv: [], exec, now, kata: hub, evidence })
     fleetRuns = Array.isArray(reap.runs) ? reap.runs : []
     for (const action of reap.actions) {
       if (action.kind === 'rm' && action.applied === true) reaped.push(action.vm)
@@ -830,7 +871,7 @@ async function launchBody ({
   //    as live. When the reap itself failed there is no list and no refusal.
   const again = fleetRuns === null
     ? []
-    : await liveDuplicatesOf({ exec, repoDir, target, planText, runs: fleetRuns })
+    : await liveDuplicatesOf({ exec, repoDir, target, evidence, planText, runs: fleetRuns })
   if (again.length > 0 && opts.again !== true) {
     throw new Refusal(again.map((d) =>
       `launch: run-${d.run} is live on ${target} with this plan (VM ${d.vm}) — nothing was pushed; ` +
@@ -840,9 +881,23 @@ async function launchBody ({
   }
 
   // The N this launch asks for. Without `--run` it is one past the highest the
-  // target carries *now*, which another launch can take between this read and
-  // the push; the push is where it is settled.
-  const firstRun = opts.run ? Number(opts.run) : await highestRunOnTarget(exec, repoDir) + 1
+  // evidence repository carries for this target *now*, which another launch can
+  // take between this read and the push; the push is where it is settled. An
+  // evidence repository with no run of this target while the target still
+  // carries its old `ultra/*` runs has not been migrated: its numbering would
+  // restart at 1 over runs that exist, so that is a refusal before any push.
+  const inEvidence = await highestRunInEvidence(exec, repoDir, evidence, target)
+  if (inEvidence === 0) {
+    const onTarget = await highestRunOnTarget(exec, repoDir)
+    if (onTarget > 0) {
+      throw new Refusal(
+        `launch: ${evidence} holds no run of ${target}, but ${target} carries runs up to run-${onTarget} — ` +
+        `copy them into the evidence repository first: node fleet/migrate-evidence.mjs --target ${target} — ` +
+        'no VM was created and nothing was pushed'
+      )
+    }
+  }
+  const firstRun = opts.run ? Number(opts.run) : inEvidence + 1
 
   // ── The parse. Exactly one, here, before the `new` verb — everything
   //    downstream reads it: the VM's size, and the tasks and edges
@@ -932,7 +987,7 @@ async function launchBody ({
       `5h ${fiveHour.utilization}% resets ${fiveHour.resetsAt}`
   }
 
-  // ── The plan commit, pushed to the target before the VM exists. Plumbing
+  // ── The plan commit, pushed to the evidence repository before the VM exists. Plumbing
   //    against a temporary index, so the operator's index and working tree are
   //    never touched. The push is also what reserves the run number, so the N
   //    the launch ends up with is the one that got through — see `pushPlan`.
@@ -966,12 +1021,14 @@ async function launchBody ({
     ? null
     : (record, taken, next) => kataCall('close', () => hub.close(record.project.id, record.run.uid, {
         reason: 'wontfix',
-        message: `run-${taken} was taken on the target before this plan commit could be pushed; ` +
+        message: `run-${taken} was taken in the evidence repository before this plan commit could be pushed; ` +
           `this launch refiles the same tasks under run-${next}.`
       }))
   const plan = await pushPlan({
     exec,
     repoDir,
+    target,
+    evidence,
     base: opts.base,
     run: firstRun,
     planText,
@@ -979,13 +1036,13 @@ async function launchBody ({
     commands,
     // `--run N` is the operator's number, not one the launcher is free to
     // move: a refused push under it is refused, never retried elsewhere.
-    reread: opts.run ? null : () => highestRunOnTarget(exec, repoDir),
+    reread: opts.run ? null : () => highestRunInEvidence(exec, repoDir, evidence, target),
     kataStep,
     kataBump,
     compiled: firstCompiled
   })
   const run = plan.run
-  const planBranch = plan.branch
+  const liveBranch = plan.branch
   const planSha = plan.sha
   // The size and the width the verb carries, read off the parse the push
   // filed — the same parse under every N.
@@ -994,7 +1051,7 @@ async function launchBody ({
   // ── The one mutating lobby verb. ──────────────────────────────────────────
   const comment = buildComment({ ...fields, run: String(run), plan: planSha, engine })
   const script = stampWidth(
-    renderSetupScript({ run: String(run), ...readFleetFiles() }),
+    renderSetupScript({ run: String(run), evidence, ...readFleetFiles() }),
     { width, cpu, memory }
   )
   // No `--integration` on the verb: the run's credentials — `claude-max` and the
@@ -1032,7 +1089,7 @@ async function launchBody ({
       failures.push(`attempt ${attempt} of ${NEW_ATTEMPTS} (${name}):\n${error?.message ?? error}`)
       if (attempt === NEW_ATTEMPTS) {
         throw new LobbyError(
-          `launch: exe.dev refused \`new\` on all ${NEW_ATTEMPTS} attempts; run ${run}'s plan is on ${planBranch}\n${failures.join('\n')}`
+          `launch: exe.dev refused \`new\` on all ${NEW_ATTEMPTS} attempts; run ${run}'s plan is on ${liveBranch} of ${evidence}\n${failures.join('\n')}`
         )
       }
       await sleep(retryDelay())
@@ -1045,8 +1102,10 @@ async function launchBody ({
     vm,
     comment,
     plan: planSha,
-    planBranch,
-    evidenceBranch: evidenceBranchFor(run),
+    // Where the run's record lives: the operator's evidence repository, and
+    // the live branch this launch pushed the plan to there.
+    evidence,
+    liveBranch,
     integrationBranch: integrationBranchFor(run),
     target,
     base: opts.base,
@@ -1140,17 +1199,19 @@ async function readDefaultBranch ({ exec, repoDir }) {
 }
 
 /**
- * The plan commit: `<base>`'s tree plus `.ultrapowers/plan.md` (and the gate
- * record when the plan has a sibling `.gate-verdicts.json`, and the kata record
- * when a hub is reached), one commit on `<base>`,
- * built entirely with plumbing against a temporary index file. The operator's
- * own index and working tree are never read and never written, so a launch
- * from a dirty checkout is as safe as one from a clean one.
+ * The plan commit: a commit with NO parent whose tree is the run's folder
+ * alone — `runs/<slug>/<N>/plan.md`, and `gate-verdicts.json` when the plan
+ * has a sibling `.gate-verdicts.json`, and `kata.json` when a hub is reached —
+ * built entirely with plumbing against a temporary (empty) index file, in the
+ * target clone's object store. Nothing of `<base>`'s tree is read into it: it
+ * is pushed to the evidence repository, which holds no copy of the product.
+ * The operator's own index and working tree are never read and never written,
+ * so a launch from a dirty checkout is as safe as one from a clean one.
  *
  * A local git failure here is still a refusal: exe.dev has seen nothing but
- * reads, and the target has nothing new on it.
+ * reads, and neither the target nor the evidence repository has anything new.
  */
-async function commitPlan ({ exec, repoDir, base, run, planText, verdictsText = null, kataText = null }) {
+async function commitPlan ({ exec, repoDir, target, base, run, planText, verdictsText = null, kataText = null }) {
   const indexDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'fleet-plan-'))
   const env = { ...process.env, GIT_INDEX_FILE: path.join(indexDir, 'index') }
   const plumb = async (argv, options = {}) => {
@@ -1161,10 +1222,10 @@ async function commitPlan ({ exec, repoDir, base, run, planText, verdictsText = 
     return String(res.stdout ?? '').trim()
   }
   try {
-    await plumb(['read-tree', base])
-    const entries = [[PLAN_PATH, planText]]
-    if (verdictsText !== null) entries.push([VERDICTS_PATH, verdictsText])
-    if (kataText !== null) entries.push([KATA_PATH, kataText])
+    const folder = runFolderFor(target, run)
+    const entries = [[`${folder}/${PLAN_FILE}`, planText]]
+    if (verdictsText !== null) entries.push([`${folder}/${VERDICTS_FILE}`, verdictsText])
+    if (kataText !== null) entries.push([`${folder}/${KATA_FILE}`, kataText])
     for (const [rel, text] of entries) {
       const blob = await plumb(['hash-object', '-w', '--stdin'], { input: text })
       if (!isSafeSha(blob)) {
@@ -1176,7 +1237,7 @@ async function commitPlan ({ exec, repoDir, base, run, planText, verdictsText = 
     if (!isSafeSha(tree)) {
       throw new Refusal(`launch: git write-tree answered ${JSON.stringify(tree)}, not an object name`)
     }
-    const sha = await plumb(['commit-tree', tree, '-p', base, '-m', `ultrapowers plan run-${run}`])
+    const sha = await plumb(['commit-tree', tree, '-m', `ultrapowers plan ${target} run-${run} base ${base}`])
     if (!isFullSha(sha)) {
       throw new Refusal(`launch: git commit-tree answered ${JSON.stringify(sha)}, not a 40-hex sha`)
     }
@@ -1196,13 +1257,14 @@ const PUSH_ATTEMPTS = 3
  * only thing that can tell them apart, so the loser of the push is the one
  * that takes the next number.
  *
- * So a refused push is re-read before it is believed: `highestRunOnTarget` —
- * the same read the number came from, branches *and* tags in one `ls-remote` —
- * says whether a ref for the N just tried appeared. If it did, the refusal was
+ * So a refused push is re-read before it is believed: `highestRunInEvidence` —
+ * the same read the number came from, the target's live branches *and* tags in
+ * the evidence repository in one `ls-remote` — says whether a ref for the N
+ * just tried appeared. If it did, the refusal was
  * a race: the launch takes reading + 1, builds a *fresh* plan commit for that
  * N (the subject carries the number, so the old sha cannot be re-pushed under
- * a new name) and pushes again. If it did not, nothing raced us — the target
- * refused this push on its own terms, a pre-receive hook or a lost credential,
+ * a new name) and pushes again. If it did not, nothing raced us — the evidence
+ * repository refused this push on its own terms, a pre-receive hook or a lost credential,
  * and a second push would be refused the same way — so it is refused at once,
  * with the push's own output. Git's words are never parsed: the target's refs
  * decide, not the wording of a rejection line.
@@ -1219,20 +1281,21 @@ const PUSH_ATTEMPTS = 3
  * more than one was made.
  */
 async function pushPlan ({
-  exec, repoDir, base, run, planText, verdictsText = null, commands, reread,
+  exec, repoDir, target, evidence, base, run, planText, verdictsText = null, commands, reread,
   kataStep = null, kataBump = null, compiled = null
 }) {
+  const url = evidenceUrlFor(evidence)
   let n = run
   for (let attempt = 1; attempt <= PUSH_ATTEMPTS; attempt += 1) {
-    const branch = planBranchFor(n)
+    const branch = liveBranchFor(target, n)
     // The hub is filed for THIS N before the commit is built: a bump closes
     // the run issue it filed and files N+1's instead. The project is the
     // target's and outlives every number, so a bump destroys nothing.
     const filed = kataStep === null ? null : await kataStep(n, compiled)
     const sha = await commitPlan({
-      exec, repoDir, base, run: n, planText, verdictsText, kataText: filed === null ? null : filed.text
+      exec, repoDir, target, base, run: n, planText, verdictsText, kataText: filed === null ? null : filed.text
     })
-    const pushArgv = ['-C', repoDir, 'push', 'origin', `${sha}:refs/heads/${branch}`]
+    const pushArgv = ['-C', repoDir, 'push', url, `${sha}:refs/heads/${branch}`]
     commands.push(`git ${pushArgv.join(' ')}`)
     const push = await exec('git', pushArgv)
     if (push.code === 0) {
@@ -1241,7 +1304,7 @@ async function pushPlan ({
 
     const refusal = () =>
       new Refusal(
-        `launch: git push origin ${sha}:refs/heads/${branch} failed` +
+        `launch: git push ${url} ${sha}:refs/heads/${branch} failed` +
         `${attempt > 1 ? ` after ${attempt} tries` : ''} (exit ${push.code}):\n${output(push)}`
       )
     if (attempt === PUSH_ATTEMPTS || reread === null) throw refusal()

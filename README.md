@@ -182,9 +182,19 @@ alongside it if you want its brainstorming and practice skills as companions.
 ### 2. `/ultrapowers setup`
 
 Run `/ultrapowers setup` and answer what it asks. The agent runs the doctor, reads its rows —
-`exe-dev`, `capacity`, `claude`, `accounts`, `github`, `integrations`, `verb-drift`, `kata`, `cloudflare` — and fixes every red row with you,
+`exe-dev`, `capacity`, `claude`, `accounts`, `github`, `integrations`, `evidence`, `verb-drift`, `kata`, `cloudflare` — and fixes every red row with you,
 offering each choice as options rather than asking you to invent an answer. Setup is safe to
 re-run: the doctor (`fleet/doctor.mjs`) only reports, and setup only touches what is still red.
+
+**Your evidence repository.** Every run's plan and record live in one private repository of your
+own, never in the repository being built — so you can run on someone else's repository too. The
+`evidence` row walks its one-time setup in three steps: name it in `~/.ultrapowers/fleet.json` as
+`"evidence": "<owner>/<repo>"` (a launch can override it with `--evidence-repo <owner>/<repo>`),
+create it with `gh repo create <owner>/<repo> --private`, and give the fleet its integration with
+`node fleet/target.mjs <owner>/<repo>`. A run on `<owner>/<repo>` then leaves its record in that
+repository's `runs/<owner>-<repo>/<N>/`, at the tag `<owner>-<repo>/run-<N>`. If you ran the fleet
+before this, copy each past target's runs over once with
+`node fleet/migrate-evidence.mjs --target <owner>/<repo>` (`--dry-run` first).
 
 Three browser consents are yours to give, because only you can give them. You sign up at exe.dev and
 add your ssh key; you approve the GitHub app on your account; you approve ultrapowers on claude.ai,
@@ -216,12 +226,13 @@ two checkpoints.
 ### 4. Build
 
 In the repository you want built, run `/ultrapowers <plan-path>`. The plan rides to the sandbox on
-that repository's `ultra/plan-run-<N>` branch, and the run happens there: the builders, the probes,
-the merges, the checks. Watch it or walk away.
+your evidence repository's `live/<owner>-<repo>/run-<N>` branch, and the run happens there: the
+builders, the probes, the merges, the checks. Watch it or walk away.
 
 At the end you get the finished result: the sandbox opens the pull request on that repository —
-ultrapowers itself is just one such repository. Its body carries the gate receipt and links the
-evidence branch. The pull request merges itself on the run's own evidence — once its own gate is
+ultrapowers itself is just one such repository, and `ultra/integration-run-<N>` is the only branch a
+run ever pushes to it. Its body carries the gate receipt and links the run's record in your
+evidence repository. The pull request merges itself on the run's own evidence — once its own gate is
 green and main has not moved off the tip it caught up to. Launch with `--hold` and the
 pull request stays open instead — your second checkpoint, yours to merge or close. A run the gate
 parked leaves a draft pull request, and the sandbox merges nothing after a park: acknowledge it by

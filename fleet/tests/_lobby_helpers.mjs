@@ -174,6 +174,58 @@ export function makeTargetRepo ({ root, files } = {}) {
   }
 }
 
+/**
+ * A real *evidence* repository: a bare repository with one seed commit on
+ * `main` (the hand archive's branch — no launch may write it), standing in for
+ * `https://github.com/<name>.git`. Hand it to `localRemote`/`pointAtOrigin` and
+ * that URL is routed here.
+ *
+ *   `name`            the `<owner>/<repo>` it stands in for
+ *   `bare`            the bare repository's path
+ *   `git(argv)`       a git command against the bare, answering trimmed stdout
+ *   `refs()`          every ref as `{ '<refname>': '<sha>' }`
+ *   `seed(ref, files, message)`  a parentless commit of `files` at `ref`; the sha
+ */
+export function makeEvidenceRepo ({ root, name = 'ops/evidence' } = {}) {
+  const root_ = root ?? tempDir('fleet-evidence-')
+  const bare = path.join(root_, `evidence-${name.replace('/', '-')}.git`)
+  run(root_, ['init', '--bare', '--initial-branch=main', bare])
+  const g = (argv, env) => run(bare, argv, env).trim()
+  const ident = {
+    GIT_AUTHOR_NAME: 'fleet tests', GIT_AUTHOR_EMAIL: 'fleet@example.invalid',
+    GIT_COMMITTER_NAME: 'fleet tests', GIT_COMMITTER_EMAIL: 'fleet@example.invalid'
+  }
+  const seed = (ref, files, message = 'seed') => {
+    const index = path.join(tempDir('fleet-evidence-index-'), 'index')
+    const env = { ...ident, GIT_INDEX_FILE: index }
+    for (const [rel, body] of Object.entries(files)) {
+      const blob = spawnSync('git', ['hash-object', '-w', '--stdin'], { cwd: bare, input: body, encoding: 'utf8', env: gitEnv(env) })
+      if (blob.status !== 0) throw new Error(`git hash-object in ${bare}: ${blob.stderr}`)
+      g(['update-index', '--add', '--cacheinfo', `100644,${blob.stdout.trim()},${rel}`], env)
+    }
+    const tree = g(['write-tree'], env)
+    const sha = g(['commit-tree', tree, '-m', message], env)
+    g(['update-ref', ref, sha])
+    fs.rmSync(path.dirname(index), { recursive: true, force: true })
+    return sha
+  }
+  seed('refs/heads/main', { 'archive/README.md': '# the hand archive\n' })
+  return {
+    name,
+    bare,
+    git: g,
+    seed,
+    refs: () => {
+      const out = {}
+      for (const line of run(bare, ['for-each-ref', '--format=%(refname) %(objectname)']).split('\n')) {
+        const [ref, sha] = line.trim().split(' ')
+        if (ref) out[ref] = sha
+      }
+      return out
+    }
+  }
+}
+
 /** Write `runs/<N>/status.json` into a checkout (no commit needed). */
 export function writeStatus (dir, run_, status) {
   const target = path.join(dir, 'runs', String(run_))
@@ -236,9 +288,19 @@ export const COMPILER_FETCH = {
   answer: answer('# plan_check.py or plan_parse.py, as the seam hands it back\n')
 }
 
-/** A git argv with its remote pointed at `repo.origin`, and a bare-branch fetch made a full refspec. */
-export const pointAtOrigin = (repo, argv) => {
-  const pointed = argv.map((a) => (a === 'origin' || /github\.com/.test(String(a)) ? repo.origin : a))
+/**
+ * A git argv with its remote pointed at `repo.origin`, and a bare-branch fetch
+ * made a full refspec. `evidence` is one `makeEvidenceRepo` or a list of them:
+ * the `github.com` URL of each is routed to its own bare instead.
+ */
+export const pointAtOrigin = (repo, argv, evidence = []) => {
+  const evidences = Array.isArray(evidence) ? evidence : [evidence]
+  const bareFor = (a) => {
+    const hit = evidences.find((e) => String(a) === `https://github.com/${e.name}.git`)
+    if (hit) return hit.bare
+    return a === 'origin' || /github\.com/.test(String(a)) ? repo.origin : a
+  }
+  const pointed = argv.map(bareFor)
   const fetchAt = argv.indexOf('fetch')
   if (fetchAt < 0) return pointed
   const remoteAt = argv.indexOf('origin', fetchAt)
@@ -248,13 +310,15 @@ export const pointAtOrigin = (repo, argv) => {
   return pointed
 }
 
-/** The target's push, ls-remote and fetch, really run against its local bare origin. */
-export const localRemote = (repo) => ({
+/** The target's push, ls-remote and fetch, really run against its local bare
+ *  origin — and the evidence repository's (`evidence`, as `pointAtOrigin`
+ *  takes it) against its own bare. */
+export const localRemote = (repo, evidence = []) => ({
   when: (cmd, argv) => cmd === 'git' &&
     (argv.includes('push') || argv.includes('ls-remote') || argv.includes('fetch')) &&
     !argv.includes('--get-url') &&
     !argv.some((a) => /ultrapowers/.test(String(a))),
-  answer: (cmd, argv, options) => defaultExec('git', pointAtOrigin(repo, argv), options ?? {})
+  answer: (cmd, argv, options) => defaultExec('git', pointAtOrigin(repo, argv, evidence), options ?? {})
 })
 
 /** What a git that would open a socket answers instead. */

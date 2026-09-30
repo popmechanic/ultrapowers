@@ -11,8 +11,10 @@
  *
  * Legs, each naming the Machine clause it comes from:
  *
- *   (a) [M1] one running row on the target whose `ultra/plan-run-7` holds this
- *       plan's bytes, and no record (empty `gh api`) — a Refusal (exit 2)
+ *   (a) [M1] one running row on the target whose live branch in the evidence
+ *       repository, `live/<slug>/run-7`, holds this plan's bytes at
+ *       `runs/<slug>/7/plan.md` — and nowhere else — and no record (empty
+ *       `gh api`) — a Refusal (exit 2)
  *       naming run-7, the VM and `--again`, with nothing mutated and no push;
  *       the same with a `running` record;
  *   (b) [M2] the same fleet with `--again` — the launch resolves as run-8, one
@@ -48,8 +50,8 @@ import { janitor } from '../janitor.mjs'
 import { EXE_HOST, Refusal } from '../lobby.mjs'
 import {
   BILLING_OK, COMPILER_FETCH, NEW_OK, NO_NETWORK_GIT, NO_REMOTE_OPS, ONE_TASK,
-  answer, cleanup, cmdRule, engineRule, localRemote, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmRow,
-  vmsPayload
+  answer, cleanup, cmdRule, engineRule, localRemote, makeEvidenceRepo, makeExec, makeTargetRepo, sshRule, tempDir,
+  thrown, vmRow, vmsPayload
 } from './_lobby_helpers.mjs'
 
 const TARGET = 'popmechanic/smoke'
@@ -57,7 +59,9 @@ const GH = 'gh-popmechanic-smoke'
 const ORIGIN_URL = `https://github.com/${TARGET}.git`
 const ENGINE = 'b'.repeat(40)
 const NOW = new Date('2026-09-16T03:20:00.000Z')
-const CAPPED = { cpu: '6', memory: '8GB' }
+const SLUG = 'popmechanic-smoke'
+const EVIDENCE = 'ops/evidence'
+const CAPPED = { cpu: '6', memory: '8GB', evidence: EVIDENCE }
 const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n' }
 const PLAN = '# a plan\n\nOne plan, and a trailing newline.\n'
 const OTHER_PLAN = '# a plan\n\nOne plan, and a trailing newline.\nAnd one more line.\n'
@@ -97,13 +101,15 @@ const NO_RECORD = answer('')
 const RUNNING = page('running', NOW.toISOString())
 const DONE_5_MIN_AGO = page('done', new Date(NOW.getTime() - 5 * 60 * 1000).toISOString())
 
-const readRules = ({ repo, rows, record }) => [
+const readRules = ({ repo, evidence, rows, record }) => [
   engineRule(ENGINE),
   COMPILER_FETCH,
-  localRemote(repo),
+  localRemote(repo, evidence),
   compilerRule(ONE_TASK),
   sshRule('help ', HELP_OK),
-  sshRule('integrations list --json', answer([{ name: GH, attachments: [] }, { name: 'claude-max', attachments: [] }])),
+  sshRule('integrations list --json', answer([
+    { name: GH, attachments: [] }, { name: 'gh-ops-evidence', attachments: [] }, { name: 'claude-max', attachments: [] }
+  ])),
   sshRule('billing plan --json', answer(BILLING_OK)),
   sshRule("ls '", vmsPayload(rows)),
   sshRule('new ', NEW_OK),
@@ -114,31 +120,26 @@ const readRules = ({ repo, rows, record }) => [
 
 // ── The workspace: a target whose origin already carries plan branches ──────
 
-/** Commit `text` as `.ultrapowers/plan.md` on `ultra/plan-run-<n>` and push it; the sha. */
-function planBranch (repo, n, text) {
-  const branch = `ultra/plan-run-${n}`
-  repo.git(['checkout', '-q', '-b', branch, 'main'])
-  fs.mkdirSync(path.join(repo.dir, '.ultrapowers'), { recursive: true })
-  fs.writeFileSync(path.join(repo.dir, '.ultrapowers', 'plan.md'), text)
-  repo.git(['add', '-A'])
-  repo.git(['commit', '-q', '-m', `ultrapowers plan run-${n}`])
-  repo.git(['push', '-q', 'origin', branch])
-  const sha = repo.git(['rev-parse', 'HEAD'])
-  repo.git(['checkout', '-q', 'main'])
-  return sha
-}
+/** Commit `text` as `runs/<slug>/<n>/plan.md` on the evidence repository's
+ *  `live/<slug>/run-<n>` — the only place the live run's plan is held; the sha. */
+const livePlan = (evidence, n, text) => evidence.seed(
+  `refs/heads/live/${SLUG}/run-${n}`,
+  { [`runs/${SLUG}/${n}/plan.md`]: text },
+  `ultrapowers plan ${TARGET} run-${n}`
+)
 
 function workspace () {
   const root = tempDir('fleet-launch-duplicate-')
   const repo = makeTargetRepo({ root, files: { ...SEED } })
-  const run6 = planBranch(repo, 6, OTHER_PLAN)
-  const run7 = planBranch(repo, 7, PLAN)
+  const evidence = makeEvidenceRepo({ root, name: EVIDENCE })
+  const run6 = livePlan(evidence, 6, OTHER_PLAN)
+  const run7 = livePlan(evidence, 7, PLAN)
   repo.git(['remote', 'set-url', 'origin', ORIGIN_URL])
   const planDir = path.join(root, 'plans-src')
   fs.mkdirSync(planDir)
   const planPath = path.join(planDir, 'a-plan.md')
   fs.writeFileSync(planPath, PLAN)
-  return { root, repo, planPath, run6, run7, cleanup: () => cleanup(root) }
+  return { root, repo, evidence, planPath, run6, run7, cleanup: () => cleanup(root) }
 }
 const comment = (n, plan, target, base) => `run=${n} plan=${plan} target=${target} base=${base} engine=${ENGINE}`
 const liveRow = (ws) => vmRow(LIVE_VM, { comment: comment(7, ws.run7, TARGET, ws.repo.base) })
@@ -160,7 +161,7 @@ const launchIn = (ws, { exec, extra = [] }) => launch({
 })
 const drive = async ({ rows, record, extra = [] }) => {
   const ws = workspace()
-  const exec = makeExec({ rules: readRules({ repo: ws.repo, rows: rows(ws), record }) })
+  const exec = makeExec({ rules: readRules({ repo: ws.repo, evidence: ws.evidence, rows: rows(ws), record }) })
   let result = null
   let error = null
   try {
@@ -192,8 +193,12 @@ const assertLaunched = (d, leg) => {
   const pushes = pushCalls(d.exec)
   assert.ok(pushes.length >= 1, `${leg} a push was issued`)
   assert.ok(
-    pushes.some((c) => c.argv.some((a) => String(a).endsWith('ultra/plan-run-8'))),
-    `${leg} and it pushed ultra/plan-run-8 (runs 6 and 7 are taken)`
+    pushes.some((c) => c.argv.some((a) => String(a).endsWith(`refs/heads/live/${SLUG}/run-8`))),
+    `${leg} and it pushed live/${SLUG}/run-8 (runs 6 and 7 are taken in the evidence repository)`
+  )
+  assert.ok(
+    pushes.every((c) => c.argv.includes(`https://github.com/${EVIDENCE}.git`)),
+    `${leg} every push went to the evidence repository, none to the target`
   )
   assert.equal(newVerbs(d.exec).length, 1, `${leg} exactly one \`new\` verb`)
 }
@@ -240,7 +245,7 @@ const assertLaunched = (d, leg) => {
 // ── e. [M5] the flag takes no value, and is offered ─────────────────────────
 {
   const ws = workspace()
-  const exec = makeExec({ rules: readRules({ repo: ws.repo, rows: [liveRow(ws)], record: NO_RECORD }) })
+  const exec = makeExec({ rules: readRules({ repo: ws.repo, evidence: ws.evidence, rows: [liveRow(ws)], record: NO_RECORD }) })
   const error = await thrown(() => launchIn(ws, { exec, extra: ['--again=1'] }))
   assert.ok(error instanceof Refusal, `(e) [M5] --again=1 is a Refusal, got ${error?.name}: ${error?.message}`)
   assert.equal(exec.calls.length, 0, '(e) [M5] and nothing was executed')
@@ -258,7 +263,7 @@ const assertLaunched = (d, leg) => {
   ]
   const janitorIn = async (record) => {
     const exec = makeExec({ rules: [sshRule("ls '", vmsPayload(rows)), recordRule(record), NO_REMOTE_OPS, NO_NETWORK_GIT] })
-    return janitor({ argv: [], exec, config: CAPPED, now: () => NOW, kata: null })
+    return janitor({ argv: [], exec, config: CAPPED, evidence: EVIDENCE, now: () => NOW, kata: null })
   }
   const recorded = await janitorIn(RUNNING)
   assert.deepEqual(

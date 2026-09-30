@@ -16,16 +16,21 @@ control VM, no token on any VM or in any argv.
    `compiler.mjs`, which fetches and runs `plan_check.py` and `plan_parse.py` at `engine=`.
    Its `BASE fact:` and `STALE fact:` lines print on the launch line. The VM is sized from
    `plan_parse.py`'s widest wave. `toolchain.mjs` checks what a fresh sandbox can run.
-2. Read the pool from `billing plan --json`; compute N from the target's own
-   `ultra/*-run-*` branches; refresh the Claude bearer (`claude-token.mjs`).
-3. Push the plan as one commit on base (tree = base + `.ultrapowers/plan.md`) to
-   `ultra/plan-run-<N>`; file the run on the kata hub (`kata-file.mjs`).
+2. Read the evidence repository (`--evidence-repo`, else `"evidence"` in
+   `~/.ultrapowers/fleet.json`; neither is a refusal) and the pool from `billing plan --json`;
+   compute N from the evidence repository's `live/<owner>-<repo>/run-*` branches and
+   `<owner>-<repo>/run-*` tags (refused while the target still holds unmigrated `ultra/*` refs:
+   `migrate-evidence.mjs --target`); refresh the Claude bearer (`claude-token.mjs`).
+3. Push the plan as one parentless commit in the evidence repository (tree =
+   `runs/<owner>-<repo>/<N>/plan.md` and its siblings) to `live/<owner>-<repo>/run-<N>`; file the
+   run on the kata hub (`kata-file.mjs`).
 4. Issue ONE lobby verb (`lobby.mjs`): `new` with VM name `fleet-r<N>-<stamp>-<rand>`,
    `--tag fleet`, the assignment as `--comment`, both integrations, `--cpu`/`--memory` from
    `~/.ultrapowers/fleet.json`, and the setup script (`setup-script.mjs`) on stdin. No image,
    no attach, no ssh wait, no explicit start.
 
-On the VM the setup script installs the toolchain, the immutable bootstrap at
+On the VM the setup script writes the evidence repository to `$HOME/fleet-evidence-repo`
+(the boot fails without it), installs the toolchain, the immutable bootstrap at
 `/usr/local/lib/fleet/bootstrap.sh` and the `fleet-run@.service` template, then starts
 `fleet-run@<N>.service`. The bootstrap reads the comment once, clones the engine at `engine=`
 into `/home/exedev/engines/<sha>`, and execs its `factory/boot.sh` or refuses. It never
@@ -33,24 +38,29 @@ overwrites itself (run-68).
 
 ## The record
 
-The sandbox commits evidence to `ultra/evidence-run-<N>` under `.ultrapowers/runs/<N>/`,
-pushes `ultra/integration-run-<N>` and opens its own PR over REST (`prAuthor` recorded). The
-PR is the gate. Publish tags `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`, verifies both
-with `git ls-remote --tags`, then deletes the two branches; a tag that doesn't verify keeps its
-branch, and a `failed` run keeps both for the sweep. Read a past run at
-`.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>`.
+The record lives in the operator's evidence repository, never on the target. The sandbox
+commits it to `live/<owner>-<repo>/run-<N>` under `runs/<owner>-<repo>/<N>/` every 60 s and at
+each transition, pushes `ultra/integration-run-<N>` to the target (the only ref the target
+receives) and opens its own PR over REST (`prAuthor` recorded). The PR is the gate. At the end of
+every run (done, parked, failed) it tags the last commit `<owner>-<repo>/run-<N>`, verifies it
+with `git ls-remote --tags`, then deletes the live branch; a tag that doesn't verify keeps it.
+Read a past run at
+`repos/<evidence repo>/contents/runs/<owner>-<repo>/<N>/status.json?ref=<owner>-<repo>/run-<N>`.
 
 ## The other laptop tools
 
-- `doctor.mjs` — which of its nine rows is missing (`exe-verbs.json` feeds its verb-drift row).
+- `doctor.mjs` — which of its ten rows is missing (`exe-verbs.json` feeds its verb-drift row;
+  its `evidence` row checks the one-time evidence-repository setup).
 - `claude-token.mjs` — the credential: loom-style OAuth, refresh token in the keychain,
   refreshed before every launch, single-flight. **Never force-rotate while a run is live** (see
   CLAUDE.md).
 - `janitor.mjs` — reaps finished runs by reading each fleet VM's comment and asking the kata
-  hub for the run issue's state, falling back to the target's evidence via `gh api` only when
-  the hub is dark; never a VM's disk.
-- `target.mjs` (the per-target integration), `board-read.mjs` (print a run's board),
-  `retire.mjs` (the one-time branches-to-tags sweep), `kata-hub.mjs` + `kata-hub-setup.sh` +
+  hub for the run issue's state, falling back to the evidence repository via `gh api` only when
+  the hub is dark (and not at all when `"evidence"` is unset); never a VM's disk.
+- `target.mjs` (the per-repository integration, targets and the evidence repository alike),
+  `board-read.mjs` (print a run's board), `migrate-evidence.mjs` (copies one target's past runs
+  into the evidence repository, idempotent, deleting nothing), `retire.mjs` (sweeps
+  closed-unmerged `ultra/integration-run-*` branches), `kata-hub.mjs` + `kata-hub-setup.sh` +
   `kata.service` (build the one kata hub).
 - The laptop reads the hub daemon with `ssh kata-hub.exe.xyz curl localhost:8000/api/v1/…`,
   the bearer from `~/.ultrapowers/kata-hub.env` on stdin, never on an argv.
