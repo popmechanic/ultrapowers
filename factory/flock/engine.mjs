@@ -89,6 +89,14 @@ const JEV_STEP = (POLICY_FLOCK?.jev_step?.mode ?? 'off') === 'record' && !!proce
 // the same gate, each on its own policy cell (flock.jev_resolve, flock.jev_release).
 const JEV_RESOLVE = (POLICY_FLOCK?.jev_resolve?.mode ?? 'off') === 'record' && !!process.env.TYPESAFE_BASE_URL
 const JEV_RELEASE = (POLICY_FLOCK?.jev_release?.mode ?? 'off') === 'record' && !!process.env.TYPESAFE_BASE_URL
+// the peer-rewrite read (#1401): an edit that replaces or deletes lines a peer wrote is put to Jev
+// (run-277: a builder's own Edit ran two of a peer's words together and the run went green).
+// `enforce`: a `loses` answer whose text is still in the settled snapshot ends the run a draft;
+// `record` only writes the `jev:peer-rewrite` row; `off` never asks. Absent, record. A `null`
+// answer never drafts: it takes the set's rollback, record.
+const PEER_MODE = POLICY_FLOCK?.jev_peer_rewrite?.mode ?? 'record'
+if (!['enforce', 'record', 'off'].includes(PEER_MODE)) { console.error('engine: policy flock.jev_peer_rewrite.mode is enforce, record or off'); process.exit(2) }
+const JEV_PEER = PEER_MODE !== 'off' && !!process.env.TYPESAFE_BASE_URL
 // the scope rule (#1333, scope.mjs): `enforce` folds a change outside every task's Files that no
 // builder wrote into the edge's verdict; `record` only writes the `scope:outside` row. Absent, enforce.
 const SCOPE_MODE = POLICY_FLOCK?.scope?.mode ?? 'enforce'
@@ -137,12 +145,28 @@ const jev = JEV_STEP ? makeJevClient({ baseUrl: process.env.TYPESAFE_BASE_URL, l
 const QSETS = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'questions.json'), 'utf8')).sets
 const RESOLVE_QUESTION = QSETS.flock_resolve.questions.already_joined
 const RELEASE_QUESTION = QSETS.flock_release.questions.blocker
-const trialJev = (JEV_RESOLVE || JEV_RELEASE) ? makeJevClient({ baseUrl: process.env.TYPESAFE_BASE_URL, log: (m) => log('jev', m) }) : null
+const PEER_QUESTION = QSETS.flock_peer_rewrite.questions.kept
+const trialJev = (JEV_RESOLVE || JEV_RELEASE || JEV_PEER) ? makeJevClient({ baseUrl: process.env.TYPESAFE_BASE_URL, log: (m) => log('jev', m) }) : null
 const trialsPending = new Set()
-const trial = (key, question, state, kind, row) => {
+const trial = (key, question, state, kind, row, then) => {
   if (!trialJev) return
-  const p = readTrial({ ask: trialJev.ask, key, question, state, row, emit: (o) => ev(kind, o) }).catch(() => {})
+  const p = readTrial({ ask: trialJev.ask, key, question, state, row, emit: (o) => { ev(kind, o); if (then) then(o) } }).catch(() => {})
   trialsPending.add(p); p.finally(() => trialsPending.delete(p))
+}
+// #1401: one `peer:rewrite` row per sub-edit over a peer's lines (the weave's peerRewrites), and
+// its Jev read; the reads are kept for the settle's check (peerRewriteDraft)
+const taskOf = {}   // agent -> the task its current session holds
+const peerReads = []
+function peerRewrites (agent, rel, rewrites) {
+  for (const w of rewrites || []) {
+    const mine = taskOf[agent]
+    const row = { agent, task: mine && mine.id, path: rel, peers: w.peers, before: w.before, peer: w.peer, after: w.after }
+    ev('peer:rewrite', row)
+    if (!JEV_PEER) continue
+    const side = (a) => { const t = taskOf[a]; return t ? { agent: a, title: t.title, claim: claimOf(t.body) } : { agent: a } }
+    trial('kept', PEER_QUESTION, { path: rel, before: w.before, peer: w.peer, after: w.after, tasks: [side(agent), ...w.peers.map(side)] },
+      'jev:peer-rewrite', row, (o) => peerReads.push(o))
+  }
 }
 const readAndRecord = (clauses) => {
   if (!jev || !W.stories) return Promise.resolve()
@@ -342,6 +366,7 @@ async function syncFromDisk (agent) {
     edited(agent, p)
     drift += 1
     ev('fallback', { agent, path: p, peer_lines: r.peer_lines_touched, deleted: text === null })
+    peerRewrites(agent, p, r.peerRewrites)
   }
   return drift
 }
@@ -354,6 +379,7 @@ async function recordEditCall (agent, rel, before, edits) {
     for (const s of editSpans(text, e.old_string, e.new_string, e.replace_all)) {
       const r = await must({ op: 'edit', agent, path: rel, ...s })
       peerText += r.peer_lines_touched
+      peerRewrites(agent, rel, r.peerRewrites)
     }
     text = e.replace_all ? text.split(e.old_string).join(e.new_string) : text.replace(e.old_string, () => e.new_string)
   }
@@ -632,6 +658,9 @@ async function scriptedSession (agent, task) {
       ev('session:end', { agent, task: task.id, released: 'run ended', done: false })
       live.delete(agent); return
     }
+    // a held session takes in what its peers published meanwhile, as a model builder's pull after
+    // each tool batch would, so its write can land over a peer's lines (#1401)
+    await pullInto(agent, task)
   }
   // test seam: `@beliefs` lists beliefs; a session posts those whose `task` is its own before it writes
   for (const b of SCRIPT['@beliefs'] || []) if (String(b.task) === String(task.id)) await postBelief(agent, b)
@@ -668,6 +697,7 @@ async function session (agent, task) {
   const cwd = agentDir(agent)
   const st = { released: false, done: false, redRuns: 0 }
   const pre = new Map()
+  taskOf[agent] = task
   await pullInto(agent, task)
   if (SCRIPT) return scriptedSession(agent, task)
   const say = (text) => ({ content: [{ type: 'text', text }] })
@@ -827,11 +857,11 @@ async function session (agent, task) {
         let rec = { peer: 0, peers: [] }, how = 'edit-call'
         if (name === 'Write' || before === null || before === undefined) {
           const owners0 = await keyedOwners(agent, rel)
-          const r = await must({ op: 'rewrite', agent, path: rel, content: readOr(fp) }); rec = { ...peerFall(owners0, await keyedOwners(agent, rel)), peerText: r.peer_lines_touched }; how = before == null ? 'new-file' : 'write'
+          const r = await must({ op: 'rewrite', agent, path: rel, content: readOr(fp) }); peerRewrites(agent, rel, r.peerRewrites); rec = { ...peerFall(owners0, await keyedOwners(agent, rel)), peerText: r.peer_lines_touched }; how = before == null ? 'new-file' : 'write'
         } else {
           rec = await recordEditCall(agent, rel, before, name === 'MultiEdit' ? ti.edits : [ti])
           const view = (await must({ op: 'view', agent, path: rel })).text
-          if (view !== readOr(fp)) { await must({ op: 'rewrite', agent, path: rel, content: readOr(fp) }); how = 'edit-call-mismatch' }
+          if (view !== readOr(fp)) { const r = await must({ op: 'rewrite', agent, path: rel, content: readOr(fp) }); peerRewrites(agent, rel, r.peerRewrites); how = 'edit-call-mismatch' }
         }
         // gap 9 (open, but declared): an edit outside the editing task's own Files is an amendment
         const own = task.files || (String(task.id).startsWith('R:') ? [task.id.slice(2)] : null)
@@ -1077,6 +1107,7 @@ await Promise.all([spawner(), settle()])
 await Promise.all(loops)
 await edgeChain
 if (trialsPending.size) await Promise.race([Promise.all([...trialsPending]), new Promise((r) => setTimeout(r, JEV_TIMEOUT_MS).unref())])
+peerRewriteDraft()
 const summary = {
   workload: W.name, agents: 'elastic', builders_max: buildersMax, cap: CAP, model: MODEL, settled, wall_ms: now(), publish: 'explicit', early_close: 'held', order: 'chain',
   final: lastEdge && { snap: lastEdge.snap, green: lastEdge.green, perTask: lastEdge.perTask, check: lastEdge.check, conflicts: lastEdge.conflicts },
@@ -1100,6 +1131,23 @@ wp.stdin.end()
 const landed = await land()
 if (kataPending.size) await Promise.race([Promise.all([...kataPending]), new Promise((r) => setTimeout(r, KATA_EXIT_MS).unref())])
 process.exit(landed)
+
+// #1401: under `enforce`, a settled green whose snapshot still holds a peer rewrite Jev read as
+// `loses` ends a draft. "Still holds": every line the rewrite wrote is in that path's settled text,
+// or, for a deletion, none of the peer's lines is back. A later edit that fixed it clears it.
+function peerRewriteDraft () {
+  if (PEER_MODE !== 'enforce' || !outcome || outcome.pr !== 'ready') return
+  const s = snapshots.find((x) => x.snap === outcome.snap)
+  if (!s) return
+  const lines = (p) => new Set(String((p in s.files ? s.files[p] : readOr(path.join(BASE_DIR, p))) ?? '').split('\n'))
+  const lost = peerReads.filter((r) => r.answer === 'loses').filter((r) => {
+    const held = lines(r.path)
+    return r.after.length ? r.after.every((l) => held.has(l)) : !r.peer.some((l) => held.has(l))
+  })
+  if (!lost.length) return
+  ev('peer:rewrite:draft', { rewrites: lost.map((r) => ({ agent: r.agent, path: r.path, peers: r.peers, after: r.after })) })
+  terminal('draft', `a peer rewrite Jev read as losing the peer's change: ${[...new Set(lost.map((r) => r.path))].join(', ')}`, outcome)
+}
 
 // ── the compact record: each tested snapshot's patch against the previous one, and the weave's
 // ops with file texts as fingerprints (compact_record.mjs) ──

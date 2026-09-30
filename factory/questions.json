@@ -1,6 +1,6 @@
 {
   "version": "questions-v1",
-  "about": "Every Jev question set put to `POST /v1/systemone`, in one file. The Flock's sets: `flock_step`, read by factory/flock/step_reading.mjs once per green story step; `flock_resolve`, read by factory/flock/engine.mjs at a merge conflict an agent resolves; and `flock_release`, read by factory/flock/engine.mjs at a task given back; their modes live in factory/policy.json's `flock.jev_step`, `flock.jev_resolve` and `flock.jev_release`. The authoring sets, `authoring_…`: each says when it is asked (`when`), who reads it (`reader`), how to turn it off (`rollback`), the keys its reader sends (`state`), where it came from (`provenance`) and whether its readings are calibrated. Each set names its reader and its rollback (map #1131 rule 3). A question is literal: it names no policy word, and nothing here decides anything. A Jev `null` routes that reading to the set's stated rollback, never to a guess. A reworded question is a different question: its readings mean something else.",
+  "about": "Every Jev question set put to `POST /v1/systemone`, in one file. The Flock's sets: `flock_step`, read by factory/flock/step_reading.mjs once per green story step; `flock_resolve`, read by factory/flock/engine.mjs at a merge conflict an agent resolves; `flock_release`, read by factory/flock/engine.mjs at a task given back; and `flock_peer_rewrite`, read by factory/flock/engine.mjs when an edit replaces a peer's lines; their modes live in factory/policy.json's `flock.jev_step`, `flock.jev_resolve`, `flock.jev_release` and `flock.jev_peer_rewrite`. The authoring sets, `authoring_…`: each says when it is asked (`when`), who reads it (`reader`), how to turn it off (`rollback`), the keys its reader sends (`state`), where it came from (`provenance`) and whether its readings are calibrated. Each set names its reader and its rollback (map #1131 rule 3). A question is literal: it names no policy word, and nothing here decides anything. A Jev `null` routes that reading to the set's stated rollback, never to a guess. A reworded question is a different question: its readings mean something else.",
   "sets": {
     "flock_step": {
       "when": "At a ready settle, once per story, at its last green step (#1369)",
@@ -85,6 +85,34 @@
             "fixable": "Another attempt at `files` could make them pass",
             "waiting_on_peer": "They need work another task in `depends_on` or elsewhere has not published yet",
             "plan_defect": "No change to `files` can make them pass as the plan states them"
+          }
+        }
+      }
+    },
+    "flock_peer_rewrite": {
+      "when": "When an agent's edit replaces or deletes lines a peer wrote, once per such edit (#1401)",
+      "reader": "factory/flock/engine.mjs",
+      "rollback": "factory/policy.json flock.jev_peer_rewrite.mode = record (never drafts), or off (never asks)",
+      "state": [
+        "path",
+        "before",
+        "peer",
+        "after",
+        "tasks"
+      ],
+      "provenance": "weave census 2026-09-29 (#1401): run-277's only edit over a peer's line ran two of the peer's words together; operator pick 2026-09-29",
+      "calibrated": false,
+      "questions": {
+        "kept": {
+          "type": "choice",
+          "instructions": {
+            "question": "Does `after` still carry the change the peer made when it turned `before` into `peer`?",
+            "context": "`path` is the file. `before` is what the peer's lines replaced (empty when the peer only added them), and `peer` is what the peer wrote. `after` is what a second agent then wrote over the peer's lines (empty when it deleted them). `tasks` are the two sides, the second agent's first, each with its `title` and its `claim`, what that side meant."
+          },
+          "criteria": {
+            "keeps": "What the peer changed is still there in `after`, beside the second agent's own change",
+            "loses": "Part of the peer's change is undone, or `after` runs together words or lines that `before` and `peer` kept apart",
+            "supersedes": "The second agent's claim means to replace the peer's change, and `after` does exactly that"
           }
         }
       }
