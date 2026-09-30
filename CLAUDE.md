@@ -196,8 +196,9 @@ the engine's exit code is the merge decision.
   expired account rotates with `install: false` and leaves the edge on a revoked bearer.
 - **Fleet sims ride pytest.** `tests/test_fleet_suite.py` runs each `fleet/tests/test_*.mjs`
   (sentinel `ALL TESTS PASSED`, 300 s per file, no network — `curl`, `git`, `gh`, `ssh`,
-  `systemd-run`, `systemctl` are PATH-shim stubs); `test_sims_are_hermetic.mjs` catches a sim
-  that touches the real network or repo, or names a sibling sim.
+  `systemd-run`, `systemctl` are PATH-shim stubs, which keep the network out);
+  `test_sims_are_hermetic.mjs` catches a sim that inherits the parent's environment, reads an
+  absolute path on the box, or runs a sibling sim.
 - **Superpowers is an optional companion (#390).** Plan authoring is ultrawrite's; superpowers
   never enters a sandbox and nothing is vendored. Read its skills from the plugin cache.
 - **TinyApp is the name** for a greenfield target on Bun + TypeScript + TinyBase whose
