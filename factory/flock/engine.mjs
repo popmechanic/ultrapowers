@@ -654,7 +654,7 @@ async function giveBack (agent, task, why) {
     trial('blocker', RELEASE_QUESTION, releaseState({ task, why, depends }), 'jev:release', { task: task.id, releases: task.released })
   }
   if (task.released >= MAX_RELEASE) {
-    task.state = 'parked'; task.owner = null; task.notes.push(`${agent} released: ${why}`)
+    await board.park(task, `${agent} released: ${why}`)
     ev('task:parked', { task: task.id, releases: task.released, reason: String(why).slice(0, 300) })
     await stall('released', { task: task.id, releases: task.released }); log(agent, 'parks', task.id, 'after', task.released, 'give-backs')
     return

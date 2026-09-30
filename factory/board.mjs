@@ -159,7 +159,7 @@ async function cmdCloseRun (flags) {
         adminUrl,
         projectId,
         uid,
-        key: run + ':task:' + id + ':close',
+        key: runUid + ':task:' + id + ':close',
         message: run + ' task ' + id + " done: adopted green in the run's pull request — " + pr,
         evidence,
         run,
@@ -171,7 +171,7 @@ async function cmdCloseRun (flags) {
       adminUrl,
       projectId,
       uid: runUid,
-      key: run + ':run:close',
+      key: runUid + ':run:close',
       message: run + ' done: ' + title + ' — ' + pr,
       evidence,
       run,
@@ -223,7 +223,7 @@ async function cmdMarkRun (flags) {
     try {
       const res = await fetch(adminUrl + '/api/v1/projects/' + projectId + '/issues/' + runUid + '/metadata', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'Idempotency-Key': run + ':run:mark:' + state },
+        headers: { 'content-type': 'application/json', 'Idempotency-Key': runUid + ':run:mark:' + state },
         body: JSON.stringify({ actor: 'sandbox:' + run, patch: { 'work.state': state } }),
         signal: controller.signal,
       })

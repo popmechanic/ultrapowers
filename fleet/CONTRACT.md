@@ -366,7 +366,8 @@ evidence repository.
   `$FLEET_HOME/plans/<run>.kata.json` exists); it posts to the hub at `https://kata.int.exe.xyz`,
   reading the project id from that record. Each board move becomes one comment on its task's issue, posted after the move has
   completed: `claimed by <agent>`, `<agent> released: <why>` (the engine's own release reason,
-  e.g. `A released: gave up`), `reopened: <why>` and `done by <agent>` (a
+  e.g. `A released: gave up`), `parked: <why>` (a task parked at its release cap, e.g.
+  `parked: A released: gave up`), `reopened: <why>` and `done by <agent>` (a
   release made on the way to a reopen posts only the `reopened:` body). Every attempted post is
   one `kata:mirror` event row in `events.jsonl` naming the task, the body, `key` (the
   `Idempotency-Key` sent), `ok` (true only when the hub answered with a comment uid),

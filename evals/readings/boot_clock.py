@@ -9,10 +9,13 @@ second before its lobby `new`); the first claim is the `ts` of the first `sessio
 `runs/<slug>/<N>/events.jsonl` at the tag `<slug>/run-<N>`. Per run it prints
 `run-<N> launch_to_first_claim_s=<s>`, then, when the run's folder carries `fleet-setup.log` or
 `fleet-boot.log`, one line per stamped log line: its step and its seconds since the plan commit.
-A run it cannot read (no tag, no `events.jsonl`, no `session:start` row) prints one
-`run-<N> skipped: <reason>` line and the reading goes on. The last line is
+A run it cannot read (no tag, no `events.jsonl`, no `session:start` row, or one whose `ts` is
+missing or does not parse) prints one `run-<N> skipped: <reason>` line and the reading goes on.
+The last line is
 `n=<runs read> of=<runs asked> window=run-<first read>..run-<last read> median_s=<s>`, so a gap
-shows. The tags are fetched blobless into a temporary repository of the tool's own, deleted after.
+shows. The remote is reached once before any run; when it cannot be, the tool prints one line
+naming it and exits non-zero, rather than skipping every run. The tags are fetched blobless into
+a temporary repository of the tool's own, deleted after.
 
 Two clocks: launch is the laptop's commit clock, the claim and the log stamps are the VM's clock,
 so every seconds figure carries whatever skew lies between the two."""
@@ -60,7 +63,11 @@ def read_run(repo, remote, slug, n):
             except ValueError:
                 continue
             if e.get("kind") == "session:start":
-                claim = when(e["ts"])
+                try:
+                    claim = when(e["ts"])
+                except (KeyError, TypeError, AttributeError, ValueError):
+                    raise Unreadable(f"first session:start row in {folder}/events.jsonl has no readable ts: "
+                                     f"{e.get('ts')!r}")
                 break
     if claim is None:
         raise Unreadable(f"no session:start row in {folder}/events.jsonl")
@@ -91,6 +98,12 @@ def main():
             git(repo, "config", "remote.origin.partialclonefilter", "blob:none")
         except Unreadable as e:
             sys.exit(str(e))
+        # Reach the remote once, before any run: an unreachable remote is not n=0.
+        r = subprocess.run(["git", "-C", repo, "ls-remote", "-q", "--exit-code", "origin", "HEAD"],
+                           capture_output=True)
+        if r.returncode not in (0, 2):    # 2: reached, but no HEAD ref
+            err = " ".join(r.stderr.decode("utf-8", "replace").split())
+            sys.exit(f"cannot reach the record at {a.remote}: {err}")
         read = []
         for n in runs:
             try:
