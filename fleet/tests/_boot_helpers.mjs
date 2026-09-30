@@ -335,6 +335,9 @@ done
 [ "$is_engine" = "1" ] || exit 0
 printf '%s\\n' "$@" > "$FLEET_HOME/engine-argv"
 
+# A case that writes \`<home>/engine-hangs\` gets an engine that never lands, so the sim can kill the boot while it runs.
+if [ -f "$FLEET_HOME/engine-hangs" ]; then sleep 60; exit 0; fi
+
 code=0
 if [ -f "$FLEET_HOME/engine-exit" ]; then code="$(cat "$FLEET_HOME/engine-exit")"; fi
 
@@ -369,6 +372,7 @@ function writeStubs (binDir, { claudeAuth, extraStubs = {} } = {}) {
   writeStub(binDir, 'curl', CURL_STUB)
   writeStub(binDir, 'systemd-run', SYSTEMD_RUN_STUB)
   writeStub(binDir, 'systemctl', '#!/bin/sh\nexit 0\n')
+  writeStub(binDir, 'journalctl', '#!/bin/sh\necho \'stub journal line\'\nexit 0\n')
   for (const [name, content] of Object.entries(extraStubs)) {
     writeStub(binDir, name, content)
   }
@@ -403,24 +407,36 @@ function makeProxyServer () {
 /** Spawns `cmd` asynchronously, collecting stdout/stderr and resolving once
  *  the child's `close` event fires (never blocking this process's event
  *  loop — a case's own proxy stub server runs in this same process). A child
- *  that outlives `timeoutMs` is killed so a hung boot cannot hang the exam. */
-async function runChild (cmd, args, { bin, home, env, timeoutMs } = {}) {
+ *  that outlives `timeoutMs` is killed so a hung boot cannot hang the exam.
+ *  The child leads its own process group, and the returned promise carries
+ *  `kill()`, which `SIGKILL`s that whole group — the child and everything it
+ *  started — so a case can kill a boot mid-run and leave nothing running. */
+function runChild (cmd, args, { bin, home, env, timeoutMs } = {}) {
   const child = spawn(cmd, args, {
     env: simEnv({ bin, home, env }),
-    stdio: ['ignore', 'pipe', 'pipe']
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true
   })
   let stdout = ''
   let stderr = ''
   child.stdout.on('data', (d) => { stdout += d })
   child.stderr.on('data', (d) => { stderr += d })
-  const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs ?? 120000)
-  const code = await new Promise((resolve) => child.on('close', resolve))
-  clearTimeout(timer)
-  return { code, stdout, stderr }
+  const kill = () => {
+    try { process.kill(-child.pid, 'SIGKILL') } catch { /* the group is already gone */ }
+  }
+  const timer = setTimeout(kill, timeoutMs ?? 120000)
+  const done = new Promise((resolve) => child.on('close', (code, signal) => {
+    clearTimeout(timer)
+    resolve({ code, signal, stdout, stderr })
+  }))
+  done.kill = kill
+  return done
 }
 
-/** `bash factory/boot.sh boot`, awaited. */
-const runBootAsync = (opts) => runChild('bash', [BOOT_SH, 'boot'], opts)
+/** `bash factory/boot.sh <sub>` (default `boot`), with `extraEnv` laid over
+ *  `opts.env`; the returned promise carries `kill()` (see `runChild`). */
+const runBootAsync = (opts = {}, sub = 'boot', extraEnv = {}) =>
+  runChild('bash', [BOOT_SH, sub], { ...opts, env: { ...(opts.env ?? {}), ...extraEnv } })
 
 /** `node <argv[0]> ...argv.slice(1)`, awaited — the same shape
  *  `test_factory_preflight.mjs`'s `runAsync` uses. */

@@ -45,6 +45,7 @@ fleet_systemd_run() { systemd-run "$@"; }
 fleet_systemctl()   { systemctl "$@"; }
 fleet_python3()     { python3 "$@"; }
 fleet_node()        { node "$@"; }
+fleet_journalctl()  { journalctl "$@"; }
 # The boot log's stamp, UTC to the millisecond: bash 5's `$EPOCHREALTIME` where it is set
 # (the VM), else one python3 call — macOS's /bin/bash 3.2, which the boot sims run, has none.
 stamp_ms() {
@@ -236,7 +237,7 @@ evidence_commit() { # $1 = commit subject
   for p in fleet-boot.log fleet-setup.log; do
     if [ -f "$FLEET_HOME/$p" ]; then cp "$FLEET_HOME/$p" "$EVIDENCE_DIR/$EVIDENCE_REL/$p"; fi
   done
-  for p in status.json events.jsonl engine.log fleet-boot.log fleet-setup.log summary.json publish.json publish-deploy.log publish-verify.log publish-rollback.log "${ENGINE_EVIDENCE[@]}"; do
+  for p in status.json events.jsonl engine.log journal.txt fleet-boot.log fleet-setup.log summary.json publish.json publish-deploy.log publish-verify.log publish-rollback.log "${ENGINE_EVIDENCE[@]}"; do
     if [ -f "$EVIDENCE_DIR/$EVIDENCE_REL/$p" ]; then paths+=("$EVIDENCE_REL/$p"); fi
   done
   [ "${#paths[@]}" -gt 0 ] || return 0
@@ -597,7 +598,31 @@ boot() {
     record_tags; exit 0; fi
   publish "$code"; exit 0
 }
+# systemd's `ExecStopPost=` of the run unit: a boot that was killed (or died) before its record ended
+# leaves a failed record, with the unit's journal, and its tag; a record that already ended is left alone.
+# Always exits 0 — even a `fail` inside `parse_assignment` — since a stop hook's exit only muddies the unit.
+died() {
+  local state how
+  trap 'exit 0' EXIT
+  how="unit ${SERVICE_RESULT:-unknown} (${EXIT_CODE:-unknown} ${EXIT_STATUS:-unknown})"
+  parse_assignment "${FLEET_ASSIGNMENT:-}"
+  if [ ! -e "$EVIDENCE_DIR/.git" ] || [ ! -f "$STATUS_FILE" ]; then
+    ERROR="$how while the record said nothing"; log "died: $ERROR"; mark_run failed "$ERROR"; exit 0
+  fi
+  state="$(json_field state <"$STATUS_FILE")"
+  case "$state" in done|parked|failed) log "died: the record already says $state"; exit 0 ;; esac
+  STARTED_AT="$(json_field startedAt <"$STATUS_FILE")"; PHASE="$(json_field phase <"$STATUS_FILE")"
+  VM_NAME="$(json_field vm <"$STATUS_FILE")"; PR_URL="$(json_field pr <"$STATUS_FILE")"
+  PR_AUTHOR="$(json_field prAuthor <"$STATUS_FILE")"; MERGED_SHA="$(json_field merged <"$STATUS_FILE")"
+  ERROR="$how while the record said $state"; log "died: $ERROR"
+  mkdir -p "$EVIDENCE_DIR/$EVIDENCE_REL"
+  fleet_journalctl --user -u "fleet-run@$RUN_N.service" --no-pager -n 200 >"$EVIDENCE_DIR/$EVIDENCE_REL/journal.txt" 2>&1 || true
+  EVIDENCE_READY=1; FAILING=1; collect_evidence; write_status failed "$PHASE"; mark_run failed "$ERROR"
+  evidence_commit "$RUN_ID: died"; record_tags
+  exit 0
+}
 case "${1:-}" in
   boot) boot ;;
-  *) printf 'usage: boot.sh boot\n' >&2; exit 2 ;;
+  died) died ;;
+  *) printf 'usage: boot.sh boot|died\n' >&2; exit 2 ;;
 esac

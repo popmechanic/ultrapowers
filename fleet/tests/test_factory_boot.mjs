@@ -51,6 +51,17 @@
  *       a `fleet-boot.log` line names `fleet-evidence-repo`, and neither
  *       repository's refs move.
  *
+ *   (h) nothing ahead of base: parked, the hub's mark in the tagged record.
+ *
+ *   (i) [#1445 M1, M2] run 509's boot is SIGKILLed (its whole process group)
+ *       once the live branch says `running` and the engine stub hangs;
+ *       `boot.sh died` with `SERVICE_RESULT=signal EXIT_CODE=killed
+ *       EXIT_STATUS=KILL` then leaves the tag `o-r/run-509` whose
+ *       `status.json` says `failed` with an `error` naming `unit signal`, and
+ *       whose `journal.txt` carries the `journalctl` stub's line. Leg (b) ends
+ *       by running `died` on its finished run and finding its tag where it
+ *       was (#1445 M3).
+ *
  * The rig, once per case: a bare `origin.git` (the target) holding only a
  * `README` commit (`base`) on `main`, and a bare `evidence.git` (the
  * operator's `ops/evidence`, `main` seeded with a hand archive) taking the
@@ -335,6 +346,15 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   )
   const reapLines = bootLog.split('\n').filter((l) => l.includes('reap: asked the hub'))
   assert.equal(reapLines.length, 1, `(b) the boot log has exactly one reap line — got ${JSON.stringify(reapLines)}`)
+
+  // [M3 of #1445] `boot.sh died` after a run that already ended leaves its tag where it was.
+  const tagBefore = refsOf(evidenceDir)[`refs/tags/o-r/run-${runN}`]
+  const died = await runBootAsync({ bin, home, env }, 'died', { SERVICE_RESULT: 'signal', EXIT_CODE: 'killed', EXIT_STATUS: 'KILL' })
+  assert.equal(died.code, 0, `(b) boot.sh died exits 0 — got ${died.code}, stderr tail: ${(died.stderr || '').slice(-4000)}`)
+  assert.equal(
+    refsOf(evidenceDir)[`refs/tags/o-r/run-${runN}`], tagBefore,
+    '(b) [M3] boot.sh died leaves the ended run\'s tag at the commit it named before'
+  )
 }
 
 // ── (c) engine exit 3 -> the boot fails, no tag is ever cut ──────────────
@@ -551,6 +571,63 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   assert.equal(JSON.parse(atTag(evidenceDir, runN, 'status.json')).state, 'parked', '(h) status.json at the tag records state "parked"')
   const marks = atTag(evidenceDir, runN, 'events.jsonl').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.kind === 'board:mark')
   assert.deepEqual(marks.map((r) => r.state), ['parked'], `(h) events.jsonl at the tag holds one board:mark row, state parked — got ${JSON.stringify(marks)}`)
+}
+
+// ── (i) #1445 a boot killed while its engine runs: `boot.sh died` writes the failed record ──
+
+{
+  const runN = '509'
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-i-'))
+  const home = path.join(root, 'home')
+  const bin = path.join(root, 'bin')
+  fs.mkdirSync(home, { recursive: true })
+  fs.mkdirSync(bin, { recursive: true })
+  writeGitConfig(home)
+
+  const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+  wireEvidence(home, evidenceDir)
+  git(root, ['clone', originDir, path.join(home, 'target')])
+  buildEngineDir(home, ENGINE_SHA)
+  writeStubs(bin, { claudeAuth: 'oauth' })
+  fs.writeFileSync(path.join(home, 'engine-hangs'), '')
+
+  const env = {
+    ...baseEnv(PROXY_URL),
+    FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA })
+  }
+  const boot = runBootAsync({ bin, home, env })
+
+  // Killed once the live branch's record says `running` and the engine stub has started.
+  const liveStatus = () => {
+    try {
+      return JSON.parse(git(evidenceDir, ['show', `live/o-r/run-${runN}:runs/o-r/${runN}/status.json`])).state
+    } catch { return null }
+  }
+  const deadline = Date.now() + 60000
+  while (!(liveStatus() === 'running' && fs.existsSync(path.join(home, 'engine-argv')))) {
+    if (Date.now() > deadline) { boot.kill(); await boot; assert.fail('(i) the boot never reached a running engine') }
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  boot.kill()
+  const killed = await boot
+  assert.equal(killed.signal, 'SIGKILL', `(i) the boot was killed — got code ${killed.code}, signal ${killed.signal}`)
+
+  const died = await runBootAsync({ bin, home, env }, 'died', { SERVICE_RESULT: 'signal', EXIT_CODE: 'killed', EXIT_STATUS: 'KILL' })
+  assert.equal(died.code, 0, `(i) boot.sh died exits 0 — got ${died.code}, stderr tail: ${(died.stderr || '').slice(-4000)}`)
+
+  // [M1] the tag's status says failed and names how the unit ended.
+  assert.ok(`refs/tags/o-r/run-${runN}` in refsOf(evidenceDir), '(i) [M1] the killed run leaves the o-r/run-<N> tag')
+  const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
+  assert.equal(status.state, 'failed', '(i) [M1] status.json at the tag records state "failed"')
+  assert.ok(
+    typeof status.error === 'string' && status.error.includes('unit signal'),
+    `(i) [M1] status.json's error names how the unit ended — got ${JSON.stringify(status.error)}`
+  )
+  // [M2] the tag carries the unit's journal.
+  assert.ok(
+    atTag(evidenceDir, runN, 'journal.txt').includes('stub journal line'),
+    '(i) [M2] journal.txt at the tag carries the journal stub\'s line'
+  )
 }
 
 proxyServer.close()
