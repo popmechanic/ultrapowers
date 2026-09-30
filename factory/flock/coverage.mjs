@@ -48,6 +48,21 @@ if _root and _out:
     sys.settrace(_global)
     threading.settrace(_global)
     atexit.register(_dump)
+# Python imports only the first sitecustomize on its path: run the target's own, next beyond this dir.
+def _chain():
+    try:
+        import importlib.machinery, importlib.util
+        here = os.path.realpath(os.path.dirname(os.path.abspath(__file__)))
+        rest = [p for p in sys.path if os.path.realpath(os.path.abspath(p or os.curdir)) != here]
+        spec = importlib.machinery.PathFinder.find_spec('sitecustomize', rest)
+        if spec is None or spec.loader is None:
+            return
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules['sitecustomize'] = mod
+        spec.loader.exec_module(mod)
+    except BaseException:
+        pass
+_chain()
 `
 
 function lineStarts (src) {
@@ -172,10 +187,45 @@ function linesRunAsync ({ argv, cwd, env = process.env }, timeoutMs) {
   })
 }
 
+// A Python word followed by an option cluster holding I or S (-I, -S, -Is ...): such a Python loads
+// no sitecustomize, so coverage cannot see it.
+const PY_NO_SITE = /(^|[\s;&|()`'"/])python(3(\.\d+)?)?\s+(-[A-Za-z]+\s+)*-[A-Za-z]*[IS]/
+function blindPython (argv) {
+  const [cmd, ...args] = argv
+  const base = path.basename(String(cmd || ''))
+  if (/^python(3(\.\d+)?)?$/.test(base)) {
+    for (const a of args) {
+      if (!/^-[A-Za-z]+$/.test(a)) break
+      if (/[IS]/.test(a)) return true
+    }
+    return false
+  }
+  if (/^(ba)?sh$/.test(base)) {
+    const i = args.findIndex((a) => /^-[A-Za-z]*c[A-Za-z]*$/.test(a))
+    return i >= 0 && typeof args[i + 1] === 'string' && PY_NO_SITE.test(args[i + 1])
+  }
+  return false
+}
+
+// coverageCounts(answers): each linesRunAll answer counted once — unmeasured, else skipped, else
+// timed_out (exit 124), else ran.
+export function coverageCounts (answers) {
+  const c = { ran: 0, timed_out: 0, skipped: 0, unmeasured: 0 }
+  for (const a of answers) {
+    if (a.unmeasured) c.unmeasured++
+    else if (a.skipped) c.skipped++
+    else if (a.exit === 124) c.timed_out++
+    else c.ran++
+  }
+  return c
+}
+
 // linesRunAll(jobs, { parallel, timeoutMs, budgetMs }): every job as linesRun runs it, at most
 // `parallel` at once, each killed with its process group at timeoutMs (exit 124); a job not started
-// within budgetMs of the call answers { exit: null, lines: {}, skipped: true } and never runs.
-// Answers keep the jobs' order.
+// within budgetMs of the call answers { exit: null, lines: {}, skipped: true } and never runs. A job
+// running Python with -I or -S (argv, or a `bash -lc`/`sh -c` command string) is never run and
+// answers { exit: null, lines: {}, skipped: false, unmeasured: true }; every other answer carries
+// unmeasured: false. Answers keep the jobs' order.
 export async function linesRunAll (jobs, { parallel = 4, timeoutMs = 60000, budgetMs = 300000 } = {}) {
   const start = Date.now()
   const out = new Array(jobs.length)
@@ -183,11 +233,12 @@ export async function linesRunAll (jobs, { parallel = 4, timeoutMs = 60000, budg
   const worker = async () => {
     while (next < jobs.length) {
       const i = next++
-      if (Date.now() - start >= budgetMs) { out[i] = { exit: null, lines: {}, skipped: true }; continue }
+      if (blindPython(jobs[i].argv || [])) { out[i] = { exit: null, lines: {}, skipped: false, unmeasured: true }; continue }
+      if (Date.now() - start >= budgetMs) { out[i] = { exit: null, lines: {}, skipped: true, unmeasured: false }; continue }
       try {
-        out[i] = { ...(await linesRunAsync(jobs[i], timeoutMs)), skipped: false }
+        out[i] = { ...(await linesRunAsync(jobs[i], timeoutMs)), skipped: false, unmeasured: false }
       } catch {
-        out[i] = { exit: 1, lines: {}, skipped: false }
+        out[i] = { exit: 1, lines: {}, skipped: false, unmeasured: false }
       }
     }
   }

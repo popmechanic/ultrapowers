@@ -40,7 +40,7 @@ import { lastSteps, latestResults, readSteps } from './step_reading.mjs'
 import { pastItems } from './past.mjs'
 import { peerNote } from './peer_note.mjs'
 import { buildProvenance } from './provenance.mjs'
-import { linesRunAll } from './coverage.mjs'
+import { coverageCounts, linesRunAll } from './coverage.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d }
@@ -1245,7 +1245,7 @@ async function land () {
 // under flock.provenance.coverage `record`, the changed code no tagged fact ran. Each task's fact at
 // index i proves t.clauses[i] (claims-v1: t.factClauses[i]); every tagged fact is one job of a single
 // linesRunAll call in a fresh edge copy of the snapshot, and its lines merge per clause; the jobs'
-// counts (ran, timed_out, skipped) go in as `coverage`. The join's blame is kept only for paths whose
+// counts (coverageCounts: ran, timed_out, skipped, unmeasured) go in as `coverage`. The join's blame is kept only for paths whose
 // text is the landed text.
 async function writeProvenance (snap) {
   try {
@@ -1275,11 +1275,8 @@ async function writeProvenance (snap) {
       }
       const answers = await linesRunAll(tagged.map(({ argv }) => ({ argv, cwd: dir, env: RUN_ENV })),
         { parallel: PROV_PARALLEL, timeoutMs: PROV_FACT_TIMEOUT_MS, budgetMs: PROV_BUDGET_MS })
-      counts = { ran: 0, timed_out: 0, skipped: 0 }
-      answers.forEach(({ exit, lines, skipped }, k) => {
-        if (skipped) counts.skipped++
-        else if (exit === 124) counts.timed_out++
-        else counts.ran++
+      counts = coverageCounts(answers)
+      answers.forEach(({ lines }, k) => {
         for (const clause of tagged[k].clauses) {
           const into = coverage[clause] = coverage[clause] || {}
           for (const [p, ns] of Object.entries(lines)) into[p] = [...new Set([...(into[p] || []), ...ns])].sort((a, b) => a - b)
