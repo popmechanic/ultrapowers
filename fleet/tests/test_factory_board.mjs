@@ -194,6 +194,56 @@ const readEventRows = (file) =>
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// (e) #1391 `mark-run`: the run raises work.attention, its tasks take needs-review
+// ══════════════════════════════════════════════════════════════════════════
+
+{
+  const root = mkdir()
+  const kataJson = path.join(root, 'kata.json')
+  fs.writeFileSync(kataJson, JSON.stringify({
+    project: { id: 31 },
+    run: { uid: 'r-uid' },
+    tasks: { 2: { uid: 't2' }, 1: { uid: 't1' } },
+  }))
+  const eventsPath = path.join(root, 'events.jsonl')
+  const evidence = 'https://github.com/ops/evidence/tree/o-r/run-9/runs/o-r/9'
+
+  const stub = await startStub(200)
+  try {
+    const result = await runCliAsync([
+      'mark-run', '--kata-json', kataJson, '--run', 'run-9', '--state', 'parked',
+      '--message', 'nothing ahead of base', '--evidence', evidence,
+      '--admin-url', stub.url, '--events', eventsPath,
+    ], { timeoutMs: 15000 })
+    assert.equal(result.status, 0, '(e) mark-run exits 0; stderr ' + JSON.stringify(result.stderr))
+    assert.deepEqual(stub.requests.map((r) => r.path), [
+      '/api/v1/projects/31/issues/r-uid/metadata',
+      '/api/v1/projects/31/issues/t1/labels',
+      '/api/v1/projects/31/issues/t1/comments',
+      '/api/v1/projects/31/issues/t2/labels',
+      '/api/v1/projects/31/issues/t2/comments',
+    ], '(e) the run is marked first, then each task in id order is labelled and commented; got ' +
+      JSON.stringify(stub.requests.map((r) => r.path)))
+    const [mark, label, comment] = stub.requests.map((r) => JSON.parse(r.body))
+    assert.deepEqual(mark.patch, { 'work.state': 'parked', 'work.attention': 'needs-human', 'work.attention_msg': 'nothing ahead of base' },
+      '(e) the run patch raises work.attention with the phase; got ' + JSON.stringify(mark.patch))
+    assert.equal(label.label, 'needs-review', '(e) each task takes the needs-review label; got ' + JSON.stringify(label))
+    assert.ok(comment.body.includes('run-9 parked: nothing ahead of base') && comment.body.includes(evidence),
+      '(e) each task comment names the run, its state, the phase and the evidence; got ' + JSON.stringify(comment.body))
+    assert.equal(stub.requests[2].headers['idempotency-key'], 'r-uid:task:1:mark:parked',
+      '(e) a task comment is keyed per run, task and state')
+    for (const rec of stub.requests) assert.equal(rec.headers.authorization, undefined, '(e) no authorization header on ' + rec.path)
+    const rows = readEventRows(eventsPath)
+    assert.deepEqual(rows.map((r) => [r.kind, r.what]), [['board:mark', 'run'], ['board:review', 'task 1'], ['board:review', 'task 2']],
+      '(e) one board:mark row for the run, one board:review row per task; got ' + JSON.stringify(rows))
+    assert.deepEqual(rows.slice(1).map((r) => [r.label, r.comment]), [[200, 200], [200, 200]],
+      '(e) each task row carries both writes\' codes')
+  } finally {
+    await closeStub(stub)
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // (d) [M4] `close-run` never fails the run
 // ══════════════════════════════════════════════════════════════════════════
 

@@ -186,21 +186,51 @@ async function cmdCloseRun (flags) {
   }
 }
 
+/** One JSON `POST <adminUrl><path>` with no `authorization` header (the edge injects the hub's
+ *  bearer): `{ code, answer }`, the HTTP status (`null` on a connection failure) and the parsed
+ *  2xx answer (else null). Never throws; a 20s timeout. */
+async function post (adminUrl, apiPath, body, key) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 20000)
+  try {
+    const res = await fetch(adminUrl + apiPath, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(key ? { 'Idempotency-Key': key } : {}) },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+    if (res.status < 200 || res.status >= 300) {
+      process.stderr.write('board: ' + apiPath + ' answered ' + res.status + '\n')
+      return { code: res.status, answer: null }
+    }
+    return { code: res.status, answer: await readAnswer(res) }
+  } catch (error) {
+    const detail = error && error.message ? error.message : String(error)
+    process.stderr.write('board: ' + apiPath + ' failed: ' + detail + '\n')
+    return { code: null, answer: null }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /**
- * `mark-run --kata-json <k> --run <run> --state <s> --admin-url <url> --events <e>`:
- * writes `work.state` = `<s>` (`parked` or `failed`) onto the run issue's
- * metadata on the hub — the janitor's own `metadataPatch` shape, the key
- * stored flat — so `fleet/janitor.mjs` reaps the run's VM by its ordinary
- * rule. One `board:mark` row on `--events` whatever the hub answers,
- * carrying the issue's new `revision` (null when the hub did not confirm
- * the write). Never
- * fails the run: a missing/unreadable kata.json is one skip row and exit 0;
- * a dark hub is still exit 0.
+ * `mark-run --kata-json <k> --run <run> --state <s> --message <m> --evidence <url>
+ * --admin-url <url> --events <e>`: a run that ended without merging (`parked` or `failed`) is
+ * one the operator must read (#1391). On the run issue's metadata it writes `work.state` = `<s>`
+ * (the janitor's own `metadataPatch` shape, the key stored flat, so `fleet/janitor.mjs` reaps
+ * the VM by its ordinary rule) beside kata's standard `work.attention` = `needs-human` and
+ * `work.attention_msg` = `<m>`; one `board:mark` row carries the issue's new `revision` (null
+ * when the hub did not confirm it). Then each task issue, in id order, takes the `needs-review`
+ * label and one comment naming the run, its state, `<m>` and the evidence, and stays open, so a
+ * relaunch of the same plan reuses it by its key; one `board:review` row per task carries both
+ * writes' codes. Never fails the run: a missing/unreadable kata.json is one skip row and exit
+ * 0; a dark hub is still exit 0.
  */
 async function cmdMarkRun (flags) {
   const kataJsonPath = flags['kata-json']
   const run = flags.run
   const state = flags.state
+  const message = flags.message || state
   const adminUrl = flags['admin-url']
   const eventsPath = flags.events
 
@@ -216,33 +246,25 @@ async function cmdMarkRun (flags) {
       return 0
     }
     const { projectId, runUid } = ids
+    const issue = (uid) => '/api/v1/projects/' + projectId + '/issues/' + uid
+    const actor = 'sandbox:' + run
 
-    let code = null
-    let revision = null
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 20000)
-    try {
-      const res = await fetch(adminUrl + '/api/v1/projects/' + projectId + '/issues/' + runUid + '/metadata', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'Idempotency-Key': runUid + ':run:mark:' + state },
-        body: JSON.stringify({ actor: 'sandbox:' + run, patch: { 'work.state': state } }),
-        signal: controller.signal,
-      })
-      code = res.status
-      if (code < 200 || code >= 300) {
-        process.stderr.write('board: mark ' + runUid + ' answered ' + code + '\n')
-      } else {
-        const answer = await readAnswer(res)
-        const issue = answer && answer.issue
-        if (issue && issue.revision !== undefined) revision = issue.revision
-      }
-    } catch (error) {
-      const detail = error && error.message ? error.message : String(error)
-      process.stderr.write('board: mark ' + runUid + ' failed: ' + detail + '\n')
-    } finally {
-      clearTimeout(timer)
+    const patch = { 'work.state': state, 'work.attention': 'needs-human', 'work.attention_msg': message }
+    const marked = await post(adminUrl, issue(runUid) + '/metadata', { actor, patch }, runUid + ':run:mark:' + state)
+    const revision = marked.answer && marked.answer.issue && marked.answer.issue.revision !== undefined ? marked.answer.issue.revision : null
+    appendEventRow(eventsPath, { what: 'run', state, code: marked.code, revision }, 'board:mark')
+
+    const tasks = doc.tasks || {}
+    const taskIds = Object.keys(tasks)
+      .filter((id) => tasks[id] && typeof tasks[id].uid === 'string' && tasks[id].uid.length > 0)
+      .sort(compareTaskIds)
+    const body = run + ' ' + state + ': ' + message + (flags.evidence ? ' — evidence ' + flags.evidence : '')
+    for (const id of taskIds) {
+      const uid = tasks[id].uid
+      const label = await post(adminUrl, issue(uid) + '/labels', { actor, label: 'needs-review' })
+      const comment = await post(adminUrl, issue(uid) + '/comments', { actor, body }, runUid + ':task:' + id + ':mark:' + state)
+      appendEventRow(eventsPath, { what: 'task ' + id, state, label: label.code, comment: comment.code }, 'board:review')
     }
-    appendEventRow(eventsPath, { what: 'run', state, code, revision }, 'board:mark')
     return 0
   } catch (error) {
     const detail = error && error.message ? error.message : String(error)

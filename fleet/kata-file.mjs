@@ -6,7 +6,7 @@
 
 import crypto from 'node:crypto'
 
-import { Refusal, targetSlug } from './lobby.mjs'
+import { Refusal, integrationBranchFor, targetSlug } from './lobby.mjs'
 
 /** The url the SANDBOX reaches the hub at — the `kata` http-proxy attached by
  *  `tag:fleet` — written into the record regardless of the laptop's own route,
@@ -135,7 +135,8 @@ async function fileRunOnHub ({ hub, call, planText, target, base, n, compiled })
   const runIssue = await call('createIssue', () => hub.createIssue(project.id, {
     title: `${stamp}: ${planTitleOf(planText)}`,
     body: planClaimOf(planText),
-    metadata: { run: n, target, base, closes: planClosesOf(planText), plan: planSha },
+    // `work.branch` is kata's orchestration key the launcher owns (#1391)
+    metadata: { run: n, target, base, closes: planClosesOf(planText), plan: planSha, 'work.branch': integrationBranchFor(n) },
     idempotencyKey: keyFor(`run-${n}`),
     // A relaunch of a plan the fleet already drove differs from that run's
     // open issue only by N in the title, and the hub's duplicate scorer refuses
