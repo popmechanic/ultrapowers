@@ -1,0 +1,370 @@
+{
+  "version": "questions-v1",
+  "about": "The Jev question sets the authoring tools beside this file ask while a plan is written (ask.ts, gate_jev.ts, jev_checks.ts, through jev.ts's loadQuestions), moved here from factory/questions.json so each file has one reader (#1449). Each set says when it is asked (`when`), who reads it (`reader`), how to turn it off (`rollback`), the keys its reader sends (`state`), where it came from (`provenance`) and whether its readings are calibrated; thresholds live in policy.json beside this file. A question is literal: it names no policy word, and nothing here decides anything. A Jev `null` routes that reading to the set's stated rollback, never to a guess. A reworded question is a different question: its readings mean something else.",
+  "sets": {
+    "authoring_ambiguity": {
+      "when": "At jev_checks.ts --stage understanding and --stage bundle",
+      "reader": "skills/ultrawrite/stories/jev_checks.ts",
+      "rollback": "skills/ultrawrite/stories/policy.json flag_at: flags off, the author's own read decides",
+      "state": [
+        "ask",
+        "sentences"
+      ],
+      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29",
+      "calibrated": false,
+      "questions": {
+        "two_apps": {
+          "type": "noul",
+          "instructions": {
+            "question": "Could `sentences[i]` describe two apps that behave differently in a way the person who wrote `ask` would care about?",
+            "context": "`ask` is everything the person wrote; `sentences` are its sentences, in order."
+          },
+          "criteria": {
+            "true": "Two reasonable readings lead to apps that act differently",
+            "false": "Every reasonable reading leads to the same behaviour"
+          }
+        }
+      }
+    },
+    "authoring_coherence": {
+      "when": "At jev_checks.ts --stage bundle; one_need also at --stage map",
+      "reader": "skills/ultrawrite/stories/jev_checks.ts",
+      "rollback": "skills/ultrawrite/stories/policy.json flag_at: flags off, the author's own read decides",
+      "state": [
+        "piece"
+      ],
+      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29",
+      "calibrated": false,
+      "questions": {
+        "one_need": {
+          "type": "noul",
+          "instructions": "Does `piece.purpose` state one need that a single short sentence covers?",
+          "criteria": {
+            "true": "One need",
+            "false": "Two or more needs joined together"
+          }
+        },
+        "same_people": {
+          "type": "noul",
+          "instructions": "Do all of `piece.actions` serve the same people for the same reason?",
+          "criteria": {
+            "true": "The same people, the same reason",
+            "false": "Some actions serve different people or a different reason"
+          }
+        }
+      }
+    },
+    "authoring_near_miss": {
+      "when": "At jev_checks.ts --stage bundle",
+      "reader": "skills/ultrawrite/stories/jev_checks.ts",
+      "rollback": "skills/ultrawrite/stories/policy.json flag_at: flags off, the author's own read decides",
+      "state": [
+        "piece",
+        "story",
+        "story_steps",
+        "near_miss"
+      ],
+      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29",
+      "calibrated": false,
+      "questions": {
+        "story_passes_near_miss": {
+          "type": "noul",
+          "instructions": {
+            "question": "If the app behaved like `near_miss` instead, would `story` still come out exactly as it is written?",
+            "context": "`story` is the main story that should prove `piece` works; `story_steps` are its steps, each an action called (`tool`, `args`) and what the person then sees (`see`). `near_miss` is a look-alike that must fail it."
+          },
+          "criteria": {
+            "true": "The story cannot tell the two apart",
+            "false": "The story would come out differently for the look-alike"
+          }
+        }
+      }
+    },
+    "authoring_content_branch": {
+      "when": "At jev_checks.ts --stage bundle",
+      "reader": "skills/ultrawrite/stories/jev_checks.ts",
+      "rollback": "skills/ultrawrite/stories/policy.json flag_at: flags off, the author's own read decides",
+      "state": [
+        "store_module",
+        "actions"
+      ],
+      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29",
+      "calibrated": false,
+      "questions": {
+        "branches_on_text": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does the action named `actions[i].name` in `store_module` behave differently depending on the wording of text the person typed, beyond whether it is empty?",
+            "context": "`store_module` is the app's whole store code; `actions` are its actions, each with the piece it belongs to and its description. An action that treats a title ending in '?' differently is the kind of thing asked about."
+          },
+          "criteria": {
+            "true": "It inspects the words and changes behaviour",
+            "false": "It stores or compares the text without reading its wording"
+          }
+        }
+      }
+    },
+    "authoring_redundancy": {
+      "when": "At jev_checks.ts --stage bundle",
+      "reader": "skills/ultrawrite/stories/jev_checks.ts",
+      "rollback": "skills/ultrawrite/stories/policy.json flag_at: flags off, the author's own read decides",
+      "state": [
+        "pieces"
+      ],
+      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29",
+      "calibrated": false,
+      "questions": {
+        "same_need": {
+          "type": "noul",
+          "instructions": "Do `pieces[i].purpose` and `pieces[j].purpose` describe the same need?",
+          "criteria": {
+            "true": "The same need, twice",
+            "false": "Different needs"
+          }
+        }
+      }
+    },
+    "authoring_surprise": {
+      "when": "At jev_checks.ts --stage understanding",
+      "reader": "skills/ultrawrite/stories/jev_checks.ts",
+      "rollback": "skills/ultrawrite/stories/policy.json flag_at: flags off, the author's own read decides",
+      "state": [
+        "ask",
+        "assumption"
+      ],
+      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29",
+      "calibrated": false,
+      "questions": {
+        "assumption_surprises": {
+          "type": "noul",
+          "instructions": {
+            "question": "Would the person who wrote `ask` be surprised to learn that the app `assumption`?",
+            "context": "`ask` is everything the person wrote; `assumption` is something the author assumed the app does, about what it does, who uses it or how it looks."
+          },
+          "criteria": {
+            "true": "They would be surprised; it goes beyond or against what they asked",
+            "false": "It is what they would expect from what they asked"
+          }
+        }
+      }
+    },
+    "authoring_map": {
+      "when": "At jev_checks.ts --stage map",
+      "reader": "skills/ultrawrite/stories/jev_checks.ts",
+      "rollback": "skills/ultrawrite/stories/policy.json flag_at: flags off, the author's own read decides",
+      "state": [
+        "summary",
+        "audience",
+        "piece",
+        "other_purposes"
+      ],
+      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29",
+      "calibrated": false,
+      "questions": {
+        "essential": {
+          "type": "noul",
+          "instructions": {
+            "question": "Is `piece.purpose` part of the core of what `summary` describes, rather than an extra?",
+            "context": "`summary` says what the product is, why it exists and how it is used. `piece.purpose` is one thing the product could do; `other_purposes` are the other things it could do; `audience` are the people who use it."
+          },
+          "criteria": {
+            "true": "Core",
+            "false": "An extra"
+          }
+        },
+        "serves_summary": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `piece.purpose` serve what `summary` says the product is for?",
+            "context": "`summary` says what the product is, why it exists and how it is used. `other_purposes` are the other things the product could do."
+          },
+          "criteria": {
+            "true": "It serves that purpose",
+            "false": "It serves something else"
+          }
+        }
+      }
+    },
+    "authoring_decompose": {
+      "when": "At jev_checks.ts --stage decompose",
+      "reader": "skills/ultrawrite/stories/jev_checks.ts",
+      "rollback": "skills/ultrawrite/stories/policy.json flag_at: flags off, the author's own read decides",
+      "state": [
+        "audience",
+        "summary",
+        "plan",
+        "built_before"
+      ],
+      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29",
+      "calibrated": false,
+      "questions": {
+        "stands_alone": {
+          "type": "noul",
+          "instructions": {
+            "question": "Could `audience` use `plan` on its own and judge whether it works?",
+            "context": "`summary` says what the whole product is. `plan` is one part of it: its title and the things it lets people do. `built_before` are the parts built before it, in order, which `audience` already has."
+          },
+          "criteria": {
+            "true": "Usable and judgeable on its own",
+            "false": "Nothing to use or judge until other parts exist"
+          }
+        }
+      }
+    },
+    "authoring_gate": {
+      "when": "At each proof-gate round, beside the agent reader",
+      "reader": "skills/ultrawrite/stories/gate_jev.ts",
+      "rollback": "skills/ultrawrite/stories/policy.json flag_at: flags off, the author's own read decides",
+      "state": [
+        "claim",
+        "clauses",
+        "probes",
+        "legs",
+        "base"
+      ],
+      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29",
+      "calibrated": false,
+      "questions": {
+        "fact": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `clauses[i].text` state a computable fact: an exit code, a recorded argv, a byte-exact string, a count, an ordering of events, or that something is gone, unchanged or exactly so many?",
+            "context": "`claim` is what a task promises; `clauses` are its machine clauses, each with an id and its text. `probes` are the commands that prove it, each naming the clauses it proves; `legs` say which clause each part of the proof covers."
+          },
+          "criteria": {
+            "true": "A program could decide it exactly",
+            "false": "It needs a judgment to decide"
+          }
+        },
+        "caught": {
+          "type": "noul",
+          "instructions": {
+            "question": "Would at least one command in `probes` fail if `clauses[i].text` were false?",
+            "context": "`clauses` are a task's machine clauses; `probes` are the commands that prove them, each with the clause ids it claims to prove (`proves`)."
+          },
+          "criteria": {
+            "true": "Some probe would fail",
+            "false": "Every probe could still pass"
+          }
+        },
+        "contradiction": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does any entry of `legs` say something the clause it cites rules out?",
+            "context": "`legs` are the proof's legs, each with its text and the clause ids it cites (`cites`); `clauses` are the task's machine clauses."
+          },
+          "criteria": {
+            "true": "Some leg contradicts its clause",
+            "false": "Every leg agrees with the clauses it cites"
+          }
+        },
+        "pinned": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does some file in `base` already pin the opposite of an entry of `clauses`, where that clause does not say the file changes?",
+            "context": "`base` holds, for each file the task names, what it is at BASE: whether it exists, its line count, its headings or test names, and an `excerpt` of its lines carrying the task's literals. `clauses` are the task's machine clauses; asked only when `base` is present."
+          },
+          "criteria": {
+            "true": "Some file at BASE already pins the opposite of a clause that does not say it changes",
+            "false": "No file at BASE pins the opposite of a clause, or the clause says that file changes"
+          }
+        }
+      }
+    },
+    "authoring_link": {
+      "when": "At jev_checks.ts --stage bundle",
+      "reader": "skills/ultrawrite/stories/jev_checks.ts",
+      "rollback": "skills/ultrawrite/stories/policy.json flag_at: flags off, the author's own read decides",
+      "state": [
+        "audience",
+        "summary",
+        "link"
+      ],
+      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29",
+      "calibrated": false,
+      "questions": {
+        "link_expected": {
+          "type": "noul",
+          "instructions": {
+            "question": "Would `audience` expect this to happen: `link`?",
+            "context": "`summary` says what the product is, why it exists and how it is used. `link` is a rule the app follows when something is deleted or changed."
+          },
+          "criteria": {
+            "true": "They would expect it",
+            "false": "It would surprise or upset them"
+          }
+        }
+      }
+    },
+    "authoring_routing": {
+      "when": "At plan_check.py --base, once per plan, for its ROUTING fact line",
+      "reader": "skills/ultrapowers/scripts/plan_check.py",
+      "rollback": "risk unread: the branch is computed without it, and the line says so",
+      "state": [
+        "plan"
+      ],
+      "provenance": "operator decisions 2026-09-29",
+      "calibrated": false,
+      "questions": {
+        "risk": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `plan` change a high-stakes surface (auth, payments, migrations, data integrity, a public API, or loops, cursors, pagination, budgets or termination logic), or behaviour that is hard to verify by reading?",
+            "context": "`plan` is an implementation plan: its tasks, each with its title, its claim (what it promises and the numbered machine clauses that restate it) and the files it touches."
+          },
+          "criteria": {
+            "true": "It touches a high-stakes surface or behaviour hard to verify by reading",
+            "false": "Every change is low-stakes and easy to verify by reading"
+          }
+        }
+      }
+    },
+    "authoring_desired_state": {
+      "when": "At check_provenance.py, once per quoted Claim whose issue resolves",
+      "reader": "skills/ultrawrite/scripts/check_provenance.py",
+      "rollback": "no reading: the author's own read decides",
+      "state": [
+        "issue_body",
+        "sentence"
+      ],
+      "provenance": "operator decisions 2026-09-29",
+      "calibrated": false,
+      "questions": {
+        "desired_state": {
+          "type": "noul",
+          "instructions": {
+            "question": "Does `sentence` say what should be true after the change, rather than what is wrong today?",
+            "context": "`issue_body` is a GitHub issue's text; `sentence` is the sentence a plan quotes from it as its promise."
+          },
+          "criteria": {
+            "true": "It says what should be true after the change",
+            "false": "It describes what is wrong today"
+          }
+        }
+      }
+    },
+    "authoring_about_product": {
+      "when": "At jev_checks.ts --stage understanding, once per assumption the author labelled technical",
+      "reader": "skills/ultrawrite/stories/jev_checks.ts",
+      "rollback": "flag off: the author's own read decides",
+      "state": [
+        "assumption"
+      ],
+      "provenance": "operator decisions 2026-09-29",
+      "calibrated": false,
+      "questions": {
+        "about_product": {
+          "type": "noul",
+          "instructions": {
+            "question": "Is `assumption` about what the app does, who uses it or how it looks?",
+            "context": "`assumption` is something the author assumed while planning an app and labelled technical, a choice the person using the app would not see."
+          },
+          "criteria": {
+            "true": "It is about what the app does, who uses it or how it looks",
+            "false": "It is a technical choice the person using the app would never see"
+          }
+        }
+      }
+    }
+  }
+}

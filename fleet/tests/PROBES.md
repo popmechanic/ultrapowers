@@ -52,7 +52,7 @@ The bridge's `sim_env()` PATH holds node, python3, git, bash and sh only, so thr
 probes of the Bun authoring tools stay outside the suite (operator pick, #1447).
 Each runs against a local stand-in Jev on 127.0.0.1 and spends nothing. Run all
 three before any change to `skills/ultrawrite/stories/gate_jev.ts`,
-`jev_checks.ts` or `factory/questions.json`:
+`jev_checks.ts`, `jev.ts` or `skills/ultrawrite/stories/questions.json`:
 
     for c in record agreement; do node fleet/tests/gate_jev_probe.mjs $c; done
     for c in pinned-high pinned-low no-base; do node fleet/tests/gate_jev_base_probe.mjs $c; done

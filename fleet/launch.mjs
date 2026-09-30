@@ -108,7 +108,7 @@ import { toolchainViolations } from './toolchain.mjs'
 export const USAGE = `usage: node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <40-hex>
                              [--repo <dir>] [--engine <40-hex>] [--hold] [--again]
                              [--cpu <n>] [--memory <n>GB]
-                             [--run <N>] [--config <path>] [--account <name>]
+                             [--account <name>]
                              [--evidence-repo <owner>/<repo>] [--json]`
 
 export const usage = () => USAGE
@@ -127,8 +127,7 @@ const VERDICTS_FILE = 'gate-verdicts.json'
 
 /** Every flag the launcher reads; any other is refused before the plan is read. */
 const LAUNCH_FLAGS = [
-  'account', 'again', 'base', 'config', 'cpu', 'engine', 'evidence-repo', 'hold', 'json', 'memory', 'repo', 'run',
-  'target'
+  'account', 'again', 'base', 'cpu', 'engine', 'evidence-repo', 'hold', 'json', 'memory', 'repo', 'target'
 ]
 /** The third file of the plan commit: the run's kata record — the project, the
  *  run issue and one issue per task on the hub, each with the revision it had
@@ -554,9 +553,6 @@ async function launchBody ({
   if (opts.again !== undefined && opts.again !== true) {
     throw new Refusal(`launch: --again takes no value, got ${JSON.stringify(opts.again)}`)
   }
-  if (opts.run !== undefined && !isRunNumber(opts.run)) {
-    throw new Refusal(`launch: --run must be a positive integer, got ${JSON.stringify(opts.run)}`)
-  }
   // `--account` reaches `claude-token.mjs refresh` as an argument and the
   // keychain as an item's account, so a name it would refuse is refused here,
   // before the first read — a launch that cannot name its entry has not yet
@@ -567,7 +563,7 @@ async function launchBody ({
     )
   }
 
-  const settings = config ?? await loadFleetConfig({ path: opts.config })
+  const settings = config ?? await loadFleetConfig()
   // Which keychain entry this run signs in with: the flag, else the config's
   // `account`, else the entry the first-run walk builds. `loadFleetConfig`
   // answers only the two keys the pool is sized from, so the file's account is
@@ -576,7 +572,7 @@ async function launchBody ({
   let account = opts.account === undefined ? null : String(opts.account)
   if (account === null) {
     const named = config === undefined || config === null
-      ? await fleetConfigAccount({ path: opts.config })
+      ? await fleetConfigAccount()
       : config.account
     account = typeof named === 'string' && named !== '' ? named : DEFAULT_ACCOUNT
   }
@@ -591,7 +587,7 @@ async function launchBody ({
     )
   }
   const evidenceSetting = config === undefined || config === null
-    ? await readEvidenceSetting({ path: opts.config })
+    ? await readEvidenceSetting()
     : config.evidence
   const evidence = evidenceRepoFor({ evidence: evidenceSetting }, evidenceFlag ?? null)
   if (evidence === null) {
@@ -668,7 +664,7 @@ async function launchBody ({
   // every sha is 40 hex — so the ceiling is checked here, before the world is
   // touched, with a placeholder standing in for `plan=`.
   const fields = {
-    run: opts.run ?? '0',
+    run: '0',
     plan: '0'.repeat(40),
     target,
     base: opts.base,
@@ -848,11 +844,11 @@ async function launchBody ({
     ).join('\n'))
   }
 
-  // The N this launch asks for. Without `--run` it is one past the highest the
-  // evidence repository carries for this target *now*, which another launch can
+  // The N this launch asks for: one past the highest the evidence repository
+  // carries for this target *now*, which another launch can
   // take between this read and the push; the push is where it is settled.
   const inEvidence = await highestRunInEvidence(exec, repoDir, evidence, target)
-  const firstRun = opts.run ? Number(opts.run) : inEvidence + 1
+  const firstRun = inEvidence + 1
 
   // ── The parse. Exactly one, here, before the `new` verb — everything
   //    downstream reads it: the VM's size, and the tasks and edges
@@ -989,9 +985,7 @@ async function launchBody ({
     planText,
     verdictsText,
     commands,
-    // `--run N` is the operator's number, not one the launcher is free to
-    // move: a refused push under it is refused, never retried elsewhere.
-    reread: opts.run ? null : () => highestRunInEvidence(exec, repoDir, evidence, target),
+    reread: () => highestRunInEvidence(exec, repoDir, evidence, target),
     kataStep,
     kataBump,
     compiled: firstCompiled
@@ -1223,9 +1217,6 @@ const PUSH_ATTEMPTS = 3
  * with the push's own output. Git's words are never parsed: the target's refs
  * decide, not the wording of a rejection line.
  *
- * `--run N` names an N the operator chose, so it is pushed once and refused if
- * that is refused: `reread` is null and no re-read is made at all.
- *
  * The parse does not move with the number: `compiled` is the launch's one
  * parse, filed on the hub under whichever N the push wins, and it rides back
  * out on `compiled` for the verb to size the box from.
@@ -1261,7 +1252,7 @@ async function pushPlan ({
         `launch: git push ${url} ${sha}:refs/heads/${branch} failed` +
         `${attempt > 1 ? ` after ${attempt} tries` : ''} (exit ${push.code}):\n${output(push)}`
       )
-    if (attempt === PUSH_ATTEMPTS || reread === null) throw refusal()
+    if (attempt === PUSH_ATTEMPTS) throw refusal()
     const highest = await reread()
     if (highest < n) throw refusal()
     const taken = n

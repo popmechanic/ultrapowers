@@ -81,8 +81,9 @@ the engine's exit code is the merge decision.
   doesn't work, we can always roll back" — #589).
 - **The engine's values, in tie-break order (map #1131):** the mechanical facts (never
   traded), then clock speed, then simplicity in lines and roles, then tokens. **A judgment is
-  a question, never a sentence or a regex** (each lives in `factory/questions.json`; every
-  threshold is a `factory/policy.json` cell with its rollback). Hand work has its own
+  a question, never a sentence or a regex** (each lives in the `questions.json` beside its
+  reader — `factory/` for the engine, `skills/ultrawrite/stories/` for authoring — and every
+  threshold is a cell of the `policy.json` beside its reader, with its rollback). Hand work has its own
   tie-break (§Working with the operator).
 - **Don't vendor the vendor.** Before building a mechanism, ask whether exe.dev already
   provides it (identity, edge credentials, the VM comment, tags, first-boot setup script,
