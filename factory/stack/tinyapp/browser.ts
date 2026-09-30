@@ -10,15 +10,10 @@
  * cannot hand a child extra pipes, so the port form is the one available, and a
  * port of `0` keeps two exams running side by side from colliding.
  *
- * Nothing the page asks for leaves the machine, in either of the two forms a
- * page arrives in. `open` hands the browser a `data:` URL and installs
- * `Network.setBlockedURLs` with `["*"]` on the session before the first
- * navigation, so the only socket in the exam is the loopback one to the process
- * we spawned. `openUrl` serves the page from a loopback origin instead — a
- * persistence exam needs storage, which a `data:` page has none of — and a
- * blanket block would refuse the page's own document, so every request is paused
- * through the `Fetch` domain and judged one at a time: continued when it is to
- * that origin, failed in the browser otherwise. `client/index.html` links Google
+ * Nothing the page asks for leaves the machine. `openUrl` serves the page from
+ * a loopback origin, and a blanket block would refuse the page's own document,
+ * so every request is paused through the `Fetch` domain and judged one at a
+ * time: continued when it is to that origin, failed in the browser otherwise. `client/index.html` links Google
  * Fonts; with those requests refused the page falls back to the platform
  * sans-serif, and that fallback — identical on every machine, dialling nothing —
  * is the deterministic choice, not a loss.
@@ -30,18 +25,11 @@ import {join} from 'node:path';
 
 // Borrowed from popmechanic/tinyapp-fixture packages/tinyapp-exam/src/browser.ts
 // at d71c037 (2026-09-27); the two sibling imports are inlined below.
-export type Locator = string | {role: string; name: string};
+export type Locator = {role: string; name: string};
 export type Action =
   | {click: Locator}
   | {type: [Locator, string]}
   | {key: [Locator, string]};
-
-const REFLECT_CHECKED =
-  '(function(){var f=function(){document.querySelectorAll("input")' +
-  '.forEach(function(i){var v=i.checked?"true":"false";' +
-  'if(i.getAttribute("data-checked")!==v){i.setAttribute("data-checked",v)}})};' +
-  'f();new MutationObserver(f).observe(document.documentElement,' +
-  '{subtree:true,childList:true,attributes:true})})()';
 
 /** Where the fleet image keeps its headless shell. */
 const DEFAULT_BINARY = '/headless-shell/headless-shell';
@@ -71,21 +59,7 @@ const CALL_TIMEOUT_MS = 30_000;
 /** How long `close()` waits for a polite `Browser.close` before it kills. */
 const EXIT_GRACE_MS = 2_000;
 
-/** How long `reload()` waits for the new document's load event before it goes on. */
-const RELOAD_LOAD_GRACE_MS = 10_000;
-
-/**
- * The longest `data:` URL Chromium will navigate to, in characters.
- *
- * Over it the navigation is refused silently: no error, no load event, and a
- * caller waiting on the load waits for a page that will never come. So the
- * length is measured before the navigation and the call rejects instead — which
- * is why the exam bundles minified, the difference between ~1.06 M characters
- * and ~2.59 M for this fixture.
- */
-const DATA_URL_CEILING = 2_097_152;
-
-/** One open page: act on it, read from it, photograph it, close it. */
+/** One open page: act on it, read from it, close it. */
 export interface Page {
   /** Performs one action, rejecting when its locator matches nothing. */
   act(action: Action): Promise<void>;
@@ -93,30 +67,14 @@ export interface Page {
   evaluate(expression: string): Promise<unknown>;
   /** How many elements match this accessible role and name. */
   count(locator: {role: string; name: string}): Promise<number>;
-  /** The document's outer HTML with `data-checked` reflected, and a PNG. */
-  snapshot(): Promise<{dom: string; screenshot: Uint8Array}>;
   /** Detaches from the target and closes it. */
   close(): Promise<void>;
-  /**
-   * Reloads this same tab and resolves once the new document has loaded.
-   *
-   * Optional, so a stand-in `Page` is one without it. It resolves on the load
-   * event rather than on the protocol call, because a caller polling the page
-   * for a handle the app sets would otherwise read the outgoing document's
-   * globals and call the reload finished before it began.
-   */
-  reload?(): Promise<void>;
 }
 
 /** One running browser process. */
 export interface Browser {
   /** The arguments it was spawned with, `argv[0]` the binary. */
   readonly argv: string[];
-  /**
-   * Opens `html` as a page whose clock is pinned to `clock`, rejecting when the
-   * `data:` URL it would need is over the browser's ceiling.
-   */
-  open(opts: {html: string; clock: string}): Promise<Page>;
   /**
    * Opens `url` in a page whose clock is pinned to `clock`, which runs `prelude`
    * on every new document of it, and every request of which is refused in the
@@ -127,12 +85,11 @@ export interface Browser {
    * is judged by the same rule `origin` is, so an origin not named is refused
    * exactly as the whole world outside is.
    *
-   * Optional, so a stand-in `Browser` is one without it. It resolves as soon as
-   * the navigation is under way rather than on a load event: the page it is
+   * It resolves as soon as the navigation is under way rather than on a load event: the page it is
    * meant for redirects on its first document, and the caller is polling the
    * page for its own signal of readiness anyway.
    */
-  openUrl?(opts: {
+  openUrl(opts: {
     url: string;
     origin: string;
     clock: string;
@@ -160,15 +117,10 @@ type Connection = {
     params?: Record<string, unknown>,
     sessionId?: string,
   ): Promise<Record<string, unknown>>;
-  /** Resolves with the first `method` event on `sessionId`, armed when called. */
-  once(method: string, sessionId: string): Promise<Record<string, unknown>>;
   /**
    * Calls `handler` for every `method` event on `sessionId`, until the
-   * connection closes.
-   *
-   * `once` cannot stand in for it: a request interceptor has to answer every
-   * paused request, not the first one, and a one-shot listener re-armed from
-   * inside its own handler drops whatever arrived in between.
+   * connection closes: a request interceptor has to answer every paused
+   * request, not the first one.
    */
   on(
     method: string,
@@ -177,10 +129,6 @@ type Connection = {
   ): void;
   close(): void;
 };
-
-/** The base64 payload as bytes. */
-const fromBase64 = (base64: string): Uint8Array =>
-  Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
 
 /** A promise that settles after `ms`, its timer unref'd so it holds nothing open. */
 const after = (ms: number): Promise<void> =>
@@ -207,26 +155,6 @@ const clockPin = (clock: string): string => {
   );
 };
 
-/**
- * What `open` waits for after the load event: three turns of two animation
- * frames and a macrotask, capped at a second in case a machine paints no frames.
- *
- * The load event is not the moment a page is worth looking at. The app paints
- * after it — React mounts on a microtask — and a blocked request dispatches its
- * `error` a few milliseconds later still, so an exam that reads `__WS_FAILED`
- * the instant `open` resolves would be reading a page mid-sentence. Waiting is
- * the deterministic move: every turn here is the page's own clock advancing, and
- * the cap means a page that never paints costs a second rather than the call.
- */
-const SETTLE =
-  'new Promise(function (done) {' +
-  'var left = 3; var stop = setTimeout(done, 1000);' +
-  'var turn = function () {' +
-  'if (left-- === 0) { clearTimeout(stop); done(); return; }' +
-  'requestAnimationFrame(function () { requestAnimationFrame(function () { setTimeout(turn, 0) }) })' +
-  '}; turn()' +
-  '})';
-
 /** Opens a CDP connection to `url` and resolves once it is talking. */
 const connect = async (url: string): Promise<Connection> => {
   const socket = new WebSocket(url);
@@ -234,7 +162,6 @@ const connect = async (url: string): Promise<Connection> => {
     number,
     {resolve: (value: Record<string, unknown>) => void; reject: (error: Error) => void}
   >();
-  const waiters = new Map<string, ((params: Record<string, unknown>) => void)[]>();
   const listeners = new Map<string, ((params: Record<string, unknown>) => void)[]>();
   let closed: Error | null = null;
   let nextId = 1;
@@ -258,10 +185,6 @@ const connect = async (url: string): Promise<Connection> => {
       return;
     }
     const key = `${message.sessionId ?? ''} ${message.method}`;
-    for (const waiter of waiters.get(key) ?? []) {
-      waiter(message.params ?? {});
-    }
-    waiters.delete(key);
     for (const listener of listeners.get(key) ?? []) {
       listener(message.params ?? {});
     }
@@ -304,11 +227,6 @@ const connect = async (url: string): Promise<Connection> => {
         });
       });
     },
-    once: (method, sessionId) =>
-      new Promise((resolve) => {
-        const key = `${sessionId} ${method}`;
-        waiters.set(key, [...(waiters.get(key) ?? []), resolve]);
-      }),
     on: (method, sessionId, handler) => {
       const key = `${sessionId} ${method}`;
       listeners.set(key, [...(listeners.get(key) ?? []), handler]);
@@ -364,20 +282,15 @@ const devtoolsUrl = async (stream: ReadableStream<Uint8Array>): Promise<string> 
 };
 
 /**
- * How the DOM domain is told which element is meant.
- *
- * `DOM.getBoxModel`, `DOM.focus` and `DOM.resolveNode` each take a `nodeId` or
- * a `backendNodeId` in the same slot, so the two resolvers below — the selector
- * one and the accessibility one — hand back a parameter object and every call
- * after them spreads it, rather than each one knowing which kind of id it got.
+ * How the DOM domain is told which element is meant: `DOM.getBoxModel`,
+ * `DOM.focus` and `DOM.resolveNode` each take a `backendNodeId`, so the
+ * resolver below hands back a parameter object and every call after it spreads it.
  */
-type NodeRef = {nodeId: number} | {backendNodeId: number};
+type NodeRef = {backendNodeId: number};
 
 /** How a locator reads in `act`'s rejection. */
 const spellLocator = (locator: Locator): string =>
-  typeof locator === 'string'
-    ? locator
-    : `role=${locator.role} name=${JSON.stringify(locator.name)}`;
+  `role=${locator.role} name=${JSON.stringify(locator.name)}`;
 
 /** The document's root nodeId — the scope every query below starts from. */
 const rootOf = async (connection: Connection, sessionId: string): Promise<number> => {
@@ -390,35 +303,19 @@ const rootOf = async (connection: Connection, sessionId: string): Promise<number
 /**
  * The first element `locator` names, or a rejection spelling it.
  *
- * A string goes to `DOM.querySelector`. A `{role, name}` goes to
- * `Accessibility.queryAXTree`, which answers the nodes whose computed role and
- * computed *accessible name* are both what was asked for, in tree order — so
- * "the first match" means the same thing for both forms. The accessible name is
- * the browser's own computation and nothing a selector can reach: a `<label
- * for>` names its input, an `aria-label` names anything at all, and a bare
- * `placeholder` names a text input.
+ * `Accessibility.queryAXTree` answers the nodes whose computed role and
+ * computed *accessible name* are both what was asked for, in tree order. The
+ * accessible name is the browser's own computation and nothing a selector can
+ * reach: a `<label for>` names its input, an `aria-label` names anything at
+ * all, and a bare `placeholder` names a text input.
  *
- * `Accessibility.enable` is idempotent and cheap, and the domain is off until
- * something asks for it, so it is enabled here rather than at `open`: a page
- * that only ever acts on selectors never turns the tree on.
+ * `Accessibility.enable` is idempotent and cheap, so it is enabled on every call.
  */
 const nodeFor = async (
   connection: Connection,
   sessionId: string,
   locator: Locator,
 ): Promise<NodeRef> => {
-  if (typeof locator === 'string') {
-    const found = (await connection.send(
-      'DOM.querySelector',
-      {nodeId: await rootOf(connection, sessionId), selector: locator},
-      sessionId,
-    )) as {nodeId?: number};
-    if (found.nodeId === undefined || found.nodeId === 0) {
-      throw new Error(`act: no element matches ${spellLocator(locator)}`);
-    }
-    return {nodeId: found.nodeId};
-  }
-
   await connection.send('Accessibility.enable', {}, sessionId);
   const found = (await connection.send(
     'Accessibility.queryAXTree',
@@ -591,41 +488,6 @@ const pageOn = (
       }
     },
 
-    snapshot: async (): Promise<{dom: string; screenshot: Uint8Array}> => {
-      live();
-      // The app paints after load, so `checked` is reflected onto `data-checked`
-      // in the page first — the markup alone never carries a DOM property.
-      await evaluate(REFLECT_CHECKED);
-      const document = (await connection.send('DOM.getDocument', {}, sessionId)) as {
-        root?: {nodeId?: number};
-      };
-      const markup = (await connection.send(
-        'DOM.getOuterHTML',
-        {nodeId: document.root?.nodeId ?? 0},
-        sessionId,
-      )) as {outerHTML?: string};
-      const shot = (await connection.send(
-        'Page.captureScreenshot',
-        {format: 'png'},
-        sessionId,
-      )) as {data?: string};
-      return {
-        dom: markup.outerHTML ?? '',
-        screenshot: fromBase64(shot.data ?? ''),
-      };
-    },
-
-    reload: async (): Promise<void> => {
-      live();
-      // Armed before the call: the load of the new document can beat a listener
-      // registered after `Page.reload` returns, and `Page.reload` returns as
-      // soon as the reload is under way. The cap is there because a page that
-      // never fires a load event must cost a second, not the exam.
-      const loaded = connection.once('Page.loadEventFired', sessionId);
-      await connection.send('Page.reload', {}, sessionId);
-      await Promise.race([loaded, after(RELOAD_LOAD_GRACE_MS)]);
-    },
-
     close: async (): Promise<void> => {
       if (!open) {
         return;
@@ -691,47 +553,6 @@ export const launchBrowser = async (opts?: {
 
   return {
     argv,
-
-    open: async ({html, clock}: {html: string; clock: string}): Promise<Page> => {
-      const pin = clockPin(clock);
-      const url = `data:text/html;base64,${Buffer.from(html, 'utf8').toString('base64')}`;
-      // Checked before a target is even created: a URL over the ceiling is a
-      // navigation that never lands, and waiting on it is the hang.
-      if (url.length > DATA_URL_CEILING) {
-        throw new Error(
-          `browser: page is ${url.length} characters, over the data: URL ceiling of ${DATA_URL_CEILING}`,
-        );
-      }
-
-      const created = (await connection.send('Target.createTarget', {
-        url: 'about:blank',
-      })) as {targetId?: string};
-      const targetId = created.targetId ?? '';
-      const attached = (await connection.send('Target.attachToTarget', {
-        targetId,
-        flatten: true,
-      })) as {sessionId?: string};
-      const sessionId = attached.sessionId ?? '';
-
-      await connection.send('Network.enable', {}, sessionId);
-      await connection.send('Network.setBlockedURLs', {urls: ['*']}, sessionId);
-      await connection.send('Page.enable', {}, sessionId);
-      await connection.send(
-        'Page.addScriptToEvaluateOnNewDocument',
-        {source: pin},
-        sessionId,
-      );
-
-      // Armed before the navigation: the load of a `data:` URL can beat a
-      // listener registered after the call returns.
-      const loaded = connection.once('Page.loadEventFired', sessionId);
-      await connection.send('Page.navigate', {url}, sessionId);
-      await loaded;
-
-      const page = pageOn(connection, sessionId, targetId);
-      await page.evaluate(SETTLE);
-      return page;
-    },
 
     openUrl: async ({url, origin, clock, prelude, allow}): Promise<Page> => {
       const source = [clockPin(clock), prelude ?? '']
