@@ -162,34 +162,9 @@ evidence repository.
   peer exam role, its files and their
   evidence copy left the engine at cut three (2026-09-22); `--engine d412149a` runs the engine from
   before it.
-- **State handshake:** Deferred since cut three (2026-09-22): no plan can name a state exam, so
-  this handshake has no reader until state exams return as probes (owed on #1248); the text stands
-  as the shape for that day. A task that reaches a state its consumers are examined against posts it on
-  its own kata issue, as the single metadata key `state.reached` with
-  `{"expected":"<path under state-exams/expected/>","content":[tables, values]}` — the pair
-  `getContent()` answers, beside the snapshot the task left in its tree. The driver reads that post
-  twice and writes nothing to it. Once for each consumer, before that consumer's `Run:` probes
-  first run: for every producer the run's dependency edges point from, one `getIssue` of the
-  producer's recorded uid (a fresh read — the Setup pass's read predates every worker, so it cannot
-  carry a fact a worker wrote), and a well-formed value's `content` is written as JSON to
-  `state-exams/posted/<producer id>.json` in the consumer's task clone — the handshake seeds that
-  clone only now — whose `.git/info/exclude` first takes `state-exams/posted/` so a seed never
-  rides the captured patch. A producer carrying no post seeds nothing and is one
-  `handshake:absent {task, producer}` event. Once more at the producer's own pre-review pass, after
-  its `Run:`/`Check:` commands: the file `expected` names is read from the tree the captured patch
-  describes and compared with `content` — equal is one `handshake:settled {task, expected}` event
-  and nothing else; unequal is one `blocking` finding with `actor` `implementer` whose detail is
-  `handshake: <table>/<row>/<cell> got <posted> wanted <file>`, routed to `fix:<id>:0` like any
-  blocking finding, and an `expected` the patch does not carry is that same finding naming the
-  path. Well-formed is exactly an object whose `expected` is a string under `state-exams/expected/`
-  and whose `content` is an array of two elements; anything else seeds nothing and raises the same
-  finding naming the field that is wrong (`content` or `expected`) rather than a cell. Every post
-  the driver reads is one `fact:state.reached {task, expected, sha256}` event, the digest taken over
-  the canonical JSON (keys sorted at every level) of `content`, and a post read at both ends is
-  still one event. A run whose issues carry no post writes no file, appends no `fact:state.reached`
-  and no `handshake:settled`, and dispatches the prompts it dispatched before the handshake existed;
-  a run without `--kata` also makes no `getIssue` for it. The findings a task collected this way
-  ride its `report.json` row as `tasks[].findings`, `[]` when it collected none.
+- **State handshake:** left with the factory at cut three (2026-09-22); nothing reads it. Its
+  shape is #812 (4a63b4ef); map #998 dropped it on 2026-09-30, and #1419 (the Flock's beliefs) is
+  where a reached state would return.
 - **Launch order (launcher):** read the evidence repository (`--evidence-repo`, else `fleet.json`'s
   `"evidence"`) and refuse a launch with neither, naming the key and `node fleet/doctor.mjs` →
   validate `--target`/`--base`/plan — a `--base` that is not an ancestor
