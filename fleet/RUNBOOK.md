@@ -804,7 +804,11 @@ an exe VM with 2 vCPU / 4 GB)
 - A factory run that ended `parked` or `failed` leaves its hub run issue open but marks it: the boot
   (`close_run` and the nothing-ahead park in `boot()`, and `fail()` once its evidence is ready in
   `factory/boot.sh`) runs `board.mjs mark-run`, which writes `work.state` = `parked`|`failed` on the run
-  issue's metadata, and the janitor reaps the VM an hour on by its ordinary rule (#1150, #1288). A VM
+  issue's metadata beside `work.attention` = `needs-human` and `work.attention_msg` (the phase, or the
+  failure's error), labels every task issue `needs-review` with one comment naming the evidence, and
+  leaves them open so a relaunch reuses them (#1391); the janitor reaps the VM an hour on by its
+  ordinary rule (#1150, #1288). Every run waiting on you is one query on the hub:
+  `kata list --meta work.attention=needs-human`. A VM
   still reported `stale … state=open — look before you rm` is a run whose mark never reached the hub
   (its `events.jsonl` `board:mark` row says what the hub answered): verify `<owner>-<repo>/run-<N>`
   with `git ls-remote --tags` against the evidence repository, then `ssh exe.dev rm <vm>` by hand.

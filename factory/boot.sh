@@ -97,12 +97,14 @@ fail() { # $1 = message, $2 = exit code (default 1)
   if [ -n "${EVIDENCE_READY:-}" ] && [ -z "${FAILING:-}" ]; then
     # The hub hears the failure too (#1288): `work.state=failed` on the run issue, so the janitor reaps the VM by its ordinary rule.
     # Marked before the last commit, so the record holds the `board:mark` row (#1392).
-    FAILING=1; collect_evidence; write_status failed "$PHASE"; mark_run failed; evidence_commit "$RUN_ID: failed"; record_tags; fi
+    FAILING=1; collect_evidence; write_status failed "$PHASE"; mark_run failed "$ERROR"; evidence_commit "$RUN_ID: failed"; record_tags; fi
   exit "${2:-1}"
 }
-# `board.mjs mark-run`: `work.state=<state>` on the run issue, which the janitor reaps (#1288); it never fails the run.
-mark_run() { # $1 = parked|failed
+# `board.mjs mark-run`: `work.state=<state>` on the run issue, which the janitor reaps (#1288), with `work.attention`
+# raised on the message and every task labelled needs-review (#1391); it never fails the run.
+mark_run() { # $1 = parked|failed, $2 = what the operator reads
   fleet_node "${ENGINE_REPO_DIR:-}/factory/board.mjs" mark-run --kata-json "${FLEET_HOME:-}/plans/${RUN_ID:-}.kata.json" --run "${RUN_ID:-}" --state "$1" \
+    --message "${2:-$1}" --evidence "https://github.com/${EVIDENCE_REPO:-}/tree/${SLUG:-}/${RUN_ID:-}/${EVIDENCE_REL:-}" \
     --admin-url "${KATA_ADMIN_URL:-}" --events "${EVIDENCE_DIR:-}/${EVIDENCE_REL:-}/events.jsonl" || true
 }
 read_assignment() { if [ -n "${FLEET_ASSIGNMENT:-}" ]; then printf '%s\n' "$FLEET_ASSIGNMENT"; else fleet_curl -fsS "$REFLECTION_URL/comment" 2>/dev/null | json_field comment || true; fi; }
@@ -540,7 +542,7 @@ publish() { # $1 = the engine's exit code
     phase_text="the pull request is open"
   fi
   write_status "$state" "$phase_text"; evidence_commit "$RUN_ID: $state"
-  close_run "$state"
+  close_run "$state" "$phase_text"
   audit_args=(); [ -f "$FLEET_HOME/plans/$RUN_ID.kata.json" ] && audit_args=(--bound)
   audit_line="$(fleet_node "$ENGINE_REPO_DIR/factory/audit.mjs" "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" "$state" ${audit_args[@]+"${audit_args[@]}"} 2>/dev/null)" || true
   [ -n "${audit_line:-}" ] && printf '%s\n' "$audit_line" >>"$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl"
@@ -561,9 +563,9 @@ record_tags() {
 # The run's close: `board.mjs close-run`, the one module that talks to Kata and never
 # fails a run (CLAUDE.md). A parked run is not closed but marked: `mark-run` writes
 # `work.state=parked` on the run issue, which the janitor reaps (#1288).
-close_run() { # $1 = the run's final state (done|parked)
+close_run() { # $1 = the run's final state (done|parked), $2 = its phase
   local args
-  if [ "$1" != done ]; then mark_run parked; return 0; fi
+  if [ "$1" != done ]; then mark_run parked "${2:-}"; return 0; fi
   args=(--kata-json "$FLEET_HOME/plans/$RUN_ID.kata.json" --run "$RUN_ID" --pr "$PR_URL" \
     --admin-url "$KATA_ADMIN_URL" --events "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" --title "$(plan_title)")
   [ -n "$MERGED_SHA" ] && args+=(--merged "$MERGED_SHA")
@@ -581,7 +583,7 @@ boot() {
   head="$(fleet_git -C "$TARGET_DIR" rev-parse HEAD 2>/dev/null || true)"
   if [ "$head" = "$BASE_SHA" ]; then
     if [ "$code" != 0 ]; then fail "engine exit $code" "$code"; fi
-    write_status parked "nothing ahead of base"; mark_run parked; evidence_commit "$RUN_ID: parked"
+    write_status parked "nothing ahead of base"; mark_run parked "nothing ahead of base"; evidence_commit "$RUN_ID: parked"
     record_tags; exit 0; fi
   publish "$code"; exit 0
 }
