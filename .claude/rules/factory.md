@@ -50,7 +50,7 @@ keeps the name `factory/`. Models never run git.
   there, passes the engine `--kata-url`, `--kata-json` and `--kata-actor`. The record is rows in
   `events.jsonl`.
 - `board.mjs` owns the run's close and marks (`boot.sh` only calls its CLI) and never fails a
-  run; hub writes are never the run's failure, and the boot's ping is the one gate.
+  run; hub writes are never the run's failure, and the launcher's `hub.ping()` is the one gate.
 - **Seams:** every `*.int.exe.xyz` host is `https://` (an http 301, followed, turns a POST into
   a GET). A `done` close needs a ≥40-character message.
 - A byte-identical plan relaunched while its twin is live collides on the board (412, #1308);

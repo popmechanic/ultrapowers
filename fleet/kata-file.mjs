@@ -85,7 +85,7 @@ const planBlobSha = (text) => {
  * `parent` link carries `replace: true` because a second parent is otherwise a
  * 409 `parent_already_set` — a refiled task moves under the new run issue
  * rather than refusing. Hub behaviour measured against kata v0.17.2 on
- * 2026-09-14.
+ * 2026-09-14 and re-read on v0.18.0 on 2026-09-30 (CONTRACT's kata facts).
  *
  * A task row is `{uid, short_id, revision}`, in that order (#963). The
  * `short_id` is the create answer's — `MUTATION_KEYS` in `fleet/kata-client.mjs`
