@@ -248,8 +248,8 @@ export async function thrown (body) {
 }
 
 // ── The launch sims' shared rig ─────────────────────────────────────────────
-// test_launch_credential/duplicate/evidence/one_engine/plan_path/probe_runners
-// all drive `launch()` over the same seam; what they share lives here, once.
+// test_launch_credential/duplicate/evidence/plan_path/probe_runners all drive
+// `launch()` over the same seam; what they share lives here, once.
 
 /** An account whose billing caps clear every launch. */
 export const BILLING_OK = { max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'Individual' }
