@@ -126,12 +126,12 @@ for (const [CASE, [record, want]] of Object.entries(PROV_PR)) test(`provenance p
   t.done()
 })
 
-// ── the record-only Jev trials and the peer-rewrite read ─────────────────────────
+// ── give-backs, conflicts and the peer-rewrite read ─────────────────────────────
 // The stand-in answers every asked key with the case's `choice` at 0.9.
-//   release  a one-task plan whose script names no files: given back until it parks (3), one
-//            jev:release row per give-back carrying the answer
-//   off      the same with Jev off: no jev:release row, no request
-//   resolve  two tasks write into the same line of a.txt: a resolve task, and jev:resolve rows for a.txt
+//   release  a one-task plan whose script names no files: given back until it parks (3), and
+//            Jev is never asked (the give-back trial is gone, #1457)
+//   resolve  two tasks write into the same line of a.txt: a resolve task for a.txt, and Jev is
+//            never asked (the resolve trial is gone, #1457)
 //   peer     task 2, held until task 1 publishes `x ONE z`, writes `x ONEz TWO` over it (run-277):
 //            one peer:rewrite and one jev:peer-rewrite row naming task 1's line; `loses` ends a draft
 //   peer-keeps      the same answered `keeps`: the run ends ready
@@ -161,7 +161,6 @@ const word = (id, w, { iface, run } = {}) => task({ id, title: `Write ${w} into 
   run: run ?? `grep -q ${w} a.txt`, stale: 'path-absent: `a.txt`', iface })
 const TRIALS = {
   release: { choice: 'plan_defect', tasks: [word(1, 'DONE')], script: {} },
-  off: { choice: 'plan_defect', jev: '', tasks: [word(1, 'DONE')], script: {} },
   resolve: { choice: 'plan_defect', base: 'x\n', tasks: [word(1, 'ONE'), word(2, 'TWO')], script: { 1: { 'a.txt': 'ONE\n' }, 2: { 'a.txt': 'x\nTWO\n' } } },
   reuse: { choice: 'loses', tasks: [word(1, 'ONE', { iface: '- Produces: `ONE`' }), word(2, 'TWO', { iface: '- Consumes: `ONE`' })], script: { 1: { 'a.txt': 'x ONE z\n' }, 2: { 'a.txt': 'x ONEz TWO\n' } } },
   'survival-restored': { choice: 'loses', tasks: [word(1, 'ONE'), word(2, 'NONE', { run: 'test -f a.txt' }), word(3, 'BACK', { run: 'grep -q ONE a.txt' })],
@@ -182,19 +181,13 @@ for (const [CASE, s] of Object.entries(TRIALS)) test(`jev trials ${CASE}`, async
     assert(end?.pr === pr, `expected the run to end ${pr}, saw ${JSON.stringify(end)}`)
     assert((r.code === 0) === (pr === 'ready'), `engine exit ${r.code} for a ${pr} run`)
   }
-  if (CASE === 'release' || CASE === 'off') {
+  if (CASE === 'release') {
     const parked = of('task:parked').filter((x) => x.task === '1')
-    assert(parked.length === 1, `expected one task:parked row for task 1, saw ${parked.length}`)
-    const rel = of('jev:release')
-    if (CASE === 'off') assert(!rel.length && !requests, `expected no jev:release row and no request, saw ${rel.length} and ${requests}`)
-    else {
-      assert(parked[0].releases === 3, `expected 3 give-backs before parking, saw ${parked[0].releases}`)
-      assert(rel.length === 3 && rel.every((x) => x.task === '1' && x.answer === 'plan_defect' && x.confidence === 0.9), `jev:release rows: ${JSON.stringify(rel)}`)
-    }
+    assert(parked.length === 1 && parked[0].releases === 3, `expected one task:parked row for task 1 after 3 give-backs, saw ${JSON.stringify(parked)}`)
+    assert(!requests, `expected no Jev request, saw ${requests}`)
   } else if (CASE === 'resolve') {
-    assert(of('resolve-task').length, `the engine added no resolve task: ${r.out.slice(-1500)}`)
-    const res = of('jev:resolve')
-    assert(res.length && res.every((x) => x.path === 'a.txt' && x.answer === 'plan_defect'), `jev:resolve rows: ${JSON.stringify(res)}`)
+    assert(of('resolve-task').some((x) => x.path === 'a.txt'), `the engine added no resolve task for a.txt: ${r.out.slice(-1500)}`)
+    assert(!requests, `expected no Jev request, saw ${requests}`)
   } else if (CASE === 'survival-restored') {
     const jr = of('jev:peer-rewrite')
     assert(jr.some((x) => x.path === 'a.txt' && x.answer === 'loses' && (x.peer || []).includes('x ONE z')), `jev:peer-rewrite rows: ${JSON.stringify(jr)}`)
